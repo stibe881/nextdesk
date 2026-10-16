@@ -5396,3 +5396,85 @@ body:has(.ticket-detail) {
     display: none;
   }
 }
+
+/* Mandantenadministration: effektive Rechte pro Person */
+.tenant-admin-settings__access-overview {
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: linear-gradient(140deg, #fbfcff 0%, #f4f6ff 100%);
+  padding: 1.25rem;
+}
+
+.tenant-admin-settings__access-count {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2rem;
+  padding: 0.25rem 0.7rem;
+  border-radius: 999px;
+  background: var(--primary-soft);
+  color: var(--primary);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.tenant-admin-settings__access-list {
+  display: grid;
+  gap: 0.75rem;
+  margin: 1rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tenant-admin-settings__access-list li {
+  display: grid;
+  grid-template-columns: minmax(10rem, 0.8fr) minmax(10rem, 0.8fr) minmax(
+      14rem,
+      1.4fr
+    );
+  gap: 1rem;
+  align-items: start;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+  padding: 1rem;
+}
+
+.tenant-admin-settings__access-list strong,
+.tenant-admin-settings__access-list span,
+.tenant-admin-settings__access-list p {
+  display: block;
+}
+
+.tenant-admin-settings__access-list strong {
+  color: var(--ink);
+}
+
+.tenant-admin-settings__access-list
+  span:not(.tenant-admin-settings__access-label),
+.tenant-admin-settings__access-list p {
+  margin: 0.25rem 0 0;
+  color: var(--muted);
+  font-size: 0.875rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.tenant-admin-settings__access-label {
+  color: var(--text);
+  font-size: 0.6875rem;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+@media (max-width: 760px) {
+  .tenant-admin-settings__access-overview {
+    padding: 1rem;
+  }
+
+  .tenant-admin-settings__access-list li {
+    grid-template-columns: 1fr;
+    gap: 0.75rem;
+  }
+}

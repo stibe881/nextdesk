@@ -667,6 +667,56 @@ export function TenantAdminSettings({
     () => roles.filter((role) => role.active && role.scope === "tenant"),
     [roles],
   );
+  const effectiveAccess = useMemo(() => {
+    const rolesById = new Map(roles.map((role) => [role.id, role]));
+    const people = new Map<
+      string,
+      {
+        id: string;
+        displayName: string | null;
+        email: string | null;
+        roleNames: string[];
+        permissionCodes: Set<string>;
+      }
+    >();
+
+    for (const assignment of roleAssignments) {
+      const role = rolesById.get(assignment.role_id);
+      if (!role?.active) continue;
+
+      const current = people.get(assignment.user_id) ?? {
+        id: assignment.user_id,
+        displayName: assignment.user.displayName,
+        email: assignment.user.email,
+        roleNames: [],
+        permissionCodes: new Set<string>(),
+      };
+      if (!current.roleNames.includes(role.name)) {
+        current.roleNames.push(role.name);
+      }
+      for (const permissionCode of role.permissionCodes) {
+        current.permissionCodes.add(permissionCode);
+      }
+      people.set(assignment.user_id, current);
+    }
+
+    return [...people.values()]
+      .map((person) => ({
+        ...person,
+        roleNames: person.roleNames.sort((left, right) =>
+          left.localeCompare(right, "de-CH"),
+        ),
+        permissionCodes: [...person.permissionCodes].sort((left, right) =>
+          left.localeCompare(right, "de-CH"),
+        ),
+      }))
+      .sort((left, right) =>
+        (left.displayName ?? left.email ?? left.id).localeCompare(
+          right.displayName ?? right.email ?? right.id,
+          "de-CH",
+        ),
+      );
+  }, [roleAssignments, roles]);
 
   function beginSave(target: SaveTarget) {
     setSaving(target);
@@ -2027,6 +2077,57 @@ export function TenantAdminSettings({
                   : "Rolle zuweisen"}
               </button>
             </form>
+
+            <section
+              className="tenant-admin-settings__access-overview"
+              aria-labelledby="effective-access-heading"
+            >
+              <div className="tenant-admin-settings__section-heading">
+                <div>
+                  <h3 id="effective-access-heading">Effektiver Zugriff</h3>
+                  <p>
+                    Zusammenfassung aller aktiven Rollen und daraus
+                    resultierenden Berechtigungen je Person.
+                  </p>
+                </div>
+                <span className="tenant-admin-settings__access-count">
+                  {effectiveAccess.length} Personen
+                </span>
+              </div>
+              {effectiveAccess.length > 0 ? (
+                <ul className="tenant-admin-settings__access-list">
+                  {effectiveAccess.map((person) => (
+                    <li key={person.id}>
+                      <div>
+                        <strong>
+                          {person.displayName?.trim() ||
+                            person.email ||
+                            "Unbekannte Person"}
+                        </strong>
+                        <span>{person.email ?? "E-Mail nicht hinterlegt"}</span>
+                      </div>
+                      <div>
+                        <span className="tenant-admin-settings__access-label">
+                          Rollen
+                        </span>
+                        <p>{person.roleNames.join(" · ")}</p>
+                      </div>
+                      <div>
+                        <span className="tenant-admin-settings__access-label">
+                          Berechtigungen ({person.permissionCodes.length})
+                        </span>
+                        <p>{person.permissionCodes.join(" · ")}</p>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="tenant-admin-settings__hint">
+                  Sobald einer aktiven Person eine Rolle zugewiesen ist,
+                  erscheint ihre effektive Zugriffsübersicht hier.
+                </p>
+              )}
+            </section>
 
             <h3>Aktive Rollenzuweisungen</h3>
             {roleAssignments.length > 0 ? (
