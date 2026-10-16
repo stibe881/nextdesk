@@ -78,6 +78,13 @@ function metricDisplay(value: string): string {
   return value === "—" ? value : value;
 }
 
+function displayAuthError(message: string): string {
+  if (message.toLocaleLowerCase("en-US").includes("email rate limit")) {
+    return "Zu viele Anmelde-E-Mails wurden für dieses Projekt versendet. Bitte warten Sie bis zu einer Stunde und fordern Sie danach nur einen neuen Magic Link an.";
+  }
+  return message;
+}
+
 function AccessShell({ children }: { children: ReactNode }) {
   return (
     <main className="access-shell">
@@ -116,7 +123,7 @@ function SignInScreen() {
 
     if (error) {
       setStatus("error");
-      setMessage(error.message);
+      setMessage(displayAuthError(error.message));
       return;
     }
 
