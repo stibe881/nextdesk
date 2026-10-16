@@ -956,6 +956,8 @@ button {
   letter-spacing: 0.015em;
   line-height: 0.95;
   text-transform: uppercase;
+  overflow-wrap: anywhere;
+  word-break: normal;
 }
 .access-lead,
 .access-card > p:not(.eyebrow) {

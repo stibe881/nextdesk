@@ -240,12 +240,12 @@ function LoadingScreen({ message }: { message: string }) {
 function NoMembershipScreen({ onSignOut }: { onSignOut: () => void }) {
   return (
     <AccessShell>
-      <p className="eyebrow">Zugriff ausstehend</p>
-      <h1>Keine aktive Mandantenmitgliedschaft.</h1>
+      <p className="eyebrow">ANMELDUNG BESTÄTIGT</p>
+      <h1>Portalzugang wird geprüft.</h1>
       <p>
-        Ihre Anmeldung wurde bestätigt, aber es ist noch kein aktiver
-        nextDesk-Mandant zugeordnet. Wenden Sie sich an die
-        Mandantenadministration oder akzeptieren Sie eine offene Einladung.
+        Ihre Sitzung ist aktiv, aber es ist noch keine aktive
+        Mandantenmitgliedschaft vorhanden. Für das Eigentümerportal benötigen
+        Sie die Gross-ICT-SSO-Anmeldung und einen verifizierten MFA-Zugang.
       </p>
       <button className="secondary-button" onClick={onSignOut} type="button">
         Abmelden
