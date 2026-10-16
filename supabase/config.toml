@@ -65,3 +65,6 @@ verify_jwt = true
 
 [functions.service-assets]
 verify_jwt = true
+
+[functions.ticket-quality]
+verify_jwt = true

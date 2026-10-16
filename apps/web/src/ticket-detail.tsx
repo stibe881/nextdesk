@@ -40,6 +40,7 @@ type PendingAction =
   | "relation-delete"
   | "merge"
   | "feedback"
+  | "quality-review"
   | null;
 type PendingAttachmentAction = "upload" | "download" | "delete" | null;
 type PendingCatalogAction = "link" | "unlink" | null;
@@ -196,6 +197,16 @@ type TicketFeedbackAction =
       comment?: string;
     };
 
+type TicketQualityAction =
+  | { type: "get"; tenantId: string; ticketId: string }
+  | {
+      type: "submit";
+      tenantId: string;
+      ticketId: string;
+      score: number;
+      notes: string | null;
+    };
+
 type TicketRecord = {
   id: string;
   ticket_number: string;
@@ -308,6 +319,19 @@ type TicketFeedbackData = {
   satisfaction: TicketSatisfaction | null;
   canRate: boolean;
   isClosed: boolean;
+};
+
+type TicketQualityReview = {
+  score: number;
+  notes: string | null;
+  createdAt: string;
+};
+
+type TicketQualityData = {
+  count: number;
+  averageScore: number | null;
+  ownReview: TicketQualityReview | null;
+  canReview: boolean;
 };
 
 type CatalogService = {
@@ -698,6 +722,86 @@ function parseTicketFeedback(value: unknown): TicketFeedbackData | null {
     canRate: data.canRate,
     isClosed: status.isClosed,
   };
+}
+
+function isTicketQualityScore(value: unknown): value is number {
+  return (
+    typeof value === "number" &&
+    Number.isInteger(value) &&
+    value >= 1 &&
+    value <= 5
+  );
+}
+
+function isTicketQualityReview(value: unknown): value is TicketQualityReview {
+  const review = asRecord(value);
+  return Boolean(
+    review &&
+    isTicketQualityScore(review.score) &&
+    (review.notes === null ||
+      (typeof review.notes === "string" &&
+        [...review.notes].length <= 3_000 &&
+        !review.notes.includes("\u0000"))) &&
+    typeof review.createdAt === "string" &&
+    Number.isFinite(Date.parse(review.createdAt)),
+  );
+}
+
+function parseTicketQuality(value: unknown): TicketQualityData | null {
+  const envelope = asRecord(value);
+  const data = asRecord(envelope?.data);
+  if (
+    !data ||
+    typeof data.count !== "number" ||
+    !Number.isSafeInteger(data.count) ||
+    data.count < 0 ||
+    typeof data.canReview !== "boolean"
+  ) {
+    return null;
+  }
+
+  const ownReview =
+    data.ownReview === null
+      ? null
+      : isTicketQualityReview(data.ownReview)
+        ? data.ownReview
+        : null;
+  if (data.ownReview !== null && ownReview === null) {
+    return null;
+  }
+
+  if (data.count === 0) {
+    if (data.averageScore !== null) return null;
+    return {
+      count: data.count,
+      averageScore: null,
+      ownReview,
+      canReview: data.canReview,
+    };
+  }
+
+  const averageScore = data.averageScore;
+  if (
+    typeof averageScore !== "number" ||
+    !Number.isFinite(averageScore) ||
+    averageScore < 1 ||
+    averageScore > 5
+  ) {
+    return null;
+  }
+
+  return {
+    count: data.count,
+    averageScore,
+    ownReview,
+    canReview: data.canReview,
+  };
+}
+
+function parseTicketQualitySubmit(value: unknown): boolean {
+  const envelope = asRecord(value);
+  const data = asRecord(envelope?.data);
+  return isTicketQualityReview(data?.ownReview);
 }
 
 function emptyTicketCatalog(): TicketCatalog {
@@ -1133,6 +1237,17 @@ async function invokeTicketFeedbackAction(
   return data;
 }
 
+async function invokeTicketQualityAction(
+  action: TicketQualityAction,
+): Promise<unknown> {
+  if (!supabase) throw new Error("Supabase ist nicht konfiguriert.");
+  const { data, error } = await supabase.functions.invoke("ticket-quality", {
+    body: action,
+  });
+  if (error) throw error;
+  return data;
+}
+
 async function invokeServiceAssetsAction(
   action: ServiceAssetsAction,
 ): Promise<unknown> {
@@ -1175,6 +1290,32 @@ function feedbackErrorMessage(
   return action === "submit"
     ? "Die Bewertung konnte nicht gespeichert werden. Bitte versuchen Sie es erneut."
     : "Die Zufriedenheitsdaten konnten nicht geladen werden. Bitte versuchen Sie es erneut.";
+}
+
+function qualityErrorMessage(error: unknown, action: "get" | "submit"): string {
+  const status = functionErrorStatus(error);
+  if (status === 401) {
+    return "Ihre Sitzung ist abgelaufen. Bitte melden Sie sich erneut an.";
+  }
+  if (status === 403) {
+    return action === "submit"
+      ? "Sie sind nicht berechtigt, für dieses Ticket eine Qualitätsprüfung abzugeben."
+      : "Die Qualitätsprüfungsdaten sind für dieses Ticket nicht verfügbar.";
+  }
+  if (status === 409) {
+    return "Die Qualitätsprüfung wurde zwischenzeitlich geändert. Bitte laden Sie die Ticketdetails neu.";
+  }
+  if (status === 422) {
+    return action === "submit"
+      ? "Die Qualitätsprüfung kann nicht gespeichert werden. Sie ist nur für geschlossene Tickets möglich und nach der ersten Abgabe höchstens 14 Tage lang änderbar."
+      : "Die Qualitätsprüfungsdaten können für dieses Ticket derzeit nicht verarbeitet werden.";
+  }
+  if (status === 400) {
+    return "Die Anfrage zur Qualitätsprüfung ist ungültig. Bitte laden Sie die Ticketdetails neu.";
+  }
+  return action === "submit"
+    ? "Die Qualitätsprüfung konnte nicht gespeichert werden. Bitte versuchen Sie es erneut."
+    : "Die Qualitätsprüfungsdaten konnten nicht geladen werden. Bitte versuchen Sie es erneut.";
 }
 
 function affectedItemsErrorMessage(
@@ -1278,6 +1419,11 @@ export function TicketDetail({
   const [feedbackError, setFeedbackError] = useState("");
   const [feedbackScore, setFeedbackScore] = useState<number | null>(null);
   const [feedbackComment, setFeedbackComment] = useState("");
+  const [quality, setQuality] = useState<TicketQualityData | null>(null);
+  const [qualityLoading, setQualityLoading] = useState(true);
+  const [qualityError, setQualityError] = useState("");
+  const [qualityScore, setQualityScore] = useState<number | null>(null);
+  const [qualityNotes, setQualityNotes] = useState("");
   const [catalog, setCatalog] = useState<TicketCatalog>(emptyTicketCatalog);
   const [linkedCatalogItems, setLinkedCatalogItems] = useState<
     LinkedCatalogItem[]
@@ -1294,6 +1440,7 @@ export function TicketDetail({
   const requestSequence = useRef(0);
   const attachmentRequestSequence = useRef(0);
   const feedbackRequestSequence = useRef(0);
+  const qualityRequestSequence = useRef(0);
   const affectedItemsRequestSequence = useRef(0);
   const attachmentInputRef = useRef<HTMLInputElement>(null);
 
@@ -1328,6 +1475,47 @@ export function TicketDetail({
     } finally {
       if (requestId === feedbackRequestSequence.current) {
         setFeedbackLoading(false);
+      }
+    }
+  }, [tenantId, ticketId]);
+
+  const loadQuality = useCallback(async () => {
+    const requestId = ++qualityRequestSequence.current;
+    setQualityLoading(true);
+    setQualityError("");
+    setQuality(null);
+
+    try {
+      const response = await invokeTicketQualityAction({
+        type: "get",
+        tenantId,
+        ticketId,
+      });
+      const nextQuality = parseTicketQuality(response);
+      if (!nextQuality) {
+        throw new Error("Die Qualitätsprüfungsdaten sind unvollständig.");
+      }
+      if (requestId !== qualityRequestSequence.current) return false;
+
+      setQuality(nextQuality);
+      setQualityScore(
+        nextQuality.canReview ? (nextQuality.ownReview?.score ?? null) : null,
+      );
+      setQualityNotes(
+        nextQuality.canReview ? (nextQuality.ownReview?.notes ?? "") : "",
+      );
+      return true;
+    } catch (nextError) {
+      if (requestId === qualityRequestSequence.current) {
+        setQuality(null);
+        setQualityScore(null);
+        setQualityNotes("");
+        setQualityError(qualityErrorMessage(nextError, "get"));
+      }
+      return false;
+    } finally {
+      if (requestId === qualityRequestSequence.current) {
+        setQualityLoading(false);
       }
     }
   }, [tenantId, ticketId]);
@@ -1515,6 +1703,13 @@ export function TicketDetail({
   }, [loadFeedback]);
 
   useEffect(() => {
+    void loadQuality();
+    return () => {
+      qualityRequestSequence.current += 1;
+    };
+  }, [loadQuality]);
+
+  useEffect(() => {
     setAttachments([]);
     setAttachmentsLoaded(false);
     setSelectedAttachmentFile(null);
@@ -1651,6 +1846,51 @@ export function TicketDetail({
       await loadFeedback();
     } catch (nextError) {
       setFeedbackError(feedbackErrorMessage(nextError, "submit"));
+    } finally {
+      setPendingAction(null);
+    }
+  }
+
+  async function saveQuality(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!quality?.canReview) {
+      setQualityError(
+        "Eine Qualitätsprüfung kann nur mit Berechtigung für ein geschlossenes Ticket abgegeben werden.",
+      );
+      return;
+    }
+    if (!isTicketQualityScore(qualityScore)) {
+      setQualityError(
+        "Bitte wählen Sie eine Qualitätsbewertung von 1 bis 5 Sternen aus.",
+      );
+      return;
+    }
+
+    const notes = qualityNotes.trim();
+    if ([...notes].length > 3_000 || notes.includes("\u0000")) {
+      setQualityError(
+        "Die Notizen dürfen höchstens 3'000 Zeichen enthalten und keine ungültigen Zeichen enthalten.",
+      );
+      return;
+    }
+
+    setPendingAction("quality-review");
+    setQualityError("");
+    try {
+      const response = await invokeTicketQualityAction({
+        type: "submit",
+        tenantId,
+        ticketId,
+        score: qualityScore,
+        notes: notes || null,
+      });
+      if (!parseTicketQualitySubmit(response)) {
+        throw new Error("Ungültige Antwort der Qualitätsprüfung.");
+      }
+      onChanged();
+      await loadQuality();
+    } catch (nextError) {
+      setQualityError(qualityErrorMessage(nextError, "submit"));
     } finally {
       setPendingAction(null);
     }
@@ -1806,7 +2046,7 @@ export function TicketDetail({
     try {
       await invokeTicketOperation(action);
       onChanged();
-      await Promise.all([loadTicket(), loadFeedback()]);
+      await Promise.all([loadTicket(), loadFeedback(), loadQuality()]);
     } catch (nextError) {
       setError(errorMessage(nextError));
     } finally {
@@ -2221,6 +2461,7 @@ export function TicketDetail({
             onClick={() => {
               void loadTicket();
               void loadFeedback();
+              void loadQuality();
             }}
             type="button"
           >
@@ -2439,6 +2680,117 @@ export function TicketDetail({
             })}
           </ol>
         ) : null}
+      </section>
+
+      <section
+        aria-busy={qualityLoading}
+        aria-labelledby="ticket-quality-heading"
+        className="ticket-detail-comments"
+      >
+        <div className="ticket-detail-section-heading">
+          <div>
+            <p className="eyebrow">QUALITÄT</p>
+            <h3 id="ticket-quality-heading">Qualitätsprüfung</h3>
+          </div>
+        </div>
+
+        {qualityLoading ? (
+          <p className="empty-state ticket-detail-loading" role="status">
+            <LoaderCircle
+              aria-hidden="true"
+              className="ticket-detail-spinner"
+              size={18}
+            />
+            Qualitätsprüfungsdaten werden geladen …
+          </p>
+        ) : null}
+
+        {qualityError && (
+          <p className="ticket-detail-message error" role="alert">
+            <AlertCircle aria-hidden="true" size={17} />
+            {qualityError}
+          </p>
+        )}
+
+        {quality && (
+          <>
+            <div className="ticket-comment">
+              <div className="ticket-comment-meta">
+                <strong>Übersicht</strong>
+                <span>
+                  {quality.count}{" "}
+                  {quality.count === 1 ? "Bewertung" : "Bewertungen"}
+                </span>
+                <span>
+                  Durchschnitt:{" "}
+                  {quality.averageScore === null
+                    ? "Noch keine Bewertung"
+                    : `${new Intl.NumberFormat("de-CH", {
+                        minimumFractionDigits: 1,
+                        maximumFractionDigits: 2,
+                      }).format(quality.averageScore)} von 5`}
+                </span>
+              </div>
+            </div>
+
+            {quality.canReview ? (
+              <form className="ticket-comment-form" onSubmit={saveQuality}>
+                <fieldset className="ticket-comment-visibility" disabled={busy}>
+                  <legend>Eigene Qualitätsbewertung</legend>
+                  {[1, 2, 3, 4, 5].map((score) => (
+                    <label key={score}>
+                      <input
+                        checked={qualityScore === score}
+                        name="ticket-quality-score"
+                        onChange={() => setQualityScore(score)}
+                        required
+                        type="radio"
+                        value={score}
+                      />
+                      <span aria-hidden="true">★</span> {score}{" "}
+                      {score === 1 ? "Stern" : "Sterne"}
+                    </label>
+                  ))}
+                </fieldset>
+                <label className="ticket-comment-body">
+                  Notizen (optional)
+                  <textarea
+                    disabled={busy}
+                    maxLength={3000}
+                    onChange={(event) => setQualityNotes(event.target.value)}
+                    placeholder="Notizen zur Qualitätsprüfung"
+                    rows={3}
+                    value={qualityNotes}
+                  />
+                </label>
+                <p className="data-caption" aria-live="polite">
+                  {[...qualityNotes].length}/3&apos;000 Zeichen
+                </p>
+                <button
+                  className="primary-button"
+                  disabled={busy || qualityScore === null}
+                  type="submit"
+                >
+                  {pendingAction === "quality-review" ? (
+                    <LoaderCircle
+                      aria-hidden="true"
+                      className="ticket-detail-spinner"
+                      size={16}
+                    />
+                  ) : (
+                    <Save aria-hidden="true" size={16} strokeWidth={1.8} />
+                  )}
+                  Qualitätsprüfung speichern
+                </button>
+              </form>
+            ) : (
+              <p className="data-caption">
+                Eine eigene Qualitätsprüfung ist nur für geschlossene Tickets
+                mit entsprechender Berechtigung möglich.
+              </p>
+            )}
+          </>
+        )}
       </section>
 
       <section
