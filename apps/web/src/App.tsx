@@ -232,7 +232,7 @@ function AccessShell({ children }: { children: ReactNode }) {
           <img
             alt="nextDesk"
             className="nextdesk-logo-mark"
-            src="/assets/nextdesk-logo-mark-a.png"
+            src="/assets/nextdesk-logo-product.png"
           />
           <span>{productDefaults.productName}</span>
         </div>
@@ -327,7 +327,7 @@ function SignInScreen() {
         onClick={() => void requestGrossIctSso()}
         type="button"
       >
-        {status === "sso" ? "SSO wird geöffnet …" : "MIT GROSS ICT ANMELDEN"}
+        {status === "sso" ? "SSO wird geöffnet …" : "MIT SSO ANMELDEN"}
         <ArrowRight aria-hidden="true" size={18} strokeWidth={1.8} />
       </button>
       <div className="access-divider">
@@ -917,25 +917,28 @@ export function App() {
             alt=""
             aria-hidden="true"
             className="brand-logo-mark"
-            src="/assets/nextdesk-logo-mark-a.png"
+            src="/assets/nextdesk-logo-product.png"
           />
           <span>{productDefaults.productName}</span>
         </div>
-        <nav className="nav-list">
-          {visibleSections.map((item) => (
-            <button
-              className={
-                section === item.label ? "nav-item active" : "nav-item"
-              }
-              key={item.label}
-              onClick={() => setSection(item.label)}
-              type="button"
-            >
-              <item.Icon aria-hidden="true" size={18} strokeWidth={1.8} />
-              {item.label}
-            </button>
-          ))}
-        </nav>
+        <div className="navigation-cluster">
+          <p className="navigation-label">ARBEITSBEREICH</p>
+          <nav className="nav-list">
+            {visibleSections.map((item) => (
+              <button
+                className={
+                  section === item.label ? "nav-item active" : "nav-item"
+                }
+                key={item.label}
+                onClick={() => setSection(item.label)}
+                type="button"
+              >
+                <item.Icon aria-hidden="true" size={18} strokeWidth={1.8} />
+                {item.label}
+              </button>
+            ))}
+          </nav>
+        </div>
         <div className="rail-footer">
           <div className="operator-avatar">{initials(operatorName)}</div>
           <div>

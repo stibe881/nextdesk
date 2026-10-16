@@ -4374,3 +4374,280 @@ body:has(.ticket-detail) {
     min-height: 42px;
   }
 }
+
+/* Gross-ICT-inspired access experience only. The authenticated workspace stays product-neutral. */
+.access-shell:not(:has(.owner-console)) {
+  min-height: 100vh;
+  min-height: 100dvh;
+  background:
+    linear-gradient(
+      100deg,
+      rgb(7 12 21 / 94%) 0%,
+      rgb(7 12 21 / 84%) 46%,
+      rgb(7 12 21 / 72%) 100%
+    ),
+    url("/assets/gross-ict-alpine.webp") center / cover no-repeat,
+    #0a1019;
+  color: #f6f7f8;
+}
+
+.access-shell:not(:has(.owner-console)) .access-overlay {
+  position: absolute;
+  inset: 0;
+  display: block;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 18% 32%, rgb(229 183 75 / 15%), transparent 34%),
+    linear-gradient(180deg, rgb(5 9 15 / 18%), rgb(5 9 15 / 68%));
+}
+
+.access-shell:not(:has(.owner-console)) .access-header,
+.access-shell:not(:has(.owner-console)) .access-stage,
+.access-shell:not(:has(.owner-console)) .access-footer {
+  position: relative;
+  z-index: 1;
+}
+
+.access-shell:not(:has(.owner-console)) .access-header {
+  border-bottom-color: rgb(255 255 255 / 18%);
+}
+
+.access-shell:not(:has(.owner-console)) .access-brand {
+  color: #fff;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.access-shell:not(:has(.owner-console)) .access-brand .nextdesk-logo-mark {
+  filter: brightness(0) saturate(100%) invert(76%) sepia(48%) saturate(568%)
+    hue-rotate(356deg) brightness(95%) contrast(88%);
+}
+
+.access-shell:not(:has(.owner-console)) .access-header nav,
+.access-shell:not(:has(.owner-console)) .access-header nav a {
+  color: #f1c34e;
+}
+
+.access-shell:not(:has(.owner-console)) .access-header nav a:hover {
+  color: #fff2bd;
+}
+
+.access-shell:not(:has(.owner-console)) .access-kicker,
+.access-shell:not(:has(.owner-console)) .access-card > .eyebrow {
+  color: #f1c34e;
+  font-family: var(--font-mono);
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+}
+
+.access-shell:not(:has(.owner-console)) .access-intro h1 {
+  color: #fff;
+  font-family: var(--font-mono);
+  font-size: clamp(44px, 5.2vw, 70px);
+  font-weight: 700;
+  line-height: 1.05;
+  letter-spacing: -0.06em;
+  text-transform: uppercase;
+}
+
+.access-shell:not(:has(.owner-console)) .access-rule {
+  width: 48px;
+  background: #f1c34e;
+}
+
+.access-shell:not(:has(.owner-console)) .access-intro > p:last-child {
+  color: rgb(245 247 250 / 84%);
+}
+
+.access-shell:not(:has(.owner-console)) .access-card {
+  border-color: rgb(241 195 78 / 54%);
+  border-radius: 0;
+  background: rgb(10 16 25 / 93%);
+  color: #f7f8fa;
+  box-shadow: 0 20px 60px rgb(0 0 0 / 35%);
+  backdrop-filter: blur(9px);
+}
+
+.access-shell:not(:has(.owner-console)) .access-card > h1,
+.access-shell:not(:has(.owner-console)) .access-card > h2 {
+  color: #fff;
+  font-family: var(--font-mono);
+  letter-spacing: -0.04em;
+}
+
+.access-shell:not(:has(.owner-console)) .access-lead,
+.access-shell:not(:has(.owner-console))
+  .access-card
+  > p:not(.eyebrow):not(.access-message) {
+  color: rgb(245 247 250 / 77%);
+}
+
+.access-shell:not(:has(.owner-console)) .access-divider::before,
+.access-shell:not(:has(.owner-console)) .access-divider::after {
+  background: rgb(255 255 255 / 20%);
+}
+
+.access-shell:not(:has(.owner-console)) .access-divider span,
+.access-shell:not(:has(.owner-console)) .access-form label {
+  color: rgb(245 247 250 / 82%);
+}
+
+.access-shell:not(:has(.owner-console)) .access-form input {
+  border-color: rgb(255 255 255 / 28%);
+  background: rgb(255 255 255 / 7%);
+  color: #fff;
+}
+
+.access-shell:not(:has(.owner-console)) .access-form input::placeholder {
+  color: rgb(245 247 250 / 50%);
+}
+
+.access-shell:not(:has(.owner-console)) .gross-sso-button,
+.access-shell:not(:has(.owner-console)) .gross-sso-button:hover:not(:disabled) {
+  border-color: #f1c34e;
+  background: #f1c34e;
+  color: #121820;
+}
+
+.access-shell:not(:has(.owner-console)) .email-access-button,
+.access-shell:not(:has(.owner-console))
+  .email-access-button:hover:not(:disabled) {
+  border-color: rgb(241 195 78 / 80%);
+  background: transparent;
+  color: #f5d473;
+}
+
+.access-shell:not(:has(.owner-console)) .access-footer {
+  border-top-color: rgb(255 255 255 / 16%);
+  color: rgb(245 247 250 / 68%);
+}
+
+.access-shell:not(:has(.owner-console)) .access-footer img {
+  filter: brightness(0) invert(1);
+  opacity: 0.85;
+}
+
+@media (max-width: 760px) {
+  .access-shell:not(:has(.owner-console)) .access-header {
+    border-bottom-color: rgb(255 255 255 / 13%);
+  }
+
+  .access-shell:not(:has(.owner-console)) .access-intro h1 {
+    font-size: clamp(38px, 13vw, 54px);
+  }
+
+  .access-shell:not(:has(.owner-console)) .access-card {
+    border-radius: 0;
+  }
+}
+
+/* Product navigation: focused desktop rail and touch-friendly horizontal tabs. */
+.brand-logo-mark {
+  filter: none;
+}
+
+.command-rail {
+  gap: 14px;
+  padding: 24px 14px 18px;
+}
+
+.brand-lockup {
+  gap: 12px;
+  padding: 4px 10px 22px;
+  font-size: 20px;
+}
+
+.brand-logo-mark {
+  width: 32px;
+  height: 32px;
+}
+
+.navigation-cluster {
+  display: grid;
+  gap: 9px;
+}
+
+.navigation-label {
+  margin: 0;
+  padding: 0 12px;
+  color: #94a3b8;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+}
+
+.nav-list {
+  gap: 4px;
+}
+
+.nav-item {
+  min-height: 42px;
+  border-radius: 10px;
+  padding: 9px 12px;
+  font-size: 14px;
+}
+
+.nav-item.active,
+.nav-item.active:hover:not(:disabled) {
+  border-color: transparent;
+  background: linear-gradient(90deg, #eef2ff 0%, #f7f8ff 100%);
+  box-shadow: inset 3px 0 0 var(--primary);
+}
+
+@media (max-width: 760px) {
+  .command-rail {
+    gap: 10px;
+    padding: 14px 0 12px;
+  }
+
+  .brand-lockup {
+    padding: 0 20px 6px;
+  }
+
+  .navigation-cluster {
+    gap: 0;
+  }
+
+  .navigation-label {
+    display: none;
+  }
+
+  .nav-list {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 8px;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    padding: 4px 20px 8px;
+    scrollbar-width: none;
+  }
+
+  .nav-list::-webkit-scrollbar {
+    display: none;
+  }
+
+  .nav-item {
+    flex: 0 0 auto;
+    width: auto;
+    min-height: 40px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 8px 12px;
+    background: var(--surface);
+    white-space: nowrap;
+  }
+
+  .nav-item.active,
+  .nav-item.active:hover:not(:disabled) {
+    border-color: transparent;
+    box-shadow: none;
+  }
+
+  .rail-footer {
+    margin: 4px 20px 0;
+    padding-top: 12px;
+  }
+}
