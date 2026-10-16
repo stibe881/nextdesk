@@ -41,6 +41,7 @@ import {
 } from "./lib/live-dashboard";
 import { acceptTenantInvitations } from "./lib/tenant-invitations";
 import { TicketComposer } from "./ticket-composer";
+import { TicketDetail } from "./ticket-detail";
 import {
   OwnerConsoleScreen,
   resolveOwnerAccess,
@@ -294,7 +295,13 @@ function MembershipErrorScreen({
   );
 }
 
-function TicketList({ tickets }: { tickets: readonly DashboardTicket[] }) {
+function TicketList({
+  tickets,
+  onOpen,
+}: {
+  tickets: readonly DashboardTicket[];
+  onOpen?: (ticketId: string) => void;
+}) {
   if (tickets.length === 0) {
     return (
       <p className="empty-state">
@@ -328,6 +335,15 @@ function TicketList({ tickets }: { tickets: readonly DashboardTicket[] }) {
                 {ticket.state}
               </span>
               <strong className={`sla ${ticket.risk}`}>{slaLabel}</strong>
+              {onOpen && (
+                <button
+                  className="ticket-open-button"
+                  onClick={() => onOpen(ticket.id)}
+                  type="button"
+                >
+                  Öffnen
+                </button>
+              )}
             </div>
           </article>
         );
@@ -356,6 +372,7 @@ export function App() {
   const [ownerAccess, setOwnerAccess] = useState<OwnerAccess>("idle");
   const [ownerAccessError, setOwnerAccessError] = useState("");
   const [ownerView, setOwnerView] = useState<"console" | "tenant">("console");
+  const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!supabase) return;
@@ -736,7 +753,12 @@ export function App() {
               {view.ticketListNote && (
                 <p className="list-note">{view.ticketListNote}</p>
               )}
-              <TicketList tickets={filteredTickets} />
+              <TicketList
+                {...(isSupabaseConfigured
+                  ? { onOpen: setSelectedTicketId }
+                  : {})}
+                tickets={filteredTickets}
+              />
             </section>
           </>
         ) : section !== "Übersicht" ? (
@@ -849,7 +871,12 @@ export function App() {
                 {view.ticketListNote && (
                   <p className="list-note">{view.ticketListNote}</p>
                 )}
-                <TicketList tickets={filteredTickets} />
+                <TicketList
+                  {...(isSupabaseConfigured
+                    ? { onOpen: setSelectedTicketId }
+                    : {})}
+                  tickets={filteredTickets}
+                />
               </article>
 
               <aside className="side-stack">
@@ -921,6 +948,14 @@ export function App() {
           </>
         )}
       </main>
+      {activeTenant && selectedTicketId && isSupabaseConfigured && (
+        <TicketDetail
+          onChanged={() => setDashboardRevision((value) => value + 1)}
+          onClose={() => setSelectedTicketId(null)}
+          tenantId={activeTenant.id}
+          ticketId={selectedTicketId}
+        />
+      )}
     </div>
   );
 }
