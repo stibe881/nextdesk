@@ -9,6 +9,25 @@ Die vier Funktionen verwenden die aktuelle `@supabase/server`-Hülle im Modus `a
 | `accept-tenant-invitation` | Aktiviert die genau zur aktuellen Benutzer-ID gehörende Einladung und weist die Requester-Rolle zu. | Der eingeladene, authentifizierte Benutzer.                                                                                             |
 | `manage-tenant`            | Aktualisiert Einstellungen, Teams, Abteilungsmitgliedschaften oder widerruft eine offene Einladung. | Je nach Aktion `tenant.settings.manage`, `team.manage` oder `department.manage`/`user.manage` im Zielmandanten.                         |
 
+## SLA-Automation
+
+`sla-automation` ist ein **nicht öffentlicher, scheduler-geschützter** Hintergrundendpunkt. Er prüft bis zu 100 offene Tickets pro Lauf auf überschrittene Erstreaktions- und Lösungsziele. Für jeden neu erkannten Verstoß schreibt die atomare Datenbankfunktion `apply_sla_breach` genau ein SLA-Ereignis, Timeline-Ereignis, Audit-Ereignis, bei Lösungszielen eine Eskalation sowie eine Benachrichtigung an die zugewiesene Person.
+
+- **Aufruf:** `POST https://<project-ref>.supabase.co/functions/v1/sla-automation`
+- **Header:** `X-NextDesk-Automation-Secret: <SLA_AUTOMATION_SECRET>`
+- **Body:** `{"dryRun":false,"limit":100}`; mit `dryRun:true` erfolgt keine Änderung.
+- **Authentisierung:** `verify_jwt = false` ist absichtlich gesetzt. Der Endpunkt akzeptiert stattdessen ausschließlich das geheime Header-Token und antwortet ohne CORS-Freigabe.
+- **Idempotenz:** Migrationen `0028` und `0029` sichern pro Ticket und Breach-Typ eine einmalige, transaktionale Verarbeitung. Ein Cron-Retry erzeugt keine doppelte Eskalation oder Benachrichtigung.
+
+### Produktive Aktivierung
+
+1. In Supabase unter **Edge Functions → Secrets** ein zufälliges Secret als `SLA_AUTOMATION_SECRET` hinterlegen.
+2. In Hetzner Webhosting L dasselbe Secret ausschließlich im geschützten Cron-Kontext speichern – nicht in der Website, im Git-Repository oder in einer URL.
+3. Einen Cronjob im 5-Minuten-Takt einrichten, der den obigen `POST` mit dem Secret-Header und dem JSON-Body ausführt.
+4. Den ersten Aufruf mit `dryRun:true` prüfen, danach einen echten Lauf starten und die erzeugten Audit-Ereignisse validieren.
+
+Bis die zwei Secret-Speicher und der Hetzner-Cronjob eingerichtet sind, antwortet die Funktion absichtlich mit `503 sla_automation_unavailable` und ändert keine Ticketdaten.
+
 ## Erforderliche Secrets und Einstellungen
 
 Supabase stellt `SUPABASE_URL`, Publishable-/Secret-Keys und JWT-Material für die Server-Hülle bereit. Zusätzlich müssen Umgebungswerte gesetzt werden:

@@ -48,6 +48,9 @@ verify_jwt = true
 [functions.sla-management]
 verify_jwt = true
 
+[functions.sla-automation]
+verify_jwt = false
+
 [functions.tenant-role-management]
 verify_jwt = true
 

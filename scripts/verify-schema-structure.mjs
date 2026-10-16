@@ -30,6 +30,8 @@ const expectedFiles = [
   "0025_tenant_administrator_operations_permissions.sql",
   "0026_remove_ambiguous_role_assignment_fk.sql",
   "0027_ticket_requester_profiles.sql",
+  "0028_sla_automation_idempotency.sql",
+  "0029_apply_sla_breach_atomically.sql",
 ];
 
 const availableFiles = await readdir(migrationDirectory);
@@ -226,6 +228,22 @@ const requiredFragments = [
   [
     "0027_ticket_requester_profiles.sql",
     "foreign key (requester_id, tenant_id)",
+  ],
+  [
+    "0028_sla_automation_idempotency.sql",
+    "create unique index if not exists ticket_sla_events_breach_once_idx",
+  ],
+  [
+    "0028_sla_automation_idempotency.sql",
+    "create index if not exists tickets_response_sla_automation_idx",
+  ],
+  [
+    "0029_apply_sla_breach_atomically.sql",
+    "create or replace function public.apply_sla_breach",
+  ],
+  [
+    "0029_apply_sla_breach_atomically.sql",
+    "grant execute on function public.apply_sla_breach(uuid, text, uuid) to service_role",
   ],
 ];
 
