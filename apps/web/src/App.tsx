@@ -21,6 +21,7 @@ import {
   Plus,
   Search,
   Settings,
+  SlidersHorizontal,
   Ticket,
   X,
   type LucideIcon,
@@ -75,6 +76,13 @@ type Section =
   | "Berichte"
   | "Einstellungen";
 type TicketScope = "all" | "mine" | "unassigned" | "open" | "closed";
+type TicketListDensity = "compact" | "standard" | "comfortable";
+type WorkspacePreferences = {
+  density: TicketListDensity;
+  highContrast: boolean;
+  reduceMotion: boolean;
+  startSection: Section;
+};
 
 type DashboardView = {
   activity: readonly TimelineItem[];
@@ -132,6 +140,13 @@ const sections: readonly { label: Section; Icon: LucideIcon }[] = [
   { label: "Berichte", Icon: ChartNoAxesCombined },
 ];
 
+const DEFAULT_WORKSPACE_PREFERENCES: WorkspacePreferences = {
+  density: "standard",
+  highContrast: false,
+  reduceMotion: false,
+  startSection: "Übersicht",
+};
+
 const previewView: DashboardView = {
   activity: activityItems,
   hasMoreTickets: false,
@@ -185,6 +200,35 @@ function isTicketScope(value: unknown): value is TicketScope {
     value === "open" ||
     value === "closed"
   );
+}
+
+function isSection(value: unknown): value is Section {
+  return sections.some((section) => section.label === value);
+}
+
+function workspacePreferencesFromValue(
+  value: unknown,
+): WorkspacePreferences | null {
+  if (!isRecord(value) || !isSection(value.startSection)) return null;
+  if (
+    value.density !== "compact" &&
+    value.density !== "standard" &&
+    value.density !== "comfortable"
+  ) {
+    return null;
+  }
+  if (
+    typeof value.highContrast !== "boolean" ||
+    typeof value.reduceMotion !== "boolean"
+  ) {
+    return null;
+  }
+  return {
+    density: value.density,
+    highContrast: value.highContrast,
+    reduceMotion: value.reduceMotion,
+    startSection: value.startSection,
+  };
 }
 
 function savedTicketViewFromValue(value: unknown): SavedTicketView | null {
@@ -698,9 +742,51 @@ export function App() {
   >(null);
   const [commandMenuOpen, setCommandMenuOpen] = useState(false);
   const [commandQuery, setCommandQuery] = useState("");
+  const [workspacePreferences, setWorkspacePreferences] =
+    useState<WorkspacePreferences>(DEFAULT_WORKSPACE_PREFERENCES);
+  const [workspacePreferencesHydrated, setWorkspacePreferencesHydrated] =
+    useState(false);
+  const [workspacePreferencesOpen, setWorkspacePreferencesOpen] =
+    useState(false);
   const notificationButtonRef = useRef<HTMLButtonElement>(null);
   const notificationPanelRef = useRef<HTMLElement>(null);
   const commandInputRef = useRef<HTMLInputElement>(null);
+  const workspacePreferencesStorageKey = `nextdesk:workspace-preferences:${session?.user.id ?? "preview"}`;
+
+  useEffect(() => {
+    if (isSupabaseConfigured && session === undefined) return;
+
+    setWorkspacePreferencesHydrated(false);
+    try {
+      const parsed = workspacePreferencesFromValue(
+        JSON.parse(
+          window.localStorage.getItem(workspacePreferencesStorageKey) ?? "null",
+        ),
+      );
+      setWorkspacePreferences(parsed ?? DEFAULT_WORKSPACE_PREFERENCES);
+    } catch {
+      setWorkspacePreferences(DEFAULT_WORKSPACE_PREFERENCES);
+    } finally {
+      setWorkspacePreferencesHydrated(true);
+    }
+  }, [workspacePreferencesStorageKey]);
+
+  useEffect(() => {
+    if (!workspacePreferencesHydrated) return;
+    window.localStorage.setItem(
+      workspacePreferencesStorageKey,
+      JSON.stringify(workspacePreferences),
+    );
+  }, [
+    workspacePreferences,
+    workspacePreferencesHydrated,
+    workspacePreferencesStorageKey,
+  ]);
+
+  useEffect(() => {
+    if (!workspacePreferencesHydrated) return;
+    setSection(workspacePreferences.startSection);
+  }, [workspacePreferencesHydrated, workspacePreferencesStorageKey]);
 
   useEffect(() => {
     if (!supabase) return;
@@ -1209,6 +1295,19 @@ export function App() {
     }
   }
 
+  function updateWorkspacePreferences(updates: Partial<WorkspacePreferences>) {
+    setWorkspacePreferences((current) => ({ ...current, ...updates }));
+  }
+
+  const workspaceClassName = [
+    "app-shell",
+    `app-shell--density-${workspacePreferences.density}`,
+    workspacePreferences.highContrast ? "app-shell--high-contrast" : "",
+    workspacePreferences.reduceMotion ? "app-shell--reduced-motion" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
   const visibleSections = isTenantAdmin
     ? [...sections, { label: "Einstellungen" as const, Icon: Settings }]
     : sections;
@@ -1270,7 +1369,7 @@ export function App() {
   }
 
   return (
-    <div className="app-shell">
+    <div className={workspaceClassName}>
       <aside className="command-rail" aria-label="Hauptnavigation">
         <div className="brand-lockup">
           <img
@@ -1378,6 +1477,21 @@ export function App() {
                 Ticket erfassen
               </button>
             )}
+            <button
+              aria-controls="workspace-preferences"
+              aria-expanded={workspacePreferencesOpen}
+              aria-label="Arbeitsbereichseinstellungen öffnen"
+              className="workspace-preferences-trigger"
+              onClick={() => setWorkspacePreferencesOpen(true)}
+              type="button"
+            >
+              <SlidersHorizontal
+                aria-hidden="true"
+                size={17}
+                strokeWidth={1.9}
+              />
+              <span>Ansicht</span>
+            </button>
             <button
               aria-controls="workspace-command-menu"
               aria-expanded={commandMenuOpen}
@@ -1899,6 +2013,138 @@ export function App() {
           </>
         )}
       </main>
+      {workspacePreferencesOpen && (
+        <div
+          aria-label="Arbeitsbereichseinstellungen"
+          aria-modal="true"
+          className="workspace-preferences-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              setWorkspacePreferencesOpen(false);
+            }
+          }}
+          role="dialog"
+        >
+          <section
+            aria-labelledby="workspace-preferences-heading"
+            className="workspace-preferences"
+            id="workspace-preferences"
+            onKeyDown={(event) => {
+              if (event.key === "Escape") setWorkspacePreferencesOpen(false);
+            }}
+          >
+            <header>
+              <div>
+                <p className="eyebrow">PERSÖNLICHE ANSICHT</p>
+                <h2 id="workspace-preferences-heading">
+                  Arbeitsbereich anpassen
+                </h2>
+              </div>
+              <button
+                aria-label="Arbeitsbereichseinstellungen schliessen"
+                className="workspace-preferences__close"
+                onClick={() => setWorkspacePreferencesOpen(false)}
+                type="button"
+              >
+                <X aria-hidden="true" size={18} strokeWidth={1.8} />
+              </button>
+            </header>
+            <div className="workspace-preferences__fields">
+              <label>
+                Startansicht
+                <select
+                  onChange={(event) =>
+                    updateWorkspacePreferences({
+                      startSection: event.target.value as Section,
+                    })
+                  }
+                  value={workspacePreferences.startSection}
+                >
+                  {sections.map((item) => (
+                    <option key={item.label} value={item.label}>
+                      {item.label}
+                    </option>
+                  ))}
+                </select>
+                <span>
+                  Wird bei der nächsten Anmeldung als erste Ansicht geöffnet.
+                </span>
+              </label>
+              <label>
+                Listendichte
+                <select
+                  onChange={(event) =>
+                    updateWorkspacePreferences({
+                      density: event.target.value as TicketListDensity,
+                    })
+                  }
+                  value={workspacePreferences.density}
+                >
+                  <option value="compact">Kompakt</option>
+                  <option value="standard">Standard</option>
+                  <option value="comfortable">Komfortabel</option>
+                </select>
+                <span>
+                  Passt Abstand und Informationsdichte der Ticketliste an.
+                </span>
+              </label>
+              <label className="workspace-preferences__toggle">
+                <input
+                  checked={workspacePreferences.highContrast}
+                  onChange={(event) =>
+                    updateWorkspacePreferences({
+                      highContrast: event.target.checked,
+                    })
+                  }
+                  type="checkbox"
+                />
+                <span>
+                  <strong>Hoher Kontrast</strong>
+                  <small>
+                    Erhöht die Abgrenzung von Texten, Flächen und
+                    Steuerelementen.
+                  </small>
+                </span>
+              </label>
+              <label className="workspace-preferences__toggle">
+                <input
+                  checked={workspacePreferences.reduceMotion}
+                  onChange={(event) =>
+                    updateWorkspacePreferences({
+                      reduceMotion: event.target.checked,
+                    })
+                  }
+                  type="checkbox"
+                />
+                <span>
+                  <strong>Bewegung reduzieren</strong>
+                  <small>
+                    Blendet Übergänge und Animationen weitgehend aus.
+                  </small>
+                </span>
+              </label>
+            </div>
+            <div className="workspace-preferences__actions">
+              <button
+                className="secondary-button"
+                onClick={() =>
+                  setWorkspacePreferences(DEFAULT_WORKSPACE_PREFERENCES)
+                }
+                type="button"
+              >
+                Standard wiederherstellen
+              </button>
+              <button
+                className="primary-button"
+                onClick={() => setWorkspacePreferencesOpen(false)}
+                type="button"
+              >
+                Fertig
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
       {commandMenuOpen && (
         <div
           aria-label="Befehlsmenü"
