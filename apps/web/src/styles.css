@@ -1202,3 +1202,208 @@ button {
     padding-right: 17px;
   }
 }
+
+.owner-console {
+  width: min(1060px, calc(100vw - 48px));
+  margin: 44px auto;
+  padding: 32px;
+  border-top: 4px solid #e9bc42;
+  border-right: 1px solid rgba(255, 255, 255, 0.32);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+  border-left: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(13, 17, 19, 0.92);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.36);
+  color: #f8f6ef;
+}
+.owner-console-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+}
+.owner-console-header h1,
+.console-panel h2 {
+  margin: 5px 0 10px;
+  font-family: Impact, Haettenschweiler, "Arial Narrow Bold", sans-serif;
+  font-weight: 400;
+  letter-spacing: 0.015em;
+  text-transform: uppercase;
+}
+.owner-console-header h1 {
+  font-size: clamp(37px, 5vw, 64px);
+  line-height: 0.9;
+}
+.owner-console-header > div > p:last-child {
+  max-width: 650px;
+  margin: 0;
+  color: rgba(255, 255, 255, 0.78);
+  line-height: 1.55;
+}
+.owner-console-status {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 9px;
+  margin: 28px 0 20px;
+  padding: 13px 15px;
+  border: 1px solid rgba(233, 188, 66, 0.42);
+  background: rgba(233, 188, 66, 0.08);
+  color: #f2c753;
+  font-size: 13px;
+}
+.owner-console-status span {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #e9bc42;
+  box-shadow: 0 0 0 4px rgba(233, 188, 66, 0.15);
+}
+.owner-console-status small {
+  margin-left: auto;
+  color: rgba(255, 255, 255, 0.66);
+}
+.owner-console-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(310px, 0.75fr);
+  gap: 18px;
+}
+.console-panel {
+  min-width: 0;
+  padding: 23px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.05);
+}
+.console-panel h2 {
+  font-size: 31px;
+  line-height: 0.96;
+}
+.console-panel-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.14);
+}
+.table-action,
+.secondary-button {
+  border: 1px solid #e9bc42;
+  background: transparent;
+  color: #f4c856;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  padding: 10px 13px;
+  text-transform: uppercase;
+}
+.table-action:disabled,
+.secondary-button:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+.console-empty,
+.console-copy {
+  color: rgba(255, 255, 255, 0.73);
+  line-height: 1.5;
+}
+.tenant-list {
+  display: grid;
+}
+.tenant-row {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 16px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+.tenant-row:last-child {
+  border-bottom: 0;
+}
+.tenant-row strong,
+.tenant-row span {
+  display: block;
+}
+.tenant-row strong {
+  color: #fff;
+  font-size: 15px;
+}
+.tenant-row span {
+  margin-top: 4px;
+  color: #e9bc42;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+}
+.tenant-row label,
+.console-form label {
+  display: grid;
+  gap: 6px;
+  color: #f4c856;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.tenant-row select,
+.console-form input {
+  min-height: 39px;
+  border: 1px solid rgba(255, 255, 255, 0.42);
+  border-radius: 0;
+  background: rgba(0, 0, 0, 0.28);
+  color: #fff;
+  font: inherit;
+  padding: 8px 10px;
+}
+.tenant-row select {
+  min-width: 122px;
+  font-size: 12px;
+}
+.console-form {
+  display: grid;
+  gap: 14px;
+}
+.console-form small {
+  color: rgba(255, 255, 255, 0.54);
+  font-size: 9px;
+  letter-spacing: 0.02em;
+  text-transform: none;
+}
+.console-form .gross-sso-button {
+  width: 100%;
+  margin-top: 5px;
+}
+.access-message.success {
+  border-left-color: #e9bc42;
+  color: #ffdd7d;
+}
+.owner-console-footer {
+  margin: 20px 0 0;
+  color: rgba(255, 255, 255, 0.54);
+  font-size: 11px;
+  line-height: 1.5;
+}
+@media (max-width: 780px) {
+  .owner-console {
+    width: min(100% - 24px, 640px);
+    margin: 12px auto;
+    padding: 22px;
+  }
+  .owner-console-header {
+    display: grid;
+  }
+  .owner-console-status small {
+    width: 100%;
+    margin-left: 0;
+  }
+  .owner-console-grid {
+    grid-template-columns: 1fr;
+  }
+  .tenant-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .tenant-row select {
+    width: 100%;
+  }
+}
