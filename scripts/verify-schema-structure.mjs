@@ -21,6 +21,7 @@ const expectedFiles = [
   "0016_tenant_admin_settings_and_features.sql",
   "0017_ticket_sla_lifecycle.sql",
   "0018_private_ticket_attachments_storage.sql",
+  "0019_services_assets_and_problem_management.sql",
 ];
 
 const availableFiles = await readdir(migrationDirectory);
@@ -159,6 +160,18 @@ const requiredFragments = [
   [
     "0018_private_ticket_attachments_storage.sql",
     "insert into storage.buckets",
+  ],
+  [
+    "0019_services_assets_and_problem_management.sql",
+    "create table if not exists public.services",
+  ],
+  [
+    "0019_services_assets_and_problem_management.sql",
+    "create table if not exists public.assets",
+  ],
+  [
+    "0019_services_assets_and_problem_management.sql",
+    "create table if not exists public.problems",
   ],
 ];
 

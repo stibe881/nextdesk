@@ -1,0 +1,1767 @@
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+  type KeyboardEvent,
+} from "react";
+import { supabase } from "./lib/supabase";
+
+export type ServiceAssetsProps = {
+  tenantId: string;
+};
+
+type CatalogTab = "services" | "assets" | "problems";
+type Criticality = "low" | "medium" | "high" | "critical";
+type ProblemStatus = "open" | "investigating" | "known_error" | "resolved";
+type EditableProblemStatus = Exclude<ProblemStatus, "resolved">;
+type JsonValue =
+  null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
+
+type Service = {
+  id: string;
+  tenant_id: string;
+  name: string;
+  description: string | null;
+  criticality: Criticality;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+type Asset = {
+  id: string;
+  tenant_id: string;
+  service_id: string | null;
+  name: string;
+  asset_tag: string | null;
+  kind: string;
+  status: string;
+  customer_organization_id: string | null;
+  metadata: { [key: string]: JsonValue };
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+type Problem = {
+  id: string;
+  tenant_id: string;
+  title: string;
+  description: string;
+  status: ProblemStatus;
+  workaround: string | null;
+  root_cause: string | null;
+  owner_id: string | null;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+};
+
+type ServiceForm = {
+  id: string | null;
+  name: string;
+  description: string;
+  criticality: Criticality;
+};
+
+type AssetForm = {
+  id: string | null;
+  name: string;
+  serviceId: string;
+  assetTag: string;
+  kind: string;
+  status: string;
+  customerOrganizationId: string;
+  metadata: string;
+};
+
+type ProblemForm = {
+  id: string | null;
+  title: string;
+  description: string;
+  status: EditableProblemStatus;
+  workaround: string;
+  rootCause: string;
+  ownerId: string;
+};
+
+type ProblemFormMode = "create" | "edit" | "resolve";
+
+type CatalogRequest = { type: "listCatalog"; tenantId: string };
+type ServiceSaveRequest = {
+  type: "manageService";
+  tenantId: string;
+  operation: "create" | "update";
+  name: string;
+  description: string | null;
+  criticality: Criticality;
+  active: boolean;
+  serviceId?: string;
+};
+type ServiceArchiveRequest = {
+  type: "manageService";
+  tenantId: string;
+  operation: "archive";
+  serviceId: string;
+};
+type AssetSaveRequest = {
+  type: "manageAsset";
+  tenantId: string;
+  operation: "create" | "update";
+  name: string;
+  serviceId: string | null;
+  assetTag: string | null;
+  kind: string;
+  status: string;
+  customerOrganizationId: string | null;
+  metadata: { [key: string]: JsonValue };
+  active: boolean;
+  assetId?: string;
+};
+type AssetArchiveRequest = {
+  type: "manageAsset";
+  tenantId: string;
+  operation: "archive";
+  assetId: string;
+};
+type ProblemSaveRequest = {
+  type: "manageProblem";
+  tenantId: string;
+  operation: "create" | "update";
+  title: string;
+  description: string;
+  status: EditableProblemStatus;
+  workaround: string | null;
+  rootCause: string | null;
+  ownerId: string | null;
+  problemId?: string;
+};
+type ProblemResolveRequest = {
+  type: "manageProblem";
+  tenantId: string;
+  operation: "resolve";
+  problemId: string;
+  workaround: string | null;
+  rootCause: string | null;
+};
+type ServiceAssetsRequest =
+  | CatalogRequest
+  | ServiceSaveRequest
+  | ServiceArchiveRequest
+  | AssetSaveRequest
+  | AssetArchiveRequest
+  | ProblemSaveRequest
+  | ProblemResolveRequest;
+
+const EMPTY_SERVICE_FORM: ServiceForm = {
+  id: null,
+  name: "",
+  description: "",
+  criticality: "medium",
+};
+
+const EMPTY_ASSET_FORM: AssetForm = {
+  id: null,
+  name: "",
+  serviceId: "",
+  assetTag: "",
+  kind: "other",
+  status: "active",
+  customerOrganizationId: "",
+  metadata: "{}",
+};
+
+const EMPTY_PROBLEM_FORM: ProblemForm = {
+  id: null,
+  title: "",
+  description: "",
+  status: "open",
+  workaround: "",
+  rootCause: "",
+  ownerId: "",
+};
+
+const CRITICALITY_LABELS: Record<Criticality, string> = {
+  low: "Niedrig",
+  medium: "Mittel",
+  high: "Hoch",
+  critical: "Kritisch",
+};
+
+const PROBLEM_STATUS_LABELS: Record<ProblemStatus, string> = {
+  open: "Offen",
+  investigating: "In Untersuchung",
+  known_error: "Bekannter Fehler",
+  resolved: "Gelöst",
+};
+
+const EDITABLE_PROBLEM_STATUSES: EditableProblemStatus[] = [
+  "open",
+  "investigating",
+  "known_error",
+];
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isNullableString(value: unknown): value is string | null {
+  return typeof value === "string" || value === null;
+}
+
+function isCriticality(value: unknown): value is Criticality {
+  return (
+    value === "low" ||
+    value === "medium" ||
+    value === "high" ||
+    value === "critical"
+  );
+}
+
+function isProblemStatus(value: unknown): value is ProblemStatus {
+  return (
+    value === "open" ||
+    value === "investigating" ||
+    value === "known_error" ||
+    value === "resolved"
+  );
+}
+
+function parseService(value: unknown): Service | null {
+  if (!isRecord(value)) return null;
+  if (
+    typeof value.id !== "string" ||
+    typeof value.tenant_id !== "string" ||
+    typeof value.name !== "string" ||
+    !isNullableString(value.description) ||
+    !isCriticality(value.criticality) ||
+    typeof value.active !== "boolean" ||
+    typeof value.created_at !== "string" ||
+    typeof value.updated_at !== "string"
+  ) {
+    return null;
+  }
+  return {
+    id: value.id,
+    tenant_id: value.tenant_id,
+    name: value.name,
+    description: value.description,
+    criticality: value.criticality,
+    active: value.active,
+    created_at: value.created_at,
+    updated_at: value.updated_at,
+  };
+}
+
+function parseAsset(value: unknown): Asset | null {
+  if (!isRecord(value) || !isRecord(value.metadata)) return null;
+  if (
+    typeof value.id !== "string" ||
+    typeof value.tenant_id !== "string" ||
+    !isNullableString(value.service_id) ||
+    typeof value.name !== "string" ||
+    !isNullableString(value.asset_tag) ||
+    typeof value.kind !== "string" ||
+    typeof value.status !== "string" ||
+    !isNullableString(value.customer_organization_id) ||
+    typeof value.active !== "boolean" ||
+    typeof value.created_at !== "string" ||
+    typeof value.updated_at !== "string"
+  ) {
+    return null;
+  }
+  return {
+    id: value.id,
+    tenant_id: value.tenant_id,
+    service_id: value.service_id,
+    name: value.name,
+    asset_tag: value.asset_tag,
+    kind: value.kind,
+    status: value.status,
+    customer_organization_id: value.customer_organization_id,
+    metadata: value.metadata as { [key: string]: JsonValue },
+    active: value.active,
+    created_at: value.created_at,
+    updated_at: value.updated_at,
+  };
+}
+
+function parseProblem(value: unknown): Problem | null {
+  if (!isRecord(value)) return null;
+  if (
+    typeof value.id !== "string" ||
+    typeof value.tenant_id !== "string" ||
+    typeof value.title !== "string" ||
+    typeof value.description !== "string" ||
+    !isProblemStatus(value.status) ||
+    !isNullableString(value.workaround) ||
+    !isNullableString(value.root_cause) ||
+    !isNullableString(value.owner_id) ||
+    typeof value.created_by !== "string" ||
+    typeof value.created_at !== "string" ||
+    typeof value.updated_at !== "string"
+  ) {
+    return null;
+  }
+  return {
+    id: value.id,
+    tenant_id: value.tenant_id,
+    title: value.title,
+    description: value.description,
+    status: value.status,
+    workaround: value.workaround,
+    root_cause: value.root_cause,
+    owner_id: value.owner_id,
+    created_by: value.created_by,
+    created_at: value.created_at,
+    updated_at: value.updated_at,
+  };
+}
+
+function responseData(value: unknown): Record<string, unknown> {
+  if (!isRecord(value) || !isRecord(value.data)) {
+    throw new Error("Die Serverantwort hat ein unerwartetes Format.");
+  }
+  return value.data;
+}
+
+function parseCatalog(value: unknown): {
+  services: Service[];
+  assets: Asset[];
+  problems: Problem[];
+} {
+  const data = responseData(value);
+  if (
+    !Array.isArray(data.services) ||
+    !Array.isArray(data.assets) ||
+    !Array.isArray(data.problems)
+  ) {
+    throw new Error("Der Katalog ist unvollständig.");
+  }
+
+  const services = data.services.map(parseService);
+  const assets = data.assets.map(parseAsset);
+  const problems = data.problems.map(parseProblem);
+  if (
+    services.some((item) => item === null) ||
+    assets.some((item) => item === null) ||
+    problems.some((item) => item === null)
+  ) {
+    throw new Error("Der Katalog enthält ungültige Einträge.");
+  }
+
+  return {
+    services: services as Service[],
+    assets: assets as Asset[],
+    problems: problems as Problem[],
+  };
+}
+
+function parseSavedService(value: unknown): Service {
+  const service = parseService(responseData(value).service);
+  if (!service) throw new Error("Der gespeicherte Service ist unvollständig.");
+  return service;
+}
+
+function parseSavedAsset(value: unknown): Asset {
+  const asset = parseAsset(responseData(value).asset);
+  if (!asset) throw new Error("Das gespeicherte Asset ist unvollständig.");
+  return asset;
+}
+
+function parseSavedProblem(value: unknown): Problem {
+  const problem = parseProblem(responseData(value).problem);
+  if (!problem) {
+    throw new Error("Der gespeicherte Problemfall ist unvollständig.");
+  }
+  return problem;
+}
+
+async function requestServiceAssets(
+  body: ServiceAssetsRequest,
+): Promise<unknown> {
+  if (!supabase) {
+    throw new Error("Die Verbindung zu Supabase ist nicht konfiguriert.");
+  }
+  const { data, error } = await supabase.functions.invoke<unknown>(
+    "service-assets",
+    { body },
+  );
+  if (error) throw error;
+  return data;
+}
+
+function errorStatus(error: unknown): number | null {
+  if (!isRecord(error)) return null;
+  const context = error.context;
+  if (context instanceof Response) return context.status;
+  if (
+    isRecord(context) &&
+    typeof context.status === "number" &&
+    Number.isFinite(context.status)
+  ) {
+    return context.status;
+  }
+  return typeof error.status === "number" && Number.isFinite(error.status)
+    ? error.status
+    : null;
+}
+
+function publicMessage(value: unknown): string | null {
+  if (!isRecord(value)) return null;
+  if (typeof value.message === "string" && value.message.trim()) {
+    return value.message.trim();
+  }
+  return isRecord(value.error) ? publicMessage(value.error) : null;
+}
+
+async function apiErrorMessage(
+  error: unknown,
+  fallback: string,
+): Promise<string> {
+  const status = errorStatus(error);
+  const context = isRecord(error) ? error.context : null;
+  if (context instanceof Response) {
+    try {
+      const message = publicMessage(await context.clone().json());
+      if (message) return message;
+    } catch {
+      // An error envelope is optional; fall through to the safe status message.
+    }
+  }
+  if (status === 401) {
+    return "Ihre Anmeldung ist nicht mehr gültig. Bitte melden Sie sich erneut an.";
+  }
+  if (status === 403) {
+    return "Der Zugriff wurde von der API verweigert. Für diese Aktion fehlt Ihnen die erforderliche Berechtigung.";
+  }
+  if (status === 503) {
+    return "Der Dienst oder die Berechtigungsprüfung ist derzeit nicht verfügbar. Bitte versuchen Sie es später erneut.";
+  }
+  return fallback;
+}
+
+function sortByName<T extends { name: string }>(items: T[]): T[] {
+  return [...items].sort((left, right) =>
+    left.name.localeCompare(right.name, "de"),
+  );
+}
+
+function sortProblems(items: Problem[]): Problem[] {
+  return [...items].sort((left, right) =>
+    right.updated_at.localeCompare(left.updated_at),
+  );
+}
+
+function contains(haystack: Array<string | null>, query: string): boolean {
+  if (!query.trim()) return true;
+  const needle = query.trim().toLocaleLowerCase("de");
+  return haystack.some((value) =>
+    value?.toLocaleLowerCase("de").includes(needle),
+  );
+}
+
+function optionalText(value: string): string | null {
+  const trimmed = value.trim();
+  return trimmed ? trimmed : null;
+}
+
+function formatDate(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Unbekannt";
+  return new Intl.DateTimeFormat("de-CH", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(date);
+}
+
+function metadataPreview(metadata: { [key: string]: JsonValue }): string {
+  const preview = JSON.stringify(metadata);
+  return preview.length > 160 ? `${preview.slice(0, 157)}…` : preview;
+}
+
+function serviceDraft(service: Service): ServiceForm {
+  return {
+    id: service.id,
+    name: service.name,
+    description: service.description ?? "",
+    criticality: service.criticality,
+  };
+}
+
+function assetDraft(asset: Asset): AssetForm {
+  return {
+    id: asset.id,
+    name: asset.name,
+    serviceId: asset.service_id ?? "",
+    assetTag: asset.asset_tag ?? "",
+    kind: asset.kind,
+    status: asset.status,
+    customerOrganizationId: asset.customer_organization_id ?? "",
+    metadata: JSON.stringify(asset.metadata, null, 2),
+  };
+}
+
+function problemDraft(problem: Problem): ProblemForm {
+  return {
+    id: problem.id,
+    title: problem.title,
+    description: problem.description,
+    status: problem.status === "resolved" ? "open" : problem.status,
+    workaround: problem.workaround ?? "",
+    rootCause: problem.root_cause ?? "",
+    ownerId: problem.owner_id ?? "",
+  };
+}
+
+export function ServiceAssets({ tenantId }: ServiceAssetsProps) {
+  const [activeTab, setActiveTab] = useState<CatalogTab>("services");
+  const [services, setServices] = useState<Service[]>([]);
+  const [assets, setAssets] = useState<Asset[]>([]);
+  const [problems, setProblems] = useState<Problem[]>([]);
+  const [serviceForm, setServiceForm] =
+    useState<ServiceForm>(EMPTY_SERVICE_FORM);
+  const [assetForm, setAssetForm] = useState<AssetForm>(EMPTY_ASSET_FORM);
+  const [problemForm, setProblemForm] =
+    useState<ProblemForm>(EMPTY_PROBLEM_FORM);
+  const [problemMode, setProblemMode] = useState<ProblemFormMode>("create");
+  const [serviceQuery, setServiceQuery] = useState("");
+  const [serviceCriticality, setServiceCriticality] = useState<
+    "all" | Criticality
+  >("all");
+  const [assetQuery, setAssetQuery] = useState("");
+  const [assetServiceFilter, setAssetServiceFilter] = useState("all");
+  const [assetStatusFilter, setAssetStatusFilter] = useState("all");
+  const [problemQuery, setProblemQuery] = useState("");
+  const [problemStatusFilter, setProblemStatusFilter] = useState<
+    "all" | EditableProblemStatus
+  >("all");
+  const [loading, setLoading] = useState(true);
+  const [pendingAction, setPendingAction] = useState<string | null>(null);
+  const [error, setError] = useState("");
+  const [forbidden, setForbidden] = useState(false);
+  const [success, setSuccess] = useState("");
+  const requestVersion = useRef(0);
+
+  const serviceNames = useMemo(
+    () => new Map(services.map((service) => [service.id, service.name])),
+    [services],
+  );
+  const assetStatuses = useMemo(
+    () =>
+      [...new Set(assets.map((asset) => asset.status))].sort((left, right) =>
+        left.localeCompare(right, "de"),
+      ),
+    [assets],
+  );
+  const filteredServices = useMemo(
+    () =>
+      services.filter(
+        (service) =>
+          contains([service.name, service.description], serviceQuery) &&
+          (serviceCriticality === "all" ||
+            service.criticality === serviceCriticality),
+      ),
+    [serviceCriticality, serviceQuery, services],
+  );
+  const filteredAssets = useMemo(
+    () =>
+      assets.filter(
+        (asset) =>
+          contains(
+            [
+              asset.name,
+              asset.asset_tag,
+              asset.kind,
+              asset.status,
+              asset.service_id
+                ? (serviceNames.get(asset.service_id) ?? null)
+                : null,
+            ],
+            assetQuery,
+          ) &&
+          (assetStatusFilter === "all" || asset.status === assetStatusFilter) &&
+          (assetServiceFilter === "all" ||
+            (assetServiceFilter === "unassigned"
+              ? asset.service_id === null
+              : asset.service_id === assetServiceFilter)),
+      ),
+    [assetQuery, assetServiceFilter, assetStatusFilter, assets, serviceNames],
+  );
+  const filteredProblems = useMemo(
+    () =>
+      problems.filter(
+        (problem) =>
+          contains(
+            [
+              problem.title,
+              problem.description,
+              problem.workaround,
+              problem.root_cause,
+              problem.owner_id,
+            ],
+            problemQuery,
+          ) &&
+          (problemStatusFilter === "all" ||
+            problem.status === problemStatusFilter),
+      ),
+    [problemQuery, problemStatusFilter, problems],
+  );
+
+  const loadCatalog = useCallback(async () => {
+    const version = requestVersion.current + 1;
+    requestVersion.current = version;
+    setLoading(true);
+    setError("");
+    setForbidden(false);
+
+    try {
+      const catalog = parseCatalog(
+        await requestServiceAssets({ type: "listCatalog", tenantId }),
+      );
+      if (requestVersion.current !== version) return;
+      setServices(sortByName(catalog.services));
+      setAssets(sortByName(catalog.assets));
+      setProblems(sortProblems(catalog.problems));
+    } catch (nextError) {
+      if (requestVersion.current !== version) return;
+      setServices([]);
+      setAssets([]);
+      setProblems([]);
+      setForbidden(errorStatus(nextError) === 403);
+      setError(
+        await apiErrorMessage(
+          nextError,
+          "Services, Assets und Problemfälle konnten nicht geladen werden.",
+        ),
+      );
+    } finally {
+      if (requestVersion.current === version) setLoading(false);
+    }
+  }, [tenantId]);
+
+  useEffect(() => {
+    void loadCatalog();
+    return () => {
+      requestVersion.current += 1;
+    };
+  }, [loadCatalog]);
+
+  useEffect(() => {
+    setServiceForm(EMPTY_SERVICE_FORM);
+    setAssetForm(EMPTY_ASSET_FORM);
+    setProblemForm(EMPTY_PROBLEM_FORM);
+    setProblemMode("create");
+    setSuccess("");
+  }, [tenantId]);
+
+  function beginAction(action: string) {
+    setPendingAction(action);
+    setError("");
+    setForbidden(false);
+    setSuccess("");
+  }
+
+  function resetServiceForm() {
+    setServiceForm(EMPTY_SERVICE_FORM);
+    setError("");
+    setSuccess("");
+  }
+
+  function resetAssetForm() {
+    setAssetForm(EMPTY_ASSET_FORM);
+    setError("");
+    setSuccess("");
+  }
+
+  function resetProblemForm() {
+    setProblemForm(EMPTY_PROBLEM_FORM);
+    setProblemMode("create");
+    setError("");
+    setSuccess("");
+  }
+
+  function selectTab(tab: CatalogTab) {
+    setActiveTab(tab);
+    setError("");
+    setSuccess("");
+  }
+
+  function moveTab(event: KeyboardEvent<HTMLButtonElement>, tab: CatalogTab) {
+    const tabs: CatalogTab[] = ["services", "assets", "problems"];
+    const currentIndex = tabs.indexOf(tab);
+    let nextIndex = currentIndex;
+    if (event.key === "ArrowRight")
+      nextIndex = (currentIndex + 1) % tabs.length;
+    if (event.key === "ArrowLeft") {
+      nextIndex = (currentIndex - 1 + tabs.length) % tabs.length;
+    }
+    if (event.key === "Home") nextIndex = 0;
+    if (event.key === "End") nextIndex = tabs.length - 1;
+    if (nextIndex === currentIndex) return;
+
+    event.preventDefault();
+    const nextTab = tabs[nextIndex];
+    if (!nextTab) return;
+    selectTab(nextTab);
+    window.requestAnimationFrame(() => {
+      document.getElementById(`service-assets-${nextTab}-tab`)?.focus();
+    });
+  }
+
+  async function saveService(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const name = serviceForm.name.trim();
+    if (!name) {
+      setError("Bitte geben Sie einen Servicenamen ein.");
+      return;
+    }
+
+    const editing = serviceForm.id !== null;
+    beginAction(`service:save:${serviceForm.id ?? "new"}`);
+    try {
+      const request: ServiceSaveRequest = {
+        type: "manageService",
+        tenantId,
+        operation: editing ? "update" : "create",
+        ...(editing ? { serviceId: serviceForm.id! } : {}),
+        name,
+        description: optionalText(serviceForm.description),
+        criticality: serviceForm.criticality,
+        active: true,
+      };
+      const saved = parseSavedService(await requestServiceAssets(request));
+      setServices((current) =>
+        sortByName([
+          ...current.filter((service) => service.id !== saved.id),
+          saved,
+        ]),
+      );
+      resetServiceForm();
+      setSuccess(
+        editing
+          ? `Der Service „${saved.name}“ wurde gespeichert.`
+          : `Der Service „${saved.name}“ wurde angelegt.`,
+      );
+    } catch (nextError) {
+      setForbidden(errorStatus(nextError) === 403);
+      setError(
+        await apiErrorMessage(
+          nextError,
+          "Der Service konnte nicht gespeichert werden.",
+        ),
+      );
+    } finally {
+      setPendingAction(null);
+    }
+  }
+
+  async function archiveService(service: Service) {
+    if (!window.confirm(`Service „${service.name}“ archivieren?`)) return;
+    beginAction(`service:archive:${service.id}`);
+    try {
+      parseSavedService(
+        await requestServiceAssets({
+          type: "manageService",
+          tenantId,
+          operation: "archive",
+          serviceId: service.id,
+        }),
+      );
+      setServices((current) =>
+        current.filter((item) => item.id !== service.id),
+      );
+      if (assetForm.serviceId === service.id) {
+        setAssetForm((current) => ({ ...current, serviceId: "" }));
+      }
+      if (serviceForm.id === service.id) resetServiceForm();
+      setSuccess(`Der Service „${service.name}“ wurde archiviert.`);
+    } catch (nextError) {
+      setForbidden(errorStatus(nextError) === 403);
+      setError(
+        await apiErrorMessage(
+          nextError,
+          "Der Service konnte nicht archiviert werden.",
+        ),
+      );
+    } finally {
+      setPendingAction(null);
+    }
+  }
+
+  async function saveAsset(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const name = assetForm.name.trim();
+    const kind = assetForm.kind.trim();
+    const status = assetForm.status.trim();
+    if (!name || !kind || !status) {
+      setError("Name, Art und Status des Assets sind erforderlich.");
+      return;
+    }
+
+    let metadata: { [key: string]: JsonValue };
+    try {
+      const parsed: unknown = JSON.parse(assetForm.metadata);
+      if (!isRecord(parsed)) {
+        throw new Error("metadata-not-object");
+      }
+      metadata = parsed as { [key: string]: JsonValue };
+    } catch {
+      setError(
+        "Metadaten müssen ein gültiges JSON-Objekt sein, zum Beispiel {}.",
+      );
+      return;
+    }
+
+    const editing = assetForm.id !== null;
+    beginAction(`asset:save:${assetForm.id ?? "new"}`);
+    try {
+      const request: AssetSaveRequest = {
+        type: "manageAsset",
+        tenantId,
+        operation: editing ? "update" : "create",
+        ...(editing ? { assetId: assetForm.id! } : {}),
+        name,
+        serviceId: optionalText(assetForm.serviceId),
+        assetTag: optionalText(assetForm.assetTag),
+        kind,
+        status,
+        customerOrganizationId: optionalText(assetForm.customerOrganizationId),
+        metadata,
+        active: true,
+      };
+      const saved = parseSavedAsset(await requestServiceAssets(request));
+      setAssets((current) =>
+        sortByName([
+          ...current.filter((asset) => asset.id !== saved.id),
+          saved,
+        ]),
+      );
+      resetAssetForm();
+      setSuccess(
+        editing
+          ? `Das Asset „${saved.name}“ wurde gespeichert.`
+          : `Das Asset „${saved.name}“ wurde angelegt.`,
+      );
+    } catch (nextError) {
+      setForbidden(errorStatus(nextError) === 403);
+      setError(
+        await apiErrorMessage(
+          nextError,
+          "Das Asset konnte nicht gespeichert werden.",
+        ),
+      );
+    } finally {
+      setPendingAction(null);
+    }
+  }
+
+  async function archiveAsset(asset: Asset) {
+    if (!window.confirm(`Asset „${asset.name}“ archivieren?`)) return;
+    beginAction(`asset:archive:${asset.id}`);
+    try {
+      parseSavedAsset(
+        await requestServiceAssets({
+          type: "manageAsset",
+          tenantId,
+          operation: "archive",
+          assetId: asset.id,
+        }),
+      );
+      setAssets((current) => current.filter((item) => item.id !== asset.id));
+      if (assetForm.id === asset.id) resetAssetForm();
+      setSuccess(`Das Asset „${asset.name}“ wurde archiviert.`);
+    } catch (nextError) {
+      setForbidden(errorStatus(nextError) === 403);
+      setError(
+        await apiErrorMessage(
+          nextError,
+          "Das Asset konnte nicht archiviert werden.",
+        ),
+      );
+    } finally {
+      setPendingAction(null);
+    }
+  }
+
+  async function saveProblem(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const title = problemForm.title.trim();
+    if (problemMode !== "resolve" && title.length < 3) {
+      setError(
+        "Der Titel des Problemfalls muss mindestens drei Zeichen lang sein.",
+      );
+      return;
+    }
+    if (problemMode === "resolve" && !problemForm.id) {
+      setError("Der zu lösende Problemfall ist nicht mehr verfügbar.");
+      return;
+    }
+
+    const action =
+      problemMode === "resolve"
+        ? `problem:resolve:${problemForm.id}`
+        : `problem:save:${problemForm.id ?? "new"}`;
+    beginAction(action);
+    try {
+      if (problemMode === "resolve") {
+        const resolved = parseSavedProblem(
+          await requestServiceAssets({
+            type: "manageProblem",
+            tenantId,
+            operation: "resolve",
+            problemId: problemForm.id!,
+            workaround: optionalText(problemForm.workaround),
+            rootCause: optionalText(problemForm.rootCause),
+          }),
+        );
+        setProblems((current) =>
+          current.filter((problem) => problem.id !== resolved.id),
+        );
+        resetProblemForm();
+        setSuccess(`Der Problemfall „${resolved.title}“ wurde gelöst.`);
+        return;
+      }
+
+      const editing = problemMode === "edit" && problemForm.id !== null;
+      const request: ProblemSaveRequest = {
+        type: "manageProblem",
+        tenantId,
+        operation: editing ? "update" : "create",
+        ...(editing ? { problemId: problemForm.id! } : {}),
+        title,
+        description: problemForm.description,
+        status: problemForm.status,
+        workaround: optionalText(problemForm.workaround),
+        rootCause: optionalText(problemForm.rootCause),
+        ownerId: optionalText(problemForm.ownerId),
+      };
+      const saved = parseSavedProblem(await requestServiceAssets(request));
+      setProblems((current) =>
+        sortProblems([
+          ...current.filter((problem) => problem.id !== saved.id),
+          saved,
+        ]),
+      );
+      resetProblemForm();
+      setSuccess(
+        editing
+          ? `Der Problemfall „${saved.title}“ wurde gespeichert.`
+          : `Der Problemfall „${saved.title}“ wurde angelegt.`,
+      );
+    } catch (nextError) {
+      setForbidden(errorStatus(nextError) === 403);
+      setError(
+        await apiErrorMessage(
+          nextError,
+          problemMode === "resolve"
+            ? "Der Problemfall konnte nicht gelöst werden."
+            : "Der Problemfall konnte nicht gespeichert werden.",
+        ),
+      );
+    } finally {
+      setPendingAction(null);
+    }
+  }
+
+  const controlsDisabled = loading || pendingAction !== null;
+  const activeCount =
+    activeTab === "services"
+      ? filteredServices.length
+      : activeTab === "assets"
+        ? filteredAssets.length
+        : filteredProblems.length;
+
+  return (
+    <section
+      aria-busy={loading || pendingAction !== null}
+      aria-labelledby="service-assets-title"
+      className="service-assets"
+    >
+      <div className="panel-heading">
+        <div>
+          <p className="eyebrow">Servicekatalog</p>
+          <h2 id="service-assets-title">Services, Assets und Problemfälle</h2>
+          <p>
+            Verwalten Sie den aktuellen Katalog dieses Mandanten. Archivierte
+            und gelöste Einträge werden von der API nicht mehr im Katalog
+            angezeigt.
+          </p>
+        </div>
+        <button
+          className="secondary-button"
+          disabled={controlsDisabled}
+          onClick={() => void loadCatalog()}
+          type="button"
+        >
+          {loading ? "Wird geladen …" : "Aktualisieren"}
+        </button>
+      </div>
+
+      {error ? (
+        <p role="alert">
+          <strong>{forbidden ? "Zugriff verweigert: " : "Hinweis: "}</strong>
+          {error}
+        </p>
+      ) : null}
+      {success ? (
+        <p aria-live="polite" role="status">
+          {success}
+        </p>
+      ) : null}
+
+      <div aria-label="Katalogbereiche" role="tablist">
+        <button
+          aria-controls="service-assets-services-panel"
+          aria-selected={activeTab === "services"}
+          id="service-assets-services-tab"
+          onClick={() => selectTab("services")}
+          onKeyDown={(event) => moveTab(event, "services")}
+          role="tab"
+          tabIndex={activeTab === "services" ? 0 : -1}
+          type="button"
+        >
+          Services ({services.length})
+        </button>
+        <button
+          aria-controls="service-assets-assets-panel"
+          aria-selected={activeTab === "assets"}
+          id="service-assets-assets-tab"
+          onClick={() => selectTab("assets")}
+          onKeyDown={(event) => moveTab(event, "assets")}
+          role="tab"
+          tabIndex={activeTab === "assets" ? 0 : -1}
+          type="button"
+        >
+          Assets ({assets.length})
+        </button>
+        <button
+          aria-controls="service-assets-problems-panel"
+          aria-selected={activeTab === "problems"}
+          id="service-assets-problems-tab"
+          onClick={() => selectTab("problems")}
+          onKeyDown={(event) => moveTab(event, "problems")}
+          role="tab"
+          tabIndex={activeTab === "problems" ? 0 : -1}
+          type="button"
+        >
+          Problemfälle ({problems.length})
+        </button>
+      </div>
+
+      {loading ? (
+        <p aria-live="polite" className="empty-state">
+          Katalog wird geladen …
+        </p>
+      ) : null}
+
+      {!loading && !forbidden && activeTab === "services" ? (
+        <section
+          aria-labelledby="service-assets-services-tab"
+          id="service-assets-services-panel"
+          role="tabpanel"
+          tabIndex={0}
+        >
+          <div className="panel-heading">
+            <div>
+              <h3>Services</h3>
+              <p>{activeCount} passende Services</p>
+            </div>
+          </div>
+          <fieldset disabled={controlsDisabled}>
+            <legend>Services filtern</legend>
+            <label>
+              Suche
+              <input
+                onChange={(event) => setServiceQuery(event.target.value)}
+                placeholder="Name oder Beschreibung"
+                type="search"
+                value={serviceQuery}
+              />
+            </label>
+            <label>
+              Kritikalität
+              <select
+                onChange={(event) =>
+                  setServiceCriticality(
+                    event.target.value as "all" | Criticality,
+                  )
+                }
+                value={serviceCriticality}
+              >
+                <option value="all">Alle Kritikalitäten</option>
+                {(Object.keys(CRITICALITY_LABELS) as Criticality[]).map(
+                  (criticality) => (
+                    <option key={criticality} value={criticality}>
+                      {CRITICALITY_LABELS[criticality]}
+                    </option>
+                  ),
+                )}
+              </select>
+            </label>
+          </fieldset>
+
+          {services.length === 0 ? (
+            <p className="empty-state">
+              Für diesen Mandanten sind noch keine aktiven Services vorhanden.
+              Legen Sie unten den ersten Service an.
+            </p>
+          ) : filteredServices.length === 0 ? (
+            <p className="empty-state">
+              Keine Services entsprechen dem Filter.
+            </p>
+          ) : (
+            <ul aria-label="Aktive Services">
+              {filteredServices.map((service) => (
+                <li key={service.id}>
+                  <article>
+                    <h4>{service.name}</h4>
+                    <p>
+                      <strong>{CRITICALITY_LABELS[service.criticality]}</strong>
+                      {service.description ? ` · ${service.description}` : ""}
+                    </p>
+                    <p>Zuletzt geändert: {formatDate(service.updated_at)}</p>
+                    <button
+                      disabled={controlsDisabled}
+                      onClick={() => {
+                        setServiceForm(serviceDraft(service));
+                        setError("");
+                        setSuccess("");
+                      }}
+                      type="button"
+                    >
+                      Bearbeiten
+                    </button>{" "}
+                    <button
+                      disabled={controlsDisabled}
+                      onClick={() => void archiveService(service)}
+                      type="button"
+                    >
+                      {pendingAction === `service:archive:${service.id}`
+                        ? "Wird archiviert …"
+                        : "Archivieren"}
+                    </button>
+                  </article>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <section
+            aria-labelledby="service-assets-service-form-title"
+            className="panel"
+          >
+            <div className="panel-heading">
+              <div>
+                <p className="eyebrow">
+                  {serviceForm.id ? "Service bearbeiten" : "Neuer Service"}
+                </p>
+                <h3 id="service-assets-service-form-title">
+                  {serviceForm.id ? "Service aktualisieren" : "Service anlegen"}
+                </h3>
+              </div>
+            </div>
+            <form onSubmit={(event) => void saveService(event)}>
+              <label>
+                Name
+                <input
+                  disabled={controlsDisabled}
+                  maxLength={240}
+                  onChange={(event) =>
+                    setServiceForm((current) => ({
+                      ...current,
+                      name: event.target.value,
+                    }))
+                  }
+                  required
+                  value={serviceForm.name}
+                />
+              </label>
+              <label>
+                Kritikalität
+                <select
+                  disabled={controlsDisabled}
+                  onChange={(event) =>
+                    setServiceForm((current) => ({
+                      ...current,
+                      criticality: event.target.value as Criticality,
+                    }))
+                  }
+                  value={serviceForm.criticality}
+                >
+                  {(Object.keys(CRITICALITY_LABELS) as Criticality[]).map(
+                    (criticality) => (
+                      <option key={criticality} value={criticality}>
+                        {CRITICALITY_LABELS[criticality]}
+                      </option>
+                    ),
+                  )}
+                </select>
+              </label>
+              <label>
+                Beschreibung (optional)
+                <textarea
+                  disabled={controlsDisabled}
+                  maxLength={50000}
+                  onChange={(event) =>
+                    setServiceForm((current) => ({
+                      ...current,
+                      description: event.target.value,
+                    }))
+                  }
+                  rows={3}
+                  value={serviceForm.description}
+                />
+              </label>
+              <p>
+                <button
+                  className="primary-button"
+                  disabled={controlsDisabled}
+                  type="submit"
+                >
+                  {pendingAction?.startsWith("service:save:")
+                    ? "Wird gespeichert …"
+                    : serviceForm.id
+                      ? "Änderungen speichern"
+                      : "Service anlegen"}
+                </button>{" "}
+                {serviceForm.id ? (
+                  <button
+                    disabled={controlsDisabled}
+                    onClick={resetServiceForm}
+                    type="button"
+                  >
+                    Abbrechen
+                  </button>
+                ) : null}
+              </p>
+            </form>
+          </section>
+        </section>
+      ) : null}
+
+      {!loading && !forbidden && activeTab === "assets" ? (
+        <section
+          aria-labelledby="service-assets-assets-tab"
+          id="service-assets-assets-panel"
+          role="tabpanel"
+          tabIndex={0}
+        >
+          <div className="panel-heading">
+            <div>
+              <h3>Assets</h3>
+              <p>{activeCount} passende Assets</p>
+            </div>
+          </div>
+          <fieldset disabled={controlsDisabled}>
+            <legend>Assets filtern</legend>
+            <label>
+              Suche
+              <input
+                onChange={(event) => setAssetQuery(event.target.value)}
+                placeholder="Name, Kennung, Art oder Status"
+                type="search"
+                value={assetQuery}
+              />
+            </label>
+            <label>
+              Service
+              <select
+                onChange={(event) => setAssetServiceFilter(event.target.value)}
+                value={assetServiceFilter}
+              >
+                <option value="all">Alle Services</option>
+                <option value="unassigned">Ohne Service</option>
+                {services.map((service) => (
+                  <option key={service.id} value={service.id}>
+                    {service.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Status
+              <select
+                onChange={(event) => setAssetStatusFilter(event.target.value)}
+                value={assetStatusFilter}
+              >
+                <option value="all">Alle Status</option>
+                {assetStatuses.map((status) => (
+                  <option key={status} value={status}>
+                    {status}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </fieldset>
+
+          {assets.length === 0 ? (
+            <p className="empty-state">
+              Für diesen Mandanten sind noch keine aktiven Assets vorhanden.
+              Legen Sie unten das erste Asset an.
+            </p>
+          ) : filteredAssets.length === 0 ? (
+            <p className="empty-state">Keine Assets entsprechen dem Filter.</p>
+          ) : (
+            <ul aria-label="Aktive Assets">
+              {filteredAssets.map((asset) => (
+                <li key={asset.id}>
+                  <article>
+                    <h4>{asset.name}</h4>
+                    <p>
+                      {asset.kind} · {asset.status}
+                      {asset.asset_tag ? ` · Kennung: ${asset.asset_tag}` : ""}
+                    </p>
+                    <p>
+                      Service:{" "}
+                      {asset.service_id
+                        ? (serviceNames.get(asset.service_id) ??
+                          "Nicht im aktiven Katalog")
+                        : "Nicht zugeordnet"}
+                    </p>
+                    <p>
+                      <code>{metadataPreview(asset.metadata)}</code>
+                    </p>
+                    <button
+                      disabled={controlsDisabled}
+                      onClick={() => {
+                        setAssetForm(assetDraft(asset));
+                        setError("");
+                        setSuccess("");
+                      }}
+                      type="button"
+                    >
+                      Bearbeiten
+                    </button>{" "}
+                    <button
+                      disabled={controlsDisabled}
+                      onClick={() => void archiveAsset(asset)}
+                      type="button"
+                    >
+                      {pendingAction === `asset:archive:${asset.id}`
+                        ? "Wird archiviert …"
+                        : "Archivieren"}
+                    </button>
+                  </article>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <section
+            aria-labelledby="service-assets-asset-form-title"
+            className="panel"
+          >
+            <div className="panel-heading">
+              <div>
+                <p className="eyebrow">
+                  {assetForm.id ? "Asset bearbeiten" : "Neues Asset"}
+                </p>
+                <h3 id="service-assets-asset-form-title">
+                  {assetForm.id ? "Asset aktualisieren" : "Asset anlegen"}
+                </h3>
+              </div>
+            </div>
+            <form onSubmit={(event) => void saveAsset(event)}>
+              <label>
+                Name
+                <input
+                  disabled={controlsDisabled}
+                  maxLength={240}
+                  onChange={(event) =>
+                    setAssetForm((current) => ({
+                      ...current,
+                      name: event.target.value,
+                    }))
+                  }
+                  required
+                  value={assetForm.name}
+                />
+              </label>
+              <label>
+                Zugehöriger Service (optional)
+                <select
+                  disabled={controlsDisabled}
+                  onChange={(event) =>
+                    setAssetForm((current) => ({
+                      ...current,
+                      serviceId: event.target.value,
+                    }))
+                  }
+                  value={assetForm.serviceId}
+                >
+                  <option value="">Nicht zugeordnet</option>
+                  {services.map((service) => (
+                    <option key={service.id} value={service.id}>
+                      {service.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Asset-Kennung (optional)
+                <input
+                  disabled={controlsDisabled}
+                  maxLength={160}
+                  onChange={(event) =>
+                    setAssetForm((current) => ({
+                      ...current,
+                      assetTag: event.target.value,
+                    }))
+                  }
+                  value={assetForm.assetTag}
+                />
+              </label>
+              <label>
+                Art
+                <input
+                  disabled={controlsDisabled}
+                  maxLength={64}
+                  onChange={(event) =>
+                    setAssetForm((current) => ({
+                      ...current,
+                      kind: event.target.value,
+                    }))
+                  }
+                  required
+                  value={assetForm.kind}
+                />
+              </label>
+              <label>
+                Status
+                <input
+                  disabled={controlsDisabled}
+                  maxLength={64}
+                  onChange={(event) =>
+                    setAssetForm((current) => ({
+                      ...current,
+                      status: event.target.value,
+                    }))
+                  }
+                  required
+                  value={assetForm.status}
+                />
+              </label>
+              <label>
+                Kundenorganisation-ID (optional)
+                <input
+                  disabled={controlsDisabled}
+                  onChange={(event) =>
+                    setAssetForm((current) => ({
+                      ...current,
+                      customerOrganizationId: event.target.value,
+                    }))
+                  }
+                  placeholder="UUID"
+                  value={assetForm.customerOrganizationId}
+                />
+              </label>
+              <label>
+                Metadaten (JSON-Objekt)
+                <textarea
+                  aria-describedby="service-assets-metadata-help"
+                  disabled={controlsDisabled}
+                  onChange={(event) =>
+                    setAssetForm((current) => ({
+                      ...current,
+                      metadata: event.target.value,
+                    }))
+                  }
+                  rows={5}
+                  spellCheck={false}
+                  value={assetForm.metadata}
+                />
+              </label>
+              <p id="service-assets-metadata-help">
+                Erlaubt ist ein JSON-Objekt, zum Beispiel {"{"}
+                "standort":"Zürich"{"}"}.
+              </p>
+              <p>
+                <button
+                  className="primary-button"
+                  disabled={controlsDisabled}
+                  type="submit"
+                >
+                  {pendingAction?.startsWith("asset:save:")
+                    ? "Wird gespeichert …"
+                    : assetForm.id
+                      ? "Änderungen speichern"
+                      : "Asset anlegen"}
+                </button>{" "}
+                {assetForm.id ? (
+                  <button
+                    disabled={controlsDisabled}
+                    onClick={resetAssetForm}
+                    type="button"
+                  >
+                    Abbrechen
+                  </button>
+                ) : null}
+              </p>
+            </form>
+          </section>
+        </section>
+      ) : null}
+
+      {!loading && !forbidden && activeTab === "problems" ? (
+        <section
+          aria-labelledby="service-assets-problems-tab"
+          id="service-assets-problems-panel"
+          role="tabpanel"
+          tabIndex={0}
+        >
+          <div className="panel-heading">
+            <div>
+              <h3>Problemfälle</h3>
+              <p>{activeCount} passende offene Problemfälle</p>
+            </div>
+          </div>
+          <fieldset disabled={controlsDisabled}>
+            <legend>Problemfälle filtern</legend>
+            <label>
+              Suche
+              <input
+                onChange={(event) => setProblemQuery(event.target.value)}
+                placeholder="Titel, Beschreibung oder Lösung"
+                type="search"
+                value={problemQuery}
+              />
+            </label>
+            <label>
+              Status
+              <select
+                onChange={(event) =>
+                  setProblemStatusFilter(
+                    event.target.value as "all" | EditableProblemStatus,
+                  )
+                }
+                value={problemStatusFilter}
+              >
+                <option value="all">Alle offenen Status</option>
+                {EDITABLE_PROBLEM_STATUSES.map((status) => (
+                  <option key={status} value={status}>
+                    {PROBLEM_STATUS_LABELS[status]}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </fieldset>
+
+          {problems.length === 0 ? (
+            <p className="empty-state">
+              Es sind keine offenen Problemfälle vorhanden. Legen Sie unten bei
+              Bedarf einen neuen Problemfall an.
+            </p>
+          ) : filteredProblems.length === 0 ? (
+            <p className="empty-state">
+              Keine Problemfälle entsprechen dem Filter.
+            </p>
+          ) : (
+            <ul aria-label="Offene Problemfälle">
+              {filteredProblems.map((problem) => (
+                <li key={problem.id}>
+                  <article>
+                    <h4>{problem.title}</h4>
+                    <p>
+                      <strong>{PROBLEM_STATUS_LABELS[problem.status]}</strong>
+                      {problem.description ? ` · ${problem.description}` : ""}
+                    </p>
+                    {problem.workaround ? (
+                      <p>Workaround: {problem.workaround}</p>
+                    ) : null}
+                    {problem.root_cause ? (
+                      <p>Ursache: {problem.root_cause}</p>
+                    ) : null}
+                    <p>Zuletzt geändert: {formatDate(problem.updated_at)}</p>
+                    <button
+                      disabled={controlsDisabled}
+                      onClick={() => {
+                        setProblemForm(problemDraft(problem));
+                        setProblemMode("edit");
+                        setError("");
+                        setSuccess("");
+                      }}
+                      type="button"
+                    >
+                      Bearbeiten
+                    </button>{" "}
+                    <button
+                      disabled={controlsDisabled}
+                      onClick={() => {
+                        setProblemForm(problemDraft(problem));
+                        setProblemMode("resolve");
+                        setError("");
+                        setSuccess("");
+                      }}
+                      type="button"
+                    >
+                      Lösen
+                    </button>
+                  </article>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <section
+            aria-labelledby="service-assets-problem-form-title"
+            className="panel"
+          >
+            <div className="panel-heading">
+              <div>
+                <p className="eyebrow">
+                  {problemMode === "resolve"
+                    ? "Problemfall lösen"
+                    : problemMode === "edit"
+                      ? "Problemfall bearbeiten"
+                      : "Neuer Problemfall"}
+                </p>
+                <h3 id="service-assets-problem-form-title">
+                  {problemMode === "resolve"
+                    ? `Lösung dokumentieren: ${problemForm.title}`
+                    : problemMode === "edit"
+                      ? "Problemfall aktualisieren"
+                      : "Problemfall anlegen"}
+                </h3>
+              </div>
+            </div>
+            <form onSubmit={(event) => void saveProblem(event)}>
+              {problemMode !== "resolve" ? (
+                <>
+                  <label>
+                    Titel
+                    <input
+                      disabled={controlsDisabled}
+                      maxLength={240}
+                      minLength={3}
+                      onChange={(event) =>
+                        setProblemForm((current) => ({
+                          ...current,
+                          title: event.target.value,
+                        }))
+                      }
+                      required
+                      value={problemForm.title}
+                    />
+                  </label>
+                  <label>
+                    Status
+                    <select
+                      disabled={controlsDisabled}
+                      onChange={(event) =>
+                        setProblemForm((current) => ({
+                          ...current,
+                          status: event.target.value as EditableProblemStatus,
+                        }))
+                      }
+                      value={problemForm.status}
+                    >
+                      {EDITABLE_PROBLEM_STATUSES.map((status) => (
+                        <option key={status} value={status}>
+                          {PROBLEM_STATUS_LABELS[status]}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    Beschreibung
+                    <textarea
+                      disabled={controlsDisabled}
+                      maxLength={50000}
+                      onChange={(event) =>
+                        setProblemForm((current) => ({
+                          ...current,
+                          description: event.target.value,
+                        }))
+                      }
+                      rows={4}
+                      value={problemForm.description}
+                    />
+                  </label>
+                  <label>
+                    Verantwortliche Person (UUID, optional)
+                    <input
+                      disabled={controlsDisabled}
+                      onChange={(event) =>
+                        setProblemForm((current) => ({
+                          ...current,
+                          ownerId: event.target.value,
+                        }))
+                      }
+                      placeholder="UUID eines aktiven Mandantenmitglieds"
+                      value={problemForm.ownerId}
+                    />
+                  </label>
+                </>
+              ) : (
+                <p>
+                  Beim Speichern wird dieser Problemfall als gelöst markiert und
+                  anschließend nicht mehr im offenen Katalog angezeigt.
+                </p>
+              )}
+              <label>
+                Workaround (optional)
+                <textarea
+                  disabled={controlsDisabled}
+                  maxLength={50000}
+                  onChange={(event) =>
+                    setProblemForm((current) => ({
+                      ...current,
+                      workaround: event.target.value,
+                    }))
+                  }
+                  rows={3}
+                  value={problemForm.workaround}
+                />
+              </label>
+              <label>
+                Ursache / Root Cause (optional)
+                <textarea
+                  disabled={controlsDisabled}
+                  maxLength={50000}
+                  onChange={(event) =>
+                    setProblemForm((current) => ({
+                      ...current,
+                      rootCause: event.target.value,
+                    }))
+                  }
+                  rows={3}
+                  value={problemForm.rootCause}
+                />
+              </label>
+              <p>
+                <button
+                  className="primary-button"
+                  disabled={controlsDisabled}
+                  type="submit"
+                >
+                  {pendingAction?.startsWith("problem:resolve:")
+                    ? "Wird gelöst …"
+                    : pendingAction?.startsWith("problem:save:")
+                      ? "Wird gespeichert …"
+                      : problemMode === "resolve"
+                        ? "Problemfall lösen"
+                        : problemMode === "edit"
+                          ? "Änderungen speichern"
+                          : "Problemfall anlegen"}
+                </button>{" "}
+                {problemMode === "edit" || problemMode === "resolve" ? (
+                  <button
+                    disabled={controlsDisabled}
+                    onClick={resetProblemForm}
+                    type="button"
+                  >
+                    Abbrechen
+                  </button>
+                ) : null}
+              </p>
+            </form>
+          </section>
+        </section>
+      ) : null}
+    </section>
+  );
+}

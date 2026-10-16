@@ -50,6 +50,7 @@ import { TicketTemplates } from "./ticket-templates";
 import { SlaManagement } from "./sla-management";
 import { CustomerOrganizations } from "./customer-organizations";
 import { ServiceReporting } from "./service-reporting";
+import { ServiceAssets } from "./service-assets";
 import {
   OwnerConsoleScreen,
   resolveOwnerAccess,
@@ -1208,7 +1209,10 @@ export function App() {
         ) : section === "Wissen" && activeTenant ? (
           <KnowledgeBase tenantId={activeTenant.id} />
         ) : section === "Services" && activeTenant ? (
-          <SlaManagement tenantId={activeTenant.id} />
+          <>
+            <ServiceAssets tenantId={activeTenant.id} />
+            <SlaManagement tenantId={activeTenant.id} />
+          </>
         ) : section === "Berichte" && activeTenant ? (
           <ServiceReporting tenantId={activeTenant.id} />
         ) : section === "Tickets" ? (

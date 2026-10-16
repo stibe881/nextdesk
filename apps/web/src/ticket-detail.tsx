@@ -42,6 +42,8 @@ type PendingAction =
   | "feedback"
   | null;
 type PendingAttachmentAction = "upload" | "download" | "delete" | null;
+type PendingCatalogAction = "link" | "unlink" | null;
+type CatalogKind = "service" | "asset" | "problem";
 
 type GetTicketAction = {
   type: "getTicket";
@@ -307,6 +309,56 @@ type TicketFeedbackData = {
   canRate: boolean;
   isClosed: boolean;
 };
+
+type CatalogService = {
+  id: string;
+  name: string;
+  criticality: string;
+};
+
+type CatalogAsset = {
+  id: string;
+  name: string;
+  assetTag: string | null;
+  kind: string;
+  status: string;
+};
+
+type CatalogProblem = {
+  id: string;
+  title: string;
+  status: string;
+};
+
+type TicketCatalog = {
+  services: CatalogService[];
+  assets: CatalogAsset[];
+  problems: CatalogProblem[];
+};
+
+type LinkedCatalogItem = {
+  kind: CatalogKind;
+  targetId: string;
+  label: string;
+  metadata: string[];
+};
+
+type CatalogSelection = {
+  kind: CatalogKind;
+  id: string;
+  label: string;
+  description: string;
+};
+
+type ServiceAssetsAction =
+  | { type: "listCatalog"; tenantId: string }
+  | {
+      type: "linkTicket" | "unlinkTicket";
+      tenantId: string;
+      ticketId: string;
+      kind: CatalogKind;
+      targetId: string;
+    };
 
 type TicketDetailData = {
   ticket: TicketRecord;
@@ -648,6 +700,201 @@ function parseTicketFeedback(value: unknown): TicketFeedbackData | null {
   };
 }
 
+function emptyTicketCatalog(): TicketCatalog {
+  return { services: [], assets: [], problems: [] };
+}
+
+function isStringOrNull(value: unknown): value is string | null {
+  return typeof value === "string" || value === null;
+}
+
+function toCatalogService(value: unknown): CatalogService | null {
+  const service = asRecord(value);
+  if (
+    !service ||
+    typeof service.id !== "string" ||
+    typeof service.name !== "string" ||
+    typeof service.criticality !== "string"
+  ) {
+    return null;
+  }
+  return {
+    id: service.id,
+    name: service.name,
+    criticality: service.criticality,
+  };
+}
+
+function toCatalogAsset(value: unknown): CatalogAsset | null {
+  const asset = asRecord(value);
+  if (
+    !asset ||
+    typeof asset.id !== "string" ||
+    typeof asset.name !== "string" ||
+    !isStringOrNull(asset.asset_tag) ||
+    typeof asset.kind !== "string" ||
+    typeof asset.status !== "string"
+  ) {
+    return null;
+  }
+  return {
+    id: asset.id,
+    name: asset.name,
+    assetTag: asset.asset_tag,
+    kind: asset.kind,
+    status: asset.status,
+  };
+}
+
+function toCatalogProblem(value: unknown): CatalogProblem | null {
+  const problem = asRecord(value);
+  if (
+    !problem ||
+    typeof problem.id !== "string" ||
+    typeof problem.title !== "string" ||
+    typeof problem.status !== "string"
+  ) {
+    return null;
+  }
+  return { id: problem.id, title: problem.title, status: problem.status };
+}
+
+function parseTicketCatalog(value: unknown): TicketCatalog | null {
+  const envelope = asRecord(value);
+  const data = asRecord(envelope?.data);
+  if (
+    !data ||
+    !Array.isArray(data.services) ||
+    !Array.isArray(data.assets) ||
+    !Array.isArray(data.problems)
+  ) {
+    return null;
+  }
+
+  const services = data.services.map(toCatalogService);
+  const assets = data.assets.map(toCatalogAsset);
+  const problems = data.problems.map(toCatalogProblem);
+  if (
+    !services.every((item): item is CatalogService => item !== null) ||
+    !assets.every((item): item is CatalogAsset => item !== null) ||
+    !problems.every((item): item is CatalogProblem => item !== null)
+  ) {
+    return null;
+  }
+  return { services, assets, problems };
+}
+
+function criticalityLabel(criticality: string): string {
+  const labels: Record<string, string> = {
+    low: "Niedrig",
+    medium: "Mittel",
+    high: "Hoch",
+    critical: "Kritisch",
+  };
+  return labels[criticality] ?? criticality;
+}
+
+function catalogKindLabel(kind: CatalogKind): string {
+  const labels: Record<CatalogKind, string> = {
+    service: "Service",
+    asset: "Asset",
+    problem: "Problemfall",
+  };
+  return labels[kind];
+}
+
+function catalogItemKey(
+  item: Pick<LinkedCatalogItem, "kind" | "targetId">,
+): string {
+  return `${item.kind}:${item.targetId}`;
+}
+
+function catalogSelectionKey(
+  item: Pick<CatalogSelection, "kind" | "id">,
+): string {
+  return `${item.kind}:${item.id}`;
+}
+
+function toLinkedService(value: unknown): LinkedCatalogItem | null {
+  const link = asRecord(value);
+  const service = asRecord(link?.services);
+  if (
+    !link ||
+    !service ||
+    typeof link.service_id !== "string" ||
+    service.id !== link.service_id ||
+    typeof service.name !== "string" ||
+    typeof service.criticality !== "string"
+  ) {
+    return null;
+  }
+  return {
+    kind: "service",
+    targetId: link.service_id,
+    label: service.name,
+    metadata: [`Kritikalität: ${criticalityLabel(service.criticality)}`],
+  };
+}
+
+function toLinkedAsset(value: unknown): LinkedCatalogItem | null {
+  const link = asRecord(value);
+  const asset = asRecord(link?.assets);
+  if (
+    !link ||
+    !asset ||
+    typeof link.asset_id !== "string" ||
+    asset.id !== link.asset_id ||
+    typeof asset.name !== "string" ||
+    !isStringOrNull(asset.asset_tag) ||
+    typeof asset.kind !== "string" ||
+    typeof asset.status !== "string"
+  ) {
+    return null;
+  }
+  return {
+    kind: "asset",
+    targetId: link.asset_id,
+    label: asset.name,
+    metadata: [
+      asset.asset_tag ? `Asset-Kennung: ${asset.asset_tag}` : null,
+      `Typ: ${asset.kind}`,
+      `Status: ${asset.status}`,
+    ].filter((entry): entry is string => entry !== null),
+  };
+}
+
+function toLinkedProblem(value: unknown): LinkedCatalogItem | null {
+  const link = asRecord(value);
+  const problem = asRecord(link?.problems);
+  if (
+    !link ||
+    !problem ||
+    typeof link.problem_id !== "string" ||
+    problem.id !== link.problem_id ||
+    typeof problem.title !== "string" ||
+    typeof problem.status !== "string"
+  ) {
+    return null;
+  }
+  return {
+    kind: "problem",
+    targetId: link.problem_id,
+    label: problem.title,
+    metadata: [`Status: ${problem.status}`],
+  };
+}
+
+function parseLinkedCatalogItems(
+  value: unknown,
+  parser: (item: unknown) => LinkedCatalogItem | null,
+): LinkedCatalogItem[] | null {
+  if (!Array.isArray(value)) return null;
+  const items = value.map(parser);
+  return items.every((item): item is LinkedCatalogItem => item !== null)
+    ? items
+    : null;
+}
+
 function attachmentFileError(file: File): string | null {
   const filename = file.name.trim();
   const contentType = file.type.trim().toLowerCase();
@@ -886,6 +1133,17 @@ async function invokeTicketFeedbackAction(
   return data;
 }
 
+async function invokeServiceAssetsAction(
+  action: ServiceAssetsAction,
+): Promise<unknown> {
+  if (!supabase) throw new Error("Supabase ist nicht konfiguriert.");
+  const { data, error } = await supabase.functions.invoke("service-assets", {
+    body: action,
+  });
+  if (error) throw error;
+  return data;
+}
+
 function functionErrorStatus(error: unknown): number | null {
   const value = asRecord(error);
   if (!value) return null;
@@ -917,6 +1175,36 @@ function feedbackErrorMessage(
   return action === "submit"
     ? "Die Bewertung konnte nicht gespeichert werden. Bitte versuchen Sie es erneut."
     : "Die Zufriedenheitsdaten konnten nicht geladen werden. Bitte versuchen Sie es erneut.";
+}
+
+function affectedItemsErrorMessage(
+  error: unknown,
+  action: "list" | "link" | "unlink",
+): string {
+  const status = functionErrorStatus(error);
+  if (status === 401) {
+    return "Ihre Sitzung ist abgelaufen. Bitte melden Sie sich erneut an.";
+  }
+  if (status === 403) {
+    return action === "list"
+      ? "Sie sind nicht berechtigt, die betroffenen Elemente dieses Tickets zu laden."
+      : "Sie sind nicht berechtigt, betroffene Elemente für dieses Ticket zu bearbeiten.";
+  }
+  if (status === 404) {
+    return action === "unlink"
+      ? "Die Verknüpfung ist nicht mehr vorhanden. Bitte laden Sie die Liste erneut."
+      : "Das Ticket oder der ausgewählte Katalogeintrag ist nicht mehr verfügbar.";
+  }
+  if (status === 409 && action === "link") {
+    return "Dieser Katalogeintrag ist bereits mit dem Ticket verknüpft.";
+  }
+  const messages: Record<"list" | "link" | "unlink", string> = {
+    list: "Die betroffenen Elemente konnten nicht geladen werden. Bitte versuchen Sie es erneut.",
+    link: "Der Katalogeintrag konnte nicht mit dem Ticket verknüpft werden. Bitte versuchen Sie es erneut.",
+    unlink:
+      "Die Verknüpfung konnte nicht entfernt werden. Bitte versuchen Sie es erneut.",
+  };
+  return messages[action];
 }
 
 function attachmentErrorMessage(
@@ -990,9 +1278,23 @@ export function TicketDetail({
   const [feedbackError, setFeedbackError] = useState("");
   const [feedbackScore, setFeedbackScore] = useState<number | null>(null);
   const [feedbackComment, setFeedbackComment] = useState("");
+  const [catalog, setCatalog] = useState<TicketCatalog>(emptyTicketCatalog);
+  const [linkedCatalogItems, setLinkedCatalogItems] = useState<
+    LinkedCatalogItem[]
+  >([]);
+  const [affectedItemsLoading, setAffectedItemsLoading] = useState(false);
+  const [affectedItemsLoaded, setAffectedItemsLoaded] = useState(false);
+  const [affectedItemsError, setAffectedItemsError] = useState("");
+  const [selectedCatalogItemKey, setSelectedCatalogItemKey] = useState("");
+  const [pendingCatalogAction, setPendingCatalogAction] =
+    useState<PendingCatalogAction>(null);
+  const [pendingCatalogItemKey, setPendingCatalogItemKey] = useState<
+    string | null
+  >(null);
   const requestSequence = useRef(0);
   const attachmentRequestSequence = useRef(0);
   const feedbackRequestSequence = useRef(0);
+  const affectedItemsRequestSequence = useRef(0);
   const attachmentInputRef = useRef<HTMLInputElement>(null);
 
   const loadFeedback = useCallback(async () => {
@@ -1107,6 +1409,97 @@ export function TicketDetail({
     }
   }, [tenantId, ticketId]);
 
+  const loadAffectedItems = useCallback(async () => {
+    const requestId = ++affectedItemsRequestSequence.current;
+    setAffectedItemsLoading(true);
+    setAffectedItemsError("");
+
+    try {
+      const client = supabase;
+      if (!client) throw new Error("Supabase ist nicht konfiguriert.");
+      const [
+        catalogResponse,
+        linkedServicesResponse,
+        linkedAssetsResponse,
+        linkedProblemsResponse,
+      ] = await Promise.all([
+        invokeServiceAssetsAction({ type: "listCatalog", tenantId }),
+        client
+          .from("ticket_services")
+          .select("service_id, services(id, name, criticality)")
+          .eq("tenant_id", tenantId)
+          .eq("ticket_id", ticketId),
+        client
+          .from("ticket_assets")
+          .select("asset_id, assets(id, name, asset_tag, kind, status)")
+          .eq("tenant_id", tenantId)
+          .eq("ticket_id", ticketId),
+        client
+          .from("problem_tickets")
+          .select("problem_id, problems(id, title, status)")
+          .eq("tenant_id", tenantId)
+          .eq("ticket_id", ticketId),
+      ]);
+      if (
+        linkedServicesResponse.error ||
+        linkedAssetsResponse.error ||
+        linkedProblemsResponse.error
+      ) {
+        throw (
+          linkedServicesResponse.error ??
+          linkedAssetsResponse.error ??
+          linkedProblemsResponse.error
+        );
+      }
+
+      const nextCatalog = parseTicketCatalog(catalogResponse);
+      const services = parseLinkedCatalogItems(
+        linkedServicesResponse.data,
+        toLinkedService,
+      );
+      const assets = parseLinkedCatalogItems(
+        linkedAssetsResponse.data,
+        toLinkedAsset,
+      );
+      const problems = parseLinkedCatalogItems(
+        linkedProblemsResponse.data,
+        toLinkedProblem,
+      );
+      if (!nextCatalog || !services || !assets || !problems) {
+        throw new Error(
+          "Die Daten zu den betroffenen Elementen sind unvollständig.",
+        );
+      }
+      if (requestId !== affectedItemsRequestSequence.current) return false;
+
+      setCatalog(nextCatalog);
+      setLinkedCatalogItems(
+        [...services, ...assets, ...problems].sort((first, second) => {
+          const kindComparison = catalogKindLabel(first.kind).localeCompare(
+            catalogKindLabel(second.kind),
+            "de-CH",
+          );
+          return (
+            kindComparison || first.label.localeCompare(second.label, "de-CH")
+          );
+        }),
+      );
+      return true;
+    } catch (nextError) {
+      if (requestId === affectedItemsRequestSequence.current) {
+        setCatalog(emptyTicketCatalog());
+        setLinkedCatalogItems([]);
+        setAffectedItemsError(affectedItemsErrorMessage(nextError, "list"));
+      }
+      return false;
+    } finally {
+      if (requestId === affectedItemsRequestSequence.current) {
+        setAffectedItemsLoaded(true);
+        setAffectedItemsLoading(false);
+      }
+    }
+  }, [tenantId, ticketId]);
+
   useEffect(() => {
     void loadTicket();
     return () => {
@@ -1131,6 +1524,18 @@ export function TicketDetail({
       attachmentRequestSequence.current += 1;
     };
   }, [loadAttachments]);
+
+  useEffect(() => {
+    setCatalog(emptyTicketCatalog());
+    setLinkedCatalogItems([]);
+    setAffectedItemsLoaded(false);
+    setAffectedItemsError("");
+    setSelectedCatalogItemKey("");
+    void loadAffectedItems();
+    return () => {
+      affectedItemsRequestSequence.current += 1;
+    };
+  }, [loadAffectedItems]);
 
   const selectedStatus = useMemo(
     () =>
@@ -1165,6 +1570,47 @@ export function TicketDetail({
   );
   const busy = pendingAction !== null;
   const attachmentBusy = pendingAttachmentAction !== null;
+  const catalogBusy = pendingCatalogAction !== null;
+  const availableCatalogItems = useMemo(() => {
+    const linkedItemKeys = new Set(linkedCatalogItems.map(catalogItemKey));
+    const items: CatalogSelection[] = [
+      ...catalog.services.map((service) => ({
+        kind: "service" as const,
+        id: service.id,
+        label: service.name,
+        description: `Kritikalität: ${criticalityLabel(service.criticality)}`,
+      })),
+      ...catalog.assets.map((asset) => ({
+        kind: "asset" as const,
+        id: asset.id,
+        label: asset.name,
+        description: [
+          asset.assetTag ? `Asset-Kennung: ${asset.assetTag}` : null,
+          `Typ: ${asset.kind}`,
+          `Status: ${asset.status}`,
+        ]
+          .filter((entry): entry is string => entry !== null)
+          .join(" · "),
+      })),
+      ...catalog.problems.map((problem) => ({
+        kind: "problem" as const,
+        id: problem.id,
+        label: problem.title,
+        description: `Status: ${problem.status}`,
+      })),
+    ];
+    return items
+      .filter((item) => !linkedItemKeys.has(catalogSelectionKey(item)))
+      .sort((first, second) => {
+        const kindComparison = catalogKindLabel(first.kind).localeCompare(
+          catalogKindLabel(second.kind),
+          "de-CH",
+        );
+        return (
+          kindComparison || first.label.localeCompare(second.label, "de-CH")
+        );
+      });
+  }, [catalog, linkedCatalogItems]);
 
   async function saveFeedback(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -1664,6 +2110,68 @@ export function TicketDetail({
     }
   }
 
+  async function linkCatalogItem(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!detail || !detail.canUpdate || catalogBusy) return;
+
+    const item = availableCatalogItems.find(
+      (entry) => catalogSelectionKey(entry) === selectedCatalogItemKey,
+    );
+    if (!item) {
+      setAffectedItemsError(
+        "Bitte wählen Sie einen verfügbaren Katalogeintrag aus.",
+      );
+      return;
+    }
+
+    const itemKey = catalogSelectionKey(item);
+    setPendingCatalogAction("link");
+    setPendingCatalogItemKey(itemKey);
+    setAffectedItemsError("");
+    try {
+      await invokeServiceAssetsAction({
+        type: "linkTicket",
+        tenantId,
+        ticketId,
+        kind: item.kind,
+        targetId: item.id,
+      });
+      setSelectedCatalogItemKey("");
+      onChanged();
+      await loadAffectedItems();
+    } catch (nextError) {
+      setAffectedItemsError(affectedItemsErrorMessage(nextError, "link"));
+    } finally {
+      setPendingCatalogItemKey(null);
+      setPendingCatalogAction(null);
+    }
+  }
+
+  async function unlinkCatalogItem(item: LinkedCatalogItem) {
+    if (!detail || !detail.canUpdate || catalogBusy) return;
+
+    const itemKey = catalogItemKey(item);
+    setPendingCatalogAction("unlink");
+    setPendingCatalogItemKey(itemKey);
+    setAffectedItemsError("");
+    try {
+      await invokeServiceAssetsAction({
+        type: "unlinkTicket",
+        tenantId,
+        ticketId,
+        kind: item.kind,
+        targetId: item.targetId,
+      });
+      onChanged();
+      await loadAffectedItems();
+    } catch (nextError) {
+      setAffectedItemsError(affectedItemsErrorMessage(nextError, "unlink"));
+    } finally {
+      setPendingCatalogItemKey(null);
+      setPendingCatalogAction(null);
+    }
+  }
+
   if (loading && !loaded) {
     return (
       <section className="ticket-detail panel" aria-label="Ticketdetails">
@@ -1791,6 +2299,147 @@ export function TicketDetail({
           Erstellt am {formatDateTime(detail.ticket.created_at)}
         </p>
       </div>
+
+      <section
+        aria-busy={affectedItemsLoading}
+        aria-labelledby="ticket-affected-items-heading"
+        className="ticket-detail-comments"
+      >
+        <div className="ticket-detail-section-heading">
+          <div>
+            <p className="eyebrow">KATALOG</p>
+            <h3 id="ticket-affected-items-heading">Betroffene Elemente</h3>
+          </div>
+          <span className="data-caption">{linkedCatalogItems.length}</span>
+        </div>
+        <p className="data-caption" id="ticket-affected-items-help">
+          Verknüpfte Services, Assets und Problemfälle dieses Tickets.
+        </p>
+
+        {affectedItemsError && (
+          <p className="ticket-detail-message error" role="alert">
+            <AlertCircle aria-hidden="true" size={17} />
+            {affectedItemsError}
+          </p>
+        )}
+
+        {detail.canUpdate ? (
+          <form className="ticket-comment-form" onSubmit={linkCatalogItem}>
+            <label>
+              Katalogeintrag verknüpfen
+              <select
+                aria-describedby="ticket-affected-items-help"
+                disabled={
+                  catalogBusy ||
+                  affectedItemsLoading ||
+                  availableCatalogItems.length === 0
+                }
+                onChange={(event) =>
+                  setSelectedCatalogItemKey(event.target.value)
+                }
+                required
+                value={selectedCatalogItemKey}
+              >
+                <option value="">Katalogeintrag auswählen</option>
+                {availableCatalogItems.map((item) => (
+                  <option
+                    key={catalogSelectionKey(item)}
+                    value={catalogSelectionKey(item)}
+                  >
+                    {catalogKindLabel(item.kind)} – {item.label} (
+                    {item.description})
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              className="secondary-button"
+              disabled={
+                catalogBusy || affectedItemsLoading || !selectedCatalogItemKey
+              }
+              type="submit"
+            >
+              {pendingCatalogAction === "link" ? (
+                <LoaderCircle
+                  aria-hidden="true"
+                  className="ticket-detail-spinner"
+                  size={16}
+                />
+              ) : (
+                <Circle aria-hidden="true" size={16} strokeWidth={1.8} />
+              )}
+              Verknüpfen
+            </button>
+            {availableCatalogItems.length === 0 && affectedItemsLoaded ? (
+              <p className="data-caption" aria-live="polite">
+                Keine weiteren verfügbaren Katalogeinträge.
+              </p>
+            ) : null}
+          </form>
+        ) : (
+          <p className="data-caption">
+            Sie haben für diese Elemente nur Leserechte.
+          </p>
+        )}
+
+        {affectedItemsLoading && !affectedItemsLoaded ? (
+          <p className="empty-state ticket-detail-loading" role="status">
+            <LoaderCircle
+              aria-hidden="true"
+              className="ticket-detail-spinner"
+              size={18}
+            />
+            Betroffene Elemente werden geladen …
+          </p>
+        ) : linkedCatalogItems.length === 0 && !affectedItemsError ? (
+          <p className="empty-state">
+            Keine Elemente mit diesem Ticket verknüpft.
+          </p>
+        ) : linkedCatalogItems.length > 0 ? (
+          <ol className="ticket-comment-list" aria-busy={affectedItemsLoading}>
+            {linkedCatalogItems.map((item) => {
+              const itemKey = catalogItemKey(item);
+              const isUnlinking =
+                pendingCatalogAction === "unlink" &&
+                pendingCatalogItemKey === itemKey;
+
+              return (
+                <li className="ticket-comment" key={itemKey}>
+                  <div className="ticket-comment-meta">
+                    <strong>{item.label}</strong>
+                    <span className="ticket-comment-visibility-badge internal">
+                      {catalogKindLabel(item.kind)}
+                    </span>
+                    {item.metadata.length > 0 && (
+                      <span>{item.metadata.join(" · ")}</span>
+                    )}
+                  </div>
+                  {detail.canUpdate && (
+                    <button
+                      aria-label={`Verknüpfung mit ${catalogKindLabel(item.kind)} ${item.label} entfernen`}
+                      className="secondary-button"
+                      disabled={catalogBusy || affectedItemsLoading}
+                      onClick={() => void unlinkCatalogItem(item)}
+                      type="button"
+                    >
+                      {isUnlinking ? (
+                        <LoaderCircle
+                          aria-hidden="true"
+                          className="ticket-detail-spinner"
+                          size={16}
+                        />
+                      ) : (
+                        <X aria-hidden="true" size={16} strokeWidth={1.8} />
+                      )}
+                      Verknüpfung entfernen
+                    </button>
+                  )}
+                </li>
+              );
+            })}
+          </ol>
+        ) : null}
+      </section>
 
       <section
         aria-busy={feedbackLoading}
