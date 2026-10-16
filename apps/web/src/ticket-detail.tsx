@@ -14,6 +14,7 @@ import {
   Clock3,
   Eye,
   EyeOff,
+  Focus,
   LoaderCircle,
   MessageSquare,
   RefreshCw,
@@ -2818,6 +2819,7 @@ export function TicketDetail({
   const [statusKey, setStatusKey] = useState("");
   const [priorityKey, setPriorityKey] = useState("");
   const [isEditingTicket, setIsEditingTicket] = useState(false);
+  const [focusMode, setFocusMode] = useState(false);
   const [editSubject, setEditSubject] = useState("");
   const [editDescription, setEditDescription] = useState("");
   const [selectedTeamId, setSelectedTeamId] = useState("");
@@ -4382,7 +4384,14 @@ export function TicketDetail({
   }
 
   return (
-    <section className="ticket-detail panel" aria-label="Ticketdetails">
+    <section
+      className={
+        focusMode
+          ? "ticket-detail ticket-detail--focus panel"
+          : "ticket-detail panel"
+      }
+      aria-label="Ticketdetails"
+    >
       <header className="ticket-detail-header">
         <div className="ticket-detail-header-title">
           <p className="eyebrow">TICKET {detail.ticket.ticket_number}</p>
@@ -4432,6 +4441,22 @@ export function TicketDetail({
             </button>
           )}
           <button
+            aria-pressed={focusMode}
+            className={
+              focusMode
+                ? "secondary-button ticket-focus-button active"
+                : "secondary-button ticket-focus-button"
+            }
+            disabled={busy}
+            onClick={() => setFocusMode((current) => !current)}
+            type="button"
+          >
+            <Focus aria-hidden="true" size={16} strokeWidth={1.8} />
+            <span className="ticket-detail-action-label">
+              {focusMode ? "Alle Bereiche" : "Fokus"}
+            </span>
+          </button>
+          <button
             aria-label="Ticketdetails schliessen"
             className="more-button"
             disabled={busy}
@@ -4475,6 +4500,14 @@ export function TicketDetail({
           </div>
         </dl>
       </div>
+
+      {focusMode && (
+        <p className="ticket-focus-notice" role="status">
+          Fokusmodus aktiv: Kommunikation, Status und die nächste Aktion bleiben
+          im Blick. Weitere Ticketbereiche können über „Alle Bereiche“
+          eingeblendet werden.
+        </p>
+      )}
 
       <section
         className="ticket-detail-comments ticket-detail-primary"
