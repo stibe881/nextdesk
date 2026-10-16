@@ -1,6 +1,7 @@
 import {
   useEffect,
   useMemo,
+  useRef,
   useState,
   type FormEvent,
   type ReactNode,
@@ -72,6 +73,21 @@ type DashboardView = {
   updatedAt: string;
 };
 
+type NotificationTicketReference = {
+  id: string;
+  subject: string;
+  ticketNumber: string;
+};
+
+type NotificationItem = {
+  createdAt: string;
+  id: string;
+  kind: string;
+  payload: unknown;
+  readAt: string | null;
+  ticket: NotificationTicketReference | null;
+};
+
 const sections: readonly { label: Section; Icon: LucideIcon }[] = [
   { label: "Übersicht", Icon: LayoutDashboard },
   { label: "Tickets", Icon: Ticket },
@@ -117,6 +133,92 @@ function displayAuthError(message: string): string {
     return "Zu viele Anmelde-E-Mails wurden für dieses Projekt versendet. Bitte warten Sie bis zu einer Stunde und fordern Sie danach nur einen neuen Magic Link an.";
   }
   return message;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function notificationFromValue(value: unknown): NotificationItem | null {
+  if (
+    !isRecord(value) ||
+    typeof value.id !== "string" ||
+    typeof value.kind !== "string" ||
+    typeof value.createdAt !== "string" ||
+    (value.readAt !== null && typeof value.readAt !== "string")
+  ) {
+    return null;
+  }
+
+  let ticket: NotificationTicketReference | null = null;
+  if (value.ticket !== null) {
+    if (
+      !isRecord(value.ticket) ||
+      typeof value.ticket.id !== "string" ||
+      typeof value.ticket.subject !== "string" ||
+      typeof value.ticket.ticketNumber !== "string"
+    ) {
+      return null;
+    }
+    ticket = value.ticket as NotificationTicketReference;
+  }
+
+  return {
+    createdAt: value.createdAt,
+    id: value.id,
+    kind: value.kind,
+    payload: value.payload,
+    readAt: value.readAt,
+    ticket,
+  };
+}
+
+function notificationsFromResponse(value: unknown): NotificationItem[] | null {
+  if (
+    !isRecord(value) ||
+    !isRecord(value.data) ||
+    !Array.isArray(value.data.notifications)
+  ) {
+    return null;
+  }
+
+  const notifications = value.data.notifications.map(notificationFromValue);
+  return notifications.every(
+    (notification): notification is NotificationItem => notification !== null,
+  )
+    ? notifications
+    : null;
+}
+
+function notificationSubject(notification: NotificationItem): string {
+  if (notification.ticket?.subject.trim()) return notification.ticket.subject;
+  if (isRecord(notification.payload)) {
+    for (const key of ["subject", "title", "message"]) {
+      const value = notification.payload[key];
+      if (typeof value === "string" && value.trim()) return value;
+    }
+  }
+  return "Benachrichtigung";
+}
+
+function notificationTime(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Zeitpunkt unbekannt";
+  return new Intl.DateTimeFormat("de-CH", {
+    dateStyle: "short",
+    timeStyle: "short",
+  }).format(date);
+}
+
+function notificationErrorMessage(
+  error: unknown,
+  fallback = "Benachrichtigungen können derzeit nicht geladen werden.",
+): string {
+  const context = isRecord(error) ? error.context : undefined;
+  if (isRecord(context) && context.status === 403) {
+    return "Benachrichtigungen sind für diesen Mandanten nicht verfügbar.";
+  }
+  return fallback;
 }
 
 function AccessShell({ children }: { children: ReactNode }) {
@@ -387,6 +489,16 @@ export function App() {
   const [ownerView, setOwnerView] = useState<"console" | "tenant">("console");
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
   const [isTenantAdmin, setIsTenantAdmin] = useState(false);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [notificationsLoading, setNotificationsLoading] = useState(false);
+  const [notificationsError, setNotificationsError] = useState("");
+  const [notificationStatus, setNotificationStatus] = useState("");
+  const [notificationPanelOpen, setNotificationPanelOpen] = useState(false);
+  const [notificationActionPending, setNotificationActionPending] = useState<
+    string | null
+  >(null);
+  const notificationButtonRef = useRef<HTMLButtonElement>(null);
+  const notificationPanelRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     if (!supabase) return;
@@ -484,6 +596,55 @@ export function App() {
   );
 
   useEffect(() => {
+    if (!isSupabaseConfigured || !supabase || !session || !activeTenant) {
+      setNotifications([]);
+      setNotificationsLoading(false);
+      setNotificationsError("");
+      setNotificationStatus("");
+      setNotificationPanelOpen(false);
+      return;
+    }
+
+    let mounted = true;
+    setNotificationsLoading(true);
+    setNotificationsError("");
+    setNotificationStatus("");
+    setNotificationPanelOpen(false);
+    void supabase.functions
+      .invoke("notification-center", {
+        body: {
+          type: "list",
+          tenantId: activeTenant.id,
+          unreadOnly: false,
+          limit: 20,
+        },
+      })
+      .then(({ data, error }) => {
+        if (error) throw error;
+        const nextNotifications = notificationsFromResponse(data);
+        if (!nextNotifications)
+          throw new Error("invalid_notification_response");
+        if (mounted) setNotifications(nextNotifications);
+      })
+      .catch((error: unknown) => {
+        if (!mounted) return;
+        setNotifications([]);
+        setNotificationsError(notificationErrorMessage(error));
+      })
+      .finally(() => {
+        if (mounted) setNotificationsLoading(false);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [activeTenant, session]);
+
+  useEffect(() => {
+    if (notificationPanelOpen) notificationPanelRef.current?.focus();
+  }, [notificationPanelOpen]);
+
+  useEffect(() => {
     if (!supabase || !session || !activeTenant) {
       setIsTenantAdmin(false);
       return;
@@ -530,6 +691,87 @@ export function App() {
   async function signOut() {
     if (!supabase) return;
     await supabase.auth.signOut();
+  }
+
+  function closeNotificationPanel() {
+    setNotificationPanelOpen(false);
+    notificationButtonRef.current?.focus();
+  }
+
+  function toggleNotificationPanel() {
+    if (notificationPanelOpen) {
+      closeNotificationPanel();
+      return;
+    }
+    setNotificationPanelOpen(true);
+  }
+
+  async function handleNotificationClick(notification: NotificationItem) {
+    if (!supabase) return;
+
+    const ticketId = notification.ticket?.id;
+    setNotificationActionPending(notification.id);
+    setNotificationsError("");
+    setNotificationStatus("");
+    try {
+      const { error } = await supabase.functions.invoke("notification-center", {
+        body: { type: "markRead", notificationId: notification.id },
+      });
+      if (error) throw error;
+      const readAt = new Date().toISOString();
+      setNotifications((current) =>
+        current.map((item) =>
+          item.id === notification.id ? { ...item, readAt } : item,
+        ),
+      );
+    } catch (error) {
+      setNotificationsError(
+        notificationErrorMessage(
+          error,
+          "Die Benachrichtigung konnte nicht als gelesen markiert werden.",
+        ),
+      );
+    } finally {
+      setNotificationActionPending(null);
+    }
+
+    if (ticketId) {
+      setSection("Tickets");
+      setSelectedTicketId(ticketId);
+      setNotificationPanelOpen(false);
+    }
+  }
+
+  async function markAllNotificationsAsRead() {
+    if (!supabase || !activeTenant) return;
+
+    setNotificationActionPending("all");
+    setNotificationsError("");
+    setNotificationStatus("");
+    try {
+      const { error } = await supabase.functions.invoke("notification-center", {
+        body: { type: "markAllRead", tenantId: activeTenant.id },
+      });
+      if (error) throw error;
+      const readAt = new Date().toISOString();
+      setNotifications((current) =>
+        current.map((notification) =>
+          notification.readAt ? notification : { ...notification, readAt },
+        ),
+      );
+      setNotificationStatus(
+        "Alle Benachrichtigungen wurden als gelesen markiert.",
+      );
+    } catch (error) {
+      setNotificationsError(
+        notificationErrorMessage(
+          error,
+          "Benachrichtigungen konnten nicht als gelesen markiert werden.",
+        ),
+      );
+    } finally {
+      setNotificationActionPending(null);
+    }
   }
 
   const currentSnapshot =
@@ -591,6 +833,12 @@ export function App() {
   const visibleSections = isTenantAdmin
     ? [...sections, { label: "Einstellungen" as const, Icon: Settings }]
     : sections;
+  const unreadNotificationCount = useMemo(
+    () =>
+      notifications.filter((notification) => notification.readAt === null)
+        .length,
+    [notifications],
+  );
 
   if (isSupabaseConfigured && session === undefined) {
     return <LoadingScreen message="Sichere Sitzung wird geprüft." />;
@@ -747,14 +995,163 @@ export function App() {
                 value={query}
               />
             </label>
-            <button
-              className="notification-button"
-              aria-label="Benachrichtigungen folgen"
-              type="button"
-            >
-              <Bell aria-hidden="true" size={17} strokeWidth={1.8} />
-              <b>{isSupabaseConfigured ? "0" : "2"}</b>
-            </button>
+            <div style={{ position: "relative" }}>
+              <button
+                aria-controls="notification-center-panel"
+                aria-expanded={notificationPanelOpen}
+                aria-label={`Benachrichtigungen, ${unreadNotificationCount} ungelesen`}
+                className="notification-button"
+                disabled={!isSupabaseConfigured || !activeTenant}
+                onClick={toggleNotificationPanel}
+                ref={notificationButtonRef}
+                type="button"
+              >
+                <Bell aria-hidden="true" size={17} strokeWidth={1.8} />
+                <b aria-hidden="true">{unreadNotificationCount}</b>
+              </button>
+              {notificationPanelOpen && (
+                <section
+                  aria-labelledby="notification-center-heading"
+                  id="notification-center-panel"
+                  onKeyDown={(event) => {
+                    if (event.key === "Escape") closeNotificationPanel();
+                  }}
+                  ref={notificationPanelRef}
+                  role="dialog"
+                  style={{
+                    background: "#fff",
+                    border: "1px solid #dbe3e6",
+                    borderRadius: "6px",
+                    boxShadow: "0 14px 32px rgba(18, 40, 58, 0.18)",
+                    maxHeight: "min(540px, calc(100vh - 96px))",
+                    overflowY: "auto",
+                    padding: "14px",
+                    position: "absolute",
+                    right: 0,
+                    top: "calc(100% + 8px)",
+                    width: "min(380px, calc(100vw - 32px))",
+                    zIndex: 20,
+                  }}
+                  tabIndex={-1}
+                >
+                  <div
+                    style={{
+                      alignItems: "center",
+                      display: "flex",
+                      gap: "12px",
+                      justifyContent: "space-between",
+                      marginBottom: "12px",
+                    }}
+                  >
+                    <div>
+                      <p className="eyebrow">Benachrichtigungen</p>
+                      <h2
+                        id="notification-center-heading"
+                        style={{ fontSize: "18px", margin: 0 }}
+                      >
+                        Aktueller Mandant
+                      </h2>
+                    </div>
+                    <button
+                      onClick={closeNotificationPanel}
+                      style={{
+                        background: "transparent",
+                        border: 0,
+                        padding: "4px",
+                      }}
+                      type="button"
+                    >
+                      Schließen
+                    </button>
+                  </div>
+                  {!notificationsLoading && unreadNotificationCount > 0 && (
+                    <button
+                      disabled={notificationActionPending !== null}
+                      onClick={() => void markAllNotificationsAsRead()}
+                      style={{ marginBottom: "12px" }}
+                      type="button"
+                    >
+                      {notificationActionPending === "all"
+                        ? "Wird markiert …"
+                        : "Alle als gelesen markieren"}
+                    </button>
+                  )}
+                  {notificationsLoading ? (
+                    <p aria-live="polite" className="empty-state">
+                      Benachrichtigungen werden geladen …
+                    </p>
+                  ) : notificationsError ? (
+                    <p aria-live="polite" className="empty-state" role="status">
+                      {notificationsError}
+                    </p>
+                  ) : notifications.length === 0 ? (
+                    <p className="empty-state">
+                      Keine Benachrichtigungen vorhanden.
+                    </p>
+                  ) : (
+                    <ul
+                      aria-label="Benachrichtigungen"
+                      style={{ listStyle: "none", margin: 0, padding: 0 }}
+                    >
+                      {notifications.map((notification) => {
+                        const subject = notificationSubject(notification);
+                        const time = notificationTime(notification.createdAt);
+                        const ticketLabel = notification.ticket
+                          ? `Ticket ${notification.ticket.ticketNumber}`
+                          : "";
+                        return (
+                          <li
+                            key={notification.id}
+                            style={{ marginBottom: "8px" }}
+                          >
+                            <button
+                              aria-label={`${subject}. Art: ${notification.kind}. ${time}${
+                                ticketLabel ? `. ${ticketLabel}` : ""
+                              }${notification.readAt ? "" : ". Ungelesen"}`}
+                              disabled={notificationActionPending !== null}
+                              onClick={() =>
+                                void handleNotificationClick(notification)
+                              }
+                              style={{
+                                background: notification.readAt
+                                  ? "#fff"
+                                  : "#f6fafb",
+                                border: "1px solid #dbe3e6",
+                                borderRadius: "5px",
+                                color: "#183042",
+                                cursor: "pointer",
+                                display: "grid",
+                                gap: "4px",
+                                padding: "10px",
+                                textAlign: "left",
+                                width: "100%",
+                              }}
+                              type="button"
+                            >
+                              <strong>{subject}</strong>
+                              <small>
+                                Art: {notification.kind} · {time}
+                              </small>
+                              {notification.ticket && (
+                                <small>{ticketLabel}</small>
+                              )}
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                  {(notificationStatus ||
+                    (notificationActionPending !== null &&
+                      notificationActionPending !== "all")) && (
+                    <p aria-live="polite" className="empty-state" role="status">
+                      {notificationStatus ||
+                        "Benachrichtigung wird aktualisiert …"}
+                    </p>
+                  )}
+                </section>
+              )}
+            </div>
           </div>
         </header>
 

@@ -47,3 +47,6 @@ verify_jwt = true
 
 [functions.email-ingress]
 verify_jwt = false
+
+[functions.notification-center]
+verify_jwt = true
