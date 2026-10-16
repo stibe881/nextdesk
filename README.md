@@ -4,6 +4,10 @@ NextDesk ist das Quellcode-Repository für **TicketHub**, eine mandantenfähige 
 
 > **Stand:** Phase 1 und die lokale Phase-2-Plattformbasis sind angelegt. Die startbare Vite-/React-Webanwendung liefert bereits eine responsive Operationsübersicht; sie markiert den Offline-Preview-Modus sichtbar, solange keine Supabase-Instanz verbunden ist. Die Expo-App und die produktive Supabase-Anbindung folgen.
 
+## Permanente Website
+
+Die statische Operationsübersicht wird bei jedem Push auf `main` über GitHub Pages bereitgestellt: [https://stibe881.github.io/nextdesk/](https://stibe881.github.io/nextdesk/). Details zur Auslieferung stehen im [Deploymentkonzept](DEPLOYMENT.md).
+
 ## Ziele
 
 - Strikte Datenisolation zwischen Mandanten und Abteilungen.

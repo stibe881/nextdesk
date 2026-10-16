@@ -12,6 +12,12 @@ Es gibt drei getrennte Supabase-Projekte und eigene Konfigurationen: `developmen
 
 Pull Requests führen mindestens Dependency-Install, Formatprüfung, TypeScript-Check, Unit-Tests, Migration-Lint und später RLS-/API-/E2E-Tests aus. Ein Merge nach `main` liefert Staging; ein getaggtes, freigegebenes Release promotet gezielt nach Produktion. Datenbankmigrationen werden vor dem Web-Deploy in einer kontrollierten Reihenfolge angewendet. Rücknahmen erfolgen als Vorwärtsmigration oder als zuvor getesteter Restore, nicht durch unkontrolliertes Löschen von Produktionsdaten.
 
+## Permanentes Dashboard auf GitHub Pages
+
+Die aktuelle öffentliche Operationsübersicht wird statisch über GitHub Pages unter `https://stibe881.github.io/nextdesk/` ausgeliefert. Der Workflow [`.github/workflows/deploy-pages.yml`](.github/workflows/deploy-pages.yml) baut bei jedem Push auf `main` mit `pnpm --filter @nextdesk/web build:pages`, lädt ausschliesslich `apps/web/dist` als Artefakt hoch und veröffentlicht dieses über die offizielle Pages-Deployment-Action.
+
+Der Pages-Build verwendet bewusst den Basis-Pfad `/nextdesk/`. Die statische Website enthält weder eine Service-Role noch andere geheime Werte. Solange keine browser-sicheren Publishable-Supabase-Werte in einer geeigneten Build-Umgebung gesetzt sind, bleibt der sichtbare Offline-Preview-Hinweis aktiv. GitHub Pages ersetzt keine produktive Auth-, API-, Storage- oder Realtime-Laufzeit; diese Komponenten verbleiben bei Supabase beziehungsweise einem späteren kontrollierten Hosting.
+
 ## Mobile-Auslieferung
 
 EAS Build, EAS Submit und EAS Update werden erst konfiguriert, wenn die Expo-App vorhanden ist. EAS Update ist auf JavaScript- und Asset-Änderungen begrenzt, die mit dem vorhandenen nativen Runtime-Build kompatibel sind. Änderungen an nativen Modulen, Berechtigungen oder App-Konfigurationen erzwingen neue iOS-/Android-Builds. TestFlight und Google Play Testing sind verpflichtende Vorstufen.
