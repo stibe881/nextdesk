@@ -23,8 +23,15 @@ import {
 import { supabase } from "./lib/supabase";
 
 type CommentVisibility = "external" | "internal";
+type BillingKind = "internal" | "billable" | "goodwill";
 type PendingAction =
-  "comment" | "update" | "watch" | "checklist-add" | "checklist-toggle" | null;
+  | "comment"
+  | "update"
+  | "watch"
+  | "checklist-add"
+  | "checklist-toggle"
+  | "time-entry"
+  | null;
 
 type GetTicketAction = {
   type: "getTicket";
@@ -71,13 +78,24 @@ type ToggleChecklistItemAction = {
   completed: boolean;
 };
 
+type AddTimeEntryAction = {
+  type: "addTimeEntry";
+  tenantId: string;
+  ticketId: string;
+  minutes: number;
+  billingKind: BillingKind;
+  note?: string;
+  startedAt?: string;
+};
+
 type TicketOperation =
   | GetTicketAction
   | UpdateTicketAction
   | AddCommentAction
   | ToggleWatchAction
   | AddChecklistItemAction
-  | ToggleChecklistItemAction;
+  | ToggleChecklistItemAction
+  | AddTimeEntryAction;
 
 type TicketRecord = {
   id: string;
@@ -129,6 +147,16 @@ type TicketChecklistItem = {
   completed_at: string | null;
 };
 
+type TicketTimeEntry = {
+  id: string;
+  author_id: string;
+  minutes: number;
+  billing_kind: BillingKind;
+  note: string | null;
+  started_at: string | null;
+  created_at: string;
+};
+
 type TicketDetailData = {
   ticket: TicketRecord;
   comments: TicketComment[];
@@ -137,9 +165,11 @@ type TicketDetailData = {
   priorities: TicketPriority[];
   teams: TicketTeam[];
   checklistItems: TicketChecklistItem[];
+  timeEntries: TicketTimeEntry[];
   watching: boolean;
   canUpdate: boolean;
   canUseInternalNotes: boolean;
+  canTrackTime: boolean;
 };
 
 type TicketDetailProps = {
@@ -230,6 +260,10 @@ function isTicketTeam(value: unknown): value is TicketTeam {
   );
 }
 
+function isBillingKind(value: unknown): value is BillingKind {
+  return value === "internal" || value === "billable" || value === "goodwill";
+}
+
 function isTicketChecklistItem(value: unknown): value is TicketChecklistItem {
   const item = asRecord(value);
   return Boolean(
@@ -238,6 +272,23 @@ function isTicketChecklistItem(value: unknown): value is TicketChecklistItem {
     typeof item.description === "string" &&
     typeof item.position === "number" &&
     (typeof item.completed_at === "string" || item.completed_at === null),
+  );
+}
+
+function isTicketTimeEntry(value: unknown): value is TicketTimeEntry {
+  const entry = asRecord(value);
+  return Boolean(
+    entry &&
+    typeof entry.id === "string" &&
+    typeof entry.author_id === "string" &&
+    typeof entry.minutes === "number" &&
+    Number.isInteger(entry.minutes) &&
+    entry.minutes >= 1 &&
+    entry.minutes <= 1440 &&
+    isBillingKind(entry.billing_kind) &&
+    (typeof entry.note === "string" || entry.note === null) &&
+    (typeof entry.started_at === "string" || entry.started_at === null) &&
+    typeof entry.created_at === "string",
   );
 }
 
@@ -274,9 +325,11 @@ function parseTicketDetail(
     checklistItems: valuesOf(data.checklistItems, isTicketChecklistItem).sort(
       (first, second) => first.position - second.position,
     ),
+    timeEntries: valuesOf(data.timeEntries, isTicketTimeEntry),
     watching: data.watching === true,
     canUpdate: data.canUpdate === true,
     canUseInternalNotes: data.canUseInternalNotes === true,
+    canTrackTime: data.canTrackTime === true,
   };
 }
 
@@ -296,6 +349,23 @@ function formatDateTime(timestamp: string): string {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(value);
+}
+
+function formatMinutes(minutes: number): string {
+  const hours = Math.floor(minutes / 60);
+  const remainingMinutes = minutes % 60;
+  if (hours === 0) return `${minutes} Min.`;
+  if (remainingMinutes === 0) return `${hours} Std.`;
+  return `${hours} Std. ${remainingMinutes} Min.`;
+}
+
+function billingKindLabel(kind: BillingKind): string {
+  const labels: Record<BillingKind, string> = {
+    internal: "Intern",
+    billable: "Verrechenbar",
+    goodwill: "Kulanz",
+  };
+  return labels[kind];
 }
 
 function eventLabel(eventType: string): string {
@@ -341,6 +411,10 @@ export function TicketDetail({
   const [commentVisibility, setCommentVisibility] =
     useState<CommentVisibility>("external");
   const [checklistDescription, setChecklistDescription] = useState("");
+  const [timeEntryMinutes, setTimeEntryMinutes] = useState("");
+  const [timeEntryBillingKind, setTimeEntryBillingKind] =
+    useState<BillingKind>("internal");
+  const [timeEntryNote, setTimeEntryNote] = useState("");
   const [pendingChecklistItemId, setPendingChecklistItemId] = useState<
     string | null
   >(null);
@@ -484,6 +558,46 @@ export function TicketDetail({
         visibility: commentVisibility,
       });
       setComment("");
+      onChanged();
+      await loadTicket();
+    } catch (nextError) {
+      setError(errorMessage(nextError));
+    } finally {
+      setPendingAction(null);
+    }
+  }
+
+  async function saveTimeEntry(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!detail || !detail.canTrackTime) return;
+
+    const minutes = Number(timeEntryMinutes);
+    const note = timeEntryNote.trim();
+    if (!Number.isInteger(minutes) || minutes < 1 || minutes > 1440) {
+      setError("Bitte geben Sie eine ganze Minutenanzahl von 1 bis 1'440 ein.");
+      return;
+    }
+    if (note.length > 500) {
+      setError("Die Notiz darf höchstens 500 Zeichen enthalten.");
+      return;
+    }
+
+    const action: AddTimeEntryAction = {
+      type: "addTimeEntry",
+      tenantId,
+      ticketId,
+      minutes,
+      billingKind: timeEntryBillingKind,
+    };
+    if (note) action.note = note;
+
+    setPendingAction("time-entry");
+    setError("");
+    try {
+      await invokeTicketOperation(action);
+      setTimeEntryMinutes("");
+      setTimeEntryBillingKind("internal");
+      setTimeEntryNote("");
       onChanged();
       await loadTicket();
     } catch (nextError) {
@@ -694,6 +808,104 @@ export function TicketDetail({
           Erstellt am {formatDateTime(detail.ticket.created_at)}
         </p>
       </div>
+
+      {detail.canTrackTime && (
+        <section
+          className="ticket-detail-comments"
+          aria-labelledby="ticket-time-entries-heading"
+        >
+          <div className="ticket-detail-section-heading">
+            <div>
+              <p className="eyebrow">ARBEITSZEIT</p>
+              <h3 id="ticket-time-entries-heading">Arbeitszeit erfassen</h3>
+            </div>
+            <span className="data-caption">{detail.timeEntries.length}</span>
+          </div>
+
+          <form className="ticket-comment-form" onSubmit={saveTimeEntry}>
+            <label>
+              Minuten
+              <input
+                disabled={busy}
+                inputMode="numeric"
+                max={1440}
+                min={1}
+                onChange={(event) => setTimeEntryMinutes(event.target.value)}
+                placeholder="z. B. 30"
+                required
+                step={1}
+                type="number"
+                value={timeEntryMinutes}
+              />
+            </label>
+            <label>
+              Verrechnungsart
+              <select
+                disabled={busy}
+                onChange={(event) => {
+                  const nextBillingKind = event.target.value;
+                  if (isBillingKind(nextBillingKind)) {
+                    setTimeEntryBillingKind(nextBillingKind);
+                  }
+                }}
+                value={timeEntryBillingKind}
+              >
+                <option value="internal">Intern</option>
+                <option value="billable">Verrechenbar</option>
+                <option value="goodwill">Kulanz</option>
+              </select>
+            </label>
+            <label className="ticket-comment-body">
+              Kurze Notiz (optional)
+              <textarea
+                disabled={busy}
+                maxLength={500}
+                onChange={(event) => setTimeEntryNote(event.target.value)}
+                placeholder="Woran wurde gearbeitet?"
+                rows={2}
+                value={timeEntryNote}
+              />
+            </label>
+            <button className="secondary-button" disabled={busy} type="submit">
+              {pendingAction === "time-entry" ? (
+                <LoaderCircle
+                  aria-hidden="true"
+                  className="ticket-detail-spinner"
+                  size={16}
+                />
+              ) : (
+                <Clock3 aria-hidden="true" size={16} strokeWidth={1.8} />
+              )}
+              Arbeitszeit speichern
+            </button>
+          </form>
+
+          {detail.timeEntries.length === 0 ? (
+            <p className="empty-state">Noch keine Arbeitszeit erfasst.</p>
+          ) : (
+            <ol className="ticket-comment-list">
+              {detail.timeEntries.map((entry) => {
+                const timestamp = entry.started_at ?? entry.created_at;
+                return (
+                  <li className="ticket-comment" key={entry.id}>
+                    <div className="ticket-comment-meta">
+                      <strong>{formatMinutes(entry.minutes)}</strong>
+                      <span className="ticket-comment-visibility-badge internal">
+                        {billingKindLabel(entry.billing_kind)}
+                      </span>
+                      <time dateTime={timestamp}>
+                        {entry.started_at ? "Begonnen am " : "Erfasst am "}
+                        {formatDateTime(timestamp)}
+                      </time>
+                    </div>
+                    {entry.note && <p>{entry.note}</p>}
+                  </li>
+                );
+              })}
+            </ol>
+          )}
+        </section>
+      )}
 
       <section
         className="ticket-detail-checklist"

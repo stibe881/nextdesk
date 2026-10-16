@@ -1,5 +1,6 @@
 import { withSupabase } from "@supabase/server";
 
+type BillingKind = "internal" | "billable" | "goodwill";
 type Action =
   | { type: "getTicket"; tenantId: string; ticketId: string }
   | {
@@ -36,6 +37,15 @@ type Action =
       ticketId: string;
       itemId: string;
       completed: boolean;
+    }
+  | {
+      type: "addTimeEntry";
+      tenantId: string;
+      ticketId: string;
+      minutes: number;
+      billingKind: BillingKind;
+      note?: string;
+      startedAt?: string;
     };
 
 const originHeaders = (request: Request) => ({
@@ -115,6 +125,28 @@ function parseAction(value: unknown): Action | null {
       ticketId: value.ticketId,
       itemId: value.itemId,
       completed: value.completed,
+    };
+  if (
+    value.type === "addTimeEntry" &&
+    typeof value.minutes === "number" &&
+    Number.isInteger(value.minutes) &&
+    value.minutes >= 1 &&
+    value.minutes <= 1440 &&
+    (value.billingKind === "internal" ||
+      value.billingKind === "billable" ||
+      value.billingKind === "goodwill") &&
+    (value.note === undefined ||
+      (typeof value.note === "string" && value.note.length <= 3000)) &&
+    (value.startedAt === undefined || typeof value.startedAt === "string")
+  )
+    return {
+      type: value.type,
+      tenantId: value.tenantId,
+      ticketId: value.ticketId,
+      minutes: value.minutes,
+      billingKind: value.billingKind,
+      note: value.note,
+      startedAt: value.startedAt,
     };
   if (value.type === "updateTicket")
     return {
@@ -254,6 +286,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       { data: teams },
       { data: watchers },
       { data: checklistItems },
+      { data: timeEntries },
     ] = await Promise.all([
       context.supabaseAdmin
         .from("ticket_comments")
@@ -296,6 +329,13 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         .eq("ticket_id", ticket.id)
         .order("position")
         .order("created_at"),
+      context.supabaseAdmin
+        .from("ticket_time_entries")
+        .select(
+          "id, author_id, minutes, billing_kind, note, started_at, created_at",
+        )
+        .eq("ticket_id", ticket.id)
+        .order("created_at", { ascending: false }),
     ]);
     const filteredComments = internal
       ? (comments ?? [])
@@ -330,6 +370,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         teams: teams ?? [],
         watching: Boolean(watchers),
         checklistItems: checklistItems ?? [],
+        timeEntries: internal ? (timeEntries ?? []) : [],
         canUpdate: await hasPermission(
           context.supabaseAdmin,
           actorId,
@@ -344,9 +385,65 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
           ticket.department_id,
           "ticket.assign",
         ),
+        canTrackTime: await hasPermission(
+          context.supabaseAdmin,
+          actorId,
+          ticket.tenant_id,
+          ticket.department_id,
+          "ticket.time.track",
+        ),
         canUseInternalNotes: internal,
       },
     });
+  }
+
+  if (action.type === "addTimeEntry") {
+    if (
+      !(await hasPermission(
+        context.supabaseAdmin,
+        actorId,
+        ticket.tenant_id,
+        ticket.department_id,
+        "ticket.time.track",
+      ))
+    )
+      return response(
+        request,
+        { error: { code: "ticket_time_track_denied" } },
+        403,
+      );
+    const { data: timeEntry, error } = await context.supabaseAdmin
+      .from("ticket_time_entries")
+      .insert({
+        ticket_id: ticket.id,
+        author_id: actorId,
+        minutes: action.minutes,
+        billing_kind: action.billingKind,
+        note: action.note ?? null,
+        started_at: action.startedAt ?? null,
+      })
+      .select(
+        "id, author_id, minutes, billing_kind, note, started_at, created_at",
+      )
+      .single();
+    if (error)
+      return response(
+        request,
+        { error: { code: "time_entry_create_failed" } },
+        422,
+      );
+    await context.supabaseAdmin.from("ticket_events").insert({
+      ticket_id: ticket.id,
+      actor_id: actorId,
+      event_type: "time_entry.added",
+      payload: {
+        timeEntryId: timeEntry.id,
+        minutes: timeEntry.minutes,
+        billingKind: timeEntry.billing_kind,
+        startedAt: timeEntry.started_at,
+      },
+    });
+    return response(request, { data: { timeEntry } }, 201);
   }
 
   if (action.type === "addComment") {
