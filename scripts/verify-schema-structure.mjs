@@ -12,6 +12,11 @@ const expectedFiles = [
   "0007_tenant_provisioning_and_invitations.sql",
   "0008_tenant_administration.sql",
   "0009_ticket_dashboard_reference_reads.sql",
+  "0010_platform_owner_provisioning.sql",
+  "0011_tenant_user_invitations.sql",
+  "0012_owner_sso_provisioning.sql",
+  "0013_ticket_reference_defaults.sql",
+  "0014_ticket_operations_core.sql",
 ];
 
 const availableFiles = await readdir(migrationDirectory);
@@ -113,6 +118,22 @@ const requiredFragments = [
   [
     "0009_ticket_dashboard_reference_reads.sql",
     "create policy ticket_categories_select_member",
+  ],
+  [
+    "0014_ticket_operations_core.sql",
+    "create table public.ticket_checklist_items",
+  ],
+  [
+    "0014_ticket_operations_core.sql",
+    "create table public.ticket_sla_profiles",
+  ],
+  [
+    "0014_ticket_operations_core.sql",
+    "create table public.knowledge_articles",
+  ],
+  [
+    "0014_ticket_operations_core.sql",
+    "create or replace function public.customer_can_read_ticket",
   ],
 ];
 
