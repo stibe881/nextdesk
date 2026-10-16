@@ -88,8 +88,8 @@ function displayAuthError(message: string): string {
 function AccessShell({ children }: { children: ReactNode }) {
   return (
     <main className="access-shell">
-      <section className="access-card">
-        <div className="brand-lockup access-brand">
+      <header className="access-header">
+        <div className="access-brand">
           <span className="brand-mark" aria-hidden="true">
             <i />
             <i />
@@ -97,18 +97,55 @@ function AccessShell({ children }: { children: ReactNode }) {
           </span>
           <span>{productDefaults.productName}</span>
         </div>
-        {children}
+        <nav aria-label="Zugangsbereiche">
+          <span>PLATTFORM</span>
+          <span>SUPPORT</span>
+          <span>SICHERHEIT</span>
+        </nav>
+      </header>
+      <div className="access-overlay" aria-hidden="true" />
+      <section className="access-stage">
+        <div className="access-intro">
+          <p className="access-kicker">DIGITALE BETREUUNG · SICHERER ZUGANG</p>
+          <h1>
+            IHRE IT.
+            <br />
+            IHR PORTAL.
+          </h1>
+          <span className="access-rule" aria-hidden="true" />
+          <p>Tickets, Services und Mandantensteuerung an einem sicheren Ort.</p>
+        </div>
+        <section className="access-card">{children}</section>
       </section>
+      <footer className="access-footer">
+        TICKETHUB · BETRIEBEN FÜR GROSS ICT
+      </footer>
     </main>
   );
 }
 
 function SignInScreen() {
   const [email, setEmail] = useState("");
-  const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">(
-    "idle",
-  );
+  const [status, setStatus] = useState<
+    "idle" | "sending" | "sso" | "sent" | "error"
+  >("idle");
   const [message, setMessage] = useState("");
+
+  async function requestGrossIctSso() {
+    if (!supabase) return;
+    setStatus("sso");
+    setMessage("");
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "azure",
+      options: { redirectTo: appRedirectUrl() },
+    });
+    if (error) {
+      setStatus("error");
+      setMessage(
+        "Gross-ICT-SSO ist noch nicht in Supabase eingerichtet. Hinterlegen Sie zuerst die Entra-App-Registrierung.",
+      );
+    }
+  }
 
   async function requestMagicLink(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -135,18 +172,36 @@ function SignInScreen() {
 
   return (
     <AccessShell>
-      <p className="eyebrow">Sicherer Zugang</p>
-      <h1>Mit Arbeitsadresse anmelden.</h1>
-      <p>
-        TicketHub sendet einen zeitlich begrenzten Magic Link. Mandanten- und
-        Ticketzugriff werden erst nach der Anmeldung über RLS geprüft.
+      <p className="eyebrow">KUNDEN-LOGIN</p>
+      <h2>
+        Sicher in Ihre
+        <br />
+        Servicezentrale.
+      </h2>
+      <p className="access-lead">
+        Eigentümer melden sich über Gross ICT an. Mandantenzugänge folgen der
+        jeweiligen Unternehmensrichtlinie.
       </p>
+      <button
+        className="gross-sso-button"
+        disabled={status === "sending" || status === "sso"}
+        onClick={() => void requestGrossIctSso()}
+        type="button"
+      >
+        {status === "sso" ? "SSO wird geöffnet …" : "MIT GROSS ICT ANMELDEN"}
+        <span aria-hidden="true">→</span>
+      </button>
+      <div className="access-divider">
+        <span>ODER MIT E-MAIL</span>
+      </div>
       <form className="access-form" onSubmit={requestMagicLink}>
         <label>
-          Geschäftliche E-Mail-Adresse
+          Arbeitsadresse
           <input
             autoComplete="email"
-            disabled={status === "sending" || status === "sent"}
+            disabled={
+              status === "sending" || status === "sso" || status === "sent"
+            }
             inputMode="email"
             onChange={(event) => setEmail(event.target.value)}
             placeholder="name@organisation.ch"
@@ -156,8 +211,10 @@ function SignInScreen() {
           />
         </label>
         <button
-          className="primary-button"
-          disabled={status === "sending" || status === "sent"}
+          className="email-access-button"
+          disabled={
+            status === "sending" || status === "sso" || status === "sent"
+          }
           type="submit"
         >
           {status === "sending"

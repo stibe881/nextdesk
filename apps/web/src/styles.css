@@ -802,104 +802,300 @@ button {
   margin-top: 28px;
 }
 .access-shell {
+  position: relative;
+  isolation: isolate;
   min-height: 100vh;
-  display: grid;
-  place-items: center;
-  padding: 24px;
-  background:
-    linear-gradient(135deg, rgba(42, 180, 154, 0.12), transparent 42%), #edf3f4;
+  overflow: hidden;
+  color: #fff;
+  background: #111417 url("/assets/gross-ict-alpine.webp") center / cover
+    no-repeat;
 }
-.access-card {
-  width: min(100%, 510px);
-  border: 1px solid #dce6e8;
-  border-top: 4px solid #ff5c35;
-  border-radius: 10px;
-  background: #fff;
-  padding: 35px;
-  box-shadow: 0 20px 50px rgba(18, 40, 58, 0.1);
+.access-overlay {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  background:
+    linear-gradient(
+      90deg,
+      rgba(8, 12, 15, 0.82) 0%,
+      rgba(8, 12, 15, 0.36) 47%,
+      rgba(8, 12, 15, 0.6) 100%
+    ),
+    linear-gradient(0deg, rgba(11, 14, 16, 0.64), transparent 56%);
+}
+.access-header {
+  width: min(1320px, calc(100% - 64px));
+  min-height: 88px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.24);
 }
 .access-brand {
-  color: #17384c;
-  padding: 0 0 28px;
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  color: #fff;
+  font:
+    700 22px/1 Arial,
+    sans-serif;
+  letter-spacing: -0.04em;
 }
 .access-brand .brand-mark {
-  border-color: #c9d7dc;
+  width: 27px;
+  height: 27px;
+  border-color: rgba(255, 255, 255, 0.72);
 }
-.access-card h1 {
+.access-brand .brand-mark i {
+  background: #f2c13d;
+}
+.access-brand .brand-mark i:nth-child(2) {
+  background: #fff;
+}
+.access-brand .brand-mark i:nth-child(3) {
+  background: #e8b63d;
+}
+.access-header nav {
+  display: flex;
+  align-items: center;
+  gap: clamp(14px, 2vw, 34px);
+  color: #fff;
+  font:
+    800 10px/1 Arial,
+    sans-serif;
+  letter-spacing: 0.14em;
+}
+.access-header nav span::after {
+  display: block;
+  width: 22px;
+  height: 2px;
+  margin-top: 8px;
+  background: #e8b63d;
+  content: "";
+  opacity: 0;
+  transition: opacity 160ms ease;
+}
+.access-header nav span:first-child::after {
+  opacity: 1;
+}
+.access-stage {
+  width: min(1320px, calc(100% - 64px));
+  min-height: calc(100vh - 142px);
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 454px);
+  align-items: center;
+  gap: 80px;
+  padding: 54px 0 68px;
+}
+.access-intro {
+  align-self: center;
+  max-width: 610px;
+  padding-top: 34px;
+}
+.access-kicker,
+.access-card .eyebrow {
+  margin: 0 0 17px;
+  color: #f5d06b;
+  font:
+    800 10px/1.35 "Arial Narrow",
+    Arial,
+    sans-serif;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+.access-intro h1 {
+  margin: 0;
+  color: #fff;
+  font-family: Impact, "Arial Narrow", sans-serif;
+  font-size: clamp(56px, 8.5vw, 122px);
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  line-height: 0.82;
+  text-shadow: 0 3px 18px rgba(0, 0, 0, 0.38);
+}
+.access-rule {
+  display: block;
+  width: 52px;
+  height: 3px;
+  margin: 31px 0 21px;
+  background: #e8b63d;
+}
+.access-intro > p:last-child {
+  max-width: 43ch;
+  margin: 0;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 16px;
+  line-height: 1.55;
+}
+.access-card {
+  width: 100%;
+  padding: 37px 36px 34px;
+  border: 1px solid rgba(255, 255, 255, 0.46);
+  border-top: 4px solid #e8b63d;
+  background: rgba(19, 23, 26, 0.89);
+  box-shadow: 0 28px 64px rgba(0, 0, 0, 0.34);
+  backdrop-filter: blur(8px);
+}
+.access-card h1,
+.access-card h2 {
   margin: 0 0 14px;
-  color: #163246;
-  font-size: clamp(28px, 4vw, 38px);
-  letter-spacing: -0.055em;
-  line-height: 1.05;
+  color: #fff;
+  font-family: Impact, "Arial Narrow", sans-serif;
+  font-size: clamp(35px, 4vw, 50px);
+  font-weight: 400;
+  letter-spacing: 0.015em;
+  line-height: 0.95;
+  text-transform: uppercase;
 }
+.access-lead,
 .access-card > p:not(.eyebrow) {
   margin: 0;
-  color: #627680;
-  line-height: 1.6;
+  color: #e4e4e0;
+  font-size: 14px;
+  line-height: 1.62;
+}
+.gross-sso-button,
+.email-access-button {
+  width: 100%;
+  border: 0;
+  border-radius: 0;
+  min-height: 49px;
+  font:
+    800 11px/1 Arial,
+    sans-serif;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  transition:
+    transform 160ms ease,
+    background 160ms ease;
+}
+.gross-sso-button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 24px;
+  padding: 0 16px 0 18px;
+  background: #e8b63d;
+  color: #151515;
+}
+.gross-sso-button span {
+  font-size: 21px;
+  line-height: 1;
+}
+.gross-sso-button:hover {
+  background: #f5ca5b;
+  transform: translateY(-1px);
+}
+.gross-sso-button:disabled,
+.email-access-button:disabled {
+  cursor: wait;
+  opacity: 0.72;
+}
+.access-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 24px 0 20px;
+  color: #bdbdb6;
+  font:
+    700 9px/1 Arial,
+    sans-serif;
+  letter-spacing: 0.13em;
+}
+.access-divider::before,
+.access-divider::after {
+  height: 1px;
+  flex: 1;
+  background: rgba(255, 255, 255, 0.24);
+  content: "";
 }
 .access-form {
   display: grid;
-  gap: 17px;
-  margin-top: 26px;
+  gap: 16px;
 }
 .access-form label {
   display: grid;
   gap: 8px;
-  color: #244255;
-  font-size: 12px;
-  font-weight: 700;
+  color: #f0eee8;
+  font:
+    800 10px/1 Arial,
+    sans-serif;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 .access-form input {
   width: 100%;
-  min-height: 44px;
-  border: 1px solid #cfdcdf;
-  border-radius: 6px;
+  min-height: 46px;
+  border: 1px solid rgba(255, 255, 255, 0.46);
+  border-radius: 0;
   padding: 0 12px;
-  outline-color: #2a8b7c;
-  color: #17384c;
+  outline-color: #e8b63d;
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
 }
-.access-form .primary-button,
-.secondary-button {
-  justify-self: start;
-  margin-top: 0;
+.access-form input::placeholder {
+  color: #bcbcb6;
+}
+.email-access-button {
+  background: transparent;
+  border: 1px solid #e8b63d;
+  color: #f3c548;
+}
+.email-access-button:hover {
+  background: #e8b63d;
+  color: #161616;
 }
 .secondary-button {
-  border: 1px solid #cad8dc;
-  border-radius: 5px;
-  background: #fff;
-  color: #1b5264;
-  padding: 10px 13px;
-  font-size: 13px;
-  font-weight: 700;
+  border: 1px solid #e8b63d;
+  border-radius: 0;
+  background: transparent;
+  color: #f1c34b;
+  padding: 11px 14px;
+  font:
+    800 10px Arial,
+    sans-serif;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
 }
 .access-message {
   margin: 18px 0 0;
-  border-left: 3px solid #2a9c87;
+  border-left: 3px solid #e8b63d;
   padding-left: 10px;
-  color: #1c6f60;
+  color: #f7df9c;
   font-size: 12px;
   line-height: 1.5;
 }
 .access-message.error {
-  border-left-color: #d34d3c;
-  color: #9f3e31;
+  border-left-color: #ec7457;
+  color: #ffc7b9;
 }
 .loading-line {
   width: 100%;
-  height: 4px;
-  margin-top: 24px;
+  height: 3px;
+  margin-top: 26px;
   overflow: hidden;
-  border-radius: 99px;
-  background: #e2ebed;
+  background: rgba(255, 255, 255, 0.18);
 }
 .loading-line::before {
   display: block;
   width: 35%;
   height: 100%;
-  border-radius: inherit;
-  background: #2aa38f;
+  background: #e8b63d;
   content: "";
   animation: access-loading 1.2s ease-in-out infinite alternate;
+}
+.access-footer {
+  position: absolute;
+  right: 32px;
+  bottom: 23px;
+  color: rgba(255, 255, 255, 0.72);
+  font:
+    700 9px/1 Arial,
+    sans-serif;
+  letter-spacing: 0.13em;
 }
 @keyframes access-loading {
   from {
@@ -909,12 +1105,48 @@ button {
     transform: translateX(185%);
   }
 }
-@media (max-width: 720px) {
-  .tenant-selector {
+@media (max-width: 900px) {
+  .access-header,
+  .access-stage {
+    width: min(100% - 40px, 620px);
+  }
+  .access-header nav {
     display: none;
   }
+  .access-stage {
+    grid-template-columns: 1fr;
+    gap: 32px;
+    padding-top: 44px;
+  }
+  .access-intro {
+    padding-top: 0;
+  }
+  .access-intro h1 {
+    font-size: clamp(52px, 14vw, 85px);
+  }
   .access-card {
-    padding: 28px 23px;
+    max-width: 520px;
+  }
+}
+@media (max-width: 540px) {
+  .access-header {
+    min-height: 70px;
+  }
+  .access-stage {
+    width: min(100% - 28px, 620px);
+    padding: 34px 0 72px;
+  }
+  .access-card {
+    padding: 29px 23px 27px;
+  }
+  .access-intro > p:last-child {
+    font-size: 14px;
+  }
+  .access-footer {
+    right: auto;
+    left: 14px;
+    bottom: 18px;
+    font-size: 8px;
   }
 }
 
