@@ -1,0 +1,82 @@
+import { readFile, readdir } from "node:fs/promises";
+import { join } from "node:path";
+
+const migrationDirectory = new URL("../supabase/migrations/", import.meta.url);
+const expectedFiles = [
+  "0001_extensions_and_enums.sql",
+  "0002_platform_and_tenants.sql",
+  "0003_identity_and_authorization.sql",
+  "0004_ticketing.sql",
+  "0005_rls_core.sql",
+  "0006_harden_tenant_integrity_and_rbac.sql",
+];
+
+const availableFiles = await readdir(migrationDirectory);
+for (const migration of expectedFiles) {
+  if (!availableFiles.includes(migration)) {
+    throw new Error(`Missing required migration: ${migration}`);
+  }
+}
+
+const contents = new Map();
+for (const migration of expectedFiles) {
+  const content = await readFile(
+    join(migrationDirectory.pathname, migration),
+    "utf8",
+  );
+  if (!content.trimStart().startsWith("begin;")) {
+    throw new Error(`${migration} must start with an explicit transaction.`);
+  }
+  if (!content.trimEnd().endsWith("commit;")) {
+    throw new Error(`${migration} must end with an explicit transaction.`);
+  }
+  contents.set(migration, content);
+}
+
+const requiredFragments = [
+  ["0002_platform_and_tenants.sql", "create table public.platform_audit_logs"],
+  ["0002_platform_and_tenants.sql", "create table public.tenant_domains"],
+  [
+    "0003_identity_and_authorization.sql",
+    "create table public.customer_organizations",
+  ],
+  [
+    "0004_ticketing.sql",
+    "create or replace function public.reserve_ticket_number",
+  ],
+  [
+    "0004_ticketing.sql",
+    "visibility public.comment_visibility not null default 'internal'",
+  ],
+  ["0005_rls_core.sql", "alter table public.tickets enable row level security"],
+  ["0005_rls_core.sql", "create policy tickets_select_authorized"],
+  ["0005_rls_core.sql", "create policy ticket_comments_select_authorized"],
+  [
+    "0006_harden_tenant_integrity_and_rbac.sql",
+    "foreign key (department_id, tenant_id)",
+  ],
+  [
+    "0006_harden_tenant_integrity_and_rbac.sql",
+    "alter table public.roles enable row level security",
+  ],
+  [
+    "0006_harden_tenant_integrity_and_rbac.sql",
+    "revoke execute on function public.reserve_ticket_number",
+  ],
+  [
+    "0006_harden_tenant_integrity_and_rbac.sql",
+    "create or replace function public.has_tenant_permission",
+  ],
+];
+
+for (const [migration, fragment] of requiredFragments) {
+  if (!contents.get(migration)?.includes(fragment)) {
+    throw new Error(
+      `${migration} is missing required schema fragment: ${fragment}`,
+    );
+  }
+}
+
+console.log(
+  `Validated ${expectedFiles.length} versioned migrations and ${requiredFragments.length} mandatory security/schema markers.`,
+);

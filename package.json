@@ -1,0 +1,27 @@
+{
+  "name": "nextdesk",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Multi-tenant ITSM platform with a React web app and Expo mobile app.",
+  "packageManager": "pnpm@11.25.0",
+  "engines": {
+    "node": ">=22.13.0",
+    "pnpm": ">=11.25.0"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "typecheck": "turbo run typecheck",
+    "test": "pnpm test:schema && turbo run test",
+    "test:schema": "node scripts/verify-schema-structure.mjs && node scripts/verify-permission-catalog.mjs",
+    "test:db": "bash supabase/tests/run-local-migration-tests.sh",
+    "check": "pnpm typecheck && pnpm test",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.3",
+    "prettier": "^3.5.3",
+    "turbo": "^2.5.3",
+    "typescript": "^5.8.3",
+    "vitest": "^3.1.2"
+  }
+}

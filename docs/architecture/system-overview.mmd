@@ -1,0 +1,40 @@
+flowchart LR
+  subgraph Clients
+    W[Web: React + Vite]
+    M[Mobile: Expo iOS / Android]
+    O[Platform operator]
+  end
+
+  subgraph Edge[HTTPS edge and static hosting]
+    H[Verified hostname resolver]
+    UI[Branded web bundle]
+  end
+
+  subgraph SB[Supabase Zurich eu-central-2]
+    A[Auth]
+    F[Edge Functions]
+    D[(PostgreSQL + RLS)]
+    S[Private Storage]
+    R[Protected Realtime]
+  end
+
+  subgraph External[Approved integrations]
+    E[Microsoft Entra ID]
+    G[Microsoft Graph]
+    P[Expo Push / APNs / FCM]
+  end
+
+  W --> H --> UI
+  W --> A
+  W --> D
+  W --> R
+  M --> A
+  M --> D
+  M --> R
+  O --> F
+  F --> D
+  F --> S
+  F --> E
+  F --> G
+  F --> P
+  H --> D
