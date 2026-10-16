@@ -30,7 +30,5 @@ Die Mandantenadministration kann eine SSO-Verbindung entwerfen, aber erst eine s
 ## Quellen
 
 [1]: https://learn.microsoft.com/en-us/entra/identity-platform/v2-protocols-oidc "Microsoft OpenID Connect on the Microsoft identity platform"
-
 [2]: https://supabase.com/docs/guides/auth/enterprise-sso/auth-sso-saml "Supabase Single Sign-On with SAML 2.0 for Projects"
-
 [3]: https://supabase.com/docs/reference/javascript/auth-signinwithsso "Supabase JavaScript signInWithSSO"

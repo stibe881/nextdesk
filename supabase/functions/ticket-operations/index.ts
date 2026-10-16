@@ -41,11 +41,19 @@ type Action =
       primaryTicketId: string;
     }
   | {
+      type: "searchMergeTargets";
+      tenantId: string;
+      ticketId: string;
+      query: string;
+    }
+  | {
       type: "updateTicket";
       tenantId: string;
       ticketId: string;
       statusKey?: string;
       priorityKey?: string;
+      subject?: string;
+      description?: string;
       assignedAgentId?: string | null;
       assignedTeamId?: string | null;
     }
@@ -191,6 +199,20 @@ function parseAction(value: unknown): Action | null {
       primaryTicketId: value.primaryTicketId,
     };
   if (
+    value.type === "searchMergeTargets" &&
+    hasOnlyKeys(value, ["type", "tenantId", "ticketId", "query"]) &&
+    typeof value.query === "string"
+  ) {
+    const query = value.query.trim();
+    if ([...query].length > 240 || query.includes("\u0000")) return null;
+    return {
+      type: value.type,
+      tenantId: value.tenantId,
+      ticketId: value.ticketId,
+      query,
+    };
+  }
+  if (
     value.type === "addComment" &&
     typeof value.body === "string" &&
     (value.visibility === "internal" || value.visibility === "external")
@@ -270,8 +292,27 @@ function parseAction(value: unknown): Action | null {
     value.type === "updateTicket" &&
     (value.assignedAgentId === undefined ||
       value.assignedAgentId === null ||
-      isUuid(value.assignedAgentId))
-  )
+      isUuid(value.assignedAgentId)) &&
+    (value.subject === undefined || typeof value.subject === "string") &&
+    (value.description === undefined || typeof value.description === "string")
+  ) {
+    const subject =
+      typeof value.subject === "string" ? value.subject.trim() : undefined;
+    const description =
+      typeof value.description === "string"
+        ? value.description.trim()
+        : undefined;
+    if (
+      (subject !== undefined &&
+        ([...subject].length < 3 ||
+          [...subject].length > 240 ||
+          subject.includes("\u0000"))) ||
+      (description !== undefined &&
+        ([...description].length < 1 ||
+          [...description].length > 10000 ||
+          description.includes("\u0000")))
+    )
+      return null;
     return {
       type: value.type,
       tenantId: value.tenantId,
@@ -280,6 +321,8 @@ function parseAction(value: unknown): Action | null {
         typeof value.statusKey === "string" ? value.statusKey : undefined,
       priorityKey:
         typeof value.priorityKey === "string" ? value.priorityKey : undefined,
+      subject,
+      description,
       assignedAgentId:
         value.assignedAgentId === null || isUuid(value.assignedAgentId)
           ? value.assignedAgentId
@@ -289,6 +332,7 @@ function parseAction(value: unknown): Action | null {
           ? value.assignedTeamId
           : undefined,
     };
+  }
   return null;
 }
 async function activeMember(admin: any, userId: string, tenantId: string) {
@@ -767,6 +811,14 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
 
   if (action.type === "getTicket") {
     const subjectTokens = relevantSubjectTokens(ticket.subject);
+    const requesterContactPromise = isUuid(ticket.requester_contact_id)
+      ? context.supabaseAdmin
+          .from("ticket_requesters")
+          .select("id, display_name")
+          .eq("tenant_id", ticket.tenant_id)
+          .eq("id", ticket.requester_contact_id)
+          .maybeSingle()
+      : Promise.resolve({ data: null });
     const [
       { data: comments },
       { data: events },
@@ -781,6 +833,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       { data: relationRows },
       { data: columnRelatedTickets },
       { data: similarCandidates },
+      { data: requesterContactRow },
     ] = await Promise.all([
       context.supabaseAdmin
         .from("ticket_comments")
@@ -872,6 +925,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
             .order("updated_at", { ascending: false })
             .limit(50)
         : Promise.resolve({ data: [] }),
+      requesterContactPromise,
     ]);
     const filteredComments = internal
       ? (comments ?? [])
@@ -893,6 +947,15 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         profile.display_name,
       ]),
     );
+    const requesterContact =
+      isRecord(requesterContactRow) &&
+      isUuid(requesterContactRow.id) &&
+      typeof requesterContactRow.display_name === "string"
+        ? {
+            id: requesterContactRow.id,
+            displayName: requesterContactRow.display_name,
+          }
+        : null;
     const relationDescriptors = new Map<
       string,
       { relatedTicketId: string; relationType: DisplayRelationType }
@@ -1009,6 +1072,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
           ...ticket,
           assigned_agent_id: ticket.assigned_agent_id ?? null,
         },
+        requesterContact,
         ...(assignedAgent ? { assignedAgent } : {}),
         comments: filteredComments.map((comment: any) => ({
           ...comment,
@@ -1033,6 +1097,13 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
           ticket.department_id,
           "ticket.update",
         ),
+        canMerge: await hasPermission(
+          context.supabaseAdmin,
+          actorId,
+          ticket.tenant_id,
+          ticket.department_id,
+          "ticket.merge",
+        ),
         canAssign,
         canTrackTime: await hasPermission(
           context.supabaseAdmin,
@@ -1049,6 +1120,66 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
           "ticket.escalate",
         ),
         canUseInternalNotes: internal,
+      },
+    });
+  }
+
+  if (action.type === "searchMergeTargets") {
+    if (
+      !(await hasPermission(
+        context.supabaseAdmin,
+        actorId,
+        ticket.tenant_id,
+        ticket.department_id,
+        "ticket.merge",
+      ))
+    )
+      return response(request, { error: { code: "ticket_merge_denied" } }, 403);
+    if ([...action.query].length < 2)
+      return response(request, { data: { mergeTargets: [] } });
+
+    const { data: candidates, error } = await context.supabaseAdmin
+      .from("tickets")
+      .select(
+        "id, tenant_id, department_id, ticket_number, subject, requester_id, affected_user_id, assigned_agent_id, customer_organization_id, status:ticket_statuses(label)",
+      )
+      .eq("tenant_id", ticket.tenant_id)
+      .neq("id", ticket.id)
+      .is("merged_into_ticket_id", null)
+      .ilike("subject", `%${action.query}%`)
+      .order("updated_at", { ascending: false })
+      .limit(100);
+    if (error)
+      return response(
+        request,
+        { error: { code: "ticket_merge_target_search_failed" } },
+        500,
+      );
+    const readableTargets = (
+      await Promise.all(
+        (candidates ?? []).map(async (candidate: any) =>
+          (await canRead(context.supabaseAdmin, actorId, candidate))
+            ? candidate
+            : null,
+        ),
+      )
+    )
+      .filter((candidate) => candidate !== null)
+      .slice(0, 30);
+    return response(request, {
+      data: {
+        mergeTargets: readableTargets.map((candidate: any) => {
+          const status = Array.isArray(candidate.status)
+            ? (candidate.status[0] ?? null)
+            : (candidate.status ?? null);
+          return {
+            id: candidate.id,
+            ticketNumber: candidate.ticket_number,
+            subject: candidate.subject,
+            statusLabel:
+              typeof status?.label === "string" ? status.label : null,
+          };
+        }),
       },
     });
   }
@@ -1320,16 +1451,41 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         { error: { code: "related_ticket_access_denied" } },
         403,
       );
-    const [canMutateTicket, canMutateRelatedTicket] = await Promise.all([
-      canMutateRelation(context.supabaseAdmin, actorId, ticket),
-      canMutateRelation(context.supabaseAdmin, actorId, relatedTicket),
-    ]);
-    if (!canMutateTicket || !canMutateRelatedTicket)
-      return response(
-        request,
-        { error: { code: "ticket_relation_update_denied" } },
-        403,
-      );
+    if (action.type === "markMerged") {
+      const [canMergeTicket, canMergeRelatedTicket] = await Promise.all([
+        hasPermission(
+          context.supabaseAdmin,
+          actorId,
+          ticket.tenant_id,
+          ticket.department_id,
+          "ticket.merge",
+        ),
+        hasPermission(
+          context.supabaseAdmin,
+          actorId,
+          relatedTicket.tenant_id,
+          relatedTicket.department_id,
+          "ticket.merge",
+        ),
+      ]);
+      if (!canMergeTicket || !canMergeRelatedTicket)
+        return response(
+          request,
+          { error: { code: "ticket_merge_denied" } },
+          403,
+        );
+    } else {
+      const [canMutateTicket, canMutateRelatedTicket] = await Promise.all([
+        canMutateRelation(context.supabaseAdmin, actorId, ticket),
+        canMutateRelation(context.supabaseAdmin, actorId, relatedTicket),
+      ]);
+      if (!canMutateTicket || !canMutateRelatedTicket)
+        return response(
+          request,
+          { error: { code: "ticket_relation_update_denied" } },
+          403,
+        );
+    }
 
     if (action.type === "createRelation" || action.type === "deleteRelation") {
       const relationExists = await hasEquivalentRelation(
@@ -1906,7 +2062,18 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
   )
     return response(request, { error: { code: "ticket_update_denied" } }, 403);
   const update: Record<string, unknown> = {};
-  const payload: Record<string, unknown> = {};
+  const changedFields: string[] = [];
+  if (action.subject !== undefined && action.subject !== ticket.subject) {
+    update.subject = action.subject;
+    changedFields.push("subject");
+  }
+  if (
+    action.description !== undefined &&
+    action.description !== ticket.description
+  ) {
+    update.description = action.description;
+    changedFields.push("description");
+  }
   if (action.statusKey) {
     const { data: status } = await context.supabaseAdmin
       .from("ticket_statuses")
@@ -1927,14 +2094,18 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       ))
     )
       return response(request, { error: { code: "ticket_close_denied" } }, 403);
-    update.status_id = status.id;
-    update.closed_at = status.is_closed ? new Date().toISOString() : null;
-    update.resolved_at =
-      status.key === "resolved" ? new Date().toISOString() : ticket.resolved_at;
-    update.waiting_since = status.key.startsWith("waiting")
-      ? new Date().toISOString()
-      : null;
-    payload.status = status.key;
+    if (status.id !== ticket.status_id) {
+      update.status_id = status.id;
+      update.closed_at = status.is_closed ? new Date().toISOString() : null;
+      update.resolved_at =
+        status.key === "resolved"
+          ? new Date().toISOString()
+          : ticket.resolved_at;
+      update.waiting_since = status.key.startsWith("waiting")
+        ? new Date().toISOString()
+        : null;
+      changedFields.push("status");
+    }
   }
   if (action.priorityKey) {
     const { data: priority } = await context.supabaseAdmin
@@ -1945,8 +2116,10 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       .maybeSingle();
     if (!priority)
       return response(request, { error: { code: "priority_invalid" } }, 422);
-    update.priority_id = priority.id;
-    payload.priority = priority.key;
+    if (priority.id !== ticket.priority_id) {
+      update.priority_id = priority.id;
+      changedFields.push("priority");
+    }
   }
   if (
     action.assignedAgentId !== undefined ||
@@ -1985,11 +2158,18 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
             422,
           );
       }
-      update.assigned_agent_id = action.assignedAgentId;
+      if (action.assignedAgentId !== (ticket.assigned_agent_id ?? null)) {
+        update.assigned_agent_id = action.assignedAgentId;
+        changedFields.push("assignedAgent");
+      }
     }
-    if (action.assignedTeamId !== undefined)
+    if (
+      action.assignedTeamId !== undefined &&
+      action.assignedTeamId !== (ticket.assigned_team_id ?? null)
+    ) {
       update.assigned_team_id = action.assignedTeamId;
-    payload.assignment = true;
+      changedFields.push("assignedTeam");
+    }
   }
   if (Object.keys(update).length === 0)
     return response(request, { error: { code: "no_change" } }, 422);
@@ -2003,7 +2183,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     ticket_id: ticket.id,
     actor_id: actorId,
     event_type: "ticket.updated",
-    payload,
+    payload: { changedFields },
   });
   return response(request, { data: { updated: true } });
 });

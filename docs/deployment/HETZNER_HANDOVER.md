@@ -25,9 +25,9 @@
 
 Nach dem SSH-Benutzernamen setze ich in GitHub die beiden letzten Umgebungsvariablen:
 
-| Variable | Erwarteter Wert |
-| --- | --- |
-| `HETZNER_SSH_USER` | Haupt-FTP-/SSH-Benutzername |
+| Variable           | Erwarteter Wert                                         |
+| ------------------ | ------------------------------------------------------- |
+| `HETZNER_SSH_USER` | Haupt-FTP-/SSH-Benutzername                             |
 | `HETZNER_WEB_ROOT` | `/usr/www/users/<benutzer>/public_html/nextdesk.ch/app` |
 
 Danach kann der Workflow **Deploy TicketHub to Hetzner Webhosting L** über GitHub Actions manuell ausgeführt werden. Er prüft TypeScript, erstellt den Vite-Build mit Basis-Pfad `/` und synchronisiert ausschliesslich `apps/web/dist` in das App-Zielverzeichnis.

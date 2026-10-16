@@ -60,6 +60,13 @@ type Problem = {
   updated_at: string;
 };
 
+type TicketReference = {
+  id: string;
+  ticketNumber: string;
+  subject: string;
+  statusLabel: string;
+};
+
 type ServiceForm = {
   id: string | null;
   name: string;
@@ -147,6 +154,23 @@ type ProblemResolveRequest = {
   workaround: string | null;
   rootCause: string | null;
 };
+type ProblemTicketsRequest = {
+  type: "listProblemTickets";
+  tenantId: string;
+  problemId: string;
+};
+type TicketSearchRequest = {
+  type: "searchTickets";
+  tenantId: string;
+  query: string;
+};
+type ProblemTicketLinkRequest = {
+  type: "linkTicket" | "unlinkTicket";
+  tenantId: string;
+  ticketId: string;
+  kind: "problem";
+  targetId: string;
+};
 type ServiceAssetsRequest =
   | CatalogRequest
   | ServiceSaveRequest
@@ -154,7 +178,10 @@ type ServiceAssetsRequest =
   | AssetSaveRequest
   | AssetArchiveRequest
   | ProblemSaveRequest
-  | ProblemResolveRequest;
+  | ProblemResolveRequest
+  | ProblemTicketsRequest
+  | TicketSearchRequest
+  | ProblemTicketLinkRequest;
 
 const EMPTY_SERVICE_FORM: ServiceForm = {
   id: null,
@@ -321,11 +348,73 @@ function parseProblem(value: unknown): Problem | null {
   };
 }
 
+function parseTicketReference(value: unknown): TicketReference | null {
+  if (
+    !isRecord(value) ||
+    typeof value.id !== "string" ||
+    !value.id.trim() ||
+    typeof value.ticketNumber !== "string" ||
+    !value.ticketNumber.trim() ||
+    typeof value.subject !== "string" ||
+    !value.subject.trim() ||
+    typeof value.statusLabel !== "string" ||
+    !value.statusLabel.trim()
+  ) {
+    return null;
+  }
+  return {
+    id: value.id,
+    ticketNumber: value.ticketNumber,
+    subject: value.subject,
+    statusLabel: value.statusLabel,
+  };
+}
+
 function responseData(value: unknown): Record<string, unknown> {
   if (!isRecord(value) || !isRecord(value.data)) {
     throw new Error("Die Serverantwort hat ein unerwartetes Format.");
   }
   return value.data;
+}
+
+function parseTicketReferences(
+  value: unknown,
+  fallback: string,
+): TicketReference[] {
+  const tickets = responseData(value).tickets;
+  if (!Array.isArray(tickets)) throw new Error(fallback);
+
+  const parsed = tickets.map(parseTicketReference);
+  if (parsed.some((ticket) => ticket === null)) throw new Error(fallback);
+  const references = parsed as TicketReference[];
+  if (
+    new Set(references.map((ticket) => ticket.id)).size !== references.length
+  ) {
+    throw new Error(fallback);
+  }
+  return references;
+}
+
+function parseProblemTicketLink(
+  value: unknown,
+  expected: {
+    tenantId: string;
+    problemId: string;
+    ticketId: string;
+    linked: boolean;
+  },
+): void {
+  const link = responseData(value).link;
+  if (
+    !isRecord(link) ||
+    link.tenantId !== expected.tenantId ||
+    link.ticketId !== expected.ticketId ||
+    link.targetId !== expected.problemId ||
+    link.kind !== "problem" ||
+    link.linked !== expected.linked
+  ) {
+    throw new Error("Die Ticketverknüpfung hat ein unerwartetes Format.");
+  }
 }
 
 function parseCatalog(value: unknown): {
@@ -375,7 +464,7 @@ function parseSavedAsset(value: unknown): Asset {
 function parseSavedProblem(value: unknown): Problem {
   const problem = parseProblem(responseData(value).problem);
   if (!problem) {
-    throw new Error("Der gespeicherte Problemfall ist unvollständig.");
+    throw new Error("Der gespeicherte Fall ist unvollständig.");
   }
   return problem;
 }
@@ -544,7 +633,16 @@ export function ServiceAssets({ tenantId }: ServiceAssetsProps) {
   const [error, setError] = useState("");
   const [forbidden, setForbidden] = useState(false);
   const [success, setSuccess] = useState("");
+  const [problemTickets, setProblemTickets] = useState<TicketReference[]>([]);
+  const [ticketSearchQuery, setTicketSearchQuery] = useState("");
+  const [ticketSearchResults, setTicketSearchResults] = useState<
+    TicketReference[]
+  >([]);
+  const [problemTicketsLoading, setProblemTicketsLoading] = useState(false);
+  const [ticketSearchLoading, setTicketSearchLoading] = useState(false);
   const requestVersion = useRef(0);
+  const problemTicketsRequestVersion = useRef(0);
+  const ticketSearchRequestVersion = useRef(0);
 
   const serviceNames = useMemo(
     () => new Map(services.map((service) => [service.id, service.name])),
@@ -610,6 +708,15 @@ export function ServiceAssets({ tenantId }: ServiceAssetsProps) {
       ),
     [problemQuery, problemStatusFilter, problems],
   );
+  const attachedTicketIds = useMemo(
+    () => new Set(problemTickets.map((ticket) => ticket.id)),
+    [problemTickets],
+  );
+  const attachableTicketSearchResults = useMemo(
+    () =>
+      ticketSearchResults.filter((ticket) => !attachedTicketIds.has(ticket.id)),
+    [attachedTicketIds, ticketSearchResults],
+  );
 
   const loadCatalog = useCallback(async () => {
     const version = requestVersion.current + 1;
@@ -635,7 +742,7 @@ export function ServiceAssets({ tenantId }: ServiceAssetsProps) {
       setError(
         await apiErrorMessage(
           nextError,
-          "Services, Assets und Problemfälle konnten nicht geladen werden.",
+          "Services, Assets und Fälle konnten nicht geladen werden.",
         ),
       );
     } finally {
@@ -655,8 +762,98 @@ export function ServiceAssets({ tenantId }: ServiceAssetsProps) {
     setAssetForm(EMPTY_ASSET_FORM);
     setProblemForm(EMPTY_PROBLEM_FORM);
     setProblemMode("create");
+    clearProblemTicketState();
     setSuccess("");
   }, [tenantId]);
+
+  useEffect(() => {
+    const problemId = problemForm.id;
+    const version = problemTicketsRequestVersion.current + 1;
+    problemTicketsRequestVersion.current = version;
+    if (!problemId) {
+      setProblemTickets([]);
+      setProblemTicketsLoading(false);
+      return;
+    }
+
+    setProblemTickets([]);
+    setProblemTicketsLoading(true);
+    setError("");
+    setForbidden(false);
+    void (async () => {
+      try {
+        const tickets = parseTicketReferences(
+          await requestServiceAssets({
+            type: "listProblemTickets",
+            tenantId,
+            problemId,
+          }),
+          "Die verknüpften Tickets haben ein unerwartetes Format.",
+        );
+        if (problemTicketsRequestVersion.current !== version) return;
+        setProblemTickets(tickets);
+      } catch (nextError) {
+        const message = await apiErrorMessage(
+          nextError,
+          "Die verknüpften Tickets konnten nicht geladen werden.",
+        );
+        if (problemTicketsRequestVersion.current !== version) return;
+        setForbidden(errorStatus(nextError) === 403);
+        setError(message);
+      } finally {
+        if (problemTicketsRequestVersion.current === version) {
+          setProblemTicketsLoading(false);
+        }
+      }
+    })();
+  }, [problemForm.id, tenantId]);
+
+  useEffect(() => {
+    const problemId = problemForm.id;
+    const query = ticketSearchQuery.trim();
+    const version = ticketSearchRequestVersion.current + 1;
+    ticketSearchRequestVersion.current = version;
+    if (!problemId || query.length < 2) {
+      setTicketSearchResults([]);
+      setTicketSearchLoading(false);
+      return;
+    }
+
+    setTicketSearchResults([]);
+    setTicketSearchLoading(true);
+    setError("");
+    setForbidden(false);
+    const timeout = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const tickets = parseTicketReferences(
+            await requestServiceAssets({
+              type: "searchTickets",
+              tenantId,
+              query,
+            }),
+            "Die Ticketsuche hat ein unerwartetes Format.",
+          );
+          if (ticketSearchRequestVersion.current !== version) return;
+          setTicketSearchResults(tickets);
+        } catch (nextError) {
+          const message = await apiErrorMessage(
+            nextError,
+            "Tickets konnten nicht gesucht werden.",
+          );
+          if (ticketSearchRequestVersion.current !== version) return;
+          setForbidden(errorStatus(nextError) === 403);
+          setError(message);
+        } finally {
+          if (ticketSearchRequestVersion.current === version) {
+            setTicketSearchLoading(false);
+          }
+        }
+      })();
+    }, 250);
+
+    return () => window.clearTimeout(timeout);
+  }, [problemForm.id, tenantId, ticketSearchQuery]);
 
   function beginAction(action: string) {
     setPendingAction(action);
@@ -680,8 +877,19 @@ export function ServiceAssets({ tenantId }: ServiceAssetsProps) {
   function resetProblemForm() {
     setProblemForm(EMPTY_PROBLEM_FORM);
     setProblemMode("create");
+    clearProblemTicketState();
     setError("");
     setSuccess("");
+  }
+
+  function clearProblemTicketState() {
+    problemTicketsRequestVersion.current += 1;
+    ticketSearchRequestVersion.current += 1;
+    setProblemTickets([]);
+    setTicketSearchQuery("");
+    setTicketSearchResults([]);
+    setProblemTicketsLoading(false);
+    setTicketSearchLoading(false);
   }
 
   function selectTab(tab: CatalogTab) {
@@ -887,17 +1095,92 @@ export function ServiceAssets({ tenantId }: ServiceAssetsProps) {
     }
   }
 
+  async function linkTicketToProblem(ticket: TicketReference) {
+    const problemId = problemForm.id;
+    if (!problemId) {
+      setError("Der ausgewählte Fall ist nicht mehr verfügbar.");
+      return;
+    }
+
+    beginAction(`problem:ticket:link:${problemId}:${ticket.id}`);
+    try {
+      parseProblemTicketLink(
+        await requestServiceAssets({
+          type: "linkTicket",
+          tenantId,
+          ticketId: ticket.id,
+          kind: "problem",
+          targetId: problemId,
+        }),
+        { tenantId, problemId, ticketId: ticket.id, linked: true },
+      );
+      setProblemTickets((current) =>
+        current.some((item) => item.id === ticket.id)
+          ? current
+          : [...current, ticket],
+      );
+      setTicketSearchResults((current) =>
+        current.filter((item) => item.id !== ticket.id),
+      );
+      setSuccess(`Ticket ${ticket.ticketNumber} wurde angehängt.`);
+    } catch (nextError) {
+      setForbidden(errorStatus(nextError) === 403);
+      setError(
+        await apiErrorMessage(
+          nextError,
+          "Das Ticket konnte nicht angehängt werden.",
+        ),
+      );
+    } finally {
+      setPendingAction(null);
+    }
+  }
+
+  async function unlinkTicketFromProblem(ticket: TicketReference) {
+    const problemId = problemForm.id;
+    if (!problemId) {
+      setError("Der ausgewählte Fall ist nicht mehr verfügbar.");
+      return;
+    }
+
+    beginAction(`problem:ticket:unlink:${problemId}:${ticket.id}`);
+    try {
+      parseProblemTicketLink(
+        await requestServiceAssets({
+          type: "unlinkTicket",
+          tenantId,
+          ticketId: ticket.id,
+          kind: "problem",
+          targetId: problemId,
+        }),
+        { tenantId, problemId, ticketId: ticket.id, linked: false },
+      );
+      setProblemTickets((current) =>
+        current.filter((item) => item.id !== ticket.id),
+      );
+      setSuccess(`Ticket ${ticket.ticketNumber} wurde entfernt.`);
+    } catch (nextError) {
+      setForbidden(errorStatus(nextError) === 403);
+      setError(
+        await apiErrorMessage(
+          nextError,
+          "Das Ticket konnte nicht entfernt werden.",
+        ),
+      );
+    } finally {
+      setPendingAction(null);
+    }
+  }
+
   async function saveProblem(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const title = problemForm.title.trim();
     if (problemMode !== "resolve" && title.length < 3) {
-      setError(
-        "Der Titel des Problemfalls muss mindestens drei Zeichen lang sein.",
-      );
+      setError("Der Titel des Falls muss mindestens drei Zeichen lang sein.");
       return;
     }
     if (problemMode === "resolve" && !problemForm.id) {
-      setError("Der zu lösende Problemfall ist nicht mehr verfügbar.");
+      setError("Der zu lösende Fall ist nicht mehr verfügbar.");
       return;
     }
 
@@ -922,7 +1205,7 @@ export function ServiceAssets({ tenantId }: ServiceAssetsProps) {
           current.filter((problem) => problem.id !== resolved.id),
         );
         resetProblemForm();
-        setSuccess(`Der Problemfall „${resolved.title}“ wurde gelöst.`);
+        setSuccess(`Der Fall „${resolved.title}“ wurde gelöst.`);
         return;
       }
 
@@ -949,8 +1232,8 @@ export function ServiceAssets({ tenantId }: ServiceAssetsProps) {
       resetProblemForm();
       setSuccess(
         editing
-          ? `Der Problemfall „${saved.title}“ wurde gespeichert.`
-          : `Der Problemfall „${saved.title}“ wurde angelegt.`,
+          ? `Der Fall „${saved.title}“ wurde gespeichert.`
+          : `Der Fall „${saved.title}“ wurde angelegt.`,
       );
     } catch (nextError) {
       setForbidden(errorStatus(nextError) === 403);
@@ -958,8 +1241,8 @@ export function ServiceAssets({ tenantId }: ServiceAssetsProps) {
         await apiErrorMessage(
           nextError,
           problemMode === "resolve"
-            ? "Der Problemfall konnte nicht gelöst werden."
-            : "Der Problemfall konnte nicht gespeichert werden.",
+            ? "Der Fall konnte nicht gelöst werden."
+            : "Der Fall konnte nicht gespeichert werden.",
         ),
       );
     } finally {
@@ -984,7 +1267,7 @@ export function ServiceAssets({ tenantId }: ServiceAssetsProps) {
       <div className="panel-heading">
         <div>
           <p className="eyebrow">Servicekatalog</p>
-          <h2 id="service-assets-title">Services, Assets und Problemfälle</h2>
+          <h2 id="service-assets-title">Services, Assets und Fälle</h2>
           <p>
             Verwalten Sie den aktuellen Katalog dieses Mandanten. Archivierte
             und gelöste Einträge werden von der API nicht mehr im Katalog
@@ -1048,7 +1331,7 @@ export function ServiceAssets({ tenantId }: ServiceAssetsProps) {
           tabIndex={activeTab === "problems" ? 0 : -1}
           type="button"
         >
-          Problemfälle ({problems.length})
+          Fälle ({problems.length})
         </button>
       </div>
 
@@ -1515,12 +1798,12 @@ export function ServiceAssets({ tenantId }: ServiceAssetsProps) {
         >
           <div className="panel-heading">
             <div>
-              <h3>Problemfälle</h3>
-              <p>{activeCount} passende offene Problemfälle</p>
+              <h3>Fälle</h3>
+              <p>{activeCount} passende offene Fälle</p>
             </div>
           </div>
           <fieldset disabled={controlsDisabled}>
-            <legend>Problemfälle filtern</legend>
+            <legend>Fälle filtern</legend>
             <label>
               Suche
               <input
@@ -1552,15 +1835,13 @@ export function ServiceAssets({ tenantId }: ServiceAssetsProps) {
 
           {problems.length === 0 ? (
             <p className="empty-state">
-              Es sind keine offenen Problemfälle vorhanden. Legen Sie unten bei
-              Bedarf einen neuen Problemfall an.
+              Es sind keine offenen Fälle vorhanden. Legen Sie unten bei Bedarf
+              einen neuen Fall an.
             </p>
           ) : filteredProblems.length === 0 ? (
-            <p className="empty-state">
-              Keine Problemfälle entsprechen dem Filter.
-            </p>
+            <p className="empty-state">Keine Fälle entsprechen dem Filter.</p>
           ) : (
-            <ul aria-label="Offene Problemfälle">
+            <ul aria-label="Offene Fälle">
               {filteredProblems.map((problem) => (
                 <li key={problem.id}>
                   <article>
@@ -1579,6 +1860,7 @@ export function ServiceAssets({ tenantId }: ServiceAssetsProps) {
                     <button
                       disabled={controlsDisabled}
                       onClick={() => {
+                        clearProblemTicketState();
                         setProblemForm(problemDraft(problem));
                         setProblemMode("edit");
                         setError("");
@@ -1591,6 +1873,7 @@ export function ServiceAssets({ tenantId }: ServiceAssetsProps) {
                     <button
                       disabled={controlsDisabled}
                       onClick={() => {
+                        clearProblemTicketState();
                         setProblemForm(problemDraft(problem));
                         setProblemMode("resolve");
                         setError("");
@@ -1614,17 +1897,17 @@ export function ServiceAssets({ tenantId }: ServiceAssetsProps) {
               <div>
                 <p className="eyebrow">
                   {problemMode === "resolve"
-                    ? "Problemfall lösen"
+                    ? "Fall lösen"
                     : problemMode === "edit"
-                      ? "Problemfall bearbeiten"
-                      : "Neuer Problemfall"}
+                      ? "Fall bearbeiten"
+                      : "Neuer Fall"}
                 </p>
                 <h3 id="service-assets-problem-form-title">
                   {problemMode === "resolve"
                     ? `Lösung dokumentieren: ${problemForm.title}`
                     : problemMode === "edit"
-                      ? "Problemfall aktualisieren"
-                      : "Problemfall anlegen"}
+                      ? "Fall aktualisieren"
+                      : "Fall anlegen"}
                 </h3>
               </div>
             </div>
@@ -1698,7 +1981,7 @@ export function ServiceAssets({ tenantId }: ServiceAssetsProps) {
                 </>
               ) : (
                 <p>
-                  Beim Speichern wird dieser Problemfall als gelöst markiert und
+                  Beim Speichern wird dieser Fall als gelöst markiert und
                   anschließend nicht mehr im offenen Katalog angezeigt.
                 </p>
               )}
@@ -1732,6 +2015,94 @@ export function ServiceAssets({ tenantId }: ServiceAssetsProps) {
                   value={problemForm.rootCause}
                 />
               </label>
+              {problemForm.id ? (
+                <section aria-labelledby="service-assets-problem-tickets-title">
+                  <h4 id="service-assets-problem-tickets-title">
+                    Ticketanhänge
+                  </h4>
+                  {problemTicketsLoading ? (
+                    <p aria-live="polite">
+                      Verknüpfte Tickets werden geladen …
+                    </p>
+                  ) : problemTickets.length === 0 ? (
+                    <p>Noch keine Tickets angehängt.</p>
+                  ) : (
+                    <ul aria-label="Verknüpfte Tickets">
+                      {problemTickets.map((ticket) => (
+                        <li key={ticket.id}>
+                          <strong>{ticket.ticketNumber}</strong> ·{" "}
+                          {ticket.subject} · {ticket.statusLabel}{" "}
+                          <button
+                            disabled={controlsDisabled}
+                            onClick={() => void unlinkTicketFromProblem(ticket)}
+                            type="button"
+                          >
+                            {pendingAction ===
+                            `problem:ticket:unlink:${problemForm.id}:${ticket.id}`
+                              ? "Wird entfernt …"
+                              : "Entfernen"}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  <label>
+                    Ticket suchen
+                    <input
+                      aria-describedby="service-assets-ticket-search-help"
+                      disabled={controlsDisabled}
+                      maxLength={240}
+                      onChange={(event) =>
+                        setTicketSearchQuery(event.target.value)
+                      }
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") event.preventDefault();
+                      }}
+                      placeholder="Ticketnummer oder Betreff"
+                      type="search"
+                      value={ticketSearchQuery}
+                    />
+                  </label>
+                  <p id="service-assets-ticket-search-help">
+                    Geben Sie mindestens zwei Zeichen ein.
+                  </p>
+                  {ticketSearchQuery.trim().length >= 2 &&
+                  ticketSearchLoading ? (
+                    <p aria-live="polite">Tickets werden gesucht …</p>
+                  ) : null}
+                  {ticketSearchQuery.trim().length >= 2 &&
+                  !ticketSearchLoading &&
+                  attachableTicketSearchResults.length === 0 ? (
+                    <p>
+                      {ticketSearchResults.length > 0
+                        ? "Alle passenden Tickets sind bereits angehängt."
+                        : "Keine passenden Tickets gefunden."}
+                    </p>
+                  ) : null}
+                  {ticketSearchQuery.trim().length >= 2 &&
+                  !ticketSearchLoading &&
+                  attachableTicketSearchResults.length > 0 ? (
+                    <ul aria-label="Gefundene Tickets">
+                      {attachableTicketSearchResults.map((ticket) => (
+                        <li key={ticket.id}>
+                          <strong>{ticket.ticketNumber}</strong> ·{" "}
+                          {ticket.subject} · {ticket.statusLabel}{" "}
+                          <button
+                            disabled={controlsDisabled}
+                            onClick={() => void linkTicketToProblem(ticket)}
+                            type="button"
+                          >
+                            {pendingAction ===
+                            `problem:ticket:link:${problemForm.id}:${ticket.id}`
+                              ? "Wird angehängt …"
+                              : "Anhängen"}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                </section>
+              ) : null}
               <p>
                 <button
                   className="primary-button"
@@ -1743,10 +2114,10 @@ export function ServiceAssets({ tenantId }: ServiceAssetsProps) {
                     : pendingAction?.startsWith("problem:save:")
                       ? "Wird gespeichert …"
                       : problemMode === "resolve"
-                        ? "Problemfall lösen"
+                        ? "Fall lösen"
                         : problemMode === "edit"
                           ? "Änderungen speichern"
-                          : "Problemfall anlegen"}
+                          : "Fall anlegen"}
                 </button>{" "}
                 {problemMode === "edit" || problemMode === "resolve" ? (
                   <button

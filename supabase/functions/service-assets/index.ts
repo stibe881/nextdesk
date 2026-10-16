@@ -6,12 +6,16 @@ const MAX_TEXT_LENGTH = 50_000;
 const MAX_METADATA_BYTES = 32 * 1024;
 const PAGE_SIZE = 500;
 const MAX_CATALOG_ROWS = 10_000;
+const MAX_TICKET_SEARCH_RESULTS = 30;
 const SERVICE_SELECT =
   "id, tenant_id, name, description, criticality, active, created_at, updated_at";
 const ASSET_SELECT =
   "id, tenant_id, service_id, name, asset_tag, kind, status, customer_organization_id, metadata, active, created_at, updated_at";
 const PROBLEM_SELECT =
   "id, tenant_id, title, description, status, workaround, root_cause, owner_id, created_by, created_at, updated_at";
+const TICKET_SUMMARY_SELECT =
+  "id, ticket_number, subject, status:ticket_statuses!inner(label)";
+const PROBLEM_TICKET_SUMMARY_SELECT = `tickets!inner(${TICKET_SUMMARY_SELECT})`;
 
 // Requests use `type`; update/archive/resolve require serviceId, assetId or
 // problemId, respectively. Updates are partial, but must change at least one
@@ -24,6 +28,8 @@ type ManageType = "manageService" | "manageAsset" | "manageProblem";
 type Operation = "create" | "update" | "archive" | "resolve";
 type Action =
   | { type: "listCatalog"; tenantId: string }
+  | { type: "listProblemTickets"; tenantId: string; problemId: string }
+  | { type: "searchTickets"; tenantId: string; query: string }
   | {
       type: ManageType;
       tenantId: string;
@@ -41,6 +47,12 @@ type Action =
 type CallerClient = SupabaseContext["supabase"];
 type DatabaseError = { code?: string };
 type Row = Record<string, unknown>;
+type TicketSummary = {
+  id: string;
+  ticketNumber: string;
+  subject: string;
+  statusLabel: string;
+};
 const INVALID = Symbol("invalid");
 type Validator = (value: unknown) => JsonValue | typeof INVALID;
 type Field = { column: string; validate: Validator };
@@ -220,6 +232,25 @@ function parseAction(value: unknown): Action | null {
     return hasOnlyKeys(value, ["type", "tenantId"])
       ? { type: value.type, tenantId }
       : null;
+  }
+  if (value.type === "listProblemTickets") {
+    if (
+      !hasOnlyKeys(value, ["type", "tenantId", "problemId"]) ||
+      !isUuid(value.problemId)
+    ) {
+      return null;
+    }
+    return {
+      type: value.type,
+      tenantId,
+      problemId: value.problemId.toLowerCase(),
+    };
+  }
+  if (value.type === "searchTickets") {
+    if (!hasOnlyKeys(value, ["type", "tenantId", "query"])) return null;
+    const query = text(2, 120)(value.query);
+    if (typeof query !== "string") return null;
+    return { type: value.type, tenantId, query };
   }
   if (value.type === "linkTicket" || value.type === "unlinkTicket") {
     if (
@@ -449,6 +480,146 @@ async function readCatalog(
   }
 }
 
+function ticketSummary(row: unknown): TicketSummary | null {
+  if (!isRecord(row) || !isUuid(row.id)) return null;
+  if (!validString(row.ticket_number) || !validString(row.subject)) return null;
+  const status = row.status;
+  if (!isRecord(status) || !validString(status.label)) return null;
+  return {
+    id: row.id.toLowerCase(),
+    ticketNumber: row.ticket_number,
+    subject: row.subject,
+    statusLabel: status.label,
+  };
+}
+
+function requiredTicketSummary(row: unknown): TicketSummary {
+  const summary = ticketSummary(row);
+  if (!summary) {
+    throw new HttpError(
+      500,
+      "ticket_read_failed",
+      "Die Ticketdaten konnten nicht sicher gelesen werden.",
+    );
+  }
+  return summary;
+}
+
+function uniqueTicketSummaries(
+  rows: unknown[],
+  limit = Number.POSITIVE_INFINITY,
+): TicketSummary[] {
+  const seen = new Set<string>();
+  const tickets: TicketSummary[] = [];
+  for (const row of rows) {
+    const ticket = requiredTicketSummary(row);
+    if (seen.has(ticket.id)) continue;
+    seen.add(ticket.id);
+    tickets.push(ticket);
+    if (tickets.length === limit) break;
+  }
+  return tickets;
+}
+
+function escapeLikePattern(value: string): string {
+  // Escape SQL LIKE metacharacters so a short query cannot turn into an
+  // unbounded wildcard search. The Supabase query builder encodes the value.
+  return value
+    .replaceAll("\\", "\\\\")
+    .replaceAll("%", "\\%")
+    .replaceAll("_", "\\_")
+    .replaceAll("*", "\\*");
+}
+
+async function requireReadableProblem(
+  client: CallerClient,
+  tenantId: string,
+  problemId: string,
+): Promise<void> {
+  // This caller-scoped SELECT is the problem-read authorization boundary. It
+  // deliberately relies on the current problem RLS policy rather than a
+  // service-role lookup or a caller-supplied tenant relationship.
+  const { data, error } = await client
+    .from("problems")
+    .select("id")
+    .eq("tenant_id", tenantId)
+    .eq("id", problemId)
+    .maybeSingle();
+  if (error) databaseFailure(error);
+  if (!data) {
+    throw new HttpError(
+      404,
+      "problem_not_found",
+      "Der Fall ist nicht verfügbar.",
+    );
+  }
+}
+
+async function listProblemTickets(
+  request: Request,
+  client: CallerClient,
+  action: Extract<Action, { type: "listProblemTickets" }>,
+): Promise<Response> {
+  await requireReadableProblem(client, action.tenantId, action.problemId);
+  // Both the link-table policy and the nested tickets relation use the caller
+  // client. Consequently an active member can receive only ticket rows that
+  // existing ticket RLS permits them to read.
+  const { data, error } = await client
+    .from("problem_tickets")
+    .select(PROBLEM_TICKET_SUMMARY_SELECT)
+    .eq("tenant_id", action.tenantId)
+    .eq("problem_id", action.problemId)
+    .order("created_at", { ascending: false })
+    .overrideTypes<Row[], { merge: false }>();
+  if (error) databaseFailure(error);
+  if (!data) {
+    throw new HttpError(
+      500,
+      "ticket_read_failed",
+      "Die Ticketdaten konnten nicht sicher gelesen werden.",
+    );
+  }
+  const tickets = uniqueTicketSummaries(
+    data.map((row) => (isRecord(row) ? row.tickets : null)),
+  );
+  return json(request, { data: { tickets } });
+}
+
+async function searchTickets(
+  request: Request,
+  client: CallerClient,
+  action: Extract<Action, { type: "searchTickets" }>,
+): Promise<Response> {
+  const pattern = `%${escapeLikePattern(action.query)}%`;
+  // Use two parameterized filters instead of inserting the query into a raw
+  // PostgREST `or` expression. Both reads remain scoped to the caller's RLS.
+  const [numberResult, subjectResult] = await Promise.all([
+    client
+      .from("tickets")
+      .select(TICKET_SUMMARY_SELECT)
+      .eq("tenant_id", action.tenantId)
+      .ilike("ticket_number", pattern)
+      .order("ticket_number")
+      .limit(MAX_TICKET_SEARCH_RESULTS)
+      .overrideTypes<Row[], { merge: false }>(),
+    client
+      .from("tickets")
+      .select(TICKET_SUMMARY_SELECT)
+      .eq("tenant_id", action.tenantId)
+      .ilike("subject", pattern)
+      .order("ticket_number")
+      .limit(MAX_TICKET_SEARCH_RESULTS)
+      .overrideTypes<Row[], { merge: false }>(),
+  ]);
+  if (numberResult.error) databaseFailure(numberResult.error);
+  if (subjectResult.error) databaseFailure(subjectResult.error);
+  const tickets = uniqueTicketSummaries(
+    [...(numberResult.data ?? []), ...(subjectResult.data ?? [])],
+    MAX_TICKET_SEARCH_RESULTS,
+  );
+  return json(request, { data: { tickets } });
+}
+
 async function manageResource(
   request: Request,
   client: CallerClient,
@@ -651,6 +822,12 @@ const handler = withSupabase(
           readCatalog(client, action.tenantId, RESOURCES.manageProblem),
         ]);
         return json(request, { data: { services, assets, problems } });
+      }
+      if (action.type === "listProblemTickets") {
+        return await listProblemTickets(request, client, action);
+      }
+      if (action.type === "searchTickets") {
+        return await searchTickets(request, client, action);
       }
       if ("operation" in action) {
         return await manageResource(request, client, actorId, action);

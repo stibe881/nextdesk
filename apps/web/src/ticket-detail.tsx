@@ -44,7 +44,10 @@ type PendingAction =
   | null;
 type PendingAttachmentAction = "upload" | "download" | "delete" | null;
 type PendingCatalogAction = "link" | "unlink" | null;
+type PendingHandoverAction = "create" | "acknowledge" | "resolve" | null;
 type CatalogKind = "service" | "asset" | "problem";
+type HandoverRiskLevel = "low" | "medium" | "high";
+type HandoverStatus = "open" | "acknowledged" | "resolved";
 
 type GetTicketAction = {
   type: "getTicket";
@@ -92,6 +95,13 @@ type MarkMergedAction = {
   primaryTicketId: string;
 };
 
+type SearchMergeTargetsAction = {
+  type: "searchMergeTargets";
+  tenantId: string;
+  ticketId: string;
+  query: string;
+};
+
 type UpdateTicketAction = {
   type: "updateTicket";
   tenantId: string;
@@ -100,6 +110,8 @@ type UpdateTicketAction = {
   priorityKey?: string;
   assignedAgentId?: string | null;
   assignedTeamId?: string | null;
+  subject?: string;
+  description?: string;
 };
 
 type AddCommentAction = {
@@ -149,6 +161,7 @@ type TicketOperation =
   | CreateRelationAction
   | DeleteRelationAction
   | MarkMergedAction
+  | SearchMergeTargetsAction
   | UpdateTicketAction
   | AddCommentAction
   | ToggleWatchAction
@@ -206,6 +219,29 @@ type TicketQualityAction =
       ticketId: string;
       score: number;
       notes: string | null;
+    };
+
+type TicketHandoverAction =
+  | { type: "list"; tenantId: string; ticketId: string }
+  | {
+      type: "create";
+      tenantId: string;
+      ticketId: string;
+      summary: string;
+      nextSteps: string | null;
+      riskLevel: HandoverRiskLevel;
+    }
+  | {
+      type: "acknowledge";
+      tenantId: string;
+      ticketId: string;
+      handoverId: string;
+    }
+  | {
+      type: "resolve";
+      tenantId: string;
+      ticketId: string;
+      handoverId: string;
     };
 
 type TicketRecord = {
@@ -269,6 +305,11 @@ type TicketAgent = {
   displayName: string;
 };
 
+/** Deliberately excludes the API ID so only the display name can reach the UI. */
+type TicketRequesterContact = {
+  displayName: string;
+};
+
 type TicketChecklistItem = {
   id: string;
   description: string;
@@ -296,6 +337,14 @@ type TicketRelation = {
 };
 
 type SimilarTicket = {
+  id: string;
+  ticketNumber: string;
+  subject: string;
+  statusLabel: string;
+};
+
+/** Only data approved for the merge-target search UI; the ID is never rendered. */
+type MergeSearchTarget = {
   id: string;
   ticketNumber: string;
   subject: string;
@@ -339,6 +388,18 @@ type TicketQualityData = {
   averageScore: number | null;
   ownReview: TicketQualityReview | null;
   canReview: boolean;
+};
+
+/** Contains only the intentionally public, non-personal fields of an API handover. */
+type TicketHandover = {
+  id: string;
+  ticketId: string;
+  summary: string;
+  nextSteps: string | null;
+  riskLevel: HandoverRiskLevel;
+  acknowledgedAt: string | null;
+  resolvedAt: string | null;
+  createdAt: string;
 };
 
 type CatalogService = {
@@ -394,6 +455,7 @@ type ServiceAssetsAction =
 type TicketDetailData = {
   ticket: TicketRecord;
   assignedAgent: TicketAgent | null;
+  requesterContact: TicketRequesterContact | null;
   comments: TicketComment[];
   events: TicketEvent[];
   escalations: TicketEscalation[];
@@ -408,6 +470,7 @@ type TicketDetailData = {
   watching: boolean;
   canUpdate: boolean;
   canAssign: boolean;
+  canMerge: boolean;
   /** Bei älteren Edge-Function-Deployments nicht vorhanden; kein Fallback auf canUpdate. */
   canEscalate?: boolean;
   canUseInternalNotes: boolean;
@@ -445,6 +508,107 @@ function asRecord(value: unknown): Record<string, unknown> | null {
   return typeof value === "object" && value !== null && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : null;
+}
+
+function hasOnlyKeys(value: Record<string, unknown>, keys: string[]): boolean {
+  const allowedKeys = new Set(keys);
+  return Object.keys(value).every((key) => allowedKeys.has(key));
+}
+
+function isUuid(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      value,
+    )
+  );
+}
+
+function isHandoverRiskLevel(value: unknown): value is HandoverRiskLevel {
+  return value === "low" || value === "medium" || value === "high";
+}
+
+function isHandoverText(
+  value: unknown,
+  minimumLength: number,
+  maximumLength: number,
+): value is string {
+  return (
+    typeof value === "string" &&
+    value.trim() === value &&
+    !value.includes("\u0000") &&
+    [...value].length >= minimumLength &&
+    [...value].length <= maximumLength
+  );
+}
+
+function isHandoverTimestamp(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    value.trim() === value &&
+    !value.includes("\u0000") &&
+    value.length <= 64 &&
+    Number.isFinite(Date.parse(value))
+  );
+}
+
+function isTicketHandover(value: unknown): value is TicketHandover {
+  const handover = asRecord(value);
+  return Boolean(
+    handover &&
+    hasOnlyKeys(handover, [
+      "id",
+      "ticketId",
+      "summary",
+      "nextSteps",
+      "riskLevel",
+      "acknowledgedAt",
+      "resolvedAt",
+      "createdAt",
+    ]) &&
+    isUuid(handover.id) &&
+    isUuid(handover.ticketId) &&
+    isHandoverText(handover.summary, 3, 2_000) &&
+    (handover.nextSteps === null ||
+      isHandoverText(handover.nextSteps, 1, 3_000)) &&
+    isHandoverRiskLevel(handover.riskLevel) &&
+    (handover.acknowledgedAt === null ||
+      isHandoverTimestamp(handover.acknowledgedAt)) &&
+    (handover.resolvedAt === null ||
+      isHandoverTimestamp(handover.resolvedAt)) &&
+    isHandoverTimestamp(handover.createdAt),
+  );
+}
+
+function parseTicketHandovers(value: unknown): TicketHandover[] | null {
+  const envelope = asRecord(value);
+  const data = asRecord(envelope?.data);
+  if (
+    !envelope ||
+    !hasOnlyKeys(envelope, ["data"]) ||
+    !data ||
+    !hasOnlyKeys(data, ["handovers"]) ||
+    !Array.isArray(data.handovers)
+  ) {
+    return null;
+  }
+
+  const handovers = data.handovers;
+  return handovers.every(isTicketHandover) ? handovers : null;
+}
+
+function parseTicketHandoverResponse(value: unknown): TicketHandover | null {
+  const envelope = asRecord(value);
+  const data = asRecord(envelope?.data);
+  if (
+    !envelope ||
+    !hasOnlyKeys(envelope, ["data"]) ||
+    !data ||
+    !hasOnlyKeys(data, ["handover"])
+  ) {
+    return null;
+  }
+  return isTicketHandover(data.handover) ? data.handover : null;
 }
 
 function isTicketRecord(value: unknown): value is TicketRecord {
@@ -560,6 +724,24 @@ function isTicketAgent(value: unknown): value is TicketAgent {
   );
 }
 
+function toTicketRequesterContact(
+  value: unknown,
+): TicketRequesterContact | undefined {
+  const contact = asRecord(value);
+  if (
+    !contact ||
+    !hasOnlyKeys(contact, ["id", "displayName"]) ||
+    typeof contact.id !== "string" ||
+    contact.id.length === 0 ||
+    typeof contact.displayName !== "string" ||
+    contact.displayName.trim().length === 0 ||
+    contact.displayName.includes("\u0000")
+  ) {
+    return undefined;
+  }
+  return { displayName: contact.displayName };
+}
+
 function isBillingKind(value: unknown): value is BillingKind {
   return value === "internal" || value === "billable" || value === "goodwill";
 }
@@ -631,6 +813,34 @@ function isSimilarTicket(value: unknown): value is SimilarTicket {
     typeof ticket.subject === "string" &&
     typeof ticket.statusLabel === "string",
   );
+}
+
+function isMergeSearchTarget(value: unknown): value is MergeSearchTarget {
+  const ticket = asRecord(value);
+  return Boolean(
+    ticket &&
+    hasOnlyKeys(ticket, ["id", "ticketNumber", "subject", "statusLabel"]) &&
+    isUuid(ticket.id) &&
+    isHandoverText(ticket.ticketNumber, 1, 80) &&
+    isHandoverText(ticket.subject, 1, 240) &&
+    isHandoverText(ticket.statusLabel, 1, 120),
+  );
+}
+
+function parseMergeSearchTargets(value: unknown): MergeSearchTarget[] | null {
+  const envelope = asRecord(value);
+  const data = asRecord(envelope?.data);
+  if (
+    !envelope ||
+    !hasOnlyKeys(envelope, ["data"]) ||
+    !data ||
+    !hasOnlyKeys(data, ["mergeTargets"]) ||
+    !Array.isArray(data.mergeTargets) ||
+    !data.mergeTargets.every(isMergeSearchTarget)
+  ) {
+    return null;
+  }
+  return data.mergeTargets;
 }
 
 function toTicketAttachment(value: unknown): TicketAttachment | null {
@@ -1091,7 +1301,18 @@ function parseTicketDetail(
     return undefined;
   }
 
-  if (typeof data.canAssign !== "boolean") return undefined;
+  const requesterContact =
+    data.requesterContact === undefined || data.requesterContact === null
+      ? null
+      : toTicketRequesterContact(data.requesterContact);
+  if (requesterContact === undefined) return undefined;
+
+  if (
+    typeof data.canAssign !== "boolean" ||
+    typeof data.canMerge !== "boolean"
+  ) {
+    return undefined;
+  }
   const agents = data.canAssign
     ? parseStrictValues(data.agents, isTicketAgent)
     : data.agents === undefined
@@ -1134,6 +1355,7 @@ function parseTicketDetail(
   return {
     ticket: data.ticket,
     assignedAgent,
+    requesterContact,
     comments,
     events: valuesOf(data.events, isTicketEvent),
     escalations,
@@ -1150,6 +1372,7 @@ function parseTicketDetail(
     watching: data.watching === true,
     canUpdate: data.canUpdate === true,
     canAssign: data.canAssign,
+    canMerge: data.canMerge,
     ...(canEscalate === undefined ? {} : { canEscalate }),
     canUseInternalNotes: data.canUseInternalNotes === true,
     canTrackTime: data.canTrackTime === true,
@@ -1169,6 +1392,34 @@ function errorMessage(error: unknown): string {
     return value.message;
   }
   return "Der Ticketvorgang konnte nicht verarbeitet werden.";
+}
+
+function mergeErrorMessage(error: unknown, action: "search" | "merge"): string {
+  const status = functionErrorStatus(error);
+  if (status === 401) {
+    return "Ihre Sitzung ist abgelaufen. Bitte melden Sie sich erneut an.";
+  }
+  if (status === 403) {
+    return action === "search"
+      ? "Sie sind nicht berechtigt, mögliche Haupttickets zu suchen."
+      : "Sie sind nicht berechtigt, dieses Ticket zusammenzuführen.";
+  }
+  if (status === 404) {
+    return action === "search"
+      ? "Das Ticket ist nicht mehr verfügbar."
+      : "Das ausgewählte Hauptticket ist nicht mehr verfügbar.";
+  }
+  if (status === 409) {
+    return "Das Ticket wurde zwischenzeitlich geändert. Bitte laden Sie die Ticketdetails neu.";
+  }
+  if (status === 422) {
+    return action === "search"
+      ? "Die Suchanfrage ist ungültig."
+      : "Dieses Ticket kann nicht in das ausgewählte Ticket zusammengeführt werden.";
+  }
+  return action === "search"
+    ? "Die möglichen Haupttickets konnten nicht geladen werden. Bitte versuchen Sie es erneut."
+    : "Das Ticket konnte nicht zusammengeführt werden. Bitte versuchen Sie es erneut.";
 }
 
 function formatDateTime(timestamp: string): string {
@@ -1209,6 +1460,30 @@ function billingKindLabel(kind: BillingKind): string {
   return labels[kind];
 }
 
+function handoverRiskLevelLabel(riskLevel: HandoverRiskLevel): string {
+  const labels: Record<HandoverRiskLevel, string> = {
+    low: "Niedrig",
+    medium: "Mittel",
+    high: "Hoch",
+  };
+  return labels[riskLevel];
+}
+
+function handoverStatus(handover: TicketHandover): HandoverStatus {
+  if (handover.resolvedAt) return "resolved";
+  if (handover.acknowledgedAt) return "acknowledged";
+  return "open";
+}
+
+function handoverStatusLabel(status: HandoverStatus): string {
+  const labels: Record<HandoverStatus, string> = {
+    open: "Offen",
+    acknowledged: "Übernommen",
+    resolved: "Erledigt",
+  };
+  return labels[status];
+}
+
 function escalationKindLabel(kind: EscalationKind): string {
   const labels: Record<EscalationKind, string> = {
     technical: "Technisch",
@@ -1247,6 +1522,8 @@ function eventLabel(eventType: string): string {
     "comment.external_added": "Externer Kommentar hinzugefügt",
     "comment.internal_added": "Interne Notiz hinzugefügt",
     "ticket.updated": "Ticket aktualisiert",
+    "ticket.knowledge.sent":
+      "Wissensartikel als externe Ticketantwort versendet",
   };
   return (
     labels[eventType] ??
@@ -1297,6 +1574,17 @@ async function invokeTicketQualityAction(
 ): Promise<unknown> {
   if (!supabase) throw new Error("Supabase ist nicht konfiguriert.");
   const { data, error } = await supabase.functions.invoke("ticket-quality", {
+    body: action,
+  });
+  if (error) throw error;
+  return data;
+}
+
+async function invokeTicketHandoverAction(
+  action: TicketHandoverAction,
+): Promise<unknown> {
+  if (!supabase) throw new Error("Supabase ist nicht konfiguriert.");
+  const { data, error } = await supabase.functions.invoke("ticket-handovers", {
     body: action,
   });
   if (error) throw error;
@@ -1373,6 +1661,51 @@ function qualityErrorMessage(error: unknown, action: "get" | "submit"): string {
     : "Die Qualitätsprüfungsdaten konnten nicht geladen werden. Bitte versuchen Sie es erneut.";
 }
 
+function handoverErrorMessage(
+  error: unknown,
+  action: "list" | Exclude<PendingHandoverAction, null>,
+): string {
+  const status = functionErrorStatus(error);
+  if (status === 401) {
+    return "Ihre Sitzung ist abgelaufen. Bitte melden Sie sich erneut an.";
+  }
+  if (status === 403) {
+    return action === "list"
+      ? "Sie sind nicht berechtigt, die Übergaben dieses Tickets zu laden."
+      : "Sie sind nicht berechtigt, Übergaben für dieses Ticket zu bearbeiten.";
+  }
+  if (status === 404) {
+    return action === "list" || action === "create"
+      ? "Das Ticket wurde nicht gefunden oder darf nicht eingesehen werden."
+      : "Die Übergabe ist nicht mehr verfügbar. Bitte laden Sie die Liste erneut.";
+  }
+  if (status === 409) {
+    return action === "acknowledge"
+      ? "Die Übergabe wurde zwischenzeitlich bereits übernommen. Bitte laden Sie die Liste erneut."
+      : action === "resolve"
+        ? "Die Übergabe wurde zwischenzeitlich bereits als erledigt markiert. Bitte laden Sie die Liste erneut."
+        : "Die Übergabeliste wurde zwischenzeitlich geändert. Bitte laden Sie sie erneut.";
+  }
+  if (status === 422) {
+    return action === "create"
+      ? "Die Übergabe konnte nicht gespeichert werden. Bitte prüfen Sie Zusammenfassung, nächste Schritte und Risikostufe."
+      : "Die Übergabe konnte nicht aktualisiert werden. Bitte laden Sie die Liste erneut.";
+  }
+  const messages: Record<
+    "list" | Exclude<PendingHandoverAction, null>,
+    string
+  > = {
+    list: "Die Übergaben konnten nicht geladen werden. Bitte versuchen Sie es erneut.",
+    create:
+      "Die Übergabe konnte nicht gespeichert werden. Bitte versuchen Sie es erneut.",
+    acknowledge:
+      "Die Übergabe konnte nicht übernommen werden. Bitte versuchen Sie es erneut.",
+    resolve:
+      "Die Übergabe konnte nicht als erledigt markiert werden. Bitte versuchen Sie es erneut.",
+  };
+  return messages[action];
+}
+
 function affectedItemsErrorMessage(
   error: unknown,
   action: "list" | "link" | "unlink",
@@ -1421,6 +1754,1008 @@ function attachmentErrorMessage(
   return messages[action];
 }
 
+type KnowledgeArticle = {
+  id: string;
+  title: string;
+  visibility: CommentVisibility;
+  body: string;
+  summary: string | null;
+};
+
+type KnowledgeLinkState = {
+  articleId: string;
+  visibility: CommentVisibility;
+  attachedAt: string;
+  sentAt: string | null;
+};
+
+type KnowledgeLink = KnowledgeLinkState & { article: KnowledgeArticle };
+type KnowledgeReference = { tenantId: string; ticketId: string };
+type KnowledgeMutation = KnowledgeReference &
+  (
+    | { type: "attach"; articleId: string; visibility: CommentVisibility }
+    | { type: "detach" | "sendToRequester"; articleId: string }
+    | {
+        type: "createAndAttach";
+        title: string;
+        bodyMarkdown: string;
+        visibility: CommentVisibility;
+      }
+  );
+type TicketKnowledgeAction =
+  | KnowledgeMutation
+  | (KnowledgeReference &
+      ({ type: "list" } | { type: "searchArticles"; query: string }));
+type KnowledgeSendConfirmation =
+  | { kind: "article"; articleId: string; title: string }
+  | { kind: "draft"; title: string; bodyMarkdown: string };
+
+function isKnowledgeVisibility(value: unknown): value is CommentVisibility {
+  return value === "internal" || value === "external";
+}
+
+function isKnowledgeText(
+  value: unknown,
+  min: number,
+  max: number,
+): value is string {
+  return (
+    typeof value === "string" &&
+    !value.includes("\u0000") &&
+    !/\p{Cs}/u.test(value) &&
+    [...value].length >= min &&
+    [...value].length <= max
+  );
+}
+
+function isKnowledgeTimestamp(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})$/.test(
+      value,
+    ) &&
+    Number.isFinite(Date.parse(value))
+  );
+}
+
+/** Allowlist the article contract; never retain actor, profile or email fields. */
+function parseKnowledgeArticle(value: unknown): KnowledgeArticle | null {
+  const article = asRecord(value);
+  if (
+    !article ||
+    !hasOnlyKeys(article, ["id", "title", "visibility", "body", "summary"]) ||
+    !isUuid(article.id) ||
+    !isKnowledgeText(article.title, 3, 240) ||
+    !article.title.trim() ||
+    !isKnowledgeVisibility(article.visibility) ||
+    !isKnowledgeText(article.body, 0, 100_000) ||
+    (article.summary !== null && !isKnowledgeText(article.summary, 0, 100_000))
+  ) {
+    return null;
+  }
+  return {
+    id: article.id,
+    title: article.title,
+    visibility: article.visibility,
+    body: article.body,
+    summary: article.summary,
+  };
+}
+
+function parseKnowledgeData(value: unknown): Record<string, unknown> | null {
+  const envelope = asRecord(value);
+  return envelope && hasOnlyKeys(envelope, ["data"])
+    ? asRecord(envelope.data)
+    : null;
+}
+
+function parseKnowledgeLinkState(value: unknown): KnowledgeLinkState | null {
+  const link = asRecord(value);
+  if (
+    !link ||
+    !hasOnlyKeys(link, ["articleId", "visibility", "attachedAt", "sentAt"]) ||
+    !isUuid(link.articleId) ||
+    !isKnowledgeVisibility(link.visibility) ||
+    !isKnowledgeTimestamp(link.attachedAt) ||
+    (link.sentAt !== null && !isKnowledgeTimestamp(link.sentAt))
+  ) {
+    return null;
+  }
+  return {
+    articleId: link.articleId,
+    visibility: link.visibility,
+    attachedAt: link.attachedAt,
+    sentAt: link.sentAt,
+  };
+}
+
+function parseKnowledgeLinks(value: unknown): KnowledgeLink[] | null {
+  const data = parseKnowledgeData(value);
+  if (!data || !hasOnlyKeys(data, ["links"]) || !Array.isArray(data.links))
+    return null;
+  const links: KnowledgeLink[] = [];
+  const seen = new Set<string>();
+  for (const value of data.links) {
+    const record = asRecord(value);
+    if (
+      !record ||
+      !hasOnlyKeys(record, [
+        "articleId",
+        "visibility",
+        "attachedAt",
+        "sentAt",
+        "article",
+      ])
+    ) {
+      return null;
+    }
+    const link = parseKnowledgeLinkState({
+      articleId: record.articleId,
+      visibility: record.visibility,
+      attachedAt: record.attachedAt,
+      sentAt: record.sentAt,
+    });
+    const article = parseKnowledgeArticle(record.article);
+    if (
+      !link ||
+      !article ||
+      link.articleId !== article.id ||
+      seen.has(article.id) ||
+      (link.visibility === "external" && article.visibility !== "external")
+    ) {
+      return null;
+    }
+    seen.add(article.id);
+    links.push({ ...link, article });
+  }
+  return links;
+}
+
+function parseKnowledgeSearch(value: unknown): KnowledgeArticle[] | null {
+  const data = parseKnowledgeData(value);
+  if (
+    !data ||
+    !hasOnlyKeys(data, ["articles"]) ||
+    !Array.isArray(data.articles) ||
+    data.articles.length > 30
+  )
+    return null;
+  const articles = data.articles.map(parseKnowledgeArticle);
+  if (
+    !articles.every(
+      (article): article is KnowledgeArticle => article !== null,
+    ) ||
+    new Set(articles.map((article) => article.id)).size !== articles.length
+  )
+    return null;
+  return articles;
+}
+
+function parseKnowledgeMutation(
+  value: unknown,
+  action: KnowledgeMutation,
+): { articleId: string; sentAt: string | null } | null {
+  const data = parseKnowledgeData(value);
+  if (!data) return null;
+  if (action.type === "attach" || action.type === "createAndAttach") {
+    if (!hasOnlyKeys(data, ["link"])) return null;
+    const link = parseKnowledgeLinkState(data.link);
+    if (
+      !link ||
+      link.visibility !== action.visibility ||
+      (action.type === "attach" && link.articleId !== action.articleId) ||
+      (action.type === "createAndAttach" && link.sentAt !== null)
+    )
+      return null;
+    return { articleId: link.articleId, sentAt: link.sentAt };
+  }
+  if (action.type === "detach") {
+    return hasOnlyKeys(data, ["detached", "articleId"]) &&
+      data.detached === true &&
+      data.articleId === action.articleId
+      ? { articleId: action.articleId, sentAt: null }
+      : null;
+  }
+  if (data.articleId !== action.articleId || !isKnowledgeTimestamp(data.sentAt))
+    return null;
+  if (
+    data.alreadySent === true &&
+    hasOnlyKeys(data, ["articleId", "sentAt", "alreadySent"])
+  ) {
+    return { articleId: action.articleId, sentAt: data.sentAt };
+  }
+  return data.alreadySent === false &&
+    isUuid(data.commentId) &&
+    hasOnlyKeys(data, ["articleId", "commentId", "sentAt", "alreadySent"])
+    ? { articleId: action.articleId, sentAt: data.sentAt }
+    : null;
+}
+
+async function invokeTicketKnowledge(
+  action: TicketKnowledgeAction,
+): Promise<unknown> {
+  if (!supabase) throw new Error("Supabase ist nicht konfiguriert.");
+  const { data, error } = await supabase.functions.invoke("ticket-knowledge", {
+    body: action,
+  });
+  if (error) throw error;
+  return data;
+}
+
+function knowledgeErrorMessage(
+  error: unknown,
+  action: TicketKnowledgeAction["type"],
+): string {
+  const status = functionErrorStatus(error);
+  if (status === 401)
+    return "Ihre Sitzung ist abgelaufen. Bitte melden Sie sich erneut an.";
+  if (status === 403)
+    return action === "createAndAttach"
+      ? "Sie sind nicht berechtigt, Wissensartikel zu erstellen. Dafür ist zusätzlich die Berechtigung zur Wissensverwaltung erforderlich."
+      : "Sie sind nicht berechtigt, diesen Wissensvorgang auszuführen.";
+  if (status === 404)
+    return "Das Ticket oder der Artikel ist nicht mehr verfügbar oder darf nicht eingesehen werden.";
+  if (status === 409)
+    return "Der Artikel ist bereits mit einer anderen Sichtbarkeit angehängt. Bitte prüfen Sie die aktualisierte Liste.";
+  if (status === 413)
+    return "Der Artikeltext ist zu groß. Bitte kürzen Sie den Text.";
+  if (status === 422)
+    return action === "sendToRequester"
+      ? "Nur veröffentlichte externe Artikel mit externer Verknüpfung und höchstens 50'000 Zeichen können versendet werden. Bitte prüfen Sie die aktualisierte Liste."
+      : "Die Wissensanfrage ist ungültig. Bitte prüfen Sie Text, Sichtbarkeit und Artikelauswahl.";
+  const messages: Record<TicketKnowledgeAction["type"], string> = {
+    list: "Die angehängten Wissensartikel konnten nicht geladen werden. Bitte versuchen Sie es erneut.",
+    searchArticles:
+      "Die Artikelsuche ist fehlgeschlagen. Bitte versuchen Sie es erneut.",
+    attach:
+      "Der Artikel konnte nicht angehängt werden. Bitte prüfen Sie die Liste und versuchen Sie es erneut.",
+    detach:
+      "Die Verknüpfung konnte nicht entfernt werden. Bitte prüfen Sie die Liste und versuchen Sie es erneut.",
+    createAndAttach:
+      "Der Artikel konnte nicht bestätigt werden. Bitte prüfen Sie vor einem erneuten Erstellen die aktualisierte Liste.",
+    sendToRequester:
+      "Der Versand konnte nicht bestätigt werden. Bitte prüfen Sie den Versandstatus, bevor Sie es erneut versuchen.",
+  };
+  // Do not render untrusted API/database messages, which may contain personal data.
+  return messages[action];
+}
+
+function KnowledgeSection({
+  tenantId,
+  ticketId,
+  canUpdate,
+  canUseInternalNotes,
+  refreshToken,
+  onChanged,
+  onSent,
+}: KnowledgeReference & {
+  canUpdate: boolean;
+  canUseInternalNotes: boolean;
+  refreshToken: TicketDetailData;
+  onChanged: () => void;
+  onSent: () => Promise<boolean>;
+}) {
+  const [links, setLinks] = useState<KnowledgeLink[]>([]);
+  const [listLoading, setListLoading] = useState(true);
+  const [listError, setListError] = useState("");
+  const [query, setQuery] = useState("");
+  const [articles, setArticles] = useState<KnowledgeArticle[]>([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchError, setSearchError] = useState("");
+  const [searchRevision, setSearchRevision] = useState(0);
+  const [title, setTitle] = useState("");
+  const [bodyMarkdown, setBodyMarkdown] = useState("");
+  const [visibility, setVisibility] = useState<CommentVisibility>(
+    canUseInternalNotes ? "internal" : "external",
+  );
+  const [confirmation, setConfirmation] =
+    useState<KnowledgeSendConfirmation | null>(null);
+  const [pending, setPending] = useState<KnowledgeMutation["type"] | null>(
+    null,
+  );
+  const [actionError, setActionError] = useState("");
+  const [notice, setNotice] = useState("");
+  const listSequence = useRef(0);
+  const searchSequence = useRef(0);
+  const scopeSequence = useRef(0);
+  const inFlight = useRef(false);
+  const permissions = useRef({ canUpdate, canUseInternalNotes });
+  permissions.current = { canUpdate, canUseInternalNotes };
+  const knowledgeBusy = pending !== null;
+
+  const loadLinks = useCallback(async () => {
+    const requestId = ++listSequence.current;
+    setListLoading(true);
+    setListError("");
+    // Clear stale content, including articles whose visibility may have changed.
+    setLinks([]);
+    try {
+      const result = parseKnowledgeLinks(
+        await invokeTicketKnowledge({ type: "list", tenantId, ticketId }),
+      );
+      if (!result) throw new Error("Ungültige Wissensantwort.");
+      if (requestId !== listSequence.current) return;
+      setLinks(result);
+    } catch (error) {
+      if (requestId === listSequence.current)
+        setListError(knowledgeErrorMessage(error, "list"));
+    } finally {
+      if (requestId === listSequence.current) setListLoading(false);
+    }
+  }, [tenantId, ticketId]);
+
+  useEffect(() => {
+    scopeSequence.current += 1;
+    return () => {
+      scopeSequence.current += 1;
+      listSequence.current += 1;
+      searchSequence.current += 1;
+    };
+  }, []);
+
+  useEffect(() => {
+    setConfirmation(null);
+    void loadLinks();
+    return () => {
+      listSequence.current += 1;
+    };
+  }, [loadLinks, refreshToken, canUseInternalNotes]);
+
+  useEffect(() => {
+    setConfirmation(null);
+    if (!canUseInternalNotes) {
+      if (visibility === "internal") {
+        setTitle("");
+        setBodyMarkdown("");
+      }
+      setVisibility("external");
+    }
+  }, [canUpdate, canUseInternalNotes]);
+
+  useEffect(() => {
+    const requestId = ++searchSequence.current;
+    const text = query.trim();
+    setArticles([]);
+    setSearchError("");
+    setSearchLoading(false);
+    if (!canUpdate || [...text].length < 2) return;
+    if (!isKnowledgeText(text, 2, 120)) {
+      setSearchError(
+        "Bitte geben Sie zwischen 2 und 120 gültige Zeichen für die Suche ein.",
+      );
+      return;
+    }
+    setSearchLoading(true);
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const result = parseKnowledgeSearch(
+            await invokeTicketKnowledge({
+              type: "searchArticles",
+              tenantId,
+              ticketId,
+              query: text,
+            }),
+          );
+          if (!result) throw new Error("Ungültige Suchantwort.");
+          if (requestId === searchSequence.current) setArticles(result);
+        } catch (error) {
+          if (requestId === searchSequence.current)
+            setSearchError(knowledgeErrorMessage(error, "searchArticles"));
+        } finally {
+          if (requestId === searchSequence.current) setSearchLoading(false);
+        }
+      })();
+    }, 250);
+    return () => {
+      window.clearTimeout(timer);
+      searchSequence.current += 1;
+    };
+  }, [
+    query,
+    tenantId,
+    ticketId,
+    canUpdate,
+    canUseInternalNotes,
+    searchRevision,
+    refreshToken,
+  ]);
+
+  const visibleLinks = links.filter(
+    (link) =>
+      canUseInternalNotes ||
+      (link.visibility === "external" &&
+        link.article.visibility === "external"),
+  );
+  const visibleArticles = articles.filter(
+    (article) => canUseInternalNotes || article.visibility === "external",
+  );
+
+  function validDraft(send: boolean): boolean {
+    if (!canUpdate || inFlight.current) return false;
+    if (visibility === "internal" && !canUseInternalNotes) {
+      setActionError("Sie sind nicht berechtigt, interne Artikel anzuhängen.");
+      return false;
+    }
+    if (!isKnowledgeText(title.trim(), 3, 240)) {
+      setActionError(
+        "Der Titel muss zwischen 3 und 240 gültige Zeichen lang sein.",
+      );
+      return false;
+    }
+    if (!isKnowledgeText(bodyMarkdown, 1, 100_000) || !bodyMarkdown.trim()) {
+      setActionError(
+        "Der Artikeltext muss zwischen 1 und 100'000 gültige Zeichen enthalten und darf nicht leer sein.",
+      );
+      return false;
+    }
+    if (
+      send &&
+      (visibility !== "external" || [...bodyMarkdown].length > 50_000)
+    ) {
+      setActionError(
+        "Der Versand erfordert einen externen Artikel mit höchstens 50'000 Zeichen.",
+      );
+      return false;
+    }
+    setActionError("");
+    return true;
+  }
+
+  async function runMutation(action: KnowledgeMutation, sendCreated = false) {
+    if (!permissions.current.canUpdate || inFlight.current || listLoading)
+      return;
+    if (
+      (action.type === "attach" || action.type === "createAndAttach") &&
+      action.visibility === "internal" &&
+      !permissions.current.canUseInternalNotes
+    )
+      return;
+    if (
+      action.type === "sendToRequester" &&
+      (confirmation?.kind !== "article" ||
+        confirmation.articleId !== action.articleId)
+    )
+      return;
+    if (
+      sendCreated &&
+      (confirmation?.kind !== "draft" ||
+        action.type !== "createAndAttach" ||
+        action.visibility !== "external" ||
+        action.title !== confirmation.title ||
+        action.bodyMarkdown !== confirmation.bodyMarkdown)
+    )
+      return;
+    if (
+      action.type === "sendToRequester" &&
+      !visibleLinks.some(
+        (link) =>
+          link.articleId === action.articleId &&
+          link.visibility === "external" &&
+          link.article.visibility === "external" &&
+          link.sentAt === null,
+      )
+    )
+      return;
+
+    inFlight.current = true;
+    const scope = scopeSequence.current;
+    setPending(action.type);
+    setConfirmation(null); // Every retry needs a fresh explicit confirmation.
+    setActionError("");
+    setNotice("");
+    let currentAction: TicketKnowledgeAction["type"] = action.type;
+    let created = false;
+    try {
+      const result = parseKnowledgeMutation(
+        await invokeTicketKnowledge(action),
+        action,
+      );
+      if (scope !== scopeSequence.current) return;
+      if (!result) throw new Error("Ungültige Wissensantwort.");
+      if (action.type === "createAndAttach") {
+        created = true;
+        setTitle("");
+        setBodyMarkdown("");
+      }
+      if (sendCreated) {
+        // Creation only attaches. Sending is a separate, explicitly confirmed API call.
+        currentAction = "sendToRequester";
+        if (
+          !permissions.current.canUpdate ||
+          action.type !== "createAndAttach" ||
+          action.visibility !== "external"
+        ) {
+          throw new Error("Versandberechtigung geändert.");
+        }
+        setPending("sendToRequester");
+        const sendAction: KnowledgeMutation = {
+          type: "sendToRequester",
+          tenantId,
+          ticketId,
+          articleId: result.articleId,
+        };
+        const sent = parseKnowledgeMutation(
+          await invokeTicketKnowledge(sendAction),
+          sendAction,
+        );
+        if (scope !== scopeSequence.current) return;
+        if (!sent) throw new Error("Ungültige Versandantwort.");
+      }
+      setNotice(
+        action.type === "sendToRequester" || sendCreated
+          ? "Der Artikeltext wurde als externe Ticketantwort versendet."
+          : action.type === "detach"
+            ? "Die Artikelverknüpfung wurde entfernt. Bereits versendete Ticketantworten bleiben bestehen."
+            : action.type === "createAndAttach"
+              ? "Der Artikel wurde erstellt und angehängt. Es wurde keine Ticketantwort versendet."
+              : "Der Artikel wurde angehängt. Es wurde keine Ticketantwort versendet.",
+      );
+    } catch (error) {
+      if (scope === scopeSequence.current)
+        setActionError(
+          (created && sendCreated
+            ? "Der Artikel wurde erstellt und extern angehängt. "
+            : "") + knowledgeErrorMessage(error, currentAction),
+        );
+    } finally {
+      if (scope === scopeSequence.current) {
+        // Refresh even after an uncertain response: the transaction may have committed.
+        onChanged();
+        await Promise.all([
+          loadLinks(),
+          action.type === "sendToRequester" || sendCreated
+            ? onSent()
+            : Promise.resolve(),
+        ]);
+        if (scope === scopeSequence.current) {
+          setSearchRevision((revision) => revision + 1);
+          setPending(null);
+          inFlight.current = false;
+        }
+      }
+    }
+  }
+
+  function createArticle(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!validDraft(false)) return;
+    void runMutation({
+      type: "createAndAttach",
+      tenantId,
+      ticketId,
+      title: title.trim(),
+      bodyMarkdown,
+      visibility,
+    });
+  }
+
+  function requestDraftSend() {
+    if (!validDraft(true) || listLoading) return;
+    setNotice("");
+    setConfirmation({ kind: "draft", title: title.trim(), bodyMarkdown });
+  }
+
+  function confirmSend() {
+    if (!confirmation || !canUpdate || knowledgeBusy || listLoading) return;
+    if (confirmation.kind === "article") {
+      void runMutation({
+        type: "sendToRequester",
+        tenantId,
+        ticketId,
+        articleId: confirmation.articleId,
+      });
+    } else if (
+      visibility === "external" &&
+      title.trim() === confirmation.title &&
+      bodyMarkdown === confirmation.bodyMarkdown &&
+      validDraft(true)
+    ) {
+      void runMutation(
+        {
+          type: "createAndAttach",
+          tenantId,
+          ticketId,
+          title: confirmation.title,
+          bodyMarkdown: confirmation.bodyMarkdown,
+          visibility: "external",
+        },
+        true,
+      );
+    }
+  }
+
+  return (
+    <section
+      className="ticket-detail-comments"
+      aria-labelledby="ticket-knowledge-heading"
+      aria-busy={listLoading || knowledgeBusy}
+    >
+      <div className="ticket-detail-section-heading">
+        <div>
+          <p className="eyebrow">WISSEN</p>
+          <h3 id="ticket-knowledge-heading">Wissen</h3>
+        </div>
+        <button
+          className="secondary-button"
+          type="button"
+          disabled={listLoading || knowledgeBusy}
+          onClick={() => {
+            setConfirmation(null);
+            setSearchRevision((revision) => revision + 1);
+            void loadLinks();
+          }}
+        >
+          <RefreshCw aria-hidden="true" size={16} />
+          Wissen aktualisieren
+        </button>
+      </div>
+      <p className="data-caption" id="ticket-knowledge-help">
+        Anhängen allein versendet keine Antwort. Interne Verknüpfungen sind nur
+        mit Berechtigung sichtbar. Bitte keine Namen, E-Mail-Adressen oder
+        personenbezogenen Kennungen in neue Artikel übernehmen.
+      </p>
+      {listError && (
+        <p className="ticket-detail-message error" role="alert">
+          {listError}
+        </p>
+      )}
+      {actionError && (
+        <p className="ticket-detail-message error" role="alert">
+          {actionError}
+        </p>
+      )}
+      {notice && (
+        <p className="data-caption" role="status">
+          {notice}
+        </p>
+      )}
+      {listLoading ? (
+        <p className="empty-state" role="status">
+          Wissensartikel werden geladen …
+        </p>
+      ) : !listError && visibleLinks.length === 0 ? (
+        <p className="empty-state">Noch keine sichtbaren Artikel angehängt.</p>
+      ) : null}
+      {visibleLinks.length > 0 && (
+        <ul
+          className="ticket-comment-list"
+          aria-label="Angehängte Wissensartikel"
+        >
+          {visibleLinks.map((link) => (
+            <li className="ticket-comment" key={link.articleId}>
+              <div className="ticket-comment-meta">
+                <strong>{link.article.title}</strong>
+                <span
+                  className={`ticket-comment-visibility-badge ${link.article.visibility}`}
+                >
+                  Artikel:{" "}
+                  {link.article.visibility === "internal" ? "Intern" : "Extern"}
+                </span>
+                <span
+                  className={`ticket-comment-visibility-badge ${link.visibility}`}
+                >
+                  Angehängt:{" "}
+                  {link.visibility === "internal" ? "Intern" : "Extern"}
+                </span>
+                <span className="data-caption">
+                  {link.sentAt
+                    ? `Versendet am ${formatDateTime(link.sentAt)}`
+                    : "Noch nicht versendet"}
+                </span>
+              </div>
+              {canUpdate && (
+                <div className="ticket-detail-actions">
+                  {link.visibility === "external" &&
+                    link.article.visibility === "external" &&
+                    !link.sentAt && (
+                      <button
+                        className="secondary-button"
+                        type="button"
+                        disabled={
+                          knowledgeBusy ||
+                          listLoading ||
+                          !link.article.body.trim() ||
+                          [...link.article.body].length > 50_000
+                        }
+                        onClick={() => {
+                          setActionError("");
+                          setNotice("");
+                          setConfirmation({
+                            kind: "article",
+                            articleId: link.articleId,
+                            title: link.article.title,
+                          });
+                        }}
+                      >
+                        <Send aria-hidden="true" size={16} />
+                        An anfragende Person versenden …
+                      </button>
+                    )}
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    disabled={knowledgeBusy || listLoading}
+                    onClick={() =>
+                      void runMutation({
+                        type: "detach",
+                        tenantId,
+                        ticketId,
+                        articleId: link.articleId,
+                      })
+                    }
+                  >
+                    Verknüpfung entfernen
+                  </button>
+                </div>
+              )}
+              {canUpdate &&
+                link.visibility === "external" &&
+                !link.sentAt &&
+                [...link.article.body].length > 50_000 && (
+                  <p className="data-caption">
+                    Dieser Artikeltext ist für eine Ticketantwort zu lang
+                    (höchstens 50'000 Zeichen).
+                  </p>
+                )}
+            </li>
+          ))}
+        </ul>
+      )}
+      {canUpdate ? (
+        <>
+          <label className="ticket-comment-body">
+            Artikel suchen
+            <input
+              type="search"
+              value={query}
+              maxLength={120}
+              disabled={knowledgeBusy}
+              aria-describedby="ticket-knowledge-search-help"
+              onChange={(event) => {
+                setQuery(event.target.value);
+                setConfirmation(null);
+              }}
+              placeholder="Mindestens 2 Zeichen"
+            />
+          </label>
+          <p className="data-caption" id="ticket-knowledge-search-help">
+            Die Suche startet ab 2 Zeichen. Nur externe Artikel können als
+            Kundenantwort angehängt werden; das versendet noch keine Antwort.
+          </p>
+          {searchError && (
+            <p className="ticket-detail-message error" role="alert">
+              {searchError}
+            </p>
+          )}
+          {searchLoading && (
+            <p className="data-caption" role="status">
+              Artikel werden gesucht …
+            </p>
+          )}
+          {!searchLoading &&
+            !searchError &&
+            [...query.trim()].length >= 2 &&
+            visibleArticles.length === 0 && (
+              <p className="empty-state">Keine sichtbaren Artikel gefunden.</p>
+            )}
+          {visibleArticles.length > 0 && (
+            <ul
+              className="ticket-comment-list"
+              aria-label="Gefundene Wissensartikel"
+            >
+              {visibleArticles.map((article) => {
+                const attached = visibleLinks.some(
+                  (link) => link.articleId === article.id,
+                );
+                return (
+                  <li className="ticket-comment" key={article.id}>
+                    <div className="ticket-comment-meta">
+                      <strong>{article.title}</strong>
+                      <span
+                        className={`ticket-comment-visibility-badge ${article.visibility}`}
+                      >
+                        {article.visibility === "internal"
+                          ? "Intern"
+                          : "Extern"}
+                      </span>
+                    </div>
+                    {attached ? (
+                      <p className="data-caption">Bereits angehängt.</p>
+                    ) : (
+                      <div className="ticket-detail-actions">
+                        {canUseInternalNotes && (
+                          <button
+                            className="secondary-button"
+                            type="button"
+                            disabled={knowledgeBusy || listLoading}
+                            onClick={() =>
+                              void runMutation({
+                                type: "attach",
+                                tenantId,
+                                ticketId,
+                                articleId: article.id,
+                                visibility: "internal",
+                              })
+                            }
+                          >
+                            Anhängen intern
+                          </button>
+                        )}
+                        {article.visibility === "external" && (
+                          <button
+                            className="secondary-button"
+                            type="button"
+                            disabled={knowledgeBusy || listLoading}
+                            onClick={() =>
+                              void runMutation({
+                                type: "attach",
+                                tenantId,
+                                ticketId,
+                                articleId: article.id,
+                                visibility: "external",
+                              })
+                            }
+                          >
+                            Als Kundenantwort anhängen
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+          <form
+            className="ticket-comment-form"
+            aria-labelledby="ticket-knowledge-create-heading"
+            onSubmit={createArticle}
+          >
+            <h4 id="ticket-knowledge-create-heading">
+              Neuen Artikel aus Ticket
+            </h4>
+            <label className="ticket-comment-body">
+              Titel
+              <input
+                value={title}
+                required
+                minLength={3}
+                maxLength={240}
+                disabled={knowledgeBusy}
+                aria-describedby="ticket-knowledge-help"
+                onChange={(event) => {
+                  setTitle(event.target.value);
+                  setConfirmation(null);
+                }}
+              />
+            </label>
+            <label className="ticket-comment-body">
+              Text (Markdown)
+              <textarea
+                value={bodyMarkdown}
+                required
+                maxLength={100000}
+                rows={3}
+                disabled={knowledgeBusy}
+                aria-describedby="ticket-knowledge-help"
+                onChange={(event) => {
+                  setBodyMarkdown(event.target.value);
+                  setConfirmation(null);
+                }}
+              />
+            </label>
+            <label>
+              Sichtbarkeit
+              <select
+                value={visibility}
+                disabled={knowledgeBusy}
+                onChange={(event) => {
+                  if (
+                    isKnowledgeVisibility(event.target.value) &&
+                    (event.target.value === "external" || canUseInternalNotes)
+                  ) {
+                    setVisibility(event.target.value);
+                    setConfirmation(null);
+                  }
+                }}
+              >
+                {canUseInternalNotes && (
+                  <option value="internal">Intern</option>
+                )}
+                <option value="external">Extern (veröffentlicht)</option>
+              </select>
+            </label>
+            <p className="data-caption">
+              {visibility === "internal"
+                ? "Der interne Artikel wird nur angehängt und nicht versendet."
+                : "Externe Artikel werden veröffentlicht. Die anfragende Person kann die externe Verknüpfung sehen; ein Versand erfolgt nur nach gesonderter Bestätigung."}{" "}
+              Die Erstellung erfordert zusätzlich die Berechtigung zur
+              Wissensverwaltung.
+            </p>
+            <div className="ticket-detail-actions">
+              <button
+                className="secondary-button"
+                type="submit"
+                disabled={knowledgeBusy || listLoading}
+              >
+                {visibility === "internal"
+                  ? "Artikel erstellen und intern anhängen"
+                  : "Extern erstellen und anhängen (ohne Versand)"}
+              </button>
+              {visibility === "external" && (
+                <button
+                  className="secondary-button"
+                  type="button"
+                  disabled={knowledgeBusy || listLoading}
+                  onClick={requestDraftSend}
+                >
+                  Erstellen und als Kundenantwort versenden …
+                </button>
+              )}
+            </div>
+          </form>
+        </>
+      ) : (
+        <p className="data-caption">Sie haben für Wissen nur Leserechte.</p>
+      )}
+      {canUpdate && confirmation && (
+        <div
+          className="ticket-comment"
+          role="group"
+          aria-labelledby="ticket-knowledge-send-heading"
+          aria-describedby="ticket-knowledge-send-warning"
+        >
+          <h4 id="ticket-knowledge-send-heading">
+            Versand ausdrücklich bestätigen
+          </h4>
+          <p>
+            <strong>{confirmation.title}</strong>
+          </p>
+          <p id="ticket-knowledge-send-warning">
+            Der vollständige{" "}
+            {confirmation.kind === "article"
+              ? "aktuelle Artikeltext"
+              : "oben eingegebene Artikeltext"}{" "}
+            wird als{" "}
+            <strong>externe Ticketantwort an die anfragende Person</strong>{" "}
+            versendet. Dies ist keine interne Notiz.{" "}
+            {confirmation.kind === "draft"
+              ? "Der Artikel wird außerdem extern veröffentlicht und angehängt."
+              : "Bitte prüfen Sie, dass der Artikeltext für die anfragende Person bestimmt ist."}
+          </p>
+          <div className="ticket-detail-actions">
+            <button
+              className="primary-button"
+              type="button"
+              disabled={knowledgeBusy || listLoading}
+              onClick={confirmSend}
+            >
+              <Send aria-hidden="true" size={16} />
+              Ja, Artikeltext als externe Ticketantwort versenden
+            </button>
+            <button
+              className="secondary-button"
+              type="button"
+              disabled={knowledgeBusy}
+              onClick={() => setConfirmation(null)}
+            >
+              Abbrechen – nicht versenden
+            </button>
+          </div>
+        </div>
+      )}
+      {knowledgeBusy && (
+        <p className="data-caption" role="status">
+          {pending === "sendToRequester"
+            ? "Externe Ticketantwort wird versendet …"
+            : "Wissensvorgang wird verarbeitet …"}
+        </p>
+      )}
+    </section>
+  );
+}
+
 export function TicketDetail({
   tenantId,
   ticketId,
@@ -1434,6 +2769,9 @@ export function TicketDetail({
   const [pendingAction, setPendingAction] = useState<PendingAction>(null);
   const [statusKey, setStatusKey] = useState("");
   const [priorityKey, setPriorityKey] = useState("");
+  const [isEditingTicket, setIsEditingTicket] = useState(false);
+  const [editSubject, setEditSubject] = useState("");
+  const [editDescription, setEditDescription] = useState("");
   const [selectedTeamId, setSelectedTeamId] = useState("");
   const [selectedAgentId, setSelectedAgentId] = useState("");
   const [comment, setComment] = useState("");
@@ -1450,6 +2788,12 @@ export function TicketDetail({
   const [selectedRelatedTicketId, setSelectedRelatedTicketId] = useState("");
   const [selectedRelationType, setSelectedRelationType] =
     useState<RelationType>("relates_to");
+  const [mergeQuery, setMergeQuery] = useState("");
+  const [mergeTargets, setMergeTargets] = useState<MergeSearchTarget[]>([]);
+  const [mergeSearchLoading, setMergeSearchLoading] = useState(false);
+  const [mergeError, setMergeError] = useState("");
+  const [mergeConfirmationTarget, setMergeConfirmationTarget] =
+    useState<MergeSearchTarget | null>(null);
   const [pendingChecklistItemId, setPendingChecklistItemId] = useState<
     string | null
   >(null);
@@ -1480,6 +2824,19 @@ export function TicketDetail({
   const [qualityError, setQualityError] = useState("");
   const [qualityScore, setQualityScore] = useState<number | null>(null);
   const [qualityNotes, setQualityNotes] = useState("");
+  const [handovers, setHandovers] = useState<TicketHandover[]>([]);
+  const [handoversLoading, setHandoversLoading] = useState(false);
+  const [handoversLoaded, setHandoversLoaded] = useState(false);
+  const [handoverError, setHandoverError] = useState("");
+  const [handoverSummary, setHandoverSummary] = useState("");
+  const [handoverNextSteps, setHandoverNextSteps] = useState("");
+  const [handoverRiskLevel, setHandoverRiskLevel] =
+    useState<HandoverRiskLevel>("medium");
+  const [pendingHandoverAction, setPendingHandoverAction] =
+    useState<PendingHandoverAction>(null);
+  const [pendingHandoverId, setPendingHandoverId] = useState<string | null>(
+    null,
+  );
   const [catalog, setCatalog] = useState<TicketCatalog>(emptyTicketCatalog);
   const [linkedCatalogItems, setLinkedCatalogItems] = useState<
     LinkedCatalogItem[]
@@ -1497,7 +2854,9 @@ export function TicketDetail({
   const attachmentRequestSequence = useRef(0);
   const feedbackRequestSequence = useRef(0);
   const qualityRequestSequence = useRef(0);
+  const handoverRequestSequence = useRef(0);
   const affectedItemsRequestSequence = useRef(0);
+  const mergeSearchRequestSequence = useRef(0);
   const attachmentInputRef = useRef<HTMLInputElement>(null);
 
   const loadFeedback = useCallback(async () => {
@@ -1604,6 +2963,8 @@ export function TicketDetail({
           (priority) => priority.id === nextDetail.ticket.priority_id,
         )?.key ?? "",
       );
+      setEditSubject(nextDetail?.ticket.subject ?? "");
+      setEditDescription(nextDetail?.ticket.description ?? "");
       setSelectedTeamId(nextDetail?.ticket.assigned_team_id ?? "");
       setSelectedAgentId(nextDetail?.ticket.assigned_agent_id ?? "");
       if (!nextDetail?.canUseInternalNotes) {
@@ -1650,6 +3011,41 @@ export function TicketDetail({
       if (requestId === attachmentRequestSequence.current) {
         setAttachmentsLoaded(true);
         setAttachmentsLoading(false);
+      }
+    }
+  }, [tenantId, ticketId]);
+
+  const loadHandovers = useCallback(async () => {
+    const requestId = ++handoverRequestSequence.current;
+    setHandoversLoading(true);
+    setHandoverError("");
+
+    try {
+      const response = await invokeTicketHandoverAction({
+        type: "list",
+        tenantId,
+        ticketId,
+      });
+      const nextHandovers = parseTicketHandovers(response);
+      if (
+        !nextHandovers ||
+        nextHandovers.some((handover) => handover.ticketId !== ticketId)
+      ) {
+        throw new Error("Die Übergabedaten sind unvollständig.");
+      }
+      if (requestId !== handoverRequestSequence.current) return false;
+
+      setHandovers(nextHandovers);
+      return true;
+    } catch (nextError) {
+      if (requestId === handoverRequestSequence.current) {
+        setHandoverError(handoverErrorMessage(nextError, "list"));
+      }
+      return false;
+    } finally {
+      if (requestId === handoverRequestSequence.current) {
+        setHandoversLoaded(true);
+        setHandoversLoading(false);
       }
     }
   }, [tenantId, ticketId]);
@@ -1778,6 +3174,19 @@ export function TicketDetail({
   }, [loadAttachments]);
 
   useEffect(() => {
+    setHandovers([]);
+    setHandoversLoaded(false);
+    setHandoverError("");
+    setHandoverSummary("");
+    setHandoverNextSteps("");
+    setHandoverRiskLevel("medium");
+    void loadHandovers();
+    return () => {
+      handoverRequestSequence.current += 1;
+    };
+  }, [loadHandovers]);
+
+  useEffect(() => {
     setCatalog(emptyTicketCatalog());
     setLinkedCatalogItems([]);
     setAffectedItemsLoaded(false);
@@ -1788,6 +3197,72 @@ export function TicketDetail({
       affectedItemsRequestSequence.current += 1;
     };
   }, [loadAffectedItems]);
+
+  useEffect(() => {
+    setMergeQuery("");
+    setMergeTargets([]);
+    setMergeError("");
+    setMergeConfirmationTarget(null);
+  }, [ticketId]);
+
+  useEffect(() => {
+    const query = mergeQuery.trim();
+    const requestId = ++mergeSearchRequestSequence.current;
+    setMergeConfirmationTarget(null);
+
+    if (!detail?.canMerge || [...query].length < 2) {
+      setMergeTargets([]);
+      setMergeError("");
+      setMergeSearchLoading(false);
+      return;
+    }
+    if (query.includes("\u0000")) {
+      setMergeTargets([]);
+      setMergeError("Die Suchanfrage enthält ungültige Zeichen.");
+      setMergeSearchLoading(false);
+      return;
+    }
+
+    setMergeSearchLoading(true);
+    setMergeError("");
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const response = await invokeTicketOperation({
+            type: "searchMergeTargets",
+            tenantId,
+            ticketId,
+            query,
+          });
+          const targets = parseMergeSearchTargets(response);
+          if (
+            !targets ||
+            targets.length > 50 ||
+            targets.some((target) => target.id === ticketId) ||
+            new Set(targets.map((target) => target.id)).size !== targets.length
+          ) {
+            throw new Error("Ungültige Suchantwort.");
+          }
+          if (requestId !== mergeSearchRequestSequence.current) return;
+          setMergeTargets(targets);
+        } catch (nextError) {
+          if (requestId === mergeSearchRequestSequence.current) {
+            setMergeTargets([]);
+            setMergeError(mergeErrorMessage(nextError, "search"));
+          }
+        } finally {
+          if (requestId === mergeSearchRequestSequence.current) {
+            setMergeSearchLoading(false);
+          }
+        }
+      })();
+    }, 250);
+
+    return () => {
+      window.clearTimeout(timer);
+      mergeSearchRequestSequence.current += 1;
+    };
+  }, [detail?.canMerge, mergeQuery, tenantId, ticketId]);
 
   const selectedStatus = useMemo(
     () =>
@@ -1815,15 +3290,23 @@ export function TicketDetail({
   );
   const assignedTeamId = detail?.ticket.assigned_team_id ?? "";
   const assignedAgentId = detail?.ticket.assigned_agent_id ?? "";
+  const hasContentChanges = Boolean(
+    detail &&
+    isEditingTicket &&
+    (editSubject.trim() !== detail.ticket.subject ||
+      editDescription.trim() !== detail.ticket.description),
+  );
   const hasChanges = Boolean(
     detail &&
     (statusKey !== selectedStatus?.key ||
       priorityKey !== selectedPriority?.key ||
       selectedTeamId !== assignedTeamId ||
-      (detail.canAssign && selectedAgentId !== assignedAgentId)),
+      (detail.canAssign && selectedAgentId !== assignedAgentId) ||
+      hasContentChanges),
   );
   const busy = pendingAction !== null;
   const attachmentBusy = pendingAttachmentAction !== null;
+  const handoverBusy = pendingHandoverAction !== null;
   const catalogBusy = pendingCatalogAction !== null;
   const availableCatalogItems = useMemo(() => {
     const linkedItemKeys = new Set(linkedCatalogItems.map(catalogItemKey));
@@ -1955,6 +3438,145 @@ export function TicketDetail({
     }
   }
 
+  async function createHandover(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!detail || !detail.canUpdate || handoverBusy) return;
+
+    const summary = handoverSummary.trim();
+    const nextSteps = handoverNextSteps.trim();
+    const summaryLength = [...summary].length;
+    const nextStepsLength = [...nextSteps].length;
+    if (
+      summaryLength < 3 ||
+      summaryLength > 2_000 ||
+      summary.includes("\u0000")
+    ) {
+      setHandoverError(
+        "Die Zusammenfassung muss zwischen 3 und 2'000 Zeichen lang sein.",
+      );
+      return;
+    }
+    if (nextStepsLength > 3_000 || nextSteps.includes("\u0000")) {
+      setHandoverError(
+        "Die nächsten Schritte dürfen höchstens 3'000 Zeichen lang sein.",
+      );
+      return;
+    }
+
+    setPendingHandoverAction("create");
+    setPendingHandoverId(null);
+    setHandoverError("");
+    try {
+      const response = await invokeTicketHandoverAction({
+        type: "create",
+        tenantId,
+        ticketId,
+        summary,
+        nextSteps: nextSteps || null,
+        riskLevel: handoverRiskLevel,
+      });
+      const createdHandover = parseTicketHandoverResponse(response);
+      if (
+        !createdHandover ||
+        createdHandover.ticketId !== ticketId ||
+        createdHandover.acknowledgedAt !== null ||
+        createdHandover.resolvedAt !== null
+      ) {
+        throw new Error("Ungültige Antwort für die Übergabe.");
+      }
+
+      setHandoverSummary("");
+      setHandoverNextSteps("");
+      setHandoverRiskLevel("medium");
+      onChanged();
+      await loadHandovers();
+    } catch (nextError) {
+      setHandoverError(handoverErrorMessage(nextError, "create"));
+    } finally {
+      setPendingHandoverId(null);
+      setPendingHandoverAction(null);
+    }
+  }
+
+  async function acknowledgeHandover(handover: TicketHandover) {
+    if (
+      !detail ||
+      !detail.canUpdate ||
+      handoverBusy ||
+      handoverStatus(handover) !== "open"
+    ) {
+      return;
+    }
+
+    setPendingHandoverAction("acknowledge");
+    setPendingHandoverId(handover.id);
+    setHandoverError("");
+    try {
+      const response = await invokeTicketHandoverAction({
+        type: "acknowledge",
+        tenantId,
+        ticketId,
+        handoverId: handover.id,
+      });
+      const acknowledgedHandover = parseTicketHandoverResponse(response);
+      if (
+        !acknowledgedHandover ||
+        acknowledgedHandover.ticketId !== ticketId ||
+        acknowledgedHandover.acknowledgedAt === null ||
+        acknowledgedHandover.resolvedAt !== null
+      ) {
+        throw new Error("Ungültige Antwort für die Übergabe.");
+      }
+
+      onChanged();
+      await loadHandovers();
+    } catch (nextError) {
+      setHandoverError(handoverErrorMessage(nextError, "acknowledge"));
+    } finally {
+      setPendingHandoverId(null);
+      setPendingHandoverAction(null);
+    }
+  }
+
+  async function resolveHandover(handover: TicketHandover) {
+    if (
+      !detail ||
+      !detail.canUpdate ||
+      handoverBusy ||
+      handoverStatus(handover) !== "acknowledged"
+    ) {
+      return;
+    }
+
+    setPendingHandoverAction("resolve");
+    setPendingHandoverId(handover.id);
+    setHandoverError("");
+    try {
+      const response = await invokeTicketHandoverAction({
+        type: "resolve",
+        tenantId,
+        ticketId,
+        handoverId: handover.id,
+      });
+      const resolvedHandover = parseTicketHandoverResponse(response);
+      if (
+        !resolvedHandover ||
+        resolvedHandover.ticketId !== ticketId ||
+        resolvedHandover.resolvedAt === null
+      ) {
+        throw new Error("Ungültige Antwort für die Übergabe.");
+      }
+
+      onChanged();
+      await loadHandovers();
+    } catch (nextError) {
+      setHandoverError(handoverErrorMessage(nextError, "resolve"));
+    } finally {
+      setPendingHandoverId(null);
+      setPendingHandoverAction(null);
+    }
+  }
+
   function selectAttachmentFile(file: File | null) {
     setAttachmentError("");
     setSelectedAttachmentFile(null);
@@ -2075,8 +3697,58 @@ export function TicketDetail({
     }
   }
 
+  function startTicketEdit() {
+    if (!detail || !detail.canUpdate || busy) return;
+    setEditSubject(detail.ticket.subject);
+    setEditDescription(detail.ticket.description);
+    setIsEditingTicket(true);
+    setError("");
+  }
+
+  function cancelTicketEdit() {
+    if (!detail || busy) return;
+    setEditSubject(detail.ticket.subject);
+    setEditDescription(detail.ticket.description);
+    setStatusKey(
+      detail.statuses.find((status) => status.id === detail.ticket.status_id)
+        ?.key ?? "",
+    );
+    setPriorityKey(
+      detail.priorities.find(
+        (priority) => priority.id === detail.ticket.priority_id,
+      )?.key ?? "",
+    );
+    setSelectedTeamId(detail.ticket.assigned_team_id ?? "");
+    setSelectedAgentId(detail.ticket.assigned_agent_id ?? "");
+    setIsEditingTicket(false);
+    setError("");
+  }
+
   async function saveTicketChanges() {
-    if (!detail || !hasChanges) return;
+    if (!detail || !detail.canUpdate || !hasChanges) return;
+
+    const subject = editSubject.trim();
+    const description = editDescription.trim();
+    if (hasContentChanges) {
+      if (
+        [...subject].length < 3 ||
+        [...subject].length > 240 ||
+        subject.includes("\u0000")
+      ) {
+        setError("Der Titel muss zwischen 3 und 240 Zeichen lang sein.");
+        return;
+      }
+      if (
+        [...description].length < 1 ||
+        [...description].length > 10_000 ||
+        description.includes("\u0000")
+      ) {
+        setError(
+          "Die Beschreibung muss zwischen 1 und 10'000 Zeichen lang sein.",
+        );
+        return;
+      }
+    }
 
     const action: UpdateTicketAction = {
       type: "updateTicket",
@@ -2095,11 +3767,19 @@ export function TicketDetail({
     if (detail.canAssign && selectedAgentId !== assignedAgentId) {
       action.assignedAgentId = selectedAgentId || null;
     }
+    if (hasContentChanges && subject !== detail.ticket.subject) {
+      action.subject = subject;
+    }
+    if (hasContentChanges && description !== detail.ticket.description) {
+      action.description = description;
+    }
     if (
       !action.statusKey &&
       !action.priorityKey &&
       action.assignedTeamId === undefined &&
-      action.assignedAgentId === undefined
+      action.assignedAgentId === undefined &&
+      action.subject === undefined &&
+      action.description === undefined
     ) {
       return;
     }
@@ -2108,6 +3788,7 @@ export function TicketDetail({
     setError("");
     try {
       await invokeTicketOperation(action);
+      setIsEditingTicket(false);
       onChanged();
       await Promise.all([loadTicket(), loadFeedback(), loadQuality()]);
     } catch (nextError) {
@@ -2390,12 +4071,14 @@ export function TicketDetail({
     }
   }
 
-  async function markMerged(primaryTicket: SimilarTicket) {
-    if (!detail || !detail.canUpdate || primaryTicket.id === ticketId) return;
+  async function markMerged(primaryTicket: MergeSearchTarget) {
+    if (!detail || !detail.canMerge || busy || primaryTicket.id === ticketId) {
+      return;
+    }
 
     setPendingAction("merge");
     setPendingRelationKey(`merge:${primaryTicket.id}`);
-    setError("");
+    setMergeError("");
     try {
       await invokeTicketOperation({
         type: "markMerged",
@@ -2403,10 +4086,13 @@ export function TicketDetail({
         ticketId,
         primaryTicketId: primaryTicket.id,
       });
+      setMergeConfirmationTarget(null);
+      setMergeQuery("");
+      setMergeTargets([]);
       onChanged();
-      await loadTicket();
+      await Promise.all([loadTicket(), loadFeedback(), loadQuality()]);
     } catch (nextError) {
-      setError(errorMessage(nextError));
+      setMergeError(mergeErrorMessage(nextError, "merge"));
     } finally {
       setPendingRelationKey(null);
       setPendingAction(null);
@@ -2525,6 +4211,7 @@ export function TicketDetail({
               void loadTicket();
               void loadFeedback();
               void loadQuality();
+              void loadHandovers();
             }}
             type="button"
           >
@@ -2570,6 +4257,18 @@ export function TicketDetail({
             )}
             {detail.watching ? "Nicht mehr beobachten" : "Beobachten"}
           </button>
+          {detail.canUpdate && (
+            <button
+              aria-controls="ticket-editor"
+              aria-expanded={isEditingTicket}
+              className="secondary-button"
+              disabled={busy}
+              onClick={startTicketEdit}
+              type="button"
+            >
+              Bearbeiten
+            </button>
+          )}
           <button
             aria-label="Ticketdetails schliessen"
             className="more-button"
@@ -2599,10 +4298,222 @@ export function TicketDetail({
           </span>
         </div>
         <p className="ticket-detail-description">{detail.ticket.description}</p>
+        {detail.requesterContact && (
+          <p className="data-caption">
+            Anfragende Person: {detail.requesterContact.displayName}
+          </p>
+        )}
         <p className="data-caption">
           Erstellt am {formatDateTime(detail.ticket.created_at)}
         </p>
       </div>
+
+      <KnowledgeSection
+        key={`${tenantId}:${ticketId}`}
+        tenantId={tenantId}
+        ticketId={ticketId}
+        canUpdate={detail.canUpdate}
+        canUseInternalNotes={detail.canUseInternalNotes}
+        refreshToken={detail}
+        onChanged={onChanged}
+        onSent={loadTicket}
+      />
+
+      <section
+        aria-busy={handoversLoading}
+        aria-labelledby="ticket-handovers-heading"
+        className="ticket-detail-comments"
+      >
+        <div className="ticket-detail-section-heading">
+          <div>
+            <p className="eyebrow">ÜBERGABEN</p>
+            <h3 id="ticket-handovers-heading">Übergaben</h3>
+          </div>
+          <span className="data-caption">{handovers.length}</span>
+        </div>
+        <p className="data-caption" id="ticket-handovers-help">
+          Übergaben zeigen keine Angaben zu beteiligten Personen. Bitte keine
+          Namen oder anderen personenbezogenen Daten eingeben.
+        </p>
+
+        {handoverError && (
+          <p className="ticket-detail-message error" role="alert">
+            <AlertCircle aria-hidden="true" size={17} />
+            {handoverError}
+          </p>
+        )}
+
+        {detail.canUpdate ? (
+          <form className="ticket-comment-form" onSubmit={createHandover}>
+            <label className="ticket-comment-body">
+              Zusammenfassung
+              <textarea
+                aria-describedby="ticket-handovers-help"
+                disabled={handoverBusy || handoversLoading}
+                maxLength={2000}
+                minLength={3}
+                onChange={(event) => setHandoverSummary(event.target.value)}
+                placeholder="Was muss bei der Übergabe bekannt sein?"
+                required
+                rows={2}
+                value={handoverSummary}
+              />
+            </label>
+            <label className="ticket-comment-body">
+              Nächste Schritte (optional)
+              <textarea
+                disabled={handoverBusy || handoversLoading}
+                maxLength={3000}
+                onChange={(event) => setHandoverNextSteps(event.target.value)}
+                placeholder="Welche Schritte stehen als Nächstes an?"
+                rows={2}
+                value={handoverNextSteps}
+              />
+            </label>
+            <label>
+              Risikostufe
+              <select
+                disabled={handoverBusy || handoversLoading}
+                onChange={(event) => {
+                  const riskLevel = event.target.value;
+                  if (isHandoverRiskLevel(riskLevel)) {
+                    setHandoverRiskLevel(riskLevel);
+                  }
+                }}
+                value={handoverRiskLevel}
+              >
+                <option value="low">Niedrig</option>
+                <option value="medium">Mittel</option>
+                <option value="high">Hoch</option>
+              </select>
+            </label>
+            <button
+              className="secondary-button"
+              disabled={handoverBusy || handoversLoading}
+              type="submit"
+            >
+              {pendingHandoverAction === "create" ? (
+                <LoaderCircle
+                  aria-hidden="true"
+                  className="ticket-detail-spinner"
+                  size={16}
+                />
+              ) : (
+                <Circle aria-hidden="true" size={16} strokeWidth={1.8} />
+              )}
+              Übergabe erstellen
+            </button>
+          </form>
+        ) : (
+          <p className="data-caption">
+            Sie haben für Übergaben nur Leserechte.
+          </p>
+        )}
+
+        {handoversLoading && !handoversLoaded ? (
+          <p className="empty-state ticket-detail-loading" role="status">
+            <LoaderCircle
+              aria-hidden="true"
+              className="ticket-detail-spinner"
+              size={18}
+            />
+            Übergaben werden geladen …
+          </p>
+        ) : handovers.length === 0 && !handoverError ? (
+          <p className="empty-state">Noch keine Übergaben vorhanden.</p>
+        ) : handovers.length > 0 ? (
+          <ol className="ticket-comment-list" aria-busy={handoversLoading}>
+            {handovers.map((handover) => {
+              const status = handoverStatus(handover);
+              const isAcknowledging =
+                pendingHandoverAction === "acknowledge" &&
+                pendingHandoverId === handover.id;
+              const isResolving =
+                pendingHandoverAction === "resolve" &&
+                pendingHandoverId === handover.id;
+
+              return (
+                <li className="ticket-comment" key={handover.id}>
+                  <div className="ticket-comment-meta">
+                    <strong>{handover.summary}</strong>
+                    <span className="ticket-comment-visibility-badge internal">
+                      Risiko: {handoverRiskLevelLabel(handover.riskLevel)}
+                    </span>
+                    <span className="ticket-comment-visibility-badge external">
+                      {handoverStatusLabel(status)}
+                    </span>
+                    <time dateTime={handover.createdAt}>
+                      Erstellt am {formatDateTime(handover.createdAt)}
+                    </time>
+                    {handover.acknowledgedAt && (
+                      <time dateTime={handover.acknowledgedAt}>
+                        Übernommen am {formatDateTime(handover.acknowledgedAt)}
+                      </time>
+                    )}
+                    {handover.resolvedAt && (
+                      <time dateTime={handover.resolvedAt}>
+                        Erledigt am {formatDateTime(handover.resolvedAt)}
+                      </time>
+                    )}
+                  </div>
+                  <p>
+                    <strong>Nächste Schritte:</strong>{" "}
+                    {handover.nextSteps ?? "Keine nächsten Schritte angegeben."}
+                  </p>
+                  {detail.canUpdate && status === "open" && (
+                    <button
+                      aria-label={`Übergabe „${handover.summary}“ übernehmen`}
+                      className="secondary-button"
+                      disabled={handoverBusy || handoversLoading}
+                      onClick={() => void acknowledgeHandover(handover)}
+                      type="button"
+                    >
+                      {isAcknowledging ? (
+                        <LoaderCircle
+                          aria-hidden="true"
+                          className="ticket-detail-spinner"
+                          size={16}
+                        />
+                      ) : (
+                        <CircleCheck
+                          aria-hidden="true"
+                          size={16}
+                          strokeWidth={1.8}
+                        />
+                      )}
+                      Übernehmen
+                    </button>
+                  )}
+                  {detail.canUpdate && status === "acknowledged" && (
+                    <button
+                      aria-label={`Übergabe „${handover.summary}“ als erledigt markieren`}
+                      className="secondary-button"
+                      disabled={handoverBusy || handoversLoading}
+                      onClick={() => void resolveHandover(handover)}
+                      type="button"
+                    >
+                      {isResolving ? (
+                        <LoaderCircle
+                          aria-hidden="true"
+                          className="ticket-detail-spinner"
+                          size={16}
+                        />
+                      ) : (
+                        <CircleCheck
+                          aria-hidden="true"
+                          size={16}
+                          strokeWidth={1.8}
+                        />
+                      )}
+                      Als erledigt
+                    </button>
+                  )}
+                </li>
+              );
+            })}
+          </ol>
+        ) : null}
+      </section>
 
       <section
         aria-busy={affectedItemsLoading}
@@ -3395,47 +5306,151 @@ export function TicketDetail({
           <p className="empty-state">Keine ähnlichen Tickets gefunden.</p>
         ) : (
           <ol className="ticket-comment-list">
-            {detail.similarTickets.map((ticket) => {
-              const isMerging =
-                pendingAction === "merge" &&
-                pendingRelationKey === `merge:${ticket.id}`;
-
-              return (
-                <li className="ticket-comment" key={ticket.id}>
-                  <div className="ticket-comment-meta">
-                    <strong>{ticketReference(ticket)}</strong>
-                    <span>{ticket.statusLabel}</span>
-                  </div>
-                  {detail.canUpdate && (
-                    <button
-                      aria-label={`${ticketReference(ticket)} als Primärticket auswählen und dieses Ticket zusammenführen`}
-                      className="secondary-button"
-                      disabled={busy}
-                      onClick={() => void markMerged(ticket)}
-                      type="button"
-                    >
-                      {isMerging ? (
-                        <LoaderCircle
-                          aria-hidden="true"
-                          className="ticket-detail-spinner"
-                          size={16}
-                        />
-                      ) : (
-                        <CircleCheck
-                          aria-hidden="true"
-                          size={16}
-                          strokeWidth={1.8}
-                        />
-                      )}
-                      Als Duplikat zusammenführen
-                    </button>
-                  )}
-                </li>
-              );
-            })}
+            {detail.similarTickets.map((ticket) => (
+              <li className="ticket-comment" key={ticket.id}>
+                <div className="ticket-comment-meta">
+                  <strong>{ticketReference(ticket)}</strong>
+                  <span>{ticket.statusLabel}</span>
+                </div>
+              </li>
+            ))}
           </ol>
         )}
       </section>
+
+      {detail.canMerge && (
+        <section
+          aria-busy={mergeSearchLoading || pendingAction === "merge"}
+          aria-labelledby="ticket-merge-heading"
+          className="ticket-detail-comments"
+        >
+          <div className="ticket-detail-section-heading">
+            <div>
+              <p className="eyebrow">ZUSAMMENFÜHREN</p>
+              <h3 id="ticket-merge-heading">Zusammenführen</h3>
+            </div>
+          </div>
+          <p className="data-caption" id="ticket-merge-help">
+            Das aktuelle Ticket wird als Duplikat geschlossen und im gewählten
+            Hauptticket referenziert.
+          </p>
+          <label className="ticket-comment-body">
+            Hauptticket suchen
+            <input
+              aria-describedby="ticket-merge-help"
+              disabled={busy}
+              maxLength={240}
+              minLength={2}
+              onChange={(event) => setMergeQuery(event.target.value)}
+              placeholder="Ticketnummer oder Titel eingeben"
+              type="search"
+              value={mergeQuery}
+            />
+          </label>
+          <p className="data-caption" aria-live="polite">
+            {[...mergeQuery.trim()].length < 2
+              ? "Mindestens 2 Zeichen eingeben."
+              : "Es werden passende Haupttickets gesucht."}
+          </p>
+
+          {mergeError && (
+            <p className="ticket-detail-message error" role="alert">
+              <AlertCircle aria-hidden="true" size={17} />
+              {mergeError}
+            </p>
+          )}
+
+          {mergeSearchLoading && (
+            <p className="empty-state ticket-detail-loading" role="status">
+              <LoaderCircle
+                aria-hidden="true"
+                className="ticket-detail-spinner"
+                size={18}
+              />
+              Haupttickets werden gesucht …
+            </p>
+          )}
+
+          {!mergeSearchLoading &&
+          [...mergeQuery.trim()].length >= 2 &&
+          mergeTargets.length === 0 &&
+          !mergeError ? (
+            <p className="empty-state">
+              Keine passenden Haupttickets gefunden.
+            </p>
+          ) : null}
+
+          {mergeTargets.length > 0 && (
+            <ol className="ticket-comment-list">
+              {mergeTargets.map((target) => {
+                const isConfirming = mergeConfirmationTarget?.id === target.id;
+                const isMerging =
+                  pendingAction === "merge" &&
+                  pendingRelationKey === `merge:${target.id}`;
+
+                return (
+                  <li className="ticket-comment" key={target.id}>
+                    <div className="ticket-comment-meta">
+                      <strong>{ticketReference(target)}</strong>
+                      <span>{target.statusLabel}</span>
+                    </div>
+                    {isConfirming ? (
+                      <div>
+                        <p className="data-caption" role="status">
+                          Bitte bestätigen: Das aktuelle Ticket wird als
+                          Duplikat geschlossen und in diesem Hauptticket
+                          referenziert.
+                        </p>
+                        <div className="ticket-detail-actions">
+                          <button
+                            className="primary-button"
+                            disabled={busy || mergeSearchLoading}
+                            onClick={() => void markMerged(target)}
+                            type="button"
+                          >
+                            {isMerging ? (
+                              <LoaderCircle
+                                aria-hidden="true"
+                                className="ticket-detail-spinner"
+                                size={16}
+                              />
+                            ) : (
+                              <CircleCheck
+                                aria-hidden="true"
+                                size={16}
+                                strokeWidth={1.8}
+                              />
+                            )}
+                            Zusammenführen bestätigen
+                          </button>
+                          <button
+                            className="secondary-button"
+                            disabled={busy}
+                            onClick={() => setMergeConfirmationTarget(null)}
+                            type="button"
+                          >
+                            Abbrechen
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <button
+                        aria-label={`Aktuelles Ticket in ${ticketReference(target)} zusammenführen`}
+                        className="secondary-button"
+                        disabled={busy || mergeSearchLoading}
+                        onClick={() => setMergeConfirmationTarget(target)}
+                        type="button"
+                      >
+                        In dieses Ticket zusammenführen
+                      </button>
+                    )}
+                  </li>
+                );
+              })}
+            </ol>
+          )}
+        </section>
+      )}
 
       {detail.canTrackTime && (
         <section
@@ -3639,13 +5654,56 @@ export function TicketDetail({
         <section
           className="ticket-detail-editor"
           aria-labelledby="ticket-status-heading"
+          id="ticket-editor"
         >
           <div className="ticket-detail-section-heading">
             <div>
               <p className="eyebrow">BEARBEITEN</p>
-              <h3 id="ticket-status-heading">Status und Priorität</h3>
+              <h3 id="ticket-status-heading">Ticket bearbeiten</h3>
             </div>
           </div>
+          {isEditingTicket && (
+            <div className="ticket-comment-form">
+              <label className="ticket-comment-body">
+                Titel
+                <input
+                  autoFocus
+                  disabled={busy}
+                  maxLength={240}
+                  minLength={3}
+                  onChange={(event) => setEditSubject(event.target.value)}
+                  required
+                  value={editSubject}
+                />
+              </label>
+              <p className="data-caption" aria-live="polite">
+                {[...editSubject].length}/240 Zeichen
+              </p>
+              <label className="ticket-comment-body">
+                Beschreibung
+                <textarea
+                  disabled={busy}
+                  maxLength={10_000}
+                  minLength={1}
+                  onChange={(event) => setEditDescription(event.target.value)}
+                  required
+                  rows={5}
+                  value={editDescription}
+                />
+              </label>
+              <p className="data-caption" aria-live="polite">
+                {[...editDescription].length}/10&apos;000 Zeichen
+              </p>
+              <button
+                className="secondary-button"
+                disabled={busy}
+                onClick={cancelTicketEdit}
+                type="button"
+              >
+                Abbrechen
+              </button>
+            </div>
+          )}
           <div className="ticket-detail-selects">
             <label>
               Status
@@ -3728,7 +5786,7 @@ export function TicketDetail({
             ) : (
               <Save aria-hidden="true" size={16} strokeWidth={1.8} />
             )}
-            Änderungen speichern
+            {isEditingTicket ? "Speichern" : "Änderungen speichern"}
           </button>
         </section>
       )}

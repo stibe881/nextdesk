@@ -196,6 +196,31 @@ async function sha256Hex(value: string): Promise<string> {
   );
 }
 
+/**
+ * A sender address is contact data, not a display name. Derive a bounded,
+ * plain-text label from its local part instead of ever copying the address into
+ * a value that could later be rendered to an operator.
+ */
+function requesterDisplayName(address: string): string {
+  const localPart = address.slice(0, address.lastIndexOf("@"));
+  const label = localPart
+    .normalize("NFKC")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim()
+    .replace(/\s+/g, " ")
+    .slice(0, 120);
+  return label || "E-Mail-Kontakt";
+}
+
+function emailAuditMetadata(
+  senderFingerprint: string,
+  requesterContactId?: string,
+): Record<string, string> {
+  return requesterContactId
+    ? { senderFingerprint, requesterContactId }
+    : { senderFingerprint };
+}
+
 function extractTicketNumbers(subject: string): string[] {
   const matches = new Set<string>();
   for (const match of subject.matchAll(TICKET_NUMBER_PATTERN)) {
@@ -206,6 +231,10 @@ function extractTicketNumbers(subject: string): string[] {
 
 function inboundBody(payload: EmailIngressPayload): string {
   return `Eingegangene E-Mail von ${payload.from}\n\n${payload.text}`;
+}
+
+function inboundNewTicketBody(payload: EmailIngressPayload): string {
+  return `Eingegangene E-Mail von ${requesterDisplayName(payload.from)}\n\n${payload.text}`;
 }
 
 function emailEventPayload(
@@ -445,6 +474,7 @@ const handler = withSupabase(
       );
     }
 
+    const senderFingerprint = await sha256Hex(payload.from);
     const allowedDomains = Array.isArray(
       emailDomainPolicy?.allowed_email_domains,
     )
@@ -463,10 +493,8 @@ const handler = withSupabase(
         entityId: null,
         requestId,
         severity: "security",
-        metadata: {
-          reason: "sender_domain_not_allowed",
-          senderDomain: payload.fromDomain,
-        },
+        // A security audit must never contain a raw sender address.
+        metadata: emailAuditMetadata(senderFingerprint),
       });
       return json(
         { error: { code: "sender_domain_not_allowed" } },
@@ -474,8 +502,6 @@ const handler = withSupabase(
         requestId,
       );
     }
-
-    const senderFingerprint = await sha256Hex(payload.from);
 
     // Idempotently acknowledge provider retries only after tenant/domain checks.
     if (payload.messageId) {
@@ -670,6 +696,32 @@ const handler = withSupabase(
     }
     const department = departments[0] as { id: string; key: string };
 
+    const { data: requesterContact, error: requesterContactError } =
+      await context.supabaseAdmin
+        .from("ticket_requesters")
+        .upsert(
+          {
+            tenant_id: tenant.id,
+            email: payload.from,
+            display_name: requesterDisplayName(payload.from),
+            source: "email",
+          },
+          { onConflict: "tenant_id,email" },
+        )
+        .select("id")
+        .single();
+    if (
+      requesterContactError ||
+      !requesterContact ||
+      !isUuid(requesterContact.id)
+    ) {
+      return json(
+        { error: { code: "email_requester_upsert_failed" } },
+        500,
+        requestId,
+      );
+    }
+
     const { data: ticketNumber, error: ticketNumberError } =
       await context.supabaseAdmin.rpc("reserve_ticket_number", {
         p_tenant_id: tenant.id,
@@ -687,10 +739,11 @@ const handler = withSupabase(
         department_id: department.id,
         ticket_number: ticketNumber,
         subject: payload.subject,
-        description: inboundBody(payload),
+        description: inboundNewTicketBody(payload),
         status_id: status.id,
         priority_id: priority.id,
         requester_id: serviceIdentityId,
+        requester_contact_id: requesterContact.id,
         source: "email",
       })
       .select("id, ticket_number")
@@ -726,7 +779,10 @@ const handler = withSupabase(
       entityId: ticket.id,
       requestId,
       severity: "info",
-      metadata: { ...eventMetadata, ticketNumber: ticket.ticket_number },
+      metadata: {
+        ...emailAuditMetadata(senderFingerprint, requesterContact.id),
+        ticketNumber: ticket.ticket_number,
+      },
     });
     if (ticketCreatedEventError || !receivedEventCreated || !auditWritten) {
       return json(

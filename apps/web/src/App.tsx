@@ -461,23 +461,31 @@ function TicketList({
             role={onOpen ? "button" : undefined}
             tabIndex={onOpen ? 0 : undefined}
           >
-            <div className={`risk-line ${ticket.risk}`} aria-hidden="true" />
             <div className="ticket-main">
-              <div className="ticket-id">
-                {ticket.id}
-                <span>{ticket.queueLabel}</span>
+              <div className="ticket-context">
+                <span className="ticket-number">{ticket.id}</span>
+                <span className="ticket-queue">{ticket.queueLabel}</span>
               </div>
               <h3>{ticket.subject}</h3>
-              <p>
-                {ticket.priority ? `${ticket.priority} · ` : ""}vor {ticket.age}
+              <p className="ticket-meta">
+                {ticket.priority ? <span>{ticket.priority}</span> : null}
+                <span>vor {ticket.age}</span>
               </p>
             </div>
             <div className="ticket-state">
               <span className={`state-badge ${statusClass(ticket.state)}`}>
                 {ticket.state}
               </span>
-              <strong className={`sla ${ticket.risk}`}>{slaLabel}</strong>
+              <span className={`sla ${ticket.risk}`}>{slaLabel}</span>
             </div>
+            {onOpen ? (
+              <ArrowRight
+                aria-hidden="true"
+                className="ticket-row-arrow"
+                size={18}
+                strokeWidth={1.8}
+              />
+            ) : null}
           </article>
         );
       })}

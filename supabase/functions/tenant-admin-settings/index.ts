@@ -550,15 +550,13 @@ async function handleUpdateBranding(
   }
   if (action.branding.portalName !== undefined) {
     writes.push(
-      admin
-        .from("tenant_settings")
-        .upsert(
-          {
-            tenant_id: action.tenantId,
-            portal_name: action.branding.portalName,
-          },
-          { onConflict: "tenant_id" },
-        ),
+      admin.from("tenant_settings").upsert(
+        {
+          tenant_id: action.tenantId,
+          portal_name: action.branding.portalName,
+        },
+        { onConflict: "tenant_id" },
+      ),
     );
   }
 

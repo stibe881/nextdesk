@@ -22,6 +22,10 @@ const expectedFiles = [
   "0017_ticket_sla_lifecycle.sql",
   "0018_private_ticket_attachments_storage.sql",
   "0019_services_assets_and_problem_management.sql",
+  "0020_ticket_handover_notes.sql",
+  "0021_ticket_knowledge_articles.sql",
+  "0022_ticket_subcategories.sql",
+  "0023_ticket_requesters.sql",
 ];
 
 const availableFiles = await readdir(migrationDirectory);
@@ -172,6 +176,32 @@ const requiredFragments = [
   [
     "0019_services_assets_and_problem_management.sql",
     "create table if not exists public.problems",
+  ],
+  [
+    "0020_ticket_handover_notes.sql",
+    "create table if not exists public.ticket_handover_notes",
+  ],
+  [
+    "0021_ticket_knowledge_articles.sql",
+    "create table if not exists public.ticket_knowledge_articles",
+  ],
+  [
+    "0021_ticket_knowledge_articles.sql",
+    "create policy ticket_knowledge_articles_select_readable",
+  ],
+  [
+    "0022_ticket_subcategories.sql",
+    "add column if not exists subcategory_id uuid",
+  ],
+  [
+    "0022_ticket_subcategories.sql",
+    "create trigger tickets_validate_category_selection",
+  ],
+  ["0023_ticket_requesters.sql", "create table public.ticket_requesters"],
+  ["0023_ticket_requesters.sql", "add column requester_contact_id uuid"],
+  [
+    "0023_ticket_requesters.sql",
+    "create trigger tickets_validate_requester_contact",
   ],
 ];
 

@@ -15,5 +15,4 @@ Das Gross-ICT-Logo, Fotos und Wortmarken werden nicht in TicketHub eingebettet. 
 ## Quellen
 
 [1]: https://gross-ict.ch/ "Gross ICT — Startseite"
-
 [2]: https://gross-ict.ch/ict-services "Gross ICT — ICT Services"
