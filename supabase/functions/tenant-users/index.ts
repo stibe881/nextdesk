@@ -152,16 +152,14 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     );
     if (mailError)
       return json(request, { error: { code: "invitation_email_failed" } }, 502);
-    await context.supabaseAdmin
-      .from("audit_logs")
-      .insert({
-        tenant_id: action.tenantId,
-        actor_id: actorId,
-        action: "tenant.user.invited",
-        entity_type: "tenant_user_invitation",
-        severity: "security",
-        metadata: { email: action.email },
-      });
+    await context.supabaseAdmin.from("audit_logs").insert({
+      tenant_id: action.tenantId,
+      actor_id: actorId,
+      action: "tenant.user.invited",
+      entity_type: "tenant_user_invitation",
+      severity: "security",
+      metadata: { email: action.email },
+    });
     return json(request, { data: { sent: true, expiresAt } }, 201);
   }
 
@@ -183,17 +181,15 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     return json(request, { error: { code: "invitation_lookup_failed" } }, 500);
   for (const invitation of invitations ?? []) {
     await context.supabaseAdmin.from("user_profiles").upsert({ id: actorId });
-    await context.supabaseAdmin
-      .from("tenant_memberships")
-      .upsert(
-        {
-          tenant_id: invitation.tenant_id,
-          user_id: actorId,
-          status: "active",
-          joined_at: new Date().toISOString(),
-        },
-        { onConflict: "tenant_id,user_id" },
-      );
+    await context.supabaseAdmin.from("tenant_memberships").upsert(
+      {
+        tenant_id: invitation.tenant_id,
+        user_id: actorId,
+        status: "active",
+        joined_at: new Date().toISOString(),
+      },
+      { onConflict: "tenant_id,user_id" },
+    );
     const { data: requester } = await context.supabaseAdmin
       .from("roles")
       .select("id")
@@ -212,14 +208,12 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         .is("expires_at", null)
         .maybeSingle();
       if (!assignment)
-        await context.supabaseAdmin
-          .from("user_role_assignments")
-          .insert({
-            tenant_id: invitation.tenant_id,
-            user_id: actorId,
-            role_id: requester.id,
-            assigned_by: invitation.invited_by,
-          });
+        await context.supabaseAdmin.from("user_role_assignments").insert({
+          tenant_id: invitation.tenant_id,
+          user_id: actorId,
+          role_id: requester.id,
+          assigned_by: invitation.invited_by,
+        });
     }
     await context.supabaseAdmin
       .from("tenant_user_invitations")

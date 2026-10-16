@@ -14,3 +14,15 @@ verify_jwt = true
 
 [functions.platform-control]
 verify_jwt = true
+
+[functions.owner-access]
+verify_jwt = true
+
+[functions.owner-console]
+verify_jwt = true
+
+[functions.tenant-users]
+verify_jwt = true
+
+[functions.ticket-actions]
+verify_jwt = true

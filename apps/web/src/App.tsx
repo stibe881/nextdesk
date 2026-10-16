@@ -341,6 +341,7 @@ export function App() {
   const [errorMessage, setErrorMessage] = useState("");
   const [ownerAccess, setOwnerAccess] = useState<OwnerAccess>("idle");
   const [ownerAccessError, setOwnerAccessError] = useState("");
+  const [ownerView, setOwnerView] = useState<"console" | "tenant">("console");
 
   useEffect(() => {
     if (!supabase) return;
@@ -362,6 +363,7 @@ export function App() {
       setTenantLoadError("");
       setOwnerAccess("idle");
       setOwnerAccessError("");
+      setOwnerView("console");
     });
 
     return () => {
@@ -515,10 +517,21 @@ export function App() {
   if (isSupabaseConfigured && session && ownerAccess === "checking") {
     return <LoadingScreen message="Eigentümerzugang wird geprüft." />;
   }
-  if (isSupabaseConfigured && session && ownerAccess === "ready") {
+  if (
+    isSupabaseConfigured &&
+    session &&
+    ownerAccess === "ready" &&
+    ownerView === "console"
+  ) {
     return (
       <AccessShell>
-        <OwnerConsoleScreen onSignOut={() => void signOut()} />
+        <OwnerConsoleScreen
+          onOpenTenant={(tenantId) => {
+            setActiveTenantId(tenantId);
+            setOwnerView("tenant");
+          }}
+          onSignOut={() => void signOut()}
+        />
       </AccessShell>
     );
   }
@@ -610,6 +623,15 @@ export function App() {
             </h1>
           </div>
           <div className="topbar-actions">
+            {ownerAccess === "ready" && ownerView === "tenant" && (
+              <button
+                className="platform-return"
+                onClick={() => setOwnerView("console")}
+                type="button"
+              >
+                ← Plattform
+              </button>
+            )}
             {activeTenant && (
               <label className="tenant-selector">
                 <span>Mandant</span>

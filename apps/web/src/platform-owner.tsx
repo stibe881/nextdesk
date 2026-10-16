@@ -107,7 +107,13 @@ function makeDepartmentKey(value: string, index: number) {
   return slug.length >= 2 ? slug : `team-${index + 1}`;
 }
 
-export function OwnerConsoleScreen({ onSignOut }: { onSignOut: () => void }) {
+export function OwnerConsoleScreen({
+  onOpenTenant,
+  onSignOut,
+}: {
+  onOpenTenant: (tenantId: string) => void;
+  onSignOut: () => void;
+}) {
   const [tenants, setTenants] = useState<PlatformTenant[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -243,6 +249,13 @@ export function OwnerConsoleScreen({ onSignOut }: { onSignOut: () => void }) {
     }
   }
 
+  const activeTenantCount = tenants.filter(
+    (tenant) => tenant.status === "active",
+  ).length;
+  const pausedTenantCount = tenants.filter(
+    (tenant) => tenant.status === "suspended",
+  ).length;
+
   return (
     <section className="owner-console" aria-label="Plattform-Eigentümerkonsole">
       <header className="owner-console-header">
@@ -264,6 +277,31 @@ export function OwnerConsoleScreen({ onSignOut }: { onSignOut: () => void }) {
         <strong>Eigentümerberechtigung aktiv</strong>
         <small>Jede Änderung wird im Plattform-Audit protokolliert.</small>
       </div>
+      <section className="owner-kpis" aria-label="Plattformstatus">
+        <article>
+          <span>Aktive Mandanten</span>
+          <strong>{activeTenantCount}</strong>
+          <small>Bereit für den Portalzugriff</small>
+        </article>
+        <article>
+          <span>Pausierte Mandanten</span>
+          <strong>{pausedTenantCount}</strong>
+          <small>Kein neuer Produktivzugriff</small>
+        </article>
+        <article>
+          <span>Web-Auslieferung</span>
+          <strong>Hetzner</strong>
+          <small>Statisches Portal · Supabase API</small>
+        </article>
+        <a
+          className="owner-release-link"
+          href="https://github.com/stibe881/nextdesk/actions/workflows/deploy-hetzner.yml"
+          rel="noreferrer"
+          target="_blank"
+        >
+          GitHub-Auslieferung öffnen <span aria-hidden="true">↗</span>
+        </a>
+      </section>
       {error && <p className="access-message error">{error}</p>}
       {message && <p className="access-message success">{message}</p>}
 
@@ -312,6 +350,14 @@ export function OwnerConsoleScreen({ onSignOut }: { onSignOut: () => void }) {
                       <option value="archived">Archiviert</option>
                     </select>
                   </label>
+                  <button
+                    className="table-action"
+                    disabled={tenant.status !== "active"}
+                    onClick={() => onOpenTenant(tenant.id)}
+                    type="button"
+                  >
+                    Öffnen
+                  </button>
                 </article>
               ))}
             </div>
