@@ -714,16 +714,22 @@ function isTicketTeam(value: unknown): value is TicketTeam {
   );
 }
 
-function isTicketAgent(value: unknown): value is TicketAgent {
+function toTicketAgent(value: unknown): TicketAgent | null {
   const agent = asRecord(value);
-  return Boolean(
-    agent &&
-    typeof agent.id === "string" &&
-    agent.id.length > 0 &&
+  if (!agent || typeof agent.id !== "string" || agent.id.length === 0) {
+    return null;
+  }
+  const displayName =
     typeof agent.displayName === "string" &&
     agent.displayName.trim().length > 0 &&
-    !agent.displayName.includes("\u0000"),
-  );
+    !agent.displayName.includes("\u0000")
+      ? agent.displayName.trim()
+      : "Ohne Anzeigename";
+  return { id: agent.id, displayName };
+}
+
+function isTicketAgent(value: unknown): value is TicketAgent {
+  return toTicketAgent(value) !== null;
 }
 
 function toTicketRequesterContact(
@@ -1291,8 +1297,8 @@ function parseTicketDetail(
   const assignedAgent =
     data.assignedAgent === undefined || data.assignedAgent === null
       ? null
-      : isTicketAgent(data.assignedAgent)
-        ? data.assignedAgent
+      : toTicketAgent(data.assignedAgent)
+        ? toTicketAgent(data.assignedAgent)
         : undefined;
   if (
     assignedAgent === undefined ||
@@ -1316,13 +1322,19 @@ function parseTicketDetail(
   const canAssign = data.canAssign === true;
   const canMerge = data.canMerge === true;
   const agents = canAssign
-    ? parseStrictValues(data.agents, isTicketAgent)
+    ? Array.isArray(data.agents)
+      ? data.agents.map(toTicketAgent)
+      : undefined
     : data.agents === undefined
       ? []
       : undefined;
+  const validAgents = (agents ?? []).filter(
+    (agent): agent is TicketAgent => agent !== null,
+  );
   if (
     agents === undefined ||
-    new Set(agents.map((agent) => agent.id)).size !== agents.length
+    validAgents.length !== agents.length ||
+    new Set(validAgents.map((agent) => agent.id)).size !== agents.length
   ) {
     return undefined;
   }
@@ -1364,7 +1376,7 @@ function parseTicketDetail(
     statuses: valuesOf(data.statuses, isTicketStatus),
     priorities: valuesOf(data.priorities, isTicketPriority),
     teams: valuesOf(data.teams, isTicketTeam),
-    agents,
+    agents: validAgents,
     checklistItems: valuesOf(data.checklistItems, isTicketChecklistItem).sort(
       (first, second) => first.position - second.position,
     ),
