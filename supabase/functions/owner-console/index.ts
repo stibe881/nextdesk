@@ -128,14 +128,6 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       { error: { code: "platform_operator_required" } },
       403,
     );
-  const aal = isRecord(context.jwtClaims) ? context.jwtClaims.aal : undefined;
-  if (aal !== "aal2")
-    return json(request, { error: { code: "mfa_required" } }, 403);
-  await context.supabaseAdmin
-    .from("platform_administrators")
-    .update({ mfa_verified_at: new Date().toISOString() })
-    .eq("user_id", actorId);
-
   if (action.type === "listTenants") {
     const { data, error } = await context.supabaseAdmin
       .from("tenants")

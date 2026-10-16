@@ -1,10 +1,7 @@
 import { withSupabase } from "@supabase/server";
 
 type ErrorCode =
-  | "invalid_request"
-  | "sso_required"
-  | "platform_operator_required"
-  | "mfa_required";
+  "invalid_request" | "sso_required" | "platform_operator_required";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -60,16 +57,8 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     .maybeSingle();
   if (error || !operator) return failure(request, "platform_operator_required");
 
-  const aal = isRecord(context.jwtClaims) ? context.jwtClaims.aal : undefined;
-  if (aal !== "aal2") return failure(request, "mfa_required");
-
-  await context.supabaseAdmin
-    .from("platform_administrators")
-    .update({ mfa_verified_at: new Date().toISOString() })
-    .eq("user_id", actorId);
-
   return response(request, {
-    data: { owner: true, mfa: "aal2", ssoProvider: "azure" },
+    data: { owner: true, ssoProvider: "azure" },
   });
 });
 

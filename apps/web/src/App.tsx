@@ -27,7 +27,6 @@ import {
 } from "./lib/live-dashboard";
 import {
   OwnerConsoleScreen,
-  OwnerMfaScreen,
   resolveOwnerAccess,
   type OwnerAccess,
 } from "./platform-owner";
@@ -405,8 +404,8 @@ export function App() {
   }, [session]);
 
   useEffect(() => {
-    if (!supabase || !session || tenantLoading || tenants.length > 0) {
-      if (!session || tenants.length > 0) {
+    if (!supabase || !session || tenantLoading) {
+      if (!session) {
         setOwnerAccess("idle");
         setOwnerAccessError("");
       }
@@ -425,7 +424,7 @@ export function App() {
     return () => {
       mounted = false;
     };
-  }, [session, tenantLoading, tenants.length]);
+  }, [session, tenantLoading]);
 
   const activeTenant = useMemo(
     () => tenants.find((tenant) => tenant.id === activeTenantId) ?? null,
@@ -508,6 +507,24 @@ export function App() {
   if (isSupabaseConfigured && tenantLoading) {
     return <LoadingScreen message="Mandantenkontext wird geladen." />;
   }
+  if (isSupabaseConfigured && session && ownerAccess === "checking") {
+    return <LoadingScreen message="Eigentümerzugang wird geprüft." />;
+  }
+  if (isSupabaseConfigured && session && ownerAccess === "ready") {
+    return (
+      <AccessShell>
+        <OwnerConsoleScreen onSignOut={() => void signOut()} />
+      </AccessShell>
+    );
+  }
+  if (isSupabaseConfigured && session && ownerAccess === "error") {
+    return (
+      <MembershipErrorScreen
+        message={ownerAccessError}
+        onSignOut={() => void signOut()}
+      />
+    );
+  }
   if (isSupabaseConfigured && session && tenantLoadError) {
     return (
       <MembershipErrorScreen
@@ -517,34 +534,6 @@ export function App() {
     );
   }
   if (isSupabaseConfigured && session && tenants.length === 0) {
-    if (ownerAccess === "checking") {
-      return <LoadingScreen message="Eigentümerzugang wird geprüft." />;
-    }
-    if (ownerAccess === "mfa_required") {
-      return (
-        <AccessShell>
-          <OwnerMfaScreen
-            onComplete={() => setOwnerAccess("checking")}
-            onSignOut={() => void signOut()}
-          />
-        </AccessShell>
-      );
-    }
-    if (ownerAccess === "ready") {
-      return (
-        <AccessShell>
-          <OwnerConsoleScreen onSignOut={() => void signOut()} />
-        </AccessShell>
-      );
-    }
-    if (ownerAccess === "error") {
-      return (
-        <MembershipErrorScreen
-          message={ownerAccessError}
-          onSignOut={() => void signOut()}
-        />
-      );
-    }
     return <NoMembershipScreen onSignOut={() => void signOut()} />;
   }
 
