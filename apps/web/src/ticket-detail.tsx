@@ -35,6 +35,7 @@ type UpdateTicketAction = {
   ticketId: string;
   statusKey?: string;
   priorityKey?: string;
+  assignedTeamId?: string | null;
 };
 
 type AddCommentAction = {
@@ -62,6 +63,7 @@ type TicketRecord = {
   description: string;
   status_id: string;
   priority_id: string;
+  assigned_team_id: string | null;
   created_at: string;
 };
 
@@ -92,12 +94,18 @@ type TicketPriority = {
   label: string;
 };
 
+type TicketTeam = {
+  id: string;
+  name: string;
+};
+
 type TicketDetailData = {
   ticket: TicketRecord;
   comments: TicketComment[];
   events: TicketEvent[];
   statuses: TicketStatus[];
   priorities: TicketPriority[];
+  teams: TicketTeam[];
   watching: boolean;
   canUpdate: boolean;
   canUseInternalNotes: boolean;
@@ -126,6 +134,8 @@ function isTicketRecord(value: unknown): value is TicketRecord {
     typeof ticket.description === "string" &&
     typeof ticket.status_id === "string" &&
     typeof ticket.priority_id === "string" &&
+    (typeof ticket.assigned_team_id === "string" ||
+      ticket.assigned_team_id === null) &&
     typeof ticket.created_at === "string",
   );
 }
@@ -182,6 +192,13 @@ function isTicketPriority(value: unknown): value is TicketPriority {
   );
 }
 
+function isTicketTeam(value: unknown): value is TicketTeam {
+  const team = asRecord(value);
+  return Boolean(
+    team && typeof team.id === "string" && typeof team.name === "string",
+  );
+}
+
 function valuesOf<T>(value: unknown, guard: (item: unknown) => item is T): T[] {
   return Array.isArray(value) ? value.filter(guard) : [];
 }
@@ -211,6 +228,7 @@ function parseTicketDetail(
     events: valuesOf(data.events, isTicketEvent),
     statuses: valuesOf(data.statuses, isTicketStatus),
     priorities: valuesOf(data.priorities, isTicketPriority),
+    teams: valuesOf(data.teams, isTicketTeam),
     watching: data.watching === true,
     canUpdate: data.canUpdate === true,
     canUseInternalNotes: data.canUseInternalNotes === true,
@@ -273,6 +291,7 @@ export function TicketDetail({
   const [pendingAction, setPendingAction] = useState<PendingAction>(null);
   const [statusKey, setStatusKey] = useState("");
   const [priorityKey, setPriorityKey] = useState("");
+  const [selectedTeamId, setSelectedTeamId] = useState("");
   const [comment, setComment] = useState("");
   const [commentVisibility, setCommentVisibility] =
     useState<CommentVisibility>("external");
@@ -306,6 +325,7 @@ export function TicketDetail({
           (priority) => priority.id === nextDetail.ticket.priority_id,
         )?.key ?? "",
       );
+      setSelectedTeamId(nextDetail?.ticket.assigned_team_id ?? "");
       if (!nextDetail?.canUseInternalNotes) {
         setCommentVisibility("external");
       }
@@ -345,10 +365,12 @@ export function TicketDetail({
       ) ?? null,
     [detail],
   );
+  const assignedTeamId = detail?.ticket.assigned_team_id ?? "";
   const hasChanges = Boolean(
     detail &&
     (statusKey !== selectedStatus?.key ||
-      priorityKey !== selectedPriority?.key),
+      priorityKey !== selectedPriority?.key ||
+      selectedTeamId !== assignedTeamId),
   );
   const busy = pendingAction !== null;
 
@@ -366,7 +388,16 @@ export function TicketDetail({
     if (priorityKey && priorityKey !== selectedPriority?.key) {
       action.priorityKey = priorityKey;
     }
-    if (!action.statusKey && !action.priorityKey) return;
+    if (selectedTeamId !== assignedTeamId) {
+      action.assignedTeamId = selectedTeamId || null;
+    }
+    if (
+      !action.statusKey &&
+      !action.priorityKey &&
+      action.assignedTeamId === undefined
+    ) {
+      return;
+    }
 
     setPendingAction("update");
     setError("");
@@ -595,6 +626,21 @@ export function TicketDetail({
                 {detail.priorities.map((priority) => (
                   <option key={priority.id} value={priority.key}>
                     {priority.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Zugewiesenes Team
+              <select
+                disabled={busy}
+                onChange={(event) => setSelectedTeamId(event.target.value)}
+                value={selectedTeamId}
+              >
+                <option value="">Keinem Team zugewiesen</option>
+                {detail.teams.map((team) => (
+                  <option key={team.id} value={team.id}>
+                    {team.name}
                   </option>
                 ))}
               </select>
