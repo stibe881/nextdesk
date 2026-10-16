@@ -23,6 +23,19 @@ type Action =
       tenantId: string;
       ticketId: string;
       watching: boolean;
+    }
+  | {
+      type: "addChecklistItem";
+      tenantId: string;
+      ticketId: string;
+      description: string;
+    }
+  | {
+      type: "toggleChecklistItem";
+      tenantId: string;
+      ticketId: string;
+      itemId: string;
+      completed: boolean;
     };
 
 const originHeaders = (request: Request) => ({
@@ -80,6 +93,28 @@ function parseAction(value: unknown): Action | null {
       tenantId: value.tenantId,
       ticketId: value.ticketId,
       watching: value.watching,
+    };
+  if (
+    value.type === "addChecklistItem" &&
+    typeof value.description === "string"
+  )
+    return {
+      type: value.type,
+      tenantId: value.tenantId,
+      ticketId: value.ticketId,
+      description: value.description.trim(),
+    };
+  if (
+    value.type === "toggleChecklistItem" &&
+    isUuid(value.itemId) &&
+    typeof value.completed === "boolean"
+  )
+    return {
+      type: value.type,
+      tenantId: value.tenantId,
+      ticketId: value.ticketId,
+      itemId: value.itemId,
+      completed: value.completed,
     };
   if (value.type === "updateTicket")
     return {
@@ -218,6 +253,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       { data: priorities },
       { data: teams },
       { data: watchers },
+      { data: checklistItems },
     ] = await Promise.all([
       context.supabaseAdmin
         .from("ticket_comments")
@@ -252,6 +288,14 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         .eq("ticket_id", ticket.id)
         .eq("user_id", actorId)
         .maybeSingle(),
+      context.supabaseAdmin
+        .from("ticket_checklist_items")
+        .select(
+          "id, ticket_id, description, position, completed_at, completed_by, created_by, created_at",
+        )
+        .eq("ticket_id", ticket.id)
+        .order("position")
+        .order("created_at"),
     ]);
     const filteredComments = internal
       ? (comments ?? [])
@@ -285,6 +329,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         priorities: priorities ?? [],
         teams: teams ?? [],
         watching: Boolean(watchers),
+        checklistItems: checklistItems ?? [],
         canUpdate: await hasPermission(
           context.supabaseAdmin,
           actorId,
@@ -365,6 +410,94 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         .eq("ticket_id", ticket.id)
         .eq("user_id", actorId);
     return response(request, { data: { watching: action.watching } });
+  }
+
+  if (
+    action.type === "addChecklistItem" ||
+    action.type === "toggleChecklistItem"
+  ) {
+    if (
+      !(await hasPermission(
+        context.supabaseAdmin,
+        actorId,
+        ticket.tenant_id,
+        ticket.department_id,
+        "ticket.update",
+      ))
+    )
+      return response(
+        request,
+        { error: { code: "ticket_update_denied" } },
+        403,
+      );
+
+    if (action.type === "addChecklistItem") {
+      if (action.description.length < 1 || action.description.length > 1000)
+        return response(
+          request,
+          { error: { code: "invalid_checklist_item" } },
+          422,
+        );
+      const { data: item, error } = await context.supabaseAdmin
+        .from("ticket_checklist_items")
+        .insert({
+          ticket_id: ticket.id,
+          description: action.description,
+          created_by: actorId,
+        })
+        .select(
+          "id, ticket_id, description, position, completed_at, completed_by, created_by, created_at",
+        )
+        .single();
+      if (error)
+        return response(
+          request,
+          { error: { code: "checklist_item_create_failed" } },
+          422,
+        );
+      await context.supabaseAdmin.from("ticket_events").insert({
+        ticket_id: ticket.id,
+        actor_id: actorId,
+        event_type: "checklist.item_added",
+        payload: { itemId: item.id, description: item.description },
+      });
+      return response(request, { data: { item } }, 201);
+    }
+
+    const completedAt = action.completed ? new Date().toISOString() : null;
+    const { data: item, error } = await context.supabaseAdmin
+      .from("ticket_checklist_items")
+      .update({
+        completed_at: completedAt,
+        completed_by: action.completed ? actorId : null,
+      })
+      .eq("id", action.itemId)
+      .eq("ticket_id", ticket.id)
+      .select(
+        "id, ticket_id, description, position, completed_at, completed_by, created_by, created_at",
+      )
+      .maybeSingle();
+    if (error)
+      return response(
+        request,
+        { error: { code: "checklist_item_update_failed" } },
+        422,
+      );
+    if (!item)
+      return response(
+        request,
+        { error: { code: "checklist_item_not_found" } },
+        404,
+      );
+    await context.supabaseAdmin.from("ticket_events").insert({
+      ticket_id: ticket.id,
+      actor_id: actorId,
+      event_type: action.completed
+        ? "checklist.item_completed"
+        : "checklist.item_reopened",
+      payload: { itemId: item.id, completed: action.completed },
+    });
+    return response(request, { data: { item } });
   }
 
   if (

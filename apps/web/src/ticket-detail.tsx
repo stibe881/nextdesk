@@ -8,6 +8,8 @@ import {
 } from "react";
 import {
   AlertCircle,
+  Circle,
+  CircleCheck,
   Clock3,
   Eye,
   EyeOff,
@@ -21,7 +23,8 @@ import {
 import { supabase } from "./lib/supabase";
 
 type CommentVisibility = "external" | "internal";
-type PendingAction = "comment" | "update" | "watch" | null;
+type PendingAction =
+  "comment" | "update" | "watch" | "checklist-add" | "checklist-toggle" | null;
 
 type GetTicketAction = {
   type: "getTicket";
@@ -53,8 +56,28 @@ type ToggleWatchAction = {
   watching: boolean;
 };
 
+type AddChecklistItemAction = {
+  type: "addChecklistItem";
+  tenantId: string;
+  ticketId: string;
+  description: string;
+};
+
+type ToggleChecklistItemAction = {
+  type: "toggleChecklistItem";
+  tenantId: string;
+  ticketId: string;
+  itemId: string;
+  completed: boolean;
+};
+
 type TicketOperation =
-  GetTicketAction | UpdateTicketAction | AddCommentAction | ToggleWatchAction;
+  | GetTicketAction
+  | UpdateTicketAction
+  | AddCommentAction
+  | ToggleWatchAction
+  | AddChecklistItemAction
+  | ToggleChecklistItemAction;
 
 type TicketRecord = {
   id: string;
@@ -99,6 +122,13 @@ type TicketTeam = {
   name: string;
 };
 
+type TicketChecklistItem = {
+  id: string;
+  description: string;
+  position: number;
+  completed_at: string | null;
+};
+
 type TicketDetailData = {
   ticket: TicketRecord;
   comments: TicketComment[];
@@ -106,6 +136,7 @@ type TicketDetailData = {
   statuses: TicketStatus[];
   priorities: TicketPriority[];
   teams: TicketTeam[];
+  checklistItems: TicketChecklistItem[];
   watching: boolean;
   canUpdate: boolean;
   canUseInternalNotes: boolean;
@@ -199,6 +230,17 @@ function isTicketTeam(value: unknown): value is TicketTeam {
   );
 }
 
+function isTicketChecklistItem(value: unknown): value is TicketChecklistItem {
+  const item = asRecord(value);
+  return Boolean(
+    item &&
+    typeof item.id === "string" &&
+    typeof item.description === "string" &&
+    typeof item.position === "number" &&
+    (typeof item.completed_at === "string" || item.completed_at === null),
+  );
+}
+
 function valuesOf<T>(value: unknown, guard: (item: unknown) => item is T): T[] {
   return Array.isArray(value) ? value.filter(guard) : [];
 }
@@ -229,6 +271,9 @@ function parseTicketDetail(
     statuses: valuesOf(data.statuses, isTicketStatus),
     priorities: valuesOf(data.priorities, isTicketPriority),
     teams: valuesOf(data.teams, isTicketTeam),
+    checklistItems: valuesOf(data.checklistItems, isTicketChecklistItem).sort(
+      (first, second) => first.position - second.position,
+    ),
     watching: data.watching === true,
     canUpdate: data.canUpdate === true,
     canUseInternalNotes: data.canUseInternalNotes === true,
@@ -295,6 +340,10 @@ export function TicketDetail({
   const [comment, setComment] = useState("");
   const [commentVisibility, setCommentVisibility] =
     useState<CommentVisibility>("external");
+  const [checklistDescription, setChecklistDescription] = useState("");
+  const [pendingChecklistItemId, setPendingChecklistItemId] = useState<
+    string | null
+  >(null);
   const requestSequence = useRef(0);
 
   const loadTicket = useCallback(async () => {
@@ -444,6 +493,62 @@ export function TicketDetail({
     }
   }
 
+  async function addChecklistItem(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!detail || !detail.canUpdate) return;
+
+    const description = checklistDescription.trim();
+    if (!description) {
+      setError(
+        "Bitte geben Sie eine Beschreibung für den Checklistenpunkt ein.",
+      );
+      return;
+    }
+
+    setPendingAction("checklist-add");
+    setError("");
+    try {
+      await invokeTicketOperation({
+        type: "addChecklistItem",
+        tenantId,
+        ticketId,
+        description,
+      });
+      setChecklistDescription("");
+      onChanged();
+      await loadTicket();
+    } catch (nextError) {
+      setError(errorMessage(nextError));
+    } finally {
+      setPendingAction(null);
+    }
+  }
+
+  async function toggleChecklistItem(item: TicketChecklistItem) {
+    if (!detail || !detail.canUpdate) return;
+
+    const completed = item.completed_at === null;
+    setPendingAction("checklist-toggle");
+    setPendingChecklistItemId(item.id);
+    setError("");
+    try {
+      await invokeTicketOperation({
+        type: "toggleChecklistItem",
+        tenantId,
+        ticketId,
+        itemId: item.id,
+        completed,
+      });
+      onChanged();
+      await loadTicket();
+    } catch (nextError) {
+      setError(errorMessage(nextError));
+    } finally {
+      setPendingChecklistItemId(null);
+      setPendingAction(null);
+    }
+  }
+
   async function toggleWatch() {
     if (!detail) return;
     const watching = !detail.watching;
@@ -589,6 +694,106 @@ export function TicketDetail({
           Erstellt am {formatDateTime(detail.ticket.created_at)}
         </p>
       </div>
+
+      <section
+        className="ticket-detail-checklist"
+        aria-labelledby="ticket-checklist-heading"
+      >
+        <div className="ticket-detail-section-heading">
+          <div>
+            <p className="eyebrow">CHECKLISTE</p>
+            <h3 id="ticket-checklist-heading">Checklistenpunkte</h3>
+          </div>
+          <span className="data-caption">
+            {
+              detail.checklistItems.filter((item) => item.completed_at !== null)
+                .length
+            }
+            /{detail.checklistItems.length} erledigt
+          </span>
+        </div>
+
+        {detail.canUpdate && (
+          <form className="ticket-comment-form" onSubmit={addChecklistItem}>
+            <label className="ticket-comment-body">
+              Neuer Checklistenpunkt
+              <input
+                disabled={busy}
+                onChange={(event) =>
+                  setChecklistDescription(event.target.value)
+                }
+                placeholder="Punkt zur Checkliste hinzufügen …"
+                required
+                type="text"
+                value={checklistDescription}
+              />
+            </label>
+            <button className="secondary-button" disabled={busy} type="submit">
+              {pendingAction === "checklist-add" ? (
+                <LoaderCircle
+                  aria-hidden="true"
+                  className="ticket-detail-spinner"
+                  size={16}
+                />
+              ) : (
+                <Circle aria-hidden="true" size={16} strokeWidth={1.8} />
+              )}
+              Punkt hinzufügen
+            </button>
+          </form>
+        )}
+
+        {detail.checklistItems.length === 0 ? (
+          <p className="empty-state">Noch keine Checklistenpunkte vorhanden.</p>
+        ) : (
+          <ol className="ticket-comment-list ticket-checklist-list">
+            {detail.checklistItems.map((item) => {
+              const isCompleted = item.completed_at !== null;
+              const isPending =
+                pendingAction === "checklist-toggle" &&
+                pendingChecklistItemId === item.id;
+
+              return (
+                <li
+                  className="ticket-comment ticket-checklist-item"
+                  key={item.id}
+                >
+                  <button
+                    aria-label={
+                      isCompleted
+                        ? `Checklistenpunkt „${item.description}“ als offen markieren`
+                        : `Checklistenpunkt „${item.description}“ als erledigt markieren`
+                    }
+                    aria-pressed={isCompleted}
+                    className="secondary-button"
+                    disabled={busy || !detail.canUpdate}
+                    onClick={() => void toggleChecklistItem(item)}
+                    type="button"
+                  >
+                    {isPending ? (
+                      <LoaderCircle
+                        aria-hidden="true"
+                        className="ticket-detail-spinner"
+                        size={16}
+                      />
+                    ) : isCompleted ? (
+                      <CircleCheck
+                        aria-hidden="true"
+                        size={16}
+                        strokeWidth={1.8}
+                      />
+                    ) : (
+                      <Circle aria-hidden="true" size={16} strokeWidth={1.8} />
+                    )}
+                    {isCompleted ? "Erledigt" : "Offen"}
+                  </button>
+                  <p>{item.description}</p>
+                </li>
+              );
+            })}
+          </ol>
+        )}
+      </section>
 
       {detail.canUpdate && (
         <section
