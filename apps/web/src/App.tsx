@@ -25,6 +25,12 @@ import {
   type LiveDashboardSnapshot,
   type TenantOption,
 } from "./lib/live-dashboard";
+import {
+  OwnerConsoleScreen,
+  OwnerMfaScreen,
+  resolveOwnerAccess,
+  type OwnerAccess,
+} from "./platform-owner";
 import { appRedirectUrl, isSupabaseConfigured, supabase } from "./lib/supabase";
 
 type Section = "Übersicht" | "Tickets" | "Services" | "Wissen" | "Berichte";
@@ -331,6 +337,8 @@ export function App() {
   const [snapshot, setSnapshot] = useState<LiveDashboardSnapshot | null>(null);
   const [dashboardLoading, setDashboardLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  const [ownerAccess, setOwnerAccess] = useState<OwnerAccess>("idle");
+  const [ownerAccessError, setOwnerAccessError] = useState("");
 
   useEffect(() => {
     if (!supabase) return;
@@ -350,6 +358,8 @@ export function App() {
       setSnapshot(null);
       setErrorMessage("");
       setTenantLoadError("");
+      setOwnerAccess("idle");
+      setOwnerAccessError("");
     });
 
     return () => {
@@ -393,6 +403,29 @@ export function App() {
       mounted = false;
     };
   }, [session]);
+
+  useEffect(() => {
+    if (!supabase || !session || tenantLoading || tenants.length > 0) {
+      if (!session || tenants.length > 0) {
+        setOwnerAccess("idle");
+        setOwnerAccessError("");
+      }
+      return;
+    }
+
+    let mounted = true;
+    setOwnerAccess("checking");
+    setOwnerAccessError("");
+    void resolveOwnerAccess().then((result) => {
+      if (!mounted) return;
+      setOwnerAccess(result.state);
+      setOwnerAccessError(result.message ?? "");
+    });
+
+    return () => {
+      mounted = false;
+    };
+  }, [session, tenantLoading, tenants.length]);
 
   const activeTenant = useMemo(
     () => tenants.find((tenant) => tenant.id === activeTenantId) ?? null,
@@ -484,6 +517,34 @@ export function App() {
     );
   }
   if (isSupabaseConfigured && session && tenants.length === 0) {
+    if (ownerAccess === "checking") {
+      return <LoadingScreen message="Eigentümerzugang wird geprüft." />;
+    }
+    if (ownerAccess === "mfa_required") {
+      return (
+        <AccessShell>
+          <OwnerMfaScreen
+            onComplete={() => setOwnerAccess("checking")}
+            onSignOut={() => void signOut()}
+          />
+        </AccessShell>
+      );
+    }
+    if (ownerAccess === "ready") {
+      return (
+        <AccessShell>
+          <OwnerConsoleScreen onSignOut={() => void signOut()} />
+        </AccessShell>
+      );
+    }
+    if (ownerAccess === "error") {
+      return (
+        <MembershipErrorScreen
+          message={ownerAccessError}
+          onSignOut={() => void signOut()}
+        />
+      );
+    }
     return <NoMembershipScreen onSignOut={() => void signOut()} />;
   }
 

@@ -114,11 +114,6 @@ const securedHandler = withSupabase(
       return json(request, { error: { code: "invalid_request" } }, 400);
     }
 
-    const aal = isRecord(context.jwtClaims) ? context.jwtClaims.aal : undefined;
-    if (aal !== "aal2") {
-      return json(request, { error: { code: "mfa_required" } }, 403);
-    }
-
     const { data: operator, error: operatorError } = await context.supabaseAdmin
       .from("platform_administrators")
       .select("user_id")
@@ -132,6 +127,15 @@ const securedHandler = withSupabase(
         403,
       );
     }
+
+    const aal = isRecord(context.jwtClaims) ? context.jwtClaims.aal : undefined;
+    if (aal !== "aal2") {
+      return json(request, { error: { code: "mfa_required" } }, 403);
+    }
+    await context.supabaseAdmin
+      .from("platform_administrators")
+      .update({ mfa_verified_at: new Date().toISOString() })
+      .eq("user_id", actorId);
 
     if (action.type === "listTenants") {
       const { data, error } = await context.supabaseAdmin
