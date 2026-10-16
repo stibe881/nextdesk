@@ -313,7 +313,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
   const { data: invitations, error: invitationsError } =
     await context.supabaseAdmin
       .from("tenant_user_invitations")
-      .select("id, tenant_id, invited_by")
+      .select("id, tenant_id, invited_by, role_name")
       .eq("email", email)
       .eq("status", "sent")
       .gt("expires_at", new Date().toISOString())
@@ -331,28 +331,32 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       },
       { onConflict: "tenant_id,user_id" },
     );
-    const { data: requester } = await context.supabaseAdmin
+    const roleName =
+      typeof invitation.role_name === "string"
+        ? invitation.role_name
+        : "Requester";
+    const { data: requestedRole } = await context.supabaseAdmin
       .from("roles")
       .select("id")
       .eq("tenant_id", invitation.tenant_id)
-      .eq("name", "Requester")
+      .eq("name", roleName)
       .eq("scope", "tenant")
       .eq("active", true)
       .maybeSingle();
-    if (requester) {
+    if (requestedRole) {
       const { data: assignment } = await context.supabaseAdmin
         .from("user_role_assignments")
         .select("id")
         .eq("tenant_id", invitation.tenant_id)
         .eq("user_id", actorId)
-        .eq("role_id", requester.id)
+        .eq("role_id", requestedRole.id)
         .is("expires_at", null)
         .maybeSingle();
       if (!assignment)
         await context.supabaseAdmin.from("user_role_assignments").insert({
           tenant_id: invitation.tenant_id,
           user_id: actorId,
-          role_id: requester.id,
+          role_id: requestedRole.id,
           assigned_by: invitation.invited_by,
         });
     }

@@ -17,6 +17,7 @@ const expectedFiles = [
   "0012_owner_sso_provisioning.sql",
   "0013_ticket_reference_defaults.sql",
   "0014_ticket_operations_core.sql",
+  "0015_tenant_admin_email_invitation.sql",
 ];
 
 const availableFiles = await readdir(migrationDirectory);
@@ -134,6 +135,10 @@ const requiredFragments = [
   [
     "0014_ticket_operations_core.sql",
     "create or replace function public.customer_can_read_ticket",
+  ],
+  [
+    "0015_tenant_admin_email_invitation.sql",
+    "add column if not exists role_name",
   ],
 ];
 

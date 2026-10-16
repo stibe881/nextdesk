@@ -161,6 +161,7 @@ export function OwnerConsoleScreen({
   const [form, setForm] = useState({
     name: "",
     slug: "",
+    adminEmail: "",
     departments: "ICT, Infrastruktur",
   });
   const [editForm, setEditForm] = useState({
@@ -261,9 +262,14 @@ export function OwnerConsoleScreen({
       .split(",")
       .map((name) => name.trim())
       .filter(Boolean);
-    if (!form.name.trim() || !form.slug.trim() || names.length === 0) {
+    if (
+      !form.name.trim() ||
+      !form.slug.trim() ||
+      !form.adminEmail.trim() ||
+      names.length === 0
+    ) {
       setError(
-        "Kundenname, Mandantenkennung und mindestens ein Startbereich sind erforderlich.",
+        "Kundenname, Administratoradresse, Mandantenkennung und mindestens ein Startbereich sind erforderlich.",
       );
       return;
     }
@@ -275,6 +281,7 @@ export function OwnerConsoleScreen({
         type: "createTenant",
         name: form.name,
         slug: form.slug,
+        adminEmail: form.adminEmail,
         departments: names.map((name, index) => ({
           key: makeDepartmentKey(name, index),
           name,
@@ -282,9 +289,14 @@ export function OwnerConsoleScreen({
         })),
       });
       setMessage(
-        `Kunde „${form.name.trim()}“ mit eigenem Mandanten wurde angelegt.`,
+        `Kunde „${form.name.trim()}“ wurde angelegt. Der Mandantenadministrator erhält jetzt seinen Zugangslink.`,
       );
-      setForm({ name: "", slug: "", departments: "ICT, Infrastruktur" });
+      setForm({
+        name: "",
+        slug: "",
+        adminEmail: "",
+        departments: "ICT, Infrastruktur",
+      });
       await loadTenants();
     } catch (nextError) {
       setError(
@@ -540,6 +552,23 @@ export function OwnerConsoleScreen({
                 required
                 value={form.name}
               />
+            </label>
+            <label>
+              Administratoradresse
+              <input
+                autoComplete="email"
+                disabled={saving}
+                onChange={(event) =>
+                  setForm({ ...form, adminEmail: event.target.value })
+                }
+                placeholder="admin@kunde.ch"
+                required
+                type="email"
+                value={form.adminEmail}
+              />
+              <small>
+                Erhält die Einladung und wird Mandantenadministrator.
+              </small>
             </label>
             <label>
               Mandantenkennung <small>bleibt dauerhaft</small>

@@ -11,6 +11,7 @@ type Action =
       type: "createTenant";
       slug: string;
       name: string;
+      adminEmail: string;
       departments: Department[];
     }
   | {
@@ -56,6 +57,7 @@ function parseAction(body: unknown): Action | null {
     if (
       typeof body.slug !== "string" ||
       typeof body.name !== "string" ||
+      typeof body.adminEmail !== "string" ||
       !Array.isArray(body.departments)
     )
       return null;
@@ -76,11 +78,13 @@ function parseAction(body: unknown): Action | null {
       ];
     });
     return departments.length === body.departments.length &&
-      departments.length > 0
+      departments.length > 0 &&
+      /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(body.adminEmail.trim())
       ? {
           type: "createTenant",
           slug: body.slug.trim().toLowerCase(),
           name: body.name.trim(),
+          adminEmail: body.adminEmail.trim().toLowerCase(),
           departments,
         }
       : null;
@@ -164,6 +168,64 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         { error: { code: "tenant_provisioning_failed" } },
         422,
       );
+    const expiresAt = new Date(
+      Date.now() + 7 * 24 * 60 * 60 * 1000,
+    ).toISOString();
+    const { data: openInvitation } = await context.supabaseAdmin
+      .from("tenant_user_invitations")
+      .select("id")
+      .eq("tenant_id", tenantId)
+      .eq("email", action.adminEmail)
+      .eq("status", "sent")
+      .maybeSingle();
+    if (openInvitation) {
+      await context.supabaseAdmin
+        .from("tenant_user_invitations")
+        .update({
+          invited_by: actorId,
+          role_name: "Tenant administrator",
+          expires_at: expiresAt,
+        })
+        .eq("id", openInvitation.id);
+    } else {
+      const { error: invitationError } = await context.supabaseAdmin
+        .from("tenant_user_invitations")
+        .insert({
+          tenant_id: tenantId,
+          email: action.adminEmail,
+          invited_by: actorId,
+          role_name: "Tenant administrator",
+          expires_at: expiresAt,
+        });
+      if (invitationError)
+        return json(
+          request,
+          { error: { code: "admin_invitation_failed" } },
+          422,
+        );
+    }
+    const { error: mailError } = await context.supabaseAdmin.auth.signInWithOtp(
+      {
+        email: action.adminEmail,
+        options: {
+          shouldCreateUser: true,
+          emailRedirectTo: "https://app.nextdesk.ch/",
+        },
+      },
+    );
+    if (mailError)
+      return json(
+        request,
+        { error: { code: "admin_invitation_email_failed" } },
+        502,
+      );
+    await context.supabaseAdmin.from("platform_audit_logs").insert({
+      actor_id: actorId,
+      action: "tenant.admin.invited",
+      target_type: "tenant",
+      target_id: tenantId,
+      metadata: { email: action.adminEmail },
+    });
     return json(request, { data: { tenantId } }, 201);
   }
 
