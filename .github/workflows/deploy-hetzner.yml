@@ -1,0 +1,74 @@
+name: Deploy TicketHub to Hetzner Webhosting L
+
+on:
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: Auslöser des kontrollierten Hetzner-Deploys
+        required: false
+        default: Manual deployment
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hetzner-webhosting-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Build and upload static web application
+    runs-on: ubuntu-latest
+    environment:
+      name: hetzner-production
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.25.0
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Validate and build
+        run: |
+          pnpm --filter @nextdesk/web typecheck
+          pnpm --filter @nextdesk/web build:hetzner
+      - name: Configure SSH
+        env:
+          HETZNER_SSH_HOST: ${{ vars.HETZNER_SSH_HOST }}
+          HETZNER_SSH_PORT: ${{ vars.HETZNER_SSH_PORT || '222' }}
+          HETZNER_SSH_USER: ${{ vars.HETZNER_SSH_USER }}
+          HETZNER_WEB_ROOT: ${{ vars.HETZNER_WEB_ROOT }}
+          HETZNER_SSH_KNOWN_HOSTS: ${{ secrets.HETZNER_SSH_KNOWN_HOSTS }}
+          HETZNER_SSH_PRIVATE_KEY: ${{ secrets.HETZNER_SSH_PRIVATE_KEY }}
+        run: |
+          test -n "$HETZNER_SSH_HOST"
+          test -n "$HETZNER_SSH_USER"
+          test -n "$HETZNER_WEB_ROOT"
+          test -n "$HETZNER_SSH_KNOWN_HOSTS"
+          test -n "$HETZNER_SSH_PRIVATE_KEY"
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$HETZNER_SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$HETZNER_SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          ssh -i ~/.ssh/id_ed25519 -p "$HETZNER_SSH_PORT" -o BatchMode=yes "$HETZNER_SSH_USER@$HETZNER_SSH_HOST" 'mkdir -p "$HETZNER_WEB_ROOT"'
+      - name: Upload static build
+        env:
+          HETZNER_SSH_HOST: ${{ vars.HETZNER_SSH_HOST }}
+          HETZNER_SSH_PORT: ${{ vars.HETZNER_SSH_PORT || '222' }}
+          HETZNER_SSH_USER: ${{ vars.HETZNER_SSH_USER }}
+          HETZNER_WEB_ROOT: ${{ vars.HETZNER_WEB_ROOT }}
+        run: |
+          test -n "$HETZNER_SSH_USER"
+          test -n "$HETZNER_WEB_ROOT"
+          rsync --archive --delete \
+            -e "ssh -i ~/.ssh/id_ed25519 -p $HETZNER_SSH_PORT -o BatchMode=yes" \
+            apps/web/dist/ "$HETZNER_SSH_USER@$HETZNER_SSH_HOST:$HETZNER_WEB_ROOT/"
