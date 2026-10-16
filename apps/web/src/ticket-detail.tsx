@@ -3039,7 +3039,16 @@ export function TicketDetail({
       return true;
     } catch (nextError) {
       if (requestId === handoverRequestSequence.current) {
-        setHandoverError(handoverErrorMessage(nextError, "list"));
+        // Ticket handovers are an optional module. A tenant can already use
+        // the ticket workspace while the dedicated Function is not deployed.
+        // In that state an empty list is the appropriate user-facing result,
+        // not a technical error banner.
+        if (functionErrorStatus(nextError) === 404) {
+          setHandovers([]);
+          setHandoverError("");
+        } else {
+          setHandoverError(handoverErrorMessage(nextError, "list"));
+        }
       }
       return false;
     } finally {
