@@ -40,6 +40,7 @@ type PendingAction =
   | "relation-delete"
   | "merge"
   | null;
+type PendingAttachmentAction = "upload" | "download" | "delete" | null;
 
 type GetTicketAction = {
   type: "getTicket";
@@ -150,6 +151,38 @@ type TicketOperation =
   | ToggleChecklistItemAction
   | AddTimeEntryAction;
 
+type TicketAttachmentAction =
+  | { type: "list"; tenantId: string; ticketId: string }
+  | {
+      type: "createUpload";
+      tenantId: string;
+      ticketId: string;
+      filename: string;
+      contentType: string;
+      byteSize: number;
+    }
+  | {
+      type: "completeUpload";
+      tenantId: string;
+      ticketId: string;
+      storageObjectPath: string;
+      originalFilename: string;
+      contentType: string;
+      byteSize: number;
+    }
+  | {
+      type: "createDownloadUrl";
+      tenantId: string;
+      ticketId: string;
+      attachmentId: string;
+    }
+  | {
+      type: "delete";
+      tenantId: string;
+      ticketId: string;
+      attachmentId: string;
+    };
+
 type TicketRecord = {
   id: string;
   ticket_number: string;
@@ -238,6 +271,21 @@ type SimilarTicket = {
   statusLabel: string;
 };
 
+type TicketAttachment = {
+  id: string;
+  originalFilename: string;
+  contentType: string;
+  byteSize: number;
+  createdAt: string;
+};
+
+type AttachmentUpload = {
+  storageObjectPath: string;
+  signedUrl: string;
+  contentType: string;
+  byteSize: number;
+};
+
 type TicketDetailData = {
   ticket: TicketRecord;
   comments: TicketComment[];
@@ -264,6 +312,26 @@ type TicketDetailProps = {
   onClose: () => void;
   onChanged: () => void;
 };
+
+const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
+const ATTACHMENT_CONTENT_TYPES = [
+  "application/pdf",
+  "text/plain",
+  "text/csv",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.ms-excel",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+] as const;
+const ALLOWED_ATTACHMENT_CONTENT_TYPES = new Set<string>(
+  ATTACHMENT_CONTENT_TYPES,
+);
+const ATTACHMENT_ACCEPT = ATTACHMENT_CONTENT_TYPES.join(",");
+const ATTACHMENT_ALLOWLIST_LABEL =
+  "PDF, TXT, CSV, DOC, DOCX, XLS, XLSX, PNG, JPG/JPEG und WebP";
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   return typeof value === "object" && value !== null && !Array.isArray(value)
@@ -443,6 +511,109 @@ function isSimilarTicket(value: unknown): value is SimilarTicket {
   );
 }
 
+function toTicketAttachment(value: unknown): TicketAttachment | null {
+  const attachment = asRecord(value);
+  if (
+    !attachment ||
+    typeof attachment.id !== "string" ||
+    typeof attachment.original_filename !== "string" ||
+    !attachment.original_filename.trim() ||
+    typeof attachment.content_type !== "string" ||
+    !ALLOWED_ATTACHMENT_CONTENT_TYPES.has(attachment.content_type) ||
+    typeof attachment.byte_size !== "number" ||
+    !Number.isSafeInteger(attachment.byte_size) ||
+    attachment.byte_size < 1 ||
+    attachment.byte_size > MAX_ATTACHMENT_BYTES ||
+    typeof attachment.created_at !== "string"
+  ) {
+    return null;
+  }
+
+  return {
+    id: attachment.id,
+    originalFilename: attachment.original_filename,
+    contentType: attachment.content_type,
+    byteSize: attachment.byte_size,
+    createdAt: attachment.created_at,
+  };
+}
+
+function parseTicketAttachments(value: unknown): TicketAttachment[] | null {
+  const envelope = asRecord(value);
+  const data = asRecord(envelope?.data);
+  if (!Array.isArray(data?.attachments)) return null;
+
+  const attachments = data.attachments.map(toTicketAttachment);
+  return attachments.every(
+    (attachment): attachment is TicketAttachment => attachment !== null,
+  )
+    ? attachments
+    : null;
+}
+
+function isHttpsUrl(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  try {
+    return new URL(value).protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+function parseAttachmentUpload(value: unknown): AttachmentUpload | null {
+  const envelope = asRecord(value);
+  const data = asRecord(envelope?.data);
+  if (
+    !data ||
+    typeof data.storageObjectPath !== "string" ||
+    !data.storageObjectPath ||
+    !isHttpsUrl(data.signedUrl) ||
+    typeof data.contentType !== "string" ||
+    !ALLOWED_ATTACHMENT_CONTENT_TYPES.has(data.contentType) ||
+    typeof data.byteSize !== "number" ||
+    !Number.isSafeInteger(data.byteSize) ||
+    data.byteSize < 1 ||
+    data.byteSize > MAX_ATTACHMENT_BYTES
+  ) {
+    return null;
+  }
+
+  return {
+    storageObjectPath: data.storageObjectPath,
+    signedUrl: data.signedUrl,
+    contentType: data.contentType,
+    byteSize: data.byteSize,
+  };
+}
+
+function parseAttachmentDownloadUrl(value: unknown): string | null {
+  const envelope = asRecord(value);
+  const data = asRecord(envelope?.data);
+  return isHttpsUrl(data?.signedUrl) ? data.signedUrl : null;
+}
+
+function attachmentFileError(file: File): string | null {
+  const filename = file.name.trim();
+  const contentType = file.type.trim().toLowerCase();
+  if (
+    !filename ||
+    filename.length > 255 ||
+    filename === "." ||
+    filename === ".." ||
+    /[\u0000-\u001f\u007f/\\]/.test(filename)
+  ) {
+    return "Der Dateiname ist nicht zulässig.";
+  }
+  if (!ALLOWED_ATTACHMENT_CONTENT_TYPES.has(contentType)) {
+    return `Dieser Dateityp ist nicht erlaubt. Erlaubt sind: ${ATTACHMENT_ALLOWLIST_LABEL}.`;
+  }
+  if (file.size < 1) return "Leere Dateien können nicht hochgeladen werden.";
+  if (file.size > MAX_ATTACHMENT_BYTES) {
+    return "Die Datei ist zu groß. Erlaubt sind höchstens 25 MiB pro Datei.";
+  }
+  return null;
+}
+
 function valuesOf<T>(value: unknown, guard: (item: unknown) => item is T): T[] {
   return Array.isArray(value) ? value.filter(guard) : [];
 }
@@ -547,6 +718,18 @@ function formatDateTime(timestamp: string): string {
   }).format(value);
 }
 
+function formatFileSize(byteSize: number): string {
+  if (byteSize < 1024) return `${byteSize} B`;
+  const units = ["KiB", "MiB", "GiB"];
+  const exponent = Math.min(
+    Math.floor(Math.log(byteSize) / Math.log(1024)),
+    units.length,
+  );
+  return `${new Intl.NumberFormat("de-CH", {
+    maximumFractionDigits: 1,
+  }).format(byteSize / 1024 ** exponent)} ${units[exponent - 1]}`;
+}
+
 function formatMinutes(minutes: number): string {
   const hours = Math.floor(minutes / 60);
   const remainingMinutes = minutes % 60;
@@ -622,6 +805,38 @@ async function invokeTicketOperation(
   return data;
 }
 
+async function invokeTicketAttachmentAction(
+  action: TicketAttachmentAction,
+): Promise<unknown> {
+  if (!supabase) throw new Error("Supabase ist nicht konfiguriert.");
+  const { data, error } = await supabase.functions.invoke(
+    "ticket-attachments",
+    {
+      body: action,
+    },
+  );
+  if (error) throw error;
+  return data;
+}
+
+function attachmentErrorMessage(
+  action: Exclude<PendingAttachmentAction, null> | "list",
+): string {
+  const messages: Record<
+    Exclude<PendingAttachmentAction, null> | "list",
+    string
+  > = {
+    list: "Die Anhänge konnten nicht geladen werden. Bitte versuchen Sie es erneut.",
+    upload:
+      "Der Anhang konnte nicht hochgeladen werden. Bitte versuchen Sie es erneut.",
+    download:
+      "Der Anhang konnte nicht heruntergeladen werden. Bitte versuchen Sie es erneut.",
+    delete:
+      "Der Anhang konnte nicht gelöscht werden. Bitte versuchen Sie es erneut.",
+  };
+  return messages[action];
+}
+
 export function TicketDetail({
   tenantId,
   ticketId,
@@ -659,7 +874,20 @@ export function TicketDetail({
   const [pendingEscalationId, setPendingEscalationId] = useState<string | null>(
     null,
   );
+  const [attachments, setAttachments] = useState<TicketAttachment[]>([]);
+  const [attachmentsLoading, setAttachmentsLoading] = useState(false);
+  const [attachmentsLoaded, setAttachmentsLoaded] = useState(false);
+  const [attachmentError, setAttachmentError] = useState("");
+  const [selectedAttachmentFile, setSelectedAttachmentFile] =
+    useState<File | null>(null);
+  const [pendingAttachmentAction, setPendingAttachmentAction] =
+    useState<PendingAttachmentAction>(null);
+  const [pendingAttachmentId, setPendingAttachmentId] = useState<string | null>(
+    null,
+  );
   const requestSequence = useRef(0);
+  const attachmentRequestSequence = useRef(0);
+  const attachmentInputRef = useRef<HTMLInputElement>(null);
 
   const loadTicket = useCallback(async () => {
     const requestId = ++requestSequence.current;
@@ -708,12 +936,53 @@ export function TicketDetail({
     }
   }, [tenantId, ticketId]);
 
+  const loadAttachments = useCallback(async () => {
+    const requestId = ++attachmentRequestSequence.current;
+    setAttachmentsLoading(true);
+    setAttachmentError("");
+
+    try {
+      const response = await invokeTicketAttachmentAction({
+        type: "list",
+        tenantId,
+        ticketId,
+      });
+      const nextAttachments = parseTicketAttachments(response);
+      if (!nextAttachments) throw new Error("Ungültige Anhangsdaten.");
+      if (requestId !== attachmentRequestSequence.current) return false;
+
+      setAttachments(nextAttachments);
+      return true;
+    } catch {
+      if (requestId === attachmentRequestSequence.current) {
+        setAttachmentError(attachmentErrorMessage("list"));
+      }
+      return false;
+    } finally {
+      if (requestId === attachmentRequestSequence.current) {
+        setAttachmentsLoaded(true);
+        setAttachmentsLoading(false);
+      }
+    }
+  }, [tenantId, ticketId]);
+
   useEffect(() => {
     void loadTicket();
     return () => {
       requestSequence.current += 1;
     };
   }, [loadTicket]);
+
+  useEffect(() => {
+    setAttachments([]);
+    setAttachmentsLoaded(false);
+    setSelectedAttachmentFile(null);
+    if (attachmentInputRef.current) attachmentInputRef.current.value = "";
+    void loadAttachments();
+    return () => {
+      attachmentRequestSequence.current += 1;
+    };
+  }, [loadAttachments]);
 
   const selectedStatus = useMemo(
     () =>
@@ -747,6 +1016,127 @@ export function TicketDetail({
       selectedTeamId !== assignedTeamId),
   );
   const busy = pendingAction !== null;
+  const attachmentBusy = pendingAttachmentAction !== null;
+
+  function selectAttachmentFile(file: File | null) {
+    setAttachmentError("");
+    setSelectedAttachmentFile(null);
+    if (!file) return;
+
+    const validationError = attachmentFileError(file);
+    if (validationError) {
+      setAttachmentError(validationError);
+      if (attachmentInputRef.current) attachmentInputRef.current.value = "";
+      return;
+    }
+    setSelectedAttachmentFile(file);
+  }
+
+  async function uploadAttachment(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!detail || !detail.canUpdate || !selectedAttachmentFile) return;
+
+    const file = selectedAttachmentFile;
+    const validationError = attachmentFileError(file);
+    if (validationError) {
+      setAttachmentError(validationError);
+      return;
+    }
+
+    const filename = file.name.trim();
+    const contentType = file.type.trim().toLowerCase();
+    setPendingAttachmentAction("upload");
+    setAttachmentError("");
+    try {
+      const createResponse = await invokeTicketAttachmentAction({
+        type: "createUpload",
+        tenantId,
+        ticketId,
+        filename,
+        contentType,
+        byteSize: file.size,
+      });
+      const upload = parseAttachmentUpload(createResponse);
+      if (
+        !upload ||
+        upload.contentType !== contentType ||
+        upload.byteSize !== file.size
+      ) {
+        throw new Error("Ungültige Upload-Antwort.");
+      }
+
+      const uploadResponse = await fetch(upload.signedUrl, {
+        method: "PUT",
+        headers: { "Content-Type": contentType },
+        body: file,
+      });
+      if (!uploadResponse.ok) throw new Error("Upload fehlgeschlagen.");
+
+      await invokeTicketAttachmentAction({
+        type: "completeUpload",
+        tenantId,
+        ticketId,
+        storageObjectPath: upload.storageObjectPath,
+        originalFilename: filename,
+        contentType,
+        byteSize: file.size,
+      });
+      setSelectedAttachmentFile(null);
+      if (attachmentInputRef.current) attachmentInputRef.current.value = "";
+      onChanged();
+      await loadAttachments();
+    } catch {
+      setAttachmentError(attachmentErrorMessage("upload"));
+    } finally {
+      setPendingAttachmentAction(null);
+    }
+  }
+
+  async function downloadAttachment(attachment: TicketAttachment) {
+    setPendingAttachmentAction("download");
+    setPendingAttachmentId(attachment.id);
+    setAttachmentError("");
+    try {
+      const response = await invokeTicketAttachmentAction({
+        type: "createDownloadUrl",
+        tenantId,
+        ticketId,
+        attachmentId: attachment.id,
+      });
+      const signedUrl = parseAttachmentDownloadUrl(response);
+      if (!signedUrl) throw new Error("Ungültige Download-Antwort.");
+
+      window.open(signedUrl, "_blank", "noopener,noreferrer");
+    } catch {
+      setAttachmentError(attachmentErrorMessage("download"));
+    } finally {
+      setPendingAttachmentId(null);
+      setPendingAttachmentAction(null);
+    }
+  }
+
+  async function deleteAttachment(attachment: TicketAttachment) {
+    if (!detail || !detail.canUpdate) return;
+
+    setPendingAttachmentAction("delete");
+    setPendingAttachmentId(attachment.id);
+    setAttachmentError("");
+    try {
+      await invokeTicketAttachmentAction({
+        type: "delete",
+        tenantId,
+        ticketId,
+        attachmentId: attachment.id,
+      });
+      onChanged();
+      await loadAttachments();
+    } catch {
+      setAttachmentError(attachmentErrorMessage("delete"));
+    } finally {
+      setPendingAttachmentId(null);
+      setPendingAttachmentAction(null);
+    }
+  }
 
   async function saveTicketChanges() {
     if (!detail || !hasChanges) return;
@@ -1206,6 +1596,154 @@ export function TicketDetail({
           Erstellt am {formatDateTime(detail.ticket.created_at)}
         </p>
       </div>
+
+      <section
+        className="ticket-detail-comments"
+        aria-labelledby="ticket-attachments-heading"
+      >
+        <div className="ticket-detail-section-heading">
+          <div>
+            <p className="eyebrow">ANHÄNGE</p>
+            <h3 id="ticket-attachments-heading">Anhänge</h3>
+          </div>
+          <span className="data-caption">{attachments.length}</span>
+        </div>
+        <p className="data-caption" id="ticket-attachments-help">
+          Erlaubt sind {ATTACHMENT_ALLOWLIST_LABEL}. Maximal 25 MiB pro Datei.
+        </p>
+
+        {attachmentError && (
+          <p className="ticket-detail-message error" role="alert">
+            <AlertCircle aria-hidden="true" size={17} />
+            {attachmentError}
+          </p>
+        )}
+
+        {detail.canUpdate && (
+          <form className="ticket-comment-form" onSubmit={uploadAttachment}>
+            <label className="ticket-comment-body">
+              Datei auswählen
+              <input
+                accept={ATTACHMENT_ACCEPT}
+                aria-describedby="ticket-attachments-help"
+                disabled={attachmentBusy || busy}
+                onChange={(event) =>
+                  selectAttachmentFile(event.target.files?.[0] ?? null)
+                }
+                ref={attachmentInputRef}
+                type="file"
+              />
+            </label>
+            {pendingAttachmentAction === "upload" ? (
+              <p className="data-caption ticket-detail-loading" role="status">
+                <LoaderCircle
+                  aria-hidden="true"
+                  className="ticket-detail-spinner"
+                  size={16}
+                />
+                Anhang wird hochgeladen …
+              </p>
+            ) : selectedAttachmentFile ? (
+              <p className="data-caption" aria-live="polite">
+                Ausgewählt: {selectedAttachmentFile.name} (
+                {formatFileSize(selectedAttachmentFile.size)})
+              </p>
+            ) : null}
+            <button
+              className="secondary-button"
+              disabled={attachmentBusy || busy || !selectedAttachmentFile}
+              type="submit"
+            >
+              {pendingAttachmentAction === "upload" ? (
+                <LoaderCircle
+                  aria-hidden="true"
+                  className="ticket-detail-spinner"
+                  size={16}
+                />
+              ) : (
+                <Circle aria-hidden="true" size={16} strokeWidth={1.8} />
+              )}
+              Anhang hochladen
+            </button>
+          </form>
+        )}
+
+        {attachmentsLoading && !attachmentsLoaded ? (
+          <p className="empty-state ticket-detail-loading" role="status">
+            <LoaderCircle
+              aria-hidden="true"
+              className="ticket-detail-spinner"
+              size={18}
+            />
+            Anhänge werden geladen …
+          </p>
+        ) : attachments.length === 0 ? (
+          <p className="empty-state">Noch keine Anhänge vorhanden.</p>
+        ) : (
+          <ol className="ticket-comment-list" aria-busy={attachmentsLoading}>
+            {attachments.map((attachment) => {
+              const isDownloading =
+                pendingAttachmentAction === "download" &&
+                pendingAttachmentId === attachment.id;
+              const isDeleting =
+                pendingAttachmentAction === "delete" &&
+                pendingAttachmentId === attachment.id;
+
+              return (
+                <li className="ticket-comment" key={attachment.id}>
+                  <div className="ticket-comment-meta">
+                    <strong>{attachment.originalFilename}</strong>
+                    <span>{formatFileSize(attachment.byteSize)}</span>
+                    <time dateTime={attachment.createdAt}>
+                      Hochgeladen am {formatDateTime(attachment.createdAt)}
+                    </time>
+                  </div>
+                  <div className="ticket-detail-actions">
+                    <button
+                      aria-label={`${attachment.originalFilename} herunterladen`}
+                      className="secondary-button"
+                      disabled={attachmentBusy || busy}
+                      onClick={() => void downloadAttachment(attachment)}
+                      type="button"
+                    >
+                      {isDownloading ? (
+                        <LoaderCircle
+                          aria-hidden="true"
+                          className="ticket-detail-spinner"
+                          size={16}
+                        />
+                      ) : (
+                        <Save aria-hidden="true" size={16} strokeWidth={1.8} />
+                      )}
+                      Herunterladen
+                    </button>
+                    {detail.canUpdate && (
+                      <button
+                        aria-label={`${attachment.originalFilename} löschen`}
+                        className="secondary-button"
+                        disabled={attachmentBusy || busy}
+                        onClick={() => void deleteAttachment(attachment)}
+                        type="button"
+                      >
+                        {isDeleting ? (
+                          <LoaderCircle
+                            aria-hidden="true"
+                            className="ticket-detail-spinner"
+                            size={16}
+                          />
+                        ) : (
+                          <X aria-hidden="true" size={16} strokeWidth={1.8} />
+                        )}
+                        Löschen
+                      </button>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
+          </ol>
+        )}
+      </section>
 
       <section
         className="ticket-detail-comments"

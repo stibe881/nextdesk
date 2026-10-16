@@ -20,6 +20,7 @@ const expectedFiles = [
   "0015_tenant_admin_email_invitation.sql",
   "0016_tenant_admin_settings_and_features.sql",
   "0017_ticket_sla_lifecycle.sql",
+  "0018_private_ticket_attachments_storage.sql",
 ];
 
 const availableFiles = await readdir(migrationDirectory);
@@ -154,6 +155,10 @@ const requiredFragments = [
   [
     "0017_ticket_sla_lifecycle.sql",
     "create trigger tickets_apply_sla_on_insert",
+  ],
+  [
+    "0018_private_ticket_attachments_storage.sql",
+    "insert into storage.buckets",
   ],
 ];
 

@@ -56,3 +56,6 @@ verify_jwt = true
 
 [functions.service-reporting]
 verify_jwt = true
+
+[functions.ticket-attachments]
+verify_jwt = true
