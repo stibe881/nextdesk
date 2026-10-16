@@ -356,7 +356,7 @@ async function hasPermission(
   const { data } = await admin
     .from("user_role_assignments")
     .select(
-      "role_id, department_id, roles!inner(active, role_permissions!inner(permission_code))",
+      "role_id, department_id, roles!user_role_assignments_role_tenant_fk!inner(active, role_permissions!inner(permission_code))",
     )
     .eq("tenant_id", tenantId)
     .eq("user_id", userId)
@@ -407,7 +407,7 @@ async function getEligibleTicketAgentIds(
     admin
       .from("user_role_assignments")
       .select(
-        "user_id, department_id, roles!inner(tenant_id, active, scope, role_permissions!inner(permission_code))",
+        "user_id, department_id, roles!user_role_assignments_role_tenant_fk!inner(tenant_id, active, scope, role_permissions!inner(permission_code))",
       )
       .eq("tenant_id", ticket.tenant_id)
       .lte("starts_at", now)

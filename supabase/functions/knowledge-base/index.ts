@@ -194,7 +194,7 @@ async function hasTenantPermission(
   const { data: assignments, error } = await admin
     .from("user_role_assignments")
     .select(
-      "roles!inner(active, scope, role_permissions!inner(permission_code))",
+      "roles!user_role_assignments_role_tenant_fk!inner(active, scope, role_permissions!inner(permission_code))",
     )
     .eq("tenant_id", tenantId)
     .eq("user_id", userId)

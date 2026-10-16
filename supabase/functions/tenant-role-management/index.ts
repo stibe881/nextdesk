@@ -302,7 +302,7 @@ async function authorizeTenantAdministration(
   const { data: assignments, error: assignmentError } = await admin
     .from("user_role_assignments")
     .select(
-      "roles!inner(active, scope, role_permissions!inner(permission_code))",
+      "roles!user_role_assignments_role_tenant_fk!inner(active, scope, role_permissions!inner(permission_code))",
     )
     .eq("tenant_id", tenantId)
     .eq("user_id", actorId)
@@ -453,7 +453,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       await context.supabaseAdmin
         .from("user_role_assignments")
         .select(
-          "id, user_id, role_id, department_id, team_id, starts_at, expires_at, roles!inner(id, name, scope, active)",
+          "id, user_id, role_id, department_id, team_id, starts_at, expires_at, roles!user_role_assignments_role_tenant_fk!inner(id, name, scope, active)",
         )
         .eq("tenant_id", action.tenantId)
         .eq("roles.tenant_id", action.tenantId)
@@ -991,7 +991,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     await context.supabaseAdmin
       .from("user_role_assignments")
       .select(
-        "id, user_id, role_id, department_id, team_id, starts_at, expires_at, roles!inner(id, name, scope, active)",
+        "id, user_id, role_id, department_id, team_id, starts_at, expires_at, roles!user_role_assignments_role_tenant_fk!inner(id, name, scope, active)",
       )
       .eq("id", action.assignmentId)
       .eq("tenant_id", action.tenantId)
@@ -1018,10 +1018,13 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
   ) {
     const { count, error: countError } = await context.supabaseAdmin
       .from("user_role_assignments")
-      .select("id, roles!inner(name, scope, active)", {
-        count: "exact",
-        head: true,
-      })
+      .select(
+        "id, roles!user_role_assignments_role_tenant_fk!inner(name, scope, active)",
+        {
+          count: "exact",
+          head: true,
+        },
+      )
       .eq("tenant_id", action.tenantId)
       .eq("user_id", actorId)
       .eq("roles.name", TENANT_ADMINISTRATOR_ROLE)

@@ -563,7 +563,7 @@ async function hasTicketPermission(
     admin
       .from("user_role_assignments")
       .select(
-        "department_id, roles!inner(tenant_id, active, scope, role_permissions!inner(permission_code))",
+        "department_id, roles!user_role_assignments_role_tenant_fk!inner(tenant_id, active, scope, role_permissions!inner(permission_code))",
       )
       .eq("tenant_id", tenantId)
       .eq("user_id", userId)
@@ -620,7 +620,7 @@ async function getEligibleAssignableAgentIds(
     admin
       .from("user_role_assignments")
       .select(
-        "user_id, department_id, roles!inner(tenant_id, active, scope, role_permissions!inner(permission_code))",
+        "user_id, department_id, roles!user_role_assignments_role_tenant_fk!inner(tenant_id, active, scope, role_permissions!inner(permission_code))",
       )
       .eq("tenant_id", tenantId)
       .lte("starts_at", now)

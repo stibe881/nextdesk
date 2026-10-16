@@ -206,7 +206,7 @@ async function getManagementScopes(
   const { data, error } = await admin
     .from("user_role_assignments")
     .select(
-      "department_id, roles!inner(active, scope, role_permissions!inner(permission_code))",
+      "department_id, roles!user_role_assignments_role_tenant_fk!inner(active, scope, role_permissions!inner(permission_code))",
     )
     .eq("tenant_id", tenantId)
     .eq("user_id", userId)

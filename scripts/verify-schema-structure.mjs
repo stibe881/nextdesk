@@ -27,6 +27,8 @@ const expectedFiles = [
   "0022_ticket_subcategories.sql",
   "0023_ticket_requesters.sql",
   "0024_email_requester_fallback.sql",
+  "0025_tenant_administrator_operations_permissions.sql",
+  "0026_remove_ambiguous_role_assignment_fk.sql",
 ];
 
 const availableFiles = await readdir(migrationDirectory);
@@ -207,6 +209,14 @@ const requiredFragments = [
   [
     "0024_email_requester_fallback.sql",
     "create or replace function public.validate_ticket_requester_contact()",
+  ],
+  [
+    "0025_tenant_administrator_operations_permissions.sql",
+    "'ticket.sla.manage'::text",
+  ],
+  [
+    "0026_remove_ambiguous_role_assignment_fk.sql",
+    "drop constraint if exists user_role_assignments_role_id_fkey",
   ],
 ];
 
