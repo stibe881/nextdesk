@@ -43,11 +43,14 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     return response(request, { error: { code: "invalid_request" } }, 400);
   }
 
-  const appMetadata = isRecord(context.jwtClaims)
-    ? context.jwtClaims.app_metadata
+  const { data: userData, error: userError } =
+    await context.supabaseAdmin.auth.admin.getUserById(actorId);
+  const providers = isRecord(userData.user?.app_metadata)
+    ? userData.user.app_metadata.providers
     : undefined;
-  const provider = isRecord(appMetadata) ? appMetadata.provider : undefined;
-  if (provider !== "azure") return failure(request, "sso_required");
+  if (userError || !Array.isArray(providers) || !providers.includes("azure")) {
+    return failure(request, "sso_required");
+  }
 
   const { data: operator, error } = await context.supabaseAdmin
     .from("platform_administrators")
