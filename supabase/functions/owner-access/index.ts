@@ -16,7 +16,7 @@ function response(
   status = 200,
 ) {
   const origin = request.headers.get("origin");
-  return new Response(JSON.stringify(body), {
+  return new Response(status === 204 ? null : JSON.stringify(body), {
     status,
     headers: {
       "Access-Control-Allow-Origin":
