@@ -58,6 +58,7 @@ import {
   resolveOwnerAccess,
   type OwnerAccess,
 } from "./platform-owner";
+import { functionErrorMessage } from "./lib/function-error";
 import { appRedirectUrl, isSupabaseConfigured, supabase } from "./lib/supabase";
 
 type Section =
@@ -739,10 +740,16 @@ export function App() {
         setSavedTicketViews(parsed.savedViews);
         setCanManageTenantViews(parsed.canManageTenantViews);
       })
-      .catch(() => {
+      .catch(async (error: unknown) => {
         if (!mounted) return;
         setSavedTicketViews([]);
         setCanManageTenantViews(false);
+        setErrorMessage(
+          await functionErrorMessage(
+            error,
+            "Gespeicherte Ticketansichten konnten nicht geladen werden. Bitte versuchen Sie es erneut.",
+          ),
+        );
       })
       .finally(() => {
         if (mounted) setSavedTicketViewsLoading(false);
@@ -871,8 +878,14 @@ export function App() {
           return completeSnapshot;
         });
       })
-      .catch((error: Error) => {
-        if (mounted) setErrorMessage(error.message);
+      .catch(async (error: unknown) => {
+        if (!mounted) return;
+        setErrorMessage(
+          await functionErrorMessage(
+            error,
+            "Die Ticketübersicht konnte nicht geladen werden. Bitte versuchen Sie es erneut.",
+          ),
+        );
       })
       .finally(() => {
         if (mounted) setDashboardLoading(false);
@@ -1799,9 +1812,12 @@ function SavedTicketViews({
           ? `Ansicht „${savedView.name}“ aktualisiert.`
           : `Ansicht „${savedView.name}“ gespeichert.`,
       );
-    } catch {
+    } catch (error: unknown) {
       setErrorMessage(
-        "Die Ansicht konnte nicht gespeichert werden. Prüfen Sie Name und Berechtigung.",
+        await functionErrorMessage(
+          error,
+          "Die Ansicht konnte nicht gespeichert werden. Prüfen Sie Name und Berechtigung.",
+        ),
       );
     } finally {
       setPending(null);
@@ -1829,8 +1845,13 @@ function SavedTicketViews({
       setName("");
       setVisibility("private");
       setStatus(`Ansicht „${selectedView.name}“ gelöscht.`);
-    } catch {
-      setErrorMessage("Die Ansicht konnte nicht gelöscht werden.");
+    } catch (error: unknown) {
+      setErrorMessage(
+        await functionErrorMessage(
+          error,
+          "Die Ansicht konnte nicht gelöscht werden.",
+        ),
+      );
     } finally {
       setPending(null);
     }

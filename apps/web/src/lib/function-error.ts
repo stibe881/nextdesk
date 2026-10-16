@@ -67,6 +67,13 @@ export async function functionErrorMessage(
     case "conflict":
     case "version_conflict":
       return "Die Daten wurden inzwischen geändert. Bitte laden Sie die Ansicht neu und versuchen Sie es erneut.";
+    case "saved_view_name_conflict":
+      return "Dieser Name wird für eine Ansicht mit derselben Sichtbarkeit bereits verwendet. Bitte wählen Sie einen anderen Namen.";
+    case "saved_view_tenant_access_denied":
+    case "saved_view_manage_denied":
+      return "Für diese gespeicherte Ansicht fehlt Ihnen die erforderliche Berechtigung.";
+    case "saved_view_not_found":
+      return "Die gespeicherte Ansicht ist nicht mehr verfügbar. Bitte laden Sie die Ticketliste neu.";
     case "rate_limited":
       return "Zu viele Anfragen in kurzer Zeit. Bitte warten Sie einen Moment und versuchen Sie es erneut.";
     case "authorization_check_failed":
