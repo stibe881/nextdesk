@@ -6,6 +6,8 @@ coverage/
 .env
 .env.*
 !.env.example
+!.env.github-pages
+!.env.hetzner
 .DS_Store
 .expo/
 web-build/

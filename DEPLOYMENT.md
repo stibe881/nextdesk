@@ -12,7 +12,13 @@ Es gibt drei getrennte Supabase-Projekte und eigene Konfigurationen: `developmen
 
 Pull Requests führen mindestens Dependency-Install, Formatprüfung, TypeScript-Check, Unit-Tests, Migration-Lint und später RLS-/API-/E2E-Tests aus. Ein Merge nach `main` liefert Staging; ein getaggtes, freigegebenes Release promotet gezielt nach Produktion. Datenbankmigrationen werden vor dem Web-Deploy in einer kontrollierten Reihenfolge angewendet. Rücknahmen erfolgen als Vorwärtsmigration oder als zuvor getesteter Restore, nicht durch unkontrolliertes Löschen von Produktionsdaten.
 
-## Permanentes Dashboard auf GitHub Pages
+## Hetzner Webhosting L
+
+Die gewählte Übergangsarchitektur stellt die Vite-Web-App auf Hetzner Webhosting L bereit; Supabase in `eu-central-2` bleibt für PostgreSQL-RLS, Auth, Storage, Realtime und Edge Functions zuständig. Der manuelle Workflow [`.github/workflows/deploy-hetzner.yml`](.github/workflows/deploy-hetzner.yml) baut mit Basis-Pfad `/` und lädt ausschliesslich `apps/web/dist` per SSH auf die konfigurierte Zielsubdomain. Der SSH-Port ist bei konsoleH `222`; Host, Benutzer, Zielpfad, privater Deploy-Key und der verifizierte `known_hosts`-Eintrag liegen ausschliesslich als GitHub-Variablen beziehungsweise -Secrets vor.
+
+Vor der Umschaltung werden DNS und TLS der Zielsubdomain eingerichtet und die Site-URL sowie Redirect-Allowlist des Supabase-Projekts auf diese Domain ergänzt. Eine spätere Node.js-Anwendung auf einer getrennten `api.<domain>`-Subdomain kapselt nur serverseitige Integrationen; sie erhält keine Datenbank- oder GitHub-Geheimnisse im Browser. Das vollständige Entscheidungspapier liegt unter [`docs/deployment/HETZNER_WEBHOSTING_L.md`](docs/deployment/HETZNER_WEBHOSTING_L.md).
+
+## Bisheriges Dashboard auf GitHub Pages
 
 Die aktuelle öffentliche Operationsübersicht wird statisch über GitHub Pages unter `https://stibe881.github.io/nextdesk/` ausgeliefert. Der Workflow [`.github/workflows/deploy-pages.yml`](.github/workflows/deploy-pages.yml) baut bei jedem Push auf `main` mit `pnpm --filter @nextdesk/web build:pages`, lädt ausschliesslich `apps/web/dist` als Artefakt hoch und veröffentlicht dieses über die offizielle Pages-Deployment-Action.
 

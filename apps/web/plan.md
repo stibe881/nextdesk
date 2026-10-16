@@ -8,6 +8,8 @@ Die erste startbare Webschicht zeigt eine operative Übersicht für einen Mandan
 
 `apps/web` ist eine Vite-/React-/TypeScript-Anwendung. `src/App.tsx` hält UI-Zustand für Zeitraum, Queue, Navigation und die Login-Zustände. `src/dashboard-data.ts` stellt nur für den deutlich markierten Offline-Preview deterministische Beispielzustände bereit. `src/lib/supabase.ts` kapselt den browser-sicheren Client, Magic-Link-Anmeldung und Session-Refresh. `src/lib/live-dashboard.ts` liest aktive Mitgliedschaften, Mandantendaten, Tickets, Status, Prioritäten, Abteilungen und autorisierte Ereignisse ausschliesslich mit dem User-JWT; jede Live-Abfrage bleibt damit unter den Datenbank-RLS-Policies. Die Plattformkonsole ruft ausschliesslich die user-authentifizierte Edge Function `platform-control` auf. Diese erzwingt Plattform-Eigentümerschaft und `aal2`, bevor sie mittels Service-Role Mandanten verwaltet oder einen GitHub-Workflow-Dispatch sendet. Service-Role- und GitHub-Token gehören weder in das Bundle noch in `.env.example`.
 
+Die Webauslieferung wechselt von GitHub Pages auf Hetzner Webhosting L. Der Vite-Build erhält dort den Basis-Pfad `/` und wird über einen manuellen GitHub-Workflow per SSH/SFTP auf die Zielsubdomain übertragen. Supabase bleibt bis zu einer ausdrücklich beauftragten Backend-Neuentwicklung für PostgreSQL-RLS, Auth, Storage und die privilegierten Functions autoritativ. Eine spätere Node.js-API auf `api.<domain>` enthält lediglich serverseitige Integrations- und Deploy-Logik; sie ersetzt keine RLS-Prüfung im Browser.
+
 ```text
 apps/web/
 ├── public/manus-routes.json      # Routenmanifest für die Vorschau

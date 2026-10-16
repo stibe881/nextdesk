@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite --host 0.0.0.0 --port 5173 --strictPort",
     "build": "vite build",
+    "build:hetzner": "vite build --mode hetzner",
     "build:pages": "vite build --mode github-pages",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests"

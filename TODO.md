@@ -19,3 +19,5 @@
 - [ ] **Entra und Microsoft 365.** Mandantenspezifisches OIDC/SAML, PKCE-geeignete Expo-Redirects, Mapping ohne automatische beliebige Mitgliedschaft, Graph-Postfächer, minimale Berechtigungen und Audit-Events funktionieren mit Test-Tenants.
 
 - [ ] **Betrieb.** CI führt Lint, Typcheck, Tests und Sicherheitsprüfungen aus. Deployment, DNS, Zertifikate, Secrets, Migrationen, Monitoring, Backups, RPO/RTO und Rollback sind dokumentiert und getestet.
+
+- [ ] **Hetzner-Webhosting-L-Auslieferung.** Die Web-App wird als Vite-Produktionsbuild mit Basis-Pfad `/` über eine kontrollierte Hetzner-Subdomain ausgeliefert. Ein manueller GitHub-Workflow verwendet ausschliesslich GitHub-Secrets für SSH-Key und bekannte Hostidentität sowie Repository-Variablen für Host, Port `222`, Benutzer und Zielpfad. Vor Umschaltung sind DNS, TLS, Supabase-Auth-Site-URL und Redirect-Allowlist auf die Hetzner-Domain angepasst. Supabase bleibt für PostgreSQL-RLS, Auth, Storage und Edge Functions in Zürich aktiv; ein Node-Prozess auf `api.<domain>` wird erst für serverseitige Integrationen aktiviert.
