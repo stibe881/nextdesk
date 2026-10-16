@@ -943,13 +943,14 @@ button {
   margin: 0 0 14px;
   color: #fff;
   font-family: Impact, "Arial Narrow", sans-serif;
-  font-size: clamp(35px, 4vw, 50px);
+  font-size: clamp(32px, 3vw, 42px);
   font-weight: 400;
   letter-spacing: 0.015em;
   line-height: 0.95;
   text-transform: uppercase;
-  overflow-wrap: anywhere;
+  overflow-wrap: normal;
   word-break: normal;
+  hyphens: none;
 }
 .access-lead,
 .access-card > p:not(.eyebrow) {
