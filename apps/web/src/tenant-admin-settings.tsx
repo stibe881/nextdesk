@@ -14,7 +14,16 @@ export type TenantAdminSettingsProps = {
 
 type SsoProvider = "oidc" | "saml" | "azure_ad";
 type SsoProviderSelection = SsoProvider | "";
-type SaveTarget = "branding" | "sso" | `feature:${string}`;
+type SaveTarget =
+  | "branding"
+  | "sso"
+  | "invite-user"
+  | `feature:${string}`
+  | `remove-user:${string}`
+  | `revoke-invitation:${string}`
+  | `role:${string}`
+  | "assign-role"
+  | `revoke-role:${string}`;
 
 type TenantSettings = {
   portal_name: string | null;
@@ -63,15 +72,52 @@ type TenantRole = {
   id: string;
   name: string;
   scope: string;
+  isSystem: boolean;
   active: boolean;
+  createdAt: string;
+  updatedAt: string;
+  permissionCodes: string[];
 };
 
-type TenantUser = {
+type TenantPermission = {
+  code: string;
+  description: string;
+  is_sensitive: boolean;
+};
+
+type RoleAssignment = {
   id: string;
-  email: string | null;
-  display_name: string | null;
+  user_id: string;
+  role_id: string;
+  department_id: string | null;
+  team_id: string | null;
+  starts_at: string;
+  expires_at: string | null;
+};
+
+type RoleAssignmentWithDetails = RoleAssignment & {
+  roleName: string;
+  user: {
+    id: string;
+    displayName: string | null;
+    email: string | null;
+  };
+};
+
+type TenantDirectoryMember = {
+  id: string;
+  email: string;
+  displayName: string | null;
   status: string;
-  joined_at: string | null;
+  joinedAt: string | null;
+};
+
+type TenantInvitation = {
+  id: string;
+  email: string;
+  status: "sent" | "accepted";
+  expires_at: string;
+  created_at: string;
 };
 
 type SettingsData = {
@@ -82,13 +128,18 @@ type SettingsData = {
   roles: TenantRole[];
 };
 
-type UserListData = {
-  users: TenantUser[];
-  truncated: boolean;
+type TenantUserDirectory = {
+  members: TenantDirectoryMember[];
+  invitations: TenantInvitation[];
 };
 
 type RoleListData = {
   roles: TenantRole[];
+  roleAssignments: RoleAssignmentWithDetails[];
+};
+
+type PermissionListData = {
+  permissions: TenantPermission[];
 };
 
 type FunctionEnvelope<T> = {
@@ -105,7 +156,6 @@ type BrandingUpdate = {
 
 type TenantAdminRequest =
   | { type: "getSettings"; tenantId: string }
-  | { type: "listUsers"; tenantId: string }
   | { type: "listRoles"; tenantId: string }
   | { type: "updateBranding"; tenantId: string; branding: BrandingUpdate }
   | {
@@ -126,6 +176,43 @@ type TenantAdminRequest =
       enabled: boolean;
     };
 
+type TenantUsersRequest =
+  | { type: "listUsers"; tenantId: string }
+  | { type: "inviteUser"; tenantId: string; email: string }
+  | { type: "removeUser"; tenantId: string; userId: string }
+  | {
+      type: "revokeInvitation";
+      tenantId: string;
+      invitationId: string;
+    };
+
+type TenantRoleManagementRequest =
+  | { type: "listRoles"; tenantId: string }
+  | { type: "listPermissions"; tenantId: string }
+  | {
+      type: "createRole";
+      tenantId: string;
+      name: string;
+      permissionCodes: string[];
+    }
+  | {
+      type: "updateRole";
+      tenantId: string;
+      roleId: string;
+      name?: string;
+      permissionCodes?: string[];
+      active?: boolean;
+    }
+  | {
+      type: "assignRole";
+      tenantId: string;
+      userId: string;
+      roleId: string;
+      departmentId: null;
+      teamId: null;
+    }
+  | { type: "revokeRole"; tenantId: string; assignmentId: string };
+
 type BrandingForm = {
   portalName: string;
   logoUrl: string;
@@ -142,6 +229,16 @@ type SsoForm = {
   clientId: string;
   allowedEmailDomains: string;
   enforceSso: boolean;
+};
+
+type RoleForm = {
+  name: string;
+  permissionCodes: string[];
+};
+
+type RoleAssignmentForm = {
+  userId: string;
+  roleId: string;
 };
 
 const emptyBrandingForm: BrandingForm = {
@@ -162,12 +259,84 @@ const emptySsoForm: SsoForm = {
   enforceSso: false,
 };
 
+const emptyRoleForm: RoleForm = {
+  name: "",
+  permissionCodes: [],
+};
+
+const emptyRoleAssignmentForm: RoleAssignmentForm = {
+  userId: "",
+  roleId: "",
+};
+
 function messageFromError(error: unknown, fallback: string): string {
   return error instanceof Error && error.message ? error.message : fallback;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function parseRoleAssignments(value: unknown): RoleAssignmentWithDetails[] {
+  if (!Array.isArray(value)) {
+    throw new Error(
+      "Die Rollenverwaltung hat keine Rollenzuweisungen geliefert.",
+    );
+  }
+
+  return value.map((rawAssignment, index) => {
+    if (!isRecord(rawAssignment) || !isRecord(rawAssignment.user)) {
+      throw new Error(
+        `Die Rollenzuweisung an Position ${index + 1} ist ungültig.`,
+      );
+    }
+
+    const user = rawAssignment.user;
+    const id = rawAssignment.id;
+    const userId = rawAssignment.user_id;
+    const roleId = rawAssignment.role_id;
+    const departmentId = rawAssignment.department_id;
+    const teamId = rawAssignment.team_id;
+    const startsAt = rawAssignment.starts_at;
+    const expiresAt = rawAssignment.expires_at;
+    const roleName = rawAssignment.roleName;
+    const displayName = user.displayName;
+    const email = user.email;
+
+    if (
+      typeof id !== "string" ||
+      typeof userId !== "string" ||
+      typeof roleId !== "string" ||
+      (typeof departmentId !== "string" && departmentId !== null) ||
+      (typeof teamId !== "string" && teamId !== null) ||
+      typeof startsAt !== "string" ||
+      (typeof expiresAt !== "string" && expiresAt !== null) ||
+      typeof roleName !== "string" ||
+      typeof user.id !== "string" ||
+      (typeof displayName !== "string" && displayName !== null) ||
+      (typeof email !== "string" && email !== null)
+    ) {
+      throw new Error(
+        `Die Rollenzuweisung an Position ${index + 1} ist ungültig.`,
+      );
+    }
+
+    return {
+      id,
+      user_id: userId,
+      role_id: roleId,
+      department_id: departmentId,
+      team_id: teamId,
+      starts_at: startsAt,
+      expires_at: expiresAt,
+      roleName,
+      user: {
+        id: user.id,
+        displayName,
+        email,
+      },
+    };
+  });
 }
 
 async function tenantAdminRequest<T>(body: TenantAdminRequest): Promise<T> {
@@ -187,6 +356,54 @@ async function tenantAdminRequest<T>(body: TenantAdminRequest): Promise<T> {
   if (!isRecord(data) || !("data" in data)) {
     throw new Error(
       "Die Einstellungsfunktion hat keine verwertbaren Daten geliefert.",
+    );
+  }
+
+  return data.data as T;
+}
+
+async function tenantUsersRequest<T>(body: TenantUsersRequest): Promise<T> {
+  if (!supabase) {
+    throw new Error("Die Verbindung zu Supabase ist nicht konfiguriert.");
+  }
+
+  const { data, error } = await supabase.functions.invoke<FunctionEnvelope<T>>(
+    "tenant-users",
+    { body },
+  );
+  if (error) {
+    throw new Error(
+      error.message || "Die Benutzeraktion ist nicht erreichbar.",
+    );
+  }
+  if (!isRecord(data) || !("data" in data)) {
+    throw new Error(
+      "Die Benutzeraktion hat keine verwertbaren Daten geliefert.",
+    );
+  }
+
+  return data.data as T;
+}
+
+async function tenantRoleManagementRequest<T>(
+  body: TenantRoleManagementRequest,
+): Promise<T> {
+  if (!supabase) {
+    throw new Error("Die Verbindung zu Supabase ist nicht konfiguriert.");
+  }
+
+  const { data, error } = await supabase.functions.invoke<FunctionEnvelope<T>>(
+    "tenant-role-management",
+    { body },
+  );
+  if (error) {
+    throw new Error(
+      error.message || "Die Rollenverwaltung ist nicht erreichbar.",
+    );
+  }
+  if (!isRecord(data) || !("data" in data)) {
+    throw new Error(
+      "Die Rollenverwaltung hat keine verwertbaren Daten geliefert.",
     );
   }
 
@@ -237,9 +454,23 @@ export function TenantAdminSettings({
   onClose,
 }: TenantAdminSettingsProps) {
   const [settings, setSettings] = useState<SettingsData | null>(null);
-  const [users, setUsers] = useState<TenantUser[]>([]);
+  const [userDirectory, setUserDirectory] = useState<TenantUserDirectory>({
+    members: [],
+    invitations: [],
+  });
   const [roles, setRoles] = useState<TenantRole[]>([]);
-  const [usersTruncated, setUsersTruncated] = useState(false);
+  const [permissions, setPermissions] = useState<TenantPermission[]>([]);
+  const [roleForm, setRoleForm] = useState<RoleForm>(emptyRoleForm);
+  const [editingRoleId, setEditingRoleId] = useState<string | null>(null);
+  const [roleEditForm, setRoleEditForm] = useState<RoleForm>(emptyRoleForm);
+  const [roleAssignmentForm, setRoleAssignmentForm] =
+    useState<RoleAssignmentForm>(emptyRoleAssignmentForm);
+  const [roleAssignments, setRoleAssignments] = useState<
+    RoleAssignmentWithDetails[]
+  >([]);
+  const [assignmentPendingRevocation, setAssignmentPendingRevocation] =
+    useState<RoleAssignmentWithDetails | null>(null);
+  const [invitationEmail, setInvitationEmail] = useState("");
   const [brandingForm, setBrandingForm] =
     useState<BrandingForm>(emptyBrandingForm);
   const [ssoForm, setSsoForm] = useState<SsoForm>(emptySsoForm);
@@ -252,15 +483,27 @@ export function TenantAdminSettings({
     setLoading(true);
     setError("");
     try {
-      const [nextSettings, userList, roleList] = await Promise.all([
-        tenantAdminRequest<SettingsData>({ type: "getSettings", tenantId }),
-        tenantAdminRequest<UserListData>({ type: "listUsers", tenantId }),
-        tenantAdminRequest<RoleListData>({ type: "listRoles", tenantId }),
-      ]);
+      const [nextSettings, nextUserDirectory, roleList, permissionList] =
+        await Promise.all([
+          tenantAdminRequest<SettingsData>({ type: "getSettings", tenantId }),
+          tenantUsersRequest<TenantUserDirectory>({
+            type: "listUsers",
+            tenantId,
+          }),
+          tenantRoleManagementRequest<RoleListData>({
+            type: "listRoles",
+            tenantId,
+          }),
+          tenantRoleManagementRequest<PermissionListData>({
+            type: "listPermissions",
+            tenantId,
+          }),
+        ]);
       setSettings(nextSettings);
-      setUsers(userList.users);
-      setUsersTruncated(userList.truncated);
+      setUserDirectory(nextUserDirectory);
       setRoles(roleList.roles);
+      setRoleAssignments(parseRoleAssignments(roleList.roleAssignments));
+      setPermissions(permissionList.permissions);
 
       const branding = nextSettings.tenant_branding;
       setBrandingForm({
@@ -287,9 +530,10 @@ export function TenantAdminSettings({
       );
     } catch (nextError) {
       setSettings(null);
-      setUsers([]);
+      setUserDirectory({ members: [], invitations: [] });
       setRoles([]);
-      setUsersTruncated(false);
+      setRoleAssignments([]);
+      setPermissions([]);
       setError(
         messageFromError(
           nextError,
@@ -305,13 +549,38 @@ export function TenantAdminSettings({
     void loadData();
   }, [loadData]);
 
+  useEffect(() => {
+    setRoleForm(emptyRoleForm);
+    setEditingRoleId(null);
+    setRoleEditForm(emptyRoleForm);
+    setRoleAssignmentForm(emptyRoleAssignmentForm);
+    setRoleAssignments([]);
+    setAssignmentPendingRevocation(null);
+  }, [tenantId]);
+
   const activeUsers = useMemo(
-    () => users.filter((user) => user.status === "active"),
-    [users],
+    () => userDirectory.members.filter((member) => member.status === "active"),
+    [userDirectory.members],
+  );
+  const openInvitations = useMemo(
+    () =>
+      userDirectory.invitations.filter(
+        (invitation) => invitation.status === "sent",
+      ),
+    [userDirectory.invitations],
   );
   const branding = settings?.tenant_branding ?? null;
   const brandingLogoUrl = branding?.logo_url ?? branding?.logo_path ?? null;
   const ssoConfiguration = settings?.tenant_sso_configurations[0] ?? null;
+  const permissionsByCode = useMemo(
+    () =>
+      new Map(permissions.map((permission) => [permission.code, permission])),
+    [permissions],
+  );
+  const assignableRoles = useMemo(
+    () => roles.filter((role) => role.active && role.scope === "tenant"),
+    [roles],
+  );
 
   function beginSave(target: SaveTarget) {
     setSaving(target);
@@ -468,6 +737,286 @@ export function TenantAdminSettings({
         messageFromError(
           nextError,
           "Die Funktion konnte nicht aktualisiert werden.",
+        ),
+      );
+    } finally {
+      setSaving(null);
+    }
+  }
+
+  async function inviteUser(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const email = invitationEmail.trim().toLowerCase();
+    if (!email) {
+      setError("Geben Sie eine E-Mail-Adresse für die Einladung ein.");
+      return;
+    }
+
+    beginSave("invite-user");
+    try {
+      await tenantUsersRequest<{ sent: boolean; expiresAt: string }>({
+        type: "inviteUser",
+        tenantId,
+        email,
+      });
+      setInvitationEmail("");
+      await loadData();
+      setSuccess(`Einladungslink wurde an ${email} versendet.`);
+    } catch (nextError) {
+      setError(
+        messageFromError(
+          nextError,
+          "Die Einladung konnte nicht versendet werden.",
+        ),
+      );
+    } finally {
+      setSaving(null);
+    }
+  }
+
+  async function removeUser(member: TenantDirectoryMember) {
+    const target: SaveTarget = `remove-user:${member.id}`;
+    beginSave(target);
+    try {
+      await tenantUsersRequest<{ removed: boolean }>({
+        type: "removeUser",
+        tenantId,
+        userId: member.id,
+      });
+      await loadData();
+      setSuccess(`${member.email} wurde aus diesem Mandanten entfernt.`);
+    } catch (nextError) {
+      setError(
+        messageFromError(
+          nextError,
+          "Die Benutzer*in konnte nicht entfernt werden.",
+        ),
+      );
+    } finally {
+      setSaving(null);
+    }
+  }
+
+  async function revokeInvitation(invitation: TenantInvitation) {
+    const target: SaveTarget = `revoke-invitation:${invitation.id}`;
+    beginSave(target);
+    try {
+      await tenantUsersRequest<{ revoked: boolean }>({
+        type: "revokeInvitation",
+        tenantId,
+        invitationId: invitation.id,
+      });
+      await loadData();
+      setSuccess(`Die Einladung an ${invitation.email} wurde widerrufen.`);
+    } catch (nextError) {
+      setError(
+        messageFromError(
+          nextError,
+          "Die Einladung konnte nicht widerrufen werden.",
+        ),
+      );
+    } finally {
+      setSaving(null);
+    }
+  }
+
+  function toggleRolePermission(
+    permissionCode: string,
+    setForm: (updater: (current: RoleForm) => RoleForm) => void,
+  ) {
+    setForm((current) => ({
+      ...current,
+      permissionCodes: current.permissionCodes.includes(permissionCode)
+        ? current.permissionCodes.filter((code) => code !== permissionCode)
+        : [...current.permissionCodes, permissionCode],
+    }));
+  }
+
+  function roleNameIsValid(name: string): boolean {
+    const length = Array.from(name.trim()).length;
+    return length >= 3 && length <= 120;
+  }
+
+  async function createRole(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const name = roleForm.name.trim();
+    if (!roleNameIsValid(name)) {
+      setError("Der Rollenname muss zwischen 3 und 120 Zeichen lang sein.");
+      return;
+    }
+
+    beginSave("role:create");
+    try {
+      await tenantRoleManagementRequest<{ role: TenantRole }>({
+        type: "createRole",
+        tenantId,
+        name,
+        permissionCodes: roleForm.permissionCodes,
+      });
+      setRoleForm(emptyRoleForm);
+      await loadData();
+      setSuccess(`Die Rolle „${name}“ wurde erstellt.`);
+    } catch (nextError) {
+      setError(
+        messageFromError(nextError, "Die Rolle konnte nicht erstellt werden."),
+      );
+    } finally {
+      setSaving(null);
+    }
+  }
+
+  function startRoleEdit(role: TenantRole) {
+    if (role.isSystem) return;
+    setEditingRoleId(role.id);
+    setRoleEditForm({
+      name: role.name,
+      permissionCodes: role.permissionCodes,
+    });
+    setError("");
+    setSuccess("");
+  }
+
+  async function updateRole(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const role = roles.find((item) => item.id === editingRoleId);
+    const name = roleEditForm.name.trim();
+    if (!role || role.isSystem) {
+      setError("Diese Systemrolle kann nicht bearbeitet werden.");
+      return;
+    }
+    if (!roleNameIsValid(name)) {
+      setError("Der Rollenname muss zwischen 3 und 120 Zeichen lang sein.");
+      return;
+    }
+
+    const target: SaveTarget = `role:${role.id}`;
+    beginSave(target);
+    try {
+      await tenantRoleManagementRequest<{ role: TenantRole }>({
+        type: "updateRole",
+        tenantId,
+        roleId: role.id,
+        name,
+        permissionCodes: roleEditForm.permissionCodes,
+      });
+      setEditingRoleId(null);
+      setRoleEditForm(emptyRoleForm);
+      await loadData();
+      setSuccess(`Die Rolle „${name}“ wurde aktualisiert.`);
+    } catch (nextError) {
+      setError(
+        messageFromError(
+          nextError,
+          "Die Rolle konnte nicht aktualisiert werden.",
+        ),
+      );
+    } finally {
+      setSaving(null);
+    }
+  }
+
+  async function setRoleActivity(role: TenantRole) {
+    if (role.isSystem) return;
+    const target: SaveTarget = `role:${role.id}`;
+    beginSave(target);
+    try {
+      await tenantRoleManagementRequest<{ role: TenantRole }>({
+        type: "updateRole",
+        tenantId,
+        roleId: role.id,
+        active: !role.active,
+      });
+      await loadData();
+      setSuccess(
+        `Die Rolle „${role.name}“ wurde ${role.active ? "deaktiviert" : "aktiviert"}.`,
+      );
+    } catch (nextError) {
+      setError(
+        messageFromError(
+          nextError,
+          "Der Rollenstatus konnte nicht geändert werden.",
+        ),
+      );
+    } finally {
+      setSaving(null);
+    }
+  }
+
+  async function assignRole(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const person = activeUsers.find(
+      (member) => member.id === roleAssignmentForm.userId,
+    );
+    const role = assignableRoles.find(
+      (item) => item.id === roleAssignmentForm.roleId,
+    );
+    if (!person || !role) {
+      setError(
+        "Wählen Sie eine aktive Person und eine aktive Mandantenrolle aus.",
+      );
+      return;
+    }
+
+    beginSave("assign-role");
+    try {
+      const result = await tenantRoleManagementRequest<{
+        assignment: RoleAssignment;
+      }>({
+        type: "assignRole",
+        tenantId,
+        userId: person.id,
+        roleId: role.id,
+        departmentId: null,
+        teamId: null,
+      });
+      const assignment: RoleAssignmentWithDetails = {
+        ...result.assignment,
+        roleName: role.name,
+        user: {
+          id: person.id,
+          displayName: person.displayName,
+          email: person.email,
+        },
+      };
+      setRoleAssignments((current) => [
+        ...current.filter(
+          (currentAssignment) => currentAssignment.id !== assignment.id,
+        ),
+        assignment,
+      ]);
+      setRoleAssignmentForm((current) => ({ ...current, roleId: "" }));
+      setSuccess(`Die Rolle „${role.name}“ wurde ${person.email} zugewiesen.`);
+    } catch (nextError) {
+      setError(
+        messageFromError(
+          nextError,
+          "Die Rolle konnte nicht zugewiesen werden.",
+        ),
+      );
+    } finally {
+      setSaving(null);
+    }
+  }
+
+  async function revokeRoleAssignment(assignment: RoleAssignmentWithDetails) {
+    const target: SaveTarget = `revoke-role:${assignment.id}`;
+    beginSave(target);
+    try {
+      await tenantRoleManagementRequest<{ revoked: boolean }>({
+        type: "revokeRole",
+        tenantId,
+        assignmentId: assignment.id,
+      });
+      setRoleAssignments((current) =>
+        current.filter((item) => item.id !== assignment.id),
+      );
+      setAssignmentPendingRevocation(null);
+      setSuccess("Die Rollenzuweisung wurde entzogen.");
+    } catch (nextError) {
+      setError(
+        messageFromError(
+          nextError,
+          "Die Rollenzuweisung konnte nicht entzogen werden.",
         ),
       );
     } finally {
@@ -966,25 +1515,87 @@ export function TenantAdminSettings({
             className="tenant-admin-settings__section"
             aria-labelledby="tenant-users-heading"
           >
-            <h2 id="tenant-users-heading">Aktive Benutzer*innen</h2>
+            <h2 id="tenant-users-heading">Benutzer*innen</h2>
+            <form className="tenant-admin-settings__form" onSubmit={inviteUser}>
+              <h3>Benutzer*in einladen</h3>
+              <label>
+                E-Mail-Adresse
+                <input
+                  type="email"
+                  inputMode="email"
+                  autoComplete="email"
+                  value={invitationEmail}
+                  required
+                  disabled={saving !== null}
+                  onChange={(event) => setInvitationEmail(event.target.value)}
+                />
+              </label>
+              <button type="submit" disabled={saving !== null}>
+                {saving === "invite-user"
+                  ? "Einladung wird versendet …"
+                  : "Einladung versenden"}
+              </button>
+            </form>
+
+            <h3>Aktive Benutzer*innen</h3>
             {activeUsers.length > 0 ? (
               <ul className="tenant-admin-settings__person-list">
-                {activeUsers.map((user) => (
-                  <li key={user.id}>
-                    <strong>{realValue(user.display_name)}</strong>
-                    {user.email ? <span>{user.email}</span> : null}
-                    <span>
-                      Beigetreten:{" "}
-                      {formatDate(user.joined_at) ?? "Nicht hinterlegt"}
-                    </span>
-                  </li>
-                ))}
+                {activeUsers.map((member) => {
+                  const target: SaveTarget = `remove-user:${member.id}`;
+                  return (
+                    <li key={member.id}>
+                      <strong>
+                        {member.displayName?.trim() || member.email}
+                      </strong>
+                      <span>{member.email}</span>
+                      <span>
+                        Beigetreten:{" "}
+                        {formatDate(member.joinedAt) ?? "Nicht hinterlegt"}
+                      </span>
+                      <button
+                        type="button"
+                        disabled={saving !== null}
+                        onClick={() => void removeUser(member)}
+                      >
+                        {saving === target ? "Wird entfernt …" : "Entfernen"}
+                      </button>
+                    </li>
+                  );
+                })}
               </ul>
             ) : (
-              <p>Es wurden keine aktiven Benutzer*innen zurückgegeben.</p>
+              <p>Es sind keine aktiven Benutzer*innen vorhanden.</p>
             )}
-            {usersTruncated ? (
-              <p>Die Benutzer*innenliste wurde vom Backend begrenzt.</p>
+
+            <h3>Offene Einladungen</h3>
+            {openInvitations.length > 0 ? (
+              <ul className="tenant-admin-settings__person-list">
+                {openInvitations.map((invitation) => {
+                  const target: SaveTarget = `revoke-invitation:${invitation.id}`;
+                  return (
+                    <li key={invitation.id}>
+                      <strong>{invitation.email}</strong>
+                      <span>
+                        Eingeladen:{" "}
+                        {formatDate(invitation.created_at) ??
+                          "Nicht hinterlegt"}
+                      </span>
+                      <span>
+                        Gültig bis:{" "}
+                        {formatDate(invitation.expires_at) ??
+                          "Nicht hinterlegt"}
+                      </span>
+                      <button
+                        type="button"
+                        disabled={saving !== null}
+                        onClick={() => void revokeInvitation(invitation)}
+                      >
+                        {saving === target ? "Wird widerrufen …" : "Widerrufen"}
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
             ) : null}
           </section>
 
@@ -993,20 +1604,360 @@ export function TenantAdminSettings({
             aria-labelledby="tenant-roles-heading"
           >
             <h2 id="tenant-roles-heading">Rollen</h2>
+            <p>
+              Verwalten Sie mandantenweite Rollen und deren Berechtigungen.
+              Systemrollen sind geschützt und können nicht verändert werden.
+            </p>
+            <h3>Rollenübersicht</h3>
             {roles.length > 0 ? (
               <ul className="tenant-admin-settings__role-list">
-                {roles.map((role) => (
-                  <li key={role.id}>
-                    <strong>{role.name}</strong>
-                    <span>{role.scope}</span>
-                    <span>{role.active ? "Aktiv" : "Inaktiv"}</span>
-                  </li>
-                ))}
+                {roles.map((role) => {
+                  const target: SaveTarget = `role:${role.id}`;
+                  const scopeLabel =
+                    role.scope === "tenant"
+                      ? "Mandantenweit"
+                      : role.scope === "department"
+                        ? "Abteilungsweit"
+                        : role.scope === "team"
+                          ? "Teamweit"
+                          : role.scope;
+                  return (
+                    <li key={role.id}>
+                      <strong>{role.name}</strong>
+                      <span>{scopeLabel}</span>
+                      <span>{role.active ? "Aktiv" : "Inaktiv"}</span>
+                      {role.isSystem ? <span>Systemrolle</span> : null}
+                      <div>
+                        <strong>Berechtigungen</strong>
+                        {role.permissionCodes.length > 0 ? (
+                          <ul>
+                            {role.permissionCodes.map((permissionCode) => {
+                              const permission =
+                                permissionsByCode.get(permissionCode);
+                              return (
+                                <li key={permissionCode}>
+                                  <code>{permissionCode}</code>
+                                  {permission?.description
+                                    ? `: ${permission.description}`
+                                    : null}
+                                  {permission?.is_sensitive
+                                    ? " (sensibel)"
+                                    : null}
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        ) : (
+                          <p>
+                            Dieser Rolle sind keine Berechtigungen zugeordnet.
+                          </p>
+                        )}
+                      </div>
+                      {!role.isSystem ? (
+                        <div>
+                          <button
+                            type="button"
+                            disabled={saving !== null}
+                            onClick={() => startRoleEdit(role)}
+                          >
+                            Bearbeiten
+                          </button>
+                          <button
+                            type="button"
+                            disabled={saving !== null}
+                            onClick={() => void setRoleActivity(role)}
+                          >
+                            {saving === target
+                              ? "Wird gespeichert …"
+                              : role.active
+                                ? "Deaktivieren"
+                                : "Aktivieren"}
+                          </button>
+                        </div>
+                      ) : null}
+                    </li>
+                  );
+                })}
               </ul>
             ) : (
               <p>Für diesen Mandanten wurden keine Rollen zurückgegeben.</p>
             )}
+
+            <form className="tenant-admin-settings__form" onSubmit={createRole}>
+              <h3>Neue Rolle erstellen</h3>
+              <label>
+                Rollenname
+                <input
+                  type="text"
+                  value={roleForm.name}
+                  minLength={3}
+                  maxLength={120}
+                  required
+                  disabled={saving !== null}
+                  onChange={(event) =>
+                    setRoleForm((current) => ({
+                      ...current,
+                      name: event.target.value,
+                    }))
+                  }
+                />
+              </label>
+              <fieldset disabled={saving !== null}>
+                <legend>Berechtigungen auswählen</legend>
+                {permissions.length > 0 ? (
+                  <ul className="tenant-admin-settings__role-list">
+                    {permissions.map((permission) => (
+                      <li key={permission.code}>
+                        <label>
+                          <input
+                            type="checkbox"
+                            checked={roleForm.permissionCodes.includes(
+                              permission.code,
+                            )}
+                            onChange={() =>
+                              toggleRolePermission(permission.code, setRoleForm)
+                            }
+                          />
+                          <span>
+                            <code>{permission.code}</code>:{" "}
+                            {permission.description}
+                            {permission.is_sensitive ? " (sensibel)" : ""}
+                          </span>
+                        </label>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p>Es wurden keine Berechtigungen zurückgegeben.</p>
+                )}
+              </fieldset>
+              <button type="submit" disabled={saving !== null}>
+                {saving === "role:create"
+                  ? "Rolle wird erstellt …"
+                  : "Rolle erstellen"}
+              </button>
+            </form>
+
+            {editingRoleId &&
+            roles.some(
+              (role) => role.id === editingRoleId && !role.isSystem,
+            ) ? (
+              <form
+                className="tenant-admin-settings__form"
+                onSubmit={updateRole}
+              >
+                <h3>Rolle bearbeiten</h3>
+                <label>
+                  Rollenname
+                  <input
+                    type="text"
+                    value={roleEditForm.name}
+                    minLength={3}
+                    maxLength={120}
+                    required
+                    disabled={saving !== null}
+                    onChange={(event) =>
+                      setRoleEditForm((current) => ({
+                        ...current,
+                        name: event.target.value,
+                      }))
+                    }
+                  />
+                </label>
+                <fieldset disabled={saving !== null}>
+                  <legend>Berechtigungen auswählen</legend>
+                  {permissions.length > 0 ? (
+                    <ul className="tenant-admin-settings__role-list">
+                      {permissions.map((permission) => (
+                        <li key={permission.code}>
+                          <label>
+                            <input
+                              type="checkbox"
+                              checked={roleEditForm.permissionCodes.includes(
+                                permission.code,
+                              )}
+                              onChange={() =>
+                                toggleRolePermission(
+                                  permission.code,
+                                  setRoleEditForm,
+                                )
+                              }
+                            />
+                            <span>
+                              <code>{permission.code}</code>:{" "}
+                              {permission.description}
+                              {permission.is_sensitive ? " (sensibel)" : ""}
+                            </span>
+                          </label>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p>Es wurden keine Berechtigungen zurückgegeben.</p>
+                  )}
+                </fieldset>
+                <button type="submit" disabled={saving !== null}>
+                  {saving === `role:${editingRoleId}`
+                    ? "Rolle wird gespeichert …"
+                    : "Änderungen speichern"}
+                </button>
+                <button
+                  type="button"
+                  disabled={saving !== null}
+                  onClick={() => {
+                    setEditingRoleId(null);
+                    setRoleEditForm(emptyRoleForm);
+                  }}
+                >
+                  Abbrechen
+                </button>
+              </form>
+            ) : null}
+
+            <form className="tenant-admin-settings__form" onSubmit={assignRole}>
+              <h3>Rolle zuweisen</h3>
+              <p>
+                Es können nur aktive, mandantenweite Rollen an aktive Personen
+                zugewiesen werden.
+              </p>
+              <div className="tenant-admin-settings__form-grid">
+                <label>
+                  Aktive Person
+                  <select
+                    value={roleAssignmentForm.userId}
+                    required
+                    disabled={saving !== null || activeUsers.length === 0}
+                    onChange={(event) =>
+                      setRoleAssignmentForm((current) => ({
+                        ...current,
+                        userId: event.target.value,
+                      }))
+                    }
+                  >
+                    <option value="">Bitte auswählen</option>
+                    {activeUsers.map((person) => (
+                      <option key={person.id} value={person.id}>
+                        {person.displayName?.trim()
+                          ? `${person.displayName} (${person.email})`
+                          : person.email}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Aktive Rolle
+                  <select
+                    value={roleAssignmentForm.roleId}
+                    required
+                    disabled={saving !== null || assignableRoles.length === 0}
+                    onChange={(event) =>
+                      setRoleAssignmentForm((current) => ({
+                        ...current,
+                        roleId: event.target.value,
+                      }))
+                    }
+                  >
+                    <option value="">Bitte auswählen</option>
+                    {assignableRoles.map((role) => (
+                      <option key={role.id} value={role.id}>
+                        {role.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              <button
+                type="submit"
+                disabled={
+                  saving !== null ||
+                  activeUsers.length === 0 ||
+                  assignableRoles.length === 0
+                }
+              >
+                {saving === "assign-role"
+                  ? "Rolle wird zugewiesen …"
+                  : "Rolle zuweisen"}
+              </button>
+            </form>
+
+            <h3>Aktive Rollenzuweisungen</h3>
+            {roleAssignments.length > 0 ? (
+              <ul className="tenant-admin-settings__person-list">
+                {roleAssignments.map((assignment) => {
+                  const target: SaveTarget = `revoke-role:${assignment.id}`;
+                  return (
+                    <li key={assignment.id}>
+                      <strong>
+                        {assignment.user.displayName?.trim() ||
+                          assignment.user.email ||
+                          "Unbekannte Person"}
+                      </strong>
+                      <span>
+                        {assignment.user.email ?? "E-Mail nicht hinterlegt"}
+                      </span>
+                      <span>Rolle: {assignment.roleName}</span>
+                      {assignment.department_id ? (
+                        <span>Bereich: {assignment.department_id}</span>
+                      ) : null}
+                      {assignment.team_id ? (
+                        <span>Team: {assignment.team_id}</span>
+                      ) : null}
+                      <span>
+                        Zugewiesen:{" "}
+                        {formatDate(assignment.starts_at) ?? "Nicht hinterlegt"}
+                      </span>
+                      <button
+                        type="button"
+                        disabled={saving !== null}
+                        onClick={() =>
+                          setAssignmentPendingRevocation(assignment)
+                        }
+                      >
+                        {saving === target ? "Wird entzogen …" : "Entziehen"}
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : (
+              <p>In dieser Ansicht wurde noch keine Rolle zugewiesen.</p>
+            )}
           </section>
+        </div>
+      ) : null}
+      {assignmentPendingRevocation ? (
+        <div
+          className="tenant-admin-settings__confirmation-dialog"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="revoke-role-dialog-title"
+        >
+          <h2 id="revoke-role-dialog-title">Rollenzuweisung entziehen?</h2>
+          <p>
+            Die Zuweisung der Rolle „{assignmentPendingRevocation.roleName}“ an{" "}
+            {assignmentPendingRevocation.user.displayName?.trim() ||
+              assignmentPendingRevocation.user.email ||
+              "diese Person"}{" "}
+            wird entzogen. Dieser Vorgang kann nicht rückgängig gemacht werden.
+          </p>
+          <button
+            type="button"
+            disabled={saving !== null}
+            onClick={() =>
+              void revokeRoleAssignment(assignmentPendingRevocation)
+            }
+          >
+            {saving === `revoke-role:${assignmentPendingRevocation.id}`
+              ? "Wird entzogen …"
+              : "Rolle endgültig entziehen"}
+          </button>
+          <button
+            type="button"
+            disabled={saving !== null}
+            onClick={() => setAssignmentPendingRevocation(null)}
+          >
+            Abbrechen
+          </button>
         </div>
       ) : null}
     </section>
