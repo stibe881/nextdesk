@@ -50,3 +50,9 @@ verify_jwt = false
 
 [functions.notification-center]
 verify_jwt = true
+
+[functions.customer-organizations]
+verify_jwt = true
+
+[functions.service-reporting]
+verify_jwt = true
