@@ -39,6 +39,7 @@ type PendingAction =
   | "relation-create"
   | "relation-delete"
   | "merge"
+  | "feedback"
   | null;
 type PendingAttachmentAction = "upload" | "download" | "delete" | null;
 
@@ -183,6 +184,16 @@ type TicketAttachmentAction =
       attachmentId: string;
     };
 
+type TicketFeedbackAction =
+  | { type: "get"; tenantId: string; ticketId: string }
+  | {
+      type: "submit";
+      tenantId: string;
+      ticketId: string;
+      score: number;
+      comment?: string;
+    };
+
 type TicketRecord = {
   id: string;
   ticket_number: string;
@@ -284,6 +295,17 @@ type AttachmentUpload = {
   signedUrl: string;
   contentType: string;
   byteSize: number;
+};
+
+type TicketSatisfaction = {
+  score: number | null;
+  comment: string | null;
+};
+
+type TicketFeedbackData = {
+  satisfaction: TicketSatisfaction | null;
+  canRate: boolean;
+  isClosed: boolean;
 };
 
 type TicketDetailData = {
@@ -592,6 +614,40 @@ function parseAttachmentDownloadUrl(value: unknown): string | null {
   return isHttpsUrl(data?.signedUrl) ? data.signedUrl : null;
 }
 
+function isTicketSatisfaction(value: unknown): value is TicketSatisfaction {
+  const satisfaction = asRecord(value);
+  return Boolean(
+    satisfaction &&
+    (satisfaction.score === null ||
+      (typeof satisfaction.score === "number" &&
+        Number.isInteger(satisfaction.score) &&
+        satisfaction.score >= 1 &&
+        satisfaction.score <= 5)) &&
+    (satisfaction.comment === null || typeof satisfaction.comment === "string"),
+  );
+}
+
+function parseTicketFeedback(value: unknown): TicketFeedbackData | null {
+  const envelope = asRecord(value);
+  const data = asRecord(envelope?.data);
+  const ticket = asRecord(data?.ticket);
+  const status = asRecord(ticket?.status);
+  if (
+    !data ||
+    (data.satisfaction !== null && !isTicketSatisfaction(data.satisfaction)) ||
+    typeof data.canRate !== "boolean" ||
+    typeof status?.isClosed !== "boolean"
+  ) {
+    return null;
+  }
+
+  return {
+    satisfaction: data.satisfaction as TicketSatisfaction | null,
+    canRate: data.canRate,
+    isClosed: status.isClosed,
+  };
+}
+
 function attachmentFileError(file: File): string | null {
   const filename = file.name.trim();
   const contentType = file.type.trim().toLowerCase();
@@ -819,6 +875,50 @@ async function invokeTicketAttachmentAction(
   return data;
 }
 
+async function invokeTicketFeedbackAction(
+  action: TicketFeedbackAction,
+): Promise<unknown> {
+  if (!supabase) throw new Error("Supabase ist nicht konfiguriert.");
+  const { data, error } = await supabase.functions.invoke("ticket-feedback", {
+    body: action,
+  });
+  if (error) throw error;
+  return data;
+}
+
+function functionErrorStatus(error: unknown): number | null {
+  const value = asRecord(error);
+  if (!value) return null;
+  if (typeof value.status === "number") return value.status;
+
+  const context = value.context;
+  if (context instanceof Response) return context.status;
+  const contextRecord = asRecord(context);
+  return typeof contextRecord?.status === "number"
+    ? contextRecord.status
+    : null;
+}
+
+function feedbackErrorMessage(
+  error: unknown,
+  action: "get" | "submit",
+): string {
+  const status = functionErrorStatus(error);
+  if (status === 403) {
+    return action === "submit"
+      ? "Sie sind nicht berechtigt, die Zufriedenheit für dieses Ticket zu bewerten."
+      : "Die Zufriedenheitsdaten sind für dieses Ticket nicht verfügbar.";
+  }
+  if (status === 422) {
+    return action === "submit"
+      ? "Die Bewertung kann derzeit nicht abgegeben werden. Sie ist nur für ein geschlossenes Ticket möglich."
+      : "Die Zufriedenheitsdaten können für dieses Ticket derzeit nicht verarbeitet werden.";
+  }
+  return action === "submit"
+    ? "Die Bewertung konnte nicht gespeichert werden. Bitte versuchen Sie es erneut."
+    : "Die Zufriedenheitsdaten konnten nicht geladen werden. Bitte versuchen Sie es erneut.";
+}
+
 function attachmentErrorMessage(
   action: Exclude<PendingAttachmentAction, null> | "list",
 ): string {
@@ -885,9 +985,50 @@ export function TicketDetail({
   const [pendingAttachmentId, setPendingAttachmentId] = useState<string | null>(
     null,
   );
+  const [feedback, setFeedback] = useState<TicketFeedbackData | null>(null);
+  const [feedbackLoading, setFeedbackLoading] = useState(true);
+  const [feedbackError, setFeedbackError] = useState("");
+  const [feedbackScore, setFeedbackScore] = useState<number | null>(null);
+  const [feedbackComment, setFeedbackComment] = useState("");
   const requestSequence = useRef(0);
   const attachmentRequestSequence = useRef(0);
+  const feedbackRequestSequence = useRef(0);
   const attachmentInputRef = useRef<HTMLInputElement>(null);
+
+  const loadFeedback = useCallback(async () => {
+    const requestId = ++feedbackRequestSequence.current;
+    setFeedbackLoading(true);
+    setFeedbackError("");
+    setFeedback(null);
+
+    try {
+      const response = await invokeTicketFeedbackAction({
+        type: "get",
+        tenantId,
+        ticketId,
+      });
+      const nextFeedback = parseTicketFeedback(response);
+      if (!nextFeedback) {
+        throw new Error("Die Zufriedenheitsdaten sind unvollständig.");
+      }
+      if (requestId !== feedbackRequestSequence.current) return false;
+
+      setFeedback(nextFeedback);
+      setFeedbackScore(nextFeedback.satisfaction?.score ?? null);
+      setFeedbackComment(nextFeedback.satisfaction?.comment ?? "");
+      return true;
+    } catch (nextError) {
+      if (requestId === feedbackRequestSequence.current) {
+        setFeedback(null);
+        setFeedbackError(feedbackErrorMessage(nextError, "get"));
+      }
+      return false;
+    } finally {
+      if (requestId === feedbackRequestSequence.current) {
+        setFeedbackLoading(false);
+      }
+    }
+  }, [tenantId, ticketId]);
 
   const loadTicket = useCallback(async () => {
     const requestId = ++requestSequence.current;
@@ -974,6 +1115,13 @@ export function TicketDetail({
   }, [loadTicket]);
 
   useEffect(() => {
+    void loadFeedback();
+    return () => {
+      feedbackRequestSequence.current += 1;
+    };
+  }, [loadFeedback]);
+
+  useEffect(() => {
     setAttachments([]);
     setAttachmentsLoaded(false);
     setSelectedAttachmentFile(null);
@@ -1017,6 +1165,50 @@ export function TicketDetail({
   );
   const busy = pendingAction !== null;
   const attachmentBusy = pendingAttachmentAction !== null;
+
+  async function saveFeedback(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!feedback?.canRate || !feedback.isClosed) {
+      setFeedbackError(
+        "Eine Bewertung kann nur für ein geschlossenes Ticket abgegeben werden.",
+      );
+      return;
+    }
+    if (feedbackScore === null) {
+      setFeedbackError(
+        "Bitte wählen Sie eine Bewertung von 1 bis 5 Sternen aus.",
+      );
+      return;
+    }
+
+    const comment = feedbackComment.trim();
+    if ([...comment].length > 3_000 || comment.includes("\u0000")) {
+      setFeedbackError(
+        "Der Kommentar darf höchstens 3'000 Zeichen enthalten und keine ungültigen Zeichen enthalten.",
+      );
+      return;
+    }
+
+    const action: Extract<TicketFeedbackAction, { type: "submit" }> = {
+      type: "submit",
+      tenantId,
+      ticketId,
+      score: feedbackScore,
+    };
+    if (comment) action.comment = comment;
+
+    setPendingAction("feedback");
+    setFeedbackError("");
+    try {
+      await invokeTicketFeedbackAction(action);
+      onChanged();
+      await loadFeedback();
+    } catch (nextError) {
+      setFeedbackError(feedbackErrorMessage(nextError, "submit"));
+    } finally {
+      setPendingAction(null);
+    }
+  }
 
   function selectAttachmentFile(file: File | null) {
     setAttachmentError("");
@@ -1168,7 +1360,7 @@ export function TicketDetail({
     try {
       await invokeTicketOperation(action);
       onChanged();
-      await loadTicket();
+      await Promise.all([loadTicket(), loadFeedback()]);
     } catch (nextError) {
       setError(errorMessage(nextError));
     } finally {
@@ -1518,7 +1710,10 @@ export function TicketDetail({
           <button
             className="secondary-button"
             disabled={loading}
-            onClick={() => void loadTicket()}
+            onClick={() => {
+              void loadTicket();
+              void loadFeedback();
+            }}
             type="button"
           >
             <RefreshCw aria-hidden="true" size={16} strokeWidth={1.8} />
@@ -1596,6 +1791,118 @@ export function TicketDetail({
           Erstellt am {formatDateTime(detail.ticket.created_at)}
         </p>
       </div>
+
+      <section
+        aria-busy={feedbackLoading}
+        aria-labelledby="ticket-satisfaction-heading"
+        className="ticket-detail-comments"
+      >
+        <div className="ticket-detail-section-heading">
+          <div>
+            <p className="eyebrow">ZUFRIEDENHEIT</p>
+            <h3 id="ticket-satisfaction-heading">Zufriedenheit</h3>
+          </div>
+        </div>
+
+        {feedbackLoading ? (
+          <p className="empty-state ticket-detail-loading" role="status">
+            <LoaderCircle
+              aria-hidden="true"
+              className="ticket-detail-spinner"
+              size={18}
+            />
+            Zufriedenheitsdaten werden geladen …
+          </p>
+        ) : null}
+
+        {feedbackError && (
+          <p className="ticket-detail-message error" role="alert">
+            <AlertCircle aria-hidden="true" size={17} />
+            {feedbackError}
+          </p>
+        )}
+
+        {feedback && (
+          <>
+            {feedback.satisfaction ? (
+              <div className="ticket-comment">
+                <div className="ticket-comment-meta">
+                  <strong>Bestehende Bewertung</strong>
+                  <span>
+                    {feedback.satisfaction.score === null
+                      ? "Bewertung nicht verfügbar"
+                      : `${feedback.satisfaction.score} von 5 Sternen`}
+                  </span>
+                </div>
+                {feedback.satisfaction.comment && (
+                  <p>
+                    <strong>Kommentar:</strong> {feedback.satisfaction.comment}
+                  </p>
+                )}
+              </div>
+            ) : (
+              <p className="empty-state">Noch keine Bewertung vorhanden.</p>
+            )}
+
+            {feedback.canRate && feedback.isClosed ? (
+              <form className="ticket-comment-form" onSubmit={saveFeedback}>
+                <fieldset className="ticket-comment-visibility" disabled={busy}>
+                  <legend>Bewertung auswählen</legend>
+                  {[1, 2, 3, 4, 5].map((score) => (
+                    <label key={score}>
+                      <input
+                        checked={feedbackScore === score}
+                        name="ticket-satisfaction-score"
+                        onChange={() => setFeedbackScore(score)}
+                        required
+                        type="radio"
+                        value={score}
+                      />
+                      <span aria-hidden="true">★</span> {score}{" "}
+                      {score === 1 ? "Stern" : "Sterne"}
+                    </label>
+                  ))}
+                </fieldset>
+                <label className="ticket-comment-body">
+                  Kommentar (optional)
+                  <textarea
+                    disabled={busy}
+                    maxLength={3000}
+                    onChange={(event) => setFeedbackComment(event.target.value)}
+                    placeholder="Ihre Rückmeldung zur Ticketlösung"
+                    rows={3}
+                    value={feedbackComment}
+                  />
+                </label>
+                <p className="data-caption" aria-live="polite">
+                  {[...feedbackComment].length}/3&apos;000 Zeichen
+                </p>
+                <button
+                  className="primary-button"
+                  disabled={busy || feedbackScore === null}
+                  type="submit"
+                >
+                  {pendingAction === "feedback" ? (
+                    <LoaderCircle
+                      aria-hidden="true"
+                      className="ticket-detail-spinner"
+                      size={16}
+                    />
+                  ) : (
+                    <Save aria-hidden="true" size={16} strokeWidth={1.8} />
+                  )}
+                  Bewertung speichern
+                </button>
+              </form>
+            ) : !feedback.isClosed ? (
+              <p className="data-caption">
+                Eine Bewertung kann nach dem Schliessen des Tickets abgegeben
+                werden.
+              </p>
+            ) : null}
+          </>
+        )}
+      </section>
 
       <section
         className="ticket-detail-comments"
