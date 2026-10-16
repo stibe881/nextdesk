@@ -44,6 +44,7 @@ import { acceptTenantInvitations } from "./lib/tenant-invitations";
 import { TicketComposer } from "./ticket-composer";
 import { TicketDetail } from "./ticket-detail";
 import { TenantAdminSettings } from "./tenant-admin-settings";
+import { KnowledgeBase } from "./knowledge-base";
 import {
   OwnerConsoleScreen,
   resolveOwnerAccess,
@@ -783,6 +784,8 @@ export function App() {
             onClose={() => setSection("Übersicht")}
             tenantId={activeTenant.id}
           />
+        ) : section === "Wissen" && activeTenant ? (
+          <KnowledgeBase tenantId={activeTenant.id} />
         ) : section === "Tickets" ? (
           <>
             {activeTenant && (
