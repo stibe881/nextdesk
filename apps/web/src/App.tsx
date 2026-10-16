@@ -1395,40 +1395,6 @@ export function App() {
               </article>
 
               <aside className="side-stack">
-                <article className="panel service-panel">
-                  <div className="panel-heading">
-                    <div>
-                      <p className="eyebrow">
-                        {isSupabaseConfigured
-                          ? "Datenkontext"
-                          : "Servicezustand"}
-                      </p>
-                      <h2>
-                        {isSupabaseConfigured
-                          ? "Was ist sichtbar?"
-                          : "Was läuft?"}
-                      </h2>
-                    </div>
-                  </div>
-                  <div className="service-list">
-                    {view.serviceHealth.length === 0 ? (
-                      <p className="empty-state">
-                        Noch keine RLS-autorisierte Datensicht geladen.
-                      </p>
-                    ) : (
-                      view.serviceHealth.map((service) => (
-                        <div className="service-row" key={service.name}>
-                          <span className={`service-dot ${service.state}`} />
-                          <div>
-                            <strong>{service.name}</strong>
-                            <small>{service.detail}</small>
-                          </div>
-                          <b>{service.availability}</b>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </article>
                 <article className="panel activity-panel">
                   <div className="panel-heading">
                     <div>
