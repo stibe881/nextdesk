@@ -2,11 +2,11 @@
 
 ## Zweck und Umfang
 
-Die erste startbare Webschicht zeigt eine operative Übersicht für einen Mandanten. Sie verbindet später Supabase-Auth, RLS-Tickets, Benachrichtigungen und SLA-Daten. In dieser Lieferung ist sie bewusst als lokale Vorschau nutzbar: Wenn keine sichere Publishable-Supabase-Konfiguration vorliegt, macht die Oberfläche den Preview-Modus sichtbar, statt Produktdaten vorzutäuschen.
+Die erste startbare Webschicht zeigt eine operative Übersicht für einen Mandanten. Sie verbindet später Supabase-Auth, RLS-Tickets, Benachrichtigungen und SLA-Daten. Zusätzlich erhält der Plattform-Eigentümer eine getrennte Kontrollfläche für alle Mandanten, Mandantenanlage, Archivierung und den auslösbaren GitHub-Pages-Deploy. In dieser Lieferung ist sie bewusst als lokale Vorschau nutzbar: Wenn keine sichere Publishable-Supabase-Konfiguration vorliegt, macht die Oberfläche den Preview-Modus sichtbar, statt Produktdaten vorzutäuschen.
 
 ## Architektur
 
-`apps/web` ist eine Vite-/React-/TypeScript-Anwendung. `src/App.tsx` hält UI-Zustand für Zeitraum, Queue, Navigation und die Login-Zustände. `src/dashboard-data.ts` stellt nur für den deutlich markierten Offline-Preview deterministische Beispielzustände bereit. `src/lib/supabase.ts` kapselt den browser-sicheren Client, Magic-Link-Anmeldung und Session-Refresh. `src/lib/live-dashboard.ts` liest aktive Mitgliedschaften, Mandantendaten, Tickets, Status, Prioritäten, Abteilungen und autorisierte Ereignisse ausschliesslich mit dem User-JWT; jede Live-Abfrage bleibt damit unter den Datenbank-RLS-Policies. Service-Role-Werte gehören weder in das Bundle noch in `.env.example`.
+`apps/web` ist eine Vite-/React-/TypeScript-Anwendung. `src/App.tsx` hält UI-Zustand für Zeitraum, Queue, Navigation und die Login-Zustände. `src/dashboard-data.ts` stellt nur für den deutlich markierten Offline-Preview deterministische Beispielzustände bereit. `src/lib/supabase.ts` kapselt den browser-sicheren Client, Magic-Link-Anmeldung und Session-Refresh. `src/lib/live-dashboard.ts` liest aktive Mitgliedschaften, Mandantendaten, Tickets, Status, Prioritäten, Abteilungen und autorisierte Ereignisse ausschliesslich mit dem User-JWT; jede Live-Abfrage bleibt damit unter den Datenbank-RLS-Policies. Die Plattformkonsole ruft ausschliesslich die user-authentifizierte Edge Function `platform-control` auf. Diese erzwingt Plattform-Eigentümerschaft und `aal2`, bevor sie mittels Service-Role Mandanten verwaltet oder einen GitHub-Workflow-Dispatch sendet. Service-Role- und GitHub-Token gehören weder in das Bundle noch in `.env.example`.
 
 ```text
 apps/web/
@@ -16,6 +16,7 @@ apps/web/
 │   ├── dashboard-data.ts         # Klar markierte Offline-Vorschau
 │   ├── lib/supabase.ts           # Browser-sichere Auth- und Session-Grenze
 │   ├── lib/live-dashboard.ts     # RLS-gebundene Mandanten- und Ticketabfragen
+│   ├── lib/platform-control.ts   # User-authentifizierter Plattform-API-Adapter
 │   ├── main.tsx                  # React-Einstieg
 │   └── styles.css                # Responsives Designsystem
 ├── index.html
@@ -46,3 +47,5 @@ apps/web/
 - Navigation, Zeitraum und Queue-Auswahl aktualisieren die sichtbaren Zustände.
 - Ohne Publishable-Supabase-Konfiguration ist der Offline-Preview-Modus deutlich ausgewiesen.
 - Mit Publishable-Supabase-Konfiguration fordert die Anwendung per Magic Link eine Anmeldung an, lädt nur aktive Mandantenmitgliedschaften und zeigt Tickets ausschliesslich innerhalb des serverseitig RLS-gefilterten Mandantenkontexts an.
+- Ein Plattform-Eigentümer erhält eine getrennte Mandantenliste mit Anlage und Bearbeitung; Mandanteneigentümer verwalten ausschliesslich ihren über Rollen und RLS autorisierten Mandantenkontext.
+- Der sichtbare Aktualisieren-Button darf nie ein GitHub-Token enthalten: Er löst nur über die MFA-geschützte Edge Function einen `workflow_dispatch` aus und ist ohne serverseitiges Secret klar als nicht eingerichtet markiert.

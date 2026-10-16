@@ -11,3 +11,6 @@ verify_jwt = true
 
 [functions.manage-tenant]
 verify_jwt = true
+
+[functions.platform-control]
+verify_jwt = true
