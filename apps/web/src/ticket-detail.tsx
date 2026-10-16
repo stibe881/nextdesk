@@ -24,6 +24,9 @@ import { supabase } from "./lib/supabase";
 
 type CommentVisibility = "external" | "internal";
 type BillingKind = "internal" | "billable" | "goodwill";
+type RelationType =
+  "duplicates" | "blocks" | "blocked_by" | "relates_to" | "parent" | "child";
+type DisplayRelationType = RelationType | "merged_into" | "merged_from";
 type PendingAction =
   | "comment"
   | "update"
@@ -31,12 +34,38 @@ type PendingAction =
   | "checklist-add"
   | "checklist-toggle"
   | "time-entry"
+  | "relation-create"
+  | "relation-delete"
+  | "merge"
   | null;
 
 type GetTicketAction = {
   type: "getTicket";
   tenantId: string;
   ticketId: string;
+};
+
+type CreateRelationAction = {
+  type: "createRelation";
+  tenantId: string;
+  ticketId: string;
+  relatedTicketId: string;
+  relationType: RelationType;
+};
+
+type DeleteRelationAction = {
+  type: "deleteRelation";
+  tenantId: string;
+  ticketId: string;
+  relatedTicketId: string;
+  relationType: RelationType;
+};
+
+type MarkMergedAction = {
+  type: "markMerged";
+  tenantId: string;
+  ticketId: string;
+  primaryTicketId: string;
 };
 
 type UpdateTicketAction = {
@@ -90,6 +119,9 @@ type AddTimeEntryAction = {
 
 type TicketOperation =
   | GetTicketAction
+  | CreateRelationAction
+  | DeleteRelationAction
+  | MarkMergedAction
   | UpdateTicketAction
   | AddCommentAction
   | ToggleWatchAction
@@ -157,6 +189,22 @@ type TicketTimeEntry = {
   created_at: string;
 };
 
+type TicketRelation = {
+  id?: string;
+  relatedTicketId: string;
+  ticketNumber: string;
+  subject: string;
+  statusLabel: string;
+  relationType: DisplayRelationType;
+};
+
+type SimilarTicket = {
+  id: string;
+  ticketNumber: string;
+  subject: string;
+  statusLabel: string;
+};
+
 type TicketDetailData = {
   ticket: TicketRecord;
   comments: TicketComment[];
@@ -166,6 +214,8 @@ type TicketDetailData = {
   teams: TicketTeam[];
   checklistItems: TicketChecklistItem[];
   timeEntries: TicketTimeEntry[];
+  relations: TicketRelation[];
+  similarTickets: SimilarTicket[];
   watching: boolean;
   canUpdate: boolean;
   canUseInternalNotes: boolean;
@@ -264,6 +314,23 @@ function isBillingKind(value: unknown): value is BillingKind {
   return value === "internal" || value === "billable" || value === "goodwill";
 }
 
+function isRelationType(value: unknown): value is RelationType {
+  return (
+    value === "duplicates" ||
+    value === "blocks" ||
+    value === "blocked_by" ||
+    value === "relates_to" ||
+    value === "parent" ||
+    value === "child"
+  );
+}
+
+function isDisplayRelationType(value: unknown): value is DisplayRelationType {
+  return (
+    isRelationType(value) || value === "merged_into" || value === "merged_from"
+  );
+}
+
 function isTicketChecklistItem(value: unknown): value is TicketChecklistItem {
   const item = asRecord(value);
   return Boolean(
@@ -292,8 +359,46 @@ function isTicketTimeEntry(value: unknown): value is TicketTimeEntry {
   );
 }
 
+function isTicketRelation(value: unknown): value is TicketRelation {
+  const relation = asRecord(value);
+  return Boolean(
+    relation &&
+    (relation.id === undefined || typeof relation.id === "string") &&
+    typeof relation.relatedTicketId === "string" &&
+    typeof relation.ticketNumber === "string" &&
+    typeof relation.subject === "string" &&
+    typeof relation.statusLabel === "string" &&
+    isDisplayRelationType(relation.relationType),
+  );
+}
+
+function isSimilarTicket(value: unknown): value is SimilarTicket {
+  const ticket = asRecord(value);
+  return Boolean(
+    ticket &&
+    typeof ticket.id === "string" &&
+    typeof ticket.ticketNumber === "string" &&
+    typeof ticket.subject === "string" &&
+    typeof ticket.statusLabel === "string",
+  );
+}
+
 function valuesOf<T>(value: unknown, guard: (item: unknown) => item is T): T[] {
   return Array.isArray(value) ? value.filter(guard) : [];
+}
+
+/**
+ * Relations are newly returned by the Edge Function. An omitted field remains
+ * compatible with an older deployment, but every supplied item must match the
+ * declared API contract before it reaches the UI.
+ */
+function parseStrictValues<T>(
+  value: unknown,
+  guard: (item: unknown) => item is T,
+): T[] | undefined {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || !value.every(guard)) return undefined;
+  return value;
 }
 
 /**
@@ -308,6 +413,13 @@ function parseTicketDetail(
   if (!data) return undefined;
   if (data.ticket === null) return null;
   if (!isTicketRecord(data.ticket)) return undefined;
+
+  const relations = parseStrictValues(data.relations, isTicketRelation);
+  const similarTickets = parseStrictValues(
+    data.similarTickets,
+    isSimilarTicket,
+  );
+  if (relations === undefined || similarTickets === undefined) return undefined;
 
   const comments = Array.isArray(data.comments)
     ? data.comments
@@ -326,6 +438,8 @@ function parseTicketDetail(
       (first, second) => first.position - second.position,
     ),
     timeEntries: valuesOf(data.timeEntries, isTicketTimeEntry),
+    relations,
+    similarTickets,
     watching: data.watching === true,
     canUpdate: data.canUpdate === true,
     canUseInternalNotes: data.canUseInternalNotes === true,
@@ -366,6 +480,30 @@ function billingKindLabel(kind: BillingKind): string {
     goodwill: "Kulanz",
   };
   return labels[kind];
+}
+
+function relationTypeLabel(relationType: DisplayRelationType): string {
+  const labels: Record<DisplayRelationType, string> = {
+    duplicates: "Duplikat",
+    blocks: "Blockiert",
+    blocked_by: "Wird blockiert von",
+    relates_to: "Verknüpft mit",
+    parent: "Übergeordnetes Ticket",
+    child: "Untergeordnetes Ticket",
+    merged_into: "Zusammengeführt in",
+    merged_from: "Zusammengeführt aus",
+  };
+  return labels[relationType];
+}
+
+function ticketReference(
+  ticket: Pick<SimilarTicket, "ticketNumber" | "subject">,
+) {
+  return `${ticket.ticketNumber} – ${ticket.subject}`;
+}
+
+function relationActionKey(relation: TicketRelation): string {
+  return `${relation.relationType}:${relation.relatedTicketId}`;
 }
 
 function eventLabel(eventType: string): string {
@@ -415,9 +553,15 @@ export function TicketDetail({
   const [timeEntryBillingKind, setTimeEntryBillingKind] =
     useState<BillingKind>("internal");
   const [timeEntryNote, setTimeEntryNote] = useState("");
+  const [selectedRelatedTicketId, setSelectedRelatedTicketId] = useState("");
+  const [selectedRelationType, setSelectedRelationType] =
+    useState<RelationType>("relates_to");
   const [pendingChecklistItemId, setPendingChecklistItemId] = useState<
     string | null
   >(null);
+  const [pendingRelationKey, setPendingRelationKey] = useState<string | null>(
+    null,
+  );
   const requestSequence = useRef(0);
 
   const loadTicket = useCallback(async () => {
@@ -684,6 +828,92 @@ export function TicketDetail({
     }
   }
 
+  async function createRelation(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!detail || !detail.canUpdate) return;
+
+    const relatedTicket = detail.similarTickets.find(
+      (ticket) => ticket.id === selectedRelatedTicketId,
+    );
+    if (!relatedTicket) {
+      setError("Bitte wählen Sie ein ähnliches Ticket aus.");
+      return;
+    }
+
+    setPendingAction("relation-create");
+    setError("");
+    try {
+      await invokeTicketOperation({
+        type: "createRelation",
+        tenantId,
+        ticketId,
+        relatedTicketId: relatedTicket.id,
+        relationType: selectedRelationType,
+      });
+      setSelectedRelatedTicketId("");
+      onChanged();
+      await loadTicket();
+    } catch (nextError) {
+      setError(errorMessage(nextError));
+    } finally {
+      setPendingAction(null);
+    }
+  }
+
+  async function deleteRelation(relation: TicketRelation) {
+    if (
+      !detail ||
+      !detail.canUpdate ||
+      !isRelationType(relation.relationType)
+    ) {
+      return;
+    }
+
+    const relationKey = relationActionKey(relation);
+    setPendingAction("relation-delete");
+    setPendingRelationKey(relationKey);
+    setError("");
+    try {
+      await invokeTicketOperation({
+        type: "deleteRelation",
+        tenantId,
+        ticketId,
+        relatedTicketId: relation.relatedTicketId,
+        relationType: relation.relationType,
+      });
+      onChanged();
+      await loadTicket();
+    } catch (nextError) {
+      setError(errorMessage(nextError));
+    } finally {
+      setPendingRelationKey(null);
+      setPendingAction(null);
+    }
+  }
+
+  async function markMerged(primaryTicket: SimilarTicket) {
+    if (!detail || !detail.canUpdate || primaryTicket.id === ticketId) return;
+
+    setPendingAction("merge");
+    setPendingRelationKey(`merge:${primaryTicket.id}`);
+    setError("");
+    try {
+      await invokeTicketOperation({
+        type: "markMerged",
+        tenantId,
+        ticketId,
+        primaryTicketId: primaryTicket.id,
+      });
+      onChanged();
+      await loadTicket();
+    } catch (nextError) {
+      setError(errorMessage(nextError));
+    } finally {
+      setPendingRelationKey(null);
+      setPendingAction(null);
+    }
+  }
+
   if (loading && !loaded) {
     return (
       <section className="ticket-detail panel" aria-label="Ticketdetails">
@@ -808,6 +1038,177 @@ export function TicketDetail({
           Erstellt am {formatDateTime(detail.ticket.created_at)}
         </p>
       </div>
+
+      <section
+        className="ticket-detail-comments"
+        aria-labelledby="ticket-relations-heading"
+      >
+        <div className="ticket-detail-section-heading">
+          <div>
+            <p className="eyebrow">VERKNÜPFUNGEN</p>
+            <h3 id="ticket-relations-heading">Verknüpfte Tickets</h3>
+          </div>
+          <span className="data-caption">{detail.relations.length}</span>
+        </div>
+
+        {detail.relations.length === 0 ? (
+          <p className="empty-state">Keine Tickets verknüpft.</p>
+        ) : (
+          <ol className="ticket-comment-list">
+            {detail.relations.map((relation) => {
+              const relationKey = relationActionKey(relation);
+              const canDeleteRelation = isRelationType(relation.relationType);
+              const isDeleting =
+                pendingAction === "relation-delete" &&
+                pendingRelationKey === relationKey;
+
+              return (
+                <li className="ticket-comment" key={relation.id ?? relationKey}>
+                  <div className="ticket-comment-meta">
+                    <strong>{ticketReference(relation)}</strong>
+                    <span className="ticket-comment-visibility-badge internal">
+                      {relationTypeLabel(relation.relationType)}
+                    </span>
+                    <span>{relation.statusLabel}</span>
+                  </div>
+                  {detail.canUpdate && canDeleteRelation && (
+                    <button
+                      aria-label={`Verknüpfung mit ${ticketReference(relation)} entfernen`}
+                      className="secondary-button"
+                      disabled={busy}
+                      onClick={() => void deleteRelation(relation)}
+                      type="button"
+                    >
+                      {isDeleting ? (
+                        <LoaderCircle
+                          aria-hidden="true"
+                          className="ticket-detail-spinner"
+                          size={16}
+                        />
+                      ) : (
+                        <X aria-hidden="true" size={16} strokeWidth={1.8} />
+                      )}
+                      Verknüpfung entfernen
+                    </button>
+                  )}
+                </li>
+              );
+            })}
+          </ol>
+        )}
+
+        <div className="ticket-detail-section-heading">
+          <div>
+            <p className="eyebrow">ÄHNLICHE TICKETS</p>
+            <h3>Vorgeschlagene Tickets</h3>
+          </div>
+          <span className="data-caption">{detail.similarTickets.length}</span>
+        </div>
+
+        {detail.canUpdate && detail.similarTickets.length > 0 && (
+          <form className="ticket-comment-form" onSubmit={createRelation}>
+            <label>
+              Ticket
+              <select
+                disabled={busy}
+                onChange={(event) =>
+                  setSelectedRelatedTicketId(event.target.value)
+                }
+                required
+                value={selectedRelatedTicketId}
+              >
+                <option value="">Ähnliches Ticket auswählen</option>
+                {detail.similarTickets.map((ticket) => (
+                  <option key={ticket.id} value={ticket.id}>
+                    {ticketReference(ticket)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Art der Verknüpfung
+              <select
+                disabled={busy}
+                onChange={(event) => {
+                  const nextRelationType = event.target.value;
+                  if (isRelationType(nextRelationType)) {
+                    setSelectedRelationType(nextRelationType);
+                  }
+                }}
+                value={selectedRelationType}
+              >
+                <option value="relates_to">Verknüpft mit</option>
+                <option value="duplicates">Duplikat</option>
+                <option value="blocks">Blockiert</option>
+                <option value="blocked_by">Wird blockiert von</option>
+                <option value="parent">Übergeordnetes Ticket</option>
+                <option value="child">Untergeordnetes Ticket</option>
+              </select>
+            </label>
+            <button
+              className="secondary-button"
+              disabled={busy || !selectedRelatedTicketId}
+              type="submit"
+            >
+              {pendingAction === "relation-create" ? (
+                <LoaderCircle
+                  aria-hidden="true"
+                  className="ticket-detail-spinner"
+                  size={16}
+                />
+              ) : (
+                <Circle aria-hidden="true" size={16} strokeWidth={1.8} />
+              )}
+              Verknüpfen
+            </button>
+          </form>
+        )}
+
+        {detail.similarTickets.length === 0 ? (
+          <p className="empty-state">Keine ähnlichen Tickets gefunden.</p>
+        ) : (
+          <ol className="ticket-comment-list">
+            {detail.similarTickets.map((ticket) => {
+              const isMerging =
+                pendingAction === "merge" &&
+                pendingRelationKey === `merge:${ticket.id}`;
+
+              return (
+                <li className="ticket-comment" key={ticket.id}>
+                  <div className="ticket-comment-meta">
+                    <strong>{ticketReference(ticket)}</strong>
+                    <span>{ticket.statusLabel}</span>
+                  </div>
+                  {detail.canUpdate && (
+                    <button
+                      aria-label={`${ticketReference(ticket)} als Primärticket auswählen und dieses Ticket zusammenführen`}
+                      className="secondary-button"
+                      disabled={busy}
+                      onClick={() => void markMerged(ticket)}
+                      type="button"
+                    >
+                      {isMerging ? (
+                        <LoaderCircle
+                          aria-hidden="true"
+                          className="ticket-detail-spinner"
+                          size={16}
+                        />
+                      ) : (
+                        <CircleCheck
+                          aria-hidden="true"
+                          size={16}
+                          strokeWidth={1.8}
+                        />
+                      )}
+                      Als Duplikat zusammenführen
+                    </button>
+                  )}
+                </li>
+              );
+            })}
+          </ol>
+        )}
+      </section>
 
       {detail.canTrackTime && (
         <section

@@ -1,8 +1,31 @@
 import { withSupabase } from "@supabase/server";
 
 type BillingKind = "internal" | "billable" | "goodwill";
+type RelationType =
+  "duplicates" | "blocks" | "blocked_by" | "relates_to" | "parent" | "child";
+type DisplayRelationType = RelationType | "merged_into" | "merged_from";
 type Action =
   | { type: "getTicket"; tenantId: string; ticketId: string }
+  | {
+      type: "createRelation";
+      tenantId: string;
+      ticketId: string;
+      relatedTicketId: string;
+      relationType: RelationType;
+    }
+  | {
+      type: "deleteRelation";
+      tenantId: string;
+      ticketId: string;
+      relatedTicketId: string;
+      relationType: RelationType;
+    }
+  | {
+      type: "markMerged";
+      tenantId: string;
+      ticketId: string;
+      primaryTicketId: string;
+    }
   | {
       type: "updateTicket";
       tenantId: string;
@@ -82,6 +105,13 @@ const isUuid = (value: unknown): value is string =>
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
     value,
   );
+const isRelationType = (value: unknown): value is RelationType =>
+  value === "duplicates" ||
+  value === "blocks" ||
+  value === "blocked_by" ||
+  value === "relates_to" ||
+  value === "parent" ||
+  value === "child";
 
 function parseAction(value: unknown): Action | null {
   if (!isRecord(value) || !isUuid(value.tenantId) || !isUuid(value.ticketId))
@@ -91,6 +121,25 @@ function parseAction(value: unknown): Action | null {
       type: value.type,
       tenantId: value.tenantId,
       ticketId: value.ticketId,
+    };
+  if (
+    (value.type === "createRelation" || value.type === "deleteRelation") &&
+    isUuid(value.relatedTicketId) &&
+    isRelationType(value.relationType)
+  )
+    return {
+      type: value.type,
+      tenantId: value.tenantId,
+      ticketId: value.ticketId,
+      relatedTicketId: value.relatedTicketId,
+      relationType: value.relationType,
+    };
+  if (value.type === "markMerged" && isUuid(value.primaryTicketId))
+    return {
+      type: value.type,
+      tenantId: value.tenantId,
+      ticketId: value.ticketId,
+      primaryTicketId: value.primaryTicketId,
     };
   if (
     value.type === "addComment" &&
@@ -275,6 +324,210 @@ async function getTicket(admin: any, tenantId: string, ticketId: string) {
   return data;
 }
 
+const inverseRelationType = (relationType: RelationType): RelationType => {
+  if (relationType === "blocks") return "blocked_by";
+  if (relationType === "blocked_by") return "blocks";
+  if (relationType === "parent") return "child";
+  if (relationType === "child") return "parent";
+  return relationType;
+};
+
+const relationTypeForTicket = (
+  relationType: RelationType,
+  isOutgoing: boolean,
+): RelationType =>
+  isOutgoing ? relationType : inverseRelationType(relationType);
+
+async function canMutateRelation(admin: any, userId: string, ticket: any) {
+  const [canUpdate, canEscalate] = await Promise.all([
+    hasPermission(
+      admin,
+      userId,
+      ticket.tenant_id,
+      ticket.department_id,
+      "ticket.update",
+    ),
+    hasPermission(
+      admin,
+      userId,
+      ticket.tenant_id,
+      ticket.department_id,
+      "ticket.escalate",
+    ),
+  ]);
+  return canUpdate || canEscalate;
+}
+
+async function hasEquivalentRelation(
+  admin: any,
+  ticketId: string,
+  relatedTicketId: string,
+  relationType: RelationType,
+) {
+  const inverseType = inverseRelationType(relationType);
+  const [direct, inverse] = await Promise.all([
+    admin
+      .from("ticket_relations")
+      .select("ticket_id")
+      .eq("ticket_id", ticketId)
+      .eq("related_ticket_id", relatedTicketId)
+      .eq("relation_type", relationType)
+      .maybeSingle(),
+    admin
+      .from("ticket_relations")
+      .select("ticket_id")
+      .eq("ticket_id", relatedTicketId)
+      .eq("related_ticket_id", ticketId)
+      .eq("relation_type", inverseType)
+      .maybeSingle(),
+  ]);
+  if (direct.error || inverse.error) return null;
+  return Boolean(direct.data || inverse.data);
+}
+
+async function hasParentTicketRelation(admin: any, childTicketId: string) {
+  const [parentRelation, childRelation] = await Promise.all([
+    admin
+      .from("ticket_relations")
+      .select("ticket_id")
+      .eq("ticket_id", childTicketId)
+      .eq("relation_type", "parent")
+      .limit(1),
+    admin
+      .from("ticket_relations")
+      .select("ticket_id")
+      .eq("related_ticket_id", childTicketId)
+      .eq("relation_type", "child")
+      .limit(1),
+  ]);
+  if (parentRelation.error || childRelation.error) return null;
+  return Boolean(parentRelation.data?.length || childRelation.data?.length);
+}
+
+async function createsReferenceCycle(
+  admin: any,
+  tenantId: string,
+  ticketId: string,
+  relatedTicket: any,
+  referenceColumn: "parent_ticket_id" | "merged_into_ticket_id",
+) {
+  const seen = new Set<string>([ticketId]);
+  let current = relatedTicket;
+  for (let depth = 0; depth < 100; depth += 1) {
+    if (
+      current?.tenant_id !== tenantId ||
+      !isUuid(current?.id) ||
+      seen.has(current.id)
+    )
+      return true;
+    seen.add(current.id);
+    const columnReferenceId = current[referenceColumn];
+    let relationParentId: unknown = null;
+    if (referenceColumn === "parent_ticket_id") {
+      const [parentRelation, childRelation] = await Promise.all([
+        admin
+          .from("ticket_relations")
+          .select("related_ticket_id")
+          .eq("ticket_id", current.id)
+          .eq("relation_type", "parent")
+          .maybeSingle(),
+        admin
+          .from("ticket_relations")
+          .select("ticket_id")
+          .eq("related_ticket_id", current.id)
+          .eq("relation_type", "child")
+          .maybeSingle(),
+      ]);
+      if (parentRelation.error || childRelation.error) return true;
+      if (
+        parentRelation.data &&
+        childRelation.data &&
+        parentRelation.data.related_ticket_id !== childRelation.data.ticket_id
+      )
+        return true;
+      relationParentId =
+        parentRelation.data?.related_ticket_id ?? childRelation.data?.ticket_id;
+    }
+    if (
+      columnReferenceId !== null &&
+      columnReferenceId !== undefined &&
+      relationParentId !== null &&
+      relationParentId !== undefined &&
+      columnReferenceId !== relationParentId
+    )
+      return true;
+    const nextId = columnReferenceId ?? relationParentId;
+    if (nextId === null || nextId === undefined) return false;
+    if (!isUuid(nextId)) return true;
+    const { data, error } = await admin
+      .from("tickets")
+      .select("id, tenant_id, parent_ticket_id, merged_into_ticket_id")
+      .eq("id", nextId)
+      .eq("tenant_id", tenantId)
+      .maybeSingle();
+    if (error || !data) return true;
+    current = data;
+  }
+  return true;
+}
+
+const subjectStopWords = new Set([
+  "aber",
+  "alle",
+  "beim",
+  "dass",
+  "dem",
+  "den",
+  "der",
+  "des",
+  "die",
+  "das",
+  "ein",
+  "eine",
+  "einem",
+  "einen",
+  "einer",
+  "für",
+  "ist",
+  "mit",
+  "nach",
+  "nicht",
+  "oder",
+  "und",
+  "von",
+  "vor",
+  "wird",
+  "the",
+  "and",
+  "for",
+  "with",
+]);
+
+function relevantSubjectTokens(subject: unknown) {
+  if (typeof subject !== "string") return [];
+  return [
+    ...new Set(
+      subject
+        .normalize("NFKC")
+        .toLocaleLowerCase("de-CH")
+        .split(/[^\p{L}\p{N}]+/u)
+        .filter((token) => token.length >= 3 && !subjectStopWords.has(token)),
+    ),
+  ].slice(0, 5);
+}
+
+function ticketReference(ticket: any) {
+  const status = Array.isArray(ticket.status)
+    ? (ticket.status[0] ?? null)
+    : (ticket.status ?? null);
+  return {
+    id: ticket.id,
+    ticketNumber: ticket.ticket_number,
+    subject: ticket.subject,
+    status,
+  };
+}
+
 const handler = withSupabase({ auth: "user" }, async (request, context) => {
   if (request.method !== "POST")
     return response(request, { error: { code: "method_not_allowed" } }, 405);
@@ -298,6 +551,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
   );
 
   if (action.type === "getTicket") {
+    const subjectTokens = relevantSubjectTokens(ticket.subject);
     const [
       { data: comments },
       { data: events },
@@ -308,6 +562,9 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       { data: checklistItems },
       { data: timeEntries },
       { data: drafts },
+      { data: relationRows },
+      { data: columnRelatedTickets },
+      { data: similarCandidates },
     ] = await Promise.all([
       context.supabaseAdmin
         .from("ticket_comments")
@@ -362,6 +619,36 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         .select("id, ticket_id, author_id, visibility, body, updated_at")
         .eq("ticket_id", ticket.id)
         .eq("author_id", actorId),
+      context.supabaseAdmin
+        .from("ticket_relations")
+        .select("ticket_id, related_ticket_id, relation_type")
+        .or(`ticket_id.eq.${ticket.id},related_ticket_id.eq.${ticket.id}`),
+      context.supabaseAdmin
+        .from("tickets")
+        .select(
+          "id, tenant_id, department_id, ticket_number, subject, requester_id, affected_user_id, assigned_agent_id, customer_organization_id, parent_ticket_id, merged_into_ticket_id, status:ticket_statuses(id, key, label, is_closed)",
+        )
+        .eq("tenant_id", ticket.tenant_id)
+        .or(
+          `parent_ticket_id.eq.${ticket.id},merged_into_ticket_id.eq.${ticket.id}`,
+        )
+        .limit(100),
+      subjectTokens.length
+        ? context.supabaseAdmin
+            .from("tickets")
+            .select(
+              "id, tenant_id, department_id, ticket_number, subject, requester_id, affected_user_id, assigned_agent_id, customer_organization_id, status:ticket_statuses(id, key, label, is_closed)",
+            )
+            .eq("tenant_id", ticket.tenant_id)
+            .neq("id", ticket.id)
+            .or(
+              subjectTokens
+                .map((token) => `subject.ilike.%${token}%`)
+                .join(","),
+            )
+            .order("updated_at", { ascending: false })
+            .limit(50)
+        : Promise.resolve({ data: [] }),
     ]);
     const filteredComments = internal
       ? (comments ?? [])
@@ -383,6 +670,96 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         profile.display_name,
       ]),
     );
+    const relationDescriptors = new Map<
+      string,
+      { relatedTicketId: string; relationType: DisplayRelationType }
+    >();
+    const addRelationDescriptor = (
+      relatedTicketId: unknown,
+      relationType: DisplayRelationType,
+    ) => {
+      if (!isUuid(relatedTicketId)) return;
+      relationDescriptors.set(`${relationType}:${relatedTicketId}`, {
+        relatedTicketId,
+        relationType,
+      });
+    };
+    for (const relation of relationRows ?? []) {
+      const isOutgoing = relation.ticket_id === ticket.id;
+      addRelationDescriptor(
+        isOutgoing ? relation.related_ticket_id : relation.ticket_id,
+        relationTypeForTicket(
+          relation.relation_type as RelationType,
+          isOutgoing,
+        ),
+      );
+    }
+    addRelationDescriptor(ticket.parent_ticket_id, "parent");
+    addRelationDescriptor(ticket.merged_into_ticket_id, "merged_into");
+    for (const columnRelatedTicket of columnRelatedTickets ?? []) {
+      if (columnRelatedTicket.parent_ticket_id === ticket.id)
+        addRelationDescriptor(columnRelatedTicket.id, "child");
+      if (columnRelatedTicket.merged_into_ticket_id === ticket.id)
+        addRelationDescriptor(columnRelatedTicket.id, "merged_from");
+    }
+    const relatedTicketIds = [
+      ...new Set(
+        [...relationDescriptors.values()].map(
+          (relation) => relation.relatedTicketId,
+        ),
+      ),
+    ];
+    const { data: relatedTickets } = relatedTicketIds.length
+      ? await context.supabaseAdmin
+          .from("tickets")
+          .select(
+            "id, tenant_id, department_id, ticket_number, subject, requester_id, affected_user_id, assigned_agent_id, customer_organization_id, status:ticket_statuses(id, key, label, is_closed)",
+          )
+          .eq("tenant_id", ticket.tenant_id)
+          .in("id", relatedTicketIds)
+      : { data: [] };
+    const [readableRelatedTickets, readableSimilarTickets] = await Promise.all([
+      Promise.all(
+        (relatedTickets ?? []).map(async (relatedTicket: any) =>
+          (await canRead(context.supabaseAdmin, actorId, relatedTicket))
+            ? relatedTicket
+            : null,
+        ),
+      ),
+      Promise.all(
+        (similarCandidates ?? []).map(async (similarTicket: any) =>
+          (await canRead(context.supabaseAdmin, actorId, similarTicket))
+            ? similarTicket
+            : null,
+        ),
+      ),
+    ]);
+    const relatedTicketById = new Map(
+      readableRelatedTickets
+        .filter((relatedTicket: any) => relatedTicket !== null)
+        .map((relatedTicket: any) => [
+          relatedTicket.id,
+          ticketReference(relatedTicket),
+        ]),
+    );
+    const relations = [...relationDescriptors.values()].flatMap((relation) => {
+      const relatedTicket = relatedTicketById.get(relation.relatedTicketId);
+      return relatedTicket
+        ? [
+            {
+              relationType: relation.relationType,
+              relatedTicketId: relatedTicket.id,
+              relatedTicketNumber: relatedTicket.ticketNumber,
+              relatedTicketSubject: relatedTicket.subject,
+              relatedTicketStatus: relatedTicket.status,
+            },
+          ]
+        : [];
+    });
+    const similarTickets = readableSimilarTickets
+      .filter((similarTicket: any) => similarTicket !== null)
+      .slice(0, 10)
+      .map((similarTicket: any) => ticketReference(similarTicket));
     return response(request, {
       data: {
         ticket,
@@ -398,6 +775,8 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         checklistItems: checklistItems ?? [],
         timeEntries: internal ? (timeEntries ?? []) : [],
         drafts: drafts ?? [],
+        relations,
+        similarTickets,
         canUpdate: await hasPermission(
           context.supabaseAdmin,
           actorId,
@@ -421,6 +800,344 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         ),
         canUseInternalNotes: internal,
       },
+    });
+  }
+
+  if (
+    action.type === "createRelation" ||
+    action.type === "deleteRelation" ||
+    action.type === "markMerged"
+  ) {
+    const relatedTicketId =
+      action.type === "markMerged"
+        ? action.primaryTicketId
+        : action.relatedTicketId;
+    if (relatedTicketId === ticket.id)
+      return response(
+        request,
+        { error: { code: "ticket_relation_self_reference" } },
+        422,
+      );
+    const relatedTicket = await getTicket(
+      context.supabaseAdmin,
+      action.tenantId,
+      relatedTicketId,
+    );
+    if (
+      !relatedTicket ||
+      !(await canRead(context.supabaseAdmin, actorId, relatedTicket))
+    )
+      return response(
+        request,
+        { error: { code: "related_ticket_access_denied" } },
+        403,
+      );
+    const [canMutateTicket, canMutateRelatedTicket] = await Promise.all([
+      canMutateRelation(context.supabaseAdmin, actorId, ticket),
+      canMutateRelation(context.supabaseAdmin, actorId, relatedTicket),
+    ]);
+    if (!canMutateTicket || !canMutateRelatedTicket)
+      return response(
+        request,
+        { error: { code: "ticket_relation_update_denied" } },
+        403,
+      );
+
+    if (action.type === "createRelation" || action.type === "deleteRelation") {
+      const relationExists = await hasEquivalentRelation(
+        context.supabaseAdmin,
+        ticket.id,
+        relatedTicket.id,
+        action.relationType,
+      );
+      if (relationExists === null)
+        return response(
+          request,
+          { error: { code: "ticket_relation_check_failed" } },
+          422,
+        );
+
+      const isParentChild =
+        action.relationType === "parent" || action.relationType === "child";
+      const childTicket =
+        action.relationType === "parent" ? ticket : relatedTicket;
+      const parentTicket =
+        action.relationType === "parent" ? relatedTicket : ticket;
+
+      if (action.type === "createRelation") {
+        if (relationExists)
+          return response(
+            request,
+            { error: { code: "ticket_relation_exists" } },
+            409,
+          );
+        if (isParentChild) {
+          const parentRelationExists = await hasParentTicketRelation(
+            context.supabaseAdmin,
+            childTicket.id,
+          );
+          if (parentRelationExists === null)
+            return response(
+              request,
+              { error: { code: "ticket_relation_check_failed" } },
+              422,
+            );
+          if (childTicket.parent_ticket_id || parentRelationExists)
+            return response(
+              request,
+              { error: { code: "parent_ticket_already_set" } },
+              409,
+            );
+          if (
+            await createsReferenceCycle(
+              context.supabaseAdmin,
+              ticket.tenant_id,
+              childTicket.id,
+              parentTicket,
+              "parent_ticket_id",
+            )
+          )
+            return response(
+              request,
+              { error: { code: "ticket_parent_cycle" } },
+              422,
+            );
+          const { data: parentUpdated, error: parentUpdateError } =
+            await context.supabaseAdmin
+              .from("tickets")
+              .update({ parent_ticket_id: parentTicket.id })
+              .eq("id", childTicket.id)
+              .eq("tenant_id", ticket.tenant_id)
+              .is("parent_ticket_id", null)
+              .select("id")
+              .maybeSingle();
+          if (parentUpdateError || !parentUpdated)
+            return response(
+              request,
+              { error: { code: "parent_ticket_update_failed" } },
+              409,
+            );
+        }
+        const { error: relationCreateError } = await context.supabaseAdmin
+          .from("ticket_relations")
+          .insert({
+            ticket_id: ticket.id,
+            related_ticket_id: relatedTicket.id,
+            relation_type: action.relationType,
+            created_by: actorId,
+          });
+        if (relationCreateError) {
+          if (isParentChild)
+            await context.supabaseAdmin
+              .from("tickets")
+              .update({ parent_ticket_id: null })
+              .eq("id", childTicket.id)
+              .eq("tenant_id", ticket.tenant_id)
+              .eq("parent_ticket_id", parentTicket.id);
+          return response(
+            request,
+            { error: { code: "ticket_relation_create_failed" } },
+            422,
+          );
+        }
+        const { error: eventError } = await context.supabaseAdmin
+          .from("ticket_events")
+          .insert([
+            {
+              ticket_id: ticket.id,
+              actor_id: actorId,
+              event_type: "ticket.relation_created",
+              payload: {
+                relatedTicketId: relatedTicket.id,
+                relationType: action.relationType,
+              },
+            },
+            {
+              ticket_id: relatedTicket.id,
+              actor_id: actorId,
+              event_type: "ticket.relation_created",
+              payload: {
+                relatedTicketId: ticket.id,
+                relationType: inverseRelationType(action.relationType),
+              },
+            },
+          ]);
+        if (eventError)
+          return response(
+            request,
+            { error: { code: "ticket_relation_event_failed" } },
+            422,
+          );
+        return response(request, { data: { created: true } }, 201);
+      }
+
+      if (!relationExists)
+        return response(
+          request,
+          { error: { code: "ticket_relation_not_found" } },
+          404,
+        );
+      if (isParentChild) {
+        const { error: parentClearError } = await context.supabaseAdmin
+          .from("tickets")
+          .update({ parent_ticket_id: null })
+          .eq("id", childTicket.id)
+          .eq("tenant_id", ticket.tenant_id)
+          .eq("parent_ticket_id", parentTicket.id);
+        if (parentClearError)
+          return response(
+            request,
+            { error: { code: "parent_ticket_update_failed" } },
+            422,
+          );
+      }
+      const inverseType = inverseRelationType(action.relationType);
+      const [directDelete, inverseDelete] = await Promise.all([
+        context.supabaseAdmin
+          .from("ticket_relations")
+          .delete()
+          .eq("ticket_id", ticket.id)
+          .eq("related_ticket_id", relatedTicket.id)
+          .eq("relation_type", action.relationType),
+        context.supabaseAdmin
+          .from("ticket_relations")
+          .delete()
+          .eq("ticket_id", relatedTicket.id)
+          .eq("related_ticket_id", ticket.id)
+          .eq("relation_type", inverseType),
+      ]);
+      if (directDelete.error || inverseDelete.error)
+        return response(
+          request,
+          { error: { code: "ticket_relation_delete_failed" } },
+          422,
+        );
+      const { error: eventError } = await context.supabaseAdmin
+        .from("ticket_events")
+        .insert([
+          {
+            ticket_id: ticket.id,
+            actor_id: actorId,
+            event_type: "ticket.relation_deleted",
+            payload: {
+              relatedTicketId: relatedTicket.id,
+              relationType: action.relationType,
+            },
+          },
+          {
+            ticket_id: relatedTicket.id,
+            actor_id: actorId,
+            event_type: "ticket.relation_deleted",
+            payload: {
+              relatedTicketId: ticket.id,
+              relationType: inverseType,
+            },
+          },
+        ]);
+      if (eventError)
+        return response(
+          request,
+          { error: { code: "ticket_relation_event_failed" } },
+          422,
+        );
+      return response(request, { data: { deleted: true } });
+    }
+
+    if (ticket.merged_into_ticket_id || relatedTicket.merged_into_ticket_id)
+      return response(
+        request,
+        { error: { code: "ticket_merge_already_set" } },
+        409,
+      );
+    if (
+      await createsReferenceCycle(
+        context.supabaseAdmin,
+        ticket.tenant_id,
+        ticket.id,
+        relatedTicket,
+        "merged_into_ticket_id",
+      )
+    )
+      return response(request, { error: { code: "ticket_merge_cycle" } }, 422);
+    const { data: primaryStatus, error: primaryStatusError } =
+      await context.supabaseAdmin
+        .from("ticket_statuses")
+        .select("id, key, is_closed")
+        .eq("id", relatedTicket.status_id)
+        .eq("tenant_id", ticket.tenant_id)
+        .maybeSingle();
+    if (primaryStatusError || !primaryStatus)
+      return response(
+        request,
+        { error: { code: "merge_primary_status_unresolved" } },
+        422,
+      );
+    if (primaryStatus.is_closed !== false)
+      return response(
+        request,
+        { error: { code: "merge_primary_ticket_closed" } },
+        422,
+      );
+    const { data: resolvedStatus, error: resolvedStatusError } =
+      await context.supabaseAdmin
+        .from("ticket_statuses")
+        .select("id, key, is_closed")
+        .eq("tenant_id", ticket.tenant_id)
+        .eq("key", "resolved")
+        .maybeSingle();
+    const mergedAt = new Date().toISOString();
+    const mergeUpdate: Record<string, unknown> = {
+      merged_into_ticket_id: relatedTicket.id,
+    };
+    const statusAutomaticallyUpdated =
+      !resolvedStatusError && resolvedStatus?.is_closed === true;
+    if (statusAutomaticallyUpdated) {
+      mergeUpdate.status_id = resolvedStatus.id;
+      mergeUpdate.closed_at = mergedAt;
+      mergeUpdate.resolved_at = mergedAt;
+      mergeUpdate.waiting_since = null;
+    }
+    const { data: mergedTicket, error: mergeError } =
+      await context.supabaseAdmin
+        .from("tickets")
+        .update(mergeUpdate)
+        .eq("id", ticket.id)
+        .eq("tenant_id", ticket.tenant_id)
+        .is("merged_into_ticket_id", null)
+        .select("id")
+        .maybeSingle();
+    if (mergeError || !mergedTicket)
+      return response(request, { error: { code: "ticket_merge_failed" } }, 409);
+    const { error: eventError } = await context.supabaseAdmin
+      .from("ticket_events")
+      .insert([
+        {
+          ticket_id: ticket.id,
+          actor_id: actorId,
+          event_type: "ticket.merged",
+          payload: {
+            primaryTicketId: relatedTicket.id,
+            statusAutomaticallyUpdated,
+          },
+        },
+        {
+          ticket_id: relatedTicket.id,
+          actor_id: actorId,
+          event_type: "ticket.merge_received",
+          payload: {
+            mergedTicketId: ticket.id,
+            statusAutomaticallyUpdated,
+          },
+        },
+      ]);
+    if (eventError)
+      return response(
+        request,
+        { error: { code: "ticket_merge_event_failed" } },
+        422,
+      );
+    return response(request, {
+      data: { merged: true, statusAutomaticallyUpdated },
     });
   }
 

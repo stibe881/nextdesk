@@ -45,6 +45,8 @@ import { TicketComposer } from "./ticket-composer";
 import { TicketDetail } from "./ticket-detail";
 import { TenantAdminSettings } from "./tenant-admin-settings";
 import { KnowledgeBase } from "./knowledge-base";
+import { TicketTemplates } from "./ticket-templates";
+import { SlaManagement } from "./sla-management";
 import {
   OwnerConsoleScreen,
   resolveOwnerAccess,
@@ -780,12 +782,17 @@ export function App() {
         )}
 
         {section === "Einstellungen" && activeTenant && isTenantAdmin ? (
-          <TenantAdminSettings
-            onClose={() => setSection("Übersicht")}
-            tenantId={activeTenant.id}
-          />
+          <>
+            <TenantAdminSettings
+              onClose={() => setSection("Übersicht")}
+              tenantId={activeTenant.id}
+            />
+            <TicketTemplates tenantId={activeTenant.id} />
+          </>
         ) : section === "Wissen" && activeTenant ? (
           <KnowledgeBase tenantId={activeTenant.id} />
+        ) : section === "Services" && activeTenant ? (
+          <SlaManagement tenantId={activeTenant.id} />
         ) : section === "Tickets" ? (
           <>
             {activeTenant && (
