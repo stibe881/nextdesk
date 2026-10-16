@@ -19,6 +19,7 @@ const expectedFiles = [
   "0014_ticket_operations_core.sql",
   "0015_tenant_admin_email_invitation.sql",
   "0016_tenant_admin_settings_and_features.sql",
+  "0017_ticket_sla_lifecycle.sql",
 ];
 
 const availableFiles = await readdir(migrationDirectory);
@@ -129,10 +130,7 @@ const requiredFragments = [
     "0014_ticket_operations_core.sql",
     "create table public.ticket_sla_profiles",
   ],
-  [
-    "0014_ticket_operations_core.sql",
-    "create table public.knowledge_articles",
-  ],
+  ["0014_ticket_operations_core.sql", "create table public.knowledge_articles"],
   [
     "0014_ticket_operations_core.sql",
     "create or replace function public.customer_can_read_ticket",
@@ -148,6 +146,14 @@ const requiredFragments = [
   [
     "0016_tenant_admin_settings_and_features.sql",
     "create table public.tenant_sso_configurations",
+  ],
+  [
+    "0017_ticket_sla_lifecycle.sql",
+    "create or replace function public.apply_ticket_sla_on_insert",
+  ],
+  [
+    "0017_ticket_sla_lifecycle.sql",
+    "create trigger tickets_apply_sla_on_insert",
   ],
 ];
 

@@ -1552,14 +1552,16 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         { error: { code: "internal_note_denied" } },
         403,
       );
-    const { error } = await context.supabaseAdmin
+    const { data: comment, error } = await context.supabaseAdmin
       .from("ticket_comments")
       .insert({
         ticket_id: ticket.id,
         author_id: actorId,
         visibility: action.visibility,
         body: action.body,
-      });
+      })
+      .select("id, author_id, visibility")
+      .single();
     if (error)
       return response(
         request,
@@ -1575,11 +1577,40 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
           : "comment.external_added",
       payload: {},
     });
-    if (action.visibility === "external" && !ticket.first_responded_at)
-      await context.supabaseAdmin
-        .from("tickets")
-        .update({ first_responded_at: new Date().toISOString() })
-        .eq("id", ticket.id);
+    if (action.visibility === "external" && actorId !== ticket.requester_id) {
+      const firstRespondedAt = new Date().toISOString();
+      const { data: firstResponseTicket, error: firstResponseUpdateError } =
+        await context.supabaseAdmin
+          .from("tickets")
+          .update({ first_responded_at: firstRespondedAt })
+          .eq("id", ticket.id)
+          .eq("tenant_id", ticket.tenant_id)
+          .is("first_responded_at", null)
+          .select("id, first_responded_at")
+          .maybeSingle();
+      if (!firstResponseUpdateError && firstResponseTicket) {
+        const { error: firstResponseEventError } = await context.supabaseAdmin
+          .from("ticket_sla_events")
+          .insert({
+            ticket_id: firstResponseTicket.id,
+            event_type: "first_response",
+            occurred_at: firstResponseTicket.first_responded_at,
+            metadata: {
+              actor_id: actorId,
+              comment_id: comment.id,
+              comment_visibility: comment.visibility,
+            },
+          });
+        if (firstResponseEventError) {
+          await context.supabaseAdmin
+            .from("tickets")
+            .update({ first_responded_at: null })
+            .eq("id", firstResponseTicket.id)
+            .eq("tenant_id", ticket.tenant_id)
+            .eq("first_responded_at", firstResponseTicket.first_responded_at);
+        }
+      }
+    }
     return response(request, { data: { created: true } }, 201);
   }
 

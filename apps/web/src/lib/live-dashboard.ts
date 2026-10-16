@@ -45,10 +45,10 @@ interface TicketRecord {
   assigned_agent_id: string | null;
   created_at: string;
   department_id: string;
-  due_at: string | null;
   id: string;
   priority_id: string;
   requester_id: string;
+  resolution_due_at: string | null;
   status_id: string;
   subject: string;
   ticket_number: string;
@@ -141,7 +141,7 @@ export async function loadLiveDashboard(
       client
         .from("tickets")
         .select(
-          "id, ticket_number, subject, department_id, status_id, priority_id, due_at, created_at, assigned_agent_id, requester_id",
+          "id, ticket_number, subject, department_id, status_id, priority_id, resolution_due_at, created_at, assigned_agent_id, requester_id",
         )
         .eq("tenant_id", tenant.id)
         .gte("created_at", since)
@@ -181,7 +181,7 @@ export async function loadLiveDashboard(
 
   const ticketRows = tickets.map((ticket) => {
     const department = departmentById.get(ticket.department_id);
-    const due = formatDueAt(ticket.due_at);
+    const due = formatDueAt(ticket.resolution_due_at);
     return {
       age: formatAge(ticket.created_at),
       assignedToCurrentUser:
