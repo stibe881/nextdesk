@@ -10,6 +10,7 @@
 - Vier user-authentifizierte Edge Functions für Mandantenanlage, Mitglieder-Einladungen, Einladungsannahme und Verwaltungsaktionen sowie eine restriktive CORS-Konfiguration. Die Mandantenanlage verlangt einen verifizierten User-JWT mit `aal2`.
 - Startbare Vite-/React-Webanwendung mit responsiver Operationsübersicht, Zeitraumauswahl, Queue-Filter, Ticket-Suche und einer browser-sicheren Supabase-Konfigurationsgrenze. Mit Publishable-Konfiguration verlangt sie einen Magic Link, lädt ausschliesslich aktive Mandantenmitgliedschaften und liest Tickets, Status, Prioritäten, Abteilungen sowie Ereignisse nur im RLS-autorisierten Mandantenkontext. Ohne `VITE_SUPABASE_URL` und `VITE_SUPABASE_PUBLISHABLE_KEY` wird der lokale Preview-Modus klar ausgewiesen.
 - Vollständige Phase-1-Dokumente, Supabase-Konfigurationsanleitung, Mermaid-Architekturdiagramm und priorisiertes Backlog.
+- Ein aktives, isoliertes Supabase-Entwicklungsprojekt in `eu-central-2` (Zürich) mit den Cloud-Migrationen `0001` bis `0006` sowie `0009`; 30 Tabellen und der Berechtigungskatalog wurden in der echten Instanz verifiziert.
 
 ## Ausgeführte Prüfungen
 
@@ -19,12 +20,12 @@
 - `pnpm check:edge`: die vier Edge Functions werden mit Deno und dem `@supabase/server`-Importmapping typgeprüft.
 - `pnpm --filter @nextdesk/web typecheck` und `pnpm --filter @nextdesk/web build`: das Web-Dashboard ist typgeprüft und als Vite-Produktionsbundle gebaut; öffentliche Vorschau, Routenmanifest und Zeit-/Queue-Interaktionen wurden geprüft.
 
-Die Datenbank- und Function-Prüfungen sind **kein** Test gegen eine echte Supabase-Instanz. Auth-JWT-Claims werden lokal nachgebildet; Storage, Realtime, Edge-Function-Deployment, Supabase Auth, Mailzustellung, Domains und die Supabase-Rollenverwaltung sind noch nicht verifiziert.
+Die Datenbank- und Function-Prüfungen ersetzen weiterhin keinen vollständigen Integrationstest. Das Supabase-Entwicklungsprojekt existiert und seine zuerst benötigten Migrationen sind angewendet, doch Auth-JWT-Claims, Storage, Realtime, Edge-Function-Deployment, Magic-Link-Mailzustellung, Auth-Redirects, Domains und die Supabase-Rollenverwaltung sind noch nicht gegen einen echten Benutzerfluss verifiziert.
 
 ## Noch nicht implementiert
 
-Es gibt noch keine Expo-App, keine verbundene Supabase-Cloud-Umgebung und damit noch keinen gegen reale Auth- und RLS-Daten geprüften Webfluss. Storage-Policies, Realtime-Kanäle, SSO-/Graph-Integration, E-Mail-Verarbeitung, Push, SLA, Workflows, Wissensdatenbank, Assets, Reporting und produktives Backend-Deployment fehlen ebenfalls.
+Es gibt noch keine Expo-App und noch keinen gegen reale Auth- und RLS-Daten geprüften Webfluss. Die Cloud-Migrationen `0007` und `0008`, Edge-Function-Deployment, Storage-Policies, Realtime-Kanäle, SSO-/Graph-Integration, E-Mail-Verarbeitung, Push, SLA, Workflows, Wissensdatenbank, Assets, Reporting und produktives Backend-Deployment fehlen ebenfalls.
 
 ## Nächster verbindlicher Meilenstein
 
-Phase 3 ergänzt die Web-App um Auth-, Mandanten- und Supabase-Datenzugriff sowie eine Expo-App mit gleicher Navigationsgrundlage. Parallel bleibt die Verbindung zu einem echten Supabase-Entwicklungsprojekt in `eu-central-2` erforderlich, bevor die Backendbausteine bereitgestellt oder genutzt werden können.
+Phase 3 ergänzt die Web-App um verifizierte Auth-, Mandanten- und Supabase-Datenzugriffe sowie eine Expo-App mit gleicher Navigationsgrundlage. Als nächstes werden die ausstehenden Cloud-Migrationen, Function-Secrets, Auth-Redirects und Edge Functions gegen das vorhandene Entwicklungsprojekt ausgerollt.

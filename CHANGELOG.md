@@ -15,6 +15,7 @@ Dieses Projekt verwendet eine vereinfachte Form von Keep a Changelog.
 - Berücksichtigung interner Kommentare als Standard, Kundenportalrollen, KB-Erstellung aus Tickets und plattformabhängigem Remote Support als Produktanforderungen.
 - Vite-/React-Operationsdashboard mit Magic-Link-Anmeldung, Auswahl aktiver Mandantenmitgliedschaften, RLS-gebundenen Dashboardabfragen und deutlich getrenntem Offline-Preview.
 - Neunte Migration für Status-, Prioritäts- und Kategorie-Lesepolicies im aktiven Mandantenkontext sowie lokale PostgreSQL-Tests für diese Referenzdatenisolation.
+- Isoliertes Supabase-Entwicklungsprojekt in Zürich (`eu-central-2`) angelegt; Migrationen `0001` bis `0006` sowie `0009` und 30 RLS-geschützte Tabellen in der echten Cloud-Instanz geprüft.
 
 ### Security
 
@@ -27,4 +28,4 @@ Dieses Projekt verwendet eine vereinfachte Form von Keep a Changelog.
 
 ### Not yet released
 
-- Keine verbundene Supabase-Cloud-Umgebung und damit noch kein gegen echte Auth-, RLS- und Mailzustände geprüfter Benutzerfluss.
+- Kein gegen echte Auth-, RLS- und Mailzustände geprüfter Benutzerfluss; die Cloud-Migrationen `0007`/`0008`, Edge Functions, Auth-Redirects und die Funktionsecrets stehen noch aus.

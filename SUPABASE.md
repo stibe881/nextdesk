@@ -4,6 +4,12 @@
 
 Es werden getrennte Projekte für Entwicklung, Staging und Produktion in **Central Europe (Zurich), `eu-central-2`** benötigt. Die Region wird beim Anlegen eines Projekts gewählt und vor dem ersten Migration-Deploy verifiziert. Entwicklungsdaten werden niemals in Produktion wiederverwendet.
 
+### Aktueller Entwicklungsstand
+
+Am 16. Oktober 2026 wurde das isolierte Projekt **TicketHub Development** in `eu-central-2` angelegt. Die Migrationen `0001` bis `0006` sowie `0009` sind auf dem Projekt angewendet und die 30 vorhandenen Tabellen besitzen RLS. `0007` und `0008` mitsamt den vier Edge Functions werden erst im nächsten Deployschritt ausgerollt; bis dahin existieren keine produktiven Mandanten, Einladungen oder Administratorzugänge.
+
+Der Supabase-Sicherheitsadvisor meldet derzeit bewusst RLS-Tabellen ohne Policy, weil diese Tabellen nach dem _deny by default_-Prinzip per API unzugänglich bleiben. Zusätzlich meldet er die in `public` installierte `citext`-Extension sowie direkt aufrufbare `SECURITY DEFINER`-Hilfsfunktionen. Diese Hinweise werden vor dem Rollout der Edge Functions durch eine weitere Härtungsmigration adressiert beziehungsweise dokumentiert; sie sind keine Freigabe für den Produktbetrieb.
+
 ## Auth
 
 Die Auth-Site-URL, Redirect-Allowlist, E-Mail-Templates, Session-Lebensdauer und MFA-Vorgaben werden pro Umgebung gesetzt. Die Allowlist enthält ausschliesslich kontrollierte Web-Domains, Expo-Development-URLs, EAS-Preview-URLs, Universal Links und Android App Links. Für die veröffentlichte Web-Vorschau ist `https://stibe881.github.io/nextdesk/` als Magic-Link-Redirect einzutragen. Die Vite-Anwendung verwendet ausschliesslich `VITE_SUPABASE_URL` und `VITE_SUPABASE_PUBLISHABLE_KEY`; ein Service-Role-Key ist im Browser verboten. Die SAML-/Entra-Verbindung wird erst nach Wahl des Plans und mit Test-Tenants eingerichtet.
