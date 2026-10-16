@@ -1307,13 +1307,13 @@ function parseTicketDetail(
       : toTicketRequesterContact(data.requesterContact);
   if (requesterContact === undefined) return undefined;
 
-  if (
-    typeof data.canAssign !== "boolean" ||
-    typeof data.canMerge !== "boolean"
-  ) {
-    return undefined;
-  }
-  const agents = data.canAssign
+  // New capabilities are deployed independently from the web bundle. Missing
+  // capability fields from an older active Function are therefore interpreted
+  // as unavailable instead of making an otherwise readable historical ticket
+  // impossible to open.
+  const canAssign = data.canAssign === true;
+  const canMerge = data.canMerge === true;
+  const agents = canAssign
     ? parseStrictValues(data.agents, isTicketAgent)
     : data.agents === undefined
       ? []
@@ -1371,8 +1371,8 @@ function parseTicketDetail(
     similarTickets,
     watching: data.watching === true,
     canUpdate: data.canUpdate === true,
-    canAssign: data.canAssign,
-    canMerge: data.canMerge,
+    canAssign,
+    canMerge,
     ...(canEscalate === undefined ? {} : { canEscalate }),
     canUseInternalNotes: data.canUseInternalNotes === true,
     canTrackTime: data.canTrackTime === true,
