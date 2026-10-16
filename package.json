@@ -10,6 +10,7 @@
   },
   "scripts": {
     "build": "turbo run build",
+    "dev:web": "pnpm --filter @nextdesk/web dev",
     "typecheck": "turbo run typecheck",
     "test": "pnpm test:schema && turbo run test",
     "test:schema": "node scripts/verify-schema-structure.mjs && node scripts/verify-permission-catalog.mjs",

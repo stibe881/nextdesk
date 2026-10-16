@@ -15,7 +15,9 @@
 
 ## Phase 3 – Anwendungen und Designsystem
 
-1. Vite/React, Tailwind, shadcn/ui, TanStack Query/Table und i18n im Web starten.
+**Status: begonnen.** Eine startbare Vite-/React-Operationsübersicht mit responsivem Designsystem, Navigation, Zeitraumauswahl, Queue-Filterung und Suchfeld ist vorhanden. Sie arbeitet bis zur Cloud-Anbindung im ausdrücklich markierten Preview-Modus und enthält keine Service-Role-Konfiguration.
+
+1. TanStack Query/Table und i18n im Web ergänzen sowie die Preview-Daten durch authentifizierte RLS-Abfragen ersetzen.
 2. Expo Router, NativeWind, SecureStore und Deep-Link-Basis starten.
 3. Gemeinsamen Auth- und Mandantenkontext an beide Apps anbinden.
 4. Dashboard, Navigation und Zugriffsgrenzen mit echten RLS-Daten aufbauen.

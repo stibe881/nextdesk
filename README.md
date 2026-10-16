@@ -2,7 +2,7 @@
 
 NextDesk ist das Quellcode-Repository für **TicketHub**, eine mandantenfähige ITSM-Plattform für Web, iOS und Android. Der sichtbare Produktname ist eine Plattformkonfiguration und nicht an den Repository-Namen gebunden.
 
-> **Stand:** Phase 1 ist angelegt: Architektur, Monorepo, gemeinsamer Berechtigungskern und Supabase-Kernmigrationen. Die produktiven React- und Expo-Anwendungen folgen in Phase 3. Es gibt noch keine lauffähige Web- oder Mobile-App und keine verbundene Supabase-Instanz.
+> **Stand:** Phase 1 und die lokale Phase-2-Plattformbasis sind angelegt. Die startbare Vite-/React-Webanwendung liefert bereits eine responsive Operationsübersicht; sie markiert den Offline-Preview-Modus sichtbar, solange keine Supabase-Instanz verbunden ist. Die Expo-App und die produktive Supabase-Anbindung folgen.
 
 ## Ziele
 
@@ -15,7 +15,8 @@ NextDesk ist das Quellcode-Repository für **TicketHub**, eine mandantenfähige 
 ## Struktur
 
 ```text
-apps/                 Web- und Expo-Anwendungen (Phase 3)
+apps/                 Web- und Expo-Anwendungen
+  web/                Vite-/React-Operationsdashboard mit Publishable-Supabase-Grenze
 packages/             Gemeinsame TypeScript-Logik
   config/             Produkt- und Lokalisierungsstandards
   permissions/        Berechtigungskatalog und referenzierbare Auswertung
@@ -34,9 +35,10 @@ Voraussetzungen: Node.js 22+ und pnpm 11.25+.
 pnpm install
 pnpm check
 pnpm test:db
+pnpm dev:web
 ```
 
-`pnpm check` führt den TypeScript-Check, die Unit-Tests und statische Migrations-/Katalogprüfungen aus. `pnpm test:db` startet zusätzlich ein temporäres PostgreSQL-16-Cluster und führt die sechs Migrationen mit einem minimalen Auth-Shim aus. Es ersetzt keine Prüfung gegen eine echte Supabase-Instanz; diese folgt in Phase 2.
+`pnpm check` führt den TypeScript-Check, die Unit-Tests und statische Migrations-/Katalogprüfungen aus. `pnpm test:db` startet zusätzlich ein temporäres PostgreSQL-16-Cluster und führt alle acht Migrationen mit einem minimalen Auth-Shim aus. `pnpm dev:web` startet das lokale Dashboard auf Port 5173. Die Prüfungen ersetzen keine Verbindung gegen eine echte Supabase-Instanz.
 
 ## Wichtige Dokumente
 

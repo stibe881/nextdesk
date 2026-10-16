@@ -4,7 +4,7 @@
 
 - [ ] **Produktive Supabase-Grundlage.** Die Migrationen werden gegen getrennte Entwicklungs-, Staging- und Produktionsprojekte in Zürich angewendet. Es existieren Seeds und automatisierte Tests, die Mandant A/B, ICT/Infrastruktur, eigene Tickets, interne Kommentare, Rollenentzug, Supportzugriff, unbekannte Domains und Ticketnummern als echte RLS-Fälle prüfen.
 
-- [ ] **Web- und Mobile-App-Start.** Es gibt eine startbare Vite-React-App und eine startbare Expo-Router-App mit geteilter TypeScript-Geschäftslogik, gesichertem Login, Mandantenwechsel, Cache- und Realtime-Reset sowie Rollen-gesteuerter Navigation. Web und Mobile dürfen keine Service-Role-Schlüssel enthalten.
+- [ ] **Web- und Mobile-App-Start.** Es gibt eine startbare Vite-React-App und eine startbare Expo-Router-App mit geteilter TypeScript-Geschäftslogik, gesichertem Login, Mandantenwechsel, Cache- und Realtime-Reset sowie Rollen-gesteuerter Navigation. Der erste Web-Lieferstand zeigt eine responsive operative Übersicht mit Navigation, Zeitraum- und Queue-Auswahl; ohne konfigurierte Publishable-Supabase-Werte ist der lokale Preview-Modus sichtbar ausgewiesen. Web und Mobile dürfen keine Service-Role-Schlüssel enthalten.
 
 - [ ] **Ticket-MVP.** Berechtigte Benutzer erstellen Tickets; Agenten bearbeiten nur erlaubte Abteilungen. Listen, Detailansicht, Filter, Suche, Status, Priorität, Zuweisung, externe Antworten, standardmässig interne Notizen, Verlauf und Audit funktionieren mit echten Daten.
 
