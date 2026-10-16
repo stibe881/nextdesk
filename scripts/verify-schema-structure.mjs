@@ -9,6 +9,8 @@ const expectedFiles = [
   "0004_ticketing.sql",
   "0005_rls_core.sql",
   "0006_harden_tenant_integrity_and_rbac.sql",
+  "0007_tenant_provisioning_and_invitations.sql",
+  "0008_tenant_administration.sql",
 ];
 
 const availableFiles = await readdir(migrationDirectory);
@@ -66,6 +68,38 @@ const requiredFragments = [
   [
     "0006_harden_tenant_integrity_and_rbac.sql",
     "create or replace function public.has_tenant_permission",
+  ],
+  [
+    "0007_tenant_provisioning_and_invitations.sql",
+    "create table public.tenant_invitations",
+  ],
+  [
+    "0007_tenant_provisioning_and_invitations.sql",
+    "create or replace function public.provision_tenant",
+  ],
+  [
+    "0007_tenant_provisioning_and_invitations.sql",
+    "create or replace function public.accept_current_tenant_invitation",
+  ],
+  [
+    "0007_tenant_provisioning_and_invitations.sql",
+    "create or replace function public.cancel_tenant_invitation",
+  ],
+  [
+    "0007_tenant_provisioning_and_invitations.sql",
+    "revoke all on table public.tenant_invitations",
+  ],
+  [
+    "0008_tenant_administration.sql",
+    "create or replace function public.update_tenant_settings",
+  ],
+  [
+    "0008_tenant_administration.sql",
+    "create or replace function public.create_tenant_team",
+  ],
+  [
+    "0008_tenant_administration.sql",
+    "create or replace function public.set_department_membership",
   ],
 ];
 

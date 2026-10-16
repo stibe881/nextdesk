@@ -44,6 +44,7 @@ pnpm test:db
 - [Datenbankmodell](DATABASE.md)
 - [Sicherheits- und RLS-Konzept](SECURITY.md)
 - [SSO-Konzept](SSO.md)
+- [Supabase-Konfiguration](SUPABASE.md)
 - [Deploymentkonzept](DEPLOYMENT.md)
 - [Priorisierter Entwicklungsplan](DEVELOPMENT_PLAN.md)
 - [Umsetzungsstatus](IMPLEMENTATION_STATUS.md)

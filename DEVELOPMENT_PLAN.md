@@ -6,10 +6,12 @@
 
 ## Phase 2 – Sichere Plattformbasis
 
+**Status: lokal implementiert, Cloud-Anbindung offen.** Es gibt migrationsbasierte Mandantenanlage, Einladungen, Widerruf, Teams, Abteilungsmitgliedschaften und Mandanteneinstellungen sowie vier user-authentifizierte Edge Functions. Die Mandantenanlage verlangt `aal2`; PostgreSQL-16-Integrationstests prüfen die zentralen Transaktionen, Rollenauslauf und RLS-Szenarien mit einem Auth-Shim.
+
 1. Supabase-Projekte für Entwicklung, Staging und Produktion in `eu-central-2` anlegen.
-2. Migrationen anwenden, Seeds für zwei Mandanten (ICT/Infrastruktur) anlegen und echte RLS-Tests gegen `auth.uid()` ergänzen.
-3. Tenant-Anlage als transaktionale Edge Function bauen; Einladungen, Teams und Konfigurationsverwaltung ergänzen.
-4. Auth, Session-Refresh, Plattformoperatoren und temporären Supportzugriff fertigstellen.
+2. Migrationen, Secrets und Edge Functions gegen die echte Supabase-Entwicklungsumgebung bereitstellen.
+3. Seeds für zwei Mandanten (ICT/Infrastruktur) ergänzen und die lokale RLS-Suite gegen Supabase Auth, Storage und Realtime erweitern.
+4. Auth, Session-Refresh, Plattformoperatoren und temporären Supportzugriff mit echten Session-/MFA-Claims fertigstellen.
 
 ## Phase 3 – Anwendungen und Designsystem
 

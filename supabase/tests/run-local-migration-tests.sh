@@ -38,6 +38,7 @@ as $$
 $$;
 create role anon nologin;
 create role authenticated nologin;
+create role service_role nologin;
 SQL
 
 for migration in "$ROOT_DIR"/supabase/migrations/*.sql; do
@@ -54,7 +55,9 @@ insert into auth.users (id) values
   ('00000000-0000-4000-8000-000000000001'),
   ('00000000-0000-4000-8000-000000000002'),
   ('00000000-0000-4000-8000-000000000003'),
-  ('00000000-0000-4000-8000-000000000004');
+  ('00000000-0000-4000-8000-000000000004'),
+  ('00000000-0000-4000-8000-000000000005'),
+  ('00000000-0000-4000-8000-000000000006');
 
 insert into public.user_profiles (id, display_name) values
   ('00000000-0000-4000-8000-000000000001', 'Requester A'),
@@ -131,6 +134,263 @@ begin
   end loop;
   if has_function_privilege('authenticated', 'public.reserve_ticket_number(uuid,uuid,text,integer)', 'execute') then
     raise exception 'authenticated may execute reserve_ticket_number';
+  end if;
+  if has_function_privilege('authenticated', 'public.provision_tenant(uuid,citext,text,uuid,jsonb)', 'execute') then
+    raise exception 'authenticated may execute provision_tenant';
+  end if;
+  if not has_function_privilege('service_role', 'public.provision_tenant(uuid,citext,text,uuid,jsonb)', 'execute') then
+    raise exception 'service_role may not execute provision_tenant';
+  end if;
+end;
+$$;
+
+-- Provisioning requires a fresh MFA-verified platform operator and creates isolated defaults.
+insert into public.platform_administrators (user_id, enabled, mfa_verified_at)
+values ('00000000-0000-4000-8000-000000000001', true, timezone('utc', now()));
+
+do $$
+declare
+  tenant_c_id uuid;
+begin
+  tenant_c_id := public.provision_tenant(
+    '00000000-0000-4000-8000-000000000001',
+    'tenant-c',
+    'Tenant C',
+    '00000000-0000-4000-8000-000000000004',
+    '[{"key":"ict","name":"ICT","kind":"ict"},{"key":"infrastructure","name":"Infrastructure","kind":"infrastructure"}]'::jsonb
+  );
+
+  if not exists (select 1 from public.tenant_settings where tenant_id = tenant_c_id) then
+    raise exception 'Tenant provisioning did not create settings';
+  end if;
+  if (select count(*) from public.departments where tenant_id = tenant_c_id) <> 2 then
+    raise exception 'Tenant provisioning did not create both departments';
+  end if;
+  if not public.user_has_tenant_permission('00000000-0000-4000-8000-000000000004', tenant_c_id, 'user.manage') then
+    raise exception 'Initial tenant administrator lacks user.manage';
+  end if;
+end;
+$$;
+
+do $$
+begin
+  begin
+    perform public.provision_tenant(
+      '00000000-0000-4000-8000-000000000002',
+      'tenant-denied',
+      'Denied Tenant',
+      '00000000-0000-4000-8000-000000000002',
+      '[{"key":"ict","name":"ICT","kind":"ict"}]'::jsonb
+    );
+    raise exception 'Non-operator was allowed to provision a tenant';
+  exception when insufficient_privilege then
+    null;
+  end;
+end;
+$$;
+
+do $$
+declare
+  tenant_c_id uuid;
+  invitation_id uuid;
+begin
+  select id into tenant_c_id from public.tenants where slug = 'tenant-c';
+  invitation_id := public.prepare_tenant_invitation(
+    '00000000-0000-4000-8000-000000000004',
+    tenant_c_id,
+    'invitee@example.ch'::citext
+  );
+  perform public.record_tenant_invitation_delivery(
+    '00000000-0000-4000-8000-000000000004',
+    invitation_id,
+    '00000000-0000-4000-8000-000000000005'
+  );
+  if not exists (
+    select 1 from public.tenant_memberships
+    where tenant_id = tenant_c_id
+      and user_id = '00000000-0000-4000-8000-000000000005'
+      and status = 'invited'
+  ) then
+    raise exception 'Delivered invitation did not create invited membership';
+  end if;
+end;
+$$;
+
+begin;
+select set_config('app.test.invitation_id', id::text, true),
+       set_config('app.test.tenant_id', tenant_id::text, true)
+from public.tenant_invitations
+where email = 'invitee@example.ch'::citext;
+set local "request.jwt.claim.sub" = '00000000-0000-4000-8000-000000000005';
+set local role authenticated;
+do $$
+declare
+  tenant_c_id uuid;
+begin
+  tenant_c_id := current_setting('app.test.tenant_id')::uuid;
+  if public.accept_current_tenant_invitation(current_setting('app.test.invitation_id')::uuid) <> tenant_c_id then
+    raise exception 'Invitation acceptance returned the wrong tenant';
+  end if;
+end;
+$$;
+reset role;
+commit;
+
+do $$
+begin
+  if not exists (
+    select 1
+    from public.tenant_memberships membership
+    join public.tenants tenant on tenant.id = membership.tenant_id
+    where tenant.slug = 'tenant-c'
+      and membership.user_id = '00000000-0000-4000-8000-000000000005'
+      and membership.status = 'active'
+  ) then
+    raise exception 'Invitation acceptance did not activate the membership';
+  end if;
+end;
+$$;
+
+-- Re-inviting a previously privileged but removed user must expire historic roles.
+do $$
+declare
+  tenant_c_id uuid;
+  tenant_admin_role_id uuid;
+  reinvitation_id uuid;
+begin
+  select id into tenant_c_id from public.tenants where slug = 'tenant-c';
+  select id into tenant_admin_role_id from public.roles where tenant_id = tenant_c_id and name = 'Tenant administrator';
+
+  insert into public.user_role_assignments (tenant_id, user_id, role_id, assigned_by)
+  values (tenant_c_id, '00000000-0000-4000-8000-000000000005', tenant_admin_role_id, '00000000-0000-4000-8000-000000000004');
+  if not public.user_has_tenant_permission('00000000-0000-4000-8000-000000000005', tenant_c_id, 'user.manage') then
+    raise exception 'Test fixture did not grant historical tenant administrator role';
+  end if;
+
+  update public.tenant_memberships
+  set status = 'removed'
+  where tenant_id = tenant_c_id
+    and user_id = '00000000-0000-4000-8000-000000000005';
+
+  reinvitation_id := public.prepare_tenant_invitation(
+    '00000000-0000-4000-8000-000000000004',
+    tenant_c_id,
+    'invitee@example.ch'::citext
+  );
+  perform public.record_tenant_invitation_delivery(
+    '00000000-0000-4000-8000-000000000004',
+    reinvitation_id,
+    '00000000-0000-4000-8000-000000000005'
+  );
+  if exists (
+    select 1 from public.user_role_assignments
+    where tenant_id = tenant_c_id
+      and user_id = '00000000-0000-4000-8000-000000000005'
+      and role_id = tenant_admin_role_id
+      and expires_at is null
+  ) then
+    raise exception 'Re-invite retained a privileged role';
+  end if;
+end;
+$$;
+
+begin;
+select set_config('app.test.invitation_id', id::text, true)
+from public.tenant_invitations
+where email = 'invitee@example.ch'::citext and status = 'sent';
+set local "request.jwt.claim.sub" = '00000000-0000-4000-8000-000000000005';
+set local role authenticated;
+select public.accept_current_tenant_invitation(current_setting('app.test.invitation_id')::uuid);
+reset role;
+commit;
+
+do $$
+declare
+  tenant_c_id uuid;
+begin
+  select id into tenant_c_id from public.tenants where slug = 'tenant-c';
+  if public.user_has_tenant_permission('00000000-0000-4000-8000-000000000005', tenant_c_id, 'user.manage') then
+    raise exception 'Re-invited user regained a privileged role';
+  end if;
+end;
+$$;
+
+do $$
+declare
+  tenant_c_id uuid;
+  cancellation_id uuid;
+begin
+  select id into tenant_c_id from public.tenants where slug = 'tenant-c';
+  cancellation_id := public.prepare_tenant_invitation(
+    '00000000-0000-4000-8000-000000000004',
+    tenant_c_id,
+    'cancel@example.ch'::citext
+  );
+  perform public.record_tenant_invitation_delivery(
+    '00000000-0000-4000-8000-000000000004', cancellation_id, '00000000-0000-4000-8000-000000000006');
+  perform public.cancel_tenant_invitation('00000000-0000-4000-8000-000000000004', cancellation_id);
+  if not exists (select 1 from public.tenant_invitations where id = cancellation_id and status = 'cancelled')
+    or not exists (
+      select 1 from public.tenant_memberships
+      where tenant_id = tenant_c_id
+        and user_id = '00000000-0000-4000-8000-000000000006'
+        and status = 'removed'
+    ) then
+    raise exception 'Invitation cancellation did not remove the staged membership';
+  end if;
+end;
+$$;
+
+do $$
+declare
+  tenant_c_id uuid;
+  tenant_c_ict_id uuid;
+  team_id uuid;
+begin
+  select id into tenant_c_id from public.tenants where slug = 'tenant-c';
+  select id into tenant_c_ict_id from public.departments where tenant_id = tenant_c_id and key = 'ict';
+
+  perform public.update_tenant_settings(
+    '00000000-0000-4000-8000-000000000004',
+    tenant_c_id,
+    'Tenant C Helpdesk',
+    'support@tenant-c.example.ch',
+    true,
+    true
+  );
+  if not exists (
+    select 1 from public.tenant_settings
+    where tenant_id = tenant_c_id
+      and portal_name = 'Tenant C Helpdesk'
+      and allow_external_ticket_access
+  ) then
+    raise exception 'Tenant settings update was not persisted';
+  end if;
+
+  team_id := public.create_tenant_team(
+    '00000000-0000-4000-8000-000000000004',
+    tenant_c_id,
+    tenant_c_ict_id,
+    'ICT Operations'
+  );
+  if not exists (select 1 from public.teams where id = team_id and tenant_id = tenant_c_id) then
+    raise exception 'Tenant team was not created';
+  end if;
+
+  perform public.set_department_membership(
+    '00000000-0000-4000-8000-000000000004',
+    tenant_c_id,
+    tenant_c_ict_id,
+    '00000000-0000-4000-8000-000000000005',
+    'active'
+  );
+  if not exists (
+    select 1 from public.department_memberships
+    where department_id = tenant_c_ict_id
+      and user_id = '00000000-0000-4000-8000-000000000005'
+      and status = 'active'
+  ) then
+    raise exception 'Department membership was not persisted';
   end if;
 end;
 $$;

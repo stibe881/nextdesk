@@ -15,12 +15,12 @@ Die primäre App-Datenschicht nutzt Supabase mit RLS für sichere Leseoperatione
 
 ## Geplante Anfangsoperationen
 
-| Operation                            | Autorisierung                                   | Status  |
-| ------------------------------------ | ----------------------------------------------- | ------- |
-| `POST /api/v1/tickets`               | `ticket.create` im tatsächlichen Mandanten      | Phase 4 |
-| `GET /api/v1/tickets`                | eigene, zugewiesene oder Abteilungsrechte       | Phase 4 |
-| `GET /api/v1/tickets/{id}`           | Ressourcenprüfung via RLS                       | Phase 4 |
-| `POST /api/v1/tickets/{id}/comments` | Ticketzugriff; interne Notiz zusätzliches Recht | Phase 4 |
-| `POST /api/v1/tenants`               | `platform.tenants.manage`, MFA und Audit        | Phase 2 |
+| Operation                            | Autorisierung                                          | Status  |
+| ------------------------------------ | ------------------------------------------------------ | ------- |
+| `POST /api/v1/tickets`               | `ticket.create` im tatsächlichen Mandanten             | Phase 4 |
+| `GET /api/v1/tickets`                | eigene, zugewiesene oder Abteilungsrechte              | Phase 4 |
+| `GET /api/v1/tickets/{id}`           | Ressourcenprüfung via RLS                              | Phase 4 |
+| `POST /api/v1/tickets/{id}/comments` | Ticketzugriff; interne Notiz zusätzliches Recht        | Phase 4 |
+| `POST /api/v1/tenants`               | aktiver Plattformbetreiber, User-JWT mit `aal2`, Audit | Phase 2 |
 
 OpenAPI wird mit jeder implementierten Operation aktualisiert. Bis dahin ist diese Datei ein Vertrag, kein behaupteter API-Betrieb.

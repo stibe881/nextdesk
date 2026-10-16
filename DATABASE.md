@@ -14,6 +14,8 @@ Alle fachlichen Primärschlüssel sind UUIDs. Zeitstempel werden als `timestampt
 | `0004`    | Ticketkonfiguration, transaktionssichere Nummernsequenzen, Tickets, Kommentare, Anhänge und Ereignisse.                  |
 | `0005`    | RLS-Hilfsfunktionen und restriktive Lese-Policies für die Kernressourcen.                                                |
 | `0006`    | Mandantenkonsistente Fremdschlüssel, berechtigungsgebundene RLS-Härtung, Katalog-Seed und gesperrte direkte Clientpfade. |
+| `0007`    | `aal2`-gebundene Mandantenanlage, Einladungszustände, Widerruf und sichere Annahme einer Einladung.                      |
+| `0008`    | Mandanteneinstellungen, Teams und Abteilungsmitgliedschaften über berechtigte Verwaltungsfunktionen.                     |
 
 Die Tabellen sind ein sicheres Fundament, nicht das vollständige Produktdatenmodell. Keine bisherige Migration verspricht, dass nicht angelegte Funktionen bereits verwendbar sind.
 
@@ -53,6 +55,12 @@ Die Tabellen sind ein sicheres Fundament, nicht das vollständige Produktdatenmo
 `reserve_ticket_number` verwendet `INSERT … ON CONFLICT … DO UPDATE … RETURNING` auf einer Sequenzzeile pro Mandant, Abteilung und Kalenderjahr. Dadurch ist die Erhöhung innerhalb einer PostgreSQL-Transaktion atomar. Phase 2 kapselt die Funktionsnutzung in einer Ticket-Erstell-RPC, die Prefix, Abteilungszuordnung, Status und Audit-Event gemeinsam festschreibt. Last- und Parallelitätstests sind noch ausstehend.
 
 Die Reservierungsfunktion ist für `anon` und `authenticated` ausdrücklich gesperrt. Sie darf erst aus der zukünftigen, autorisierten Ticket-Erstell-RPC aufgerufen werden. Zusammengesetzte Fremdschlüssel verhindern dabei, dass Ticket, Status, Priorität, Kategorie, Team oder Abteilung aus unterschiedlichen Mandanten verknüpft werden.
+
+## Administrations- und Einladungsabläufe
+
+`provision_tenant` wird ausschliesslich von der user-authentifizierten Edge Function nach einem verifizierten `aal2`-JWT aufgerufen; die Funktion verlangt zusätzlich einen aktuellen Plattformbetreiber-MFA-Nachweis. Sie legt Mandant, Einstellungen, Branding, drei Systemrollen, Abteilungen, Mitgliedschaften und das Audit-Event in einer Transaktion an. `prepare_tenant_invitation`, `record_tenant_invitation_delivery`, `cancel_tenant_invitation` und `accept_current_tenant_invitation` trennen die Berechtigungsprüfung, die Auth-Einladung, den Widerruf und die Aktivierung der Mitgliedschaft. Re-Invites lassen historische Rollenzuweisungen ablaufen, damit nur die Standard-Requester-Rolle nach der Annahme wieder wirksam wird.
+
+`update_tenant_settings`, `create_tenant_team` und `set_department_membership` sind ausschliesslich über serverseitige Funktionen nutzbar. Jede prüft die Mandantenrolle des handelnden Benutzers und schreibt ein Audit-Ereignis.
 
 ## Offene Datenmodelle
 
