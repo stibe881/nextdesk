@@ -2507,6 +2507,75 @@ body:has(.ticket-detail) {
   list-style: none;
 }
 
+.tenant-admin-settings__audit-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tenant-admin-settings__audit-list li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-subtle);
+}
+
+.tenant-admin-settings__audit-list strong,
+.tenant-admin-settings__audit-list span,
+.tenant-admin-settings__audit-list time {
+  display: block;
+}
+
+.tenant-admin-settings__audit-list strong {
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 650;
+  text-transform: capitalize;
+}
+
+.tenant-admin-settings__audit-list
+  span:not(.tenant-admin-settings__audit-severity),
+.tenant-admin-settings__audit-list time {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.tenant-admin-settings__audit-list time {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.tenant-admin-settings__audit-severity {
+  min-width: 58px;
+  padding: 4px 7px;
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--muted) !important;
+  font-size: 10px !important;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.tenant-admin-settings__audit-severity--security,
+.tenant-admin-settings__audit-severity--warning {
+  background: var(--warning-soft);
+  color: var(--warning) !important;
+}
+
+.tenant-admin-settings__audit-severity--error {
+  background: var(--danger-soft);
+  color: var(--danger) !important;
+}
+
 .tenant-admin-settings__feature,
 .tenant-admin-settings__person-list li,
 .tenant-admin-settings__role-list li {
@@ -4065,6 +4134,15 @@ body:has(.ticket-detail) {
   .sla-management .sla-management__form,
   .customer-organizations .customer-organizations__member-form {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .tenant-admin-settings__audit-list li {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .tenant-admin-settings__audit-list time {
+    grid-column: 2;
+    text-align: left;
   }
 
   .ticket-compose-description {

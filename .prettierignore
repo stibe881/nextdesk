@@ -1,0 +1,2 @@
+# SQL-Migrationen werden durch PostgreSQL-Integrationstests validiert; Prettier enthält keinen SQL-Parser.
+supabase/migrations/**/*.sql
