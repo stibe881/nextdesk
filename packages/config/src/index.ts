@@ -1,5 +1,5 @@
 export const productDefaults = {
-  productName: "TicketHub",
+  productName: "nextDesk",
   defaultLocale: "de-CH",
   supportedLocales: ["de-CH", "en", "fr", "it"] as const,
   timezone: "Europe/Zurich",

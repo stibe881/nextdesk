@@ -118,7 +118,7 @@ function AccessShell({ children }: { children: ReactNode }) {
         <section className="access-card">{children}</section>
       </section>
       <footer className="access-footer">
-        TICKETHUB · BETRIEBEN FÜR GROSS ICT
+        TICKETHUB · BETRIEBEN VON GROSS ICT
       </footer>
     </main>
   );
@@ -137,7 +137,7 @@ function SignInScreen() {
     setMessage("");
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "azure",
-      options: { redirectTo: appRedirectUrl() },
+      options: { redirectTo: appRedirectUrl(), scopes: "email" },
     });
     if (error) {
       setStatus("error");
@@ -230,7 +230,7 @@ function SignInScreen() {
 function LoadingScreen({ message }: { message: string }) {
   return (
     <AccessShell>
-      <p className="eyebrow">TicketHub wird vorbereitet</p>
+      <p className="eyebrow">nextDesk wird vorbereitet</p>
       <h1>{message}</h1>
       <div className="loading-line" aria-hidden="true" />
     </AccessShell>
@@ -244,7 +244,7 @@ function NoMembershipScreen({ onSignOut }: { onSignOut: () => void }) {
       <h1>Keine aktive Mandantenmitgliedschaft.</h1>
       <p>
         Ihre Anmeldung wurde bestätigt, aber es ist noch kein aktiver
-        TicketHub-Mandant zugeordnet. Wenden Sie sich an die
+        nextDesk-Mandant zugeordnet. Wenden Sie sich an die
         Mandantenadministration oder akzeptieren Sie eine offene Einladung.
       </p>
       <button className="secondary-button" onClick={onSignOut} type="button">
