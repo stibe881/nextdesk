@@ -17,9 +17,11 @@ import {
   LayoutDashboard,
   LogOut,
   MonitorCog,
+  Plus,
   Search,
   Settings,
   Ticket,
+  X,
   type LucideIcon,
 } from "lucide-react";
 import { productDefaults } from "@nextdesk/config";
@@ -515,6 +517,7 @@ export function App() {
   const [ownerAccessError, setOwnerAccessError] = useState("");
   const [ownerView, setOwnerView] = useState<"console" | "tenant">("console");
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
+  const [ticketComposerOpen, setTicketComposerOpen] = useState(false);
   const [isTenantAdmin, setIsTenantAdmin] = useState(false);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [notificationsLoading, setNotificationsLoading] = useState(false);
@@ -1016,6 +1019,16 @@ export function App() {
                   </select>
                 </label>
               )}
+            {activeTenant && (
+              <button
+                className="create-ticket-button"
+                onClick={() => setTicketComposerOpen(true)}
+                type="button"
+              >
+                <Plus aria-hidden="true" size={17} strokeWidth={2} />
+                Ticket erfassen
+              </button>
+            )}
             <label className="search-field">
               <Search aria-hidden="true" size={17} strokeWidth={1.8} />
               <input
@@ -1228,15 +1241,6 @@ export function App() {
           <ServiceReporting tenantId={activeTenant.id} />
         ) : section === "Tickets" ? (
           <>
-            {activeTenant && (
-              <TicketComposer
-                onCreated={(ticketId) => {
-                  setDashboardRevision((value) => value + 1);
-                  setSelectedTicketId(ticketId);
-                }}
-                tenantId={activeTenant.id}
-              />
-            )}
             <section className="ticket-panel panel ticket-module">
               <div className="panel-heading">
                 <div>
@@ -1437,6 +1441,37 @@ export function App() {
           </>
         )}
       </main>
+      {activeTenant && ticketComposerOpen && (
+        <div
+          aria-label="Ticket erfassen"
+          aria-modal="true"
+          className="ticket-compose-dialog"
+          onKeyDown={(event) => {
+            if (event.key === "Escape") setTicketComposerOpen(false);
+          }}
+          role="dialog"
+        >
+          <div className="ticket-compose-dialog__surface">
+            <button
+              aria-label="Ticketerfassung schliessen"
+              className="ticket-compose-dialog__close"
+              onClick={() => setTicketComposerOpen(false)}
+              type="button"
+            >
+              <X aria-hidden="true" size={20} strokeWidth={1.8} />
+            </button>
+            <TicketComposer
+              onCreated={(ticketId) => {
+                setDashboardRevision((value) => value + 1);
+                setTicketComposerOpen(false);
+                setSection("Tickets");
+                setSelectedTicketId(ticketId);
+              }}
+              tenantId={activeTenant.id}
+            />
+          </div>
+        </div>
+      )}
       {activeTenant && selectedTicketId && isSupabaseConfigured && (
         <TicketDetail
           onChanged={() => setDashboardRevision((value) => value + 1)}
