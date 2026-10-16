@@ -471,6 +471,20 @@ button {
 .ticket-row:last-child {
   border-bottom: 0;
 }
+.ticket-row--actionable {
+  cursor: pointer;
+  transition:
+    background-color 160ms ease,
+    box-shadow 160ms ease;
+}
+.ticket-row--actionable:hover {
+  background: rgba(232, 182, 61, 0.07);
+}
+.ticket-row--actionable:focus-visible {
+  z-index: 1;
+  outline: 2px solid #e8b63d;
+  outline-offset: -2px;
+}
 .risk-line {
   height: 45px;
   border-radius: 2px;

@@ -1,11 +1,25 @@
 import { withSupabase } from "@supabase/server";
 
 type BillingKind = "internal" | "billable" | "goodwill";
+type EscalationKind = "technical" | "organizational" | "sla";
 type RelationType =
   "duplicates" | "blocks" | "blocked_by" | "relates_to" | "parent" | "child";
 type DisplayRelationType = RelationType | "merged_into" | "merged_from";
 type Action =
   | { type: "getTicket"; tenantId: string; ticketId: string }
+  | {
+      type: "openEscalation";
+      tenantId: string;
+      ticketId: string;
+      kind: EscalationKind;
+      reason: string;
+    }
+  | {
+      type: "resolveEscalation";
+      tenantId: string;
+      ticketId: string;
+      escalationId: string;
+    }
   | {
       type: "createRelation";
       tenantId: string;
@@ -112,6 +126,12 @@ const isRelationType = (value: unknown): value is RelationType =>
   value === "relates_to" ||
   value === "parent" ||
   value === "child";
+const isEscalationKind = (value: unknown): value is EscalationKind =>
+  value === "technical" || value === "organizational" || value === "sla";
+const hasOnlyKeys = (value: Record<string, unknown>, keys: string[]) => {
+  const allowed = new Set(keys);
+  return Object.keys(value).every((key) => allowed.has(key));
+};
 
 function parseAction(value: unknown): Action | null {
   if (!isRecord(value) || !isUuid(value.tenantId) || !isUuid(value.ticketId))
@@ -121,6 +141,35 @@ function parseAction(value: unknown): Action | null {
       type: value.type,
       tenantId: value.tenantId,
       ticketId: value.ticketId,
+    };
+  if (
+    value.type === "openEscalation" &&
+    hasOnlyKeys(value, ["type", "tenantId", "ticketId", "kind", "reason"]) &&
+    isEscalationKind(value.kind) &&
+    typeof value.reason === "string"
+  ) {
+    const reason = value.reason.trim();
+    const reasonLength = [...reason].length;
+    if (reasonLength < 3 || reasonLength > 2000 || reason.includes("\u0000"))
+      return null;
+    return {
+      type: value.type,
+      tenantId: value.tenantId,
+      ticketId: value.ticketId,
+      kind: value.kind,
+      reason,
+    };
+  }
+  if (
+    value.type === "resolveEscalation" &&
+    hasOnlyKeys(value, ["type", "tenantId", "ticketId", "escalationId"]) &&
+    isUuid(value.escalationId)
+  )
+    return {
+      type: value.type,
+      tenantId: value.tenantId,
+      ticketId: value.ticketId,
+      escalationId: value.escalationId,
     };
   if (
     (value.type === "createRelation" || value.type === "deleteRelation") &&
@@ -528,6 +577,12 @@ function ticketReference(ticket: any) {
   };
 }
 
+const escalationLevelForKind = (kind: EscalationKind) => {
+  if (kind === "technical") return 1;
+  if (kind === "organizational") return 2;
+  return 3;
+};
+
 const handler = withSupabase({ auth: "user" }, async (request, context) => {
   if (request.method !== "POST")
     return response(request, { error: { code: "method_not_allowed" } }, 405);
@@ -555,6 +610,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     const [
       { data: comments },
       { data: events },
+      { data: escalations },
       { data: statuses },
       { data: priorities },
       { data: teams },
@@ -577,6 +633,13 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         .eq("ticket_id", ticket.id)
         .order("created_at", { ascending: false })
         .limit(100),
+      context.supabaseAdmin
+        .from("ticket_escalations")
+        .select(
+          "id, ticket_id, level, kind, reason, opened_by, resolved_by, opened_at, resolved_at",
+        )
+        .eq("ticket_id", ticket.id)
+        .order("opened_at", { ascending: false }),
       context.supabaseAdmin
         .from("ticket_statuses")
         .select("id, key, label, is_closed, sort_order")
@@ -768,6 +831,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
           authorName: profileNames[comment.author_id] ?? "nextDesk Benutzer",
         })),
         events: events ?? [],
+        escalations: escalations ?? [],
         statuses: statuses ?? [],
         priorities: priorities ?? [],
         teams: teams ?? [],
@@ -798,9 +862,254 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
           ticket.department_id,
           "ticket.time.track",
         ),
+        canEscalate: await hasPermission(
+          context.supabaseAdmin,
+          actorId,
+          ticket.tenant_id,
+          ticket.department_id,
+          "ticket.escalate",
+        ),
         canUseInternalNotes: internal,
       },
     });
+  }
+
+  if (action.type === "openEscalation") {
+    if (
+      !(await hasPermission(
+        context.supabaseAdmin,
+        actorId,
+        ticket.tenant_id,
+        ticket.department_id,
+        "ticket.escalate",
+      ))
+    )
+      return response(
+        request,
+        { error: { code: "ticket_escalate_denied" } },
+        403,
+      );
+
+    const { data: openEscalation, error: openEscalationError } =
+      await context.supabaseAdmin
+        .from("ticket_escalations")
+        .select("id")
+        .eq("ticket_id", ticket.id)
+        .eq("kind", action.kind)
+        .is("resolved_at", null)
+        .limit(1)
+        .maybeSingle();
+    if (openEscalationError)
+      return response(
+        request,
+        { error: { code: "ticket_escalation_check_failed" } },
+        500,
+      );
+    if (openEscalation)
+      return response(
+        request,
+        { error: { code: "ticket_escalation_already_open" } },
+        409,
+      );
+
+    const { data: watchers, error: watchersError } = await context.supabaseAdmin
+      .from("ticket_watchers")
+      .select("user_id")
+      .eq("ticket_id", ticket.id);
+    if (watchersError)
+      return response(
+        request,
+        { error: { code: "ticket_escalation_recipients_failed" } },
+        500,
+      );
+    const recipientIds = new Set<string>();
+    if (isUuid(ticket.assigned_agent_id))
+      recipientIds.add(ticket.assigned_agent_id);
+    for (const watcher of watchers ?? [])
+      if (isUuid(watcher.user_id)) recipientIds.add(watcher.user_id);
+
+    const { data: recipientMemberships, error: recipientMembershipsError } =
+      recipientIds.size > 0
+        ? await context.supabaseAdmin
+            .from("tenant_memberships")
+            .select("user_id")
+            .eq("tenant_id", ticket.tenant_id)
+            .eq("status", "active")
+            .in("user_id", [...recipientIds])
+        : { data: [], error: null };
+    if (recipientMembershipsError)
+      return response(
+        request,
+        { error: { code: "ticket_escalation_recipients_failed" } },
+        500,
+      );
+    const notificationRecipientIds = [
+      ...new Set(
+        (recipientMemberships ?? [])
+          .map((membership: any) => membership.user_id)
+          .filter(isUuid),
+      ),
+    ];
+
+    const level = escalationLevelForKind(action.kind);
+    const { data: escalation, error: escalationError } =
+      await context.supabaseAdmin
+        .from("ticket_escalations")
+        .insert({
+          ticket_id: ticket.id,
+          level,
+          kind: action.kind,
+          reason: action.reason,
+          opened_by: actorId,
+        })
+        .select(
+          "id, ticket_id, level, kind, reason, opened_by, resolved_by, opened_at, resolved_at",
+        )
+        .single();
+    if (escalationError)
+      return response(
+        request,
+        { error: { code: "ticket_escalation_create_failed" } },
+        422,
+      );
+
+    const { data: event, error: eventError } = await context.supabaseAdmin
+      .from("ticket_events")
+      .insert({
+        ticket_id: ticket.id,
+        actor_id: actorId,
+        event_type: "ticket.escalation_opened",
+        payload: {
+          escalationId: escalation.id,
+          level: escalation.level,
+          kind: escalation.kind,
+          reason: escalation.reason,
+        },
+      })
+      .select("id")
+      .single();
+    if (eventError) {
+      await context.supabaseAdmin
+        .from("ticket_escalations")
+        .delete()
+        .eq("id", escalation.id)
+        .eq("ticket_id", ticket.id)
+        .is("resolved_at", null);
+      return response(
+        request,
+        { error: { code: "ticket_escalation_event_failed" } },
+        422,
+      );
+    }
+
+    if (notificationRecipientIds.length > 0) {
+      const { error: notificationError } = await context.supabaseAdmin
+        .from("ticket_notifications")
+        .insert(
+          notificationRecipientIds.map((userId) => ({
+            tenant_id: ticket.tenant_id,
+            user_id: userId,
+            ticket_id: ticket.id,
+            kind: "ticket.escalation_opened",
+            payload: {
+              escalationId: escalation.id,
+              level: escalation.level,
+              kind: escalation.kind,
+              reason: escalation.reason,
+            },
+          })),
+        );
+      if (notificationError) {
+        await context.supabaseAdmin
+          .from("ticket_events")
+          .delete()
+          .eq("id", event.id)
+          .eq("ticket_id", ticket.id);
+        await context.supabaseAdmin
+          .from("ticket_escalations")
+          .delete()
+          .eq("id", escalation.id)
+          .eq("ticket_id", ticket.id)
+          .is("resolved_at", null);
+        return response(
+          request,
+          { error: { code: "ticket_escalation_notification_failed" } },
+          422,
+        );
+      }
+    }
+
+    return response(request, { data: { escalation } }, 201);
+  }
+
+  if (action.type === "resolveEscalation") {
+    if (
+      !(await hasPermission(
+        context.supabaseAdmin,
+        actorId,
+        ticket.tenant_id,
+        ticket.department_id,
+        "ticket.escalate",
+      ))
+    )
+      return response(
+        request,
+        { error: { code: "ticket_escalate_denied" } },
+        403,
+      );
+
+    const resolvedAt = new Date().toISOString();
+    const { data: escalation, error: escalationError } =
+      await context.supabaseAdmin
+        .from("ticket_escalations")
+        .update({ resolved_by: actorId, resolved_at: resolvedAt })
+        .eq("id", action.escalationId)
+        .eq("ticket_id", ticket.id)
+        .is("resolved_at", null)
+        .select(
+          "id, ticket_id, level, kind, reason, opened_by, resolved_by, opened_at, resolved_at",
+        )
+        .maybeSingle();
+    if (escalationError)
+      return response(
+        request,
+        { error: { code: "ticket_escalation_resolve_failed" } },
+        422,
+      );
+    if (!escalation)
+      return response(
+        request,
+        { error: { code: "ticket_escalation_not_found" } },
+        404,
+      );
+
+    const { error: eventError } = await context.supabaseAdmin
+      .from("ticket_events")
+      .insert({
+        ticket_id: ticket.id,
+        actor_id: actorId,
+        event_type: "ticket.escalation_resolved",
+        payload: {
+          escalationId: escalation.id,
+          level: escalation.level,
+          kind: escalation.kind,
+        },
+      });
+    if (eventError) {
+      await context.supabaseAdmin
+        .from("ticket_escalations")
+        .update({ resolved_by: null, resolved_at: null })
+        .eq("id", escalation.id)
+        .eq("ticket_id", ticket.id)
+        .eq("resolved_by", actorId)
+        .eq("resolved_at", resolvedAt);
+      return response(
+        request,
+        { error: { code: "ticket_escalation_event_failed" } },
+        422,
+      );
+    }
+    return response(request, { data: { escalation } });
   }
 
   if (

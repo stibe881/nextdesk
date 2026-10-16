@@ -432,7 +432,32 @@ function TicketList({
             ? ticket.sla
             : `SLA ${ticket.sla}`;
         return (
-          <article className="ticket-row" key={ticket.id}>
+          <article
+            aria-label={
+              onOpen
+                ? `Ticket ${ticket.id}: ${ticket.subject} öffnen`
+                : undefined
+            }
+            className={
+              onOpen ? "ticket-row ticket-row--actionable" : "ticket-row"
+            }
+            key={ticket.id}
+            onClick={
+              onOpen ? () => onOpen(ticket.recordId ?? ticket.id) : undefined
+            }
+            onKeyDown={
+              onOpen
+                ? (event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      onOpen(ticket.recordId ?? ticket.id);
+                    }
+                  }
+                : undefined
+            }
+            role={onOpen ? "button" : undefined}
+            tabIndex={onOpen ? 0 : undefined}
+          >
             <div className={`risk-line ${ticket.risk}`} aria-hidden="true" />
             <div className="ticket-main">
               <div className="ticket-id">
@@ -449,15 +474,6 @@ function TicketList({
                 {ticket.state}
               </span>
               <strong className={`sla ${ticket.risk}`}>{slaLabel}</strong>
-              {onOpen && (
-                <button
-                  className="ticket-open-button"
-                  onClick={() => onOpen(ticket.id)}
-                  type="button"
-                >
-                  Öffnen
-                </button>
-              )}
             </div>
           </article>
         );

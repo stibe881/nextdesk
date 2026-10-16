@@ -7,6 +7,7 @@ export interface DashboardTicket {
   isClosed: boolean;
   isUnassigned: boolean;
   id: string;
+  recordId?: string;
   priority?: string;
   queue: QueueKey;
   queueLabel: string;

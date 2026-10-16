@@ -189,6 +189,7 @@ export async function loadLiveDashboard(
         (ticket.assigned_agent_id === user?.id ||
           ticket.requester_id === user?.id),
       id: ticket.ticket_number,
+      recordId: ticket.id,
       isClosed: Boolean(statusById.get(ticket.status_id)?.is_closed),
       isUnassigned: ticket.assigned_agent_id === null,
       priority: priorityById.get(ticket.priority_id)?.label ?? "Ohne Priorität",

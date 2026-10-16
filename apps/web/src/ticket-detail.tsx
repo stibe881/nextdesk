@@ -31,6 +31,8 @@ type PendingAction =
   | "comment"
   | "update"
   | "watch"
+  | "escalation-open"
+  | "escalation-resolve"
   | "checklist-add"
   | "checklist-toggle"
   | "time-entry"
@@ -43,6 +45,23 @@ type GetTicketAction = {
   type: "getTicket";
   tenantId: string;
   ticketId: string;
+};
+
+type EscalationKind = "technical" | "organizational" | "sla";
+
+type OpenEscalationAction = {
+  type: "openEscalation";
+  tenantId: string;
+  ticketId: string;
+  kind: EscalationKind;
+  reason: string;
+};
+
+type ResolveEscalationAction = {
+  type: "resolveEscalation";
+  tenantId: string;
+  ticketId: string;
+  escalationId: string;
 };
 
 type CreateRelationAction = {
@@ -119,6 +138,8 @@ type AddTimeEntryAction = {
 
 type TicketOperation =
   | GetTicketAction
+  | OpenEscalationAction
+  | ResolveEscalationAction
   | CreateRelationAction
   | DeleteRelationAction
   | MarkMergedAction
@@ -152,6 +173,18 @@ type TicketEvent = {
   id: string;
   event_type: string;
   created_at: string;
+};
+
+type TicketEscalation = {
+  id: string;
+  ticket_id: string;
+  level: number;
+  kind: EscalationKind;
+  reason: string;
+  opened_by: string;
+  resolved_by: string | null;
+  opened_at: string;
+  resolved_at: string | null;
 };
 
 type TicketStatus = {
@@ -209,6 +242,7 @@ type TicketDetailData = {
   ticket: TicketRecord;
   comments: TicketComment[];
   events: TicketEvent[];
+  escalations: TicketEscalation[];
   statuses: TicketStatus[];
   priorities: TicketPriority[];
   teams: TicketTeam[];
@@ -218,6 +252,8 @@ type TicketDetailData = {
   similarTickets: SimilarTicket[];
   watching: boolean;
   canUpdate: boolean;
+  /** Bei älteren Edge-Function-Deployments nicht vorhanden; kein Fallback auf canUpdate. */
+  canEscalate?: boolean;
   canUseInternalNotes: boolean;
   canTrackTime: boolean;
 };
@@ -279,6 +315,30 @@ function isTicketEvent(value: unknown): value is TicketEvent {
     typeof event.id === "string" &&
     typeof event.event_type === "string" &&
     typeof event.created_at === "string",
+  );
+}
+
+function isEscalationKind(value: unknown): value is EscalationKind {
+  return value === "technical" || value === "organizational" || value === "sla";
+}
+
+function isTicketEscalation(value: unknown): value is TicketEscalation {
+  const escalation = asRecord(value);
+  return Boolean(
+    escalation &&
+    typeof escalation.id === "string" &&
+    typeof escalation.ticket_id === "string" &&
+    typeof escalation.level === "number" &&
+    Number.isInteger(escalation.level) &&
+    escalation.level >= 1 &&
+    isEscalationKind(escalation.kind) &&
+    typeof escalation.reason === "string" &&
+    typeof escalation.opened_by === "string" &&
+    (typeof escalation.resolved_by === "string" ||
+      escalation.resolved_by === null) &&
+    typeof escalation.opened_at === "string" &&
+    (typeof escalation.resolved_at === "string" ||
+      escalation.resolved_at === null),
   );
 }
 
@@ -419,7 +479,21 @@ function parseTicketDetail(
     data.similarTickets,
     isSimilarTicket,
   );
-  if (relations === undefined || similarTickets === undefined) return undefined;
+  const escalations = parseStrictValues(data.escalations, isTicketEscalation);
+  if (
+    relations === undefined ||
+    similarTickets === undefined ||
+    escalations === undefined
+  ) {
+    return undefined;
+  }
+  const canEscalate =
+    data.canEscalate === undefined
+      ? undefined
+      : typeof data.canEscalate === "boolean"
+        ? data.canEscalate
+        : null;
+  if (canEscalate === null) return undefined;
 
   const comments = Array.isArray(data.comments)
     ? data.comments
@@ -431,6 +505,7 @@ function parseTicketDetail(
     ticket: data.ticket,
     comments,
     events: valuesOf(data.events, isTicketEvent),
+    escalations,
     statuses: valuesOf(data.statuses, isTicketStatus),
     priorities: valuesOf(data.priorities, isTicketPriority),
     teams: valuesOf(data.teams, isTicketTeam),
@@ -442,13 +517,20 @@ function parseTicketDetail(
     similarTickets,
     watching: data.watching === true,
     canUpdate: data.canUpdate === true,
+    ...(canEscalate === undefined ? {} : { canEscalate }),
     canUseInternalNotes: data.canUseInternalNotes === true,
     canTrackTime: data.canTrackTime === true,
   };
 }
 
 function errorMessage(error: unknown): string {
-  if (error instanceof Error && error.message.trim()) return error.message;
+  if (error instanceof Error && error.message.trim()) {
+    const message = error.message.trim();
+    if (message.includes("non-2xx") || message.includes("FunctionsHttpError")) {
+      return "Die Ticketdetails konnten nicht geladen werden. Bitte versuchen Sie es erneut.";
+    }
+    return message;
+  }
   const value = asRecord(error);
   if (typeof value?.message === "string" && value.message.trim()) {
     return value.message;
@@ -478,6 +560,15 @@ function billingKindLabel(kind: BillingKind): string {
     internal: "Intern",
     billable: "Verrechenbar",
     goodwill: "Kulanz",
+  };
+  return labels[kind];
+}
+
+function escalationKindLabel(kind: EscalationKind): string {
+  const labels: Record<EscalationKind, string> = {
+    technical: "Technisch",
+    organizational: "Organisatorisch",
+    sla: "SLA",
   };
   return labels[kind];
 }
@@ -553,6 +644,9 @@ export function TicketDetail({
   const [timeEntryBillingKind, setTimeEntryBillingKind] =
     useState<BillingKind>("internal");
   const [timeEntryNote, setTimeEntryNote] = useState("");
+  const [escalationKind, setEscalationKind] =
+    useState<EscalationKind>("technical");
+  const [escalationReason, setEscalationReason] = useState("");
   const [selectedRelatedTicketId, setSelectedRelatedTicketId] = useState("");
   const [selectedRelationType, setSelectedRelationType] =
     useState<RelationType>("relates_to");
@@ -560,6 +654,9 @@ export function TicketDetail({
     string | null
   >(null);
   const [pendingRelationKey, setPendingRelationKey] = useState<string | null>(
+    null,
+  );
+  const [pendingEscalationId, setPendingEscalationId] = useState<string | null>(
     null,
   );
   const requestSequence = useRef(0);
@@ -630,6 +727,16 @@ export function TicketDetail({
       detail?.priorities.find(
         (priority) => priority.id === detail.ticket.priority_id,
       ) ?? null,
+    [detail],
+  );
+  const openEscalations = useMemo(
+    () =>
+      detail?.escalations.filter((escalation) => !escalation.resolved_at) ?? [],
+    [detail],
+  );
+  const historicalEscalations = useMemo(
+    () =>
+      detail?.escalations.filter((escalation) => escalation.resolved_at) ?? [],
     [detail],
   );
   const assignedTeamId = detail?.ticket.assigned_team_id ?? "";
@@ -747,6 +854,67 @@ export function TicketDetail({
     } catch (nextError) {
       setError(errorMessage(nextError));
     } finally {
+      setPendingAction(null);
+    }
+  }
+
+  async function openEscalation(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!detail || detail.canEscalate !== true) return;
+
+    const reason = escalationReason.trim();
+    const reasonLength = [...reason].length;
+    if (reasonLength < 3 || reasonLength > 2_000 || reason.includes("\u0000")) {
+      setError("Die Begründung muss zwischen 3 und 2'000 Zeichen lang sein.");
+      return;
+    }
+
+    setPendingAction("escalation-open");
+    setError("");
+    try {
+      await invokeTicketOperation({
+        type: "openEscalation",
+        tenantId,
+        ticketId,
+        kind: escalationKind,
+        reason,
+      });
+      setEscalationKind("technical");
+      setEscalationReason("");
+      onChanged();
+      await loadTicket();
+    } catch (nextError) {
+      setError(errorMessage(nextError));
+    } finally {
+      setPendingAction(null);
+    }
+  }
+
+  async function resolveEscalation(escalation: TicketEscalation) {
+    if (
+      !detail ||
+      detail.canEscalate !== true ||
+      escalation.resolved_at !== null
+    ) {
+      return;
+    }
+
+    setPendingAction("escalation-resolve");
+    setPendingEscalationId(escalation.id);
+    setError("");
+    try {
+      await invokeTicketOperation({
+        type: "resolveEscalation",
+        tenantId,
+        ticketId,
+        escalationId: escalation.id,
+      });
+      onChanged();
+      await loadTicket();
+    } catch (nextError) {
+      setError(errorMessage(nextError));
+    } finally {
+      setPendingEscalationId(null);
       setPendingAction(null);
     }
   }
@@ -1038,6 +1206,156 @@ export function TicketDetail({
           Erstellt am {formatDateTime(detail.ticket.created_at)}
         </p>
       </div>
+
+      <section
+        className="ticket-detail-comments"
+        aria-labelledby="ticket-escalations-heading"
+      >
+        <div className="ticket-detail-section-heading">
+          <div>
+            <p className="eyebrow">ESKALATIONEN</p>
+            <h3 id="ticket-escalations-heading">Eskalationen</h3>
+          </div>
+          <span className="data-caption">
+            {openEscalations.length} offen / {detail.escalations.length} gesamt
+          </span>
+        </div>
+
+        {detail.canEscalate === true && (
+          <form className="ticket-comment-form" onSubmit={openEscalation}>
+            <label>
+              Art der Eskalation
+              <select
+                disabled={busy}
+                onChange={(event) => {
+                  const nextKind = event.target.value;
+                  if (isEscalationKind(nextKind)) setEscalationKind(nextKind);
+                }}
+                value={escalationKind}
+              >
+                <option value="technical">Technisch</option>
+                <option value="organizational">Organisatorisch</option>
+                <option value="sla">SLA</option>
+              </select>
+            </label>
+            <label className="ticket-comment-body">
+              Begründung
+              <textarea
+                disabled={busy}
+                maxLength={2000}
+                minLength={3}
+                onChange={(event) => setEscalationReason(event.target.value)}
+                placeholder="Warum muss dieses Ticket eskaliert werden?"
+                required
+                rows={3}
+                value={escalationReason}
+              />
+            </label>
+            <button className="secondary-button" disabled={busy} type="submit">
+              {pendingAction === "escalation-open" ? (
+                <LoaderCircle
+                  aria-hidden="true"
+                  className="ticket-detail-spinner"
+                  size={16}
+                />
+              ) : (
+                <AlertCircle aria-hidden="true" size={16} strokeWidth={1.8} />
+              )}
+              Eskalation eröffnen
+            </button>
+          </form>
+        )}
+
+        <div className="ticket-detail-section-heading">
+          <strong>Offene Eskalationen</strong>
+          <span className="data-caption">{openEscalations.length}</span>
+        </div>
+        {openEscalations.length === 0 ? (
+          <p className="empty-state">Keine offenen Eskalationen.</p>
+        ) : (
+          <ol className="ticket-comment-list">
+            {openEscalations.map((escalation) => {
+              const isResolving =
+                pendingAction === "escalation-resolve" &&
+                pendingEscalationId === escalation.id;
+              return (
+                <li className="ticket-comment" key={escalation.id}>
+                  <div className="ticket-comment-meta">
+                    <strong>{escalationKindLabel(escalation.kind)}</strong>
+                    <span className="ticket-comment-visibility-badge internal">
+                      Stufe {escalation.level}
+                    </span>
+                    <span className="ticket-comment-visibility-badge external">
+                      Offen
+                    </span>
+                    <time dateTime={escalation.opened_at}>
+                      Eröffnet am {formatDateTime(escalation.opened_at)}
+                    </time>
+                  </div>
+                  <p>{escalation.reason}</p>
+                  {detail.canEscalate === true && (
+                    <button
+                      aria-label={`Eskalation der Art ${escalationKindLabel(escalation.kind)} auflösen`}
+                      className="secondary-button"
+                      disabled={busy}
+                      onClick={() => void resolveEscalation(escalation)}
+                      type="button"
+                    >
+                      {isResolving ? (
+                        <LoaderCircle
+                          aria-hidden="true"
+                          className="ticket-detail-spinner"
+                          size={16}
+                        />
+                      ) : (
+                        <CircleCheck
+                          aria-hidden="true"
+                          size={16}
+                          strokeWidth={1.8}
+                        />
+                      )}
+                      Eskalation auflösen
+                    </button>
+                  )}
+                </li>
+              );
+            })}
+          </ol>
+        )}
+
+        <div className="ticket-detail-section-heading">
+          <strong>Historische Eskalationen</strong>
+          <span className="data-caption">{historicalEscalations.length}</span>
+        </div>
+        {historicalEscalations.length === 0 ? (
+          <p className="empty-state">Keine historischen Eskalationen.</p>
+        ) : (
+          <ol className="ticket-comment-list">
+            {historicalEscalations.map((escalation) => (
+              <li className="ticket-comment" key={escalation.id}>
+                <div className="ticket-comment-meta">
+                  <strong>{escalationKindLabel(escalation.kind)}</strong>
+                  <span className="ticket-comment-visibility-badge internal">
+                    Stufe {escalation.level}
+                  </span>
+                  <span className="ticket-comment-visibility-badge external">
+                    Aufgelöst
+                  </span>
+                  <time dateTime={escalation.opened_at}>
+                    Eröffnet am {formatDateTime(escalation.opened_at)}
+                  </time>
+                  {escalation.resolved_at && (
+                    <time dateTime={escalation.resolved_at}>
+                      Aufgelöst am {formatDateTime(escalation.resolved_at)}
+                    </time>
+                  )}
+                </div>
+                <p>{escalation.reason}</p>
+              </li>
+            ))}
+          </ol>
+        )}
+      </section>
 
       <section
         className="ticket-detail-comments"
