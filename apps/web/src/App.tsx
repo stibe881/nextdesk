@@ -99,8 +99,7 @@ function AccessShell({ children }: { children: ReactNode }) {
         </div>
         <nav aria-label="Zugangsbereiche">
           <span>PLATTFORM</span>
-          <span>SUPPORT</span>
-          <span>SICHERHEIT</span>
+          <a href="https://gross-ict.ch/support">SUPPORT</a>
         </nav>
       </header>
       <div className="access-overlay" aria-hidden="true" />

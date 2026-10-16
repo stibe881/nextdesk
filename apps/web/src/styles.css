@@ -867,7 +867,7 @@ button {
     sans-serif;
   letter-spacing: 0.14em;
 }
-.access-header nav span::after {
+.access-header nav > *::after {
   display: block;
   width: 22px;
   height: 2px;
@@ -877,8 +877,15 @@ button {
   opacity: 0;
   transition: opacity 160ms ease;
 }
-.access-header nav span:first-child::after {
+.access-header nav > *:first-child::after {
   opacity: 1;
+}
+.access-header nav a {
+  color: inherit;
+  text-decoration: none;
+}
+.access-header nav a:hover {
+  color: #f5d06b;
 }
 .access-stage {
   width: min(1320px, calc(100% - 64px));
