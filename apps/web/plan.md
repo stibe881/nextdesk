@@ -1,4 +1,4 @@
-# TicketHub Web-Dashboard – Phase 3
+# nextDesk Web-Dashboard – Phase 3
 
 ## Zweck und Umfang
 
@@ -41,7 +41,7 @@ apps/web/
 - **Brand Essence:** „Die ruhige Kommandozentrale für mandantenfähigen IT-Support.“ Präzise, vertrauenswürdig, handlungsorientiert.
 - **Brand Voice:** Überschriften nennen den Zustand direkt („SLA-Risiko in 42 Minuten“); Aktionen sind eindeutig („Queue öffnen“, nicht „Mehr erfahren“).
 - **Wordmark/Marke:** Ein abstrahiertes Ticket mit einer ansteigenden Wegmarke als CSS-gezeichnete Wortmarke; der Name bleibt über die gemeinsame Produktkonfiguration austauschbar.
-- **Signaturfarbe:** `#FF5C35` als TicketHub-Signalorange.
+- **Signaturfarbe:** `#FF5C35` als nextDesk-Signalorange.
 
 ## Ausgangskriterien
 

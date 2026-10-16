@@ -843,19 +843,11 @@ button {
     sans-serif;
   letter-spacing: -0.04em;
 }
-.access-brand .brand-mark {
-  width: 27px;
-  height: 27px;
-  border-color: rgba(255, 255, 255, 0.72);
-}
-.access-brand .brand-mark i {
-  background: #f2c13d;
-}
-.access-brand .brand-mark i:nth-child(2) {
-  background: #fff;
-}
-.access-brand .brand-mark i:nth-child(3) {
-  background: #e8b63d;
+.nextdesk-logo-mark {
+  display: block;
+  width: 31px;
+  height: 31px;
+  object-fit: contain;
 }
 .access-header nav {
   display: flex;

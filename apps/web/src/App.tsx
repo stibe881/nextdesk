@@ -90,11 +90,11 @@ function AccessShell({ children }: { children: ReactNode }) {
     <main className="access-shell">
       <header className="access-header">
         <div className="access-brand">
-          <span className="brand-mark" aria-hidden="true">
-            <i />
-            <i />
-            <i />
-          </span>
+          <img
+            alt="nextDesk"
+            className="nextdesk-logo-mark"
+            src="/assets/nextdesk-logo-mark-a.png"
+          />
           <span>{productDefaults.productName}</span>
         </div>
         <nav aria-label="Zugangsbereiche">
@@ -117,7 +117,7 @@ function AccessShell({ children }: { children: ReactNode }) {
         <section className="access-card">{children}</section>
       </section>
       <footer className="access-footer">
-        <span>TICKETHUB · BETRIEBEN VON</span>
+        <span>NEXTDESK · BETRIEBEN VON</span>
         <img alt="Gross ICT" src="/assets/gross-ict-footer-logo.png" />
       </footer>
     </main>
