@@ -4863,6 +4863,12 @@ body:has(.ticket-detail) {
   padding: 0;
 }
 
+.ticket-load-more {
+  display: flex;
+  justify-content: center;
+  padding: 20px 0 4px;
+}
+
 .ticket-row {
   grid-template-columns: minmax(0, 1fr) auto 28px;
   gap: 16px;

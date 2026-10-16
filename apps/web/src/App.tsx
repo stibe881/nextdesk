@@ -71,8 +71,10 @@ type TicketScope = "all" | "mine" | "unassigned" | "open" | "closed";
 
 type DashboardView = {
   activity: readonly TimelineItem[];
+  hasMoreTickets: boolean;
   metrics: DashboardMetrics;
   serviceHealth: readonly ServiceHealth[];
+  ticketCount: number;
   ticketListNote?: string;
   tickets: readonly DashboardTicket[];
   updatedAt: string;
@@ -119,8 +121,10 @@ const sections: readonly { label: Section; Icon: LucideIcon }[] = [
 
 const previewView: DashboardView = {
   activity: activityItems,
+  hasMoreTickets: false,
   metrics: previewMetrics,
   serviceHealth,
+  ticketCount: dashboardTickets.length,
   tickets: dashboardTickets,
   updatedAt: "09:45 · Europe/Zurich",
 };
@@ -599,6 +603,7 @@ export function App() {
   const [snapshot, setSnapshot] = useState<LiveDashboardSnapshot | null>(null);
   const [dashboardLoading, setDashboardLoading] = useState(false);
   const [dashboardRevision, setDashboardRevision] = useState(0);
+  const [ticketPage, setTicketPage] = useState(0);
   const [errorMessage, setErrorMessage] = useState("");
   const [ownerAccess, setOwnerAccess] = useState<OwnerAccess>("idle");
   const [ownerAccessError, setOwnerAccessError] = useState("");
@@ -819,15 +824,52 @@ export function App() {
   }, [activeTenant, session]);
 
   useEffect(() => {
+    setTicketPage(0);
+  }, [activeTenant?.id, dashboardRevision, period]);
+
+  useEffect(() => {
     if (!session || !activeTenant) return;
 
     let mounted = true;
     setDashboardLoading(true);
-    setSnapshot(null);
+    if (ticketPage === 0) setSnapshot(null);
     setErrorMessage("");
-    void loadLiveDashboard(activeTenant, period)
+    void loadLiveDashboard(activeTenant, period, ticketPage)
       .then((nextSnapshot) => {
-        if (mounted) setSnapshot(nextSnapshot);
+        if (!mounted) return;
+        setSnapshot((current) => {
+          if (
+            ticketPage === 0 ||
+            !current ||
+            current.tenantId !== nextSnapshot.tenantId ||
+            current.period !== nextSnapshot.period
+          ) {
+            return nextSnapshot;
+          }
+
+          const loadedTicketIds = new Set(
+            current.tickets.map((ticket) => ticket.recordId ?? ticket.id),
+          );
+          const tickets = [
+            ...current.tickets,
+            ...nextSnapshot.tickets.filter(
+              (ticket) => !loadedTicketIds.has(ticket.recordId ?? ticket.id),
+            ),
+          ];
+          const mergedSnapshot = {
+            ...nextSnapshot,
+            tickets,
+          };
+          if (tickets.length < nextSnapshot.ticketCount) {
+            return {
+              ...mergedSnapshot,
+              ticketListNote: `Die Liste zeigt ${tickets.length} von ${nextSnapshot.ticketCount} autorisierten Tickets.`,
+            };
+          }
+          const { ticketListNote: _ticketListNote, ...completeSnapshot } =
+            mergedSnapshot;
+          return completeSnapshot;
+        });
       })
       .catch((error: Error) => {
         if (mounted) setErrorMessage(error.message);
@@ -839,7 +881,7 @@ export function App() {
     return () => {
       mounted = false;
     };
-  }, [activeTenant, dashboardRevision, period, session]);
+  }, [activeTenant, dashboardRevision, period, session, ticketPage]);
 
   async function signOut() {
     if (!supabase) return;
@@ -934,8 +976,10 @@ export function App() {
   const view: DashboardView = isSupabaseConfigured
     ? (currentSnapshot ?? {
         activity: [],
+        hasMoreTickets: false,
         metrics: previewMetrics,
         serviceHealth: [],
+        ticketCount: 0,
         tickets: [],
         updatedAt: "wird geladen",
       })
@@ -1368,14 +1412,12 @@ export function App() {
               <div className="panel-heading">
                 <div>
                   <p className="eyebrow">Autorisierte Vorgänge</p>
-                  <h2>
-                    {view.ticketListNote
-                      ? "Neueste autorisierte Tickets"
-                      : ticketScopeLabel[ticketScope]}
-                  </h2>
+                  <h2>{ticketScopeLabel[ticketScope]}</h2>
                 </div>
                 <span className="data-caption">
-                  {filteredTickets.length} Treffer
+                  {view.hasMoreTickets
+                    ? `${filteredTickets.length} geladen`
+                    : `${filteredTickets.length} Treffer`}
                 </span>
               </div>
               {activeTenant && isSupabaseConfigured && (
@@ -1409,6 +1451,20 @@ export function App() {
                   : {})}
                 tickets={filteredTickets}
               />
+              {isSupabaseConfigured && view.hasMoreTickets && (
+                <div className="ticket-load-more">
+                  <button
+                    className="secondary-button"
+                    disabled={dashboardLoading}
+                    onClick={() => setTicketPage((current) => current + 1)}
+                    type="button"
+                  >
+                    {dashboardLoading
+                      ? "Weitere Tickets werden geladen …"
+                      : "Weitere Tickets laden"}
+                  </button>
+                </div>
+              )}
             </section>
           </>
         ) : section !== "Übersicht" ? (
@@ -1601,6 +1657,7 @@ export function App() {
             </button>
             <TicketComposer
               onCreated={(ticketId) => {
+                setTicketPage(0);
                 setDashboardRevision((value) => value + 1);
                 setTicketComposerOpen(false);
                 setSection("Tickets");

@@ -7,6 +7,8 @@ import type {
   TimelineItem,
 } from "../dashboard-data";
 
+const TICKET_PAGE_SIZE = 50;
+
 export interface TenantOption {
   id: string;
   name: string;
@@ -15,9 +17,11 @@ export interface TenantOption {
 
 export interface LiveDashboardSnapshot {
   activity: TimelineItem[];
+  hasMoreTickets: boolean;
   metrics: DashboardMetrics;
   period: Period;
   serviceHealth: ServiceHealth[];
+  ticketCount: number;
   ticketListNote?: string;
   tenantId: string;
   tickets: DashboardTicket[];
@@ -128,9 +132,11 @@ export async function loadProfileName(): Promise<string | null> {
 export async function loadLiveDashboard(
   tenant: TenantOption,
   period: Period,
+  ticketPage = 0,
 ): Promise<LiveDashboardSnapshot> {
   const client = requireSupabase();
   const since = startDate(period);
+  const ticketRangeStart = ticketPage * TICKET_PAGE_SIZE;
   const {
     data: { user },
     error: userError,
@@ -146,7 +152,7 @@ export async function loadLiveDashboard(
         .eq("tenant_id", tenant.id)
         .gte("created_at", since)
         .order("created_at", { ascending: false })
-        .limit(100),
+        .range(ticketRangeStart, ticketRangeStart + TICKET_PAGE_SIZE),
       client
         .from("ticket_statuses")
         .select("id, label, is_closed")
@@ -179,7 +185,7 @@ export async function loadLiveDashboard(
     departments.map((department) => [department.id, department]),
   );
 
-  const ticketRows = tickets.map((ticket) => {
+  const ticketRows = tickets.slice(0, TICKET_PAGE_SIZE).map((ticket) => {
     const department = departmentById.get(ticket.department_id);
     const due = formatDueAt(ticket.resolution_due_at);
     return {
@@ -263,9 +269,10 @@ export async function loadLiveDashboard(
     timeStyle: "short",
     timeZone: "Europe/Zurich",
   }).format(new Date());
+  const hasMoreTickets = tickets.length > TICKET_PAGE_SIZE;
   const ticketListNote =
     totalTicketCount > ticketRows.length
-      ? `Die Liste zeigt die neuesten ${ticketRows.length} von ${totalTicketCount} autorisierten Tickets.`
+      ? `Die Liste zeigt ${ticketRows.length} von ${totalTicketCount} autorisierten Tickets.`
       : null;
 
   return {
@@ -278,6 +285,7 @@ export async function loadLiveDashboard(
       }).format(new Date(event.created_at)),
       tone: "neutral" as const,
     })),
+    hasMoreTickets,
     metrics: {
       closed: String(closedCount),
       closedDetail: "im gewählten Zeitraum",
@@ -311,6 +319,7 @@ export async function loadLiveDashboard(
     period,
     ...(ticketListNote ? { ticketListNote } : {}),
     tenantId: tenant.id,
+    ticketCount: totalTicketCount,
     tickets: ticketRows,
     updatedAt: now,
   };
