@@ -14,6 +14,7 @@ import {
   BookOpen,
   ChartNoAxesCombined,
   CircleEllipsis,
+  Command,
   LayoutDashboard,
   LogOut,
   MonitorCog,
@@ -695,8 +696,11 @@ export function App() {
   const [notificationActionPending, setNotificationActionPending] = useState<
     string | null
   >(null);
+  const [commandMenuOpen, setCommandMenuOpen] = useState(false);
+  const [commandQuery, setCommandQuery] = useState("");
   const notificationButtonRef = useRef<HTMLButtonElement>(null);
   const notificationPanelRef = useRef<HTMLElement>(null);
+  const commandInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!supabase) return;
@@ -883,6 +887,25 @@ export function App() {
   useEffect(() => {
     if (notificationPanelOpen) notificationPanelRef.current?.focus();
   }, [notificationPanelOpen]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setCommandMenuOpen(true);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
+  useEffect(() => {
+    if (!commandMenuOpen) return;
+    const frame = window.requestAnimationFrame(() =>
+      commandInputRef.current?.focus(),
+    );
+    return () => window.cancelAnimationFrame(frame);
+  }, [commandMenuOpen]);
 
   useEffect(() => {
     if (!supabase || !session || !activeTenant) {
@@ -1134,6 +1157,58 @@ export function App() {
     open: "Offene Tickets",
     unassigned: "Nicht zugewiesene Tickets",
   };
+  const normalizedCommandQuery = commandQuery.trim().toLocaleLowerCase("de-CH");
+  const commandActions = [
+    {
+      id: "create-ticket",
+      label: "Ticket erfassen",
+      description: "Neuen Vorgang anlegen",
+      keywords: "neu erstellen anlegen",
+    },
+    ...sections.map((item) => ({
+      id: `section:${item.label}`,
+      label: item.label,
+      description: "Arbeitsbereich öffnen",
+      keywords: item.label.toLocaleLowerCase("de-CH"),
+    })),
+  ].filter((action) => {
+    if (action.id !== "create-ticket" || activeTenant) return true;
+    return false;
+  });
+  const matchingCommandActions = commandActions.filter((action) =>
+    normalizedCommandQuery
+      ? `${action.label} ${action.description} ${action.keywords}`
+          .toLocaleLowerCase("de-CH")
+          .includes(normalizedCommandQuery)
+      : true,
+  );
+  const matchingCommandTickets = view.tickets
+    .filter((ticket) => {
+      if (!normalizedCommandQuery) return false;
+      return `${ticket.id} ${ticket.subject} ${ticket.queueLabel}`
+        .toLocaleLowerCase("de-CH")
+        .includes(normalizedCommandQuery);
+    })
+    .slice(0, 6);
+
+  function closeCommandMenu() {
+    setCommandMenuOpen(false);
+    setCommandQuery("");
+  }
+
+  function runCommand(actionId: string) {
+    if (actionId === "create-ticket") {
+      closeCommandMenu();
+      setTicketComposerOpen(true);
+      return;
+    }
+    if (actionId.startsWith("section:")) {
+      const target = actionId.slice("section:".length) as Section;
+      closeCommandMenu();
+      setSection(target);
+    }
+  }
+
   const visibleSections = isTenantAdmin
     ? [...sections, { label: "Einstellungen" as const, Icon: Settings }]
     : sections;
@@ -1303,6 +1378,18 @@ export function App() {
                 Ticket erfassen
               </button>
             )}
+            <button
+              aria-controls="workspace-command-menu"
+              aria-expanded={commandMenuOpen}
+              aria-label="Befehlsmenü öffnen"
+              className="command-menu-trigger"
+              onClick={() => setCommandMenuOpen(true)}
+              type="button"
+            >
+              <Command aria-hidden="true" size={16} strokeWidth={1.9} />
+              <span>Befehle</span>
+              <kbd>⌘ K</kbd>
+            </button>
             <label className="search-field">
               <Search aria-hidden="true" size={17} strokeWidth={1.8} />
               <input
@@ -1812,6 +1899,108 @@ export function App() {
           </>
         )}
       </main>
+      {commandMenuOpen && (
+        <div
+          aria-label="Befehlsmenü"
+          aria-modal="true"
+          className="command-menu-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) closeCommandMenu();
+          }}
+          role="dialog"
+        >
+          <section
+            aria-labelledby="workspace-command-menu-heading"
+            className="command-menu"
+            id="workspace-command-menu"
+            onKeyDown={(event) => {
+              if (event.key === "Escape") closeCommandMenu();
+            }}
+          >
+            <div className="command-menu__search">
+              <Search aria-hidden="true" size={18} strokeWidth={1.9} />
+              <input
+                aria-describedby="workspace-command-menu-hint"
+                aria-label="Befehle oder Tickets suchen"
+                onChange={(event) => setCommandQuery(event.target.value)}
+                placeholder="Befehl oder Ticket suchen …"
+                ref={commandInputRef}
+                value={commandQuery}
+              />
+              <button
+                aria-label="Befehlsmenü schliessen"
+                className="command-menu__close"
+                onClick={closeCommandMenu}
+                type="button"
+              >
+                <X aria-hidden="true" size={18} strokeWidth={1.8} />
+              </button>
+            </div>
+            <p className="data-caption" id="workspace-command-menu-hint">
+              Schnellnavigation und aktuell geladene Tickets · Esc zum
+              Schliessen
+            </p>
+            {matchingCommandActions.length > 0 && (
+              <div className="command-menu__group">
+                <p className="command-menu__label">AKTIONEN</p>
+                {matchingCommandActions.map((action) => (
+                  <button
+                    className="command-menu__item"
+                    key={action.id}
+                    onClick={() => runCommand(action.id)}
+                    type="button"
+                  >
+                    <Command aria-hidden="true" size={16} strokeWidth={1.8} />
+                    <span>
+                      <strong>{action.label}</strong>
+                      <small>{action.description}</small>
+                    </span>
+                    <ArrowRight
+                      aria-hidden="true"
+                      size={16}
+                      strokeWidth={1.8}
+                    />
+                  </button>
+                ))}
+              </div>
+            )}
+            {matchingCommandTickets.length > 0 && (
+              <div className="command-menu__group">
+                <p className="command-menu__label">TICKETS</p>
+                {matchingCommandTickets.map((ticket) => (
+                  <button
+                    className="command-menu__item"
+                    key={ticket.recordId ?? ticket.id}
+                    onClick={() => {
+                      closeCommandMenu();
+                      setSection("Tickets");
+                      setSelectedTicketId(ticket.recordId ?? ticket.id);
+                    }}
+                    type="button"
+                  >
+                    <Ticket aria-hidden="true" size={16} strokeWidth={1.8} />
+                    <span>
+                      <strong>{ticket.id}</strong>
+                      <small>{ticket.subject}</small>
+                    </span>
+                    <ArrowRight
+                      aria-hidden="true"
+                      size={16}
+                      strokeWidth={1.8}
+                    />
+                  </button>
+                ))}
+              </div>
+            )}
+            {matchingCommandActions.length === 0 &&
+              matchingCommandTickets.length === 0 && (
+                <p className="command-menu__empty">
+                  Keine passende Aktion oder kein passendes geladenes Ticket.
+                </p>
+              )}
+          </section>
+        </div>
+      )}
       {activeTenant && ticketComposerOpen && (
         <div
           aria-label="Ticket erfassen"
