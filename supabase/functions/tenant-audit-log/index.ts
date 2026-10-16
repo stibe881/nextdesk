@@ -4,6 +4,43 @@ const ALLOWED_ORIGIN = "https://app.nextdesk.ch";
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+const ERROR_MESSAGES = {
+  method_not_allowed: {
+    title: "Methode nicht erlaubt",
+    detail: "Verwenden Sie für diese Funktion eine POST-Anfrage.",
+    retryable: false,
+  },
+  invalid_request: {
+    title: "Ungültige Anfrage",
+    detail: "Prüfen Sie Mandant und Eingaben und versuchen Sie es erneut.",
+    retryable: false,
+  },
+  authorization_check_failed: {
+    title: "Berechtigung nicht prüfbar",
+    detail: "Die Berechtigungsprüfung ist vorübergehend nicht verfügbar.",
+    retryable: true,
+  },
+  tenant_admin_required: {
+    title: "Berechtigung erforderlich",
+    detail:
+      "Das Änderungsprotokoll ist nur für Mandantenadministratoren verfügbar.",
+    retryable: false,
+  },
+  audit_log_read_failed: {
+    title: "Änderungsprotokoll nicht verfügbar",
+    detail: "Das Änderungsprotokoll konnte vorübergehend nicht geladen werden.",
+    retryable: true,
+  },
+  audit_log_actor_read_failed: {
+    title: "Änderungsprotokoll unvollständig",
+    detail:
+      "Die zugehörigen Benutzerinformationen konnten nicht geladen werden.",
+    retryable: true,
+  },
+} as const;
+
+type ErrorCode = keyof typeof ERROR_MESSAGES;
+
 type AuditRequest = {
   type: "list";
   tenantId: string;
@@ -55,13 +92,26 @@ function json(
   body: Record<string, unknown>,
   status = 200,
 ): Response {
-  return new Response(JSON.stringify(body), {
+  const requestId = crypto.randomUUID();
+  return new Response(JSON.stringify({ ...body, requestId }), {
     status,
     headers: {
       ...corsHeaders(request),
       "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "no-store",
+      "X-Request-Id": requestId,
     },
   });
+}
+
+function failure(request: Request, code: ErrorCode, status: number): Response {
+  return json(
+    request,
+    {
+      error: { code, ...ERROR_MESSAGES[code] },
+    },
+    status,
+  );
 }
 
 async function isTenantAdministrator(
@@ -109,14 +159,14 @@ async function isTenantAdministrator(
 
 const handler = withSupabase({ auth: "user" }, async (request, context) => {
   if (request.method !== "POST") {
-    return json(request, { error: { code: "method_not_allowed" } }, 405);
+    return failure(request, "method_not_allowed", 405);
   }
 
   const body = await request.json().catch(() => null);
   const input = parseRequest(body);
   const actorId = context.userClaims?.id;
   if (!input || !isUuid(actorId)) {
-    return json(request, { error: { code: "invalid_request" } }, 400);
+    return failure(request, "invalid_request", 400);
   }
 
   const authorization = await isTenantAdministrator(
@@ -125,14 +175,10 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     input.tenantId,
   );
   if (authorization === "error") {
-    return json(
-      request,
-      { error: { code: "authorization_check_failed" } },
-      500,
-    );
+    return failure(request, "authorization_check_failed", 500);
   }
   if (authorization !== "allowed") {
-    return json(request, { error: { code: "tenant_admin_required" } }, 403);
+    return failure(request, "tenant_admin_required", 403);
   }
 
   const { data, error } = await context.supabaseAdmin
@@ -144,7 +190,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     .order("occurred_at", { ascending: false })
     .limit(input.limit + 1);
   if (error) {
-    return json(request, { error: { code: "audit_log_read_failed" } }, 500);
+    return failure(request, "audit_log_read_failed", 500);
   }
 
   const rows = (data ?? []) as Array<{
@@ -172,11 +218,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
           .in("id", actorIds)
           .limit(100);
   if (profileError) {
-    return json(
-      request,
-      { error: { code: "audit_log_actor_read_failed" } },
-      500,
-    );
+    return failure(request, "audit_log_actor_read_failed", 500);
   }
 
   const actorNames = new Map(
@@ -204,6 +246,9 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
 export default {
   fetch(request: Request): Response | Promise<Response> {
     if (request.method === "OPTIONS") {
+      if (request.headers.get("origin") !== ALLOWED_ORIGIN) {
+        return new Response(null, { status: 403, headers: { Vary: "Origin" } });
+      }
       return new Response(null, { status: 204, headers: corsHeaders(request) });
     }
     return handler(request);
