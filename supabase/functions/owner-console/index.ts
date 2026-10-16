@@ -116,6 +116,12 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     : undefined;
   if (userError || !Array.isArray(providers) || !providers.includes("azure"))
     return json(request, { error: { code: "sso_required" } }, 403);
+  const amr = isRecord(context.jwtClaims) ? context.jwtClaims.amr : undefined;
+  const hasOAuthSession =
+    Array.isArray(amr) &&
+    amr.some((entry) => isRecord(entry) && entry.method === "oauth");
+  if (!hasOAuthSession)
+    return json(request, { error: { code: "sso_required" } }, 403);
   const { data: operator, error: operatorError } = await context.supabaseAdmin
     .from("platform_administrators")
     .select("user_id")

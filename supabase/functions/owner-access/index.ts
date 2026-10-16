@@ -48,6 +48,11 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
   if (userError || !Array.isArray(providers) || !providers.includes("azure")) {
     return failure(request, "sso_required");
   }
+  const amr = isRecord(context.jwtClaims) ? context.jwtClaims.amr : undefined;
+  const hasOAuthSession =
+    Array.isArray(amr) &&
+    amr.some((entry) => isRecord(entry) && entry.method === "oauth");
+  if (!hasOAuthSession) return failure(request, "sso_required");
 
   const { data: operator, error } = await context.supabaseAdmin
     .from("platform_administrators")

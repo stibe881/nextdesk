@@ -25,6 +25,7 @@ import {
   type LiveDashboardSnapshot,
   type TenantOption,
 } from "./lib/live-dashboard";
+import { acceptTenantInvitations } from "./lib/tenant-invitations";
 import {
   OwnerConsoleScreen,
   resolveOwnerAccess,
@@ -382,7 +383,9 @@ export function App() {
     setTenants([]);
     setActiveTenantId("");
     setSnapshot(null);
-    void Promise.all([loadActiveTenants(), loadProfileName()])
+    void acceptTenantInvitations()
+      .catch(() => 0)
+      .then(() => Promise.all([loadActiveTenants(), loadProfileName()]))
       .then(([activeTenants, profileName]) => {
         if (!mounted) return;
         setTenants(activeTenants);

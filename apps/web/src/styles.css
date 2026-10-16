@@ -1407,3 +1407,29 @@ button {
     width: 100%;
   }
 }
+
+.console-form select {
+  min-height: 39px;
+  border: 1px solid rgba(255, 255, 255, 0.42);
+  border-radius: 0;
+  background: rgba(0, 0, 0, 0.28);
+  color: #fff;
+  font: inherit;
+  padding: 8px 10px;
+}
+.console-invite-panel {
+  margin-top: 18px;
+}
+.console-invite-form {
+  grid-template-columns: minmax(180px, 0.8fr) minmax(240px, 1fr) auto;
+  align-items: end;
+}
+.console-invite-form .email-access-button {
+  min-height: 39px;
+  margin: 0;
+}
+@media (max-width: 780px) {
+  .console-invite-form {
+    grid-template-columns: 1fr;
+  }
+}

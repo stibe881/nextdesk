@@ -45,6 +45,11 @@ function readableConsoleError(code: string | null) {
       "Der Mandant konnte nicht angelegt werden. Slug und Abteilungsnamen prüfen.",
     tenant_update_failed:
       "Der Mandantenstatus konnte nicht gespeichert werden.",
+    tenant_admin_required:
+      "Nur ein aktiver Mandantenadministrator darf Benutzer einladen.",
+    invitation_email_failed:
+      "Der Einladungslink konnte nicht versendet werden. Bitte später erneut versuchen.",
+    invitation_create_failed: "Die Einladung konnte nicht gespeichert werden.",
   };
   return code
     ? (messages[code] ?? "Die Anfrage konnte nicht verarbeitet werden.")
@@ -79,6 +84,18 @@ async function ownerConsoleRequest<T>(
   return response.data;
 }
 
+async function tenantUserRequest<T>(body: Record<string, unknown>): Promise<T> {
+  if (!supabase) throw new Error("Die Supabase-Konfiguration fehlt.");
+  const { data, error } = await supabase.functions.invoke("tenant-users", {
+    body,
+  });
+  if (error) throw new Error(readableConsoleError(await edgeErrorCode(error)));
+  const response = data as { data?: T } | null;
+  if (!response?.data)
+    throw new Error("Die Einladung konnte nicht verarbeitet werden.");
+  return response.data;
+}
+
 function makeDepartmentKey(value: string, index: number) {
   const slug = value
     .normalize("NFKD")
@@ -101,6 +118,7 @@ export function OwnerConsoleScreen({ onSignOut }: { onSignOut: () => void }) {
     slug: "",
     departments: "ICT, Infrastruktur",
   });
+  const [invitation, setInvitation] = useState({ tenantId: "", email: "" });
 
   async function loadTenants() {
     setLoading(true);
@@ -110,6 +128,10 @@ export function OwnerConsoleScreen({ onSignOut }: { onSignOut: () => void }) {
         type: "listTenants",
       });
       setTenants(data.tenants);
+      setInvitation((current) => ({
+        ...current,
+        tenantId: current.tenantId || data.tenants[0]?.id || "",
+      }));
     } catch (nextError) {
       setError(
         nextError instanceof Error
@@ -183,6 +205,38 @@ export function OwnerConsoleScreen({ onSignOut }: { onSignOut: () => void }) {
         nextError instanceof Error
           ? nextError.message
           : "Der Status konnte nicht gespeichert werden.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function inviteUser(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!invitation.tenantId || !invitation.email.trim()) {
+      setError(
+        "Wählen Sie einen Mandanten und geben Sie eine E-Mail-Adresse ein.",
+      );
+      return;
+    }
+    setSaving(true);
+    setError("");
+    setMessage("");
+    try {
+      await tenantUserRequest({
+        type: "inviteUser",
+        tenantId: invitation.tenantId,
+        email: invitation.email,
+      });
+      setMessage(
+        `Einladungslink wurde an ${invitation.email.trim()} versendet.`,
+      );
+      setInvitation((current) => ({ ...current, email: "" }));
+    } catch (nextError) {
+      setError(
+        nextError instanceof Error
+          ? nextError.message
+          : "Die Einladung konnte nicht versendet werden.",
       );
     } finally {
       setSaving(false);
@@ -324,6 +378,62 @@ export function OwnerConsoleScreen({ onSignOut }: { onSignOut: () => void }) {
           </form>
         </section>
       </div>
+      <section className="console-panel console-invite-panel">
+        <p className="eyebrow">BENUTZERVERWALTUNG</p>
+        <h2>Person einladen.</h2>
+        <p className="console-copy">
+          Nur aktive Mandantenadministratoren können Einladungen versenden. Der
+          Link wird an die angegebene Arbeitsadresse zugestellt und aktiviert
+          nach dem Öffnen automatisch den Mandantenzugang.
+        </p>
+        <form
+          className="console-form console-invite-form"
+          onSubmit={inviteUser}
+        >
+          <label>
+            Mandant
+            <select
+              disabled={saving || tenants.length === 0}
+              onChange={(event) =>
+                setInvitation({ ...invitation, tenantId: event.target.value })
+              }
+              required
+              value={invitation.tenantId}
+            >
+              <option value="" disabled>
+                Mandant wählen
+              </option>
+              {tenants
+                .filter((tenant) => tenant.status === "active")
+                .map((tenant) => (
+                  <option key={tenant.id} value={tenant.id}>
+                    {tenant.name}
+                  </option>
+                ))}
+            </select>
+          </label>
+          <label>
+            Geschäftliche E-Mail-Adresse
+            <input
+              disabled={saving || tenants.length === 0}
+              onChange={(event) =>
+                setInvitation({ ...invitation, email: event.target.value })
+              }
+              placeholder="name@unternehmen.ch"
+              required
+              type="email"
+              value={invitation.email}
+            />
+          </label>
+          <button
+            className="email-access-button"
+            disabled={saving || tenants.length === 0}
+            type="submit"
+          >
+            {saving ? "Einladung wird versendet …" : "Zugang einladen"}
+          </button>
+        </form>
+      </section>
       <p className="owner-console-footer">
         Website-Bereitstellungen bleiben bis zur Hinterlegung eines
         serverseitigen GitHub-Dispatch-Tokens bewusst deaktiviert.
