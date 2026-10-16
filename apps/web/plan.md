@@ -6,7 +6,7 @@ Die erste startbare Webschicht zeigt eine operative Übersicht für einen Mandan
 
 ## Architektur
 
-`apps/web` ist eine Vite-/React-/TypeScript-Anwendung. `src/App.tsx` hält UI-Zustand für Zeitraum, Queue und Navigation; `src/dashboard-data.ts` stellt nur für den deutlich markierten Offline-Preview deterministische Beispielzustände bereit. Der spätere Supabase-Adapter liegt getrennt in `src/lib/supabase.ts`; er kann ausschliesslich `VITE_SUPABASE_URL` und `VITE_SUPABASE_PUBLISHABLE_KEY` lesen. Service-Role-Werte gehören weder in das Bundle noch in `.env.example`.
+`apps/web` ist eine Vite-/React-/TypeScript-Anwendung. `src/App.tsx` hält UI-Zustand für Zeitraum, Queue, Navigation und die Login-Zustände. `src/dashboard-data.ts` stellt nur für den deutlich markierten Offline-Preview deterministische Beispielzustände bereit. `src/lib/supabase.ts` kapselt den browser-sicheren Client, Magic-Link-Anmeldung und Session-Refresh. `src/lib/live-dashboard.ts` liest aktive Mitgliedschaften, Mandantendaten, Tickets, Status, Prioritäten, Abteilungen und autorisierte Ereignisse ausschliesslich mit dem User-JWT; jede Live-Abfrage bleibt damit unter den Datenbank-RLS-Policies. Service-Role-Werte gehören weder in das Bundle noch in `.env.example`.
 
 ```text
 apps/web/
@@ -14,7 +14,8 @@ apps/web/
 ├── src/
 │   ├── App.tsx                   # Dashboard-Komposition und Interaktion
 │   ├── dashboard-data.ts         # Klar markierte Offline-Vorschau
-│   ├── lib/supabase.ts           # Browser-sichere Konfigurationsgrenze
+│   ├── lib/supabase.ts           # Browser-sichere Auth- und Session-Grenze
+│   ├── lib/live-dashboard.ts     # RLS-gebundene Mandanten- und Ticketabfragen
 │   ├── main.tsx                  # React-Einstieg
 │   └── styles.css                # Responsives Designsystem
 ├── index.html
@@ -44,3 +45,4 @@ apps/web/
 - Desktop und schmale Mobile-Breite bleiben lesbar; die Rail wird auf schmalen Bildschirmen zur horizontalen Navigation.
 - Navigation, Zeitraum und Queue-Auswahl aktualisieren die sichtbaren Zustände.
 - Ohne Publishable-Supabase-Konfiguration ist der Offline-Preview-Modus deutlich ausgewiesen.
+- Mit Publishable-Supabase-Konfiguration fordert die Anwendung per Magic Link eine Anmeldung an, lädt nur aktive Mandantenmitgliedschaften und zeigt Tickets ausschliesslich innerhalb des serverseitig RLS-gefilterten Mandantenkontexts an.

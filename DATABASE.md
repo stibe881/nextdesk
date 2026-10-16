@@ -16,6 +16,7 @@ Alle fachlichen Primärschlüssel sind UUIDs. Zeitstempel werden als `timestampt
 | `0006`    | Mandantenkonsistente Fremdschlüssel, berechtigungsgebundene RLS-Härtung, Katalog-Seed und gesperrte direkte Clientpfade. |
 | `0007`    | `aal2`-gebundene Mandantenanlage, Einladungszustände, Widerruf und sichere Annahme einer Einladung.                      |
 | `0008`    | Mandanteneinstellungen, Teams und Abteilungsmitgliedschaften über berechtigte Verwaltungsfunktionen.                     |
+| `0009`    | Lesepolicies für Status, Prioritäten und Kategorien innerhalb einer aktiven Mandantenmitgliedschaft.                     |
 
 Die Tabellen sind ein sicheres Fundament, nicht das vollständige Produktdatenmodell. Keine bisherige Migration verspricht, dass nicht angelegte Funktionen bereits verwendbar sind.
 
@@ -61,6 +62,10 @@ Die Reservierungsfunktion ist für `anon` und `authenticated` ausdrücklich gesp
 `provision_tenant` wird ausschliesslich von der user-authentifizierten Edge Function nach einem verifizierten `aal2`-JWT aufgerufen; die Funktion verlangt zusätzlich einen aktuellen Plattformbetreiber-MFA-Nachweis. Sie legt Mandant, Einstellungen, Branding, drei Systemrollen, Abteilungen, Mitgliedschaften und das Audit-Event in einer Transaktion an. `prepare_tenant_invitation`, `record_tenant_invitation_delivery`, `cancel_tenant_invitation` und `accept_current_tenant_invitation` trennen die Berechtigungsprüfung, die Auth-Einladung, den Widerruf und die Aktivierung der Mitgliedschaft. Re-Invites lassen historische Rollenzuweisungen ablaufen, damit nur die Standard-Requester-Rolle nach der Annahme wieder wirksam wird.
 
 `update_tenant_settings`, `create_tenant_team` und `set_department_membership` sind ausschliesslich über serverseitige Funktionen nutzbar. Jede prüft die Mandantenrolle des handelnden Benutzers und schreibt ein Audit-Ereignis.
+
+## Dashboard-Lesepfad
+
+Das Web-Dashboard fragt nach einer Magic-Link-Session zuerst die eigenen aktiven `tenant_memberships` ab und wählt daraus den Mandantenkontext. Für den gewählten Mandanten werden Tickets, Abteilungen, Status, Prioritäten und Ticketereignisse über das Benutzer-JWT gelesen. Die Migration `0009` gibt Status-, Prioritäts- und Kategoriemetadaten nicht pauschal frei, sondern nur dann, wenn `is_active_tenant_member(tenant_id)` wahr ist. Damit bleiben die Labels für ein Ticket sichtbar, ohne einen mandantenübergreifenden Referenzdatenkatalog zu schaffen.
 
 ## Offene Datenmodelle
 

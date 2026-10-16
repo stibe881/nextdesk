@@ -15,12 +15,12 @@
 
 ## Phase 3 – Anwendungen und Designsystem
 
-**Status: begonnen.** Eine startbare Vite-/React-Operationsübersicht mit responsivem Designsystem, Navigation, Zeitraumauswahl, Queue-Filterung und Suchfeld ist vorhanden. Sie arbeitet bis zur Cloud-Anbindung im ausdrücklich markierten Preview-Modus und enthält keine Service-Role-Konfiguration.
+**Status: Web-Grundlage lokal implementiert, Cloud-Anbindung offen.** Eine startbare Vite-/React-Operationsübersicht mit responsivem Designsystem, Navigation, Zeitraumauswahl, Queue-Filterung und Suchfeld ist vorhanden. Mit Publishable-Supabase-Konfiguration bietet sie Magic-Link-Anmeldung, Session-Refresh, Auswahl aktiver Mandantenmitgliedschaften und RLS-gebundene Abfragen für Tickets, Abteilungen, Status, Prioritäten und Ereignisse. Ohne Cloud-Konfiguration bleibt der Preview-Modus ausdrücklich markiert; die Anwendung enthält keine Service-Role-Konfiguration.
 
-1. TanStack Query/Table und i18n im Web ergänzen sowie die Preview-Daten durch authentifizierte RLS-Abfragen ersetzen.
+1. TanStack Query/Table und i18n im Web ergänzen sowie den lokalen Live-Datenadapter gegen ein echtes Supabase-Entwicklungsprojekt prüfen.
 2. Expo Router, NativeWind, SecureStore und Deep-Link-Basis starten.
-3. Gemeinsamen Auth- und Mandantenkontext an beide Apps anbinden.
-4. Dashboard, Navigation und Zugriffsgrenzen mit echten RLS-Daten aufbauen.
+3. Den vorhandenen Auth- und Mandantenkontext als geteilte Logik an die Expo-App anbinden.
+4. Dashboard, Navigation und Zugriffsgrenzen gegen echte RLS-Daten, Auth-Redirects und Sessionabläufe validieren.
 
 ## Phase 4 – Ticket-MVP
 

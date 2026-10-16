@@ -2,7 +2,7 @@
 
 NextDesk ist das Quellcode-Repository für **TicketHub**, eine mandantenfähige ITSM-Plattform für Web, iOS und Android. Der sichtbare Produktname ist eine Plattformkonfiguration und nicht an den Repository-Namen gebunden.
 
-> **Stand:** Phase 1 und die lokale Phase-2-Plattformbasis sind angelegt. Die startbare Vite-/React-Webanwendung liefert bereits eine responsive Operationsübersicht; sie markiert den Offline-Preview-Modus sichtbar, solange keine Supabase-Instanz verbunden ist. Die Expo-App und die produktive Supabase-Anbindung folgen.
+> **Stand:** Phase 1 und die lokale Phase-2-Plattformbasis sind angelegt. Die startbare Vite-/React-Webanwendung liefert eine responsive Operationsübersicht, Magic-Link-Anmeldung, aktiven Mandantenwechsel und RLS-gebundene Ticketabfragen. Solange keine Publishable-Supabase-Konfiguration vorhanden ist, bleibt der Offline-Preview-Modus sichtbar. Die Expo-App und die Verbindung zu einem echten Supabase-Projekt folgen.
 
 ## Permanente Website
 
@@ -20,7 +20,7 @@ Die statische Operationsübersicht wird bei jedem Push auf `main` über GitHub P
 
 ```text
 apps/                 Web- und Expo-Anwendungen
-  web/                Vite-/React-Operationsdashboard mit Publishable-Supabase-Grenze
+  web/                Vite-/React-Operationsdashboard mit Magic Link, Mandantenkontext und Publishable-Supabase-Grenze
 packages/             Gemeinsame TypeScript-Logik
   config/             Produkt- und Lokalisierungsstandards
   permissions/        Berechtigungskatalog und referenzierbare Auswertung
@@ -42,7 +42,11 @@ pnpm test:db
 pnpm dev:web
 ```
 
-`pnpm check` führt den TypeScript-Check, die Unit-Tests und statische Migrations-/Katalogprüfungen aus. `pnpm test:db` startet zusätzlich ein temporäres PostgreSQL-16-Cluster und führt alle acht Migrationen mit einem minimalen Auth-Shim aus. `pnpm dev:web` startet das lokale Dashboard auf Port 5173. Die Prüfungen ersetzen keine Verbindung gegen eine echte Supabase-Instanz.
+`pnpm check` führt den TypeScript-Check, die Unit-Tests und statische Migrations-/Katalogprüfungen aus. `pnpm test:db` startet zusätzlich ein temporäres PostgreSQL-16-Cluster und führt alle neun Migrationen mit einem minimalen Auth-Shim aus. `pnpm dev:web` startet das lokale Dashboard auf Port 5173. Die Prüfungen ersetzen keine Verbindung gegen eine echte Supabase-Instanz.
+
+## Web-Konfiguration
+
+Für den Live-Modus kopiert man `apps/web/.env.example` nach `apps/web/.env.local` und trägt ausschliesslich `VITE_SUPABASE_URL` sowie `VITE_SUPABASE_PUBLISHABLE_KEY` ein. Der Publishable-Key darf im Browser verwendet werden; ein Service-Role- oder Secret-Key darf dort niemals stehen. Im Supabase-Projekt muss zusätzlich `https://stibe881.github.io/nextdesk/` als erlaubte Auth-Redirect-URL für Magic Links hinterlegt werden.
 
 ## Wichtige Dokumente
 

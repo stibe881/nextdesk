@@ -49,7 +49,7 @@ psql -v ON_ERROR_STOP=1 <<'SQL'
 -- The test grants only emulate Supabase API read privileges; the migrations still provide RLS.
 grant usage on schema public, auth to authenticated;
 grant execute on function auth.uid() to authenticated;
-grant select on public.tickets, public.ticket_comments to authenticated;
+grant select on public.tickets, public.ticket_comments, public.ticket_statuses, public.ticket_priorities, public.ticket_categories to authenticated;
 
 insert into auth.users (id) values
   ('00000000-0000-4000-8000-000000000001'),
@@ -89,6 +89,9 @@ insert into public.ticket_statuses (id, tenant_id, key, label, sort_order) value
 insert into public.ticket_priorities (id, tenant_id, key, label, sort_order) values
   ('14000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000001', 'normal', 'Normal', 1),
   ('24000000-0000-4000-8000-000000000002', '20000000-0000-4000-8000-000000000002', 'normal', 'Normal', 1);
+insert into public.ticket_categories (id, tenant_id, department_id, name) values
+  ('13500000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000001', '11000000-0000-4000-8000-000000000001', 'Access'),
+  ('23500000-0000-4000-8000-000000000002', '20000000-0000-4000-8000-000000000002', '21000000-0000-4000-8000-000000000003', 'Access B');
 
 insert into public.roles (id, tenant_id, name, scope) values
   ('15000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000001', 'Requester', 'tenant'),
@@ -126,7 +129,7 @@ do $$
 declare
   relation_name text;
 begin
-  foreach relation_name in array array['roles', 'role_permissions', 'user_role_assignments', 'ticket_number_sequences', 'ticket_statuses']
+  foreach relation_name in array array['roles', 'role_permissions', 'user_role_assignments', 'ticket_number_sequences', 'ticket_statuses', 'ticket_priorities', 'ticket_categories']
   loop
     if not (select relrowsecurity from pg_class where oid = format('public.%I', relation_name)::regclass) then
       raise exception 'RLS not enabled for %', relation_name;
@@ -407,6 +410,11 @@ begin
   if (select count(*) from public.ticket_comments) <> 1 then
     raise exception 'ICT agent must see the internal ICT note';
   end if;
+  if (select count(*) from public.ticket_statuses) <> 1
+    or (select count(*) from public.ticket_priorities) <> 1
+    or (select count(*) from public.ticket_categories) <> 1 then
+    raise exception 'ICT agent must only see dashboard reference data from Tenant A';
+  end if;
 end;
 $$;
 reset role;
@@ -435,6 +443,26 @@ do $$
 begin
   if (select count(*) from public.tickets) <> 0 then
     raise exception 'Tenant B member must not see Tenant A tickets';
+  end if;
+  if (select count(*) from public.ticket_statuses) <> 1
+    or (select count(*) from public.ticket_priorities) <> 1
+    or (select count(*) from public.ticket_categories) <> 1 then
+    raise exception 'Tenant B member must only see dashboard reference data from Tenant B';
+  end if;
+end;
+$$;
+reset role;
+rollback;
+
+begin;
+set local "request.jwt.claim.sub" = '00000000-0000-4000-8000-000000000006';
+set local role authenticated;
+do $$
+begin
+  if (select count(*) from public.ticket_statuses) <> 0
+    or (select count(*) from public.ticket_priorities) <> 0
+    or (select count(*) from public.ticket_categories) <> 0 then
+    raise exception 'User without an active membership must not see dashboard reference data';
   end if;
 end;
 $$;

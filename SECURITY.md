@@ -6,12 +6,13 @@ TicketHub verwendet **deny by default**. Der Client besitzt nur den Supabase-Pub
 
 ## RLS-Modell im Kern
 
-Die Migration `0005_rls_core.sql` etabliert RLS für Mandanten, Mitglieder, Abteilungen, Tickets, Kommentare, Anhänge, Events und Watcher. Die Härtungsmigration `0006_harden_tenant_integrity_and_rbac.sql` erweitert RLS auf alle sensiblen Kern- und RBAC-Tabellen, sperrt direkte Clientzugriffe auf Rollen- und Nummernsequenzpfade und erzwingt konsistente Tenant-Fremdschlüssel. Die Funktionen `is_active_tenant_member`, `has_tenant_permission`, `has_ticket_permission`, `can_read_ticket` und `can_read_internal_note` lesen die tatsächliche Mitgliedschaft sowie zeitlich gültige Rollenzuweisungen.
+Die Migration `0005_rls_core.sql` etabliert RLS für Mandanten, Mitglieder, Abteilungen, Tickets, Kommentare, Anhänge, Events und Watcher. Die Härtungsmigration `0006_harden_tenant_integrity_and_rbac.sql` erweitert RLS auf alle sensiblen Kern- und RBAC-Tabellen, sperrt direkte Clientzugriffe auf Rollen- und Nummernsequenzpfade und erzwingt konsistente Tenant-Fremdschlüssel. Die Migration `0009_ticket_dashboard_reference_reads.sql` erlaubt Status-, Prioritäts- und Kategoriemetadaten ausschliesslich innerhalb einer aktiven Mandantenmitgliedschaft. Die Funktionen `is_active_tenant_member`, `has_tenant_permission`, `has_ticket_permission`, `can_read_ticket` und `can_read_internal_note` lesen die tatsächliche Mitgliedschaft sowie zeitlich gültige Rollenzuweisungen.
 
 - Ein Benutzer kann nur aktive Mandantenmitgliedschaften sehen.
 - Agenten benötigen sowohl eine passende Berechtigung als auch den korrekten Abteilungskontext.
 - Anfragende sehen mit `ticket.read.own` nur eigene oder sie betreffende Tickets.
 - `internal`-Kommentare sind zusätzlich durch `ticket.internal_notes.read` geschützt; diese Sichtbarkeit ist Standard.
+- Das Web verwendet nur den Publishable-Key und das Benutzer-JWT. Mandantenmitgliedschaften, Ticketdaten und Dashboardreferenzen werden nicht aus clientseitig behaupteten Mandanten-IDs abgeleitet, sondern jeweils durch RLS bestätigt.
 - Clientseitige Schreib-Policies auf Tickets fehlen bewusst, bis die geprüften RPCs/Edge Functions der Phase 2 umgesetzt sind.
 
 ## Privilegierter Zugriff
@@ -41,4 +42,4 @@ Der Datenminimierungsgrundsatz gilt für Formulare, Audit-Events, Push-Texte und
 9. SSO erzeugt keine Mitgliedschaft ohne erlaubte Zuordnung.
 10. Jeder privilegierte Zugriff und jede kritische Konfigurationsänderung ist auditierbar.
 
-Die TypeScript-Unit-Tests prüfen den gemeinsamen Referenzkern für Cross-Tenant-, Cross-Department-, eigene Ticket-, interne Kommentar- und Plattformrechte. Ergänzend startet `pnpm test:db` ein isoliertes PostgreSQL-16-Cluster mit minimalem Auth-Shim, spielt alle Migrationen ein und prüft Tenant-A/B-Isolation, ICT/Infrastruktur-Trennung, eigene Tickets, interne Kommentare, RLS-Aktivierung, Fremdschlüssel, Service-Role-ACLs, Provisionierung, Einladungen, Re-Invites und Widerrufe. Storage, Realtime, echtes Supabase Auth, Gateway-CORS und Mailzustellung sind noch nicht gegen eine Cloud-Umgebung geprüft.
+Die TypeScript-Unit-Tests prüfen den gemeinsamen Referenzkern für Cross-Tenant-, Cross-Department-, eigene Ticket-, interne Kommentar- und Plattformrechte. Ergänzend startet `pnpm test:db` ein isoliertes PostgreSQL-16-Cluster mit minimalem Auth-Shim, spielt alle Migrationen ein und prüft Tenant-A/B-Isolation, ICT/Infrastruktur-Trennung, eigene Tickets, interne Kommentare, mandantengebundene Status-/Prioritätsreferenzen, RLS-Aktivierung, Fremdschlüssel, Service-Role-ACLs, Provisionierung, Einladungen, Re-Invites und Widerrufe. Storage, Realtime, echtes Supabase Auth, Gateway-CORS und Mailzustellung sind noch nicht gegen eine Cloud-Umgebung geprüft.

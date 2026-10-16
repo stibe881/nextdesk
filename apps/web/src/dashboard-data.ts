@@ -1,95 +1,131 @@
-export type TicketState = "neu" | "in Bearbeitung" | "wartet" | "eskaliert";
-export type QueueKey = "alle" | "ict" | "infrastruktur";
+export type Period = "Heute" | "7 Tage" | "30 Tage";
+export type QueueKey = string;
 
 export interface DashboardTicket {
-  id: string;
-  subject: string;
-  requester: string;
-  queue: Exclude<QueueKey, "alle">;
-  state: TicketState;
   age: string;
-  sla: string;
+  id: string;
+  priority?: string;
+  queue: QueueKey;
+  queueLabel: string;
   risk: "ok" | "warnung" | "kritisch";
+  sla: string;
+  state: string;
+  subject: string;
+}
+
+export interface DashboardMetrics {
+  closed: string;
+  closedDetail: string;
+  open: string;
+  openDetail: string;
+  response: string;
+  responseDetail: string;
+  sla: string;
+  slaDetail: string;
+}
+
+export interface ServiceHealth {
+  availability: string;
+  detail: string;
+  name: string;
+  state: "stabil" | "beobachten";
+}
+
+export interface TimelineItem {
+  text: string;
+  time: string;
+  tone: "critical" | "neutral";
 }
 
 export const dashboardTickets: readonly DashboardTicket[] = [
   {
-    id: "ICT-2026-0142",
-    subject: "VPN-Verbindung bricht intermittierend ab",
-    requester: "Nina Keller",
-    queue: "ict",
-    state: "in Bearbeitung",
     age: "24 min",
-    sla: "03:18",
-    risk: "warnung",
-  },
-  {
-    id: "INF-2026-0088",
-    subject: "Backup-Job DC-02 mit Fehler beendet",
-    requester: "Monitoring",
-    queue: "infrastruktur",
-    state: "eskaliert",
-    age: "41 min",
-    sla: "00:42",
-    risk: "kritisch",
-  },
-  {
-    id: "ICT-2026-0137",
-    subject: "Berechtigung für Finance Share anpassen",
-    requester: "Marco Steiner",
+    id: "ICT-2026-0142",
     queue: "ict",
-    state: "wartet",
-    age: "1 h 12",
-    sla: "06:20",
-    risk: "ok",
+    queueLabel: "ICT",
+    risk: "warnung",
+    sla: "03:18",
+    state: "in Bearbeitung",
+    subject: "VPN-Verbindung bricht intermittierend ab",
   },
   {
-    id: "INF-2026-0084",
-    subject: "Neue VM für Testumgebung bereitstellen",
-    requester: "Lea Meier",
+    age: "41 min",
+    id: "INF-2026-0088",
     queue: "infrastruktur",
-    state: "neu",
-    age: "16 min",
-    sla: "07:44",
+    queueLabel: "Infrastruktur",
+    risk: "kritisch",
+    sla: "00:42",
+    state: "eskaliert",
+    subject: "Backup-Job DC-02 mit Fehler beendet",
+  },
+  {
+    age: "1 h 12",
+    id: "ICT-2026-0137",
+    queue: "ict",
+    queueLabel: "ICT",
     risk: "ok",
+    sla: "06:20",
+    state: "wartet",
+    subject: "Berechtigung für Finance Share anpassen",
+  },
+  {
+    age: "16 min",
+    id: "INF-2026-0084",
+    queue: "infrastruktur",
+    queueLabel: "Infrastruktur",
+    risk: "ok",
+    sla: "07:44",
+    state: "neu",
+    subject: "Neue VM für Testumgebung bereitstellen",
   },
 ];
 
-export const serviceHealth = [
-  {
-    name: "Identity & Access",
-    detail: "Entra / SSO",
-    state: "stabil",
-    availability: "99.99%",
-  },
-  {
-    name: "Workplace",
-    detail: "Client Services",
-    state: "stabil",
-    availability: "99.96%",
-  },
-  {
-    name: "Core Infrastructure",
-    detail: "Backup & Hosting",
-    state: "beobachten",
-    availability: "99.82%",
-  },
-] as const;
+export const previewMetrics: DashboardMetrics = {
+  closed: "68",
+  closedDetail: "im gewählten Zeitraum",
+  open: "36",
+  openDetail: "6 ausserhalb des Zielkorridors",
+  response: "11 min",
+  responseDetail: "Ziel: unter 15 Minuten",
+  sla: "94.8 %",
+  slaDetail: "gegenüber Vorperiode",
+};
 
-export const activityItems = [
+export const serviceHealth: readonly ServiceHealth[] = [
   {
-    time: "09:42",
+    availability: "99.99%",
+    detail: "Entra / SSO",
+    name: "Identity & Access",
+    state: "stabil",
+  },
+  {
+    availability: "99.96%",
+    detail: "Client Services",
+    name: "Workplace",
+    state: "stabil",
+  },
+  {
+    availability: "99.82%",
+    detail: "Backup & Hosting",
+    name: "Core Infrastructure",
+    state: "beobachten",
+  },
+];
+
+export const activityItems: readonly TimelineItem[] = [
+  {
     text: "INF-2026-0088 wurde an Infrastruktur eskaliert.",
+    time: "09:42",
     tone: "critical",
   },
   {
-    time: "09:31",
     text: "Nina Keller hat eine Rückmeldung zu ICT-2026-0142 ergänzt.",
+    time: "09:31",
     tone: "neutral",
   },
   {
-    time: "09:18",
     text: "SLA-Ziel für ICT-2026-0137 neu berechnet.",
+    time: "09:18",
     tone: "neutral",
   },
-] as const;
+];

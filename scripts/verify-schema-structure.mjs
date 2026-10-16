@@ -11,6 +11,7 @@ const expectedFiles = [
   "0006_harden_tenant_integrity_and_rbac.sql",
   "0007_tenant_provisioning_and_invitations.sql",
   "0008_tenant_administration.sql",
+  "0009_ticket_dashboard_reference_reads.sql",
 ];
 
 const availableFiles = await readdir(migrationDirectory);
@@ -100,6 +101,18 @@ const requiredFragments = [
   [
     "0008_tenant_administration.sql",
     "create or replace function public.set_department_membership",
+  ],
+  [
+    "0009_ticket_dashboard_reference_reads.sql",
+    "create policy ticket_statuses_select_member",
+  ],
+  [
+    "0009_ticket_dashboard_reference_reads.sql",
+    "create policy ticket_priorities_select_member",
+  ],
+  [
+    "0009_ticket_dashboard_reference_reads.sql",
+    "create policy ticket_categories_select_member",
   ],
 ];
 

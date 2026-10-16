@@ -13,6 +13,8 @@ Dieses Projekt verwendet eine vereinfachte Form von Keep a Changelog.
 - User-authentifizierte Edge Functions für Mandantenanlage, Mitglieder-Einladungen, Einladungsannahme und Verwaltungsaktionen inklusive restriktivem CORS-Konzept.
 - Architektur-, Datenmodell-, Sicherheits-, SSO-, Mobile-, API-, Supabase-, Deployment- und Roadmap-Dokumentation.
 - Berücksichtigung interner Kommentare als Standard, Kundenportalrollen, KB-Erstellung aus Tickets und plattformabhängigem Remote Support als Produktanforderungen.
+- Vite-/React-Operationsdashboard mit Magic-Link-Anmeldung, Auswahl aktiver Mandantenmitgliedschaften, RLS-gebundenen Dashboardabfragen und deutlich getrenntem Offline-Preview.
+- Neunte Migration für Status-, Prioritäts- und Kategorie-Lesepolicies im aktiven Mandantenkontext sowie lokale PostgreSQL-Tests für diese Referenzdatenisolation.
 
 ### Security
 
@@ -21,7 +23,8 @@ Dieses Projekt verwendet eine vereinfachte Form von Keep a Changelog.
 - Tenant-/Department-Konsistenz durch zusammengesetzte Fremdschlüssel und Assignment-Validierung erzwungen.
 - Ticketnummernreservierung für `anon` und `authenticated` als direkte RPC gesperrt.
 - Mandantenanlage verlangt einen `aal2`-verifizierten Plattformbetreiber; Einladungen werden erst nach einer nutzergebundenen Annahme aktiv, lassen sich widerrufen und reaktivieren keine historischen Rollen.
+- Der Browser-Client besitzt ausschliesslich den Publishable-Key; sichtbare Dashboardmetadaten werden pro Abfrage durch aktive Mitgliedschaft und RLS begrenzt.
 
 ### Not yet released
 
-- Keine produktiven Apps, keine Supabase-Umgebung und keine Benutzerfunktionen.
+- Keine verbundene Supabase-Cloud-Umgebung und damit noch kein gegen echte Auth-, RLS- und Mailzustände geprüfter Benutzerfluss.
