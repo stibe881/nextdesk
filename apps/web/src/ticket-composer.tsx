@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
+import { ArrowRight, CheckCircle2, X } from "lucide-react";
 import { supabase } from "./lib/supabase";
 
 type Department = { id: string; key: string; name: string; kind: string };
@@ -17,7 +18,7 @@ export function TicketComposer({
   onCreated,
 }: {
   tenantId: string;
-  onCreated: () => void;
+  onCreated: (ticketId: string) => void;
 }) {
   const [options, setOptions] = useState<OptionsResponse>({
     departments: [],
@@ -29,7 +30,10 @@ export function TicketComposer({
   const [description, setDescription] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState("");
+  const [confirmation, setConfirmation] = useState<{
+    ticketId: string;
+    ticketNumber: string;
+  } | null>(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -68,7 +72,7 @@ export function TicketComposer({
     if (!supabase || !departmentId || !priorityKey) return;
     setSaving(true);
     setError("");
-    setMessage("");
+    setConfirmation(null);
     const { data, error: requestError } = await supabase.functions.invoke(
       "ticket-actions",
       {
@@ -87,17 +91,19 @@ export function TicketComposer({
       setSaving(false);
       return;
     }
-    const ticketNumber = (data as { data?: { ticketNumber?: string } } | null)
-      ?.data?.ticketNumber;
+    const created = (
+      data as { data?: { ticketId?: string; ticketNumber?: string } } | null
+    )?.data;
     setSubject("");
     setDescription("");
-    setMessage(
-      ticketNumber
-        ? `Ticket ${ticketNumber} wurde erfasst.`
-        : "Das Ticket wurde erfasst.",
-    );
     setSaving(false);
-    onCreated();
+    if (created?.ticketId && created.ticketNumber) {
+      setConfirmation({
+        ticketId: created.ticketId,
+        ticketNumber: created.ticketNumber,
+      });
+      onCreated(created.ticketId);
+    }
   }
 
   return (
@@ -176,7 +182,31 @@ export function TicketComposer({
         </form>
       )}
       {error && <p className="ticket-compose-message error">{error}</p>}
-      {message && <p className="ticket-compose-message success">{message}</p>}
+      {confirmation && (
+        <aside className="ticket-success-toast" aria-live="polite">
+          <CheckCircle2 aria-hidden="true" size={24} strokeWidth={1.8} />
+          <div>
+            <strong>Ticket erstellt</strong>
+            <span>{confirmation.ticketNumber}</span>
+          </div>
+          <button
+            className="ticket-toast-open"
+            onClick={() => onCreated(confirmation.ticketId)}
+            type="button"
+          >
+            Öffnen
+            <ArrowRight aria-hidden="true" size={16} strokeWidth={1.8} />
+          </button>
+          <button
+            aria-label="Bestätigung schliessen"
+            className="ticket-toast-dismiss"
+            onClick={() => setConfirmation(null)}
+            type="button"
+          >
+            <X aria-hidden="true" size={16} strokeWidth={1.8} />
+          </button>
+        </aside>
+      )}
     </section>
   );
 }

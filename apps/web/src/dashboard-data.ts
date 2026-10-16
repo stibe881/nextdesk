@@ -3,6 +3,9 @@ export type QueueKey = string;
 
 export interface DashboardTicket {
   age: string;
+  assignedToCurrentUser: boolean;
+  isClosed: boolean;
+  isUnassigned: boolean;
   id: string;
   priority?: string;
   queue: QueueKey;
@@ -16,12 +19,12 @@ export interface DashboardTicket {
 export interface DashboardMetrics {
   closed: string;
   closedDetail: string;
+  mine: string;
+  mineDetail: string;
   open: string;
   openDetail: string;
-  response: string;
-  responseDetail: string;
-  sla: string;
-  slaDetail: string;
+  unassigned: string;
+  unassignedDetail: string;
 }
 
 export interface ServiceHealth {
@@ -40,7 +43,10 @@ export interface TimelineItem {
 export const dashboardTickets: readonly DashboardTicket[] = [
   {
     age: "24 min",
+    assignedToCurrentUser: true,
     id: "ICT-2026-0142",
+    isClosed: false,
+    isUnassigned: false,
     queue: "ict",
     queueLabel: "ICT",
     risk: "warnung",
@@ -50,7 +56,10 @@ export const dashboardTickets: readonly DashboardTicket[] = [
   },
   {
     age: "41 min",
+    assignedToCurrentUser: false,
     id: "INF-2026-0088",
+    isClosed: false,
+    isUnassigned: true,
     queue: "infrastruktur",
     queueLabel: "Infrastruktur",
     risk: "kritisch",
@@ -60,7 +69,10 @@ export const dashboardTickets: readonly DashboardTicket[] = [
   },
   {
     age: "1 h 12",
+    assignedToCurrentUser: false,
     id: "ICT-2026-0137",
+    isClosed: true,
+    isUnassigned: false,
     queue: "ict",
     queueLabel: "ICT",
     risk: "ok",
@@ -70,7 +82,10 @@ export const dashboardTickets: readonly DashboardTicket[] = [
   },
   {
     age: "16 min",
+    assignedToCurrentUser: false,
     id: "INF-2026-0084",
+    isClosed: false,
+    isUnassigned: true,
     queue: "infrastruktur",
     queueLabel: "Infrastruktur",
     risk: "ok",
@@ -83,12 +98,12 @@ export const dashboardTickets: readonly DashboardTicket[] = [
 export const previewMetrics: DashboardMetrics = {
   closed: "68",
   closedDetail: "im gewählten Zeitraum",
+  mine: "12",
+  mineDetail: "mir zugewiesen oder erstellt",
   open: "36",
   openDetail: "6 ausserhalb des Zielkorridors",
-  response: "11 min",
-  responseDetail: "Ziel: unter 15 Minuten",
-  sla: "94.8 %",
-  slaDetail: "gegenüber Vorperiode",
+  unassigned: "7",
+  unassignedDetail: "benötigen eine Zuweisung",
 };
 
 export const serviceHealth: readonly ServiceHealth[] = [

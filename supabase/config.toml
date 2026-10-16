@@ -29,3 +29,9 @@ verify_jwt = true
 
 [functions.ticket-operations]
 verify_jwt = true
+
+[functions.ticket-templates]
+verify_jwt = true
+
+[functions.tenant-admin-settings]
+verify_jwt = true

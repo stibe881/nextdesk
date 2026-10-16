@@ -20,6 +20,13 @@ type Action =
       visibility: "internal" | "external";
     }
   | {
+      type: "saveDraft";
+      tenantId: string;
+      ticketId: string;
+      body: string;
+      visibility: "internal" | "external";
+    }
+  | {
       type: "toggleWatch";
       tenantId: string;
       ticketId: string;
@@ -95,6 +102,19 @@ function parseAction(value: unknown): Action | null {
       tenantId: value.tenantId,
       ticketId: value.ticketId,
       body: value.body.trim(),
+      visibility: value.visibility,
+    };
+  if (
+    value.type === "saveDraft" &&
+    typeof value.body === "string" &&
+    value.body.length <= 50000 &&
+    (value.visibility === "internal" || value.visibility === "external")
+  )
+    return {
+      type: value.type,
+      tenantId: value.tenantId,
+      ticketId: value.ticketId,
+      body: value.body,
       visibility: value.visibility,
     };
   if (value.type === "toggleWatch" && typeof value.watching === "boolean")
@@ -287,6 +307,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       { data: watchers },
       { data: checklistItems },
       { data: timeEntries },
+      { data: drafts },
     ] = await Promise.all([
       context.supabaseAdmin
         .from("ticket_comments")
@@ -336,6 +357,11 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         )
         .eq("ticket_id", ticket.id)
         .order("created_at", { ascending: false }),
+      context.supabaseAdmin
+        .from("ticket_drafts")
+        .select("id, ticket_id, author_id, visibility, body, updated_at")
+        .eq("ticket_id", ticket.id)
+        .eq("author_id", actorId),
     ]);
     const filteredComments = internal
       ? (comments ?? [])
@@ -371,6 +397,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         watching: Boolean(watchers),
         checklistItems: checklistItems ?? [],
         timeEntries: internal ? (timeEntries ?? []) : [],
+        drafts: drafts ?? [],
         canUpdate: await hasPermission(
           context.supabaseAdmin,
           actorId,
@@ -395,6 +422,41 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         canUseInternalNotes: internal,
       },
     });
+  }
+
+  if (action.type === "saveDraft") {
+    if (
+      action.visibility === "internal" &&
+      !(await hasPermission(
+        context.supabaseAdmin,
+        actorId,
+        ticket.tenant_id,
+        ticket.department_id,
+        "ticket.internal_notes.write",
+      ))
+    )
+      return response(
+        request,
+        { error: { code: "internal_note_denied" } },
+        403,
+      );
+    const { data: draft, error } = await context.supabaseAdmin
+      .from("ticket_drafts")
+      .upsert(
+        {
+          ticket_id: ticket.id,
+          author_id: actorId,
+          visibility: action.visibility,
+          body: action.body,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "ticket_id,author_id,visibility" },
+      )
+      .select("id, ticket_id, author_id, visibility, body, updated_at")
+      .single();
+    if (error)
+      return response(request, { error: { code: "draft_save_failed" } }, 422);
+    return response(request, { data: { draft } });
   }
 
   if (action.type === "addTimeEntry") {

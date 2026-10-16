@@ -42,11 +42,13 @@ interface DepartmentRecord {
 }
 
 interface TicketRecord {
+  assigned_agent_id: string | null;
   created_at: string;
   department_id: string;
   due_at: string | null;
   id: string;
   priority_id: string;
+  requester_id: string;
   status_id: string;
   subject: string;
   ticket_number: string;
@@ -129,12 +131,17 @@ export async function loadLiveDashboard(
 ): Promise<LiveDashboardSnapshot> {
   const client = requireSupabase();
   const since = startDate(period);
+  const {
+    data: { user },
+    error: userError,
+  } = await client.auth.getUser();
+  if (userError) throw userError;
   const [ticketsResult, statusesResult, prioritiesResult, departmentsResult] =
     await Promise.all([
       client
         .from("tickets")
         .select(
-          "id, ticket_number, subject, department_id, status_id, priority_id, due_at, created_at",
+          "id, ticket_number, subject, department_id, status_id, priority_id, due_at, created_at, assigned_agent_id, requester_id",
         )
         .eq("tenant_id", tenant.id)
         .gte("created_at", since)
@@ -177,7 +184,13 @@ export async function loadLiveDashboard(
     const due = formatDueAt(ticket.due_at);
     return {
       age: formatAge(ticket.created_at),
+      assignedToCurrentUser:
+        Boolean(user) &&
+        (ticket.assigned_agent_id === user?.id ||
+          ticket.requester_id === user?.id),
       id: ticket.ticket_number,
+      isClosed: Boolean(statusById.get(ticket.status_id)?.is_closed),
+      isUnassigned: ticket.assigned_agent_id === null,
       priority: priorityById.get(ticket.priority_id)?.label ?? "Ohne Priorität",
       queue: department?.key ?? "unbekannt",
       queueLabel: department?.name ?? "Nicht zugeordnet",
@@ -191,36 +204,58 @@ export async function loadLiveDashboard(
   const closedStatusIds = statuses
     .filter((status) => status.is_closed)
     .map((status) => status.id);
-  const [totalCountResult, closedCountResult, eventsResult] = await Promise.all(
-    [
-      client
-        .from("tickets")
-        .select("id", { count: "exact", head: true })
-        .eq("tenant_id", tenant.id)
-        .gte("created_at", since),
-      closedStatusIds.length > 0
-        ? client
-            .from("tickets")
-            .select("id", { count: "exact", head: true })
-            .eq("tenant_id", tenant.id)
-            .gte("created_at", since)
-            .in("status_id", closedStatusIds)
-        : Promise.resolve({ count: 0, error: null }),
-      client
-        .from("ticket_events")
-        .select("event_type, created_at")
-        .gte("created_at", since)
-        .order("created_at", { ascending: false })
-        .limit(3),
-    ],
-  );
+  const [
+    totalCountResult,
+    closedCountResult,
+    mineCountResult,
+    unassignedCountResult,
+    eventsResult,
+  ] = await Promise.all([
+    client
+      .from("tickets")
+      .select("id", { count: "exact", head: true })
+      .eq("tenant_id", tenant.id)
+      .gte("created_at", since),
+    closedStatusIds.length > 0
+      ? client
+          .from("tickets")
+          .select("id", { count: "exact", head: true })
+          .eq("tenant_id", tenant.id)
+          .gte("created_at", since)
+          .in("status_id", closedStatusIds)
+      : Promise.resolve({ count: 0, error: null }),
+    user
+      ? client
+          .from("tickets")
+          .select("id", { count: "exact", head: true })
+          .eq("tenant_id", tenant.id)
+          .gte("created_at", since)
+          .or(`assigned_agent_id.eq.${user.id},requester_id.eq.${user.id}`)
+      : Promise.resolve({ count: 0, error: null }),
+    client
+      .from("tickets")
+      .select("id", { count: "exact", head: true })
+      .eq("tenant_id", tenant.id)
+      .gte("created_at", since)
+      .is("assigned_agent_id", null),
+    client
+      .from("ticket_events")
+      .select("event_type, created_at")
+      .gte("created_at", since)
+      .order("created_at", { ascending: false })
+      .limit(3),
+  ]);
 
   if (totalCountResult.error) throw totalCountResult.error;
   if (closedCountResult.error) throw closedCountResult.error;
+  if (mineCountResult.error) throw mineCountResult.error;
+  if (unassignedCountResult.error) throw unassignedCountResult.error;
   if (eventsResult.error) throw eventsResult.error;
 
   const totalTicketCount = totalCountResult.count ?? 0;
   const closedCount = closedCountResult.count ?? 0;
+  const mineCount = mineCountResult.count ?? 0;
+  const unassignedCount = unassignedCountResult.count ?? 0;
   const openCount = Math.max(0, totalTicketCount - closedCount);
   const now = new Intl.DateTimeFormat("de-CH", {
     dateStyle: "short",
@@ -245,12 +280,12 @@ export async function loadLiveDashboard(
     metrics: {
       closed: String(closedCount),
       closedDetail: "im gewählten Zeitraum",
+      mine: String(mineCount),
+      mineDetail: "mir zugewiesen oder erstellt",
       open: String(openCount),
       openDetail: "RLS-autorisierte Tickets",
-      response: "—",
-      responseDetail: "SLA-Modul folgt",
-      sla: "—",
-      slaDetail: "noch nicht berechnet",
+      unassigned: String(unassignedCount),
+      unassignedDetail: "ohne Bearbeiter",
     },
     serviceHealth: [
       {

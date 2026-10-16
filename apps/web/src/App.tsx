@@ -17,6 +17,7 @@ import {
   LogOut,
   MonitorCog,
   Search,
+  Settings,
   Ticket,
   type LucideIcon,
 } from "lucide-react";
@@ -42,6 +43,7 @@ import {
 import { acceptTenantInvitations } from "./lib/tenant-invitations";
 import { TicketComposer } from "./ticket-composer";
 import { TicketDetail } from "./ticket-detail";
+import { TenantAdminSettings } from "./tenant-admin-settings";
 import {
   OwnerConsoleScreen,
   resolveOwnerAccess,
@@ -49,7 +51,14 @@ import {
 } from "./platform-owner";
 import { appRedirectUrl, isSupabaseConfigured, supabase } from "./lib/supabase";
 
-type Section = "Übersicht" | "Tickets" | "Services" | "Wissen" | "Berichte";
+type Section =
+  | "Übersicht"
+  | "Tickets"
+  | "Services"
+  | "Wissen"
+  | "Berichte"
+  | "Einstellungen";
+type TicketScope = "all" | "mine" | "unassigned" | "open" | "closed";
 
 type DashboardView = {
   activity: readonly TimelineItem[];
@@ -356,6 +365,7 @@ export function App() {
   const [section, setSection] = useState<Section>("Übersicht");
   const [period, setPeriod] = useState<Period>("Heute");
   const [queue, setQueue] = useState("alle");
+  const [ticketScope, setTicketScope] = useState<TicketScope>("all");
   const [query, setQuery] = useState("");
   const [session, setSession] = useState<Session | null | undefined>(
     isSupabaseConfigured ? undefined : null,
@@ -373,6 +383,7 @@ export function App() {
   const [ownerAccessError, setOwnerAccessError] = useState("");
   const [ownerView, setOwnerView] = useState<"console" | "tenant">("console");
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
+  const [isTenantAdmin, setIsTenantAdmin] = useState(false);
 
   useEffect(() => {
     if (!supabase) return;
@@ -470,6 +481,27 @@ export function App() {
   );
 
   useEffect(() => {
+    if (!supabase || !session || !activeTenant) {
+      setIsTenantAdmin(false);
+      return;
+    }
+    let mounted = true;
+    void supabase.functions
+      .invoke("tenant-admin-settings", {
+        body: { type: "getSettings", tenantId: activeTenant.id },
+      })
+      .then(({ error }) => {
+        if (mounted) setIsTenantAdmin(!error);
+      })
+      .catch(() => {
+        if (mounted) setIsTenantAdmin(false);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [activeTenant, session]);
+
+  useEffect(() => {
     if (!session || !activeTenant) return;
 
     let mounted = true;
@@ -523,18 +555,39 @@ export function App() {
     () =>
       view.tickets.filter((ticket) => {
         const inQueue = queue === "alle" || ticket.queue === queue;
+        const inScope =
+          ticketScope === "all" ||
+          (ticketScope === "mine" && ticket.assignedToCurrentUser) ||
+          (ticketScope === "unassigned" && ticket.isUnassigned) ||
+          (ticketScope === "open" && !ticket.isClosed) ||
+          (ticketScope === "closed" && ticket.isClosed);
         const match =
           `${ticket.id} ${ticket.subject} ${ticket.queueLabel} ${ticket.state}`
             .toLocaleLowerCase("de-CH")
             .includes(query.toLocaleLowerCase("de-CH"));
-        return inQueue && match;
+        return inQueue && inScope && match;
       }),
-    [query, queue, view.tickets],
+    [query, queue, ticketScope, view.tickets],
   );
 
   const greetingName = operatorName.split(" ")[0] || operatorName;
   const queueCount = (queueKey: string) =>
     view.tickets.filter((ticket) => ticket.queue === queueKey).length;
+  const openTicketScope = (scope: TicketScope) => {
+    setTicketScope(scope);
+    setQueue("alle");
+    setSection("Tickets");
+  };
+  const ticketScopeLabel: Record<TicketScope, string> = {
+    all: "Alle sichtbaren Tickets",
+    closed: "Gelöste Tickets",
+    mine: "Meine Tickets",
+    open: "Offene Tickets",
+    unassigned: "Nicht zugewiesene Tickets",
+  };
+  const visibleSections = isTenantAdmin
+    ? [...sections, { label: "Einstellungen" as const, Icon: Settings }]
+    : sections;
 
   if (isSupabaseConfigured && session === undefined) {
     return <LoadingScreen message="Sichere Sitzung wird geprüft." />;
@@ -599,7 +652,7 @@ export function App() {
           <span>{productDefaults.productName}</span>
         </div>
         <nav className="nav-list">
-          {sections.map((item) => (
+          {visibleSections.map((item) => (
             <button
               className={
                 section === item.label ? "nav-item active" : "nav-item"
@@ -665,21 +718,23 @@ export function App() {
                 Plattform
               </button>
             )}
-            {activeTenant && (
-              <label className="tenant-selector">
-                <span>Mandant</span>
-                <select
-                  onChange={(event) => setActiveTenantId(event.target.value)}
-                  value={activeTenantId}
-                >
-                  {tenants.map((tenant) => (
-                    <option key={tenant.id} value={tenant.id}>
-                      {tenant.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            )}
+            {activeTenant &&
+              ownerAccess === "ready" &&
+              ownerView === "tenant" && (
+                <label className="tenant-selector">
+                  <span>Mandant</span>
+                  <select
+                    onChange={(event) => setActiveTenantId(event.target.value)}
+                    value={activeTenantId}
+                  >
+                    {tenants.map((tenant) => (
+                      <option key={tenant.id} value={tenant.id}>
+                        {tenant.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
             <label className="search-field">
               <Search aria-hidden="true" size={17} strokeWidth={1.8} />
               <input
@@ -723,11 +778,19 @@ export function App() {
           </section>
         )}
 
-        {section === "Tickets" ? (
+        {section === "Einstellungen" && activeTenant && isTenantAdmin ? (
+          <TenantAdminSettings
+            onClose={() => setSection("Übersicht")}
+            tenantId={activeTenant.id}
+          />
+        ) : section === "Tickets" ? (
           <>
             {activeTenant && (
               <TicketComposer
-                onCreated={() => setDashboardRevision((value) => value + 1)}
+                onCreated={(ticketId) => {
+                  setDashboardRevision((value) => value + 1);
+                  setSelectedTicketId(ticketId);
+                }}
                 tenantId={activeTenant.id}
               />
             )}
@@ -738,7 +801,7 @@ export function App() {
                   <h2>
                     {view.ticketListNote
                       ? "Neueste autorisierte Tickets"
-                      : "Alle sichtbaren Tickets"}
+                      : ticketScopeLabel[ticketScope]}
                   </h2>
                 </div>
                 <span className="data-caption">
@@ -812,35 +875,51 @@ export function App() {
               </div>
             </section>
 
-            <section className="metric-strip" aria-label="Kennzahlen">
-              <article className="metric-card emphasis">
+            <section className="metric-strip" aria-label="Ticket-Schnellfilter">
+              <button
+                className="metric-card metric-button emphasis"
+                onClick={() => openTicketScope("mine")}
+                type="button"
+              >
+                <p>Meine Tickets</p>
+                <div>
+                  <strong>{metricDisplay(view.metrics.mine)}</strong>
+                </div>
+                <small>{view.metrics.mineDetail}</small>
+              </button>
+              <button
+                className="metric-card metric-button"
+                onClick={() => openTicketScope("unassigned")}
+                type="button"
+              >
+                <p>Nicht zugewiesene Tickets</p>
+                <div>
+                  <strong>{metricDisplay(view.metrics.unassigned)}</strong>
+                </div>
+                <small>{view.metrics.unassignedDetail}</small>
+              </button>
+              <button
+                className="metric-card metric-button"
+                onClick={() => openTicketScope("open")}
+                type="button"
+              >
                 <p>Offene Tickets</p>
                 <div>
                   <strong>{metricDisplay(view.metrics.open)}</strong>
                 </div>
                 <small>{view.metrics.openDetail}</small>
-              </article>
-              <article className="metric-card">
+              </button>
+              <button
+                className="metric-card metric-button"
+                onClick={() => openTicketScope("closed")}
+                type="button"
+              >
                 <p>Gelöste Tickets</p>
                 <div>
                   <strong>{metricDisplay(view.metrics.closed)}</strong>
                 </div>
                 <small>{view.metrics.closedDetail}</small>
-              </article>
-              <article className="metric-card">
-                <p>Ø Erstreaktion</p>
-                <div>
-                  <strong>{metricDisplay(view.metrics.response)}</strong>
-                </div>
-                <small>{view.metrics.responseDetail}</small>
-              </article>
-              <article className="metric-card">
-                <p>SLA erfüllt</p>
-                <div>
-                  <strong>{metricDisplay(view.metrics.sla)}</strong>
-                </div>
-                <small>{view.metrics.slaDetail}</small>
-              </article>
+              </button>
             </section>
 
             <section className="content-grid">

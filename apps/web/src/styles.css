@@ -1915,3 +1915,533 @@ button {
     justify-content: flex-end;
   }
 }
+
+/* nextDesk operations console: Gross-ICT-aligned dark workspace */
+.app-shell {
+  background: #111619;
+  color: #f4f0e7;
+}
+.command-rail {
+  background: #0b0e10;
+  border-right: 1px solid rgba(232, 182, 61, 0.35);
+}
+.brand-lockup {
+  color: #fff;
+}
+.nav-item {
+  color: rgba(255, 255, 255, 0.7);
+  border-radius: 0;
+}
+.nav-item svg {
+  color: rgba(232, 182, 61, 0.78);
+}
+.nav-item:hover {
+  background: rgba(232, 182, 61, 0.1);
+  color: #fff;
+}
+.nav-item.active {
+  background: rgba(232, 182, 61, 0.16);
+  box-shadow: inset 3px 0 #e8b63d;
+  color: #fff;
+}
+.nav-item.active svg {
+  color: #f4c856;
+}
+.rail-footer {
+  border-color: rgba(255, 255, 255, 0.15);
+}
+.operator-avatar {
+  background: #e8b63d;
+  color: #151515;
+}
+.workspace {
+  max-width: none;
+  margin: 0;
+  background: #15191b;
+}
+.topbar h1,
+.panel-heading h2,
+.metric-card strong,
+.ticket-main h3,
+.service-row strong {
+  color: #fff;
+}
+.topbar h1 {
+  font-family: Impact, Haettenschweiler, "Arial Narrow Bold", sans-serif;
+  font-weight: 400;
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
+}
+.eyebrow,
+.eyebrow span {
+  color: #e8b63d;
+}
+.search-field,
+.notification-button,
+.tenant-selector select {
+  border-color: rgba(255, 255, 255, 0.28);
+  background: #1d2225;
+  color: #f5f1e7;
+}
+.search-field input {
+  color: #fff;
+}
+.search-field input::placeholder {
+  color: rgba(255, 255, 255, 0.45);
+}
+.notification-button {
+  color: #f4c856;
+}
+.notification-button b {
+  background: #d85a3e;
+  border-color: #15191b;
+}
+.tenant-selector {
+  color: #f0d889;
+}
+.preview-notice {
+  border-color: rgba(232, 182, 61, 0.48);
+  background: rgba(232, 182, 61, 0.1);
+  color: #f5e1a4;
+}
+.preview-notice strong,
+.notice-code {
+  color: #f4c856;
+}
+.notice-beacon,
+.signal-dot {
+  background: #e8b63d;
+  box-shadow: 0 0 0 5px rgba(232, 182, 61, 0.15);
+}
+.signal-copy strong {
+  color: #fff;
+}
+.signal-copy > span:last-child {
+  color: rgba(255, 255, 255, 0.58);
+}
+.segmented {
+  border-color: rgba(255, 255, 255, 0.2);
+  background: #0f1315;
+}
+.segmented button {
+  color: rgba(255, 255, 255, 0.63);
+}
+.segmented button.selected {
+  background: #e8b63d;
+  color: #151515;
+  box-shadow: none;
+}
+.metric-card,
+.panel,
+.module-stub {
+  border-color: rgba(255, 255, 255, 0.17);
+  background: #1b2023;
+  box-shadow: none;
+}
+.metric-card.emphasis {
+  border-top-color: #e8b63d;
+}
+.metric-card p,
+.metric-card small,
+.ticket-main p,
+.ticket-id span,
+.data-caption,
+.empty-state,
+.list-note {
+  color: rgba(255, 255, 255, 0.58);
+}
+.ticket-id {
+  color: #f2ce6c;
+}
+.queue-tabs {
+  border-color: rgba(255, 255, 255, 0.13);
+}
+.queue-tab {
+  background: #111619;
+  color: rgba(255, 255, 255, 0.65);
+}
+.queue-tab.selected {
+  background: #e8b63d;
+  color: #151515;
+}
+.ticket-row {
+  border-color: rgba(255, 255, 255, 0.1);
+}
+.risk-line {
+  background: #e8b63d;
+}
+.risk-line.warnung {
+  background: #d8913d;
+}
+.risk-line.kritisch {
+  background: #d85a3e;
+}
+.state-badge {
+  background: rgba(232, 182, 61, 0.16);
+  color: #f4d575;
+}
+.sla {
+  color: #f1cd68;
+}
+.sla.warnung {
+  color: #e4ad4e;
+}
+.sla.kritisch {
+  color: #ee846c;
+}
+.service-row small,
+.activity-panel p,
+.activity-panel time {
+  color: rgba(255, 255, 255, 0.55);
+}
+.service-dot {
+  background: #e8b63d;
+}
+.activity-marker {
+  background: #e8b63d;
+}
+.activity-marker.critical {
+  background: #db634a;
+}
+.text-button,
+.platform-return {
+  color: #f4c856;
+}
+.platform-return {
+  border-color: rgba(232, 182, 61, 0.55);
+  background: transparent;
+}
+.ticket-open-button {
+  border-color: rgba(232, 182, 61, 0.6);
+  background: transparent;
+  color: #f4c856;
+}
+@media (max-width: 720px) {
+  .command-rail {
+    border-right: 0;
+    border-bottom: 1px solid rgba(232, 182, 61, 0.4);
+  }
+  .workspace {
+    padding-top: 24px;
+  }
+}
+
+.metric-button {
+  width: 100%;
+  min-height: 137px;
+  border-radius: 8px;
+  cursor: pointer;
+  text-align: left;
+  transition:
+    border-color 150ms ease,
+    transform 150ms ease,
+    background 150ms ease;
+}
+.metric-button:hover,
+.metric-button:focus-visible {
+  border-color: #e8b63d;
+  background: #242b2f;
+  outline: none;
+  transform: translateY(-2px);
+}
+
+.ticket-success-toast {
+  position: fixed;
+  z-index: 40;
+  right: 28px;
+  bottom: 28px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 13px;
+  width: min(470px, calc(100vw - 32px));
+  padding: 15px 16px;
+  border: 1px solid rgba(232, 182, 61, 0.65);
+  border-left: 4px solid #e8b63d;
+  background: #151a1d;
+  box-shadow: 0 18px 45px rgba(0, 0, 0, 0.35);
+  color: #f5f1e7;
+}
+.ticket-success-toast > svg {
+  color: #e8b63d;
+}
+.ticket-success-toast div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+.ticket-success-toast strong {
+  font-size: 13px;
+}
+.ticket-success-toast span {
+  color: #f1d27a;
+  font:
+    700 11px "IBM Plex Mono",
+    monospace;
+}
+.ticket-toast-open,
+.ticket-toast-dismiss {
+  border: 0;
+  background: transparent;
+  color: #f4c856;
+}
+.ticket-toast-open {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-weight: 800;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.ticket-toast-dismiss {
+  display: grid;
+  place-items: center;
+  padding: 5px;
+}
+.ticket-toast-open:hover,
+.ticket-toast-dismiss:hover {
+  color: #fff;
+}
+@media (max-width: 600px) {
+  .ticket-success-toast {
+    right: 12px;
+    bottom: 12px;
+    width: calc(100vw - 24px);
+  }
+}
+
+.tenant-admin-settings {
+  display: grid;
+  gap: 18px;
+  margin-top: 24px;
+  color: #f5f1e7;
+}
+.tenant-admin-settings__header,
+.tenant-admin-settings__section-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+.tenant-admin-settings__header h1,
+.tenant-admin-settings__section h2 {
+  margin: 4px 0 8px;
+  font-family: Impact, Haettenschweiler, "Arial Narrow Bold", sans-serif;
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+.tenant-admin-settings__eyebrow,
+.tenant-admin-settings__tenant-id,
+.tenant-admin-settings__hint {
+  color: rgba(255, 255, 255, 0.62);
+  font-size: 11px;
+}
+.tenant-admin-settings__eyebrow {
+  color: #e8b63d;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.tenant-admin-settings__close,
+.tenant-admin-settings__form button {
+  border: 1px solid #e8b63d;
+  background: transparent;
+  color: #f4c856;
+  padding: 10px 13px;
+  font-weight: 800;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+.tenant-admin-settings__content {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+.tenant-admin-settings__section {
+  padding: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.17);
+  background: #1b2023;
+}
+.tenant-admin-settings__section h2 {
+  font-size: 27px;
+}
+.tenant-admin-settings__section p {
+  color: rgba(255, 255, 255, 0.67);
+  line-height: 1.5;
+}
+.tenant-admin-settings__details {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.tenant-admin-settings__details div {
+  padding: 10px;
+  background: rgba(255, 255, 255, 0.04);
+}
+.tenant-admin-settings__details dt {
+  color: #e8b63d;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.tenant-admin-settings__details dd {
+  margin: 5px 0 0;
+  color: #fff;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.tenant-admin-settings__details a {
+  color: #f4d575;
+}
+.tenant-admin-settings__color-value {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.tenant-admin-settings__color-swatch {
+  width: 17px;
+  height: 17px;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+}
+.tenant-admin-settings__form {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+}
+.tenant-admin-settings__form h3 {
+  margin: 0;
+  color: #fff;
+  font-size: 15px;
+}
+.tenant-admin-settings__form label {
+  display: grid;
+  gap: 6px;
+  color: #f2d57f;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.tenant-admin-settings__form input,
+.tenant-admin-settings__form textarea,
+.tenant-admin-settings__form select {
+  width: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.34);
+  background: #101416;
+  color: #fff;
+  padding: 10px;
+  font: inherit;
+}
+.tenant-admin-settings__form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.tenant-admin-settings__checkboxes {
+  display: grid;
+  gap: 9px;
+}
+.tenant-admin-settings__checkboxes label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-transform: none;
+  letter-spacing: 0;
+  color: #fff;
+}
+.tenant-admin-settings__checkboxes input {
+  width: auto;
+}
+.tenant-admin-settings__security-note {
+  border-left: 3px solid #e8b63d;
+  padding-left: 10px;
+}
+.tenant-admin-settings__feature-list,
+.tenant-admin-settings__person-list,
+.tenant-admin-settings__role-list {
+  display: grid;
+  gap: 9px;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+.tenant-admin-settings__feature,
+.tenant-admin-settings__person-list li,
+.tenant-admin-settings__role-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+.tenant-admin-settings__feature strong,
+.tenant-admin-settings__person-list strong,
+.tenant-admin-settings__role-list strong {
+  color: #fff;
+  display: block;
+}
+.tenant-admin-settings__feature p {
+  margin: 4px 0;
+  font-size: 12px;
+}
+.tenant-admin-settings__feature-key,
+.tenant-admin-settings__person-list span,
+.tenant-admin-settings__role-list span {
+  display: block;
+  color: rgba(255, 255, 255, 0.58);
+  font-size: 11px;
+}
+.tenant-admin-settings__feature label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #f4d575;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.tenant-admin-settings__notice {
+  margin: 0;
+  padding: 12px;
+  border-left: 3px solid #e8b63d;
+  background: rgba(232, 182, 61, 0.1);
+  color: #f5d77a;
+}
+.tenant-admin-settings__notice--error {
+  border-left-color: #dc654c;
+  color: #ffb8a8;
+  background: rgba(220, 101, 76, 0.12);
+}
+.tenant-admin-settings__visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
+@media (max-width: 900px) {
+  .tenant-admin-settings__content {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 560px) {
+  .tenant-admin-settings__header,
+  .tenant-admin-settings__section-heading {
+    display: grid;
+  }
+  .tenant-admin-settings__details,
+  .tenant-admin-settings__form-grid {
+    grid-template-columns: 1fr;
+  }
+  .tenant-admin-settings__feature,
+  .tenant-admin-settings__person-list li,
+  .tenant-admin-settings__role-list li {
+    flex-direction: column;
+  }
+}
