@@ -26,6 +26,7 @@ const expectedFiles = [
   "0021_ticket_knowledge_articles.sql",
   "0022_ticket_subcategories.sql",
   "0023_ticket_requesters.sql",
+  "0024_email_requester_fallback.sql",
 ];
 
 const availableFiles = await readdir(migrationDirectory);
@@ -202,6 +203,10 @@ const requiredFragments = [
   [
     "0023_ticket_requesters.sql",
     "create trigger tickets_validate_requester_contact",
+  ],
+  [
+    "0024_email_requester_fallback.sql",
+    "create or replace function public.validate_ticket_requester_contact()",
   ],
 ];
 
