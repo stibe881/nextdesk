@@ -590,11 +590,12 @@ export function App() {
     <div className="app-shell">
       <aside className="command-rail" aria-label="Hauptnavigation">
         <div className="brand-lockup">
-          <span className="brand-mark" aria-hidden="true">
-            <i />
-            <i />
-            <i />
-          </span>
+          <img
+            alt=""
+            aria-hidden="true"
+            className="brand-logo-mark"
+            src="/assets/nextdesk-logo-mark-a.png"
+          />
           <span>{productDefaults.productName}</span>
         </div>
         <nav className="nav-list">

@@ -55,6 +55,13 @@ button {
   font-size: 20px;
   letter-spacing: -0.03em;
 }
+.brand-logo-mark {
+  display: block;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  object-fit: contain;
+}
 .brand-mark {
   width: 25px;
   height: 25px;
