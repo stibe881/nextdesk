@@ -100,7 +100,9 @@ insert into public.role_permissions (role_id, permission_code) values
   ('15000000-0000-4000-8000-000000000001', 'ticket.read.own'),
   ('15000000-0000-4000-8000-000000000001', 'ticket.manage'),
   ('16000000-0000-4000-8000-000000000002', 'ticket.read.department'),
-  ('16000000-0000-4000-8000-000000000002', 'ticket.internal_notes.read');
+  ('16000000-0000-4000-8000-000000000002', 'ticket.internal_notes.read'),
+  ('16000000-0000-4000-8000-000000000002', 'ticket.update'),
+  ('16000000-0000-4000-8000-000000000002', 'ticket.close');
 insert into public.user_role_assignments (tenant_id, user_id, role_id) values
   ('10000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000001', '15000000-0000-4000-8000-000000000001');
 insert into public.user_role_assignments (tenant_id, user_id, role_id, department_id) values
@@ -115,6 +117,75 @@ insert into public.saved_ticket_views (tenant_id, owner_id, name, visibility, fi
   ('10000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000001', 'Privat A', 'private', '{"query":"intern","queue":"alle","ticketScope":"all"}'),
   ('10000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000002', 'Mandant A', 'tenant', '{"query":"","queue":"alle","ticketScope":"open"}'),
   ('20000000-0000-4000-8000-000000000002', '00000000-0000-4000-8000-000000000004', 'Mandant B', 'tenant', '{"query":"","queue":"alle","ticketScope":"closed"}');
+
+-- The batch operation is executable only by the Edge Function service role. It
+-- is atomic and retains department isolation for the actor supplied by that
+-- function.
+do $$
+declare
+  result jsonb;
+begin
+  if has_function_privilege('authenticated', 'public.bulk_update_ticket_statuses(uuid, uuid, uuid[], text)', 'execute') then
+    raise exception 'authenticated may execute bulk_update_ticket_statuses';
+  end if;
+  if not has_function_privilege('service_role', 'public.bulk_update_ticket_statuses(uuid, uuid, uuid[], text)', 'execute') then
+    raise exception 'service_role may not execute bulk_update_ticket_statuses';
+  end if;
+
+  result := public.bulk_update_ticket_statuses(
+    '00000000-0000-4000-8000-000000000002',
+    '10000000-0000-4000-8000-000000000001',
+    array['17000000-0000-4000-8000-000000000001']::uuid[],
+    'closed'
+  );
+  if (result->>'requested')::integer <> 1
+    or (result->>'updated')::integer <> 1
+    or result->>'statusKey' <> 'closed' then
+    raise exception 'Bulk ticket status result was incomplete';
+  end if;
+  if not exists (
+    select 1
+    from public.tickets ticket
+    join public.ticket_statuses status on status.id = ticket.status_id
+    where ticket.id = '17000000-0000-4000-8000-000000000001'
+      and status.key = 'closed'
+      and ticket.closed_at is not null
+  ) then
+    raise exception 'Authorized bulk close did not update the ticket';
+  end if;
+  if not exists (
+    select 1
+    from public.ticket_events
+    where ticket_id = '17000000-0000-4000-8000-000000000001'
+      and actor_id = '00000000-0000-4000-8000-000000000002'
+      and event_type = 'ticket.bulk_status_updated'
+  ) then
+    raise exception 'Bulk status action did not record a ticket event';
+  end if;
+
+  begin
+    perform public.bulk_update_ticket_statuses(
+      '00000000-0000-4000-8000-000000000002',
+      '10000000-0000-4000-8000-000000000001',
+      array['18000000-0000-4000-8000-000000000002']::uuid[],
+      'closed'
+    );
+    raise exception 'ICT agent updated an unauthorized Infrastructure ticket';
+  exception when insufficient_privilege then
+    null;
+  end;
+  if not exists (
+    select 1
+    from public.tickets ticket
+    join public.ticket_statuses status on status.id = ticket.status_id
+    where ticket.id = '18000000-0000-4000-8000-000000000002'
+      and status.key = 'open'
+      and ticket.closed_at is null
+  ) then
+    raise exception 'Denied bulk update partially changed an unauthorized ticket';
+  end if;
+end;
+$$;
 
 -- Enforce cross-tenant FK integrity.
 do $$

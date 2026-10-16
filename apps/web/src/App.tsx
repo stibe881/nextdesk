@@ -112,6 +112,12 @@ type SavedTicketView = {
   visibility: "private" | "tenant";
 };
 
+type BulkStatusOption = {
+  isClosed: boolean;
+  key: string;
+  label: string;
+};
+
 const sections: readonly { label: Section; Icon: LucideIcon }[] = [
   { label: "Übersicht", Icon: LayoutDashboard },
   { label: "Tickets", Icon: Ticket },
@@ -229,6 +235,36 @@ function savedTicketViewFromSaveResponse(
 ): SavedTicketView | null {
   if (!isRecord(value) || !isRecord(value.data)) return null;
   return savedTicketViewFromValue(value.data.savedView);
+}
+
+function bulkStatusOptionsFromResponse(
+  value: unknown,
+): BulkStatusOption[] | null {
+  if (
+    !isRecord(value) ||
+    !isRecord(value.data) ||
+    !Array.isArray(value.data.statuses)
+  ) {
+    return null;
+  }
+  const statuses = value.data.statuses.map((status) => {
+    if (
+      !isRecord(status) ||
+      typeof status.key !== "string" ||
+      typeof status.label !== "string" ||
+      typeof status.isClosed !== "boolean"
+    ) {
+      return null;
+    }
+    return {
+      isClosed: status.isClosed,
+      key: status.key,
+      label: status.label,
+    } satisfies BulkStatusOption;
+  });
+  return statuses.every((status): status is BulkStatusOption => status !== null)
+    ? statuses
+    : null;
 }
 
 function notificationFromValue(value: unknown): NotificationItem | null {
@@ -504,9 +540,13 @@ function MembershipErrorScreen({
 function TicketList({
   tickets,
   onOpen,
+  onSelectionChange,
+  selectedTicketIds,
 }: {
   tickets: readonly DashboardTicket[];
   onOpen?: (ticketId: string) => void;
+  onSelectionChange?: (ticketId: string, selected: boolean) => void;
+  selectedTicketIds?: ReadonlySet<string>;
 }) {
   if (tickets.length === 0) {
     return (
@@ -519,6 +559,7 @@ function TicketList({
   return (
     <div className="ticket-list">
       {tickets.map((ticket) => {
+        const ticketId = ticket.recordId ?? ticket.id;
         const slaLabel =
           ticket.sla.includes("SLA") || ticket.sla === "kein SLA-Ziel"
             ? ticket.sla
@@ -530,26 +571,41 @@ function TicketList({
                 ? `Ticket ${ticket.id}: ${ticket.subject} öffnen`
                 : undefined
             }
-            className={
-              onOpen ? "ticket-row ticket-row--actionable" : "ticket-row"
-            }
+            className={`${onOpen ? "ticket-row ticket-row--actionable" : "ticket-row"}${
+              onSelectionChange ? " ticket-row--selectable" : ""
+            }`}
             key={ticket.id}
-            onClick={
-              onOpen ? () => onOpen(ticket.recordId ?? ticket.id) : undefined
-            }
+            onClick={onOpen ? () => onOpen(ticketId) : undefined}
             onKeyDown={
               onOpen
                 ? (event) => {
+                    if (event.target instanceof HTMLInputElement) return;
                     if (event.key === "Enter" || event.key === " ") {
                       event.preventDefault();
-                      onOpen(ticket.recordId ?? ticket.id);
+                      onOpen(ticketId);
                     }
                   }
                 : undefined
             }
-            role={onOpen ? "button" : undefined}
-            tabIndex={onOpen ? 0 : undefined}
+            role={onOpen && !onSelectionChange ? "button" : undefined}
+            tabIndex={onOpen && !onSelectionChange ? 0 : undefined}
           >
+            {onSelectionChange && (
+              <label
+                className="ticket-selection"
+                onClick={(event) => event.stopPropagation()}
+                onKeyDown={(event) => event.stopPropagation()}
+              >
+                <input
+                  aria-label={`Ticket ${ticket.id} auswählen`}
+                  checked={selectedTicketIds?.has(ticketId) ?? false}
+                  onChange={(event) =>
+                    onSelectionChange(ticketId, event.target.checked)
+                  }
+                  type="checkbox"
+                />
+              </label>
+            )}
             <div className="ticket-main">
               <div className="ticket-context">
                 <span className="ticket-number">{ticket.id}</span>
@@ -605,6 +661,10 @@ export function App() {
   const [dashboardLoading, setDashboardLoading] = useState(false);
   const [dashboardRevision, setDashboardRevision] = useState(0);
   const [ticketPage, setTicketPage] = useState(0);
+  const [selectedTicketIds, setSelectedTicketIds] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [ticketActionStatus, setTicketActionStatus] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [ownerAccess, setOwnerAccess] = useState<OwnerAccess>("idle");
   const [ownerAccessError, setOwnerAccessError] = useState("");
@@ -835,6 +895,11 @@ export function App() {
   }, [activeTenant?.id, dashboardRevision, period]);
 
   useEffect(() => {
+    setSelectedTicketIds(new Set());
+    setTicketActionStatus("");
+  }, [activeTenant?.id]);
+
+  useEffect(() => {
     if (!session || !activeTenant) return;
 
     let mounted = true;
@@ -1033,6 +1098,16 @@ export function App() {
     setQueue("alle");
     setSection("Tickets");
   };
+  const updateTicketSelection = (ticketId: string, selected: boolean) => {
+    setTicketActionStatus("");
+    setSelectedTicketIds((current) => {
+      const next = new Set(current);
+      if (selected) next.add(ticketId);
+      else next.delete(ticketId);
+      return next;
+    });
+  };
+  const clearTicketSelection = () => setSelectedTicketIds(new Set());
   const ticketScopeLabel: Record<TicketScope, string> = {
     all: "Alle sichtbaren Tickets",
     closed: "Gelöste Tickets",
@@ -1449,6 +1524,30 @@ export function App() {
                   tenantId={activeTenant.id}
                 />
               )}
+              {activeTenant && isSupabaseConfigured && (
+                <BulkTicketStatusActions
+                  onApplied={(updated, statusLabel) => {
+                    clearTicketSelection();
+                    setTicketPage(0);
+                    setDashboardRevision((current) => current + 1);
+                    setTicketActionStatus(
+                      `${updated} Tickets wurden auf „${statusLabel}“ gesetzt.`,
+                    );
+                  }}
+                  onClearSelection={clearTicketSelection}
+                  selectedTicketIds={selectedTicketIds}
+                  tenantId={activeTenant.id}
+                />
+              )}
+              {ticketActionStatus && (
+                <p
+                  aria-live="polite"
+                  className="ticket-action-status"
+                  role="status"
+                >
+                  {ticketActionStatus}
+                </p>
+              )}
               <QueueTabs
                 queue={queue}
                 queueCount={queueCount}
@@ -1460,7 +1559,11 @@ export function App() {
               )}
               <TicketList
                 {...(isSupabaseConfigured
-                  ? { onOpen: setSelectedTicketId }
+                  ? {
+                      onOpen: setSelectedTicketId,
+                      onSelectionChange: updateTicketSelection,
+                      selectedTicketIds,
+                    }
                   : {})}
                 tickets={filteredTickets}
               />
@@ -1690,6 +1793,158 @@ export function App() {
         />
       )}
     </div>
+  );
+}
+
+function BulkTicketStatusActions({
+  onApplied,
+  onClearSelection,
+  selectedTicketIds,
+  tenantId,
+}: {
+  onApplied: (updated: number, statusLabel: string) => void;
+  onClearSelection: () => void;
+  selectedTicketIds: ReadonlySet<string>;
+  tenantId: string;
+}) {
+  const [statuses, setStatuses] = useState<BulkStatusOption[]>([]);
+  const [statusKey, setStatusKey] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [pending, setPending] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
+
+  useEffect(() => {
+    if (!supabase) return;
+    let mounted = true;
+    setLoading(true);
+    setStatusKey("");
+    setErrorMessage("");
+    void supabase.functions
+      .invoke("ticket-bulk-status", {
+        body: { type: "listStatusOptions", tenantId },
+      })
+      .then(({ data, error }) => {
+        if (error) throw error;
+        const parsed = bulkStatusOptionsFromResponse(data);
+        if (!parsed) throw new Error("invalid_bulk_status_options_response");
+        if (mounted) setStatuses(parsed);
+      })
+      .catch(async (error: unknown) => {
+        if (!mounted) return;
+        setStatuses([]);
+        setErrorMessage(
+          await functionErrorMessage(
+            error,
+            "Die verfügbaren Ticketstatus konnten nicht geladen werden.",
+          ),
+        );
+      })
+      .finally(() => {
+        if (mounted) setLoading(false);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [tenantId]);
+
+  if (selectedTicketIds.size === 0) return null;
+
+  const selectedStatus = statuses.find((status) => status.key === statusKey);
+  async function applyStatus(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!supabase || !selectedStatus) return;
+    setPending(true);
+    setErrorMessage("");
+    try {
+      const { data, error } = await supabase.functions.invoke(
+        "ticket-bulk-status",
+        {
+          body: {
+            type: "applyStatus",
+            tenantId,
+            ticketIds: [...selectedTicketIds],
+            statusKey: selectedStatus.key,
+          },
+        },
+      );
+      if (error) throw error;
+      if (
+        !isRecord(data) ||
+        !isRecord(data.data) ||
+        typeof data.data.updated !== "number"
+      ) {
+        throw new Error("invalid_bulk_status_response");
+      }
+      onApplied(data.data.updated, selectedStatus.label);
+    } catch (error: unknown) {
+      setErrorMessage(
+        await functionErrorMessage(
+          error,
+          "Die ausgewählten Tickets konnten nicht aktualisiert werden.",
+        ),
+      );
+    } finally {
+      setPending(false);
+    }
+  }
+
+  return (
+    <form
+      className="ticket-bulk-actions"
+      onSubmit={(event) => void applyStatus(event)}
+    >
+      <div>
+        <strong>{selectedTicketIds.size} Tickets ausgewählt</strong>
+        <span>
+          Der Status wird nur gesetzt, wenn Sie für jedes Ticket berechtigt
+          sind.
+        </span>
+      </div>
+      <label>
+        <span>Neuer Status</span>
+        <select
+          disabled={loading || pending || statuses.length === 0}
+          onChange={(event) => setStatusKey(event.target.value)}
+          value={statusKey}
+        >
+          <option value="">
+            {loading ? "Status werden geladen …" : "Status auswählen"}
+          </option>
+          {statuses.map((status) => (
+            <option key={status.key} value={status.key}>
+              {status.label}
+              {status.isClosed ? " · schliesst Ticket" : ""}
+            </option>
+          ))}
+        </select>
+      </label>
+      <div className="ticket-bulk-actions__buttons">
+        <button
+          className="secondary-button"
+          disabled={pending}
+          onClick={onClearSelection}
+          type="button"
+        >
+          Auswahl aufheben
+        </button>
+        <button
+          className="primary-button"
+          disabled={!selectedStatus || pending}
+          type="submit"
+        >
+          {pending ? "Status wird gesetzt …" : "Status für Auswahl setzen"}
+        </button>
+      </div>
+      {errorMessage && (
+        <p
+          aria-live="polite"
+          className="ticket-bulk-actions__error"
+          role="status"
+        >
+          {errorMessage}
+        </p>
+      )}
+    </form>
   );
 }
 

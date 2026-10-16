@@ -36,6 +36,9 @@ verify_jwt = true
 [functions.ticket-saved-views]
 verify_jwt = true
 
+[functions.ticket-bulk-status]
+verify_jwt = true
+
 [functions.ticket-templates]
 verify_jwt = true
 

@@ -4869,6 +4869,64 @@ body:has(.ticket-detail) {
   padding: 20px 0 4px;
 }
 
+.ticket-bulk-actions {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(180px, 240px) auto;
+  align-items: end;
+  gap: 14px;
+  margin: 16px 0;
+  border: 1px solid #c7d2fe;
+  border-radius: 12px;
+  padding: 14px 16px;
+  background: var(--primary-soft);
+}
+
+.ticket-bulk-actions > div:first-child {
+  display: grid;
+  gap: 3px;
+}
+
+.ticket-bulk-actions strong {
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.ticket-bulk-actions span,
+.ticket-bulk-actions label > span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.ticket-bulk-actions label {
+  display: grid;
+  gap: 5px;
+}
+
+.ticket-bulk-actions__buttons {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.ticket-bulk-actions__error {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--danger);
+  font-size: 13px;
+}
+
+.ticket-action-status {
+  margin: 12px 0;
+  border-left: 3px solid var(--success);
+  padding: 8px 12px;
+  color: var(--success);
+  background: var(--success-soft);
+  font-size: 13px;
+  font-weight: 600;
+}
+
 .ticket-row {
   grid-template-columns: minmax(0, 1fr) auto 28px;
   gap: 16px;
@@ -4878,6 +4936,16 @@ body:has(.ticket-detail) {
   padding: 16px 18px;
   background: var(--surface);
   box-shadow: 0 1px 2px rgb(15 23 42 / 3%);
+}
+
+.ticket-row--selectable {
+  grid-template-columns: 24px minmax(0, 1fr) auto 28px;
+}
+
+.ticket-selection {
+  display: grid;
+  place-items: center;
+  min-width: 24px;
 }
 
 .ticket-row:last-child {
@@ -5007,10 +5075,30 @@ body:has(.ticket-detail) {
 }
 
 @media (max-width: 720px) {
+  .ticket-bulk-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .ticket-bulk-actions__buttons {
+    justify-content: flex-start;
+  }
+
   .ticket-row {
     grid-template-columns: minmax(0, 1fr) 24px;
     gap: 12px;
     padding: 14px;
+  }
+
+  .ticket-row--selectable {
+    grid-template-columns: 24px minmax(0, 1fr) 24px;
+  }
+
+  .ticket-row--selectable .ticket-state {
+    grid-column: 1 / -1;
+  }
+
+  .ticket-row--selectable .ticket-row-arrow {
+    grid-column: 3;
   }
 
   .ticket-state {

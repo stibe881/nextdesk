@@ -72,8 +72,15 @@ export async function functionErrorMessage(
     case "saved_view_tenant_access_denied":
     case "saved_view_manage_denied":
       return "Für diese gespeicherte Ansicht fehlt Ihnen die erforderliche Berechtigung.";
+    case "bulk_status_permission_denied":
+    case "bulk_status_tenant_access_denied":
+      return "Für die ausgewählten Tickets fehlt Ihnen mindestens eine erforderliche Berechtigung.";
     case "saved_view_not_found":
       return "Die gespeicherte Ansicht ist nicht mehr verfügbar. Bitte laden Sie die Ticketliste neu.";
+    case "bulk_status_target_missing":
+      return "Mindestens eines der ausgewählten Tickets ist nicht mehr verfügbar. Bitte laden Sie die Ticketliste neu.";
+    case "bulk_status_invalid":
+      return "Die ausgewählten Tickets oder der gewünschte Status sind ungültig. Bitte laden Sie die Ticketliste neu.";
     case "rate_limited":
       return "Zu viele Anfragen in kurzer Zeit. Bitte warten Sie einen Moment und versuchen Sie es erneut.";
     case "authorization_check_failed":
