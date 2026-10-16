@@ -266,7 +266,12 @@ function parseAction(value: unknown): Action | null {
       note: value.note,
       startedAt: value.startedAt,
     };
-  if (value.type === "updateTicket")
+  if (
+    value.type === "updateTicket" &&
+    (value.assignedAgentId === undefined ||
+      value.assignedAgentId === null ||
+      isUuid(value.assignedAgentId))
+  )
     return {
       type: value.type,
       tenantId: value.tenantId,
@@ -323,6 +328,161 @@ async function hasPermission(
       : false,
   );
 }
+
+type TicketAgent = {
+  id: string;
+  displayName: string | null;
+};
+
+type EligibleTicketAgentIdsResult = {
+  agentIds: string[];
+  error: boolean;
+};
+
+async function getEligibleTicketAgentIds(
+  admin: any,
+  ticket: any,
+): Promise<EligibleTicketAgentIdsResult> {
+  const now = new Date().toISOString();
+  const [
+    { data: tenantMemberships, error: tenantMembershipsError },
+    { data: departmentMemberships, error: departmentMembershipsError },
+    { data: roleAssignments, error: roleAssignmentsError },
+  ] = await Promise.all([
+    admin
+      .from("tenant_memberships")
+      .select("user_id")
+      .eq("tenant_id", ticket.tenant_id)
+      .eq("status", "active"),
+    admin
+      .from("department_memberships")
+      .select("user_id")
+      .eq("tenant_id", ticket.tenant_id)
+      .eq("department_id", ticket.department_id)
+      .eq("status", "active"),
+    admin
+      .from("user_role_assignments")
+      .select(
+        "user_id, department_id, roles!inner(tenant_id, active, scope, role_permissions!inner(permission_code))",
+      )
+      .eq("tenant_id", ticket.tenant_id)
+      .lte("starts_at", now)
+      .or(`expires_at.is.null,expires_at.gt.${now}`),
+  ]);
+  if (
+    tenantMembershipsError ||
+    departmentMembershipsError ||
+    roleAssignmentsError
+  )
+    return { agentIds: [], error: true };
+
+  const activeTenantMemberIds = new Set(
+    (tenantMemberships ?? []).map((membership: any) => membership.user_id),
+  );
+  const activeDepartmentMemberIds = new Set(
+    (departmentMemberships ?? []).map((membership: any) => membership.user_id),
+  );
+  const agentIds = new Set<string>();
+  for (const assignment of roleAssignments ?? []) {
+    if (
+      !isUuid(assignment.user_id) ||
+      !activeTenantMemberIds.has(assignment.user_id) ||
+      !activeDepartmentMemberIds.has(assignment.user_id)
+    )
+      continue;
+    const role = Array.isArray(assignment.roles)
+      ? assignment.roles[0]
+      : assignment.roles;
+    if (
+      !role?.active ||
+      role.tenant_id !== ticket.tenant_id ||
+      (role.scope !== "tenant" &&
+        (role.scope !== "department" ||
+          assignment.department_id !== ticket.department_id))
+    )
+      continue;
+    if (
+      (role.role_permissions ?? []).some(
+        (permission: any) =>
+          permission.permission_code === "ticket.read.assigned" ||
+          permission.permission_code === "ticket.update",
+      )
+    )
+      agentIds.add(assignment.user_id);
+  }
+  return { agentIds: [...agentIds], error: false };
+}
+
+async function getTicketAgents(
+  admin: any,
+  ticket: any,
+): Promise<{ agents: TicketAgent[]; error: boolean }> {
+  const eligibleAgentIds = await getEligibleTicketAgentIds(admin, ticket);
+  if (eligibleAgentIds.error) return { agents: [], error: true };
+  if (eligibleAgentIds.agentIds.length === 0)
+    return { agents: [], error: false };
+
+  const { data: profiles, error } = await admin
+    .from("user_profiles")
+    .select("id, display_name")
+    .in("id", eligibleAgentIds.agentIds);
+  if (error) return { agents: [], error: true };
+
+  const profileNames = new Map<string, string | null>();
+  for (const profile of profiles ?? []) {
+    if (!isUuid(profile.id)) continue;
+    profileNames.set(
+      profile.id,
+      typeof profile.display_name === "string" ? profile.display_name : null,
+    );
+  }
+  const agents = eligibleAgentIds.agentIds.flatMap((id) => {
+    if (!profileNames.has(id)) return [];
+    return [{ id, displayName: profileNames.get(id) ?? null }];
+  });
+  agents.sort(
+    (left, right) =>
+      (left.displayName ?? "").localeCompare(
+        right.displayName ?? "",
+        "de-CH",
+      ) || left.id.localeCompare(right.id),
+  );
+  return { agents, error: false };
+}
+
+async function getAssignedTicketAgent(
+  admin: any,
+  ticket: any,
+): Promise<{ agent: TicketAgent | null; error: boolean }> {
+  if (!isUuid(ticket.assigned_agent_id)) return { agent: null, error: false };
+
+  const { data: membership, error: membershipError } = await admin
+    .from("tenant_memberships")
+    .select("user_id")
+    .eq("tenant_id", ticket.tenant_id)
+    .eq("user_id", ticket.assigned_agent_id)
+    .eq("status", "active")
+    .maybeSingle();
+  if (membershipError) return { agent: null, error: true };
+  if (!membership) return { agent: null, error: false };
+
+  const { data: profile, error: profileError } = await admin
+    .from("user_profiles")
+    .select("id, display_name")
+    .eq("id", ticket.assigned_agent_id)
+    .maybeSingle();
+  if (profileError) return { agent: null, error: true };
+  if (!profile || !isUuid(profile.id)) return { agent: null, error: false };
+  return {
+    agent: {
+      id: profile.id,
+      displayName:
+        typeof profile.display_name === "string" ? profile.display_name : null,
+    },
+    error: false,
+  };
+}
+
 async function canRead(admin: any, userId: string, ticket: any) {
   if (!(await activeMember(admin, userId, ticket.tenant_id))) return false;
   if (ticket.requester_id === userId || ticket.affected_user_id === userId)
@@ -823,9 +983,33 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       .filter((similarTicket: any) => similarTicket !== null)
       .slice(0, 10)
       .map((similarTicket: any) => ticketReference(similarTicket));
+    const canAssign = await hasPermission(
+      context.supabaseAdmin,
+      actorId,
+      ticket.tenant_id,
+      ticket.department_id,
+      "ticket.assign",
+    );
+    const [ticketAgents, assignedTicketAgent] = await Promise.all([
+      canAssign
+        ? getTicketAgents(context.supabaseAdmin, ticket)
+        : Promise.resolve({ agents: [], error: false }),
+      getAssignedTicketAgent(context.supabaseAdmin, ticket),
+    ]);
+    if (ticketAgents.error || assignedTicketAgent.error)
+      return response(
+        request,
+        { error: { code: "ticket_agents_lookup_failed" } },
+        500,
+      );
+    const assignedAgent = assignedTicketAgent.agent;
     return response(request, {
       data: {
-        ticket,
+        ticket: {
+          ...ticket,
+          assigned_agent_id: ticket.assigned_agent_id ?? null,
+        },
+        ...(assignedAgent ? { assignedAgent } : {}),
         comments: filteredComments.map((comment: any) => ({
           ...comment,
           authorName: profileNames[comment.author_id] ?? "nextDesk Benutzer",
@@ -841,6 +1025,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         drafts: drafts ?? [],
         relations,
         similarTickets,
+        ...(canAssign ? { agents: ticketAgents.agents } : {}),
         canUpdate: await hasPermission(
           context.supabaseAdmin,
           actorId,
@@ -848,13 +1033,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
           ticket.department_id,
           "ticket.update",
         ),
-        canAssign: await hasPermission(
-          context.supabaseAdmin,
-          actorId,
-          ticket.tenant_id,
-          ticket.department_id,
-          "ticket.assign",
-        ),
+        canAssign,
         canTrackTime: await hasPermission(
           context.supabaseAdmin,
           actorId,
@@ -1787,8 +1966,27 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         { error: { code: "ticket_assign_denied" } },
         403,
       );
-    if (action.assignedAgentId !== undefined)
+    if (action.assignedAgentId !== undefined) {
+      if (action.assignedAgentId !== null) {
+        const eligibleAgentIds = await getEligibleTicketAgentIds(
+          context.supabaseAdmin,
+          ticket,
+        );
+        if (eligibleAgentIds.error)
+          return response(
+            request,
+            { error: { code: "ticket_agents_lookup_failed" } },
+            500,
+          );
+        if (!eligibleAgentIds.agentIds.includes(action.assignedAgentId))
+          return response(
+            request,
+            { error: { code: "assigned_agent_invalid" } },
+            422,
+          );
+      }
       update.assigned_agent_id = action.assignedAgentId;
+    }
     if (action.assignedTeamId !== undefined)
       update.assigned_team_id = action.assignedTeamId;
     payload.assignment = true;

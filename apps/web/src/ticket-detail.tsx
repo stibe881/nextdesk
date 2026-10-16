@@ -98,6 +98,7 @@ type UpdateTicketAction = {
   ticketId: string;
   statusKey?: string;
   priorityKey?: string;
+  assignedAgentId?: string | null;
   assignedTeamId?: string | null;
 };
 
@@ -214,6 +215,7 @@ type TicketRecord = {
   description: string;
   status_id: string;
   priority_id: string;
+  assigned_agent_id: string | null;
   assigned_team_id: string | null;
   created_at: string;
 };
@@ -260,6 +262,11 @@ type TicketPriority = {
 type TicketTeam = {
   id: string;
   name: string;
+};
+
+type TicketAgent = {
+  id: string;
+  displayName: string;
 };
 
 type TicketChecklistItem = {
@@ -386,18 +393,21 @@ type ServiceAssetsAction =
 
 type TicketDetailData = {
   ticket: TicketRecord;
+  assignedAgent: TicketAgent | null;
   comments: TicketComment[];
   events: TicketEvent[];
   escalations: TicketEscalation[];
   statuses: TicketStatus[];
   priorities: TicketPriority[];
   teams: TicketTeam[];
+  agents: TicketAgent[];
   checklistItems: TicketChecklistItem[];
   timeEntries: TicketTimeEntry[];
   relations: TicketRelation[];
   similarTickets: SimilarTicket[];
   watching: boolean;
   canUpdate: boolean;
+  canAssign: boolean;
   /** Bei älteren Edge-Function-Deployments nicht vorhanden; kein Fallback auf canUpdate. */
   canEscalate?: boolean;
   canUseInternalNotes: boolean;
@@ -447,6 +457,8 @@ function isTicketRecord(value: unknown): value is TicketRecord {
     typeof ticket.description === "string" &&
     typeof ticket.status_id === "string" &&
     typeof ticket.priority_id === "string" &&
+    (typeof ticket.assigned_agent_id === "string" ||
+      ticket.assigned_agent_id === null) &&
     (typeof ticket.assigned_team_id === "string" ||
       ticket.assigned_team_id === null) &&
     typeof ticket.created_at === "string",
@@ -533,6 +545,18 @@ function isTicketTeam(value: unknown): value is TicketTeam {
   const team = asRecord(value);
   return Boolean(
     team && typeof team.id === "string" && typeof team.name === "string",
+  );
+}
+
+function isTicketAgent(value: unknown): value is TicketAgent {
+  const agent = asRecord(value);
+  return Boolean(
+    agent &&
+    typeof agent.id === "string" &&
+    agent.id.length > 0 &&
+    typeof agent.displayName === "string" &&
+    agent.displayName.trim().length > 0 &&
+    !agent.displayName.includes("\u0000"),
   );
 }
 
@@ -1052,6 +1076,34 @@ function parseTicketDetail(
   if (data.ticket === null) return null;
   if (!isTicketRecord(data.ticket)) return undefined;
 
+  const assignedAgent =
+    data.assignedAgent === undefined || data.assignedAgent === null
+      ? null
+      : isTicketAgent(data.assignedAgent)
+        ? data.assignedAgent
+        : undefined;
+  if (
+    assignedAgent === undefined ||
+    (data.ticket.assigned_agent_id === null && assignedAgent !== null) ||
+    (data.ticket.assigned_agent_id !== null &&
+      assignedAgent?.id !== data.ticket.assigned_agent_id)
+  ) {
+    return undefined;
+  }
+
+  if (typeof data.canAssign !== "boolean") return undefined;
+  const agents = data.canAssign
+    ? parseStrictValues(data.agents, isTicketAgent)
+    : data.agents === undefined
+      ? []
+      : undefined;
+  if (
+    agents === undefined ||
+    new Set(agents.map((agent) => agent.id)).size !== agents.length
+  ) {
+    return undefined;
+  }
+
   const relations = parseStrictValues(data.relations, isTicketRelation);
   const similarTickets = parseStrictValues(
     data.similarTickets,
@@ -1081,12 +1133,14 @@ function parseTicketDetail(
 
   return {
     ticket: data.ticket,
+    assignedAgent,
     comments,
     events: valuesOf(data.events, isTicketEvent),
     escalations,
     statuses: valuesOf(data.statuses, isTicketStatus),
     priorities: valuesOf(data.priorities, isTicketPriority),
     teams: valuesOf(data.teams, isTicketTeam),
+    agents,
     checklistItems: valuesOf(data.checklistItems, isTicketChecklistItem).sort(
       (first, second) => first.position - second.position,
     ),
@@ -1095,6 +1149,7 @@ function parseTicketDetail(
     similarTickets,
     watching: data.watching === true,
     canUpdate: data.canUpdate === true,
+    canAssign: data.canAssign,
     ...(canEscalate === undefined ? {} : { canEscalate }),
     canUseInternalNotes: data.canUseInternalNotes === true,
     canTrackTime: data.canTrackTime === true,
@@ -1380,6 +1435,7 @@ export function TicketDetail({
   const [statusKey, setStatusKey] = useState("");
   const [priorityKey, setPriorityKey] = useState("");
   const [selectedTeamId, setSelectedTeamId] = useState("");
+  const [selectedAgentId, setSelectedAgentId] = useState("");
   const [comment, setComment] = useState("");
   const [commentVisibility, setCommentVisibility] =
     useState<CommentVisibility>("external");
@@ -1549,6 +1605,7 @@ export function TicketDetail({
         )?.key ?? "",
       );
       setSelectedTeamId(nextDetail?.ticket.assigned_team_id ?? "");
+      setSelectedAgentId(nextDetail?.ticket.assigned_agent_id ?? "");
       if (!nextDetail?.canUseInternalNotes) {
         setCommentVisibility("external");
       }
@@ -1757,11 +1814,13 @@ export function TicketDetail({
     [detail],
   );
   const assignedTeamId = detail?.ticket.assigned_team_id ?? "";
+  const assignedAgentId = detail?.ticket.assigned_agent_id ?? "";
   const hasChanges = Boolean(
     detail &&
     (statusKey !== selectedStatus?.key ||
       priorityKey !== selectedPriority?.key ||
-      selectedTeamId !== assignedTeamId),
+      selectedTeamId !== assignedTeamId ||
+      (detail.canAssign && selectedAgentId !== assignedAgentId)),
   );
   const busy = pendingAction !== null;
   const attachmentBusy = pendingAttachmentAction !== null;
@@ -2033,10 +2092,14 @@ export function TicketDetail({
     if (selectedTeamId !== assignedTeamId) {
       action.assignedTeamId = selectedTeamId || null;
     }
+    if (detail.canAssign && selectedAgentId !== assignedAgentId) {
+      action.assignedAgentId = selectedAgentId || null;
+    }
     if (
       !action.statusKey &&
       !action.priorityKey &&
-      action.assignedTeamId === undefined
+      action.assignedTeamId === undefined &&
+      action.assignedAgentId === undefined
     ) {
       return;
     }
@@ -3627,6 +3690,28 @@ export function TicketDetail({
                 ))}
               </select>
             </label>
+            {detail.canAssign ? (
+              <label>
+                Zugewiesener Agent
+                <select
+                  disabled={busy}
+                  onChange={(event) => setSelectedAgentId(event.target.value)}
+                  value={selectedAgentId}
+                >
+                  <option value="">Nicht zugewiesen</option>
+                  {detail.agents.map((agent) => (
+                    <option key={agent.id} value={agent.id}>
+                      {agent.displayName}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : (
+              <p className="data-caption">
+                Zugewiesener Agent:{" "}
+                {detail.assignedAgent?.displayName ?? "Nicht zugewiesen"}
+              </p>
+            )}
           </div>
           <button
             className="secondary-button"
