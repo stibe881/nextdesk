@@ -1,12 +1,22 @@
 import { withSupabase } from "@supabase/server";
 
 const ORIGIN = "https://app.nextdesk.ch";
+// Historic requester contacts were deterministically backfilled from MD5 values
+// in migration 0023. PostgreSQL stores them as valid UUIDs even when their
+// version/variant nibbles are not RFC-generated, so accept canonical UUID text.
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MAILBOX =
   /^[a-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)*@[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/;
 
 type Action =
   | { type: "getOwn"; tenantId: string }
+  | { type: "getProfile"; tenantId: string; requesterContactId: string }
+  | { type: "listProfiles"; tenantId: string }
+  | ({
+      type: "saveProfile";
+      tenantId: string;
+      requesterContactId: string;
+    } & ProfileInput)
   | { type: "search"; tenantId: string; query: string }
   | {
       type: "create";
@@ -22,6 +32,16 @@ type Action =
     };
 
 type Contact = { id: string; displayName: string; userId: string | null };
+const CONTACT_CHANNELS = ["email", "phone", "portal", "chat", "sms"] as const;
+type ContactChannel = (typeof CONTACT_CHANNELS)[number];
+type ProfileInput = {
+  location: string | null;
+  department: string | null;
+  language: string | null;
+  preferredContactChannel: ContactChannel | null;
+  importantNote: string | null;
+};
+type RequesterProfile = ProfileInput & { requesterContactId: string };
 
 function record(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -39,6 +59,50 @@ function shortText(value: unknown, min: number, max: number): string | null {
   const result = value.trim();
   return [...result].length >= min && [...result].length <= max ? result : null;
 }
+function profileText(value: unknown, max: number): string | null | false {
+  if (value === null) return null;
+  if (typeof value !== "string" || /\p{Cc}|\p{Cs}/u.test(value)) return false;
+  const result = value.trim();
+  return result && [...result].length <= max ? result : false;
+}
+function profileLanguage(value: unknown): string | null | false {
+  const text = profileText(value, 35);
+  if (text === null || text === false) return text;
+  const normalized = text.toLowerCase();
+  return /^[a-z]{2,3}(?:-[a-z0-9]{2,8})*$/.test(normalized)
+    ? normalized
+    : false;
+}
+function contactChannel(value: unknown): ContactChannel | null | false {
+  const text = profileText(value, 16);
+  if (text === null || text === false) return text;
+  const normalized = text.toLowerCase();
+  return (CONTACT_CHANNELS as readonly string[]).includes(normalized)
+    ? (normalized as ContactChannel)
+    : false;
+}
+function profileInput(value: Record<string, unknown>): ProfileInput | null {
+  const location = profileText(value.location, 120);
+  const department = profileText(value.department, 120);
+  const language = profileLanguage(value.language);
+  const preferredContactChannel = contactChannel(value.preferredContactChannel);
+  const importantNote = profileText(value.importantNote, 2000);
+  if (
+    location === false ||
+    department === false ||
+    language === false ||
+    preferredContactChannel === false ||
+    importantNote === false
+  )
+    return null;
+  return {
+    location,
+    department,
+    language,
+    preferredContactChannel,
+    importantNote,
+  };
+}
 function email(value: unknown): string | null | false {
   if (value === undefined || value === null || value === "") return null;
   if (typeof value !== "string" || /[\r\n\t]/.test(value)) return false;
@@ -50,6 +114,25 @@ function parse(value: unknown): Action | null {
     return null;
   if (value.type === "getOwn")
     return { type: value.type, tenantId: value.tenantId };
+  if (value.type === "getProfile" && uuid(value.requesterContactId))
+    return {
+      type: value.type,
+      tenantId: value.tenantId,
+      requesterContactId: value.requesterContactId,
+    };
+  if (value.type === "listProfiles")
+    return { type: value.type, tenantId: value.tenantId };
+  if (value.type === "saveProfile" && uuid(value.requesterContactId)) {
+    const profile = profileInput(value);
+    return profile
+      ? {
+          type: value.type,
+          tenantId: value.tenantId,
+          requesterContactId: value.requesterContactId,
+          ...profile,
+        }
+      : null;
+  }
   if (value.type === "search") {
     const query = shortText(value.query, 2, 120);
     return query ? { type: value.type, tenantId: value.tenantId, query } : null;
@@ -115,6 +198,17 @@ function contact(row: any): Contact | null {
       }
     : null;
 }
+function requesterProfile(row: any): RequesterProfile | null {
+  if (!uuid(row?.requester_id)) return null;
+  const profile = profileInput({
+    location: row.location ?? null,
+    department: row.department ?? null,
+    language: row.language ?? null,
+    preferredContactChannel: row.preferred_contact_channel ?? null,
+    importantNote: row.important_note ?? null,
+  });
+  return profile ? { requesterContactId: row.requester_id, ...profile } : null;
+}
 function escapeLike(value: string) {
   return value.replace(/[\\%_(),]/g, "\\$&");
 }
@@ -134,6 +228,19 @@ async function canManage(client: any, tenantId: string) {
     p_tenant_id: tenantId,
   });
   return error ? null : data === true;
+}
+async function requesterExists(
+  client: any,
+  tenantId: string,
+  requesterContactId: string,
+) {
+  const { data, error } = await client
+    .from("ticket_requesters")
+    .select("id")
+    .eq("tenant_id", tenantId)
+    .eq("id", requesterContactId)
+    .maybeSingle();
+  return error ? null : Boolean(data);
 }
 async function ensureOwn(
   client: any,
@@ -209,6 +316,78 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
   const managed = await canManage(context.supabase, action.tenantId);
   if (managed === null) return fail(request, "authorization_check_failed", 500);
   if (!managed) return fail(request, "requester_manage_denied", 403);
+
+  if (action.type === "getProfile") {
+    const exists = await requesterExists(
+      context.supabase,
+      action.tenantId,
+      action.requesterContactId,
+    );
+    if (exists === null) return fail(request, "requester_profile_failed", 500);
+    if (!exists) return fail(request, "requester_not_found", 404);
+    const { data, error } = await context.supabase
+      .from("ticket_requester_profiles")
+      .select(
+        "requester_id,location,department,language,preferred_contact_channel,important_note",
+      )
+      .eq("tenant_id", action.tenantId)
+      .eq("requester_id", action.requesterContactId)
+      .maybeSingle();
+    if (error) return fail(request, "requester_profile_failed", 500);
+    const profile = data ? requesterProfile(data) : null;
+    return profile || !data
+      ? json(request, { data: { profile } })
+      : fail(request, "requester_profile_failed", 500);
+  }
+
+  if (action.type === "listProfiles") {
+    const { data, error } = await context.supabase
+      .from("ticket_requester_profiles")
+      .select(
+        "requester_id,location,department,language,preferred_contact_channel,important_note",
+      )
+      .eq("tenant_id", action.tenantId)
+      .order("updated_at", { ascending: false })
+      .limit(100);
+    if (error) return fail(request, "requester_profiles_list_failed", 500);
+    const profiles = (data ?? [])
+      .map(requesterProfile)
+      .filter((entry): entry is RequesterProfile => entry !== null);
+    return json(request, { data: { profiles } });
+  }
+
+  if (action.type === "saveProfile") {
+    const exists = await requesterExists(
+      context.supabase,
+      action.tenantId,
+      action.requesterContactId,
+    );
+    if (exists === null)
+      return fail(request, "requester_profile_save_failed", 500);
+    if (!exists) return fail(request, "requester_not_found", 404);
+    const { data, error } = await context.supabase
+      .from("ticket_requester_profiles")
+      .upsert(
+        {
+          tenant_id: action.tenantId,
+          requester_id: action.requesterContactId,
+          location: action.location,
+          department: action.department,
+          language: action.language,
+          preferred_contact_channel: action.preferredContactChannel,
+          important_note: action.importantNote,
+        },
+        { onConflict: "requester_id" },
+      )
+      .select(
+        "requester_id,location,department,language,preferred_contact_channel,important_note",
+      )
+      .maybeSingle();
+    const profile = requesterProfile(data);
+    if (error || !profile)
+      return fail(request, "requester_profile_save_failed", 422);
+    return json(request, { data: { profile } });
+  }
 
   if (action.type === "search") {
     const needle = escapeLike(action.query);

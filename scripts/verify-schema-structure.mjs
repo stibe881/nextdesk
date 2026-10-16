@@ -29,6 +29,7 @@ const expectedFiles = [
   "0024_email_requester_fallback.sql",
   "0025_tenant_administrator_operations_permissions.sql",
   "0026_remove_ambiguous_role_assignment_fk.sql",
+  "0027_ticket_requester_profiles.sql",
 ];
 
 const availableFiles = await readdir(migrationDirectory);
@@ -217,6 +218,14 @@ const requiredFragments = [
   [
     "0026_remove_ambiguous_role_assignment_fk.sql",
     "drop constraint if exists user_role_assignments_role_id_fkey",
+  ],
+  [
+    "0027_ticket_requester_profiles.sql",
+    "create table public.ticket_requester_profiles",
+  ],
+  [
+    "0027_ticket_requester_profiles.sql",
+    "foreign key (requester_id, tenant_id)",
   ],
 ];
 
