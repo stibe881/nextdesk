@@ -35,3 +35,6 @@ verify_jwt = true
 
 [functions.tenant-admin-settings]
 verify_jwt = true
+
+[functions.knowledge-base]
+verify_jwt = true

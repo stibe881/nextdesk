@@ -15,7 +15,7 @@
     "test": "pnpm test:schema && turbo run test",
     "test:schema": "node scripts/verify-schema-structure.mjs && node scripts/verify-permission-catalog.mjs",
     "test:db": "bash supabase/tests/run-local-migration-tests.sh",
-    "check:edge": "deno check --config supabase/functions/deno.json supabase/functions/create-tenant/index.ts supabase/functions/invite-tenant-member/index.ts supabase/functions/accept-tenant-invitation/index.ts supabase/functions/manage-tenant/index.ts supabase/functions/platform-control/index.ts supabase/functions/owner-access/index.ts supabase/functions/owner-console/index.ts supabase/functions/tenant-users/index.ts supabase/functions/ticket-actions/index.ts supabase/functions/ticket-operations/index.ts supabase/functions/ticket-templates/index.ts supabase/functions/tenant-admin-settings/index.ts",
+    "check:edge": "deno check --config supabase/functions/deno.json supabase/functions/create-tenant/index.ts supabase/functions/invite-tenant-member/index.ts supabase/functions/accept-tenant-invitation/index.ts supabase/functions/manage-tenant/index.ts supabase/functions/platform-control/index.ts supabase/functions/owner-access/index.ts supabase/functions/owner-console/index.ts supabase/functions/tenant-users/index.ts supabase/functions/ticket-actions/index.ts supabase/functions/ticket-operations/index.ts supabase/functions/ticket-templates/index.ts supabase/functions/tenant-admin-settings/index.ts supabase/functions/knowledge-base/index.ts",
     "check": "pnpm typecheck && pnpm test",
     "format:check": "prettier --check ."
   },
