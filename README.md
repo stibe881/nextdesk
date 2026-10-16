@@ -39,10 +39,13 @@ Voraussetzungen: Node.js 22+ und pnpm 11.25+.
 pnpm install
 pnpm check
 pnpm test:db
+NEXTDESK_APP_URL=https://app.nextdesk.ch/ \
+NEXTDESK_SUPABASE_URL=https://<projekt-ref>.supabase.co \
+pnpm smoke:web
 pnpm dev:web
 ```
 
-`pnpm check` führt den TypeScript-Check, die Unit-Tests und statische Migrations-/Katalogprüfungen aus. `pnpm test:db` startet zusätzlich ein temporäres PostgreSQL-16-Cluster und führt alle neun Migrationen mit einem minimalen Auth-Shim aus. `pnpm dev:web` startet das lokale Dashboard auf Port 5173. Die Prüfungen ersetzen keine Verbindung gegen eine echte Supabase-Instanz.
+`pnpm check` führt den TypeScript-Check, die Unit-Tests und statische Migrations-/Katalogprüfungen aus. `pnpm test:db` startet zusätzlich ein temporäres PostgreSQL-16-Cluster und führt alle versionierten Migrationen mit einem minimalen Auth-Shim aus. `pnpm smoke:web` prüft eine ausgelieferte Web-App, ihr JavaScript-Bundle sowie – bei gesetzter Supabase-URL – den CORS-Preflight der Audit-Function. `pnpm dev:web` startet das lokale Dashboard auf Port 5173. Die Prüfungen ersetzen keine vollständige Anmeldung mit einem echten Benutzer oder eine Supabase-Staging-Abnahme.
 
 ## Web-Konfiguration
 

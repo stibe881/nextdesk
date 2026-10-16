@@ -6,6 +6,7 @@ import {
   useState,
   type FormEvent,
 } from "react";
+import { functionErrorMessage } from "./lib/function-error";
 import { supabase } from "./lib/supabase";
 
 export type SlaManagementProps = {
@@ -386,7 +387,14 @@ async function invokeSlaManagement(action: SlaAction): Promise<unknown> {
     "sla-management",
     { body: action },
   );
-  if (error) throw error;
+  if (error) {
+    throw new Error(
+      await functionErrorMessage(
+        error,
+        "Die SLA-Verwaltung ist derzeit nicht erreichbar.",
+      ),
+    );
+  }
   return data;
 }
 
@@ -399,7 +407,14 @@ async function invokeFormOptions(action: FormOptionsAction): Promise<unknown> {
     "ticket-actions",
     { body: action },
   );
-  if (error) throw error;
+  if (error) {
+    throw new Error(
+      await functionErrorMessage(
+        error,
+        "Die Erfassungsoptionen konnten nicht geladen werden.",
+      ),
+    );
+  }
   return data;
 }
 

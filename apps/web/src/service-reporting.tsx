@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { functionErrorMessage } from "./lib/function-error";
 import { supabase } from "./lib/supabase";
 
 export type ServiceReportingProps = {
@@ -232,7 +233,14 @@ async function invokeServiceReporting(
     "service-reporting",
     { body: action },
   );
-  if (error) throw error;
+  if (error) {
+    throw new Error(
+      await functionErrorMessage(
+        error,
+        "Der Servicebericht konnte nicht geladen werden.",
+      ),
+    );
+  }
   return data;
 }
 

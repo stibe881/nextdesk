@@ -5,6 +5,7 @@ import {
   useState,
   type FormEvent,
 } from "react";
+import { functionErrorMessage } from "./lib/function-error";
 import { supabase } from "./lib/supabase";
 
 export type CustomerOrganizationsProps = {
@@ -311,7 +312,14 @@ async function invokeFunction(
   const { data, error } = await supabase.functions.invoke<unknown>(name, {
     body,
   });
-  if (error) throw error;
+  if (error) {
+    throw new Error(
+      await functionErrorMessage(
+        error,
+        "Die Kundenorganisationen konnten nicht geladen werden.",
+      ),
+    );
+  }
   if (!isRecord(data) || !("data" in data)) {
     throw new Error(
       "Die Serverfunktion hat keine verwertbaren Daten geliefert.",

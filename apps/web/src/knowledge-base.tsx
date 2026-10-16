@@ -6,6 +6,7 @@ import {
   useState,
   type FormEvent,
 } from "react";
+import { functionErrorMessage } from "./lib/function-error";
 import { supabase } from "./lib/supabase";
 
 export type KnowledgeBaseProps = {
@@ -500,7 +501,10 @@ async function invokeKnowledgeBase<T>(
   );
   if (error) {
     throw new KnowledgeBaseRequestError(
-      errorMessage(error, "Die Wissensdatenbank ist nicht erreichbar."),
+      await functionErrorMessage(
+        error,
+        "Die Wissensdatenbank ist nicht erreichbar.",
+      ),
       statusFromError(error),
     );
   }

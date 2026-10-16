@@ -6,6 +6,7 @@ import {
   type FormEvent,
 } from "react";
 import { supabase } from "./lib/supabase";
+import { functionErrorMessage } from "./lib/function-error";
 
 export type TenantAdminSettingsProps = {
   tenantId: string;
@@ -367,7 +368,10 @@ async function tenantAdminRequest<T>(body: TenantAdminRequest): Promise<T> {
   );
   if (error) {
     throw new Error(
-      error.message || "Die Einstellungsfunktion ist nicht erreichbar.",
+      await functionErrorMessage(
+        error,
+        "Die Einstellungsfunktion ist nicht erreichbar.",
+      ),
     );
   }
   if (!isRecord(data) || !("data" in data)) {
@@ -390,7 +394,10 @@ async function tenantUsersRequest<T>(body: TenantUsersRequest): Promise<T> {
   );
   if (error) {
     throw new Error(
-      error.message || "Die Benutzeraktion ist nicht erreichbar.",
+      await functionErrorMessage(
+        error,
+        "Die Benutzeraktion ist nicht erreichbar.",
+      ),
     );
   }
   if (!isRecord(data) || !("data" in data)) {
@@ -413,7 +420,10 @@ async function tenantAuditRequest<T>(body: TenantAuditRequest): Promise<T> {
   );
   if (error) {
     throw new Error(
-      error.message || "Das Änderungsprotokoll ist nicht erreichbar.",
+      await functionErrorMessage(
+        error,
+        "Das Änderungsprotokoll ist nicht erreichbar.",
+      ),
     );
   }
   if (!isRecord(data) || !("data" in data)) {
@@ -438,7 +448,10 @@ async function tenantRoleManagementRequest<T>(
   );
   if (error) {
     throw new Error(
-      error.message || "Die Rollenverwaltung ist nicht erreichbar.",
+      await functionErrorMessage(
+        error,
+        "Die Rollenverwaltung ist nicht erreichbar.",
+      ),
     );
   }
   if (!isRecord(data) || !("data" in data)) {
