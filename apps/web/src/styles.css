@@ -1191,7 +1191,49 @@ pre {
 .ticket-module {
   margin-top: 24px;
 }
-
+.saved-ticket-views {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  border-top: 1px solid var(--border);
+  padding: 16px 24px 18px;
+  background: linear-gradient(90deg, var(--surface-subtle), var(--surface));
+}
+.saved-ticket-views__picker,
+.saved-ticket-views__editor,
+.saved-ticket-views__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 10px;
+}
+.saved-ticket-views__picker label,
+.saved-ticket-views__editor label {
+  display: grid;
+  flex: 1 1 190px;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 650;
+}
+.saved-ticket-views__picker select,
+.saved-ticket-views__editor :where(input, select) {
+  min-height: 40px;
+}
+.saved-ticket-views__editor label:first-child {
+  flex-basis: 250px;
+}
+.saved-ticket-views__actions {
+  flex: 0 0 auto;
+}
+.saved-ticket-views__message {
+  margin: 0;
+  color: var(--success);
+  font-size: 13px;
+}
+.saved-ticket-views__message.error {
+  color: var(--danger);
+}
 /* Shared actions. Existing class names and behavior are preserved. */
 .primary-button,
 .secondary-button,

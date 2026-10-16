@@ -98,6 +98,7 @@ insert into public.roles (id, tenant_id, name, scope) values
   ('16000000-0000-4000-8000-000000000002', '10000000-0000-4000-8000-000000000001', 'ICT agent', 'department');
 insert into public.role_permissions (role_id, permission_code) values
   ('15000000-0000-4000-8000-000000000001', 'ticket.read.own'),
+  ('15000000-0000-4000-8000-000000000001', 'ticket.manage'),
   ('16000000-0000-4000-8000-000000000002', 'ticket.read.department'),
   ('16000000-0000-4000-8000-000000000002', 'ticket.internal_notes.read');
 insert into public.user_role_assignments (tenant_id, user_id, role_id) values
@@ -110,6 +111,10 @@ insert into public.tickets (id, tenant_id, department_id, ticket_number, subject
   ('18000000-0000-4000-8000-000000000002', '10000000-0000-4000-8000-000000000001', '12000000-0000-4000-8000-000000000002', 'INF-2026-000001', 'Infrastructure test', 'Hidden from ICT', '13000000-0000-4000-8000-000000000001', '14000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000003');
 insert into public.ticket_comments (ticket_id, author_id, body) values
   ('17000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000002', 'Internal ICT note');
+insert into public.saved_ticket_views (tenant_id, owner_id, name, visibility, filters) values
+  ('10000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000001', 'Privat A', 'private', '{"query":"intern","queue":"alle","ticketScope":"all"}'),
+  ('10000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000002', 'Mandant A', 'tenant', '{"query":"","queue":"alle","ticketScope":"open"}'),
+  ('20000000-0000-4000-8000-000000000002', '00000000-0000-4000-8000-000000000004', 'Mandant B', 'tenant', '{"query":"","queue":"alle","ticketScope":"closed"}');
 
 -- Enforce cross-tenant FK integrity.
 do $$
@@ -457,6 +462,79 @@ begin
     or exists (select 1 from public.ticket_priorities where tenant_id not in ('20000000-0000-4000-8000-000000000002', current_setting('app.test.tenant_c_id')::uuid))
     or exists (select 1 from public.ticket_categories where tenant_id not in ('20000000-0000-4000-8000-000000000002', current_setting('app.test.tenant_c_id')::uuid)) then
     raise exception 'Tenant B member must only see reference data from active memberships';
+  end if;
+end;
+$$;
+reset role;
+rollback;
+
+-- Saved views must remain tenant-isolated: members only see their own private
+-- views plus tenant-shared views. Tenant-wide ticket managers may edit shared
+-- views they do not own, while an ordinary member cannot spoof an owner.
+begin;
+set local "request.jwt.claim.sub" = '00000000-0000-4000-8000-000000000001';
+set local role authenticated;
+do $$
+begin
+  if (select count(*) from public.saved_ticket_views) <> 2 then
+    raise exception 'Tenant A manager must only see own and Tenant A shared views';
+  end if;
+  update public.saved_ticket_views
+  set name = 'Mandant A verwaltet'
+  where tenant_id = '10000000-0000-4000-8000-000000000001'
+    and owner_id = '00000000-0000-4000-8000-000000000002'
+    and visibility = 'tenant';
+  if not found then
+    raise exception 'Tenant ticket manager must update a shared view';
+  end if;
+end;
+$$;
+reset role;
+rollback;
+
+begin;
+set local "request.jwt.claim.sub" = '00000000-0000-4000-8000-000000000003';
+set local role authenticated;
+do $$
+begin
+  if (select count(*) from public.saved_ticket_views) <> 1 then
+    raise exception 'Tenant A member must only see shared views, not another private view';
+  end if;
+  insert into public.saved_ticket_views (tenant_id, owner_id, name, visibility, filters)
+  values ('10000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000003', 'Privat B', 'private', '{"query":"","queue":"alle","ticketScope":"all"}');
+  begin
+    insert into public.saved_ticket_views (tenant_id, owner_id, name, visibility, filters)
+    values ('10000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000002', 'Unzulässig', 'private', '{"query":"","queue":"alle","ticketScope":"all"}');
+    raise exception 'Member was allowed to create a view for another owner';
+  exception when insufficient_privilege then
+    null;
+  end;
+end;
+$$;
+reset role;
+rollback;
+
+begin;
+set local "request.jwt.claim.sub" = '00000000-0000-4000-8000-000000000004';
+set local role authenticated;
+do $$
+begin
+  if (select count(*) from public.saved_ticket_views) <> 1
+    or exists (select 1 from public.saved_ticket_views where tenant_id <> '20000000-0000-4000-8000-000000000002') then
+    raise exception 'Tenant B member must not see Tenant A saved views';
+  end if;
+end;
+$$;
+reset role;
+rollback;
+
+begin;
+set local "request.jwt.claim.sub" = '00000000-0000-4000-8000-000000000006';
+set local role authenticated;
+do $$
+begin
+  if (select count(*) from public.saved_ticket_views) <> 0 then
+    raise exception 'User without an active membership must not see saved views';
   end if;
 end;
 $$;

@@ -32,6 +32,7 @@ const expectedFiles = [
   "0027_ticket_requester_profiles.sql",
   "0028_sla_automation_idempotency.sql",
   "0029_apply_sla_breach_atomically.sql",
+  "0030_saved_ticket_views.sql",
 ];
 
 const availableFiles = await readdir(migrationDirectory);
@@ -244,6 +245,15 @@ const requiredFragments = [
   [
     "0029_apply_sla_breach_atomically.sql",
     "grant execute on function public.apply_sla_breach(uuid, text, uuid) to service_role",
+  ],
+  ["0030_saved_ticket_views.sql", "create table public.saved_ticket_views"],
+  [
+    "0030_saved_ticket_views.sql",
+    "create policy saved_ticket_views_select_visible",
+  ],
+  [
+    "0030_saved_ticket_views.sql",
+    "public.has_tenant_permission(tenant_id, 'ticket.manage')",
   ],
 ];
 

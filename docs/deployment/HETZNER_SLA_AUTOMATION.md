@@ -91,10 +91,9 @@ Der Cronjob darf nur Schreibrechte auf die geschützte Logdatei haben. Die Logda
 
 ## Fehlerbehandlung
 
-| Antwort | Bedeutung | Maßnahme |
-| --- | --- | --- |
-| `401 sla_automation_unauthorized` | Secret fehlt oder stimmt nicht überein. | Secret in beiden Secret-Speichern vergleichen, ohne den Wert offenzulegen. |
-| `422 invalid_request` | Der Scheduler sendet keinen gültigen JSON-Body. | Runner unverändert verwenden. |
-| `503 sla_automation_unavailable` | Supabase-Secret ist noch nicht hinterlegt. | Schritt 2 abschließen. |
-| `207` | Ein Teil der Batch-Verarbeitung ist fehlgeschlagen. | Runner-Log und Supabase Function Logs prüfen; ein Retry ist sicher. |
-
+| Antwort                           | Bedeutung                                           | Maßnahme                                                                   |
+| --------------------------------- | --------------------------------------------------- | -------------------------------------------------------------------------- |
+| `401 sla_automation_unauthorized` | Secret fehlt oder stimmt nicht überein.             | Secret in beiden Secret-Speichern vergleichen, ohne den Wert offenzulegen. |
+| `422 invalid_request`             | Der Scheduler sendet keinen gültigen JSON-Body.     | Runner unverändert verwenden.                                              |
+| `503 sla_automation_unavailable`  | Supabase-Secret ist noch nicht hinterlegt.          | Schritt 2 abschließen.                                                     |
+| `207`                             | Ein Teil der Batch-Verarbeitung ist fehlgeschlagen. | Runner-Log und Supabase Function Logs prüfen; ein Retry ist sicher.        |

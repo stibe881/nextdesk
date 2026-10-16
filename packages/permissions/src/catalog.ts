@@ -1,5 +1,6 @@
 export const permissionCodes = [
   "ticket.create",
+  "ticket.manage",
   "ticket.read.own",
   "ticket.read.assigned",
   "ticket.read.department",

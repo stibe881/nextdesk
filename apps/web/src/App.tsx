@@ -93,6 +93,22 @@ type NotificationItem = {
   ticket: NotificationTicketReference | null;
 };
 
+type SavedTicketViewFilters = {
+  query: string;
+  queue: string;
+  ticketScope: TicketScope;
+};
+
+type SavedTicketView = {
+  createdAt: string;
+  filters: SavedTicketViewFilters;
+  id: string;
+  name: string;
+  ownerId: string;
+  updatedAt: string;
+  visibility: "private" | "tenant";
+};
+
 const sections: readonly { label: Section; Icon: LucideIcon }[] = [
   { label: "Übersicht", Icon: LayoutDashboard },
   { label: "Tickets", Icon: Ticket },
@@ -142,6 +158,72 @@ function displayAuthError(message: string): string {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isTicketScope(value: unknown): value is TicketScope {
+  return (
+    value === "all" ||
+    value === "mine" ||
+    value === "unassigned" ||
+    value === "open" ||
+    value === "closed"
+  );
+}
+
+function savedTicketViewFromValue(value: unknown): SavedTicketView | null {
+  if (
+    !isRecord(value) ||
+    typeof value.id !== "string" ||
+    typeof value.ownerId !== "string" ||
+    typeof value.name !== "string" ||
+    (value.visibility !== "private" && value.visibility !== "tenant") ||
+    typeof value.createdAt !== "string" ||
+    typeof value.updatedAt !== "string" ||
+    !isRecord(value.filters) ||
+    typeof value.filters.query !== "string" ||
+    typeof value.filters.queue !== "string" ||
+    !isTicketScope(value.filters.ticketScope)
+  )
+    return null;
+  return {
+    createdAt: value.createdAt,
+    filters: {
+      query: value.filters.query,
+      queue: value.filters.queue,
+      ticketScope: value.filters.ticketScope,
+    },
+    id: value.id,
+    name: value.name,
+    ownerId: value.ownerId,
+    updatedAt: value.updatedAt,
+    visibility: value.visibility,
+  };
+}
+
+function savedTicketViewsFromResponse(value: unknown): {
+  canManageTenantViews: boolean;
+  savedViews: SavedTicketView[];
+} | null {
+  if (
+    !isRecord(value) ||
+    !isRecord(value.data) ||
+    typeof value.data.canManageTenantViews !== "boolean" ||
+    !Array.isArray(value.data.savedViews)
+  )
+    return null;
+  const savedViews = value.data.savedViews.map(savedTicketViewFromValue);
+  return savedViews.every(
+    (savedView): savedView is SavedTicketView => savedView !== null,
+  )
+    ? { canManageTenantViews: value.data.canManageTenantViews, savedViews }
+    : null;
+}
+
+function savedTicketViewFromSaveResponse(
+  value: unknown,
+): SavedTicketView | null {
+  if (!isRecord(value) || !isRecord(value.data)) return null;
+  return savedTicketViewFromValue(value.data.savedView);
 }
 
 function notificationFromValue(value: unknown): NotificationItem | null {
@@ -501,6 +583,11 @@ export function App() {
   const [queue, setQueue] = useState("alle");
   const [ticketScope, setTicketScope] = useState<TicketScope>("all");
   const [query, setQuery] = useState("");
+  const [savedTicketViews, setSavedTicketViews] = useState<SavedTicketView[]>(
+    [],
+  );
+  const [canManageTenantViews, setCanManageTenantViews] = useState(false);
+  const [savedTicketViewsLoading, setSavedTicketViewsLoading] = useState(false);
   const [session, setSession] = useState<Session | null | undefined>(
     isSupabaseConfigured ? undefined : null,
   );
@@ -624,6 +711,42 @@ export function App() {
     () => tenants.find((tenant) => tenant.id === activeTenantId) ?? null,
     [activeTenantId, tenants],
   );
+
+  useEffect(() => {
+    if (!supabase || !session || !activeTenant) {
+      setSavedTicketViews([]);
+      setCanManageTenantViews(false);
+      setSavedTicketViewsLoading(false);
+      return;
+    }
+
+    let mounted = true;
+    setSavedTicketViewsLoading(true);
+    void supabase.functions
+      .invoke("ticket-saved-views", {
+        body: { type: "listSavedViews", tenantId: activeTenant.id },
+      })
+      .then(({ data, error }) => {
+        if (error) throw error;
+        const parsed = savedTicketViewsFromResponse(data);
+        if (!parsed) throw new Error("invalid_saved_view_response");
+        if (!mounted) return;
+        setSavedTicketViews(parsed.savedViews);
+        setCanManageTenantViews(parsed.canManageTenantViews);
+      })
+      .catch(() => {
+        if (!mounted) return;
+        setSavedTicketViews([]);
+        setCanManageTenantViews(false);
+      })
+      .finally(() => {
+        if (mounted) setSavedTicketViewsLoading(false);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [activeTenant, session]);
 
   useEffect(() => {
     if (!isSupabaseConfigured || !supabase || !session || !activeTenant) {
@@ -1255,6 +1378,22 @@ export function App() {
                   {filteredTickets.length} Treffer
                 </span>
               </div>
+              {activeTenant && isSupabaseConfigured && (
+                <SavedTicketViews
+                  canManageTenantViews={canManageTenantViews}
+                  currentUserId={session?.user.id}
+                  filters={{ query, queue, ticketScope }}
+                  loading={savedTicketViewsLoading}
+                  onApply={(filters) => {
+                    setQuery(filters.query);
+                    setQueue(filters.queue);
+                    setTicketScope(filters.ticketScope);
+                  }}
+                  onSavedViewsChange={setSavedTicketViews}
+                  savedViews={savedTicketViews}
+                  tenantId={activeTenant.id}
+                />
+              )}
               <QueueTabs
                 queue={queue}
                 queueCount={queueCount}
@@ -1481,6 +1620,264 @@ export function App() {
         />
       )}
     </div>
+  );
+}
+
+function SavedTicketViews({
+  canManageTenantViews,
+  currentUserId,
+  filters,
+  loading,
+  onApply,
+  onSavedViewsChange,
+  savedViews,
+  tenantId,
+}: {
+  canManageTenantViews: boolean;
+  currentUserId: string | undefined;
+  filters: SavedTicketViewFilters;
+  loading: boolean;
+  onApply: (filters: SavedTicketViewFilters) => void;
+  onSavedViewsChange: (savedViews: SavedTicketView[]) => void;
+  savedViews: SavedTicketView[];
+  tenantId: string;
+}) {
+  const [selectedViewId, setSelectedViewId] = useState("");
+  const [name, setName] = useState("");
+  const [visibility, setVisibility] = useState<"private" | "tenant">("private");
+  const [pending, setPending] = useState<"save" | "delete" | null>(null);
+  const [status, setStatus] = useState("");
+  const [errorMessage, setErrorMessage] = useState("");
+  const selectedView =
+    savedViews.find((savedView) => savedView.id === selectedViewId) ?? null;
+  const canDelete = Boolean(
+    selectedView &&
+    (selectedView.ownerId === currentUserId ||
+      (selectedView.visibility === "tenant" && canManageTenantViews)),
+  );
+
+  useEffect(() => {
+    if (!selectedViewId) return;
+    const nextSelectedView = savedViews.find(
+      (savedView) => savedView.id === selectedViewId,
+    );
+    if (nextSelectedView) return;
+    setSelectedViewId("");
+    setName("");
+    setVisibility("private");
+  }, [savedViews, selectedViewId]);
+
+  function applySelectedView(viewId: string) {
+    setErrorMessage("");
+    setStatus("");
+    setSelectedViewId(viewId);
+    const nextSelectedView = savedViews.find(
+      (savedView) => savedView.id === viewId,
+    );
+    if (!nextSelectedView) {
+      setName("");
+      setVisibility("private");
+      return;
+    }
+    setName(nextSelectedView.name);
+    setVisibility(nextSelectedView.visibility);
+    onApply(nextSelectedView.filters);
+    setStatus(`Ansicht „${nextSelectedView.name}“ angewendet.`);
+  }
+
+  function startNewView() {
+    setSelectedViewId("");
+    setName("");
+    setVisibility("private");
+    setErrorMessage("");
+    setStatus("Neue Ansicht aus den aktuellen Filtern anlegen.");
+  }
+
+  async function saveView(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!supabase || !currentUserId) return;
+
+    const trimmedName = name.trim();
+    if (!trimmedName) {
+      setErrorMessage("Bitte geben Sie einen Namen für die Ansicht ein.");
+      return;
+    }
+
+    setPending("save");
+    setErrorMessage("");
+    setStatus("");
+    const updating = Boolean(selectedView);
+    try {
+      const { data, error } = await supabase.functions.invoke(
+        "ticket-saved-views",
+        {
+          body: {
+            type: "saveSavedView",
+            tenantId,
+            ...(selectedView ? { viewId: selectedView.id } : {}),
+            name: trimmedName,
+            visibility,
+            filters,
+          },
+        },
+      );
+      if (error) throw error;
+      const savedView = savedTicketViewFromSaveResponse(data);
+      if (!savedView) throw new Error("invalid_saved_view_response");
+      onSavedViewsChange(
+        [
+          ...savedViews.filter((view) => view.id !== savedView.id),
+          savedView,
+        ].sort(
+          (left, right) =>
+            left.visibility.localeCompare(right.visibility) ||
+            right.updatedAt.localeCompare(left.updatedAt),
+        ),
+      );
+      setSelectedViewId(savedView.id);
+      setName(savedView.name);
+      setVisibility(savedView.visibility);
+      setStatus(
+        updating
+          ? `Ansicht „${savedView.name}“ aktualisiert.`
+          : `Ansicht „${savedView.name}“ gespeichert.`,
+      );
+    } catch {
+      setErrorMessage(
+        "Die Ansicht konnte nicht gespeichert werden. Prüfen Sie Name und Berechtigung.",
+      );
+    } finally {
+      setPending(null);
+    }
+  }
+
+  async function deleteView() {
+    if (!supabase || !selectedView || !canDelete) return;
+    setPending("delete");
+    setErrorMessage("");
+    setStatus("");
+    try {
+      const { error } = await supabase.functions.invoke("ticket-saved-views", {
+        body: {
+          type: "deleteSavedView",
+          tenantId,
+          viewId: selectedView.id,
+        },
+      });
+      if (error) throw error;
+      onSavedViewsChange(
+        savedViews.filter((savedView) => savedView.id !== selectedView.id),
+      );
+      setSelectedViewId("");
+      setName("");
+      setVisibility("private");
+      setStatus(`Ansicht „${selectedView.name}“ gelöscht.`);
+    } catch {
+      setErrorMessage("Die Ansicht konnte nicht gelöscht werden.");
+    } finally {
+      setPending(null);
+    }
+  }
+
+  return (
+    <section
+      aria-label="Gespeicherte Ticketansichten"
+      className="saved-ticket-views"
+    >
+      <div className="saved-ticket-views__picker">
+        <label>
+          <span>Gespeicherte Ansicht</span>
+          <select
+            disabled={loading || pending !== null}
+            onChange={(event) => applySelectedView(event.target.value)}
+            value={selectedViewId}
+          >
+            <option value="">
+              {loading ? "Ansichten werden geladen …" : "Aktuelle Filter"}
+            </option>
+            {savedViews.map((savedView) => (
+              <option key={savedView.id} value={savedView.id}>
+                {savedView.name}
+                {savedView.visibility === "tenant"
+                  ? " · Mandant"
+                  : " · Persönlich"}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button
+          className="text-button"
+          disabled={pending !== null}
+          onClick={startNewView}
+          type="button"
+        >
+          Neue Ansicht
+        </button>
+      </div>
+      <form className="saved-ticket-views__editor" onSubmit={saveView}>
+        <label>
+          <span>Name</span>
+          <input
+            disabled={loading || pending !== null}
+            maxLength={80}
+            onChange={(event) => setName(event.target.value)}
+            placeholder="z. B. Meine offenen Tickets"
+            required
+            value={name}
+          />
+        </label>
+        <label>
+          <span>Sichtbarkeit</span>
+          <select
+            disabled={loading || pending !== null}
+            onChange={(event) =>
+              setVisibility(
+                event.target.value === "tenant" ? "tenant" : "private",
+              )
+            }
+            value={visibility}
+          >
+            <option value="private">Nur für mich</option>
+            <option value="tenant">Für den Mandanten</option>
+          </select>
+        </label>
+        <div className="saved-ticket-views__actions">
+          <button
+            className="secondary-button"
+            disabled={loading || pending !== null || !currentUserId}
+            type="submit"
+          >
+            {pending === "save"
+              ? "Wird gespeichert …"
+              : selectedView
+                ? "Aktualisieren"
+                : "Ansicht speichern"}
+          </button>
+          {selectedView && canDelete && (
+            <button
+              className="danger-action"
+              disabled={pending !== null}
+              onClick={deleteView}
+              type="button"
+            >
+              {pending === "delete" ? "Wird gelöscht …" : "Löschen"}
+            </button>
+          )}
+        </div>
+      </form>
+      {(status || errorMessage) && (
+        <p
+          aria-live="polite"
+          className={
+            errorMessage
+              ? "saved-ticket-views__message error"
+              : "saved-ticket-views__message"
+          }
+        >
+          {errorMessage || status}
+        </p>
+      )}
+    </section>
   );
 }
 
