@@ -117,7 +117,8 @@ function AccessShell({ children }: { children: ReactNode }) {
         <section className="access-card">{children}</section>
       </section>
       <footer className="access-footer">
-        TICKETHUB · BETRIEBEN VON GROSS ICT
+        <span>TICKETHUB · BETRIEBEN VON</span>
+        <img alt="Gross ICT" src="/assets/gross-ict-footer-logo.png" />
       </footer>
     </main>
   );
