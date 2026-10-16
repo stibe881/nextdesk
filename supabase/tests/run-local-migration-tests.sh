@@ -87,8 +87,8 @@ insert into public.ticket_statuses (id, tenant_id, key, label, sort_order) value
   ('13000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000001', 'open', 'Open', 1),
   ('23000000-0000-4000-8000-000000000002', '20000000-0000-4000-8000-000000000002', 'open', 'Open', 1);
 insert into public.ticket_priorities (id, tenant_id, key, label, sort_order) values
-  ('14000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000001', 'normal', 'Normal', 1),
-  ('24000000-0000-4000-8000-000000000002', '20000000-0000-4000-8000-000000000002', 'normal', 'Normal', 1);
+  ('14000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000001', 'test_normal', 'Test Normal', 90),
+  ('24000000-0000-4000-8000-000000000002', '20000000-0000-4000-8000-000000000002', 'test_normal', 'Test Normal', 90);
 insert into public.ticket_categories (id, tenant_id, department_id, name) values
   ('13500000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000001', '11000000-0000-4000-8000-000000000001', 'Access'),
   ('23500000-0000-4000-8000-000000000002', '20000000-0000-4000-8000-000000000002', '21000000-0000-4000-8000-000000000003', 'Access B');
@@ -410,9 +410,12 @@ begin
   if (select count(*) from public.ticket_comments) <> 1 then
     raise exception 'ICT agent must see the internal ICT note';
   end if;
-  if (select count(*) from public.ticket_statuses) <> 1
-    or (select count(*) from public.ticket_priorities) <> 1
-    or (select count(*) from public.ticket_categories) <> 1 then
+  if not exists (select 1 from public.ticket_statuses)
+    or not exists (select 1 from public.ticket_priorities)
+    or not exists (select 1 from public.ticket_categories)
+    or exists (select 1 from public.ticket_statuses where tenant_id <> '10000000-0000-4000-8000-000000000001')
+    or exists (select 1 from public.ticket_priorities where tenant_id <> '10000000-0000-4000-8000-000000000001')
+    or exists (select 1 from public.ticket_categories where tenant_id <> '10000000-0000-4000-8000-000000000001') then
     raise exception 'ICT agent must only see dashboard reference data from Tenant A';
   end if;
 end;
@@ -437,6 +440,9 @@ reset role;
 rollback;
 
 begin;
+select set_config('app.test.tenant_c_id', id::text, true)
+from public.tenants
+where slug = 'tenant-c';
 set local "request.jwt.claim.sub" = '00000000-0000-4000-8000-000000000004';
 set local role authenticated;
 do $$
@@ -444,10 +450,13 @@ begin
   if (select count(*) from public.tickets) <> 0 then
     raise exception 'Tenant B member must not see Tenant A tickets';
   end if;
-  if (select count(*) from public.ticket_statuses) <> 1
-    or (select count(*) from public.ticket_priorities) <> 1
-    or (select count(*) from public.ticket_categories) <> 1 then
-    raise exception 'Tenant B member must only see dashboard reference data from Tenant B';
+  if not exists (select 1 from public.ticket_statuses)
+    or not exists (select 1 from public.ticket_priorities)
+    or not exists (select 1 from public.ticket_categories)
+    or exists (select 1 from public.ticket_statuses where tenant_id not in ('20000000-0000-4000-8000-000000000002', current_setting('app.test.tenant_c_id')::uuid))
+    or exists (select 1 from public.ticket_priorities where tenant_id not in ('20000000-0000-4000-8000-000000000002', current_setting('app.test.tenant_c_id')::uuid))
+    or exists (select 1 from public.ticket_categories where tenant_id not in ('20000000-0000-4000-8000-000000000002', current_setting('app.test.tenant_c_id')::uuid)) then
+    raise exception 'Tenant B member must only see reference data from active memberships';
   end if;
 end;
 $$;

@@ -26,6 +26,7 @@ import {
   type TenantOption,
 } from "./lib/live-dashboard";
 import { acceptTenantInvitations } from "./lib/tenant-invitations";
+import { TicketComposer } from "./ticket-composer";
 import {
   OwnerConsoleScreen,
   resolveOwnerAccess,
@@ -336,6 +337,7 @@ export function App() {
   const [tenantLoadError, setTenantLoadError] = useState("");
   const [snapshot, setSnapshot] = useState<LiveDashboardSnapshot | null>(null);
   const [dashboardLoading, setDashboardLoading] = useState(false);
+  const [dashboardRevision, setDashboardRevision] = useState(0);
   const [errorMessage, setErrorMessage] = useState("");
   const [ownerAccess, setOwnerAccess] = useState<OwnerAccess>("idle");
   const [ownerAccessError, setOwnerAccessError] = useState("");
@@ -455,7 +457,7 @@ export function App() {
     return () => {
       mounted = false;
     };
-  }, [activeTenant, period, session]);
+  }, [activeTenant, dashboardRevision, period, session]);
 
   async function signOut() {
     if (!supabase) return;
@@ -667,31 +669,39 @@ export function App() {
         )}
 
         {section === "Tickets" ? (
-          <section className="ticket-panel panel ticket-module">
-            <div className="panel-heading">
-              <div>
-                <p className="eyebrow">Autorisierte Vorgänge</p>
-                <h2>
-                  {view.ticketListNote
-                    ? "Neueste autorisierte Tickets"
-                    : "Alle sichtbaren Tickets"}
-                </h2>
-              </div>
-              <span className="data-caption">
-                {filteredTickets.length} Treffer
-              </span>
-            </div>
-            <QueueTabs
-              queue={queue}
-              queueCount={queueCount}
-              queueOptions={queueOptions}
-              setQueue={setQueue}
-            />
-            {view.ticketListNote && (
-              <p className="list-note">{view.ticketListNote}</p>
+          <>
+            {activeTenant && (
+              <TicketComposer
+                onCreated={() => setDashboardRevision((value) => value + 1)}
+                tenantId={activeTenant.id}
+              />
             )}
-            <TicketList tickets={filteredTickets} />
-          </section>
+            <section className="ticket-panel panel ticket-module">
+              <div className="panel-heading">
+                <div>
+                  <p className="eyebrow">Autorisierte Vorgänge</p>
+                  <h2>
+                    {view.ticketListNote
+                      ? "Neueste autorisierte Tickets"
+                      : "Alle sichtbaren Tickets"}
+                  </h2>
+                </div>
+                <span className="data-caption">
+                  {filteredTickets.length} Treffer
+                </span>
+              </div>
+              <QueueTabs
+                queue={queue}
+                queueCount={queueCount}
+                queueOptions={queueOptions}
+                setQueue={setQueue}
+              />
+              {view.ticketListNote && (
+                <p className="list-note">{view.ticketListNote}</p>
+              )}
+              <TicketList tickets={filteredTickets} />
+            </section>
+          </>
         ) : section !== "Übersicht" ? (
           <section className="module-stub">
             <p className="eyebrow">{section}</p>

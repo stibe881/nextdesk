@@ -1433,3 +1433,65 @@ button {
     grid-template-columns: 1fr;
   }
 }
+
+.ticket-compose {
+  margin-bottom: 20px;
+}
+.ticket-compose-form {
+  display: grid;
+  grid-template-columns: 1.4fr 0.8fr 0.7fr auto;
+  gap: 14px;
+  align-items: end;
+}
+.ticket-compose-form label {
+  display: grid;
+  gap: 6px;
+  color: var(--ink, #12283a);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.ticket-compose-form input,
+.ticket-compose-form select,
+.ticket-compose-form textarea {
+  width: 100%;
+  border: 1px solid #c9d1d6;
+  border-radius: 4px;
+  background: #fff;
+  color: #12283a;
+  font: inherit;
+  padding: 10px 11px;
+}
+.ticket-compose-description {
+  grid-column: 1 / -2;
+}
+.ticket-compose-description textarea {
+  resize: vertical;
+}
+.ticket-compose-message {
+  margin: 14px 0 0;
+  font-size: 13px;
+}
+.ticket-compose-message.error {
+  color: #a03422;
+}
+.ticket-compose-message.success {
+  color: #4a741e;
+}
+@media (max-width: 980px) {
+  .ticket-compose-form {
+    grid-template-columns: 1fr 1fr;
+  }
+  .ticket-compose-description {
+    grid-column: 1 / -1;
+  }
+}
+@media (max-width: 600px) {
+  .ticket-compose-form {
+    grid-template-columns: 1fr;
+  }
+  .ticket-compose-description {
+    grid-column: auto;
+  }
+}
