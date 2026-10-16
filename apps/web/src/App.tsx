@@ -6,6 +6,20 @@ import {
   type ReactNode,
 } from "react";
 import type { Session } from "@supabase/supabase-js";
+import {
+  ArrowLeft,
+  ArrowRight,
+  Bell,
+  BookOpen,
+  ChartNoAxesCombined,
+  CircleEllipsis,
+  LayoutDashboard,
+  LogOut,
+  MonitorCog,
+  Search,
+  Ticket,
+  type LucideIcon,
+} from "lucide-react";
 import { productDefaults } from "@nextdesk/config";
 import {
   activityItems,
@@ -45,12 +59,12 @@ type DashboardView = {
   updatedAt: string;
 };
 
-const sections: readonly { label: Section; glyph: string }[] = [
-  { label: "Übersicht", glyph: "▦" },
-  { label: "Tickets", glyph: "▤" },
-  { label: "Services", glyph: "◌" },
-  { label: "Wissen", glyph: "◇" },
-  { label: "Berichte", glyph: "⌁" },
+const sections: readonly { label: Section; Icon: LucideIcon }[] = [
+  { label: "Übersicht", Icon: LayoutDashboard },
+  { label: "Tickets", Icon: Ticket },
+  { label: "Services", Icon: MonitorCog },
+  { label: "Wissen", Icon: BookOpen },
+  { label: "Berichte", Icon: ChartNoAxesCombined },
 ];
 
 const previewView: DashboardView = {
@@ -119,7 +133,7 @@ function AccessShell({ children }: { children: ReactNode }) {
             IHR PORTAL.
           </h1>
           <span className="access-rule" aria-hidden="true" />
-          <p>Tickets, Services und Mandantensteuerung an einem sicheren Ort.</p>
+          <p>Tickets, Services und Kundenportale an einem sicheren Ort.</p>
         </div>
         <section className="access-card">{children}</section>
       </section>
@@ -196,7 +210,7 @@ function SignInScreen() {
         type="button"
       >
         {status === "sso" ? "SSO wird geöffnet …" : "MIT GROSS ICT ANMELDEN"}
-        <span aria-hidden="true">→</span>
+        <ArrowRight aria-hidden="true" size={18} strokeWidth={1.8} />
       </button>
       <div className="access-divider">
         <span>ODER MIT E-MAIL</span>
@@ -576,7 +590,7 @@ export function App() {
               onClick={() => setSection(item.label)}
               type="button"
             >
-              <span aria-hidden="true">{item.glyph}</span>
+              <item.Icon aria-hidden="true" size={18} strokeWidth={1.8} />
               {item.label}
             </button>
           ))}
@@ -596,7 +610,7 @@ export function App() {
               aria-label="Abmelden"
               type="button"
             >
-              ↗
+              <LogOut aria-hidden="true" size={17} strokeWidth={1.8} />
             </button>
           ) : (
             <button
@@ -604,7 +618,7 @@ export function App() {
               aria-label="Profiloptionen"
               type="button"
             >
-              •••
+              <CircleEllipsis aria-hidden="true" size={19} strokeWidth={1.8} />
             </button>
           )}
         </div>
@@ -629,7 +643,8 @@ export function App() {
                 onClick={() => setOwnerView("console")}
                 type="button"
               >
-                ← Plattform
+                <ArrowLeft aria-hidden="true" size={15} strokeWidth={1.8} />
+                Plattform
               </button>
             )}
             {activeTenant && (
@@ -648,7 +663,7 @@ export function App() {
               </label>
             )}
             <label className="search-field">
-              <span aria-hidden="true">⌕</span>
+              <Search aria-hidden="true" size={17} strokeWidth={1.8} />
               <input
                 aria-label="Tickets durchsuchen"
                 onChange={(event) => setQuery(event.target.value)}
@@ -661,7 +676,7 @@ export function App() {
               aria-label="Benachrichtigungen folgen"
               type="button"
             >
-              <span aria-hidden="true">♢</span>
+              <Bell aria-hidden="true" size={17} strokeWidth={1.8} />
               <b>{isSupabaseConfigured ? "0" : "2"}</b>
             </button>
           </div>
@@ -817,7 +832,12 @@ export function App() {
                     onClick={() => setSection("Tickets")}
                     type="button"
                   >
-                    Alle Tickets <span>→</span>
+                    Alle Tickets
+                    <ArrowRight
+                      aria-hidden="true"
+                      size={16}
+                      strokeWidth={1.8}
+                    />
                   </button>
                 </div>
                 <QueueTabs
