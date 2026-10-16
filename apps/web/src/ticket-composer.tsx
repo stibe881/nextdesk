@@ -337,9 +337,11 @@ function parseCreatedTicket(value: unknown): {
 }
 
 export function TicketComposer({
+  currentUserId,
   tenantId,
   onCreated,
 }: {
+  currentUserId: string | null;
   tenantId: string;
   onCreated: (ticketId: string) => void;
 }) {
@@ -612,8 +614,8 @@ export function TicketComposer({
     setAgentLookupAllowed(false);
 
     void supabase.functions
-      .invoke("ticket-actions", {
-        body: { type: "getAssignableAgents", tenantId, departmentId },
+      .invoke("ticket-agent-assignment", {
+        body: { type: "listForDepartment", tenantId, departmentId },
       })
       .then(({ data, error: requestError }) => {
         if (requestError) throw requestError;
@@ -928,12 +930,34 @@ export function TicketComposer({
             description,
             categoryId: selectedCategory?.id ?? null,
             subcategoryId: selectedSubcategory?.id ?? null,
-            ...(assignedAgentId ? { assignedAgentId } : {}),
           },
         },
       );
       if (requestError) throw requestError;
       const created = parseCreatedTicket(data);
+      if (assignedAgentId) {
+        const { error: agentAssignmentError } = await supabase.functions.invoke(
+          "ticket-agent-assignment",
+          {
+            body: {
+              type: "assign",
+              tenantId,
+              ticketId: created.ticketId,
+              assignedAgentId,
+            },
+          },
+        );
+        if (agentAssignmentError) {
+          setConfirmation(created);
+          setSubject("");
+          setDescription("");
+          setAssignedAgentId("");
+          setError(
+            "Das Ticket wurde erstellt, aber die Agentenzuweisung konnte nicht gespeichert werden. Öffnen Sie das Ticket und versuchen Sie die Zuweisung erneut.",
+          );
+          return;
+        }
+      }
       if (currentSelectedRequester.id !== options.currentRequester?.id) {
         const { error: requesterAssignmentError } =
           await supabase.functions.invoke("ticket-requesters", {
@@ -1290,19 +1314,24 @@ export function TicketComposer({
           </button>
           {agentLookupAllowed && assignableAgents.length > 0 && (
             <label>
-              Zugewiesene Person
+              Zugewiesener Agent
               <select
                 disabled={saving}
                 onChange={(event) => setAssignedAgentId(event.target.value)}
                 value={assignedAgentId}
               >
-                <option value="">Keine Person zuweisen</option>
+                <option value="">Nicht zugewiesen</option>
                 {assignableAgents.map((agent) => (
                   <option key={agent.id} value={agent.id}>
-                    {agent.displayName ?? "Unbekannte Person"}
+                    {agent.displayName ?? "Aktiver Agent"}
+                    {agent.id === currentUserId ? " (Ich)" : ""}
                   </option>
                 ))}
               </select>
+              <span className="data-caption">
+                Alle aktiven, für diese Abteilung berechtigten Agenten des
+                Mandanten stehen zur Auswahl.
+              </span>
             </label>
           )}
           {currentCategoryLookup?.status === "loading" && (

@@ -116,6 +116,15 @@ type UpdateTicketAction = {
   description?: string;
 };
 
+type TicketAgentAssignmentAction =
+  | { type: "list"; tenantId: string; ticketId: string }
+  | {
+      type: "assign";
+      tenantId: string;
+      ticketId: string;
+      assignedAgentId: string | null;
+    };
+
 type AddCommentAction = {
   type: "addComment";
   tenantId: string;
@@ -480,6 +489,7 @@ type TicketDetailData = {
 };
 
 type TicketDetailProps = {
+  currentUserId: string | null;
   tenantId: string;
   ticketId: string;
   onClose: () => void;
@@ -730,6 +740,17 @@ function toTicketAgent(value: unknown): TicketAgent | null {
 
 function isTicketAgent(value: unknown): value is TicketAgent {
   return toTicketAgent(value) !== null;
+}
+
+function parseAssignableTicketAgents(value: unknown): TicketAgent[] | null {
+  const envelope = asRecord(value);
+  const data = asRecord(envelope?.data);
+  if (!data || !Array.isArray(data.agents)) return null;
+
+  const agents = data.agents.map(toTicketAgent);
+  return agents.every((agent): agent is TicketAgent => agent !== null)
+    ? agents
+    : null;
 }
 
 function toTicketRequesterContact(
@@ -1554,6 +1575,18 @@ async function invokeTicketOperation(
   const { data, error } = await supabase.functions.invoke("ticket-operations", {
     body: action,
   });
+  if (error) throw error;
+  return data;
+}
+
+async function invokeTicketAgentAssignment(
+  action: TicketAgentAssignmentAction,
+): Promise<unknown> {
+  if (!supabase) throw new Error("Supabase ist nicht konfiguriert.");
+  const { data, error } = await supabase.functions.invoke(
+    "ticket-agent-assignment",
+    { body: action },
+  );
   if (error) throw error;
   return data;
 }
@@ -2771,6 +2804,7 @@ function KnowledgeSection({
 }
 
 export function TicketDetail({
+  currentUserId,
   tenantId,
   ticketId,
   onClose,
@@ -2788,6 +2822,9 @@ export function TicketDetail({
   const [editDescription, setEditDescription] = useState("");
   const [selectedTeamId, setSelectedTeamId] = useState("");
   const [selectedAgentId, setSelectedAgentId] = useState("");
+  const [assignableAgents, setAssignableAgents] = useState<TicketAgent[]>([]);
+  const [assignableAgentsLoading, setAssignableAgentsLoading] = useState(false);
+  const [assignableAgentsError, setAssignableAgentsError] = useState("");
   const [comment, setComment] = useState("");
   const [commentVisibility, setCommentVisibility] =
     useState<CommentVisibility>("internal");
@@ -2872,6 +2909,7 @@ export function TicketDetail({
   const handoverRequestSequence = useRef(0);
   const affectedItemsRequestSequence = useRef(0);
   const mergeSearchRequestSequence = useRef(0);
+  const assignableAgentsRequestSequence = useRef(0);
   const attachmentInputRef = useRef<HTMLInputElement>(null);
 
   const loadFeedback = useCallback(async () => {
@@ -2950,6 +2988,44 @@ export function TicketDetail({
     }
   }, [tenantId, ticketId]);
 
+  const loadAssignableAgents = useCallback(
+    async (canAssign: boolean) => {
+      const requestId = ++assignableAgentsRequestSequence.current;
+      setAssignableAgentsError("");
+      if (!canAssign) {
+        setAssignableAgents([]);
+        setAssignableAgentsLoading(false);
+        return;
+      }
+
+      setAssignableAgentsLoading(true);
+      try {
+        const response = await invokeTicketAgentAssignment({
+          type: "list",
+          tenantId,
+          ticketId,
+        });
+        const agents = parseAssignableTicketAgents(response);
+        if (!agents) {
+          throw new Error("Die Agentenliste ist unvollständig.");
+        }
+        if (requestId !== assignableAgentsRequestSequence.current) return;
+        setAssignableAgents(agents);
+      } catch {
+        if (requestId !== assignableAgentsRequestSequence.current) return;
+        setAssignableAgents([]);
+        setAssignableAgentsError(
+          "Die verfügbaren Agenten konnten nicht geladen werden. Bitte aktualisieren Sie das Ticket.",
+        );
+      } finally {
+        if (requestId === assignableAgentsRequestSequence.current) {
+          setAssignableAgentsLoading(false);
+        }
+      }
+    },
+    [tenantId, ticketId],
+  );
+
   const loadTicket = useCallback(async () => {
     const requestId = ++requestSequence.current;
     setLoading(true);
@@ -2965,6 +3041,9 @@ export function TicketDetail({
       if (nextDetail === undefined) {
         throw new Error("Die Ticketdaten sind unvollständig.");
       }
+      if (requestId !== requestSequence.current) return false;
+
+      await loadAssignableAgents(nextDetail?.canAssign === true);
       if (requestId !== requestSequence.current) return false;
 
       setDetail(nextDetail);
@@ -2998,7 +3077,7 @@ export function TicketDetail({
         setLoading(false);
       }
     }
-  }, [tenantId, ticketId]);
+  }, [loadAssignableAgents, tenantId, ticketId]);
 
   const loadAttachments = useCallback(async () => {
     const requestId = ++attachmentRequestSequence.current;
@@ -3336,6 +3415,20 @@ export function TicketDetail({
   );
   const assignedTeamId = detail?.ticket.assigned_team_id ?? "";
   const assignedAgentId = detail?.ticket.assigned_agent_id ?? "";
+  const visibleAssignableAgents = useMemo(() => {
+    const agents =
+      assignableAgents.length > 0 ? assignableAgents : (detail?.agents ?? []);
+    const byId = new Map(agents.map((agent) => [agent.id, agent]));
+    if (detail?.assignedAgent) {
+      byId.set(detail.assignedAgent.id, detail.assignedAgent);
+    }
+    return [...byId.values()].sort(
+      (left, right) =>
+        left.displayName.localeCompare(right.displayName, "de-CH", {
+          sensitivity: "base",
+        }) || left.id.localeCompare(right.id),
+    );
+  }, [assignableAgents, detail?.agents, detail?.assignedAgent]);
   const hasContentChanges = Boolean(
     detail &&
     isEditingTicket &&
@@ -3811,9 +3904,8 @@ export function TicketDetail({
     if (selectedTeamId !== assignedTeamId) {
       action.assignedTeamId = selectedTeamId || null;
     }
-    if (detail.canAssign && selectedAgentId !== assignedAgentId) {
-      action.assignedAgentId = selectedAgentId || null;
-    }
+    const assignedAgentChanged =
+      detail.canAssign && selectedAgentId !== assignedAgentId;
     if (hasContentChanges && subject !== detail.ticket.subject) {
       action.subject = subject;
     }
@@ -3824,9 +3916,9 @@ export function TicketDetail({
       !action.statusKey &&
       !action.priorityKey &&
       action.assignedTeamId === undefined &&
-      action.assignedAgentId === undefined &&
       action.subject === undefined &&
-      action.description === undefined
+      action.description === undefined &&
+      !assignedAgentChanged
     ) {
       return;
     }
@@ -3834,7 +3926,23 @@ export function TicketDetail({
     setPendingAction("update");
     setError("");
     try {
-      await invokeTicketOperation(action);
+      const hasTicketUpdate =
+        action.statusKey !== undefined ||
+        action.priorityKey !== undefined ||
+        action.assignedTeamId !== undefined ||
+        action.subject !== undefined ||
+        action.description !== undefined;
+      if (hasTicketUpdate) {
+        await invokeTicketOperation(action);
+      }
+      if (assignedAgentChanged) {
+        await invokeTicketAgentAssignment({
+          type: "assign",
+          tenantId,
+          ticketId,
+          assignedAgentId: selectedAgentId || null,
+        });
+      }
       setIsEditingTicket(false);
       onChanged();
       await Promise.all([loadTicket(), loadFeedback(), loadQuality()]);
@@ -6040,19 +6148,30 @@ export function TicketDetail({
                   <label>
                     Zugewiesener Agent
                     <select
-                      disabled={busy}
+                      disabled={busy || assignableAgentsLoading}
                       onChange={(event) =>
                         setSelectedAgentId(event.target.value)
                       }
                       value={selectedAgentId}
                     >
                       <option value="">Nicht zugewiesen</option>
-                      {detail.agents.map((agent) => (
+                      {visibleAssignableAgents.map((agent) => (
                         <option key={agent.id} value={agent.id}>
                           {agent.displayName}
+                          {agent.id === currentUserId ? " (Ich)" : ""}
                         </option>
                       ))}
                     </select>
+                    <span className="data-caption">
+                      {assignableAgentsLoading
+                        ? "Agenten werden geladen …"
+                        : "Alle aktiven, für diese Abteilung berechtigten Agenten des Mandanten stehen zur Auswahl."}
+                    </span>
+                    {assignableAgentsError && (
+                      <span className="error" role="alert">
+                        {assignableAgentsError}
+                      </span>
+                    )}
                   </label>
                 ) : (
                   <p className="data-caption">

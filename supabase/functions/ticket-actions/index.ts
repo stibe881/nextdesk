@@ -573,7 +573,6 @@ async function hasTicketPermission(
   if (departmentMembershipError || roleAssignmentsError) {
     return { allowed: false, error: true };
   }
-  if (!departmentMembership) return { allowed: false, error: false };
 
   const allowed = (roleAssignments ?? []).some((assignment: any) => {
     const role = Array.isArray(assignment.roles)
@@ -584,7 +583,8 @@ async function hasTicketPermission(
       role.active === true &&
       (role.scope === "tenant" ||
         (role.scope === "department" &&
-          assignment.department_id === departmentId)) &&
+          assignment.department_id === departmentId &&
+          Boolean(departmentMembership))) &&
       (role.role_permissions ?? []).some(
         (item: any) => item.permission_code === permissionCode,
       )
@@ -644,30 +644,30 @@ async function getEligibleAssignableAgentIds(
   for (const assignment of roleAssignments ?? []) {
     if (
       !isUuid(assignment.user_id) ||
-      !activeTenantMemberIds.has(assignment.user_id) ||
-      !activeDepartmentMemberIds.has(assignment.user_id)
+      !activeTenantMemberIds.has(assignment.user_id)
     ) {
       continue;
     }
     const role = Array.isArray(assignment.roles)
       ? assignment.roles[0]
       : assignment.roles;
-    if (
-      role?.tenant_id !== tenantId ||
-      role.active !== true ||
-      (role.scope !== "tenant" &&
-        (role.scope !== "department" ||
-          assignment.department_id !== departmentId))
-    ) {
+    if (role?.tenant_id !== tenantId || role.active !== true) {
       continue;
     }
-    if (
-      (role.role_permissions ?? []).some(
-        (permission: any) =>
-          permission.permission_code === "ticket.read.assigned" ||
-          permission.permission_code === "ticket.update",
-      )
-    ) {
+
+    const canHandleAssignedTickets = (role.role_permissions ?? []).some(
+      (permission: any) =>
+        permission.permission_code === "ticket.read.assigned" ||
+        permission.permission_code === "ticket.update",
+    );
+    if (!canHandleAssignedTickets) continue;
+
+    const tenantScopedAgent = role.scope === "tenant";
+    const departmentScopedAgent =
+      role.scope === "department" &&
+      assignment.department_id === departmentId &&
+      activeDepartmentMemberIds.has(assignment.user_id);
+    if (tenantScopedAgent || departmentScopedAgent) {
       agentIds.add(assignment.user_id);
     }
   }
@@ -705,10 +705,10 @@ async function getAssignableAgents(
       typeof profile.display_name === "string" ? profile.display_name : null,
     );
   }
-  const agents = eligible.agentIds.flatMap((id) => {
-    if (!profileNames.has(id)) return [];
-    return [{ id, displayName: profileNames.get(id) ?? null }];
-  });
+  const agents = eligible.agentIds.map((id) => ({
+    id,
+    displayName: profileNames.get(id) ?? "Aktiver Agent",
+  }));
   agents.sort(
     (left, right) =>
       (left.displayName ?? "").localeCompare(

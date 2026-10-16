@@ -430,28 +430,29 @@ async function getEligibleTicketAgentIds(
   for (const assignment of roleAssignments ?? []) {
     if (
       !isUuid(assignment.user_id) ||
-      !activeTenantMemberIds.has(assignment.user_id) ||
-      !activeDepartmentMemberIds.has(assignment.user_id)
+      !activeTenantMemberIds.has(assignment.user_id)
     )
       continue;
     const role = Array.isArray(assignment.roles)
       ? assignment.roles[0]
       : assignment.roles;
-    if (
-      !role?.active ||
-      role.tenant_id !== ticket.tenant_id ||
-      (role.scope !== "tenant" &&
-        (role.scope !== "department" ||
-          assignment.department_id !== ticket.department_id))
-    )
-      continue;
-    if (
-      (role.role_permissions ?? []).some(
-        (permission: any) =>
-          permission.permission_code === "ticket.read.assigned" ||
-          permission.permission_code === "ticket.update",
-      )
-    )
+    if (!role?.active || role.tenant_id !== ticket.tenant_id) continue;
+
+    const canHandleAssignedTickets = (role.role_permissions ?? []).some(
+      (permission: any) =>
+        permission.permission_code === "ticket.read.assigned" ||
+        permission.permission_code === "ticket.update",
+    );
+    if (!canHandleAssignedTickets) continue;
+
+    // Tenant-scoped agents may work throughout their tenant. Department-scoped
+    // agents remain limited to an active membership in this ticket's department.
+    const tenantScopedAgent = role.scope === "tenant";
+    const departmentScopedAgent =
+      role.scope === "department" &&
+      assignment.department_id === ticket.department_id &&
+      activeDepartmentMemberIds.has(assignment.user_id);
+    if (tenantScopedAgent || departmentScopedAgent)
       agentIds.add(assignment.user_id);
   }
   return { agentIds: [...agentIds], error: false };
@@ -480,10 +481,10 @@ async function getTicketAgents(
       typeof profile.display_name === "string" ? profile.display_name : null,
     );
   }
-  const agents = eligibleAgentIds.agentIds.flatMap((id) => {
-    if (!profileNames.has(id)) return [];
-    return [{ id, displayName: profileNames.get(id) ?? null }];
-  });
+  const agents = eligibleAgentIds.agentIds.map((id) => ({
+    id,
+    displayName: profileNames.get(id) ?? "Aktiver Agent",
+  }));
   agents.sort(
     (left, right) =>
       (left.displayName ?? "").localeCompare(

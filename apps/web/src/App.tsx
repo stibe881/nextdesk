@@ -59,6 +59,11 @@ import {
   type OwnerAccess,
 } from "./platform-owner";
 import { functionErrorMessage } from "./lib/function-error";
+import {
+  matchesTicketSearch,
+  parseTicketSearch,
+  removeTicketSearchClause,
+} from "./lib/ticket-search";
 import { appRedirectUrl, isSupabaseConfigured, supabase } from "./lib/supabase";
 
 type Section =
@@ -539,20 +544,30 @@ function MembershipErrorScreen({
 
 function TicketList({
   tickets,
+  onClearFilters,
   onOpen,
   onSelectionChange,
   selectedTicketIds,
 }: {
   tickets: readonly DashboardTicket[];
+  onClearFilters?: () => void;
   onOpen?: (ticketId: string) => void;
   onSelectionChange?: (ticketId: string, selected: boolean) => void;
   selectedTicketIds?: ReadonlySet<string>;
 }) {
   if (tickets.length === 0) {
     return (
-      <p className="empty-state">
-        Keine Tickets entsprechen dem aktuellen Filter.
-      </p>
+      <div className="empty-state ticket-empty-state">
+        <strong>Keine passenden Tickets gefunden.</strong>
+        <span>
+          Prüfen Sie die Suchbegriffe oder setzen Sie die aktiven Filter zurück.
+        </span>
+        {onClearFilters && (
+          <button onClick={onClearFilters} type="button">
+            Filter zurücksetzen
+          </button>
+        )}
+      </div>
     );
   }
 
@@ -1071,6 +1086,7 @@ export function App() {
       ),
     [view.tickets],
   );
+  const parsedTicketSearch = useMemo(() => parseTicketSearch(query), [query]);
   const filteredTickets = useMemo(
     () =>
       view.tickets.filter((ticket) => {
@@ -1081,13 +1097,10 @@ export function App() {
           (ticketScope === "unassigned" && ticket.isUnassigned) ||
           (ticketScope === "open" && !ticket.isClosed) ||
           (ticketScope === "closed" && ticket.isClosed);
-        const match =
-          `${ticket.id} ${ticket.subject} ${ticket.queueLabel} ${ticket.state}`
-            .toLocaleLowerCase("de-CH")
-            .includes(query.toLocaleLowerCase("de-CH"));
+        const match = matchesTicketSearch(ticket, parsedTicketSearch);
         return inQueue && inScope && match;
       }),
-    [query, queue, ticketScope, view.tickets],
+    [parsedTicketSearch, queue, ticketScope, view.tickets],
   );
 
   const greetingName = operatorName.split(" ")[0] || operatorName;
@@ -1108,6 +1121,12 @@ export function App() {
     });
   };
   const clearTicketSelection = () => setSelectedTicketIds(new Set());
+  const clearTicketFilters = () => {
+    clearTicketSelection();
+    setQuery("");
+    setQueue("alle");
+    setTicketScope("all");
+  };
   const ticketScopeLabel: Record<TicketScope, string> = {
     all: "Alle sichtbaren Tickets",
     closed: "Gelöste Tickets",
@@ -1289,7 +1308,7 @@ export function App() {
               <input
                 aria-label="Tickets durchsuchen"
                 onChange={(event) => setQuery(event.target.value)}
-                placeholder="Tickets durchsuchen"
+                placeholder="Suche oder status:offen"
                 value={query}
               />
             </label>
@@ -1554,6 +1573,44 @@ export function App() {
                 queueOptions={queueOptions}
                 setQueue={setQueue}
               />
+              {(parsedTicketSearch.chips.length > 0 || query.trim()) && (
+                <div className="ticket-search-summary">
+                  <div>
+                    <strong>Aktive Suche</strong>
+                    <span>
+                      Nutzen Sie z. B. <code>status:offen</code>,{" "}
+                      <code>prio:hoch</code>, <code>queue:ict</code>,{" "}
+                      <code>sla:kritisch</code> oder <code>agent:mir</code>.
+                    </span>
+                  </div>
+                  <div
+                    className="ticket-search-chips"
+                    aria-label="Aktive Suchfilter"
+                  >
+                    {parsedTicketSearch.chips.map((chip) => (
+                      <button
+                        aria-label={`${chip.label} entfernen`}
+                        className="ticket-search-chip"
+                        key={chip.raw}
+                        onClick={() =>
+                          setQuery(removeTicketSearchClause(query, chip.raw))
+                        }
+                        type="button"
+                      >
+                        {chip.label}
+                        <X aria-hidden="true" size={14} strokeWidth={2} />
+                      </button>
+                    ))}
+                    <button
+                      className="text-button"
+                      onClick={clearTicketFilters}
+                      type="button"
+                    >
+                      Suche zurücksetzen
+                    </button>
+                  </div>
+                </div>
+              )}
               {view.ticketListNote && (
                 <p className="list-note">{view.ticketListNote}</p>
               )}
@@ -1564,6 +1621,9 @@ export function App() {
                       onSelectionChange: updateTicketSelection,
                       selectedTicketIds,
                     }
+                  : {})}
+                {...(query.trim() || queue !== "alle" || ticketScope !== "all"
+                  ? { onClearFilters: clearTicketFilters }
                   : {})}
                 tickets={filteredTickets}
               />
@@ -1772,6 +1832,7 @@ export function App() {
               <X aria-hidden="true" size={20} strokeWidth={1.8} />
             </button>
             <TicketComposer
+              currentUserId={session?.user.id ?? null}
               onCreated={(ticketId) => {
                 setTicketPage(0);
                 setDashboardRevision((value) => value + 1);
@@ -1786,6 +1847,7 @@ export function App() {
       )}
       {activeTenant && selectedTicketId && isSupabaseConfigured && (
         <TicketDetail
+          currentUserId={session?.user.id ?? null}
           onChanged={() => setDashboardRevision((value) => value + 1)}
           onClose={() => setSelectedTicketId(null)}
           tenantId={activeTenant.id}
