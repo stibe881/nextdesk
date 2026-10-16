@@ -3149,18 +3149,36 @@ export function TicketDetail({
   }, [loadTicket]);
 
   useEffect(() => {
+    const isClosed = detail?.statuses.some(
+      (status) => status.id === detail.ticket.status_id && status.is_closed,
+    );
+    if (!isClosed) {
+      setFeedback(null);
+      setFeedbackError("");
+      setFeedbackLoading(false);
+      return;
+    }
     void loadFeedback();
     return () => {
       feedbackRequestSequence.current += 1;
     };
-  }, [loadFeedback]);
+  }, [loadFeedback, detail?.ticket.status_id, detail?.statuses]);
 
   useEffect(() => {
+    const isClosed = detail?.statuses.some(
+      (status) => status.id === detail.ticket.status_id && status.is_closed,
+    );
+    if (!isClosed) {
+      setQuality(null);
+      setQualityError("");
+      setQualityLoading(false);
+      return;
+    }
     void loadQuality();
     return () => {
       qualityRequestSequence.current += 1;
     };
-  }, [loadQuality]);
+  }, [loadQuality, detail?.ticket.status_id, detail?.statuses]);
 
   useEffect(() => {
     setAttachments([]);
@@ -3180,11 +3198,15 @@ export function TicketDetail({
     setHandoverSummary("");
     setHandoverNextSteps("");
     setHandoverRiskLevel("medium");
+    if (detail?.canUpdate !== true) {
+      setHandoversLoading(false);
+      return;
+    }
     void loadHandovers();
     return () => {
       handoverRequestSequence.current += 1;
     };
-  }, [loadHandovers]);
+  }, [loadHandovers, detail?.canUpdate]);
 
   useEffect(() => {
     setCatalog(emptyTicketCatalog());
