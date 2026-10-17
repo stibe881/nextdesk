@@ -353,24 +353,50 @@ async function hasPermission(
   permission: string,
 ) {
   const now = new Date().toISOString();
-  const { data } = await admin
-    .from("user_role_assignments")
-    .select(
-      "role_id, department_id, roles!user_role_assignments_role_tenant_fk!inner(active, role_permissions!inner(permission_code))",
-    )
-    .eq("tenant_id", tenantId)
-    .eq("user_id", userId)
-    .lte("starts_at", now)
-    .or(`expires_at.is.null,expires_at.gt.${now}`);
-  return (data ?? []).some((assignment: any) =>
-    assignment.department_id === null ||
-    assignment.department_id === departmentId
-      ? assignment.roles?.active &&
-        (assignment.roles.role_permissions ?? []).some(
-          (item: any) => item.permission_code === permission,
-        )
-      : false,
-  );
+  // Keep Function authorization aligned with public.has_ticket_permission:
+  // every ticket permission requires an active department membership, even for
+  // a tenant-scoped role. Service-role data access must not broaden RBAC.
+  const [departmentMembership, roleAssignments] = await Promise.all([
+    admin
+      .from("department_memberships")
+      .select("user_id")
+      .eq("tenant_id", tenantId)
+      .eq("department_id", departmentId)
+      .eq("user_id", userId)
+      .eq("status", "active")
+      .maybeSingle(),
+    admin
+      .from("user_role_assignments")
+      .select(
+        "department_id, roles!user_role_assignments_role_tenant_fk!inner(tenant_id, active, scope, role_permissions!inner(permission_code))",
+      )
+      .eq("tenant_id", tenantId)
+      .eq("user_id", userId)
+      .lte("starts_at", now)
+      .or(`expires_at.is.null,expires_at.gt.${now}`),
+  ]);
+  if (
+    departmentMembership.error ||
+    roleAssignments.error ||
+    !departmentMembership.data
+  ) {
+    return false;
+  }
+  return (roleAssignments.data ?? []).some((assignment: any) => {
+    const role = Array.isArray(assignment.roles)
+      ? assignment.roles[0]
+      : assignment.roles;
+    return (
+      role?.tenant_id === tenantId &&
+      role.active === true &&
+      (role.scope === "tenant" ||
+        (role.scope === "department" &&
+          assignment.department_id === departmentId)) &&
+      (role.role_permissions ?? []).some(
+        (item: any) => item.permission_code === permission,
+      )
+    );
+  });
 }
 
 type TicketAgent = {
@@ -1067,6 +1093,65 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         500,
       );
     const assignedAgent = assignedTicketAgent.agent;
+    const [
+      canUpdate,
+      canMerge,
+      canTrackTime,
+      canEscalate,
+      canClose,
+      canWriteInternalNotes,
+      canCommentExternal,
+    ] = await Promise.all([
+      hasPermission(
+        context.supabaseAdmin,
+        actorId,
+        ticket.tenant_id,
+        ticket.department_id,
+        "ticket.update",
+      ),
+      hasPermission(
+        context.supabaseAdmin,
+        actorId,
+        ticket.tenant_id,
+        ticket.department_id,
+        "ticket.merge",
+      ),
+      hasPermission(
+        context.supabaseAdmin,
+        actorId,
+        ticket.tenant_id,
+        ticket.department_id,
+        "ticket.time.track",
+      ),
+      hasPermission(
+        context.supabaseAdmin,
+        actorId,
+        ticket.tenant_id,
+        ticket.department_id,
+        "ticket.escalate",
+      ),
+      hasPermission(
+        context.supabaseAdmin,
+        actorId,
+        ticket.tenant_id,
+        ticket.department_id,
+        "ticket.close",
+      ),
+      hasPermission(
+        context.supabaseAdmin,
+        actorId,
+        ticket.tenant_id,
+        ticket.department_id,
+        "ticket.internal_notes.write",
+      ),
+      hasPermission(
+        context.supabaseAdmin,
+        actorId,
+        ticket.tenant_id,
+        ticket.department_id,
+        "ticket.comment.external",
+      ),
+    ]);
     return response(request, {
       data: {
         ticket: {
@@ -1091,36 +1176,15 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         relations,
         similarTickets,
         ...(canAssign ? { agents: ticketAgents.agents } : {}),
-        canUpdate: await hasPermission(
-          context.supabaseAdmin,
-          actorId,
-          ticket.tenant_id,
-          ticket.department_id,
-          "ticket.update",
-        ),
-        canMerge: await hasPermission(
-          context.supabaseAdmin,
-          actorId,
-          ticket.tenant_id,
-          ticket.department_id,
-          "ticket.merge",
-        ),
+        canUpdate,
+        canMerge,
         canAssign,
-        canTrackTime: await hasPermission(
-          context.supabaseAdmin,
-          actorId,
-          ticket.tenant_id,
-          ticket.department_id,
-          "ticket.time.track",
-        ),
-        canEscalate: await hasPermission(
-          context.supabaseAdmin,
-          actorId,
-          ticket.tenant_id,
-          ticket.department_id,
-          "ticket.escalate",
-        ),
+        canTrackTime,
+        canEscalate,
+        canClose,
         canUseInternalNotes: internal,
+        canWriteInternalNotes,
+        canCommentExternal,
       },
     });
   }
@@ -1871,7 +1935,11 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
   }
 
   if (action.type === "addComment") {
-    if (action.body.length < 1 || action.body.length > 50000)
+    if (
+      action.body.length < 1 ||
+      action.body.length > 50000 ||
+      action.body.includes("\u0000")
+    )
       return response(request, { error: { code: "invalid_comment" } }, 422);
     if (
       action.visibility === "internal" &&
@@ -1885,7 +1953,33 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     )
       return response(
         request,
-        { error: { code: "internal_note_denied" } },
+        {
+          error: {
+            code: "internal_note_denied",
+            message: "Sie sind nicht berechtigt, interne Kommentare zu verfassen.",
+          },
+        },
+        403,
+      );
+    if (
+      action.visibility === "external" &&
+      !(await hasPermission(
+        context.supabaseAdmin,
+        actorId,
+        ticket.tenant_id,
+        ticket.department_id,
+        "ticket.comment.external",
+      ))
+    )
+      return response(
+        request,
+        {
+          error: {
+            code: "external_comment_denied",
+            message:
+              "Sie sind nicht berechtigt, externe Portalantworten zu veröffentlichen.",
+          },
+        },
         403,
       );
     const { data: comment, error } = await context.supabaseAdmin
