@@ -1,8 +1,6 @@
 packages:
   - apps/*
   - packages/*
-  - mobile
-
 
 allowBuilds:
   esbuild: true
