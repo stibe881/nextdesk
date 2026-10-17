@@ -33,7 +33,13 @@ verify_jwt = true
 [functions.ticket-requesters]
 verify_jwt = true
 
+[functions.ticket-requester-context]
+verify_jwt = true
+
 [functions.ticket-operations]
+verify_jwt = true
+
+[functions.ticket-department-change]
 verify_jwt = true
 
 [functions.ticket-tags]

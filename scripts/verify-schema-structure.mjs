@@ -41,6 +41,7 @@ const expectedFiles = [
   "0036_tenant_sso_domain_routing.sql",
   "0037_tenant_people_directory.sql",
   "0038_entra_directory_people_sync.sql",
+  "0039_ticket_requester_profile_offer.sql",
 ];
 
 const availableFiles = await readdir(migrationDirectory);
@@ -337,6 +338,11 @@ const requiredFragments = [
   [
     "0038_entra_directory_people_sync.sql",
     "revoke all on table public.tenant_entra_directory_people from public, anon, authenticated",
+  ],
+  ["0039_ticket_requester_profile_offer.sql", "add column offer text"],
+  [
+    "0039_ticket_requester_profile_offer.sql",
+    "ticket_requester_profiles_offer_valid",
   ],
 ];
 

@@ -361,14 +361,37 @@ type TicketPresencePerson = {
   lastSeenAt: string;
 };
 
-/** Deliberately excludes the API ID so only the display name can reach the UI. */
 type TicketRequesterContact = {
+  id: string;
   displayName: string;
 };
 
 type TicketDepartment = {
+  id: string;
   name: string;
 };
+
+type TicketRequesterProfile = {
+  requesterContactId: string;
+  location: string | null;
+  department: string | null;
+  offer: string | null;
+  language: string | null;
+  preferredContactChannel: string | null;
+  importantNote: string | null;
+};
+
+type TicketRequesterProfileAction =
+  | {
+      type: "getProfile";
+      tenantId: string;
+      requesterContactId: string;
+    }
+  | ({
+      type: "saveProfile";
+      tenantId: string;
+      requesterContactId: string;
+    } & Omit<TicketRequesterProfile, "requesterContactId">);
 
 type TicketChecklistItem = {
   id: string;
@@ -528,6 +551,7 @@ type TicketDetailData = {
   escalations: TicketEscalation[];
   statuses: TicketStatus[];
   priorities: TicketPriority[];
+  departments: TicketDepartment[];
   teams: TicketTeam[];
   tags: TicketTag[];
   availableTags: TicketTag[];
@@ -874,7 +898,7 @@ function toTicketRequesterContact(
   ) {
     return undefined;
   }
-  return { displayName: contact.displayName };
+  return { id: contact.id, displayName: contact.displayName };
 }
 
 function toTicketDepartment(
@@ -884,14 +908,72 @@ function toTicketDepartment(
   const department = asRecord(value);
   if (
     !department ||
-    !hasOnlyKeys(department, ["name"]) ||
+    !hasOnlyKeys(department, ["id", "name"]) ||
+    !isUuid(department.id) ||
     typeof department.name !== "string" ||
     !department.name.trim() ||
     department.name.includes("\u0000")
   ) {
     return undefined;
   }
-  return { name: department.name.trim() };
+  return { id: department.id, name: department.name.trim() };
+}
+
+function isTicketDepartment(value: unknown): value is TicketDepartment {
+  return (
+    toTicketDepartment(value) !== null &&
+    toTicketDepartment(value) !== undefined
+  );
+}
+
+function toTicketRequesterProfile(
+  value: unknown,
+): TicketRequesterProfile | null {
+  const profile = asRecord(value);
+  const optionalText = (entry: unknown) =>
+    entry === null || (typeof entry === "string" && !entry.includes("\u0000"));
+  if (
+    !profile ||
+    !hasOnlyKeys(profile, [
+      "requesterContactId",
+      "location",
+      "department",
+      "offer",
+      "language",
+      "preferredContactChannel",
+      "importantNote",
+    ]) ||
+    !isUuid(profile.requesterContactId) ||
+    !optionalText(profile.location) ||
+    !optionalText(profile.department) ||
+    !optionalText(profile.offer) ||
+    !optionalText(profile.language) ||
+    !optionalText(profile.preferredContactChannel) ||
+    !optionalText(profile.importantNote)
+  )
+    return null;
+  return {
+    requesterContactId: profile.requesterContactId,
+    location: typeof profile.location === "string" ? profile.location : null,
+    department:
+      typeof profile.department === "string" ? profile.department : null,
+    offer: typeof profile.offer === "string" ? profile.offer : null,
+    language: typeof profile.language === "string" ? profile.language : null,
+    preferredContactChannel:
+      typeof profile.preferredContactChannel === "string"
+        ? profile.preferredContactChannel
+        : null,
+    importantNote:
+      typeof profile.importantNote === "string" ? profile.importantNote : null,
+  };
+}
+
+function parseTicketRequesterProfile(
+  value: unknown,
+): TicketRequesterProfile | null {
+  const envelope = asRecord(value);
+  const data = asRecord(envelope?.data);
+  return data ? toTicketRequesterProfile(data.profile) : null;
 }
 
 function parseServiceOffers(value: unknown): string[] | undefined {
@@ -1474,7 +1556,16 @@ function parseTicketDetail(
 
   const department = toTicketDepartment(data.department);
   const serviceOffers = parseServiceOffers(data.serviceOffers);
-  if (department === undefined || serviceOffers === undefined) return undefined;
+  const departments =
+    data.departments === undefined
+      ? []
+      : valuesOf(data.departments, isTicketDepartment);
+  if (
+    department === undefined ||
+    serviceOffers === undefined ||
+    departments === undefined
+  )
+    return undefined;
 
   // New capabilities are deployed independently from the web bundle. Missing
   // capability fields from an older active Function are therefore interpreted
@@ -1535,6 +1626,7 @@ function parseTicketDetail(
     requesterContact,
     department,
     serviceOffers,
+    departments,
     comments,
     events: valuesOf(data.events, isTicketEvent),
     escalations,
@@ -1769,6 +1861,33 @@ async function loadTicketTags(
     .filter((tag): tag is TicketTag => Boolean(tag))
     .sort((first, second) => first.name.localeCompare(second.name, "de-CH"));
   return { tags, availableTags };
+}
+
+async function invokeTicketRequesterProfile(
+  action: TicketRequesterProfileAction,
+): Promise<TicketRequesterProfile | null> {
+  if (!supabase) throw new Error("Supabase ist nicht konfiguriert.");
+  const { data, error } = await supabase.functions.invoke(
+    "ticket-requester-context",
+    { body: action },
+  );
+  if (error) throw error;
+  return parseTicketRequesterProfile(data);
+}
+
+async function invokeTicketDepartmentChange(input: {
+  tenantId: string;
+  ticketId: string;
+  departmentId: string;
+}): Promise<void> {
+  if (!supabase) throw new Error("Supabase ist nicht konfiguriert.");
+  const { error } = await supabase.functions.invoke(
+    "ticket-department-change",
+    {
+      body: input,
+    },
+  );
+  if (error) throw error;
 }
 
 async function invokeTicketAgentAssignment(
@@ -3027,6 +3146,12 @@ export function TicketDetail({
   const [editDescription, setEditDescription] = useState("");
   const [selectedTeamId, setSelectedTeamId] = useState("");
   const [selectedAgentId, setSelectedAgentId] = useState("");
+  const [selectedDepartmentId, setSelectedDepartmentId] = useState("");
+  const [requesterProfile, setRequesterProfile] =
+    useState<TicketRequesterProfile | null>(null);
+  const [requesterDepartment, setRequesterDepartment] = useState("");
+  const [requesterOffer, setRequesterOffer] = useState("");
+  const [requesterProfileBusy, setRequesterProfileBusy] = useState(false);
   const [assignableAgents, setAssignableAgents] = useState<TicketAgent[]>([]);
   const [assignableAgentsLoading, setAssignableAgentsLoading] = useState(false);
   const [assignableAgentsError, setAssignableAgentsError] = useState("");
@@ -3236,19 +3361,26 @@ export function TicketDetail({
   const loadTicketContext = useCallback(
     async (ticket: TicketRecord) => {
       if (!supabase) return;
-      const [departmentResult, linksResult] = await Promise.all([
-        supabase
-          .from("departments")
-          .select("name")
-          .eq("tenant_id", tenantId)
-          .eq("id", ticket.department_id)
-          .maybeSingle(),
-        supabase
-          .from("ticket_services")
-          .select("service_id")
-          .eq("tenant_id", tenantId)
-          .eq("ticket_id", ticket.id),
-      ]);
+      const [departmentResult, departmentsResult, linksResult] =
+        await Promise.all([
+          supabase
+            .from("departments")
+            .select("name")
+            .eq("tenant_id", tenantId)
+            .eq("id", ticket.department_id)
+            .maybeSingle(),
+          supabase
+            .from("departments")
+            .select("id, name")
+            .eq("tenant_id", tenantId)
+            .eq("active", true)
+            .order("name"),
+          supabase
+            .from("ticket_services")
+            .select("service_id")
+            .eq("tenant_id", tenantId)
+            .eq("ticket_id", ticket.id),
+        ]);
 
       const serviceIds = (linksResult.data ?? [])
         .map((link) => link.service_id)
@@ -3267,7 +3399,10 @@ export function TicketDetail({
         !departmentResult.error &&
         typeof departmentResult.data?.name === "string" &&
         departmentResult.data.name.trim()
-          ? { name: departmentResult.data.name.trim() }
+          ? {
+              id: ticket.department_id,
+              name: departmentResult.data.name.trim(),
+            }
           : null;
       const serviceOffers = !servicesResult.error
         ? [
@@ -3282,12 +3417,50 @@ export function TicketDetail({
             ),
           ]
         : [];
+      const departments = !departmentsResult.error
+        ? valuesOf(departmentsResult.data, isTicketDepartment)
+        : [];
 
       setDetail((current) =>
         current?.ticket.id === ticket.id
-          ? { ...current, department, serviceOffers }
+          ? { ...current, department, departments, serviceOffers }
           : current,
       );
+    },
+    [tenantId],
+  );
+
+  const loadRequesterProfile = useCallback(
+    async (contact: TicketRequesterContact | null, canUpdate: boolean) => {
+      if (!contact || !canUpdate) {
+        setRequesterProfile(null);
+        setRequesterDepartment("");
+        setRequesterOffer("");
+        return;
+      }
+      try {
+        const profile = await invokeTicketRequesterProfile({
+          type: "getProfile",
+          tenantId,
+          requesterContactId: contact.id,
+        });
+        const resolved = profile ?? {
+          requesterContactId: contact.id,
+          location: null,
+          department: null,
+          offer: null,
+          language: null,
+          preferredContactChannel: null,
+          importantNote: null,
+        };
+        setRequesterProfile(resolved);
+        setRequesterDepartment(resolved.department ?? "");
+        setRequesterOffer(resolved.offer ?? "");
+      } catch {
+        setRequesterProfile(null);
+        setRequesterDepartment("");
+        setRequesterOffer("");
+      }
     },
     [tenantId],
   );
@@ -3332,10 +3505,15 @@ export function TicketDetail({
       setEditDescription(nextDetail?.ticket.description ?? "");
       setSelectedTeamId(nextDetail?.ticket.assigned_team_id ?? "");
       setSelectedAgentId(nextDetail?.ticket.assigned_agent_id ?? "");
+      setSelectedDepartmentId(nextDetail?.ticket.department_id ?? "");
       if (!nextDetail?.canUseInternalNotes) {
         setCommentVisibility("external");
       }
       void loadTicketContext(nextDetail.ticket);
+      void loadRequesterProfile(
+        nextDetail.requesterContact,
+        nextDetail.canUpdate,
+      );
       return true;
     } catch (nextError) {
       if (requestId === requestSequence.current) {
@@ -3349,7 +3527,13 @@ export function TicketDetail({
         setLoading(false);
       }
     }
-  }, [loadAssignableAgents, loadTicketContext, tenantId, ticketId]);
+  }, [
+    loadAssignableAgents,
+    loadRequesterProfile,
+    loadTicketContext,
+    tenantId,
+    ticketId,
+  ]);
 
   const loadAttachments = useCallback(async () => {
     const requestId = ++attachmentRequestSequence.current;
@@ -3737,8 +3921,11 @@ export function TicketDetail({
     [detail],
   );
   const requesterContext = useMemo(
-    () => detail?.serviceOffers ?? [],
-    [detail?.serviceOffers],
+    () =>
+      [requesterProfile?.department, requesterProfile?.offer].filter(
+        (value): value is string => Boolean(value?.trim()),
+      ),
+    [requesterProfile?.department, requesterProfile?.offer],
   );
   const openEscalations = useMemo(
     () =>
@@ -4198,6 +4385,7 @@ export function TicketDetail({
     );
     setSelectedTeamId(detail.ticket.assigned_team_id ?? "");
     setSelectedAgentId(detail.ticket.assigned_agent_id ?? "");
+    setSelectedDepartmentId(detail.ticket.department_id);
     setIsEditingTicket(false);
     setError("");
   }
@@ -4250,6 +4438,62 @@ export function TicketDetail({
       setError(errorMessage(nextError));
     } finally {
       setPendingAction(null);
+    }
+  }
+
+  async function saveDepartmentChange(departmentId: string) {
+    if (!detail?.canUpdate || !departmentId || busy) return;
+    setPendingAction("update");
+    setError("");
+    try {
+      await invokeTicketDepartmentChange({ tenantId, ticketId, departmentId });
+      onChanged();
+      await Promise.all([loadTicket(), loadFeedback(), loadQuality()]);
+    } catch (nextError) {
+      setSelectedDepartmentId(detail.ticket.department_id);
+      setError(errorMessage(nextError));
+    } finally {
+      setPendingAction(null);
+    }
+  }
+
+  async function saveRequesterContext() {
+    if (!detail?.canUpdate || !requesterProfile || requesterProfileBusy || busy)
+      return;
+    const department = requesterDepartment.trim() || null;
+    const offer = requesterOffer.trim() || null;
+    if (
+      department === requesterProfile.department &&
+      offer === requesterProfile.offer
+    )
+      return;
+
+    setRequesterProfileBusy(true);
+    setError("");
+    try {
+      const profile = await invokeTicketRequesterProfile({
+        type: "saveProfile",
+        tenantId,
+        requesterContactId: requesterProfile.requesterContactId,
+        location: requesterProfile.location,
+        department,
+        offer,
+        language: requesterProfile.language,
+        preferredContactChannel: requesterProfile.preferredContactChannel,
+        importantNote: requesterProfile.importantNote,
+      });
+      if (!profile)
+        throw new Error(
+          "Das Anfragendenprofil konnte nicht gespeichert werden.",
+        );
+      setRequesterProfile(profile);
+      setRequesterDepartment(profile.department ?? "");
+      setRequesterOffer(profile.offer ?? "");
+      onChanged();
+    } catch (nextError) {
+      setError(errorMessage(nextError));
+    } finally {
+      setRequesterProfileBusy(false);
     }
   }
 
@@ -4845,7 +5089,10 @@ export function TicketDetail({
     >
       <header className="ticket-detail-header">
         <div className="ticket-detail-header-title">
-          <p className="eyebrow">TICKET {detail.ticket.ticket_number}</p>
+          <p className="ticket-reference">
+            <span>Ticket</span>
+            {detail.ticket.ticket_number}
+          </p>
           <h2>{detail.ticket.subject}</h2>
         </div>
         <div className="ticket-detail-header-actions">
@@ -5217,17 +5464,70 @@ export function TicketDetail({
               <dd>{detail.requesterContact.displayName}</dd>
             </div>
           )}
-          <div>
+          <div
+            className={
+              detail.canUpdate && requesterProfile
+                ? "ticket-detail-fact--editable ticket-requester-context"
+                : undefined
+            }
+          >
             <dt>Abteilung / Angebot</dt>
             <dd>
-              {requesterContext.length > 0
-                ? requesterContext.join(" · ")
-                : "Nicht hinterlegt"}
+              {detail.canUpdate && requesterProfile ? (
+                <span className="ticket-requester-context-fields">
+                  <input
+                    aria-label="Abteilung der anfragenden Person"
+                    disabled={busy || requesterProfileBusy}
+                    onBlur={() => void saveRequesterContext()}
+                    onChange={(event) =>
+                      setRequesterDepartment(event.target.value)
+                    }
+                    placeholder="Abteilung"
+                    value={requesterDepartment}
+                  />
+                  <input
+                    aria-label="Angebot der anfragenden Person"
+                    disabled={busy || requesterProfileBusy}
+                    onBlur={() => void saveRequesterContext()}
+                    onChange={(event) => setRequesterOffer(event.target.value)}
+                    placeholder="Angebot"
+                    value={requesterOffer}
+                  />
+                </span>
+              ) : requesterContext.length > 0 ? (
+                requesterContext.join(" · ")
+              ) : (
+                "Nicht hinterlegt"
+              )}
             </dd>
           </div>
-          <div>
+          <div
+            className={
+              detail.canUpdate ? "ticket-detail-fact--editable" : undefined
+            }
+          >
             <dt>Bearbeitende Abteilung</dt>
-            <dd>{detail.department?.name ?? "Nicht hinterlegt"}</dd>
+            <dd>
+              {detail.canUpdate ? (
+                <select
+                  aria-label="Bearbeitende Abteilung direkt ändern"
+                  disabled={busy || detail.departments.length === 0}
+                  onChange={(event) => {
+                    setSelectedDepartmentId(event.target.value);
+                    void saveDepartmentChange(event.target.value);
+                  }}
+                  value={selectedDepartmentId}
+                >
+                  {detail.departments.map((department) => (
+                    <option key={department.id} value={department.id}>
+                      {department.name}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                (detail.department?.name ?? "Nicht hinterlegt")
+              )}
+            </dd>
           </div>
           <div>
             <dt>Erfasst am</dt>

@@ -5896,6 +5896,30 @@ body:has(.ticket-detail) {
   padding: 0;
 }
 
+.ticket-reference {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  color: #4450aa;
+  font-family: "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
+  font-size: 12px;
+  font-weight: 720;
+  letter-spacing: 0.035em;
+}
+
+.ticket-reference span {
+  border-radius: 999px;
+  padding: 3px 6px;
+  background: #e8eaff;
+  color: #5a55c9;
+  font-family: var(--font-sans);
+  font-size: 9px;
+  font-weight: 780;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
 .ticket-detail-badges {
   gap: 8px;
 }
@@ -6136,6 +6160,30 @@ body:has(.ticket-detail) {
 
 .ticket-detail-fact--editable dd {
   overflow: visible;
+}
+
+.ticket-requester-context-fields {
+  display: grid;
+  gap: 5px;
+}
+
+.ticket-requester-context-fields input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  border-bottom: 1px dashed #b7bee9;
+  border-radius: 0;
+  padding: 2px 0 4px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.ticket-requester-context-fields input:focus {
+  outline: none;
+  border-bottom-color: var(--primary);
 }
 
 .ticket-detail-fact--editable select {
