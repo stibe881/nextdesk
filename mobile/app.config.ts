@@ -53,6 +53,9 @@ const publicRuntime = {
     process.env.EXPO_PUBLIC_APP_ID ??
     "",
   apiBaseUrl: process.env.EXPO_PUBLIC_API_BASE_URL ?? "",
+  nextDeskSupabaseUrl: process.env.EXPO_PUBLIC_NEXTDESK_SUPABASE_URL ?? "",
+  nextDeskSupabasePublishableKey:
+    process.env.EXPO_PUBLIC_NEXTDESK_SUPABASE_PUBLISHABLE_KEY ?? "",
   eas: {
     projectId: "78754839-056e-427d-86b1-12d048d401aa",
   },

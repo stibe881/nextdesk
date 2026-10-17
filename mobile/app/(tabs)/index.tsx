@@ -1,45 +1,26 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useFocusEffect, useRouter } from "expo-router";
+import { useCallback, useState } from "react";
+import {
+  ActivityIndicator,
+  Image,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 
 import { ScreenContainer } from "@/components/screen-container";
+import {
+  isNextDeskConfigured,
+  nextDesk,
+  type MobileTenant,
+} from "@/lib/nextdesk-client";
+import { loadMobileDashboard, type MobileTicket } from "@/lib/nextdesk-tickets";
 
 type TicketScope = "all" | "mine" | "open" | "resolved";
-
-const tickets = [
-  {
-    id: "ICT-2026-000001",
-    title: "VPN-Zugang für Homeoffice",
-    status: "Neu",
-    tone: "blue",
-    assignedToMe: true,
-    resolved: false,
-  },
-  {
-    id: "ICT-2026-000014",
-    title: "Drucker im Sitzungszimmer",
-    status: "In Bearbeitung",
-    tone: "violet",
-    assignedToMe: true,
-    resolved: false,
-  },
-  {
-    id: "ICT-2026-000019",
-    title: "Softwarefreigabe Adobe",
-    status: "Wartet",
-    tone: "amber",
-    assignedToMe: false,
-    resolved: false,
-  },
-  {
-    id: "ICT-2026-000004",
-    title: "Zugang für Meetingraum eingerichtet",
-    status: "Gelöst",
-    tone: "green",
-    assignedToMe: false,
-    resolved: true,
-  },
-];
 
 const ticketScopeLabels: Record<Exclude<TicketScope, "all">, string> = {
   mine: "Meine Tickets",
@@ -48,51 +29,142 @@ const ticketScopeLabels: Record<Exclude<TicketScope, "all">, string> = {
 };
 
 export default function HomeScreen() {
-  const [selected, setSelected] = useState<string | null>(null);
+  const router = useRouter();
+  const [tenant, setTenant] = useState<MobileTenant | null>(null);
+  const [tickets, setTickets] = useState<MobileTicket[]>([]);
   const [ticketScope, setTicketScope] = useState<TicketScope>("all");
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState("");
+
+  const load = useCallback(async () => {
+    if (!isNextDeskConfigured || !nextDesk) {
+      setError("Die mobile nextDesk-Verbindung ist noch nicht konfiguriert.");
+      setLoading(false);
+      return;
+    }
+    const { data } = await nextDesk.auth.getSession();
+    if (!data.session) {
+      router.replace("/auth");
+      return;
+    }
+    try {
+      setError("");
+      const result = await loadMobileDashboard();
+      setTenant(result.tenant);
+      setTickets(result.tickets);
+    } catch (nextError) {
+      setError(
+        nextError instanceof Error
+          ? nextError.message
+          : "Die Tickets konnten nicht geladen werden.",
+      );
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [router]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void load();
+    }, [load]),
+  );
+
   const visibleTickets = tickets.filter((ticket) => {
-    if (ticketScope === "mine") return ticket.assignedToMe;
+    if (ticketScope === "mine") return ticket.assignedToCurrentUser;
     if (ticketScope === "open") return !ticket.resolved;
     if (ticketScope === "resolved") return ticket.resolved;
     return true;
   });
   const scopeCount = (scope: Exclude<TicketScope, "all">) =>
     tickets.filter((ticket) => {
-      if (scope === "mine") return ticket.assignedToMe;
+      if (scope === "mine") return ticket.assignedToCurrentUser;
       if (scope === "open") return !ticket.resolved;
       return ticket.resolved;
     }).length;
 
+  if (loading && !tenant) {
+    return (
+      <ScreenContainer containerClassName="bg-[#F6F7FB]" className="px-5">
+        <View style={styles.centered}>
+          <ActivityIndicator color="#4438CA" size="large" />
+          <Text style={styles.loadingText}>nextDesk wird geladen …</Text>
+        </View>
+      </ScreenContainer>
+    );
+  }
+
   return (
     <ScreenContainer containerClassName="bg-[#F6F7FB]" className="px-5">
       <ScrollView
-        showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.content}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => {
+              setRefreshing(true);
+              void load();
+            }}
+          />
+        }
+        showsVerticalScrollIndicator={false}
       >
         <View style={styles.header}>
           <View>
-            <Text style={styles.brand}>nextDesk</Text>
-            <Text style={styles.greeting}>Dein Arbeitsbereich</Text>
+            <View style={styles.brandRow}>
+              <Image
+                accessibilityLabel="nextDesk Logo"
+                source={require("@/assets/images/icon.png")}
+                style={styles.brandLogo}
+              />
+              <Text style={styles.brand}>nextDesk</Text>
+            </View>
+            <Text style={styles.greeting}>
+              {tenant?.name ?? "Dein Arbeitsbereich"}
+            </Text>
           </View>
-          <Pressable accessibilityRole="button" style={styles.avatar}>
-            <Text style={styles.avatarText}>SG</Text>
+          <Pressable
+            accessibilityLabel="Abmelden"
+            accessibilityRole="button"
+            onPress={() =>
+              void nextDesk?.auth.signOut().then(() => router.replace("/auth"))
+            }
+            style={styles.avatar}
+          >
+            <Ionicons color="#4438CA" name="person-outline" size={20} />
           </Pressable>
         </View>
 
         <View style={styles.hero}>
-          <View style={styles.heroIcon}>
-            <Ionicons name="sparkles" size={20} color="#FFFFFF" />
-          </View>
           <Text style={styles.heroEyebrow}>HEUTE IM FOKUS</Text>
           <Text style={styles.heroTitle}>Alles im Blick.</Text>
           <Text style={styles.heroBody}>
             Bearbeite Tickets schnell, klar und von überall.
           </Text>
-          <Pressable style={styles.heroButton} accessibilityRole="button">
-            <Ionicons name="add" size={21} color="#3826B8" />
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => router.push("/ticket/new")}
+            style={styles.heroButton}
+          >
+            <Ionicons color="#3826B8" name="add" size={21} />
             <Text style={styles.heroButtonText}>Ticket erfassen</Text>
           </Pressable>
         </View>
+
+        {error ? (
+          <View style={styles.errorBox}>
+            <Text style={styles.errorText}>{error}</Text>
+            <Pressable
+              onPress={() => {
+                setLoading(true);
+                void load();
+              }}
+            >
+              <Text style={styles.retryText}>Erneut versuchen</Text>
+            </Pressable>
+          </View>
+        ) : null}
 
         <Text style={styles.sectionEyebrow}>ÜBERSICHT</Text>
         <View style={styles.metrics}>
@@ -137,7 +209,6 @@ export default function HomeScreen() {
           </View>
           <Pressable
             accessibilityRole="button"
-            accessibilityState={{ selected: ticketScope === "all" }}
             onPress={() => setTicketScope("all")}
           >
             <Text style={styles.all}>
@@ -146,56 +217,62 @@ export default function HomeScreen() {
           </Pressable>
         </View>
 
-        <View style={styles.list}>
-          {visibleTickets.map((ticket) => (
-            <Pressable
-              key={ticket.id}
-              onPress={() => setSelected(ticket.id)}
-              style={[
-                styles.ticket,
-                selected === ticket.id && styles.ticketSelected,
-              ]}
-              accessibilityRole="button"
-            >
-              <View
-                style={[
-                  styles.ticketMark,
-                  ticket.tone === "violet"
-                    ? styles.violet
-                    : ticket.tone === "amber"
-                      ? styles.amber
-                      : ticket.tone === "green"
-                        ? styles.green
-                        : styles.blue,
-                ]}
-              />
-              <View style={styles.ticketContent}>
-                <Text style={styles.ticketId}>{ticket.id}</Text>
-                <Text numberOfLines={1} style={styles.ticketTitle}>
-                  {ticket.title}
-                </Text>
-                <Text style={styles.ticketMeta}>Beispiel Abteilung ICT</Text>
-              </View>
-              <View style={styles.ticketRight}>
-                <Text
+        {visibleTickets.length === 0 ? (
+          <View style={styles.emptyList}>
+            <Text style={styles.emptyText}>
+              Keine passenden Tickets vorhanden.
+            </Text>
+          </View>
+        ) : (
+          <View style={styles.list}>
+            {visibleTickets.map((ticket) => (
+              <Pressable
+                accessibilityRole="button"
+                key={ticket.id}
+                onPress={() =>
+                  router.push({
+                    pathname: "/ticket/[id]",
+                    params: { id: ticket.id },
+                  })
+                }
+                style={styles.ticket}
+              >
+                <View
                   style={[
-                    styles.status,
-                    ticket.tone === "violet"
-                      ? styles.statusViolet
-                      : ticket.tone === "amber"
-                        ? styles.statusAmber
-                        : ticket.tone === "green"
-                          ? styles.statusGreen
-                          : styles.statusBlue,
+                    styles.ticketMark,
+                    ticket.resolved
+                      ? styles.green
+                      : ticket.status === "Neu"
+                        ? styles.blue
+                        : styles.violet,
                   ]}
-                >
-                  {ticket.status}
-                </Text>
-                <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
-              </View>
-            </Pressable>
-          ))}
-        </View>
+                />
+                <View style={styles.ticketContent}>
+                  <Text style={styles.ticketId}>{ticket.ticketNumber}</Text>
+                  <Text numberOfLines={1} style={styles.ticketTitle}>
+                    {ticket.subject}
+                  </Text>
+                  <Text style={styles.ticketMeta}>{ticket.priority}</Text>
+                </View>
+                <View style={styles.ticketRight}>
+                  <Text
+                    style={[
+                      styles.status,
+                      ticket.resolved
+                        ? styles.statusGreen
+                        : ticket.status === "Neu"
+                          ? styles.statusBlue
+                          : styles.statusViolet,
+                    ]}
+                  >
+                    {ticket.status}
+                  </Text>
+                  <Ionicons color="#9CA3AF" name="chevron-forward" size={18} />
+                </View>
+              </Pressable>
+            ))}
+          </View>
+        )}
       </ScrollView>
     </ScreenContainer>
   );
@@ -224,7 +301,7 @@ function Metric({
       onPress={onPress}
       style={[styles.metric, selected && styles.metricSelected]}
     >
-      <Ionicons name={icon} size={19} color={color} />
+      <Ionicons color={color} name={icon} size={19} />
       <Text style={styles.metricValue}>{value}</Text>
       <Text style={styles.metricLabel}>{label}</Text>
     </Pressable>
@@ -232,52 +309,51 @@ function Metric({
 }
 
 const styles = StyleSheet.create({
-  content: { paddingTop: 16, paddingBottom: 32, gap: 18 },
-  header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
+  content: { gap: 18, paddingTop: 16, paddingBottom: 32 },
+  centered: {
     alignItems: "center",
-  },
-  brand: {
-    fontSize: 28,
-    fontWeight: "800",
-    color: "#17172A",
-    letterSpacing: -0.8,
-  },
-  greeting: { color: "#6B7280", marginTop: 2, fontSize: 14 },
-  avatar: {
-    backgroundColor: "#E9E7FF",
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    alignItems: "center",
+    flex: 1,
+    gap: 14,
     justifyContent: "center",
   },
-  avatarText: { fontWeight: "800", color: "#4438CA" },
+  loadingText: { color: "#626376", fontSize: 14 },
+  header: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
+  brandRow: { alignItems: "center", flexDirection: "row", gap: 7 },
+  brandLogo: { height: 27, width: 27 },
+  brand: {
+    color: "#17172A",
+    fontSize: 28,
+    fontWeight: "800",
+    letterSpacing: -0.8,
+  },
+  greeting: { color: "#6B7280", fontSize: 13, marginTop: 2 },
+  avatar: {
+    alignItems: "center",
+    backgroundColor: "#E9E7FF",
+    borderRadius: 21,
+    height: 42,
+    justifyContent: "center",
+    width: 42,
+  },
   hero: {
     backgroundColor: "#4438CA",
     borderRadius: 26,
-    padding: 22,
     gap: 9,
+    padding: 22,
     shadowColor: "#4438CA",
     shadowOpacity: 0.22,
     shadowRadius: 16,
     elevation: 4,
-  },
-  heroIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: "rgba(255,255,255,0.18)",
-    alignItems: "center",
-    justifyContent: "center",
   },
   heroEyebrow: {
     color: "#DCD8FF",
     fontSize: 11,
     fontWeight: "800",
     letterSpacing: 1.3,
-    marginTop: 4,
   },
   heroTitle: {
     color: "#FFFFFF",
@@ -287,67 +363,83 @@ const styles = StyleSheet.create({
   },
   heroBody: { color: "#E9E7FF", fontSize: 15, lineHeight: 21 },
   heroButton: {
+    alignItems: "center",
     alignSelf: "flex-start",
+    backgroundColor: "#FFFFFF",
+    borderRadius: 14,
     flexDirection: "row",
     gap: 7,
-    alignItems: "center",
-    backgroundColor: "#FFFFFF",
+    marginTop: 6,
     paddingHorizontal: 15,
     paddingVertical: 11,
-    borderRadius: 14,
-    marginTop: 6,
   },
   heroButtonText: { color: "#3826B8", fontSize: 14, fontWeight: "800" },
+  errorBox: {
+    backgroundColor: "#FFF3F2",
+    borderColor: "#F5C2C0",
+    borderRadius: 14,
+    borderWidth: 1,
+    gap: 7,
+    padding: 13,
+  },
+  errorText: { color: "#A02820", fontSize: 13, lineHeight: 18 },
+  retryText: { color: "#4438CA", fontSize: 13, fontWeight: "800" },
   sectionEyebrow: {
     color: "#77758C",
-    letterSpacing: 1.1,
     fontSize: 11,
     fontWeight: "800",
+    letterSpacing: 1.1,
     marginTop: 6,
   },
   metrics: { flexDirection: "row", gap: 10 },
   metric: {
-    flex: 1,
     backgroundColor: "#FFFFFF",
-    borderRadius: 18,
-    padding: 13,
-    gap: 4,
-    borderWidth: 1,
     borderColor: "#ECECF3",
+    borderRadius: 18,
+    borderWidth: 1,
+    flex: 1,
+    gap: 4,
+    padding: 13,
   },
-  metricSelected: { borderColor: "#8B82F4", backgroundColor: "#F8F7FF" },
+  metricSelected: { backgroundColor: "#F8F7FF", borderColor: "#8B82F4" },
   metricValue: {
+    color: "#1F2033",
     fontSize: 22,
     fontWeight: "800",
-    color: "#1F2033",
     marginTop: 2,
   },
-  metricLabel: { fontSize: 11, color: "#6B7280", fontWeight: "600" },
+  metricLabel: { color: "#6B7280", fontSize: 11, fontWeight: "600" },
   sectionHeader: {
+    alignItems: "center",
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "center",
     marginTop: 8,
   },
-  sectionTitle: { fontSize: 19, fontWeight: "800", color: "#202136" },
-  sectionSub: { fontSize: 12, color: "#6B7280", marginTop: 3 },
-  all: { color: "#4438CA", fontWeight: "800", fontSize: 14 },
+  sectionTitle: { color: "#202136", fontSize: 19, fontWeight: "800" },
+  sectionSub: { color: "#6B7280", fontSize: 12, marginTop: 3 },
+  all: { color: "#4438CA", fontSize: 14, fontWeight: "800" },
   list: { gap: 9 },
-  ticket: {
+  emptyList: {
     backgroundColor: "#FFFFFF",
-    borderRadius: 18,
-    padding: 14,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 11,
-    borderWidth: 1,
     borderColor: "#ECECF3",
+    borderRadius: 18,
+    borderWidth: 1,
+    padding: 18,
   },
-  ticketSelected: { borderColor: "#8B82F4", backgroundColor: "#F8F7FF" },
-  ticketMark: { width: 4, height: 43, borderRadius: 2 },
+  emptyText: { color: "#77758C", fontSize: 13, textAlign: "center" },
+  ticket: {
+    alignItems: "center",
+    backgroundColor: "#FFFFFF",
+    borderColor: "#ECECF3",
+    borderRadius: 18,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 11,
+    padding: 14,
+  },
+  ticketMark: { borderRadius: 2, height: 43, width: 4 },
   blue: { backgroundColor: "#0EA5C6" },
   violet: { backgroundColor: "#7C3AED" },
-  amber: { backgroundColor: "#D97706" },
   green: { backgroundColor: "#15803D" },
   ticketContent: { flex: 1, gap: 2 },
   ticketId: {
@@ -360,14 +452,13 @@ const styles = StyleSheet.create({
   ticketMeta: { color: "#6B7280", fontSize: 11 },
   ticketRight: { alignItems: "flex-end", gap: 7 },
   status: {
+    borderRadius: 8,
     fontSize: 10,
     fontWeight: "800",
     paddingHorizontal: 8,
     paddingVertical: 4,
-    borderRadius: 8,
   },
-  statusBlue: { color: "#036B83", backgroundColor: "#E0F6FB" },
-  statusViolet: { color: "#6432B7", backgroundColor: "#F0E9FF" },
-  statusAmber: { color: "#9A5100", backgroundColor: "#FFF2DD" },
-  statusGreen: { color: "#166534", backgroundColor: "#E9F8EE" },
+  statusBlue: { backgroundColor: "#E0F6FB", color: "#036B83" },
+  statusViolet: { backgroundColor: "#F0E9FF", color: "#6432B7" },
+  statusGreen: { backgroundColor: "#E9F8EE", color: "#166534" },
 });
