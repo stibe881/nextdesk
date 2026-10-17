@@ -264,6 +264,28 @@ export async function loadCurrentTenant(): Promise<MobileTenant> {
   return tenant;
 }
 
+/** Uses the production SSO access gate instead of trusting client-side profile data. */
+export async function resolveMobileSsoEnforcement(): Promise<boolean> {
+  const { data, error } = await requireNextDesk().functions.invoke(
+    "tenant-sso-access",
+    { body: {} },
+  );
+  if (error) throw error;
+  if (typeof data !== "object" || data === null || !("data" in data)) {
+    throw new Error("Die SSO-Zugangsprüfung ist unvollständig.");
+  }
+  const payload = (data as { data?: unknown }).data;
+  if (typeof payload !== "object" || payload === null) {
+    throw new Error("Die SSO-Zugangsprüfung ist unvollständig.");
+  }
+  const value = payload as { scope?: unknown; ssoEnforced?: unknown };
+  if (value.scope === "unmanaged") return false;
+  if (value.scope === "tenant" && typeof value.ssoEnforced === "boolean") {
+    return value.ssoEnforced;
+  }
+  throw new Error("Die SSO-Zugangsprüfung ist unvollständig.");
+}
+
 export async function invokeNextDesk<T>(
   functionName: string,
   body: Record<string, unknown>,

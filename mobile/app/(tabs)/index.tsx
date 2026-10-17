@@ -125,14 +125,12 @@ export default function HomeScreen() {
             </Text>
           </View>
           <Pressable
-            accessibilityLabel="Abmelden"
+            accessibilityLabel="Persönliche Einstellungen öffnen"
             accessibilityRole="button"
-            onPress={() =>
-              void nextDesk?.auth.signOut().then(() => router.replace("/auth"))
-            }
+            onPress={() => router.push("/settings")}
             style={styles.avatar}
           >
-            <Ionicons color="#4438CA" name="person-outline" size={20} />
+            <Ionicons color="#4438CA" name="person-circle-outline" size={23} />
           </Pressable>
         </View>
 

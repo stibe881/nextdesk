@@ -55,6 +55,7 @@ import { SlaManagement } from "./sla-management";
 import { CustomerOrganizations } from "./customer-organizations";
 import { ServiceReporting } from "./service-reporting";
 import { ServiceAssets } from "./service-assets";
+import { PersonalSettings } from "./personal-settings";
 import {
   OwnerConsoleScreen,
   resolveOwnerAccess,
@@ -795,6 +796,8 @@ export function App() {
     useState(false);
   const [workspacePreferencesOpen, setWorkspacePreferencesOpen] =
     useState(false);
+  const [personalSettingsOpen, setPersonalSettingsOpen] = useState(false);
+  const [ssoEnforced, setSsoEnforced] = useState(false);
   const notificationButtonRef = useRef<HTMLButtonElement>(null);
   const notificationPanelRef = useRef<HTMLElement>(null);
   const commandInputRef = useRef<HTMLInputElement>(null);
@@ -858,6 +861,8 @@ export function App() {
       setOwnerView("console");
       setCanWorkTickets(false);
       setIsTenantAdmin(false);
+      setPersonalSettingsOpen(false);
+      setSsoEnforced(false);
     });
 
     return () => {
@@ -872,6 +877,7 @@ export function App() {
       setActiveTenantId("");
       setTenantLoading(false);
       setTenantLoadError("");
+      setSsoEnforced(false);
       return;
     }
 
@@ -901,11 +907,16 @@ export function App() {
             "Die Mandantenmitgliedschaft konnte nach der SSO-Anmeldung nicht bestätigt werden.",
           );
         }
-        return { activeTenants: scopedTenants, profileName };
+        return {
+          activeTenants: scopedTenants,
+          profileName,
+          ssoEnforced: ssoAccess.scope === "tenant" && ssoAccess.ssoEnforced,
+        };
       })
-      .then(({ activeTenants, profileName }) => {
+      .then(({ activeTenants, profileName, ssoEnforced: nextSsoEnforced }) => {
         if (!mounted) return;
         setTenants(activeTenants);
+        setSsoEnforced(nextSsoEnforced);
         setOperatorName(
           profileName ?? displayNameFromEmail(session.user.email),
         );
@@ -1499,7 +1510,10 @@ export function App() {
                   section === item.label ? "nav-item active" : "nav-item"
                 }
                 key={item.label}
-                onClick={() => setSection(item.label)}
+                onClick={() => {
+                  setPersonalSettingsOpen(false);
+                  setSection(item.label);
+                }}
                 type="button"
               >
                 <item.Icon aria-hidden="true" size={18} strokeWidth={1.8} />
@@ -1509,13 +1523,21 @@ export function App() {
           </nav>
         </div>
         <div className="rail-footer">
-          <div className="operator-avatar">{initials(operatorName)}</div>
-          <div>
-            <strong>{operatorName}</strong>
-            <small>
-              {isSupabaseConfigured ? "Angemeldet" : "Service Operations"}
-            </small>
-          </div>
+          <button
+            aria-label="Persönliche Einstellungen öffnen"
+            className="operator-profile-trigger"
+            disabled={!session}
+            onClick={() => setPersonalSettingsOpen(true)}
+            type="button"
+          >
+            <span className="operator-avatar">{initials(operatorName)}</span>
+            <span className="operator-profile-copy">
+              <strong>{operatorName}</strong>
+              <small>
+                {isSupabaseConfigured ? "Angemeldet" : "Service Operations"}
+              </small>
+            </span>
+          </button>
           {isSupabaseConfigured ? (
             <button
               className="more-button"
@@ -1541,12 +1563,15 @@ export function App() {
         <header className="topbar">
           <div>
             <p className="eyebrow">
-              Operations / <span>{section}</span>
+              Operations /{" "}
+              <span>{personalSettingsOpen ? "Mein Konto" : section}</span>
             </p>
             <h1>
-              {section === "Übersicht"
-                ? `Guten Morgen, ${greetingName}.`
-                : section}
+              {personalSettingsOpen
+                ? "Persönliche Einstellungen"
+                : section === "Übersicht"
+                  ? `Guten Morgen, ${greetingName}.`
+                  : section}
             </h1>
           </div>
           <div className="topbar-actions">
@@ -1806,7 +1831,14 @@ export function App() {
           </section>
         )}
 
-        {section === "Einstellungen" && activeTenant && isTenantAdmin ? (
+        {personalSettingsOpen && session ? (
+          <PersonalSettings
+            onBack={() => setPersonalSettingsOpen(false)}
+            onSignOut={() => void signOut()}
+            ssoEnforced={ssoEnforced}
+            user={session.user}
+          />
+        ) : section === "Einstellungen" && activeTenant && isTenantAdmin ? (
           <>
             <TenantAdminSettings
               onClose={() => setSection("Übersicht")}

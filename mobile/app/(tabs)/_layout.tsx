@@ -1,8 +1,8 @@
 import { Tabs } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { HapticTab } from "@/components/haptic-tab";
-import { IconSymbol } from "@/components/ui/icon-symbol";
 import { Platform } from "react-native";
 import { useColors } from "@/hooks/use-colors";
 
@@ -14,6 +14,7 @@ export default function TabLayout() {
 
   return (
     <Tabs
+      initialRouteName="index"
       screenOptions={{
         tabBarActiveTintColor: colors.tint,
         headerShown: false,
@@ -26,14 +27,52 @@ export default function TabLayout() {
           borderTopColor: colors.border,
           borderTopWidth: 0.5,
         },
+        tabBarItemStyle: { paddingHorizontal: 0 },
+        tabBarLabelStyle: { fontSize: 10, fontWeight: "700" },
       }}
     >
       <Tabs.Screen
+        name="tickets"
+        options={{
+          title: "Tickets",
+          tabBarIcon: ({ color }) => (
+            <Ionicons color={color} name="ticket-outline" size={23} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="services"
+        options={{
+          title: "Services",
+          tabBarIcon: ({ color }) => (
+            <Ionicons color={color} name="cube-outline" size={23} />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="index"
         options={{
-          title: "Übersicht",
+          title: "Home",
           tabBarIcon: ({ color }) => (
-            <IconSymbol size={28} name="house.fill" color={color} />
+            <Ionicons color={color} name="home-outline" size={23} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="knowledge"
+        options={{
+          title: "Wissen",
+          tabBarIcon: ({ color }) => (
+            <Ionicons color={color} name="book-outline" size={23} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="settings"
+        options={{
+          title: "Einstellungen",
+          tabBarIcon: ({ color }) => (
+            <Ionicons color={color} name="settings-outline" size={23} />
           ),
         }}
       />
