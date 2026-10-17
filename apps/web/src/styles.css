@@ -6198,6 +6198,57 @@ body:has(.ticket-detail) {
   color: var(--warning);
 }
 
+.ticket-detail-primary > .ticket-conversation {
+  align-items: start;
+  gap: 10px;
+}
+
+.ticket-detail-primary .ticket-conversation__message {
+  width: min(82%, 720px);
+  border: 1px solid var(--border);
+  border-left: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: 0 1px 2px rgb(15 23 42 / 4%);
+}
+
+.ticket-detail-primary .ticket-conversation__message--incoming {
+  justify-self: start;
+  border-color: #bae6fd;
+  background: #f0f9ff;
+}
+
+.ticket-detail-primary .ticket-conversation__message--outgoing {
+  justify-self: end;
+  border-color: #c7d2fe;
+  background: #eef2ff;
+}
+
+.ticket-detail-primary
+  .ticket-conversation__message--outgoing
+  .ticket-comment-meta {
+  justify-content: flex-end;
+}
+
+.ticket-detail-primary .ticket-conversation__message--center {
+  width: min(92%, 840px);
+  justify-self: center;
+  border-style: dashed;
+  border-color: #cbd5e1;
+  background: var(--surface-subtle);
+}
+
+.ticket-detail-primary
+  .ticket-conversation__message--center
+  .ticket-comment-meta {
+  justify-content: center;
+}
+
+.ticket-detail-primary .ticket-conversation + .ticket-comment-form {
+  margin-top: 20px;
+  border-top: 1px solid var(--border);
+  padding-top: 20px;
+}
+
 .ticket-detail-primary > .ticket-comment-list {
   margin-top: 16px;
 }

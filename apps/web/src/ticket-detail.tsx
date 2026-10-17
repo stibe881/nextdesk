@@ -308,6 +308,7 @@ type TicketRecord = {
 type TicketComment = {
   id: string;
   authorName: string;
+  authorKind?: "agent" | "requester";
   body: string;
   created_at: string;
   visibility: CommentVisibility;
@@ -706,6 +707,9 @@ function isTicketComment(value: unknown): value is TicketComment {
     typeof comment.id === "string" &&
     typeof comment.body === "string" &&
     typeof comment.created_at === "string" &&
+    (comment.authorKind === undefined ||
+      comment.authorKind === "agent" ||
+      comment.authorKind === "requester") &&
     (comment.visibility === "external" || comment.visibility === "internal"),
   );
 }
@@ -4922,9 +4926,148 @@ export function TicketDetail({
         </p>
       )}
 
-      <div className="ticket-detail-summary">
+      <section
+        className="ticket-detail-summary ticket-detail-primary"
+        aria-labelledby="ticket-description-heading"
+      >
+        <div className="ticket-detail-section-heading">
+          <div>
+            <p className="eyebrow">ANLIEGEN</p>
+            <h3 id="ticket-description-heading">Beschreibung</h3>
+          </div>
+        </div>
         <p className="ticket-detail-description">{detail.ticket.description}</p>
-      </div>
+      </section>
+
+      <section
+        className="ticket-detail-comments ticket-detail-primary"
+        aria-labelledby="ticket-comments-heading"
+      >
+        <div className="ticket-detail-section-heading">
+          <div>
+            <p className="eyebrow">KOMMUNIKATION</p>
+            <h3 id="ticket-comments-heading">Kommentare</h3>
+          </div>
+          <span className="data-caption">{detail.comments.length}</span>
+        </div>
+
+        {detail.comments.length === 0 ? (
+          <p className="empty-state">Noch keine Kommentare vorhanden.</p>
+        ) : (
+          <ol className="ticket-comment-list ticket-conversation">
+            {[...detail.comments].reverse().map((item) => {
+              const requesterName = detail.requesterContact?.displayName
+                ?.trim()
+                .toLocaleLowerCase("de-CH");
+              const authorIsRequester =
+                item.authorKind === "requester" ||
+                (item.authorKind === undefined &&
+                  Boolean(requesterName) &&
+                  item.authorName.trim().toLocaleLowerCase("de-CH") ===
+                    requesterName);
+              const direction =
+                item.visibility === "internal"
+                  ? "center"
+                  : authorIsRequester
+                    ? "incoming"
+                    : "outgoing";
+              const visibilityLabel =
+                direction === "incoming"
+                  ? "Kunde"
+                  : direction === "outgoing"
+                    ? "Antwort an Kunden"
+                    : "Interne Notiz";
+              return (
+                <li
+                  className={`ticket-comment ticket-conversation__message ticket-conversation__message--${direction}`}
+                  key={item.id}
+                >
+                  <div className="ticket-comment-meta">
+                    <strong>{item.authorName}</strong>
+                    <span
+                      className={
+                        item.visibility === "internal"
+                          ? "ticket-comment-visibility-badge internal"
+                          : "ticket-comment-visibility-badge external"
+                      }
+                    >
+                      {visibilityLabel}
+                    </span>
+                    <time dateTime={item.created_at}>
+                      {formatDateTime(item.created_at)}
+                    </time>
+                  </div>
+                  <p>{item.body}</p>
+                </li>
+              );
+            })}
+          </ol>
+        )}
+
+        <form className="ticket-comment-form" onSubmit={saveComment}>
+          <label className="ticket-comment-body">
+            Neuer Kommentar
+            <textarea
+              aria-describedby="ticket-comment-visibility-hint"
+              disabled={busy}
+              maxLength={50_000}
+              onChange={(event) => setComment(event.target.value)}
+              placeholder="Interne Notiz oder Antwort verfassen …"
+              required
+              rows={4}
+              value={comment}
+            />
+          </label>
+          <fieldset className="ticket-comment-visibility" disabled={busy}>
+            <legend>Kommentar-Sichtbarkeit</legend>
+            {detail.canUseInternalNotes && (
+              <label>
+                <input
+                  checked={commentVisibility === "internal"}
+                  name="comment-visibility"
+                  onChange={() => setCommentVisibility("internal")}
+                  type="radio"
+                  value="internal"
+                />
+                Interne Notiz
+              </label>
+            )}
+            <label>
+              <input
+                checked={commentVisibility === "external"}
+                name="comment-visibility"
+                onChange={() => setCommentVisibility("external")}
+                type="radio"
+                value="external"
+              />
+              Externe Antwort
+            </label>
+          </fieldset>
+          <p
+            className={`ticket-comment-visibility-hint ${commentVisibility}`}
+            id="ticket-comment-visibility-hint"
+            aria-live="polite"
+          >
+            {commentVisibility === "internal"
+              ? "Interne Notiz: Nur berechtigte Mitarbeitende sehen diesen Kommentar."
+              : "Externe Antwort: Diese Nachricht ist für die anfragende Person sichtbar."}
+          </p>
+          <button className="primary-button" disabled={busy} type="submit">
+            {pendingAction === "comment" ? (
+              <LoaderCircle
+                aria-hidden="true"
+                className="ticket-detail-spinner"
+                size={16}
+              />
+            ) : (
+              <Send aria-hidden="true" size={16} strokeWidth={1.8} />
+            )}
+            {commentVisibility === "internal"
+              ? "Interne Notiz speichern"
+              : "Externe Antwort senden"}
+          </button>
+        </form>
+      </section>
 
       <section
         className="ticket-detail-facts ticket-detail-primary"
@@ -5210,110 +5353,6 @@ export function TicketDetail({
           eingeblendet werden.
         </p>
       )}
-
-      <section
-        className="ticket-detail-comments ticket-detail-primary"
-        aria-labelledby="ticket-comments-heading"
-      >
-        <div className="ticket-detail-section-heading">
-          <div>
-            <p className="eyebrow">KOMMUNIKATION</p>
-            <h3 id="ticket-comments-heading">Kommentare</h3>
-          </div>
-          <span className="data-caption">{detail.comments.length}</span>
-        </div>
-
-        <form className="ticket-comment-form" onSubmit={saveComment}>
-          <label className="ticket-comment-body">
-            Neuer Kommentar
-            <textarea
-              aria-describedby="ticket-comment-visibility-hint"
-              disabled={busy}
-              maxLength={50_000}
-              onChange={(event) => setComment(event.target.value)}
-              placeholder="Interne Notiz oder Antwort verfassen …"
-              required
-              rows={4}
-              value={comment}
-            />
-          </label>
-          <fieldset className="ticket-comment-visibility" disabled={busy}>
-            <legend>Kommentar-Sichtbarkeit</legend>
-            {detail.canUseInternalNotes && (
-              <label>
-                <input
-                  checked={commentVisibility === "internal"}
-                  name="comment-visibility"
-                  onChange={() => setCommentVisibility("internal")}
-                  type="radio"
-                  value="internal"
-                />
-                Interne Notiz
-              </label>
-            )}
-            <label>
-              <input
-                checked={commentVisibility === "external"}
-                name="comment-visibility"
-                onChange={() => setCommentVisibility("external")}
-                type="radio"
-                value="external"
-              />
-              Externe Antwort
-            </label>
-          </fieldset>
-          <p
-            className={`ticket-comment-visibility-hint ${commentVisibility}`}
-            id="ticket-comment-visibility-hint"
-            aria-live="polite"
-          >
-            {commentVisibility === "internal"
-              ? "Interne Notiz: Nur berechtigte Mitarbeitende sehen diesen Kommentar."
-              : "Externe Antwort: Diese Nachricht ist für die anfragende Person sichtbar."}
-          </p>
-          <button className="primary-button" disabled={busy} type="submit">
-            {pendingAction === "comment" ? (
-              <LoaderCircle
-                aria-hidden="true"
-                className="ticket-detail-spinner"
-                size={16}
-              />
-            ) : (
-              <Send aria-hidden="true" size={16} strokeWidth={1.8} />
-            )}
-            {commentVisibility === "internal"
-              ? "Interne Notiz speichern"
-              : "Externe Antwort senden"}
-          </button>
-        </form>
-
-        {detail.comments.length === 0 ? (
-          <p className="empty-state">Noch keine Kommentare vorhanden.</p>
-        ) : (
-          <ol className="ticket-comment-list">
-            {detail.comments.map((item) => (
-              <li className="ticket-comment" key={item.id}>
-                <div className="ticket-comment-meta">
-                  <strong>{item.authorName}</strong>
-                  <span
-                    className={
-                      item.visibility === "internal"
-                        ? "ticket-comment-visibility-badge internal"
-                        : "ticket-comment-visibility-badge external"
-                    }
-                  >
-                    {item.visibility === "internal" ? "Intern" : "Extern"}
-                  </span>
-                  <time dateTime={item.created_at}>
-                    {formatDateTime(item.created_at)}
-                  </time>
-                </div>
-                <p>{item.body}</p>
-              </li>
-            ))}
-          </ol>
-        )}
-      </section>
 
       <details className="ticket-detail-disclosure">
         <summary>
