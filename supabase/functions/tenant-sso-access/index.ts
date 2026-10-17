@@ -8,9 +8,10 @@ type SsoConfiguration = {
   allowed_email_domains: string[];
 };
 
-type AzureIdentity = {
-  provider?: unknown;
-};
+type AzureIdentity = { provider?: unknown };
+
+const APP_ORIGIN = "https://app.nextdesk.ch";
+const REQUESTER_ROLE = "Requester";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -25,8 +26,7 @@ function response(
   return new Response(status === 204 ? null : JSON.stringify(body), {
     status,
     headers: {
-      "Access-Control-Allow-Origin":
-        origin === "https://app.nextdesk.ch" ? origin : "",
+      "Access-Control-Allow-Origin": origin === APP_ORIGIN ? origin : "",
       "Access-Control-Allow-Headers":
         "authorization, apikey, content-type, x-client-info",
       "Access-Control-Allow-Methods": "POST, OPTIONS",
@@ -72,38 +72,136 @@ function hasAzureOAuthSession(
   return hasAzureProvider && hasAzureIdentity && hasOAuthAmr;
 }
 
+function displayNameFromUser(user: any): string | null {
+  const metadata = isRecord(user?.user_metadata) ? user.user_metadata : {};
+  const candidates = [metadata.full_name, metadata.name, metadata.display_name];
+  for (const candidate of candidates) {
+    if (typeof candidate === "string" && candidate.trim()) {
+      return candidate.trim().replace(/\s+/g, " ").slice(0, 160);
+    }
+  }
+  const email = typeof user?.email === "string" ? user.email : "";
+  const localPart = email
+    .split("@", 1)[0]
+    ?.replace(/[._-]+/g, " ")
+    .trim();
+  return localPart && localPart.length >= 2 ? localPart.slice(0, 160) : null;
+}
+
+async function ensureRequesterRole(
+  admin: any,
+  tenantId: string,
+  userId: string,
+): Promise<boolean> {
+  const { data: role, error: roleError } = await admin
+    .from("roles")
+    .select("id")
+    .eq("tenant_id", tenantId)
+    .eq("name", REQUESTER_ROLE)
+    .eq("scope", "tenant")
+    .eq("active", true)
+    .maybeSingle();
+  if (roleError || !role?.id) return Boolean(!roleError);
+
+  const { data: assignment, error: assignmentError } = await admin
+    .from("user_role_assignments")
+    .select("id")
+    .eq("tenant_id", tenantId)
+    .eq("user_id", userId)
+    .eq("role_id", role.id)
+    .is("expires_at", null)
+    .maybeSingle();
+  if (assignmentError || assignment) return !assignmentError;
+
+  const { error: createError } = await admin
+    .from("user_role_assignments")
+    .insert({
+      tenant_id: tenantId,
+      user_id: userId,
+      role_id: role.id,
+      assigned_by: userId,
+    });
+  return !createError;
+}
+
+async function provisionSsoPerson(
+  admin: any,
+  user: any,
+  tenantId: string,
+): Promise<"created" | "existing" | "removed" | "failed"> {
+  const userId = user?.id;
+  if (typeof userId !== "string") return "failed";
+
+  const { data: existing, error: membershipError } = await admin
+    .from("tenant_memberships")
+    .select("status")
+    .eq("tenant_id", tenantId)
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (membershipError) return "failed";
+  if (existing?.status === "removed") return "removed";
+
+  const isNew = !existing;
+  if (isNew) {
+    const { error: createMembershipError } = await admin
+      .from("tenant_memberships")
+      .insert({
+        tenant_id: tenantId,
+        user_id: userId,
+        status: "active",
+        joined_at: new Date().toISOString(),
+      });
+    if (createMembershipError) return "failed";
+  }
+
+  const displayName = displayNameFromUser(user);
+  if (displayName) {
+    const { error: profileError } = await admin
+      .from("user_profiles")
+      .upsert({ id: userId, display_name: displayName });
+    if (profileError) return "failed";
+  } else {
+    const { error: profileError } = await admin.from("user_profiles").upsert({
+      id: userId,
+    });
+    if (profileError) return "failed";
+  }
+
+  const { error: directoryError } = await admin
+    .from("tenant_member_directory")
+    .upsert(
+      { tenant_id: tenantId, user_id: userId },
+      {
+        onConflict: "tenant_id,user_id",
+      },
+    );
+  if (directoryError || !(await ensureRequesterRole(admin, tenantId, userId))) {
+    return "failed";
+  }
+  return isNew ? "created" : "existing";
+}
+
 const handler = withSupabase({ auth: "user" }, async (request, context) => {
   if (request.method !== "POST") {
     return error(request, "method_not_allowed", 405);
   }
-
   const actorId = context.userClaims?.id;
-  if (typeof actorId !== "string") {
-    return error(request, "invalid_request", 400);
+  const domain = emailDomain(context.userClaims?.email);
+  if (typeof actorId !== "string" || !domain) {
+    return error(request, "sso_email_claim_required", 403);
   }
 
-  // An active membership is the primary authorization boundary. It is created
-  // only through tenant invitations or administration, so an Entra identity
-  // never gains access merely by claiming a customer email domain.
-  const { data: memberships, error: membershipError } =
+  const { data: domainBinding, error: domainError } =
     await context.supabaseAdmin
-      .from("tenant_memberships")
+      .from("tenant_sso_allowed_domains")
       .select("tenant_id")
-      .eq("user_id", actorId)
-      .eq("status", "active")
-      .limit(2);
-  if (membershipError)
-    return error(request, "sso_membership_lookup_failed", 500);
-  if ((memberships ?? []).length === 0) {
-    return response(request, { data: { scope: "unmanaged" } });
-  }
-  if ((memberships ?? []).length > 1) {
-    return response(request, { data: { scope: "unmanaged" } });
-  }
+      .eq("domain", domain)
+      .maybeSingle();
+  if (domainError) return error(request, "sso_domain_lookup_failed", 500);
 
-  const membership = memberships?.[0];
-  if (!membership?.tenant_id)
-    return error(request, "sso_membership_lookup_failed", 500);
+  if (!domainBinding?.tenant_id) {
+    return response(request, { data: { scope: "unmanaged" } });
+  }
 
   const { data: configuration, error: configurationError } =
     await context.supabaseAdmin
@@ -111,44 +209,41 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       .select(
         "tenant_id, provider, enabled, enforce_sso, allowed_email_domains",
       )
-      .eq("tenant_id", membership.tenant_id)
+      .eq("tenant_id", domainBinding.tenant_id)
       .maybeSingle();
-  if (configurationError)
+  if (configurationError) {
     return error(request, "sso_configuration_lookup_failed", 500);
-
+  }
   const sso = configuration as SsoConfiguration | null;
   if (!sso?.enabled || sso.provider !== "azure_ad") {
-    return response(request, { data: { scope: "unmanaged" } });
+    return error(request, "sso_configuration_not_active", 403);
   }
 
-  // When the token exposes a verified e-mail address, it must belong to the
-  // configured customer domain. Older Supabase identity payloads do not always
-  // repeat the e-mail claim; their pre-existing active membership remains the
-  // safe fallback until SSO is explicitly enforced.
-  const domain = emailDomain(context.userClaims?.email);
+  const { data: userData, error: userError } =
+    await context.supabaseAdmin.auth.admin.getUserById(actorId);
+  if (userError || !userData.user) {
+    return error(request, "sso_identity_lookup_failed", 500);
+  }
   if (
-    domain &&
-    sso.allowed_email_domains.length > 0 &&
-    !sso.allowed_email_domains.includes(domain)
+    !hasAzureOAuthSession(
+      userData.user.app_metadata,
+      userData.user.identities,
+      context.jwtClaims,
+    )
   ) {
-    return error(request, "tenant_sso_domain_mismatch", 403);
+    return error(request, "tenant_sso_required", 403);
   }
 
-  if (sso.enforce_sso) {
-    const { data: userData, error: userError } =
-      await context.supabaseAdmin.auth.admin.getUserById(actorId);
-    if (userError || !userData.user) {
-      return error(request, "sso_identity_lookup_failed", 500);
-    }
-    if (
-      !hasAzureOAuthSession(
-        userData.user.app_metadata,
-        userData.user.identities,
-        context.jwtClaims,
-      )
-    ) {
-      return error(request, "tenant_sso_required", 403);
-    }
+  const provision = await provisionSsoPerson(
+    context.supabaseAdmin,
+    userData.user,
+    sso.tenant_id,
+  );
+  if (provision === "removed") {
+    return error(request, "tenant_person_removed", 403);
+  }
+  if (provision === "failed") {
+    return error(request, "sso_person_provision_failed", 500);
   }
 
   return response(request, {
@@ -156,6 +251,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       scope: "tenant",
       tenantId: sso.tenant_id,
       ssoEnforced: sso.enforce_sso,
+      provisioned: provision === "created",
     },
   });
 });

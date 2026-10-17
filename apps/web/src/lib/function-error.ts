@@ -67,6 +67,13 @@ export async function functionErrorMessage(
       return "Ihr Unternehmenslogin wurde erkannt, aber Sie sind für diesen Mandanten noch nicht eingeladen. Bitte wenden Sie sich an die Mandantenadministration.";
     case "tenant_sso_identity_mismatch":
       return "Die Entra-Identität passt nicht zur SSO-Konfiguration dieses Mandanten.";
+    case "sso_email_claim_required":
+      return "Ihre Entra-Anmeldung enthält keine verwendbare Unternehmens-E-Mail-Adresse. Bitte wenden Sie sich an die Mandantenadministration.";
+    case "tenant_person_removed":
+      return "Ihr Zugang zu diesem Mandanten wurde deaktiviert. Bitte wenden Sie sich an die Mandantenadministration.";
+    case "sso_person_provision_failed":
+    case "sso_domain_lookup_failed":
+      return "Ihre Person konnte für diesen Mandanten nicht automatisch eingerichtet werden. Bitte versuchen Sie es erneut oder wenden Sie sich an die Mandantenadministration.";
     case "sso_configuration_not_active":
     case "sso_configuration_not_found":
       return "Die SSO-Konfiguration dieses Mandanten ist noch nicht vollständig aktiv.";

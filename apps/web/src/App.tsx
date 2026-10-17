@@ -884,8 +884,11 @@ export function App() {
     void acceptTenantInvitations()
       .catch(() => 0)
       .then(async () => {
-        const [ssoAccess, activeTenants, profileName] = await Promise.all([
-          resolveTenantSsoAccess(),
+        // The SSO guard can create a normal tenant membership for a verified
+        // Entra employee. Load memberships only after that guarded step so the
+        // first SSO login lands in the tenant without a timing race.
+        const ssoAccess = await resolveTenantSsoAccess();
+        const [activeTenants, profileName] = await Promise.all([
           loadActiveTenants(),
           loadProfileName(),
         ]);
