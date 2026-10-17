@@ -5367,6 +5367,33 @@ body:has(.ticket-detail) {
   padding: 0;
 }
 
+.ticket-list-skeleton {
+  display: grid;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.ticket-list-skeleton i {
+  display: block;
+  height: 82px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: linear-gradient(90deg, #f5f7fb 20%, #fff 50%, #f5f7fb 80%);
+  background-size: 240% 100%;
+  animation: ticket-skeleton-loading 1.4s ease-in-out infinite;
+}
+
+@keyframes ticket-skeleton-loading {
+  from {
+    background-position: 100% 0;
+  }
+
+  to {
+    background-position: -140% 0;
+  }
+}
+
 .ticket-load-more {
   display: flex;
   justify-content: center;

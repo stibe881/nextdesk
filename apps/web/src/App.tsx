@@ -588,24 +588,45 @@ function MembershipErrorScreen({
 }
 
 function TicketList({
+  loading = false,
+  hasActiveFilters = false,
   tickets,
   onClearFilters,
   onOpen,
   onSelectionChange,
   selectedTicketIds,
 }: {
+  loading?: boolean;
+  hasActiveFilters?: boolean;
   tickets: readonly DashboardTicket[];
   onClearFilters?: () => void;
   onOpen?: (ticketId: string) => void;
   onSelectionChange?: (ticketId: string, selected: boolean) => void;
   selectedTicketIds?: ReadonlySet<string>;
 }) {
+  if (loading && tickets.length === 0) {
+    return (
+      <div className="ticket-list-skeleton" aria-busy="true" role="status">
+        <span>Tickets werden geladen …</span>
+        <i />
+        <i />
+        <i />
+      </div>
+    );
+  }
+
   if (tickets.length === 0) {
     return (
       <div className="empty-state ticket-empty-state">
-        <strong>Keine passenden Tickets gefunden.</strong>
+        <strong>
+          {hasActiveFilters
+            ? "Keine passenden Tickets gefunden."
+            : "Noch keine Tickets vorhanden."}
+        </strong>
         <span>
-          Prüfen Sie die Suchbegriffe oder setzen Sie die aktiven Filter zurück.
+          {hasActiveFilters
+            ? "Prüfen Sie die Suchbegriffe oder setzen Sie die aktiven Filter zurück."
+            : "Neue Tickets erscheinen hier, sobald sie für Ihre Queue erfasst oder zugewiesen wurden."}
         </span>
         {onClearFilters && (
           <button onClick={onClearFilters} type="button">
@@ -1826,6 +1847,10 @@ export function App() {
                 {...(query.trim() || queue !== "alle" || ticketScope !== "all"
                   ? { onClearFilters: clearTicketFilters }
                   : {})}
+                hasActiveFilters={Boolean(
+                  query.trim() || queue !== "alle" || ticketScope !== "all",
+                )}
+                loading={dashboardLoading && snapshot === null}
                 tickets={filteredTickets}
               />
               {isSupabaseConfigured && view.hasMoreTickets && (
@@ -2470,6 +2495,7 @@ function SavedTicketViews({
   const [pending, setPending] = useState<"save" | "delete" | null>(null);
   const [status, setStatus] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
+  const [editorOpen, setEditorOpen] = useState(false);
   const selectedView =
     savedViews.find((savedView) => savedView.id === selectedViewId) ?? null;
   const canDelete = Boolean(
@@ -2512,7 +2538,15 @@ function SavedTicketViews({
     setName("");
     setVisibility("private");
     setErrorMessage("");
+    setEditorOpen(true);
     setStatus("Neue Ansicht aus den aktuellen Filtern anlegen.");
+  }
+
+  function startEditView() {
+    if (!selectedView) return;
+    setErrorMessage("");
+    setEditorOpen(true);
+    setStatus(`Ansicht „${selectedView.name}“ bearbeiten.`);
   }
 
   async function saveView(event: FormEvent<HTMLFormElement>) {
@@ -2559,6 +2593,7 @@ function SavedTicketViews({
       setSelectedViewId(savedView.id);
       setName(savedView.name);
       setVisibility(savedView.visibility);
+      setEditorOpen(false);
       setStatus(
         updating
           ? `Ansicht „${savedView.name}“ aktualisiert.`
@@ -2596,6 +2631,7 @@ function SavedTicketViews({
       setSelectedViewId("");
       setName("");
       setVisibility("private");
+      setEditorOpen(false);
       setStatus(`Ansicht „${selectedView.name}“ gelöscht.`);
     } catch (error: unknown) {
       setErrorMessage(
@@ -2643,58 +2679,81 @@ function SavedTicketViews({
         >
           Neue Ansicht
         </button>
-      </div>
-      <form className="saved-ticket-views__editor" onSubmit={saveView}>
-        <label>
-          <span>Name</span>
-          <input
-            disabled={loading || pending !== null}
-            maxLength={80}
-            onChange={(event) => setName(event.target.value)}
-            placeholder="z. B. Meine offenen Tickets"
-            required
-            value={name}
-          />
-        </label>
-        <label>
-          <span>Sichtbarkeit</span>
-          <select
-            disabled={loading || pending !== null}
-            onChange={(event) =>
-              setVisibility(
-                event.target.value === "tenant" ? "tenant" : "private",
-              )
-            }
-            value={visibility}
-          >
-            <option value="private">Nur für mich</option>
-            <option value="tenant">Für den Mandanten</option>
-          </select>
-        </label>
-        <div className="saved-ticket-views__actions">
+        {selectedView && (
           <button
-            className="secondary-button"
-            disabled={loading || pending !== null || !currentUserId}
-            type="submit"
+            className="text-button"
+            disabled={pending !== null}
+            onClick={startEditView}
+            type="button"
           >
-            {pending === "save"
-              ? "Wird gespeichert …"
-              : selectedView
-                ? "Aktualisieren"
-                : "Ansicht speichern"}
+            Bearbeiten
           </button>
-          {selectedView && canDelete && (
+        )}
+      </div>
+      {editorOpen && (
+        <form className="saved-ticket-views__editor" onSubmit={saveView}>
+          <label>
+            <span>Name</span>
+            <input
+              disabled={loading || pending !== null}
+              maxLength={80}
+              onChange={(event) => setName(event.target.value)}
+              placeholder="z. B. Meine offenen Tickets"
+              required
+              value={name}
+            />
+          </label>
+          <label>
+            <span>Sichtbarkeit</span>
+            <select
+              disabled={loading || pending !== null}
+              onChange={(event) =>
+                setVisibility(
+                  event.target.value === "tenant" ? "tenant" : "private",
+                )
+              }
+              value={visibility}
+            >
+              <option value="private">Nur für mich</option>
+              <option value="tenant">Für den Mandanten</option>
+            </select>
+          </label>
+          <div className="saved-ticket-views__actions">
             <button
-              className="danger-action"
+              className="secondary-button"
+              disabled={loading || pending !== null || !currentUserId}
+              type="submit"
+            >
+              {pending === "save"
+                ? "Wird gespeichert …"
+                : selectedView
+                  ? "Aktualisieren"
+                  : "Ansicht speichern"}
+            </button>
+            {selectedView && canDelete && (
+              <button
+                className="danger-action"
+                disabled={pending !== null}
+                onClick={deleteView}
+                type="button"
+              >
+                {pending === "delete" ? "Wird gelöscht …" : "Löschen"}
+              </button>
+            )}
+            <button
+              className="text-button"
               disabled={pending !== null}
-              onClick={deleteView}
+              onClick={() => {
+                setEditorOpen(false);
+                setErrorMessage("");
+              }}
               type="button"
             >
-              {pending === "delete" ? "Wird gelöscht …" : "Löschen"}
+              Abbrechen
             </button>
-          )}
-        </div>
-      </form>
+          </div>
+        </form>
+      )}
       {(status || errorMessage) && (
         <p
           aria-live="polite"
