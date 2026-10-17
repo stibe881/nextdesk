@@ -3,6 +3,7 @@ import { withSupabase } from "@supabase/server";
 type Action =
   | { type: "getFormOptions"; tenantId: string; departmentId?: string }
   | { type: "getCategories"; tenantId: string; departmentId: string }
+  | { type: "listAvailableTemplates"; tenantId: string; departmentId: string }
   | { type: "searchRequesters"; tenantId: string; query: string }
   | {
       type: "createRequester";
@@ -29,6 +30,7 @@ type Action =
       categoryId?: string | null;
       subcategoryId?: string | null;
       assignedAgentId?: string | null;
+      templateId?: string;
     };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -240,7 +242,9 @@ function parseAction(value: unknown): Action | null {
     };
   }
   if (
-    (value.type === "getAssignableAgents" || value.type === "getCategories") &&
+    (value.type === "getAssignableAgents" ||
+      value.type === "getCategories" ||
+      value.type === "listAvailableTemplates") &&
     isUuid(value.departmentId)
   ) {
     return {
@@ -294,6 +298,7 @@ function parseAction(value: unknown): Action | null {
     isRequesterContactId(value.requesterContactId) &&
     isOptionalUuid(value.categoryId) &&
     isOptionalUuid(value.subcategoryId) &&
+    (value.templateId === undefined || isUuid(value.templateId)) &&
     (assignedAgentId === undefined ||
       assignedAgentId === null ||
       isUuid(assignedAgentId))
@@ -311,6 +316,9 @@ function parseAction(value: unknown): Action | null {
         : {}),
       ...(value.subcategoryId !== undefined
         ? { subcategoryId: value.subcategoryId }
+        : {}),
+      ...(typeof value.templateId === "string"
+        ? { templateId: value.templateId }
         : {}),
       ...(assignedAgentId !== undefined ? { assignedAgentId } : {}),
     };
@@ -722,6 +730,123 @@ async function getAssignableAgents(
   );
   return { agents, error: false };
 }
+
+const SAFE_TEMPLATE_PLACEHOLDER =
+  /\{\{(anfragende_person|abteilung|heute|ticket_nummer)\}\}/g;
+
+type AvailableTicketTemplate = {
+  id: string;
+  name: string;
+  subjectTemplate: string;
+  descriptionTemplate: string;
+  priorityKey: string | null;
+  checklistItems: Array<{ description: string; position: number }>;
+};
+
+function hasOnlySafeTemplatePlaceholders(value: string): boolean {
+  return !/[{}]/.test(value.replace(SAFE_TEMPLATE_PLACEHOLDER, ""));
+}
+
+function publicTicketTemplate(row: any): AvailableTicketTemplate | null {
+  if (
+    !isUuid(row?.id) ||
+    typeof row?.name !== "string" ||
+    typeof row?.subject_template !== "string" ||
+    typeof row?.description_template !== "string" ||
+    (row.priority_key !== null && typeof row.priority_key !== "string") ||
+    !hasOnlySafeTemplatePlaceholders(row.subject_template) ||
+    !hasOnlySafeTemplatePlaceholders(row.description_template)
+  ) {
+    return null;
+  }
+
+  const checklistItems: Array<{ description: string; position: number }> = [];
+  for (const item of Array.isArray(row.ticket_template_checklist_items)
+    ? row.ticket_template_checklist_items
+    : []) {
+    if (
+      typeof item?.description !== "string" ||
+      item.description.length < 1 ||
+      item.description.length > 1000 ||
+      typeof item.position !== "number" ||
+      !Number.isSafeInteger(item.position)
+    ) {
+      return null;
+    }
+    checklistItems.push({
+      description: item.description,
+      position: item.position,
+    });
+  }
+  checklistItems.sort(
+    (left, right) =>
+      left.position - right.position ||
+      left.description.localeCompare(right.description),
+  );
+
+  return {
+    id: row.id,
+    name: row.name,
+    subjectTemplate: row.subject_template,
+    descriptionTemplate: row.description_template,
+    priorityKey: row.priority_key,
+    checklistItems,
+  };
+}
+
+async function getAvailableTicketTemplates(
+  admin: any,
+  tenantId: string,
+  departmentId: string,
+): Promise<{ templates: AvailableTicketTemplate[]; error: boolean }> {
+  const { data, error } = await admin
+    .from("ticket_templates")
+    .select(
+      "id, name, subject_template, description_template, priority_key, department_id, ticket_template_checklist_items(description, position)",
+    )
+    .eq("tenant_id", tenantId)
+    .eq("active", true)
+    .or(`department_id.is.null,department_id.eq.${departmentId}`)
+    .order("name")
+    .limit(100);
+  if (error) return { templates: [], error: true };
+
+  const templates: AvailableTicketTemplate[] = [];
+  for (const row of data ?? []) {
+    const template = publicTicketTemplate(row);
+    // Historical rows without the new database check must never become a
+    // selectable template. This is deliberately fail-closed.
+    if (template) templates.push(template);
+  }
+  return { templates, error: false };
+}
+
+function renderTicketTemplate(
+  template: AvailableTicketTemplate,
+  requesterName: string,
+  departmentName: string,
+  ticketNumber: string,
+): { subject: string; description: string } {
+  const replacements: Record<string, string> = {
+    anfragende_person: requesterName,
+    abteilung: departmentName,
+    heute: new Intl.DateTimeFormat("de-CH", {
+      dateStyle: "short",
+      timeZone: "Europe/Zurich",
+    }).format(new Date()),
+    ticket_nummer: ticketNumber,
+  };
+  const render = (value: string) =>
+    value.replace(
+      SAFE_TEMPLATE_PLACEHOLDER,
+      (_match, key: string) => replacements[key] ?? "",
+    );
+  return {
+    subject: render(template.subjectTemplate),
+    description: render(template.descriptionTemplate),
+  };
+}
+
 const handler = withSupabase({ auth: "user" }, async (request, context) => {
   if (request.method !== "POST") {
     return json(request, { error: { code: "method_not_allowed" } }, 405);
@@ -788,6 +913,43 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       },
       403,
     );
+  }
+  if (action.type === "listAvailableTemplates") {
+    const { data: department, error: departmentError } =
+      await context.supabaseAdmin
+        .from("departments")
+        .select("id")
+        .eq("id", action.departmentId)
+        .eq("tenant_id", action.tenantId)
+        .eq("active", true)
+        .maybeSingle();
+    if (departmentError) {
+      return json(
+        request,
+        { error: { code: "ticket_templates_lookup_failed" } },
+        500,
+      );
+    }
+    if (!department) {
+      return json(
+        request,
+        { error: { code: "ticket_reference_missing" } },
+        422,
+      );
+    }
+    const templates = await getAvailableTicketTemplates(
+      context.supabaseAdmin,
+      action.tenantId,
+      action.departmentId,
+    );
+    if (templates.error) {
+      return json(
+        request,
+        { error: { code: "ticket_templates_lookup_failed" } },
+        500,
+      );
+    }
+    return json(request, { data: { templates: templates.templates } });
   }
   if (action.type === "getFormOptions") {
     const requester = await getRequesterContext(
@@ -1191,16 +1353,17 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     return json(request, { data: { agents: assignableAgents.agents } });
   }
   if (
-    action.subject.length < 3 ||
-    action.subject.length > 240 ||
-    action.description.length < 1 ||
-    action.description.length > 50000
+    !action.templateId &&
+    (action.subject.length < 3 ||
+      action.subject.length > 240 ||
+      action.description.length < 1 ||
+      action.description.length > 50000)
   ) {
     return json(request, { error: { code: "invalid_ticket_content" } }, 422);
   }
   const { data: department } = await context.supabaseAdmin
     .from("departments")
-    .select("id, key")
+    .select("id, key, name")
     .eq("id", action.departmentId)
     .eq("tenant_id", action.tenantId)
     .eq("active", true)
@@ -1211,19 +1374,13 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     .eq("tenant_id", action.tenantId)
     .eq("key", "new")
     .maybeSingle();
-  const { data: priority } = await context.supabaseAdmin
-    .from("ticket_priorities")
-    .select("id")
-    .eq("tenant_id", action.tenantId)
-    .eq("key", action.priorityKey)
-    .maybeSingle();
-  if (!department || !status || !priority) {
+  if (!department || !status) {
     return json(request, { error: { code: "ticket_reference_missing" } }, 422);
   }
   const { data: requesterContact, error: requesterContactError } =
     await context.supabaseAdmin
       .from("ticket_requesters")
-      .select("id, user_id")
+      .select("id, user_id, display_name")
       .eq("tenant_id", action.tenantId)
       .eq("id", action.requesterContactId)
       .maybeSingle();
@@ -1272,6 +1429,43 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     }
   }
   const requesterId = requesterContact.user_id ?? actorId;
+  let ticketTemplate: AvailableTicketTemplate | null = null;
+  if (action.templateId) {
+    const templates = await getAvailableTicketTemplates(
+      context.supabaseAdmin,
+      action.tenantId,
+      action.departmentId,
+    );
+    if (templates.error) {
+      return json(
+        request,
+        { error: { code: "ticket_templates_lookup_failed" } },
+        500,
+      );
+    }
+    ticketTemplate =
+      templates.templates.find(
+        (template) => template.id === action.templateId,
+      ) ?? null;
+    if (!ticketTemplate) {
+      return json(
+        request,
+        { error: { code: "ticket_template_unavailable" } },
+        422,
+      );
+    }
+  }
+  const effectivePriorityKey =
+    ticketTemplate?.priorityKey ?? action.priorityKey;
+  const { data: priority } = await context.supabaseAdmin
+    .from("ticket_priorities")
+    .select("id")
+    .eq("tenant_id", action.tenantId)
+    .eq("key", effectivePriorityKey)
+    .maybeSingle();
+  if (!priority) {
+    return json(request, { error: { code: "ticket_reference_missing" } }, 422);
+  }
   const categoryId = action.categoryId ?? null;
   const subcategoryId = action.subcategoryId ?? null;
   if (subcategoryId !== null && categoryId === null) {
@@ -1398,14 +1592,37 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
   if (numberError || typeof ticketNumber !== "string") {
     return json(request, { error: { code: "ticket_number_failed" } }, 500);
   }
+  const requesterName =
+    typeof requesterContact.display_name === "string" &&
+    requesterContact.display_name.trim()
+      ? requesterContact.display_name.trim()
+      : "Anfragende Person";
+  const renderedTemplate = ticketTemplate
+    ? renderTicketTemplate(
+        ticketTemplate,
+        requesterName,
+        department.name,
+        ticketNumber,
+      )
+    : null;
+  const ticketSubject = renderedTemplate?.subject ?? action.subject;
+  const ticketDescription = renderedTemplate?.description ?? action.description;
+  if (
+    ticketSubject.length < 3 ||
+    ticketSubject.length > 240 ||
+    ticketDescription.length < 1 ||
+    ticketDescription.length > 50000
+  ) {
+    return json(request, { error: { code: "invalid_ticket_content" } }, 422);
+  }
   const { data: ticket, error: ticketError } = await context.supabaseAdmin
     .from("tickets")
     .insert({
       tenant_id: action.tenantId,
       department_id: action.departmentId,
       ticket_number: ticketNumber,
-      subject: action.subject,
-      description: action.description,
+      subject: ticketSubject,
+      description: ticketDescription,
       status_id: status.id,
       priority_id: priority.id,
       category_id: categoryId,
@@ -1419,17 +1636,79 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
   if (ticketError || !ticket) {
     return json(request, { error: { code: "ticket_create_failed" } }, 422);
   }
-  await context.supabaseAdmin.from("ticket_events").insert({
-    ticket_id: ticket.id,
-    actor_id: actorId,
-    event_type: "ticket.created",
-    payload: {
-      source: "web_portal",
-      ...(action.assignedAgentId !== undefined
-        ? { assigned_agent_id: action.assignedAgentId }
-        : {}),
-    },
-  });
+  const removeIncompleteTemplateTicket = async () => {
+    await context.supabaseAdmin
+      .from("tickets")
+      .delete()
+      .eq("tenant_id", action.tenantId)
+      .eq("id", ticket.id);
+  };
+  if (ticketTemplate && ticketTemplate.checklistItems.length > 0) {
+    const { error: checklistError } = await context.supabaseAdmin
+      .from("ticket_checklist_items")
+      .insert(
+        ticketTemplate.checklistItems.map((item) => ({
+          ticket_id: ticket.id,
+          description: item.description,
+          position: item.position,
+          created_by: actorId,
+        })),
+      );
+    if (checklistError) {
+      await removeIncompleteTemplateTicket();
+      return json(
+        request,
+        { error: { code: "ticket_template_checklist_apply_failed" } },
+        500,
+      );
+    }
+  }
+  const { error: ticketEventError } = await context.supabaseAdmin
+    .from("ticket_events")
+    .insert({
+      ticket_id: ticket.id,
+      actor_id: actorId,
+      event_type: "ticket.created",
+      payload: {
+        source: "web_portal",
+        ...(ticketTemplate ? { templateId: ticketTemplate.id } : {}),
+        ...(action.assignedAgentId !== undefined
+          ? { assigned_agent_id: action.assignedAgentId }
+          : {}),
+      },
+    });
+  if (ticketTemplate && ticketEventError) {
+    await removeIncompleteTemplateTicket();
+    return json(
+      request,
+      { error: { code: "ticket_template_event_failed" } },
+      500,
+    );
+  }
+  if (ticketTemplate) {
+    const { error: auditError } = await context.supabaseAdmin
+      .from("audit_logs")
+      .insert({
+        tenant_id: action.tenantId,
+        actor_id: actorId,
+        action: "ticket.template.applied",
+        entity_type: "ticket",
+        entity_id: ticket.id,
+        severity: "info",
+        metadata: {
+          templateId: ticketTemplate.id,
+          checklistItemCount: ticketTemplate.checklistItems.length,
+        },
+      });
+    if (auditError) {
+      await removeIncompleteTemplateTicket();
+      return json(
+        request,
+        { error: { code: "ticket_template_audit_failed" } },
+        500,
+      );
+    }
+  }
   return json(
     request,
     { data: { ticketId: ticket.id, ticketNumber: ticket.ticket_number } },

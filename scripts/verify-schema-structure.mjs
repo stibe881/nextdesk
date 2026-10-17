@@ -44,6 +44,10 @@ const expectedFiles = [
   "0039_ticket_requester_profile_offer.sql",
   "0040_retire_ticket_tags_and_assign_categories.sql",
   "0041_ticket_custom_fields.sql",
+  "0042_ticket_comment_permissions.sql",
+  "0043_requester_own_ticket_comments.sql",
+  "0044_asset_intune_inventory_foundation.sql",
+  "0045_ticket_templates_and_approval_foundation.sql",
 ];
 
 const availableFiles = await readdir(migrationDirectory);
@@ -383,6 +387,40 @@ const requiredFragments = [
   [
     "0041_ticket_custom_fields.sql",
     "revoke all on table public.ticket_custom_field_definitions, public.ticket_custom_field_values from anon, authenticated",
+  ],
+  ["0042_ticket_comment_permissions.sql", "'ticket.comment.external'"],
+  ["0043_requester_own_ticket_comments.sql", "'ticket.comment.external.own'"],
+  [
+    "0044_asset_intune_inventory_foundation.sql",
+    "create table public.asset_locations",
+  ],
+  [
+    "0045_ticket_templates_and_approval_foundation.sql",
+    "create or replace function public.ticket_template_placeholders_valid",
+  ],
+  [
+    "0045_ticket_templates_and_approval_foundation.sql",
+    "foreign key (template_id, tenant_id)",
+  ],
+  [
+    "0045_ticket_templates_and_approval_foundation.sql",
+    "create table public.ticket_approval_requests",
+  ],
+  [
+    "0045_ticket_templates_and_approval_foundation.sql",
+    "create table public.ticket_approval_decisions",
+  ],
+  [
+    "0045_ticket_templates_and_approval_foundation.sql",
+    "alter table public.ticket_approval_requests enable row level security",
+  ],
+  [
+    "0045_ticket_templates_and_approval_foundation.sql",
+    "create or replace function public.create_ticket_approval_request",
+  ],
+  [
+    "0045_ticket_templates_and_approval_foundation.sql",
+    "grant execute on function public.decide_ticket_approval(uuid, uuid, uuid, text, text) to service_role",
   ],
 ];
 

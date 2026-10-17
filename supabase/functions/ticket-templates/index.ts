@@ -27,6 +27,8 @@ type ManagementScopes = {
 const ALLOWED_ORIGIN = "https://app.nextdesk.ch";
 const TEMPLATE_SELECT =
   "id, tenant_id, department_id, name, subject_template, description_template, priority_key, active, created_by, created_at, updated_at, ticket_template_checklist_items(id, description, position)";
+const SAFE_TEMPLATE_PLACEHOLDER =
+  /\{\{(anfragende_person|abteilung|heute|ticket_nummer)\}\}/g;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -74,6 +76,10 @@ function requiredText(value: unknown, minLength: number, maxLength: number) {
   return trimmed.length >= minLength && trimmed.length <= maxLength
     ? trimmed
     : null;
+}
+
+function hasOnlySafeTemplatePlaceholders(value: string): boolean {
+  return !/[{}]/.test(value.replace(SAFE_TEMPLATE_PLACEHOLDER, ""));
 }
 
 function optionalText(
@@ -126,6 +132,8 @@ function parseTemplateFields(
     name === null ||
     subjectTemplate === null ||
     descriptionTemplate === null ||
+    !hasOnlySafeTemplatePlaceholders(subjectTemplate) ||
+    !hasOnlySafeTemplatePlaceholders(descriptionTemplate) ||
     !priority.valid ||
     !department.valid ||
     checklistItems === null
@@ -441,6 +449,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         .insert(
           action.checklistItems.map((item, position) => ({
             template_id: created.id,
+            tenant_id: action.tenantId,
             description: item.description,
             position,
           })),
@@ -611,6 +620,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         .insert(
           action.checklistItems.map((item, position) => ({
             template_id: action.templateId,
+            tenant_id: action.tenantId,
             description: item.description,
             position,
           })),

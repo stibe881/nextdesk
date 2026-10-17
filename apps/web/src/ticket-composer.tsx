@@ -28,6 +28,21 @@ type CategoryLookup = {
   error: string;
 };
 type CategoryDraft = { name: string; parentId: string | null };
+type AvailableTicketTemplate = {
+  id: string;
+  name: string;
+  subjectTemplate: string;
+  descriptionTemplate: string;
+  priorityKey: string | null;
+  checklistItems: Array<{ description: string; position: number }>;
+};
+type TemplateLookup = {
+  tenantId: string;
+  departmentId: string;
+  status: "loading" | "loaded" | "error";
+  templates: AvailableTicketTemplate[];
+  error: string;
+};
 
 type OptionsResponse = {
   departments: Department[];
@@ -42,6 +57,8 @@ const EMPTY_OPTIONS: OptionsResponse = {
   currentRequester: null,
   requesterContext: { isInternal: false },
 };
+const SAFE_TEMPLATE_PLACEHOLDER =
+  /\{\{(anfragende_person|abteilung|heute|ticket_nummer)\}\}/g;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -62,6 +79,10 @@ function isUuid(value: unknown): value is string {
       value,
     )
   );
+}
+
+function hasOnlySafeTemplatePlaceholders(value: string): boolean {
+  return !/[{}]/.test(value.replace(SAFE_TEMPLATE_PLACEHOLDER, ""));
 }
 
 function parseRequester(value: unknown): RequesterContact {
@@ -302,6 +323,88 @@ function parseCategories(value: unknown): TicketCategory[] {
   return categories;
 }
 
+function parseAvailableTicketTemplate(value: unknown): AvailableTicketTemplate {
+  if (
+    !isRecord(value) ||
+    !isUuid(value.id) ||
+    !isNonemptyString(value.name) ||
+    !isNonemptyString(value.subjectTemplate) ||
+    !isNonemptyString(value.descriptionTemplate) ||
+    (value.priorityKey !== null && !isNonemptyString(value.priorityKey)) ||
+    !Array.isArray(value.checklistItems) ||
+    !hasOnlySafeTemplatePlaceholders(value.subjectTemplate) ||
+    !hasOnlySafeTemplatePlaceholders(value.descriptionTemplate)
+  ) {
+    throw new Error("Die Ticketvorlage ist ungültig.");
+  }
+  const checklistItems = value.checklistItems.map((item) => {
+    if (
+      !isRecord(item) ||
+      !isNonemptyString(item.description) ||
+      item.description.length > 1000 ||
+      typeof item.position !== "number" ||
+      !Number.isSafeInteger(item.position)
+    ) {
+      throw new Error("Die Checkliste der Ticketvorlage ist ungültig.");
+    }
+    return { description: item.description, position: item.position };
+  });
+  return {
+    id: value.id,
+    name: value.name.trim(),
+    subjectTemplate: value.subjectTemplate,
+    descriptionTemplate: value.descriptionTemplate,
+    priorityKey:
+      typeof value.priorityKey === "string" ? value.priorityKey : null,
+    checklistItems,
+  };
+}
+
+function parseAvailableTicketTemplates(
+  value: unknown,
+): AvailableTicketTemplate[] {
+  if (
+    !isRecord(value) ||
+    !isRecord(value.data) ||
+    !Array.isArray(value.data.templates) ||
+    value.data.templates.length > 100
+  ) {
+    throw new Error("Die Ticketvorlagen fehlen in der Antwort.");
+  }
+  const templates = value.data.templates.map(parseAvailableTicketTemplate);
+  if (
+    new Set(templates.map((template) => template.id)).size !== templates.length
+  ) {
+    throw new Error("Die Ticketvorlagen enthalten doppelte Einträge.");
+  }
+  return templates;
+}
+
+function templatePreview(
+  template: AvailableTicketTemplate,
+  requesterName: string,
+  departmentName: string,
+): { subject: string; description: string } {
+  const replacements: Record<string, string> = {
+    anfragende_person: requesterName,
+    abteilung: departmentName,
+    heute: new Intl.DateTimeFormat("de-CH", {
+      dateStyle: "short",
+      timeZone: "Europe/Zurich",
+    }).format(new Date()),
+    ticket_nummer: "wird beim Erstellen vergeben",
+  };
+  const render = (value: string) =>
+    value.replace(
+      SAFE_TEMPLATE_PLACEHOLDER,
+      (_match, key: string) => replacements[key] ?? "",
+    );
+  return {
+    subject: render(template.subjectTemplate),
+    description: render(template.descriptionTemplate),
+  };
+}
+
 function parseCreatedCategory(
   value: unknown,
   parentId: string | null,
@@ -380,6 +483,10 @@ export function TicketComposer({
   );
   const [categorySaving, setCategorySaving] = useState(false);
   const [categoryError, setCategoryError] = useState("");
+  const [templateLookup, setTemplateLookup] = useState<TemplateLookup | null>(
+    null,
+  );
+  const [templateId, setTemplateId] = useState("");
   const [priorityKey, setPriorityKey] = useState("normal");
   const [subject, setSubject] = useState("");
   const [description, setDescription] = useState("");
@@ -392,6 +499,7 @@ export function TicketComposer({
   const [error, setError] = useState("");
   const departmentSelectRef = useRef<HTMLSelectElement>(null);
   const categoryRequestRef = useRef(0);
+  const templateRequestRef = useRef(0);
   const requesterScopeRef = useRef(0);
   const requesterSearchRef = useRef(0);
   const requesterCreationRef = useRef<number | null>(null);
@@ -421,7 +529,9 @@ export function TicketComposer({
     setOptionsTenantId(null);
     setDepartmentId("");
     setDepartmentSelectionOpen(false);
-    setSelectedRequester(null);
+    setCategoryDraft(null);
+    setTemplateLookup(null);
+    setTemplateId("");
     setAssignableAgents([]);
     setAssignedAgentId("");
     setAgentLookupAllowed(false);
@@ -687,6 +797,53 @@ export function TicketComposer({
     };
   }, [departmentId, tenantId, loading, optionsTenantId]);
 
+  useEffect(() => {
+    const requestId = ++templateRequestRef.current;
+    setTemplateLookup(null);
+    setTemplateId("");
+    if (!supabase || loading || optionsTenantId !== tenantId || !departmentId)
+      return;
+
+    setTemplateLookup({
+      tenantId,
+      departmentId,
+      status: "loading",
+      templates: [],
+      error: "",
+    });
+    void supabase.functions
+      .invoke("ticket-actions", {
+        body: { type: "listAvailableTemplates", tenantId, departmentId },
+      })
+      .then(({ data, error: requestError }) => {
+        if (requestError) throw requestError;
+        const templates = parseAvailableTicketTemplates(data);
+        if (templateRequestRef.current !== requestId) return;
+        setTemplateLookup({
+          tenantId,
+          departmentId,
+          status: "loaded",
+          templates,
+          error: "",
+        });
+      })
+      .catch(() => {
+        if (templateRequestRef.current !== requestId) return;
+        setTemplateLookup({
+          tenantId,
+          departmentId,
+          status: "error",
+          templates: [],
+          error:
+            "Die Ticketvorlagen konnten nicht geladen werden. Sie können das Ticket weiterhin ohne Vorlage erfassen.",
+        });
+      });
+
+    return () => {
+      ++templateRequestRef.current;
+    };
+  }, [departmentId, tenantId, loading, optionsTenantId]);
+
   function openDepartmentSelection() {
     setDepartmentSelectionOpen(true);
     window.requestAnimationFrame(() => departmentSelectRef.current?.focus());
@@ -904,7 +1061,7 @@ export function TicketComposer({
       !departmentId ||
       loading ||
       optionsTenantId !== tenantId ||
-      !priorityKey ||
+      !effectivePriorityKey ||
       saving ||
       requesterSaving ||
       requesterDraft ||
@@ -924,10 +1081,11 @@ export function TicketComposer({
             type: "createTicket",
             tenantId,
             departmentId,
-            priorityKey,
+            priorityKey: effectivePriorityKey,
             requesterContactId: currentSelectedRequester.id,
-            subject,
-            description,
+            subject: selectedTemplatePreview?.subject ?? subject,
+            description: selectedTemplatePreview?.description ?? description,
+            ...(selectedTemplate ? { templateId: selectedTemplate.id } : {}),
             categoryId: selectedCategory?.id ?? null,
             subcategoryId: selectedSubcategory?.id ?? null,
           },
@@ -951,6 +1109,7 @@ export function TicketComposer({
           setConfirmation(created);
           setSubject("");
           setDescription("");
+          setTemplateId("");
           setAssignedAgentId("");
           setError(
             "Das Ticket wurde erstellt, aber die Agentenzuweisung konnte nicht gespeichert werden. Öffnen Sie das Ticket und versuchen Sie die Zuweisung erneut.",
@@ -973,6 +1132,7 @@ export function TicketComposer({
       if (requesterScopeRef.current !== requestId) return;
       setSubject("");
       setDescription("");
+      setTemplateId("");
       setConfirmation(created);
       onCreated(created.ticketId);
     } catch (requestError: unknown) {
@@ -1007,6 +1167,30 @@ export function TicketComposer({
   const selectedSubcategory = subcategories.find(
     (category) => category.id === subcategoryId,
   );
+  const currentTemplateLookup =
+    !loading &&
+    optionsTenantId === tenantId &&
+    templateLookup?.tenantId === tenantId &&
+    templateLookup.departmentId === departmentId
+      ? templateLookup
+      : null;
+  const availableTemplates =
+    currentTemplateLookup?.status === "loaded"
+      ? currentTemplateLookup.templates
+      : [];
+  const selectedTemplate =
+    availableTemplates.find((template) => template.id === templateId) ?? null;
+  const selectedDepartmentName =
+    options.departments.find((department) => department.id === departmentId)
+      ?.name ?? "Abteilung";
+  const selectedTemplatePreview = selectedTemplate
+    ? templatePreview(
+        selectedTemplate,
+        currentSelectedRequester?.displayName ?? "Anfragende Person",
+        selectedDepartmentName,
+      )
+    : null;
+  const effectivePriorityKey = selectedTemplate?.priorityKey ?? priorityKey;
   const draftParent = categoryDraft?.parentId
     ? rootCategories.find((category) => category.id === categoryDraft.parentId)
     : null;
@@ -1261,12 +1445,16 @@ export function TicketComposer({
           <label>
             Betreff
             <input
+              aria-describedby={
+                selectedTemplate ? "ticket-template-preview" : undefined
+              }
               disabled={saving || options.departments.length === 0}
               minLength={3}
               onChange={(event) => setSubject(event.target.value)}
               placeholder="Worum geht es?"
+              readOnly={selectedTemplate !== null}
               required
-              value={subject}
+              value={selectedTemplatePreview?.subject ?? subject}
             />
           </label>
           {showDepartmentSelection && (
@@ -1312,6 +1500,45 @@ export function TicketComposer({
           >
             Zuordnung anpassen
           </button>
+          <div className="ticket-compose-description">
+            <label>
+              Ticketvorlage (optional)
+              <select
+                disabled={
+                  saving ||
+                  options.departments.length === 0 ||
+                  currentTemplateLookup?.status === "loading"
+                }
+                onChange={(event) => setTemplateId(event.target.value)}
+                value={selectedTemplate?.id ?? ""}
+              >
+                <option value="">
+                  {currentTemplateLookup?.status === "loading"
+                    ? "Vorlagen werden geladen …"
+                    : "Ohne Vorlage erfassen"}
+                </option>
+                {availableTemplates.map((template) => (
+                  <option key={template.id} value={template.id}>
+                    {template.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {currentTemplateLookup?.error && (
+              <p className="error" role="alert">
+                {currentTemplateLookup.error}
+              </p>
+            )}
+            {selectedTemplate && (
+              <p className="data-caption" id="ticket-template-preview">
+                Betreff, Beschreibung und
+                {selectedTemplate.priorityKey ? " die Priorität" : ""} werden
+                beim Erstellen auf dem Server aus dieser Vorlage übernommen.
+                Platzhalter werden nur mit Mandantenkontext ersetzt; die
+                Ticketnummer wird erst beim Erstellen vergeben.
+              </p>
+            )}
+          </div>
           {agentLookupAllowed && assignableAgents.length > 0 && (
             <label>
               Zugewiesener Agent
@@ -1489,10 +1716,15 @@ export function TicketComposer({
           <label>
             Priorität
             <select
-              disabled={saving || options.priorities.length === 0}
+              disabled={
+                saving ||
+                options.priorities.length === 0 ||
+                (selectedTemplate?.priorityKey !== null &&
+                  selectedTemplate?.priorityKey !== undefined)
+              }
               onChange={(event) => setPriorityKey(event.target.value)}
               required
-              value={priorityKey}
+              value={effectivePriorityKey}
             >
               {options.priorities.map((priority) => (
                 <option key={priority.key} value={priority.key}>
@@ -1504,13 +1736,17 @@ export function TicketComposer({
           <label className="ticket-compose-description">
             Beschreibung
             <textarea
+              aria-describedby={
+                selectedTemplate ? "ticket-template-preview" : undefined
+              }
               disabled={saving || options.departments.length === 0}
               minLength={1}
               onChange={(event) => setDescription(event.target.value)}
               placeholder="Beschreiben Sie das Anliegen so konkret wie möglich."
+              readOnly={selectedTemplate !== null}
               required
               rows={4}
-              value={description}
+              value={selectedTemplatePreview?.description ?? description}
             />
           </label>
           <button

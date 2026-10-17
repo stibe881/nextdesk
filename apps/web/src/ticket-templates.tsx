@@ -95,6 +95,8 @@ type FormOptions = {
 type SavingState = "create" | "update" | null;
 
 const EMPTY_OPTIONS: FormOptions = { departments: [], priorities: [] };
+const SAFE_TEMPLATE_PLACEHOLDER =
+  /\{\{(anfragende_person|abteilung|heute|ticket_nummer)\}\}/g;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -102,6 +104,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isNullableString(value: unknown): value is string | null {
   return typeof value === "string" || value === null;
+}
+
+function hasOnlySafeTemplatePlaceholders(value: string): boolean {
+  return !/[{}]/.test(value.replace(SAFE_TEMPLATE_PLACEHOLDER, ""));
 }
 
 function parseChecklistItem(
@@ -258,6 +264,12 @@ function validateDraft(draft: TemplateDraft): string | null {
   }
   if (!draft.descriptionTemplate.trim()) {
     return "Bitte geben Sie eine Beschreibungsvorlage ein.";
+  }
+  if (
+    !hasOnlySafeTemplatePlaceholders(draft.subjectTemplate) ||
+    !hasOnlySafeTemplatePlaceholders(draft.descriptionTemplate)
+  ) {
+    return "Es sind nur die sicheren Platzhalter {{anfragende_person}}, {{abteilung}}, {{heute}} und {{ticket_nummer}} erlaubt.";
   }
   if (draft.checklistItems.some((item) => !item.trim())) {
     return "Bitte füllen Sie jeden Checklistenpunkt aus oder entfernen Sie leere Punkte.";
@@ -900,6 +912,12 @@ export function TicketTemplates({ tenantId }: { tenantId: string }) {
               value={draft.subjectTemplate}
             />
           </label>
+          <p className="ticket-templates__description ticket-templates__full-width">
+            Sichere Platzhalter: <code>{"{{anfragende_person}}"}</code>,{" "}
+            <code>{"{{abteilung}}"}</code>, <code>{"{{heute}}"}</code> und{" "}
+            <code>{"{{ticket_nummer}}"}</code>. Andere geschweifte Klammern oder
+            Ausdrücke sind nicht zulässig.
+          </p>
 
           <label>
             Abteilung (optional)
