@@ -72,9 +72,14 @@ export const nextDeskAuthRedirectUrl = "nextdesk://auth/callback";
 export function isNextDeskAuthCallback(url: string): boolean {
   try {
     const parsed = new URL(url);
+    const callbackPath = parsed.pathname.replace(/\/+$/, "");
     return (
       parsed.protocol === "nextdesk:" &&
-      parsed.pathname.replace(/\/+$/, "") === "/auth/callback"
+      // `nextdesk://auth/callback` is represented by the native URL parser as
+      // host `auth` and path `/callback`. Web/Expo tooling can also emit the
+      // equivalent path-only form `nextdesk:///auth/callback`; accept both.
+      ((parsed.hostname === "auth" && callbackPath === "/callback") ||
+        callbackPath === "/auth/callback")
     );
   } catch {
     return false;
