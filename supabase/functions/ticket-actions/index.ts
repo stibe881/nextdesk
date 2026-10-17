@@ -162,7 +162,11 @@ async function getRequesterContext(
 
   const { data: memberships, error } = await admin
     .from("department_memberships")
-    .select("department_id, departments!inner(id, name)")
+    // The table has both single-column and tenant-scoped department foreign
+    // keys. Pin the tenant-scoped one so PostgREST never has to guess.
+    .select(
+      "department_id, departments!department_memberships_department_tenant_fk!inner(id, name)",
+    )
     .eq("tenant_id", tenantId)
     .eq("user_id", userId)
     .eq("status", "active")
