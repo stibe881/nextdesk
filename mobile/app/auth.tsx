@@ -1,10 +1,12 @@
 import * as WebBrowser from "expo-web-browser";
-import { useLocalSearchParams } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { ScreenContainer } from "@/components/screen-container";
 import {
+  completeNextDeskAuth,
+  nextDeskAuthFailureCode,
   nextDeskAuthFailureMessage,
   nextDeskAuthRedirectUrl,
   requireNextDesk,
@@ -47,16 +49,19 @@ export default function AuthScreen() {
         redirectTo,
       );
       if (result.type === "success") {
-        // The root deep-link handler is the single owner of the PKCE exchange.
-        // It also covers callbacks that start the app from a cold state.
+        // ASWebAuthenticationSession returns the callback directly and does not
+        // reliably emit a Linking event while the app stays warm. Exchange the
+        // code here; the shared completion helper deduplicates cold-start links.
+        await completeNextDeskAuth(result.url);
         setMessage("Anmeldung wird abgeschlossen …");
+        router.replace("/(tabs)");
       } else if (result.type !== "cancel") {
         setMessage(
           "Die Rückkehr aus dem Anmeldefenster wurde nicht erkannt. Bitte versuchen Sie die SSO-Anmeldung erneut.",
         );
       }
-    } catch {
-      setMessage(nextDeskAuthFailureMessage(undefined));
+    } catch (error) {
+      setMessage(nextDeskAuthFailureMessage(nextDeskAuthFailureCode(error)));
     } finally {
       setPending(null);
     }
