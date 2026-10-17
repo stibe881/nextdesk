@@ -52,7 +52,7 @@ psql -v ON_ERROR_STOP=1 <<'SQL'
 -- The test grants only emulate Supabase API read privileges; the migrations still provide RLS.
 grant usage on schema public, auth to authenticated;
 grant execute on function auth.uid() to authenticated;
-grant select on public.tickets, public.ticket_comments, public.ticket_statuses, public.ticket_priorities, public.ticket_categories, public.ticket_tags, public.ticket_tag_assignments to authenticated;
+grant select on public.tickets, public.ticket_comments, public.ticket_statuses, public.ticket_priorities, public.ticket_categories to authenticated;
 
 insert into auth.users (id) values
   ('00000000-0000-4000-8000-000000000001'),
@@ -141,8 +141,10 @@ insert into public.ticket_priorities (id, tenant_id, key, label, sort_order) val
   ('14000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000001', 'test_normal', 'Test Normal', 90),
   ('24000000-0000-4000-8000-000000000002', '20000000-0000-4000-8000-000000000002', 'test_normal', 'Test Normal', 90);
 insert into public.ticket_categories (id, tenant_id, department_id, name) values
-  ('13500000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000001', '11000000-0000-4000-8000-000000000001', 'Access'),
-  ('23500000-0000-4000-8000-000000000002', '20000000-0000-4000-8000-000000000002', '21000000-0000-4000-8000-000000000003', 'Access B');
+  ('13500000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000001', '11000000-0000-4000-8000-000000000001', 'Hardware'),
+  ('23500000-0000-4000-8000-000000000002', '20000000-0000-4000-8000-000000000002', '21000000-0000-4000-8000-000000000003', 'Hardware B');
+insert into public.ticket_categories (id, tenant_id, department_id, parent_id, name) values
+  ('13600000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000001', '11000000-0000-4000-8000-000000000001', '13500000-0000-4000-8000-000000000001', 'Drucker');
 
 insert into public.roles (id, tenant_id, name, scope) values
   ('15000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000001', 'Requester', 'tenant'),
@@ -167,6 +169,62 @@ insert into public.ticket_tags (id, tenant_id, name, created_by) values
   ('27500000-0000-4000-8000-000000000002', '20000000-0000-4000-8000-000000000002', 'Extern', '00000000-0000-4000-8000-000000000004');
 insert into public.ticket_tag_assignments (ticket_id, tag_id, tenant_id, added_by) values
   ('17000000-0000-4000-8000-000000000001', '17500000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000002');
+
+-- The category procedure only permits a matching root category and direct child
+-- from the ticket's own tenant and department. It also supports clearing the
+-- category selection atomically.
+begin;
+set local role service_role;
+do $$
+declare
+  selection jsonb;
+begin
+  select public.apply_ticket_category_selection(
+    '00000000-0000-4000-8000-000000000002',
+    '10000000-0000-4000-8000-000000000001',
+    '17000000-0000-4000-8000-000000000001',
+    '13500000-0000-4000-8000-000000000001',
+    '13600000-0000-4000-8000-000000000001'
+  ) into selection;
+  if selection->>'categoryId' <> '13500000-0000-4000-8000-000000000001'
+    or selection->>'subcategoryId' <> '13600000-0000-4000-8000-000000000001'
+    or not coalesce((selection->>'changed')::boolean, false) then
+    raise exception 'Category selection procedure did not assign the selected hierarchy';
+  end if;
+  begin
+    perform public.apply_ticket_category_selection(
+      '00000000-0000-4000-8000-000000000002',
+      '10000000-0000-4000-8000-000000000001',
+      '17000000-0000-4000-8000-000000000001',
+      '23500000-0000-4000-8000-000000000002',
+      null
+    );
+    raise exception 'Cross-tenant category selection was accepted';
+  exception when invalid_parameter_value then
+    null;
+  end;
+  perform public.apply_ticket_category_selection(
+    '00000000-0000-4000-8000-000000000002',
+    '10000000-0000-4000-8000-000000000001',
+    '17000000-0000-4000-8000-000000000001',
+    null,
+    null
+  );
+end;
+$$;
+reset role;
+do $$
+begin
+  if exists (
+    select 1 from public.tickets
+    where id = '17000000-0000-4000-8000-000000000001'
+      and (category_id is not null or subcategory_id is not null)
+  ) then
+    raise exception 'Category selection procedure did not clear the hierarchy';
+  end if;
+end;
+$$;
+rollback;
 insert into public.ticket_comments (ticket_id, author_id, body) values
   ('17000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000002', 'Internal ICT note');
 insert into public.saved_ticket_views (tenant_id, owner_id, name, visibility, filters) values
@@ -624,14 +682,26 @@ begin
   if (select count(*) from public.ticket_comments) <> 1 then
     raise exception 'ICT agent must see the internal ICT note';
   end if;
-  if (select count(*) from public.ticket_tags) <> 1
-    or (select count(*) from public.ticket_tag_assignments) <> 1 then
-    raise exception 'ICT agent must see Tenant A tags only for readable tickets';
+  if has_table_privilege('authenticated', 'public.ticket_tags', 'select')
+    or has_table_privilege('authenticated', 'public.ticket_tag_assignments', 'select') then
+    raise exception 'Authenticated users must not retain access to retired ticket tags';
   end if;
   begin
     insert into public.ticket_tags (tenant_id, name)
     values ('10000000-0000-4000-8000-000000000001', 'Unzulässig');
-    raise exception 'Authenticated client was allowed to create a ticket tag directly';
+    raise exception 'Authenticated client was allowed to create a retired ticket tag directly';
+  exception when insufficient_privilege then
+    null;
+  end;
+  begin
+    perform public.apply_ticket_category_selection(
+      '00000000-0000-4000-8000-000000000002',
+      '10000000-0000-4000-8000-000000000001',
+      '17000000-0000-4000-8000-000000000001',
+      '13500000-0000-4000-8000-000000000001',
+      null
+    );
+    raise exception 'Authenticated client was allowed to call the privileged category procedure directly';
   exception when insufficient_privilege then
     null;
   end;
@@ -659,10 +729,6 @@ begin
   if (select count(*) from public.ticket_comments) <> 0 then
     raise exception 'Requester must not see internal comments';
   end if;
-  if (select count(*) from public.ticket_tags) <> 1
-    or (select count(*) from public.ticket_tag_assignments) <> 1 then
-    raise exception 'Requester must only see tags on the own readable ticket';
-  end if;
 end;
 $$;
 reset role;
@@ -678,11 +744,6 @@ do $$
 begin
   if (select count(*) from public.tickets) <> 0 then
     raise exception 'Tenant B member must not see Tenant A tickets';
-  end if;
-  if (select count(*) from public.ticket_tags) <> 1
-    or exists (select 1 from public.ticket_tags where tenant_id <> '20000000-0000-4000-8000-000000000002')
-    or (select count(*) from public.ticket_tag_assignments) <> 0 then
-    raise exception 'Tenant B member must not see Tenant A ticket tags or assignments';
   end if;
   if not exists (select 1 from public.ticket_statuses)
     or not exists (select 1 from public.ticket_priorities)
@@ -777,10 +838,8 @@ do $$
 begin
   if (select count(*) from public.ticket_statuses) <> 0
     or (select count(*) from public.ticket_priorities) <> 0
-    or (select count(*) from public.ticket_categories) <> 0
-    or (select count(*) from public.ticket_tags) <> 0
-    or (select count(*) from public.ticket_tag_assignments) <> 0 then
-    raise exception 'User without an active membership must not see dashboard reference data or tags';
+    or (select count(*) from public.ticket_categories) <> 0 then
+    raise exception 'User without an active membership must not see dashboard reference data';
   end if;
 end;
 $$;

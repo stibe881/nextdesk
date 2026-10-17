@@ -97,6 +97,12 @@ export async function functionErrorMessage(
       return "Mindestens eines der ausgewählten Tickets ist nicht mehr verfügbar. Bitte laden Sie die Ticketliste neu.";
     case "bulk_status_invalid":
       return "Die ausgewählten Tickets oder der gewünschte Status sind ungültig. Bitte laden Sie die Ticketliste neu.";
+    case "ticket_category_change_denied":
+      return "Sie dürfen die Kategorie dieses Tickets nicht ändern.";
+    case "invalid_ticket_category":
+      return "Kategorie und Unterkategorie passen nicht zum Ticketbereich. Bitte wählen Sie die Einordnung erneut.";
+    case "ticket_tags_retired":
+      return "Tags werden in nextDesk nicht mehr verwendet. Bitte nutzen Sie Kategorien und Unterkategorien.";
     case "rate_limited":
       return "Zu viele Anfragen in kurzer Zeit. Bitte warten Sie einen Moment und versuchen Sie es erneut.";
     case "authorization_check_failed":

@@ -21,7 +21,7 @@ import {
   Save,
   Send,
   Star,
-  Tag,
+  FolderTree,
   UsersRound,
   X,
 } from "lucide-react";
@@ -40,8 +40,6 @@ type PendingAction =
   | "escalation-resolve"
   | "checklist-add"
   | "checklist-toggle"
-  | "tag-add"
-  | "tag-remove"
   | "time-entry"
   | "relation-create"
   | "relation-delete"
@@ -179,29 +177,6 @@ type AddTimeEntryAction = {
   startedAt?: string;
 };
 
-type AddTagAction = {
-  type: "addTag";
-  tenantId: string;
-  ticketId: string;
-  name: string;
-};
-
-type AssignTagAction = {
-  type: "assignTag";
-  tenantId: string;
-  ticketId: string;
-  tagId: string;
-};
-
-type RemoveTagAction = {
-  type: "removeTag";
-  tenantId: string;
-  ticketId: string;
-  tagId: string;
-};
-
-type TicketTagAction = AddTagAction | AssignTagAction | RemoveTagAction;
-
 type TicketOperation =
   | GetTicketAction
   | OpenEscalationAction
@@ -300,6 +275,8 @@ type TicketRecord = {
   status_id: string;
   priority_id: string;
   department_id: string;
+  category_id: string | null;
+  subcategory_id: string | null;
   assigned_agent_id: string | null;
   assigned_team_id: string | null;
   created_at: string;
@@ -393,16 +370,29 @@ type TicketRequesterProfileAction =
       requesterContactId: string;
     } & Omit<TicketRequesterProfile, "requesterContactId">);
 
+type TicketCategory = {
+  id: string;
+  name: string;
+  parentId: string | null;
+};
+
+type TicketCategoryDraft = {
+  name: string;
+  parentId: string | null;
+};
+
+type TicketCategorySelection = {
+  tenantId: string;
+  ticketId: string;
+  categoryId: string | null;
+  subcategoryId: string | null;
+};
+
 type TicketChecklistItem = {
   id: string;
   description: string;
   position: number;
   completed_at: string | null;
-};
-
-type TicketTag = {
-  id: string;
-  name: string;
 };
 
 type TicketTimeEntry = {
@@ -553,8 +543,6 @@ type TicketDetailData = {
   priorities: TicketPriority[];
   departments: TicketDepartment[];
   teams: TicketTeam[];
-  tags: TicketTag[];
-  availableTags: TicketTag[];
   agents: TicketAgent[];
   checklistItems: TicketChecklistItem[];
   timeEntries: TicketTimeEntry[];
@@ -716,6 +704,9 @@ function isTicketRecord(value: unknown): value is TicketRecord {
     typeof ticket.status_id === "string" &&
     typeof ticket.priority_id === "string" &&
     typeof ticket.department_id === "string" &&
+    (typeof ticket.category_id === "string" || ticket.category_id === null) &&
+    (typeof ticket.subcategory_id === "string" ||
+      ticket.subcategory_id === null) &&
     (typeof ticket.assigned_agent_id === "string" ||
       ticket.assigned_agent_id === null) &&
     (typeof ticket.assigned_team_id === "string" ||
@@ -803,16 +794,28 @@ function isTicketPriority(value: unknown): value is TicketPriority {
   );
 }
 
-function isTicketTag(value: unknown): value is TicketTag {
-  const tag = asRecord(value);
-  return Boolean(
-    tag &&
-    isUuid(tag.id) &&
-    typeof tag.name === "string" &&
-    tag.name.trim().length > 0 &&
-    tag.name.length <= 48 &&
-    !/[\u0000-\u001f\u007f]/.test(tag.name),
-  );
+function toTicketCategory(value: unknown): TicketCategory | null {
+  const category = asRecord(value);
+  if (
+    !category ||
+    !isUuid(category.id) ||
+    typeof category.name !== "string" ||
+    !category.name.trim() ||
+    category.name.includes("\u0000") ||
+    (category.parentId !== null && !isUuid(category.parentId)) ||
+    category.parentId === category.id
+  ) {
+    return null;
+  }
+  return {
+    id: category.id,
+    name: category.name.trim(),
+    parentId: typeof category.parentId === "string" ? category.parentId : null,
+  };
+}
+
+function isTicketCategory(value: unknown): value is TicketCategory {
+  return toTicketCategory(value) !== null;
 }
 
 function isTicketTeam(value: unknown): value is TicketTeam {
@@ -1597,8 +1600,6 @@ function parseTicketDetail(
     isSimilarTicket,
   );
   const escalations = parseStrictValues(data.escalations, isTicketEscalation);
-  const tags = valuesOf(data.tags, isTicketTag);
-  const availableTags = valuesOf(data.availableTags, isTicketTag);
   if (
     relations === undefined ||
     similarTickets === undefined ||
@@ -1633,8 +1634,6 @@ function parseTicketDetail(
     statuses: valuesOf(data.statuses, isTicketStatus),
     priorities: valuesOf(data.priorities, isTicketPriority),
     teams: valuesOf(data.teams, isTicketTeam),
-    tags,
-    availableTags,
     agents: validAgents,
     checklistItems: valuesOf(data.checklistItems, isTicketChecklistItem).sort(
       (first, second) => first.position - second.position,
@@ -1796,8 +1795,7 @@ function eventLabel(eventType: string): string {
     "comment.external_added": "Externer Kommentar hinzugefügt",
     "comment.internal_added": "Interne Notiz hinzugefügt",
     "ticket.updated": "Ticket aktualisiert",
-    "ticket.tag_added": "Tag hinzugefügt",
-    "ticket.tag_removed": "Tag entfernt",
+    "ticket.category_changed": "Kategorie aktualisiert",
     "ticket.knowledge.sent":
       "Wissensartikel als externe Ticketantwort versendet",
   };
@@ -1820,47 +1818,92 @@ async function invokeTicketOperation(
   return data;
 }
 
-async function invokeTicketTagOperation(
-  action: TicketTagAction,
-): Promise<unknown> {
-  if (!supabase) throw new Error("Supabase ist nicht konfiguriert.");
-  const { data, error } = await supabase.functions.invoke("ticket-tags", {
-    body: action,
-  });
-  if (error) throw error;
-  return data;
+function parseTicketCategories(value: unknown): TicketCategory[] {
+  const envelope = asRecord(value);
+  const data = asRecord(envelope?.data);
+  if (!data || !Array.isArray(data.categories)) {
+    throw new Error("Die Kategorien fehlen in der Antwort.");
+  }
+  const categories = data.categories.map(toTicketCategory);
+  if (
+    categories.some((category) => category === null) ||
+    new Set(categories.map((category) => category?.id)).size !==
+      categories.length
+  ) {
+    throw new Error("Die Kategoriedaten sind ungültig.");
+  }
+  const resolved = categories.filter(
+    (category): category is TicketCategory => category !== null,
+  );
+  const byId = new Map(resolved.map((category) => [category.id, category]));
+  if (
+    resolved.some(
+      (category) =>
+        category.parentId !== null &&
+        byId.get(category.parentId)?.parentId !== null,
+    )
+  ) {
+    throw new Error("Die Kategorien enthalten eine ungültige Hierarchie.");
+  }
+  return resolved;
 }
 
-async function loadTicketTags(
-  tenantId: string,
-  ticketId: string,
-): Promise<{
-  tags: TicketTag[];
-  availableTags: TicketTag[];
-}> {
-  if (!supabase) throw new Error("Supabase ist nicht konfiguriert.");
-  const [tagsResult, assignmentsResult] = await Promise.all([
-    supabase
-      .from("ticket_tags")
-      .select("id, name")
-      .eq("tenant_id", tenantId)
-      .order("name"),
-    supabase
-      .from("ticket_tag_assignments")
-      .select("tag_id")
-      .eq("tenant_id", tenantId)
-      .eq("ticket_id", ticketId),
-  ]);
-  if (tagsResult.error || assignmentsResult.error) {
-    throw new Error("Die Ticket-Tags konnten nicht geladen werden.");
+function parseCreatedTicketCategory(
+  value: unknown,
+  parentId: string | null,
+): TicketCategory {
+  const envelope = asRecord(value);
+  const data = asRecord(envelope?.data);
+  const category = toTicketCategory(data?.category ?? data);
+  if (!category || category.parentId !== parentId) {
+    throw new Error("Die Bestätigung zur Kategorie ist unvollständig.");
   }
-  const availableTags = valuesOf(tagsResult.data, isTicketTag);
-  const tagById = new Map(availableTags.map((tag) => [tag.id, tag]));
-  const tags = (assignmentsResult.data ?? [])
-    .map((assignment) => tagById.get(assignment.tag_id))
-    .filter((tag): tag is TicketTag => Boolean(tag))
-    .sort((first, second) => first.name.localeCompare(second.name, "de-CH"));
-  return { tags, availableTags };
+  return category;
+}
+
+async function loadTicketCategories(
+  tenantId: string,
+  departmentId: string,
+): Promise<TicketCategory[]> {
+  if (!supabase) throw new Error("Supabase ist nicht konfiguriert.");
+  const { data, error } = await supabase.functions.invoke("ticket-actions", {
+    body: { type: "getCategories", tenantId, departmentId },
+  });
+  if (error) throw error;
+  return parseTicketCategories(data);
+}
+
+async function createTicketCategory(input: {
+  tenantId: string;
+  departmentId: string;
+  name: string;
+  parentId: string | null;
+}): Promise<TicketCategory> {
+  if (!supabase) throw new Error("Supabase ist nicht konfiguriert.");
+  const { data, error } = await supabase.functions.invoke("ticket-actions", {
+    body: {
+      type: "createCategory",
+      tenantId: input.tenantId,
+      departmentId: input.departmentId,
+      name: input.name,
+      ...(input.parentId !== null ? { parentCategoryId: input.parentId } : {}),
+    },
+  });
+  if (error) throw error;
+  return parseCreatedTicketCategory(data, input.parentId);
+}
+
+async function invokeTicketCategorySelection(
+  input: TicketCategorySelection,
+): Promise<void> {
+  if (!supabase) throw new Error("Supabase ist nicht konfiguriert.");
+  const { error } = await supabase.functions.invoke(
+    "ticket-category-selection",
+    {
+      body: input,
+    },
+  );
+  if (error) throw error;
 }
 
 async function invokeTicketRequesterProfile(
@@ -3159,7 +3202,14 @@ export function TicketDetail({
   const [commentVisibility, setCommentVisibility] =
     useState<CommentVisibility>("internal");
   const [isWorkToolsOpen, setIsWorkToolsOpen] = useState(false);
-  const [tagName, setTagName] = useState("");
+  const [ticketCategories, setTicketCategories] = useState<TicketCategory[]>(
+    [],
+  );
+  const [ticketCategoriesLoading, setTicketCategoriesLoading] = useState(false);
+  const [ticketCategoryDraft, setTicketCategoryDraft] =
+    useState<TicketCategoryDraft | null>(null);
+  const [ticketCategorySaving, setTicketCategorySaving] = useState(false);
+  const [ticketCategoryError, setTicketCategoryError] = useState("");
   const [checklistDescription, setChecklistDescription] = useState("");
   const [timeEntryMinutes, setTimeEntryMinutes] = useState("");
   const [timeEntryBillingKind, setTimeEntryBillingKind] =
@@ -3180,7 +3230,6 @@ export function TicketDetail({
   const [pendingChecklistItemId, setPendingChecklistItemId] = useState<
     string | null
   >(null);
-  const [pendingTagId, setPendingTagId] = useState<string | null>(null);
   const [pendingRelationKey, setPendingRelationKey] = useState<string | null>(
     null,
   );
@@ -3242,6 +3291,7 @@ export function TicketDetail({
   const affectedItemsRequestSequence = useRef(0);
   const mergeSearchRequestSequence = useRef(0);
   const assignableAgentsRequestSequence = useRef(0);
+  const ticketCategoriesRequestSequence = useRef(0);
   const attachmentInputRef = useRef<HTMLInputElement>(null);
 
   const loadFeedback = useCallback(async () => {
@@ -3356,6 +3406,30 @@ export function TicketDetail({
       }
     },
     [tenantId, ticketId],
+  );
+
+  const loadTicketCategoriesForDepartment = useCallback(
+    async (departmentId: string) => {
+      const requestId = ++ticketCategoriesRequestSequence.current;
+      setTicketCategoriesLoading(true);
+      setTicketCategoryError("");
+      try {
+        const categories = await loadTicketCategories(tenantId, departmentId);
+        if (requestId !== ticketCategoriesRequestSequence.current) return;
+        setTicketCategories(categories);
+      } catch {
+        if (requestId !== ticketCategoriesRequestSequence.current) return;
+        setTicketCategories([]);
+        setTicketCategoryError(
+          "Die Kategorien konnten nicht geladen werden. Bitte aktualisieren Sie das Ticket.",
+        );
+      } finally {
+        if (requestId === ticketCategoriesRequestSequence.current) {
+          setTicketCategoriesLoading(false);
+        }
+      }
+    },
+    [tenantId],
   );
 
   const loadTicketContext = useCallback(
@@ -3483,8 +3557,6 @@ export function TicketDetail({
       if (nextDetail === null) {
         throw new Error("Dieses Ticket ist nicht mehr verfügbar.");
       }
-      const tagData = await loadTicketTags(tenantId, ticketId);
-      nextDetail = { ...nextDetail, ...tagData };
       if (requestId !== requestSequence.current) return false;
 
       await loadAssignableAgents(nextDetail?.canAssign === true);
@@ -3506,6 +3578,11 @@ export function TicketDetail({
       setSelectedTeamId(nextDetail?.ticket.assigned_team_id ?? "");
       setSelectedAgentId(nextDetail?.ticket.assigned_agent_id ?? "");
       setSelectedDepartmentId(nextDetail?.ticket.department_id ?? "");
+      setTicketCategories([]);
+      setTicketCategoryDraft(null);
+      setTicketCategorySaving(false);
+      setTicketCategoryError("");
+      void loadTicketCategoriesForDepartment(nextDetail.ticket.department_id);
       if (!nextDetail?.canUseInternalNotes) {
         setCommentVisibility("external");
       }
@@ -3529,6 +3606,7 @@ export function TicketDetail({
     }
   }, [
     loadAssignableAgents,
+    loadTicketCategoriesForDepartment,
     loadRequesterProfile,
     loadTicketContext,
     tenantId,
@@ -3926,6 +4004,42 @@ export function TicketDetail({
         (value): value is string => Boolean(value?.trim()),
       ),
     [requesterProfile?.department, requesterProfile?.offer],
+  );
+  const selectedTicketCategory = useMemo(
+    () =>
+      ticketCategories.find(
+        (category) => category.id === detail?.ticket.category_id,
+      ) ?? null,
+    [detail?.ticket.category_id, ticketCategories],
+  );
+  const availableTicketSubcategories = useMemo(
+    () =>
+      selectedTicketCategory
+        ? ticketCategories.filter(
+            (category) => category.parentId === selectedTicketCategory.id,
+          )
+        : [],
+    [selectedTicketCategory, ticketCategories],
+  );
+  const selectedTicketSubcategory = useMemo(
+    () =>
+      availableTicketSubcategories.find(
+        (category) => category.id === detail?.ticket.subcategory_id,
+      ) ?? null,
+    [availableTicketSubcategories, detail?.ticket.subcategory_id],
+  );
+  const rootTicketCategories = useMemo(
+    () => ticketCategories.filter((category) => category.parentId === null),
+    [ticketCategories],
+  );
+  const ticketCategoryDraftParent = useMemo(
+    () =>
+      ticketCategoryDraft?.parentId
+        ? (rootTicketCategories.find(
+            (category) => category.id === ticketCategoryDraft.parentId,
+          ) ?? null)
+        : null,
+    [rootTicketCategories, ticketCategoryDraft?.parentId],
   );
   const openEscalations = useMemo(
     () =>
@@ -4775,67 +4889,132 @@ export function TicketDetail({
     }
   }
 
-  async function addTicketTag(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!detail || !detail.canUpdate) return;
+  function openTicketCategoryForm(parentId: string | null) {
+    if (!detail?.canUpdate || ticketCategorySaving) return;
+    setTicketCategoryError("");
+    setTicketCategoryDraft({ name: "", parentId });
+  }
 
-    const name = tagName.normalize("NFKC").trim();
-    if (!name) {
-      setError("Bitte geben Sie einen Tag ein.");
-      return;
-    }
-    if ([...name].length > 48 || /[\u0000-\u001f\u007f]/.test(name)) {
-      setError("Ein Tag darf höchstens 48 Zeichen enthalten.");
-      return;
-    }
-    const normalizedName = name.toLocaleLowerCase("de-CH");
-    const matchingTag = detail.availableTags.find(
-      (tag) =>
-        tag.name.normalize("NFKC").toLocaleLowerCase("de-CH") ===
-        normalizedName,
-    );
-    if (matchingTag && detail.tags.some((tag) => tag.id === matchingTag.id)) {
-      setError("Dieser Tag ist dem Ticket bereits zugewiesen.");
-      return;
+  async function saveTicketCategory(
+    categoryId: string | null,
+    subcategoryId: string | null,
+    options = ticketCategories,
+    manageBusy = true,
+  ): Promise<boolean> {
+    if (!detail || !detail.canUpdate) return false;
+    const selectedCategory = categoryId
+      ? options.find(
+          (category) =>
+            category.id === categoryId && category.parentId === null,
+        )
+      : null;
+    const selectedSubcategory = subcategoryId
+      ? options.find(
+          (category) =>
+            category.id === subcategoryId && category.parentId === categoryId,
+        )
+      : null;
+    if (
+      (categoryId !== null && !selectedCategory) ||
+      (subcategoryId !== null && !selectedSubcategory)
+    ) {
+      setTicketCategoryError("Bitte wählen Sie eine gültige Kategorie aus.");
+      return false;
     }
 
-    setPendingAction("tag-add");
-    setError("");
+    if (manageBusy) setTicketCategorySaving(true);
+    setTicketCategoryError("");
     try {
-      await invokeTicketTagOperation(
-        matchingTag
-          ? { type: "assignTag", tenantId, ticketId, tagId: matchingTag.id }
-          : { type: "addTag", tenantId, ticketId, name },
+      await invokeTicketCategorySelection({
+        tenantId,
+        ticketId,
+        categoryId,
+        subcategoryId,
+      });
+      setDetail((current) =>
+        current
+          ? {
+              ...current,
+              ticket: {
+                ...current.ticket,
+                category_id: categoryId,
+                subcategory_id: subcategoryId,
+              },
+            }
+          : current,
       );
-      setTagName("");
       onChanged();
-      await loadTicket();
-    } catch (nextError) {
-      setError(errorMessage(nextError));
+      return true;
+    } catch {
+      setTicketCategoryError(
+        "Die Kategorie konnte nicht gespeichert werden. Bitte versuchen Sie es erneut.",
+      );
+      return false;
     } finally {
-      setPendingAction(null);
+      if (manageBusy) setTicketCategorySaving(false);
     }
   }
 
-  async function removeTicketTag(tag: TicketTag) {
-    if (!detail || !detail.canUpdate) return;
-    setPendingAction("tag-remove");
-    setPendingTagId(tag.id);
-    setError("");
+  async function createTicketCategoryFromDetail() {
+    if (
+      !detail ||
+      !detail.canUpdate ||
+      !ticketCategoryDraft ||
+      ticketCategorySaving
+    ) {
+      return;
+    }
+    const name = ticketCategoryDraft.name.trim();
+    const parentId = ticketCategoryDraft.parentId;
+    if (
+      [...name].length < 2 ||
+      [...name].length > 120 ||
+      /[\u0000-\u001f\u007f]/.test(name)
+    ) {
+      setTicketCategoryError(
+        "Bitte geben Sie einen Namen mit 2 bis 120 gültigen Zeichen ein.",
+      );
+      return;
+    }
+    if (
+      parentId !== null &&
+      !rootTicketCategories.some((category) => category.id === parentId)
+    ) {
+      setTicketCategoryError(
+        "Die übergeordnete Kategorie ist nicht mehr verfügbar.",
+      );
+      return;
+    }
+
+    setTicketCategorySaving(true);
+    setTicketCategoryError("");
     try {
-      await invokeTicketTagOperation({
-        type: "removeTag",
+      const category = await createTicketCategory({
         tenantId,
-        ticketId,
-        tagId: tag.id,
+        departmentId: detail.ticket.department_id,
+        name,
+        parentId,
       });
-      onChanged();
-      await loadTicket();
-    } catch (nextError) {
-      setError(errorMessage(nextError));
+      const nextCategories = [
+        ...ticketCategories.filter((item) => item.id !== category.id),
+        category,
+      ].sort((left, right) =>
+        left.name.localeCompare(right.name, "de-CH", { sensitivity: "base" }),
+      );
+      setTicketCategories(nextCategories);
+      setTicketCategoryDraft(null);
+      await saveTicketCategory(
+        parentId ?? category.id,
+        parentId ? category.id : null,
+        nextCategories,
+        false,
+      );
+    } catch {
+      setTicketCategoryError(
+        "Die Kategorie konnte nicht erstellt werden. Bitte prüfen Sie den Namen und versuchen Sie es erneut.",
+      );
     } finally {
-      setPendingTagId(null);
-      setPendingAction(null);
+      setTicketCategorySaving(false);
     }
   }
 
@@ -5537,87 +5716,165 @@ export function TicketDetail({
       </section>
 
       <section
-        className="ticket-tags ticket-detail-primary"
-        aria-labelledby="ticket-tags-heading"
+        className="ticket-categorization ticket-detail-primary"
+        aria-labelledby="ticket-categorization-heading"
       >
         <div className="ticket-detail-section-heading">
           <div>
             <p className="eyebrow">EINORDNUNG</p>
-            <h3 id="ticket-tags-heading">Tags</h3>
+            <h3 id="ticket-categorization-heading">Kategorie</h3>
           </div>
-          <span className="data-caption">
-            {detail.tags.length === 1 ? "1 Tag" : `${detail.tags.length} Tags`}
-          </span>
+          <FolderTree aria-hidden="true" size={19} strokeWidth={1.7} />
         </div>
-        {detail.tags.length > 0 ? (
-          <ul className="ticket-tag-list" aria-label="Zugewiesene Tags">
-            {detail.tags.map((tag) =>
-              detail.canUpdate ? (
-                <li key={tag.id}>
-                  <button
-                    aria-label={`Tag ${tag.name} entfernen`}
-                    className="ticket-tag ticket-tag--removable"
-                    disabled={busy}
-                    onClick={() => void removeTicketTag(tag)}
-                    type="button"
-                  >
-                    <Tag aria-hidden="true" size={14} strokeWidth={1.9} />
-                    {tag.name}
-                    {pendingAction === "tag-remove" &&
-                    pendingTagId === tag.id ? (
-                      <LoaderCircle
-                        aria-label="Tag wird entfernt"
-                        className="ticket-detail-spinner"
-                        size={14}
-                      />
-                    ) : (
-                      <X aria-hidden="true" size={14} strokeWidth={2} />
-                    )}
-                  </button>
-                </li>
-              ) : (
-                <li className="ticket-tag" key={tag.id}>
-                  <Tag aria-hidden="true" size={14} strokeWidth={1.9} />
-                  {tag.name}
-                </li>
-              ),
-            )}
-          </ul>
-        ) : (
-          <p className="ticket-tags-empty">Noch keine Tags zugeordnet.</p>
-        )}
-        {detail.canUpdate && (
-          <form className="ticket-tag-form" onSubmit={addTicketTag}>
-            <label htmlFor="ticket-tag-name">Tag hinzufügen</label>
-            <div>
-              <input
-                disabled={busy}
-                id="ticket-tag-name"
-                list="ticket-tag-options"
-                maxLength={48}
-                onChange={(event) => setTagName(event.target.value)}
-                placeholder="z. B. dringend"
-                value={tagName}
-              />
-              <button disabled={busy || !tagName.trim()} type="submit">
-                {pendingAction === "tag-add" ? (
-                  <LoaderCircle
-                    aria-hidden="true"
-                    className="ticket-detail-spinner"
-                    size={16}
-                  />
-                ) : (
-                  <Tag aria-hidden="true" size={16} strokeWidth={1.9} />
-                )}
-                Hinzufügen
+        <p className="ticket-category-description">
+          Ordnen Sie das Anliegen einem Bereich zu, zum Beispiel Hardware →
+          Drucker oder Software → Abacus.
+        </p>
+        {ticketCategoriesLoading ? (
+          <p className="ticket-categories-status" role="status">
+            Kategorien werden geladen …
+          </p>
+        ) : detail.canUpdate ? (
+          <div className="ticket-category-editor">
+            <label>
+              Kategorie
+              <select
+                aria-label="Ticketkategorie direkt ändern"
+                disabled={ticketCategorySaving}
+                onChange={(event) =>
+                  void saveTicketCategory(event.target.value || null, null)
+                }
+                value={selectedTicketCategory?.id ?? ""}
+              >
+                <option value="">Keine Kategorie</option>
+                {rootTicketCategories.map((category) => (
+                  <option key={category.id} value={category.id}>
+                    {category.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Unterkategorie
+              <select
+                aria-label="Ticketunterkategorie direkt ändern"
+                disabled={!selectedTicketCategory || ticketCategorySaving}
+                onChange={(event) =>
+                  void saveTicketCategory(
+                    selectedTicketCategory?.id ?? null,
+                    event.target.value || null,
+                  )
+                }
+                value={selectedTicketSubcategory?.id ?? ""}
+              >
+                <option value="">
+                  {selectedTicketCategory
+                    ? "Keine Unterkategorie"
+                    : "Zuerst Kategorie wählen"}
+                </option>
+                {availableTicketSubcategories.map((category) => (
+                  <option key={category.id} value={category.id}>
+                    {category.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="ticket-category-actions">
+              <button
+                className="text-button"
+                disabled={ticketCategorySaving}
+                onClick={() => openTicketCategoryForm(null)}
+                type="button"
+              >
+                Neue Kategorie
+              </button>
+              <button
+                className="text-button"
+                disabled={!selectedTicketCategory || ticketCategorySaving}
+                onClick={() =>
+                  selectedTicketCategory &&
+                  openTicketCategoryForm(selectedTicketCategory.id)
+                }
+                type="button"
+              >
+                Neue Unterkategorie
               </button>
             </div>
-            <datalist id="ticket-tag-options">
-              {detail.availableTags.map((tag) => (
-                <option key={tag.id} value={tag.name} />
-              ))}
-            </datalist>
-          </form>
+            {ticketCategoryDraft && (
+              <div className="ticket-category-create" role="group">
+                <p className="data-caption">
+                  {ticketCategoryDraftParent
+                    ? `Unterkategorie von: ${ticketCategoryDraftParent.name}`
+                    : "Neue Kategorie ohne übergeordnete Kategorie"}
+                </p>
+                <label>
+                  Name
+                  <input
+                    autoFocus
+                    disabled={ticketCategorySaving}
+                    maxLength={120}
+                    onChange={(event) => {
+                      const name = event.target.value;
+                      setTicketCategoryDraft((current) =>
+                        current ? { ...current, name } : null,
+                      );
+                      setTicketCategoryError("");
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        void createTicketCategoryFromDetail();
+                      }
+                    }}
+                    placeholder={
+                      ticketCategoryDraftParent
+                        ? "Name der Unterkategorie"
+                        : "Name der Kategorie"
+                    }
+                    value={ticketCategoryDraft.name}
+                  />
+                </label>
+                <div>
+                  <button
+                    className="secondary-button"
+                    disabled={ticketCategorySaving}
+                    onClick={() => {
+                      setTicketCategoryDraft(null);
+                      setTicketCategoryError("");
+                    }}
+                    type="button"
+                  >
+                    Abbrechen
+                  </button>
+                  <button
+                    className="primary-button"
+                    disabled={
+                      ticketCategorySaving || !ticketCategoryDraft.name.trim()
+                    }
+                    onClick={() => void createTicketCategoryFromDetail()}
+                    type="button"
+                  >
+                    {ticketCategorySaving ? "Wird gespeichert …" : "Erstellen"}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        ) : selectedTicketCategory ? (
+          <p className="ticket-category-summary">
+            <strong>{selectedTicketCategory.name}</strong>
+            {selectedTicketSubcategory &&
+              ` → ${selectedTicketSubcategory.name}`}
+          </p>
+        ) : (
+          <p className="ticket-categories-status">
+            Noch keine Kategorie zugeordnet.
+          </p>
+        )}
+        {ticketCategoryError && (
+          <p className="error" role="alert">
+            {ticketCategoryError}
+          </p>
         )}
       </section>
 

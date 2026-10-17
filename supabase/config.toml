@@ -42,6 +42,9 @@ verify_jwt = true
 [functions.ticket-department-change]
 verify_jwt = true
 
+[functions.ticket-category-selection]
+verify_jwt = true
+
 [functions.ticket-tags]
 verify_jwt = true
 

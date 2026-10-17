@@ -104,8 +104,9 @@ function normaliseEvent(eventType: string): string {
     "ticket.updated": "Ticket aktualisiert",
     "comment.external_added": "Externer Kommentar hinzugefügt",
     "comment.internal_added": "Interne Notiz hinzugefügt",
-    "ticket.tag_added": "Tag hinzugefügt",
-    "ticket.tag_removed": "Tag entfernt",
+    "ticket.tag_added": "Einordnung aktualisiert",
+    "ticket.tag_removed": "Einordnung aktualisiert",
+    "ticket.category_changed": "Kategorie aktualisiert",
   };
   if (labels[eventType]) return labels[eventType];
   return eventType

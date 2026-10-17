@@ -42,6 +42,7 @@ const expectedFiles = [
   "0037_tenant_people_directory.sql",
   "0038_entra_directory_people_sync.sql",
   "0039_ticket_requester_profile_offer.sql",
+  "0040_retire_ticket_tags_and_assign_categories.sql",
 ];
 
 const availableFiles = await readdir(migrationDirectory);
@@ -343,6 +344,26 @@ const requiredFragments = [
   [
     "0039_ticket_requester_profile_offer.sql",
     "ticket_requester_profiles_offer_valid",
+  ],
+  [
+    "0040_retire_ticket_tags_and_assign_categories.sql",
+    "revoke all on table public.ticket_tags, public.ticket_tag_assignments from public, anon, authenticated",
+  ],
+  [
+    "0040_retire_ticket_tags_and_assign_categories.sql",
+    "create or replace function public.apply_ticket_category_selection",
+  ],
+  [
+    "0040_retire_ticket_tags_and_assign_categories.sql",
+    "and category.parent_id is null",
+  ],
+  [
+    "0040_retire_ticket_tags_and_assign_categories.sql",
+    "and subcategory.parent_id = p_category_id",
+  ],
+  [
+    "0040_retire_ticket_tags_and_assign_categories.sql",
+    "ticket.category_changed",
   ],
 ];
 
