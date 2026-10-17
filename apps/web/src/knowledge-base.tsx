@@ -6,6 +6,7 @@ import {
   useState,
   type FormEvent,
 } from "react";
+import ReactMarkdown from "react-markdown";
 import { functionErrorMessage } from "./lib/function-error";
 import { supabase } from "./lib/supabase";
 
@@ -149,7 +150,7 @@ const knowledgeBaseStyles = `
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    min-height: 36px;
+    min-height: 44px;
     border: 1px solid #c9d8dd;
     border-radius: 5px;
     background: #fff;
@@ -249,17 +250,30 @@ const knowledgeBaseStyles = `
     font-size: 11px;
   }
   .knowledge-base__markdown {
-    max-height: 420px;
-    overflow: auto;
+    max-height: none;
+    overflow: visible;
     margin: 16px 0 0;
     border: 1px solid #e0e8ea;
     border-radius: 6px;
     background: #f9fbfb;
     color: #294657;
     padding: 14px;
-    font: 12px/1.55 "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
-    white-space: pre-wrap;
+    font: 14px/1.7 var(--font-sans);
     overflow-wrap: anywhere;
+  }
+  .knowledge-base__markdown > :first-child { margin-top: 0; }
+  .knowledge-base__markdown > :last-child { margin-bottom: 0; }
+  .knowledge-base__markdown h1,
+  .knowledge-base__markdown h2,
+  .knowledge-base__markdown h3 { color: #173246; line-height: 1.25; }
+  .knowledge-base__markdown p,
+  .knowledge-base__markdown li { line-height: 1.7; }
+  .knowledge-base__markdown code {
+    border-radius: 4px;
+    padding: 2px 4px;
+    background: #edf3f5;
+    font-family: var(--font-mono);
+    font-size: .9em;
   }
   .knowledge-base__form {
     display: grid;
@@ -561,6 +575,7 @@ export function KnowledgeBase({ tenantId }: KnowledgeBaseProps) {
   const [activeQuery, setActiveQuery] = useState("");
   const [selected, setSelected] = useState<ArticleDetail | null>(null);
   const [editingArticleId, setEditingArticleId] = useState<string | null>(null);
+  const [editorOpen, setEditorOpen] = useState(false);
   const [draft, setDraft] = useState<ArticleDraft>(EMPTY_DRAFT);
   const [loadingList, setLoadingList] = useState(true);
   const [loadingDetail, setLoadingDetail] = useState(false);
@@ -619,6 +634,7 @@ export function KnowledgeBase({ tenantId }: KnowledgeBaseProps) {
     setSelected(null);
     setEditingArticleId(null);
     setDraft(EMPTY_DRAFT);
+    setEditorOpen(false);
     setActiveQuery("");
     setSearchInput("");
     void loadArticles("");
@@ -665,6 +681,7 @@ export function KnowledgeBase({ tenantId }: KnowledgeBaseProps) {
     setDraft(EMPTY_DRAFT);
     setError("");
     setSuccess("");
+    setEditorOpen(true);
   }
 
   function beginEditArticle() {
@@ -673,11 +690,13 @@ export function KnowledgeBase({ tenantId }: KnowledgeBaseProps) {
     setDraft(draftFromDetail(selected));
     setError("");
     setSuccess("");
+    setEditorOpen(true);
   }
 
   function cancelEdit() {
     setEditingArticleId(null);
     setDraft(EMPTY_DRAFT);
+    setEditorOpen(false);
   }
 
   async function submitSearch(event: FormEvent<HTMLFormElement>) {
@@ -738,6 +757,7 @@ export function KnowledgeBase({ tenantId }: KnowledgeBaseProps) {
       setSelected(detail);
       setEditingArticleId(null);
       setDraft(EMPTY_DRAFT);
+      setEditorOpen(false);
       setSuccess(
         isEditing
           ? "Der Wissensartikel wurde gespeichert."
@@ -931,13 +951,16 @@ export function KnowledgeBase({ tenantId }: KnowledgeBaseProps) {
                       </p>
                     </div>
                   </div>
-                  <pre
+                  <div
                     className="knowledge-base__markdown"
-                    aria-label="Markdown-Inhalt"
+                    aria-label="Artikelinhalt"
                   >
-                    {selected.revision.body ||
-                      "Dieser Artikel enthält noch keinen Markdown-Inhalt."}
-                  </pre>
+                    {selected.revision.body ? (
+                      <ReactMarkdown>{selected.revision.body}</ReactMarkdown>
+                    ) : (
+                      "Dieser Artikel enthält noch keinen Inhalt."
+                    )}
+                  </div>
                   <div className="knowledge-base__actions">
                     <button
                       className="knowledge-base__button"
@@ -970,117 +993,119 @@ export function KnowledgeBase({ tenantId }: KnowledgeBaseProps) {
         </div>
       </section>
 
-      <section
-        className="panel"
-        aria-labelledby="knowledge-article-form-heading"
-      >
-        <div className="panel-heading">
-          <div>
-            <p className="eyebrow">
-              {editingArticleId ? "Artikel bearbeiten" : "Neuer Artikel"}
-            </p>
-            <h2 id="knowledge-article-form-heading">{editorTitle}</h2>
-          </div>
-        </div>
-
-        <form
-          className="knowledge-base__form knowledge-base__form-panel"
-          onSubmit={(event) => void saveArticle(event)}
+      {editorOpen && (
+        <section
+          className="panel"
+          aria-labelledby="knowledge-article-form-heading"
         >
-          <label>
-            Titel
-            <input
-              disabled={isBusy}
-              maxLength={240}
-              minLength={3}
-              onChange={(event) =>
-                setDraft((current) => ({
-                  ...current,
-                  title: event.target.value,
-                }))
-              }
-              placeholder="Zum Beispiel: VPN-Verbindung einrichten"
-              required
-              value={draft.title}
-            />
-          </label>
-
-          <label>
-            Sichtbarkeit
-            <select
-              disabled={isBusy}
-              onChange={(event) =>
-                setDraft((current) => ({
-                  ...current,
-                  visibility: event.target.value as ArticleVisibility,
-                }))
-              }
-              value={draft.visibility}
-            >
-              <option value="internal">Intern</option>
-              <option value="external">Extern</option>
-            </select>
-          </label>
-
-          <label>
-            Status
-            <select disabled value={draft.status}>
-              <option value="draft">Entwurf</option>
-              <option value="review">Review</option>
-              <option value="published">Veröffentlicht</option>
-            </select>
-          </label>
-
-          <p className="knowledge-base__hint">
-            Der Status wird vom Veröffentlichungsworkflow verwaltet. Die
-            vorhandene Edge Function liefert den aktuellen Status, nimmt bei{" "}
-            <code>saveArticle</code> jedoch keine Statusänderung entgegen.
-          </p>
-
-          <label className="knowledge-base__full-width">
-            Markdown-Inhalt
-            <textarea
-              disabled={isBusy}
-              maxLength={100000}
-              onChange={(event) =>
-                setDraft((current) => ({
-                  ...current,
-                  bodyMarkdown: event.target.value,
-                }))
-              }
-              placeholder={
-                "# Überschrift\n\nBeschreiben Sie hier die Lösung oder den Ablauf in Markdown."
-              }
-              rows={12}
-              value={draft.bodyMarkdown}
-            />
-          </label>
-
-          <div className="knowledge-base__form-actions knowledge-base__full-width">
-            <button
-              className="primary-button knowledge-base__save"
-              disabled={isBusy}
-              type="submit"
-            >
-              {saving === "save"
-                ? "Wird gespeichert …"
-                : editingArticleId
-                  ? "Änderungen speichern"
-                  : "Artikel anlegen"}
-            </button>
-            {editingArticleId ? (
-              <button
-                className="knowledge-base__button"
-                disabled={isBusy}
-                onClick={cancelEdit}
-                type="button"
-              >
-                Bearbeitung abbrechen
-              </button>
-            ) : null}
+          <div className="panel-heading">
+            <div>
+              <p className="eyebrow">
+                {editingArticleId ? "Artikel bearbeiten" : "Neuer Artikel"}
+              </p>
+              <h2 id="knowledge-article-form-heading">{editorTitle}</h2>
+            </div>
           </div>
-        </form>
-      </section>
+
+          <form
+            className="knowledge-base__form knowledge-base__form-panel"
+            onSubmit={(event) => void saveArticle(event)}
+          >
+            <label>
+              Titel
+              <input
+                disabled={isBusy}
+                maxLength={240}
+                minLength={3}
+                onChange={(event) =>
+                  setDraft((current) => ({
+                    ...current,
+                    title: event.target.value,
+                  }))
+                }
+                placeholder="Zum Beispiel: VPN-Verbindung einrichten"
+                required
+                value={draft.title}
+              />
+            </label>
+
+            <label>
+              Sichtbarkeit
+              <select
+                disabled={isBusy}
+                onChange={(event) =>
+                  setDraft((current) => ({
+                    ...current,
+                    visibility: event.target.value as ArticleVisibility,
+                  }))
+                }
+                value={draft.visibility}
+              >
+                <option value="internal">Intern</option>
+                <option value="external">Extern</option>
+              </select>
+            </label>
+
+            <label>
+              Status
+              <select disabled value={draft.status}>
+                <option value="draft">Entwurf</option>
+                <option value="review">Review</option>
+                <option value="published">Veröffentlicht</option>
+              </select>
+            </label>
+
+            <p className="knowledge-base__hint">
+              Der Status wird vom Veröffentlichungsworkflow verwaltet. Die
+              vorhandene Edge Function liefert den aktuellen Status, nimmt bei{" "}
+              <code>saveArticle</code> jedoch keine Statusänderung entgegen.
+            </p>
+
+            <label className="knowledge-base__full-width">
+              Markdown-Inhalt
+              <textarea
+                disabled={isBusy}
+                maxLength={100000}
+                onChange={(event) =>
+                  setDraft((current) => ({
+                    ...current,
+                    bodyMarkdown: event.target.value,
+                  }))
+                }
+                placeholder={
+                  "# Überschrift\n\nBeschreiben Sie hier die Lösung oder den Ablauf in Markdown."
+                }
+                rows={12}
+                value={draft.bodyMarkdown}
+              />
+            </label>
+
+            <div className="knowledge-base__form-actions knowledge-base__full-width">
+              <button
+                className="primary-button knowledge-base__save"
+                disabled={isBusy}
+                type="submit"
+              >
+                {saving === "save"
+                  ? "Wird gespeichert …"
+                  : editingArticleId
+                    ? "Änderungen speichern"
+                    : "Artikel anlegen"}
+              </button>
+              {editingArticleId ? (
+                <button
+                  className="knowledge-base__button"
+                  disabled={isBusy}
+                  onClick={cancelEdit}
+                  type="button"
+                >
+                  Bearbeitung abbrechen
+                </button>
+              ) : null}
+            </div>
+          </form>
+        </section>
+      )}
 
       {error ? (
         <p
