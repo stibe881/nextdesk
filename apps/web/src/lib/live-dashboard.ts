@@ -99,6 +99,15 @@ function formatDueAt(dueAt: string | null): {
 }
 
 function normaliseEvent(eventType: string): string {
+  const labels: Record<string, string> = {
+    "ticket.created": "Ticket erstellt",
+    "ticket.updated": "Ticket aktualisiert",
+    "comment.external_added": "Externer Kommentar hinzugefügt",
+    "comment.internal_added": "Interne Notiz hinzugefügt",
+    "ticket.tag_added": "Tag hinzugefügt",
+    "ticket.tag_removed": "Tag entfernt",
+  };
+  if (labels[eventType]) return labels[eventType];
   return eventType
     .replaceAll(/[._-]+/g, " ")
     .replace(/^./, (character) => character.toUpperCase());

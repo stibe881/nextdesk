@@ -52,7 +52,7 @@ psql -v ON_ERROR_STOP=1 <<'SQL'
 -- The test grants only emulate Supabase API read privileges; the migrations still provide RLS.
 grant usage on schema public, auth to authenticated;
 grant execute on function auth.uid() to authenticated;
-grant select on public.tickets, public.ticket_comments, public.ticket_statuses, public.ticket_priorities, public.ticket_categories to authenticated;
+grant select on public.tickets, public.ticket_comments, public.ticket_statuses, public.ticket_priorities, public.ticket_categories, public.ticket_tags, public.ticket_tag_assignments to authenticated;
 
 insert into auth.users (id) values
   ('00000000-0000-4000-8000-000000000001'),
@@ -114,6 +114,11 @@ insert into public.user_role_assignments (tenant_id, user_id, role_id, departmen
 insert into public.tickets (id, tenant_id, department_id, ticket_number, subject, description, status_id, priority_id, requester_id) values
   ('17000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000001', '11000000-0000-4000-8000-000000000001', 'ICT-2026-000001', 'ICT test', 'Visible for ICT', '13000000-0000-4000-8000-000000000001', '14000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000001'),
   ('18000000-0000-4000-8000-000000000002', '10000000-0000-4000-8000-000000000001', '12000000-0000-4000-8000-000000000002', 'INF-2026-000001', 'Infrastructure test', 'Hidden from ICT', '13000000-0000-4000-8000-000000000001', '14000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000003');
+insert into public.ticket_tags (id, tenant_id, name, created_by) values
+  ('17500000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000001', 'Dringend', '00000000-0000-4000-8000-000000000002'),
+  ('27500000-0000-4000-8000-000000000002', '20000000-0000-4000-8000-000000000002', 'Extern', '00000000-0000-4000-8000-000000000004');
+insert into public.ticket_tag_assignments (ticket_id, tag_id, tenant_id, added_by) values
+  ('17000000-0000-4000-8000-000000000001', '17500000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000002');
 insert into public.ticket_comments (ticket_id, author_id, body) values
   ('17000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000002', 'Internal ICT note');
 insert into public.saved_ticket_views (tenant_id, owner_id, name, visibility, filters) values
@@ -203,12 +208,28 @@ begin
 end;
 $$;
 
+do $$
+begin
+  begin
+    insert into public.ticket_tag_assignments (ticket_id, tag_id, tenant_id)
+    values (
+      '17000000-0000-4000-8000-000000000001',
+      '27500000-0000-4000-8000-000000000002',
+      '10000000-0000-4000-8000-000000000001'
+    );
+    raise exception 'Cross-tenant ticket tag assignment was accepted';
+  exception when foreign_key_violation then
+    null;
+  end;
+end;
+$$;
+
 -- Sensitive tables must have RLS; ticket number reservation must not be a client RPC.
 do $$
 declare
   relation_name text;
 begin
-  foreach relation_name in array array['roles', 'role_permissions', 'user_role_assignments', 'ticket_number_sequences', 'ticket_statuses', 'ticket_priorities', 'ticket_categories', 'ticket_presence_sessions']
+  foreach relation_name in array array['roles', 'role_permissions', 'user_role_assignments', 'ticket_number_sequences', 'ticket_statuses', 'ticket_priorities', 'ticket_categories', 'ticket_presence_sessions', 'ticket_tags', 'ticket_tag_assignments']
   loop
     if not (select relrowsecurity from pg_class where oid = format('public.%I', relation_name)::regclass) then
       raise exception 'RLS not enabled for %', relation_name;
@@ -493,6 +514,17 @@ begin
   if (select count(*) from public.ticket_comments) <> 1 then
     raise exception 'ICT agent must see the internal ICT note';
   end if;
+  if (select count(*) from public.ticket_tags) <> 1
+    or (select count(*) from public.ticket_tag_assignments) <> 1 then
+    raise exception 'ICT agent must see Tenant A tags only for readable tickets';
+  end if;
+  begin
+    insert into public.ticket_tags (tenant_id, name)
+    values ('10000000-0000-4000-8000-000000000001', 'Unzulässig');
+    raise exception 'Authenticated client was allowed to create a ticket tag directly';
+  exception when insufficient_privilege then
+    null;
+  end;
   if not exists (select 1 from public.ticket_statuses)
     or not exists (select 1 from public.ticket_priorities)
     or not exists (select 1 from public.ticket_categories)
@@ -517,6 +549,10 @@ begin
   if (select count(*) from public.ticket_comments) <> 0 then
     raise exception 'Requester must not see internal comments';
   end if;
+  if (select count(*) from public.ticket_tags) <> 1
+    or (select count(*) from public.ticket_tag_assignments) <> 1 then
+    raise exception 'Requester must only see tags on the own readable ticket';
+  end if;
 end;
 $$;
 reset role;
@@ -532,6 +568,11 @@ do $$
 begin
   if (select count(*) from public.tickets) <> 0 then
     raise exception 'Tenant B member must not see Tenant A tickets';
+  end if;
+  if (select count(*) from public.ticket_tags) <> 1
+    or exists (select 1 from public.ticket_tags where tenant_id <> '20000000-0000-4000-8000-000000000002')
+    or (select count(*) from public.ticket_tag_assignments) <> 0 then
+    raise exception 'Tenant B member must not see Tenant A ticket tags or assignments';
   end if;
   if not exists (select 1 from public.ticket_statuses)
     or not exists (select 1 from public.ticket_priorities)
@@ -626,8 +667,10 @@ do $$
 begin
   if (select count(*) from public.ticket_statuses) <> 0
     or (select count(*) from public.ticket_priorities) <> 0
-    or (select count(*) from public.ticket_categories) <> 0 then
-    raise exception 'User without an active membership must not see dashboard reference data';
+    or (select count(*) from public.ticket_categories) <> 0
+    or (select count(*) from public.ticket_tags) <> 0
+    or (select count(*) from public.ticket_tag_assignments) <> 0 then
+    raise exception 'User without an active membership must not see dashboard reference data or tags';
   end if;
 end;
 $$;

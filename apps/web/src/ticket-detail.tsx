@@ -21,6 +21,7 @@ import {
   Save,
   Send,
   Star,
+  Tag,
   UsersRound,
   X,
 } from "lucide-react";
@@ -39,6 +40,8 @@ type PendingAction =
   | "escalation-resolve"
   | "checklist-add"
   | "checklist-toggle"
+  | "tag-add"
+  | "tag-remove"
   | "time-entry"
   | "relation-create"
   | "relation-delete"
@@ -175,6 +178,29 @@ type AddTimeEntryAction = {
   note?: string;
   startedAt?: string;
 };
+
+type AddTagAction = {
+  type: "addTag";
+  tenantId: string;
+  ticketId: string;
+  name: string;
+};
+
+type AssignTagAction = {
+  type: "assignTag";
+  tenantId: string;
+  ticketId: string;
+  tagId: string;
+};
+
+type RemoveTagAction = {
+  type: "removeTag";
+  tenantId: string;
+  ticketId: string;
+  tagId: string;
+};
+
+type TicketTagAction = AddTagAction | AssignTagAction | RemoveTagAction;
 
 type TicketOperation =
   | GetTicketAction
@@ -350,6 +376,11 @@ type TicketChecklistItem = {
   completed_at: string | null;
 };
 
+type TicketTag = {
+  id: string;
+  name: string;
+};
+
 type TicketTimeEntry = {
   id: string;
   author_id: string;
@@ -497,6 +528,8 @@ type TicketDetailData = {
   statuses: TicketStatus[];
   priorities: TicketPriority[];
   teams: TicketTeam[];
+  tags: TicketTag[];
+  availableTags: TicketTag[];
   agents: TicketAgent[];
   checklistItems: TicketChecklistItem[];
   timeEntries: TicketTimeEntry[];
@@ -739,6 +772,18 @@ function isTicketPriority(value: unknown): value is TicketPriority {
     typeof priority.id === "string" &&
     typeof priority.key === "string" &&
     typeof priority.label === "string",
+  );
+}
+
+function isTicketTag(value: unknown): value is TicketTag {
+  const tag = asRecord(value);
+  return Boolean(
+    tag &&
+    isUuid(tag.id) &&
+    typeof tag.name === "string" &&
+    tag.name.trim().length > 0 &&
+    tag.name.length <= 48 &&
+    !/[\u0000-\u001f\u007f]/.test(tag.name),
   );
 }
 
@@ -1457,6 +1502,8 @@ function parseTicketDetail(
     isSimilarTicket,
   );
   const escalations = parseStrictValues(data.escalations, isTicketEscalation);
+  const tags = valuesOf(data.tags, isTicketTag);
+  const availableTags = valuesOf(data.availableTags, isTicketTag);
   if (
     relations === undefined ||
     similarTickets === undefined ||
@@ -1490,6 +1537,8 @@ function parseTicketDetail(
     statuses: valuesOf(data.statuses, isTicketStatus),
     priorities: valuesOf(data.priorities, isTicketPriority),
     teams: valuesOf(data.teams, isTicketTeam),
+    tags,
+    availableTags,
     agents: validAgents,
     checklistItems: valuesOf(data.checklistItems, isTicketChecklistItem).sort(
       (first, second) => first.position - second.position,
@@ -1647,9 +1696,12 @@ function relationActionKey(relation: TicketRelation): string {
 
 function eventLabel(eventType: string): string {
   const labels: Record<string, string> = {
+    "ticket.created": "Ticket erstellt",
     "comment.external_added": "Externer Kommentar hinzugefügt",
     "comment.internal_added": "Interne Notiz hinzugefügt",
     "ticket.updated": "Ticket aktualisiert",
+    "ticket.tag_added": "Tag hinzugefügt",
+    "ticket.tag_removed": "Tag entfernt",
     "ticket.knowledge.sent":
       "Wissensartikel als externe Ticketantwort versendet",
   };
@@ -1670,6 +1722,49 @@ async function invokeTicketOperation(
   });
   if (error) throw error;
   return data;
+}
+
+async function invokeTicketTagOperation(
+  action: TicketTagAction,
+): Promise<unknown> {
+  if (!supabase) throw new Error("Supabase ist nicht konfiguriert.");
+  const { data, error } = await supabase.functions.invoke("ticket-tags", {
+    body: action,
+  });
+  if (error) throw error;
+  return data;
+}
+
+async function loadTicketTags(
+  tenantId: string,
+  ticketId: string,
+): Promise<{
+  tags: TicketTag[];
+  availableTags: TicketTag[];
+}> {
+  if (!supabase) throw new Error("Supabase ist nicht konfiguriert.");
+  const [tagsResult, assignmentsResult] = await Promise.all([
+    supabase
+      .from("ticket_tags")
+      .select("id, name")
+      .eq("tenant_id", tenantId)
+      .order("name"),
+    supabase
+      .from("ticket_tag_assignments")
+      .select("tag_id")
+      .eq("tenant_id", tenantId)
+      .eq("ticket_id", ticketId),
+  ]);
+  if (tagsResult.error || assignmentsResult.error) {
+    throw new Error("Die Ticket-Tags konnten nicht geladen werden.");
+  }
+  const availableTags = valuesOf(tagsResult.data, isTicketTag);
+  const tagById = new Map(availableTags.map((tag) => [tag.id, tag]));
+  const tags = (assignmentsResult.data ?? [])
+    .map((assignment) => tagById.get(assignment.tag_id))
+    .filter((tag): tag is TicketTag => Boolean(tag))
+    .sort((first, second) => first.name.localeCompare(second.name, "de-CH"));
+  return { tags, availableTags };
 }
 
 async function invokeTicketAgentAssignment(
@@ -2935,6 +3030,7 @@ export function TicketDetail({
   const [commentVisibility, setCommentVisibility] =
     useState<CommentVisibility>("internal");
   const [isWorkToolsOpen, setIsWorkToolsOpen] = useState(false);
+  const [tagName, setTagName] = useState("");
   const [checklistDescription, setChecklistDescription] = useState("");
   const [timeEntryMinutes, setTimeEntryMinutes] = useState("");
   const [timeEntryBillingKind, setTimeEntryBillingKind] =
@@ -2955,6 +3051,7 @@ export function TicketDetail({
   const [pendingChecklistItemId, setPendingChecklistItemId] = useState<
     string | null
   >(null);
+  const [pendingTagId, setPendingTagId] = useState<string | null>(null);
   const [pendingRelationKey, setPendingRelationKey] = useState<string | null>(
     null,
   );
@@ -3202,13 +3299,15 @@ export function TicketDetail({
         tenantId,
         ticketId,
       });
-      const nextDetail = parseTicketDetail(response);
+      let nextDetail = parseTicketDetail(response);
       if (nextDetail === undefined) {
         throw new Error("Die Ticketdaten sind unvollständig.");
       }
       if (nextDetail === null) {
         throw new Error("Dieses Ticket ist nicht mehr verfügbar.");
       }
+      const tagData = await loadTicketTags(tenantId, ticketId);
+      nextDetail = { ...nextDetail, ...tagData };
       if (requestId !== requestSequence.current) return false;
 
       await loadAssignableAgents(nextDetail?.canAssign === true);
@@ -4428,6 +4527,70 @@ export function TicketDetail({
     }
   }
 
+  async function addTicketTag(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!detail || !detail.canUpdate) return;
+
+    const name = tagName.normalize("NFKC").trim();
+    if (!name) {
+      setError("Bitte geben Sie einen Tag ein.");
+      return;
+    }
+    if ([...name].length > 48 || /[\u0000-\u001f\u007f]/.test(name)) {
+      setError("Ein Tag darf höchstens 48 Zeichen enthalten.");
+      return;
+    }
+    const normalizedName = name.toLocaleLowerCase("de-CH");
+    const matchingTag = detail.availableTags.find(
+      (tag) =>
+        tag.name.normalize("NFKC").toLocaleLowerCase("de-CH") ===
+        normalizedName,
+    );
+    if (matchingTag && detail.tags.some((tag) => tag.id === matchingTag.id)) {
+      setError("Dieser Tag ist dem Ticket bereits zugewiesen.");
+      return;
+    }
+
+    setPendingAction("tag-add");
+    setError("");
+    try {
+      await invokeTicketTagOperation(
+        matchingTag
+          ? { type: "assignTag", tenantId, ticketId, tagId: matchingTag.id }
+          : { type: "addTag", tenantId, ticketId, name },
+      );
+      setTagName("");
+      onChanged();
+      await loadTicket();
+    } catch (nextError) {
+      setError(errorMessage(nextError));
+    } finally {
+      setPendingAction(null);
+    }
+  }
+
+  async function removeTicketTag(tag: TicketTag) {
+    if (!detail || !detail.canUpdate) return;
+    setPendingAction("tag-remove");
+    setPendingTagId(tag.id);
+    setError("");
+    try {
+      await invokeTicketTagOperation({
+        type: "removeTag",
+        tenantId,
+        ticketId,
+        tagId: tag.id,
+      });
+      onChanged();
+      await loadTicket();
+    } catch (nextError) {
+      setError(errorMessage(nextError));
+    } finally {
+      setPendingTagId(null);
+      setPendingAction(null);
+    }
+  }
+
   async function toggleWatch() {
     if (!detail) return;
     const watching = !detail.watching;
@@ -4928,6 +5091,91 @@ export function TicketDetail({
             <dd>{formatDateTime(detail.ticket.created_at)}</dd>
           </div>
         </dl>
+      </section>
+
+      <section
+        className="ticket-tags ticket-detail-primary"
+        aria-labelledby="ticket-tags-heading"
+      >
+        <div className="ticket-detail-section-heading">
+          <div>
+            <p className="eyebrow">EINORDNUNG</p>
+            <h3 id="ticket-tags-heading">Tags</h3>
+          </div>
+          <span className="data-caption">
+            {detail.tags.length === 1 ? "1 Tag" : `${detail.tags.length} Tags`}
+          </span>
+        </div>
+        {detail.tags.length > 0 ? (
+          <ul className="ticket-tag-list" aria-label="Zugewiesene Tags">
+            {detail.tags.map((tag) =>
+              detail.canUpdate ? (
+                <li key={tag.id}>
+                  <button
+                    aria-label={`Tag ${tag.name} entfernen`}
+                    className="ticket-tag ticket-tag--removable"
+                    disabled={busy}
+                    onClick={() => void removeTicketTag(tag)}
+                    type="button"
+                  >
+                    <Tag aria-hidden="true" size={14} strokeWidth={1.9} />
+                    {tag.name}
+                    {pendingAction === "tag-remove" &&
+                    pendingTagId === tag.id ? (
+                      <LoaderCircle
+                        aria-label="Tag wird entfernt"
+                        className="ticket-detail-spinner"
+                        size={14}
+                      />
+                    ) : (
+                      <X aria-hidden="true" size={14} strokeWidth={2} />
+                    )}
+                  </button>
+                </li>
+              ) : (
+                <li className="ticket-tag" key={tag.id}>
+                  <Tag aria-hidden="true" size={14} strokeWidth={1.9} />
+                  {tag.name}
+                </li>
+              ),
+            )}
+          </ul>
+        ) : (
+          <p className="ticket-tags-empty">Noch keine Tags zugeordnet.</p>
+        )}
+        {detail.canUpdate && (
+          <form className="ticket-tag-form" onSubmit={addTicketTag}>
+            <label htmlFor="ticket-tag-name">Tag hinzufügen</label>
+            <div>
+              <input
+                disabled={busy}
+                id="ticket-tag-name"
+                list="ticket-tag-options"
+                maxLength={48}
+                onChange={(event) => setTagName(event.target.value)}
+                placeholder="z. B. dringend"
+                value={tagName}
+              />
+              <button disabled={busy || !tagName.trim()} type="submit">
+                {pendingAction === "tag-add" ? (
+                  <LoaderCircle
+                    aria-hidden="true"
+                    className="ticket-detail-spinner"
+                    size={16}
+                  />
+                ) : (
+                  <Tag aria-hidden="true" size={16} strokeWidth={1.9} />
+                )}
+                Hinzufügen
+              </button>
+            </div>
+            <datalist id="ticket-tag-options">
+              {detail.availableTags.map((tag) => (
+                <option key={tag.id} value={tag.name} />
+              ))}
+            </datalist>
+          </form>
+        )}
       </section>
 
       {presence.length > 0 && (

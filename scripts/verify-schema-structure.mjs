@@ -35,6 +35,8 @@ const expectedFiles = [
   "0030_saved_ticket_views.sql",
   "0031_bulk_ticket_status_actions.sql",
   "0032_ticket_presence_indicators.sql",
+  "0033_sync_comment_author_names.sql",
+  "0034_ticket_tags.sql",
 ];
 
 const availableFiles = await readdir(migrationDirectory);
@@ -281,6 +283,17 @@ const requiredFragments = [
     "0032_ticket_presence_indicators.sql",
     "revoke all on table public.ticket_presence_sessions from public, anon, authenticated",
   ],
+  [
+    "0033_sync_comment_author_names.sql",
+    "create or replace function public.ticket_comments_sync_author_name",
+  ],
+  ["0034_ticket_tags.sql", "create table public.ticket_tags"],
+  ["0034_ticket_tags.sql", "create table public.ticket_tag_assignments"],
+  [
+    "0034_ticket_tags.sql",
+    "create policy ticket_tag_assignments_select_readable_ticket",
+  ],
+  ["0034_ticket_tags.sql", "foreign key (ticket_id, tenant_id)"],
 ];
 
 for (const [migration, fragment] of requiredFragments) {

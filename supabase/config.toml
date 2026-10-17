@@ -33,6 +33,9 @@ verify_jwt = true
 [functions.ticket-operations]
 verify_jwt = true
 
+[functions.ticket-tags]
+verify_jwt = true
+
 [functions.ticket-agent-assignment]
 verify_jwt = true
 

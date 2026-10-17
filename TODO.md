@@ -1,5 +1,7 @@
 # Liefer-Backlog
 
+- [ ] **Ticket-Tags.** Berechtigte Supporter können im Ticketdetail mandantenisolierte Tags erstellen, zuweisen und entfernen. Tag-Namen sind pro Mandant eindeutig; Tag-Zuweisungen folgen der bestehenden Ticketleseberechtigung, werden im Ticketverlauf auditiert und können keine Tickets anderer Mandanten oder Abteilungen offenlegen.
+
 - [x] **Phase-1-Architektur und Projektgrenzen.** Monorepo, React-/Expo-Zielstruktur, Mandanten- und Abteilungskonzept, RLS-Strategie, Entra-Konzept, Hostingrichtung, Risiken und MVP-Abgrenzung sind dokumentiert. Die Architektur muss den Produktnamen konfigurierbar halten und `de-CH`, `Europe/Zurich` sowie UTC im Datenmodell berücksichtigen.
 
 - [ ] **Produktive Supabase-Grundlage.** Die Migrationen werden gegen getrennte Entwicklungs-, Staging- und Produktionsprojekte in Zürich angewendet. Es existieren Seeds und automatisierte Tests, die Mandant A/B, ICT/Infrastruktur, eigene Tickets, interne Kommentare, Rollenentzug, Supportzugriff, unbekannte Domains und Ticketnummern als echte RLS-Fälle prüfen.
