@@ -133,6 +133,11 @@ type BulkStatusOption = {
   label: string;
 };
 
+type TenantTicketAccess = {
+  canWorkTickets: boolean;
+  isTenantAdmin: boolean;
+};
+
 const sections: readonly { label: Section; Icon: LucideIcon }[] = [
   { label: "Übersicht", Icon: LayoutDashboard },
   { label: "Tickets", Icon: Ticket },
@@ -180,6 +185,24 @@ function initials(name: string): string {
 
 function metricDisplay(value: string): string {
   return value === "—" ? value : value;
+}
+
+function tenantTicketAccessFromResponse(
+  value: unknown,
+): TenantTicketAccess | null {
+  if (!value || typeof value !== "object" || !("data" in value)) {
+    return null;
+  }
+  const data = value.data;
+  if (!data || typeof data !== "object") return null;
+  const parsed = data as Record<string, unknown>;
+  return typeof parsed.canWorkTickets === "boolean" &&
+    typeof parsed.isTenantAdmin === "boolean"
+    ? {
+        canWorkTickets: parsed.canWorkTickets,
+        isTenantAdmin: parsed.isTenantAdmin,
+      }
+    : null;
 }
 
 function displayAuthError(message: string): string {
@@ -754,6 +777,7 @@ export function App() {
   const [ownerView, setOwnerView] = useState<"console" | "tenant">("console");
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
   const [ticketComposerOpen, setTicketComposerOpen] = useState(false);
+  const [canWorkTickets, setCanWorkTickets] = useState(false);
   const [isTenantAdmin, setIsTenantAdmin] = useState(false);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [notificationsLoading, setNotificationsLoading] = useState(false);
@@ -832,6 +856,8 @@ export function App() {
       setOwnerAccess("idle");
       setOwnerAccessError("");
       setOwnerView("console");
+      setCanWorkTickets(false);
+      setIsTenantAdmin(false);
     });
 
     return () => {
@@ -929,7 +955,7 @@ export function App() {
   );
 
   useEffect(() => {
-    if (!supabase || !session || !activeTenant) {
+    if (!supabase || !session || !activeTenant || !canWorkTickets) {
       setSavedTicketViews([]);
       setCanManageTenantViews(false);
       setSavedTicketViewsLoading(false);
@@ -968,7 +994,7 @@ export function App() {
     return () => {
       mounted = false;
     };
-  }, [activeTenant, session]);
+  }, [activeTenant, canWorkTickets, session]);
 
   useEffect(() => {
     if (!isSupabaseConfigured || !supabase || !session || !activeTenant) {
@@ -1040,24 +1066,47 @@ export function App() {
 
   useEffect(() => {
     if (!supabase || !session || !activeTenant) {
+      setCanWorkTickets(false);
       setIsTenantAdmin(false);
       return;
     }
     let mounted = true;
     void supabase.functions
-      .invoke("tenant-admin-settings", {
-        body: { type: "getSettings", tenantId: activeTenant.id },
+      .invoke("tenant-users", {
+        body: { type: "getMyTicketAccess", tenantId: activeTenant.id },
       })
-      .then(({ error }) => {
-        if (mounted) setIsTenantAdmin(!error);
+      .then(({ data, error }) => {
+        if (error) throw error;
+        const access = tenantTicketAccessFromResponse(data);
+        if (!access) throw new Error("invalid_ticket_access_response");
+        if (!mounted) return;
+        setCanWorkTickets(access.canWorkTickets);
+        setIsTenantAdmin(access.isTenantAdmin);
       })
       .catch(() => {
-        if (mounted) setIsTenantAdmin(false);
+        if (!mounted) return;
+        setCanWorkTickets(false);
+        setIsTenantAdmin(false);
       });
     return () => {
       mounted = false;
     };
   }, [activeTenant, session]);
+
+  useEffect(() => {
+    if (canWorkTickets) return;
+    setTicketScope("mine");
+    setSelectedTicketIds(new Set());
+    setTicketActionStatus("");
+    if (
+      section === "Services" ||
+      section === "Wissen" ||
+      section === "Berichte" ||
+      section === "Einstellungen"
+    ) {
+      setSection("Übersicht");
+    }
+  }, [canWorkTickets, section]);
 
   useEffect(() => {
     setTicketPage(0);
@@ -1241,27 +1290,28 @@ export function App() {
     [view.tickets],
   );
   const parsedTicketSearch = useMemo(() => parseTicketSearch(query), [query]);
+  const effectiveTicketScope = canWorkTickets ? ticketScope : "mine";
   const filteredTickets = useMemo(
     () =>
       view.tickets.filter((ticket) => {
         const inQueue = queue === "alle" || ticket.queue === queue;
         const inScope =
-          ticketScope === "all" ||
-          (ticketScope === "mine" && ticket.assignedToCurrentUser) ||
-          (ticketScope === "unassigned" && ticket.isUnassigned) ||
-          (ticketScope === "open" && !ticket.isClosed) ||
-          (ticketScope === "closed" && ticket.isClosed);
+          effectiveTicketScope === "all" ||
+          (effectiveTicketScope === "mine" && ticket.assignedToCurrentUser) ||
+          (effectiveTicketScope === "unassigned" && ticket.isUnassigned) ||
+          (effectiveTicketScope === "open" && !ticket.isClosed) ||
+          (effectiveTicketScope === "closed" && ticket.isClosed);
         const match = matchesTicketSearch(ticket, parsedTicketSearch);
         return inQueue && inScope && match;
       }),
-    [parsedTicketSearch, queue, ticketScope, view.tickets],
+    [effectiveTicketScope, parsedTicketSearch, queue, view.tickets],
   );
 
   const greetingName = operatorName.split(" ")[0] || operatorName;
   const queueCount = (queueKey: string) =>
     view.tickets.filter((ticket) => ticket.queue === queueKey).length;
   const openTicketScope = (scope: TicketScope) => {
-    setTicketScope(scope);
+    setTicketScope(canWorkTickets ? scope : "mine");
     setQueue("alle");
     setSection("Tickets");
   };
@@ -1279,7 +1329,7 @@ export function App() {
     clearTicketSelection();
     setQuery("");
     setQueue("alle");
-    setTicketScope("all");
+    setTicketScope(canWorkTickets ? "all" : "mine");
   };
   const ticketScopeLabel: Record<TicketScope, string> = {
     all: "Alle sichtbaren Tickets",
@@ -1289,6 +1339,11 @@ export function App() {
     unassigned: "Nicht zugewiesene Tickets",
   };
   const normalizedCommandQuery = commandQuery.trim().toLocaleLowerCase("de-CH");
+  const workSections = canWorkTickets
+    ? sections
+    : sections.filter(
+        (item) => item.label === "Übersicht" || item.label === "Tickets",
+      );
   const commandActions = [
     {
       id: "create-ticket",
@@ -1296,7 +1351,7 @@ export function App() {
       description: "Neuen Vorgang anlegen",
       keywords: "neu erstellen anlegen",
     },
-    ...sections.map((item) => ({
+    ...workSections.map((item) => ({
       id: `section:${item.label}`,
       label: item.label,
       description: "Arbeitsbereich öffnen",
@@ -1354,8 +1409,8 @@ export function App() {
     .join(" ");
 
   const visibleSections = isTenantAdmin
-    ? [...sections, { label: "Einstellungen" as const, Icon: Settings }]
-    : sections;
+    ? [...workSections, { label: "Einstellungen" as const, Icon: Settings }]
+    : workSections;
   const unreadNotificationCount = useMemo(
     () =>
       notifications.filter((notification) => notification.readAt === null)
@@ -1772,7 +1827,7 @@ export function App() {
               <div className="panel-heading">
                 <div>
                   <p className="eyebrow">Autorisierte Vorgänge</p>
-                  <h2>{ticketScopeLabel[ticketScope]}</h2>
+                  <h2>{ticketScopeLabel[effectiveTicketScope]}</h2>
                 </div>
                 <div className="ticket-list-heading-actions">
                   <span className="data-caption">
@@ -1780,7 +1835,7 @@ export function App() {
                       ? `${filteredTickets.length} geladen`
                       : `${filteredTickets.length} Treffer`}
                   </span>
-                  {ticketScope !== "all" && (
+                  {canWorkTickets && ticketScope !== "all" && (
                     <button
                       className="text-button"
                       onClick={() => {
@@ -1799,7 +1854,7 @@ export function App() {
                   )}
                 </div>
               </div>
-              {activeTenant && isSupabaseConfigured && (
+              {activeTenant && isSupabaseConfigured && canWorkTickets && (
                 <SavedTicketViews
                   canManageTenantViews={canManageTenantViews}
                   currentUserId={session?.user.id}
@@ -1815,7 +1870,7 @@ export function App() {
                   tenantId={activeTenant.id}
                 />
               )}
-              {activeTenant && isSupabaseConfigured && (
+              {activeTenant && isSupabaseConfigured && canWorkTickets && (
                 <BulkTicketStatusActions
                   onApplied={(updated, statusLabel) => {
                     clearTicketSelection();
@@ -1887,18 +1942,22 @@ export function App() {
                 <p className="list-note">{view.ticketListNote}</p>
               )}
               <TicketList
-                {...(isSupabaseConfigured
+                {...(isSupabaseConfigured && canWorkTickets
                   ? {
                       onOpen: setSelectedTicketId,
                       onSelectionChange: updateTicketSelection,
                       selectedTicketIds,
                     }
                   : {})}
-                {...(query.trim() || queue !== "alle" || ticketScope !== "all"
+                {...(query.trim() ||
+                queue !== "alle" ||
+                (canWorkTickets && ticketScope !== "all")
                   ? { onClearFilters: clearTicketFilters }
                   : {})}
                 hasActiveFilters={Boolean(
-                  query.trim() || queue !== "alle" || ticketScope !== "all",
+                  query.trim() ||
+                  queue !== "alle" ||
+                  (canWorkTickets && ticketScope !== "all"),
                 )}
                 loading={dashboardLoading && snapshot === null}
                 tickets={filteredTickets}
@@ -1981,39 +2040,43 @@ export function App() {
                 </div>
                 <small>{view.metrics.mineDetail}</small>
               </button>
-              <button
-                className="metric-card metric-button"
-                onClick={() => openTicketScope("unassigned")}
-                type="button"
-              >
-                <p>Nicht zugewiesene Tickets</p>
-                <div>
-                  <strong>{metricDisplay(view.metrics.unassigned)}</strong>
-                </div>
-                <small>{view.metrics.unassignedDetail}</small>
-              </button>
-              <button
-                className="metric-card metric-button"
-                onClick={() => openTicketScope("open")}
-                type="button"
-              >
-                <p>Offene Tickets</p>
-                <div>
-                  <strong>{metricDisplay(view.metrics.open)}</strong>
-                </div>
-                <small>{view.metrics.openDetail}</small>
-              </button>
-              <button
-                className="metric-card metric-button"
-                onClick={() => openTicketScope("closed")}
-                type="button"
-              >
-                <p>Gelöste Tickets</p>
-                <div>
-                  <strong>{metricDisplay(view.metrics.closed)}</strong>
-                </div>
-                <small>{view.metrics.closedDetail}</small>
-              </button>
+              {canWorkTickets && (
+                <>
+                  <button
+                    className="metric-card metric-button"
+                    onClick={() => openTicketScope("unassigned")}
+                    type="button"
+                  >
+                    <p>Nicht zugewiesene Tickets</p>
+                    <div>
+                      <strong>{metricDisplay(view.metrics.unassigned)}</strong>
+                    </div>
+                    <small>{view.metrics.unassignedDetail}</small>
+                  </button>
+                  <button
+                    className="metric-card metric-button"
+                    onClick={() => openTicketScope("open")}
+                    type="button"
+                  >
+                    <p>Offene Tickets</p>
+                    <div>
+                      <strong>{metricDisplay(view.metrics.open)}</strong>
+                    </div>
+                    <small>{view.metrics.openDetail}</small>
+                  </button>
+                  <button
+                    className="metric-card metric-button"
+                    onClick={() => openTicketScope("closed")}
+                    type="button"
+                  >
+                    <p>Gelöste Tickets</p>
+                    <div>
+                      <strong>{metricDisplay(view.metrics.closed)}</strong>
+                    </div>
+                    <small>{view.metrics.closedDetail}</small>
+                  </button>
+                </>
+              )}
             </section>
 
             <section className="content-grid">
