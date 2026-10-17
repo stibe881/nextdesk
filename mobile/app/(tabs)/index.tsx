@@ -4,29 +4,64 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import { ScreenContainer } from "@/components/screen-container";
 
+type TicketScope = "all" | "mine" | "open" | "resolved";
+
 const tickets = [
   {
     id: "ICT-2026-000001",
     title: "VPN-Zugang für Homeoffice",
     status: "Neu",
     tone: "blue",
+    assignedToMe: true,
+    resolved: false,
   },
   {
     id: "ICT-2026-000014",
     title: "Drucker im Sitzungszimmer",
     status: "In Bearbeitung",
     tone: "violet",
+    assignedToMe: true,
+    resolved: false,
   },
   {
     id: "ICT-2026-000019",
     title: "Softwarefreigabe Adobe",
     status: "Wartet",
     tone: "amber",
+    assignedToMe: false,
+    resolved: false,
+  },
+  {
+    id: "ICT-2026-000004",
+    title: "Zugang für Meetingraum eingerichtet",
+    status: "Gelöst",
+    tone: "green",
+    assignedToMe: false,
+    resolved: true,
   },
 ];
 
+const ticketScopeLabels: Record<Exclude<TicketScope, "all">, string> = {
+  mine: "Meine Tickets",
+  open: "Offene Tickets",
+  resolved: "Gelöste Tickets",
+};
+
 export default function HomeScreen() {
   const [selected, setSelected] = useState<string | null>(null);
+  const [ticketScope, setTicketScope] = useState<TicketScope>("all");
+  const visibleTickets = tickets.filter((ticket) => {
+    if (ticketScope === "mine") return ticket.assignedToMe;
+    if (ticketScope === "open") return !ticket.resolved;
+    if (ticketScope === "resolved") return ticket.resolved;
+    return true;
+  });
+  const scopeCount = (scope: Exclude<TicketScope, "all">) =>
+    tickets.filter((ticket) => {
+      if (scope === "mine") return ticket.assignedToMe;
+      if (scope === "open") return !ticket.resolved;
+      return ticket.resolved;
+    }).length;
 
   return (
     <ScreenContainer containerClassName="bg-[#F6F7FB]" className="px-5">
@@ -64,37 +99,55 @@ export default function HomeScreen() {
           <Metric
             icon="person-outline"
             label="Meine Tickets"
-            value="6"
+            value={String(scopeCount("mine"))}
             color="#4438CA"
+            onPress={() => setTicketScope("mine")}
+            selected={ticketScope === "mine"}
           />
           <Metric
             icon="time-outline"
             label="Offen"
-            value="12"
+            value={String(scopeCount("open"))}
             color="#0E7490"
+            onPress={() => setTicketScope("open")}
+            selected={ticketScope === "open"}
           />
           <Metric
             icon="checkmark-circle-outline"
             label="Gelöst"
-            value="24"
+            value={String(scopeCount("resolved"))}
             color="#15803D"
+            onPress={() => setTicketScope("resolved")}
+            selected={ticketScope === "resolved"}
           />
         </View>
 
         <View style={styles.sectionHeader}>
           <View>
-            <Text style={styles.sectionTitle}>Aktuelle Tickets</Text>
+            <Text style={styles.sectionTitle}>
+              {ticketScope === "all"
+                ? "Aktuelle Tickets"
+                : ticketScopeLabels[ticketScope]}
+            </Text>
             <Text style={styles.sectionSub}>
-              Deine zuletzt bearbeiteten Vorgänge
+              {ticketScope === "all"
+                ? "Deine zuletzt bearbeiteten Vorgänge"
+                : `${visibleTickets.length} passende Vorgänge`}
             </Text>
           </View>
-          <Pressable accessibilityRole="button">
-            <Text style={styles.all}>Alle</Text>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityState={{ selected: ticketScope === "all" }}
+            onPress={() => setTicketScope("all")}
+          >
+            <Text style={styles.all}>
+              {ticketScope === "all" ? "Alle" : "Filter zurücksetzen"}
+            </Text>
           </Pressable>
         </View>
 
         <View style={styles.list}>
-          {tickets.map((ticket) => (
+          {visibleTickets.map((ticket) => (
             <Pressable
               key={ticket.id}
               onPress={() => setSelected(ticket.id)}
@@ -111,7 +164,9 @@ export default function HomeScreen() {
                     ? styles.violet
                     : ticket.tone === "amber"
                       ? styles.amber
-                      : styles.blue,
+                      : ticket.tone === "green"
+                        ? styles.green
+                        : styles.blue,
                 ]}
               />
               <View style={styles.ticketContent}>
@@ -129,7 +184,9 @@ export default function HomeScreen() {
                       ? styles.statusViolet
                       : ticket.tone === "amber"
                         ? styles.statusAmber
-                        : styles.statusBlue,
+                        : ticket.tone === "green"
+                          ? styles.statusGreen
+                          : styles.statusBlue,
                   ]}
                 >
                   {ticket.status}
@@ -138,14 +195,6 @@ export default function HomeScreen() {
               </View>
             </Pressable>
           ))}
-        </View>
-
-        <View style={styles.notice}>
-          <Ionicons name="shield-checkmark-outline" size={21} color="#4438CA" />
-          <Text style={styles.noticeText}>
-            Mandanten- und Rechtezugriff werden beim Anmelden automatisch
-            berücksichtigt.
-          </Text>
         </View>
       </ScrollView>
     </ScreenContainer>
@@ -157,18 +206,28 @@ function Metric({
   label,
   value,
   color,
+  onPress,
+  selected,
 }: {
   icon: keyof typeof Ionicons.glyphMap;
   label: string;
   value: string;
   color: string;
+  onPress: () => void;
+  selected: boolean;
 }) {
   return (
-    <View style={styles.metric}>
+    <Pressable
+      accessibilityLabel={`${label}: ${value} Tickets anzeigen`}
+      accessibilityRole="button"
+      accessibilityState={{ selected }}
+      onPress={onPress}
+      style={[styles.metric, selected && styles.metricSelected]}
+    >
       <Ionicons name={icon} size={19} color={color} />
       <Text style={styles.metricValue}>{value}</Text>
       <Text style={styles.metricLabel}>{label}</Text>
-    </View>
+    </Pressable>
   );
 }
 
@@ -256,6 +315,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#ECECF3",
   },
+  metricSelected: { borderColor: "#8B82F4", backgroundColor: "#F8F7FF" },
   metricValue: {
     fontSize: 22,
     fontWeight: "800",
@@ -288,6 +348,7 @@ const styles = StyleSheet.create({
   blue: { backgroundColor: "#0EA5C6" },
   violet: { backgroundColor: "#7C3AED" },
   amber: { backgroundColor: "#D97706" },
+  green: { backgroundColor: "#15803D" },
   ticketContent: { flex: 1, gap: 2 },
   ticketId: {
     color: "#77758C",
@@ -308,14 +369,5 @@ const styles = StyleSheet.create({
   statusBlue: { color: "#036B83", backgroundColor: "#E0F6FB" },
   statusViolet: { color: "#6432B7", backgroundColor: "#F0E9FF" },
   statusAmber: { color: "#9A5100", backgroundColor: "#FFF2DD" },
-  notice: {
-    flexDirection: "row",
-    gap: 10,
-    backgroundColor: "#EEECFF",
-    borderRadius: 16,
-    padding: 14,
-    alignItems: "flex-start",
-    marginTop: 3,
-  },
-  noticeText: { flex: 1, color: "#4C4780", fontSize: 12, lineHeight: 17 },
+  statusGreen: { color: "#166534", backgroundColor: "#E9F8EE" },
 });
