@@ -287,6 +287,9 @@ export default function TicketDetailScreen() {
                 name={editing ? "close" : "create-outline"}
                 size={19}
               />
+              <Text style={styles.editButtonText}>
+                {editing ? "Abbrechen" : "Bearbeiten"}
+              </Text>
             </Pressable>
           ) : (
             <View style={styles.topSpacer} />
@@ -327,15 +330,20 @@ export default function TicketDetailScreen() {
           ) : null}
         </View>
 
-        <View style={styles.card}>
-          <Text style={styles.cardLabel}>ANFRAGENDE PERSON</Text>
-          <Text style={styles.cardValue}>
-            {ticket.requesterName ?? "Anfragende Person"}
-          </Text>
-          <Text style={styles.cardLabel}>PRIORITÄT</Text>
-          <Text style={styles.cardValue}>
-            {priority?.label ?? "Ohne Priorität"}
-          </Text>
+        <View style={styles.contextCard}>
+          <View style={styles.contextItem}>
+            <Text style={styles.cardLabel}>ANFRAGENDE PERSON</Text>
+            <Text numberOfLines={2} style={styles.cardValue}>
+              {ticket.requesterName ?? "Anfragende Person"}
+            </Text>
+          </View>
+          <View style={styles.contextDivider} />
+          <View style={styles.contextItem}>
+            <Text style={styles.cardLabel}>PRIORITÄT</Text>
+            <Text style={styles.cardValue}>
+              {priority?.label ?? "Ohne Priorität"}
+            </Text>
+          </View>
         </View>
 
         <View style={styles.card}>
@@ -423,8 +431,8 @@ export default function TicketDetailScreen() {
           </View>
         ) : ticket.canUpdate ? (
           <Text style={styles.hint}>
-            Über das Stift-Symbol können Sie Betreff, Beschreibung, Status und
-            Priorität bearbeiten.
+            Über «Bearbeiten» können Sie Betreff, Beschreibung, Status und
+            Priorität anpassen.
           </Text>
         ) : null}
 
@@ -470,11 +478,14 @@ const styles = StyleSheet.create({
   editButton: {
     alignItems: "center",
     backgroundColor: "#EEECFF",
-    borderRadius: 18,
+    borderRadius: 14,
+    flexDirection: "row",
+    gap: 5,
     height: 40,
     justifyContent: "center",
-    width: 40,
+    paddingHorizontal: 10,
   },
+  editButtonText: { color: "#4438CA", fontSize: 12, fontWeight: "800" },
   topTitle: { color: "#202136", fontSize: 17, fontWeight: "800" },
   topSpacer: { width: 40 },
   ticketHead: { gap: 8, paddingTop: 8 },
@@ -521,6 +532,18 @@ const styles = StyleSheet.create({
     gap: 7,
     padding: 17,
   },
+  contextCard: {
+    alignItems: "stretch",
+    backgroundColor: "#FFFFFF",
+    borderColor: "#ECECF3",
+    borderRadius: 18,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 13,
+    padding: 16,
+  },
+  contextItem: { flex: 1, gap: 5 },
+  contextDivider: { backgroundColor: "#ECECF3", width: 1 },
   cardLabel: {
     color: "#77758C",
     fontSize: 10,
@@ -532,7 +555,6 @@ const styles = StyleSheet.create({
     color: "#202136",
     fontSize: 15,
     fontWeight: "700",
-    marginBottom: 8,
   },
   description: { color: "#4B4C60", fontSize: 15, lineHeight: 23 },
   descriptionInput: {
