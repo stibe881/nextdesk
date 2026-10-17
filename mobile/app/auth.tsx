@@ -1,6 +1,6 @@
 import * as WebBrowser from "expo-web-browser";
-import { router, useLocalSearchParams } from "expo-router";
-import { useState } from "react";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { useEffect, useRef, useState } from "react";
 import {
   Platform,
   Pressable,
@@ -21,11 +21,16 @@ import {
 
 WebBrowser.maybeCompleteAuthSession();
 
+const WEB_SSO_CALLBACK_MESSAGE = "nextdesk.sso.callback";
+
 export default function AuthScreen() {
+  const router = useRouter();
   const { authError } = useLocalSearchParams<{ authError?: string }>();
   const [email, setEmail] = useState("");
   const [message, setMessage] = useState("");
   const [pending, setPending] = useState<"magic" | "sso" | null>(null);
+  const popupRef = useRef<Window | null>(null);
+  const popupMonitorRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const redirectTo = getNextDeskAuthRedirectUrl();
   const displayedMessage =
     message ||
@@ -33,9 +38,70 @@ export default function AuthScreen() {
       ? nextDeskAuthFailureMessage(authError)
       : "");
 
+  function stopPopupMonitor() {
+    if (popupMonitorRef.current !== null) {
+      clearInterval(popupMonitorRef.current);
+      popupMonitorRef.current = null;
+    }
+  }
+
+  useEffect(() => {
+    if (Platform.OS !== "web" || typeof window === "undefined") return;
+
+    const handleCallback = (event: MessageEvent<unknown>) => {
+      if (event.origin !== window.location.origin) return;
+      const payload = event.data;
+      if (
+        typeof payload !== "object" ||
+        payload === null ||
+        !(
+          "type" in payload &&
+          (payload as { type?: unknown }).type === WEB_SSO_CALLBACK_MESSAGE
+        ) ||
+        !("callbackUrl" in payload) ||
+        typeof (payload as { callbackUrl?: unknown }).callbackUrl !== "string"
+      ) {
+        return;
+      }
+
+      stopPopupMonitor();
+      popupRef.current = null;
+      setPending("sso");
+      void completeNextDeskAuth(
+        (payload as { callbackUrl: string }).callbackUrl,
+      )
+        .then(() => router.replace("/"))
+        .catch((error) =>
+          setMessage(
+            nextDeskAuthFailureMessage(nextDeskAuthFailureCode(error)),
+          ),
+        )
+        .finally(() => setPending(null));
+    };
+
+    window.addEventListener("message", handleCallback);
+    return () => {
+      window.removeEventListener("message", handleCallback);
+      stopPopupMonitor();
+    };
+  }, [router]);
+
   async function continueWithSso() {
     setPending("sso");
     setMessage("");
+    const webPopup =
+      Platform.OS === "web" && typeof window !== "undefined"
+        ? window.open("about:blank", "nextdesk-sso")
+        : null;
+    if (Platform.OS === "web" && !webPopup) {
+      setPending(null);
+      setMessage(
+        "Das Anmeldefenster wurde blockiert. Bitte erlauben Sie Pop-ups für die Manus-Vorschau und versuchen Sie es erneut.",
+      );
+      return;
+    }
+
+    let waitingForWebCallback = false;
     try {
       const client = requireNextDesk();
       const { data, error } = await client.auth.signInWithOAuth({
@@ -54,7 +120,18 @@ export default function AuthScreen() {
       if (!data.url)
         throw new Error("Die SSO-Anmeldung konnte nicht vorbereitet werden.");
       if (Platform.OS === "web") {
-        window.location.assign(data.url);
+        popupRef.current = webPopup;
+        webPopup?.location.replace(data.url);
+        waitingForWebCallback = true;
+        popupMonitorRef.current = setInterval(() => {
+          if (popupRef.current !== webPopup || !webPopup || !webPopup.closed) {
+            return;
+          }
+          stopPopupMonitor();
+          popupRef.current = null;
+          setPending(null);
+          setMessage("Die SSO-Anmeldung wurde abgebrochen.");
+        }, 500);
         return;
       }
       const result = await WebBrowser.openAuthSessionAsync(
@@ -67,16 +144,17 @@ export default function AuthScreen() {
         // code here; the shared completion helper deduplicates cold-start links.
         await completeNextDeskAuth(result.url);
         setMessage("Anmeldung wird abgeschlossen …");
-        router.replace("/(tabs)");
+        router.replace("/");
       } else if (result.type !== "cancel") {
         setMessage(
           "Die Rückkehr aus dem Anmeldefenster wurde nicht erkannt. Bitte versuchen Sie die SSO-Anmeldung erneut.",
         );
       }
     } catch (error) {
+      webPopup?.close();
       setMessage(nextDeskAuthFailureMessage(nextDeskAuthFailureCode(error)));
     } finally {
-      setPending(null);
+      if (!waitingForWebCallback) setPending(null);
     }
   }
 

@@ -15,6 +15,8 @@ import {
   nextDeskAuthFailureMessage,
 } from "@/lib/nextdesk-client";
 
+const WEB_SSO_CALLBACK_MESSAGE = "nextdesk.sso.callback";
+
 export default function AuthCallbackScreen() {
   const router = useRouter();
   const [failed, setFailed] = useState(false);
@@ -25,6 +27,14 @@ export default function AuthCallbackScreen() {
     // mobile shell. `Platform.OS` can therefore be native-looking there; the
     // browser global is the reliable capability check for an HTTPS callback.
     if (typeof window === "undefined") return;
+    if (window.opener && !window.opener.closed) {
+      window.opener.postMessage(
+        { type: WEB_SSO_CALLBACK_MESSAGE, callbackUrl: window.location.href },
+        window.location.origin,
+      );
+      window.close();
+      return;
+    }
     let active = true;
     void completeNextDeskAuth(window.location.href)
       .then(() => {
