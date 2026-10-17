@@ -11,6 +11,7 @@ import { supabase } from "./lib/supabase";
 
 export type ServiceAssetsProps = {
   tenantId: string;
+  initialTab?: CatalogTab;
 };
 
 type CatalogTab = "services" | "assets" | "problems";
@@ -606,8 +607,11 @@ function problemDraft(problem: Problem): ProblemForm {
   };
 }
 
-export function ServiceAssets({ tenantId }: ServiceAssetsProps) {
-  const [activeTab, setActiveTab] = useState<CatalogTab>("services");
+export function ServiceAssets({
+  tenantId,
+  initialTab = "services",
+}: ServiceAssetsProps) {
+  const [activeTab, setActiveTab] = useState<CatalogTab>(initialTab);
   const [services, setServices] = useState<Service[]>([]);
   const [assets, setAssets] = useState<Asset[]>([]);
   const [problems, setProblems] = useState<Problem[]>([]);
@@ -756,6 +760,10 @@ export function ServiceAssets({ tenantId }: ServiceAssetsProps) {
       requestVersion.current += 1;
     };
   }, [loadCatalog]);
+
+  useEffect(() => {
+    setActiveTab(initialTab);
+  }, [initialTab]);
 
   useEffect(() => {
     setServiceForm(EMPTY_SERVICE_FORM);

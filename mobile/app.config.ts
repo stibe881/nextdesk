@@ -120,6 +120,13 @@ const config: ExpoConfig = {
       },
     ],
     [
+      "expo-camera",
+      {
+        cameraPermission:
+          "nextDesk verwendet die Kamera nur, um den QR-Code eines Assets zu scannen.",
+      },
+    ],
+    [
       "expo-video",
       {
         supportsBackgroundPlayback: true,

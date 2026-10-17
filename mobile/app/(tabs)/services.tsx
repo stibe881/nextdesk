@@ -75,6 +75,22 @@ export default function ServicesScreen() {
             </View>
             <Ionicons color="#AAA9B8" name="chevron-forward" size={19} />
           </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => router.push("/assets" as never)}
+            style={styles.action}
+          >
+            <View style={[styles.actionIcon, { backgroundColor: "#F0EEFF" }]}>
+              <Ionicons color="#4438CA" name="cube-outline" size={20} />
+            </View>
+            <View style={styles.cardCopy}>
+              <Text style={styles.actionTitle}>Assets & Inventar</Text>
+              <Text style={styles.actionText}>
+                Finde Geräte, lies Intune-Informationen und scanne QR-Codes.
+              </Text>
+            </View>
+            <Ionicons color="#AAA9B8" name="chevron-forward" size={19} />
+          </Pressable>
           <View style={styles.infoCard}>
             <Ionicons
               color="#6D62D7"

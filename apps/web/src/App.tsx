@@ -23,6 +23,7 @@ import {
   Settings,
   SlidersHorizontal,
   Ticket,
+  Boxes,
   X,
   type LucideIcon,
 } from "lucide-react";
@@ -56,6 +57,7 @@ import { CustomerOrganizations } from "./customer-organizations";
 import { ServiceReporting } from "./service-reporting";
 import { ServiceAssets } from "./service-assets";
 import { PersonalSettings } from "./personal-settings";
+import { AssetIntuneSettings } from "./asset-intune-settings";
 import {
   OwnerConsoleScreen,
   resolveOwnerAccess,
@@ -74,6 +76,7 @@ type Section =
   | "Übersicht"
   | "Tickets"
   | "Services"
+  | "Assets"
   | "Wissen"
   | "Berichte"
   | "Einstellungen";
@@ -143,6 +146,7 @@ const sections: readonly { label: Section; Icon: LucideIcon }[] = [
   { label: "Übersicht", Icon: LayoutDashboard },
   { label: "Tickets", Icon: Ticket },
   { label: "Services", Icon: MonitorCog },
+  { label: "Assets", Icon: Boxes },
   { label: "Wissen", Icon: BookOpen },
   { label: "Berichte", Icon: ChartNoAxesCombined },
 ];
@@ -1114,6 +1118,7 @@ export function App() {
     setTicketActionStatus("");
     if (
       section === "Services" ||
+      section === "Assets" ||
       section === "Wissen" ||
       section === "Berichte" ||
       section === "Einstellungen"
@@ -1849,6 +1854,11 @@ export function App() {
           </>
         ) : section === "Wissen" && activeTenant ? (
           <KnowledgeBase tenantId={activeTenant.id} />
+        ) : section === "Assets" && activeTenant ? (
+          <>
+            <AssetIntuneSettings tenantId={activeTenant.id} />
+            <ServiceAssets initialTab="assets" tenantId={activeTenant.id} />
+          </>
         ) : section === "Services" && activeTenant ? (
           <>
             <ServiceAssets tenantId={activeTenant.id} />

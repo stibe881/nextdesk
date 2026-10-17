@@ -7016,3 +7016,104 @@ body:has(.ticket-detail) {
     gap: 0.75rem;
   }
 }
+
+/* Asset integration: configuration remains compact and separated from device data. */
+.asset-intune-settings {
+  display: grid;
+  gap: 18px;
+  margin-bottom: 18px;
+  border-color: #d9d4ff;
+  background: linear-gradient(135deg, #ffffff, #f7f6ff);
+}
+
+.asset-intune-settings__heading {
+  align-items: flex-start;
+}
+
+.asset-intune-settings__heading > svg {
+  flex: 0 0 auto;
+  color: var(--primary);
+}
+
+.asset-intune-settings__heading h2 {
+  margin: 3px 0 6px;
+}
+
+.asset-intune-settings__heading p {
+  max-width: 68ch;
+  margin: 0;
+  color: var(--muted);
+}
+
+.asset-intune-settings__form {
+  display: grid;
+  max-width: 720px;
+  gap: 12px;
+}
+
+.asset-intune-settings__form > label:first-child {
+  display: grid;
+  gap: 6px;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.asset-intune-settings__check {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  color: var(--text);
+  font-size: 14px;
+}
+
+.asset-intune-settings__check input {
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+
+.asset-intune-settings__status {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  border-radius: 10px;
+  padding: 11px 12px;
+  background: var(--info-soft);
+  color: var(--info);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.asset-intune-settings__status svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+}
+
+.asset-intune-settings__message {
+  margin: 0;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.asset-intune-settings__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+}
+
+.asset-intune-settings__actions button:last-child {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+@media (max-width: 620px) {
+  .asset-intune-settings {
+    padding: 16px;
+  }
+
+  .asset-intune-settings__actions button {
+    width: 100%;
+    justify-content: center;
+  }
+}
