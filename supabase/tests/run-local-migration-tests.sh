@@ -148,18 +148,22 @@ insert into public.ticket_categories (id, tenant_id, department_id, parent_id, n
 
 insert into public.roles (id, tenant_id, name, scope) values
   ('15000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000001', 'Requester', 'tenant'),
-  ('16000000-0000-4000-8000-000000000002', '10000000-0000-4000-8000-000000000001', 'ICT agent', 'department');
+  ('16000000-0000-4000-8000-000000000002', '10000000-0000-4000-8000-000000000001', 'ICT agent', 'department'),
+  ('16500000-0000-4000-8000-000000000002', '10000000-0000-4000-8000-000000000001', 'Tenant admin', 'tenant');
 insert into public.role_permissions (role_id, permission_code) values
   ('15000000-0000-4000-8000-000000000001', 'ticket.read.own'),
   ('15000000-0000-4000-8000-000000000001', 'ticket.manage'),
   ('16000000-0000-4000-8000-000000000002', 'ticket.read.department'),
   ('16000000-0000-4000-8000-000000000002', 'ticket.internal_notes.read'),
   ('16000000-0000-4000-8000-000000000002', 'ticket.update'),
-  ('16000000-0000-4000-8000-000000000002', 'ticket.close');
+  ('16000000-0000-4000-8000-000000000002', 'ticket.close'),
+  ('16500000-0000-4000-8000-000000000002', 'tenant.settings.manage');
 insert into public.user_role_assignments (tenant_id, user_id, role_id) values
   ('10000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000001', '15000000-0000-4000-8000-000000000001');
 insert into public.user_role_assignments (tenant_id, user_id, role_id, department_id) values
   ('10000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000002', '16000000-0000-4000-8000-000000000002', '11000000-0000-4000-8000-000000000001');
+insert into public.user_role_assignments (tenant_id, user_id, role_id) values
+  ('10000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000002', '16500000-0000-4000-8000-000000000002');
 
 insert into public.tickets (id, tenant_id, department_id, ticket_number, subject, description, status_id, priority_id, requester_id) values
   ('17000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000001', '11000000-0000-4000-8000-000000000001', 'ICT-2026-000001', 'ICT test', 'Visible for ICT', '13000000-0000-4000-8000-000000000001', '14000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000001'),
@@ -227,6 +231,65 @@ $$;
 rollback;
 insert into public.ticket_comments (ticket_id, author_id, body) values
   ('17000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000002', 'Internal ICT note');
+
+-- Custom field definitions and values are only changeable by privileged service
+-- commands. The command binds both definition and ticket to Tenant A and the
+-- ticket's own department before accepting a typed value.
+begin;
+set local role service_role;
+do $$
+declare
+  v_definition jsonb;
+  v_changed integer;
+begin
+  select public.upsert_ticket_custom_field_definition(
+    '00000000-0000-4000-8000-000000000002',
+    '10000000-0000-4000-8000-000000000001',
+    null,
+    'asset_location',
+    'Gerätestandort',
+    'select',
+    false,
+    '["Büro", "Homeoffice"]'::jsonb
+  ) into v_definition;
+  if v_definition->>'fieldKey' <> 'asset_location' then
+    raise exception 'Custom field definition was not created';
+  end if;
+
+  select public.apply_ticket_custom_field_values(
+    '00000000-0000-4000-8000-000000000002',
+    '10000000-0000-4000-8000-000000000001',
+    '17000000-0000-4000-8000-000000000001',
+    jsonb_build_array(jsonb_build_object('definitionId', v_definition->>'id', 'value', 'Homeoffice'))
+  ) into v_changed;
+  if v_changed <> 1 then
+    raise exception 'Custom field value was not applied';
+  end if;
+
+  begin
+    perform public.apply_ticket_custom_field_values(
+      '00000000-0000-4000-8000-000000000002',
+      '20000000-0000-4000-8000-000000000002',
+      '17000000-0000-4000-8000-000000000001',
+      jsonb_build_array(jsonb_build_object('definitionId', v_definition->>'id', 'value', 'Büro'))
+    );
+    raise exception 'Cross-tenant custom field update was accepted';
+  exception when no_data_found then
+    null;
+  end;
+end;
+$$;
+reset role;
+do $$
+begin
+  if has_table_privilege('authenticated', 'public.ticket_custom_field_definitions', 'select')
+    or has_table_privilege('authenticated', 'public.ticket_custom_field_values', 'insert') then
+    raise exception 'Authenticated users must not directly access custom field tables';
+  end if;
+end;
+$$;
+rollback;
+
 insert into public.saved_ticket_views (tenant_id, owner_id, name, visibility, filters) values
   ('10000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000001', 'Privat A', 'private', '{"query":"intern","queue":"alle","ticketScope":"all"}'),
   ('10000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000002', 'Mandant A', 'tenant', '{"query":"","queue":"alle","ticketScope":"open"}'),
@@ -397,7 +460,7 @@ do $$
 declare
   relation_name text;
 begin
-  foreach relation_name in array array['roles', 'role_permissions', 'user_role_assignments', 'ticket_number_sequences', 'ticket_statuses', 'ticket_priorities', 'ticket_categories', 'ticket_presence_sessions', 'ticket_tags', 'ticket_tag_assignments']
+  foreach relation_name in array array['roles', 'role_permissions', 'user_role_assignments', 'ticket_number_sequences', 'ticket_statuses', 'ticket_priorities', 'ticket_categories', 'ticket_presence_sessions', 'ticket_tags', 'ticket_tag_assignments', 'ticket_custom_field_definitions', 'ticket_custom_field_values']
   loop
     if not (select relrowsecurity from pg_class where oid = format('public.%I', relation_name)::regclass) then
       raise exception 'RLS not enabled for %', relation_name;

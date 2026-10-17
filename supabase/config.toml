@@ -45,6 +45,9 @@ verify_jwt = true
 [functions.ticket-category-selection]
 verify_jwt = true
 
+[functions.ticket-custom-fields]
+verify_jwt = true
+
 [functions.ticket-tags]
 verify_jwt = true
 

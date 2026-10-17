@@ -7,6 +7,7 @@ import {
 } from "react";
 import { supabase } from "./lib/supabase";
 import { functionErrorMessage } from "./lib/function-error";
+import { TicketCustomFieldsAdmin } from "./ticket-custom-fields-admin";
 
 export type TenantAdminSettingsProps = {
   tenantId: string;
@@ -28,7 +29,14 @@ type SaveTarget =
   | `revoke-role:${string}`;
 
 type SettingsArea =
-  "overview" | "branding" | "sso" | "features" | "users" | "roles" | "audit";
+  | "overview"
+  | "branding"
+  | "sso"
+  | "features"
+  | "ticket-fields"
+  | "users"
+  | "roles"
+  | "audit";
 
 type TenantSettings = {
   portal_name: string | null;
@@ -1341,6 +1349,7 @@ export function TenantAdminSettings({
                 ["branding", "Design"],
                 ["sso", "Anmeldung"],
                 ["features", "Funktionen"],
+                ["ticket-fields", "Ticketfelder"],
                 ["users", "Personen"],
                 ["roles", "Rollen"],
                 ["audit", "Protokoll"],
@@ -1897,6 +1906,10 @@ export function TenantAdminSettings({
                   </p>
                 )}
               </section>
+            )}
+
+            {activeArea === "ticket-fields" && (
+              <TicketCustomFieldsAdmin tenantId={tenantId} />
             )}
 
             {activeArea === "users" && (

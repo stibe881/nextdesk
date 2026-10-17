@@ -2834,6 +2834,69 @@ body:has(.ticket-detail) {
   font-size: 28px;
 }
 
+.ticket-custom-fields-admin__layout {
+  display: grid;
+  grid-template-columns: minmax(14rem, 0.8fr) minmax(18rem, 1.2fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.ticket-custom-fields-admin__list {
+  display: grid;
+  gap: 8px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ticket-custom-fields-admin__list li {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+}
+
+.ticket-custom-fields-admin__definition {
+  display: grid;
+  flex: 1;
+  gap: 2px;
+  min-height: 56px;
+  padding: 9px 11px;
+  text-align: left;
+}
+
+.ticket-custom-fields-admin__definition span {
+  color: var(--ink);
+}
+
+.ticket-custom-fields-admin__definition small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.ticket-custom-fields-admin__form {
+  display: grid;
+  gap: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 18px;
+  background: var(--surface-subtle);
+}
+
+.ticket-custom-fields-admin__form > label {
+  display: grid;
+  gap: 6px;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+@media (max-width: 760px) {
+  .ticket-custom-fields-admin__layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 .tenant-admin-settings__tabs {
   display: flex;
   gap: 7px;
@@ -6039,6 +6102,55 @@ body:has(.ticket-detail) {
 
 .ticket-category-summary strong {
   color: var(--ink);
+}
+
+.ticket-custom-fields__form,
+.ticket-custom-fields__summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  gap: 10px;
+  margin: 0;
+}
+
+.ticket-custom-fields__form > label,
+.ticket-custom-fields__summary > div {
+  min-width: 0;
+  border: 1px solid #dce1ec;
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: rgb(255 255 255 / 62%);
+}
+
+.ticket-custom-fields__form > label {
+  display: grid;
+  gap: 6px;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.ticket-custom-fields__form > label:has(input[type="checkbox"]) {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+}
+
+.ticket-custom-fields__summary dt {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.ticket-custom-fields__summary dd {
+  margin: 4px 0 0;
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.ticket-custom-fields__form .ticket-detail-actions {
+  grid-column: 1 / -1;
 }
 
 .ticket-category-editor {

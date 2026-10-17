@@ -43,6 +43,7 @@ const expectedFiles = [
   "0038_entra_directory_people_sync.sql",
   "0039_ticket_requester_profile_offer.sql",
   "0040_retire_ticket_tags_and_assign_categories.sql",
+  "0041_ticket_custom_fields.sql",
 ];
 
 const availableFiles = await readdir(migrationDirectory);
@@ -364,6 +365,24 @@ const requiredFragments = [
   [
     "0040_retire_ticket_tags_and_assign_categories.sql",
     "ticket.category_changed",
+  ],
+  [
+    "0041_ticket_custom_fields.sql",
+    "create table public.ticket_custom_field_definitions",
+  ],
+  [
+    "0041_ticket_custom_fields.sql",
+    "create table public.ticket_custom_field_values",
+  ],
+  ["0041_ticket_custom_fields.sql", "foreign key (ticket_id, tenant_id)"],
+  ["0041_ticket_custom_fields.sql", "foreign key (definition_id, tenant_id)"],
+  [
+    "0041_ticket_custom_fields.sql",
+    "create or replace function public.apply_ticket_custom_field_values",
+  ],
+  [
+    "0041_ticket_custom_fields.sql",
+    "revoke all on table public.ticket_custom_field_definitions, public.ticket_custom_field_values from anon, authenticated",
   ],
 ];
 

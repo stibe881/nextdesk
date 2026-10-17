@@ -26,6 +26,7 @@ import {
   X,
 } from "lucide-react";
 import { supabase } from "./lib/supabase";
+import { TicketCustomFields } from "./ticket-custom-fields";
 
 type CommentVisibility = "external" | "internal";
 type BillingKind = "internal" | "billable" | "goodwill";
@@ -5714,6 +5715,12 @@ export function TicketDetail({
           </div>
         </dl>
       </section>
+
+      <TicketCustomFields
+        canUpdate={detail.canUpdate}
+        tenantId={tenantId}
+        ticketId={detail.ticket.id}
+      />
 
       <section
         className="ticket-categorization ticket-detail-primary"
