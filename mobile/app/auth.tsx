@@ -5,7 +5,7 @@ import { useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { ScreenContainer } from "@/components/screen-container";
-import { requireNextDesk } from "@/lib/nextdesk-client";
+import { completeNextDeskAuth, requireNextDesk } from "@/lib/nextdesk-client";
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -32,13 +32,8 @@ export default function AuthScreen() {
         redirectTo,
       );
       if (result.type === "success") {
-        const code = new URL(result.url).searchParams.get("code");
-        if (code) {
-          const { error: exchangeError } =
-            await client.auth.exchangeCodeForSession(code);
-          if (exchangeError) throw exchangeError;
-          router.replace("/");
-        }
+        await completeNextDeskAuth(result.url);
+        router.replace("/");
       }
     } catch {
       setMessage(

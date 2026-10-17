@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 
 import { ScreenContainer } from "@/components/screen-container";
-import { requireNextDesk } from "@/lib/nextdesk-client";
+import { completeNextDeskAuth } from "@/lib/nextdesk-client";
 
 export default function AuthCallbackScreen() {
   const url = Linking.useURL();
@@ -15,12 +15,7 @@ export default function AuthCallbackScreen() {
       try {
         const callbackUrl = url ?? (await Linking.getInitialURL());
         if (!callbackUrl) throw new Error("Keine Anmeldeantwort erhalten.");
-        const code = new URL(callbackUrl).searchParams.get("code");
-        if (!code)
-          throw new Error("Der Anmeldelink ist ungültig oder abgelaufen.");
-        const { error } =
-          await requireNextDesk().auth.exchangeCodeForSession(code);
-        if (error) throw error;
+        await completeNextDeskAuth(callbackUrl);
         router.replace("/");
       } catch {
         setMessage(

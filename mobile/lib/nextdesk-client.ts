@@ -61,6 +61,38 @@ export function requireNextDesk(): SupabaseClient {
   return nextDesk;
 }
 
+/** Completes either the PKCE callback used by SSO or the token fragment used by magic links. */
+export async function completeNextDeskAuth(callbackUrl: string): Promise<void> {
+  const callback = new URL(callbackUrl);
+  const fragment = new URLSearchParams(callback.hash.replace(/^#/, ""));
+  const code = callback.searchParams.get("code");
+  const providerError =
+    callback.searchParams.get("error_description") ??
+    callback.searchParams.get("error") ??
+    fragment.get("error_description") ??
+    fragment.get("error");
+  if (providerError) throw new Error("Die Anmeldung wurde nicht bestätigt.");
+
+  if (code) {
+    const { error } = await requireNextDesk().auth.exchangeCodeForSession(code);
+    if (error) throw error;
+    return;
+  }
+
+  const accessToken =
+    callback.searchParams.get("access_token") ?? fragment.get("access_token");
+  const refreshToken =
+    callback.searchParams.get("refresh_token") ?? fragment.get("refresh_token");
+  if (!accessToken || !refreshToken) {
+    throw new Error("Der Anmeldelink ist ungültig oder abgelaufen.");
+  }
+  const { error } = await requireNextDesk().auth.setSession({
+    access_token: accessToken,
+    refresh_token: refreshToken,
+  });
+  if (error) throw error;
+}
+
 export type MobileTenant = {
   id: string;
   name: string;
