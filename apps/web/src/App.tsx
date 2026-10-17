@@ -1348,9 +1348,6 @@ export function App() {
   if (isSupabaseConfigured && tenantLoading) {
     return <LoadingScreen message="Mandantenkontext wird geladen." />;
   }
-  if (isSupabaseConfigured && session && ownerAccess === "checking") {
-    return <LoadingScreen message="Eigentümerzugang wird geprüft." />;
-  }
   if (
     isSupabaseConfigured &&
     session &&
@@ -1369,7 +1366,12 @@ export function App() {
       </AccessShell>
     );
   }
-  if (isSupabaseConfigured && session && ownerAccess === "error") {
+  if (
+    isSupabaseConfigured &&
+    session &&
+    ownerAccess === "error" &&
+    tenants.length === 0
+  ) {
     return (
       <MembershipErrorScreen
         message={ownerAccessError}
@@ -1385,7 +1387,12 @@ export function App() {
       />
     );
   }
-  if (isSupabaseConfigured && session && tenants.length === 0) {
+  if (
+    isSupabaseConfigured &&
+    session &&
+    tenants.length === 0 &&
+    ownerAccess !== "checking"
+  ) {
     return <NoMembershipScreen onSignOut={() => void signOut()} />;
   }
 

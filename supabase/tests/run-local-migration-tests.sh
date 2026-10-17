@@ -28,7 +28,10 @@ export PGDATABASE="postgres"
 
 psql -v ON_ERROR_STOP=1 <<'SQL'
 create schema auth;
-create table auth.users (id uuid primary key);
+create table auth.users (
+  id uuid primary key,
+  raw_user_meta_data jsonb not null default '{}'::jsonb
+);
 create function auth.uid()
 returns uuid
 language sql
