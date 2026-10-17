@@ -5495,6 +5495,36 @@ body:has(.ticket-detail) {
 }
 
 /* Compact, product-style ticket work cards. */
+.ticket-panel .queue-tabs {
+  margin: 0 20px 6px;
+  border: 1px solid #e4e8f0;
+  border-radius: 12px;
+  padding: 4px;
+  background: #f8fafc;
+}
+
+.ticket-panel .queue-tab {
+  min-height: 34px;
+  border-radius: 9px;
+  background: transparent;
+}
+
+.ticket-panel .queue-tab.selected,
+.ticket-panel .queue-tab.selected:hover:not(:disabled) {
+  border-color: transparent;
+  background: var(--surface);
+  box-shadow: 0 1px 3px rgb(15 23 42 / 8%);
+}
+
+.ticket-panel .list-note {
+  margin: 0;
+  padding: 4px 22px 10px;
+}
+
+.ticket-panel .ticket-list {
+  padding: 4px 18px 18px;
+}
+
 .ticket-list {
   display: grid;
   gap: 10px;
