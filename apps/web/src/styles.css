@@ -5335,7 +5335,7 @@ body:has(.ticket-detail) {
   .nav-item {
     flex: 0 0 auto;
     width: auto;
-    min-height: 40px;
+    min-height: 44px;
     border: 1px solid var(--border);
     border-radius: 999px;
     padding: 8px 12px;
@@ -5347,6 +5347,11 @@ body:has(.ticket-detail) {
   .nav-item.active:hover:not(:disabled) {
     border-color: transparent;
     box-shadow: none;
+  }
+
+  .ticket-detail-fact--editable select {
+    min-height: 40px;
+    font-size: 16px;
   }
 
   .rail-footer {
@@ -5805,6 +5810,13 @@ body:has(.ticket-detail) {
   margin: 0;
 }
 
+.ticket-detail-facts-hint {
+  margin: -4px 0 10px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .ticket-detail-facts-grid > div {
   min-width: 0;
   border: 1px solid rgb(216 220 255 / 82%);
@@ -5827,6 +5839,40 @@ body:has(.ticket-detail) {
   font-weight: 650;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.ticket-detail-facts-grid .ticket-detail-fact--editable {
+  border-color: #bfc7fb;
+  background: #fff;
+  box-shadow: 0 2px 8px rgb(67 56 202 / 6%);
+}
+
+.ticket-detail-fact--editable dd {
+  overflow: visible;
+}
+
+.ticket-detail-fact--editable select {
+  width: 100%;
+  min-height: 34px;
+  margin: 0 -4px -4px;
+  border: 0;
+  border-radius: 6px;
+  padding: 3px 22px 3px 4px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.ticket-detail-fact--editable select:hover:not(:disabled) {
+  background: #f4f5ff;
+}
+
+.ticket-detail-fact--editable select:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
 }
 
 .ticket-detail-primary .ticket-comment-form {
@@ -6028,7 +6074,7 @@ body:has(.ticket-detail) {
 }
 
 .ticket-detail-disclosure .ticket-detail-actions > button {
-  min-height: 38px;
+  min-height: 44px;
 }
 
 @media (max-width: 560px) {

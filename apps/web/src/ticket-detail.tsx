@@ -273,6 +273,7 @@ type TicketRecord = {
   description: string;
   status_id: string;
   priority_id: string;
+  department_id: string;
   assigned_agent_id: string | null;
   assigned_team_id: string | null;
   created_at: string;
@@ -336,6 +337,10 @@ type TicketPresencePerson = {
 /** Deliberately excludes the API ID so only the display name can reach the UI. */
 type TicketRequesterContact = {
   displayName: string;
+};
+
+type TicketDepartment = {
+  name: string;
 };
 
 type TicketChecklistItem = {
@@ -484,6 +489,8 @@ type TicketDetailData = {
   ticket: TicketRecord;
   assignedAgent: TicketAgent | null;
   requesterContact: TicketRequesterContact | null;
+  department: TicketDepartment | null;
+  serviceOffers: string[];
   comments: TicketComment[];
   events: TicketEvent[];
   escalations: TicketEscalation[];
@@ -650,6 +657,7 @@ function isTicketRecord(value: unknown): value is TicketRecord {
     typeof ticket.description === "string" &&
     typeof ticket.status_id === "string" &&
     typeof ticket.priority_id === "string" &&
+    typeof ticket.department_id === "string" &&
     (typeof ticket.assigned_agent_id === "string" ||
       ticket.assigned_agent_id === null) &&
     (typeof ticket.assigned_team_id === "string" ||
@@ -818,6 +826,36 @@ function toTicketRequesterContact(
     return undefined;
   }
   return { displayName: contact.displayName };
+}
+
+function toTicketDepartment(
+  value: unknown,
+): TicketDepartment | null | undefined {
+  if (value === null || value === undefined) return null;
+  const department = asRecord(value);
+  if (
+    !department ||
+    !hasOnlyKeys(department, ["name"]) ||
+    typeof department.name !== "string" ||
+    !department.name.trim() ||
+    department.name.includes("\u0000")
+  ) {
+    return undefined;
+  }
+  return { name: department.name.trim() };
+}
+
+function parseServiceOffers(value: unknown): string[] | undefined {
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) return undefined;
+  const offers = value.map((offer) =>
+    typeof offer === "string" && offer.trim() && !offer.includes("\u0000")
+      ? offer.trim()
+      : null,
+  );
+  return offers.every((offer): offer is string => offer !== null)
+    ? [...new Set(offers)]
+    : undefined;
 }
 
 function isBillingKind(value: unknown): value is BillingKind {
@@ -1385,6 +1423,10 @@ function parseTicketDetail(
       : toTicketRequesterContact(data.requesterContact);
   if (requesterContact === undefined) return undefined;
 
+  const department = toTicketDepartment(data.department);
+  const serviceOffers = parseServiceOffers(data.serviceOffers);
+  if (department === undefined || serviceOffers === undefined) return undefined;
+
   // New capabilities are deployed independently from the web bundle. Missing
   // capability fields from an older active Function are therefore interpreted
   // as unavailable instead of making an otherwise readable historical ticket
@@ -1440,6 +1482,8 @@ function parseTicketDetail(
     ticket: data.ticket,
     assignedAgent,
     requesterContact,
+    department,
+    serviceOffers,
     comments,
     events: valuesOf(data.events, isTicketEvent),
     escalations,
@@ -3088,6 +3132,65 @@ export function TicketDetail({
     [tenantId, ticketId],
   );
 
+  const loadTicketContext = useCallback(
+    async (ticket: TicketRecord) => {
+      if (!supabase) return;
+      const [departmentResult, linksResult] = await Promise.all([
+        supabase
+          .from("departments")
+          .select("name")
+          .eq("tenant_id", tenantId)
+          .eq("id", ticket.department_id)
+          .maybeSingle(),
+        supabase
+          .from("ticket_services")
+          .select("service_id")
+          .eq("tenant_id", tenantId)
+          .eq("ticket_id", ticket.id),
+      ]);
+
+      const serviceIds = (linksResult.data ?? [])
+        .map((link) => link.service_id)
+        .filter(
+          (serviceId): serviceId is string => typeof serviceId === "string",
+        );
+      const servicesResult = serviceIds.length
+        ? await supabase
+            .from("services")
+            .select("name")
+            .eq("tenant_id", tenantId)
+            .eq("active", true)
+            .in("id", serviceIds)
+        : { data: [], error: null };
+      const department =
+        !departmentResult.error &&
+        typeof departmentResult.data?.name === "string" &&
+        departmentResult.data.name.trim()
+          ? { name: departmentResult.data.name.trim() }
+          : null;
+      const serviceOffers = !servicesResult.error
+        ? [
+            ...new Set(
+              (servicesResult.data ?? [])
+                .map((service) => service.name)
+                .filter(
+                  (name): name is string =>
+                    typeof name === "string" && Boolean(name.trim()),
+                )
+                .map((name) => name.trim()),
+            ),
+          ]
+        : [];
+
+      setDetail((current) =>
+        current?.ticket.id === ticket.id
+          ? { ...current, department, serviceOffers }
+          : current,
+      );
+    },
+    [tenantId],
+  );
+
   const loadTicket = useCallback(async () => {
     const requestId = ++requestSequence.current;
     setLoading(true);
@@ -3102,6 +3205,9 @@ export function TicketDetail({
       const nextDetail = parseTicketDetail(response);
       if (nextDetail === undefined) {
         throw new Error("Die Ticketdaten sind unvollständig.");
+      }
+      if (nextDetail === null) {
+        throw new Error("Dieses Ticket ist nicht mehr verfügbar.");
       }
       if (requestId !== requestSequence.current) return false;
 
@@ -3126,6 +3232,7 @@ export function TicketDetail({
       if (!nextDetail?.canUseInternalNotes) {
         setCommentVisibility("external");
       }
+      void loadTicketContext(nextDetail.ticket);
       return true;
     } catch (nextError) {
       if (requestId === requestSequence.current) {
@@ -3139,7 +3246,7 @@ export function TicketDetail({
         setLoading(false);
       }
     }
-  }, [loadAssignableAgents, tenantId, ticketId]);
+  }, [loadAssignableAgents, loadTicketContext, tenantId, ticketId]);
 
   const loadAttachments = useCallback(async () => {
     const requestId = ++attachmentRequestSequence.current;
@@ -3525,6 +3632,10 @@ export function TicketDetail({
         (team) => team.id === detail.ticket.assigned_team_id,
       ) ?? null,
     [detail],
+  );
+  const requesterContext = useMemo(
+    () => detail?.serviceOffers ?? [],
+    [detail?.serviceOffers],
   );
   const openEscalations = useMemo(
     () =>
@@ -3961,6 +4072,7 @@ export function TicketDetail({
 
   function startTicketEdit() {
     if (!detail || !detail.canUpdate || busy) return;
+    setFocusMode(false);
     setIsWorkToolsOpen(true);
     setEditSubject(detail.ticket.subject);
     setEditDescription(detail.ticket.description);
@@ -3985,6 +4097,57 @@ export function TicketDetail({
     setSelectedAgentId(detail.ticket.assigned_agent_id ?? "");
     setIsEditingTicket(false);
     setError("");
+  }
+
+  async function saveOverviewChange(change: {
+    statusKey?: string;
+    priorityKey?: string;
+    assignedTeamId?: string | null;
+    assignedAgentId?: string | null;
+  }) {
+    if (!detail || busy) return;
+
+    const updatesTicket =
+      change.statusKey !== undefined ||
+      change.priorityKey !== undefined ||
+      change.assignedTeamId !== undefined;
+    const updatesAgent = change.assignedAgentId !== undefined;
+    if (!updatesTicket && !updatesAgent) return;
+
+    setPendingAction("update");
+    setError("");
+    try {
+      if (updatesTicket) {
+        await invokeTicketOperation({
+          type: "updateTicket",
+          tenantId,
+          ticketId,
+          ...(change.statusKey !== undefined
+            ? { statusKey: change.statusKey }
+            : {}),
+          ...(change.priorityKey !== undefined
+            ? { priorityKey: change.priorityKey }
+            : {}),
+          ...(change.assignedTeamId !== undefined
+            ? { assignedTeamId: change.assignedTeamId }
+            : {}),
+        });
+      }
+      if (updatesAgent) {
+        await invokeTicketAgentAssignment({
+          type: "assign",
+          tenantId,
+          ticketId,
+          assignedAgentId: change.assignedAgentId ?? null,
+        });
+      }
+      onChanged();
+      await Promise.all([loadTicket(), loadFeedback(), loadQuality()]);
+    } catch (nextError) {
+      setError(errorMessage(nextError));
+    } finally {
+      setPendingAction(null);
+    }
   }
 
   async function saveTicketChanges() {
@@ -4597,29 +4760,7 @@ export function TicketDetail({
       )}
 
       <div className="ticket-detail-summary">
-        <div className="ticket-detail-badges" aria-label="Status und Priorität">
-          <span className="state-badge ticket-detail-status">
-            <span>Status</span>
-            {selectedStatus?.label ?? "Status nicht verfügbar"}
-          </span>
-          <span className="ticket-detail-priority">
-            <span>Priorität</span>
-            {selectedPriority?.label ?? "Priorität nicht verfügbar"}
-          </span>
-        </div>
         <p className="ticket-detail-description">{detail.ticket.description}</p>
-        <dl className="ticket-detail-meta">
-          {detail.requesterContact && (
-            <div>
-              <dt>Anfragende Person</dt>
-              <dd>{detail.requesterContact.displayName}</dd>
-            </div>
-          )}
-          <div>
-            <dt>Erstellt</dt>
-            <dd>{formatDateTime(detail.ticket.created_at)}</dd>
-          </div>
-        </dl>
       </div>
 
       <section
@@ -4631,24 +4772,138 @@ export function TicketDetail({
             <p className="eyebrow">TICKETDETAILS</p>
             <h3 id="ticket-facts-heading">Übersicht</h3>
           </div>
-          <span className="data-caption">Aktueller Stand</span>
+          <span className="data-caption">
+            {detail.canUpdate || detail.canAssign
+              ? "Direkt anpassen"
+              : "Aktueller Stand"}
+          </span>
         </div>
+        {(detail.canUpdate || detail.canAssign) && (
+          <p className="ticket-detail-facts-hint" role="status">
+            Änderungen werden beim Auswählen direkt gespeichert.
+          </p>
+        )}
         <dl className="ticket-detail-facts-grid">
-          <div>
+          <div
+            className={
+              detail.canUpdate ? "ticket-detail-fact--editable" : undefined
+            }
+          >
             <dt>Status</dt>
-            <dd>{selectedStatus?.label ?? "Nicht verfügbar"}</dd>
+            <dd>
+              {detail.canUpdate ? (
+                <select
+                  aria-label="Ticketstatus direkt ändern"
+                  disabled={busy}
+                  onChange={(event) => {
+                    setStatusKey(event.target.value);
+                    void saveOverviewChange({ statusKey: event.target.value });
+                  }}
+                  value={selectedStatus?.key ?? ""}
+                >
+                  {detail.statuses.map((status) => (
+                    <option key={status.id} value={status.key}>
+                      {status.label}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                (selectedStatus?.label ?? "Nicht verfügbar")
+              )}
+            </dd>
           </div>
-          <div>
+          <div
+            className={
+              detail.canUpdate ? "ticket-detail-fact--editable" : undefined
+            }
+          >
             <dt>Priorität</dt>
-            <dd>{selectedPriority?.label ?? "Nicht verfügbar"}</dd>
+            <dd>
+              {detail.canUpdate ? (
+                <select
+                  aria-label="Ticketpriorität direkt ändern"
+                  disabled={busy}
+                  onChange={(event) => {
+                    setPriorityKey(event.target.value);
+                    void saveOverviewChange({
+                      priorityKey: event.target.value,
+                    });
+                  }}
+                  value={selectedPriority?.key ?? ""}
+                >
+                  {detail.priorities.map((priority) => (
+                    <option key={priority.id} value={priority.key}>
+                      {priority.label}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                (selectedPriority?.label ?? "Nicht verfügbar")
+              )}
+            </dd>
           </div>
-          <div>
+          <div
+            className={
+              detail.canAssign ? "ticket-detail-fact--editable" : undefined
+            }
+          >
             <dt>Zugewiesen an</dt>
-            <dd>{detail.assignedAgent?.displayName ?? "Nicht zugewiesen"}</dd>
+            <dd>
+              {detail.canAssign ? (
+                <select
+                  aria-label="Zugewiesene Person direkt ändern"
+                  disabled={busy || assignableAgentsLoading}
+                  onChange={(event) => {
+                    setSelectedAgentId(event.target.value);
+                    void saveOverviewChange({
+                      assignedAgentId: event.target.value || null,
+                    });
+                  }}
+                  value={detail.ticket.assigned_agent_id ?? ""}
+                >
+                  <option value="">Nicht zugewiesen</option>
+                  {visibleAssignableAgents.map((agent) => (
+                    <option key={agent.id} value={agent.id}>
+                      {agent.displayName}
+                      {agent.id === currentUserId ? " (ich)" : ""}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                (detail.assignedAgent?.displayName ?? "Nicht zugewiesen")
+              )}
+            </dd>
           </div>
-          <div>
+          <div
+            className={
+              detail.canAssign ? "ticket-detail-fact--editable" : undefined
+            }
+          >
             <dt>Team</dt>
-            <dd>{selectedTeam?.name ?? "Kein Team"}</dd>
+            <dd>
+              {detail.canAssign ? (
+                <select
+                  aria-label="Zugewiesenes Team direkt ändern"
+                  disabled={busy}
+                  onChange={(event) => {
+                    setSelectedTeamId(event.target.value);
+                    void saveOverviewChange({
+                      assignedTeamId: event.target.value || null,
+                    });
+                  }}
+                  value={detail.ticket.assigned_team_id ?? ""}
+                >
+                  <option value="">Kein Team</option>
+                  {detail.teams.map((team) => (
+                    <option key={team.id} value={team.id}>
+                      {team.name}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                (selectedTeam?.name ?? "Kein Team")
+              )}
+            </dd>
           </div>
           {detail.requesterContact && (
             <div>
@@ -4656,6 +4911,18 @@ export function TicketDetail({
               <dd>{detail.requesterContact.displayName}</dd>
             </div>
           )}
+          <div>
+            <dt>Abteilung / Angebot</dt>
+            <dd>
+              {requesterContext.length > 0
+                ? requesterContext.join(" · ")
+                : "Nicht hinterlegt"}
+            </dd>
+          </div>
+          <div>
+            <dt>Bearbeitende Abteilung</dt>
+            <dd>{detail.department?.name ?? "Nicht hinterlegt"}</dd>
+          </div>
           <div>
             <dt>Erfasst am</dt>
             <dd>{formatDateTime(detail.ticket.created_at)}</dd>
@@ -4766,7 +5033,9 @@ export function TicketDetail({
             ) : (
               <Send aria-hidden="true" size={16} strokeWidth={1.8} />
             )}
-            Kommentar speichern
+            {commentVisibility === "internal"
+              ? "Interne Notiz speichern"
+              : "Externe Antwort senden"}
           </button>
         </form>
 
