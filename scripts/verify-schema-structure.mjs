@@ -40,6 +40,7 @@ const expectedFiles = [
   "0035_comment_author_email_name_fallback.sql",
   "0036_tenant_sso_domain_routing.sql",
   "0037_tenant_people_directory.sql",
+  "0038_entra_directory_people_sync.sql",
 ];
 
 const availableFiles = await readdir(migrationDirectory);
@@ -324,6 +325,18 @@ const requiredFragments = [
   [
     "0037_tenant_people_directory.sql",
     "revoke all on table public.tenant_member_directory from anon, authenticated",
+  ],
+  [
+    "0038_entra_directory_people_sync.sql",
+    "create table public.tenant_entra_directory_people",
+  ],
+  [
+    "0038_entra_directory_people_sync.sql",
+    "check (not agent_requested or agent_department_id is not null)",
+  ],
+  [
+    "0038_entra_directory_people_sync.sql",
+    "revoke all on table public.tenant_entra_directory_people from public, anon, authenticated",
   ],
 ];
 

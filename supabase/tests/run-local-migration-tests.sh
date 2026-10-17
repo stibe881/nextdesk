@@ -177,6 +177,23 @@ insert into public.saved_ticket_views (tenant_id, owner_id, name, visibility, fi
 insert into public.tenant_member_directory (tenant_id, user_id, department_id, job_title, offer) values
   ('10000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000002', '11000000-0000-4000-8000-000000000001', 'Support Engineer', 'Arbeitsplatz');
 
+insert into public.tenant_entra_directory_sync_configurations (tenant_id, entra_tenant_id, enabled) values
+  ('10000000-0000-4000-8000-000000000001', 'b47990ca-e841-4d86-9517-82f60623ed26', true);
+insert into public.tenant_entra_directory_people (
+  tenant_id, entra_object_id, email, display_name, job_title, source_department_name,
+  local_user_id, agent_requested, agent_department_id
+) values (
+  '10000000-0000-4000-8000-000000000001',
+  '30000000-0000-4000-8000-000000000001',
+  'neue.person@beispiel-a.ch',
+  'Neue Person',
+  'Mitarbeiterin',
+  'ICT',
+  '00000000-0000-4000-8000-000000000001',
+  true,
+  '11000000-0000-4000-8000-000000000001'
+);
+
 do $$
 begin
   if has_table_privilege('authenticated', 'public.tenant_member_directory', 'select')
@@ -192,6 +209,27 @@ begin
       '21000000-0000-4000-8000-000000000003'
     );
     raise exception 'Cross-tenant department assignment was accepted';
+  exception when foreign_key_violation then
+    null;
+  end;
+
+  if has_table_privilege('authenticated', 'public.tenant_entra_directory_people', 'select')
+    or has_table_privilege('authenticated', 'public.tenant_entra_directory_people', 'insert') then
+    raise exception 'Authenticated users must not access tenant_entra_directory_people directly';
+  end if;
+
+  begin
+    insert into public.tenant_entra_directory_people (
+      tenant_id, entra_object_id, email, display_name, agent_requested, agent_department_id
+    ) values (
+      '10000000-0000-4000-8000-000000000001',
+      '30000000-0000-4000-8000-000000000002',
+      'cross-tenant.agent@beispiel-a.ch',
+      'Cross Tenant Agent',
+      true,
+      '21000000-0000-4000-8000-000000000003'
+    );
+    raise exception 'Cross-tenant Entra agent department assignment was accepted';
   exception when foreign_key_violation then
     null;
   end;
