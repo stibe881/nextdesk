@@ -16,8 +16,10 @@ import { loadCurrentTenant, type MobileTenant } from "@/lib/nextdesk-client";
 import {
   createMobileTicket,
   loadTicketFormOptions,
+  type TicketRequester,
   type TicketFormOptions,
 } from "@/lib/nextdesk-tickets";
+import { RequesterPicker } from "@/components/requester-picker";
 
 export default function NewTicketScreen() {
   const [tenant, setTenant] = useState<MobileTenant | null>(null);
@@ -26,6 +28,7 @@ export default function NewTicketScreen() {
   const [description, setDescription] = useState("");
   const [departmentId, setDepartmentId] = useState("");
   const [priorityKey, setPriorityKey] = useState("");
+  const [requester, setRequester] = useState<TicketRequester | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -39,6 +42,7 @@ export default function NewTicketScreen() {
         setOptions(formOptions);
         setDepartmentId(formOptions.departments[0]?.id ?? "");
         setPriorityKey(formOptions.priorities[0]?.key ?? "");
+        setRequester(formOptions.currentRequester);
       } catch (nextError) {
         setError(
           nextError instanceof Error
@@ -58,6 +62,7 @@ export default function NewTicketScreen() {
       ) ?? null,
     [departmentId, options],
   );
+  const selectedRequester = requester ?? options?.currentRequester ?? null;
 
   async function createTicket() {
     if (!tenant || !options) return;
@@ -75,6 +80,10 @@ export default function NewTicketScreen() {
       setError("Bitte wählen Sie Abteilung und Priorität.");
       return;
     }
+    if (!selectedRequester) {
+      setError("Bitte wählen Sie eine anfragende Person.");
+      return;
+    }
     setSaving(true);
     setError("");
     try {
@@ -82,7 +91,7 @@ export default function NewTicketScreen() {
         tenantId: tenant.id,
         departmentId,
         priorityKey,
-        requesterContactId: options.currentRequester.id,
+        requesterContactId: selectedRequester.id,
         subject: cleanSubject,
         description: cleanDescription,
       });
@@ -137,11 +146,12 @@ export default function NewTicketScreen() {
         ) : options ? (
           <View style={styles.form}>
             <FieldLabel label="ANFRAGENDE PERSON" />
-            <View style={styles.readonlyField}>
-              <Text style={styles.readonlyText}>
-                {options.currentRequester.displayName}
-              </Text>
-            </View>
+            <RequesterPicker
+              defaultRequester={options.currentRequester}
+              onChange={setRequester}
+              tenantId={tenant?.id ?? ""}
+              value={selectedRequester}
+            />
 
             <FieldLabel label="BETREFF" />
             <TextInput
@@ -309,14 +319,6 @@ const styles = StyleSheet.create({
     paddingVertical: 11,
   },
   descriptionInput: { minHeight: 126 },
-  readonlyField: {
-    backgroundColor: "#F0EFFB",
-    borderRadius: 13,
-    minHeight: 48,
-    justifyContent: "center",
-    paddingHorizontal: 13,
-  },
-  readonlyText: { color: "#363653", fontSize: 15, fontWeight: "700" },
   choiceList: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   choice: {
     backgroundColor: "#F7F7FB",

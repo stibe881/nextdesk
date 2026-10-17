@@ -258,6 +258,29 @@ export async function invokeNextDesk<T>(
 ): Promise<T> {
   const client = requireNextDesk();
   const { data, error } = await client.functions.invoke(functionName, { body });
-  if (error) throw error;
+  if (error) {
+    const context =
+      typeof error === "object" && error !== null && "context" in error
+        ? (error as { context?: unknown }).context
+        : undefined;
+    if (context instanceof Response) {
+      const payload = await context
+        .clone()
+        .json()
+        .catch(() => null);
+      const message =
+        typeof payload === "object" &&
+        payload !== null &&
+        "error" in payload &&
+        typeof (payload as { error?: unknown }).error === "object" &&
+        (payload as { error?: unknown }).error !== null &&
+        typeof (payload as { error: { message?: unknown } }).error.message ===
+          "string"
+          ? (payload as { error: { message: string } }).error.message
+          : null;
+      if (message) throw new Error(message);
+    }
+    throw error;
+  }
   return data as T;
 }

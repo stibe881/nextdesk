@@ -19,12 +19,12 @@ export type MobileTicket = {
 
 type Department = { id: string; key: string; name: string; kind: string };
 type Priority = { key: string; label: string; sort_order: number };
-type Requester = { id: string; displayName: string };
+export type TicketRequester = { id: string; displayName: string };
 
 export type TicketFormOptions = {
   departments: Department[];
   priorities: Priority[];
-  currentRequester: Requester;
+  currentRequester: TicketRequester;
 };
 
 export type MobileTicketDetail = {
@@ -35,13 +35,13 @@ export type MobileTicketDetail = {
   requesterName: string | null;
   statusId: string;
   priorityId: string;
-  statusOptions: Array<{
+  statusOptions: {
     id: string;
     key: string;
     label: string;
     is_closed: boolean;
-  }>;
-  priorityOptions: Array<{ id: string; key: string; label: string }>;
+  }[];
+  priorityOptions: { id: string; key: string; label: string }[];
   canUpdate: boolean;
 };
 
@@ -54,6 +54,22 @@ function envelopeData(value: unknown): Record<string, unknown> {
     throw new Error("Die Antwort von nextDesk ist unvollständig.");
   }
   return data as Record<string, unknown>;
+}
+
+function ticketRequester(value: unknown): TicketRequester | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return null;
+  }
+  const record = value as { id?: unknown; displayName?: unknown };
+  if (
+    typeof record.id !== "string" ||
+    typeof record.displayName !== "string" ||
+    !record.id ||
+    !record.displayName.trim()
+  ) {
+    return null;
+  }
+  return { id: record.id, displayName: record.displayName.trim() };
 }
 
 export async function loadMobileDashboard(): Promise<{
@@ -120,18 +136,42 @@ export async function loadTicketFormOptions(
       tenantId,
     }),
   );
+  const currentRequester = ticketRequester(data.currentRequester);
   if (
     !Array.isArray(data.departments) ||
     !Array.isArray(data.priorities) ||
-    !data.currentRequester
+    !currentRequester
   ) {
     throw new Error("Die Angaben für die Ticketerfassung sind unvollständig.");
   }
   return {
     departments: data.departments as Department[],
     priorities: data.priorities as Priority[],
-    currentRequester: data.currentRequester as Requester,
+    currentRequester,
   };
+}
+
+export async function searchTicketRequesters(
+  tenantId: string,
+  query: string,
+): Promise<TicketRequester[]> {
+  const normalizedQuery = query.trim();
+  if (Array.from(normalizedQuery).length < 2) return [];
+
+  const data = envelopeData(
+    await invokeNextDesk<unknown>("ticket-actions", {
+      type: "searchRequesters",
+      tenantId,
+      query: normalizedQuery,
+    }),
+  );
+  if (!Array.isArray(data.requesters)) {
+    throw new Error("Die anfragenden Personen konnten nicht geladen werden.");
+  }
+  return data.requesters.flatMap((requester) => {
+    const parsed = ticketRequester(requester);
+    return parsed ? [parsed] : [];
+  });
 }
 
 export async function createMobileTicket(input: {

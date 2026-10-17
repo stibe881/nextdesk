@@ -11,7 +11,7 @@
   - [ ] Sichere Anmeldung und Sitzungsverwaltung verbinden sich mit der bestehenden nextDesk-Authentifizierung über SSO und Magic Link. Die Azure-Anfrage fordert den `email`-Scope an, der PKCE-Callback wird nur zentral verarbeitet und der Rückweg wird im TestFlight-Build auf einem iPhone verifiziert.
   - [x] Die Startübersicht zeigt RLS-autorisierte Tickets und kompakte persönliche Arbeitsinformationen aus dem echten nextDesk-Mandanten.
   - [x] Die Ticketliste unterstützt Statusfilter und einhändig bedienbare Ticketdetails.
-  - [x] Tickets können direkt in der App mit Betreff, Beschreibung, Abteilung, Priorität und angemeldeter anfragender Person erfasst werden.
+  - [ ] Tickets können direkt in der App mit Betreff, Beschreibung, Abteilung und Priorität erfasst werden. Die angemeldete Person ist vorausgewählt; Personen mit der bestehenden Berechtigung zur Verwaltung anfragender Personen können sie vor dem Speichern über eine Suche ersetzen. Ohne diese Berechtigung bleibt die serverseitige Mandanten- und Rechteprüfung verbindlich.
   - [x] Berechtigte Agenten können Betreff und Beschreibung direkt in der mobilen Ticketdetailansicht bearbeiten.
   - [ ] Mandanten- und Rechtekontext steuern die sichtbare Navigation und Funktionen auch bei mehreren aktiven Mandanten.
 
