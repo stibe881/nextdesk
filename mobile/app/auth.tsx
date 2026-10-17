@@ -53,9 +53,15 @@ export default function AuthScreen() {
           "Die Rückkehr aus dem Anmeldefenster wurde nicht erkannt. Bitte versuchen Sie die SSO-Anmeldung erneut.",
         );
       }
-    } catch {
+    } catch (error) {
+      const rawMessage = error instanceof Error ? error.message : "";
+      const isCallbackIssue = /code verifier|flow state|session/i.test(
+        rawMessage,
+      );
       setMessage(
-        "Die SSO-Anmeldung konnte nicht abgeschlossen werden. Bitte versuchen Sie es erneut.",
+        isCallbackIssue
+          ? "Die Anmelderückkehr konnte nicht sicher gespeichert werden. Bitte schliessen Sie die App vollständig und versuchen Sie es erneut."
+          : "Die SSO-Anmeldung konnte nicht abgeschlossen werden. Bitte versuchen Sie es erneut.",
       );
     } finally {
       setPending(null);

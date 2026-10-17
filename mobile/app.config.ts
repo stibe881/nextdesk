@@ -21,7 +21,10 @@ const bundleId =
       return /^[a-zA-Z]/.test(segment) ? segment : "x" + segment;
     })
     .join(".") || "space.manus.app";
-const schemeFromBundleId = "nextdesk";
+// Use the bundle identifier as the one canonical OAuth callback scheme.  It is
+// unique to the production app and matches the redirect URI registered in
+// Supabase, avoiding a redirect to a different or older development scheme.
+const schemeFromBundleId = "ch.grossict.nextdesk";
 
 const env = {
   // App branding - update these values directly (do not use env vars)

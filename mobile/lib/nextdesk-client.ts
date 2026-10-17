@@ -67,17 +67,29 @@ let pendingAuthCompletion:
   | undefined;
 let lastCompletedCallbackUrl: string | undefined;
 
-export const nextDeskAuthRedirectUrl = "nextdesk://auth/callback";
+/**
+ * This exact address is registered in Supabase Authentication and is handled
+ * by the production iOS bundle.  Keep it aligned with `app.config.ts`.
+ */
+export const nextDeskAuthRedirectUrl = "ch.grossict.nextdesk://auth/callback";
+
+const acceptedAuthCallbackSchemes = new Set([
+  "ch.grossict.nextdesk:",
+  // Existing TestFlight installations used this shorter scheme. Accepting it
+  // here lets a callback that was already opened finish safely during an
+  // in-place update, while all new sign-ins use the canonical address above.
+  "nextdesk:",
+]);
 
 export function isNextDeskAuthCallback(url: string): boolean {
   try {
     const parsed = new URL(url);
     const callbackPath = parsed.pathname.replace(/\/+$/, "");
     return (
-      parsed.protocol === "nextdesk:" &&
-      // `nextdesk://auth/callback` is represented by the native URL parser as
+      acceptedAuthCallbackSchemes.has(parsed.protocol) &&
+      // `scheme://auth/callback` is represented by the native URL parser as
       // host `auth` and path `/callback`. Web/Expo tooling can also emit the
-      // equivalent path-only form `nextdesk:///auth/callback`; accept both.
+      // equivalent path-only form `scheme:///auth/callback`; accept both.
       ((parsed.hostname === "auth" && callbackPath === "/callback") ||
         callbackPath === "/auth/callback")
     );

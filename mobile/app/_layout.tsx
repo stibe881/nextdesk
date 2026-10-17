@@ -1,6 +1,7 @@
 import "@/global.css";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { Stack } from "expo-router";
+import * as Linking from "expo-linking";
+import { Stack, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
@@ -21,6 +22,10 @@ import {
   initManusRuntime,
   subscribeSafeAreaInsets,
 } from "@/lib/_core/manus-runtime";
+import {
+  completeNextDeskAuth,
+  isNextDeskAuthCallback,
+} from "@/lib/nextdesk-client";
 
 const DEFAULT_WEB_INSETS: EdgeInsets = { top: 0, right: 0, bottom: 0, left: 0 };
 const DEFAULT_WEB_FRAME: Rect = { x: 0, y: 0, width: 0, height: 0 };
@@ -28,6 +33,35 @@ const DEFAULT_WEB_FRAME: Rect = { x: 0, y: 0, width: 0, height: 0 };
 export const unstable_settings = {
   anchor: "(tabs)",
 };
+
+function NextDeskAuthDeepLinkHandler() {
+  const router = useRouter();
+
+  useEffect(() => {
+    let active = true;
+    const handleUrl = (url: string | null) => {
+      if (!url || !isNextDeskAuthCallback(url)) return;
+      void completeNextDeskAuth(url)
+        .then(() => {
+          if (active) router.replace("/");
+        })
+        .catch(() => {
+          // The dedicated callback screen presents a recovery message when it
+          // is opened directly. A cancelled browser flow stays on its login UI.
+        });
+    };
+    const subscription = Linking.addEventListener("url", ({ url }) => {
+      handleUrl(url);
+    });
+    void Linking.getInitialURL().then(handleUrl);
+    return () => {
+      active = false;
+      subscription.remove();
+    };
+  }, [router]);
+
+  return null;
+}
 
 export default function RootLayout() {
   const initialInsets = initialWindowMetrics?.insets ?? DEFAULT_WEB_INSETS;
@@ -97,6 +131,7 @@ export default function RootLayout() {
             <Stack.Screen name="auth/callback" />
             <Stack.Screen name="oauth/callback" />
           </Stack>
+          <NextDeskAuthDeepLinkHandler />
           <StatusBar style="auto" />
         </QueryClientProvider>
       </trpc.Provider>
