@@ -46,6 +46,7 @@ export const nextDesk: SupabaseClient | null = isNextDeskConfigured
       auth: {
         autoRefreshToken: true,
         detectSessionInUrl: false,
+        flowType: "pkce",
         persistSession: true,
         storage: authStorage,
       },
@@ -61,36 +62,79 @@ export function requireNextDesk(): SupabaseClient {
   return nextDesk;
 }
 
+let pendingAuthCompletion:
+  | { callbackUrl: string; promise: Promise<void> }
+  | undefined;
+let lastCompletedCallbackUrl: string | undefined;
+
+export const nextDeskAuthRedirectUrl = "nextdesk://auth/callback";
+
+export function isNextDeskAuthCallback(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return (
+      parsed.protocol === "nextdesk:" &&
+      parsed.pathname.replace(/\/+$/, "") === "/auth/callback"
+    );
+  } catch {
+    return false;
+  }
+}
+
 /** Completes either the PKCE callback used by SSO or the token fragment used by magic links. */
 export async function completeNextDeskAuth(callbackUrl: string): Promise<void> {
-  const callback = new URL(callbackUrl);
-  const fragment = new URLSearchParams(callback.hash.replace(/^#/, ""));
-  const code = callback.searchParams.get("code");
-  const providerError =
-    callback.searchParams.get("error_description") ??
-    callback.searchParams.get("error") ??
-    fragment.get("error_description") ??
-    fragment.get("error");
-  if (providerError) throw new Error("Die Anmeldung wurde nicht bestätigt.");
-
-  if (code) {
-    const { error } = await requireNextDesk().auth.exchangeCodeForSession(code);
-    if (error) throw error;
-    return;
+  if (lastCompletedCallbackUrl === callbackUrl) return;
+  if (pendingAuthCompletion?.callbackUrl === callbackUrl) {
+    return pendingAuthCompletion.promise;
   }
 
-  const accessToken =
-    callback.searchParams.get("access_token") ?? fragment.get("access_token");
-  const refreshToken =
-    callback.searchParams.get("refresh_token") ?? fragment.get("refresh_token");
-  if (!accessToken || !refreshToken) {
-    throw new Error("Der Anmeldelink ist ungültig oder abgelaufen.");
+  const promise = (async () => {
+    const callback = new URL(callbackUrl);
+    const fragment = new URLSearchParams(callback.hash.replace(/^#/, ""));
+    const code = callback.searchParams.get("code");
+    const providerError =
+      callback.searchParams.get("error_description") ??
+      callback.searchParams.get("error") ??
+      fragment.get("error_description") ??
+      fragment.get("error");
+    if (providerError) throw new Error("Die Anmeldung wurde nicht bestätigt.");
+
+    if (code) {
+      const { error } =
+        await requireNextDesk().auth.exchangeCodeForSession(code);
+      if (error) throw error;
+    } else {
+      const accessToken =
+        callback.searchParams.get("access_token") ??
+        fragment.get("access_token");
+      const refreshToken =
+        callback.searchParams.get("refresh_token") ??
+        fragment.get("refresh_token");
+      if (!accessToken || !refreshToken) {
+        throw new Error("Der Anmeldelink ist ungültig oder abgelaufen.");
+      }
+      const { error } = await requireNextDesk().auth.setSession({
+        access_token: accessToken,
+        refresh_token: refreshToken,
+      });
+      if (error) throw error;
+    }
+
+    const {
+      data: { session },
+    } = await requireNextDesk().auth.getSession();
+    if (!session) throw new Error("Die Anmeldung wurde nicht gespeichert.");
+    lastCompletedCallbackUrl = callbackUrl;
+  })();
+
+  pendingAuthCompletion = { callbackUrl, promise };
+  try {
+    await promise;
+  } finally {
+    if (pendingAuthCompletion?.promise === promise) {
+      pendingAuthCompletion = undefined;
+    }
   }
-  const { error } = await requireNextDesk().auth.setSession({
-    access_token: accessToken,
-    refresh_token: refreshToken,
-  });
-  if (error) throw error;
 }
 
 export type MobileTenant = {

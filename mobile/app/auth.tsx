@@ -1,11 +1,15 @@
-import * as Linking from "expo-linking";
 import * as WebBrowser from "expo-web-browser";
 import { router } from "expo-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { ScreenContainer } from "@/components/screen-container";
-import { completeNextDeskAuth, requireNextDesk } from "@/lib/nextdesk-client";
+import {
+  completeNextDeskAuth,
+  nextDesk,
+  nextDeskAuthRedirectUrl,
+  requireNextDesk,
+} from "@/lib/nextdesk-client";
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -13,7 +17,17 @@ export default function AuthScreen() {
   const [email, setEmail] = useState("");
   const [message, setMessage] = useState("");
   const [pending, setPending] = useState<"magic" | "sso" | null>(null);
-  const redirectTo = Linking.createURL("auth/callback");
+  const redirectTo = nextDeskAuthRedirectUrl;
+
+  useEffect(() => {
+    if (!nextDesk) return;
+    const {
+      data: { subscription },
+    } = nextDesk.auth.onAuthStateChange((_event, session) => {
+      if (session) router.replace("/");
+    });
+    return () => subscription.unsubscribe();
+  }, []);
 
   async function continueWithSso() {
     setPending("sso");
@@ -34,6 +48,10 @@ export default function AuthScreen() {
       if (result.type === "success") {
         await completeNextDeskAuth(result.url);
         router.replace("/");
+      } else if (result.type !== "cancel") {
+        setMessage(
+          "Die Rückkehr aus dem Anmeldefenster wurde nicht erkannt. Bitte versuchen Sie die SSO-Anmeldung erneut.",
+        );
       }
     } catch {
       setMessage(
