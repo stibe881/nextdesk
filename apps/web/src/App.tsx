@@ -162,7 +162,7 @@ function statusClass(value: string): string {
 }
 
 function displayNameFromEmail(email: string | undefined): string {
-  if (!email) return "Support Team";
+  if (!email) return "Support-Team";
   return (email.split("@")[0] ?? email).replaceAll(/[._-]/g, " ");
 }
 
@@ -533,7 +533,7 @@ function SignInScreen() {
         >
           {status === "sending"
             ? "Link wird vorbereitet …"
-            : "Magic Link senden"}
+            : "Anmeldelink senden"}
         </button>
       </form>
       {message && <p className={`access-message ${status}`}>{message}</p>}
@@ -1750,11 +1750,30 @@ export function App() {
                   <p className="eyebrow">Autorisierte Vorgänge</p>
                   <h2>{ticketScopeLabel[ticketScope]}</h2>
                 </div>
-                <span className="data-caption">
-                  {view.hasMoreTickets
-                    ? `${filteredTickets.length} geladen`
-                    : `${filteredTickets.length} Treffer`}
-                </span>
+                <div className="ticket-list-heading-actions">
+                  <span className="data-caption">
+                    {view.hasMoreTickets
+                      ? `${filteredTickets.length} geladen`
+                      : `${filteredTickets.length} Treffer`}
+                  </span>
+                  {ticketScope !== "all" && (
+                    <button
+                      className="text-button"
+                      onClick={() => {
+                        clearTicketFilters();
+                        setSection("Übersicht");
+                      }}
+                      type="button"
+                    >
+                      <ArrowLeft
+                        aria-hidden="true"
+                        size={16}
+                        strokeWidth={1.8}
+                      />
+                      Zur Übersicht
+                    </button>
+                  )}
+                </div>
               </div>
               {activeTenant && isSupabaseConfigured && (
                 <SavedTicketViews

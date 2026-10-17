@@ -1202,6 +1202,19 @@ pre {
   font-weight: 650;
 }
 
+.ticket-list-heading-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px 14px;
+}
+
+.ticket-list-heading-actions .data-caption {
+  margin: 0;
+  padding: 0;
+}
+
 .text-button {
   display: inline-flex;
   align-items: center;

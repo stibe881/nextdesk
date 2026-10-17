@@ -99,7 +99,7 @@ const EMPTY_DRAFT: ArticleDraft = {
 
 const statusLabels: Record<ArticleStatus, string> = {
   draft: "Entwurf",
-  review: "Review",
+  review: "Prüfung",
   published: "Veröffentlicht",
   archived: "Archiviert",
 };
@@ -1050,7 +1050,7 @@ export function KnowledgeBase({ tenantId }: KnowledgeBaseProps) {
               Status
               <select disabled value={draft.status}>
                 <option value="draft">Entwurf</option>
-                <option value="review">Review</option>
+                <option value="review">Prüfung</option>
                 <option value="published">Veröffentlicht</option>
               </select>
             </label>

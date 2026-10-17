@@ -111,19 +111,19 @@ export const serviceHealth: readonly ServiceHealth[] = [
   {
     availability: "99.99%",
     detail: "Entra / SSO",
-    name: "Identity & Access",
+    name: "Identität & Zugriffe",
     state: "stabil",
   },
   {
     availability: "99.96%",
-    detail: "Client Services",
-    name: "Workplace",
+    detail: "Client-Dienste",
+    name: "Arbeitsplatz",
     state: "stabil",
   },
   {
     availability: "99.82%",
-    detail: "Backup & Hosting",
-    name: "Core Infrastructure",
+    detail: "Sicherung & Hosting",
+    name: "Kerninfrastruktur",
     state: "beobachten",
   },
 ];

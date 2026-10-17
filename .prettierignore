@@ -1,2 +1,4 @@
 # SQL-Migrationen werden durch PostgreSQL-Integrationstests validiert; Prettier enthält keinen SQL-Parser.
 supabase/migrations/**/*.sql
+# Die Expo-App verwendet ihre eigene, getestete Projektformatierung.
+mobile/**
