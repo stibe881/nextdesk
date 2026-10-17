@@ -174,6 +174,30 @@ insert into public.saved_ticket_views (tenant_id, owner_id, name, visibility, fi
   ('10000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000002', 'Mandant A', 'tenant', '{"query":"","queue":"alle","ticketScope":"open"}'),
   ('20000000-0000-4000-8000-000000000002', '00000000-0000-4000-8000-000000000004', 'Mandant B', 'tenant', '{"query":"","queue":"alle","ticketScope":"closed"}');
 
+insert into public.tenant_member_directory (tenant_id, user_id, department_id, job_title, offer) values
+  ('10000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000002', '11000000-0000-4000-8000-000000000001', 'Support Engineer', 'Arbeitsplatz');
+
+do $$
+begin
+  if has_table_privilege('authenticated', 'public.tenant_member_directory', 'select')
+    or has_table_privilege('authenticated', 'public.tenant_member_directory', 'insert') then
+    raise exception 'Authenticated users must not access tenant_member_directory directly';
+  end if;
+
+  begin
+    insert into public.tenant_member_directory (tenant_id, user_id, department_id)
+    values (
+      '10000000-0000-4000-8000-000000000001',
+      '00000000-0000-4000-8000-000000000001',
+      '21000000-0000-4000-8000-000000000003'
+    );
+    raise exception 'Cross-tenant department assignment was accepted';
+  exception when foreign_key_violation then
+    null;
+  end;
+end;
+$$;
+
 -- The batch operation is executable only by the Edge Function service role. It
 -- is atomic and retains department isolation for the actor supplied by that
 -- function.

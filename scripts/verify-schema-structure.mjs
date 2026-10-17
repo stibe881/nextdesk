@@ -39,6 +39,7 @@ const expectedFiles = [
   "0034_ticket_tags.sql",
   "0035_comment_author_email_name_fallback.sql",
   "0036_tenant_sso_domain_routing.sql",
+  "0037_tenant_people_directory.sql",
 ];
 
 const availableFiles = await readdir(migrationDirectory);
@@ -311,6 +312,18 @@ const requiredFragments = [
   [
     "0036_tenant_sso_domain_routing.sql",
     "create trigger tenant_sso_configurations_sync_domains",
+  ],
+  [
+    "0037_tenant_people_directory.sql",
+    "create table if not exists public.tenant_member_directory",
+  ],
+  [
+    "0037_tenant_people_directory.sql",
+    "foreign key (department_id, tenant_id)",
+  ],
+  [
+    "0037_tenant_people_directory.sql",
+    "revoke all on table public.tenant_member_directory from anon, authenticated",
   ],
 ];
 

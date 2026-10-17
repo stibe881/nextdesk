@@ -3005,6 +3005,112 @@ body:has(.ticket-detail) {
   font-size: 16px;
 }
 
+.tenant-admin-settings__person-form-grid,
+.tenant-admin-settings__person-editor {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.tenant-admin-settings__people-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 28px;
+}
+
+.tenant-admin-settings__people-heading h3,
+.tenant-admin-settings__people-heading p {
+  margin: 0;
+}
+
+.tenant-admin-settings__people-heading p {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.tenant-admin-settings__people-heading input {
+  min-width: min(100%, 260px);
+}
+
+.tenant-admin-settings__agent-toggle {
+  grid-column: 1 / -1;
+  display: flex !important;
+  align-items: center;
+  gap: 10px;
+  min-height: 42px;
+  padding: 10px 12px;
+  border: 1px solid var(--control-border);
+  border-radius: var(--radius);
+  background: var(--surface-muted);
+}
+
+.tenant-admin-settings__agent-toggle input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+}
+
+.tenant-admin-settings__person-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.tenant-admin-settings__person-badges {
+  display: flex !important;
+  flex: 1 1 240px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.tenant-admin-settings__person-badges span {
+  display: inline-flex !important;
+  align-items: center;
+  min-height: 24px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--surface-muted);
+  color: var(--muted) !important;
+  font-size: 12px !important;
+  line-height: 1.25 !important;
+}
+
+.tenant-admin-settings__person-badges span:last-child {
+  background: var(--info-soft);
+  color: var(--primary) !important;
+}
+
+.tenant-admin-settings__person-actions,
+.tenant-admin-settings__form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.tenant-admin-settings__person-list
+  .tenant-admin-settings__person-actions
+  button {
+  margin-top: 2px;
+}
+
+.tenant-admin-settings__person-editor {
+  margin-top: 10px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-muted);
+}
+
+.tenant-admin-settings__person-editor .tenant-admin-settings__form-actions {
+  grid-column: 1 / -1;
+}
+
 .tenant-admin-settings__checkboxes {
   display: grid;
   gap: 8px;
@@ -4659,6 +4765,8 @@ body:has(.ticket-detail) {
   .console-invite-form,
   .tenant-admin-settings__details,
   .tenant-admin-settings__form-grid,
+  .tenant-admin-settings__person-form-grid,
+  .tenant-admin-settings__person-editor,
   .knowledge-base .knowledge-base__form,
   .ticket-templates .ticket-templates__form,
   .sla-management .sla-management__form,
@@ -4668,6 +4776,19 @@ body:has(.ticket-detail) {
 
   .tenant-admin-settings__audit-list li {
     grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .tenant-admin-settings__people-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .tenant-admin-settings__people-heading input {
+    min-width: 0;
+  }
+
+  .tenant-admin-settings__person-badges {
+    justify-content: flex-start;
   }
 
   .tenant-admin-settings__audit-list time {

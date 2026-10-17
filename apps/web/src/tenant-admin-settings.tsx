@@ -19,6 +19,7 @@ type SaveTarget =
   | "branding"
   | "sso"
   | "invite-user"
+  | `person:${string}`
   | `feature:${string}`
   | `remove-user:${string}`
   | `revoke-invitation:${string}`
@@ -114,6 +115,12 @@ type TenantDirectoryMember = {
   displayName: string | null;
   status: string;
   joinedAt: string | null;
+  departmentId: string | null;
+  departmentName: string | null;
+  jobTitle: string | null;
+  offer: string | null;
+  isAgent: boolean;
+  isTenantAdmin: boolean;
 };
 
 type TenantInvitation = {
@@ -122,6 +129,18 @@ type TenantInvitation = {
   status: "sent" | "accepted";
   expires_at: string;
   created_at: string;
+  displayName: string | null;
+  jobTitle: string | null;
+  offer: string | null;
+  departmentId: string | null;
+  departmentName: string | null;
+  isAgent: boolean;
+};
+
+type TenantDepartment = {
+  id: string;
+  name: string;
+  active: boolean;
 };
 
 type SettingsData = {
@@ -135,6 +154,7 @@ type SettingsData = {
 type TenantUserDirectory = {
   members: TenantDirectoryMember[];
   invitations: TenantInvitation[];
+  departments: TenantDepartment[];
 };
 
 type AuditEntry = {
@@ -197,7 +217,8 @@ type TenantAdminRequest =
 
 type TenantUsersRequest =
   | { type: "listUsers"; tenantId: string }
-  | { type: "inviteUser"; tenantId: string; email: string }
+  | ({ type: "inviteUser"; tenantId: string; email: string } & PersonForm)
+  | ({ type: "updatePerson"; tenantId: string; userId: string } & PersonForm)
   | { type: "removeUser"; tenantId: string; userId: string }
   | {
       type: "revokeInvitation";
@@ -262,6 +283,14 @@ type RoleAssignmentForm = {
   roleId: string;
 };
 
+type PersonForm = {
+  displayName: string;
+  jobTitle: string;
+  offer: string;
+  departmentId: string;
+  isAgent: boolean;
+};
+
 const emptyBrandingForm: BrandingForm = {
   portalName: "",
   logoUrl: "",
@@ -288,6 +317,14 @@ const emptyRoleForm: RoleForm = {
 const emptyRoleAssignmentForm: RoleAssignmentForm = {
   userId: "",
   roleId: "",
+};
+
+const emptyPersonForm: PersonForm = {
+  displayName: "",
+  jobTitle: "",
+  offer: "",
+  departmentId: "",
+  isAgent: false,
 };
 
 function messageFromError(error: unknown, fallback: string): string {
@@ -513,6 +550,7 @@ export function TenantAdminSettings({
   const [userDirectory, setUserDirectory] = useState<TenantUserDirectory>({
     members: [],
     invitations: [],
+    departments: [],
   });
   const [roles, setRoles] = useState<TenantRole[]>([]);
   const [permissions, setPermissions] = useState<TenantPermission[]>([]);
@@ -527,6 +565,13 @@ export function TenantAdminSettings({
   const [assignmentPendingRevocation, setAssignmentPendingRevocation] =
     useState<RoleAssignmentWithDetails | null>(null);
   const [invitationEmail, setInvitationEmail] = useState("");
+  const [invitationPersonForm, setInvitationPersonForm] =
+    useState<PersonForm>(emptyPersonForm);
+  const [editingPerson, setEditingPerson] =
+    useState<TenantDirectoryMember | null>(null);
+  const [personEditForm, setPersonEditForm] =
+    useState<PersonForm>(emptyPersonForm);
+  const [personSearch, setPersonSearch] = useState("");
   const [brandingForm, setBrandingForm] =
     useState<BrandingForm>(emptyBrandingForm);
   const [ssoForm, setSsoForm] = useState<SsoForm>(emptySsoForm);
@@ -594,7 +639,7 @@ export function TenantAdminSettings({
       );
     } catch (nextError) {
       setSettings(null);
-      setUserDirectory({ members: [], invitations: [] });
+      setUserDirectory({ members: [], invitations: [], departments: [] });
       setRoles([]);
       setRoleAssignments([]);
       setPermissions([]);
@@ -660,6 +705,19 @@ export function TenantAdminSettings({
       ),
     [userDirectory.invitations],
   );
+  const filteredActiveUsers = useMemo(() => {
+    const term = personSearch.trim().toLocaleLowerCase("de-CH");
+    if (!term) return activeUsers;
+    return activeUsers.filter((person) =>
+      [
+        person.displayName,
+        person.email,
+        person.departmentName,
+        person.jobTitle,
+        person.offer,
+      ].some((value) => value?.toLocaleLowerCase("de-CH").includes(term)),
+    );
+  }, [activeUsers, personSearch]);
   const branding = settings?.tenant_branding ?? null;
   const brandingLogoUrl = branding?.logo_url ?? branding?.logo_path ?? null;
   const ssoConfiguration = settings?.tenant_sso_configurations[0] ?? null;
@@ -727,6 +785,16 @@ export function TenantAdminSettings({
     setSaving(target);
     setError("");
     setSuccess("");
+  }
+
+  function personFormFromMember(member: TenantDirectoryMember): PersonForm {
+    return {
+      displayName: member.displayName ?? "",
+      jobTitle: member.jobTitle ?? "",
+      offer: member.offer ?? "",
+      departmentId: member.departmentId ?? "",
+      isAgent: member.isAgent,
+    };
   }
 
   async function saveBranding(event: FormEvent<HTMLFormElement>) {
@@ -902,6 +970,10 @@ export function TenantAdminSettings({
       setError("Geben Sie eine E-Mail-Adresse für die Einladung ein.");
       return;
     }
+    if (invitationPersonForm.isAgent && !invitationPersonForm.departmentId) {
+      setError("Wählen Sie für einen Agenten eine Abteilung aus.");
+      return;
+    }
 
     beginSave("invite-user");
     try {
@@ -909,8 +981,10 @@ export function TenantAdminSettings({
         type: "inviteUser",
         tenantId,
         email,
+        ...invitationPersonForm,
       });
       setInvitationEmail("");
+      setInvitationPersonForm(emptyPersonForm);
       await loadData();
       setSuccess(`Einladungslink wurde an ${email} versendet.`);
     } catch (nextError) {
@@ -918,6 +992,40 @@ export function TenantAdminSettings({
         messageFromError(
           nextError,
           "Die Einladung konnte nicht versendet werden.",
+        ),
+      );
+    } finally {
+      setSaving(null);
+    }
+  }
+
+  async function savePerson(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!editingPerson) return;
+    if (personEditForm.isAgent && !personEditForm.departmentId) {
+      setError("Wählen Sie für einen Agenten eine Abteilung aus.");
+      return;
+    }
+    const target: SaveTarget = `person:${editingPerson.id}`;
+    beginSave(target);
+    try {
+      await tenantUsersRequest<{ updated: boolean }>({
+        type: "updatePerson",
+        tenantId,
+        userId: editingPerson.id,
+        ...personEditForm,
+      });
+      setEditingPerson(null);
+      setPersonEditForm(emptyPersonForm);
+      await loadData();
+      setSuccess(
+        "Person, Organisationsdaten und Agentenzugang wurden gespeichert.",
+      );
+    } catch (nextError) {
+      setError(
+        messageFromError(
+          nextError,
+          "Die Person konnte nicht aktualisiert werden.",
         ),
       );
     } finally {
@@ -1796,26 +1904,110 @@ export function TenantAdminSettings({
                 className="tenant-admin-settings__section"
                 aria-labelledby="tenant-users-heading"
               >
-                <h2 id="tenant-users-heading">Benutzer*innen</h2>
+                <h2 id="tenant-users-heading">Personen & Agenten</h2>
+                <p>
+                  Ordnen Sie Mitarbeitende einer Abteilung zu, hinterlegen Sie
+                  Angebot und Funktion und bestimmen Sie, wer als Support-Agent
+                  in der Ticketbearbeitung arbeitet.
+                </p>
                 <form
                   className="tenant-admin-settings__form"
                   onSubmit={inviteUser}
                 >
-                  <h3>Benutzer*in einladen</h3>
-                  <label>
-                    E-Mail-Adresse
-                    <input
-                      type="email"
-                      inputMode="email"
-                      autoComplete="email"
-                      value={invitationEmail}
-                      required
-                      disabled={saving !== null}
-                      onChange={(event) =>
-                        setInvitationEmail(event.target.value)
-                      }
-                    />
-                  </label>
+                  <h3>Person einladen</h3>
+                  <div className="tenant-admin-settings__person-form-grid">
+                    <label>
+                      Vor- und Nachname
+                      <input
+                        value={invitationPersonForm.displayName}
+                        required
+                        minLength={2}
+                        disabled={saving !== null}
+                        onChange={(event) =>
+                          setInvitationPersonForm((current) => ({
+                            ...current,
+                            displayName: event.target.value,
+                          }))
+                        }
+                      />
+                    </label>
+                    <label>
+                      E-Mail-Adresse
+                      <input
+                        type="email"
+                        inputMode="email"
+                        autoComplete="email"
+                        value={invitationEmail}
+                        required
+                        disabled={saving !== null}
+                        onChange={(event) =>
+                          setInvitationEmail(event.target.value)
+                        }
+                      />
+                    </label>
+                    <label>
+                      Abteilung
+                      <select
+                        value={invitationPersonForm.departmentId}
+                        disabled={saving !== null}
+                        onChange={(event) =>
+                          setInvitationPersonForm((current) => ({
+                            ...current,
+                            departmentId: event.target.value,
+                          }))
+                        }
+                      >
+                        <option value="">Noch nicht zugeordnet</option>
+                        {userDirectory.departments
+                          .filter((department) => department.active)
+                          .map((department) => (
+                            <option key={department.id} value={department.id}>
+                              {department.name}
+                            </option>
+                          ))}
+                      </select>
+                    </label>
+                    <label>
+                      Angebot
+                      <input
+                        value={invitationPersonForm.offer}
+                        disabled={saving !== null}
+                        onChange={(event) =>
+                          setInvitationPersonForm((current) => ({
+                            ...current,
+                            offer: event.target.value,
+                          }))
+                        }
+                      />
+                    </label>
+                    <label>
+                      Funktion
+                      <input
+                        value={invitationPersonForm.jobTitle}
+                        disabled={saving !== null}
+                        onChange={(event) =>
+                          setInvitationPersonForm((current) => ({
+                            ...current,
+                            jobTitle: event.target.value,
+                          }))
+                        }
+                      />
+                    </label>
+                    <label className="tenant-admin-settings__agent-toggle">
+                      <input
+                        type="checkbox"
+                        checked={invitationPersonForm.isAgent}
+                        disabled={saving !== null}
+                        onChange={(event) =>
+                          setInvitationPersonForm((current) => ({
+                            ...current,
+                            isAgent: event.target.checked,
+                          }))
+                        }
+                      />
+                      <span>Arbeitet als Support-Agent</span>
+                    </label>
+                  </div>
                   <button type="submit" disabled={saving !== null}>
                     {saving === "invite-user"
                       ? "Einladung wird versendet …"
@@ -1823,36 +2015,190 @@ export function TenantAdminSettings({
                   </button>
                 </form>
 
-                <h3>Aktive Benutzer*innen</h3>
-                {activeUsers.length > 0 ? (
+                <div className="tenant-admin-settings__people-heading">
+                  <div>
+                    <h3>Aktive Personen</h3>
+                    <p>{activeUsers.length} aktive Person(en) im Mandanten</p>
+                  </div>
+                  <label>
+                    <span className="tenant-admin-settings__visually-hidden">
+                      Personen suchen
+                    </span>
+                    <input
+                      type="search"
+                      placeholder="Name, E-Mail, Abteilung …"
+                      value={personSearch}
+                      onChange={(event) => setPersonSearch(event.target.value)}
+                    />
+                  </label>
+                </div>
+                {filteredActiveUsers.length > 0 ? (
                   <ul className="tenant-admin-settings__person-list">
-                    {activeUsers.map((member) => {
+                    {filteredActiveUsers.map((member) => {
                       const target: SaveTarget = `remove-user:${member.id}`;
+                      const editTarget: SaveTarget = `person:${member.id}`;
+                      const isEditing = editingPerson?.id === member.id;
                       return (
                         <li key={member.id}>
-                          <strong>
-                            {member.displayName?.trim() || member.email}
-                          </strong>
-                          <span>{member.email}</span>
-                          <span>
-                            Beigetreten:{" "}
-                            {formatDate(member.joinedAt) ?? "Nicht hinterlegt"}
-                          </span>
-                          <button
-                            type="button"
-                            disabled={saving !== null}
-                            onClick={() => void removeUser(member)}
-                          >
-                            {saving === target
-                              ? "Wird entfernt …"
-                              : "Entfernen"}
-                          </button>
+                          <div className="tenant-admin-settings__person-summary">
+                            <div>
+                              <strong>
+                                {member.displayName?.trim() || member.email}
+                              </strong>
+                              <span>{member.email}</span>
+                            </div>
+                            <div className="tenant-admin-settings__person-badges">
+                              {member.departmentName ? (
+                                <span>{member.departmentName}</span>
+                              ) : null}
+                              {member.offer ? (
+                                <span>{member.offer}</span>
+                              ) : null}
+                              {member.jobTitle ? (
+                                <span>{member.jobTitle}</span>
+                              ) : null}
+                              {member.isTenantAdmin ? (
+                                <span>Mandantenadmin</span>
+                              ) : member.isAgent ? (
+                                <span>Support-Agent</span>
+                              ) : (
+                                <span>Anfragende Person</span>
+                              )}
+                            </div>
+                          </div>
+                          <div className="tenant-admin-settings__person-actions">
+                            <button
+                              type="button"
+                              disabled={saving !== null}
+                              onClick={() => {
+                                setEditingPerson(isEditing ? null : member);
+                                setPersonEditForm(personFormFromMember(member));
+                              }}
+                            >
+                              {isEditing
+                                ? "Bearbeitung schliessen"
+                                : "Bearbeiten"}
+                            </button>
+                            <button
+                              type="button"
+                              disabled={saving !== null}
+                              onClick={() => void removeUser(member)}
+                            >
+                              {saving === target
+                                ? "Wird entfernt …"
+                                : "Entfernen"}
+                            </button>
+                          </div>
+                          {isEditing ? (
+                            <form
+                              className="tenant-admin-settings__person-editor"
+                              onSubmit={savePerson}
+                            >
+                              <label>
+                                Vor- und Nachname
+                                <input
+                                  value={personEditForm.displayName}
+                                  minLength={2}
+                                  disabled={saving !== null}
+                                  onChange={(event) =>
+                                    setPersonEditForm((current) => ({
+                                      ...current,
+                                      displayName: event.target.value,
+                                    }))
+                                  }
+                                />
+                              </label>
+                              <label>
+                                Abteilung
+                                <select
+                                  value={personEditForm.departmentId}
+                                  disabled={saving !== null}
+                                  onChange={(event) =>
+                                    setPersonEditForm((current) => ({
+                                      ...current,
+                                      departmentId: event.target.value,
+                                    }))
+                                  }
+                                >
+                                  <option value="">
+                                    Noch nicht zugeordnet
+                                  </option>
+                                  {userDirectory.departments
+                                    .filter((department) => department.active)
+                                    .map((department) => (
+                                      <option
+                                        key={department.id}
+                                        value={department.id}
+                                      >
+                                        {department.name}
+                                      </option>
+                                    ))}
+                                </select>
+                              </label>
+                              <label>
+                                Angebot
+                                <input
+                                  value={personEditForm.offer}
+                                  disabled={saving !== null}
+                                  onChange={(event) =>
+                                    setPersonEditForm((current) => ({
+                                      ...current,
+                                      offer: event.target.value,
+                                    }))
+                                  }
+                                />
+                              </label>
+                              <label>
+                                Funktion
+                                <input
+                                  value={personEditForm.jobTitle}
+                                  disabled={saving !== null}
+                                  onChange={(event) =>
+                                    setPersonEditForm((current) => ({
+                                      ...current,
+                                      jobTitle: event.target.value,
+                                    }))
+                                  }
+                                />
+                              </label>
+                              <label className="tenant-admin-settings__agent-toggle">
+                                <input
+                                  type="checkbox"
+                                  checked={personEditForm.isAgent}
+                                  disabled={
+                                    saving !== null || member.isTenantAdmin
+                                  }
+                                  onChange={(event) =>
+                                    setPersonEditForm((current) => ({
+                                      ...current,
+                                      isAgent: event.target.checked,
+                                    }))
+                                  }
+                                />
+                                <span>
+                                  {member.isTenantAdmin
+                                    ? "Mandantenadministration hat automatisch Agentenzugang"
+                                    : "Arbeitet als Support-Agent"}
+                                </span>
+                              </label>
+                              <div className="tenant-admin-settings__form-actions">
+                                <button
+                                  type="submit"
+                                  disabled={saving !== null}
+                                >
+                                  {saving === editTarget
+                                    ? "Wird gespeichert …"
+                                    : "Person speichern"}
+                                </button>
+                              </div>
+                            </form>
+                          ) : null}
                         </li>
                       );
                     })}
                   </ul>
                 ) : (
-                  <p>Es sind keine aktiven Benutzer*innen vorhanden.</p>
+                  <p>Für diese Suche wurden keine aktiven Personen gefunden.</p>
                 )}
 
                 <h3>Offene Einladungen</h3>
@@ -1862,7 +2208,24 @@ export function TenantAdminSettings({
                       const target: SaveTarget = `revoke-invitation:${invitation.id}`;
                       return (
                         <li key={invitation.id}>
-                          <strong>{invitation.email}</strong>
+                          <strong>
+                            {invitation.displayName?.trim() || invitation.email}
+                          </strong>
+                          <span>{invitation.email}</span>
+                          <span className="tenant-admin-settings__person-badges">
+                            {invitation.departmentName ? (
+                              <span>{invitation.departmentName}</span>
+                            ) : null}
+                            {invitation.offer ? (
+                              <span>{invitation.offer}</span>
+                            ) : null}
+                            {invitation.jobTitle ? (
+                              <span>{invitation.jobTitle}</span>
+                            ) : null}
+                            {invitation.isAgent ? (
+                              <span>Support-Agent</span>
+                            ) : null}
+                          </span>
                           <span>
                             Eingeladen:{" "}
                             {formatDate(invitation.created_at) ??
