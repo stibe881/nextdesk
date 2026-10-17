@@ -129,6 +129,18 @@ export function nextDeskAuthFailureMessage(
  */
 export const nextDeskAuthRedirectUrl = "ch.grossict.nextdesk://auth/callback";
 
+/**
+ * Native Sign-in must return to the registered app scheme. In the browser
+ * preview, however, the callback must stay on the same HTTPS origin so its
+ * PKCE verifier and localStorage session remain available to Supabase.
+ */
+export function getNextDeskAuthRedirectUrl(): string {
+  if (Platform.OS === "web" && typeof window !== "undefined") {
+    return new URL("/auth/callback", window.location.origin).toString();
+  }
+  return nextDeskAuthRedirectUrl;
+}
+
 const acceptedAuthCallbackSchemes = new Set([
   "ch.grossict.nextdesk:",
   // Existing TestFlight installations used this shorter scheme. Accepting it

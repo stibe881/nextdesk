@@ -1,14 +1,21 @@
 import * as WebBrowser from "expo-web-browser";
 import { router, useLocalSearchParams } from "expo-router";
 import { useState } from "react";
-import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import {
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
 
 import { ScreenContainer } from "@/components/screen-container";
 import {
   completeNextDeskAuth,
+  getNextDeskAuthRedirectUrl,
   nextDeskAuthFailureCode,
   nextDeskAuthFailureMessage,
-  nextDeskAuthRedirectUrl,
   requireNextDesk,
 } from "@/lib/nextdesk-client";
 
@@ -19,7 +26,7 @@ export default function AuthScreen() {
   const [email, setEmail] = useState("");
   const [message, setMessage] = useState("");
   const [pending, setPending] = useState<"magic" | "sso" | null>(null);
-  const redirectTo = nextDeskAuthRedirectUrl;
+  const redirectTo = getNextDeskAuthRedirectUrl();
   const displayedMessage =
     message ||
     (pending === null && typeof authError === "string"
@@ -38,12 +45,18 @@ export default function AuthScreen() {
           // Supabase Azure Auth requires this scope to receive an address that
           // can safely identify and link the signed-in person.
           scopes: "email",
+          // Browser preview must redirect back to its HTTPS callback route.
+          // Native iOS still hands the browser result to the app's deep link.
           skipBrowserRedirect: true,
         },
       });
       if (error) throw error;
       if (!data.url)
         throw new Error("Die SSO-Anmeldung konnte nicht vorbereitet werden.");
+      if (Platform.OS === "web") {
+        window.location.assign(data.url);
+        return;
+      }
       const result = await WebBrowser.openAuthSessionAsync(
         data.url,
         redirectTo,

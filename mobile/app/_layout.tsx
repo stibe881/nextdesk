@@ -76,7 +76,10 @@ function NextDeskSessionNavigator() {
     const continueToWorkspace = (hasSession: boolean) => {
       if (!hasSession) return;
       if (topLevelRoute === "auth" || topLevelRoute === "oauth") {
-        router.replace("/(tabs)");
+        // Route groups are an implementation detail on Expo Web. Navigating to
+        // the public root keeps native and browser callbacks on one reliable
+        // post-login destination.
+        router.replace("/");
       }
     };
 
