@@ -26,6 +26,9 @@ type SaveTarget =
   | "assign-role"
   | `revoke-role:${string}`;
 
+type SettingsArea =
+  "overview" | "branding" | "sso" | "features" | "users" | "roles" | "audit";
+
 type TenantSettings = {
   portal_name: string | null;
   support_email: string | null;
@@ -537,6 +540,7 @@ export function TenantAdminSettings({
   const [saving, setSaving] = useState<SaveTarget | null>(null);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [activeArea, setActiveArea] = useState<SettingsArea>("overview");
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -1170,7 +1174,8 @@ export function TenantAdminSettings({
           <p className="tenant-admin-settings__eyebrow">Mandantenverwaltung</p>
           <h1 id="tenant-settings-title">Einstellungen</h1>
           <p className="tenant-admin-settings__tenant-id">
-            Mandanten-ID: {tenantId}
+            Verwalten Sie Zugänge, Erscheinungsbild und Berechtigungen dieses
+            Mandanten.
           </p>
         </div>
         <button
@@ -1206,973 +1211,1061 @@ export function TenantAdminSettings({
       ) : null}
 
       {!loading && settings ? (
-        <div className="tenant-admin-settings__content">
-          <section
-            className="tenant-admin-settings__section"
-            aria-labelledby="tenant-general-heading"
+        <>
+          <nav
+            className="tenant-admin-settings__tabs"
+            aria-label="Einstellungsbereiche"
           >
-            <h2 id="tenant-general-heading">Mandanteneinstellungen</h2>
-            <dl className="tenant-admin-settings__details">
-              <div>
-                <dt>Portalname</dt>
-                <dd>{realValue(settings.tenant_settings?.portal_name)}</dd>
-              </div>
-              <div>
-                <dt>Support-E-Mail</dt>
-                <dd>{realValue(settings.tenant_settings?.support_email)}</dd>
-              </div>
-              <div>
-                <dt>Ticketzugang</dt>
-                <dd>
-                  {settings.tenant_settings?.ticket_access_enabled === null ||
-                  settings.tenant_settings?.ticket_access_enabled === undefined
-                    ? "Nicht hinterlegt"
-                    : settings.tenant_settings.ticket_access_enabled
-                      ? "Aktiviert"
-                      : "Deaktiviert"}
-                </dd>
-              </div>
-              <div>
-                <dt>Externer Ticketzugang</dt>
-                <dd>
-                  {settings.tenant_settings?.allow_external_ticket_access ===
-                    null ||
-                  settings.tenant_settings?.allow_external_ticket_access ===
-                    undefined
-                    ? "Nicht hinterlegt"
-                    : settings.tenant_settings.allow_external_ticket_access
-                      ? "Aktiviert"
-                      : "Deaktiviert"}
-                </dd>
-              </div>
-            </dl>
-          </section>
-
-          <section
-            className="tenant-admin-settings__section"
-            aria-labelledby="tenant-audit-heading"
-          >
-            <div className="tenant-admin-settings__section-heading">
-              <div>
-                <h2 id="tenant-audit-heading">Änderungsprotokoll</h2>
-                <p>
-                  Die letzten sicherheitsrelevanten Änderungen dieses Mandanten.
-                </p>
-              </div>
+            {(
+              [
+                ["overview", "Übersicht"],
+                ["branding", "Design"],
+                ["sso", "Anmeldung"],
+                ["features", "Funktionen"],
+                ["users", "Personen"],
+                ["roles", "Rollen"],
+                ["audit", "Protokoll"],
+              ] as const
+            ).map(([area, label]) => (
               <button
+                key={area}
                 type="button"
-                disabled={auditLoading}
-                onClick={() => void loadAudit()}
+                className={
+                  activeArea === area
+                    ? "tenant-admin-settings__tab tenant-admin-settings__tab--active"
+                    : "tenant-admin-settings__tab"
+                }
+                aria-current={activeArea === area ? "page" : undefined}
+                onClick={() => setActiveArea(area)}
               >
-                {auditLoading ? "Wird geladen …" : "Aktualisieren"}
+                {label}
               </button>
-            </div>
-            {auditError ? (
-              <p
-                className="tenant-admin-settings__notice tenant-admin-settings__notice--error"
-                role="status"
+            ))}
+          </nav>
+          <div className="tenant-admin-settings__content">
+            {activeArea === "overview" && (
+              <section
+                className="tenant-admin-settings__section"
+                aria-labelledby="tenant-general-heading"
               >
-                {auditError}
-              </p>
-            ) : auditLoading ? (
-              <p className="tenant-admin-settings__loading" aria-live="polite">
-                Änderungsprotokoll wird geladen …
-              </p>
-            ) : audit.entries.length > 0 ? (
-              <ol className="tenant-admin-settings__audit-list">
-                {audit.entries.map((entry) => (
-                  <li key={entry.id}>
-                    <span
-                      className={`tenant-admin-settings__audit-severity tenant-admin-settings__audit-severity--${entry.severity}`}
-                    >
-                      {entry.severity}
-                    </span>
-                    <div>
-                      <strong>{entry.action.replaceAll(".", " · ")}</strong>
-                      <span>
-                        {entry.entityType.replaceAll("_", " ")} ·{" "}
-                        {entry.actorName}
-                      </span>
-                    </div>
-                    <time dateTime={entry.occurredAt}>
-                      {formatDate(entry.occurredAt) ?? "Unbekannter Zeitpunkt"}
-                    </time>
-                  </li>
-                ))}
-              </ol>
-            ) : (
-              <p>Für diesen Mandanten liegen noch keine Änderungen vor.</p>
-            )}
-            {audit.truncated ? (
-              <p className="tenant-admin-settings__hint">
-                Es werden die 50 aktuellsten Einträge angezeigt.
-              </p>
-            ) : null}
-          </section>
-
-          <section
-            className="tenant-admin-settings__section"
-            aria-labelledby="tenant-branding-heading"
-          >
-            <div className="tenant-admin-settings__section-heading">
-              <div>
-                <h2 id="tenant-branding-heading">Corporate Design</h2>
-                <p>
-                  Die folgenden Werte stammen aus der aktuellen
-                  Mandantenkonfiguration.
-                </p>
-              </div>
-            </div>
-            {branding ? (
-              <dl className="tenant-admin-settings__details tenant-admin-settings__details--branding">
-                {(
-                  ["primary_color", "secondary_color", "accent_color"] as const
-                ).map((colorKey) => {
-                  const color = branding[colorKey];
-                  if (!color) return null;
-                  const label = {
-                    primary_color: "Primärfarbe",
-                    secondary_color: "Sekundärfarbe",
-                    accent_color: "Akzentfarbe",
-                  }[colorKey];
-                  return (
-                    <div key={colorKey}>
-                      <dt>{label}</dt>
-                      <dd className="tenant-admin-settings__color-value">
-                        {isHexColor(color) ? (
-                          <span
-                            className="tenant-admin-settings__color-swatch"
-                            style={{ backgroundColor: color }}
-                            aria-label={`Farbwert ${color}`}
-                          />
-                        ) : null}
-                        {color}
-                      </dd>
-                    </div>
-                  );
-                })}
-                {brandingLogoUrl ? (
-                  <div className="tenant-admin-settings__logo-url">
-                    <dt>Logo-URL</dt>
+                <h2 id="tenant-general-heading">Mandantenüberblick</h2>
+                <dl className="tenant-admin-settings__details">
+                  <div>
+                    <dt>Portalname</dt>
+                    <dd>{realValue(settings.tenant_settings?.portal_name)}</dd>
+                  </div>
+                  <div>
+                    <dt>Support-E-Mail</dt>
                     <dd>
-                      <a
-                        href={brandingLogoUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        {brandingLogoUrl}
-                      </a>
+                      {realValue(settings.tenant_settings?.support_email)}
                     </dd>
                   </div>
-                ) : null}
-              </dl>
-            ) : (
-              <p>
-                Für diesen Mandanten wurde noch kein Corporate Design
-                zurückgegeben.
-              </p>
+                  <div>
+                    <dt>Ticketzugang</dt>
+                    <dd>
+                      {settings.tenant_settings?.ticket_access_enabled ===
+                        null ||
+                      settings.tenant_settings?.ticket_access_enabled ===
+                        undefined
+                        ? "Nicht hinterlegt"
+                        : settings.tenant_settings.ticket_access_enabled
+                          ? "Aktiviert"
+                          : "Deaktiviert"}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Externer Ticketzugang</dt>
+                    <dd>
+                      {settings.tenant_settings
+                        ?.allow_external_ticket_access === null ||
+                      settings.tenant_settings?.allow_external_ticket_access ===
+                        undefined
+                        ? "Nicht hinterlegt"
+                        : settings.tenant_settings.allow_external_ticket_access
+                          ? "Aktiviert"
+                          : "Deaktiviert"}
+                    </dd>
+                  </div>
+                </dl>
+              </section>
             )}
 
-            <form
-              className="tenant-admin-settings__form"
-              onSubmit={saveBranding}
-            >
-              <h3>Corporate Design bearbeiten</h3>
-              <label>
-                Portalname
-                <input
-                  type="text"
-                  value={brandingForm.portalName}
-                  minLength={2}
-                  maxLength={160}
-                  required
-                  disabled={saving !== null}
-                  onChange={(event) =>
-                    setBrandingForm((current) => ({
-                      ...current,
-                      portalName: event.target.value,
-                    }))
-                  }
-                />
-              </label>
-              <label>
-                Logo-URL
-                <input
-                  type="url"
-                  inputMode="url"
-                  placeholder="https://…"
-                  value={brandingForm.logoUrl}
-                  disabled={saving !== null}
-                  onChange={(event) =>
-                    setBrandingForm((current) => ({
-                      ...current,
-                      logoUrl: event.target.value,
-                    }))
-                  }
-                />
-                <span className="tenant-admin-settings__hint">
-                  Eine leere Logo-URL entfernt ein vorhandenes Logo.
-                </span>
-              </label>
-              <div className="tenant-admin-settings__form-grid">
-                <label>
-                  Primärfarbe
-                  <input
-                    type="text"
-                    inputMode="text"
-                    placeholder="#RRGGBB"
-                    value={brandingForm.primaryColor}
-                    disabled={saving !== null}
-                    onChange={(event) =>
-                      setBrandingForm((current) => ({
-                        ...current,
-                        primaryColor: event.target.value,
-                      }))
-                    }
-                  />
-                </label>
-                <label>
-                  Sekundärfarbe
-                  <input
-                    type="text"
-                    inputMode="text"
-                    placeholder="#RRGGBB"
-                    value={brandingForm.secondaryColor}
-                    disabled={saving !== null}
-                    onChange={(event) =>
-                      setBrandingForm((current) => ({
-                        ...current,
-                        secondaryColor: event.target.value,
-                      }))
-                    }
-                  />
-                </label>
-                <label>
-                  Akzentfarbe
-                  <input
-                    type="text"
-                    inputMode="text"
-                    placeholder="#RRGGBB"
-                    value={brandingForm.accentColor}
-                    disabled={saving !== null}
-                    onChange={(event) =>
-                      setBrandingForm((current) => ({
-                        ...current,
-                        accentColor: event.target.value,
-                      }))
-                    }
-                  />
-                </label>
-              </div>
-              <button type="submit" disabled={saving !== null}>
-                {saving === "branding"
-                  ? "Wird gespeichert …"
-                  : "Corporate Design speichern"}
-              </button>
-            </form>
-          </section>
-
-          <section
-            className="tenant-admin-settings__section"
-            aria-labelledby="tenant-sso-heading"
-          >
-            <h2 id="tenant-sso-heading">SSO-Konfiguration</h2>
-            {ssoConfiguration ? (
-              <dl className="tenant-admin-settings__details">
-                <div>
-                  <dt>Anbieter</dt>
-                  <dd>{ssoConfiguration.provider}</dd>
-                </div>
-                <div>
-                  <dt>Status</dt>
-                  <dd>
-                    {ssoConfiguration.enabled ? "Aktiviert" : "Deaktiviert"}
-                  </dd>
-                </div>
-                {ssoConfiguration.issuer_url ? (
+            {activeArea === "audit" && (
+              <section
+                className="tenant-admin-settings__section"
+                aria-labelledby="tenant-audit-heading"
+              >
+                <div className="tenant-admin-settings__section-heading">
                   <div>
-                    <dt>Issuer-URL</dt>
-                    <dd>{ssoConfiguration.issuer_url}</dd>
+                    <h2 id="tenant-audit-heading">Änderungsprotokoll</h2>
+                    <p>
+                      Die letzten sicherheitsrelevanten Änderungen dieses
+                      Mandanten.
+                    </p>
                   </div>
-                ) : null}
-                {ssoConfiguration.discovery_url ? (
-                  <div>
-                    <dt>Discovery-URL</dt>
-                    <dd>{ssoConfiguration.discovery_url}</dd>
-                  </div>
-                ) : null}
-                {ssoConfiguration.client_id ? (
-                  <div>
-                    <dt>Client-ID</dt>
-                    <dd>{ssoConfiguration.client_id}</dd>
-                  </div>
-                ) : null}
-                <div>
-                  <dt>SSO erzwingen</dt>
-                  <dd>{ssoConfiguration.enforce_sso ? "Ja" : "Nein"}</dd>
-                </div>
-              </dl>
-            ) : (
-              <p>
-                Für diesen Mandanten wurde noch keine SSO-Konfiguration
-                zurückgegeben.
-              </p>
-            )}
-            <p className="tenant-admin-settings__security-note">
-              Geheime Client-Schlüssel werden hier weder angezeigt noch
-              gespeichert. Sie müssen getrennt und sicher serverseitig
-              hinterlegt werden.
-            </p>
-
-            <form
-              className="tenant-admin-settings__form"
-              onSubmit={saveSsoConfiguration}
-            >
-              <h3>SSO-Konfiguration bearbeiten</h3>
-              <div className="tenant-admin-settings__form-grid">
-                <label>
-                  Anbieter
-                  <select
-                    value={ssoForm.provider}
-                    disabled={saving !== null}
-                    onChange={(event) =>
-                      setSsoForm((current) => ({
-                        ...current,
-                        provider: event.target.value as SsoProviderSelection,
-                      }))
-                    }
+                  <button
+                    type="button"
+                    disabled={auditLoading}
+                    onClick={() => void loadAudit()}
                   >
-                    <option value="">Bitte auswählen</option>
-                    <option value="oidc">OpenID Connect (OIDC)</option>
-                    <option value="saml">SAML</option>
-                    <option value="azure_ad">Microsoft Entra ID</option>
-                  </select>
-                </label>
-                <label>
-                  Client-ID
-                  <input
-                    type="text"
-                    value={ssoForm.clientId}
-                    maxLength={512}
-                    disabled={saving !== null}
-                    onChange={(event) =>
-                      setSsoForm((current) => ({
-                        ...current,
-                        clientId: event.target.value,
-                      }))
-                    }
-                  />
-                </label>
-                <label>
-                  Issuer-URL
-                  <input
-                    type="url"
-                    inputMode="url"
-                    placeholder="https://…"
-                    value={ssoForm.issuerUrl}
-                    disabled={saving !== null}
-                    onChange={(event) =>
-                      setSsoForm((current) => ({
-                        ...current,
-                        issuerUrl: event.target.value,
-                      }))
-                    }
-                  />
-                </label>
-                <label>
-                  Discovery-URL
-                  <input
-                    type="url"
-                    inputMode="url"
-                    placeholder="https://…"
-                    value={ssoForm.discoveryUrl}
-                    disabled={saving !== null}
-                    onChange={(event) =>
-                      setSsoForm((current) => ({
-                        ...current,
-                        discoveryUrl: event.target.value,
-                      }))
-                    }
-                  />
-                </label>
-              </div>
-              <label>
-                Zugelassene E-Mail-Domains
-                <textarea
-                  value={ssoForm.allowedEmailDomains}
-                  rows={3}
-                  placeholder="beispiel.ch&#10;beispiel.org"
-                  disabled={saving !== null}
-                  onChange={(event) =>
-                    setSsoForm((current) => ({
-                      ...current,
-                      allowedEmailDomains: event.target.value,
-                    }))
-                  }
-                />
-                <span className="tenant-admin-settings__hint">
-                  Eine Domain pro Zeile oder durch Kommas getrennt.
-                </span>
-              </label>
-              <div className="tenant-admin-settings__checkboxes">
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={ssoForm.enabled}
-                    disabled={saving !== null}
-                    onChange={(event) =>
-                      setSsoForm((current) => ({
-                        ...current,
-                        enabled: event.target.checked,
-                      }))
-                    }
-                  />
-                  SSO aktivieren
-                </label>
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={ssoForm.enforceSso}
-                    disabled={saving !== null || !ssoForm.enabled}
-                    onChange={(event) =>
-                      setSsoForm((current) => ({
-                        ...current,
-                        enforceSso: event.target.checked,
-                      }))
-                    }
-                  />
-                  SSO für die Anmeldung erzwingen
-                </label>
-              </div>
-              <button type="submit" disabled={saving !== null}>
-                {saving === "sso"
-                  ? "Wird gespeichert …"
-                  : "SSO-Konfiguration speichern"}
-              </button>
-            </form>
-          </section>
-
-          <section
-            className="tenant-admin-settings__section"
-            aria-labelledby="tenant-features-heading"
-          >
-            <h2 id="tenant-features-heading">Feature-Schalter</h2>
-            {settings.tenant_feature_flags.length > 0 ? (
-              <ul className="tenant-admin-settings__feature-list">
-                {settings.tenant_feature_flags.map((feature) => {
-                  const catalog = asFeatureCatalogEntry(
-                    feature.feature_catalog,
-                  );
-                  const target: SaveTarget = `feature:${feature.feature_key}`;
-                  return (
-                    <li
-                      key={feature.feature_key}
-                      className="tenant-admin-settings__feature"
-                    >
-                      <div>
-                        <strong>{catalog?.name || feature.feature_key}</strong>
-                        {catalog?.description ? (
-                          <p>{catalog.description}</p>
-                        ) : null}
-                        <span className="tenant-admin-settings__feature-key">
-                          {feature.feature_key}
+                    {auditLoading ? "Wird geladen …" : "Aktualisieren"}
+                  </button>
+                </div>
+                {auditError ? (
+                  <p
+                    className="tenant-admin-settings__notice tenant-admin-settings__notice--error"
+                    role="status"
+                  >
+                    {auditError}
+                  </p>
+                ) : auditLoading ? (
+                  <p
+                    className="tenant-admin-settings__loading"
+                    aria-live="polite"
+                  >
+                    Änderungsprotokoll wird geladen …
+                  </p>
+                ) : audit.entries.length > 0 ? (
+                  <ol className="tenant-admin-settings__audit-list">
+                    {audit.entries.map((entry) => (
+                      <li key={entry.id}>
+                        <span
+                          className={`tenant-admin-settings__audit-severity tenant-admin-settings__audit-severity--${entry.severity}`}
+                        >
+                          {entry.severity}
                         </span>
-                      </div>
-                      <label>
-                        <span className="tenant-admin-settings__visually-hidden">
-                          {feature.enabled ? "Deaktivieren" : "Aktivieren"}:{" "}
-                          {catalog?.name || feature.feature_key}
-                        </span>
-                        <input
-                          type="checkbox"
-                          checked={feature.enabled}
-                          disabled={saving !== null}
-                          onChange={() => void toggleFeature(feature)}
-                        />
-                        <span aria-hidden="true">
-                          {saving === target
-                            ? "Wird gespeichert …"
-                            : feature.enabled
-                              ? "Aktiviert"
-                              : "Deaktiviert"}
-                        </span>
-                      </label>
-                    </li>
-                  );
-                })}
-              </ul>
-            ) : (
-              <p>
-                Für diesen Mandanten wurden keine Feature-Schalter
-                zurückgegeben.
-              </p>
-            )}
-          </section>
-
-          <section
-            className="tenant-admin-settings__section"
-            aria-labelledby="tenant-users-heading"
-          >
-            <h2 id="tenant-users-heading">Benutzer*innen</h2>
-            <form className="tenant-admin-settings__form" onSubmit={inviteUser}>
-              <h3>Benutzer*in einladen</h3>
-              <label>
-                E-Mail-Adresse
-                <input
-                  type="email"
-                  inputMode="email"
-                  autoComplete="email"
-                  value={invitationEmail}
-                  required
-                  disabled={saving !== null}
-                  onChange={(event) => setInvitationEmail(event.target.value)}
-                />
-              </label>
-              <button type="submit" disabled={saving !== null}>
-                {saving === "invite-user"
-                  ? "Einladung wird versendet …"
-                  : "Einladung versenden"}
-              </button>
-            </form>
-
-            <h3>Aktive Benutzer*innen</h3>
-            {activeUsers.length > 0 ? (
-              <ul className="tenant-admin-settings__person-list">
-                {activeUsers.map((member) => {
-                  const target: SaveTarget = `remove-user:${member.id}`;
-                  return (
-                    <li key={member.id}>
-                      <strong>
-                        {member.displayName?.trim() || member.email}
-                      </strong>
-                      <span>{member.email}</span>
-                      <span>
-                        Beigetreten:{" "}
-                        {formatDate(member.joinedAt) ?? "Nicht hinterlegt"}
-                      </span>
-                      <button
-                        type="button"
-                        disabled={saving !== null}
-                        onClick={() => void removeUser(member)}
-                      >
-                        {saving === target ? "Wird entfernt …" : "Entfernen"}
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-            ) : (
-              <p>Es sind keine aktiven Benutzer*innen vorhanden.</p>
-            )}
-
-            <h3>Offene Einladungen</h3>
-            {openInvitations.length > 0 ? (
-              <ul className="tenant-admin-settings__person-list">
-                {openInvitations.map((invitation) => {
-                  const target: SaveTarget = `revoke-invitation:${invitation.id}`;
-                  return (
-                    <li key={invitation.id}>
-                      <strong>{invitation.email}</strong>
-                      <span>
-                        Eingeladen:{" "}
-                        {formatDate(invitation.created_at) ??
-                          "Nicht hinterlegt"}
-                      </span>
-                      <span>
-                        Gültig bis:{" "}
-                        {formatDate(invitation.expires_at) ??
-                          "Nicht hinterlegt"}
-                      </span>
-                      <button
-                        type="button"
-                        disabled={saving !== null}
-                        onClick={() => void revokeInvitation(invitation)}
-                      >
-                        {saving === target ? "Wird widerrufen …" : "Widerrufen"}
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-            ) : null}
-          </section>
-
-          <section
-            className="tenant-admin-settings__section"
-            aria-labelledby="tenant-roles-heading"
-          >
-            <h2 id="tenant-roles-heading">Rollen</h2>
-            <p>
-              Verwalten Sie mandantenweite Rollen und deren Berechtigungen.
-              Systemrollen sind geschützt und können nicht verändert werden.
-            </p>
-            <h3>Rollenübersicht</h3>
-            {roles.length > 0 ? (
-              <ul className="tenant-admin-settings__role-list">
-                {roles.map((role) => {
-                  const target: SaveTarget = `role:${role.id}`;
-                  const scopeLabel =
-                    role.scope === "tenant"
-                      ? "Mandantenweit"
-                      : role.scope === "department"
-                        ? "Abteilungsweit"
-                        : role.scope === "team"
-                          ? "Teamweit"
-                          : role.scope;
-                  return (
-                    <li key={role.id}>
-                      <strong>{role.name}</strong>
-                      <span>{scopeLabel}</span>
-                      <span>{role.active ? "Aktiv" : "Inaktiv"}</span>
-                      {role.isSystem ? <span>Systemrolle</span> : null}
-                      <div>
-                        <strong>Berechtigungen</strong>
-                        {role.permissionCodes.length > 0 ? (
-                          <ul>
-                            {role.permissionCodes.map((permissionCode) => {
-                              const permission =
-                                permissionsByCode.get(permissionCode);
-                              return (
-                                <li key={permissionCode}>
-                                  <code>{permissionCode}</code>
-                                  {permission?.description
-                                    ? `: ${permission.description}`
-                                    : null}
-                                  {permission?.is_sensitive
-                                    ? " (sensibel)"
-                                    : null}
-                                </li>
-                              );
-                            })}
-                          </ul>
-                        ) : (
-                          <p>
-                            Dieser Rolle sind keine Berechtigungen zugeordnet.
-                          </p>
-                        )}
-                      </div>
-                      {!role.isSystem ? (
                         <div>
-                          <button
-                            type="button"
-                            disabled={saving !== null}
-                            onClick={() => startRoleEdit(role)}
-                          >
-                            Bearbeiten
-                          </button>
-                          <button
-                            type="button"
-                            disabled={saving !== null}
-                            onClick={() => void setRoleActivity(role)}
-                          >
-                            {saving === target
-                              ? "Wird gespeichert …"
-                              : role.active
-                                ? "Deaktivieren"
-                                : "Aktivieren"}
-                          </button>
-                        </div>
-                      ) : null}
-                    </li>
-                  );
-                })}
-              </ul>
-            ) : (
-              <p>Für diesen Mandanten wurden keine Rollen zurückgegeben.</p>
-            )}
-
-            <form className="tenant-admin-settings__form" onSubmit={createRole}>
-              <h3>Neue Rolle erstellen</h3>
-              <label>
-                Rollenname
-                <input
-                  type="text"
-                  value={roleForm.name}
-                  minLength={3}
-                  maxLength={120}
-                  required
-                  disabled={saving !== null}
-                  onChange={(event) =>
-                    setRoleForm((current) => ({
-                      ...current,
-                      name: event.target.value,
-                    }))
-                  }
-                />
-              </label>
-              <fieldset disabled={saving !== null}>
-                <legend>Berechtigungen auswählen</legend>
-                {permissions.length > 0 ? (
-                  <ul className="tenant-admin-settings__role-list">
-                    {permissions.map((permission) => (
-                      <li key={permission.code}>
-                        <label>
-                          <input
-                            type="checkbox"
-                            checked={roleForm.permissionCodes.includes(
-                              permission.code,
-                            )}
-                            onChange={() =>
-                              toggleRolePermission(permission.code, setRoleForm)
-                            }
-                          />
+                          <strong>{entry.action.replaceAll(".", " · ")}</strong>
                           <span>
-                            <code>{permission.code}</code>:{" "}
-                            {permission.description}
-                            {permission.is_sensitive ? " (sensibel)" : ""}
+                            {entry.entityType.replaceAll("_", " ")} ·{" "}
+                            {entry.actorName}
                           </span>
-                        </label>
+                        </div>
+                        <time dateTime={entry.occurredAt}>
+                          {formatDate(entry.occurredAt) ??
+                            "Unbekannter Zeitpunkt"}
+                        </time>
                       </li>
                     ))}
-                  </ul>
+                  </ol>
                 ) : (
-                  <p>Es wurden keine Berechtigungen zurückgegeben.</p>
+                  <p>Für diesen Mandanten liegen noch keine Änderungen vor.</p>
                 )}
-              </fieldset>
-              <button type="submit" disabled={saving !== null}>
-                {saving === "role:create"
-                  ? "Rolle wird erstellt …"
-                  : "Rolle erstellen"}
-              </button>
-            </form>
+                {audit.truncated ? (
+                  <p className="tenant-admin-settings__hint">
+                    Es werden die 50 aktuellsten Einträge angezeigt.
+                  </p>
+                ) : null}
+              </section>
+            )}
 
-            {editingRoleId &&
-            roles.some(
-              (role) => role.id === editingRoleId && !role.isSystem,
-            ) ? (
-              <form
-                className="tenant-admin-settings__form"
-                onSubmit={updateRole}
+            {activeArea === "branding" && (
+              <section
+                className="tenant-admin-settings__section"
+                aria-labelledby="tenant-branding-heading"
               >
-                <h3>Rolle bearbeiten</h3>
-                <label>
-                  Rollenname
-                  <input
-                    type="text"
-                    value={roleEditForm.name}
-                    minLength={3}
-                    maxLength={120}
-                    required
-                    disabled={saving !== null}
-                    onChange={(event) =>
-                      setRoleEditForm((current) => ({
-                        ...current,
-                        name: event.target.value,
-                      }))
-                    }
-                  />
-                </label>
-                <fieldset disabled={saving !== null}>
-                  <legend>Berechtigungen auswählen</legend>
-                  {permissions.length > 0 ? (
-                    <ul className="tenant-admin-settings__role-list">
-                      {permissions.map((permission) => (
-                        <li key={permission.code}>
+                <div className="tenant-admin-settings__section-heading">
+                  <div>
+                    <h2 id="tenant-branding-heading">Corporate Design</h2>
+                    <p>
+                      Die folgenden Werte stammen aus der aktuellen
+                      Mandantenkonfiguration.
+                    </p>
+                  </div>
+                </div>
+                {branding ? (
+                  <dl className="tenant-admin-settings__details tenant-admin-settings__details--branding">
+                    {(
+                      [
+                        "primary_color",
+                        "secondary_color",
+                        "accent_color",
+                      ] as const
+                    ).map((colorKey) => {
+                      const color = branding[colorKey];
+                      if (!color) return null;
+                      const label = {
+                        primary_color: "Primärfarbe",
+                        secondary_color: "Sekundärfarbe",
+                        accent_color: "Akzentfarbe",
+                      }[colorKey];
+                      return (
+                        <div key={colorKey}>
+                          <dt>{label}</dt>
+                          <dd className="tenant-admin-settings__color-value">
+                            {isHexColor(color) ? (
+                              <span
+                                className="tenant-admin-settings__color-swatch"
+                                style={{ backgroundColor: color }}
+                                aria-label={`Farbwert ${color}`}
+                              />
+                            ) : null}
+                            {color}
+                          </dd>
+                        </div>
+                      );
+                    })}
+                    {brandingLogoUrl ? (
+                      <div className="tenant-admin-settings__logo-url">
+                        <dt>Logo-URL</dt>
+                        <dd>
+                          <a
+                            href={brandingLogoUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            {brandingLogoUrl}
+                          </a>
+                        </dd>
+                      </div>
+                    ) : null}
+                  </dl>
+                ) : (
+                  <p>
+                    Für diesen Mandanten wurde noch kein Corporate Design
+                    zurückgegeben.
+                  </p>
+                )}
+
+                <form
+                  className="tenant-admin-settings__form"
+                  onSubmit={saveBranding}
+                >
+                  <h3>Corporate Design bearbeiten</h3>
+                  <label>
+                    Portalname
+                    <input
+                      type="text"
+                      value={brandingForm.portalName}
+                      minLength={2}
+                      maxLength={160}
+                      required
+                      disabled={saving !== null}
+                      onChange={(event) =>
+                        setBrandingForm((current) => ({
+                          ...current,
+                          portalName: event.target.value,
+                        }))
+                      }
+                    />
+                  </label>
+                  <label>
+                    Logo-URL
+                    <input
+                      type="url"
+                      inputMode="url"
+                      placeholder="https://…"
+                      value={brandingForm.logoUrl}
+                      disabled={saving !== null}
+                      onChange={(event) =>
+                        setBrandingForm((current) => ({
+                          ...current,
+                          logoUrl: event.target.value,
+                        }))
+                      }
+                    />
+                    <span className="tenant-admin-settings__hint">
+                      Eine leere Logo-URL entfernt ein vorhandenes Logo.
+                    </span>
+                  </label>
+                  <div className="tenant-admin-settings__form-grid">
+                    <label>
+                      Primärfarbe
+                      <input
+                        type="text"
+                        inputMode="text"
+                        placeholder="#RRGGBB"
+                        value={brandingForm.primaryColor}
+                        disabled={saving !== null}
+                        onChange={(event) =>
+                          setBrandingForm((current) => ({
+                            ...current,
+                            primaryColor: event.target.value,
+                          }))
+                        }
+                      />
+                    </label>
+                    <label>
+                      Sekundärfarbe
+                      <input
+                        type="text"
+                        inputMode="text"
+                        placeholder="#RRGGBB"
+                        value={brandingForm.secondaryColor}
+                        disabled={saving !== null}
+                        onChange={(event) =>
+                          setBrandingForm((current) => ({
+                            ...current,
+                            secondaryColor: event.target.value,
+                          }))
+                        }
+                      />
+                    </label>
+                    <label>
+                      Akzentfarbe
+                      <input
+                        type="text"
+                        inputMode="text"
+                        placeholder="#RRGGBB"
+                        value={brandingForm.accentColor}
+                        disabled={saving !== null}
+                        onChange={(event) =>
+                          setBrandingForm((current) => ({
+                            ...current,
+                            accentColor: event.target.value,
+                          }))
+                        }
+                      />
+                    </label>
+                  </div>
+                  <button type="submit" disabled={saving !== null}>
+                    {saving === "branding"
+                      ? "Wird gespeichert …"
+                      : "Corporate Design speichern"}
+                  </button>
+                </form>
+              </section>
+            )}
+
+            {activeArea === "sso" && (
+              <section
+                className="tenant-admin-settings__section"
+                aria-labelledby="tenant-sso-heading"
+              >
+                <h2 id="tenant-sso-heading">SSO-Konfiguration</h2>
+                {ssoConfiguration ? (
+                  <dl className="tenant-admin-settings__details">
+                    <div>
+                      <dt>Anbieter</dt>
+                      <dd>{ssoConfiguration.provider}</dd>
+                    </div>
+                    <div>
+                      <dt>Status</dt>
+                      <dd>
+                        {ssoConfiguration.enabled ? "Aktiviert" : "Deaktiviert"}
+                      </dd>
+                    </div>
+                    {ssoConfiguration.issuer_url ? (
+                      <div>
+                        <dt>Issuer-URL</dt>
+                        <dd>{ssoConfiguration.issuer_url}</dd>
+                      </div>
+                    ) : null}
+                    {ssoConfiguration.discovery_url ? (
+                      <div>
+                        <dt>Discovery-URL</dt>
+                        <dd>{ssoConfiguration.discovery_url}</dd>
+                      </div>
+                    ) : null}
+                    {ssoConfiguration.client_id ? (
+                      <div>
+                        <dt>Client-ID</dt>
+                        <dd>{ssoConfiguration.client_id}</dd>
+                      </div>
+                    ) : null}
+                    <div>
+                      <dt>SSO erzwingen</dt>
+                      <dd>{ssoConfiguration.enforce_sso ? "Ja" : "Nein"}</dd>
+                    </div>
+                  </dl>
+                ) : (
+                  <p>
+                    Für diesen Mandanten wurde noch keine SSO-Konfiguration
+                    zurückgegeben.
+                  </p>
+                )}
+                <p className="tenant-admin-settings__security-note">
+                  Geheime Client-Schlüssel werden hier weder angezeigt noch
+                  gespeichert. Sie müssen getrennt und sicher serverseitig
+                  hinterlegt werden.
+                </p>
+
+                <form
+                  className="tenant-admin-settings__form"
+                  onSubmit={saveSsoConfiguration}
+                >
+                  <h3>SSO-Konfiguration bearbeiten</h3>
+                  <div className="tenant-admin-settings__form-grid">
+                    <label>
+                      Anbieter
+                      <select
+                        value={ssoForm.provider}
+                        disabled={saving !== null}
+                        onChange={(event) =>
+                          setSsoForm((current) => ({
+                            ...current,
+                            provider: event.target
+                              .value as SsoProviderSelection,
+                          }))
+                        }
+                      >
+                        <option value="">Bitte auswählen</option>
+                        <option value="oidc">OpenID Connect (OIDC)</option>
+                        <option value="saml">SAML</option>
+                        <option value="azure_ad">Microsoft Entra ID</option>
+                      </select>
+                    </label>
+                    <label>
+                      Client-ID
+                      <input
+                        type="text"
+                        value={ssoForm.clientId}
+                        maxLength={512}
+                        disabled={saving !== null}
+                        onChange={(event) =>
+                          setSsoForm((current) => ({
+                            ...current,
+                            clientId: event.target.value,
+                          }))
+                        }
+                      />
+                    </label>
+                    <label>
+                      Issuer-URL
+                      <input
+                        type="url"
+                        inputMode="url"
+                        placeholder="https://…"
+                        value={ssoForm.issuerUrl}
+                        disabled={saving !== null}
+                        onChange={(event) =>
+                          setSsoForm((current) => ({
+                            ...current,
+                            issuerUrl: event.target.value,
+                          }))
+                        }
+                      />
+                    </label>
+                    <label>
+                      Discovery-URL
+                      <input
+                        type="url"
+                        inputMode="url"
+                        placeholder="https://…"
+                        value={ssoForm.discoveryUrl}
+                        disabled={saving !== null}
+                        onChange={(event) =>
+                          setSsoForm((current) => ({
+                            ...current,
+                            discoveryUrl: event.target.value,
+                          }))
+                        }
+                      />
+                    </label>
+                  </div>
+                  <label>
+                    Zugelassene E-Mail-Domains
+                    <textarea
+                      value={ssoForm.allowedEmailDomains}
+                      rows={3}
+                      placeholder="beispiel.ch&#10;beispiel.org"
+                      disabled={saving !== null}
+                      onChange={(event) =>
+                        setSsoForm((current) => ({
+                          ...current,
+                          allowedEmailDomains: event.target.value,
+                        }))
+                      }
+                    />
+                    <span className="tenant-admin-settings__hint">
+                      Eine Domain pro Zeile oder durch Kommas getrennt.
+                    </span>
+                  </label>
+                  <div className="tenant-admin-settings__checkboxes">
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={ssoForm.enabled}
+                        disabled={saving !== null}
+                        onChange={(event) =>
+                          setSsoForm((current) => ({
+                            ...current,
+                            enabled: event.target.checked,
+                          }))
+                        }
+                      />
+                      SSO aktivieren
+                    </label>
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={ssoForm.enforceSso}
+                        disabled={saving !== null || !ssoForm.enabled}
+                        onChange={(event) =>
+                          setSsoForm((current) => ({
+                            ...current,
+                            enforceSso: event.target.checked,
+                          }))
+                        }
+                      />
+                      SSO für die Anmeldung erzwingen
+                    </label>
+                  </div>
+                  <button type="submit" disabled={saving !== null}>
+                    {saving === "sso"
+                      ? "Wird gespeichert …"
+                      : "SSO-Konfiguration speichern"}
+                  </button>
+                </form>
+              </section>
+            )}
+
+            {activeArea === "features" && (
+              <section
+                className="tenant-admin-settings__section"
+                aria-labelledby="tenant-features-heading"
+              >
+                <h2 id="tenant-features-heading">Feature-Schalter</h2>
+                {settings.tenant_feature_flags.length > 0 ? (
+                  <ul className="tenant-admin-settings__feature-list">
+                    {settings.tenant_feature_flags.map((feature) => {
+                      const catalog = asFeatureCatalogEntry(
+                        feature.feature_catalog,
+                      );
+                      const target: SaveTarget = `feature:${feature.feature_key}`;
+                      return (
+                        <li
+                          key={feature.feature_key}
+                          className="tenant-admin-settings__feature"
+                        >
+                          <div>
+                            <strong>
+                              {catalog?.name || feature.feature_key}
+                            </strong>
+                            {catalog?.description ? (
+                              <p>{catalog.description}</p>
+                            ) : null}
+                            <span className="tenant-admin-settings__feature-key">
+                              {feature.feature_key}
+                            </span>
+                          </div>
                           <label>
+                            <span className="tenant-admin-settings__visually-hidden">
+                              {feature.enabled ? "Deaktivieren" : "Aktivieren"}:{" "}
+                              {catalog?.name || feature.feature_key}
+                            </span>
                             <input
                               type="checkbox"
-                              checked={roleEditForm.permissionCodes.includes(
-                                permission.code,
-                              )}
-                              onChange={() =>
-                                toggleRolePermission(
-                                  permission.code,
-                                  setRoleEditForm,
-                                )
-                              }
+                              checked={feature.enabled}
+                              disabled={saving !== null}
+                              onChange={() => void toggleFeature(feature)}
                             />
-                            <span>
-                              <code>{permission.code}</code>:{" "}
-                              {permission.description}
-                              {permission.is_sensitive ? " (sensibel)" : ""}
+                            <span aria-hidden="true">
+                              {saving === target
+                                ? "Wird gespeichert …"
+                                : feature.enabled
+                                  ? "Aktiviert"
+                                  : "Deaktiviert"}
                             </span>
                           </label>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                ) : (
+                  <p>
+                    Für diesen Mandanten wurden keine Feature-Schalter
+                    zurückgegeben.
+                  </p>
+                )}
+              </section>
+            )}
+
+            {activeArea === "users" && (
+              <section
+                className="tenant-admin-settings__section"
+                aria-labelledby="tenant-users-heading"
+              >
+                <h2 id="tenant-users-heading">Benutzer*innen</h2>
+                <form
+                  className="tenant-admin-settings__form"
+                  onSubmit={inviteUser}
+                >
+                  <h3>Benutzer*in einladen</h3>
+                  <label>
+                    E-Mail-Adresse
+                    <input
+                      type="email"
+                      inputMode="email"
+                      autoComplete="email"
+                      value={invitationEmail}
+                      required
+                      disabled={saving !== null}
+                      onChange={(event) =>
+                        setInvitationEmail(event.target.value)
+                      }
+                    />
+                  </label>
+                  <button type="submit" disabled={saving !== null}>
+                    {saving === "invite-user"
+                      ? "Einladung wird versendet …"
+                      : "Einladung versenden"}
+                  </button>
+                </form>
+
+                <h3>Aktive Benutzer*innen</h3>
+                {activeUsers.length > 0 ? (
+                  <ul className="tenant-admin-settings__person-list">
+                    {activeUsers.map((member) => {
+                      const target: SaveTarget = `remove-user:${member.id}`;
+                      return (
+                        <li key={member.id}>
+                          <strong>
+                            {member.displayName?.trim() || member.email}
+                          </strong>
+                          <span>{member.email}</span>
+                          <span>
+                            Beigetreten:{" "}
+                            {formatDate(member.joinedAt) ?? "Nicht hinterlegt"}
+                          </span>
+                          <button
+                            type="button"
+                            disabled={saving !== null}
+                            onClick={() => void removeUser(member)}
+                          >
+                            {saving === target
+                              ? "Wird entfernt …"
+                              : "Entfernen"}
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                ) : (
+                  <p>Es sind keine aktiven Benutzer*innen vorhanden.</p>
+                )}
+
+                <h3>Offene Einladungen</h3>
+                {openInvitations.length > 0 ? (
+                  <ul className="tenant-admin-settings__person-list">
+                    {openInvitations.map((invitation) => {
+                      const target: SaveTarget = `revoke-invitation:${invitation.id}`;
+                      return (
+                        <li key={invitation.id}>
+                          <strong>{invitation.email}</strong>
+                          <span>
+                            Eingeladen:{" "}
+                            {formatDate(invitation.created_at) ??
+                              "Nicht hinterlegt"}
+                          </span>
+                          <span>
+                            Gültig bis:{" "}
+                            {formatDate(invitation.expires_at) ??
+                              "Nicht hinterlegt"}
+                          </span>
+                          <button
+                            type="button"
+                            disabled={saving !== null}
+                            onClick={() => void revokeInvitation(invitation)}
+                          >
+                            {saving === target
+                              ? "Wird widerrufen …"
+                              : "Widerrufen"}
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                ) : null}
+              </section>
+            )}
+
+            {activeArea === "roles" && (
+              <section
+                className="tenant-admin-settings__section"
+                aria-labelledby="tenant-roles-heading"
+              >
+                <h2 id="tenant-roles-heading">Rollen</h2>
+                <p>
+                  Verwalten Sie mandantenweite Rollen und deren Berechtigungen.
+                  Systemrollen sind geschützt und können nicht verändert werden.
+                </p>
+                <h3>Rollenübersicht</h3>
+                {roles.length > 0 ? (
+                  <ul className="tenant-admin-settings__role-list">
+                    {roles.map((role) => {
+                      const target: SaveTarget = `role:${role.id}`;
+                      const scopeLabel =
+                        role.scope === "tenant"
+                          ? "Mandantenweit"
+                          : role.scope === "department"
+                            ? "Abteilungsweit"
+                            : role.scope === "team"
+                              ? "Teamweit"
+                              : role.scope;
+                      return (
+                        <li key={role.id}>
+                          <strong>{role.name}</strong>
+                          <span>{scopeLabel}</span>
+                          <span>{role.active ? "Aktiv" : "Inaktiv"}</span>
+                          {role.isSystem ? <span>Systemrolle</span> : null}
+                          <div>
+                            <strong>Berechtigungen</strong>
+                            {role.permissionCodes.length > 0 ? (
+                              <ul>
+                                {role.permissionCodes.map((permissionCode) => {
+                                  const permission =
+                                    permissionsByCode.get(permissionCode);
+                                  return (
+                                    <li key={permissionCode}>
+                                      <code>{permissionCode}</code>
+                                      {permission?.description
+                                        ? `: ${permission.description}`
+                                        : null}
+                                      {permission?.is_sensitive
+                                        ? " (sensibel)"
+                                        : null}
+                                    </li>
+                                  );
+                                })}
+                              </ul>
+                            ) : (
+                              <p>
+                                Dieser Rolle sind keine Berechtigungen
+                                zugeordnet.
+                              </p>
+                            )}
+                          </div>
+                          {!role.isSystem ? (
+                            <div>
+                              <button
+                                type="button"
+                                disabled={saving !== null}
+                                onClick={() => startRoleEdit(role)}
+                              >
+                                Bearbeiten
+                              </button>
+                              <button
+                                type="button"
+                                disabled={saving !== null}
+                                onClick={() => void setRoleActivity(role)}
+                              >
+                                {saving === target
+                                  ? "Wird gespeichert …"
+                                  : role.active
+                                    ? "Deaktivieren"
+                                    : "Aktivieren"}
+                              </button>
+                            </div>
+                          ) : null}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                ) : (
+                  <p>Für diesen Mandanten wurden keine Rollen zurückgegeben.</p>
+                )}
+
+                <form
+                  className="tenant-admin-settings__form"
+                  onSubmit={createRole}
+                >
+                  <h3>Neue Rolle erstellen</h3>
+                  <label>
+                    Rollenname
+                    <input
+                      type="text"
+                      value={roleForm.name}
+                      minLength={3}
+                      maxLength={120}
+                      required
+                      disabled={saving !== null}
+                      onChange={(event) =>
+                        setRoleForm((current) => ({
+                          ...current,
+                          name: event.target.value,
+                        }))
+                      }
+                    />
+                  </label>
+                  <fieldset disabled={saving !== null}>
+                    <legend>Berechtigungen auswählen</legend>
+                    {permissions.length > 0 ? (
+                      <ul className="tenant-admin-settings__role-list">
+                        {permissions.map((permission) => (
+                          <li key={permission.code}>
+                            <label>
+                              <input
+                                type="checkbox"
+                                checked={roleForm.permissionCodes.includes(
+                                  permission.code,
+                                )}
+                                onChange={() =>
+                                  toggleRolePermission(
+                                    permission.code,
+                                    setRoleForm,
+                                  )
+                                }
+                              />
+                              <span>
+                                <code>{permission.code}</code>:{" "}
+                                {permission.description}
+                                {permission.is_sensitive ? " (sensibel)" : ""}
+                              </span>
+                            </label>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p>Es wurden keine Berechtigungen zurückgegeben.</p>
+                    )}
+                  </fieldset>
+                  <button type="submit" disabled={saving !== null}>
+                    {saving === "role:create"
+                      ? "Rolle wird erstellt …"
+                      : "Rolle erstellen"}
+                  </button>
+                </form>
+
+                {editingRoleId &&
+                roles.some(
+                  (role) => role.id === editingRoleId && !role.isSystem,
+                ) ? (
+                  <form
+                    className="tenant-admin-settings__form"
+                    onSubmit={updateRole}
+                  >
+                    <h3>Rolle bearbeiten</h3>
+                    <label>
+                      Rollenname
+                      <input
+                        type="text"
+                        value={roleEditForm.name}
+                        minLength={3}
+                        maxLength={120}
+                        required
+                        disabled={saving !== null}
+                        onChange={(event) =>
+                          setRoleEditForm((current) => ({
+                            ...current,
+                            name: event.target.value,
+                          }))
+                        }
+                      />
+                    </label>
+                    <fieldset disabled={saving !== null}>
+                      <legend>Berechtigungen auswählen</legend>
+                      {permissions.length > 0 ? (
+                        <ul className="tenant-admin-settings__role-list">
+                          {permissions.map((permission) => (
+                            <li key={permission.code}>
+                              <label>
+                                <input
+                                  type="checkbox"
+                                  checked={roleEditForm.permissionCodes.includes(
+                                    permission.code,
+                                  )}
+                                  onChange={() =>
+                                    toggleRolePermission(
+                                      permission.code,
+                                      setRoleEditForm,
+                                    )
+                                  }
+                                />
+                                <span>
+                                  <code>{permission.code}</code>:{" "}
+                                  {permission.description}
+                                  {permission.is_sensitive ? " (sensibel)" : ""}
+                                </span>
+                              </label>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p>Es wurden keine Berechtigungen zurückgegeben.</p>
+                      )}
+                    </fieldset>
+                    <button type="submit" disabled={saving !== null}>
+                      {saving === `role:${editingRoleId}`
+                        ? "Rolle wird gespeichert …"
+                        : "Änderungen speichern"}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={saving !== null}
+                      onClick={() => {
+                        setEditingRoleId(null);
+                        setRoleEditForm(emptyRoleForm);
+                      }}
+                    >
+                      Abbrechen
+                    </button>
+                  </form>
+                ) : null}
+
+                <form
+                  className="tenant-admin-settings__form"
+                  onSubmit={assignRole}
+                >
+                  <h3>Rolle zuweisen</h3>
+                  <p>
+                    Es können nur aktive, mandantenweite Rollen an aktive
+                    Personen zugewiesen werden.
+                  </p>
+                  <div className="tenant-admin-settings__form-grid">
+                    <label>
+                      Aktive Person
+                      <select
+                        value={roleAssignmentForm.userId}
+                        required
+                        disabled={saving !== null || activeUsers.length === 0}
+                        onChange={(event) =>
+                          setRoleAssignmentForm((current) => ({
+                            ...current,
+                            userId: event.target.value,
+                          }))
+                        }
+                      >
+                        <option value="">Bitte auswählen</option>
+                        {activeUsers.map((person) => (
+                          <option key={person.id} value={person.id}>
+                            {person.displayName?.trim()
+                              ? `${person.displayName} (${person.email})`
+                              : person.email}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label>
+                      Aktive Rolle
+                      <select
+                        value={roleAssignmentForm.roleId}
+                        required
+                        disabled={
+                          saving !== null || assignableRoles.length === 0
+                        }
+                        onChange={(event) =>
+                          setRoleAssignmentForm((current) => ({
+                            ...current,
+                            roleId: event.target.value,
+                          }))
+                        }
+                      >
+                        <option value="">Bitte auswählen</option>
+                        {assignableRoles.map((role) => (
+                          <option key={role.id} value={role.id}>
+                            {role.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={
+                      saving !== null ||
+                      activeUsers.length === 0 ||
+                      assignableRoles.length === 0
+                    }
+                  >
+                    {saving === "assign-role"
+                      ? "Rolle wird zugewiesen …"
+                      : "Rolle zuweisen"}
+                  </button>
+                </form>
+
+                <section
+                  className="tenant-admin-settings__access-overview"
+                  aria-labelledby="effective-access-heading"
+                >
+                  <div className="tenant-admin-settings__section-heading">
+                    <div>
+                      <h3 id="effective-access-heading">Effektiver Zugriff</h3>
+                      <p>
+                        Zusammenfassung aller aktiven Rollen und daraus
+                        resultierenden Berechtigungen je Person.
+                      </p>
+                    </div>
+                    <span className="tenant-admin-settings__access-count">
+                      {effectiveAccess.length} Personen
+                    </span>
+                  </div>
+                  {effectiveAccess.length > 0 ? (
+                    <ul className="tenant-admin-settings__access-list">
+                      {effectiveAccess.map((person) => (
+                        <li key={person.id}>
+                          <div>
+                            <strong>
+                              {person.displayName?.trim() ||
+                                person.email ||
+                                "Unbekannte Person"}
+                            </strong>
+                            <span>
+                              {person.email ?? "E-Mail nicht hinterlegt"}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="tenant-admin-settings__access-label">
+                              Rollen
+                            </span>
+                            <p>{person.roleNames.join(" · ")}</p>
+                          </div>
+                          <div>
+                            <span className="tenant-admin-settings__access-label">
+                              Berechtigungen ({person.permissionCodes.length})
+                            </span>
+                            <p>{person.permissionCodes.join(" · ")}</p>
+                          </div>
                         </li>
                       ))}
                     </ul>
                   ) : (
-                    <p>Es wurden keine Berechtigungen zurückgegeben.</p>
+                    <p className="tenant-admin-settings__hint">
+                      Sobald einer aktiven Person eine Rolle zugewiesen ist,
+                      erscheint ihre effektive Zugriffsübersicht hier.
+                    </p>
                   )}
-                </fieldset>
-                <button type="submit" disabled={saving !== null}>
-                  {saving === `role:${editingRoleId}`
-                    ? "Rolle wird gespeichert …"
-                    : "Änderungen speichern"}
-                </button>
-                <button
-                  type="button"
-                  disabled={saving !== null}
-                  onClick={() => {
-                    setEditingRoleId(null);
-                    setRoleEditForm(emptyRoleForm);
-                  }}
-                >
-                  Abbrechen
-                </button>
-              </form>
-            ) : null}
+                </section>
 
-            <form className="tenant-admin-settings__form" onSubmit={assignRole}>
-              <h3>Rolle zuweisen</h3>
-              <p>
-                Es können nur aktive, mandantenweite Rollen an aktive Personen
-                zugewiesen werden.
-              </p>
-              <div className="tenant-admin-settings__form-grid">
-                <label>
-                  Aktive Person
-                  <select
-                    value={roleAssignmentForm.userId}
-                    required
-                    disabled={saving !== null || activeUsers.length === 0}
-                    onChange={(event) =>
-                      setRoleAssignmentForm((current) => ({
-                        ...current,
-                        userId: event.target.value,
-                      }))
-                    }
-                  >
-                    <option value="">Bitte auswählen</option>
-                    {activeUsers.map((person) => (
-                      <option key={person.id} value={person.id}>
-                        {person.displayName?.trim()
-                          ? `${person.displayName} (${person.email})`
-                          : person.email}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  Aktive Rolle
-                  <select
-                    value={roleAssignmentForm.roleId}
-                    required
-                    disabled={saving !== null || assignableRoles.length === 0}
-                    onChange={(event) =>
-                      setRoleAssignmentForm((current) => ({
-                        ...current,
-                        roleId: event.target.value,
-                      }))
-                    }
-                  >
-                    <option value="">Bitte auswählen</option>
-                    {assignableRoles.map((role) => (
-                      <option key={role.id} value={role.id}>
-                        {role.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-              <button
-                type="submit"
-                disabled={
-                  saving !== null ||
-                  activeUsers.length === 0 ||
-                  assignableRoles.length === 0
-                }
-              >
-                {saving === "assign-role"
-                  ? "Rolle wird zugewiesen …"
-                  : "Rolle zuweisen"}
-              </button>
-            </form>
-
-            <section
-              className="tenant-admin-settings__access-overview"
-              aria-labelledby="effective-access-heading"
-            >
-              <div className="tenant-admin-settings__section-heading">
-                <div>
-                  <h3 id="effective-access-heading">Effektiver Zugriff</h3>
-                  <p>
-                    Zusammenfassung aller aktiven Rollen und daraus
-                    resultierenden Berechtigungen je Person.
-                  </p>
-                </div>
-                <span className="tenant-admin-settings__access-count">
-                  {effectiveAccess.length} Personen
-                </span>
-              </div>
-              {effectiveAccess.length > 0 ? (
-                <ul className="tenant-admin-settings__access-list">
-                  {effectiveAccess.map((person) => (
-                    <li key={person.id}>
-                      <div>
-                        <strong>
-                          {person.displayName?.trim() ||
-                            person.email ||
-                            "Unbekannte Person"}
-                        </strong>
-                        <span>{person.email ?? "E-Mail nicht hinterlegt"}</span>
-                      </div>
-                      <div>
-                        <span className="tenant-admin-settings__access-label">
-                          Rollen
-                        </span>
-                        <p>{person.roleNames.join(" · ")}</p>
-                      </div>
-                      <div>
-                        <span className="tenant-admin-settings__access-label">
-                          Berechtigungen ({person.permissionCodes.length})
-                        </span>
-                        <p>{person.permissionCodes.join(" · ")}</p>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="tenant-admin-settings__hint">
-                  Sobald einer aktiven Person eine Rolle zugewiesen ist,
-                  erscheint ihre effektive Zugriffsübersicht hier.
-                </p>
-              )}
-            </section>
-
-            <h3>Aktive Rollenzuweisungen</h3>
-            {roleAssignments.length > 0 ? (
-              <ul className="tenant-admin-settings__person-list">
-                {roleAssignments.map((assignment) => {
-                  const target: SaveTarget = `revoke-role:${assignment.id}`;
-                  return (
-                    <li key={assignment.id}>
-                      <strong>
-                        {assignment.user.displayName?.trim() ||
-                          assignment.user.email ||
-                          "Unbekannte Person"}
-                      </strong>
-                      <span>
-                        {assignment.user.email ?? "E-Mail nicht hinterlegt"}
-                      </span>
-                      <span>Rolle: {assignment.roleName}</span>
-                      {assignment.department_id ? (
-                        <span>Bereich: {assignment.department_id}</span>
-                      ) : null}
-                      {assignment.team_id ? (
-                        <span>Team: {assignment.team_id}</span>
-                      ) : null}
-                      <span>
-                        Zugewiesen:{" "}
-                        {formatDate(assignment.starts_at) ?? "Nicht hinterlegt"}
-                      </span>
-                      <button
-                        type="button"
-                        disabled={saving !== null}
-                        onClick={() =>
-                          setAssignmentPendingRevocation(assignment)
-                        }
-                      >
-                        {saving === target ? "Wird entzogen …" : "Entziehen"}
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-            ) : (
-              <p>In dieser Ansicht wurde noch keine Rolle zugewiesen.</p>
+                <h3>Aktive Rollenzuweisungen</h3>
+                {roleAssignments.length > 0 ? (
+                  <ul className="tenant-admin-settings__person-list">
+                    {roleAssignments.map((assignment) => {
+                      const target: SaveTarget = `revoke-role:${assignment.id}`;
+                      return (
+                        <li key={assignment.id}>
+                          <strong>
+                            {assignment.user.displayName?.trim() ||
+                              assignment.user.email ||
+                              "Unbekannte Person"}
+                          </strong>
+                          <span>
+                            {assignment.user.email ?? "E-Mail nicht hinterlegt"}
+                          </span>
+                          <span>Rolle: {assignment.roleName}</span>
+                          {assignment.department_id ? (
+                            <span>Bereich: {assignment.department_id}</span>
+                          ) : null}
+                          {assignment.team_id ? (
+                            <span>Team: {assignment.team_id}</span>
+                          ) : null}
+                          <span>
+                            Zugewiesen:{" "}
+                            {formatDate(assignment.starts_at) ??
+                              "Nicht hinterlegt"}
+                          </span>
+                          <button
+                            type="button"
+                            disabled={saving !== null}
+                            onClick={() =>
+                              setAssignmentPendingRevocation(assignment)
+                            }
+                          >
+                            {saving === target
+                              ? "Wird entzogen …"
+                              : "Entziehen"}
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                ) : (
+                  <p>In dieser Ansicht wurde noch keine Rolle zugewiesen.</p>
+                )}
+              </section>
             )}
-          </section>
-        </div>
+          </div>
+        </>
       ) : null}
       {assignmentPendingRevocation ? (
         <div

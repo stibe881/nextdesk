@@ -21,6 +21,7 @@ import {
   Save,
   Send,
   Star,
+  UsersRound,
   X,
 } from "lucide-react";
 import { supabase } from "./lib/supabase";
@@ -124,6 +125,15 @@ type TicketAgentAssignmentAction =
       tenantId: string;
       ticketId: string;
       assignedAgentId: string | null;
+    };
+
+type TicketPresenceAction =
+  | { type: "list"; tenantId: string; ticketId: string }
+  | {
+      type: "heartbeat";
+      tenantId: string;
+      ticketId: string;
+      editing: boolean;
     };
 
 type AddCommentAction = {
@@ -315,6 +325,12 @@ type TicketTeam = {
 type TicketAgent = {
   id: string;
   displayName: string;
+};
+
+type TicketPresencePerson = {
+  displayName: string;
+  editing: boolean;
+  lastSeenAt: string;
 };
 
 /** Deliberately excludes the API ID so only the display name can reach the UI. */
@@ -741,6 +757,38 @@ function toTicketAgent(value: unknown): TicketAgent | null {
 
 function isTicketAgent(value: unknown): value is TicketAgent {
   return toTicketAgent(value) !== null;
+}
+
+function toTicketPresencePerson(value: unknown): TicketPresencePerson | null {
+  const person = asRecord(value);
+  if (
+    !person ||
+    typeof person.displayName !== "string" ||
+    !person.displayName.trim() ||
+    person.displayName.includes("\u0000") ||
+    typeof person.editing !== "boolean" ||
+    typeof person.lastSeenAt !== "string" ||
+    Number.isNaN(new Date(person.lastSeenAt).getTime())
+  ) {
+    return null;
+  }
+  return {
+    displayName: person.displayName.trim(),
+    editing: person.editing,
+    lastSeenAt: person.lastSeenAt,
+  };
+}
+
+function parseTicketPresence(value: unknown): TicketPresencePerson[] | null {
+  const envelope = asRecord(value);
+  const data = asRecord(envelope?.data);
+  if (!data || !Array.isArray(data.people)) return null;
+  const people = data.people.map(toTicketPresencePerson);
+  return people.every(
+    (person): person is TicketPresencePerson => person !== null,
+  )
+    ? people
+    : null;
 }
 
 function parseAssignableTicketAgents(value: unknown): TicketAgent[] | null {
@@ -1588,6 +1636,17 @@ async function invokeTicketAgentAssignment(
     "ticket-agent-assignment",
     { body: action },
   );
+  if (error) throw error;
+  return data;
+}
+
+async function invokeTicketPresence(
+  action: TicketPresenceAction,
+): Promise<unknown> {
+  if (!supabase) throw new Error("Supabase ist nicht konfiguriert.");
+  const { data, error } = await supabase.functions.invoke("ticket-presence", {
+    body: action,
+  });
   if (error) throw error;
   return data;
 }
@@ -2815,6 +2874,7 @@ export function TicketDetail({
   const [loading, setLoading] = useState(true);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState("");
+  const [presence, setPresence] = useState<TicketPresencePerson[]>([]);
   const [pendingAction, setPendingAction] = useState<PendingAction>(null);
   const [statusKey, setStatusKey] = useState("");
   const [priorityKey, setPriorityKey] = useState("");
@@ -3254,6 +3314,60 @@ export function TicketDetail({
   }, [loadTicket]);
 
   useEffect(() => {
+    if (!detail || !supabase) {
+      setPresence([]);
+      return;
+    }
+
+    let cancelled = false;
+    const refreshPresence = async () => {
+      if (document.visibilityState === "hidden") {
+        if (!cancelled) setPresence([]);
+        return;
+      }
+      try {
+        await invokeTicketPresence({
+          type: "heartbeat",
+          tenantId,
+          ticketId,
+          editing: isEditingTicket,
+        });
+        const response = await invokeTicketPresence({
+          type: "list",
+          tenantId,
+          ticketId,
+        });
+        const people = parseTicketPresence(response);
+        if (!people) throw new Error("Ungültige Präsenzdaten.");
+        if (!cancelled) setPresence(people);
+      } catch {
+        // Presence is contextual convenience only. Ticket work remains available
+        // when the short-lived indicator cannot be refreshed.
+        if (!cancelled) setPresence([]);
+      }
+    };
+
+    void refreshPresence();
+    const interval = window.setInterval(() => {
+      void refreshPresence();
+    }, 30_000);
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        setPresence([]);
+        return;
+      }
+      void refreshPresence();
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, [detail?.ticket.id, isEditingTicket, tenantId, ticketId]);
+
+  useEffect(() => {
     const isClosed = detail?.statuses.some(
       (status) => status.id === detail.ticket.status_id && status.is_closed,
     );
@@ -3402,6 +3516,13 @@ export function TicketDetail({
     () =>
       detail?.priorities.find(
         (priority) => priority.id === detail.ticket.priority_id,
+      ) ?? null,
+    [detail],
+  );
+  const selectedTeam = useMemo(
+    () =>
+      detail?.teams.find(
+        (team) => team.id === detail.ticket.assigned_team_id,
       ) ?? null,
     [detail],
   );
@@ -4500,6 +4621,72 @@ export function TicketDetail({
           </div>
         </dl>
       </div>
+
+      <section
+        className="ticket-detail-facts ticket-detail-primary"
+        aria-labelledby="ticket-facts-heading"
+      >
+        <div className="ticket-detail-section-heading">
+          <div>
+            <p className="eyebrow">TICKETDETAILS</p>
+            <h3 id="ticket-facts-heading">Übersicht</h3>
+          </div>
+          <span className="data-caption">Aktueller Stand</span>
+        </div>
+        <dl className="ticket-detail-facts-grid">
+          <div>
+            <dt>Status</dt>
+            <dd>{selectedStatus?.label ?? "Nicht verfügbar"}</dd>
+          </div>
+          <div>
+            <dt>Priorität</dt>
+            <dd>{selectedPriority?.label ?? "Nicht verfügbar"}</dd>
+          </div>
+          <div>
+            <dt>Zugewiesen an</dt>
+            <dd>{detail.assignedAgent?.displayName ?? "Nicht zugewiesen"}</dd>
+          </div>
+          <div>
+            <dt>Team</dt>
+            <dd>{selectedTeam?.name ?? "Kein Team"}</dd>
+          </div>
+          {detail.requesterContact && (
+            <div>
+              <dt>Anfragende Person</dt>
+              <dd>{detail.requesterContact.displayName}</dd>
+            </div>
+          )}
+          <div>
+            <dt>Erfasst am</dt>
+            <dd>{formatDateTime(detail.ticket.created_at)}</dd>
+          </div>
+        </dl>
+      </section>
+
+      {presence.length > 0 && (
+        <aside
+          className="ticket-presence"
+          aria-label="Aktive Ticketbearbeitung"
+        >
+          <UsersRound aria-hidden="true" size={17} strokeWidth={1.8} />
+          <div>
+            <strong>
+              {presence.some((person) => person.editing)
+                ? "Ticket wird parallel bearbeitet"
+                : "Weitere Personen sehen dieses Ticket"}
+            </strong>
+            <span>
+              {presence
+                .map((person) =>
+                  person.editing
+                    ? `${person.displayName} bearbeitet gerade`
+                    : person.displayName,
+                )
+                .join(", ")}
+            </span>
+          </div>
+        </aside>
+      )}
 
       {focusMode && (
         <p className="ticket-focus-notice" role="status">

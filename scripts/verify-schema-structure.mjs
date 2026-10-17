@@ -34,6 +34,7 @@ const expectedFiles = [
   "0029_apply_sla_breach_atomically.sql",
   "0030_saved_ticket_views.sql",
   "0031_bulk_ticket_status_actions.sql",
+  "0032_ticket_presence_indicators.sql",
 ];
 
 const availableFiles = await readdir(migrationDirectory);
@@ -267,6 +268,18 @@ const requiredFragments = [
   [
     "0031_bulk_ticket_status_actions.sql",
     "grant execute on function public.bulk_update_ticket_statuses(uuid, uuid, uuid[], text)",
+  ],
+  [
+    "0032_ticket_presence_indicators.sql",
+    "create table public.ticket_presence_sessions",
+  ],
+  [
+    "0032_ticket_presence_indicators.sql",
+    "alter table public.ticket_presence_sessions enable row level security",
+  ],
+  [
+    "0032_ticket_presence_indicators.sql",
+    "revoke all on table public.ticket_presence_sessions from public, anon, authenticated",
   ],
 ];
 

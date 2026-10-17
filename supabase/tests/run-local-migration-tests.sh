@@ -205,7 +205,7 @@ do $$
 declare
   relation_name text;
 begin
-  foreach relation_name in array array['roles', 'role_permissions', 'user_role_assignments', 'ticket_number_sequences', 'ticket_statuses', 'ticket_priorities', 'ticket_categories']
+  foreach relation_name in array array['roles', 'role_permissions', 'user_role_assignments', 'ticket_number_sequences', 'ticket_statuses', 'ticket_priorities', 'ticket_categories', 'ticket_presence_sessions']
   loop
     if not (select relrowsecurity from pg_class where oid = format('public.%I', relation_name)::regclass) then
       raise exception 'RLS not enabled for %', relation_name;
@@ -219,6 +219,10 @@ begin
   end if;
   if not has_function_privilege('service_role', 'public.provision_tenant(uuid,citext,text,uuid,jsonb)', 'execute') then
     raise exception 'service_role may not execute provision_tenant';
+  end if;
+  if has_table_privilege('authenticated', 'public.ticket_presence_sessions', 'select')
+    or has_table_privilege('authenticated', 'public.ticket_presence_sessions', 'insert') then
+    raise exception 'authenticated may access ticket presence sessions directly';
   end if;
 end;
 $$;

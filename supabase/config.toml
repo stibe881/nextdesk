@@ -36,6 +36,9 @@ verify_jwt = true
 [functions.ticket-agent-assignment]
 verify_jwt = true
 
+[functions.ticket-presence]
+verify_jwt = true
+
 [functions.ticket-saved-views]
 verify_jwt = true
 
