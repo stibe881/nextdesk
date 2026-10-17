@@ -1,5 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import Constants from "expo-constants";
+import { Platform } from "react-native";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 type NextDeskExtra = {
@@ -8,10 +9,37 @@ type NextDeskExtra = {
 };
 
 const extra = (Constants.expoConfig?.extra ?? {}) as NextDeskExtra;
-const url = extra.nextDeskSupabaseUrl?.trim() ?? "";
-const publishableKey = extra.nextDeskSupabasePublishableKey?.trim() ?? "";
+// Expo Web can omit `Constants.expoConfig.extra` in a development iframe,
+// although the same public values are available to Metro at bundle time.
+// Native release builds retain the `extra` values from app.config.ts.
+const url =
+  extra.nextDeskSupabaseUrl?.trim() ??
+  process.env.EXPO_PUBLIC_NEXTDESK_SUPABASE_URL?.trim() ??
+  "";
+const publishableKey =
+  extra.nextDeskSupabasePublishableKey?.trim() ??
+  process.env.EXPO_PUBLIC_NEXTDESK_SUPABASE_PUBLISHABLE_KEY?.trim() ??
+  "";
 
 export const isNextDeskConfigured = Boolean(url && publishableKey);
+
+const serverStorage = {
+  getItem: async (_key: string) => null,
+  setItem: async (_key: string, _value: string) => undefined,
+  removeItem: async (_key: string) => undefined,
+};
+
+const webStorage =
+  typeof window === "undefined"
+    ? serverStorage
+    : {
+        getItem: async (key: string) => window.localStorage.getItem(key),
+        setItem: async (key: string, value: string) =>
+          window.localStorage.setItem(key, value),
+        removeItem: async (key: string) => window.localStorage.removeItem(key),
+      };
+
+const authStorage = Platform.OS === "web" ? webStorage : AsyncStorage;
 
 export const nextDesk: SupabaseClient | null = isNextDeskConfigured
   ? createClient(url, publishableKey, {
@@ -19,7 +47,7 @@ export const nextDesk: SupabaseClient | null = isNextDeskConfigured
         autoRefreshToken: true,
         detectSessionInUrl: false,
         persistSession: true,
-        storage: AsyncStorage,
+        storage: authStorage,
       },
     })
   : null;
