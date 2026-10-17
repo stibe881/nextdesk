@@ -140,6 +140,10 @@ async function provisionSsoPerson(
     .maybeSingle();
   if (membershipError) return "failed";
   if (existing?.status === "removed") return "removed";
+  // A verified SSO person can sign in repeatedly. Once their membership exists,
+  // do not repeat optional directory/profile writes; a transient write failure
+  // must never lock an already authorized employee out of the tenant.
+  if (existing?.status === "active") return "existing";
 
   const isNew = !existing;
   if (isNew) {
