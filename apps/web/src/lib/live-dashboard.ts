@@ -301,7 +301,7 @@ export async function loadLiveDashboard(
       mine: String(mineCount),
       mineDetail: "mir zugewiesen oder erstellt",
       open: String(openCount),
-      openDetail: "RLS-autorisierte Tickets",
+      openDetail: "Für Sie sichtbare Tickets",
       unassigned: String(unassignedCount),
       unassignedDetail: "ohne Bearbeiter",
     },
@@ -314,7 +314,7 @@ export async function loadLiveDashboard(
       },
       {
         availability: String(totalTicketCount),
-        detail: "RLS-autorisierte Tickets",
+        detail: "Für Sie sichtbare Tickets",
         name: "Datenzugriff",
         state: "stabil",
       },
