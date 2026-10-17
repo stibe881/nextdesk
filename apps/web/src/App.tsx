@@ -1849,6 +1849,7 @@ export function App() {
               onClose={() => setSection("Übersicht")}
               tenantId={activeTenant.id}
             />
+            <AssetIntuneSettings tenantId={activeTenant.id} />
             <CustomerOrganizations tenantId={activeTenant.id} />
             <TicketTemplates tenantId={activeTenant.id} />
           </>
