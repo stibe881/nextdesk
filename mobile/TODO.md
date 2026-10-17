@@ -8,7 +8,7 @@
   - Die Expo-Konfiguration enthält einen stabilen, öffentlich erreichbaren Logo-Verweis.
 
 - [ ] **Mobile nextDesk-Arbeitsoberfläche**
-  - [x] Sichere Anmeldung und Sitzungsverwaltung verbinden sich mit der bestehenden nextDesk-Authentifizierung über SSO und Magic Link; die Redirect-Allowlist wird vor dem Test geprüft.
+  - [ ] Sichere Anmeldung und Sitzungsverwaltung verbinden sich mit der bestehenden nextDesk-Authentifizierung über SSO und Magic Link. Die Azure-Anfrage fordert den `email`-Scope an, der PKCE-Callback wird nur zentral verarbeitet und der Rückweg wird im TestFlight-Build auf einem iPhone verifiziert.
   - [x] Die Startübersicht zeigt RLS-autorisierte Tickets und kompakte persönliche Arbeitsinformationen aus dem echten nextDesk-Mandanten.
   - [x] Die Ticketliste unterstützt Statusfilter und einhändig bedienbare Ticketdetails.
   - [x] Tickets können direkt in der App mit Betreff, Beschreibung, Abteilung, Priorität und angemeldeter anfragender Person erfasst werden.

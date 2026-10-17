@@ -1,7 +1,7 @@
 import "@/global.css";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import * as Linking from "expo-linking";
-import { Stack, useRouter } from "expo-router";
+import { Stack, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
@@ -25,6 +25,8 @@ import {
 import {
   completeNextDeskAuth,
   isNextDeskAuthCallback,
+  nextDesk,
+  nextDeskAuthFailureCode,
 } from "@/lib/nextdesk-client";
 
 const DEFAULT_WEB_INSETS: EdgeInsets = { top: 0, right: 0, bottom: 0, left: 0 };
@@ -41,14 +43,14 @@ function NextDeskAuthDeepLinkHandler() {
     let active = true;
     const handleUrl = (url: string | null) => {
       if (!url || !isNextDeskAuthCallback(url)) return;
-      void completeNextDeskAuth(url)
-        .then(() => {
-          if (active) router.replace("/");
-        })
-        .catch(() => {
-          // The dedicated callback screen presents a recovery message when it
-          // is opened directly. A cancelled browser flow stays on its login UI.
-        });
+      void completeNextDeskAuth(url).catch((error) => {
+        if (active) {
+          router.replace({
+            pathname: "/auth",
+            params: { authError: nextDeskAuthFailureCode(error) },
+          });
+        }
+      });
     };
     const subscription = Linking.addEventListener("url", ({ url }) => {
       handleUrl(url);
@@ -59,6 +61,42 @@ function NextDeskAuthDeepLinkHandler() {
       subscription.remove();
     };
   }, [router]);
+
+  return null;
+}
+
+function NextDeskSessionNavigator() {
+  const router = useRouter();
+  const segments = useSegments();
+  const topLevelRoute = segments[0] ?? "";
+
+  useEffect(() => {
+    if (!nextDesk) return;
+
+    const continueToWorkspace = (hasSession: boolean) => {
+      if (!hasSession) return;
+      if (topLevelRoute === "auth" || topLevelRoute === "oauth") {
+        router.replace("/(tabs)");
+      }
+    };
+
+    void nextDesk.auth
+      .getSession()
+      .then(({ data }) => continueToWorkspace(Boolean(data.session)));
+    const {
+      data: { subscription },
+    } = nextDesk.auth.onAuthStateChange((event, session) => {
+      if (
+        session &&
+        (event === "INITIAL_SESSION" ||
+          event === "SIGNED_IN" ||
+          event === "PASSWORD_RECOVERY")
+      ) {
+        continueToWorkspace(true);
+      }
+    });
+    return () => subscription.unsubscribe();
+  }, [router, topLevelRoute]);
 
   return null;
 }
@@ -132,6 +170,7 @@ export default function RootLayout() {
             <Stack.Screen name="oauth/callback" />
           </Stack>
           <NextDeskAuthDeepLinkHandler />
+          <NextDeskSessionNavigator />
           <StatusBar style="auto" />
         </QueryClientProvider>
       </trpc.Provider>

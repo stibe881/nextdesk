@@ -63,9 +63,65 @@ export function requireNextDesk(): SupabaseClient {
 }
 
 let pendingAuthCompletion:
-  | { callbackUrl: string; promise: Promise<void> }
+  | { callbackKey: string; promise: Promise<void> }
   | undefined;
-let lastCompletedCallbackUrl: string | undefined;
+let lastCompletedCallbackKey: string | undefined;
+
+export type NextDeskAuthFailureCode =
+  | "provider_email_missing"
+  | "provider_rejected"
+  | "pkce_verifier_missing"
+  | "callback_invalid"
+  | "session_not_saved"
+  | "exchange_failed";
+
+class NextDeskAuthFailure extends Error {
+  constructor(readonly code: NextDeskAuthFailureCode) {
+    super(code);
+    this.name = "NextDeskAuthFailure";
+  }
+}
+
+function getNextDeskAuthFailureCode(error: unknown): NextDeskAuthFailureCode {
+  if (error instanceof NextDeskAuthFailure) return error.code;
+
+  const message = error instanceof Error ? error.message.toLowerCase() : "";
+  if (
+    message.includes("email") &&
+    (message.includes("external provider") || message.includes("provider"))
+  ) {
+    return "provider_email_missing";
+  }
+  if (message.includes("code verifier") || message.includes("pkce")) {
+    return "pkce_verifier_missing";
+  }
+  return "exchange_failed";
+}
+
+export function nextDeskAuthFailureCode(
+  error: unknown,
+): NextDeskAuthFailureCode {
+  return getNextDeskAuthFailureCode(error);
+}
+
+export function nextDeskAuthFailureMessage(
+  code: NextDeskAuthFailureCode | string | undefined,
+): string {
+  switch (code) {
+    case "provider_email_missing":
+      return "Microsoft Entra hat für dieses Konto keine E-Mail-Adresse an nextDesk übermittelt. Die Entra-Anmeldung benötigt den E-Mail-Anspruch.";
+    case "pkce_verifier_missing":
+      return "Die sichere Anmelderückkehr ist abgelaufen. Bitte starten Sie die SSO-Anmeldung erneut in dieser App.";
+    case "provider_rejected":
+      return "Die Microsoft-Anmeldung wurde nicht bestätigt. Bitte versuchen Sie es erneut.";
+    case "callback_invalid":
+      return "Die Anmelderückkehr ist ungültig oder abgelaufen. Bitte starten Sie die SSO-Anmeldung erneut.";
+    case "session_not_saved":
+      return "Die Anmeldung konnte nicht sicher auf diesem Gerät gespeichert werden. Bitte versuchen Sie es erneut.";
+    default:
+      return "Die SSO-Anmeldung konnte nicht abgeschlossen werden. Bitte versuchen Sie es erneut.";
+  }
+}
 
 /**
  * This exact address is registered in Supabase Authentication and is handled
@@ -100,51 +156,66 @@ export function isNextDeskAuthCallback(url: string): boolean {
 
 /** Completes either the PKCE callback used by SSO or the token fragment used by magic links. */
 export async function completeNextDeskAuth(callbackUrl: string): Promise<void> {
-  if (lastCompletedCallbackUrl === callbackUrl) return;
-  if (pendingAuthCompletion?.callbackUrl === callbackUrl) {
+  const callback = new URL(callbackUrl);
+  const fragment = new URLSearchParams(callback.hash.replace(/^#/, ""));
+  const code = callback.searchParams.get("code");
+  const accessToken =
+    callback.searchParams.get("access_token") ?? fragment.get("access_token");
+  const refreshToken =
+    callback.searchParams.get("refresh_token") ?? fragment.get("refresh_token");
+  // A provider code is single-use. Dedupe by the callback credential rather
+  // than the raw URL because Expo and WebBrowser can normalize one deep link
+  // differently while returning it to the already running app.
+  const callbackKey = code
+    ? `pkce:${code}`
+    : accessToken && refreshToken
+      ? `tokens:${accessToken}:${refreshToken}`
+      : "invalid";
+
+  if (lastCompletedCallbackKey === callbackKey) return;
+  if (pendingAuthCompletion?.callbackKey === callbackKey) {
     return pendingAuthCompletion.promise;
   }
 
   const promise = (async () => {
-    const callback = new URL(callbackUrl);
-    const fragment = new URLSearchParams(callback.hash.replace(/^#/, ""));
-    const code = callback.searchParams.get("code");
     const providerError =
       callback.searchParams.get("error_description") ??
       callback.searchParams.get("error") ??
       fragment.get("error_description") ??
       fragment.get("error");
-    if (providerError) throw new Error("Die Anmeldung wurde nicht bestätigt.");
+    if (providerError) {
+      throw new NextDeskAuthFailure(
+        getNextDeskAuthFailureCode(new Error(providerError)),
+      );
+    }
 
     if (code) {
       const { error } =
         await requireNextDesk().auth.exchangeCodeForSession(code);
-      if (error) throw error;
+      if (error) {
+        throw new NextDeskAuthFailure(getNextDeskAuthFailureCode(error));
+      }
     } else {
-      const accessToken =
-        callback.searchParams.get("access_token") ??
-        fragment.get("access_token");
-      const refreshToken =
-        callback.searchParams.get("refresh_token") ??
-        fragment.get("refresh_token");
       if (!accessToken || !refreshToken) {
-        throw new Error("Der Anmeldelink ist ungültig oder abgelaufen.");
+        throw new NextDeskAuthFailure("callback_invalid");
       }
       const { error } = await requireNextDesk().auth.setSession({
         access_token: accessToken,
         refresh_token: refreshToken,
       });
-      if (error) throw error;
+      if (error) {
+        throw new NextDeskAuthFailure(getNextDeskAuthFailureCode(error));
+      }
     }
 
     const {
       data: { session },
     } = await requireNextDesk().auth.getSession();
-    if (!session) throw new Error("Die Anmeldung wurde nicht gespeichert.");
-    lastCompletedCallbackUrl = callbackUrl;
+    if (!session) throw new NextDeskAuthFailure("session_not_saved");
+    lastCompletedCallbackKey = callbackKey;
   })();
 
-  pendingAuthCompletion = { callbackUrl, promise };
+  pendingAuthCompletion = { callbackKey, promise };
   try {
     await promise;
   } finally {

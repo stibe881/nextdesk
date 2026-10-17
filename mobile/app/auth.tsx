@@ -1,12 +1,11 @@
 import * as WebBrowser from "expo-web-browser";
-import { router } from "expo-router";
-import { useEffect, useState } from "react";
+import { useLocalSearchParams } from "expo-router";
+import { useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { ScreenContainer } from "@/components/screen-container";
 import {
-  completeNextDeskAuth,
-  nextDesk,
+  nextDeskAuthFailureMessage,
   nextDeskAuthRedirectUrl,
   requireNextDesk,
 } from "@/lib/nextdesk-client";
@@ -14,20 +13,16 @@ import {
 WebBrowser.maybeCompleteAuthSession();
 
 export default function AuthScreen() {
+  const { authError } = useLocalSearchParams<{ authError?: string }>();
   const [email, setEmail] = useState("");
   const [message, setMessage] = useState("");
   const [pending, setPending] = useState<"magic" | "sso" | null>(null);
   const redirectTo = nextDeskAuthRedirectUrl;
-
-  useEffect(() => {
-    if (!nextDesk) return;
-    const {
-      data: { subscription },
-    } = nextDesk.auth.onAuthStateChange((_event, session) => {
-      if (session) router.replace("/");
-    });
-    return () => subscription.unsubscribe();
-  }, []);
+  const displayedMessage =
+    message ||
+    (pending === null && typeof authError === "string"
+      ? nextDeskAuthFailureMessage(authError)
+      : "");
 
   async function continueWithSso() {
     setPending("sso");
@@ -36,7 +31,13 @@ export default function AuthScreen() {
       const client = requireNextDesk();
       const { data, error } = await client.auth.signInWithOAuth({
         provider: "azure",
-        options: { redirectTo },
+        options: {
+          redirectTo,
+          // Supabase Azure Auth requires this scope to receive an address that
+          // can safely identify and link the signed-in person.
+          scopes: "email",
+          skipBrowserRedirect: true,
+        },
       });
       if (error) throw error;
       if (!data.url)
@@ -46,23 +47,16 @@ export default function AuthScreen() {
         redirectTo,
       );
       if (result.type === "success") {
-        await completeNextDeskAuth(result.url);
-        router.replace("/");
+        // The root deep-link handler is the single owner of the PKCE exchange.
+        // It also covers callbacks that start the app from a cold state.
+        setMessage("Anmeldung wird abgeschlossen …");
       } else if (result.type !== "cancel") {
         setMessage(
           "Die Rückkehr aus dem Anmeldefenster wurde nicht erkannt. Bitte versuchen Sie die SSO-Anmeldung erneut.",
         );
       }
-    } catch (error) {
-      const rawMessage = error instanceof Error ? error.message : "";
-      const isCallbackIssue = /code verifier|flow state|session/i.test(
-        rawMessage,
-      );
-      setMessage(
-        isCallbackIssue
-          ? "Die Anmelderückkehr konnte nicht sicher gespeichert werden. Bitte schliessen Sie die App vollständig und versuchen Sie es erneut."
-          : "Die SSO-Anmeldung konnte nicht abgeschlossen werden. Bitte versuchen Sie es erneut.",
-      );
+    } catch {
+      setMessage(nextDeskAuthFailureMessage(undefined));
     } finally {
       setPending(null);
     }
@@ -145,7 +139,9 @@ export default function AuthScreen() {
               : "Anmeldelink senden"}
           </Text>
         </Pressable>
-        {message ? <Text style={styles.message}>{message}</Text> : null}
+        {displayedMessage ? (
+          <Text style={styles.message}>{displayedMessage}</Text>
+        ) : null}
       </View>
     </ScreenContainer>
   );
