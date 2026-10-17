@@ -16,11 +16,16 @@ const savedViewsMigrationPath = new URL(
   "../supabase/migrations/0030_saved_ticket_views.sql",
   import.meta.url,
 );
+const requesterCommentMigrationPath = new URL(
+  "../supabase/migrations/0043_requester_own_ticket_comments.sql",
+  import.meta.url,
+);
 const catalog = await readFile(catalogPath, "utf8");
 const migrations = await Promise.all([
   readFile(baseMigrationPath, "utf8"),
   readFile(operationsMigrationPath, "utf8"),
   readFile(savedViewsMigrationPath, "utf8"),
+  readFile(requesterCommentMigrationPath, "utf8"),
 ]);
 const migration = migrations.join("\n");
 

@@ -18,7 +18,7 @@
 
 - [ ] **Sichere Anhänge.** Dateien werden privat hochgeladen, auf Schadsoftware geprüft, nur autorisiert über signierte URL ausgegeben und sind weder mandanten- noch abteilungsübergreifend erreichbar.
 
-- [ ] **Kunden- und Self-Service-Rechte.** Der Zugriff kann je Kundenorganisation ein- oder ausgeschaltet werden. Jeder externe Benutzer hat explizit die Rolle „nur eigene Tickets“ oder „alle Tickets der Kundenorganisation“; diese Regel wird sowohl serverseitig als auch in RLS umgesetzt.
+- [ ] **Kunden- und Self-Service-Rechte.** Der Zugriff kann je Kundenorganisation ein- oder ausgeschaltet werden. Jeder externe Benutzer hat explizit die Rolle „nur eigene Tickets“ oder „alle Tickets der Kundenorganisation“; diese Regel wird sowohl serverseitig als auch in RLS umgesetzt. Anfragende Personen können ausschließlich auf ihre eigenen Tickets externe Antworten schreiben; daraus entstehen weder Bearbeitungsrechte noch Zugriff auf interne Kommentare.
 
 - [ ] **Wissensdatenbank.** Supporter erstellen direkt aus Tickets interne oder externe Lösungsartikel. Kategorien, Versionierung, Freigabe, Suche und Sichtbarkeitsprüfung funktionieren im Web und Mobile.
 

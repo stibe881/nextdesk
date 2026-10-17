@@ -13,6 +13,7 @@ export const permissionCodes = [
   "ticket.internal_notes.read",
   "ticket.internal_notes.write",
   "ticket.comment.external",
+  "ticket.comment.external.own",
   "ticket.watch",
   "ticket.time.track",
   "ticket.template.manage",

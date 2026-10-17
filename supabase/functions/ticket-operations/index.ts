@@ -399,6 +399,73 @@ async function hasPermission(
   });
 }
 
+async function hasTenantPermission(
+  admin: any,
+  userId: string,
+  tenantId: string,
+  permission: string,
+) {
+  const now = new Date().toISOString();
+  const [membership, roleAssignments] = await Promise.all([
+    admin
+      .from("tenant_memberships")
+      .select("user_id")
+      .eq("tenant_id", tenantId)
+      .eq("user_id", userId)
+      .eq("status", "active")
+      .maybeSingle(),
+    admin
+      .from("user_role_assignments")
+      .select(
+        "roles!user_role_assignments_role_tenant_fk!inner(tenant_id, active, scope, role_permissions!inner(permission_code))",
+      )
+      .eq("tenant_id", tenantId)
+      .eq("user_id", userId)
+      .lte("starts_at", now)
+      .or(`expires_at.is.null,expires_at.gt.${now}`),
+  ]);
+  if (membership.error || roleAssignments.error || !membership.data)
+    return false;
+  return (roleAssignments.data ?? []).some((assignment: any) => {
+    const role = Array.isArray(assignment.roles)
+      ? assignment.roles[0]
+      : assignment.roles;
+    return (
+      role?.tenant_id === tenantId &&
+      role.active === true &&
+      role.scope === "tenant" &&
+      (role.role_permissions ?? []).some(
+        (item: any) => item.permission_code === permission,
+      )
+    );
+  });
+}
+
+async function canPostExternalComment(admin: any, userId: string, ticket: any) {
+  if (
+    await hasPermission(
+      admin,
+      userId,
+      ticket.tenant_id,
+      ticket.department_id,
+      "ticket.comment.external",
+    )
+  ) {
+    return true;
+  }
+  if (ticket.requester_id !== userId) return false;
+  const [canReadOwnTicket, canCommentOnOwnTicket] = await Promise.all([
+    hasTenantPermission(admin, userId, ticket.tenant_id, "ticket.read.own"),
+    hasTenantPermission(
+      admin,
+      userId,
+      ticket.tenant_id,
+      "ticket.comment.external.own",
+    ),
+  ]);
+  return canReadOwnTicket && canCommentOnOwnTicket;
+}
+
 type TicketAgent = {
   id: string;
   displayName: string | null;
@@ -1163,13 +1230,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         ticket.department_id,
         "ticket.internal_notes.write",
       ),
-      hasPermission(
-        context.supabaseAdmin,
-        actorId,
-        ticket.tenant_id,
-        ticket.department_id,
-        "ticket.comment.external",
-      ),
+      canPostExternalComment(context.supabaseAdmin, actorId, ticket),
     ]);
     return response(request, {
       data: {
@@ -1989,13 +2050,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       );
     if (
       action.visibility === "external" &&
-      !(await hasPermission(
-        context.supabaseAdmin,
-        actorId,
-        ticket.tenant_id,
-        ticket.department_id,
-        "ticket.comment.external",
-      ))
+      !(await canPostExternalComment(context.supabaseAdmin, actorId, ticket))
     )
       return response(
         request,
