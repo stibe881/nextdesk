@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -12,11 +12,14 @@ import {
 } from "react-native";
 
 import { ScreenContainer } from "@/components/screen-container";
+import { TicketConversation } from "@/components/ticket-conversation";
 import { loadCurrentTenant, type MobileTenant } from "@/lib/nextdesk-client";
 import {
+  addMobileTicketComment,
   loadMobileTicketDetail,
   updateMobileTicket,
   type MobileTicketDetail,
+  type TicketCommentVisibility,
 } from "@/lib/nextdesk-tickets";
 
 export default function TicketDetailScreen() {
@@ -25,35 +28,65 @@ export default function TicketDetailScreen() {
   const [ticket, setTicket] = useState<MobileTicketDetail | null>(null);
   const [subject, setSubject] = useState("");
   const [description, setDescription] = useState("");
+  const [statusKey, setStatusKey] = useState("");
+  const [priorityKey, setPriorityKey] = useState("");
+  const [comment, setComment] = useState("");
+  const [commentVisibility, setCommentVisibility] =
+    useState<TicketCommentVisibility>("internal");
   const [editing, setEditing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [sendingComment, setSendingComment] = useState(false);
   const [error, setError] = useState("");
 
-  async function load() {
-    if (!id) return;
-    try {
-      setError("");
-      const currentTenant = await loadCurrentTenant();
-      const detail = await loadMobileTicketDetail(currentTenant.id, id);
-      setTenant(currentTenant);
-      setTicket(detail);
-      setSubject(detail.subject);
-      setDescription(detail.description);
-    } catch (nextError) {
-      setError(
-        nextError instanceof Error
-          ? nextError.message
-          : "Die Ticketdetails konnten nicht geladen werden.",
-      );
-    } finally {
-      setLoading(false);
-    }
-  }
+  const load = useCallback(
+    async (syncEditor = true) => {
+      if (!id) return;
+      try {
+        setError("");
+        const currentTenant = await loadCurrentTenant();
+        const detail = await loadMobileTicketDetail(currentTenant.id, id);
+        setTenant(currentTenant);
+        setTicket(detail);
+        if (syncEditor) {
+          setSubject(detail.subject);
+          setDescription(detail.description);
+          setStatusKey(
+            detail.statusOptions.find((option) => option.id === detail.statusId)
+              ?.key ?? "",
+          );
+          setPriorityKey(
+            detail.priorityOptions.find(
+              (option) => option.id === detail.priorityId,
+            )?.key ?? "",
+          );
+        }
+        setCommentVisibility((current) => {
+          if (current === "internal" && detail.canWriteInternalNotes) {
+            return current;
+          }
+          if (current === "external" && detail.canCommentExternal) {
+            return current;
+          }
+          return detail.canWriteInternalNotes ? "internal" : "external";
+        });
+      } catch (nextError) {
+        setError(
+          nextError instanceof Error
+            ? nextError.message
+            : "Die Ticketdetails konnten nicht geladen werden.",
+        );
+      } finally {
+        setLoading(false);
+      }
+    },
+    [id],
+  );
 
   useEffect(() => {
-    void load();
-  }, [id]);
+    const task = setTimeout(() => void load(), 0);
+    return () => clearTimeout(task);
+  }, [load]);
 
   const status = useMemo(
     () =>
@@ -68,6 +101,36 @@ export default function TicketDetailScreen() {
       ) ?? null,
     [ticket],
   );
+  const editableStatuses = useMemo(
+    () =>
+      (ticket?.statusOptions ?? []).filter(
+        (option) =>
+          !option.is_closed ||
+          ticket?.canClose ||
+          option.id === ticket?.statusId,
+      ),
+    [ticket],
+  );
+
+  function resetEditor() {
+    if (!ticket) return;
+    setSubject(ticket.subject);
+    setDescription(ticket.description);
+    setStatusKey(
+      ticket.statusOptions.find((option) => option.id === ticket.statusId)
+        ?.key ?? "",
+    );
+    setPriorityKey(
+      ticket.priorityOptions.find((option) => option.id === ticket.priorityId)
+        ?.key ?? "",
+    );
+  }
+
+  function toggleEditing() {
+    if (editing) resetEditor();
+    setError("");
+    setEditing((current) => !current);
+  }
 
   async function save() {
     if (!ticket || !tenant) return;
@@ -75,6 +138,21 @@ export default function TicketDetailScreen() {
       setError("Betreff und Beschreibung müssen ausgefüllt sein.");
       return;
     }
+    if (!statusKey || !priorityKey) {
+      setError("Bitte wählen Sie Status und Priorität.");
+      return;
+    }
+    const nextStatus = ticket.statusOptions.find(
+      (option) => option.key === statusKey,
+    );
+    const nextPriority = ticket.priorityOptions.find(
+      (option) => option.key === priorityKey,
+    );
+    if (!nextStatus || !nextPriority) {
+      setError("Status oder Priorität sind nicht gültig.");
+      return;
+    }
+
     setSaving(true);
     setError("");
     try {
@@ -83,11 +161,15 @@ export default function TicketDetailScreen() {
         ticketId: ticket.id,
         subject: subject.trim(),
         description: description.trim(),
+        statusKey,
+        priorityKey,
       });
       setTicket({
         ...ticket,
         subject: subject.trim(),
         description: description.trim(),
+        statusId: nextStatus.id,
+        priorityId: nextPriority.id,
       });
       setEditing(false);
     } catch (nextError) {
@@ -98,6 +180,45 @@ export default function TicketDetailScreen() {
       );
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function sendComment() {
+    if (!ticket || !tenant) return;
+    const body = comment.trim();
+    if (!body) {
+      setError("Bitte schreiben Sie zuerst eine Nachricht.");
+      return;
+    }
+    if (
+      (commentVisibility === "internal" && !ticket.canWriteInternalNotes) ||
+      (commentVisibility === "external" && !ticket.canCommentExternal)
+    ) {
+      setError(
+        "Sie sind nicht berechtigt, diese Nachricht zu veröffentlichen.",
+      );
+      return;
+    }
+
+    setSendingComment(true);
+    setError("");
+    try {
+      await addMobileTicketComment({
+        tenantId: tenant.id,
+        ticketId: ticket.id,
+        body,
+        visibility: commentVisibility,
+      });
+      setComment("");
+      await load(false);
+    } catch (nextError) {
+      setError(
+        nextError instanceof Error
+          ? nextError.message
+          : "Die Nachricht konnte nicht veröffentlicht werden.",
+      );
+    } finally {
+      setSendingComment(false);
     }
   }
 
@@ -120,6 +241,7 @@ export default function TicketDetailScreen() {
             {error || "Ticket nicht gefunden"}
           </Text>
           <Pressable
+            accessibilityRole="button"
             onPress={() => router.back()}
             style={styles.secondaryButton}
           >
@@ -134,6 +256,7 @@ export default function TicketDetailScreen() {
     <ScreenContainer containerClassName="bg-[#F6F7FB]" className="px-5">
       <ScrollView
         contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.topBar}>
@@ -151,9 +274,12 @@ export default function TicketDetailScreen() {
           </Text>
           {ticket.canUpdate ? (
             <Pressable
+              accessibilityLabel={
+                editing ? "Bearbeitung abbrechen" : "Ticket bearbeiten"
+              }
               accessibilityRole="button"
-              disabled={saving}
-              onPress={() => setEditing((current) => !current)}
+              disabled={saving || sendingComment}
+              onPress={toggleEditing}
               style={styles.editButton}
             >
               <Ionicons
@@ -229,29 +355,91 @@ export default function TicketDetailScreen() {
         </View>
 
         {editing ? (
-          <Pressable
-            accessibilityRole="button"
-            disabled={saving}
-            onPress={() => void save()}
-            style={[styles.primaryButton, saving && styles.disabled]}
-          >
-            {saving ? (
-              <ActivityIndicator color="#FFFFFF" />
-            ) : (
-              <Ionicons color="#FFFFFF" name="save-outline" size={19} />
-            )}
-            <Text style={styles.primaryButtonText}>
-              {saving
-                ? "Änderungen werden gespeichert …"
-                : "Änderungen speichern"}
-            </Text>
-          </Pressable>
+          <View style={styles.editCard}>
+            <Text style={styles.editTitle}>Ticket bearbeiten</Text>
+            <Text style={styles.fieldLabel}>STATUS</Text>
+            <View style={styles.optionWrap}>
+              {editableStatuses.map((option) => (
+                <Pressable
+                  accessibilityRole="button"
+                  key={option.id}
+                  onPress={() => setStatusKey(option.key)}
+                  style={[
+                    styles.option,
+                    statusKey === option.key && styles.optionActive,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.optionText,
+                      statusKey === option.key && styles.optionTextActive,
+                    ]}
+                  >
+                    {option.label}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+            <Text style={styles.fieldLabel}>PRIORITÄT</Text>
+            <View style={styles.optionWrap}>
+              {ticket.priorityOptions.map((option) => (
+                <Pressable
+                  accessibilityRole="button"
+                  key={option.id}
+                  onPress={() => setPriorityKey(option.key)}
+                  style={[
+                    styles.option,
+                    priorityKey === option.key && styles.optionActive,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.optionText,
+                      priorityKey === option.key && styles.optionTextActive,
+                    ]}
+                  >
+                    {option.label}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+            <Pressable
+              accessibilityRole="button"
+              disabled={saving}
+              onPress={() => void save()}
+              style={[styles.primaryButton, saving && styles.disabled]}
+            >
+              {saving ? (
+                <ActivityIndicator color="#FFFFFF" />
+              ) : (
+                <Ionicons color="#FFFFFF" name="save-outline" size={19} />
+              )}
+              <Text style={styles.primaryButtonText}>
+                {saving
+                  ? "Änderungen werden gespeichert …"
+                  : "Änderungen speichern"}
+              </Text>
+            </Pressable>
+          </View>
         ) : ticket.canUpdate ? (
           <Text style={styles.hint}>
-            Tippe oben auf das Stift-Symbol, um Betreff und Beschreibung direkt
-            zu bearbeiten.
+            Über das Stift-Symbol können Sie Betreff, Beschreibung, Status und
+            Priorität bearbeiten.
           </Text>
         ) : null}
+
+        <TicketConversation
+          body={comment}
+          canCommentExternal={ticket.canCommentExternal}
+          canWriteInternalNotes={ticket.canWriteInternalNotes}
+          comments={ticket.comments}
+          isSending={sendingComment}
+          onBodyChange={setComment}
+          onSend={() => void sendComment()}
+          onVisibilityChange={setCommentVisibility}
+          visibility={commentVisibility}
+        />
+
         {error ? <Text style={styles.error}>{error}</Text> : null}
       </ScrollView>
     </ScreenContainer>
@@ -259,7 +447,7 @@ export default function TicketDetailScreen() {
 }
 
 const styles = StyleSheet.create({
-  content: { gap: 16, paddingTop: 14, paddingBottom: 30 },
+  content: { gap: 16, paddingTop: 14, paddingBottom: 36 },
   centered: {
     alignItems: "center",
     flex: 1,
@@ -358,6 +546,35 @@ const styles = StyleSheet.create({
     minHeight: 145,
     padding: 12,
   },
+  editCard: {
+    backgroundColor: "#FFFFFF",
+    borderColor: "#DAD8EE",
+    borderRadius: 20,
+    borderWidth: 1,
+    gap: 11,
+    padding: 17,
+  },
+  editTitle: { color: "#202136", fontSize: 18, fontWeight: "800" },
+  fieldLabel: {
+    color: "#77758C",
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 0.9,
+    marginTop: 3,
+  },
+  optionWrap: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  option: {
+    backgroundColor: "#F7F7FB",
+    borderColor: "#E5E5EF",
+    borderRadius: 13,
+    borderWidth: 1,
+    minHeight: 39,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+  },
+  optionActive: { backgroundColor: "#4438CA", borderColor: "#4438CA" },
+  optionText: { color: "#555568", fontSize: 13, fontWeight: "800" },
+  optionTextActive: { color: "#FFFFFF" },
   primaryButton: {
     alignItems: "center",
     backgroundColor: "#4438CA",
@@ -365,6 +582,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 9,
     justifyContent: "center",
+    marginTop: 5,
     minHeight: 52,
     paddingHorizontal: 16,
   },

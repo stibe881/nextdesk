@@ -12,7 +12,7 @@
   - [x] Die Startübersicht zeigt RLS-autorisierte Tickets und kompakte persönliche Arbeitsinformationen aus dem echten nextDesk-Mandanten.
   - [x] Die Ticketliste unterstützt Statusfilter und einhändig bedienbare Ticketdetails.
   - [ ] Tickets können direkt in der App mit Betreff, Beschreibung, Abteilung und Priorität erfasst werden. Die angemeldete Person ist vorausgewählt; Personen mit der bestehenden Berechtigung zur Verwaltung anfragender Personen können sie vor dem Speichern über eine Suche ersetzen. Ohne diese Berechtigung bleibt die serverseitige Mandanten- und Rechteprüfung verbindlich.
-  - [x] Berechtigte Agenten können Betreff und Beschreibung direkt in der mobilen Ticketdetailansicht bearbeiten.
+  - [ ] Berechtigte Agenten können Betreff, Beschreibung, Status und Priorität direkt in der mobilen Ticketdetailansicht bearbeiten. Die Ansicht zeigt eine Chat-Kommunikation; interne Kommentare sind der Standard, externe Portalantworten werden klar gekennzeichnet und nur bei der vorhandenen Serverberechtigung angeboten. Kunden erhalten keine internen Kommentare.
   - [ ] Mandanten- und Rechtekontext steuern die sichtbare Navigation und Funktionen auch bei mehreren aktiven Mandanten.
 
 - [ ] **Expo-/EAS-Release zu TestFlight**

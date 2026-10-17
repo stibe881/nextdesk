@@ -20,6 +20,16 @@ export type MobileTicket = {
 type Department = { id: string; key: string; name: string; kind: string };
 type Priority = { key: string; label: string; sort_order: number };
 export type TicketRequester = { id: string; displayName: string };
+export type TicketCommentVisibility = "internal" | "external";
+export type MobileTicketComment = {
+  id: string;
+  authorId: string;
+  authorKind: "agent" | "customer" | "internal";
+  authorName: string;
+  body: string;
+  createdAt: string;
+  visibility: TicketCommentVisibility;
+};
 
 export type TicketFormOptions = {
   departments: Department[];
@@ -42,7 +52,11 @@ export type MobileTicketDetail = {
     is_closed: boolean;
   }[];
   priorityOptions: { id: string; key: string; label: string }[];
+  comments: MobileTicketComment[];
   canUpdate: boolean;
+  canClose: boolean;
+  canWriteInternalNotes: boolean;
+  canCommentExternal: boolean;
 };
 
 function envelopeData(value: unknown): Record<string, unknown> {
@@ -70,6 +84,37 @@ function ticketRequester(value: unknown): TicketRequester | null {
     return null;
   }
   return { id: record.id, displayName: record.displayName.trim() };
+}
+
+function ticketComment(value: unknown): MobileTicketComment | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return null;
+  }
+  const record = value as Record<string, unknown>;
+  if (
+    typeof record.id !== "string" ||
+    typeof record.author_id !== "string" ||
+    typeof record.body !== "string" ||
+    typeof record.created_at !== "string" ||
+    (record.authorKind !== "agent" &&
+      record.authorKind !== "customer" &&
+      record.authorKind !== "internal") ||
+    (record.visibility !== "internal" && record.visibility !== "external")
+  ) {
+    return null;
+  }
+  return {
+    id: record.id,
+    authorId: record.author_id,
+    authorKind: record.authorKind,
+    authorName:
+      typeof record.authorName === "string" && record.authorName.trim()
+        ? record.authorName.trim()
+        : "nextDesk Benutzer",
+    body: record.body,
+    createdAt: record.created_at,
+    visibility: record.visibility,
+  };
 }
 
 export async function loadMobileDashboard(): Promise<{
@@ -230,9 +275,18 @@ export async function loadMobileTicketDetail(
     typeof record.status_id !== "string" ||
     typeof record.priority_id !== "string" ||
     !Array.isArray(data.statuses) ||
-    !Array.isArray(data.priorities)
+    !Array.isArray(data.priorities) ||
+    !Array.isArray(data.comments)
   ) {
     throw new Error("Die Ticketdetails sind unvollständig.");
+  }
+  const comments = data.comments.map(ticketComment);
+  if (
+    !comments.every(
+      (comment): comment is MobileTicketComment => comment !== null,
+    )
+  ) {
+    throw new Error("Die Ticketkommunikation ist unvollständig.");
   }
   return {
     id: record.id,
@@ -245,7 +299,11 @@ export async function loadMobileTicketDetail(
     priorityId: record.priority_id,
     statusOptions: data.statuses as MobileTicketDetail["statusOptions"],
     priorityOptions: data.priorities as MobileTicketDetail["priorityOptions"],
+    comments,
     canUpdate: data.canUpdate === true,
+    canClose: data.canClose === true,
+    canWriteInternalNotes: data.canWriteInternalNotes === true,
+    canCommentExternal: data.canCommentExternal === true,
   };
 }
 
@@ -254,6 +312,8 @@ export async function updateMobileTicket(input: {
   ticketId: string;
   subject: string;
   description: string;
+  statusKey?: string;
+  priorityKey?: string;
 }): Promise<void> {
   await invokeNextDesk<unknown>("ticket-operations", {
     type: "updateTicket",
@@ -261,5 +321,28 @@ export async function updateMobileTicket(input: {
     ticketId: input.ticketId,
     subject: input.subject,
     description: input.description,
+    ...(input.statusKey ? { statusKey: input.statusKey } : {}),
+    ...(input.priorityKey ? { priorityKey: input.priorityKey } : {}),
+  });
+}
+
+export async function addMobileTicketComment(input: {
+  tenantId: string;
+  ticketId: string;
+  body: string;
+  visibility: TicketCommentVisibility;
+}): Promise<void> {
+  const body = input.body.trim();
+  if (!body || Array.from(body).length > 50_000 || body.includes("\u0000")) {
+    throw new Error(
+      "Die Nachricht muss zwischen 1 und 50'000 Zeichen lang sein.",
+    );
+  }
+  await invokeNextDesk<unknown>("ticket-operations", {
+    type: "addComment",
+    tenantId: input.tenantId,
+    ticketId: input.ticketId,
+    body,
+    visibility: input.visibility,
   });
 }
