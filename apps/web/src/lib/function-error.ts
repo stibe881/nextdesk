@@ -61,6 +61,15 @@ export async function functionErrorMessage(
     case "permission_denied":
     case "forbidden":
       return "Für diese Aktion fehlt Ihnen die erforderliche Berechtigung.";
+    case "tenant_sso_required":
+      return "Für diesen Mandanten ist die Anmeldung über das Unternehmens-SSO erforderlich.";
+    case "tenant_sso_membership_required":
+      return "Ihr Unternehmenslogin wurde erkannt, aber Sie sind für diesen Mandanten noch nicht eingeladen. Bitte wenden Sie sich an die Mandantenadministration.";
+    case "tenant_sso_identity_mismatch":
+      return "Die Entra-Identität passt nicht zur SSO-Konfiguration dieses Mandanten.";
+    case "sso_configuration_not_active":
+    case "sso_configuration_not_found":
+      return "Die SSO-Konfiguration dieses Mandanten ist noch nicht vollständig aktiv.";
     case "not_found":
     case "ticket_not_found":
       return "Der angeforderte Eintrag ist nicht mehr verfügbar oder Sie haben keinen Zugriff darauf.";

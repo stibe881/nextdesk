@@ -18,6 +18,9 @@ verify_jwt = true
 [functions.owner-access]
 verify_jwt = true
 
+[functions.tenant-sso-access]
+verify_jwt = true
+
 [functions.owner-console]
 verify_jwt = true
 

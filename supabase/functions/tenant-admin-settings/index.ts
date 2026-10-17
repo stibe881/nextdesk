@@ -611,10 +611,15 @@ async function handleUpdateSsoConfiguration(
     action.discoveryUrl === undefined
       ? (existing?.discovery_url ?? null)
       : action.discoveryUrl;
+  // Azure customer SSO always uses the centrally managed, multitenant
+  // nextDesk application in Supabase. A per-tenant client ID would suggest a
+  // second provider configuration that Supabase cannot safely select at login.
   const clientId =
-    action.clientId === undefined
-      ? (existing?.client_id ?? null)
-      : action.clientId;
+    action.provider === "azure_ad"
+      ? null
+      : action.clientId === undefined
+        ? (existing?.client_id ?? null)
+        : action.clientId;
   const allowedEmailDomains =
     action.allowedEmailDomains === undefined
       ? (existing?.allowed_email_domains ?? [])

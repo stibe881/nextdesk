@@ -1,5 +1,6 @@
 # Liefer-Backlog
 
+- [ ] **Mehrmandanten-Entra-SSO.** Kunden verwenden eine zentrale mehrmandantenfähige nextDesk-Entra-App, bleiben aber strikt in ihrem eigenen Entra-Verzeichnis und ihrem eigenen nextDesk-Mandanten. Jede aktivierte Kundendomain darf nur einem Mandanten gehören; Entra-Anmeldung, Domain, vorhandene Einladung beziehungsweise aktive Mitgliedschaft und ein vorhandener Tenant-Claim werden serverseitig geprüft. Kundinnen und Kunden werden nie als Gross-ICT-Gastkonten angelegt. Die zentrale Entra-App und ihr Secret werden erst nach sicherer Bereitstellung in Supabase aktiviert.
 - [ ] **Ticket-Tags.** Berechtigte Supporter können im Ticketdetail mandantenisolierte Tags erstellen, zuweisen und entfernen. Tag-Namen sind pro Mandant eindeutig; Tag-Zuweisungen folgen der bestehenden Ticketleseberechtigung, werden im Ticketverlauf auditiert und können keine Tickets anderer Mandanten oder Abteilungen offenlegen.
 
 - [x] **Phase-1-Architektur und Projektgrenzen.** Monorepo, React-/Expo-Zielstruktur, Mandanten- und Abteilungskonzept, RLS-Strategie, Entra-Konzept, Hostingrichtung, Risiken und MVP-Abgrenzung sind dokumentiert. Die Architektur muss den Produktnamen konfigurierbar halten und `de-CH`, `Europe/Zurich` sowie UTC im Datenmodell berücksichtigen.

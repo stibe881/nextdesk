@@ -37,6 +37,8 @@ const expectedFiles = [
   "0032_ticket_presence_indicators.sql",
   "0033_sync_comment_author_names.sql",
   "0034_ticket_tags.sql",
+  "0035_comment_author_email_name_fallback.sql",
+  "0036_tenant_sso_domain_routing.sql",
 ];
 
 const availableFiles = await readdir(migrationDirectory);
@@ -294,6 +296,22 @@ const requiredFragments = [
     "create policy ticket_tag_assignments_select_readable_ticket",
   ],
   ["0034_ticket_tags.sql", "foreign key (ticket_id, tenant_id)"],
+  [
+    "0035_comment_author_email_name_fallback.sql",
+    "create or replace function public.auth_profile_display_name",
+  ],
+  [
+    "0036_tenant_sso_domain_routing.sql",
+    "create table public.tenant_sso_allowed_domains",
+  ],
+  [
+    "0036_tenant_sso_domain_routing.sql",
+    "constraint tenant_sso_allowed_domains_domain_unique unique (domain)",
+  ],
+  [
+    "0036_tenant_sso_domain_routing.sql",
+    "create trigger tenant_sso_configurations_sync_domains",
+  ],
 ];
 
 for (const [migration, fragment] of requiredFragments) {

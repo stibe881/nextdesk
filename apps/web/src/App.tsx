@@ -61,6 +61,7 @@ import {
   type OwnerAccess,
 } from "./platform-owner";
 import { functionErrorMessage } from "./lib/function-error";
+import { resolveTenantSsoAccess } from "./lib/tenant-sso-access";
 import {
   matchesTicketSearch,
   parseTicketSearch,
@@ -493,8 +494,9 @@ function SignInScreen() {
         Servicezentrale.
       </h2>
       <p className="access-lead">
-        Eigentümer melden sich über Gross ICT an. Mandantenzugänge folgen der
-        jeweiligen Unternehmensrichtlinie.
+        Eigentümer und Kundinnen und Kunden melden sich über ihr jeweiliges
+        Unternehmens-SSO an. Ihr Zugang wird danach automatisch dem richtigen
+        Mandanten zugeordnet.
       </p>
       <button
         className="gross-sso-button"
@@ -855,8 +857,24 @@ export function App() {
     setSnapshot(null);
     void acceptTenantInvitations()
       .catch(() => 0)
-      .then(() => Promise.all([loadActiveTenants(), loadProfileName()]))
-      .then(([activeTenants, profileName]) => {
+      .then(async () => {
+        const [ssoAccess, activeTenants, profileName] = await Promise.all([
+          resolveTenantSsoAccess(),
+          loadActiveTenants(),
+          loadProfileName(),
+        ]);
+        const scopedTenants =
+          ssoAccess.scope === "tenant"
+            ? activeTenants.filter((tenant) => tenant.id === ssoAccess.tenantId)
+            : activeTenants;
+        if (ssoAccess.scope === "tenant" && scopedTenants.length !== 1) {
+          throw new Error(
+            "Die Mandantenmitgliedschaft konnte nach der SSO-Anmeldung nicht bestätigt werden.",
+          );
+        }
+        return { activeTenants: scopedTenants, profileName };
+      })
+      .then(({ activeTenants, profileName }) => {
         if (!mounted) return;
         setTenants(activeTenants);
         setOperatorName(
@@ -864,8 +882,14 @@ export function App() {
         );
         setActiveTenantId((current) => current || activeTenants[0]?.id || "");
       })
-      .catch((error: Error) => {
-        if (mounted) setTenantLoadError(error.message);
+      .catch(async (error: unknown) => {
+        if (!mounted) return;
+        setTenantLoadError(
+          await functionErrorMessage(
+            error,
+            "Ihre Anmeldung konnte keinem berechtigten Mandanten zugeordnet werden. Bitte wenden Sie sich an die Mandantenadministration.",
+          ),
+        );
       })
       .finally(() => {
         if (mounted) setTenantLoading(false);

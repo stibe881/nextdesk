@@ -585,7 +585,8 @@ export function TenantAdminSettings({
               enabled: sso.enabled,
               issuerUrl: sso.issuer_url ?? "",
               discoveryUrl: sso.discovery_url ?? "",
-              clientId: sso.client_id ?? "",
+              clientId:
+                sso.provider === "azure_ad" ? "" : (sso.client_id ?? ""),
               allowedEmailDomains: sso.allowed_email_domains.join("\n"),
               enforceSso: sso.enforce_sso,
             }
@@ -832,6 +833,16 @@ export function TenantAdminSettings({
       setError("Geben Sie höchstens 50 gültige E-Mail-Domains ein.");
       return;
     }
+    if (
+      ssoForm.enabled &&
+      ssoForm.provider === "azure_ad" &&
+      domains.length === 0
+    ) {
+      setError(
+        "Für aktiviertes Microsoft-Entra-SSO ist mindestens eine Unternehmensdomain erforderlich.",
+      );
+      return;
+    }
 
     beginSave("sso");
     try {
@@ -842,7 +853,7 @@ export function TenantAdminSettings({
         enabled: ssoForm.enabled,
         issuerUrl: issuerUrl || null,
         discoveryUrl: discoveryUrl || null,
-        clientId: clientId || null,
+        clientId: ssoForm.provider === "azure_ad" ? null : clientId || null,
         allowedEmailDomains: [...new Set(domains)],
         enforceSso: ssoForm.enforceSso,
       });
@@ -1557,7 +1568,12 @@ export function TenantAdminSettings({
                         <dd>{ssoConfiguration.discovery_url}</dd>
                       </div>
                     ) : null}
-                    {ssoConfiguration.client_id ? (
+                    {ssoConfiguration.provider === "azure_ad" ? (
+                      <div>
+                        <dt>Client-App</dt>
+                        <dd>Zentrale mehrmandantenfähige nextDesk-Entra-App</dd>
+                      </div>
+                    ) : ssoConfiguration.client_id ? (
                       <div>
                         <dt>Client-ID</dt>
                         <dd>{ssoConfiguration.client_id}</dd>
@@ -1575,9 +1591,11 @@ export function TenantAdminSettings({
                   </p>
                 )}
                 <p className="tenant-admin-settings__security-note">
-                  Geheime Client-Schlüssel werden hier weder angezeigt noch
-                  gespeichert. Sie müssen getrennt und sicher serverseitig
-                  hinterlegt werden.
+                  Microsoft Entra ID verwendet die zentral verwaltete,
+                  mehrmandantenfähige nextDesk-App. Pro Kundenmandant werden nur
+                  der eigene Entra-Tenant und die Unternehmensdomains
+                  hinterlegt. Geheime Client-Schlüssel werden hier nie angezeigt
+                  oder gespeichert.
                 </p>
 
                 <form
@@ -1605,21 +1623,23 @@ export function TenantAdminSettings({
                         <option value="azure_ad">Microsoft Entra ID</option>
                       </select>
                     </label>
-                    <label>
-                      Client-ID
-                      <input
-                        type="text"
-                        value={ssoForm.clientId}
-                        maxLength={512}
-                        disabled={saving !== null}
-                        onChange={(event) =>
-                          setSsoForm((current) => ({
-                            ...current,
-                            clientId: event.target.value,
-                          }))
-                        }
-                      />
-                    </label>
+                    {ssoForm.provider !== "azure_ad" && (
+                      <label>
+                        Client-ID
+                        <input
+                          type="text"
+                          value={ssoForm.clientId}
+                          maxLength={512}
+                          disabled={saving !== null}
+                          onChange={(event) =>
+                            setSsoForm((current) => ({
+                              ...current,
+                              clientId: event.target.value,
+                            }))
+                          }
+                        />
+                      </label>
+                    )}
                     <label>
                       Issuer-URL
                       <input

@@ -83,6 +83,54 @@ insert into public.tenant_memberships (tenant_id, user_id, status, joined_at) va
   ('10000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000003', 'active', now()),
   ('20000000-0000-4000-8000-000000000002', '00000000-0000-4000-8000-000000000004', 'active', now());
 
+-- An enabled SSO company domain is a single-tenant routing key. It must be
+-- normalized, materialized privately and never be claimable by tenant B.
+update public.tenant_sso_configurations
+set provider = 'azure_ad',
+    enabled = true,
+    issuer_url = 'https://login.microsoftonline.com/11111111-1111-1111-1111-111111111111/v2.0',
+    allowed_email_domains = array['  Tenant-A.Example  ']
+where tenant_id = '10000000-0000-4000-8000-000000000001';
+
+do $$
+begin
+  if not exists (
+    select 1 from public.tenant_sso_allowed_domains
+    where tenant_id = '10000000-0000-4000-8000-000000000001'
+      and domain = 'tenant-a.example'
+  ) then
+    raise exception 'Enabled tenant SSO domain was not materialized';
+  end if;
+
+  begin
+    update public.tenant_sso_configurations
+    set provider = 'azure_ad',
+        enabled = true,
+        issuer_url = 'https://login.microsoftonline.com/22222222-2222-2222-2222-222222222222/v2.0',
+        allowed_email_domains = array['tenant-a.example']
+    where tenant_id = '20000000-0000-4000-8000-000000000002';
+    raise exception 'Duplicate tenant SSO domain was accepted';
+  exception when unique_violation then
+    null;
+  end;
+end;
+$$;
+
+update public.tenant_sso_configurations
+set enabled = false
+where tenant_id = '10000000-0000-4000-8000-000000000001';
+
+do $$
+begin
+  if exists (
+    select 1 from public.tenant_sso_allowed_domains
+    where tenant_id = '10000000-0000-4000-8000-000000000001'
+  ) then
+    raise exception 'Disabled tenant SSO still retained a routing domain';
+  end if;
+end;
+$$;
+
 insert into public.department_memberships (department_id, tenant_id, user_id, status) values
   ('11000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000002', 'active');
 
