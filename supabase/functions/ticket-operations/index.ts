@@ -960,20 +960,39 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
           (comment: any) => comment.visibility === "external",
         );
     const authorIds = [
-      ...new Set(filteredComments.map((comment: any) => comment.author_id)),
+      ...new Set(
+        filteredComments
+          .map((comment: any) => comment.author_id)
+          .filter((authorId: unknown) => isUuid(authorId)),
+      ),
     ];
-    const { data: profiles } = authorIds.length
-      ? await context.supabaseAdmin
-          .from("user_profiles")
-          .select("id, display_name")
-          .in("id", authorIds)
-      : { data: [] };
+    const [profileResult, customerMembershipResult] = await Promise.all([
+      authorIds.length
+        ? context.supabaseAdmin
+            .from("user_profiles")
+            .select("id, display_name")
+            .in("id", authorIds)
+        : Promise.resolve({ data: [] }),
+      isUuid(ticket.customer_organization_id) && authorIds.length
+        ? context.supabaseAdmin
+            .from("customer_memberships")
+            .select("user_id")
+            .eq("customer_organization_id", ticket.customer_organization_id)
+            .in("user_id", authorIds)
+        : Promise.resolve({ data: [] }),
+    ]);
+    const profiles = profileResult.data;
     const profileNames = Object.fromEntries(
       (profiles ?? []).map((profile: any) => [
         profile.id,
         profile.display_name,
       ]),
     );
+    const customerAuthorIds = new Set<string>();
+    if (isUuid(ticket.requester_id)) customerAuthorIds.add(ticket.requester_id);
+    for (const membership of customerMembershipResult.data ?? []) {
+      if (isUuid(membership.user_id)) customerAuthorIds.add(membership.user_id);
+    }
     const requesterContact =
       isRecord(requesterContactRow) &&
       isUuid(requesterContactRow.id) &&
@@ -1163,6 +1182,12 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         comments: filteredComments.map((comment: any) => ({
           ...comment,
           authorName: profileNames[comment.author_id] ?? "nextDesk Benutzer",
+          authorKind:
+            comment.visibility === "internal"
+              ? "internal"
+              : customerAuthorIds.has(comment.author_id)
+                ? "customer"
+                : "agent",
         })),
         events: events ?? [],
         escalations: escalations ?? [],
@@ -1956,7 +1981,8 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         {
           error: {
             code: "internal_note_denied",
-            message: "Sie sind nicht berechtigt, interne Kommentare zu verfassen.",
+            message:
+              "Sie sind nicht berechtigt, interne Kommentare zu verfassen.",
           },
         },
         403,
