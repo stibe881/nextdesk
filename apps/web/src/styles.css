@@ -8171,3 +8171,135 @@ body:has(.ticket-detail) {
     padding-inline: 0.65rem;
   }
 }
+
+/* Mandantenbezogene Betriebsautomatisierungen */
+.tenant-automation {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  margin-top: 20px;
+  padding: 24px;
+}
+.tenant-automation__heading {
+  align-items: flex-start;
+  display: flex;
+  gap: 20px;
+  justify-content: space-between;
+}
+.tenant-automation__heading h2 {
+  margin: 3px 0 8px;
+}
+.tenant-automation__heading p {
+  color: var(--muted);
+  margin: 0;
+  max-width: 720px;
+}
+.tenant-automation__message {
+  background: #effaf4;
+  border: 1px solid #c3ebd2;
+  border-radius: 10px;
+  color: #17653e;
+  margin: 16px 0 0;
+  padding: 10px 12px;
+}
+.tenant-automation__list {
+  display: grid;
+  gap: 12px;
+  list-style: none;
+  margin: 20px 0;
+  padding: 0;
+}
+.tenant-automation__list > li {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px;
+}
+.tenant-automation__policy {
+  align-items: flex-start;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+}
+.tenant-automation__policy strong,
+.tenant-automation__policy span {
+  display: block;
+}
+.tenant-automation__policy span {
+  color: var(--muted);
+  font-size: 0.9rem;
+  margin-top: 4px;
+  max-width: 690px;
+}
+.tenant-automation__switch {
+  align-items: center;
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 7px;
+  white-space: nowrap;
+}
+.tenant-automation__switch input {
+  accent-color: var(--primary);
+  height: 18px;
+  width: 18px;
+}
+.tenant-automation__controls {
+  align-items: end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-top: 12px;
+}
+.tenant-automation__controls label {
+  color: var(--muted);
+  display: grid;
+  font-size: 0.8rem;
+  font-weight: 700;
+  gap: 5px;
+}
+.tenant-automation__controls input[type="number"] {
+  max-width: 150px;
+}
+.tenant-automation__controls .tenant-automation__preview-check {
+  align-items: center;
+  display: flex;
+  font-size: 0.88rem;
+  font-weight: 600;
+  gap: 8px;
+  min-height: 39px;
+}
+.tenant-automation__preview {
+  background: #f7f7ff;
+  border-left: 3px solid var(--primary);
+  border-radius: 7px;
+  display: grid;
+  gap: 5px;
+  margin-top: 14px;
+  padding: 10px 12px;
+}
+.tenant-automation__preview > span {
+  color: var(--muted);
+  font-size: 0.87rem;
+}
+.tenant-automation__preview ul {
+  display: grid;
+  gap: 3px;
+  margin: 4px 0 0;
+  padding-left: 18px;
+}
+.tenant-automation__preview li {
+  color: #354154;
+  font-size: 0.85rem;
+}
+@media (max-width: 680px) {
+  .tenant-automation {
+    padding: 18px;
+  }
+  .tenant-automation__heading,
+  .tenant-automation__policy {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .tenant-automation__heading .secondary-button {
+    align-self: flex-start;
+  }
+}

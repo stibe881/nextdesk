@@ -12,6 +12,7 @@ import { TicketCustomFieldsAdmin } from "./ticket-custom-fields-admin";
 import { AssetIntuneSettings } from "./asset-intune-settings";
 import { DepartmentManagement } from "./department-management";
 import { TicketTemplates } from "./ticket-templates";
+import { TenantAutomation } from "./tenant-automation";
 
 export type TenantAdminSettingsProps = {
   tenantId: string;
@@ -2191,6 +2192,10 @@ export function TenantAdminSettings({
                   </p>
                 )}
               </section>
+            )}
+
+            {activeArea === "features" && (
+              <TenantAutomation tenantId={tenantId} />
             )}
 
             {activeArea === "ticket-fields" && (
