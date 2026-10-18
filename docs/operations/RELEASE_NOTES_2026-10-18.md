@@ -27,6 +27,29 @@
 
 **Web und API (Commit `0dcd8b2`, live auf app.nextdesk.ch).** Neu sind Wiedervorlagen und „Mein Tag“, Wiedervorlagen und Lösungsbestätigungen im Ticket, ein Servicekatalog bei der Ticketerfassung und eine rein lesende KI-Governance-Ansicht. Migration 0057 ist produktiv; die Functions `experience-hub` und `ai-assist` sind ACTIVE (CORS 204, ohne Anmeldung 401). KI und ausgehende Webhooks bleiben pro Mandant deaktiviert, und es wird kein KI-Provider kontaktiert.
 
+## Nachlieferung 17:30 Uhr
+
+**Welle 3 (Web e871791, Migration 0058).** Agentenwerkbank:
+
+- 360-Grad-Ticketkontext
+- erklärbare Zuweisungsvorschläge, die eine Person bestätigen muss
+- Team-Warteschlangen, persönliche Kennzahlen, Erwähnungen und Stellvertretungen
+- Makros, die nie zuweisen oder schliessen
+
+Anfragendenportal: Störungsmeldungen, Zeitleiste, SLA-Erwartung, eigene Geräte, Freigaben, Wiedereröffnungsanfrage, Datenauszug und Sitzungsverwaltung. Dazu kommt ein durchsuchbarer und exportierbarer Auditbericht.
+
+**Welle 4 (Web 2df3cbb, Migration 0059).**
+
+- Personen in Kopie, über eine datensparsame Kollegensuche mit reinen Anzeigenamen
+- eigene Erreichbarkeit, im Agentenkontext sichtbar
+- optionale Abteilungsansicht für Anfragende (nur Nummer, Titel, Status; standardmässig aus)
+- Branding-Live-Vorschau mit WCAG-Kontrastwarnung, Dashboard-Trends und persönliche Einführungshinweise
+- öffentlicher, datenfreier Health-Endpunkt
+- ruhende Outbox nur für service_role
+- E2E-Test ohne Anmeldung, schonender Lastcheck und lokaler Backup-Restore-Drill mit Evidenz
+
+**Hinweis:** Die iOS-Anteile (bis 0526b7f) sind in keinem TestFlight-Build enthalten.
+
 ## Sicherheits- und Betriebsgrenzen
 
 Die Integration mit Microsoft Intune, der vollständige Entra-Personenabgleich, E-Mail/Kalender/Teams/Slack, Webhooks/API-Schlüssel, produktives Monitoring sowie zeitgesteuerte Regelruns bleiben bewusst deaktiviert, bis die je erforderlichen Provider- und Datenschutzfreigaben, Secrets und Einwilligungen vorliegen. Sie sind nicht als aktiv ausgegeben.
