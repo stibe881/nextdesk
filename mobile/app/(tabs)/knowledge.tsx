@@ -13,6 +13,7 @@ import {
 } from "react-native";
 
 import { ScreenContainer } from "@/components/screen-container";
+import { useMobileNetworkStatus } from "@/components/offline-status";
 import {
   formatMobileKnowledgeUpdatedAt,
   searchMobileKnowledge,
@@ -23,6 +24,7 @@ import { useMobileSessionGuard } from "@/lib/use-mobile-session-guard";
 
 export default function KnowledgeScreen() {
   const router = useRouter();
+  const { recoveryEpoch } = useMobileNetworkStatus();
   const checkingSession = useMobileSessionGuard();
   const [query, setQuery] = useState("");
   const [articles, setArticles] = useState<MobileKnowledgeArticle[]>([]);
@@ -49,9 +51,10 @@ export default function KnowledgeScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      void recoveryEpoch;
       const timer = setTimeout(() => void loadArticles(), query ? 260 : 0);
       return () => clearTimeout(timer);
-    }, [loadArticles, query]),
+    }, [loadArticles, query, recoveryEpoch]),
   );
 
   function openArticle(articleId: string) {

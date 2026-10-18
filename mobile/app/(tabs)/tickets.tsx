@@ -13,6 +13,7 @@ import {
 } from "react-native";
 
 import { ScreenContainer } from "@/components/screen-container";
+import { useMobileNetworkStatus } from "@/components/offline-status";
 import {
   getMobileUserId,
   isNextDeskConfigured,
@@ -33,6 +34,7 @@ const scopes: { key: TicketScope; label: string }[] = [
 
 export default function TicketsScreen() {
   const router = useRouter();
+  const { recoveryEpoch } = useMobileNetworkStatus();
   const [tickets, setTickets] = useState<MobileTicket[]>([]);
   const [tenantName, setTenantName] = useState("");
   const [scope, setScope] = useState<TicketScope>("all");
@@ -82,8 +84,9 @@ export default function TicketsScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      void recoveryEpoch;
       void load();
-    }, [load]),
+    }, [load, recoveryEpoch]),
   );
 
   const normalizedQuery = query.trim().toLocaleLowerCase("de-CH");

@@ -14,6 +14,7 @@ import {
 
 import { ScreenContainer } from "@/components/screen-container";
 import { GlobalSearch } from "@/components/global-search";
+import { useMobileNetworkStatus } from "@/components/offline-status";
 import {
   isNextDeskConfigured,
   nextDesk,
@@ -31,6 +32,7 @@ const ticketScopeLabels: Record<Exclude<TicketScope, "all">, string> = {
 
 export default function HomeScreen() {
   const router = useRouter();
+  const { recoveryEpoch } = useMobileNetworkStatus();
   const [tenant, setTenant] = useState<MobileTenant | null>(null);
   const [tickets, setTickets] = useState<MobileTicket[]>([]);
   const [ticketScope, setTicketScope] = useState<TicketScope>("all");
@@ -68,8 +70,9 @@ export default function HomeScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      void recoveryEpoch;
       void load();
-    }, [load]),
+    }, [load, recoveryEpoch]),
   );
 
   const visibleTickets = tickets.filter((ticket) => {

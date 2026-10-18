@@ -11,6 +11,7 @@ import {
 } from "react-native";
 
 import { ScreenContainer } from "@/components/screen-container";
+import { useMobileNetworkStatus } from "@/components/offline-status";
 import {
   formatMobileKnowledgeUpdatedAt,
   loadMobileKnowledgeArticle,
@@ -24,6 +25,7 @@ function readId(value: string | string[] | undefined): string | null {
 
 export default function KnowledgeArticleScreen() {
   const router = useRouter();
+  const { recoveryEpoch } = useMobileNetworkStatus();
   const { id } = useLocalSearchParams<{ id?: string | string[] }>();
   const articleId = readId(id);
   const [article, setArticle] = useState<MobileKnowledgeArticleDetail | null>(
@@ -58,9 +60,10 @@ export default function KnowledgeArticleScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      void recoveryEpoch;
       const timer = setTimeout(() => void load(), 0);
       return () => clearTimeout(timer);
-    }, [load]),
+    }, [load, recoveryEpoch]),
   );
 
   return (

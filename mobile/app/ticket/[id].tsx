@@ -16,6 +16,7 @@ import {
 } from "react-native";
 
 import { ScreenContainer } from "@/components/screen-container";
+import { useMobileNetworkStatus } from "@/components/offline-status";
 import { RequesterPicker } from "@/components/requester-picker";
 import { TicketConversation } from "@/components/ticket-conversation";
 import { TicketPhotoAttachments } from "@/components/ticket-photo-attachments";
@@ -48,6 +49,7 @@ import {
 
 export default function TicketDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const { recoveryEpoch } = useMobileNetworkStatus();
   const [tenant, setTenant] = useState<MobileTenant | null>(null);
   const [ticket, setTicket] = useState<MobileTicketDetail | null>(null);
   const [subject, setSubject] = useState("");
@@ -148,9 +150,10 @@ export default function TicketDetailScreen() {
   );
 
   useEffect(() => {
+    void recoveryEpoch;
     const task = setTimeout(() => void load(), 0);
     return () => clearTimeout(task);
-  }, [load]);
+  }, [load, recoveryEpoch]);
 
   const status = useMemo(
     () =>

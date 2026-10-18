@@ -13,6 +13,7 @@ import {
 } from "react-native";
 
 import { ScreenContainer } from "@/components/screen-container";
+import { useMobileNetworkStatus } from "@/components/offline-status";
 import { listMobileAssets, type MobileAsset } from "@/lib/asset-registry";
 import { loadCurrentTenant } from "@/lib/nextdesk-client";
 import { useMobileSessionGuard } from "@/lib/use-mobile-session-guard";
@@ -36,6 +37,7 @@ function assetSubtitle(asset: MobileAsset): string {
 export default function AssetsScreen() {
   const router = useRouter();
   const checkingSession = useMobileSessionGuard();
+  const { recoveryEpoch } = useMobileNetworkStatus();
   const [assets, setAssets] = useState<MobileAsset[]>([]);
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
@@ -70,8 +72,9 @@ export default function AssetsScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      if (!checkingSession) void load("");
-    }, [checkingSession, load]),
+      void recoveryEpoch;
+      if (!checkingSession) void load();
+    }, [checkingSession, load, recoveryEpoch]),
   );
 
   const description = useMemo(
