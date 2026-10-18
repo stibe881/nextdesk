@@ -2035,6 +2035,75 @@ export default function TicketDetailScreen() {
               onVisibilityChange={changeCommentVisibility}
               visibility={commentVisibility}
             />
+            {ticket.comments.some(
+              (item) =>
+                item.channel === "email" ||
+                (item.authorKind === "agent" &&
+                  item.emailDelivery !== undefined &&
+                  item.emailDelivery !== null),
+            ) ? (
+              <View style={{ gap: 6, marginTop: 8 }}>
+                {ticket.comments.map((item) => {
+                  const showEmailChannel = item.channel === "email";
+                  const showEmailDelivery =
+                    item.authorKind === "agent" &&
+                    item.emailDelivery !== undefined &&
+                    item.emailDelivery !== null;
+                  if (!showEmailChannel && !showEmailDelivery) return null;
+                  const deliveryLabel =
+                    item.emailDelivery === "pending"
+                      ? "E-Mail wird gesendet …"
+                      : item.emailDelivery === "sent"
+                        ? "per E-Mail gesendet"
+                        : item.emailDelivery === "failed"
+                          ? "E-Mail-Versand fehlgeschlagen"
+                          : null;
+                  const deliveryColor =
+                    item.emailDelivery === "sent"
+                      ? colors.success
+                      : item.emailDelivery === "failed"
+                        ? colors.error
+                        : colors.muted;
+                  return (
+                    <View
+                      key={`email-meta-${item.id}`}
+                      style={{
+                        alignItems: "center",
+                        flexDirection: "row",
+                        gap: 6,
+                      }}
+                    >
+                      <Text style={{ color: colors.muted, fontSize: 12 }}>
+                        {item.authorName}
+                      </Text>
+                      {showEmailChannel ? (
+                        <View
+                          style={{
+                            alignItems: "center",
+                            flexDirection: "row",
+                            gap: 3,
+                          }}
+                        >
+                          <Ionicons
+                            color={colors.muted}
+                            name="mail-outline"
+                            size={13}
+                          />
+                          <Text style={{ color: colors.muted, fontSize: 12 }}>
+                            per E-Mail
+                          </Text>
+                        </View>
+                      ) : null}
+                      {deliveryLabel ? (
+                        <Text style={{ color: deliveryColor, fontSize: 12 }}>
+                          {deliveryLabel}
+                        </Text>
+                      ) : null}
+                    </View>
+                  );
+                })}
+              </View>
+            ) : null}
           </View>
 
           {tenant ? (

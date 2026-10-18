@@ -38,6 +38,8 @@ export type MobileTicketComment = {
   body: string;
   createdAt: string;
   visibility: TicketCommentVisibility;
+  channel?: "portal" | "email";
+  emailDelivery?: "pending" | "sent" | "failed" | null;
 };
 
 export type MobileTicketDraft = {
@@ -143,6 +145,15 @@ function ticketComment(value: unknown): MobileTicketComment | null {
     body: record.body,
     createdAt: record.created_at,
     visibility: record.visibility,
+    ...(record.channel === "portal" || record.channel === "email"
+      ? { channel: record.channel }
+      : {}),
+    ...(record.emailDelivery === "pending" ||
+    record.emailDelivery === "sent" ||
+    record.emailDelivery === "failed" ||
+    record.emailDelivery === null
+      ? { emailDelivery: record.emailDelivery }
+      : {}),
   };
 }
 

@@ -41,3 +41,7 @@ _Stand: 18. Oktober 2026_
 **Ereignisse:** Zuweisung, Antwort der anfragenden Person, Antwort des Supports, Erwähnung, Lösung, Freigabeanfrage, Eskalation und SLA. Push-Inhalte gehen nur an Apple; standardmässig nur Ereignisart und Ticketnummer, der Betreff nur bei ausdrücklicher Mandanteneinstellung.
 
 **Offen (extern):** APNs-Schlüssel (.p8) bei Apple erstellen und `APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_PRIVATE_KEY` als Supabase-Secrets setzen (Anleitung: `docs/deployment/PUSH_NOTIFICATIONS.md`); Schalter pro Mandant aktivieren; neuer iOS-Build mit Push-Plugin nur auf ausdrücklichen Auftrag; reale iPhone-Abnahme. Bis die Secrets gesetzt sind, werden Push-Einträge sauber als `apns_not_configured` übersprungen; In-App-Benachrichtigungen funktionieren unabhängig davon.
+
+## E-Mail-Kanal Exchange Online (Stand 18.10.2026, 19:36)
+
+Implementiert und produktiv bereitgestellt (Migration 0061, Functions exchange-mail-admin/-webhook/-worker, ticket-operations v22, requester-portal v3, Web auf Hetzner). Funktionsschalter `integrations.email` bei allen Mandanten aus. Offen und extern: zentrale Entra-App `nextDesk – Exchange Online`, Supabase-Secrets `EXCHANGE_MAIL_CLIENT_ID` und `EXCHANGE_MAIL_CLIENT_SECRET`, Bereitstellung und Exchange-RBAC im Kundenmandanten, danach Verbindungstest, Aktivierung und realer End-to-End-Test. iOS-Kennzeichnung (2729061) noch nicht in TestFlight.
