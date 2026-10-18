@@ -22,9 +22,11 @@ const MobileNetworkStatusContext = createContext<MobileNetworkStatus>({
 });
 
 /**
- * nextDesk hält keine Ticket-, Asset- oder Wissensdaten im Offline-Cache.
- * Nach einer Wiederverbindung erhalten sichtbare Bildschirme einen neuen
- * Abrufimpuls und lesen ausschliesslich erneut autorisierte Serverdaten.
+ * nextDesk hält keine Ticketdetails, Assets oder Wissensdaten offline vor.
+ * Ausschließlich die iOS-Ticketliste kann begrenzte, verschlüsselte Metadaten
+ * als klar markierten, nicht bearbeitbaren Fallback verwenden. Nach einer
+ * Wiederverbindung erhalten sichtbare Bildschirme einen neuen Abrufimpuls und
+ * lesen ausschliesslich erneut autorisierte Serverdaten.
  */
 export function MobileNetworkStatusProvider({ children }: PropsWithChildren) {
   const network = useNetworkState();
@@ -79,8 +81,8 @@ export function OfflineStatus() {
         <View style={styles.copy}>
           <Text style={styles.title}>Offline</Text>
           <Text style={styles.text}>
-            Aktuelle Daten werden aus Sicherheitsgründen nicht auf diesem Gerät
-            zwischengespeichert.
+            Ticketdetails, Assets und Wissen werden aus Sicherheitsgründen nicht
+            auf diesem Gerät zwischengespeichert.
           </Text>
         </View>
       </View>

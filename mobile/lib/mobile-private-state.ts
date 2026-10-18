@@ -5,8 +5,8 @@ const ACTIVE_USER_KEY = "nextdesk:mobile:active-user:v1";
 const tenantKey = (userId: string) => `nextdesk:mobile:tenant:v1:${userId}`;
 const stateKey = (userId: string) =>
   `nextdesk:mobile:private-state:v1:${userId}`;
-const ticketCacheChunkKey = (userId: string, tenantId: string, index: number) =>
-  `nextdesk:mobile:ticket-cache:v1:${userId}:${tenantId}:${index}`;
+const ticketCacheChunkKey = (userId: string, index: number) =>
+  `nextdesk:mobile:ticket-cache:v1:${userId}:${index}`;
 const TICKET_CACHE_CHUNK_SIZE = 1_000;
 const MAX_TICKET_CACHE_CHUNKS = 20;
 const MAX_TICKET_CACHE_AGE_MS = 12 * 60 * 60 * 1_000;
@@ -41,13 +41,12 @@ type PrivateState = {
   deviceProtection?: boolean;
   drafts: Record<string, LocalTicketDraft>;
   favorites: Record<string, string[]>;
-  ticketCaches: Record<string, TicketCacheDescriptor>;
+  ticketCache?: TicketCacheDescriptor;
 };
 
 const EMPTY_STATE: PrivateState = {
   drafts: {},
   favorites: {},
-  ticketCaches: {},
 };
 
 function draftKey(
@@ -59,8 +58,7 @@ function draftKey(
 }
 
 function parseState(value: string | null): PrivateState {
-  if (!value)
-    return { ...EMPTY_STATE, drafts: {}, favorites: {}, ticketCaches: {} };
+  if (!value) return { ...EMPTY_STATE, drafts: {}, favorites: {} };
   try {
     const parsed = JSON.parse(value) as Partial<PrivateState>;
     const drafts =
@@ -75,23 +73,18 @@ function parseState(value: string | null): PrivateState {
       !Array.isArray(parsed.favorites)
         ? parsed.favorites
         : {};
-    const ticketCaches = Object.fromEntries(
-      Object.entries(parsed.ticketCaches ?? {}).flatMap(([tenantId, value]) => {
-        if (
-          !value ||
-          typeof value !== "object" ||
-          Array.isArray(value) ||
-          !Number.isInteger((value as TicketCacheDescriptor).chunks) ||
-          (value as TicketCacheDescriptor).chunks < 1 ||
-          (value as TicketCacheDescriptor).chunks > MAX_TICKET_CACHE_CHUNKS ||
-          typeof (value as TicketCacheDescriptor).cachedAt !== "string" ||
-          Number.isNaN(Date.parse((value as TicketCacheDescriptor).cachedAt))
-        ) {
-          return [];
-        }
-        return [[tenantId, value as TicketCacheDescriptor]];
-      }),
-    );
+    const candidate = parsed.ticketCache;
+    const ticketCache =
+      candidate &&
+      typeof candidate === "object" &&
+      !Array.isArray(candidate) &&
+      Number.isInteger((candidate as TicketCacheDescriptor).chunks) &&
+      (candidate as TicketCacheDescriptor).chunks >= 1 &&
+      (candidate as TicketCacheDescriptor).chunks <= MAX_TICKET_CACHE_CHUNKS &&
+      typeof (candidate as TicketCacheDescriptor).cachedAt === "string" &&
+      !Number.isNaN(Date.parse((candidate as TicketCacheDescriptor).cachedAt))
+        ? (candidate as TicketCacheDescriptor)
+        : undefined;
     return {
       deviceProtection:
         typeof parsed.deviceProtection === "boolean"
@@ -99,10 +92,10 @@ function parseState(value: string | null): PrivateState {
           : undefined,
       drafts,
       favorites,
-      ticketCaches,
+      ticketCache,
     };
   } catch {
-    return { ...EMPTY_STATE, drafts: {}, favorites: {}, ticketCaches: {} };
+    return { ...EMPTY_STATE, drafts: {}, favorites: {} };
   }
 }
 
@@ -114,16 +107,10 @@ async function writeState(userId: string, state: PrivateState): Promise<void> {
   await mobileSecureStorage.setItem(stateKey(userId), JSON.stringify(state));
 }
 
-async function removeTicketCacheChunks(
-  userId: string,
-  tenantId: string,
-  chunks: number,
-): Promise<void> {
+async function removeTicketCacheChunks(userId: string): Promise<void> {
   await Promise.all(
-    Array.from({ length: chunks }, (_, index) =>
-      mobileSecureStorage.removeItem(
-        ticketCacheChunkKey(userId, tenantId, index),
-      ),
+    Array.from({ length: MAX_TICKET_CACHE_CHUNKS }, (_, index) =>
+      mobileSecureStorage.removeItem(ticketCacheChunkKey(userId, index)),
     ),
   );
 }
@@ -133,9 +120,7 @@ async function removeMobileUserPrivateState(userId: string): Promise<void> {
   await Promise.all([
     mobileSecureStorage.removeItem(stateKey(userId)),
     mobileSecureStorage.removeItem(tenantKey(userId)),
-    ...Object.entries(state.ticketCaches).map(([tenantId, descriptor]) =>
-      removeTicketCacheChunks(userId, tenantId, descriptor.chunks),
-    ),
+    removeTicketCacheChunks(userId),
   ]);
 }
 
@@ -149,6 +134,7 @@ export async function prepareMobileUserContext(userId: string): Promise<void> {
   if (previousUserId && previousUserId !== userId) {
     await removeMobileUserPrivateState(previousUserId);
   }
+  await purgeExpiredOfflineTicketListCache(userId);
   await mobileSecureStorage.setItem(ACTIVE_USER_KEY, userId);
 }
 
@@ -166,12 +152,8 @@ export async function clearMobileWorkingData(userId: string): Promise<void> {
   const state = await readState(userId);
   state.drafts = {};
   state.favorites = {};
-  await Promise.all(
-    Object.entries(state.ticketCaches).map(([tenantId, descriptor]) =>
-      removeTicketCacheChunks(userId, tenantId, descriptor.chunks),
-    ),
-  );
-  state.ticketCaches = {};
+  await removeTicketCacheChunks(userId);
+  state.ticketCache = undefined;
   await writeState(userId, state);
 }
 
@@ -309,7 +291,7 @@ export async function reconcileFavoriteTicketIds(input: {
 }
 
 /**
- * Stores only compact ticket-list metadata in the native OS-encrypted store.
+ * Stores only compact ticket-list metadata in the iOS OS-encrypted store.
  * Ticket descriptions, conversations, attachments, requester data, assets and
  * knowledge content never enter this cache. Browser previews deliberately do
  * not persist it because their storage is not an encrypted device keychain.
@@ -319,7 +301,7 @@ export async function saveOfflineTicketListCache(input: {
   tenant: OfflineTicketListCache["tenant"];
   tickets: OfflineTicketListCache["tickets"];
 }): Promise<void> {
-  if (Platform.OS === "web") return;
+  if (Platform.OS !== "ios") return;
 
   const cache: OfflineTicketListCache = {
     cachedAt: new Date().toISOString(),
@@ -338,51 +320,61 @@ export async function saveOfflineTicketListCache(input: {
   if (chunks.length === 0 || chunks.length > MAX_TICKET_CACHE_CHUNKS) return;
 
   const state = await readState(input.userId);
-  const previous = state.ticketCaches[input.tenant.id];
   await Promise.all(
     chunks.map((chunk, index) =>
       mobileSecureStorage.setItem(
-        ticketCacheChunkKey(input.userId, input.tenant.id, index),
+        ticketCacheChunkKey(input.userId, index),
         chunk,
       ),
     ),
   );
-  if (previous && previous.chunks > chunks.length) {
-    await Promise.all(
-      Array.from({ length: previous.chunks - chunks.length }, (_, offset) =>
+  await Promise.all(
+    Array.from(
+      { length: MAX_TICKET_CACHE_CHUNKS - chunks.length },
+      (_, offset) =>
         mobileSecureStorage.removeItem(
-          ticketCacheChunkKey(
-            input.userId,
-            input.tenant.id,
-            chunks.length + offset,
-          ),
+          ticketCacheChunkKey(input.userId, chunks.length + offset),
         ),
-      ),
-    );
-  }
-  state.ticketCaches[input.tenant.id] = {
+    ),
+  );
+  state.ticketCache = {
     cachedAt: cache.cachedAt,
     chunks: chunks.length,
   };
   await writeState(input.userId, state);
 }
 
+export async function purgeExpiredOfflineTicketListCache(
+  userId: string,
+): Promise<void> {
+  if (Platform.OS !== "ios") return;
+  const state = await readState(userId);
+  const cachedAt = state.ticketCache?.cachedAt;
+  if (
+    !cachedAt ||
+    Date.parse(cachedAt) >= Date.now() - MAX_TICKET_CACHE_AGE_MS
+  ) {
+    return;
+  }
+  await removeTicketCacheChunks(userId);
+  state.ticketCache = undefined;
+  await writeState(userId, state);
+}
+
 export async function loadOfflineTicketListCache(input: {
   userId: string;
   tenantId: string;
 }): Promise<OfflineTicketListCache | null> {
-  if (Platform.OS === "web") return null;
+  if (Platform.OS !== "ios") return null;
 
   const state = await readState(input.userId);
-  const descriptor = state.ticketCaches[input.tenantId];
+  const descriptor = state.ticketCache;
   if (!descriptor) return null;
 
   const serialized = (
     await Promise.all(
       Array.from({ length: descriptor.chunks }, (_, index) =>
-        mobileSecureStorage.getItem(
-          ticketCacheChunkKey(input.userId, input.tenantId, index),
-        ),
+        mobileSecureStorage.getItem(ticketCacheChunkKey(input.userId, index)),
       ),
     )
   ).join("");
@@ -426,12 +418,8 @@ export async function loadOfflineTicketListCache(input: {
       tickets,
     };
   } catch {
-    await removeTicketCacheChunks(
-      input.userId,
-      input.tenantId,
-      descriptor.chunks,
-    );
-    delete state.ticketCaches[input.tenantId];
+    await removeTicketCacheChunks(input.userId);
+    state.ticketCache = undefined;
     await writeState(input.userId, state);
     return null;
   }

@@ -53,7 +53,7 @@ export default function HomeScreen() {
     }
     try {
       setError("");
-      const result = await loadMobileDashboard();
+      const result = await loadMobileDashboard({ allowOfflineCache: false });
       setTenant(result.tenant);
       setTickets(result.tickets);
     } catch (nextError) {

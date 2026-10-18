@@ -72,6 +72,10 @@ export default function TicketDetailScreen() {
   const [selection, setSelection] = useState<"status" | "priority" | null>(
     null,
   );
+  const [pendingCloseStatus, setPendingCloseStatus] = useState<{
+    key: string;
+    label: string;
+  } | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [sendingComment, setSendingComment] = useState(false);
@@ -180,6 +184,7 @@ export default function TicketDetailScreen() {
   );
 
   async function saveChange(changes: {
+    confirmClose?: boolean;
     description?: string;
     priorityKey?: string;
     requester?: TicketRequester;
@@ -210,6 +215,14 @@ export default function TicketDetailScreen() {
       setError("Status oder Priorität sind nicht gültig.");
       return;
     }
+    if (
+      nextStatus.is_closed &&
+      nextStatus.id !== ticket.statusId &&
+      changes.confirmClose !== true
+    ) {
+      setPendingCloseStatus({ key: nextStatus.key, label: nextStatus.label });
+      return;
+    }
 
     setSaving(true);
     setError("");
@@ -219,6 +232,7 @@ export default function TicketDetailScreen() {
         ticketId: ticket.id,
         subject: nextSubject,
         description: nextDescription,
+        ...(changes.confirmClose ? { confirmClose: true } : {}),
         statusKey: nextStatusKey,
         priorityKey: nextPriorityKey,
         ...(nextRequester ? { requesterContactId: nextRequester.id } : {}),
@@ -767,6 +781,73 @@ export default function TicketDetailScreen() {
             </View>
           </View>
         </Modal>
+
+        <Modal
+          animationType="fade"
+          onRequestClose={() => setPendingCloseStatus(null)}
+          transparent
+          visible={pendingCloseStatus !== null}
+        >
+          <View style={styles.closeConfirmationRoot}>
+            <Pressable
+              accessibilityLabel="Ticketabschluss abbrechen"
+              accessibilityRole="button"
+              onPress={() => setPendingCloseStatus(null)}
+              style={StyleSheet.absoluteFill}
+            />
+            <View accessibilityViewIsModal style={styles.closeConfirmationCard}>
+              <View style={styles.closeConfirmationIcon}>
+                <Ionicons
+                  color="#9A5B12"
+                  name="lock-closed-outline"
+                  size={22}
+                />
+              </View>
+              <Text style={styles.closeConfirmationTitle}>
+                Ticket schliessen?
+              </Text>
+              <Text style={styles.closeConfirmationText}>
+                Der Status «{pendingCloseStatus?.label}» schliesst dieses
+                Ticket. Die Berechtigung wird beim Speichern erneut auf dem
+                Server geprüft und der Abschluss im Verlauf protokolliert.
+              </Text>
+              <Pressable
+                accessibilityLabel="Ticketabschluss bestätigen"
+                accessibilityRole="button"
+                disabled={saving}
+                onPress={() => {
+                  const nextStatus = pendingCloseStatus;
+                  setPendingCloseStatus(null);
+                  if (nextStatus) {
+                    void saveChange({
+                      confirmClose: true,
+                      statusKey: nextStatus.key,
+                    });
+                  }
+                }}
+                style={[
+                  styles.closeConfirmationButton,
+                  saving && styles.disabled,
+                ]}
+              >
+                <Text style={styles.closeConfirmationButtonText}>
+                  Ticket verbindlich schliessen
+                </Text>
+              </Pressable>
+              <Pressable
+                accessibilityLabel="Ticketabschluss abbrechen"
+                accessibilityRole="button"
+                disabled={saving}
+                onPress={() => setPendingCloseStatus(null)}
+                style={styles.closeConfirmationCancel}
+              >
+                <Text style={styles.closeConfirmationCancelText}>
+                  Abbrechen
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        </Modal>
       </ScreenContainer>
     </KeyboardAvoidingView>
   );
@@ -1060,4 +1141,54 @@ const styles = StyleSheet.create({
   selectionOptionActive: { backgroundColor: "#F0EFFB", borderColor: "#4438CA" },
   selectionOptionText: { color: "#363653", fontSize: 15, fontWeight: "800" },
   selectionOptionTextActive: { color: "#4438CA" },
+  closeConfirmationRoot: {
+    alignItems: "center",
+    backgroundColor: "rgba(25, 25, 42, 0.42)",
+    flex: 1,
+    justifyContent: "center",
+    padding: 24,
+  },
+  closeConfirmationCard: {
+    alignItems: "stretch",
+    backgroundColor: "#FFFFFF",
+    borderRadius: 24,
+    gap: 13,
+    maxWidth: 420,
+    padding: 22,
+    width: "100%",
+  },
+  closeConfirmationIcon: {
+    alignItems: "center",
+    backgroundColor: "#FFF4DB",
+    borderRadius: 17,
+    height: 44,
+    justifyContent: "center",
+    width: 44,
+  },
+  closeConfirmationTitle: { color: "#202136", fontSize: 21, fontWeight: "900" },
+  closeConfirmationText: { color: "#626376", fontSize: 14, lineHeight: 21 },
+  closeConfirmationButton: {
+    alignItems: "center",
+    backgroundColor: "#9A5B12",
+    borderRadius: 14,
+    justifyContent: "center",
+    marginTop: 5,
+    minHeight: 50,
+    paddingHorizontal: 16,
+  },
+  closeConfirmationButtonText: {
+    color: "#FFFFFF",
+    fontSize: 14,
+    fontWeight: "900",
+  },
+  closeConfirmationCancel: {
+    alignItems: "center",
+    justifyContent: "center",
+    minHeight: 40,
+  },
+  closeConfirmationCancelText: {
+    color: "#4438CA",
+    fontSize: 13,
+    fontWeight: "800",
+  },
 });

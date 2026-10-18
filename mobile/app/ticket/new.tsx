@@ -13,6 +13,7 @@ import {
 } from "react-native";
 
 import { ScreenContainer } from "@/components/screen-container";
+import { useMobileNetworkStatus } from "@/components/offline-status";
 import {
   hapticError,
   hapticSelection,
@@ -28,6 +29,7 @@ import {
 import { RequesterPicker } from "@/components/requester-picker";
 
 export default function NewTicketScreen() {
+  const { isOffline } = useMobileNetworkStatus();
   const [tenant, setTenant] = useState<MobileTenant | null>(null);
   const [options, setOptions] = useState<TicketFormOptions | null>(null);
   const [subject, setSubject] = useState("");
@@ -43,6 +45,7 @@ export default function NewTicketScreen() {
   const descriptionInputRef = useRef<TextInput>(null);
 
   useEffect(() => {
+    if (isOffline) return;
     void (async () => {
       try {
         const currentTenant = await loadCurrentTenant();
@@ -62,7 +65,7 @@ export default function NewTicketScreen() {
         setLoading(false);
       }
     })();
-  }, []);
+  }, [isOffline]);
 
   const selectedDepartment = useMemo(
     () =>
@@ -72,6 +75,32 @@ export default function NewTicketScreen() {
     [departmentId, options],
   );
   const selectedRequester = requester ?? options?.currentRequester ?? null;
+
+  if (isOffline) {
+    return (
+      <ScreenContainer containerClassName="bg-[#F6F7FB]" className="px-5">
+        <View style={styles.offlineGuard}>
+          <View style={styles.offlineGuardIcon}>
+            <Ionicons color="#9A5B12" name="cloud-offline-outline" size={25} />
+          </View>
+          <Text style={styles.offlineGuardTitle}>
+            Ticketerfassung benötigt eine Verbindung
+          </Text>
+          <Text style={styles.offlineGuardText}>
+            Neue Tickets werden ausschliesslich nach einer serverseitigen
+            Mandanten- und Rechteprüfung erfasst.
+          </Text>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => router.back()}
+            style={styles.offlineGuardButton}
+          >
+            <Text style={styles.offlineGuardButtonText}>Zurück zu Tickets</Text>
+          </Pressable>
+        </View>
+      </ScreenContainer>
+    );
+  }
 
   function revealFieldAboveKeyboard(input: TextInput | null) {
     const inputHandle = findNodeHandle(input);
@@ -89,6 +118,13 @@ export default function NewTicketScreen() {
   }
 
   async function createTicket() {
+    if (isOffline) {
+      hapticError();
+      setError(
+        "Tickets können erst wieder erfasst werden, wenn eine Verbindung zum autorisierten Server besteht.",
+      );
+      return;
+    }
     if (!tenant || !options) return;
     const cleanSubject = subject.trim();
     const cleanDescription = description.trim();
@@ -314,6 +350,42 @@ function FieldLabel({ label }: { label: string }) {
 
 const styles = StyleSheet.create({
   content: { gap: 16, paddingTop: 14, paddingBottom: 320 },
+  offlineGuard: {
+    alignItems: "center",
+    flex: 1,
+    justifyContent: "center",
+    paddingHorizontal: 22,
+  },
+  offlineGuardIcon: {
+    alignItems: "center",
+    backgroundColor: "#FFF4DB",
+    borderRadius: 20,
+    height: 56,
+    justifyContent: "center",
+    width: 56,
+  },
+  offlineGuardTitle: {
+    color: "#202136",
+    fontSize: 19,
+    fontWeight: "900",
+    marginTop: 16,
+    textAlign: "center",
+  },
+  offlineGuardText: {
+    color: "#626376",
+    fontSize: 14,
+    lineHeight: 21,
+    marginTop: 8,
+    textAlign: "center",
+  },
+  offlineGuardButton: {
+    backgroundColor: "#EEECFF",
+    borderRadius: 14,
+    marginTop: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  offlineGuardButtonText: { color: "#4438CA", fontSize: 13, fontWeight: "900" },
   topBar: {
     alignItems: "center",
     flexDirection: "row",

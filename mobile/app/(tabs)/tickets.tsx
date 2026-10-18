@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -44,7 +44,7 @@ function offlineCacheTimestamp(value: string): string {
 
 export default function TicketsScreen() {
   const router = useRouter();
-  const { recoveryEpoch } = useMobileNetworkStatus();
+  const { isOffline, recoveryEpoch } = useMobileNetworkStatus();
   const [tickets, setTickets] = useState<MobileTicket[]>([]);
   const [tenantName, setTenantName] = useState("");
   const [scope, setScope] = useState<TicketScope>("all");
@@ -54,8 +54,11 @@ export default function TicketsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
   const [offlineCacheAt, setOfflineCacheAt] = useState<string | null>(null);
+  const latestLoad = useRef(0);
 
   const load = useCallback(async () => {
+    const loadId = latestLoad.current + 1;
+    latestLoad.current = loadId;
     if (!isNextDeskConfigured || !nextDesk) {
       setError("Die mobile nextDesk-Verbindung ist noch nicht konfiguriert.");
       setLoading(false);
@@ -71,7 +74,9 @@ export default function TicketsScreen() {
 
     try {
       setError("");
-      const result = await loadMobileDashboard();
+      const result = await loadMobileDashboard({
+        allowOfflineCache: isOffline,
+      });
       const favorites = result.isOfflineCache
         ? await listFavoriteTicketIds({
             userId: result.userId,
@@ -82,11 +87,13 @@ export default function TicketsScreen() {
             tenantId: result.tenant.id,
             authorizedTicketIds: result.tickets.map((ticket) => ticket.id),
           });
+      if (loadId !== latestLoad.current) return;
       setTickets(result.tickets);
       setTenantName(result.tenant.name);
       setFavoriteIds(favorites);
       setOfflineCacheAt(result.isOfflineCache ? result.cachedAt : null);
     } catch (nextError) {
+      if (loadId !== latestLoad.current) return;
       setOfflineCacheAt(null);
       setError(
         nextError instanceof Error
@@ -94,10 +101,11 @@ export default function TicketsScreen() {
           : "Die Tickets konnten nicht geladen werden.",
       );
     } finally {
+      if (loadId !== latestLoad.current) return;
       setLoading(false);
       setRefreshing(false);
     }
-  }, [router]);
+  }, [isOffline, router]);
 
   useFocusEffect(
     useCallback(() => {
@@ -167,8 +175,15 @@ export default function TicketsScreen() {
           <Pressable
             accessibilityLabel="Ticket erfassen"
             accessibilityRole="button"
+            accessibilityState={{
+              disabled: Boolean(offlineCacheAt) || isOffline,
+            }}
+            disabled={Boolean(offlineCacheAt) || isOffline}
             onPress={() => router.push("/ticket/new")}
-            style={styles.addButton}
+            style={[
+              styles.addButton,
+              (offlineCacheAt || isOffline) && styles.addButtonOffline,
+            ]}
           >
             <Ionicons color="#FFFFFF" name="add" size={23} />
           </Pressable>
@@ -376,6 +391,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     width: 48,
   },
+  addButtonOffline: { opacity: 0.5 },
   filters: { gap: 9, paddingRight: 16 },
   searchWrap: {
     alignItems: "center",

@@ -163,7 +163,9 @@ function ticketDraft(value: unknown): MobileTicketDraft | null {
   };
 }
 
-export async function loadMobileDashboard(): Promise<{
+export async function loadMobileDashboard(input: {
+  allowOfflineCache: boolean;
+}): Promise<{
   cachedAt: string | null;
   isOfflineCache: boolean;
   tenant: MobileTenant;
@@ -187,6 +189,9 @@ export async function loadMobileDashboard(): Promise<{
     data: { user: verifiedUser },
     error: userError,
   } = await client.auth.getUser();
+  if (userError && !input.allowOfflineCache) {
+    throw new Error("Die Anmeldung konnte nicht bestätigt werden.");
+  }
   const activeUser = !userError && verifiedUser ? verifiedUser : user;
 
   try {
@@ -269,6 +274,7 @@ export async function loadMobileDashboard(): Promise<{
       userId: activeUser.id,
     };
   } catch (networkError) {
+    if (!input.allowOfflineCache) throw networkError;
     const tenantId = await getSelectedTenantId(activeUser.id);
     if (tenantId) {
       const cache = await loadOfflineTicketListCache({
@@ -456,6 +462,7 @@ export async function updateMobileTicket(input: {
   ticketId: string;
   subject: string;
   description: string;
+  confirmClose?: boolean;
   statusKey?: string;
   priorityKey?: string;
   requesterContactId?: string;
@@ -466,6 +473,7 @@ export async function updateMobileTicket(input: {
     ticketId: input.ticketId,
     subject: input.subject,
     description: input.description,
+    ...(input.confirmClose === true ? { confirmClose: true } : {}),
     ...(input.statusKey ? { statusKey: input.statusKey } : {}),
     ...(input.priorityKey ? { priorityKey: input.priorityKey } : {}),
     ...(input.requesterContactId
