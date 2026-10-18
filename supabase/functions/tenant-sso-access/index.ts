@@ -256,9 +256,7 @@ async function provisionSsoPerson(
   user: any,
   tenantId: string,
   email: string,
-): Promise<
-  "invited" | "existing" | "removed" | "invitation_required" | "failed"
-> {
+): Promise<"automatic" | "invited" | "existing" | "removed" | "failed"> {
   const userId = user?.id;
   if (typeof userId !== "string") return "failed";
 
@@ -286,8 +284,12 @@ async function provisionSsoPerson(
     .gt("expires_at", new Date().toISOString())
     .maybeSingle();
   if (invitationError) return "failed";
-  if (!invitationData) return "invitation_required";
-  const invitation = invitationData as PendingInvitation;
+  // The Entra tenant claim and the unique allowed-domain binding have already
+  // been verified before this point. A matching employee may therefore enter
+  // their own tenant as a normal requester without an invitation. An explicit
+  // invitation remains the only way to assign a non-requester role or agent
+  // department at first sign-in.
+  const invitation = invitationData as PendingInvitation | null;
 
   const joinedAt = new Date().toISOString();
   const { error: membershipWriteError } = await admin
@@ -304,7 +306,7 @@ async function provisionSsoPerson(
   if (membershipWriteError) return "failed";
 
   const displayName =
-    invitation.display_name?.trim() || displayNameFromUser(user);
+    invitation?.display_name?.trim() || displayNameFromUser(user);
   if (displayName) {
     const { error: profileError } = await admin
       .from("user_profiles")
@@ -323,15 +325,15 @@ async function provisionSsoPerson(
       {
         tenant_id: tenantId,
         user_id: userId,
-        department_id: invitation.department_id,
-        job_title: invitation.job_title,
-        offer: invitation.offer,
+        department_id: invitation?.department_id ?? null,
+        job_title: invitation?.job_title ?? null,
+        offer: invitation?.offer ?? null,
       },
       {
         onConflict: "tenant_id,user_id",
       },
     );
-  const invitedRole = invitation.role_name?.trim() || REQUESTER_ROLE;
+  const invitedRole = invitation?.role_name?.trim() || REQUESTER_ROLE;
   if (
     directoryError ||
     !(await ensureTenantRole(
@@ -339,31 +341,45 @@ async function provisionSsoPerson(
       tenantId,
       userId,
       invitedRole,
-      invitation.invited_by,
+      invitation?.invited_by ?? userId,
     )) ||
-    !(await ensureInvitedAgentRole(admin, invitation, userId))
+    (invitation !== null &&
+      !(await ensureInvitedAgentRole(admin, invitation, userId)))
   ) {
     return "failed";
   }
 
-  const { error: invitationUpdateError } = await admin
-    .from("tenant_user_invitations")
-    .update({ status: "accepted", accepted_at: joinedAt })
-    .eq("id", invitation.id)
-    .eq("tenant_id", tenantId)
-    .eq("status", "sent");
-  if (invitationUpdateError) return "failed";
+  if (invitation) {
+    const { error: invitationUpdateError } = await admin
+      .from("tenant_user_invitations")
+      .update({ status: "accepted", accepted_at: joinedAt })
+      .eq("id", invitation.id)
+      .eq("tenant_id", tenantId)
+      .eq("status", "sent");
+    if (invitationUpdateError) return "failed";
+
+    await admin.from("audit_logs").insert({
+      tenant_id: tenantId,
+      actor_id: userId,
+      action: "tenant.sso_invitation.accepted",
+      entity_type: "tenant_user_invitation",
+      entity_id: invitation.id,
+      severity: "security",
+      metadata: { source: "tenant_sso_access" },
+    });
+    return "invited";
+  }
 
   await admin.from("audit_logs").insert({
     tenant_id: tenantId,
     actor_id: userId,
-    action: "tenant.sso_invitation.accepted",
-    entity_type: "tenant_user_invitation",
-    entity_id: invitation.id,
+    action: "tenant.sso_person.provisioned",
+    entity_type: "tenant_membership",
+    entity_id: tenantId,
     severity: "security",
-    metadata: { source: "tenant_sso_access" },
+    metadata: { source: "tenant_sso_access", role: REQUESTER_ROLE },
   });
-  return "invited";
+  return "automatic";
 }
 
 const handler = withSupabase({ auth: "user" }, async (request, context) => {
@@ -446,16 +462,12 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
   if (provision === "failed") {
     return error(request, "sso_person_provision_failed", 500);
   }
-  if (provision === "invitation_required") {
-    return error(request, "tenant_invitation_required", 403);
-  }
-
   return response(request, {
     data: {
       scope: "tenant",
       tenantId: sso.tenant_id,
       ssoEnforced: sso.enforce_sso,
-      provisioned: provision === "invited",
+      provisioned: provision === "invited" || provision === "automatic",
     },
   });
 });

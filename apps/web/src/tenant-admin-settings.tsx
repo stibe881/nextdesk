@@ -2058,7 +2058,11 @@ export function TenantAdminSettings({
                     nextDesk unterstützt hier den zentral verwalteten
                     Microsoft-Entra-ID-Anmeldeweg. Andere Anbieter lassen sich
                     erst auswählen, wenn ihr Anmeldeweg serverseitig vollständig
-                    bereitsteht.
+                    bereitsteht. Eine Person mit passender
+                    Entra-Mandantenkennung und zugelassener Unternehmensdomain
+                    wird beim ersten Login ausschliesslich als anfragende Person
+                    angelegt; Agentenrechte werden nur über die Rollenverwaltung
+                    oder eine Einladung vergeben.
                   </p>
                   <div className="tenant-admin-settings__form-grid">
                     <label>
