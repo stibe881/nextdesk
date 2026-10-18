@@ -28,7 +28,8 @@ type Action =
       afterDays: number;
       requirePreview: boolean;
     }
-  | { type: "preview"; tenantId: string };
+  | { type: "preview"; tenantId: string }
+  | { type: "executeAutoClose"; tenantId: string; ticketIds: string[] };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -85,6 +86,23 @@ function parseAction(value: unknown): Action | null {
     Object.keys(value).every((key) => key === "type" || key === "tenantId")
   )
     return { type: "preview", tenantId: value.tenantId };
+  if (
+    value.type === "executeAutoClose" &&
+    Object.keys(value).every(
+      (key) => key === "type" || key === "tenantId" || key === "ticketIds",
+    ) &&
+    Array.isArray(value.ticketIds) &&
+    value.ticketIds.length >= 1 &&
+    value.ticketIds.length <= 50 &&
+    value.ticketIds.every(isUuid) &&
+    new Set(value.ticketIds).size === value.ticketIds.length
+  ) {
+    return {
+      type: "executeAutoClose",
+      tenantId: value.tenantId,
+      ticketIds: value.ticketIds,
+    };
+  }
   if (
     value.type === "save" &&
     Object.keys(value).every((key) =>
@@ -389,6 +407,90 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     .map(asPolicy)
     .filter((policy): policy is Policy => policy !== null);
   if (action.type === "get") return json(request, { data: { policies } });
+
+  if (action.type === "executeAutoClose") {
+    const policy = policies.find((entry) => entry.key === "auto_close");
+    if (!policy?.enabled)
+      return json(
+        request,
+        { error: { code: "automation_auto_close_inactive" } },
+        422,
+      );
+
+    try {
+      const previews = await previewPolicies(
+        context.supabaseAdmin,
+        action.tenantId,
+        [policy],
+      );
+      const candidates = new Set(
+        previews[0]?.examples.map((ticket) => ticket.id) ?? [],
+      );
+      if (!action.ticketIds.every((ticketId) => candidates.has(ticketId)))
+        return json(
+          request,
+          { error: { code: "automation_auto_close_candidates_changed" } },
+          409,
+        );
+
+      const { data: result, error: closeError } =
+        await context.supabaseAdmin.rpc("bulk_update_ticket_statuses", {
+          p_actor_id: actorId,
+          p_tenant_id: action.tenantId,
+          p_ticket_ids: action.ticketIds,
+          p_status_key: "closed",
+        });
+      if (closeError || !isRecord(result))
+        return json(
+          request,
+          { error: { code: "automation_auto_close_failed" } },
+          422,
+        );
+      const updated =
+        typeof result.updated === "number" && Number.isInteger(result.updated)
+          ? result.updated
+          : null;
+      if (updated === null)
+        return json(
+          request,
+          { error: { code: "automation_auto_close_failed" } },
+          422,
+        );
+      const { error: runError } = await context.supabaseAdmin
+        .from("tenant_automation_runs")
+        .insert({
+          tenant_id: action.tenantId,
+          policy_key: "auto_close",
+          initiated_by: actorId,
+          mode: "manual",
+          result: { requested: action.ticketIds.length, updated },
+        });
+      if (runError)
+        return json(
+          request,
+          { error: { code: "automation_auto_close_audit_failed" } },
+          500,
+        );
+      await context.supabaseAdmin.from("audit_logs").insert({
+        tenant_id: action.tenantId,
+        actor_id: actorId,
+        action: "automation.auto_close.executed",
+        entity_type: "tenant_automation_policy",
+        entity_id: null,
+        severity: "warning",
+        metadata: { requested: action.ticketIds.length, updated },
+      });
+      return json(request, {
+        data: { requested: action.ticketIds.length, updated },
+      });
+    } catch {
+      return json(
+        request,
+        { error: { code: "automation_auto_close_preview_failed" } },
+        500,
+      );
+    }
+  }
 
   try {
     const previews = await previewPolicies(

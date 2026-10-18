@@ -214,6 +214,44 @@ export function TenantAutomation({ tenantId }: { tenantId: string }) {
     }
   }
 
+  async function executeAutoClose(preview: Preview) {
+    if (
+      !window.confirm(
+        `${preview.count} geprüfte Ticket(s) werden jetzt geschlossen. Diese Aktion ist im Protokoll nachvollziehbar. Fortfahren?`,
+      )
+    )
+      return;
+    const ticketIds = preview.examples.map((ticket) => ticket.id);
+    if (ticketIds.length === 0) return;
+    setPendingKey("preview");
+    setMessage("");
+    try {
+      const result = await request<{ updated?: unknown; requested?: unknown }>({
+        type: "executeAutoClose",
+        tenantId,
+        ticketIds,
+      });
+      if (
+        typeof result.updated !== "number" ||
+        typeof result.requested !== "number"
+      )
+        throw new Error("Die Rückmeldung der Schliessung ist unvollständig.");
+      setPreviews([]);
+      setMessage(
+        `${result.updated} von ${result.requested} vorgemerkten Ticket(s) wurden geschlossen.`,
+      );
+    } catch (error) {
+      setMessage(
+        await functionErrorMessage(
+          error,
+          "Die vorgemerkten Tickets konnten nicht geschlossen werden. Bitte prüfen Sie die Vorschau erneut.",
+        ),
+      );
+    } finally {
+      setPendingKey(null);
+    }
+  }
+
   return (
     <section
       className="tenant-automation"
@@ -338,6 +376,18 @@ export function TenantAutomation({ tenantId }: { tenantId: string }) {
                           ))}
                         </ul>
                       )}
+                      {current.key === "auto_close" &&
+                        current.enabled &&
+                        current.count > 0 && (
+                          <button
+                            className="secondary-button tenant-automation__execute"
+                            disabled={pendingKey !== null}
+                            onClick={() => void executeAutoClose(current)}
+                            type="button"
+                          >
+                            Vorgemerkte Tickets schliessen
+                          </button>
+                        )}
                     </div>
                   );
                 })()}

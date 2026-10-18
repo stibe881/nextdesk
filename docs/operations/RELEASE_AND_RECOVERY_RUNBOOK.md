@@ -29,6 +29,10 @@ Die Produktionsauslieferung erfolgt aus `apps/web/dist/` auf das Hetzner-Ziel. D
 - Ein Restore erfolgt nie in die laufende Produktion ohne vorherigen Test in einer isolierten Umgebung und ohne explizite Freigabe, da er Daten überschreiben kann.
 - Jede Wiederherstellungsübung dokumentiert Zeitpunkt, Wiederherstellungsziel, gemessene Dauer, Datenabgleich und verbleibende Abweichungen.
 
+## Kontrollierte Ticketautomatisierung
+
+Automatisierungsregeln erzeugen standardmässig nur eine Vorschau. Auch die automatische Schliessung wird erst durch eine berechtigte Person nach einer sichtbaren Bestätigung ausgelöst. Vor der Mutation werden die Kandidaten serverseitig erneut gegen die aktuelle Richtlinie geprüft; anschliessend erzwingt die bestehende atomare Massenaktion pro Ticket die Rechte `ticket.update` und `ticket.close`. Jeder manuelle Lauf wird getrennt protokolliert. Ein unbeaufsichtigter Scheduler wird erst nach separater Secret- und Betriebsfreigabe eingerichtet.
+
 ## Regelmässiger Recovery-Drill
 
 Quartalsweise: eine anonymisierte, isolierte Wiederherstellungsprobe ausführen; Web-Smoke, Mandantentrennung, Authentifizierung und Stichproben auf Tickets/Anhänge prüfen; Ergebnis, RPO und RTO in den Release Notes oder Betriebsprotokoll festhalten.
