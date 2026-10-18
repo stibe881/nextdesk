@@ -1,6 +1,8 @@
 import * as SecureStore from "expo-secure-store";
 import { Platform } from "react-native";
 
+import { toSecureStoreKey } from "./secure-store-key";
+
 type AsyncKeyValueStorage = {
   getItem: (key: string) => Promise<string | null>;
   setItem: (key: string, value: string) => Promise<void>;
@@ -19,13 +21,15 @@ const webStorage: AsyncKeyValueStorage = {
 };
 
 const nativeStorage: AsyncKeyValueStorage = {
-  getItem: (key) => SecureStore.getItemAsync(key),
+  // Every key is normalised to the Keychain-safe character set first; the
+  // readable app namespaces ("nextdesk:mobile:…") are otherwise rejected.
+  getItem: (key) => SecureStore.getItemAsync(toSecureStoreKey(key)),
   setItem: async (key, value) => {
-    await SecureStore.setItemAsync(key, value, {
+    await SecureStore.setItemAsync(toSecureStoreKey(key), value, {
       keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
     });
   },
-  removeItem: (key) => SecureStore.deleteItemAsync(key),
+  removeItem: (key) => SecureStore.deleteItemAsync(toSecureStoreKey(key)),
 };
 
 /**
