@@ -13,6 +13,7 @@ import {
 } from "react-native";
 
 import { lookupMobileAsset } from "@/lib/asset-registry";
+import { hapticError, hapticSuccess } from "@/lib/mobile-haptics";
 import { loadCurrentTenant } from "@/lib/nextdesk-client";
 import { useMobileSessionGuard } from "@/lib/use-mobile-session-guard";
 
@@ -33,8 +34,10 @@ export default function AssetScanScreen() {
       try {
         const tenant = await loadCurrentTenant();
         const detail = await lookupMobileAsset(tenant.id, code);
+        hapticSuccess();
         router.replace(`/assets/${detail.asset.id}` as never);
       } catch (nextError) {
+        hapticError();
         setError(
           nextError instanceof Error
             ? nextError.message

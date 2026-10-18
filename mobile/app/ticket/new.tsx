@@ -13,6 +13,11 @@ import {
 } from "react-native";
 
 import { ScreenContainer } from "@/components/screen-container";
+import {
+  hapticError,
+  hapticSelection,
+  hapticSuccess,
+} from "@/lib/mobile-haptics";
 import { loadCurrentTenant, type MobileTenant } from "@/lib/nextdesk-client";
 import {
   createMobileTicket,
@@ -88,18 +93,22 @@ export default function NewTicketScreen() {
     const cleanSubject = subject.trim();
     const cleanDescription = description.trim();
     if (cleanSubject.length < 3) {
+      hapticError();
       setError("Bitte geben Sie einen Betreff mit mindestens 3 Zeichen ein.");
       return;
     }
     if (!cleanDescription) {
+      hapticError();
       setError("Bitte beschreiben Sie Ihr Anliegen.");
       return;
     }
     if (!departmentId || !priorityKey) {
+      hapticError();
       setError("Bitte wählen Sie Abteilung und Priorität.");
       return;
     }
     if (!selectedRequester) {
+      hapticError();
       setError("Bitte wählen Sie eine anfragende Person.");
       return;
     }
@@ -118,7 +127,9 @@ export default function NewTicketScreen() {
         pathname: "/ticket/[id]",
         params: { id: ticket.ticketId },
       });
+      hapticSuccess();
     } catch (nextError) {
+      hapticError();
       setError(
         nextError instanceof Error
           ? nextError.message
@@ -215,7 +226,10 @@ export default function NewTicketScreen() {
                     selected: department.id === departmentId,
                   }}
                   key={department.id}
-                  onPress={() => setDepartmentId(department.id)}
+                  onPress={() => {
+                    hapticSelection();
+                    setDepartmentId(department.id);
+                  }}
                   style={[
                     styles.choice,
                     department.id === departmentId && styles.choiceActive,
@@ -247,7 +261,10 @@ export default function NewTicketScreen() {
                     selected: priority.key === priorityKey,
                   }}
                   key={priority.key}
-                  onPress={() => setPriorityKey(priority.key)}
+                  onPress={() => {
+                    hapticSelection();
+                    setPriorityKey(priority.key);
+                  }}
                   style={[
                     styles.choice,
                     priority.key === priorityKey && styles.choiceActive,

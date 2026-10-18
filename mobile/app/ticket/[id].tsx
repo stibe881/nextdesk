@@ -27,6 +27,11 @@ import {
   setFavoriteTicket,
 } from "@/lib/mobile-private-state";
 import {
+  hapticError,
+  hapticSelection,
+  hapticSuccess,
+} from "@/lib/mobile-haptics";
+import {
   getMobileUserId,
   loadCurrentTenant,
   type MobileTenant,
@@ -230,7 +235,9 @@ export default function TicketDetailScreen() {
       setPriorityKey(nextPriorityKey);
       setRequester(nextRequester);
       setEditingField(null);
+      hapticSuccess();
     } catch (nextError) {
+      hapticError();
       setError(
         nextError instanceof Error
           ? nextError.message
@@ -297,7 +304,9 @@ export default function TicketDetailScreen() {
         favorite: nextFavorite,
       });
       setFavorite(nextFavorite);
+      hapticSelection();
     } catch {
+      hapticError();
       setError("Der Favorit konnte nicht auf diesem Gerät gespeichert werden.");
     }
   }
@@ -346,7 +355,9 @@ export default function TicketDetailScreen() {
         visibility: commentVisibility,
       });
       await load(false);
+      hapticSuccess();
     } catch (nextError) {
+      hapticError();
       setError(
         nextError instanceof Error
           ? nextError.message
@@ -466,7 +477,10 @@ export default function TicketDetailScreen() {
                 }
                 accessibilityRole={ticket.canUpdate ? "button" : undefined}
                 disabled={!ticket.canUpdate}
-                onPress={() => setEditingField("subject")}
+                onPress={() => {
+                  hapticSelection();
+                  setEditingField("subject");
+                }}
               >
                 <Text style={styles.title}>{ticket.subject}</Text>
               </Pressable>
@@ -480,7 +494,10 @@ export default function TicketDetailScreen() {
                 }
                 accessibilityRole={ticket.canUpdate ? "button" : undefined}
                 disabled={!ticket.canUpdate}
-                onPress={() => setSelection("status")}
+                onPress={() => {
+                  hapticSelection();
+                  setSelection("status");
+                }}
                 style={[
                   styles.status,
                   status.is_closed ? styles.statusResolved : styles.statusOpen,
@@ -524,7 +541,10 @@ export default function TicketDetailScreen() {
                   }
                   accessibilityRole={ticket.canUpdate ? "button" : undefined}
                   disabled={!ticket.canUpdate || !requester}
-                  onPress={() => setEditingField("requester")}
+                  onPress={() => {
+                    hapticSelection();
+                    setEditingField("requester");
+                  }}
                 >
                   <Text numberOfLines={2} style={styles.cardValue}>
                     {ticket.requesterName ?? "Anfragende Person"}
@@ -560,7 +580,10 @@ export default function TicketDetailScreen() {
                 }
                 accessibilityRole={ticket.canUpdate ? "button" : undefined}
                 disabled={!ticket.canUpdate}
-                onPress={() => setSelection("priority")}
+                onPress={() => {
+                  hapticSelection();
+                  setSelection("priority");
+                }}
               >
                 <Text style={styles.cardValue}>
                   {priority?.label ?? "Ohne Priorität"}
@@ -601,7 +624,10 @@ export default function TicketDetailScreen() {
                 }
                 accessibilityRole={ticket.canUpdate ? "button" : undefined}
                 disabled={!ticket.canUpdate}
-                onPress={() => setEditingField("description")}
+                onPress={() => {
+                  hapticSelection();
+                  setEditingField("description");
+                }}
               >
                 <Text style={styles.description}>{ticket.description}</Text>
               </Pressable>
