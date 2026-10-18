@@ -7,18 +7,18 @@
 - [~] **Betrieb.** Erweiterte RLS-/Regression-/E2E-Abdeckung, Feedback in iOS, durchsuchbarer Auditexport, Sitzungsverwaltung, Datenschutz-/DSAR-Vorbereitung, Performancebudgets, Lasttests, Backup-Drillnachweis, Health-/Outbox-/Webhook-Grundlagen und CI-Härtung. Keine automatische Löschung, kein Produktionsrestore und kein Scheduler ohne Betriebsfreigabe.
 - [~] **KI-Integration.** Feature-Gates, Tenant-Governance, Provider-/Zweck-/Retention-Freigabe, Audit, Datenminimierung, Kosten-/Quotenrahmen und menschlich geprüfte Entwurfsoberflächen. Zusammenfassung, Antwortentwurf, Klassifikation, Wissensentwurf, Suche, Häufungen, Übersetzung, Sprache und Bildanalyse bleiben deaktiviert, bis Provider, Datenschutz und Zugang freigegeben sind.
 
-## Status 18.10.2026, 17:30 Uhr
+## Status 18.10.2026, 18:20 Uhr
 
-Legende: [x] im Web und Backend produktiv umgesetzt und automatisiert geprüft. [~] Grundlage umgesetzt, Rest extern blockiert. Angemeldete Oberflächen sind nicht mit einem realen Konto automatisiert getestet. Die iOS-Anteile sind committed, aber erst mit einem neuen, ausdrücklich beauftragten Build in TestFlight.
+Legende: [x] im Web und Backend produktiv umgesetzt und automatisiert geprüft. [~] Grundlage umgesetzt, Rest extern blockiert. Angemeldete Oberflächen sind nicht mit einem realen Konto automatisiert getestet. Die iOS-Anteile sind in TestFlight-Build 10022 enthalten; die reale iPhone-Abnahme steht aus.
 
 **Produktiv:**
 
-| Bereich        | Stand                                                                                                                       |
-| -------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| Migrationen    | 0057, 0058, 0059                                                                                                            |
-| Edge Functions | experience-hub, ai-assist, agent-workbench v2, requester-portal v2, tenant-audit-log v6, health v1 (öffentlich, ohne Daten) |
-| Web            | Commit 2df3cbb auf app.nextdesk.ch                                                                                          |
-| iOS            | Commit 0526b7f, gespiegelt als 2c062cf, noch in keinem Build                                                                |
+| Bereich        | Stand                                                                                                                                              |
+| -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Migrationen    | 0057, 0058, 0059                                                                                                                                   |
+| Edge Functions | experience-hub, ai-assist, agent-workbench v2, requester-portal v2, tenant-audit-log v6, health v1 (öffentlich, ohne Daten), ticket-operations v20 |
+| Web            | Commit f7674e5 (inkl. Dark Mode) auf app.nextdesk.ch                                                                                               |
+| iOS            | Commit ec02f11 in TestFlight-Build 10022                                                                                                           |
 
 **Betrieb:** E2E ohne Anmeldung, schonender Lastcheck und lokaler Backup-Restore-Drill sind belegt in docs/operations/QUALITY_AND_RECOVERY_EVIDENCE_2026-10-18.md. Die CI-Härtung (e83a999 auf ci-workflows-pending) ist extern blockiert: Der GitHub-Push-Token hat keine workflows-Berechtigung.
 

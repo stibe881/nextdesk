@@ -59,3 +59,5 @@ Automatische Datenlöschung und unbeaufsichtigte Ticket-Schliessungen sind nicht
 ## Prüfungen
 
 Für die Sicherheitsnachlieferung zusätzlich erfolgreich ausgeführt: Typecheck, Schema- und Berechtigungskatalogprüfung mit 56 Migrationen, lokale Postgres-/RLS-Migrationstests inklusive Wissensfreigabe, letztem Mandantenadministrator und bestätigten Massenabschlüssen, Edge-Function-Prüfung, Formatprüfung und Diff-Prüfung.
+
+**iOS Build 10022.** Build 10022 (`ec02f11`, EAS `2298c990-9f6b-40d1-a1c8-98ebc5f0a6c1`, Submission `78c384cc-fc91-4af1-9e90-01ddff8b5308`) bündelt die mobilen Anteile der Wellen 2 bis 4, den Dark Mode mit Standard Hell, die Korrektur beim Speichern der Ticketbeschreibung und den neuen Fotobereich mit Kameraaufnahme. Der Kamera-Berechtigungstext nennt nun Asset-Scan und Ticketfotos. Serverseitig behandelt `ticket-operations` v20 (`84efa4f`) unveränderte Speichervorgänge als Erfolg und lädt alle gültigen Anfragenden-Kennungen.
