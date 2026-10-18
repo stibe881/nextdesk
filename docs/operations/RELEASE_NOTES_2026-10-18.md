@@ -21,6 +21,12 @@
 - Massenstatusänderungen in einen geschlossenen Status sind zweistufig: Die Ticketliste zeigt zuerst eine klare Inline-Bestätigung mit Anzahl, Zielstatus und Audit-Hinweis. Erst die explizite zweite Aktion kann schliessen. Die neue Datenbank-RPC-Signatur verlangt dieselbe Bestätigung verpflichtend, ist weiterhin nur für die Service Role ausführbar, prüft Berechtigungen pro Ticket erneut und protokolliert den bestätigten Abschluss atomar.
 - Die nur manuell auslösbare Auto-Close-Aktion übergibt ihre sichtbare Webbestätigung jetzt explizit an die neue Massenabschluss-RPC. Sie bleibt auf aktuelle serverseitige Kandidaten, eine erneute Rechteprüfung und einen separaten Lauf- sowie Audit-Eintrag begrenzt; ein unbeaufsichtigter Scheduler wird nicht aktiviert.
 
+## Nachlieferung 16:30 Uhr
+
+**iOS-SSO-Störung.** Build 10020 (`3a4c514`) korrigierte, dass die SSO-Taste nicht reagierte. Build 10021 (`30480ba`, EAS `dcf75910-fafa-41c4-bf65-b0ebe32bedde`, Submission `a30b4323-74ba-4c84-a3e4-74a616716dca`) behebt den danach sichtbaren Fehler „Invalid key provided to SecureStore“. Alle App-Schlüssel werden nun zentral und kollisionsfrei in Keychain-gültige Namen umgewandelt. Bestehende Supabase-Sitzungs- und PKCE-Schlüssel bleiben unverändert.
+
+**Web und API (Commit `0dcd8b2`, live auf app.nextdesk.ch).** Neu sind Wiedervorlagen und „Mein Tag“, Wiedervorlagen und Lösungsbestätigungen im Ticket, ein Servicekatalog bei der Ticketerfassung und eine rein lesende KI-Governance-Ansicht. Migration 0057 ist produktiv; die Functions `experience-hub` und `ai-assist` sind ACTIVE (CORS 204, ohne Anmeldung 401). KI und ausgehende Webhooks bleiben pro Mandant deaktiviert, und es wird kein KI-Provider kontaktiert.
+
 ## Sicherheits- und Betriebsgrenzen
 
 Die Integration mit Microsoft Intune, der vollständige Entra-Personenabgleich, E-Mail/Kalender/Teams/Slack, Webhooks/API-Schlüssel, produktives Monitoring sowie zeitgesteuerte Regelruns bleiben bewusst deaktiviert, bis die je erforderlichen Provider- und Datenschutzfreigaben, Secrets und Einwilligungen vorliegen. Sie sind nicht als aktiv ausgegeben.
