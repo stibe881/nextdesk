@@ -93,3 +93,17 @@ Im Ticketdetail (iOS und Web) setzt man eine Erinnerung mit Datum und Uhrzeit, S
 - Enthält Push-Benachrichtigungen, Push-Check-in, E-Mail-Kennzeichnung im Chat, kompakte Ticketdetails, Messenger-Chat, neue Startseite mit Erinnerungstermin, Agent*innen-Namen in Zuweisungsvorschlägen und die Tab-Leiste mit zentriertem Home-Kreis.
 - Web: Zuweisungsvorschläge zeigen den vom Server gelieferten Namen als Rückfall (`13e093d`, auf Hetzner ausgerollt).
 - Offen: reale iPhone-Abnahme; Push funktioniert erst nach Einrichtung des APNs-Schlüssels und Aktivierung des Mandantenschalters.
+
+## Kennzahlen, Kachel «Nicht zugewiesen» und Face-ID-Schleife
+
+- Persönliche Kennzahlen zählen nach denselben Status- und Datumsregeln (Schweizer Zeit) wie die Ticketliste; die erste Kennzahl heisst «Mir zugewiesen» (Web `770e312`, iOS `41803e5`).
+- Die Kennzahlen sind antippbar und öffnen die Ticketliste mit genau den gezählten Tickets (Web `a96c270`, auf Hetzner live; iOS `21a14d0`).
+- Die iOS-Startseite zeigt die Kachel «Nicht zugewiesen» (Tickets ohne zugewiesene Agent*in, gleiche Regel wie im Web) statt «Gelöst» (iOS `0487f5f`).
+- Geräteschutz: Während der Face-ID-Abfrage meldet iOS kurz «inaktiv» und danach wieder «aktiv». Dieser Wechsel wurde bisher als Rückkehr aus dem Hintergrund gewertet und löste sofort die nächste Abfrage aus. Neu sperrt die App nur nach echtem Hintergrundwechsel, deckt Inhalte beim Verlassen sofort ab, begrenzt eine hängende Abfrage auf 45 Sekunden und lässt «Abmelden» immer zu (iOS `885c1ca`).
+
+## iOS-Build 10024 (TestFlight)
+
+- EAS-Build `8d27a576-63d0-4be3-927f-5c34a5abcbfe` (FINISHED), iOS-Quellcommit `885c1ca`, App-Version 1.0.0, Profil production, Submission `0a065501-5093-4483-8247-ce027a6afd46`; Upload an App Store Connect erfolgreich, Apple-Verarbeitung folgt.
+- Vorabprüfung: sauberer Stand gleich origin/main, TypeScript, Lint, Schlüsselbund- und PKCE-Prüfung grün; Bundle-ID und URL-Schema `ch.grossict.nextdesk`.
+- Enthält gegenüber Build 10023 den Face-ID-Fix, die Kachel «Nicht zugewiesen», antippbare Fokuskennzahlen und die Kennzahl «Mir zugewiesen».
+- Offen: reale iPhone-Abnahme, insbesondere Face ID (aktivieren, entsperren, in den Hintergrund und zurück, erneut entsperren – ohne Schleife).
