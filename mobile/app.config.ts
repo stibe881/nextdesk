@@ -112,6 +112,7 @@ const config: ExpoConfig = {
   plugins: [
     "expo-asset",
     "expo-router",
+    ["expo-notifications", { mode: "production" }],
     [
       "expo-audio",
       {

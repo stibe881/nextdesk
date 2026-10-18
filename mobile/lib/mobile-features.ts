@@ -9,6 +9,7 @@ export const MOBILE_FEATURE_KEYS = [
   "agent.workbench",
   "requester.portal",
   "requester.department-view",
+  "notifications.push",
 ] as const;
 
 export type MobileFeatureKey = (typeof MOBILE_FEATURE_KEYS)[number];
@@ -23,6 +24,7 @@ const DISABLED_FEATURES: MobileFeatureFlags = {
   "agent.workbench": false,
   "requester.portal": false,
   "requester.department-view": false,
+  "notifications.push": false,
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -38,6 +38,13 @@ const messagesByCode: Readonly<Record<string, string>> = {
   checklist_item_update_failed:
     "Der Checklistenpunkt konnte nicht aktualisiert werden.",
   checklist_item_not_found: "Der Checklistenpunkt wurde nicht gefunden.",
+  feature_disabled:
+    "Push-Benachrichtigungen sind für deinen Mandanten noch nicht aktiviert.",
+  apns_not_configured:
+    "Der Apple-Zugang für Push-Benachrichtigungen wird noch eingerichtet.",
+  rate_limited:
+    "Bitte warte einen Moment, bevor du eine weitere Testmitteilung sendest.",
+  device_not_found: "Dieses iPhone ist nicht mehr als Push-Gerät registriert.",
 };
 
 function messageForStatus(status: number | undefined): string {

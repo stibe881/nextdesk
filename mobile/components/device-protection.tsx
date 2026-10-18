@@ -17,6 +17,7 @@ import {
   setDeviceProtectionPreference,
 } from "@/lib/mobile-private-state";
 import { clearMobileWorkspace, nextDesk } from "@/lib/nextdesk-client";
+import { unregisterPushDeviceBeforeSignOut } from "@/lib/push-notifications";
 import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
 
 export function DeviceProtection() {
@@ -98,6 +99,7 @@ export function DeviceProtection() {
 
   async function signOut() {
     try {
+      await unregisterPushDeviceBeforeSignOut();
       await nextDesk?.auth.signOut();
     } finally {
       await clearMobileWorkspace();

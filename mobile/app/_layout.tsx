@@ -28,6 +28,7 @@ import {
   MobileNetworkStatusProvider,
   OfflineStatus,
 } from "@/components/offline-status";
+import { PushNotificationBridge } from "@/components/push-notification-bridge";
 import {
   initManusRuntime,
   subscribeSafeAreaInsets,
@@ -225,6 +226,7 @@ export default function RootLayout() {
               </Stack>
               <NextDeskAuthDeepLinkHandler />
               <NextDeskSessionNavigator />
+              <PushNotificationBridge />
               <OfflineStatus />
               <DeviceProtection />
               <ThemedStatusBar />

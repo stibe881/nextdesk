@@ -42,6 +42,7 @@ import {
   getDeviceProtectionPreference,
   setDeviceProtectionPreference,
 } from "@/lib/mobile-private-state";
+import { unregisterPushDeviceBeforeSignOut } from "@/lib/push-notifications";
 
 const themeOptions: { label: string; value: ThemePreference }[] = [
   { label: "Hell", value: "light" },
@@ -161,6 +162,7 @@ export default function SettingsScreen() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const requesterPortalEnabled = isEnabled("requester.portal");
+  const pushNotificationsEnabled = isEnabled("notifications.push");
 
   const load = useCallback(async () => {
     if (!isNextDeskConfigured || !nextDesk) {
@@ -277,6 +279,7 @@ export default function SettingsScreen() {
   async function signOut() {
     if (!nextDesk) return;
     try {
+      await unregisterPushDeviceBeforeSignOut();
       await nextDesk.auth.signOut();
     } finally {
       await clearMobileWorkspace();
@@ -570,6 +573,59 @@ export default function SettingsScreen() {
               ) : null}
             </Pressable>
           </View>
+
+          {pushNotificationsEnabled ? (
+            <View style={[styles.card, tokenStyles.card, densityStyles.card]}>
+              <View style={styles.cardHeading}>
+                <View
+                  style={[
+                    styles.cardIcon,
+                    { backgroundColor: colors.primarySoft },
+                  ]}
+                >
+                  <Ionicons
+                    color={colors.primaryText}
+                    name="notifications-outline"
+                    size={20}
+                  />
+                </View>
+                <Text style={[styles.cardTitle, tokenStyles.foreground]}>
+                  Benachrichtigungen
+                </Text>
+              </View>
+              <Text style={[styles.cardHint, tokenStyles.muted]}>
+                Lege fest, welche Hinweise nextDesk auf diesem iPhone senden
+                darf.
+              </Text>
+              <Pressable
+                accessibilityHint="Öffnet die Push-Benachrichtigungseinstellungen."
+                accessibilityLabel="Push-Benachrichtigungen öffnen"
+                accessibilityRole="button"
+                onPress={() => router.push("/notifications" as never)}
+                style={[
+                  styles.tenantControl,
+                  tokenStyles.control,
+                  densityStyles.control,
+                ]}
+              >
+                <View style={styles.tenantControlCopy}>
+                  <Text
+                    style={[styles.tenantControlName, tokenStyles.foreground]}
+                  >
+                    Push-Benachrichtigungen
+                  </Text>
+                  <Text style={[styles.tenantControlHint, tokenStyles.muted]}>
+                    Kategorien, Ruhezeit und Testmitteilung
+                  </Text>
+                </View>
+                <Ionicons
+                  color={colors.primaryText}
+                  name="chevron-forward"
+                  size={20}
+                />
+              </Pressable>
+            </View>
+          ) : null}
 
           {availabilityAvailable ? (
             <View style={[styles.card, tokenStyles.card, densityStyles.card]}>
