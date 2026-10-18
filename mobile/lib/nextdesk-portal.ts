@@ -33,6 +33,8 @@ export type AgentMetricTicketIds = {
   solvedToday: string[];
   firstResponse: string[];
   dueFollowUps: string[];
+  /** Offene Tickets mit erreichter Antwort- oder Lösungsfrist; fehlt bei älteren Serverständen. */
+  slaDue?: string[];
 };
 
 export type AgentMetrics = {
@@ -40,6 +42,8 @@ export type AgentMetrics = {
   solvedToday: number;
   medianFirstResponseMinutes: number | null;
   dueFollowUps: number;
+  /** Anzahl offener Tickets mit erreichter Antwort- oder Lösungsfrist. */
+  slaDue?: number;
   /** Fehlt bei älteren Serverständen; dann sind die Kennzahlen nicht antippbar. */
   ticketIds?: AgentMetricTicketIds;
 };
@@ -67,7 +71,14 @@ function parseMetricTicketIds(
   const dueFollowUps = parseMetricTicketIdList(record.dueFollowUps);
   if (!assigned || !solvedToday || !firstResponse || !dueFollowUps)
     return undefined;
-  return { assigned, solvedToday, firstResponse, dueFollowUps };
+  const slaDue = parseMetricTicketIdList(record.slaDue);
+  return {
+    assigned,
+    solvedToday,
+    firstResponse,
+    dueFollowUps,
+    ...(slaDue ? { slaDue } : {}),
+  };
 }
 
 export type PortalApproval = {
@@ -268,11 +279,15 @@ export async function markMentionRead(mentionId: string): Promise<{
 
 export async function getMyMetrics(): Promise<{ metrics: AgentMetrics }> {
   const result = await invokeTenantFunction<{
-    metrics: AgentMetrics & { ticketIds?: unknown };
+    metrics: AgentMetrics & { slaDue?: unknown; ticketIds?: unknown };
   }>("agent-workbench", { type: "myMetrics" });
+  const { slaDue, ...metrics } = result.metrics;
   return {
     metrics: {
-      ...result.metrics,
+      ...metrics,
+      ...(typeof slaDue === "number" && Number.isFinite(slaDue)
+        ? { slaDue }
+        : {}),
       ticketIds: parseMetricTicketIds(result.metrics.ticketIds),
     },
   };

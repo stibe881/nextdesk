@@ -44,7 +44,7 @@ import {
 import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
 import { useThemeContext } from "@/lib/theme-provider";
 
-type FocusScope = "assigned" | "solvedToday" | "firstResponse" | "dueFollowUps";
+type FocusScope = "assigned" | "solvedToday" | "firstResponse" | "slaDue";
 type TicketScope = "all" | "mine" | "open" | "unassigned" | FocusScope;
 
 const ticketScopeLabels: Record<Exclude<TicketScope, "all">, string> = {
@@ -54,7 +54,7 @@ const ticketScopeLabels: Record<Exclude<TicketScope, "all">, string> = {
   assigned: "Mir zugewiesen",
   solvedToday: "Heute gelöst",
   firstResponse: "Mit erster Antwort",
-  dueFollowUps: "Fällige Wiedervorlagen",
+  slaDue: "Antwort oder Lösung fällig",
 };
 
 function isFocusScope(scope: TicketScope): scope is FocusScope {
@@ -62,7 +62,7 @@ function isFocusScope(scope: TicketScope): scope is FocusScope {
     scope === "assigned" ||
     scope === "solvedToday" ||
     scope === "firstResponse" ||
-    scope === "dueFollowUps"
+    scope === "slaDue"
   );
 }
 
@@ -531,11 +531,15 @@ export default function HomeScreen() {
                 ]}
               />
               <HeroKpi
-                disabled={!canOpenFocus}
+                disabled={!canOpenFocus || !agentMetrics.ticketIds?.slaDue}
                 label="Fällig"
-                onPress={() => selectFocusScope("dueFollowUps")}
-                selected={ticketScope === "dueFollowUps"}
-                value={String(agentMetrics.dueFollowUps)}
+                onPress={() => selectFocusScope("slaDue")}
+                selected={ticketScope === "slaDue"}
+                value={
+                  agentMetrics.slaDue === undefined
+                    ? "—"
+                    : String(agentMetrics.slaDue)
+                }
               />
             </View>
           ) : (
