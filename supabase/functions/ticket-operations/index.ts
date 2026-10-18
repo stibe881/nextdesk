@@ -5,6 +5,11 @@ type EscalationKind = "technical" | "organizational" | "sla";
 type RelationType =
   "duplicates" | "blocks" | "blocked_by" | "relates_to" | "parent" | "child";
 type DisplayRelationType = RelationType | "merged_into" | "merged_from";
+type TicketModules = {
+  detail: boolean;
+  checklists: boolean;
+  timeTracking: boolean;
+};
 type Action =
   | { type: "getTicket"; tenantId: string; ticketId: string }
   | { type: "recordExport"; tenantId: string; ticketId: string }
@@ -691,6 +696,49 @@ async function getTicket(admin: any, tenantId: string, ticketId: string) {
   return data;
 }
 
+/**
+ * Feature-Schalter sind eine zusätzliche Mandantengrenze zu Rollenrechten.
+ * Fehlende, abgelaufene oder nicht lesbare Schalter bleiben absichtlich
+ * deaktiviert, damit ein API-Aufruf kein ausgeblendetes Modul reaktiviert.
+ */
+async function getTicketModules(
+  admin: any,
+  tenantId: string,
+): Promise<TicketModules | null> {
+  const { data, error } = await admin
+    .from("tenant_feature_flags")
+    .select("feature_key, enabled, pilot_ends_at")
+    .eq("tenant_id", tenantId)
+    .in("feature_key", [
+      "ticketing.detail",
+      "ticketing.checklists",
+      "ticketing.time-tracking",
+    ]);
+  if (error) return null;
+
+  const now = Date.now();
+  const active = new Set(
+    (data ?? [])
+      .filter((row: any) => {
+        if (row?.enabled !== true || typeof row.feature_key !== "string") {
+          return false;
+        }
+        if (row.pilot_ends_at === null || row.pilot_ends_at === undefined) {
+          return true;
+        }
+        const endsAt = Date.parse(row.pilot_ends_at);
+        return Number.isFinite(endsAt) && endsAt > now;
+      })
+      .map((row: any) => row.feature_key),
+  );
+
+  return {
+    detail: active.has("ticketing.detail"),
+    checklists: active.has("ticketing.checklists"),
+    timeTracking: active.has("ticketing.time-tracking"),
+  };
+}
+
 const inverseRelationType = (relationType: RelationType): RelationType => {
   if (relationType === "blocks") return "blocked_by";
   if (relationType === "blocked_by") return "blocks";
@@ -915,6 +963,22 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
   );
   if (!ticket || !(await canRead(context.supabaseAdmin, actorId, ticket)))
     return response(request, { error: { code: "ticket_access_denied" } }, 403);
+  const ticketModules = await getTicketModules(
+    context.supabaseAdmin,
+    ticket.tenant_id,
+  );
+  if (!ticketModules)
+    return response(
+      request,
+      { error: { code: "ticket_feature_lookup_failed" } },
+      503,
+    );
+  if (!ticketModules.detail)
+    return response(
+      request,
+      { error: { code: "ticket_feature_disabled" } },
+      403,
+    );
   const internal = await hasPermission(
     context.supabaseAdmin,
     actorId,
@@ -989,21 +1053,25 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         .eq("ticket_id", ticket.id)
         .eq("user_id", actorId)
         .maybeSingle(),
-      context.supabaseAdmin
-        .from("ticket_checklist_items")
-        .select(
-          "id, ticket_id, description, position, completed_at, completed_by, created_by, created_at",
-        )
-        .eq("ticket_id", ticket.id)
-        .order("position")
-        .order("created_at"),
-      context.supabaseAdmin
-        .from("ticket_time_entries")
-        .select(
-          "id, author_id, minutes, billing_kind, note, started_at, created_at",
-        )
-        .eq("ticket_id", ticket.id)
-        .order("created_at", { ascending: false }),
+      ticketModules.checklists
+        ? context.supabaseAdmin
+            .from("ticket_checklist_items")
+            .select(
+              "id, ticket_id, description, position, completed_at, completed_by, created_by, created_at",
+            )
+            .eq("ticket_id", ticket.id)
+            .order("position")
+            .order("created_at")
+        : Promise.resolve({ data: [] }),
+      ticketModules.timeTracking && internal
+        ? context.supabaseAdmin
+            .from("ticket_time_entries")
+            .select(
+              "id, author_id, minutes, billing_kind, note, started_at, created_at",
+            )
+            .eq("ticket_id", ticket.id)
+            .order("created_at", { ascending: false })
+        : Promise.resolve({ data: [] }),
       context.supabaseAdmin
         .from("ticket_drafts")
         .select("id, ticket_id, author_id, visibility, body, updated_at")
@@ -1293,11 +1361,12 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         drafts: drafts ?? [],
         relations,
         similarTickets,
+        ticketModules,
         ...(canAssign ? { agents: ticketAgents.agents } : {}),
         canUpdate,
         canMerge,
         canAssign,
-        canTrackTime,
+        canTrackTime: ticketModules.timeTracking && canTrackTime,
         canEscalate,
         canClose,
         canUseInternalNotes: internal,
@@ -2049,6 +2118,12 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
   }
 
   if (action.type === "addTimeEntry") {
+    if (!ticketModules.timeTracking)
+      return response(
+        request,
+        { error: { code: "ticket_feature_disabled" } },
+        403,
+      );
     if (
       !(await hasPermission(
         context.supabaseAdmin,
@@ -2220,6 +2295,12 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     action.type === "addChecklistItem" ||
     action.type === "toggleChecklistItem"
   ) {
+    if (!ticketModules.checklists)
+      return response(
+        request,
+        { error: { code: "ticket_feature_disabled" } },
+        403,
+      );
     if (
       !(await hasPermission(
         context.supabaseAdmin,

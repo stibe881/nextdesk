@@ -553,6 +553,10 @@ type TicketDetailData = {
   timeEntries: TicketTimeEntry[];
   relations: TicketRelation[];
   similarTickets: SimilarTicket[];
+  ticketModules: {
+    checklists: boolean;
+    timeTracking: boolean;
+  };
   watching: boolean;
   canUpdate: boolean;
   canAssign: boolean;
@@ -1625,6 +1629,15 @@ function parseTicketDetail(
         ? data.canEscalate
         : null;
   if (canEscalate === null) return undefined;
+  // Ein fehlendes Modulobjekt einer älteren Function bleibt deaktiviert. Die
+  // UI erweitert damit niemals die serverseitig wirksame Mandantenfreigabe.
+  const rawTicketModules = asRecord(data.ticketModules);
+  const ticketModules = rawTicketModules
+    ? {
+        checklists: rawTicketModules.checklists === true,
+        timeTracking: rawTicketModules.timeTracking === true,
+      }
+    : { checklists: false, timeTracking: false };
 
   const comments = Array.isArray(data.comments)
     ? data.comments
@@ -1652,6 +1665,7 @@ function parseTicketDetail(
     timeEntries: valuesOf(data.timeEntries, isTicketTimeEntry),
     relations,
     similarTickets,
+    ticketModules,
     watching: data.watching === true,
     canUpdate: data.canUpdate === true,
     canAssign,
@@ -6779,7 +6793,13 @@ export function TicketDetail({
             Arbeitswerkzeuge
           </span>
           <span className="ticket-detail-disclosure-meta">
-            Checkliste, Status, Eskalationen
+            {[
+              detail.ticketModules.checklists ? "Checkliste" : null,
+              "Status",
+              "Eskalationen",
+            ]
+              .filter(Boolean)
+              .join(", ")}
             <ChevronDown
               aria-hidden="true"
               className="ticket-detail-disclosure-icon"
@@ -7252,7 +7272,7 @@ export function TicketDetail({
             </section>
           )}
 
-          {detail.canTrackTime && (
+          {detail.ticketModules.timeTracking && detail.canTrackTime && (
             <section
               className="ticket-detail-comments"
               aria-labelledby="ticket-time-entries-heading"
@@ -7358,116 +7378,121 @@ export function TicketDetail({
             </section>
           )}
 
-          <section
-            className="ticket-detail-checklist"
-            aria-labelledby="ticket-checklist-heading"
-          >
-            <div className="ticket-detail-section-heading">
-              <div>
-                <p className="eyebrow">CHECKLISTE</p>
-                <h3 id="ticket-checklist-heading">Checklistenpunkte</h3>
+          {detail.ticketModules.checklists && (
+            <section
+              className="ticket-detail-checklist"
+              aria-labelledby="ticket-checklist-heading"
+            >
+              <div className="ticket-detail-section-heading">
+                <div>
+                  <p className="eyebrow">CHECKLISTE</p>
+                  <h3 id="ticket-checklist-heading">Checklistenpunkte</h3>
+                </div>
+                <span className="data-caption">
+                  {
+                    detail.checklistItems.filter(
+                      (item) => item.completed_at !== null,
+                    ).length
+                  }
+                  /{detail.checklistItems.length} erledigt
+                </span>
               </div>
-              <span className="data-caption">
-                {
-                  detail.checklistItems.filter(
-                    (item) => item.completed_at !== null,
-                  ).length
-                }
-                /{detail.checklistItems.length} erledigt
-              </span>
-            </div>
 
-            {detail.canUpdate && (
-              <form className="ticket-comment-form" onSubmit={addChecklistItem}>
-                <label className="ticket-comment-body">
-                  Neuer Checklistenpunkt
-                  <input
-                    disabled={busy}
-                    onChange={(event) =>
-                      setChecklistDescription(event.target.value)
-                    }
-                    placeholder="Punkt zur Checkliste hinzufügen …"
-                    required
-                    type="text"
-                    value={checklistDescription}
-                  />
-                </label>
-                <button
-                  className="secondary-button"
-                  disabled={busy}
-                  type="submit"
+              {detail.canUpdate && (
+                <form
+                  className="ticket-comment-form"
+                  onSubmit={addChecklistItem}
                 >
-                  {pendingAction === "checklist-add" ? (
-                    <LoaderCircle
-                      aria-hidden="true"
-                      className="ticket-detail-spinner"
-                      size={16}
+                  <label className="ticket-comment-body">
+                    Neuer Checklistenpunkt
+                    <input
+                      disabled={busy}
+                      onChange={(event) =>
+                        setChecklistDescription(event.target.value)
+                      }
+                      placeholder="Punkt zur Checkliste hinzufügen …"
+                      required
+                      type="text"
+                      value={checklistDescription}
                     />
-                  ) : (
-                    <Circle aria-hidden="true" size={16} strokeWidth={1.8} />
-                  )}
-                  Punkt hinzufügen
-                </button>
-              </form>
-            )}
+                  </label>
+                  <button
+                    className="secondary-button"
+                    disabled={busy}
+                    type="submit"
+                  >
+                    {pendingAction === "checklist-add" ? (
+                      <LoaderCircle
+                        aria-hidden="true"
+                        className="ticket-detail-spinner"
+                        size={16}
+                      />
+                    ) : (
+                      <Circle aria-hidden="true" size={16} strokeWidth={1.8} />
+                    )}
+                    Punkt hinzufügen
+                  </button>
+                </form>
+              )}
 
-            {detail.checklistItems.length === 0 ? (
-              <p className="empty-state">
-                Noch keine Checklistenpunkte vorhanden.
-              </p>
-            ) : (
-              <ol className="ticket-comment-list ticket-checklist-list">
-                {detail.checklistItems.map((item) => {
-                  const isCompleted = item.completed_at !== null;
-                  const isPending =
-                    pendingAction === "checklist-toggle" &&
-                    pendingChecklistItemId === item.id;
+              {detail.checklistItems.length === 0 ? (
+                <p className="empty-state">
+                  Noch keine Checklistenpunkte vorhanden.
+                </p>
+              ) : (
+                <ol className="ticket-comment-list ticket-checklist-list">
+                  {detail.checklistItems.map((item) => {
+                    const isCompleted = item.completed_at !== null;
+                    const isPending =
+                      pendingAction === "checklist-toggle" &&
+                      pendingChecklistItemId === item.id;
 
-                  return (
-                    <li
-                      className="ticket-comment ticket-checklist-item"
-                      key={item.id}
-                    >
-                      <button
-                        aria-label={
-                          isCompleted
-                            ? `Checklistenpunkt „${item.description}“ als offen markieren`
-                            : `Checklistenpunkt „${item.description}“ als erledigt markieren`
-                        }
-                        aria-pressed={isCompleted}
-                        className="secondary-button"
-                        disabled={busy || !detail.canUpdate}
-                        onClick={() => void toggleChecklistItem(item)}
-                        type="button"
+                    return (
+                      <li
+                        className="ticket-comment ticket-checklist-item"
+                        key={item.id}
                       >
-                        {isPending ? (
-                          <LoaderCircle
-                            aria-hidden="true"
-                            className="ticket-detail-spinner"
-                            size={16}
-                          />
-                        ) : isCompleted ? (
-                          <CircleCheck
-                            aria-hidden="true"
-                            size={16}
-                            strokeWidth={1.8}
-                          />
-                        ) : (
-                          <Circle
-                            aria-hidden="true"
-                            size={16}
-                            strokeWidth={1.8}
-                          />
-                        )}
-                        {isCompleted ? "Erledigt" : "Offen"}
-                      </button>
-                      <p>{item.description}</p>
-                    </li>
-                  );
-                })}
-              </ol>
-            )}
-          </section>
+                        <button
+                          aria-label={
+                            isCompleted
+                              ? `Checklistenpunkt „${item.description}“ als offen markieren`
+                              : `Checklistenpunkt „${item.description}“ als erledigt markieren`
+                          }
+                          aria-pressed={isCompleted}
+                          className="secondary-button"
+                          disabled={busy || !detail.canUpdate}
+                          onClick={() => void toggleChecklistItem(item)}
+                          type="button"
+                        >
+                          {isPending ? (
+                            <LoaderCircle
+                              aria-hidden="true"
+                              className="ticket-detail-spinner"
+                              size={16}
+                            />
+                          ) : isCompleted ? (
+                            <CircleCheck
+                              aria-hidden="true"
+                              size={16}
+                              strokeWidth={1.8}
+                            />
+                          ) : (
+                            <Circle
+                              aria-hidden="true"
+                              size={16}
+                              strokeWidth={1.8}
+                            />
+                          )}
+                          {isCompleted ? "Erledigt" : "Offen"}
+                        </button>
+                        <p>{item.description}</p>
+                      </li>
+                    );
+                  })}
+                </ol>
+              )}
+            </section>
+          )}
 
           {detail.canUpdate && (
             <section
