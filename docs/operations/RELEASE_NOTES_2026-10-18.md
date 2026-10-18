@@ -3,7 +3,7 @@
 ## Ausgeliefert
 
 - Mandantenfähiger Assets-Bereich in Web und iOS mit QR-/Barcode-Lookup, sicherem serverseitigem Intune-Synchronisationsdienst als **deaktivierter** Integrationsbaustein sowie einer Rollout-Anleitung für die erforderliche Microsoft-Graph-Freigabe.
-- Mobile Arbeitsbeschleunigung: globale Ticket-/Assetsuche, direkte Ticketbearbeitung, sichere Fotoanhänge, Entwürfe, eine eigene Favoritenwarteschlange mit erneuter Serverautorisierung, Kontaktaktion, Wissenssuche, dezente Haptik und optionaler lokaler Geräteschutz.
+- Mobile Arbeitsbeschleunigung: globale Ticket-/Assetsuche, direkte Ticketbearbeitung, sichere Fotoanhänge, Entwürfe, eine eigene Favoritenwarteschlange mit erneuter Serverautorisierung, Kontaktaktion, Wissenssuche, dezente Haptik und optionaler lokaler Geräteschutz. Bei vorübergehendem Netzverlust steht zusätzlich maximal zwölf Stunden eine verschlüsselte, benutzer- und mandantengebundene Ticketlisten-Metadatenansicht zur Verfügung; sie ist klar als Offlinefallback markiert sowie weder klickbar noch bearbeitbar. Ticketdetails, Kommunikation, Anhänge, Assets und Wissensinhalte bleiben offline ausgeschlossen.
 - Wissensverwaltung mit mandantenspezifischen Kategorien, Revisionen, Freigabeprozess, sichtbarem Versionsstand und mobiler Suche. Die App zeigt dazu ausschliesslich bereits autorisierte Sammlungen sowie Version und Aktualität an.
 - Ticketprozesse mit kontrolliertem CSV-Import/-Export, Ticketvergleich, Freigaben, PDF-Ticketakte und reversibler Vorlagenarchivierung.
 - Mandantenadministration mit exklusiven Einstellungsreitern, zentraler Funktionskonfiguration, zeitlich begrenzten Feature-Piloten, Datenschutz-/Retention-Richtlinien, Onboarding-Checkliste, Logo-Upload und direkter Übernahme der Mandantenmarke.
