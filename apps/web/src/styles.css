@@ -7205,3 +7205,234 @@ body:has(.ticket-detail) {
     justify-content: center;
   }
 }
+
+/* Mandanteneinstellungen: Corporate-Design-Upload und Abteilungen */
+.tenant-logo-upload {
+  display: grid;
+  gap: 10px;
+}
+
+.tenant-logo-upload__label {
+  display: block;
+  font-weight: 700;
+}
+
+.tenant-logo-upload p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.tenant-logo-upload__input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.tenant-logo-upload__dropzone {
+  min-height: 132px;
+  display: grid;
+  place-items: center;
+  gap: 10px;
+  padding: 18px;
+  border: 1.5px dashed color-mix(in srgb, var(--primary) 42%, var(--border));
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--primary-soft) 45%, transparent);
+  text-align: center;
+}
+
+.tenant-logo-upload__dropzone img {
+  display: block;
+  max-width: min(100%, 260px);
+  max-height: 82px;
+  object-fit: contain;
+}
+
+.tenant-logo-upload__dropzone button,
+.tenant-logo-upload__remove {
+  width: fit-content;
+  margin: 0;
+}
+
+.tenant-logo-upload__remove {
+  color: var(--danger);
+}
+
+.tenant-admin-settings__logo-preview dd {
+  margin: 8px 0 0;
+}
+
+.tenant-admin-settings__logo-preview img {
+  display: block;
+  width: min(100%, 220px);
+  max-height: 74px;
+  object-fit: contain;
+  object-position: left center;
+}
+
+.department-management {
+  display: grid;
+  gap: 22px;
+}
+
+.department-management__heading,
+.department-management__header-actions,
+.department-management__form-actions,
+.department-management__item-main,
+.department-management__item-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.department-management__heading {
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.department-management__header-actions,
+.department-management__form-actions,
+.department-management__item-actions {
+  flex-wrap: wrap;
+}
+
+.department-management__form {
+  display: grid;
+  grid-template-columns: minmax(200px, 1fr) minmax(250px, 1.35fr) auto;
+  align-items: end;
+  gap: 16px;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface);
+}
+
+.department-management__form h3,
+.department-management__form p {
+  margin: 0;
+}
+
+.department-management__form p {
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.department-management__form label {
+  display: grid;
+  gap: 7px;
+  font-weight: 650;
+}
+
+.department-management__groups {
+  display: grid;
+  gap: 22px;
+}
+
+.department-management__group-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 9px;
+}
+
+.department-management__group-heading h3 {
+  margin: 0;
+}
+
+.department-management__group-heading span {
+  display: grid;
+  min-width: 25px;
+  height: 25px;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--primary-soft);
+  color: var(--primary);
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.department-management__list {
+  display: grid;
+  gap: 9px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.department-management__list li {
+  display: flex;
+  min-height: 70px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+}
+
+.department-management__item-main {
+  min-width: 0;
+}
+
+.department-management__item-main > div {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.department-management__item-main strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.department-management__item-main span:not(.department-management__icon) {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.department-management__icon {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 10px;
+  background: var(--primary-soft);
+  color: var(--primary);
+}
+
+.department-management__list--archived {
+  opacity: 0.68;
+}
+
+.department-management__empty {
+  margin: 0;
+  padding: 22px;
+  border: 1px dashed var(--border);
+  border-radius: 14px;
+  color: var(--muted);
+  text-align: center;
+}
+
+@media (max-width: 760px) {
+  .department-management__form {
+    grid-template-columns: 1fr;
+  }
+
+  .department-management__heading,
+  .department-management__list li {
+    align-items: stretch;
+  }
+
+  .department-management__header-actions button,
+  .department-management__item-actions button {
+    flex: 1 1 160px;
+  }
+}

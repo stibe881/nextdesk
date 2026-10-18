@@ -2,12 +2,16 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type FormEvent,
 } from "react";
 import { supabase } from "./lib/supabase";
 import { functionErrorMessage } from "./lib/function-error";
 import { TicketCustomFieldsAdmin } from "./ticket-custom-fields-admin";
+import { AssetIntuneSettings } from "./asset-intune-settings";
+import { DepartmentManagement } from "./department-management";
+import { TicketTemplates } from "./ticket-templates";
 
 export type TenantAdminSettingsProps = {
   tenantId: string;
@@ -34,6 +38,9 @@ type SettingsArea =
   | "sso"
   | "features"
   | "ticket-fields"
+  | "templates"
+  | "departments"
+  | "assets"
   | "users"
   | "roles"
   | "audit";
@@ -206,6 +213,13 @@ type TenantAdminRequest =
   | { type: "listRoles"; tenantId: string }
   | { type: "updateBranding"; tenantId: string; branding: BrandingUpdate }
   | {
+      type: "uploadBrandingLogo";
+      tenantId: string;
+      fileName: string;
+      contentType: "image/png" | "image/jpeg" | "image/webp";
+      base64: string;
+    }
+  | {
       type: "updateSsoConfiguration";
       tenantId: string;
       provider: SsoProvider;
@@ -265,7 +279,6 @@ type TenantRoleManagementRequest =
 
 type BrandingForm = {
   portalName: string;
-  logoUrl: string;
   primaryColor: string;
   secondaryColor: string;
   accentColor: string;
@@ -301,7 +314,6 @@ type PersonForm = {
 
 const emptyBrandingForm: BrandingForm = {
   portalName: "",
-  logoUrl: "",
   primaryColor: "",
   secondaryColor: "",
   accentColor: "",
@@ -520,6 +532,51 @@ function isHttpsUrl(value: string): boolean {
   }
 }
 
+type PreparedLogoUpload = {
+  fileName: string;
+  contentType: "image/png" | "image/jpeg" | "image/webp";
+  base64: string;
+  previewUrl: string;
+};
+
+const LOGO_MIME_TYPES = new Set<PreparedLogoUpload["contentType"]>([
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+]);
+const MAX_LOGO_FILE_BYTES = 2 * 1024 * 1024;
+
+async function prepareLogoUpload(file: File): Promise<PreparedLogoUpload> {
+  if (!LOGO_MIME_TYPES.has(file.type as PreparedLogoUpload["contentType"])) {
+    throw new Error("Bitte wählen Sie ein PNG-, JPEG- oder WebP-Bild aus.");
+  }
+  if (file.size === 0 || file.size > MAX_LOGO_FILE_BYTES) {
+    throw new Error("Das Logo darf höchstens 2 MB gross sein.");
+  }
+  const dataUrl = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () =>
+      reject(new Error("Die Bilddatei konnte nicht gelesen werden."));
+    reader.onload = () => {
+      if (typeof reader.result !== "string") {
+        reject(new Error("Die Bilddatei konnte nicht gelesen werden."));
+        return;
+      }
+      resolve(reader.result);
+    };
+    reader.readAsDataURL(file);
+  });
+  const separator = dataUrl.indexOf(",");
+  const base64 = separator >= 0 ? dataUrl.slice(separator + 1) : "";
+  if (!base64) throw new Error("Die Bilddatei enthält keine Bilddaten.");
+  return {
+    fileName: file.name.slice(0, 120),
+    contentType: file.type as PreparedLogoUpload["contentType"],
+    base64,
+    previewUrl: dataUrl,
+  };
+}
+
 function isHexColor(value: string): boolean {
   return /^#[0-9a-f]{6}$/i.test(value);
 }
@@ -582,6 +639,11 @@ export function TenantAdminSettings({
   const [personSearch, setPersonSearch] = useState("");
   const [brandingForm, setBrandingForm] =
     useState<BrandingForm>(emptyBrandingForm);
+  const [pendingLogo, setPendingLogo] = useState<PreparedLogoUpload | null>(
+    null,
+  );
+  const [removeLogo, setRemoveLogo] = useState(false);
+  const logoFileInputRef = useRef<HTMLInputElement>(null);
   const [ssoForm, setSsoForm] = useState<SsoForm>(emptySsoForm);
   const [loading, setLoading] = useState(true);
   const [audit, setAudit] = useState<AuditListData>({
@@ -624,11 +686,12 @@ export function TenantAdminSettings({
       const branding = nextSettings.tenant_branding;
       setBrandingForm({
         portalName: nextSettings.tenant_settings?.portal_name ?? "",
-        logoUrl: branding?.logo_url ?? branding?.logo_path ?? "",
         primaryColor: branding?.primary_color ?? "",
         secondaryColor: branding?.secondary_color ?? "",
         accentColor: branding?.accent_color ?? "",
       });
+      setPendingLogo(null);
+      setRemoveLogo(false);
 
       const sso = nextSettings.tenant_sso_configurations[0];
       setSsoForm(
@@ -805,6 +868,24 @@ export function TenantAdminSettings({
     };
   }
 
+  async function chooseBrandingLogo(file: File | null | undefined) {
+    if (!file) return;
+    setError("");
+    setSuccess("");
+    try {
+      setPendingLogo(await prepareLogoUpload(file));
+      setRemoveLogo(false);
+    } catch (nextError) {
+      setPendingLogo(null);
+      setError(
+        messageFromError(
+          nextError,
+          "Das Logo konnte nicht vorbereitet werden.",
+        ),
+      );
+    }
+  }
+
   async function saveBranding(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const portalName = brandingForm.portalName.trim();
@@ -814,16 +895,6 @@ export function TenantAdminSettings({
     }
 
     const nextBranding: BrandingUpdate = { portalName };
-    const logoUrl = brandingForm.logoUrl.trim();
-    if (logoUrl) {
-      if (!isHttpsUrl(logoUrl)) {
-        setError("Die Logo-URL muss eine gültige HTTPS-Adresse sein.");
-        return;
-      }
-      nextBranding.logoUrl = logoUrl;
-    } else if (brandingLogoUrl) {
-      nextBranding.logoUrl = null;
-    }
 
     const colors: ReadonlyArray<
       readonly [
@@ -853,6 +924,18 @@ export function TenantAdminSettings({
 
     beginSave("branding");
     try {
+      if (pendingLogo) {
+        const upload = await tenantAdminRequest<{ logoUrl: string }>({
+          type: "uploadBrandingLogo",
+          tenantId,
+          fileName: pendingLogo.fileName,
+          contentType: pendingLogo.contentType,
+          base64: pendingLogo.base64,
+        });
+        nextBranding.logoUrl = upload.logoUrl;
+      } else if (removeLogo && brandingLogoUrl) {
+        nextBranding.logoUrl = null;
+      }
       await tenantAdminRequest<{ updated: boolean }>({
         type: "updateBranding",
         tenantId,
@@ -1342,6 +1425,7 @@ export function TenantAdminSettings({
           <nav
             className="tenant-admin-settings__tabs"
             aria-label="Einstellungsbereiche"
+            role="tablist"
           >
             {(
               [
@@ -1350,6 +1434,9 @@ export function TenantAdminSettings({
                 ["sso", "Anmeldung"],
                 ["features", "Funktionen"],
                 ["ticket-fields", "Ticketfelder"],
+                ["templates", "Vorlagen"],
+                ["departments", "Abteilungen"],
+                ["assets", "Assets & Intune"],
                 ["users", "Personen"],
                 ["roles", "Rollen"],
                 ["audit", "Protokoll"],
@@ -1363,14 +1450,15 @@ export function TenantAdminSettings({
                     ? "tenant-admin-settings__tab tenant-admin-settings__tab--active"
                     : "tenant-admin-settings__tab"
                 }
-                aria-current={activeArea === area ? "page" : undefined}
+                aria-selected={activeArea === area}
+                role="tab"
                 onClick={() => setActiveArea(area)}
               >
                 {label}
               </button>
             ))}
           </nav>
-          <div className="tenant-admin-settings__content">
+          <div className="tenant-admin-settings__content" role="tabpanel">
             {activeArea === "overview" && (
               <section
                 className="tenant-admin-settings__section"
@@ -1534,16 +1622,13 @@ export function TenantAdminSettings({
                       );
                     })}
                     {brandingLogoUrl ? (
-                      <div className="tenant-admin-settings__logo-url">
-                        <dt>Logo-URL</dt>
+                      <div className="tenant-admin-settings__logo-preview">
+                        <dt>Aktuelles Logo</dt>
                         <dd>
-                          <a
-                            href={brandingLogoUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                          >
-                            {brandingLogoUrl}
-                          </a>
+                          <img
+                            alt="Aktuelles Mandantenlogo"
+                            src={brandingLogoUrl}
+                          />
                         </dd>
                       </div>
                     ) : null}
@@ -1577,25 +1662,71 @@ export function TenantAdminSettings({
                       }
                     />
                   </label>
-                  <label>
-                    Logo-URL
+                  <div className="tenant-logo-upload">
+                    <div>
+                      <span className="tenant-logo-upload__label">
+                        Portal-Logo
+                      </span>
+                      <p>
+                        PNG, JPEG oder WebP bis 2 MB. Das Logo wird erst beim
+                        Speichern übernommen.
+                      </p>
+                    </div>
                     <input
-                      type="url"
-                      inputMode="url"
-                      placeholder="https://…"
-                      value={brandingForm.logoUrl}
+                      accept="image/png,image/jpeg,image/webp"
+                      className="tenant-logo-upload__input"
                       disabled={saving !== null}
                       onChange={(event) =>
-                        setBrandingForm((current) => ({
-                          ...current,
-                          logoUrl: event.target.value,
-                        }))
+                        void chooseBrandingLogo(event.target.files?.[0])
                       }
+                      ref={logoFileInputRef}
+                      type="file"
                     />
-                    <span className="tenant-admin-settings__hint">
-                      Eine leere Logo-URL entfernt ein vorhandenes Logo.
-                    </span>
-                  </label>
+                    <div
+                      className="tenant-logo-upload__dropzone"
+                      onDragOver={(event) => event.preventDefault()}
+                      onDrop={(event) => {
+                        event.preventDefault();
+                        void chooseBrandingLogo(event.dataTransfer.files[0]);
+                      }}
+                    >
+                      {pendingLogo ? (
+                        <img
+                          alt="Vorschau des ausgewählten Logos"
+                          src={pendingLogo.previewUrl}
+                        />
+                      ) : brandingLogoUrl && !removeLogo ? (
+                        <img
+                          alt="Aktuelles Mandantenlogo"
+                          src={brandingLogoUrl}
+                        />
+                      ) : (
+                        <span>Logo hier ablegen</span>
+                      )}
+                      <button
+                        disabled={saving !== null}
+                        onClick={() => logoFileInputRef.current?.click()}
+                        type="button"
+                      >
+                        Datei auswählen
+                      </button>
+                    </div>
+                    {(pendingLogo || brandingLogoUrl) && !removeLogo ? (
+                      <button
+                        className="tenant-logo-upload__remove"
+                        disabled={saving !== null}
+                        onClick={() => {
+                          setPendingLogo(null);
+                          setRemoveLogo(true);
+                          if (logoFileInputRef.current)
+                            logoFileInputRef.current.value = "";
+                        }}
+                        type="button"
+                      >
+                        Logo entfernen
+                      </button>
+                    ) : null}
+                  </div>
                   <div className="tenant-admin-settings__form-grid">
                     <label>
                       Primärfarbe
@@ -1910,6 +2041,18 @@ export function TenantAdminSettings({
 
             {activeArea === "ticket-fields" && (
               <TicketCustomFieldsAdmin tenantId={tenantId} />
+            )}
+
+            {activeArea === "templates" && (
+              <TicketTemplates tenantId={tenantId} />
+            )}
+
+            {activeArea === "departments" && (
+              <DepartmentManagement tenantId={tenantId} />
+            )}
+
+            {activeArea === "assets" && (
+              <AssetIntuneSettings tenantId={tenantId} />
             )}
 
             {activeArea === "users" && (

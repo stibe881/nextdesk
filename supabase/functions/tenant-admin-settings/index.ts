@@ -5,6 +5,7 @@ const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/;
 const FEATURE_KEY_PATTERN = /^[a-z][a-z0-9_.-]{2,100}$/;
+const DEPARTMENT_KEY_PATTERN = /^[a-z][a-z0-9_-]{1,62}$/;
 const DOMAIN_PATTERN =
   /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
 
@@ -15,6 +16,9 @@ const BRANDING_KEYS = new Set([
   "secondaryColor",
   "accentColor",
 ]);
+const LOGO_CONTENT_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
+const MAX_LOGO_BYTES = 2 * 1024 * 1024;
+const MAX_LOGO_BASE64_LENGTH = Math.ceil((MAX_LOGO_BYTES * 4) / 3) + 8;
 const SSO_KEYS = new Set([
   "type",
   "tenantId",
@@ -48,6 +52,13 @@ type SsoInput = {
 type Action =
   | { type: "getSettings"; tenantId: string }
   | { type: "updateBranding"; tenantId: string; branding: BrandingInput }
+  | {
+      type: "uploadBrandingLogo";
+      tenantId: string;
+      fileName: string;
+      contentType: "image/png" | "image/jpeg" | "image/webp";
+      base64: string;
+    }
   | ({ type: "updateSsoConfiguration"; tenantId: string } & SsoInput)
   | {
       type: "toggleFeature";
@@ -56,7 +67,10 @@ type Action =
       enabled: boolean;
     }
   | { type: "listUsers"; tenantId: string }
-  | { type: "listRoles"; tenantId: string };
+  | { type: "listRoles"; tenantId: string }
+  | { type: "listDepartments"; tenantId: string }
+  | { type: "saveDepartment"; tenantId: string; id?: string; name: string }
+  | { type: "archiveDepartment"; tenantId: string; id: string };
 
 type SsoConfiguration = {
   provider: "oidc" | "saml" | "azure_ad";
@@ -233,13 +247,42 @@ function parseAction(value: unknown): Action | null {
   if (!isRecord(value) || typeof value.type !== "string") return null;
 
   if (
-    ["getSettings", "listUsers", "listRoles"].includes(value.type) &&
+    ["getSettings", "listUsers", "listRoles", "listDepartments"].includes(
+      value.type,
+    ) &&
     hasOnlyKeys(value, new Set(["type", "tenantId"])) &&
     isUuid(value.tenantId)
   ) {
     return {
-      type: value.type as "getSettings" | "listUsers" | "listRoles",
+      type: value.type as
+        "getSettings" | "listUsers" | "listRoles" | "listDepartments",
       tenantId: value.tenantId,
+    };
+  }
+
+  if (
+    value.type === "uploadBrandingLogo" &&
+    hasOnlyKeys(
+      value,
+      new Set(["type", "tenantId", "fileName", "contentType", "base64"]),
+    ) &&
+    isUuid(value.tenantId) &&
+    typeof value.fileName === "string" &&
+    textInRange(value.fileName, 1, 120) &&
+    typeof value.contentType === "string" &&
+    LOGO_CONTENT_TYPES.has(value.contentType) &&
+    typeof value.base64 === "string" &&
+    value.base64.length > 0 &&
+    value.base64.length <= MAX_LOGO_BASE64_LENGTH &&
+    /^[A-Za-z0-9+/]*={0,2}$/.test(value.base64)
+  ) {
+    return {
+      type: "uploadBrandingLogo",
+      tenantId: value.tenantId,
+      fileName: value.fileName.trim(),
+      contentType: value.contentType as
+        "image/png" | "image/jpeg" | "image/webp",
+      base64: value.base64,
     };
   }
 
@@ -277,6 +320,34 @@ function parseAction(value: unknown): Action | null {
       tenantId: value.tenantId,
       featureKey: value.featureKey,
       enabled: value.enabled,
+    };
+  }
+
+  if (
+    value.type === "saveDepartment" &&
+    hasOnlyKeys(value, new Set(["type", "tenantId", "id", "name"])) &&
+    isUuid(value.tenantId) &&
+    textInRange(value.name, 2, 120) &&
+    (!hasOwn(value, "id") || isUuid(value.id))
+  ) {
+    return {
+      type: "saveDepartment",
+      tenantId: value.tenantId,
+      ...(hasOwn(value, "id") ? { id: value.id as string } : {}),
+      name: (value.name as string).trim(),
+    };
+  }
+
+  if (
+    value.type === "archiveDepartment" &&
+    hasOnlyKeys(value, new Set(["type", "tenantId", "id"])) &&
+    isUuid(value.tenantId) &&
+    isUuid(value.id)
+  ) {
+    return {
+      type: "archiveDepartment",
+      tenantId: value.tenantId,
+      id: value.id,
     };
   }
 
@@ -516,6 +587,234 @@ async function handleGetSettings(
       roles: rolesResult.roles ?? [],
     },
   });
+}
+
+function decodeBase64(base64: string): Uint8Array | null {
+  try {
+    const binary = atob(base64);
+    if (binary.length === 0 || binary.length > MAX_LOGO_BYTES) return null;
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index += 1) {
+      bytes[index] = binary.charCodeAt(index);
+    }
+    return bytes;
+  } catch {
+    return null;
+  }
+}
+
+async function handleUploadBrandingLogo(
+  admin: any,
+  request: Request,
+  action: Extract<Action, { type: "uploadBrandingLogo" }>,
+  actorId: string,
+): Promise<Response> {
+  const bytes = decodeBase64(action.base64);
+  if (!bytes) {
+    return json(request, { error: { code: "invalid_logo_file" } }, 422);
+  }
+
+  const extension = {
+    "image/png": "png",
+    "image/jpeg": "jpg",
+    "image/webp": "webp",
+  }[action.contentType];
+  const path = `tenant/${action.tenantId}/${crypto.randomUUID()}.${extension}`;
+  const { error: uploadError } = await admin.storage
+    .from("tenant-branding")
+    .upload(path, bytes, {
+      contentType: action.contentType,
+      cacheControl: "31536000",
+      upsert: false,
+    });
+  if (uploadError) {
+    return json(request, { error: { code: "logo_upload_failed" } }, 422);
+  }
+
+  const { data: publicUrl } = admin.storage
+    .from("tenant-branding")
+    .getPublicUrl(path);
+  if (!publicUrl?.publicUrl || !isHttpsUrl(publicUrl.publicUrl)) {
+    await admin.storage.from("tenant-branding").remove([path]);
+    return json(
+      request,
+      { error: { code: "logo_url_generation_failed" } },
+      500,
+    );
+  }
+
+  if (
+    !(await writeAudit(
+      admin,
+      action.tenantId,
+      actorId,
+      "tenant.branding.logo_uploaded",
+      "tenant_branding",
+      { content_type: action.contentType, byte_size: bytes.length },
+    ))
+  ) {
+    await admin.storage.from("tenant-branding").remove([path]);
+    return json(request, { error: { code: "audit_log_write_failed" } }, 500);
+  }
+
+  return json(request, { data: { logoUrl: publicUrl.publicUrl } });
+}
+
+function toDepartmentKey(name: string): string | null {
+  const normalized = name
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 63);
+  return DEPARTMENT_KEY_PATTERN.test(normalized) ? normalized : null;
+}
+
+function safeDepartment(value: Record<string, unknown>) {
+  return {
+    id: value.id,
+    key: value.key,
+    name: value.name,
+    kind: value.kind,
+    active: value.active,
+    created_at: value.created_at,
+  };
+}
+
+async function handleListDepartments(
+  admin: any,
+  request: Request,
+  tenantId: string,
+): Promise<Response> {
+  const { data, error } = await admin
+    .from("departments")
+    .select("id, key, name, kind, active, created_at")
+    .eq("tenant_id", tenantId)
+    .order("active", { ascending: false })
+    .order("name", { ascending: true })
+    .limit(200);
+  if (error)
+    return json(request, { error: { code: "department_list_failed" } }, 500);
+  return json(request, { data: { departments: data ?? [] } });
+}
+
+async function handleSaveDepartment(
+  admin: any,
+  request: Request,
+  action: Extract<Action, { type: "saveDepartment" }>,
+  actorId: string,
+): Promise<Response> {
+  if (action.id) {
+    const { data, error } = await admin
+      .from("departments")
+      .update({ name: action.name })
+      .eq("id", action.id)
+      .eq("tenant_id", action.tenantId)
+      .select("id, key, name, kind, active, created_at")
+      .maybeSingle();
+    if (error || !data) {
+      return json(
+        request,
+        { error: { code: "department_update_failed" } },
+        422,
+      );
+    }
+    if (
+      !(await writeAudit(
+        admin,
+        action.tenantId,
+        actorId,
+        "tenant.department.updated",
+        "department",
+        { department_id: action.id },
+      ))
+    ) {
+      return json(request, { error: { code: "audit_log_write_failed" } }, 500);
+    }
+    return json(request, { data: { department: safeDepartment(data) } });
+  }
+
+  const baseKey = toDepartmentKey(action.name);
+  if (!baseKey) {
+    return json(request, { error: { code: "department_key_invalid" } }, 422);
+  }
+  const { data: existing, error: existingError } = await admin
+    .from("departments")
+    .select("key")
+    .eq("tenant_id", action.tenantId)
+    .limit(200);
+  if (existingError) {
+    return json(request, { error: { code: "department_lookup_failed" } }, 500);
+  }
+  const used = new Set((existing ?? []).map((row: { key: string }) => row.key));
+  let key = baseKey;
+  for (let suffix = 2; used.has(key) && suffix < 1000; suffix += 1) {
+    const suffixValue = `-${suffix}`;
+    key = `${baseKey.slice(0, 63 - suffixValue.length)}${suffixValue}`;
+  }
+  if (used.has(key)) {
+    return json(request, { error: { code: "department_key_conflict" } }, 409);
+  }
+
+  const { data, error } = await admin
+    .from("departments")
+    .insert({
+      tenant_id: action.tenantId,
+      key,
+      name: action.name,
+      kind: "custom",
+      active: true,
+    })
+    .select("id, key, name, kind, active, created_at")
+    .single();
+  if (error || !data) {
+    return json(request, { error: { code: "department_create_failed" } }, 422);
+  }
+  if (
+    !(await writeAudit(
+      admin,
+      action.tenantId,
+      actorId,
+      "tenant.department.created",
+      "department",
+      { department_id: data.id },
+    ))
+  ) {
+    return json(request, { error: { code: "audit_log_write_failed" } }, 500);
+  }
+  return json(request, { data: { department: safeDepartment(data) } });
+}
+
+async function handleArchiveDepartment(
+  admin: any,
+  request: Request,
+  action: Extract<Action, { type: "archiveDepartment" }>,
+  actorId: string,
+): Promise<Response> {
+  const { data, error } = await admin
+    .from("departments")
+    .update({ active: false })
+    .eq("id", action.id)
+    .eq("tenant_id", action.tenantId)
+    .select("id, key, name, kind, active, created_at")
+    .maybeSingle();
+  if (error || !data) {
+    return json(request, { error: { code: "department_archive_failed" } }, 422);
+  }
+  if (
+    !(await writeAudit(
+      admin,
+      action.tenantId,
+      actorId,
+      "tenant.department.archived",
+      "department",
+      { department_id: action.id },
+    ))
+  ) {
+    return json(request, { error: { code: "audit_log_write_failed" } }, 500);
+  }
+  return json(request, { data: { department: safeDepartment(data) } });
 }
 
 async function handleUpdateBranding(
@@ -825,6 +1124,14 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
   if (action.type === "getSettings") {
     return handleGetSettings(context.supabaseAdmin, request, action.tenantId);
   }
+  if (action.type === "uploadBrandingLogo") {
+    return handleUploadBrandingLogo(
+      context.supabaseAdmin,
+      request,
+      action,
+      actorId,
+    );
+  }
   if (action.type === "updateBranding") {
     return handleUpdateBranding(
       context.supabaseAdmin,
@@ -846,6 +1153,29 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
   }
   if (action.type === "listUsers") {
     return handleListUsers(context.supabaseAdmin, request, action.tenantId);
+  }
+  if (action.type === "listDepartments") {
+    return handleListDepartments(
+      context.supabaseAdmin,
+      request,
+      action.tenantId,
+    );
+  }
+  if (action.type === "saveDepartment") {
+    return handleSaveDepartment(
+      context.supabaseAdmin,
+      request,
+      action,
+      actorId,
+    );
+  }
+  if (action.type === "archiveDepartment") {
+    return handleArchiveDepartment(
+      context.supabaseAdmin,
+      request,
+      action,
+      actorId,
+    );
   }
 
   const roles = await listSafeRoles(context.supabaseAdmin, action.tenantId);

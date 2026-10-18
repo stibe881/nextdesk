@@ -51,13 +51,10 @@ import { TicketComposer } from "./ticket-composer";
 import { TicketDetail } from "./ticket-detail";
 import { TenantAdminSettings } from "./tenant-admin-settings";
 import { KnowledgeBase } from "./knowledge-base";
-import { TicketTemplates } from "./ticket-templates";
 import { SlaManagement } from "./sla-management";
-import { CustomerOrganizations } from "./customer-organizations";
 import { ServiceReporting } from "./service-reporting";
 import { ServiceAssets } from "./service-assets";
 import { PersonalSettings } from "./personal-settings";
-import { AssetIntuneSettings } from "./asset-intune-settings";
 import {
   OwnerConsoleScreen,
   resolveOwnerAccess,
@@ -1849,9 +1846,6 @@ export function App() {
               onClose={() => setSection("Übersicht")}
               tenantId={activeTenant.id}
             />
-            <AssetIntuneSettings tenantId={activeTenant.id} />
-            <CustomerOrganizations tenantId={activeTenant.id} />
-            <TicketTemplates tenantId={activeTenant.id} />
           </>
         ) : section === "Wissen" && activeTenant ? (
           <KnowledgeBase tenantId={activeTenant.id} />
