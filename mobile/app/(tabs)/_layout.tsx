@@ -4,9 +4,11 @@ import { Platform } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { HapticTab } from "@/components/haptic-tab";
+import { useMobileFeatures } from "@/components/mobile-feature-gate";
 
 export default function TabLayout() {
   const insets = useSafeAreaInsets();
+  const { isEnabled, loading } = useMobileFeatures();
   const bottomPadding = Platform.OS === "web" ? 12 : Math.max(insets.bottom, 8);
   const tabBarHeight = 56 + bottomPadding;
 
@@ -66,6 +68,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="knowledge"
         options={{
+          href: loading || !isEnabled("knowledge.base") ? null : undefined,
           title: "Wissen",
           tabBarIcon: ({ color }) => (
             <Ionicons color={color} name="book-outline" size={23} />
@@ -76,6 +79,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="scan"
         options={{
+          href: loading || !isEnabled("assets.management") ? null : undefined,
           title: "Scan",
           tabBarIcon: ({ color }) => (
             <Ionicons color={color} name="scan-outline" size={23} />

@@ -13,6 +13,7 @@ import {
 } from "react-native";
 
 import { ScreenContainer } from "@/components/screen-container";
+import { useMobileFeatures } from "@/components/mobile-feature-gate";
 import { useMobileNetworkStatus } from "@/components/offline-status";
 import { isNextDeskConfigured, nextDesk } from "@/lib/nextdesk-client";
 import { loadMobileDashboard, type MobileTicket } from "@/lib/nextdesk-tickets";
@@ -45,6 +46,8 @@ function offlineCacheTimestamp(value: string): string {
 export default function TicketsScreen() {
   const router = useRouter();
   const { isOffline, recoveryEpoch } = useMobileNetworkStatus();
+  const { isEnabled, loading: checkingFeatures } = useMobileFeatures();
+  const ticketDetailsEnabled = isEnabled("ticketing.detail");
   const [tickets, setTickets] = useState<MobileTicket[]>([]);
   const [tenantName, setTenantName] = useState("");
   const [scope, setScope] = useState<TicketScope>("all");
@@ -269,6 +272,16 @@ export default function TicketsScreen() {
           </View>
         ) : null}
 
+        {!checkingFeatures && !ticketDetailsEnabled ? (
+          <View style={styles.featureNotice}>
+            <Ionicons color="#5C5892" name="lock-closed-outline" size={18} />
+            <Text style={styles.featureNoticeText}>
+              Ticketdetails sind für diesen Mandanten derzeit nicht
+              freigeschaltet.
+            </Text>
+          </View>
+        ) : null}
+
         <View style={styles.listHeading}>
           <Text style={styles.listTitle}>
             {scope === "all"
@@ -293,9 +306,19 @@ export default function TicketsScreen() {
             {visibleTickets.map((ticket) => (
               <TicketRow
                 key={ticket.id}
-                disabled={Boolean(offlineCacheAt)}
+                disabled={
+                  Boolean(offlineCacheAt) ||
+                  checkingFeatures ||
+                  !ticketDetailsEnabled
+                }
                 onPress={() => {
-                  if (offlineCacheAt) return;
+                  if (
+                    offlineCacheAt ||
+                    checkingFeatures ||
+                    !ticketDetailsEnabled
+                  ) {
+                    return;
+                  }
                   router.push({
                     pathname: "/ticket/[id]",
                     params: { id: ticket.id },
@@ -438,7 +461,21 @@ const styles = StyleSheet.create({
   },
   cacheNoticeCopy: { flex: 1, gap: 3 },
   cacheNoticeTitle: { color: "#7B4B0D", fontSize: 13, fontWeight: "900" },
-  cacheNoticeText: { color: "#7A5B2E", fontSize: 12, lineHeight: 18 },
+  cacheNoticeText: { color: "#71420C", fontSize: 12, lineHeight: 18 },
+  featureNotice: {
+    alignItems: "flex-start",
+    backgroundColor: "#F0EEFF",
+    borderRadius: 15,
+    flexDirection: "row",
+    gap: 8,
+    padding: 13,
+  },
+  featureNoticeText: {
+    color: "#5C5892",
+    flex: 1,
+    fontSize: 12,
+    lineHeight: 18,
+  },
   listHeading: {
     alignItems: "center",
     flexDirection: "row",

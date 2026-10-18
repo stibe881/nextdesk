@@ -15,6 +15,7 @@ import {
 } from "react-native";
 
 import { listMobileAssets, type MobileAsset } from "@/lib/asset-registry";
+import { useMobileFeatures } from "@/components/mobile-feature-gate";
 import type { MobileTenant } from "@/lib/nextdesk-client";
 import type { MobileTicket } from "@/lib/nextdesk-tickets";
 
@@ -41,6 +42,9 @@ function assetSubtitle(asset: MobileAsset): string {
 
 export function GlobalSearch({ tenant, tickets }: GlobalSearchProps) {
   const router = useRouter();
+  const { isEnabled, loading: checkingFeatures } = useMobileFeatures();
+  const assetsEnabled = isEnabled("assets.management");
+  const ticketDetailsEnabled = isEnabled("ticketing.detail");
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [assets, setAssets] = useState<MobileAsset[]>([]);
@@ -50,7 +54,7 @@ export function GlobalSearch({ tenant, tickets }: GlobalSearchProps) {
   const needle = normalized(query);
   const queryLength = Array.from(needle).length;
   const ticketResults = useMemo(() => {
-    if (queryLength < 2) return [];
+    if (queryLength < 2 || !ticketDetailsEnabled) return [];
     return tickets.filter((ticket) =>
       [
         ticket.ticketNumber,
@@ -60,10 +64,10 @@ export function GlobalSearch({ tenant, tickets }: GlobalSearchProps) {
         ticket.priority,
       ].some((value) => normalized(value).includes(needle)),
     );
-  }, [needle, queryLength, tickets]);
+  }, [needle, queryLength, ticketDetailsEnabled, tickets]);
 
   useEffect(() => {
-    if (!open || !tenant || queryLength < 2) return;
+    if (!open || !tenant || queryLength < 2 || !assetsEnabled) return;
 
     let cancelled = false;
     const timeout = setTimeout(() => {
@@ -90,7 +94,7 @@ export function GlobalSearch({ tenant, tickets }: GlobalSearchProps) {
       cancelled = true;
       clearTimeout(timeout);
     };
-  }, [open, query, queryLength, tenant]);
+  }, [assetsEnabled, open, query, queryLength, tenant]);
 
   function close() {
     setOpen(false);
@@ -114,11 +118,13 @@ export function GlobalSearch({ tenant, tickets }: GlobalSearchProps) {
   }
 
   function openTicket(ticket: MobileTicket) {
+    if (!ticketDetailsEnabled) return;
     close();
     router.push({ pathname: "/ticket/[id]", params: { id: ticket.id } });
   }
 
   function openAsset(asset: MobileAsset) {
+    if (!assetsEnabled) return;
     close();
     router.push({
       pathname: "/assets/[id]",
@@ -129,7 +135,7 @@ export function GlobalSearch({ tenant, tickets }: GlobalSearchProps) {
   return (
     <>
       <Pressable
-        accessibilityHint="Durchsucht Tickets und Assets in Ihrem aktuellen Mandanten."
+        accessibilityHint="Durchsucht freigegebene Tickets und Assets in Ihrem aktuellen Mandanten."
         accessibilityLabel="Globale Suche öffnen"
         accessibilityRole="button"
         onPress={openSearch}
@@ -180,7 +186,7 @@ export function GlobalSearch({ tenant, tickets }: GlobalSearchProps) {
                 autoCorrect={false}
                 autoFocus
                 onChangeText={changeQuery}
-                placeholder="Ticket, Betreff, Asset oder Seriennummer"
+                placeholder="Freigegebene Vorgänge durchsuchen"
                 placeholderTextColor="#9A99AA"
                 returnKeyType="search"
                 style={styles.input}
@@ -239,7 +245,7 @@ export function GlobalSearch({ tenant, tickets }: GlobalSearchProps) {
                     </ResultGroup>
                   ) : null}
 
-                  {assets.length > 0 ? (
+                  {assetsEnabled && assets.length > 0 ? (
                     <ResultGroup label={`ASSETS · ${assets.length}`}>
                       {assets.map((asset) => (
                         <Pressable
@@ -271,7 +277,17 @@ export function GlobalSearch({ tenant, tickets }: GlobalSearchProps) {
                     </ResultGroup>
                   ) : null}
 
+                  {!checkingFeatures &&
+                  !ticketDetailsEnabled &&
+                  !assetsEnabled ? (
+                    <Text style={styles.note}>
+                      Für diesen Mandanten sind keine durchsuchbaren
+                      Detailmodule freigeschaltet.
+                    </Text>
+                  ) : null}
+
                   {!searchingAssets &&
+                  (ticketDetailsEnabled || assetsEnabled) &&
                   ticketResults.length === 0 &&
                   assets.length === 0 ? (
                     <Text style={styles.note}>

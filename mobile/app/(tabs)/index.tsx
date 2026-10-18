@@ -14,6 +14,7 @@ import {
 
 import { ScreenContainer } from "@/components/screen-container";
 import { GlobalSearch } from "@/components/global-search";
+import { useMobileFeatures } from "@/components/mobile-feature-gate";
 import { useMobileNetworkStatus } from "@/components/offline-status";
 import {
   isNextDeskConfigured,
@@ -33,6 +34,8 @@ const ticketScopeLabels: Record<Exclude<TicketScope, "all">, string> = {
 export default function HomeScreen() {
   const router = useRouter();
   const { recoveryEpoch } = useMobileNetworkStatus();
+  const { isEnabled, loading: checkingFeatures } = useMobileFeatures();
+  const ticketDetailsEnabled = isEnabled("ticketing.detail");
   const [tenant, setTenant] = useState<MobileTenant | null>(null);
   const [tickets, setTickets] = useState<MobileTicket[]>([]);
   const [ticketScope, setTicketScope] = useState<TicketScope>("all");
@@ -232,6 +235,10 @@ export default function HomeScreen() {
             {visibleTickets.map((ticket) => (
               <Pressable
                 accessibilityRole="button"
+                accessibilityState={{
+                  disabled: checkingFeatures || !ticketDetailsEnabled,
+                }}
+                disabled={checkingFeatures || !ticketDetailsEnabled}
                 key={ticket.id}
                 onPress={() =>
                   router.push({
@@ -239,7 +246,11 @@ export default function HomeScreen() {
                     params: { id: ticket.id },
                   })
                 }
-                style={styles.ticket}
+                style={[
+                  styles.ticket,
+                  (checkingFeatures || !ticketDetailsEnabled) &&
+                    styles.ticketDisabled,
+                ]}
               >
                 <View
                   style={[
@@ -441,6 +452,7 @@ const styles = StyleSheet.create({
     gap: 11,
     padding: 14,
   },
+  ticketDisabled: { opacity: 0.55 },
   ticketMark: { borderRadius: 2, height: 43, width: 4 },
   blue: { backgroundColor: "#0EA5C6" },
   violet: { backgroundColor: "#7C3AED" },

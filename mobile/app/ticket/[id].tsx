@@ -16,6 +16,11 @@ import {
 } from "react-native";
 
 import { ScreenContainer } from "@/components/screen-container";
+import {
+  MobileFeatureLoadingScreen,
+  MobileFeatureUnavailableScreen,
+  useMobileFeatures,
+} from "@/components/mobile-feature-gate";
 import { useMobileNetworkStatus } from "@/components/offline-status";
 import { RequesterPicker } from "@/components/requester-picker";
 import { TicketConversation } from "@/components/ticket-conversation";
@@ -50,6 +55,8 @@ import {
 export default function TicketDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { recoveryEpoch } = useMobileNetworkStatus();
+  const { isEnabled, loading: checkingFeatures } = useMobileFeatures();
+  const ticketDetailEnabled = isEnabled("ticketing.detail");
   const [tenant, setTenant] = useState<MobileTenant | null>(null);
   const [ticket, setTicket] = useState<MobileTicketDetail | null>(null);
   const [subject, setSubject] = useState("");
@@ -154,10 +161,11 @@ export default function TicketDetailScreen() {
   );
 
   useEffect(() => {
+    if (checkingFeatures || !ticketDetailEnabled) return;
     void recoveryEpoch;
     const task = setTimeout(() => void load(), 0);
     return () => clearTimeout(task);
-  }, [load, recoveryEpoch]);
+  }, [checkingFeatures, load, recoveryEpoch, ticketDetailEnabled]);
 
   const status = useMemo(
     () =>
@@ -402,6 +410,17 @@ export default function TicketDetailScreen() {
     } finally {
       setSendingComment(false);
     }
+  }
+
+  if (checkingFeatures) return <MobileFeatureLoadingScreen />;
+
+  if (!ticketDetailEnabled) {
+    return (
+      <MobileFeatureUnavailableScreen
+        feature="ticketing.detail"
+        title="Ticketdetails"
+      />
+    );
   }
 
   if (loading) {

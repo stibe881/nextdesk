@@ -13,6 +13,11 @@ import {
 } from "react-native";
 
 import { ScreenContainer } from "@/components/screen-container";
+import {
+  MobileFeatureLoadingScreen,
+  MobileFeatureUnavailableScreen,
+  useMobileFeatures,
+} from "@/components/mobile-feature-gate";
 import { useMobileNetworkStatus } from "@/components/offline-status";
 import {
   formatMobileKnowledgeUpdatedAt,
@@ -26,6 +31,8 @@ export default function KnowledgeScreen() {
   const router = useRouter();
   const { recoveryEpoch } = useMobileNetworkStatus();
   const checkingSession = useMobileSessionGuard();
+  const { isEnabled, loading: checkingFeatures } = useMobileFeatures();
+  const knowledgeEnabled = isEnabled("knowledge.base");
   const [query, setQuery] = useState("");
   const [articles, setArticles] = useState<MobileKnowledgeArticle[]>([]);
   const [loading, setLoading] = useState(true);
@@ -52,22 +59,28 @@ export default function KnowledgeScreen() {
   useFocusEffect(
     useCallback(() => {
       void recoveryEpoch;
+      if (checkingFeatures || !knowledgeEnabled) return;
       const timer = setTimeout(() => void loadArticles(), query ? 260 : 0);
       return () => clearTimeout(timer);
-    }, [loadArticles, query, recoveryEpoch]),
+    }, [
+      checkingFeatures,
+      knowledgeEnabled,
+      loadArticles,
+      query,
+      recoveryEpoch,
+    ]),
   );
 
   function openArticle(articleId: string) {
     router.push(`/knowledge/${articleId}` as never);
   }
 
-  if (checkingSession) {
+  if (checkingSession || checkingFeatures)
+    return <MobileFeatureLoadingScreen />;
+
+  if (!knowledgeEnabled) {
     return (
-      <ScreenContainer containerClassName="bg-[#F6F7FB]" className="px-5">
-        <View style={styles.centered}>
-          <ActivityIndicator color="#4438CA" size="large" />
-        </View>
-      </ScreenContainer>
+      <MobileFeatureUnavailableScreen feature="knowledge.base" title="Wissen" />
     );
   }
 

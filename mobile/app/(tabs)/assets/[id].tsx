@@ -11,6 +11,11 @@ import {
 } from "react-native";
 
 import { ScreenContainer } from "@/components/screen-container";
+import {
+  MobileFeatureLoadingScreen,
+  MobileFeatureUnavailableScreen,
+  useMobileFeatures,
+} from "@/components/mobile-feature-gate";
 import { useMobileNetworkStatus } from "@/components/offline-status";
 import { getMobileAsset, type MobileAssetDetail } from "@/lib/asset-registry";
 import { loadCurrentTenant } from "@/lib/nextdesk-client";
@@ -35,6 +40,8 @@ export default function AssetDetailScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id?: string }>();
   const checkingSession = useMobileSessionGuard();
+  const { isEnabled, loading: checkingFeatures } = useMobileFeatures();
+  const assetsEnabled = isEnabled("assets.management");
   const { recoveryEpoch } = useMobileNetworkStatus();
   const [detail, setDetail] = useState<MobileAssetDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -62,11 +69,24 @@ export default function AssetDetailScreen() {
   useFocusEffect(
     useCallback(() => {
       void recoveryEpoch;
-      if (!checkingSession) void load();
-    }, [checkingSession, load, recoveryEpoch]),
+      if (!checkingSession && !checkingFeatures && assetsEnabled) void load();
+    }, [assetsEnabled, checkingFeatures, checkingSession, load, recoveryEpoch]),
   );
 
-  if (checkingSession || loading) {
+  if (checkingSession || checkingFeatures) {
+    return <MobileFeatureLoadingScreen />;
+  }
+
+  if (!assetsEnabled) {
+    return (
+      <MobileFeatureUnavailableScreen
+        feature="assets.management"
+        title="Assetdetails"
+      />
+    );
+  }
+
+  if (loading) {
     return (
       <ScreenContainer containerClassName="bg-[#F6F7FB]" className="px-5">
         <View style={styles.centered}>

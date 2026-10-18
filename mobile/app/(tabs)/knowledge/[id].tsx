@@ -11,6 +11,11 @@ import {
 } from "react-native";
 
 import { ScreenContainer } from "@/components/screen-container";
+import {
+  MobileFeatureLoadingScreen,
+  MobileFeatureUnavailableScreen,
+  useMobileFeatures,
+} from "@/components/mobile-feature-gate";
 import { useMobileNetworkStatus } from "@/components/offline-status";
 import {
   formatMobileKnowledgeUpdatedAt,
@@ -28,6 +33,8 @@ export default function KnowledgeArticleScreen() {
   const { recoveryEpoch } = useMobileNetworkStatus();
   const { id } = useLocalSearchParams<{ id?: string | string[] }>();
   const articleId = readId(id);
+  const { isEnabled, loading: checkingFeatures } = useMobileFeatures();
+  const knowledgeEnabled = isEnabled("knowledge.base");
   const [article, setArticle] = useState<MobileKnowledgeArticleDetail | null>(
     null,
   );
@@ -61,10 +68,22 @@ export default function KnowledgeArticleScreen() {
   useFocusEffect(
     useCallback(() => {
       void recoveryEpoch;
+      if (checkingFeatures || !knowledgeEnabled) return;
       const timer = setTimeout(() => void load(), 0);
       return () => clearTimeout(timer);
-    }, [load, recoveryEpoch]),
+    }, [checkingFeatures, knowledgeEnabled, load, recoveryEpoch]),
   );
+
+  if (checkingFeatures) return <MobileFeatureLoadingScreen />;
+
+  if (!knowledgeEnabled) {
+    return (
+      <MobileFeatureUnavailableScreen
+        feature="knowledge.base"
+        title="Wissensartikel"
+      />
+    );
+  }
 
   return (
     <ScreenContainer containerClassName="bg-[#F6F7FB]" className="px-5">

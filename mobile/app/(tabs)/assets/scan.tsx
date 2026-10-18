@@ -13,6 +13,11 @@ import {
 } from "react-native";
 
 import { lookupMobileAsset } from "@/lib/asset-registry";
+import {
+  MobileFeatureLoadingScreen,
+  MobileFeatureUnavailableScreen,
+  useMobileFeatures,
+} from "@/components/mobile-feature-gate";
 import { hapticError, hapticSuccess } from "@/lib/mobile-haptics";
 import { loadCurrentTenant } from "@/lib/nextdesk-client";
 import { useMobileSessionGuard } from "@/lib/use-mobile-session-guard";
@@ -20,6 +25,8 @@ import { useMobileSessionGuard } from "@/lib/use-mobile-session-guard";
 export default function AssetScanScreen() {
   const router = useRouter();
   const checkingSession = useMobileSessionGuard();
+  const { isEnabled, loading: checkingFeatures } = useMobileFeatures();
+  const assetsEnabled = isEnabled("assets.management");
   const [permission, requestPermission] = useCameraPermissions();
   const [manualCode, setManualCode] = useState("");
   const [busy, setBusy] = useState(false);
@@ -28,7 +35,7 @@ export default function AssetScanScreen() {
   const resolveCode = useCallback(
     async (rawCode: string) => {
       const code = rawCode.trim();
-      if (!code || busy) return;
+      if (!code || busy || !assetsEnabled) return;
       setBusy(true);
       setError("");
       try {
@@ -47,10 +54,23 @@ export default function AssetScanScreen() {
         setBusy(false);
       }
     },
-    [busy, router],
+    [assetsEnabled, busy, router],
   );
 
-  if (checkingSession || !permission) {
+  if (checkingSession || checkingFeatures) {
+    return <MobileFeatureLoadingScreen />;
+  }
+
+  if (!assetsEnabled) {
+    return (
+      <MobileFeatureUnavailableScreen
+        feature="assets.management"
+        title="Assetscanner"
+      />
+    );
+  }
+
+  if (!permission) {
     return (
       <View style={styles.centered}>
         <ActivityIndicator color="#4438CA" size="large" />
