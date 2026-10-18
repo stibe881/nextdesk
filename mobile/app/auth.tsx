@@ -1,4 +1,5 @@
 import * as WebBrowser from "expo-web-browser";
+import * as Linking from "expo-linking";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -25,6 +26,15 @@ import {
 WebBrowser.maybeCompleteAuthSession();
 
 const WEB_SSO_CALLBACK_MESSAGE = "nextdesk.sso.callback";
+const NATIVE_SSO_OPEN_TIMEOUT_MS = 8_000;
+
+async function openNativeSsoInSafari(providerUrl: string): Promise<void> {
+  const supported = await Linking.canOpenURL(providerUrl);
+  if (!supported) {
+    throw new Error("Das sichere Anmeldefenster konnte nicht geöffnet werden.");
+  }
+  await Linking.openURL(providerUrl);
+}
 
 export default function AuthScreen() {
   const router = useRouter();
@@ -91,7 +101,7 @@ export default function AuthScreen() {
 
   async function continueWithSso() {
     setPending("sso");
-    setMessage("");
+    setMessage("SSO-Verbindung wird vorbereitet …");
     const webPopup =
       Platform.OS === "web" && typeof window !== "undefined"
         ? window.open("about:blank", "nextdesk-sso")
@@ -138,10 +148,19 @@ export default function AuthScreen() {
         }, 500);
         return;
       }
-      const result = await WebBrowser.openAuthSessionAsync(
-        data.url,
-        redirectTo,
-      );
+      const startedAt = Date.now();
+      let timeout: ReturnType<typeof setTimeout> | undefined;
+      const timeoutResult = new Promise<{ type: "timeout" }>((resolve) => {
+        timeout = setTimeout(
+          () => resolve({ type: "timeout" }),
+          NATIVE_SSO_OPEN_TIMEOUT_MS,
+        );
+      });
+      const result = await Promise.race([
+        WebBrowser.openAuthSessionAsync(data.url, redirectTo),
+        timeoutResult,
+      ]);
+      if (timeout) clearTimeout(timeout);
       if (result.type === "success") {
         // ASWebAuthenticationSession returns the callback directly and does not
         // reliably emit a Linking event while the app stays warm. Exchange the
@@ -149,7 +168,28 @@ export default function AuthScreen() {
         await completeNextDeskAuth(result.url);
         setMessage("Anmeldung wird abgeschlossen …");
         router.replace("/");
-      } else if (result.type !== "cancel") {
+      } else if (result.type === "cancel") {
+        // Some iOS versions immediately cancel ASWebAuthenticationSession
+        // without showing the sheet. Fall back only in that case to Safari;
+        // the existing PKCE transaction and root deep-link handler complete
+        // the return journey safely.
+        if (Date.now() - startedAt < 1_500) {
+          setMessage("Die Anmeldung wird in Safari geöffnet …");
+          await openNativeSsoInSafari(data.url);
+          setMessage(
+            "Melden Sie sich in Safari an. nextDesk öffnet sich danach automatisch.",
+          );
+        } else {
+          setMessage("Die SSO-Anmeldung wurde abgebrochen.");
+        }
+      } else if (result.type === "timeout") {
+        WebBrowser.dismissAuthSession();
+        setMessage("Die Anmeldung wird in Safari geöffnet …");
+        await openNativeSsoInSafari(data.url);
+        setMessage(
+          "Melden Sie sich in Safari an. nextDesk öffnet sich danach automatisch.",
+        );
+      } else {
         setMessage(
           "Die Rückkehr aus dem Anmeldefenster wurde nicht erkannt. Bitte versuchen Sie die SSO-Anmeldung erneut.",
         );
@@ -205,6 +245,10 @@ export default function AuthScreen() {
         <Pressable
           accessibilityRole="button"
           disabled={pending !== null}
+          onPressIn={() => {
+            if (pending === null)
+              setMessage("SSO-Verbindung wird vorbereitet …");
+          }}
           onPress={() => void continueWithSso()}
           style={[styles.ssoButton, pending !== null && styles.disabled]}
         >
