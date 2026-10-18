@@ -918,7 +918,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     const requesterContactPromise = isUuid(ticket.requester_contact_id)
       ? context.supabaseAdmin
           .from("ticket_requesters")
-          .select("id, display_name")
+          .select("id, display_name, email")
           .eq("tenant_id", ticket.tenant_id)
           .eq("id", ticket.requester_contact_id)
           .maybeSingle()
@@ -1077,6 +1077,10 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         ? {
             id: requesterContactRow.id,
             displayName: requesterContactRow.display_name,
+            ...(typeof requesterContactRow.email === "string" &&
+            requesterContactRow.email.trim()
+              ? { email: requesterContactRow.email.trim() }
+              : {}),
           }
         : null;
     const relationDescriptors = new Map<
