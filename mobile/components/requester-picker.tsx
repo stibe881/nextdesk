@@ -12,6 +12,7 @@ import {
 } from "react-native";
 
 import {
+  createTicketRequester,
   searchTicketRequesters,
   type TicketRequester,
 } from "@/lib/nextdesk-tickets";
@@ -40,6 +41,11 @@ export function RequesterPicker({
   const [results, setResults] = useState<TicketRequester[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [searchError, setSearchError] = useState("");
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newEmail, setNewEmail] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState("");
   const queryLength = Array.from(query.trim()).length;
   const selected = value ?? defaultRequester;
 
@@ -84,6 +90,8 @@ export function RequesterPicker({
     setQuery("");
     setResults([]);
     setSearchError("");
+    setShowCreateForm(false);
+    setCreateError("");
     setIsOpen(true);
   }
 
@@ -94,11 +102,48 @@ export function RequesterPicker({
       setIsSearching(false);
       setSearchError("");
     }
+    setShowCreateForm(false);
+    setCreateError("");
   }
 
   function selectRequester(requester: TicketRequester) {
     onChange(requester);
     closePicker();
+  }
+
+  function openCreateForm() {
+    setNewName(query.trim());
+    setNewEmail("");
+    setCreateError("");
+    setShowCreateForm(true);
+  }
+
+  async function createRequester() {
+    const displayName = newName.trim();
+    if (Array.from(displayName).length < 2) {
+      setCreateError(
+        "Bitte geben Sie einen Namen mit mindestens zwei Zeichen ein.",
+      );
+      return;
+    }
+    setCreating(true);
+    setCreateError("");
+    try {
+      const created = await createTicketRequester({
+        tenantId,
+        displayName,
+        email: newEmail,
+      });
+      selectRequester(created);
+    } catch (error) {
+      setCreateError(
+        error instanceof Error
+          ? error.message
+          : "Die anfragende Person konnte nicht angelegt werden.",
+      );
+    } finally {
+      setCreating(false);
+    }
   }
 
   return (
@@ -200,35 +245,104 @@ export function RequesterPicker({
                 </Text>
               ) : searchError ? (
                 <Text style={styles.error}>{searchError}</Text>
-              ) : !isSearching && results.length === 0 ? (
-                <Text style={styles.searchNote}>
-                  Keine passende anfragende Person gefunden.
-                </Text>
               ) : (
-                results.map((requester) => (
-                  <Pressable
-                    accessibilityRole="button"
-                    key={requester.id}
-                    onPress={() => selectRequester(requester)}
-                    style={[
-                      styles.result,
-                      requester.id === selected.id && styles.resultActive,
-                    ]}
-                  >
-                    <Text style={styles.resultName}>
-                      {requester.displayName}
+                <>
+                  {!isSearching && results.length === 0 ? (
+                    <Text style={styles.searchNote}>
+                      Keine passende anfragende Person gefunden.
                     </Text>
-                    {requester.id === selected.id ? (
-                      <Ionicons color="#4438CA" name="checkmark" size={20} />
-                    ) : (
+                  ) : null}
+                  {results.map((requester) => (
+                    <Pressable
+                      accessibilityRole="button"
+                      key={requester.id}
+                      onPress={() => selectRequester(requester)}
+                      style={[
+                        styles.result,
+                        requester.id === selected.id && styles.resultActive,
+                      ]}
+                    >
+                      <Text style={styles.resultName}>
+                        {requester.displayName}
+                      </Text>
+                      {requester.id === selected.id ? (
+                        <Ionicons color="#4438CA" name="checkmark" size={20} />
+                      ) : (
+                        <Ionicons
+                          color="#77758C"
+                          name="chevron-forward"
+                          size={18}
+                        />
+                      )}
+                    </Pressable>
+                  ))}
+                  {!isSearching && !showCreateForm ? (
+                    <Pressable
+                      accessibilityRole="button"
+                      onPress={openCreateForm}
+                      style={styles.createAction}
+                    >
                       <Ionicons
-                        color="#77758C"
-                        name="chevron-forward"
-                        size={18}
+                        color="#4438CA"
+                        name="person-add-outline"
+                        size={19}
                       />
-                    )}
-                  </Pressable>
-                ))
+                      <Text style={styles.createActionText}>
+                        Neue anfragende Person hinzufügen
+                      </Text>
+                    </Pressable>
+                  ) : null}
+                  {showCreateForm ? (
+                    <View style={styles.createForm}>
+                      <Text style={styles.createTitle}>
+                        Neue anfragende Person
+                      </Text>
+                      <TextInput
+                        autoCapitalize="words"
+                        onChangeText={setNewName}
+                        placeholder="Vor- und Nachname"
+                        placeholderTextColor="#9A99AA"
+                        style={styles.createInput}
+                        value={newName}
+                      />
+                      <TextInput
+                        autoCapitalize="none"
+                        autoCorrect={false}
+                        keyboardType="email-address"
+                        onChangeText={setNewEmail}
+                        placeholder="E-Mail-Adresse (optional)"
+                        placeholderTextColor="#9A99AA"
+                        style={styles.createInput}
+                        value={newEmail}
+                      />
+                      {createError ? (
+                        <Text style={styles.error}>{createError}</Text>
+                      ) : null}
+                      <Pressable
+                        accessibilityRole="button"
+                        disabled={creating}
+                        onPress={() => void createRequester()}
+                        style={[
+                          styles.createSubmit,
+                          creating && styles.createSubmitDisabled,
+                        ]}
+                      >
+                        {creating ? (
+                          <ActivityIndicator color="#FFFFFF" size="small" />
+                        ) : (
+                          <Ionicons
+                            color="#FFFFFF"
+                            name="person-add"
+                            size={18}
+                          />
+                        )}
+                        <Text style={styles.createSubmitText}>
+                          {creating ? "Wird angelegt …" : "Person anlegen"}
+                        </Text>
+                      </Pressable>
+                    </View>
+                  ) : null}
+                </>
               )}
             </ScrollView>
           </View>
@@ -369,4 +483,49 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     paddingRight: 12,
   },
+  createAction: {
+    alignItems: "center",
+    backgroundColor: "#F0EFFB",
+    borderColor: "#D9D5FF",
+    borderRadius: 13,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 9,
+    justifyContent: "center",
+    minHeight: 50,
+    paddingHorizontal: 13,
+  },
+  createActionText: { color: "#4438CA", fontSize: 14, fontWeight: "800" },
+  createForm: {
+    backgroundColor: "#F7F7FB",
+    borderColor: "#E2E0ED",
+    borderRadius: 15,
+    borderWidth: 1,
+    gap: 9,
+    padding: 13,
+  },
+  createTitle: { color: "#363653", fontSize: 14, fontWeight: "900" },
+  createInput: {
+    backgroundColor: "#FFFFFF",
+    borderColor: "#E2E0ED",
+    borderRadius: 11,
+    borderWidth: 1,
+    color: "#202136",
+    fontSize: 14,
+    minHeight: 46,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+  },
+  createSubmit: {
+    alignItems: "center",
+    backgroundColor: "#4438CA",
+    borderRadius: 11,
+    flexDirection: "row",
+    gap: 8,
+    justifyContent: "center",
+    minHeight: 46,
+    paddingHorizontal: 12,
+  },
+  createSubmitDisabled: { opacity: 0.6 },
+  createSubmitText: { color: "#FFFFFF", fontSize: 14, fontWeight: "800" },
 });

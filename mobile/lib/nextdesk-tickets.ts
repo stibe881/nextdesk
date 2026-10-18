@@ -220,6 +220,26 @@ export async function searchTicketRequesters(
   });
 }
 
+export async function createTicketRequester(input: {
+  tenantId: string;
+  displayName: string;
+  email?: string;
+}): Promise<TicketRequester> {
+  const data = envelopeData(
+    await invokeNextDesk<unknown>("ticket-actions", {
+      type: "createRequester",
+      tenantId: input.tenantId,
+      displayName: input.displayName.trim(),
+      ...(input.email?.trim() ? { email: input.email.trim() } : {}),
+    }),
+  );
+  const requester = ticketRequester(data);
+  if (!requester) {
+    throw new Error("Die anfragende Person konnte nicht angelegt werden.");
+  }
+  return requester;
+}
+
 export async function createMobileTicket(input: {
   tenantId: string;
   departmentId: string;
