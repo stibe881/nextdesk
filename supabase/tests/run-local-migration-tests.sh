@@ -908,6 +908,60 @@ end;
 $$;
 reset role;
 rollback;
+
+-- A knowledge author may draft internal ticket knowledge, but publishing an
+-- external article from a ticket requires the separate knowledge.publish grant.
+insert into public.roles (id, tenant_id, name, scope) values
+  ('16600000-0000-4000-8000-000000000002', '10000000-0000-4000-8000-000000000001', 'Knowledge author', 'tenant');
+insert into public.role_permissions (role_id, permission_code) values
+  ('16600000-0000-4000-8000-000000000002', 'ticket.update'),
+  ('16600000-0000-4000-8000-000000000002', 'knowledge.manage');
+insert into public.user_role_assignments (tenant_id, user_id, role_id) values
+  ('10000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000002', '16600000-0000-4000-8000-000000000002');
+
+begin;
+set local "request.jwt.claim.sub" = '00000000-0000-4000-8000-000000000002';
+set local role authenticated;
+do $$
+begin
+  begin
+    perform public.ticket_knowledge_mutate(
+      'createAndAttach',
+      '10000000-0000-4000-8000-000000000001',
+      '17000000-0000-4000-8000-000000000001',
+      null,
+      'external',
+      'Unfreigegebene externe Anleitung',
+      'Darf ohne knowledge.publish nicht extern sichtbar werden.'
+    );
+    raise exception 'Knowledge author published ticket knowledge without knowledge.publish';
+  exception when insufficient_privilege then
+    null;
+  end;
+end;
+$$;
+reset role;
+rollback;
+
+-- The database rejects revoking the final active Tenant administrator even if
+-- a future caller bypasses the Edge Function's own preflight.
+insert into public.roles (id, tenant_id, name, scope) values
+  ('16700000-0000-4000-8000-000000000002', '10000000-0000-4000-8000-000000000001', 'Tenant administrator', 'tenant');
+insert into public.user_role_assignments (id, tenant_id, user_id, role_id) values
+  ('16800000-0000-4000-8000-000000000002', '10000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000002', '16700000-0000-4000-8000-000000000002');
+
+do $$
+begin
+  begin
+    update public.user_role_assignments
+    set expires_at = timezone('utc', now())
+    where id = '16800000-0000-4000-8000-000000000002';
+    raise exception 'Final Tenant administrator assignment was revoked';
+  exception when check_violation then
+    null;
+  end;
+end;
+$$;
 SQL
 
 echo "PostgreSQL 16 migration and RLS integration checks passed."

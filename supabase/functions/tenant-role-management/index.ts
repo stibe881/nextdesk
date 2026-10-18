@@ -65,6 +65,10 @@ type Assignment = {
   roles: AssignmentRole | AssignmentRole[] | null;
 };
 
+type TenantAdministrationAuthorization =
+  | { ok: true; isTenantAdministrator: boolean }
+  | { ok: false; code: string; status: number };
+
 function corsHeaders(request: Request): HeadersInit {
   const allowedOrigin =
     request.headers.get("origin") === APP_ORIGIN ? APP_ORIGIN : "";
@@ -269,7 +273,7 @@ async function authorizeTenantAdministration(
   admin: any,
   actorId: string,
   tenantId: string,
-): Promise<{ ok: true } | { ok: false; code: string; status: number }> {
+): Promise<TenantAdministrationAuthorization> {
   // Membership is deliberately checked before any role/permission data is read.
   const { data: membership, error: membershipError } = await admin
     .from("tenant_memberships")
@@ -302,7 +306,7 @@ async function authorizeTenantAdministration(
   const { data: assignments, error: assignmentError } = await admin
     .from("user_role_assignments")
     .select(
-      "roles!user_role_assignments_role_tenant_fk!inner(active, scope, role_permissions!inner(permission_code))",
+      "roles!user_role_assignments_role_tenant_fk!inner(name, active, scope, role_permissions!inner(permission_code))",
     )
     .eq("tenant_id", tenantId)
     .eq("user_id", actorId)
@@ -314,6 +318,7 @@ async function authorizeTenantAdministration(
 
   const permitted = (assignments ?? []).some((assignment: any) => {
     const role = assignment.roles as {
+      name?: string;
       active?: boolean;
       scope?: string;
       role_permissions?: Array<{ permission_code?: string }>;
@@ -330,8 +335,21 @@ async function authorizeTenantAdministration(
     );
   });
 
+  const isTenantAdministrator = (assignments ?? []).some((assignment: any) => {
+    const role = assignment.roles as {
+      name?: string;
+      active?: boolean;
+      scope?: string;
+    } | null;
+    return (
+      role?.name === TENANT_ADMINISTRATOR_ROLE &&
+      role.active === true &&
+      role.scope === "tenant"
+    );
+  });
+
   return permitted
-    ? { ok: true }
+    ? { ok: true, isTenantAdministrator }
     : { ok: false, code: "tenant_role_management_forbidden", status: 403 };
 }
 
@@ -355,6 +373,41 @@ async function validatePermissionCodes(
   return permissionCodes.every((code) => found.has(code))
     ? { ok: true }
     : { ok: false, code: "invalid_permission_codes", status: 422 };
+}
+
+async function containsSensitivePermission(
+  admin: any,
+  permissionCodes: string[],
+): Promise<
+  { ok: true; value: boolean } | { ok: false; code: string; status: number }
+> {
+  if (permissionCodes.length === 0) return { ok: true, value: false };
+  const { data, error } = await admin
+    .from("permissions")
+    .select("code")
+    .eq("is_sensitive", true)
+    .in("code", permissionCodes);
+  if (error) {
+    return { ok: false, code: "permission_validation_failed", status: 500 };
+  }
+  return { ok: true, value: (data ?? []).length > 0 };
+}
+
+async function requireSafeRoleManagement(
+  admin: any,
+  authorization: Extract<TenantAdministrationAuthorization, { ok: true }>,
+  permissionCodes: string[],
+): Promise<{ ok: true } | { ok: false; code: string; status: number }> {
+  if (authorization.isTenantAdministrator) return { ok: true };
+  const sensitive = await containsSensitivePermission(admin, permissionCodes);
+  if (!sensitive.ok) return sensitive;
+  return sensitive.value
+    ? {
+        ok: false,
+        code: "tenant_administrator_required_for_sensitive_role",
+        status: 403,
+      }
+    : { ok: true };
 }
 
 async function writeAudit(
@@ -607,6 +660,18 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         permissionValidation.status,
       );
     }
+    const safeManagement = await requireSafeRoleManagement(
+      context.supabaseAdmin,
+      authorization,
+      action.permissionCodes,
+    );
+    if (!safeManagement.ok) {
+      return json(
+        request,
+        { error: { code: safeManagement.code } },
+        safeManagement.status,
+      );
+    }
 
     const { data: role, error: roleError } = await context.supabaseAdmin
       .from("roles")
@@ -731,6 +796,24 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       }
     }
 
+    const effectivePermissionCodes =
+      action.permissionCodes ??
+      (role.role_permissions ?? []).map(
+        (permission) => permission.permission_code,
+      );
+    const safeManagement = await requireSafeRoleManagement(
+      context.supabaseAdmin,
+      authorization,
+      effectivePermissionCodes,
+    );
+    if (!safeManagement.ok) {
+      return json(
+        request,
+        { error: { code: safeManagement.code } },
+        safeManagement.status,
+      );
+    }
+
     const roleUpdate: Record<string, unknown> = {};
     if (action.name !== undefined) roleUpdate.name = action.name;
     if (action.active !== undefined) roleUpdate.active = action.active;
@@ -826,7 +909,9 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
   if (action.type === "assignRole") {
     const { data: roleData, error: roleError } = await context.supabaseAdmin
       .from("roles")
-      .select("id, name, scope, is_system, active, created_at, updated_at")
+      .select(
+        "id, name, scope, is_system, active, created_at, updated_at, role_permissions(permission_code)",
+      )
       .eq("id", action.roleId)
       .eq("tenant_id", action.tenantId)
       .maybeSingle();
@@ -839,6 +924,30 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     const role = roleData as Role;
     if (!role.active) {
       return json(request, { error: { code: "role_inactive" } }, 422);
+    }
+    if (
+      isProtectedTenantAdministrator(role) &&
+      !authorization.isTenantAdministrator
+    ) {
+      return json(
+        request,
+        { error: { code: "tenant_administrator_required" } },
+        403,
+      );
+    }
+    const safeManagement = await requireSafeRoleManagement(
+      context.supabaseAdmin,
+      authorization,
+      (role.role_permissions ?? []).map(
+        (permission) => permission.permission_code,
+      ),
+    );
+    if (!safeManagement.ok) {
+      return json(
+        request,
+        { error: { code: safeManagement.code } },
+        safeManagement.status,
+      );
     }
 
     if (
@@ -991,7 +1100,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     await context.supabaseAdmin
       .from("user_role_assignments")
       .select(
-        "id, user_id, role_id, department_id, team_id, starts_at, expires_at, roles!user_role_assignments_role_tenant_fk!inner(id, name, scope, active)",
+        "id, user_id, role_id, department_id, team_id, starts_at, expires_at, roles!user_role_assignments_role_tenant_fk!inner(id, name, scope, active, role_permissions(permission_code))",
       )
       .eq("id", action.assignmentId)
       .eq("tenant_id", action.tenantId)
@@ -1010,8 +1119,40 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     return json(request, { error: { code: "assignment_not_active" } }, 422);
   }
 
+  const assignmentPermissionCodes = (
+    (
+      assignmentRole as
+        | (AssignmentRole & {
+            role_permissions?: Array<{ permission_code: string }> | null;
+          })
+        | null
+    )?.role_permissions ?? []
+  ).map((permission) => permission.permission_code);
   if (
-    assignment.user_id === actorId &&
+    assignmentRole &&
+    isProtectedTenantAdministrator(assignmentRole) &&
+    !authorization.isTenantAdministrator
+  ) {
+    return json(
+      request,
+      { error: { code: "tenant_administrator_required" } },
+      403,
+    );
+  }
+  const safeManagement = await requireSafeRoleManagement(
+    context.supabaseAdmin,
+    authorization,
+    assignmentPermissionCodes,
+  );
+  if (!safeManagement.ok) {
+    return json(
+      request,
+      { error: { code: safeManagement.code } },
+      safeManagement.status,
+    );
+  }
+
+  if (
     assignmentRole &&
     isProtectedTenantAdministrator(assignmentRole) &&
     assignmentRole.active
@@ -1026,7 +1167,6 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         },
       )
       .eq("tenant_id", action.tenantId)
-      .eq("user_id", actorId)
       .eq("roles.name", TENANT_ADMINISTRATOR_ROLE)
       .eq("roles.scope", "tenant")
       .eq("roles.active", true)

@@ -56,6 +56,8 @@ const expectedFiles = [
   "0051_ticket_automation_policies.sql",
   "0052_tenant_data_retention_policies.sql",
   "0053_tenant_feature_pilot_windows.sql",
+  "0054_manual_automation_runs.sql",
+  "0055_security_hardening_sso_roles_and_knowledge.sql",
 ];
 
 const availableFiles = await readdir(migrationDirectory);
@@ -446,6 +448,15 @@ const requiredFragments = [
   [
     "0053_tenant_feature_pilot_windows.sql",
     "tenant_feature_flags_pilot_ends_at_check",
+  ],
+  ["0054_manual_automation_runs.sql", "tenant_automation_runs"],
+  [
+    "0055_security_hardening_sso_roles_and_knowledge.sql",
+    "Knowledge publication denied",
+  ],
+  [
+    "0055_security_hardening_sso_roles_and_knowledge.sql",
+    "prevent_last_tenant_administrator_revocation",
   ],
 ];
 

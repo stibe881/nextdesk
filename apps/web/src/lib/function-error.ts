@@ -64,9 +64,13 @@ export async function functionErrorMessage(
     case "tenant_sso_required":
       return "Für diesen Mandanten ist die Anmeldung über das Unternehmens-SSO erforderlich.";
     case "tenant_sso_membership_required":
+    case "tenant_invitation_required":
       return "Ihr Unternehmenslogin wurde erkannt, aber Sie sind für diesen Mandanten noch nicht eingeladen. Bitte wenden Sie sich an die Mandantenadministration.";
     case "tenant_sso_identity_mismatch":
+    case "sso_tenant_claim_mismatch":
       return "Die Entra-Identität passt nicht zur SSO-Konfiguration dieses Mandanten.";
+    case "sso_tenant_claim_required":
+      return "Die Entra-Anmeldung enthält keinen prüfbaren Mandantenbezug. Bitte wenden Sie sich an die Mandantenadministration.";
     case "sso_email_claim_required":
       return "Ihre Entra-Anmeldung enthält keine verwendbare Unternehmens-E-Mail-Adresse. Bitte wenden Sie sich an die Mandantenadministration.";
     case "tenant_person_removed":
@@ -76,6 +80,8 @@ export async function functionErrorMessage(
       return "Ihre Person konnte für diesen Mandanten nicht automatisch eingerichtet werden. Bitte versuchen Sie es erneut oder wenden Sie sich an die Mandantenadministration.";
     case "sso_configuration_not_active":
     case "sso_configuration_not_found":
+    case "sso_issuer_and_discovery_required":
+    case "sso_email_domain_required":
       return "Die SSO-Konfiguration dieses Mandanten ist noch nicht vollständig aktiv.";
     case "not_found":
     case "ticket_not_found":

@@ -5,10 +5,26 @@ type SsoConfiguration = {
   provider: string;
   enabled: boolean;
   enforce_sso: boolean;
+  issuer_url: string | null;
   allowed_email_domains: string[];
 };
 
-type AzureIdentity = { provider?: unknown };
+type AzureIdentity = {
+  provider?: unknown;
+  identity_data?: unknown;
+};
+
+type PendingInvitation = {
+  id: string;
+  tenant_id: string;
+  invited_by: string;
+  role_name: string | null;
+  display_name: string | null;
+  job_title: string | null;
+  offer: string | null;
+  department_id: string | null;
+  wants_agent: boolean;
+};
 
 const APP_ORIGIN = "https://app.nextdesk.ch";
 const REQUESTER_ROLE = "Requester";
@@ -72,6 +88,62 @@ function hasAzureOAuthSession(
   return hasAzureProvider && hasAzureIdentity && hasOAuthAmr;
 }
 
+function normalizedIssuer(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  try {
+    const parsed = new URL(value.trim());
+    if (parsed.protocol !== "https:") return null;
+    return `${parsed.origin}${parsed.pathname}`
+      .replace(/\/+$/, "")
+      .toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
+function configuredEntraTenantId(issuer: string): string | null {
+  const path = new URL(issuer).pathname.split("/").filter(Boolean);
+  const candidate = path[0]?.trim();
+  return candidate && candidate.toLowerCase() !== "common"
+    ? candidate.toLowerCase()
+    : null;
+}
+
+function azureTenantClaimStatus(
+  identities: unknown,
+  configuredIssuer: unknown,
+): "match" | "missing" | "mismatch" {
+  const issuer = normalizedIssuer(configuredIssuer);
+  if (!issuer || !Array.isArray(identities)) return "missing";
+  const expectedTenantId = configuredEntraTenantId(issuer);
+  let foundClaim = false;
+
+  for (const identity of identities as AzureIdentity[]) {
+    if (identity?.provider !== "azure" || !isRecord(identity.identity_data)) {
+      continue;
+    }
+    const identityIssuer = normalizedIssuer(
+      identity.identity_data.iss ?? identity.identity_data.issuer,
+    );
+    if (identityIssuer) {
+      foundClaim = true;
+      if (identityIssuer === issuer) return "match";
+    }
+    const tenantClaim =
+      typeof identity.identity_data.tid === "string"
+        ? identity.identity_data.tid.trim().toLowerCase()
+        : typeof identity.identity_data.tenant_id === "string"
+          ? identity.identity_data.tenant_id.trim().toLowerCase()
+          : null;
+    if (tenantClaim) {
+      foundClaim = true;
+      if (expectedTenantId && tenantClaim === expectedTenantId) return "match";
+    }
+  }
+
+  return foundClaim ? "mismatch" : "missing";
+}
+
 function displayNameFromUser(user: any): string | null {
   const metadata = isRecord(user?.user_metadata) ? user.user_metadata : {};
   const candidates = [metadata.full_name, metadata.name, metadata.display_name];
@@ -88,20 +160,22 @@ function displayNameFromUser(user: any): string | null {
   return localPart && localPart.length >= 2 ? localPart.slice(0, 160) : null;
 }
 
-async function ensureRequesterRole(
+async function ensureTenantRole(
   admin: any,
   tenantId: string,
   userId: string,
+  roleName: string,
+  assignedBy: string,
 ): Promise<boolean> {
   const { data: role, error: roleError } = await admin
     .from("roles")
     .select("id")
     .eq("tenant_id", tenantId)
-    .eq("name", REQUESTER_ROLE)
+    .eq("name", roleName)
     .eq("scope", "tenant")
     .eq("active", true)
     .maybeSingle();
-  if (roleError || !role?.id) return Boolean(!roleError);
+  if (roleError || !role?.id) return false;
 
   const { data: assignment, error: assignmentError } = await admin
     .from("user_role_assignments")
@@ -119,7 +193,60 @@ async function ensureRequesterRole(
       tenant_id: tenantId,
       user_id: userId,
       role_id: role.id,
-      assigned_by: userId,
+      assigned_by: assignedBy,
+    });
+  return !createError;
+}
+
+async function ensureInvitedAgentRole(
+  admin: any,
+  invitation: PendingInvitation,
+  userId: string,
+): Promise<boolean> {
+  if (!invitation.wants_agent || !invitation.department_id) return true;
+  const { data: departmentMembership, error: departmentError } = await admin
+    .from("department_memberships")
+    .upsert(
+      {
+        tenant_id: invitation.tenant_id,
+        department_id: invitation.department_id,
+        user_id: userId,
+        status: "active",
+      },
+      { onConflict: "department_id,user_id" },
+    );
+  if (departmentError) return false;
+
+  const { data: role, error: roleError } = await admin
+    .from("roles")
+    .select("id")
+    .eq("tenant_id", invitation.tenant_id)
+    .eq("name", "Support agent")
+    .eq("scope", "department")
+    .eq("active", true)
+    .maybeSingle();
+  if (roleError || !role?.id) return false;
+
+  const { data: assignment, error: assignmentError } = await admin
+    .from("user_role_assignments")
+    .select("id")
+    .eq("tenant_id", invitation.tenant_id)
+    .eq("user_id", userId)
+    .eq("role_id", role.id)
+    .eq("department_id", invitation.department_id)
+    .is("team_id", null)
+    .is("expires_at", null)
+    .maybeSingle();
+  if (assignmentError || assignment) return !assignmentError;
+
+  const { error: createError } = await admin
+    .from("user_role_assignments")
+    .insert({
+      tenant_id: invitation.tenant_id,
+      user_id: userId,
+      role_id: role.id,
+      department_id: invitation.department_id,
+      assigned_by: invitation.invited_by,
     });
   return !createError;
 }
@@ -128,7 +255,10 @@ async function provisionSsoPerson(
   admin: any,
   user: any,
   tenantId: string,
-): Promise<"created" | "existing" | "removed" | "failed"> {
+  email: string,
+): Promise<
+  "invited" | "existing" | "removed" | "invitation_required" | "failed"
+> {
   const userId = user?.id;
   if (typeof userId !== "string") return "failed";
 
@@ -145,20 +275,36 @@ async function provisionSsoPerson(
   // must never lock an already authorized employee out of the tenant.
   if (existing?.status === "active") return "existing";
 
-  const isNew = !existing;
-  if (isNew) {
-    const { error: createMembershipError } = await admin
-      .from("tenant_memberships")
-      .insert({
+  const { data: invitationData, error: invitationError } = await admin
+    .from("tenant_user_invitations")
+    .select(
+      "id, tenant_id, invited_by, role_name, display_name, job_title, offer, department_id, wants_agent",
+    )
+    .eq("tenant_id", tenantId)
+    .eq("email", email)
+    .eq("status", "sent")
+    .gt("expires_at", new Date().toISOString())
+    .maybeSingle();
+  if (invitationError) return "failed";
+  if (!invitationData) return "invitation_required";
+  const invitation = invitationData as PendingInvitation;
+
+  const joinedAt = new Date().toISOString();
+  const { error: membershipWriteError } = await admin
+    .from("tenant_memberships")
+    .upsert(
+      {
         tenant_id: tenantId,
         user_id: userId,
         status: "active",
-        joined_at: new Date().toISOString(),
-      });
-    if (createMembershipError) return "failed";
-  }
+        joined_at: joinedAt,
+      },
+      { onConflict: "tenant_id,user_id" },
+    );
+  if (membershipWriteError) return "failed";
 
-  const displayName = displayNameFromUser(user);
+  const displayName =
+    invitation.display_name?.trim() || displayNameFromUser(user);
   if (displayName) {
     const { error: profileError } = await admin
       .from("user_profiles")
@@ -174,15 +320,50 @@ async function provisionSsoPerson(
   const { error: directoryError } = await admin
     .from("tenant_member_directory")
     .upsert(
-      { tenant_id: tenantId, user_id: userId },
+      {
+        tenant_id: tenantId,
+        user_id: userId,
+        department_id: invitation.department_id,
+        job_title: invitation.job_title,
+        offer: invitation.offer,
+      },
       {
         onConflict: "tenant_id,user_id",
       },
     );
-  if (directoryError || !(await ensureRequesterRole(admin, tenantId, userId))) {
+  const invitedRole = invitation.role_name?.trim() || REQUESTER_ROLE;
+  if (
+    directoryError ||
+    !(await ensureTenantRole(
+      admin,
+      tenantId,
+      userId,
+      invitedRole,
+      invitation.invited_by,
+    )) ||
+    !(await ensureInvitedAgentRole(admin, invitation, userId))
+  ) {
     return "failed";
   }
-  return isNew ? "created" : "existing";
+
+  const { error: invitationUpdateError } = await admin
+    .from("tenant_user_invitations")
+    .update({ status: "accepted", accepted_at: joinedAt })
+    .eq("id", invitation.id)
+    .eq("tenant_id", tenantId)
+    .eq("status", "sent");
+  if (invitationUpdateError) return "failed";
+
+  await admin.from("audit_logs").insert({
+    tenant_id: tenantId,
+    actor_id: userId,
+    action: "tenant.sso_invitation.accepted",
+    entity_type: "tenant_user_invitation",
+    entity_id: invitation.id,
+    severity: "security",
+    metadata: { source: "tenant_sso_access" },
+  });
+  return "invited";
 }
 
 const handler = withSupabase({ auth: "user" }, async (request, context) => {
@@ -190,8 +371,12 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     return error(request, "method_not_allowed", 405);
   }
   const actorId = context.userClaims?.id;
-  const domain = emailDomain(context.userClaims?.email);
-  if (typeof actorId !== "string" || !domain) {
+  const email =
+    typeof context.userClaims?.email === "string"
+      ? context.userClaims.email.trim().toLocaleLowerCase("de-CH")
+      : null;
+  const domain = emailDomain(email);
+  if (typeof actorId !== "string" || !email || !domain) {
     return error(request, "sso_email_claim_required", 403);
   }
 
@@ -211,7 +396,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     await context.supabaseAdmin
       .from("tenant_sso_configurations")
       .select(
-        "tenant_id, provider, enabled, enforce_sso, allowed_email_domains",
+        "tenant_id, provider, enabled, enforce_sso, issuer_url, allowed_email_domains",
       )
       .eq("tenant_id", domainBinding.tenant_id)
       .maybeSingle();
@@ -238,10 +423,22 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     return error(request, "tenant_sso_required", 403);
   }
 
+  const claimStatus = azureTenantClaimStatus(
+    userData.user.identities,
+    sso.issuer_url,
+  );
+  if (claimStatus === "missing") {
+    return error(request, "sso_tenant_claim_required", 403);
+  }
+  if (claimStatus === "mismatch") {
+    return error(request, "sso_tenant_claim_mismatch", 403);
+  }
+
   const provision = await provisionSsoPerson(
     context.supabaseAdmin,
     userData.user,
     sso.tenant_id,
+    email,
   );
   if (provision === "removed") {
     return error(request, "tenant_person_removed", 403);
@@ -249,13 +446,16 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
   if (provision === "failed") {
     return error(request, "sso_person_provision_failed", 500);
   }
+  if (provision === "invitation_required") {
+    return error(request, "tenant_invitation_required", 403);
+  }
 
   return response(request, {
     data: {
       scope: "tenant",
       tenantId: sso.tenant_id,
       ssoEnforced: sso.enforce_sso,
-      provisioned: provision === "created",
+      provisioned: provision === "invited",
     },
   });
 });

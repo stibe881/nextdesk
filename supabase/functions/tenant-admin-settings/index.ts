@@ -980,8 +980,22 @@ async function handleUpdateSsoConfiguration(
       422,
     );
   }
-  if (action.enabled && !issuerUrl && !discoveryUrl) {
-    return json(request, { error: { code: "sso_endpoint_required" } }, 422);
+  if (action.enabled && action.provider !== "azure_ad") {
+    return json(
+      request,
+      { error: { code: "sso_provider_not_supported" } },
+      422,
+    );
+  }
+  if (action.enabled && (!issuerUrl || !discoveryUrl)) {
+    return json(
+      request,
+      { error: { code: "sso_issuer_and_discovery_required" } },
+      422,
+    );
+  }
+  if (action.enabled && allowedEmailDomains.length === 0) {
+    return json(request, { error: { code: "sso_email_domain_required" } }, 422);
   }
 
   const configuration = {

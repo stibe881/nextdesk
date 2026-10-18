@@ -2054,6 +2054,12 @@ export function TenantAdminSettings({
                   onSubmit={saveSsoConfiguration}
                 >
                   <h3>SSO-Konfiguration bearbeiten</h3>
+                  <p className="tenant-admin-settings__hint">
+                    nextDesk unterstützt hier den zentral verwalteten
+                    Microsoft-Entra-ID-Anmeldeweg. Andere Anbieter lassen sich
+                    erst auswählen, wenn ihr Anmeldeweg serverseitig vollständig
+                    bereitsteht.
+                  </p>
                   <div className="tenant-admin-settings__form-grid">
                     <label>
                       Anbieter
@@ -2069,8 +2075,6 @@ export function TenantAdminSettings({
                         }
                       >
                         <option value="">Bitte auswählen</option>
-                        <option value="oidc">OpenID Connect (OIDC)</option>
-                        <option value="saml">SAML</option>
                         <option value="azure_ad">Microsoft Entra ID</option>
                       </select>
                     </label>

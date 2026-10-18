@@ -10,6 +10,7 @@
 - Betriebsregeln mit Vorschau für Nachfassen, Duplikate, Datenqualität, Qualitätschecks, Compliancehinweise und Berichte. Geschlossene Tickets können nur nach aktueller serverseitiger Kandidatenprüfung und sichtbarer Bestätigung manuell geschlossen werden. Der Lauf wird separat auditiert.
 - Ticketabschluss mit auffindbaren Abschlussbewertungen, klaren Hinweisen vor dem Schliessen, zugänglichen Erfolgsmeldungen und einer direkten Statusauswahl, die geschlossene Status ohne entsprechende Abschlussberechtigung nicht anbietet. Qualitätskennzahlen und eigene Qualitätsnotizen bleiben zusätzlich serverseitig auf berechtigte Mitarbeitende beschränkt.
 - Qualitätsgates für Typen, Schema, Datenbank-Migrationen, Edge Functions, Formatierung und Web-Bundlebudget; dokumentierter Rücknahme- und Recoveryablauf.
+- Sicherheitsnachlieferung: Externe Wissensartikel aus einem Ticket erfordern nun zusätzlich ausdrücklich `knowledge.publish`. Der Datenbank-Trigger verhindert den Entzug der letzten aktiven Mandantenadministration. Mandanten-SSO akzeptiert nur aktive Mitgliedschaften oder gültige Einladungen und prüft den Entra-Mandantenbezug gegen den gespeicherten Issuer. Die Rollenverwaltung reserviert sensible Rollen und Berechtigungen für effektive Mandantenadministratoren.
 
 ## Sicherheits- und Betriebsgrenzen
 
@@ -19,4 +20,4 @@ Automatische Datenlöschung und unbeaufsichtigte Ticket-Schliessungen sind nicht
 
 ## Prüfungen
 
-Vor dieser Notiz erfolgreich ausgeführt: Typecheck, Schema- und Berechtigungskatalogprüfung, lokale Postgres-/RLS-Migrationstests, Edge-Function-Prüfung, Web-Build, Formatprüfung, Bundlebudget und Produktions-Smoke-Test.
+Für die Sicherheitsnachlieferung zusätzlich erfolgreich ausgeführt: Typecheck, Schema- und Berechtigungskatalogprüfung mit 55 Migrationen, lokale Postgres-/RLS-Migrationstests inklusive Wissensfreigabe und letztem Mandantenadministrator, Edge-Function-Prüfung, Formatprüfung und Diff-Prüfung.
