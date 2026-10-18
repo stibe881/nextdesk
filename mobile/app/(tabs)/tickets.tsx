@@ -10,12 +10,18 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from "react-native";
+import Swipeable from "react-native-gesture-handler/Swipeable";
 
 import { ScreenContainer } from "@/components/screen-container";
 import { useMobileFeatures } from "@/components/mobile-feature-gate";
 import { useMobileNetworkStatus } from "@/components/offline-status";
+import {
+  isExperienceUnavailableError,
+  saveFollowUp,
+} from "@/lib/nextdesk-experience";
 import { isNextDeskConfigured, nextDesk } from "@/lib/nextdesk-client";
 import { loadMobileDashboard, type MobileTicket } from "@/lib/nextdesk-tickets";
 import {
@@ -46,12 +52,28 @@ function offlineCacheTimestamp(value: string): string {
   }).format(timestamp);
 }
 
+function followUpTitle(ticket: MobileTicket): string {
+  return (
+    Array.from(`${ticket.ticketNumber}: ${ticket.subject}`.trim())
+      .slice(0, 240)
+      .join("") || "Ticket-Wiedervorlage"
+  );
+}
+
+function dueToday(): string {
+  const due = new Date();
+  due.setHours(23, 59, 59, 999);
+  return due.toISOString();
+}
+
 export default function TicketsScreen() {
   const router = useRouter();
+  const { width } = useWindowDimensions();
   const { isOffline, recoveryEpoch } = useMobileNetworkStatus();
   const { isEnabled, loading: checkingFeatures } = useMobileFeatures();
   const ticketDetailsEnabled = isEnabled("ticketing.detail");
-  const { colors, density } = useThemeContext();
+  const workspaceEnabled = isEnabled("experience.workspace");
+  const { colors, density, reducedMotion } = useThemeContext();
   const tokenStyles = useMemo(
     () => ({
       card: { backgroundColor: colors.surface, borderColor: colors.border },
@@ -98,7 +120,12 @@ export default function TicketsScreen() {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [offlineCacheAt, setOfflineCacheAt] = useState<string | null>(null);
+  const [workspaceAvailable, setWorkspaceAvailable] = useState(true);
+  const [creatingFollowUpFor, setCreatingFollowUpFor] = useState<string | null>(
+    null,
+  );
   const latestLoad = useRef(0);
+  const isWide = width >= 760;
 
   const load = useCallback(async () => {
     const loadId = latestLoad.current + 1;
@@ -183,23 +210,69 @@ export default function TicketsScreen() {
     }
   }
 
-  function openFavoriteActions(ticket: MobileTicket) {
+  async function createFollowUp(ticket: MobileTicket) {
+    if (
+      !workspaceEnabled ||
+      !workspaceAvailable ||
+      isOffline ||
+      offlineCacheAt
+    ) {
+      return;
+    }
+    setCreatingFollowUpFor(ticket.id);
+    setError("");
+    setMessage("");
+    try {
+      await saveFollowUp({
+        title: followUpTitle(ticket),
+        description: null,
+        dueAt: dueToday(),
+        priority: "normal",
+        ticketId: ticket.id,
+      });
+      setMessage(
+        `Wiedervorlage für «${ticket.ticketNumber}» für heute gesetzt.`,
+      );
+    } catch (nextError) {
+      if (isExperienceUnavailableError(nextError)) {
+        setWorkspaceAvailable(false);
+        setMessage("Diese Zusatzfunktion ist derzeit nicht verfügbar.");
+        return;
+      }
+      setError(
+        nextError instanceof Error
+          ? nextError.message
+          : "Die Wiedervorlage konnte nicht gesetzt werden.",
+      );
+    } finally {
+      setCreatingFollowUpFor(null);
+    }
+  }
+
+  function openTicketActions(ticket: MobileTicket) {
     if (Platform.OS !== "ios" || !tenantId || !currentUserId) return;
     const isFavorite = favoriteIds.includes(ticket.id);
+    const canCreateFollowUp =
+      workspaceEnabled &&
+      workspaceAvailable &&
+      !isOffline &&
+      !offlineCacheAt &&
+      creatingFollowUpFor !== ticket.id;
     ActionSheetIOS.showActionSheetWithOptions(
       {
         cancelButtonIndex: 0,
-        message: isFavorite
-          ? "Der Favorit wird nur verschlüsselt auf diesem Gerät gespeichert."
-          : "Favoriten werden nur verschlüsselt auf diesem Gerät gespeichert.",
+        message:
+          "Favoriten werden nur verschlüsselt auf diesem Gerät gespeichert.",
         options: [
           "Abbrechen",
           isFavorite ? "Aus Favoriten entfernen" : "Zu Favoriten hinzufügen",
+          ...(canCreateFollowUp ? ["Wiedervorlage für heute setzen"] : []),
         ],
         title: ticket.ticketNumber,
       },
       (buttonIndex) => {
         if (buttonIndex === 1) void toggleFavorite(ticket);
+        if (buttonIndex === 2 && canCreateFollowUp) void createFollowUp(ticket);
       },
     );
   }
@@ -281,7 +354,11 @@ export default function TicketsScreen() {
       style={{ backgroundColor: colors.background }}
     >
       <ScrollView
-        contentContainerStyle={[styles.content, densityStyles.content]}
+        contentContainerStyle={[
+          styles.content,
+          densityStyles.content,
+          isWide && styles.contentWide,
+        ]}
         refreshControl={
           <RefreshControl
             onRefresh={() => {
@@ -317,7 +394,7 @@ export default function TicketsScreen() {
               (offlineCacheAt || isOffline) && styles.addButtonOffline,
             ]}
           >
-            <Ionicons color="#FFFFFF" name="add" size={23} />
+            <Ionicons color={colors.background} name="add" size={23} />
           </Pressable>
         </View>
 
@@ -334,13 +411,15 @@ export default function TicketsScreen() {
               onPress={() => setScope(option.key)}
               style={[
                 styles.filter,
-                scope === option.key && styles.filterSelected,
+                tokenStyles.card,
+                scope === option.key && tokenStyles.primary,
               ]}
             >
               <Text
                 style={[
                   styles.filterText,
-                  scope === option.key && styles.filterTextSelected,
+                  tokenStyles.muted,
+                  scope === option.key && tokenStyles.primaryText,
                 ]}
               >
                 {option.label}
@@ -349,15 +428,15 @@ export default function TicketsScreen() {
           ))}
         </ScrollView>
 
-        <View style={styles.searchWrap}>
-          <Ionicons color="#77758C" name="search-outline" size={20} />
+        <View style={[styles.searchWrap, tokenStyles.control]}>
+          <Ionicons color={colors.muted} name="search-outline" size={20} />
           <TextInput
+            allowFontScaling
             autoCapitalize="none"
             autoCorrect={false}
             onChangeText={setQuery}
             placeholder="Tickets durchsuchen"
-            placeholderTextColor="#9A99AA"
-            allowFontScaling
+            placeholderTextColor={colors.muted}
             style={[styles.searchInput, tokenStyles.foreground]}
             value={query}
           />
@@ -368,7 +447,7 @@ export default function TicketsScreen() {
               hitSlop={10}
               onPress={() => setQuery("")}
             >
-              <Ionicons color="#77758C" name="close-circle" size={19} />
+              <Ionicons color={colors.muted} name="close-circle" size={19} />
             </Pressable>
           ) : null}
         </View>
@@ -394,7 +473,9 @@ export default function TicketsScreen() {
                   void load();
                 }}
               >
-                <Text style={styles.retryText}>Erneut versuchen</Text>
+                <Text style={[styles.retryText, { color: colors.primary }]}>
+                  Erneut versuchen
+                </Text>
               </Pressable>
             </View>
           </View>
@@ -417,11 +498,19 @@ export default function TicketsScreen() {
         ) : null}
 
         {offlineCacheAt ? (
-          <View style={styles.cacheNotice}>
-            <Ionicons color="#9A5B12" name="cloud-offline-outline" size={19} />
+          <View style={[styles.cacheNotice, tokenStyles.warning]}>
+            <Ionicons
+              color={colors.warning}
+              name="cloud-offline-outline"
+              size={19}
+            />
             <View style={styles.cacheNoticeCopy}>
-              <Text style={styles.cacheNoticeTitle}>Offline verfügbar</Text>
-              <Text style={styles.cacheNoticeText}>
+              <Text
+                style={[styles.cacheNoticeTitle, { color: colors.warning }]}
+              >
+                Offline verfügbar
+              </Text>
+              <Text style={[styles.cacheNoticeText, tokenStyles.foreground]}>
                 Verschlüsselte Ticketlisten-Metadaten vom{" "}
                 {offlineCacheTimestamp(offlineCacheAt)}. Öffnen und Bearbeiten
                 sind erst nach einer Serververbindung wieder möglich.
@@ -431,9 +520,13 @@ export default function TicketsScreen() {
         ) : null}
 
         {!checkingFeatures && !ticketDetailsEnabled ? (
-          <View style={styles.featureNotice}>
-            <Ionicons color="#5C5892" name="lock-closed-outline" size={18} />
-            <Text style={styles.featureNoticeText}>
+          <View style={[styles.featureNotice, tokenStyles.warning]}>
+            <Ionicons
+              color={colors.warning}
+              name="lock-closed-outline"
+              size={18}
+            />
+            <Text style={[styles.featureNoticeText, tokenStyles.foreground]}>
               Ticketdetails sind für diesen Mandanten derzeit nicht
               freigeschaltet.
             </Text>
@@ -441,54 +534,88 @@ export default function TicketsScreen() {
         ) : null}
 
         <View style={styles.listHeading}>
-          <Text style={[styles.listTitle, tokenStyles.foreground]}>
-            {scope === "all"
-              ? "Alle Tickets"
-              : scope === "favorites"
-                ? "Favorisierte Tickets"
-                : "Gefilterte Tickets"}
+          <View>
+            <Text style={[styles.listTitle, tokenStyles.foreground]}>
+              {scope === "all"
+                ? "Alle Tickets"
+                : scope === "favorites"
+                  ? "Favorisierte Tickets"
+                  : "Gefilterte Tickets"}
+            </Text>
+            {!checkingFeatures &&
+            !reducedMotion &&
+            workspaceEnabled &&
+            workspaceAvailable ? (
+              <Text style={[styles.gestureHint, tokenStyles.muted]}>
+                Nach rechts oder links wischen für schnelle Aktionen.
+              </Text>
+            ) : null}
+          </View>
+          <Text
+            accessibilityLabel={`${visibleTickets.length} Tickets`}
+            style={[
+              styles.listCount,
+              { backgroundColor: colors.primary + "1A", color: colors.primary },
+            ]}
+          >
+            {visibleTickets.length}
           </Text>
-          <Text style={styles.listCount}>{visibleTickets.length}</Text>
         </View>
 
         {visibleTickets.length === 0 ? (
-          <View style={styles.empty}>
-            <Ionicons color="#9896A8" name="ticket-outline" size={28} />
-            <Text style={styles.emptyTitle}>Keine passenden Tickets</Text>
-            <Text style={styles.emptyText}>
+          <View style={[styles.empty, tokenStyles.card]}>
+            <Ionicons color={colors.muted} name="ticket-outline" size={28} />
+            <Text style={[styles.emptyTitle, tokenStyles.foreground]}>
+              Keine passenden Tickets
+            </Text>
+            <Text style={[styles.emptyText, tokenStyles.muted]}>
               Passe den Filter an oder erfasse ein neues Ticket.
             </Text>
           </View>
         ) : (
           <View style={styles.list}>
-            {visibleTickets.map((ticket) => (
-              <TicketRow
-                key={ticket.id}
-                disabled={
-                  Boolean(offlineCacheAt) ||
-                  checkingFeatures ||
-                  !ticketDetailsEnabled
-                }
-                favorite={favoriteIds.includes(ticket.id)}
-                colors={colors}
-                densityStyle={densityStyles.ticket}
-                onLongPress={() => openFavoriteActions(ticket)}
-                onPress={() => {
-                  if (
-                    offlineCacheAt ||
+            {visibleTickets.map((ticket) => {
+              const actionsDisabled = !tenantId || !currentUserId;
+              const canCreateFollowUp =
+                workspaceEnabled &&
+                workspaceAvailable &&
+                !isOffline &&
+                !offlineCacheAt &&
+                creatingFollowUpFor !== ticket.id;
+              return (
+                <SwipeableTicketRow
+                  actionsDisabled={actionsDisabled}
+                  canCreateFollowUp={canCreateFollowUp}
+                  colors={colors}
+                  densityStyle={densityStyles.ticket}
+                  favorite={favoriteIds.includes(ticket.id)}
+                  key={ticket.id}
+                  onCreateFollowUp={() => void createFollowUp(ticket)}
+                  onFavorite={() => void toggleFavorite(ticket)}
+                  onLongPress={() => openTicketActions(ticket)}
+                  onPress={() => {
+                    if (
+                      offlineCacheAt ||
+                      checkingFeatures ||
+                      !ticketDetailsEnabled
+                    ) {
+                      return;
+                    }
+                    router.push({
+                      pathname: "/ticket/[id]",
+                      params: { id: ticket.id },
+                    });
+                  }}
+                  openDisabled={
+                    Boolean(offlineCacheAt) ||
                     checkingFeatures ||
                     !ticketDetailsEnabled
-                  ) {
-                    return;
                   }
-                  router.push({
-                    pathname: "/ticket/[id]",
-                    params: { id: ticket.id },
-                  });
-                }}
-                ticket={ticket}
-              />
-            ))}
+                  swipeEnabled={!reducedMotion}
+                  ticket={ticket}
+                />
+              );
+            })}
           </View>
         )}
       </ScrollView>
@@ -496,21 +623,132 @@ export default function TicketsScreen() {
   );
 }
 
-function TicketRow({
+function SwipeableTicketRow({
+  actionsDisabled,
+  canCreateFollowUp,
   colors,
   densityStyle,
-  disabled = false,
   favorite,
+  onCreateFollowUp,
+  onFavorite,
   onLongPress,
   onPress,
+  openDisabled,
+  swipeEnabled,
   ticket,
 }: {
+  actionsDisabled: boolean;
+  canCreateFollowUp: boolean;
   colors: ReturnType<typeof useThemeContext>["colors"];
   densityStyle: { padding: number };
-  disabled?: boolean;
   favorite: boolean;
+  onCreateFollowUp: () => void;
+  onFavorite: () => void;
   onLongPress: () => void;
   onPress: () => void;
+  openDisabled: boolean;
+  swipeEnabled: boolean;
+  ticket: MobileTicket;
+}) {
+  const swipeable = useRef<Swipeable>(null);
+  const actionsAvailable = !actionsDisabled;
+  const followUpAvailable = actionsAvailable && canCreateFollowUp;
+
+  const closeAndRun = (action: () => void) => {
+    swipeable.current?.close();
+    action();
+  };
+
+  return (
+    <Swipeable
+      enabled={actionsAvailable && swipeEnabled}
+      friction={2}
+      overshootLeft={false}
+      overshootRight={false}
+      ref={swipeable}
+      renderLeftActions={() => (
+        <Pressable
+          accessibilityLabel={
+            favorite ? "Aus Favoriten entfernen" : "Zu Favoriten hinzufügen"
+          }
+          accessibilityRole="button"
+          onPress={() => closeAndRun(onFavorite)}
+          style={[styles.swipeAction, { backgroundColor: colors.warning }]}
+        >
+          <Ionicons
+            color={colors.background}
+            name={favorite ? "star-outline" : "star"}
+            size={20}
+          />
+          <Text style={[styles.swipeActionText, { color: colors.background }]}>
+            {favorite ? "Entfernen" : "Favorit"}
+          </Text>
+        </Pressable>
+      )}
+      renderRightActions={() =>
+        followUpAvailable ? (
+          <Pressable
+            accessibilityLabel="Wiedervorlage für heute setzen"
+            accessibilityRole="button"
+            onPress={() => closeAndRun(onCreateFollowUp)}
+            style={[styles.swipeAction, { backgroundColor: colors.primary }]}
+          >
+            <Ionicons
+              color={colors.background}
+              name="calendar-outline"
+              size={20}
+            />
+            <Text
+              style={[styles.swipeActionText, { color: colors.background }]}
+            >
+              Wiedervorlage
+            </Text>
+          </Pressable>
+        ) : (
+          <View />
+        )
+      }
+    >
+      <TicketRow
+        actionsDisabled={actionsDisabled}
+        canCreateFollowUp={canCreateFollowUp}
+        colors={colors}
+        densityStyle={densityStyle}
+        favorite={favorite}
+        onCreateFollowUp={onCreateFollowUp}
+        onFavorite={onFavorite}
+        onLongPress={onLongPress}
+        onPress={onPress}
+        openDisabled={openDisabled}
+        ticket={ticket}
+      />
+    </Swipeable>
+  );
+}
+
+function TicketRow({
+  actionsDisabled,
+  canCreateFollowUp,
+  colors,
+  densityStyle,
+  favorite,
+  onCreateFollowUp,
+  onFavorite,
+  onLongPress,
+  onPress,
+  openDisabled,
+  ticket,
+}: {
+  actionsDisabled: boolean;
+  canCreateFollowUp: boolean;
+  colors: ReturnType<typeof useThemeContext>["colors"];
+  densityStyle: { padding: number };
+  favorite: boolean;
+  onCreateFollowUp: () => void;
+  onFavorite: () => void;
+  onLongPress: () => void;
+  onPress: () => void;
+  openDisabled: boolean;
   ticket: MobileTicket;
 }) {
   const tone = ticket.resolved
@@ -523,157 +761,201 @@ function TicketRow({
     : ticket.status === "Neu"
       ? styles.statusNew
       : styles.statusActive;
+  const accessibilityActions = [
+    {
+      label: favorite ? "Aus Favoriten entfernen" : "Zu Favoriten hinzufügen",
+      name: "favorite",
+    },
+    ...(canCreateFollowUp
+      ? [
+          {
+            label: "Wiedervorlage für heute setzen",
+            name: "followUp",
+          },
+        ]
+      : []),
+  ];
 
   return (
-    <Pressable
-      accessibilityActions={[
-        {
-          label: favorite
-            ? "Aus Favoriten entfernen"
-            : "Zu Favoriten hinzufügen",
-          name: "favorite",
-        },
-      ]}
-      accessibilityHint={
-        Platform.OS === "ios"
-          ? "Für Favoritenaktionen lange drücken."
-          : undefined
-      }
-      accessibilityLabel={`${ticket.ticketNumber}: ${ticket.subject}. Status: ${ticket.status}. ${favorite ? "Favorit." : "Kein Favorit."}`}
-      accessibilityRole="button"
-      accessibilityState={{ disabled }}
-      disabled={disabled}
-      onAccessibilityAction={(event) => {
-        if (event.nativeEvent.actionName === "favorite") onLongPress();
-      }}
-      onLongPress={disabled ? undefined : onLongPress}
-      onPress={onPress}
+    <View
       style={[
         styles.ticket,
         { backgroundColor: colors.surface, borderColor: colors.border },
-        densityStyle,
-        disabled && styles.ticketOffline,
+        openDisabled && styles.ticketOffline,
       ]}
     >
-      <View style={[styles.mark, tone]} />
-      <View style={styles.ticketCopy}>
-        <Text style={[styles.ticketNumber, { color: colors.muted }]}>
-          {ticket.ticketNumber}
-        </Text>
-        <Text
-          numberOfLines={2}
-          style={[styles.ticketTitle, { color: colors.foreground }]}
-        >
-          {ticket.subject}
-        </Text>
-        <Text style={styles.ticketMeta}>{ticket.priority}</Text>
-      </View>
-      <View style={styles.ticketState}>
-        {favorite ? (
-          <View accessibilityLabel="Favorit" style={styles.favoriteMark}>
-            <Ionicons color={colors.warning} name="star" size={14} />
-            <Text style={[styles.favoriteText, { color: colors.warning }]}>
-              Favorit
+      <Pressable
+        accessibilityActions={accessibilityActions}
+        accessibilityHint={
+          Platform.OS === "ios"
+            ? "Für Schnellaktionen lange drücken oder die Aktionstasten verwenden."
+            : "Schnellaktionen sind über die Aktionstasten verfügbar."
+        }
+        accessibilityLabel={`${ticket.ticketNumber}: ${ticket.subject}. Status: ${ticket.status}. ${favorite ? "Favorit." : "Kein Favorit."}`}
+        accessibilityRole="button"
+        accessibilityState={{ disabled: openDisabled }}
+        disabled={openDisabled}
+        onAccessibilityAction={(event) => {
+          if (actionsDisabled) return;
+          if (event.nativeEvent.actionName === "favorite") onFavorite();
+          if (
+            event.nativeEvent.actionName === "followUp" &&
+            canCreateFollowUp
+          ) {
+            onCreateFollowUp();
+          }
+        }}
+        onLongPress={actionsDisabled ? undefined : onLongPress}
+        onPress={onPress}
+        style={[styles.ticketPress, densityStyle]}
+      >
+        <View style={[styles.mark, tone]} />
+        <View style={styles.ticketCopy}>
+          <Text style={[styles.ticketNumber, { color: colors.muted }]}>
+            {ticket.ticketNumber}
+          </Text>
+          <Text
+            numberOfLines={2}
+            style={[styles.ticketTitle, { color: colors.foreground }]}
+          >
+            {ticket.subject}
+          </Text>
+          <Text style={[styles.ticketMeta, { color: colors.muted }]}>
+            {ticket.priority}
+          </Text>
+        </View>
+        <View style={styles.ticketState}>
+          {favorite ? (
+            <View accessibilityLabel="Favorit" style={styles.favoriteMark}>
+              <Ionicons color={colors.warning} name="star" size={14} />
+              <Text style={[styles.favoriteText, { color: colors.warning }]}>
+                Favorit
+              </Text>
+            </View>
+          ) : null}
+          <View
+            accessibilityLabel={`Status: ${ticket.status}`}
+            style={[styles.status, statusTone]}
+          >
+            <Ionicons
+              color={
+                ticket.resolved
+                  ? colors.success
+                  : ticket.status === "Neu"
+                    ? colors.primary
+                    : colors.primary
+              }
+              name={
+                ticket.resolved
+                  ? "checkmark-circle-outline"
+                  : ticket.status === "Neu"
+                    ? "sparkles-outline"
+                    : "time-outline"
+              }
+              size={14}
+            />
+            <Text
+              style={[
+                styles.statusText,
+                { color: ticket.resolved ? colors.success : colors.primary },
+              ]}
+            >
+              {ticket.status}
             </Text>
           </View>
-        ) : null}
-        <View
-          accessibilityLabel={`Status: ${ticket.status}`}
-          style={[styles.status, statusTone]}
+          <Ionicons color={colors.muted} name="chevron-forward" size={18} />
+        </View>
+      </Pressable>
+      <View style={[styles.ticketActions, { borderColor: colors.border }]}>
+        <Pressable
+          accessibilityLabel={
+            favorite ? "Aus Favoriten entfernen" : "Zu Favoriten hinzufügen"
+          }
+          accessibilityRole="button"
+          accessibilityState={{ disabled: actionsDisabled }}
+          disabled={actionsDisabled}
+          hitSlop={5}
+          onPress={onFavorite}
+          style={styles.ticketActionButton}
         >
           <Ionicons
-            color={
-              ticket.resolved
-                ? colors.success
-                : ticket.status === "Neu"
-                  ? colors.primary
-                  : colors.primary
-            }
-            name={
-              ticket.resolved
-                ? "checkmark-circle-outline"
-                : ticket.status === "Neu"
-                  ? "sparkles-outline"
-                  : "time-outline"
-            }
-            size={14}
+            color={colors.warning}
+            name={favorite ? "star" : "star-outline"}
+            size={18}
+          />
+          <Text style={[styles.ticketActionText, { color: colors.foreground }]}>
+            Favorit
+          </Text>
+        </Pressable>
+        <Pressable
+          accessibilityLabel="Wiedervorlage für heute setzen"
+          accessibilityRole="button"
+          accessibilityState={{ disabled: !canCreateFollowUp }}
+          disabled={!canCreateFollowUp}
+          hitSlop={5}
+          onPress={onCreateFollowUp}
+          style={[
+            styles.ticketActionButton,
+            !canCreateFollowUp && styles.actionMuted,
+          ]}
+        >
+          <Ionicons
+            color={canCreateFollowUp ? colors.primary : colors.muted}
+            name="calendar-outline"
+            size={18}
           />
           <Text
             style={[
-              styles.statusText,
-              { color: ticket.resolved ? colors.success : colors.primary },
+              styles.ticketActionText,
+              { color: canCreateFollowUp ? colors.foreground : colors.muted },
             ]}
           >
-            {ticket.status}
+            Heute
           </Text>
-        </View>
-        <Ionicons color={colors.muted} name="chevron-forward" size={18} />
+        </Pressable>
       </View>
-    </Pressable>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  content: { gap: 18, paddingBottom: 34, paddingTop: 18 },
-  centered: {
-    alignItems: "center",
-    flex: 1,
-    gap: 14,
-    justifyContent: "center",
-  },
-  loadingText: { color: "#626376", fontSize: 14 },
-  header: {
-    alignItems: "center",
-    flexDirection: "row",
-    justifyContent: "space-between",
-  },
-  eyebrow: {
-    color: "#77758C",
-    fontSize: 11,
-    fontWeight: "800",
-    letterSpacing: 1.2,
-  },
-  title: {
-    color: "#202136",
-    fontSize: 29,
-    fontWeight: "900",
-    letterSpacing: -0.8,
-    marginTop: 4,
-  },
-  subtitle: { color: "#6B7280", fontSize: 13, marginTop: 3 },
+  actionMuted: { opacity: 0.45 },
   addButton: {
     alignItems: "center",
-    backgroundColor: "#4438CA",
     borderRadius: 17,
     height: 48,
     justifyContent: "center",
     width: 48,
   },
   addButtonOffline: { opacity: 0.5 },
-  filters: { gap: 9, paddingRight: 16 },
-  searchWrap: {
-    alignItems: "center",
-    backgroundColor: "#FFFFFF",
-    borderColor: "#E5E5EF",
-    borderRadius: 14,
+  cacheNotice: {
+    alignItems: "flex-start",
+    borderRadius: 15,
     borderWidth: 1,
     flexDirection: "row",
-    gap: 9,
-    minHeight: 52,
-    paddingHorizontal: 14,
+    gap: 10,
+    padding: 14,
   },
-  searchInput: { color: "#202136", flex: 1, fontSize: 14, minHeight: 48 },
-  filter: {
-    backgroundColor: "#FFFFFF",
-    borderColor: "#E6E5EE",
-    borderRadius: 18,
+  cacheNoticeCopy: { flex: 1, gap: 3 },
+  cacheNoticeText: { fontSize: 12, lineHeight: 18 },
+  cacheNoticeTitle: { fontSize: 13, fontWeight: "900" },
+  content: {
+    alignSelf: "center",
+    paddingBottom: 34,
+    paddingTop: 18,
+    width: "100%",
+  },
+  contentWide: { maxWidth: 1_040 },
+  empty: {
+    alignItems: "center",
+    borderRadius: 20,
     borderWidth: 1,
-    paddingHorizontal: 15,
-    paddingVertical: 9,
+    gap: 8,
+    padding: 27,
   },
-  filterSelected: { backgroundColor: "#4438CA", borderColor: "#4438CA" },
-  filterText: { color: "#626376", fontSize: 13, fontWeight: "800" },
-  filterTextSelected: { color: "#FFFFFF" },
+  emptyText: { fontSize: 13, lineHeight: 19, textAlign: "center" },
+  emptyTitle: { fontSize: 15, fontWeight: "800", marginTop: 2 },
+  errorText: { fontSize: 13, lineHeight: 19 },
   feedback: {
     alignItems: "flex-start",
     borderRadius: 15,
@@ -684,46 +966,35 @@ const styles = StyleSheet.create({
   },
   feedbackCopy: { flex: 1, gap: 7 },
   feedbackText: { flex: 1, fontSize: 13, lineHeight: 19 },
-  errorText: { fontSize: 13, lineHeight: 19 },
-  retryText: { color: "#4438CA", fontSize: 13, fontWeight: "800" },
-  cacheNotice: {
-    alignItems: "flex-start",
-    backgroundColor: "#FFF8E7",
-    borderColor: "#F3D79A",
-    borderRadius: 15,
-    borderWidth: 1,
-    flexDirection: "row",
-    gap: 10,
-    padding: 14,
-  },
-  cacheNoticeCopy: { flex: 1, gap: 3 },
-  cacheNoticeTitle: { color: "#7B4B0D", fontSize: 13, fontWeight: "900" },
-  cacheNoticeText: { color: "#71420C", fontSize: 12, lineHeight: 18 },
   featureNotice: {
     alignItems: "flex-start",
-    backgroundColor: "#F0EEFF",
     borderRadius: 15,
+    borderWidth: 1,
     flexDirection: "row",
     gap: 8,
     padding: 13,
   },
-  featureNoticeText: {
-    color: "#5C5892",
-    flex: 1,
-    fontSize: 12,
-    lineHeight: 18,
+  featureNoticeText: { flex: 1, fontSize: 12, lineHeight: 18 },
+  favoriteMark: { alignItems: "center", flexDirection: "row", gap: 3 },
+  favoriteText: { fontSize: 10, fontWeight: "800" },
+  filter: {
+    borderRadius: 18,
+    borderWidth: 1,
+    paddingHorizontal: 15,
+    paddingVertical: 9,
   },
-  listHeading: {
+  filterText: { fontSize: 13, fontWeight: "800" },
+  filters: { gap: 9, paddingRight: 16 },
+  gestureHint: { fontSize: 11, marginTop: 3 },
+  header: {
     alignItems: "center",
     flexDirection: "row",
     justifyContent: "space-between",
-    marginTop: 2,
   },
-  listTitle: { color: "#202136", fontSize: 18, fontWeight: "800" },
+  eyebrow: { fontSize: 11, fontWeight: "800", letterSpacing: 1.2 },
+  list: { gap: 10 },
   listCount: {
-    backgroundColor: "#ECEAFF",
     borderRadius: 10,
-    color: "#4438CA",
     fontSize: 12,
     fontWeight: "900",
     minWidth: 27,
@@ -732,76 +1003,33 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     textAlign: "center",
   },
-  list: { gap: 10 },
-  ticket: {
+  listHeading: {
     alignItems: "center",
-    backgroundColor: "#FFFFFF",
-    borderColor: "#ECECF3",
-    borderRadius: 18,
-    borderWidth: 1,
     flexDirection: "row",
-    gap: 11,
-    padding: 14,
-  },
-  ticketOffline: { opacity: 0.7 },
-  mark: { borderRadius: 2, height: 46, width: 4 },
-  markNew: { backgroundColor: "#0EA5C6" },
-  markActive: { backgroundColor: "#7C3AED" },
-  markResolved: { backgroundColor: "#15803D" },
-  ticketCopy: { flex: 1, gap: 3 },
-  ticketNumber: {
-    color: "#77758C",
-    fontSize: 10,
-    fontWeight: "900",
-    letterSpacing: 0.6,
-  },
-  ticketTitle: {
-    color: "#24253A",
-    fontSize: 14,
-    fontWeight: "800",
-    lineHeight: 19,
-  },
-  ticketMeta: { color: "#6B7280", fontSize: 11 },
-  ticketState: { alignItems: "flex-end", gap: 8 },
-  status: {
-    alignItems: "center",
-    borderRadius: 8,
-    flexDirection: "row",
-    gap: 4,
-    overflow: "hidden",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-  },
-  statusText: { fontSize: 10, fontWeight: "900" },
-  favoriteMark: { alignItems: "center", flexDirection: "row", gap: 3 },
-  favoriteText: { fontSize: 10, fontWeight: "800" },
-  statusNew: { backgroundColor: "#E0F6FB", color: "#036B83" },
-  statusActive: { backgroundColor: "#F0E9FF", color: "#6432B7" },
-  statusResolved: { backgroundColor: "#E9F8EE", color: "#166534" },
-  empty: {
-    alignItems: "center",
-    backgroundColor: "#FFFFFF",
-    borderColor: "#ECECF3",
-    borderRadius: 20,
-    borderWidth: 1,
-    gap: 8,
-    padding: 27,
-  },
-  emptyTitle: {
-    color: "#303145",
-    fontSize: 15,
-    fontWeight: "800",
+    justifyContent: "space-between",
     marginTop: 2,
   },
-  emptyText: {
-    color: "#77758C",
-    fontSize: 13,
-    lineHeight: 19,
-    textAlign: "center",
+  listTitle: { fontSize: 18, fontWeight: "800" },
+  loadingText: { fontSize: 14 },
+  mark: { borderRadius: 2, height: 46, width: 4 },
+  markActive: { backgroundColor: "#7C3AED" },
+  markNew: { backgroundColor: "#0EA5C6" },
+  markResolved: { backgroundColor: "#15803D" },
+  retryText: { fontSize: 13, fontWeight: "800" },
+  searchInput: { flex: 1, fontSize: 14, minHeight: 48 },
+  searchWrap: {
+    alignItems: "center",
+    borderRadius: 14,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 9,
+    minHeight: 52,
+    paddingHorizontal: 14,
   },
-  skeletonPage: { flex: 1, gap: 14, justifyContent: "center" },
-  skeletonTitle: { borderRadius: 8, height: 31, width: "42%" },
+  skeletonCopy: { flex: 1, gap: 9 },
   skeletonLine: { borderRadius: 6, height: 12, width: "100%" },
+  skeletonMark: { borderRadius: 2, height: 46, width: 4 },
+  skeletonPage: { flex: 1, gap: 14, justifyContent: "center" },
   skeletonShortLine: { borderRadius: 6, height: 10, width: "38%" },
   skeletonTicket: {
     alignItems: "center",
@@ -812,6 +1040,57 @@ const styles = StyleSheet.create({
     minHeight: 74,
     padding: 14,
   },
-  skeletonMark: { borderRadius: 2, height: 46, width: 4 },
-  skeletonCopy: { flex: 1, gap: 9 },
+  skeletonTitle: { borderRadius: 8, height: 31, width: "42%" },
+  status: {
+    alignItems: "center",
+    borderRadius: 8,
+    flexDirection: "row",
+    gap: 4,
+    overflow: "hidden",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  statusActive: { backgroundColor: "#F0E9FF" },
+  statusNew: { backgroundColor: "#E0F6FB" },
+  statusResolved: { backgroundColor: "#E9F8EE" },
+  statusText: { fontSize: 10, fontWeight: "900" },
+  subtitle: { fontSize: 13, marginTop: 3 },
+  swipeAction: {
+    alignItems: "center",
+    borderRadius: 18,
+    gap: 4,
+    justifyContent: "center",
+    marginVertical: 1,
+    minWidth: 112,
+    paddingHorizontal: 12,
+  },
+  swipeActionText: { fontSize: 11, fontWeight: "900" },
+  ticket: {
+    alignItems: "stretch",
+    borderRadius: 18,
+    borderWidth: 1,
+    flexDirection: "row",
+    overflow: "hidden",
+  },
+  ticketActionButton: {
+    alignItems: "center",
+    gap: 2,
+    justifyContent: "center",
+    minHeight: 44,
+    minWidth: 57,
+    paddingHorizontal: 6,
+  },
+  ticketActionText: { fontSize: 9, fontWeight: "800" },
+  ticketActions: {
+    borderLeftWidth: 1,
+    justifyContent: "center",
+  },
+  ticketCopy: { flex: 1, gap: 3 },
+  ticketMeta: { fontSize: 11 },
+  ticketNumber: { fontSize: 10, fontWeight: "900", letterSpacing: 0.6 },
+  ticketOffline: { opacity: 0.7 },
+  ticketPress: { alignItems: "center", flex: 1, flexDirection: "row", gap: 11 },
+  ticketState: { alignItems: "flex-end", gap: 8 },
+  ticketTitle: { fontSize: 14, fontWeight: "800", lineHeight: 19 },
+  title: { fontSize: 29, fontWeight: "900", letterSpacing: -0.8, marginTop: 4 },
 });
