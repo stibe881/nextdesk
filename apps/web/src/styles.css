@@ -5834,6 +5834,28 @@ body:has(.ticket-detail) {
   height: 32px;
 }
 
+.brand-lockup--tenant {
+  align-items: flex-start;
+  flex-direction: column;
+  gap: 8px;
+  padding-bottom: 24px;
+}
+
+.brand-logo-mark--tenant {
+  width: min(160px, 100%);
+  height: 44px;
+  object-position: left center;
+}
+
+.brand-lockup--tenant span {
+  max-width: 168px;
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: -0.018em;
+  line-height: 1.28;
+}
+
 .brand-color-picker {
   display: grid;
   min-width: 0;
