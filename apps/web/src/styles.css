@@ -8445,3 +8445,50 @@ body:has(.ticket-detail) {
     grid-template-columns: 1fr;
   }
 }
+
+.tenant-onboarding__list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tenant-onboarding__item {
+  display: flex;
+  gap: 0.7rem;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 0.85rem;
+  padding: 0.9rem;
+  background: var(--surface-subtle);
+  color: var(--warning);
+}
+
+.tenant-onboarding__item--complete {
+  border-color: color-mix(in srgb, var(--success) 24%, var(--border));
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.tenant-onboarding__item span {
+  display: grid;
+  gap: 0.2rem;
+  color: var(--text);
+}
+
+.tenant-onboarding__item strong {
+  color: var(--ink);
+}
+
+.tenant-onboarding__item small {
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+@media (max-width: 760px) {
+  .tenant-onboarding__list {
+    grid-template-columns: 1fr;
+  }
+}

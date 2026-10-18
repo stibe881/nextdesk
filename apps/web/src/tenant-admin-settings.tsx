@@ -14,6 +14,7 @@ import { DepartmentManagement } from "./department-management";
 import { TicketTemplates } from "./ticket-templates";
 import { TenantAutomation } from "./tenant-automation";
 import { TenantDataRetention } from "./tenant-data-retention";
+import { TenantOnboarding } from "./tenant-onboarding";
 
 export type TenantAdminSettingsProps = {
   tenantId: string;
@@ -1633,50 +1634,56 @@ export function TenantAdminSettings({
           </nav>
           <div className="tenant-admin-settings__content" role="tabpanel">
             {activeArea === "overview" && (
-              <section
-                className="tenant-admin-settings__section"
-                aria-labelledby="tenant-general-heading"
-              >
-                <h2 id="tenant-general-heading">Mandantenüberblick</h2>
-                <dl className="tenant-admin-settings__details">
-                  <div>
-                    <dt>Portalname</dt>
-                    <dd>{realValue(settings.tenant_settings?.portal_name)}</dd>
-                  </div>
-                  <div>
-                    <dt>Support-E-Mail</dt>
-                    <dd>
-                      {realValue(settings.tenant_settings?.support_email)}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>Ticketzugang</dt>
-                    <dd>
-                      {settings.tenant_settings?.ticket_access_enabled ===
-                        null ||
-                      settings.tenant_settings?.ticket_access_enabled ===
-                        undefined
-                        ? "Nicht hinterlegt"
-                        : settings.tenant_settings.ticket_access_enabled
-                          ? "Aktiviert"
-                          : "Deaktiviert"}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>Externer Ticketzugang</dt>
-                    <dd>
-                      {settings.tenant_settings
-                        ?.allow_external_ticket_access === null ||
-                      settings.tenant_settings?.allow_external_ticket_access ===
-                        undefined
-                        ? "Nicht hinterlegt"
-                        : settings.tenant_settings.allow_external_ticket_access
-                          ? "Aktiviert"
-                          : "Deaktiviert"}
-                    </dd>
-                  </div>
-                </dl>
-              </section>
+              <>
+                <section
+                  className="tenant-admin-settings__section"
+                  aria-labelledby="tenant-general-heading"
+                >
+                  <h2 id="tenant-general-heading">Mandantenüberblick</h2>
+                  <dl className="tenant-admin-settings__details">
+                    <div>
+                      <dt>Portalname</dt>
+                      <dd>
+                        {realValue(settings.tenant_settings?.portal_name)}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Support-E-Mail</dt>
+                      <dd>
+                        {realValue(settings.tenant_settings?.support_email)}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Ticketzugang</dt>
+                      <dd>
+                        {settings.tenant_settings?.ticket_access_enabled ===
+                          null ||
+                        settings.tenant_settings?.ticket_access_enabled ===
+                          undefined
+                          ? "Nicht hinterlegt"
+                          : settings.tenant_settings.ticket_access_enabled
+                            ? "Aktiviert"
+                            : "Deaktiviert"}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Externer Ticketzugang</dt>
+                      <dd>
+                        {settings.tenant_settings
+                          ?.allow_external_ticket_access === null ||
+                        settings.tenant_settings
+                          ?.allow_external_ticket_access === undefined
+                          ? "Nicht hinterlegt"
+                          : settings.tenant_settings
+                                .allow_external_ticket_access
+                            ? "Aktiviert"
+                            : "Deaktiviert"}
+                      </dd>
+                    </div>
+                  </dl>
+                </section>
+                <TenantOnboarding tenantId={tenantId} />
+              </>
             )}
 
             {activeArea === "audit" && (
