@@ -990,7 +990,9 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
 
   if (action.type === "getTicket") {
     const subjectTokens = relevantSubjectTokens(ticket.subject);
-    const requesterContactPromise = isUuid(ticket.requester_contact_id)
+    const requesterContactPromise = isRequesterContactId(
+      ticket.requester_contact_id,
+    )
       ? context.supabaseAdmin
           .from("ticket_requesters")
           .select("id, display_name, email")
@@ -2563,8 +2565,10 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       changedFields.push("assignedTeam");
     }
   }
+  // Saving unchanged values is idempotent: report success without a write so
+  // clients never surface a technical error for a no-op save.
   if (Object.keys(update).length === 0)
-    return response(request, { error: { code: "no_change" } }, 422);
+    return response(request, { data: { updated: false } });
   const { error } = await context.supabaseAdmin
     .from("tickets")
     .update(update)

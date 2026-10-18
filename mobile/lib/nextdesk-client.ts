@@ -11,6 +11,10 @@ import {
 } from "@/lib/mobile-private-state";
 import { mobileSecureStorage } from "@/lib/mobile-secure-storage";
 import { base64UrlEncode, pkceS256Challenge, withTimeout } from "@/lib/pkce";
+import {
+  NextDeskRequestError,
+  nextDeskErrorMessage,
+} from "@/lib/nextdesk-error-messages";
 
 type NextDeskExtra = {
   nextDeskSupabaseUrl?: string;
@@ -488,23 +492,33 @@ export async function invokeNextDesk<T>(
         ? (error as { context?: unknown }).context
         : undefined;
     if (context instanceof Response) {
-      const payload = await context
+      const payload: unknown = await context
         .clone()
         .json()
         .catch(() => null);
-      const message =
+      const envelope =
         typeof payload === "object" &&
         payload !== null &&
         "error" in payload &&
         typeof (payload as { error?: unknown }).error === "object" &&
-        (payload as { error?: unknown }).error !== null &&
-        typeof (payload as { error: { message?: unknown } }).error.message ===
-          "string"
-          ? (payload as { error: { message: string } }).error.message
+        (payload as { error?: unknown }).error !== null
+          ? (payload as { error: { code?: unknown; message?: unknown } }).error
           : null;
-      if (message) throw new Error(message);
+      const code = typeof envelope?.code === "string" ? envelope.code : null;
+      const serverMessage =
+        typeof envelope?.message === "string" && envelope.message.trim()
+          ? envelope.message.trim()
+          : null;
+      throw new NextDeskRequestError(
+        serverMessage ?? nextDeskErrorMessage(code, context.status),
+        code,
+        context.status,
+      );
     }
-    throw error;
+    throw new NextDeskRequestError(
+      "nextDesk ist nicht erreichbar. Bitte prüfe deine Internetverbindung.",
+      null,
+    );
   }
   return data as T;
 }

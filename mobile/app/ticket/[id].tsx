@@ -231,6 +231,17 @@ export default function TicketDetailScreen() {
   const [submittingResolution, setSubmittingResolution] = useState(false);
   const [resolutionSubmitted, setResolutionSubmitted] = useState(false);
   const scrollViewRef = useRef<ScrollView>(null);
+  // Background reloads (reconnect, recovery, refresh after actions) must never
+  // overwrite text that is currently being edited. Refs expose the latest
+  // editing state to the stable load() callback.
+  const editingFieldRef = useRef<typeof editingField>(null);
+  const draftDirtyRef = useRef(false);
+  useEffect(() => {
+    editingFieldRef.current = editingField;
+  }, [editingField]);
+  useEffect(() => {
+    draftDirtyRef.current = draftDirty;
+  }, [draftDirty]);
   const [conversationOffset, setConversationOffset] = useState(0);
   const [attachmentsOffset, setAttachmentsOffset] = useState(0);
   const [requesterPortalAvailable, setRequesterPortalAvailable] =
@@ -305,23 +316,30 @@ export default function TicketDetailScreen() {
               draft.visibility === initialVisibility &&
               Boolean(draft.body.trim()),
           );
-          setRequester(detail.requesterContact);
-          setSubject(detail.subject);
-          setDescription(detail.description);
-          setStatusKey(
-            detail.statusOptions.find((option) => option.id === detail.statusId)
-              ?.key ?? "",
-          );
-          setPriorityKey(
-            detail.priorityOptions.find(
-              (option) => option.id === detail.priorityId,
-            )?.key ?? "",
-          );
-          setComment(localDraft?.body ?? serverDraft?.body ?? "");
-          setDraftState(localDraft ? "local" : serverDraft ? "synced" : "idle");
-          setDraftDirty(false);
+          if (editingFieldRef.current === null) {
+            setRequester(detail.requesterContact);
+            setSubject(detail.subject);
+            setDescription(detail.description);
+            setStatusKey(
+              detail.statusOptions.find(
+                (option) => option.id === detail.statusId,
+              )?.key ?? "",
+            );
+            setPriorityKey(
+              detail.priorityOptions.find(
+                (option) => option.id === detail.priorityId,
+              )?.key ?? "",
+            );
+          }
+          if (!draftDirtyRef.current) {
+            setComment(localDraft?.body ?? serverDraft?.body ?? "");
+            setDraftState(
+              localDraft ? "local" : serverDraft ? "synced" : "idle",
+            );
+            setDraftDirty(false);
+            setCommentVisibility(initialVisibility);
+          }
           setFavorite(favoriteIds.includes(detail.id));
-          setCommentVisibility(initialVisibility);
         }
         setCommentVisibility((current) => {
           if (syncEditor) return current;
@@ -710,6 +728,22 @@ export default function TicketDetailScreen() {
       return;
     }
 
+    const requesterChanged =
+      nextRequester !== null &&
+      nextRequester.id !== (ticket.requesterContact?.id ?? null);
+    const unchanged =
+      nextSubject === ticket.subject.trim() &&
+      nextDescription === ticket.description.trim() &&
+      nextStatus.id === ticket.statusId &&
+      nextPriority.id === ticket.priorityId &&
+      !requesterChanged;
+    if (unchanged) {
+      // Nothing to save: close the editor locally instead of asking the server.
+      setEditingField(null);
+      setError("");
+      setMessage("Es gab keine Änderungen zum Speichern.");
+      return;
+    }
     setSaving(true);
     setError("");
     setMessage("");
@@ -722,7 +756,7 @@ export default function TicketDetailScreen() {
         ...(changes.confirmClose ? { confirmClose: true } : {}),
         statusKey: nextStatusKey,
         priorityKey: nextPriorityKey,
-        ...(nextRequester ? { requesterContactId: nextRequester.id } : {}),
+        ...(requesterChanged ? { requesterContactId: nextRequester.id } : {}),
       });
       setTicket({
         ...ticket,
@@ -1182,6 +1216,7 @@ export default function TicketDetailScreen() {
                 disabled={!ticket.canUpdate}
                 onPress={() => {
                   hapticSelection();
+                  setSubject(ticket.subject);
                   setEditingField("subject");
                 }}
               >
@@ -1965,6 +2000,7 @@ export default function TicketDetailScreen() {
                 disabled={!ticket.canUpdate}
                 onPress={() => {
                   hapticSelection();
+                  setDescription(ticket.description);
                   setEditingField("description");
                 }}
               >
