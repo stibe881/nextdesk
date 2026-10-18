@@ -33,3 +33,11 @@ _Stand: 18. Oktober 2026_
 - **Weitere Integrationen:** E-Mail, Kalender, Teams/Slack, Monitoring, Webhooks/API-Schlüssel, KI und externe Provider benötigen jeweils deren Zugänge, Datenschutzfreigaben und Konfiguration.
 - **Unbeaufsichtigte Abläufe:** SLA-Scheduler, automatische Löschung oder produktive Hintergrundjobs werden erst nach expliziter Betriebsfreigabe samt erforderlichen Secrets beziehungsweise Hosting-Konfiguration aktiviert.
 - **GitHub-Workflow-Publish:** Die gehärteten Workflow-Dateien benötigen weiterhin eine wirksame GitHub-`workflow`-Berechtigung, bevor sie nach `main` veröffentlicht werden können.
+
+## Push-Benachrichtigungen (18.10.2026)
+
+**Produktiv umgesetzt:** Migration 0060 (Geräte, Präferenzen, Outbox, Ereignis-Trigger, `pg_net`-Weckruf, fail-closed Mandantenschalter `notifications.push`, standardmässig aus). Edge Functions `push-notifications` (v1, JWT) und `push-dispatch` (v1, Datenbank-Secret statt JWT) sind ACTIVE; `tenant-feature-flags` v3, `ticket-operations` v21, `ticket-agent-assignment` v6 und `ticket-actions` v10 übergeben die handelnde Person, damit niemand über die eigene Aktion benachrichtigt wird. Web (Mandantenschalter mit Inhaltsstufe, Geräteliste in den persönlichen Einstellungen, verständliche Benachrichtigungstexte) ist auf app.nextdesk.ch ausgerollt. iOS-Quellstand 34f95b4 enthält Opt-in, Kategorien, Ruhezeiten, Test-Push, Deep Links und Abmeldung des Geräts.
+
+**Ereignisse:** Zuweisung, Antwort der anfragenden Person, Antwort des Supports, Erwähnung, Lösung, Freigabeanfrage, Eskalation und SLA. Push-Inhalte gehen nur an Apple; standardmässig nur Ereignisart und Ticketnummer, der Betreff nur bei ausdrücklicher Mandanteneinstellung.
+
+**Offen (extern):** APNs-Schlüssel (.p8) bei Apple erstellen und `APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_PRIVATE_KEY` als Supabase-Secrets setzen (Anleitung: `docs/deployment/PUSH_NOTIFICATIONS.md`); Schalter pro Mandant aktivieren; neuer iOS-Build mit Push-Plugin nur auf ausdrücklichen Auftrag; reale iPhone-Abnahme. Bis die Secrets gesetzt sind, werden Push-Einträge sauber als `apns_not_configured` übersprungen; In-App-Benachrichtigungen funktionieren unabhängig davon.
