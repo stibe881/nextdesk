@@ -1,8 +1,10 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -46,6 +48,7 @@ export function RequesterPicker({
   const [newEmail, setNewEmail] = useState("");
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState("");
+  const resultsScrollRef = useRef<ScrollView>(null);
   const queryLength = Array.from(query.trim()).length;
   const selected = value ?? defaultRequester;
 
@@ -116,6 +119,17 @@ export function RequesterPicker({
     setNewEmail("");
     setCreateError("");
     setShowCreateForm(true);
+    requestAnimationFrame(() => {
+      resultsScrollRef.current?.scrollToEnd({ animated: true });
+    });
+  }
+
+  function revealCreateFormAboveKeyboard() {
+    requestAnimationFrame(() => {
+      setTimeout(() => {
+        resultsScrollRef.current?.scrollToEnd({ animated: true });
+      }, 160);
+    });
   }
 
   async function createRequester() {
@@ -172,7 +186,10 @@ export function RequesterPicker({
         transparent
         visible={isOpen}
       >
-        <View style={styles.modalRoot}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          style={styles.modalRoot}
+        >
           <Pressable
             accessibilityLabel="Auswahl schliessen"
             accessibilityRole="button"
@@ -234,9 +251,13 @@ export function RequesterPicker({
             </View>
 
             <ScrollView
+              automaticallyAdjustKeyboardInsets
               contentContainerStyle={styles.results}
+              keyboardDismissMode="interactive"
               keyboardShouldPersistTaps="handled"
+              ref={resultsScrollRef}
               showsVerticalScrollIndicator={false}
+              style={styles.resultsScroll}
             >
               {queryLength < 2 ? (
                 <Text style={styles.searchNote}>
@@ -300,6 +321,7 @@ export function RequesterPicker({
                       <TextInput
                         autoCapitalize="words"
                         onChangeText={setNewName}
+                        onFocus={revealCreateFormAboveKeyboard}
                         placeholder="Vor- und Nachname"
                         placeholderTextColor="#9A99AA"
                         style={styles.createInput}
@@ -310,6 +332,7 @@ export function RequesterPicker({
                         autoCorrect={false}
                         keyboardType="email-address"
                         onChangeText={setNewEmail}
+                        onFocus={revealCreateFormAboveKeyboard}
                         placeholder="E-Mail-Adresse (optional)"
                         placeholderTextColor="#9A99AA"
                         style={styles.createInput}
@@ -346,7 +369,7 @@ export function RequesterPicker({
               )}
             </ScrollView>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </>
   );
@@ -385,7 +408,8 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
     gap: 15,
-    maxHeight: "76%",
+    flexShrink: 1,
+    maxHeight: "88%",
     padding: 20,
     paddingBottom: 28,
   },
@@ -456,7 +480,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 13,
   },
   searchInput: { color: "#202136", flex: 1, fontSize: 15, minHeight: 46 },
-  results: { gap: 8, paddingBottom: 3 },
+  resultsScroll: { flexShrink: 1 },
+  results: { flexGrow: 1, gap: 8, paddingBottom: 24 },
   searchNote: {
     color: "#77758C",
     fontSize: 13,
