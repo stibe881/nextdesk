@@ -29,7 +29,12 @@ type Action =
       requirePreview: boolean;
     }
   | { type: "preview"; tenantId: string }
-  | { type: "executeAutoClose"; tenantId: string; ticketIds: string[] };
+  | {
+      type: "executeAutoClose";
+      tenantId: string;
+      ticketIds: string[];
+      confirmed: true;
+    };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -89,18 +94,24 @@ function parseAction(value: unknown): Action | null {
   if (
     value.type === "executeAutoClose" &&
     Object.keys(value).every(
-      (key) => key === "type" || key === "tenantId" || key === "ticketIds",
+      (key) =>
+        key === "type" ||
+        key === "tenantId" ||
+        key === "ticketIds" ||
+        key === "confirmed",
     ) &&
     Array.isArray(value.ticketIds) &&
     value.ticketIds.length >= 1 &&
     value.ticketIds.length <= 50 &&
     value.ticketIds.every(isUuid) &&
-    new Set(value.ticketIds).size === value.ticketIds.length
+    new Set(value.ticketIds).size === value.ticketIds.length &&
+    value.confirmed === true
   ) {
     return {
       type: "executeAutoClose",
       tenantId: value.tenantId,
       ticketIds: value.ticketIds,
+      confirmed: true,
     };
   }
   if (
@@ -439,6 +450,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
           p_tenant_id: action.tenantId,
           p_ticket_ids: action.ticketIds,
           p_status_key: "closed",
+          p_confirm_close: action.confirmed,
         });
       if (closeError || !isRecord(result))
         return json(
@@ -463,7 +475,11 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
           policy_key: "auto_close",
           initiated_by: actorId,
           mode: "manual",
-          result: { requested: action.ticketIds.length, updated },
+          result: {
+            requested: action.ticketIds.length,
+            updated,
+            confirmed: action.confirmed,
+          },
         });
       if (runError)
         return json(
@@ -478,7 +494,11 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         entity_type: "tenant_automation_policy",
         entity_id: null,
         severity: "warning",
-        metadata: { requested: action.ticketIds.length, updated },
+        metadata: {
+          requested: action.ticketIds.length,
+          updated,
+          confirmed: action.confirmed,
+        },
       });
       return json(request, {
         data: { requested: action.ticketIds.length, updated },

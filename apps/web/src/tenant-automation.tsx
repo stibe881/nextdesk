@@ -230,6 +230,7 @@ export function TenantAutomation({ tenantId }: { tenantId: string }) {
         type: "executeAutoClose",
         tenantId,
         ticketIds,
+        confirmed: true,
       });
       if (
         typeof result.updated !== "number" ||
