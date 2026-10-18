@@ -29,6 +29,7 @@ import { supabase } from "./lib/supabase";
 import { TicketApprovals } from "./ticket-approvals";
 import { TicketComparison } from "./ticket-comparison";
 import { TicketCustomFields } from "./ticket-custom-fields";
+import { TicketPdfRecord } from "./ticket-pdf-record";
 
 type CommentVisibility = "external" | "internal";
 type BillingKind = "internal" | "billable" | "goodwill";
@@ -555,6 +556,7 @@ type TicketDetailData = {
   canUpdate: boolean;
   canAssign: boolean;
   canMerge: boolean;
+  canExport: boolean;
   /** Bei älteren Edge-Function-Deployments nicht vorhanden; kein Fallback auf canUpdate. */
   canEscalate?: boolean;
   canUseInternalNotes: boolean;
@@ -1648,6 +1650,7 @@ function parseTicketDetail(
     canUpdate: data.canUpdate === true,
     canAssign,
     canMerge,
+    canExport: data.canExport === true,
     ...(canEscalate === undefined ? {} : { canEscalate }),
     canUseInternalNotes: data.canUseInternalNotes === true,
     canTrackTime: data.canTrackTime === true,
@@ -5278,6 +5281,11 @@ export function TicketDetail({
           <h2>{detail.ticket.subject}</h2>
         </div>
         <div className="ticket-detail-header-actions">
+          <TicketPdfRecord
+            canExport={detail.canExport}
+            tenantId={tenantId}
+            ticketId={ticketId}
+          />
           <button
             aria-label={
               detail.watching

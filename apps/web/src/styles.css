@@ -8157,3 +8157,17 @@ body:has(.ticket-detail) {
     display: none;
   }
 }
+
+.ticket-pdf-record {
+  display: contents;
+}
+.ticket-pdf-record .ticket-detail-message {
+  flex-basis: 100%;
+  margin: 0;
+}
+@media (max-width: 620px) {
+  .ticket-pdf-record .secondary-button {
+    min-height: 38px;
+    padding-inline: 0.65rem;
+  }
+}

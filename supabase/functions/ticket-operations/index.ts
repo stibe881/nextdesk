@@ -7,6 +7,7 @@ type RelationType =
 type DisplayRelationType = RelationType | "merged_into" | "merged_from";
 type Action =
   | { type: "getTicket"; tenantId: string; ticketId: string }
+  | { type: "recordExport"; tenantId: string; ticketId: string }
   | {
       type: "openEscalation";
       tenantId: string;
@@ -149,6 +150,15 @@ function parseAction(value: unknown): Action | null {
   if (!isRecord(value) || !isUuid(value.tenantId) || !isUuid(value.ticketId))
     return null;
   if (value.type === "getTicket")
+    return {
+      type: value.type,
+      tenantId: value.tenantId,
+      ticketId: value.ticketId,
+    };
+  if (
+    value.type === "recordExport" &&
+    hasOnlyKeys(value, ["type", "tenantId", "ticketId"])
+  )
     return {
       type: value.type,
       tenantId: value.tenantId,
@@ -1201,6 +1211,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       canClose,
       canWriteInternalNotes,
       canCommentExternal,
+      canExport,
     ] = await Promise.all([
       hasPermission(
         context.supabaseAdmin,
@@ -1245,6 +1256,13 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         "ticket.internal_notes.write",
       ),
       canPostExternalComment(context.supabaseAdmin, actorId, ticket),
+      hasPermission(
+        context.supabaseAdmin,
+        actorId,
+        ticket.tenant_id,
+        ticket.department_id,
+        "ticket.export",
+      ),
     ]);
     return response(request, {
       data: {
@@ -1285,8 +1303,53 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         canUseInternalNotes: internal,
         canWriteInternalNotes,
         canCommentExternal,
+        canExport,
       },
     });
+  }
+
+  if (action.type === "recordExport") {
+    if (
+      !(await hasPermission(
+        context.supabaseAdmin,
+        actorId,
+        ticket.tenant_id,
+        ticket.department_id,
+        "ticket.export",
+      ))
+    ) {
+      return response(
+        request,
+        { error: { code: "ticket_export_denied" } },
+        403,
+      );
+    }
+
+    const occurredAt = new Date().toISOString();
+    const [eventResult, auditResult] = await Promise.all([
+      context.supabaseAdmin.from("ticket_events").insert({
+        ticket_id: ticket.id,
+        actor_id: actorId,
+        event_type: "ticket.pdf_exported",
+        payload: { format: "pdf", occurredAt },
+      }),
+      context.supabaseAdmin.from("audit_logs").insert({
+        tenant_id: ticket.tenant_id,
+        actor_id: actorId,
+        action: "ticket.pdf_exported",
+        entity_type: "ticket",
+        entity_id: ticket.id,
+        metadata: { format: "pdf", occurredAt },
+      }),
+    ]);
+    if (eventResult.error || auditResult.error) {
+      return response(
+        request,
+        { error: { code: "ticket_export_failed" } },
+        500,
+      );
+    }
+    return response(request, { data: { recorded: true, occurredAt } });
   }
 
   if (action.type === "searchMergeTargets") {
