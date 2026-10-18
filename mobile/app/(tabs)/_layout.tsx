@@ -1,94 +1,72 @@
-import { Ionicons } from "@expo/vector-icons";
 import { Tabs } from "expo-router";
-import { Platform } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { HapticTab } from "@/components/haptic-tab";
 import { useMobileFeatures } from "@/components/mobile-feature-gate";
+import {
+  NextDeskTabBar,
+  type NextDeskTabItem,
+} from "@/components/nextdesk-tab-bar";
 import { PushCheckInPrompt } from "@/components/push-checkin-prompt";
-import { useAppColors } from "@/lib/themed-styles";
 
 export default function TabLayout() {
-  const insets = useSafeAreaInsets();
-  const colors = useAppColors();
   const { isEnabled, loading } = useMobileFeatures();
-  const bottomPadding = Platform.OS === "web" ? 12 : Math.max(insets.bottom, 8);
-  const tabBarHeight = 56 + bottomPadding;
+  const knowledgeVisible = !loading && isEnabled("knowledge.base");
+  const scanVisible = !loading && isEnabled("assets.management");
+
+  // Fachliche Reihenfolge ohne Home: Tickets, Services | Home | Wissen, Scan.
+  // Die Leiste verteilt die sichtbaren Einträge gleichmässig um das zentrierte Home.
+  const tabItems: NextDeskTabItem[] = [
+    {
+      name: "tickets",
+      label: "Tickets",
+      icon: "ticket-outline",
+      activeIcon: "ticket",
+    },
+    {
+      name: "services",
+      label: "Services",
+      icon: "cube-outline",
+      activeIcon: "cube",
+    },
+  ];
+  if (knowledgeVisible) {
+    tabItems.push({
+      name: "knowledge",
+      label: "Wissen",
+      icon: "book-outline",
+      activeIcon: "book",
+    });
+  }
+  if (scanVisible) {
+    tabItems.push({
+      name: "scan",
+      label: "Scan",
+      icon: "scan-outline",
+      activeIcon: "scan",
+    });
+  }
 
   return (
     <>
       <Tabs
         initialRouteName="index"
-        screenOptions={{
-          tabBarActiveTintColor: colors.primaryText,
-          tabBarInactiveTintColor: colors.muted,
-          headerShown: false,
-          tabBarButton: HapticTab,
-          tabBarStyle: {
-            paddingTop: 8,
-            paddingBottom: bottomPadding,
-            height: tabBarHeight,
-            backgroundColor: colors.surface,
-            borderTopColor: colors.border,
-            borderTopWidth: 0.5,
-            shadowColor: colors.shadow,
-            shadowOffset: { width: 0, height: -3 },
-            shadowOpacity: 0.07,
-            shadowRadius: 12,
-            elevation: 10,
-          },
-          tabBarItemStyle: { paddingHorizontal: 0 },
-          tabBarLabelStyle: { fontSize: 10, fontWeight: "800", marginTop: 1 },
-        }}
+        screenOptions={{ headerShown: false }}
+        tabBar={(props) => <NextDeskTabBar {...props} items={tabItems} />}
       >
-        <Tabs.Screen
-          name="tickets"
-          options={{
-            title: "Tickets",
-            tabBarIcon: ({ color }) => (
-              <Ionicons color={color} name="ticket-outline" size={23} />
-            ),
-          }}
-        />
-        <Tabs.Screen
-          name="services"
-          options={{
-            title: "Services",
-            tabBarIcon: ({ color }) => (
-              <Ionicons color={color} name="cube-outline" size={23} />
-            ),
-          }}
-        />
+        <Tabs.Screen name="tickets" options={{ title: "Tickets" }} />
+        <Tabs.Screen name="services" options={{ title: "Services" }} />
         <Tabs.Screen name="assets" options={{ href: null }} />
-        <Tabs.Screen
-          name="index"
-          options={{
-            title: "Home",
-            tabBarIcon: ({ color }) => (
-              <Ionicons color={color} name="home-outline" size={23} />
-            ),
-          }}
-        />
+        <Tabs.Screen name="index" options={{ title: "Home" }} />
         <Tabs.Screen
           name="knowledge"
           options={{
-            href: loading || !isEnabled("knowledge.base") ? null : undefined,
+            href: knowledgeVisible ? undefined : null,
             title: "Wissen",
-            tabBarIcon: ({ color }) => (
-              <Ionicons color={color} name="book-outline" size={23} />
-            ),
           }}
         />
         <Tabs.Screen name="knowledge/[id]" options={{ href: null }} />
         <Tabs.Screen
           name="scan"
-          options={{
-            href: loading || !isEnabled("assets.management") ? null : undefined,
-            title: "Scan",
-            tabBarIcon: ({ color }) => (
-              <Ionicons color={color} name="scan-outline" size={23} />
-            ),
-          }}
+          options={{ href: scanVisible ? undefined : null, title: "Scan" }}
         />
         <Tabs.Screen name="settings" options={{ href: null }} />
       </Tabs>
