@@ -595,6 +595,118 @@ function isHexColor(value: string): boolean {
   return /^#[0-9a-f]{6}$/i.test(value);
 }
 
+function hasSufficientWhiteTextContrast(value: string): boolean {
+  if (!isHexColor(value)) return false;
+  const linearChannel = (offset: number) => {
+    const channel = Number.parseInt(value.slice(offset, offset + 2), 16) / 255;
+    return channel <= 0.04045
+      ? channel / 12.92
+      : ((channel + 0.055) / 1.055) ** 2.4;
+  };
+  const red = linearChannel(1);
+  const green = linearChannel(3);
+  const blue = linearChannel(5);
+  const luminance = 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+  return 1.05 / (luminance + 0.05) >= 4.5;
+}
+
+const BRAND_COLOR_PALETTE = [
+  "#4338CA",
+  "#2563EB",
+  "#0F766E",
+  "#006E9C",
+  "#166534",
+  "#A16207",
+  "#C2410C",
+  "#B91C1C",
+  "#BE185D",
+  "#6D28D9",
+  "#17233F",
+] as const;
+
+function BrandColorPicker({
+  disabled,
+  label,
+  onChange,
+  value,
+}: {
+  disabled: boolean;
+  label: string;
+  onChange: (nextValue: string) => void;
+  value: string;
+}) {
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const displayedColor = isHexColor(value) ? value.toUpperCase() : "#4338CA";
+
+  return (
+    <div className="brand-color-picker">
+      <span className="brand-color-picker__label">{label}</span>
+      <div className="brand-color-picker__controls">
+        <button
+          aria-controls={`palette-${label}`}
+          aria-expanded={paletteOpen}
+          aria-label={`${label}-Palette öffnen`}
+          className="brand-color-picker__trigger"
+          disabled={disabled}
+          onClick={() => setPaletteOpen((current) => !current)}
+          style={{ backgroundColor: displayedColor }}
+          type="button"
+        >
+          <span aria-hidden="true" />
+        </button>
+        <input
+          aria-label={`${label} mit Systemfarbauswahl ändern`}
+          className="brand-color-picker__native"
+          disabled={disabled}
+          onChange={(event) => onChange(event.target.value.toUpperCase())}
+          type="color"
+          value={displayedColor}
+        />
+        <input
+          aria-label={`${label} als Hex-Code`}
+          disabled={disabled}
+          inputMode="text"
+          maxLength={7}
+          onChange={(event) => onChange(event.target.value.toUpperCase())}
+          placeholder="#RRGGBB"
+          spellCheck={false}
+          type="text"
+          value={value}
+        />
+      </div>
+      {paletteOpen ? (
+        <div
+          aria-label={`${label}-Palette`}
+          className="brand-color-picker__palette"
+          id={`palette-${label}`}
+          role="listbox"
+        >
+          {BRAND_COLOR_PALETTE.map((color) => (
+            <button
+              aria-label={`${label} auf ${color} setzen`}
+              aria-selected={displayedColor === color}
+              className={
+                displayedColor === color
+                  ? "brand-color-picker__swatch is-selected"
+                  : "brand-color-picker__swatch"
+              }
+              disabled={disabled}
+              key={color}
+              onClick={() => {
+                onChange(color);
+                setPaletteOpen(false);
+              }}
+              role="option"
+              style={{ backgroundColor: color }}
+              type="button"
+            />
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function isDomain(value: string): boolean {
   return /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i.test(
     value,
@@ -968,6 +1080,14 @@ export function TenantAdminSettings({
       if (!color) continue;
       if (!isHexColor(color)) {
         setError("Brand-Farben müssen im Format #RRGGBB angegeben werden.");
+        return;
+      }
+      if (formKey !== "accentColor" && !hasSufficientWhiteTextContrast(color)) {
+        const label =
+          formKey === "primaryColor" ? "Primärfarbe" : "Sekundärfarbe";
+        setError(
+          `${label} muss genügend Kontrast für helle Schaltflächentexte bieten.`,
+        );
         return;
       }
       nextBranding[payloadKey] = color.toUpperCase();
@@ -1777,54 +1897,39 @@ export function TenantAdminSettings({
                     ) : null}
                   </div>
                   <div className="tenant-admin-settings__form-grid">
-                    <label>
-                      Primärfarbe
-                      <input
-                        type="text"
-                        inputMode="text"
-                        placeholder="#RRGGBB"
-                        value={brandingForm.primaryColor}
-                        disabled={saving !== null}
-                        onChange={(event) =>
-                          setBrandingForm((current) => ({
-                            ...current,
-                            primaryColor: event.target.value,
-                          }))
-                        }
-                      />
-                    </label>
-                    <label>
-                      Sekundärfarbe
-                      <input
-                        type="text"
-                        inputMode="text"
-                        placeholder="#RRGGBB"
-                        value={brandingForm.secondaryColor}
-                        disabled={saving !== null}
-                        onChange={(event) =>
-                          setBrandingForm((current) => ({
-                            ...current,
-                            secondaryColor: event.target.value,
-                          }))
-                        }
-                      />
-                    </label>
-                    <label>
-                      Akzentfarbe
-                      <input
-                        type="text"
-                        inputMode="text"
-                        placeholder="#RRGGBB"
-                        value={brandingForm.accentColor}
-                        disabled={saving !== null}
-                        onChange={(event) =>
-                          setBrandingForm((current) => ({
-                            ...current,
-                            accentColor: event.target.value,
-                          }))
-                        }
-                      />
-                    </label>
+                    <BrandColorPicker
+                      disabled={saving !== null}
+                      label="Primärfarbe"
+                      onChange={(primaryColor) =>
+                        setBrandingForm((current) => ({
+                          ...current,
+                          primaryColor,
+                        }))
+                      }
+                      value={brandingForm.primaryColor}
+                    />
+                    <BrandColorPicker
+                      disabled={saving !== null}
+                      label="Sekundärfarbe"
+                      onChange={(secondaryColor) =>
+                        setBrandingForm((current) => ({
+                          ...current,
+                          secondaryColor,
+                        }))
+                      }
+                      value={brandingForm.secondaryColor}
+                    />
+                    <BrandColorPicker
+                      disabled={saving !== null}
+                      label="Akzentfarbe"
+                      onChange={(accentColor) =>
+                        setBrandingForm((current) => ({
+                          ...current,
+                          accentColor,
+                        }))
+                      }
+                      value={brandingForm.accentColor}
+                    />
                   </div>
                   <button type="submit" disabled={saving !== null}>
                     {saving === "branding"

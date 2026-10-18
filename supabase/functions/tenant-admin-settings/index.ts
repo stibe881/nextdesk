@@ -136,6 +136,21 @@ function isHttpsUrl(value: string): boolean {
   }
 }
 
+function hasSufficientWhiteTextContrast(value: string): boolean {
+  if (!COLOR_PATTERN.test(value)) return false;
+  const linearChannel = (offset: number) => {
+    const channel = Number.parseInt(value.slice(offset, offset + 2), 16) / 255;
+    return channel <= 0.04045
+      ? channel / 12.92
+      : ((channel + 0.055) / 1.055) ** 2.4;
+  };
+  const red = linearChannel(1);
+  const green = linearChannel(3);
+  const blue = linearChannel(5);
+  const luminance = 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+  return 1.05 / (luminance + 0.05) >= 4.5;
+}
+
 function parseOptionalUrl(
   value: Record<string, unknown>,
   key: string,
@@ -190,6 +205,12 @@ function parseBranding(value: unknown): BrandingInput | null {
     if (
       typeof value[inputKey] !== "string" ||
       !COLOR_PATTERN.test(value[inputKey])
+    ) {
+      return null;
+    }
+    if (
+      inputKey !== "accentColor" &&
+      !hasSufficientWhiteTextContrast(value[inputKey] as string)
     ) {
       return null;
     }

@@ -3,6 +3,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type FormEvent,
   type ReactNode,
 } from "react";
@@ -146,8 +147,11 @@ type TenantFeatureFlag = {
 };
 
 type TenantWorkspaceBranding = {
+  accentColor: string | null;
   logoUrl: string | null;
   portalName: string;
+  primaryColor: string | null;
+  secondaryColor: string | null;
 };
 
 const sections: readonly { label: Section; Icon: LucideIcon }[] = [
@@ -265,6 +269,12 @@ function usableTenantLogoUrl(value: unknown): string | null {
   } catch {
     return null;
   }
+}
+
+function usableBrandColor(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim();
+  return /^#[0-9a-f]{6}$/i.test(normalized) ? normalized.toUpperCase() : null;
 }
 
 function isTicketScope(value: unknown): value is TicketScope {
@@ -1041,7 +1051,7 @@ export function App() {
         .maybeSingle(),
       supabase
         .from("tenant_branding")
-        .select("logo_path")
+        .select("logo_path, primary_color, secondary_color, accent_color")
         .eq("tenant_id", activeTenant.id)
         .maybeSingle(),
     ])
@@ -1051,15 +1061,23 @@ export function App() {
         if (!mounted) return;
         const portalName = settingsResult.data?.portal_name?.trim();
         setTenantWorkspaceBranding({
+          accentColor: usableBrandColor(brandingResult.data?.accent_color),
           logoUrl: usableTenantLogoUrl(brandingResult.data?.logo_path),
           portalName: portalName || activeTenant.name,
+          primaryColor: usableBrandColor(brandingResult.data?.primary_color),
+          secondaryColor: usableBrandColor(
+            brandingResult.data?.secondary_color,
+          ),
         });
       })
       .catch(() => {
         if (!mounted) return;
         setTenantWorkspaceBranding({
+          accentColor: null,
           logoUrl: null,
           portalName: activeTenant.name,
+          primaryColor: null,
+          secondaryColor: null,
         });
       });
 
@@ -1580,6 +1598,17 @@ export function App() {
     productDefaults.productName;
   const workspaceBrandLogo =
     tenantWorkspaceBranding?.logoUrl ?? "/assets/nextdesk-logo-product.png";
+  const workspaceBrandStyle = {
+    "--primary": tenantWorkspaceBranding?.primaryColor ?? "#4338CA",
+    "--primary-hover": tenantWorkspaceBranding?.secondaryColor ?? "#3730A3",
+    "--primary-soft": `color-mix(in srgb, ${
+      tenantWorkspaceBranding?.primaryColor ?? "#4338CA"
+    } 11%, #FFFFFF)`,
+    "--info": tenantWorkspaceBranding?.accentColor ?? "#075985",
+    "--info-soft": `color-mix(in srgb, ${
+      tenantWorkspaceBranding?.accentColor ?? "#075985"
+    } 11%, #FFFFFF)`,
+  } as CSSProperties;
 
   const visibleSections = isTenantAdmin
     ? [...workSections, { label: "Einstellungen" as const, Icon: Settings }]
@@ -1649,7 +1678,7 @@ export function App() {
   }
 
   return (
-    <div className={workspaceClassName}>
+    <div className={workspaceClassName} style={workspaceBrandStyle}>
       <aside className="command-rail" aria-label="Hauptnavigation">
         <div
           className={
