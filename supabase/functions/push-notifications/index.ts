@@ -17,6 +17,7 @@ const ALL_CATEGORIES = [
   "sla",
   "escalation",
   "approval",
+  "follow_up",
 ] as const;
 const AGENT_CATEGORIES = [
   "assigned",
@@ -25,6 +26,7 @@ const AGENT_CATEGORIES = [
   "sla",
   "escalation",
   "approval",
+  "follow_up",
 ] as const;
 const REQUESTER_CATEGORIES = ["support_reply", "resolved", "approval"] as const;
 

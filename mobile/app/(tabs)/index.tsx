@@ -12,7 +12,6 @@ import {
   View,
 } from "react-native";
 
-import { FollowUpsSection } from "@/components/follow-ups-section";
 import { GlobalSearch } from "@/components/global-search";
 import { IncidentBanner } from "@/components/incident-banner";
 import { useMobileFeatures } from "@/components/mobile-feature-gate";
@@ -386,12 +385,54 @@ export default function HomeScreen() {
           <Text style={[styles.heroEyebrow, { color: colors.onPrimary }]}>
             HEUTE IM FOKUS
           </Text>
-          <Text style={[styles.heroTitle, { color: colors.onPrimary }]}>
-            Alles im Blick.
-          </Text>
-          <Text style={[styles.heroBody, { color: colors.onPrimary }]}>
-            Bearbeite Tickets schnell, klar und von überall.
-          </Text>
+          {metricsAvailable && agentMetrics ? (
+            <View style={styles.heroKpis}>
+              <HeroKpi label="Offen" value={String(agentMetrics.open)} />
+              <View
+                style={[
+                  styles.heroKpiDivider,
+                  { backgroundColor: colors.onPrimary },
+                ]}
+              />
+              <HeroKpi
+                label="Heute gelöst"
+                value={String(agentMetrics.solvedToday)}
+              />
+              <View
+                style={[
+                  styles.heroKpiDivider,
+                  { backgroundColor: colors.onPrimary },
+                ]}
+              />
+              <HeroKpi
+                label="Erste Antwort"
+                value={
+                  agentMetrics.medianFirstResponseMinutes === null
+                    ? "—"
+                    : `${agentMetrics.medianFirstResponseMinutes} Min.`
+                }
+              />
+              <View
+                style={[
+                  styles.heroKpiDivider,
+                  { backgroundColor: colors.onPrimary },
+                ]}
+              />
+              <HeroKpi
+                label="Fällig"
+                value={String(agentMetrics.dueFollowUps)}
+              />
+            </View>
+          ) : (
+            <>
+              <Text style={[styles.heroTitle, { color: colors.onPrimary }]}>
+                Alles im Blick.
+              </Text>
+              <Text style={[styles.heroBody, { color: colors.onPrimary }]}>
+                Bearbeite Tickets schnell, klar und von überall.
+              </Text>
+            </>
+          )}
           <Pressable
             accessibilityRole="button"
             onPress={() => router.push("/ticket/new")}
@@ -488,45 +529,158 @@ export default function HomeScreen() {
           />
         </View>
 
+        <View style={styles.sectionHeader}>
+          <View>
+            <Text style={[styles.sectionTitle, tokenStyles.foreground]}>
+              {ticketScope === "all"
+                ? "Aktuelle Tickets"
+                : ticketScopeLabels[ticketScope]}
+            </Text>
+            <Text style={[styles.sectionSub, tokenStyles.muted]}>
+              {ticketScope === "all"
+                ? "Deine zuletzt bearbeiteten Vorgänge"
+                : `${visibleTickets.length} passende Vorgänge`}
+            </Text>
+          </View>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() =>
+              ticketScope === "all"
+                ? router.push("/(tabs)/tickets")
+                : setTicketScope("all")
+            }
+          >
+            <Text style={[styles.all, tokenStyles.primaryText]}>
+              {ticketScope === "all" ? "Alle" : "Filter zurücksetzen"}
+            </Text>
+          </Pressable>
+        </View>
+
+        {visibleTickets.length === 0 ? (
+          <View style={[styles.emptyList, tokenStyles.card]}>
+            <Text style={[styles.emptyText, tokenStyles.muted]}>
+              Keine passenden Tickets vorhanden.
+            </Text>
+          </View>
+        ) : (
+          <View style={styles.list}>
+            {visibleTickets.slice(0, 10).map((ticket) => (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityState={{
+                  disabled: checkingFeatures || !ticketDetailsEnabled,
+                }}
+                disabled={checkingFeatures || !ticketDetailsEnabled}
+                key={ticket.id}
+                onPress={() =>
+                  router.push({
+                    pathname: "/ticket/[id]",
+                    params: { id: ticket.id },
+                  })
+                }
+                style={[
+                  styles.ticket,
+                  tokenStyles.card,
+                  (checkingFeatures || !ticketDetailsEnabled) &&
+                    styles.ticketDisabled,
+                ]}
+              >
+                <View
+                  style={[
+                    styles.ticketMark,
+                    {
+                      backgroundColor: ticket.resolved
+                        ? colors.success
+                        : colors.primary,
+                    },
+                  ]}
+                />
+                <View style={styles.ticketContent}>
+                  <Text style={[styles.ticketId, tokenStyles.muted]}>
+                    {ticket.ticketNumber}
+                  </Text>
+                  <Text
+                    numberOfLines={1}
+                    style={[styles.ticketTitle, tokenStyles.foreground]}
+                  >
+                    {ticket.subject}
+                  </Text>
+                  <Text style={[styles.ticketMeta, tokenStyles.muted]}>
+                    {ticket.priority}
+                  </Text>
+                </View>
+                <View style={styles.ticketRight}>
+                  <View
+                    accessibilityLabel={`Status: ${ticket.status}`}
+                    style={[
+                      styles.status,
+                      {
+                        backgroundColor: ticket.resolved
+                          ? colors.successSoft
+                          : colors.primarySoft,
+                      },
+                    ]}
+                  >
+                    <Ionicons
+                      color={
+                        ticket.resolved ? colors.success : colors.primaryText
+                      }
+                      name={
+                        ticket.resolved
+                          ? "checkmark-circle-outline"
+                          : "time-outline"
+                      }
+                      size={13}
+                    />
+                    <Text
+                      style={{
+                        color: ticket.resolved
+                          ? colors.success
+                          : colors.primaryText,
+                        fontSize: 10,
+                        fontWeight: "800",
+                      }}
+                    >
+                      {ticket.status}
+                    </Text>
+                  </View>
+                  <Ionicons
+                    color={colors.subtle}
+                    name="chevron-forward"
+                    size={18}
+                  />
+                </View>
+              </Pressable>
+            ))}
+            {visibleTickets.length > 10 ? (
+              <Pressable
+                accessibilityLabel={`Alle ${visibleTickets.length} Tickets anzeigen`}
+                accessibilityRole="button"
+                onPress={() => router.push("/(tabs)/tickets")}
+                style={[
+                  styles.showAllTickets,
+                  { borderColor: colors.primarySoftBorder },
+                ]}
+              >
+                <Text
+                  style={[styles.showAllTicketsText, tokenStyles.primaryText]}
+                >
+                  Alle {visibleTickets.length} Tickets anzeigen
+                </Text>
+                <Ionicons
+                  color={colors.primaryText}
+                  name="arrow-forward"
+                  size={17}
+                />
+              </Pressable>
+            ) : null}
+          </View>
+        )}
+
         <View
           style={[styles.auxiliaryGrid, isWide && styles.auxiliaryGridWide]}
         >
           <View style={styles.auxiliaryColumn}>
-            <FollowUpsSection />
-            {metricsAvailable && agentMetrics ? (
-              <View
-                style={[
-                  styles.card,
-                  tokenStyles.card,
-                  { padding: cardPadding },
-                ]}
-              >
-                <SectionTitle
-                  icon="speedometer-outline"
-                  title="Meine Kennzahlen"
-                  subtitle="Aktuelle persönliche Bearbeitung"
-                />
-                <View style={styles.agentMetricsGrid}>
-                  <MiniMetric label="Offen" value={String(agentMetrics.open)} />
-                  <MiniMetric
-                    label="Heute gelöst"
-                    value={String(agentMetrics.solvedToday)}
-                  />
-                  <MiniMetric
-                    label="Erste Antwort"
-                    value={
-                      agentMetrics.medianFirstResponseMinutes === null
-                        ? "—"
-                        : `${agentMetrics.medianFirstResponseMinutes} Min.`
-                    }
-                  />
-                  <MiniMetric
-                    label="Fällig"
-                    value={String(agentMetrics.dueFollowUps)}
-                  />
-                </View>
-              </View>
-            ) : null}
             {mentionsAvailable ? (
               <View
                 style={[
@@ -747,128 +901,6 @@ export default function HomeScreen() {
             ) : null}
           </View>
         </View>
-
-        <View style={styles.sectionHeader}>
-          <View>
-            <Text style={[styles.sectionTitle, tokenStyles.foreground]}>
-              {ticketScope === "all"
-                ? "Aktuelle Tickets"
-                : ticketScopeLabels[ticketScope]}
-            </Text>
-            <Text style={[styles.sectionSub, tokenStyles.muted]}>
-              {ticketScope === "all"
-                ? "Deine zuletzt bearbeiteten Vorgänge"
-                : `${visibleTickets.length} passende Vorgänge`}
-            </Text>
-          </View>
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => setTicketScope("all")}
-          >
-            <Text style={[styles.all, tokenStyles.primaryText]}>
-              {ticketScope === "all" ? "Alle" : "Filter zurücksetzen"}
-            </Text>
-          </Pressable>
-        </View>
-
-        {visibleTickets.length === 0 ? (
-          <View style={[styles.emptyList, tokenStyles.card]}>
-            <Text style={[styles.emptyText, tokenStyles.muted]}>
-              Keine passenden Tickets vorhanden.
-            </Text>
-          </View>
-        ) : (
-          <View style={styles.list}>
-            {visibleTickets.map((ticket) => (
-              <Pressable
-                accessibilityRole="button"
-                accessibilityState={{
-                  disabled: checkingFeatures || !ticketDetailsEnabled,
-                }}
-                disabled={checkingFeatures || !ticketDetailsEnabled}
-                key={ticket.id}
-                onPress={() =>
-                  router.push({
-                    pathname: "/ticket/[id]",
-                    params: { id: ticket.id },
-                  })
-                }
-                style={[
-                  styles.ticket,
-                  tokenStyles.card,
-                  (checkingFeatures || !ticketDetailsEnabled) &&
-                    styles.ticketDisabled,
-                ]}
-              >
-                <View
-                  style={[
-                    styles.ticketMark,
-                    {
-                      backgroundColor: ticket.resolved
-                        ? colors.success
-                        : colors.primary,
-                    },
-                  ]}
-                />
-                <View style={styles.ticketContent}>
-                  <Text style={[styles.ticketId, tokenStyles.muted]}>
-                    {ticket.ticketNumber}
-                  </Text>
-                  <Text
-                    numberOfLines={1}
-                    style={[styles.ticketTitle, tokenStyles.foreground]}
-                  >
-                    {ticket.subject}
-                  </Text>
-                  <Text style={[styles.ticketMeta, tokenStyles.muted]}>
-                    {ticket.priority}
-                  </Text>
-                </View>
-                <View style={styles.ticketRight}>
-                  <View
-                    accessibilityLabel={`Status: ${ticket.status}`}
-                    style={[
-                      styles.status,
-                      {
-                        backgroundColor: ticket.resolved
-                          ? colors.successSoft
-                          : colors.primarySoft,
-                      },
-                    ]}
-                  >
-                    <Ionicons
-                      color={
-                        ticket.resolved ? colors.success : colors.primaryText
-                      }
-                      name={
-                        ticket.resolved
-                          ? "checkmark-circle-outline"
-                          : "time-outline"
-                      }
-                      size={13}
-                    />
-                    <Text
-                      style={{
-                        color: ticket.resolved
-                          ? colors.success
-                          : colors.primaryText,
-                        fontSize: 10,
-                        fontWeight: "800",
-                      }}
-                    >
-                      {ticket.status}
-                    </Text>
-                  </View>
-                  <Ionicons
-                    color={colors.subtle}
-                    name="chevron-forward"
-                    size={18}
-                  />
-                </View>
-              </Pressable>
-            ))}
-          </View>
-        )}
       </ScrollView>
     </ScreenContainer>
   );
@@ -904,17 +936,25 @@ function SectionTitle({
   );
 }
 
-function MiniMetric({ label, value }: { label: string; value: string }) {
+function HeroKpi({ label, value }: { label: string; value: string }) {
   const colors = useAppColors();
   const styles = useStyles();
   return (
     <View
-      style={[styles.miniMetric, { backgroundColor: colors.surfaceSubtle }]}
+      accessible
+      accessibilityLabel={`${label}: ${value}`}
+      style={styles.heroKpi}
     >
-      <Text style={[styles.miniMetricValue, { color: colors.foreground }]}>
+      <Text
+        numberOfLines={1}
+        style={[styles.heroKpiValue, { color: colors.onPrimary }]}
+      >
         {value}
       </Text>
-      <Text style={[styles.miniMetricLabel, { color: colors.muted }]}>
+      <Text
+        numberOfLines={2}
+        style={[styles.heroKpiLabel, { color: colors.onPrimary }]}
+      >
         {label}
       </Text>
     </View>
@@ -1061,6 +1101,20 @@ const useStyles = makeThemedStyles(() => ({
     letterSpacing: 1.3,
     opacity: 0.86,
   },
+  heroKpi: { flex: 1, gap: 4, minWidth: 0, paddingHorizontal: 7 },
+  heroKpiDivider: { opacity: 0.28, width: 1 },
+  heroKpiLabel: {
+    fontSize: 10,
+    fontWeight: "700",
+    lineHeight: 13,
+    opacity: 0.76,
+  },
+  heroKpis: {
+    alignItems: "stretch",
+    flexDirection: "row",
+    marginHorizontal: -7,
+  },
+  heroKpiValue: { fontSize: 18, fontWeight: "900", letterSpacing: -0.3 },
   heroTitle: { fontSize: 27, fontWeight: "800", letterSpacing: -0.5 },
   list: { gap: 9 },
   loadingText: { fontSize: 14 },
@@ -1068,16 +1122,6 @@ const useStyles = makeThemedStyles(() => ({
   metricLabel: { fontSize: 11, fontWeight: "600" },
   metricValue: { fontSize: 22, fontWeight: "800", marginTop: 2 },
   metrics: { flexDirection: "row", gap: 10 },
-  miniMetric: {
-    borderRadius: 12,
-    flexGrow: 1,
-    gap: 3,
-    minWidth: "45%",
-    padding: 11,
-  },
-  miniMetricLabel: { fontSize: 10, fontWeight: "700" },
-  miniMetricValue: { fontSize: 17, fontWeight: "900" },
-  agentMetricsGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   retryText: { fontSize: 13, fontWeight: "800" },
   sectionEyebrow: {
     fontSize: 11,
@@ -1102,6 +1146,18 @@ const useStyles = makeThemedStyles(() => ({
   sectionTitle: { fontSize: 19, fontWeight: "800" },
   sectionTitleCopy: { flex: 1, minWidth: 0 },
   sectionTitleRow: { alignItems: "center", flexDirection: "row", gap: 9 },
+  showAllTickets: {
+    alignItems: "center",
+    alignSelf: "center",
+    borderRadius: 12,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 6,
+    marginTop: 3,
+    paddingHorizontal: 13,
+    paddingVertical: 10,
+  },
+  showAllTicketsText: { fontSize: 13, fontWeight: "800" },
   status: {
     alignItems: "center",
     borderRadius: 8,

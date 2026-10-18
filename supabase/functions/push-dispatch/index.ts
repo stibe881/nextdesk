@@ -63,6 +63,7 @@ function category(
   | "approval"
   | "escalation"
   | "sla"
+  | "follow_up"
   | null {
   if (kind === "ticket.assigned") return "assigned";
   if (kind === "ticket.requester_reply") return "requester_reply";
@@ -71,6 +72,7 @@ function category(
   if (kind === "ticket.resolved") return "resolved";
   if (kind === "ticket.approval.requested") return "approval";
   if (kind === "ticket.escalation_opened") return "escalation";
+  if (kind === "ticket.follow_up_due") return "follow_up";
   return kind.startsWith("ticket.sla.") ? "sla" : null;
 }
 

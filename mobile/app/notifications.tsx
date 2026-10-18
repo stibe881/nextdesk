@@ -85,6 +85,11 @@ const CATEGORY_DETAILS: readonly {
     description: "Wenn ein relevantes Ticket eskaliert wird.",
   },
   {
+    key: "follow_up",
+    label: "Wiedervorlagen",
+    description: "Erinnerung zum gesetzten Termin.",
+  },
+  {
     key: "sla",
     label: "SLA-Hinweise",
     description: "Wenn eine SLA-Frist Aufmerksamkeit braucht.",

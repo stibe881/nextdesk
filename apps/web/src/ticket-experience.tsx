@@ -3,6 +3,7 @@ import {
   Check,
   CircleCheck,
   LoaderCircle,
+  Pencil,
   ThumbsDown,
   ThumbsUp,
   X,
@@ -263,17 +264,25 @@ function toLocalDateTimeInput(date: Date): string {
   )}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
-function quickDueAt(kind: "tomorrow" | "three-days" | "next-week"): string {
+function minimumDueAt(): string {
   const due = new Date();
   due.setSeconds(0, 0);
-  due.setHours(9, 0, 0, 0);
-  if (kind === "tomorrow") {
+  due.setMinutes(due.getMinutes() + 1);
+  return toLocalDateTimeInput(due);
+}
+
+function quickDueAt(kind: "one-hour" | "tomorrow" | "monday"): string {
+  const due = new Date();
+  due.setSeconds(0, 0);
+  if (kind === "one-hour") {
+    due.setHours(due.getHours() + 1);
+  } else if (kind === "tomorrow") {
     due.setDate(due.getDate() + 1);
-  } else if (kind === "three-days") {
-    due.setDate(due.getDate() + 3);
+    due.setHours(8, 0, 0, 0);
   } else {
     const daysUntilMonday = (8 - due.getDay()) % 7 || 7;
     due.setDate(due.getDate() + daysUntilMonday);
+    due.setHours(8, 0, 0, 0);
   }
   return toLocalDateTimeInput(due);
 }
@@ -332,6 +341,7 @@ export function TicketFollowUps({
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [dueAt, setDueAt] = useState("");
+  const [editingFollowUp, setEditingFollowUp] = useState<FollowUp | null>(null);
   const [pending, setPending] = useState<FollowUpPending>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -379,6 +389,7 @@ export function TicketFollowUps({
     setTitle(defaultFollowUpTitle(ticketNumber, subject));
     setDescription("");
     setDueAt("");
+    setEditingFollowUp(null);
     setPending(null);
     setError("");
     setNotice("");
@@ -388,6 +399,28 @@ export function TicketFollowUps({
       requestSequence.current += 1;
     };
   }, [enabled, loadFollowUps, subject, ticketNumber]);
+
+  function editFollowUp(followUp: FollowUp) {
+    setEditingFollowUp(followUp);
+    setTitle(followUp.title);
+    setDescription(followUp.description ?? "");
+    setDueAt(
+      followUp.dueAt && !Number.isNaN(new Date(followUp.dueAt).getTime())
+        ? toLocalDateTimeInput(new Date(followUp.dueAt))
+        : "",
+    );
+    setError("");
+    setNotice("");
+  }
+
+  function resetFollowUpForm() {
+    setEditingFollowUp(null);
+    setTitle(defaultFollowUpTitle(ticketNumber, subject));
+    setDescription("");
+    setDueAt("");
+    setError("");
+    setNotice("");
+  }
 
   async function saveFollowUp(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -406,7 +439,12 @@ export function TicketFollowUps({
       );
       return;
     }
+    if (due && due.getTime() <= Date.now()) {
+      setError("Der Termin muss in der Zukunft liegen.");
+      return;
+    }
 
+    const editingFollowUpId = editingFollowUp?.id;
     setPending("save");
     setError("");
     setNotice("");
@@ -417,12 +455,16 @@ export function TicketFollowUps({
         title: nextTitle,
         description: nextDescription || null,
         dueAt: due ? due.toISOString() : null,
+        ...(editingFollowUpId ? { followUpId: editingFollowUpId } : {}),
         priority: "normal",
         ticketId,
       });
-      setDescription("");
-      setDueAt("");
-      setNotice("Wiedervorlage wurde für Sie gespeichert.");
+      resetFollowUpForm();
+      setNotice(
+        editingFollowUpId
+          ? "Wiedervorlage wurde aktualisiert."
+          : "Wiedervorlage wurde für Sie gespeichert.",
+      );
       await loadFollowUps();
     } catch (nextError) {
       const status = functionErrorStatus(nextError);
@@ -476,6 +518,7 @@ export function TicketFollowUps({
         disabled={pending !== null}
         onClick={() => {
           setExpanded((current) => !current);
+          if (expanded) setEditingFollowUp(null);
           setError("");
           setNotice("");
         }}
@@ -494,7 +537,11 @@ export function TicketFollowUps({
           <div className="ticket-experience__popover-heading">
             <div>
               <p className="eyebrow">MEINE ARBEIT</p>
-              <h3 id={`${formId}-heading`}>Wiedervorlage setzen</h3>
+              <h3 id={`${formId}-heading`}>
+                {editingFollowUp
+                  ? "Wiedervorlage ändern"
+                  : "Wiedervorlage setzen"}
+              </h3>
             </div>
             <button
               aria-label="Wiedervorlage schliessen"
@@ -524,22 +571,25 @@ export function TicketFollowUps({
             <div className="ticket-experience__quick-dates" role="group">
               <span>Termin schnell wählen</span>
               <button
+                disabled={pending !== null}
+                onClick={() => setDueAt(quickDueAt("one-hour"))}
+                type="button"
+              >
+                In 1 Stunde
+              </button>
+              <button
+                disabled={pending !== null}
                 onClick={() => setDueAt(quickDueAt("tomorrow"))}
                 type="button"
               >
-                Morgen 09:00
+                Morgen 08:00
               </button>
               <button
-                onClick={() => setDueAt(quickDueAt("three-days"))}
+                disabled={pending !== null}
+                onClick={() => setDueAt(quickDueAt("monday"))}
                 type="button"
               >
-                In 3 Tagen
-              </button>
-              <button
-                onClick={() => setDueAt(quickDueAt("next-week"))}
-                type="button"
-              >
-                Nächste Woche
+                Montag 08:00
               </button>
             </div>
             <label>
@@ -553,9 +603,10 @@ export function TicketFollowUps({
               />
             </label>
             <label>
-              Eigener Termin (optional)
+              Termin (optional)
               <input
                 disabled={pending !== null}
+                min={minimumDueAt()}
                 onChange={(event) => setDueAt(event.target.value)}
                 type="datetime-local"
                 value={dueAt}
@@ -613,23 +664,34 @@ export function TicketFollowUps({
                         </span>
                         {followUp.description && <p>{followUp.description}</p>}
                       </div>
-                      <button
-                        className="secondary-button"
-                        disabled={pending !== null}
-                        onClick={() => void resolveFollowUp(followUp)}
-                        type="button"
-                      >
-                        {resolving ? (
-                          <LoaderCircle
-                            aria-hidden="true"
-                            className="ticket-detail-spinner"
-                            size={16}
-                          />
-                        ) : (
-                          <Check aria-hidden="true" size={16} />
-                        )}
-                        Erledigen
-                      </button>
+                      <div className="ticket-experience__follow-up-actions">
+                        <button
+                          className="secondary-button"
+                          disabled={pending !== null}
+                          onClick={() => editFollowUp(followUp)}
+                          type="button"
+                        >
+                          <Pencil aria-hidden="true" size={16} />
+                          Ändern
+                        </button>
+                        <button
+                          className="secondary-button"
+                          disabled={pending !== null}
+                          onClick={() => void resolveFollowUp(followUp)}
+                          type="button"
+                        >
+                          {resolving ? (
+                            <LoaderCircle
+                              aria-hidden="true"
+                              className="ticket-detail-spinner"
+                              size={16}
+                            />
+                          ) : (
+                            <Check aria-hidden="true" size={16} />
+                          )}
+                          Erledigt
+                        </button>
+                      </div>
                     </li>
                   );
                 })}

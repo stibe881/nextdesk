@@ -22,12 +22,28 @@ export const PUSH_CATEGORIES = [
   "resolved",
   "approval",
   "escalation",
+  "follow_up",
   "sla",
 ] as const;
 
 export type PushCategory = (typeof PUSH_CATEGORIES)[number];
 export type PushEnvironment = "development" | "production";
 export type PushContentLevel = "minimal" | "subject";
+
+export function pushNotificationKindLabel(kind: string): string | null {
+  if (kind === "ticket.follow_up_due") return "Wiedervorlage fällig";
+  return null;
+}
+
+/** The notification center renders this beneath the kind label when available. */
+export function pushNotificationSecondaryText(
+  kind: string,
+  payload: unknown,
+): string | null {
+  if (kind !== "ticket.follow_up_due" || !isRecord(payload)) return null;
+  const title = payload.title;
+  return typeof title === "string" && title.trim() ? title.trim() : null;
+}
 
 export type WorkHours = {
   required: boolean;
@@ -139,6 +155,35 @@ const APNS_TOKEN_PATTERN = /^[a-f0-9]{64,200}$/i;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function knownPushCategories(value: unknown): PushCategory[] {
+  if (!Array.isArray(value)) return [];
+  const known = new Set<string>(PUSH_CATEGORIES);
+  return [
+    ...new Set(
+      value.filter((item): item is string => typeof item === "string"),
+    ),
+  ].filter((item): item is PushCategory => known.has(item));
+}
+
+function normalizePushPreferences(
+  preferences: PushPreferences,
+): PushPreferences {
+  return {
+    ...preferences,
+    enabledCategories: knownPushCategories(preferences?.enabledCategories),
+  };
+}
+
+function normalizePushNotificationStatus(
+  status: PushNotificationStatus,
+): PushNotificationStatus {
+  return {
+    ...status,
+    applicableCategories: knownPushCategories(status.applicableCategories),
+    preferences: normalizePushPreferences(status.preferences),
+  };
 }
 
 function dataFromEnvelope<T>(value: unknown): T {
@@ -266,10 +311,12 @@ async function requestPushPermissionFromPerson(): Promise<void> {
 export async function getPushNotificationStatus(
   tenantId: string,
 ): Promise<PushNotificationStatus> {
-  return invokePushNotifications<PushNotificationStatus>({
-    type: "getStatus",
-    tenantId,
-  });
+  return normalizePushNotificationStatus(
+    await invokePushNotifications<PushNotificationStatus>({
+      type: "getStatus",
+      tenantId,
+    }),
+  );
 }
 
 export async function registerPushDevice(input: {
@@ -306,7 +353,9 @@ export async function updatePushPreferences(input: {
   preferences: PushPreferences;
 }): Promise<{ preferences: PushPreferences }> {
   const { preferences } = input;
-  return invokePushNotifications<{ preferences: PushPreferences }>({
+  const result = await invokePushNotifications<{
+    preferences: PushPreferences;
+  }>({
     type: "updatePreferences",
     tenantId: input.tenantId,
     enabledCategories: preferences.enabledCategories,
@@ -315,6 +364,7 @@ export async function updatePushPreferences(input: {
     quietEnd: preferences.quietEnd,
     timezone: preferences.timezone,
   });
+  return { preferences: normalizePushPreferences(result.preferences) };
 }
 
 export async function sendPushTest(

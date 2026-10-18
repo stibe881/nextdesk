@@ -65,6 +65,7 @@ const expectedFiles = [
   "0060_push_notifications.sql",
   "0061_exchange_online_mail.sql",
   "0062_push_work_checkins.sql",
+  "0063_follow_up_reminders.sql",
 ];
 
 const availableFiles = await readdir(migrationDirectory);
@@ -604,6 +605,15 @@ const requiredFragments = [
     "create or replace function public.push_work_state",
   ],
   ["0062_push_work_checkins.sql", "last_error = 'off_shift'"],
+  [
+    "0063_follow_up_reminders.sql",
+    "add column if not exists reminder_sent_at timestamptz",
+  ],
+  [
+    "0063_follow_up_reminders.sql",
+    "create or replace function public.follow_up_send_due_reminders()",
+  ],
+  ["0063_follow_up_reminders.sql", "'nextdesk-follow-up-reminders'"],
 ];
 
 for (const [migration, fragment] of requiredFragments) {

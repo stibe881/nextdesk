@@ -6,8 +6,8 @@ Dieser Vertrag ist verbindlich für Datenbank (Migration `0060_push_notification
 
 - Zustellung **direkt über Apple Push Notification service (APNs)** mit Token-Authentifizierung (ES256-JWT aus einem `.p8`-Schlüssel). Kein Expo Push Service, kein weiterer Drittanbieter. Einziger zusätzlicher Empfänger von Push-Inhalten ist Apple.
 - Fail-closed: Mandanten-Feature `notifications.push` (Katalogeintrag, `default_enabled = false`, für alle bestehenden Mandanten deaktiviert angelegt). Ohne aktives Feature werden weder Geräte registriert noch Pushes eingereiht oder gesendet. Die Abmeldung eines Geräts ist immer erlaubt.
-- Datensparsam: Push-Texte enthalten standardmässig nur Ereignisart und Ticketnummer, nie Nachrichtentexte, Beschreibungen, Namen oder E-Mail-Adressen. Der Ticketbetreff erscheint nur, wenn der Mandant `contentLevel = "subject"` gewählt hat.
-- Keine Scheduler: Versand ist ereignisgetrieben (Datenbank-Trigger → `pg_net` → `push-dispatch`). Kein Cron, keine Wiederholung über Zeitpläne. Fehlgeschlagene Sendungen werden beim nächsten Ereignis höchstens bis zu drei Versuche erneut versucht.
+- Datensparsam: Push-Texte enthalten standardmässig nur Ereignisart und bei ticketgebundenen Benachrichtigungen die Ticketnummer, nie Nachrichtentexte, Beschreibungen, Namen oder E-Mail-Adressen. Der Ticketbetreff erscheint nur, wenn der Mandant `contentLevel = "subject"` gewählt hat.
+- Der Versand bleibt ereignisgetrieben (Datenbank-Trigger → `pg_net` → `push-dispatch`). Fällige Wiedervorlagen werden zusätzlich jede Minute durch `pg_cron` in In-App-Benachrichtigungen überführt. Fehlgeschlagene Sendungen werden beim nächsten Ereignis höchstens bis zu drei Versuche erneut versucht.
 - Selbstauslösung wird nie gemeldet (Akteur = Empfänger → keine Benachrichtigung).
 - Die In-App-Benachrichtigungen (`public.ticket_notifications`) bleiben die Quelle. Jeder Push gehört zu genau einer In-App-Benachrichtigung.
 
@@ -33,21 +33,28 @@ Bundle-ID / `apns-topic`: `ch.grossict.nextdesk`. Hosts: `production` → `https
 | `ticket.approval.requested`            | `approval`        | aktive Mitglieder mit `ticket.approval.decide` für Mandant/Abteilung des Tickets, ohne Anfragesteller, maximal 25 | `ticket_approval_requests` INSERT mit offenem Status                                                          |
 | `ticket.escalation_opened` (bestehend) | `escalation`      | bestehende Logik                                                                                                  | bestehend                                                                                                     |
 | `ticket.sla.*` (bestehend)             | `sla`             | bestehende Logik                                                                                                  | bestehend                                                                                                     |
+| `ticket.follow_up_due`                 | `follow_up`       | Eigentümer der aktiven, ticketgebundenen Wiedervorlage                                                            | `nextdesk-follow-up-reminders` bei Fälligkeit, höchstens einmal                                               |
 
-In-App-`payload` enthält höchstens `ticketNumber` sowie technische IDs (z. B. `commentId`, `approvalId`). Keine Texte.
+In-App-`payload` enthält höchstens `ticketNumber` sowie technische IDs (z. B. `commentId`, `approvalId`). `ticket.follow_up_due` enthält zusätzlich `followUpId`, `title` und `dueAt`; Titel und Fälligkeit bleiben innerhalb von nextDesk und gelangen nicht in die APNs-Nutzlast.
 
-Agentenkategorien: `assigned`, `requester_reply`, `mention`, `sla`, `escalation`, `approval`. Anfragendenkategorien: `support_reply`, `resolved`, `approval`. Der Server liefert pro Person `applicableCategories` (Agent = Person besitzt im Mandanten mindestens eine Agentenberechtigung wie `ticket.read.assigned` oder `ticket.read.department`, sonst Anfragendenkategorien).
+Agentenkategorien: `assigned`, `requester_reply`, `mention`, `sla`, `escalation`, `approval`, `follow_up`. Anfragendenkategorien: `support_reply`, `resolved`, `approval`. Der Server liefert pro Person `applicableCategories` (Agent = Person besitzt im Mandanten mindestens eine Agentenberechtigung wie `ticket.read.assigned` oder `ticket.read.department`, sonst Anfragendenkategorien).
 
-## Datenmodell (Migration 0060)
+## Datenmodell (Migrationen 0060 und 0063)
 
 - `public.push_devices` – `id`, `tenant_id`, `user_id`, `platform` (`ios`), `apns_token` (hex, eindeutig über alle Zeilen; eine Registrierung übernimmt den Token), `apns_environment` (`production`/`development`), `app_version`, `app_build`, `device_name` (max. 80, nur Modellbezeichnung), `enabled`, `disabled_reason`, `last_registered_at`, `last_sent_at`, `created_at`, `updated_at`. RLS: Lesen nur eigene Zeilen als aktives Mitglied; keine direkten Schreibrechte für `anon`/`authenticated`.
-- `public.push_preferences` – PK (`tenant_id`, `user_id`), `enabled_categories text[]` (Standard: alle acht Kategorien), `quiet_hours_enabled` (Standard `false`), `quiet_start smallint` (Stunde 0–23, Standard 22), `quiet_end smallint` (Standard 7), `timezone` (Standard `Europe/Zurich`), `last_test_at`, `updated_at`. RLS: Lesen nur eigene Zeile; Schreiben nur über Function.
+- `public.push_preferences` – PK (`tenant_id`, `user_id`), `enabled_categories text[]` (Standard: alle neun Kategorien), `quiet_hours_enabled` (Standard `false`), `quiet_start smallint` (Stunde 0–23, Standard 22), `quiet_end smallint` (Standard 7), `timezone` (Standard `Europe/Zurich`), `last_test_at`, `updated_at`. RLS: Lesen nur eigene Zeile; Schreiben nur über Function.
 - `public.push_outbox` – `id`, `tenant_id`, `user_id`, `notification_id` (eindeutig, FK `ticket_notifications` cascade), `status` (`pending`/`sending`/`sent`/`failed`/`skipped`), `attempts`, `last_error` (nur Code, max. 200), `created_at`, `claimed_at`, `sent_at`. RLS aktiv, keine Policies (nur Service).
 - Privates Schema `push_private` mit Singleton `dispatch_config` (`dispatch_secret`, zufällig bei Anwendung erzeugt, nie in Git; `function_url`). Keine Rechte für `anon`/`authenticated`.
 - Mandanteneinstellung in `tenant_features.configuration` des Features `notifications.push`: `{ "contentLevel": "minimal" | "subject" }`, Standard `minimal`.
 - Trigger auf `ticket_notifications` INSERT reiht nur ein, wenn Feature aktiv (fail-closed, identische Semantik wie `_shared/tenant-features.ts` inklusive Pilotablauf), Empfänger aktives Mitglied, mindestens ein aktives Gerät im Mandanten und Kategorie in den Präferenzen aktiv. Ein Statement-Trigger auf `push_outbox` ruft pro Statement einmal `net.http_post` auf `push-dispatch` mit Header `x-nextdesk-push-secret` auf. Fehlt `pg_net` (lokale Tests), wird kein Aufruf ausgeführt und nichts schlägt fehl.
 - Benachrichtigungs-Trigger dürfen die eigentliche Ticketoperation nie zum Scheitern bringen.
 - RPCs nur für `service_role`: `push_verify_dispatch_secret(text)`, `push_claim_outbox(int)` (FOR UPDATE SKIP LOCKED, holt `pending` und über fünf Minuten alte `sending`, Versuche < 3, prüft Mitgliedschaft und Feature beim Versand erneut, liefert Ticketnummer, optional Betreff, aktive Geräte und Ruhezeitstatus).
+
+## Fällige Wiedervorlagen (Migration 0063)
+
+- `experience_follow_ups.reminder_sent_at` verhindert doppelte Erinnerungen. Eine Änderung von `due_at` oder das Wiedereröffnen einer erledigten Wiedervorlage setzt den Wert zurück.
+- Der idempotente `pg_cron`-Auftrag `nextdesk-follow-up-reminders` führt jede Minute `select public.follow_up_send_due_reminders();` aus. Ohne verfügbares oder erlaubtes `pg_cron` bleibt die Migration anwendbar.
+- Die Funktion verarbeitet höchstens 500 fällige, offene Wiedervorlagen mit `FOR UPDATE SKIP LOCKED`. Einträge, die länger als 24 Stunden überfällig sind, sowie ticketlose Wiedervorlagen werden ohne Benachrichtigung als verarbeitet markiert. Nur ticketgebundene Einträge erzeugen `ticket.follow_up_due`; die bestehende Push-Pipeline prüft weiterhin Mitgliedschaft, Feature, Gerät, Kategorie, Arbeitszeit und Ruhezeit.
 
 ## Edge Function `push-notifications` (angemeldet, CORS wie bestehende Functions)
 
@@ -95,18 +102,19 @@ Fehlercodes u. a.: `invalid_request`, `not_authenticated`, `tenant_access_denied
 
 Header: `apns-topic: ch.grossict.nextdesk`, `apns-push-type: alert`, `apns-priority: 10`, `apns-expiration` = jetzt + 24 h, `apns-collapse-id` = Notification-ID (max. 64 Byte). Die eigenen Daten stehen unter `body`, damit `expo-notifications` sie als `notification.request.content.data` bereitstellt. Sammel-Push: `body.kind = "summary"`, ohne `ticketId`.
 
-| Kategorie       | Titel               | Text (minimal)                                         | Text mit Betreff                         |
-| --------------- | ------------------- | ------------------------------------------------------ | ---------------------------------------- |
-| assigned        | Ticket zugewiesen   | `{nr}` wurde dir zugewiesen.                           | `{nr}` wurde dir zugewiesen: `{betreff}` |
-| requester_reply | Neue Nachricht      | Neue Antwort der anfragenden Person in `{nr}`.         | … in `{nr}`: `{betreff}`                 |
-| support_reply   | Antwort vom Support | Es gibt eine neue Antwort zu deinem Ticket `{nr}`.     | … `{nr}`: `{betreff}`                    |
-| mention         | Du wurdest erwähnt  | Du wurdest in `{nr}` in einer internen Notiz erwähnt.  | … `{nr}`: `{betreff}`                    |
-| resolved        | Ticket gelöst       | `{nr}` wurde gelöst. Bitte bestätige die Lösung.       | `{nr}` wurde gelöst: `{betreff}`         |
-| approval        | Freigabe benötigt   | Für `{nr}` wird deine Freigabe benötigt.               | … `{nr}`: `{betreff}`                    |
-| escalation      | Ticket eskaliert    | `{nr}` wurde eskaliert.                                | `{nr}` wurde eskaliert: `{betreff}`      |
-| sla             | SLA-Hinweis         | Für `{nr}` ist eine SLA-Frist betroffen.               | … `{nr}`: `{betreff}`                    |
-| summary         | nextDesk            | `{n}` neue Hinweise zu deinen Tickets.                 | gleich                                   |
-| test            | nextDesk            | Testmitteilung: Push-Benachrichtigungen funktionieren. | gleich                                   |
+| Kategorie       | Titel                | Text (minimal)                                         | Text mit Betreff                                     |
+| --------------- | -------------------- | ------------------------------------------------------ | ---------------------------------------------------- |
+| assigned        | Ticket zugewiesen    | `{nr}` wurde dir zugewiesen.                           | `{nr}` wurde dir zugewiesen: `{betreff}`             |
+| requester_reply | Neue Nachricht       | Neue Antwort der anfragenden Person in `{nr}`.         | … in `{nr}`: `{betreff}`                             |
+| support_reply   | Antwort vom Support  | Es gibt eine neue Antwort zu deinem Ticket `{nr}`.     | … `{nr}`: `{betreff}`                                |
+| mention         | Du wurdest erwähnt   | Du wurdest in `{nr}` in einer internen Notiz erwähnt.  | … `{nr}`: `{betreff}`                                |
+| resolved        | Ticket gelöst        | `{nr}` wurde gelöst. Bitte bestätige die Lösung.       | `{nr}` wurde gelöst: `{betreff}`                     |
+| approval        | Freigabe benötigt    | Für `{nr}` wird deine Freigabe benötigt.               | … `{nr}`: `{betreff}`                                |
+| escalation      | Ticket eskaliert     | `{nr}` wurde eskaliert.                                | `{nr}` wurde eskaliert: `{betreff}`                  |
+| sla             | SLA-Hinweis          | Für `{nr}` ist eine SLA-Frist betroffen.               | … `{nr}`: `{betreff}`                                |
+| follow_up       | Wiedervorlage fällig | Eine Wiedervorlage ist fällig.                         | Eine Wiedervorlage zu `{nr}` ist fällig: `{betreff}` |
+| summary         | nextDesk             | `{n}` neue Hinweise zu deinen Tickets.                 | gleich                                               |
+| test            | nextDesk             | Testmitteilung: Push-Benachrichtigungen funktionieren. | gleich                                               |
 
 Betreff im Push höchstens 80 Zeichen, sonst gekürzt mit „…“.
 

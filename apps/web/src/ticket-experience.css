@@ -197,6 +197,17 @@
   font-size: 12px;
 }
 
+.ticket-experience__follow-up-actions {
+  display: grid;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+.ticket-experience__follow-up-actions button {
+  justify-content: center;
+  min-width: 88px;
+}
+
 .ticket-experience__resolution {
   display: grid;
   gap: 18px;

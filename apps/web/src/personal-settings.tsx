@@ -19,7 +19,10 @@ import {
   checkIn,
   checkOut,
   getStatus,
+  pushCategoryMeta,
   pushNotificationsRequest,
+  updatePreferences,
+  type PushCategory,
   type PushDevice,
   type PushStatus,
   type WorkHours,
@@ -181,6 +184,8 @@ export function PersonalSettings({
   const [pushAction, setPushAction] = useState<"check-in" | "check-out" | null>(
     null,
   );
+  const [pushPreferenceSaving, setPushPreferenceSaving] =
+    useState<PushCategory | null>(null);
   const provider = providerSummary(user, ssoEnforced);
   const email = user.email?.trim() || "Keine E-Mail-Adresse hinterlegt";
 
@@ -191,6 +196,7 @@ export function PersonalSettings({
       setPushMessage("");
       setPendingDeviceRemoval(null);
       setPushAction(null);
+      setPushPreferenceSaving(null);
       return;
     }
 
@@ -289,6 +295,40 @@ export function PersonalSettings({
       );
     } finally {
       setPushAction(null);
+    }
+  }
+
+  async function togglePushCategory(category: PushCategory) {
+    if (!tenantId || !pushStatus || pushPreferenceSaving !== null) return;
+
+    const enabledCategories = new Set(pushStatus.preferences.enabledCategories);
+    if (enabledCategories.has(category)) {
+      enabledCategories.delete(category);
+    } else {
+      enabledCategories.add(category);
+    }
+
+    setPushPreferenceSaving(category);
+    setPushMessage("");
+    try {
+      const preferences = await updatePreferences(tenantId, {
+        ...pushStatus.preferences,
+        enabledCategories: [...enabledCategories],
+      });
+      setPushStatus((current) =>
+        current ? { ...current, preferences } : current,
+      );
+      setPushMessageKind("success");
+      setPushMessage("Ihre Push-Einstellungen wurden gespeichert.");
+    } catch (error) {
+      setPushMessageKind("error");
+      setPushMessage(
+        error instanceof Error && error.message
+          ? error.message
+          : "Die Push-Einstellungen konnten nicht gespeichert werden. Bitte versuchen Sie es später erneut.",
+      );
+    } finally {
+      setPushPreferenceSaving(null);
     }
   }
 
@@ -618,6 +658,51 @@ export function PersonalSettings({
                   )}
                 </div>
               ) : null}
+            </section>
+          ) : null}
+          {pushStatusState === "loaded" &&
+          pushStatus &&
+          pushStatus.applicableCategories.length > 0 ? (
+            <section
+              aria-labelledby="personal-push-categories-heading"
+              className="personal-settings__push-categories"
+            >
+              <div>
+                <h4 id="personal-push-categories-heading">
+                  Benachrichtigungen
+                </h4>
+                <p className="personal-settings__hint">
+                  Wählen Sie, worüber Sie auf Ihren registrierten Geräten
+                  informiert werden möchten.
+                </p>
+              </div>
+              <ul>
+                {pushStatus.applicableCategories.map((category) => {
+                  const meta = pushCategoryMeta[category];
+                  const enabled =
+                    pushStatus.preferences.enabledCategories.includes(category);
+                  const saving = pushPreferenceSaving === category;
+                  return (
+                    <li key={category}>
+                      <label>
+                        <input
+                          checked={enabled}
+                          disabled={pushPreferenceSaving !== null}
+                          onChange={() => void togglePushCategory(category)}
+                          type="checkbox"
+                        />
+                        <span>
+                          <strong>{meta.label}</strong>
+                          <small>{meta.description}</small>
+                        </span>
+                      </label>
+                      {saving ? (
+                        <span aria-live="polite">Speichert …</span>
+                      ) : null}
+                    </li>
+                  );
+                })}
+              </ul>
             </section>
           ) : null}
           {pushStatusState === "loaded" && pushStatus?.devices.length === 0 ? (

@@ -1,3 +1,4 @@
+import DateTimePicker from "@react-native-community/datetimepicker";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -29,7 +30,10 @@ import {
   confirmResolution,
   ExperienceHubError,
   isExperienceUnavailableError,
+  listFollowUps,
+  resolveFollowUp,
   saveFollowUp,
+  type ExperienceFollowUp,
 } from "@/lib/nextdesk-experience";
 import {
   assignTicketAgent,
@@ -74,28 +78,97 @@ import {
   type TicketCommentVisibility,
 } from "@/lib/nextdesk-tickets";
 
-type FollowUpDueChoice = "today" | "tomorrow" | "week" | "none";
-
-function followUpDueAt(choice: FollowUpDueChoice): string | null {
-  if (choice === "none") return null;
-  const due = new Date();
-  due.setHours(12, 0, 0, 0);
-  if (choice === "tomorrow") due.setDate(due.getDate() + 1);
-  if (choice === "week") due.setDate(due.getDate() + 7);
-  return due.toISOString();
+function roundUpToFiveMinutes(value: Date): Date {
+  const rounded = new Date(value);
+  rounded.setSeconds(0, 0);
+  const remainder = rounded.getMinutes() % 5;
+  if (remainder) rounded.setMinutes(rounded.getMinutes() + (5 - remainder));
+  return rounded;
 }
 
-function followUpDueLabel(choice: FollowUpDueChoice): string {
-  switch (choice) {
-    case "tomorrow":
-      return "morgen";
-    case "week":
-      return "in einer Woche";
-    case "none":
-      return "ohne Termin";
-    default:
-      return "heute";
-  }
+function oneHourFromNow(): Date {
+  return roundUpToFiveMinutes(new Date(Date.now() + 60 * 60 * 1_000));
+}
+
+function atTimeFromToday(daysFromToday: number, hour: number): Date {
+  const due = new Date();
+  due.setDate(due.getDate() + daysFromToday);
+  due.setHours(hour, 0, 0, 0);
+  return due;
+}
+
+function nextMondayAtEight(): Date {
+  const due = new Date();
+  const daysUntilMonday = (8 - due.getDay()) % 7 || 7;
+  due.setDate(due.getDate() + daysUntilMonday);
+  due.setHours(8, 0, 0, 0);
+  return due;
+}
+
+function followUpDate(value: string | null): Date | null {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function followUpWeekday(value: Date): string {
+  const weekday = new Intl.DateTimeFormat("de-CH", {
+    weekday: "short",
+  }).format(value);
+  return weekday.endsWith(".") ? weekday : `${weekday}.`;
+}
+
+function followUpDayMonth(value: Date): string {
+  return new Intl.DateTimeFormat("de-CH", {
+    day: "2-digit",
+    month: "2-digit",
+  }).format(value);
+}
+
+function followUpTime(value: Date): string {
+  return new Intl.DateTimeFormat("de-CH", {
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(value);
+}
+
+function followUpSummary(value: Date): string {
+  const date = new Intl.DateTimeFormat("de-CH", {
+    day: "2-digit",
+    month: "short",
+    weekday: "short",
+    year: "numeric",
+  }).format(value);
+  return `Erinnerung am ${date} um ${followUpTime(value)}`;
+}
+
+function compactFollowUpDate(value: string | null): string {
+  const date = followUpDate(value);
+  if (!date) return "Termin fehlt";
+  return `${followUpWeekday(date)}, ${followUpDayMonth(date)}, ${followUpTime(date)}`;
+}
+
+function followUpSuccessDate(value: Date): string {
+  return `${followUpWeekday(value)}, ${followUpDayMonth(value)} um ${followUpTime(value)}`;
+}
+
+function isOverdueFollowUp(followUp: ExperienceFollowUp): boolean {
+  const dueAt = followUpDate(followUp.dueAt);
+  return dueAt !== null && dueAt.getTime() < Date.now();
+}
+
+function sortedOpenFollowUps(
+  followUps: ExperienceFollowUp[],
+): ExperienceFollowUp[] {
+  return followUps
+    .filter((followUp) => !followUp.resolvedAt)
+    .sort((left, right) => {
+      const leftDate =
+        followUpDate(left.dueAt)?.getTime() ?? Number.MAX_SAFE_INTEGER;
+      const rightDate =
+        followUpDate(right.dueAt)?.getTime() ?? Number.MAX_SAFE_INTEGER;
+      return leftDate - rightDate;
+    });
 }
 
 function followUpTitle(ticket: MobileTicketDetail): string {
@@ -162,7 +235,7 @@ export default function TicketDetailScreen() {
   const selfServiceEnabled = isEnabled("portal.self-service");
   const agentWorkbenchEnabled = isEnabled("agent.workbench");
   const requesterPortalEnabled = isEnabled("requester.portal");
-  const { density, reducedMotion } = useThemeContext();
+  const { colorScheme, density, reducedMotion } = useThemeContext();
   const colors = useAppColors();
   const styles = useStyles();
   const tokenStyles = useMemo(
@@ -229,10 +302,20 @@ export default function TicketDetailScreen() {
   const [workspaceAvailable, setWorkspaceAvailable] = useState(true);
   const [selfServiceAvailable, setSelfServiceAvailable] = useState(true);
   const [followUpSheetOpen, setFollowUpSheetOpen] = useState(false);
-  const [followUpDueChoice, setFollowUpDueChoice] = useState<
-    "today" | "tomorrow" | "week" | "none"
-  >("today");
+  const [followUps, setFollowUps] = useState<ExperienceFollowUp[]>([]);
+  const [followUpDueAt, setFollowUpDueAt] = useState<Date>(() =>
+    oneHourFromNow(),
+  );
+  const [followUpNote, setFollowUpNote] = useState("");
+  const [editingFollowUp, setEditingFollowUp] =
+    useState<ExperienceFollowUp | null>(null);
+  const [showCustomDateTimePicker, setShowCustomDateTimePicker] =
+    useState(false);
+  const [followUpError, setFollowUpError] = useState("");
   const [savingFollowUp, setSavingFollowUp] = useState(false);
+  const [resolvingFollowUpId, setResolvingFollowUpId] = useState<string | null>(
+    null,
+  );
   const [resolutionSheetOpen, setResolutionSheetOpen] = useState(false);
   const [resolutionDecision, setResolutionDecision] = useState<boolean | null>(
     null,
@@ -412,6 +495,39 @@ export default function TicketDetailScreen() {
     agentWorkbenchEnabled &&
     agentWorkbenchAvailable &&
     Boolean(ticket?.canUpdate);
+
+  const loadOpenFollowUps = useCallback(async (ticketId: string) => {
+    const result = await listFollowUps({
+      includeResolved: false,
+      ticketId,
+    });
+    return sortedOpenFollowUps(result.followUps);
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    const task = setTimeout(() => {
+      if (!ticket?.id || !canSetFollowUp) {
+        if (active) setFollowUps([]);
+        return;
+      }
+      void loadOpenFollowUps(ticket.id)
+        .then((nextFollowUps) => {
+          if (active) setFollowUps(nextFollowUps);
+        })
+        .catch((nextError) => {
+          if (!active) return;
+          setFollowUps([]);
+          if (isExperienceUnavailableError(nextError)) {
+            setWorkspaceAvailable(false);
+          }
+        });
+    }, 0);
+    return () => {
+      active = false;
+      clearTimeout(task);
+    };
+  }, [canSetFollowUp, loadOpenFollowUps, ticket?.id]);
 
   useEffect(() => {
     if (!ticket || !canUseRequesterPortal) return;
@@ -827,45 +943,109 @@ export default function TicketDetailScreen() {
     }
   }
 
-  function openFollowUpSheet() {
-    setFollowUpDueChoice("today");
+  function openFollowUpSheet(followUp?: ExperienceFollowUp) {
+    const existingDueAt = followUp ? followUpDate(followUp.dueAt) : null;
+    setEditingFollowUp(followUp ?? null);
+    setFollowUpDueAt(
+      existingDueAt && existingDueAt.getTime() > Date.now()
+        ? existingDueAt
+        : oneHourFromNow(),
+    );
+    setFollowUpNote(followUp?.description ?? "");
+    setFollowUpError("");
+    setShowCustomDateTimePicker(false);
     setFollowUpSheetOpen(true);
     hapticSelection();
   }
 
-  async function createTicketFollowUp() {
+  function chooseFollowUpTime(value: Date) {
+    setFollowUpDueAt(value);
+    setShowCustomDateTimePicker(false);
+    setFollowUpError("");
+    hapticSelection();
+  }
+
+  async function saveTicketFollowUp() {
     if (!ticket) return;
+    if (followUpDueAt.getTime() <= Date.now()) {
+      setFollowUpError("Bitte wählen Sie einen zukünftigen Zeitpunkt.");
+      return;
+    }
+    const description = followUpNote.trim();
+    if (
+      description.includes("\u0000") ||
+      Array.from(description).length > 500
+    ) {
+      setFollowUpError("Die Notiz darf höchstens 500 Zeichen lang sein.");
+      return;
+    }
+
     setSavingFollowUp(true);
+    setFollowUpError("");
     setError("");
     setMessage("");
     try {
-      await saveFollowUp({
+      const { followUp } = await saveFollowUp({
+        ...(editingFollowUp ? { followUpId: editingFollowUp.id } : {}),
         title: followUpTitle(ticket),
-        description: null,
-        dueAt: followUpDueAt(followUpDueChoice),
+        description: description || null,
+        dueAt: followUpDueAt.toISOString(),
         priority: "normal",
         ticketId: ticket.id,
       });
+      setFollowUps((current) =>
+        sortedOpenFollowUps([
+          ...current.filter((entry) => entry.id !== followUp.id),
+          followUp,
+        ]),
+      );
       setFollowUpSheetOpen(false);
       setMessage(
-        `Wiedervorlage für dieses Ticket ${followUpDueLabel(followUpDueChoice)} gesetzt.`,
+        `Erinnerung für ${followUpSuccessDate(followUpDueAt)} gesetzt.`,
       );
       hapticSuccess();
     } catch (nextError) {
       if (isExperienceUnavailableError(nextError)) {
         setWorkspaceAvailable(false);
+        setFollowUps([]);
         setFollowUpSheetOpen(false);
-        setMessage("Diese Zusatzfunktion ist derzeit nicht verfügbar.");
+        return;
+      }
+      hapticError();
+      setFollowUpError(
+        nextError instanceof Error
+          ? nextError.message
+          : "Die Erinnerung konnte nicht gespeichert werden.",
+      );
+    } finally {
+      setSavingFollowUp(false);
+    }
+  }
+
+  async function resolveTicketFollowUp(followUpId: string) {
+    if (!ticket || resolvingFollowUpId) return;
+    setResolvingFollowUpId(followUpId);
+    setError("");
+    setMessage("");
+    try {
+      await resolveFollowUp(followUpId);
+      setFollowUps(await loadOpenFollowUps(ticket.id));
+      setMessage("Erinnerung wurde als erledigt markiert.");
+      hapticSuccess();
+    } catch (nextError) {
+      if (isExperienceUnavailableError(nextError)) {
+        setWorkspaceAvailable(false);
+        setFollowUps([]);
         return;
       }
       hapticError();
       setError(
         nextError instanceof Error
           ? nextError.message
-          : "Die Wiedervorlage konnte nicht gesetzt werden.",
+          : "Die Erinnerung konnte nicht aktualisiert werden.",
       );
     } finally {
-      setSavingFollowUp(false);
+      setResolvingFollowUpId(null);
     }
   }
 
@@ -1345,10 +1525,10 @@ export default function TicketDetailScreen() {
               <>
                 <View style={styles.detailsDivider} />
                 <Pressable
-                  accessibilityLabel="Wiedervorlage für dieses Ticket setzen"
+                  accessibilityLabel="Erinnerung für dieses Ticket setzen"
                   accessibilityRole="button"
                   disabled={savingFollowUp}
-                  onPress={openFollowUpSheet}
+                  onPress={() => openFollowUpSheet()}
                   style={styles.detailsActionRow}
                 >
                   <View style={styles.detailsActionLead}>
@@ -1368,6 +1548,67 @@ export default function TicketDetailScreen() {
                     />
                   </View>
                 </Pressable>
+                {followUps.length > 0 ? (
+                  <View style={styles.followUpList}>
+                    {followUps.map((followUp) => {
+                      const overdue = isOverdueFollowUp(followUp);
+                      return (
+                        <View key={followUp.id} style={styles.followUpRow}>
+                          <View style={styles.followUpCopy}>
+                            <Text
+                              style={[
+                                styles.followUpTitle,
+                                overdue && styles.followUpOverdue,
+                              ]}
+                            >
+                              Erinnerung · {compactFollowUpDate(followUp.dueAt)}
+                              {overdue ? " · überfällig" : ""}
+                            </Text>
+                            {followUp.description ? (
+                              <Text
+                                numberOfLines={2}
+                                style={styles.followUpNote}
+                              >
+                                {followUp.description}
+                              </Text>
+                            ) : null}
+                          </View>
+                          <View style={styles.followUpActions}>
+                            <Pressable
+                              accessibilityLabel="Erinnerung ändern"
+                              accessibilityRole="button"
+                              disabled={resolvingFollowUpId !== null}
+                              onPress={() => openFollowUpSheet(followUp)}
+                              style={styles.followUpAction}
+                            >
+                              <Text style={styles.followUpEditText}>
+                                Ändern
+                              </Text>
+                            </Pressable>
+                            <Pressable
+                              accessibilityLabel="Erinnerung als erledigt markieren"
+                              accessibilityRole="button"
+                              accessibilityState={{
+                                busy: resolvingFollowUpId === followUp.id,
+                              }}
+                              disabled={resolvingFollowUpId !== null}
+                              onPress={() =>
+                                void resolveTicketFollowUp(followUp.id)
+                              }
+                              style={styles.followUpAction}
+                            >
+                              <Text style={styles.followUpDoneText}>
+                                {resolvingFollowUpId === followUp.id
+                                  ? "…"
+                                  : "Erledigt"}
+                              </Text>
+                            </Pressable>
+                          </View>
+                        </View>
+                      );
+                    })}
+                  </View>
+                ) : null}
               </>
             ) : null}
 
@@ -2176,7 +2417,7 @@ export default function TicketDetailScreen() {
             style={styles.experienceSheetRoot}
           >
             <Pressable
-              accessibilityLabel="Wiedervorlage schliessen"
+              accessibilityLabel="Erinnerung schliessen"
               accessibilityRole="button"
               disabled={savingFollowUp}
               onPress={() => setFollowUpSheetOpen(false)}
@@ -2200,11 +2441,11 @@ export default function TicketDetailScreen() {
                       tokenStyles.foreground,
                     ]}
                   >
-                    Wann möchten Sie erinnert werden?
+                    Erinnerung setzen
                   </Text>
                 </View>
                 <Pressable
-                  accessibilityLabel="Wiedervorlage schliessen"
+                  accessibilityLabel="Erinnerung schliessen"
                   accessibilityRole="button"
                   disabled={savingFollowUp}
                   hitSlop={10}
@@ -2229,62 +2470,184 @@ export default function TicketDetailScreen() {
                 keyboardShouldPersistTaps="handled"
                 showsVerticalScrollIndicator={false}
               >
-                {(
-                  [
-                    ["today", "Heute"],
-                    ["tomorrow", "Morgen"],
-                    ["week", "In 1 Woche"],
-                    ["none", "Ohne Termin"],
-                  ] as const
-                ).map(([choice, label]) => {
-                  const selected = followUpDueChoice === choice;
-                  return (
+                <Text style={[styles.followUpSheetLabel, tokenStyles.muted]}>
+                  SCHNELL AUSWÄHLEN
+                </Text>
+                <View style={styles.followUpQuickChoices}>
+                  <Pressable
+                    accessibilityRole="button"
+                    onPress={() => chooseFollowUpTime(oneHourFromNow())}
+                    style={[
+                      styles.followUpQuickChoice,
+                      tokenStyles.control,
+                      { borderColor: colors.primarySoftBorder },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.followUpQuickChoiceText,
+                        tokenStyles.primaryText,
+                      ]}
+                    >
+                      In 1 Stunde
+                    </Text>
+                  </Pressable>
+                  {new Date().getHours() < 15 ||
+                  (new Date().getHours() === 15 &&
+                    new Date().getMinutes() < 30) ? (
                     <Pressable
                       accessibilityRole="button"
-                      accessibilityState={{ selected }}
-                      key={choice}
-                      onPress={() => {
-                        setFollowUpDueChoice(choice);
-                        hapticSelection();
-                      }}
+                      onPress={() => chooseFollowUpTime(atTimeFromToday(0, 16))}
                       style={[
-                        styles.experienceChoice,
-                        {
-                          backgroundColor: selected
-                            ? colors.primarySoft
-                            : colors.background,
-                          borderColor: selected
-                            ? colors.primaryText
-                            : colors.border,
-                        },
+                        styles.followUpQuickChoice,
+                        tokenStyles.control,
+                        { borderColor: colors.primarySoftBorder },
                       ]}
                     >
                       <Text
                         style={[
-                          styles.experienceChoiceText,
-                          {
-                            color: selected
-                              ? colors.primaryText
-                              : colors.foreground,
-                          },
+                          styles.followUpQuickChoiceText,
+                          tokenStyles.primaryText,
                         ]}
                       >
-                        {label}
+                        Heute 16:00
                       </Text>
-                      {selected ? (
-                        <Ionicons
-                          color={colors.primaryText}
-                          name="checkmark"
-                          size={20}
-                        />
-                      ) : null}
                     </Pressable>
-                  );
-                })}
+                  ) : null}
+                  <Pressable
+                    accessibilityRole="button"
+                    onPress={() => chooseFollowUpTime(atTimeFromToday(1, 8))}
+                    style={[
+                      styles.followUpQuickChoice,
+                      tokenStyles.control,
+                      { borderColor: colors.primarySoftBorder },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.followUpQuickChoiceText,
+                        tokenStyles.primaryText,
+                      ]}
+                    >
+                      Morgen 08:00
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    accessibilityRole="button"
+                    onPress={() => chooseFollowUpTime(nextMondayAtEight())}
+                    style={[
+                      styles.followUpQuickChoice,
+                      tokenStyles.control,
+                      { borderColor: colors.primarySoftBorder },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.followUpQuickChoiceText,
+                        tokenStyles.primaryText,
+                      ]}
+                    >
+                      Montag 08:00
+                    </Text>
+                  </Pressable>
+                </View>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityState={{ expanded: showCustomDateTimePicker }}
+                  onPress={() => {
+                    setShowCustomDateTimePicker((current) => !current);
+                    hapticSelection();
+                  }}
+                  style={[
+                    styles.followUpPickerToggle,
+                    tokenStyles.control,
+                    { borderColor: colors.primarySoftBorder },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.followUpPickerToggleText,
+                      tokenStyles.primaryText,
+                    ]}
+                  >
+                    Datum & Uhrzeit wählen
+                  </Text>
+                  <Ionicons
+                    color={colors.primaryText}
+                    name={
+                      showCustomDateTimePicker ? "chevron-up" : "chevron-down"
+                    }
+                    size={18}
+                  />
+                </Pressable>
+                {showCustomDateTimePicker ? (
+                  <View
+                    style={[
+                      styles.followUpPicker,
+                      { backgroundColor: colors.surfaceSubtle },
+                    ]}
+                  >
+                    <DateTimePicker
+                      accentColor={colors.primary}
+                      display={Platform.OS === "ios" ? "inline" : "default"}
+                      locale="de-CH"
+                      minimumDate={new Date()}
+                      minuteInterval={5}
+                      mode="datetime"
+                      onChange={(_event, value) => {
+                        if (!value) return;
+                        setFollowUpDueAt(value);
+                        setFollowUpError("");
+                      }}
+                      themeVariant={colorScheme}
+                      value={followUpDueAt}
+                    />
+                  </View>
+                ) : null}
+                <View style={styles.followUpSummary}>
+                  <Ionicons
+                    color={colors.primaryText}
+                    name="alarm-outline"
+                    size={18}
+                  />
+                  <Text
+                    style={[styles.followUpSummaryText, tokenStyles.foreground]}
+                  >
+                    {followUpSummary(followUpDueAt)}
+                  </Text>
+                </View>
+                <View style={styles.followUpNoteField}>
+                  <Text style={[styles.followUpSheetLabel, tokenStyles.muted]}>
+                    NOTIZ (OPTIONAL)
+                  </Text>
+                  <TextInput
+                    autoCapitalize="sentences"
+                    maxLength={500}
+                    multiline
+                    onChangeText={setFollowUpNote}
+                    placeholder="Was möchten Sie beachten?"
+                    placeholderTextColor={colors.subtle}
+                    style={[
+                      styles.followUpNoteInput,
+                      tokenStyles.control,
+                      tokenStyles.foreground,
+                    ]}
+                    textAlignVertical="top"
+                    value={followUpNote}
+                  />
+                  <Text style={[styles.characterCount, tokenStyles.muted]}>
+                    {Array.from(followUpNote).length}/500
+                  </Text>
+                </View>
+                {followUpError ? (
+                  <Text accessibilityRole="alert" style={styles.followUpError}>
+                    {followUpError}
+                  </Text>
+                ) : null}
                 <Pressable
                   accessibilityRole="button"
                   disabled={savingFollowUp}
-                  onPress={() => void createTicketFollowUp()}
+                  onPress={() => void saveTicketFollowUp()}
                   style={[
                     styles.experienceSaveButton,
                     { backgroundColor: colors.primary },
@@ -2306,7 +2669,11 @@ export default function TicketDetailScreen() {
                       tokenStyles.primaryText,
                     ]}
                   >
-                    {savingFollowUp ? "Wird gesetzt …" : "Wiedervorlage setzen"}
+                    {savingFollowUp
+                      ? "Wird gespeichert …"
+                      : editingFollowUp
+                        ? "Erinnerung speichern"
+                        : "Erinnerung setzen"}
                   </Text>
                 </Pressable>
               </ScrollView>
@@ -3065,6 +3432,88 @@ const useStyles = makeThemedStyles((c) => ({
   },
   detailsCountBadgeText: { color: c.warning, fontSize: 11, fontWeight: "800" },
   detailsExpansion: { gap: 9, paddingBottom: 4, paddingTop: 8 },
+  followUpAction: {
+    alignItems: "center",
+    borderColor: c.primarySoftBorder,
+    borderRadius: 8,
+    borderWidth: 1,
+    justifyContent: "center",
+    minHeight: 30,
+    paddingHorizontal: 7,
+  },
+  followUpActions: { flexDirection: "row", gap: 5 },
+  followUpCopy: { flex: 1, gap: 2, minWidth: 0 },
+  followUpDoneText: { color: c.success, fontSize: 10, fontWeight: "800" },
+  followUpEditText: { color: c.primaryText, fontSize: 10, fontWeight: "800" },
+  followUpError: { color: c.error, fontSize: 12, lineHeight: 17 },
+  followUpList: {
+    borderTopColor: c.border,
+    borderTopWidth: 1,
+    gap: 8,
+    paddingTop: 9,
+  },
+  followUpNote: { color: c.muted, fontSize: 11, lineHeight: 16 },
+  followUpNoteField: { gap: 6 },
+  followUpNoteInput: {
+    borderRadius: 12,
+    borderWidth: 1,
+    color: c.foreground,
+    fontSize: 14,
+    lineHeight: 20,
+    minHeight: 82,
+    padding: 11,
+  },
+  followUpOverdue: { color: c.error },
+  followUpPicker: { borderRadius: 14, overflow: "hidden" },
+  followUpPickerToggle: {
+    alignItems: "center",
+    borderRadius: 13,
+    borderWidth: 1,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    minHeight: 48,
+    paddingHorizontal: 13,
+  },
+  followUpPickerToggleText: { fontSize: 14, fontWeight: "800" },
+  followUpQuickChoice: {
+    alignItems: "center",
+    borderRadius: 11,
+    borderWidth: 1,
+    justifyContent: "center",
+    minHeight: 39,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+  },
+  followUpQuickChoices: { flexDirection: "row", flexWrap: "wrap", gap: 7 },
+  followUpQuickChoiceText: { fontSize: 12, fontWeight: "800" },
+  followUpRow: { alignItems: "center", flexDirection: "row", gap: 8 },
+  followUpSheetLabel: {
+    color: c.muted,
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 0.8,
+  },
+  followUpSummary: {
+    alignItems: "center",
+    backgroundColor: c.primarySoft,
+    borderRadius: 12,
+    flexDirection: "row",
+    gap: 8,
+    padding: 11,
+  },
+  followUpSummaryText: {
+    color: c.foreground,
+    flex: 1,
+    fontSize: 13,
+    fontWeight: "700",
+    lineHeight: 18,
+  },
+  followUpTitle: {
+    color: c.foreground,
+    fontSize: 11,
+    fontWeight: "800",
+    lineHeight: 16,
+  },
   experienceCard: {
     backgroundColor: c.surface,
     borderColor: c.border,

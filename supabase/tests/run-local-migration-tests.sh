@@ -1476,6 +1476,100 @@ begin
 end;
 $$;
 
+-- Fällige ticketgebundene Wiedervorlagen erzeugen genau eine In-App-
+-- Benachrichtigung. Der Test bleibt vollständig transaktional und benötigt kein pg_cron.
+begin;
+do $$
+declare
+  v_due_id uuid := '1f000000-0000-4000-8000-000000000003';
+  v_old_id uuid := '1f100000-0000-4000-8000-000000000003';
+begin
+  insert into public.experience_follow_ups (
+    id, tenant_id, owner_id, ticket_id, title, priority, due_at
+  ) values (
+    v_due_id,
+    '10000000-0000-4000-8000-000000000001',
+    '00000000-0000-4000-8000-000000000002',
+    '19000000-0000-4000-8000-000000000003',
+    'Rückmeldung einholen',
+    'normal',
+    timezone('utc', now()) - interval '5 minutes'
+  );
+
+  perform public.follow_up_send_due_reminders();
+  if (
+    select count(*)
+    from public.ticket_notifications notification
+    where notification.user_id = '00000000-0000-4000-8000-000000000002'
+      and notification.ticket_id = '19000000-0000-4000-8000-000000000003'
+      and notification.kind = 'ticket.follow_up_due'
+      and notification.payload ->> 'followUpId' = v_due_id::text
+  ) <> 1 then
+    raise exception 'Fällige Wiedervorlage erzeugte nicht genau eine Benachrichtigung';
+  end if;
+  if not exists (
+    select 1
+    from public.experience_follow_ups follow_up
+    where follow_up.id = v_due_id
+      and follow_up.reminder_sent_at is not null
+  ) then
+    raise exception 'Fällige Wiedervorlage wurde nicht als erinnert markiert';
+  end if;
+
+  perform public.follow_up_send_due_reminders();
+  if (
+    select count(*)
+    from public.ticket_notifications notification
+    where notification.kind = 'ticket.follow_up_due'
+      and notification.payload ->> 'followUpId' = v_due_id::text
+  ) <> 1 then
+    raise exception 'Wiedervorlagen-Erinnerung wurde doppelt erzeugt';
+  end if;
+
+  update public.experience_follow_ups
+  set due_at = timezone('utc', now()) + interval '1 hour'
+  where id = v_due_id;
+  if exists (
+    select 1
+    from public.experience_follow_ups follow_up
+    where follow_up.id = v_due_id
+      and follow_up.reminder_sent_at is not null
+  ) then
+    raise exception 'Änderung der Fälligkeit setzte reminder_sent_at nicht zurück';
+  end if;
+
+  insert into public.experience_follow_ups (
+    id, tenant_id, owner_id, ticket_id, title, priority, due_at
+  ) values (
+    v_old_id,
+    '10000000-0000-4000-8000-000000000001',
+    '00000000-0000-4000-8000-000000000002',
+    '19000000-0000-4000-8000-000000000003',
+    'Historische Wiedervorlage',
+    'normal',
+    timezone('utc', now()) - interval '24 hours 1 minute'
+  );
+  perform public.follow_up_send_due_reminders();
+  if not exists (
+    select 1
+    from public.experience_follow_ups follow_up
+    where follow_up.id = v_old_id
+      and follow_up.reminder_sent_at is not null
+  ) then
+    raise exception 'Überfälliger Altbestand wurde nicht als erinnert markiert';
+  end if;
+  if exists (
+    select 1
+    from public.ticket_notifications notification
+    where notification.kind = 'ticket.follow_up_due'
+      and notification.payload ->> 'followUpId' = v_old_id::text
+  ) then
+    raise exception 'Überfälliger Altbestand erzeugte eine Benachrichtigung';
+  end if;
+end;
+$$;
+rollback;
+
 begin;
 set local role service_role;
 do $$

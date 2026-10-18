@@ -18,6 +18,7 @@ import {
   Bell,
   BookOpen,
   BriefcaseBusiness,
+  CalendarClock,
   ChartNoAxesCombined,
   CircleCheck,
   CircleEllipsis,
@@ -634,6 +635,32 @@ function notificationTicketNumber(
   return notification.ticket?.ticketNumber ?? null;
 }
 
+function notificationPayloadText(
+  notification: NotificationItem,
+  key: string,
+  maximumLength: number,
+): string | null {
+  if (!isRecord(notification.payload)) return null;
+  const value = notification.payload[key];
+  if (
+    typeof value !== "string" ||
+    value.includes("\u0000") ||
+    [...value].length > maximumLength
+  ) {
+    return null;
+  }
+  const text = value.trim();
+  return text ? text : null;
+}
+
+function notificationPayloadDateTime(
+  notification: NotificationItem,
+  key: string,
+): string | null {
+  const value = notificationPayloadText(notification, key, 64);
+  return value && !Number.isNaN(new Date(value).getTime()) ? value : null;
+}
+
 function notificationPresentation(
   notification: NotificationItem,
 ): NotificationPresentation {
@@ -677,6 +704,18 @@ function notificationPresentation(
         Icon: BadgeCheck,
         title: "Freigabe benötigt",
       };
+    case "ticket.follow_up_due": {
+      const followUpTitle =
+        notificationPayloadText(notification, "title", 240) ?? "Wiedervorlage";
+      const dueAt = notificationPayloadDateTime(notification, "dueAt");
+      return {
+        description: dueAt
+          ? `${followUpTitle} · Fällig am ${notificationTime(dueAt)}`
+          : followUpTitle,
+        Icon: CalendarClock,
+        title: "Wiedervorlage fällig",
+      };
+    }
     case "ticket.escalation_opened":
       return {
         description: `${ticketLabel} wurde eskaliert.`,

@@ -2,7 +2,7 @@
 
 ## Was gebaut ist
 
-nextDesk unterstützt **iOS-Push-Benachrichtigungen** für Ticketzuweisungen, Antworten, Erwähnungen, Lösungen, Freigaben, SLA-Hinweise und Eskalationen. Die Benachrichtigungen sind mandantenbezogen und standardmässig deaktiviert.
+nextDesk unterstützt **iOS-Push-Benachrichtigungen** für Ticketzuweisungen, Antworten, Erwähnungen, Lösungen, Freigaben, SLA-Hinweise, Eskalationen und fällige Wiedervorlagen. Die Benachrichtigungen sind mandantenbezogen und standardmässig deaktiviert.
 
 Die Datenflusskette ist ereignisgetrieben:
 
@@ -12,6 +12,12 @@ Die Datenflusskette ist ereignisgetrieben:
 4. `push-dispatch` sendet die Nachricht **direkt an Apple Push Notification service (APNs)**.
 
 > Push-Inhalte gehen ausserhalb von nextDesk nur an **Apple**. Es gibt keinen Expo Push Service und keinen weiteren Push-Anbieter. Standardmässig enthalten Pushes nur die Ereignisart und Ticketnummer. Der Ticketbetreff wird nur bei der Mandanteneinstellung **Ticketnummer und Betreff** übertragen.
+
+## Fällige Wiedervorlagen
+
+Migration `0063_follow_up_reminders.sql` legt den idempotenten `pg_cron`-Auftrag `nextdesk-follow-up-reminders` an. Er führt jede Minute `select public.follow_up_send_due_reminders();` aus und erzeugt für eine offene, fällige und ticketgebundene Wiedervorlage genau eine In-App-Benachrichtigung und über die bestehende Pipeline einen iOS-Push.
+
+Wiedervorlagen ohne Ticket können nicht sicher auf ein Ticket geöffnet werden und werden deshalb ohne Push als verarbeitet markiert. Ebenso werden Altbestände, die bei der Einführung bereits länger als 24 Stunden überfällig waren, nicht nachträglich gepusht. Fehlt `pg_cron` in einem lokalen Cluster oder ist es beim Anbieter eingeschränkt, bleibt die Migration anwendbar; der Auftrag muss dort nicht manuell angelegt werden.
 
 ## Einmalige Schritte für die Inhaberschaft
 

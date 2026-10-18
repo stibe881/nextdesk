@@ -3,6 +3,55 @@ import { supabase } from "./supabase";
 
 export type PushContentLevel = "minimal" | "subject";
 
+export const pushCategoryMeta = {
+  approval: {
+    description: "Informationen zu angeforderten Freigaben",
+    label: "Freigaben",
+  },
+  assigned: {
+    description: "Wenn Ihnen ein Ticket zugewiesen wird",
+    label: "Zuweisungen",
+  },
+  escalation: {
+    description: "Hinweise zu eskalierten Tickets",
+    label: "Eskalationen",
+  },
+  follow_up: {
+    description: "Erinnerung zum gesetzten Termin",
+    label: "Wiedervorlagen",
+  },
+  mention: {
+    description: "Wenn Sie in einem Ticket erwähnt werden",
+    label: "Erwähnungen",
+  },
+  requester_reply: {
+    description: "Antworten von anfragenden Personen",
+    label: "Antworten von anfragenden Personen",
+  },
+  resolved: {
+    description: "Wenn ein Ticket als gelöst markiert wird",
+    label: "Ticketlösungen",
+  },
+  sla: {
+    description: "Hinweise zu betroffenen SLA-Fristen",
+    label: "SLA-Hinweise",
+  },
+  support_reply: {
+    description: "Antworten des Supports zu Ihren Tickets",
+    label: "Support-Antworten",
+  },
+} as const;
+
+export type PushCategory = keyof typeof pushCategoryMeta;
+
+export type PushPreferences = {
+  enabledCategories: PushCategory[];
+  quietEnd: number;
+  quietHoursEnabled: boolean;
+  quietStart: number;
+  timezone: string;
+};
+
 export type WorkHours = {
   required: boolean;
   startHour: number;
@@ -36,18 +85,12 @@ export type PushDevice = {
 };
 
 export type PushStatus = {
-  applicableCategories: string[];
+  applicableCategories: PushCategory[];
   apnsConfigured: boolean;
   contentLevel: PushContentLevel;
   devices: PushDevice[];
   featureEnabled: boolean;
-  preferences: {
-    enabledCategories: string[];
-    quietEnd: number;
-    quietHoursEnabled: boolean;
-    quietStart: number;
-    timezone: string;
-  };
+  preferences: PushPreferences;
   workHours: WorkHours;
 };
 
@@ -85,6 +128,15 @@ type PushNotificationsRequest =
       workEndHour?: number;
       workStartHour?: number;
     }
+  | {
+      enabledCategories: PushCategory[];
+      quietEnd: number;
+      quietHoursEnabled: boolean;
+      quietStart: number;
+      tenantId: string;
+      timezone: string;
+      type: "updatePreferences";
+    }
   | { tenantId: string; type: "checkIn" }
   | { tenantId: string; type: "checkOut" }
   | { tenantId: string; type: "declineCheckIn" };
@@ -95,6 +147,13 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isContentLevel(value: unknown): value is PushContentLevel {
   return value === "minimal" || value === "subject";
+}
+
+function isPushCategory(value: unknown): value is PushCategory {
+  return (
+    typeof value === "string" &&
+    Object.prototype.hasOwnProperty.call(pushCategoryMeta, value)
+  );
 }
 
 function isHour(
@@ -122,6 +181,43 @@ function responseError(): Error {
   return new Error(
     "Push-Benachrichtigungen haben unvollständige oder ungültige Daten geliefert.",
   );
+}
+
+function knownCategories(value: unknown[]): PushCategory[] {
+  return [...new Set(value.filter(isPushCategory))];
+}
+
+function parsePreferences(value: unknown): PushPreferences {
+  if (!isRecord(value)) throw responseError();
+
+  const {
+    enabledCategories,
+    quietEnd,
+    quietHoursEnabled,
+    quietStart,
+    timezone,
+  } = value;
+  if (
+    !Array.isArray(enabledCategories) ||
+    enabledCategories.some((category) => typeof category !== "string") ||
+    !isHour(quietEnd, 0, 23) ||
+    typeof quietHoursEnabled !== "boolean" ||
+    !isHour(quietStart, 0, 23) ||
+    typeof timezone !== "string" ||
+    !timezone.trim()
+  ) {
+    throw responseError();
+  }
+
+  return {
+    // New server categories can arrive before this client understands them.
+    // Omit those values instead of rendering an unlabelled preference row.
+    enabledCategories: knownCategories(enabledCategories),
+    quietEnd,
+    quietHoursEnabled,
+    quietStart,
+    timezone,
+  };
 }
 
 function parseWorkHours(value: unknown): WorkHours {
@@ -230,13 +326,6 @@ function parseStatus(value: unknown): PushStatus {
     preferences,
     workHours,
   } = value;
-  const {
-    enabledCategories,
-    quietEnd,
-    quietHoursEnabled,
-    quietStart,
-    timezone,
-  } = preferences;
   if (
     !Array.isArray(applicableCategories) ||
     applicableCategories.some((category) => typeof category !== "string") ||
@@ -244,30 +333,18 @@ function parseStatus(value: unknown): PushStatus {
     !isContentLevel(contentLevel) ||
     !Array.isArray(devices) ||
     typeof featureEnabled !== "boolean" ||
-    !Array.isArray(enabledCategories) ||
-    enabledCategories.some((category) => typeof category !== "string") ||
-    !isHour(quietEnd, 0, 23) ||
-    typeof quietHoursEnabled !== "boolean" ||
-    !isHour(quietStart, 0, 23) ||
-    typeof timezone !== "string" ||
-    !timezone.trim()
+    !isRecord(preferences)
   ) {
     throw responseError();
   }
 
   return {
-    applicableCategories,
+    applicableCategories: knownCategories(applicableCategories),
     apnsConfigured,
     contentLevel,
     devices: devices.map(parseDevice),
     featureEnabled,
-    preferences: {
-      enabledCategories,
-      quietEnd,
-      quietHoursEnabled,
-      quietStart,
-      timezone,
-    },
+    preferences: parsePreferences(preferences),
     workHours: parseWorkHours(workHours),
   };
 }
@@ -393,6 +470,19 @@ export async function updateTenantSettings(
       ...settings,
     }),
   );
+}
+
+export async function updatePreferences(
+  tenantId: string,
+  preferences: PushPreferences,
+): Promise<PushPreferences> {
+  const result = await pushNotificationsRequest<unknown>({
+    tenantId,
+    type: "updatePreferences",
+    ...preferences,
+  });
+  if (!isRecord(result)) throw responseError();
+  return parsePreferences(result.preferences);
 }
 
 export async function checkIn(tenantId: string): Promise<WorkHours> {

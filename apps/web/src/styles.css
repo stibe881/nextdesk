@@ -10308,6 +10308,66 @@ body:has(.ticket-detail) {
   flex-wrap: wrap;
   gap: 8px;
 }
+.personal-settings__push-categories {
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 13px 14px;
+  background: var(--surface-subtle);
+}
+.personal-settings__push-categories h4 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 14px;
+}
+.personal-settings__push-categories .personal-settings__hint {
+  margin: 4px 0 0;
+}
+.personal-settings__push-categories ul {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.personal-settings__push-categories li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.personal-settings__push-categories label {
+  display: flex;
+  min-width: 0;
+  gap: 9px;
+  align-items: flex-start;
+  color: var(--text);
+  cursor: pointer;
+}
+.personal-settings__push-categories input {
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+  accent-color: var(--primary);
+}
+.personal-settings__push-categories label > span {
+  display: grid;
+  gap: 1px;
+}
+.personal-settings__push-categories strong {
+  color: var(--ink);
+  font-size: 13px;
+}
+.personal-settings__push-categories small,
+.personal-settings__push-categories li > span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+.personal-settings__push-categories li > span {
+  flex: 0 0 auto;
+}
 .personal-settings__device-list {
   display: grid;
   gap: 10px;

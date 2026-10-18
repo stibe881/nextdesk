@@ -9,6 +9,7 @@ export type ApnsPayloadKind =
   | "approval"
   | "escalation"
   | "sla"
+  | "follow_up"
   | "summary"
   | "test";
 
@@ -185,6 +186,13 @@ function alertFor(input: ApnsPayloadInput): { title: string; body: string } {
         body: subject
           ? `Für ${ticketNumber} ist eine SLA-Frist betroffen: ${subject}`
           : `Für ${ticketNumber} ist eine SLA-Frist betroffen.`,
+      };
+    case "follow_up":
+      return {
+        title: "Wiedervorlage fällig",
+        body: subject
+          ? `Eine Wiedervorlage zu ${ticketNumber} ist fällig: ${subject}`
+          : "Eine Wiedervorlage ist fällig.",
       };
     case "summary":
       return {
