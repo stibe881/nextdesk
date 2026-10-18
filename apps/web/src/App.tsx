@@ -49,6 +49,7 @@ import {
 } from "./lib/live-dashboard";
 import { acceptTenantInvitations } from "./lib/tenant-invitations";
 import { TicketComposer } from "./ticket-composer";
+import { TicketCsvExport } from "./ticket-csv-export";
 import { TicketDetail } from "./ticket-detail";
 import { TenantAdminSettings } from "./tenant-admin-settings";
 import { KnowledgeBase } from "./knowledge-base";
@@ -2081,6 +2082,9 @@ export function App() {
                       ? `${filteredTickets.length} geladen`
                       : `${filteredTickets.length} Treffer`}
                   </span>
+                  {activeTenant && (
+                    <TicketCsvExport tenantId={activeTenant.id} />
+                  )}
                   {canWorkTickets && ticketScope !== "all" && (
                     <button
                       className="text-button"
