@@ -1,5 +1,6 @@
 import { type SupabaseContext, withSupabase } from "@supabase/server";
 import { resolveTenantFeatureStates } from "../_shared/tenant-features.ts";
+import { listAssignableAgents } from "../_shared/assignable-agents.ts";
 
 const ALLOWED_ORIGIN = "https://app.nextdesk.ch";
 const FEATURE = "agent.workbench";
@@ -769,18 +770,24 @@ async function suggestAssignees(
 ): Promise<Response> {
   const info = await ticket(admin, action.tenantId, action.ticketId);
   await ticketPermission(client, info, "ticket.update");
-  const candidates = await admin
-    .from("department_memberships")
-    .select("user_id")
-    .eq("tenant_id", action.tenantId)
-    .eq("department_id", info.department_id as string)
-    .eq("status", "active");
-  if (candidates.error) db(candidates.error);
-  const ids = [
-    ...new Set(
-      (candidates.data ?? []).map((row) => row.user_id).filter(isUuid),
-    ),
-  ];
+  const assignable = await listAssignableAgents(
+    admin,
+    action.tenantId,
+    info.department_id as string,
+  );
+  if (assignable.error) {
+    return reply(
+      request,
+      { error: { code: "ticket_agents_lookup_failed" } },
+      500,
+    );
+  }
+  const names = new Map(
+    assignable.agents.map((agent) => [agent.id, agent.displayName]),
+  );
+  const ids = assignable.agents.map((agent) => agent.id);
+  const currentAssigneeId =
+    typeof info.assigned_agent_id === "string" ? info.assigned_agent_id : null;
   const now = new Date().toISOString();
   const result: Row[] = [];
   for (const userId of ids) {
@@ -815,6 +822,8 @@ async function suggestAssignees(
     const delegated = (absence.data ?? []).length > 0;
     result.push({
       userId,
+      displayName: names.get(userId) ?? "Aktiver Agent",
+      isCurrentAssignee: currentAssigneeId === userId,
       score: Math.max(
         0,
         100 - workload * 10 + categoryExperience * 5 - (delegated ? 35 : 0),
@@ -823,7 +832,7 @@ async function suggestAssignees(
         `${workload} offene Tickets`,
         `${categoryExperience} Tickets in derselben Kategorie`,
         delegated
-          ? "Aktuell als abwesend/stelligvertreten erfasst"
+          ? "Aktuell als abwesend oder vertreten erfasst"
           : "Keine aktuelle Abwesenheit erfasst",
       ],
       automaticAssignment: false,
