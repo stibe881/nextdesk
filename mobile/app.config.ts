@@ -123,7 +123,7 @@ const config: ExpoConfig = {
       "expo-camera",
       {
         cameraPermission:
-          "nextDesk verwendet die Kamera nur, um den QR-Code eines Assets zu scannen.",
+          "nextDesk verwendet die Kamera, um QR-Codes von Assets zu scannen und Fotos direkt als Anhang zu einem Ticket aufzunehmen.",
       },
     ],
     [
@@ -131,6 +131,8 @@ const config: ExpoConfig = {
       {
         photosPermission:
           "nextDesk benötigt den Fotozugriff nur, um einen Bildanhang zu einem Ticket hinzuzufügen.",
+        cameraPermission:
+          "nextDesk verwendet die Kamera, um QR-Codes von Assets zu scannen und Fotos direkt als Anhang zu einem Ticket aufzunehmen.",
       },
     ],
     [
