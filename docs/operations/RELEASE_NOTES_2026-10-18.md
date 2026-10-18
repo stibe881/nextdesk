@@ -85,3 +85,11 @@ Push-Benachrichtigungen werden nur noch während der Arbeitszeit und nach einem 
 Die iOS-Startseite zeigt die persönlichen Kennzahlen (Offen, Heute gelöst, Erste Antwort, Fällig) direkt in der Karte «Heute im Fokus». Die Ticketliste folgt unmittelbar unter den drei Übersichts-Widgets (höchstens zehn Einträge, danach «Alle Tickets anzeigen»). Die separaten Bereiche «Meine Kennzahlen» und «Mein Tag / Wiedervorlagen» wurden von der Startseite entfernt.
 
 Im Ticketdetail (iOS und Web) setzt man eine Erinnerung mit Datum und Uhrzeit, Schnellwahl und optionaler Notiz; offene Erinnerungen lassen sich ändern oder erledigen. Migration 0063 (`follow_up_reminders`) ist produktiv: Der pg_cron-Auftrag `nextdesk-follow-up-reminders` prüft jede Minute fällige Wiedervorlagen und erzeugt genau eine In-App-Benachrichtigung `ticket.follow_up_due`, die über die neue Push-Kategorie `follow_up` («Wiedervorlagen») als Push zugestellt wird. Ruhezeiten und der Arbeitszeit-Check-in gelten unverändert. Bereitgestellt: push-dispatch v2 und push-notifications v3 auf Commit 97c356e; Web auf Hetzner ausgerollt, Smoke-Test erfolgreich. iOS-Quellstand d68a27a enthält den nativen Datumswähler und benötigt einen neuen TestFlight-Build.
+
+## iOS-Build 10023 (TestFlight)
+
+- EAS-Build `360c7e87-ec35-4b44-bc0c-f51e7315e71e`, iOS-Quellcommit `ba7f5e8`, App-Version 1.0.0, Submission `80310966-389e-4dad-8c06-28e6b55ca347`; Upload an App Store Connect erfolgreich, Apple-Verarbeitung folgt.
+- Erster Build mit Push-Berechtigung (`aps-environment: production`); Signierung über die EAS-Zugangsdaten erfolgreich.
+- Enthält Push-Benachrichtigungen, Push-Check-in, E-Mail-Kennzeichnung im Chat, kompakte Ticketdetails, Messenger-Chat, neue Startseite mit Erinnerungstermin, Agent*innen-Namen in Zuweisungsvorschlägen und die Tab-Leiste mit zentriertem Home-Kreis.
+- Web: Zuweisungsvorschläge zeigen den vom Server gelieferten Namen als Rückfall (`13e093d`, auf Hetzner ausgerollt).
+- Offen: reale iPhone-Abnahme; Push funktioniert erst nach Einrichtung des APNs-Schlüssels und Aktivierung des Mandantenschalters.
