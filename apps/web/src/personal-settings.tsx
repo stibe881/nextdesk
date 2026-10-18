@@ -7,6 +7,7 @@ import {
   LogOut,
   Mail,
   ShieldCheck,
+  SlidersHorizontal,
 } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import type { User } from "@supabase/supabase-js";
@@ -15,6 +16,7 @@ import { supabase } from "./lib/supabase";
 
 type PersonalSettingsProps = {
   onBack: () => void;
+  onOpenAppearance: () => void;
   onSignOut: () => void;
   ssoEnforced: boolean;
   tenantId?: string;
@@ -92,6 +94,7 @@ function providerSummary(user: User, ssoEnforced: boolean): ProviderSummary {
 
 export function PersonalSettings({
   onBack,
+  onOpenAppearance,
   onSignOut,
   ssoEnforced,
   tenantId,
@@ -250,6 +253,28 @@ export function PersonalSettings({
               </dd>
             </div>
           </dl>
+        </article>
+
+        <article className="personal-settings__card">
+          <div className="personal-settings__card-heading">
+            <span className="personal-settings__icon" aria-hidden="true">
+              <SlidersHorizontal size={19} strokeWidth={1.9} />
+            </span>
+            <div>
+              <h3>Profil & Darstellung</h3>
+              <p>
+                Lege Farbschema, Startansicht, Listendichte und weitere
+                persönliche Ansichtsoptionen fest.
+              </p>
+            </div>
+          </div>
+          <button
+            className="secondary-button"
+            onClick={onOpenAppearance}
+            type="button"
+          >
+            Darstellung anpassen
+          </button>
         </article>
 
         {provider.canChangePassword ? (

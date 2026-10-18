@@ -205,7 +205,7 @@ const DEFAULT_WORKSPACE_PREFERENCES: WorkspacePreferences = {
   reduceMotion: false,
   startSection: "Übersicht",
   ticketSplitView: false,
-  theme: "system",
+  theme: "light",
 };
 
 const previewView: DashboardView = {
@@ -1161,25 +1161,47 @@ export function App() {
   const keyboardHelpCloseRef = useRef<HTMLButtonElement>(null);
   const workspacePreferencesSyncTenantRef = useRef<string | null>(null);
   const workspacePreferencesLastSavedRef = useRef<string | null>(null);
-  const workspacePreferencesStorageKey = `nextdesk:workspace-preferences:${session?.user.id ?? "preview"}`;
+  const workspacePreferencesStorageKey = `nextdesk:workspace-preferences:v2:${session?.user.id ?? "preview"}`;
+  const legacyWorkspacePreferencesStorageKey = `nextdesk:workspace-preferences:${session?.user.id ?? "preview"}`;
 
   useEffect(() => {
     if (isSupabaseConfigured && session === undefined) return;
 
     setWorkspacePreferencesHydrated(false);
     try {
-      const parsed = workspacePreferencesFromValue(
-        JSON.parse(
-          window.localStorage.getItem(workspacePreferencesStorageKey) ?? "null",
-        ),
+      const storedV2 = window.localStorage.getItem(
+        workspacePreferencesStorageKey,
       );
-      setWorkspacePreferences(parsed ?? DEFAULT_WORKSPACE_PREFERENCES);
+      if (storedV2 !== null) {
+        const parsed = workspacePreferencesFromValue(JSON.parse(storedV2));
+        setWorkspacePreferences(parsed ?? DEFAULT_WORKSPACE_PREFERENCES);
+      } else {
+        const legacy = workspacePreferencesFromValue(
+          JSON.parse(
+            window.localStorage.getItem(legacyWorkspacePreferencesStorageKey) ??
+              "null",
+          ),
+        );
+        const migrated = legacy
+          ? {
+              ...legacy,
+              // The former default followed the device. Preserve an explicit
+              // dark choice, but migrate the legacy default to nextDesk light.
+              theme: legacy.theme === "system" ? "light" : legacy.theme,
+            }
+          : DEFAULT_WORKSPACE_PREFERENCES;
+        window.localStorage.setItem(
+          workspacePreferencesStorageKey,
+          JSON.stringify(migrated),
+        );
+        setWorkspacePreferences(migrated);
+      }
     } catch {
       setWorkspacePreferences(DEFAULT_WORKSPACE_PREFERENCES);
     } finally {
       setWorkspacePreferencesHydrated(true);
     }
-  }, [workspacePreferencesStorageKey]);
+  }, [legacyWorkspacePreferencesStorageKey, workspacePreferencesStorageKey]);
 
   useEffect(() => {
     if (!workspacePreferencesHydrated) return;
@@ -1670,6 +1692,8 @@ export function App() {
         }
         if (!mounted) return;
         setWorkspacePreferences((current) => {
+          // A valid remote choice deliberately wins over the local fallback,
+          // including an explicitly saved "system" choice.
           const next = { ...current, ...remotePreferences };
           workspacePreferencesLastSavedRef.current =
             workspacePreferenceSyncValue(next);
@@ -2831,6 +2855,10 @@ export function App() {
         {personalSettingsOpen && session ? (
           <PersonalSettings
             onBack={() => setPersonalSettingsOpen(false)}
+            onOpenAppearance={() => {
+              setPersonalSettingsOpen(false);
+              setWorkspacePreferencesOpen(true);
+            }}
             onSignOut={() => void signOut()}
             ssoEnforced={ssoEnforced}
             user={session.user}
@@ -3516,13 +3544,13 @@ export function App() {
                   }
                   value={workspacePreferences.theme}
                 >
-                  <option value="system">Systemeinstellung</option>
                   <option value="light">Hell</option>
                   <option value="dark">Dunkel</option>
+                  <option value="system">Systemeinstellung</option>
                 </select>
                 <span>
-                  Folgt der Systemeinstellung oder verwendet dauerhaft ein
-                  helles beziehungsweise dunkles Farbschema.
+                  Standard ist Hell. Systemeinstellung folgt dem Farbschema des
+                  Geräts.
                 </span>
               </label>
               <label>

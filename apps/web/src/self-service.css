@@ -5,7 +5,11 @@
   border: 1px solid var(--border);
   border-radius: 16px;
   padding: 18px;
-  background: linear-gradient(135deg, #fbfcff, #f7f8fe);
+  background: linear-gradient(
+    135deg,
+    var(--surface-tint-fbfcff),
+    var(--surface-tint-f7f8fe)
+  );
 }
 
 .self-service-catalog__heading,
@@ -68,8 +72,8 @@
   align-items: flex-start;
   gap: 10px;
   margin-top: 16px;
-  border: 1px solid #c5def0;
-  border-left: 3px solid #0284c7;
+  border: 1px solid var(--border-tint-c5def0);
+  border-left: 3px solid var(--border-tint-0284c7);
   border-radius: 8px;
   padding: 12px 14px;
   background: var(--info-soft);
@@ -308,10 +312,10 @@
 }
 
 .ai-governance-panel__safety-note {
-  border-color: #f0d8ac;
+  border-color: var(--border-tint-f0d8ac);
   border-left-color: var(--warning);
   background: var(--warning-soft);
-  color: #80560a;
+  color: var(--text-tint-80560a);
 }
 
 .tenant-admin-settings__feature-title {
