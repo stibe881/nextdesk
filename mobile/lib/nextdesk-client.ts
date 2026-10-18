@@ -30,6 +30,9 @@ const publishableKey =
 
 export const isNextDeskConfigured = Boolean(url && publishableKey);
 
+const AUTH_TRANSACTION_KEY = "nextdesk:mobile:auth-transaction:v1";
+const AUTH_TRANSACTION_TTL_MS = 10 * 60 * 1_000;
+
 export const nextDesk: SupabaseClient | null = isNextDeskConfigured
   ? createClient(url, publishableKey, {
       auth: {
@@ -63,6 +66,7 @@ export type NextDeskAuthFailureCode =
   | "provider_rejected"
   | "pkce_verifier_missing"
   | "callback_invalid"
+  | "callback_unexpected"
   | "session_not_saved"
   | "exchange_failed";
 
@@ -107,6 +111,8 @@ export function nextDeskAuthFailureMessage(
       return "Die Microsoft-Anmeldung wurde nicht bestätigt. Bitte versuchen Sie es erneut.";
     case "callback_invalid":
       return "Die Anmelderückkehr ist ungültig oder abgelaufen. Bitte starten Sie die SSO-Anmeldung erneut.";
+    case "callback_unexpected":
+      return "Diese Anmelderückkehr gehört nicht zur aktuellen nextDesk-Anmeldung. Bitte starten Sie die SSO-Anmeldung erneut.";
     case "session_not_saved":
       return "Die Anmeldung konnte nicht sicher auf diesem Gerät gespeichert werden. Bitte versuchen Sie es erneut.";
     default:
@@ -132,20 +138,27 @@ export function getNextDeskAuthRedirectUrl(): string {
   return nextDeskAuthRedirectUrl;
 }
 
-const acceptedAuthCallbackSchemes = new Set([
-  "ch.grossict.nextdesk:",
-  // Existing TestFlight installations used this shorter scheme. Accepting it
-  // here lets a callback that was already opened finish safely during an
-  // in-place update, while all new sign-ins use the canonical address above.
-  "nextdesk:",
-]);
+type AuthTransaction = {
+  expiresAt: number;
+  kind: "magic" | "oauth";
+  state?: string;
+};
+
+function isTrustedWebCallback(url: URL): boolean {
+  return (
+    Platform.OS === "web" &&
+    typeof window !== "undefined" &&
+    url.origin === window.location.origin &&
+    url.pathname.replace(/\/+$/, "") === "/auth/callback"
+  );
+}
 
 export function isNextDeskAuthCallback(url: string): boolean {
   try {
     const parsed = new URL(url);
     const callbackPath = parsed.pathname.replace(/\/+$/, "");
     return (
-      acceptedAuthCallbackSchemes.has(parsed.protocol) &&
+      parsed.protocol === "ch.grossict.nextdesk:" &&
       // `scheme://auth/callback` is represented by the native URL parser as
       // host `auth` and path `/callback`. Web/Expo tooling can also emit the
       // equivalent path-only form `scheme:///auth/callback`; accept both.
@@ -157,23 +170,75 @@ export function isNextDeskAuthCallback(url: string): boolean {
   }
 }
 
-/** Completes either the PKCE callback used by SSO or the token fragment used by magic links. */
+function parseAuthTransaction(value: string | null): AuthTransaction | null {
+  if (!value) return null;
+  try {
+    const parsed = JSON.parse(value) as Partial<AuthTransaction>;
+    if (
+      (parsed.kind !== "oauth" && parsed.kind !== "magic") ||
+      typeof parsed.expiresAt !== "number" ||
+      !Number.isFinite(parsed.expiresAt) ||
+      parsed.expiresAt <= Date.now()
+    ) {
+      return null;
+    }
+    if (parsed.kind === "oauth" && typeof parsed.state !== "string")
+      return null;
+    return parsed as AuthTransaction;
+  } catch {
+    return null;
+  }
+}
+
+async function readAuthTransaction(): Promise<AuthTransaction | null> {
+  const stored = await mobileSecureStorage.getItem(AUTH_TRANSACTION_KEY);
+  const transaction = parseAuthTransaction(stored);
+  if (!transaction && stored) {
+    await mobileSecureStorage.removeItem(AUTH_TRANSACTION_KEY);
+  }
+  return transaction;
+}
+
+export async function beginNextDeskOAuth(providerUrl: string): Promise<void> {
+  const state = new URL(providerUrl).searchParams.get("state");
+  if (!state) throw new NextDeskAuthFailure("callback_invalid");
+  const transaction: AuthTransaction = {
+    expiresAt: Date.now() + AUTH_TRANSACTION_TTL_MS,
+    kind: "oauth",
+    state,
+  };
+  await mobileSecureStorage.setItem(
+    AUTH_TRANSACTION_KEY,
+    JSON.stringify(transaction),
+  );
+}
+
+export async function beginNextDeskMagicLink(): Promise<void> {
+  const transaction: AuthTransaction = {
+    expiresAt: Date.now() + AUTH_TRANSACTION_TTL_MS,
+    kind: "magic",
+  };
+  await mobileSecureStorage.setItem(
+    AUTH_TRANSACTION_KEY,
+    JSON.stringify(transaction),
+  );
+}
+
+export async function clearNextDeskAuthTransaction(): Promise<void> {
+  await mobileSecureStorage.removeItem(AUTH_TRANSACTION_KEY);
+}
+
+/** Completes only a PKCE code callback bound to an app-initiated transaction. */
 export async function completeNextDeskAuth(callbackUrl: string): Promise<void> {
   const callback = new URL(callbackUrl);
-  const fragment = new URLSearchParams(callback.hash.replace(/^#/, ""));
+  if (!isNextDeskAuthCallback(callbackUrl) && !isTrustedWebCallback(callback)) {
+    throw new NextDeskAuthFailure("callback_invalid");
+  }
   const code = callback.searchParams.get("code");
-  const accessToken =
-    callback.searchParams.get("access_token") ?? fragment.get("access_token");
-  const refreshToken =
-    callback.searchParams.get("refresh_token") ?? fragment.get("refresh_token");
   // A provider code is single-use. Dedupe by the callback credential rather
   // than the raw URL because Expo and WebBrowser can normalize one deep link
   // differently while returning it to the already running app.
-  const callbackKey = code
-    ? `pkce:${code}`
-    : accessToken && refreshToken
-      ? `tokens:${accessToken}:${refreshToken}`
-      : "invalid";
+  const callbackKey = code ? `pkce:${code}` : "invalid";
 
   if (lastCompletedCallbackKey === callbackKey) return;
   if (pendingAuthCompletion?.callbackKey === callbackKey) {
@@ -183,38 +248,39 @@ export async function completeNextDeskAuth(callbackUrl: string): Promise<void> {
   const promise = (async () => {
     const providerError =
       callback.searchParams.get("error_description") ??
-      callback.searchParams.get("error") ??
-      fragment.get("error_description") ??
-      fragment.get("error");
+      callback.searchParams.get("error");
     if (providerError) {
+      await clearNextDeskAuthTransaction();
       throw new NextDeskAuthFailure(
         getNextDeskAuthFailureCode(new Error(providerError)),
       );
     }
 
-    if (code) {
-      const { error } =
-        await requireNextDesk().auth.exchangeCodeForSession(code);
-      if (error) {
-        throw new NextDeskAuthFailure(getNextDeskAuthFailureCode(error));
-      }
-    } else {
-      if (!accessToken || !refreshToken) {
-        throw new NextDeskAuthFailure("callback_invalid");
-      }
-      const { error } = await requireNextDesk().auth.setSession({
-        access_token: accessToken,
-        refresh_token: refreshToken,
-      });
-      if (error) {
-        throw new NextDeskAuthFailure(getNextDeskAuthFailureCode(error));
-      }
+    if (!code) {
+      throw new NextDeskAuthFailure("callback_invalid");
+    }
+
+    const transaction = await readAuthTransaction();
+    if (!transaction) {
+      throw new NextDeskAuthFailure("callback_unexpected");
+    }
+    if (
+      transaction.kind === "oauth" &&
+      callback.searchParams.get("state") !== transaction.state
+    ) {
+      throw new NextDeskAuthFailure("callback_unexpected");
+    }
+
+    const { error } = await requireNextDesk().auth.exchangeCodeForSession(code);
+    if (error) {
+      throw new NextDeskAuthFailure(getNextDeskAuthFailureCode(error));
     }
 
     const {
       data: { session },
     } = await requireNextDesk().auth.getSession();
     if (!session) throw new NextDeskAuthFailure("session_not_saved");
+    await clearNextDeskAuthTransaction();
     lastCompletedCallbackKey = callbackKey;
   })();
 

@@ -311,6 +311,25 @@ export default function TicketDetailScreen() {
     }
   }
 
+  async function contactRequesterByEmail(address: string) {
+    const target = `mailto:${encodeURIComponent(address)}`;
+    try {
+      if (!(await Linking.canOpenURL(target))) {
+        throw new Error(
+          "Auf diesem Gerät ist keine E-Mail-App für die Kontaktaufnahme verfügbar.",
+        );
+      }
+      await Linking.openURL(target);
+    } catch (nextError) {
+      hapticError();
+      setError(
+        nextError instanceof Error
+          ? nextError.message
+          : "Die E-Mail-App konnte nicht geöffnet werden.",
+      );
+    }
+  }
+
   async function sendComment() {
     if (!ticket || !tenant) return;
     const body = comment.trim();
@@ -556,8 +575,8 @@ export default function TicketDetailScreen() {
                   accessibilityLabel={`${ticket.requesterContact.displayName} per E-Mail kontaktieren`}
                   accessibilityRole="button"
                   onPress={() =>
-                    void Linking.openURL(
-                      `mailto:${encodeURIComponent(ticket.requesterContact?.email ?? "")}`,
+                    void contactRequesterByEmail(
+                      ticket.requesterContact?.email ?? "",
                     )
                   }
                   style={styles.contactAction}

@@ -12,6 +12,9 @@ import {
 
 import { ScreenContainer } from "@/components/screen-container";
 import {
+  beginNextDeskMagicLink,
+  beginNextDeskOAuth,
+  clearNextDeskAuthTransaction,
   completeNextDeskAuth,
   getNextDeskAuthRedirectUrl,
   nextDeskAuthFailureCode,
@@ -119,6 +122,7 @@ export default function AuthScreen() {
       if (error) throw error;
       if (!data.url)
         throw new Error("Die SSO-Anmeldung konnte nicht vorbereitet werden.");
+      await beginNextDeskOAuth(data.url);
       if (Platform.OS === "web") {
         popupRef.current = webPopup;
         webPopup?.location.replace(data.url);
@@ -151,6 +155,7 @@ export default function AuthScreen() {
         );
       }
     } catch (error) {
+      await clearNextDeskAuthTransaction();
       webPopup?.close();
       setMessage(nextDeskAuthFailureMessage(nextDeskAuthFailureCode(error)));
     } finally {
@@ -167,6 +172,7 @@ export default function AuthScreen() {
     setPending("magic");
     setMessage("");
     try {
+      await beginNextDeskMagicLink();
       const { error } = await requireNextDesk().auth.signInWithOtp({
         email: address,
         options: { emailRedirectTo: redirectTo },
@@ -176,6 +182,7 @@ export default function AuthScreen() {
         "Der Anmeldelink wurde versendet. Öffnen Sie ihn auf diesem Gerät.",
       );
     } catch {
+      await clearNextDeskAuthTransaction();
       setMessage(
         "Der Anmeldelink konnte nicht versendet werden. Bitte versuchen Sie es erneut.",
       );

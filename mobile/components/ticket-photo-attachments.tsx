@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import * as Haptics from "expo-haptics";
+import * as FileSystem from "expo-file-system/legacy";
 import * as ImageManipulator from "expo-image-manipulator";
 import * as ImagePicker from "expo-image-picker";
 import { useFocusEffect } from "expo-router";
@@ -19,6 +19,7 @@ import {
   uploadMobileTicketPhoto,
   type MobileTicketAttachment,
 } from "@/lib/mobile-ticket-attachments";
+import { hapticError, hapticSuccess } from "@/lib/mobile-haptics";
 
 type TicketPhotoAttachmentsProps = {
   canUpload: boolean;
@@ -88,6 +89,7 @@ export function TicketPhotoAttachments({
     if (selection.canceled || !selection.assets[0]) return;
 
     setUploading(true);
+    let sanitizedUri: string | null = null;
     try {
       // Re-encoding removes the original metadata before the authenticated upload.
       const image = await ImageManipulator.manipulateAsync(
@@ -98,7 +100,8 @@ export function TicketPhotoAttachments({
           format: ImageManipulator.SaveFormat.JPEG,
         },
       );
-      const response = await fetch(image.uri);
+      sanitizedUri = image.uri;
+      const response = await fetch(sanitizedUri);
       if (!response.ok)
         throw new Error("Das ausgewählte Foto konnte nicht gelesen werden.");
       const bytes = await response.arrayBuffer();
@@ -108,17 +111,22 @@ export function TicketPhotoAttachments({
         filename: photoFilename(),
         bytes,
       });
-      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      hapticSuccess();
       setMessage("Foto sicher als Anhang hinzugefügt.");
       await load();
     } catch (error) {
-      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      hapticError();
       setMessage(
         error instanceof Error
           ? error.message
           : "Der Fotoanhang konnte nicht hochgeladen werden.",
       );
     } finally {
+      if (sanitizedUri) {
+        await FileSystem.deleteAsync(sanitizedUri, { idempotent: true }).catch(
+          () => undefined,
+        );
+      }
       setUploading(false);
     }
   }

@@ -44,7 +44,14 @@ function parseState(value: string | null): PrivateState {
       !Array.isArray(parsed.favorites)
         ? parsed.favorites
         : {};
-    return { drafts, favorites } as PrivateState;
+    return {
+      deviceProtection:
+        typeof parsed.deviceProtection === "boolean"
+          ? parsed.deviceProtection
+          : undefined,
+      drafts,
+      favorites,
+    };
   } catch {
     return { ...EMPTY_STATE, drafts: {}, favorites: {} };
   }

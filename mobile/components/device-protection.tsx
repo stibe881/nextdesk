@@ -23,37 +23,39 @@ export function DeviceProtection() {
   const router = useRouter();
   const appState = useRef<AppStateStatus>(AppState.currentState);
   const checkingRef = useRef(false);
-  const [locked, setLocked] = useState(false);
+  const [lockState, setLockState] = useState<
+    "checking-session" | "locked" | "unlocked"
+  >("checking-session");
   const [checking, setChecking] = useState(false);
   const [message, setMessage] = useState("");
 
   const verify = useCallback(async () => {
     if (Platform.OS === "web" || checkingRef.current) return;
-    const session = (await nextDesk?.auth.getSession())?.data.session;
-    if (!session?.user.id) {
-      setLocked(false);
-      return;
-    }
-    const enabled = await getDeviceProtectionPreference(session.user.id);
-    if (!enabled) {
-      setLocked(false);
-      return;
-    }
-    const [hasHardware, enrolled] = await Promise.all([
-      LocalAuthentication.hasHardwareAsync(),
-      LocalAuthentication.isEnrolledAsync(),
-    ]);
-    if (!hasHardware || !enrolled) {
-      await setDeviceProtectionPreference(session.user.id, false);
-      setLocked(false);
-      return;
-    }
-
-    setLocked(true);
     checkingRef.current = true;
     setChecking(true);
     setMessage("");
     try {
+      const session = (await nextDesk?.auth.getSession())?.data.session;
+      if (!session?.user.id) {
+        setLockState("unlocked");
+        return;
+      }
+      const enabled = await getDeviceProtectionPreference(session.user.id);
+      if (!enabled) {
+        setLockState("unlocked");
+        return;
+      }
+      const [hasHardware, enrolled] = await Promise.all([
+        LocalAuthentication.hasHardwareAsync(),
+        LocalAuthentication.isEnrolledAsync(),
+      ]);
+      if (!hasHardware || !enrolled) {
+        await setDeviceProtectionPreference(session.user.id, false);
+        setLockState("unlocked");
+        return;
+      }
+
+      setLockState("locked");
       const result = await LocalAuthentication.authenticateAsync({
         cancelLabel: "Später",
         disableDeviceFallback: false,
@@ -61,7 +63,7 @@ export function DeviceProtection() {
         promptMessage: "nextDesk entsperren",
       });
       if (result.success) {
-        setLocked(false);
+        setLockState("unlocked");
       } else {
         setMessage(
           "Entsperren Sie nextDesk mit Face ID, Touch ID oder Gerätecode.",
@@ -78,6 +80,11 @@ export function DeviceProtection() {
   }, []);
 
   useEffect(() => {
+    const timer = setTimeout(() => void verify(), 0);
+    return () => clearTimeout(timer);
+  }, [verify]);
+
+  useEffect(() => {
     const subscription = AppState.addEventListener("change", (nextState) => {
       const returnedFromBackground =
         /inactive|background/.test(appState.current) && nextState === "active";
@@ -92,7 +99,7 @@ export function DeviceProtection() {
       await nextDesk?.auth.signOut();
     } finally {
       await clearMobileWorkspace();
-      setLocked(false);
+      setLockState("unlocked");
       router.replace("/auth");
     }
   }
@@ -103,39 +110,50 @@ export function DeviceProtection() {
       animationType="fade"
       statusBarTranslucent
       transparent
-      visible={locked}
+      visible={lockState !== "unlocked"}
     >
       <View style={styles.overlay}>
         <View style={styles.card}>
           <View style={styles.iconWrap}>
             <Text style={styles.icon}>⌁</Text>
           </View>
-          <Text style={styles.title}>nextDesk ist geschützt</Text>
+          <Text style={styles.title}>
+            {lockState === "checking-session"
+              ? "Sitzung wird geprüft"
+              : "nextDesk ist geschützt"}
+          </Text>
           <Text style={styles.copy}>
-            Entsperren Sie Ihre aktuelle Sitzung, bevor vertrauliche Ticket- und
-            Assetdaten angezeigt werden.
+            {lockState === "checking-session"
+              ? "Vertrauliche Arbeitsdaten werden erst nach der Sicherheitsprüfung angezeigt."
+              : "Entsperren Sie Ihre aktuelle Sitzung, bevor vertrauliche Ticket- und Assetdaten angezeigt werden."}
           </Text>
           {message ? <Text style={styles.message}>{message}</Text> : null}
-          <Pressable
-            accessibilityRole="button"
-            disabled={checking}
-            onPress={() => void verify()}
-            style={[styles.unlock, checking && styles.disabled]}
-          >
-            {checking ? (
-              <ActivityIndicator color="#FFFFFF" size="small" />
-            ) : (
-              <Text style={styles.unlockText}>Jetzt entsperren</Text>
-            )}
-          </Pressable>
-          <Pressable
-            accessibilityRole="button"
-            disabled={checking}
-            onPress={() => void signOut()}
-            style={styles.signOut}
-          >
-            <Text style={styles.signOutText}>Abmelden</Text>
-          </Pressable>
+          {lockState === "checking-session" ? (
+            <ActivityIndicator color="#4438CA" size="small" />
+          ) : (
+            <>
+              <Pressable
+                accessibilityRole="button"
+                disabled={checking}
+                onPress={() => void verify()}
+                style={[styles.unlock, checking && styles.disabled]}
+              >
+                {checking ? (
+                  <ActivityIndicator color="#FFFFFF" size="small" />
+                ) : (
+                  <Text style={styles.unlockText}>Jetzt entsperren</Text>
+                )}
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                disabled={checking}
+                onPress={() => void signOut()}
+                style={styles.signOut}
+              >
+                <Text style={styles.signOutText}>Abmelden</Text>
+              </Pressable>
+            </>
+          )}
         </View>
       </View>
     </Modal>
