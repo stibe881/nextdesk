@@ -3,6 +3,8 @@ import { router } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -111,153 +113,162 @@ export default function NewTicketScreen() {
   }
 
   return (
-    <ScreenContainer containerClassName="bg-[#F6F7FB]" className="px-5">
-      <ScrollView
-        contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}
-      >
-        <View style={styles.topBar}>
-          <Pressable
-            accessibilityLabel="Zurück zur Übersicht"
-            accessibilityRole="button"
-            hitSlop={10}
-            onPress={() => router.back()}
-            style={styles.backButton}
-          >
-            <Ionicons color="#4438CA" name="arrow-back" size={22} />
-          </Pressable>
-          <Text style={styles.topTitle}>Ticket erfassen</Text>
-          <View style={styles.topSpacer} />
-        </View>
-
-        <View style={styles.intro}>
-          <Text style={styles.title}>Was können wir für dich tun?</Text>
-          <Text style={styles.copy}>
-            Dein Ticket wird direkt im Mandanten {tenant?.name ?? "nextDesk"}{" "}
-            erfasst.
-          </Text>
-        </View>
-
-        {loading ? (
-          <View style={styles.centered}>
-            <ActivityIndicator color="#4438CA" />
-            <Text style={styles.copy}>Formular wird geladen …</Text>
-          </View>
-        ) : options ? (
-          <View style={styles.form}>
-            <FieldLabel label="ANFRAGENDE PERSON" />
-            <RequesterPicker
-              defaultRequester={options.currentRequester}
-              onChange={setRequester}
-              tenantId={tenant?.id ?? ""}
-              value={selectedRequester}
-            />
-
-            <FieldLabel label="BETREFF" />
-            <TextInput
-              autoCapitalize="sentences"
-              maxLength={240}
-              onChangeText={setSubject}
-              placeholder="z. B. VPN-Zugang für Homeoffice"
-              placeholderTextColor="#9A99AA"
-              style={styles.input}
-              value={subject}
-            />
-
-            <FieldLabel label="BESCHREIBUNG" />
-            <TextInput
-              autoCapitalize="sentences"
-              multiline
-              onChangeText={setDescription}
-              placeholder="Beschreibe dein Anliegen möglichst genau."
-              placeholderTextColor="#9A99AA"
-              style={[styles.input, styles.descriptionInput]}
-              textAlignVertical="top"
-              value={description}
-            />
-
-            <FieldLabel label="ABTEILUNG" />
-            <View style={styles.choiceList}>
-              {options.departments.map((department) => (
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityState={{
-                    selected: department.id === departmentId,
-                  }}
-                  key={department.id}
-                  onPress={() => setDepartmentId(department.id)}
-                  style={[
-                    styles.choice,
-                    department.id === departmentId && styles.choiceActive,
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.choiceText,
-                      department.id === departmentId && styles.choiceTextActive,
-                    ]}
-                  >
-                    {department.name}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-            {selectedDepartment ? (
-              <Text style={styles.hint}>
-                Bearbeitende Abteilung: {selectedDepartment.name}
-              </Text>
-            ) : null}
-
-            <FieldLabel label="PRIORITÄT" />
-            <View style={styles.choiceList}>
-              {options.priorities.map((priority) => (
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityState={{
-                    selected: priority.key === priorityKey,
-                  }}
-                  key={priority.key}
-                  onPress={() => setPriorityKey(priority.key)}
-                  style={[
-                    styles.choice,
-                    priority.key === priorityKey && styles.choiceActive,
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.choiceText,
-                      priority.key === priorityKey && styles.choiceTextActive,
-                    ]}
-                  >
-                    {priority.label}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-          </View>
-        ) : null}
-
-        {error ? <Text style={styles.error}>{error}</Text> : null}
-        <Pressable
-          accessibilityRole="button"
-          disabled={loading || saving || !options}
-          onPress={() => void createTicket()}
-          style={[
-            styles.primaryButton,
-            (loading || saving || !options) && styles.disabled,
-          ]}
+    <KeyboardAvoidingView
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      style={styles.keyboardAvoider}
+    >
+      <ScreenContainer containerClassName="bg-[#F6F7FB]" className="px-5">
+        <ScrollView
+          automaticallyAdjustKeyboardInsets
+          contentContainerStyle={styles.content}
+          keyboardDismissMode="interactive"
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
         >
-          {saving ? (
-            <ActivityIndicator color="#FFFFFF" />
-          ) : (
-            <Ionicons color="#FFFFFF" name="add-circle-outline" size={20} />
-          )}
-          <Text style={styles.primaryButtonText}>
-            {saving ? "Ticket wird erfasst …" : "Ticket erfassen"}
-          </Text>
-        </Pressable>
-      </ScrollView>
-    </ScreenContainer>
+          <View style={styles.topBar}>
+            <Pressable
+              accessibilityLabel="Zurück zur Übersicht"
+              accessibilityRole="button"
+              hitSlop={10}
+              onPress={() => router.back()}
+              style={styles.backButton}
+            >
+              <Ionicons color="#4438CA" name="arrow-back" size={22} />
+            </Pressable>
+            <Text style={styles.topTitle}>Ticket erfassen</Text>
+            <View style={styles.topSpacer} />
+          </View>
+
+          <View style={styles.intro}>
+            <Text style={styles.title}>Was können wir für dich tun?</Text>
+            <Text style={styles.copy}>
+              Dein Ticket wird direkt im Mandanten {tenant?.name ?? "nextDesk"}{" "}
+              erfasst.
+            </Text>
+          </View>
+
+          {loading ? (
+            <View style={styles.centered}>
+              <ActivityIndicator color="#4438CA" />
+              <Text style={styles.copy}>Formular wird geladen …</Text>
+            </View>
+          ) : options ? (
+            <View style={styles.form}>
+              <FieldLabel label="ANFRAGENDE PERSON" />
+              <RequesterPicker
+                defaultRequester={options.currentRequester}
+                onChange={setRequester}
+                tenantId={tenant?.id ?? ""}
+                value={selectedRequester}
+              />
+
+              <FieldLabel label="BETREFF" />
+              <TextInput
+                autoCapitalize="sentences"
+                maxLength={240}
+                onChangeText={setSubject}
+                placeholder="z. B. VPN-Zugang für Homeoffice"
+                placeholderTextColor="#9A99AA"
+                style={styles.input}
+                value={subject}
+              />
+
+              <FieldLabel label="BESCHREIBUNG" />
+              <TextInput
+                autoCapitalize="sentences"
+                multiline
+                onChangeText={setDescription}
+                placeholder="Beschreibe dein Anliegen möglichst genau."
+                placeholderTextColor="#9A99AA"
+                style={[styles.input, styles.descriptionInput]}
+                textAlignVertical="top"
+                value={description}
+              />
+
+              <FieldLabel label="ABTEILUNG" />
+              <View style={styles.choiceList}>
+                {options.departments.map((department) => (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityState={{
+                      selected: department.id === departmentId,
+                    }}
+                    key={department.id}
+                    onPress={() => setDepartmentId(department.id)}
+                    style={[
+                      styles.choice,
+                      department.id === departmentId && styles.choiceActive,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.choiceText,
+                        department.id === departmentId &&
+                          styles.choiceTextActive,
+                      ]}
+                    >
+                      {department.name}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+              {selectedDepartment ? (
+                <Text style={styles.hint}>
+                  Bearbeitende Abteilung: {selectedDepartment.name}
+                </Text>
+              ) : null}
+
+              <FieldLabel label="PRIORITÄT" />
+              <View style={styles.choiceList}>
+                {options.priorities.map((priority) => (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityState={{
+                      selected: priority.key === priorityKey,
+                    }}
+                    key={priority.key}
+                    onPress={() => setPriorityKey(priority.key)}
+                    style={[
+                      styles.choice,
+                      priority.key === priorityKey && styles.choiceActive,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.choiceText,
+                        priority.key === priorityKey && styles.choiceTextActive,
+                      ]}
+                    >
+                      {priority.label}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+          ) : null}
+
+          {error ? <Text style={styles.error}>{error}</Text> : null}
+          <Pressable
+            accessibilityRole="button"
+            disabled={loading || saving || !options}
+            onPress={() => void createTicket()}
+            style={[
+              styles.primaryButton,
+              (loading || saving || !options) && styles.disabled,
+            ]}
+          >
+            {saving ? (
+              <ActivityIndicator color="#FFFFFF" />
+            ) : (
+              <Ionicons color="#FFFFFF" name="add-circle-outline" size={20} />
+            )}
+            <Text style={styles.primaryButtonText}>
+              {saving ? "Ticket wird erfasst …" : "Ticket erfassen"}
+            </Text>
+          </Pressable>
+        </ScrollView>
+      </ScreenContainer>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -266,7 +277,8 @@ function FieldLabel({ label }: { label: string }) {
 }
 
 const styles = StyleSheet.create({
-  content: { gap: 16, paddingTop: 14, paddingBottom: 30 },
+  keyboardAvoider: { flex: 1 },
+  content: { gap: 16, paddingTop: 14, paddingBottom: 220 },
   topBar: {
     alignItems: "center",
     flexDirection: "row",
