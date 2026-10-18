@@ -20,12 +20,50 @@ import { clearMobileWorkspace, nextDesk } from "@/lib/nextdesk-client";
 import { unregisterPushDeviceBeforeSignOut } from "@/lib/push-notifications";
 import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
 
+/**
+ * Antwortet die native Face-ID-/Gerätecode-Abfrage nicht, wird die Taste
+ * nach dieser Zeit wieder freigegeben, damit niemand festhängt.
+ */
+const AUTHENTICATION_TIMEOUT_MS = 45_000;
+
+type AuthenticationOutcome =
+  | LocalAuthentication.LocalAuthenticationResult
+  | { success: false; error: "timeout" };
+
+function authenticateWithTimeout(): Promise<AuthenticationOutcome> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(
+      () => resolve({ success: false, error: "timeout" }),
+      AUTHENTICATION_TIMEOUT_MS,
+    );
+    LocalAuthentication.authenticateAsync({
+      cancelLabel: "Später",
+      disableDeviceFallback: false,
+      fallbackLabel: "Gerätecode",
+      promptMessage: "nextDesk entsperren",
+    }).then(
+      (result) => {
+        clearTimeout(timer);
+        resolve(result);
+      },
+      (error: unknown) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
+
 export function DeviceProtection() {
   const styles = useStyles();
   const colors = useAppColors();
   const router = useRouter();
   const appState = useRef<AppStateStatus>(AppState.currentState);
   const checkingRef = useRef(false);
+  /** Zuletzt bekannter Schutzstatus, um beim Verlassen sofort abzudecken. */
+  const protectionEnabledRef = useRef(false);
+  /** true, sobald die App wirklich im Hintergrund war (nicht nur inaktiv). */
+  const wasInBackgroundRef = useRef(false);
   const [lockState, setLockState] = useState<
     "checking-session" | "locked" | "unlocked"
   >("checking-session");
@@ -40,11 +78,13 @@ export function DeviceProtection() {
     try {
       const session = (await nextDesk?.auth.getSession())?.data.session;
       if (!session?.user.id) {
+        protectionEnabledRef.current = false;
         setLockState("unlocked");
         return;
       }
       const enabled = await getDeviceProtectionPreference(session.user.id);
       if (!enabled) {
+        protectionEnabledRef.current = false;
         setLockState("unlocked");
         return;
       }
@@ -54,19 +94,20 @@ export function DeviceProtection() {
       ]);
       if (!hasHardware || !enrolled) {
         await setDeviceProtectionPreference(session.user.id, false);
+        protectionEnabledRef.current = false;
         setLockState("unlocked");
         return;
       }
 
+      protectionEnabledRef.current = true;
       setLockState("locked");
-      const result = await LocalAuthentication.authenticateAsync({
-        cancelLabel: "Später",
-        disableDeviceFallback: false,
-        fallbackLabel: "Gerätecode",
-        promptMessage: "nextDesk entsperren",
-      });
+      const result = await authenticateWithTimeout();
       if (result.success) {
         setLockState("unlocked");
+      } else if (result.error === "timeout") {
+        setMessage(
+          "Die Entsperrung hat nicht geantwortet. Bitte tippen Sie erneut auf «Jetzt entsperren».",
+        );
       } else {
         setMessage(
           "Entsperren Sie nextDesk mit Face ID, Touch ID oder Gerätecode.",
@@ -89,10 +130,23 @@ export function DeviceProtection() {
 
   useEffect(() => {
     const subscription = AppState.addEventListener("change", (nextState) => {
-      const returnedFromBackground =
-        /inactive|background/.test(appState.current) && nextState === "active";
       appState.current = nextState;
-      if (returnedFromBackground) void verify();
+      // Face ID, Gerätecode, Kontrollzentrum, Kamera und Systemdialoge setzen
+      // die App nur kurz auf "inactive". Würde das als Rückkehr gelten, löste
+      // jede erfolgreiche Entsperrung sofort die nächste Abfrage aus (Schleife).
+      // Gesperrt wird deshalb nur nach echtem Aufenthalt im Hintergrund.
+      if (nextState === "background") {
+        wasInBackgroundRef.current = true;
+        // Inhalte im App-Umschalter sofort abdecken.
+        if (protectionEnabledRef.current && !checkingRef.current) {
+          setLockState("locked");
+        }
+        return;
+      }
+      if (nextState === "active" && wasInBackgroundRef.current) {
+        wasInBackgroundRef.current = false;
+        void verify();
+      }
     });
     return () => subscription.remove();
   }, [verify]);
@@ -151,7 +205,6 @@ export function DeviceProtection() {
               </Pressable>
               <Pressable
                 accessibilityRole="button"
-                disabled={checking}
                 onPress={() => void signOut()}
                 style={styles.signOut}
               >
