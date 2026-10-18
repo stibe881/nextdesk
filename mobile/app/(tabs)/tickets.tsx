@@ -13,14 +13,20 @@ import {
 } from "react-native";
 
 import { ScreenContainer } from "@/components/screen-container";
-import { isNextDeskConfigured, nextDesk } from "@/lib/nextdesk-client";
+import {
+  getMobileUserId,
+  isNextDeskConfigured,
+  nextDesk,
+} from "@/lib/nextdesk-client";
 import { loadMobileDashboard, type MobileTicket } from "@/lib/nextdesk-tickets";
+import { reconcileFavoriteTicketIds } from "@/lib/mobile-private-state";
 
-type TicketScope = "all" | "mine" | "open" | "resolved";
+type TicketScope = "all" | "mine" | "favorites" | "open" | "resolved";
 
 const scopes: { key: TicketScope; label: string }[] = [
   { key: "all", label: "Alle" },
   { key: "mine", label: "Meine" },
+  { key: "favorites", label: "Favoriten" },
   { key: "open", label: "Offen" },
   { key: "resolved", label: "Gelöst" },
 ];
@@ -30,6 +36,7 @@ export default function TicketsScreen() {
   const [tickets, setTickets] = useState<MobileTicket[]>([]);
   const [tenantName, setTenantName] = useState("");
   const [scope, setScope] = useState<TicketScope>("all");
+  const [favoriteIds, setFavoriteIds] = useState<string[]>([]);
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -52,8 +59,15 @@ export default function TicketsScreen() {
     try {
       setError("");
       const result = await loadMobileDashboard();
+      const userId = await getMobileUserId();
+      const favorites = await reconcileFavoriteTicketIds({
+        userId,
+        tenantId: result.tenant.id,
+        authorizedTicketIds: result.tickets.map((ticket) => ticket.id),
+      });
       setTickets(result.tickets);
       setTenantName(result.tenant.name);
+      setFavoriteIds(favorites);
     } catch (nextError) {
       setError(
         nextError instanceof Error
@@ -77,11 +91,13 @@ export default function TicketsScreen() {
     const matchesScope =
       scope === "mine"
         ? ticket.assignedToCurrentUser
-        : scope === "open"
-          ? !ticket.resolved
-          : scope === "resolved"
-            ? ticket.resolved
-            : true;
+        : scope === "favorites"
+          ? favoriteIds.includes(ticket.id)
+          : scope === "open"
+            ? !ticket.resolved
+            : scope === "resolved"
+              ? ticket.resolved
+              : true;
     if (!matchesScope || !normalizedQuery) return matchesScope;
     return [
       ticket.ticketNumber,
@@ -206,7 +222,11 @@ export default function TicketsScreen() {
 
         <View style={styles.listHeading}>
           <Text style={styles.listTitle}>
-            {scope === "all" ? "Alle Tickets" : "Gefilterte Tickets"}
+            {scope === "all"
+              ? "Alle Tickets"
+              : scope === "favorites"
+                ? "Favorisierte Tickets"
+                : "Gefilterte Tickets"}
           </Text>
           <Text style={styles.listCount}>{visibleTickets.length}</Text>
         </View>
