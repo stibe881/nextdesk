@@ -48,6 +48,14 @@ const expectedFiles = [
   "0043_requester_own_ticket_comments.sql",
   "0044_asset_intune_inventory_foundation.sql",
   "0045_ticket_templates_and_approval_foundation.sql",
+  "0046_tenant_branding_logo_storage.sql",
+  "0047_ticket_custom_field_layout_editor.sql",
+  "0048_ticket_requester_entra_source.sql",
+  "0049_knowledge_governance.sql",
+  "0050_ticket_approval_cancellation.sql",
+  "0051_ticket_automation_policies.sql",
+  "0052_tenant_data_retention_policies.sql",
+  "0053_tenant_feature_pilot_windows.sql",
 ];
 
 const availableFiles = await readdir(migrationDirectory);
@@ -421,6 +429,23 @@ const requiredFragments = [
   [
     "0045_ticket_templates_and_approval_foundation.sql",
     "grant execute on function public.decide_ticket_approval(uuid, uuid, uuid, text, text) to service_role",
+  ],
+  ["0046_tenant_branding_logo_storage.sql", "'tenant-branding'"],
+  [
+    "0047_ticket_custom_field_layout_editor.sql",
+    "ticket_custom_field_sections",
+  ],
+  [
+    "0048_ticket_requester_entra_source.sql",
+    "source in ('portal', 'manual', 'email', 'entra')",
+  ],
+  ["0049_knowledge_governance.sql", "knowledge_collections"],
+  ["0050_ticket_approval_cancellation.sql", "cancel_ticket_approval("],
+  ["0051_ticket_automation_policies.sql", "tenant_automation_policies"],
+  ["0052_tenant_data_retention_policies.sql", "tenant_data_retention_policies"],
+  [
+    "0053_tenant_feature_pilot_windows.sql",
+    "tenant_feature_flags_pilot_ends_at_check",
   ],
 ];
 

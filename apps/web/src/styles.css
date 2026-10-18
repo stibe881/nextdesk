@@ -3673,6 +3673,34 @@ body:has(.ticket-detail) {
   line-height: 1.6;
 }
 
+.tenant-admin-settings__pilot-date {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  color: var(--text) !important;
+  font-size: 12px !important;
+  font-weight: 650;
+}
+
+.tenant-admin-settings__pilot-date input {
+  min-height: 34px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px 8px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+}
+
+.tenant-admin-settings__pilot-hint {
+  max-width: 54ch;
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
 .tenant-admin-settings__feature label {
   display: flex;
   align-items: center;

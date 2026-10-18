@@ -12,6 +12,7 @@ type RequestBody = {
 type FeatureFlagRow = {
   feature_key: string;
   enabled: boolean;
+  pilot_ends_at: string | null;
   feature_catalog:
     { default_enabled: boolean } | { default_enabled: boolean }[] | null;
 };
@@ -85,6 +86,12 @@ function defaultEnabled(row: FeatureFlagRow): boolean {
   return catalog?.default_enabled === true;
 }
 
+function hasActivePilot(row: FeatureFlagRow): boolean {
+  if (row.pilot_ends_at === null) return true;
+  const endsAt = Date.parse(row.pilot_ends_at);
+  return Number.isFinite(endsAt) && endsAt > Date.now();
+}
+
 const handler = withSupabase({ auth: "user" }, async (request, context) => {
   if (request.method !== "POST") {
     return response(request, { error: { code: "method_not_allowed" } }, 405);
@@ -118,7 +125,9 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
 
   const { data, error } = await context.supabaseAdmin
     .from("tenant_feature_flags")
-    .select("feature_key, enabled, feature_catalog(default_enabled)")
+    .select(
+      "feature_key, enabled, pilot_ends_at, feature_catalog(default_enabled)",
+    )
     .eq("tenant_id", body.tenantId)
     .order("feature_key", { ascending: true })
     .limit(100);
@@ -130,12 +139,17 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
   const features = ((data ?? []) as FeatureFlagRow[])
     .filter(
       (row) =>
-        typeof row.feature_key === "string" && typeof row.enabled === "boolean",
+        typeof row.feature_key === "string" &&
+        typeof row.enabled === "boolean" &&
+        (row.pilot_ends_at === null || typeof row.pilot_ends_at === "string"),
     )
     .map((row) => ({
       key: row.feature_key,
-      enabled: row.enabled,
+      // Expired pilots are treated exactly like disabled modules. This protects
+      // navigation and content even if no browser reload happened at midnight.
+      enabled: row.enabled && hasActivePilot(row),
       defaultEnabled: defaultEnabled(row),
+      pilotEndsAt: row.pilot_ends_at,
     }));
 
   return response(request, { data: { features } });

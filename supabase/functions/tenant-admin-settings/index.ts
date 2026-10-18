@@ -66,6 +66,12 @@ type Action =
       featureKey: string;
       enabled: boolean;
     }
+  | {
+      type: "setFeaturePilot";
+      tenantId: string;
+      featureKey: string;
+      pilotEndDate: string | null;
+    }
   | { type: "listUsers"; tenantId: string }
   | { type: "listRoles"; tenantId: string }
   | { type: "listDepartments"; tenantId: string }
@@ -345,6 +351,28 @@ function parseAction(value: unknown): Action | null {
   }
 
   if (
+    value.type === "setFeaturePilot" &&
+    hasOnlyKeys(
+      value,
+      new Set(["type", "tenantId", "featureKey", "pilotEndDate"]),
+    ) &&
+    isUuid(value.tenantId) &&
+    typeof value.featureKey === "string" &&
+    FEATURE_KEY_PATTERN.test(value.featureKey) &&
+    (value.pilotEndDate === null ||
+      (typeof value.pilotEndDate === "string" &&
+        /^\d{4}-\d{2}-\d{2}$/.test(value.pilotEndDate) &&
+        Number.isFinite(Date.parse(`${value.pilotEndDate}T23:59:59Z`))))
+  ) {
+    return {
+      type: "setFeaturePilot",
+      tenantId: value.tenantId,
+      featureKey: value.featureKey,
+      pilotEndDate: value.pilotEndDate,
+    };
+  }
+
+  if (
     value.type === "saveDepartment" &&
     hasOnlyKeys(value, new Set(["type", "tenantId", "id", "name"])) &&
     isUuid(value.tenantId) &&
@@ -574,7 +602,7 @@ async function handleGetSettings(
     admin
       .from("tenant_feature_flags")
       .select(
-        "feature_key, enabled, updated_at, feature_catalog(key, name, description, category, default_enabled)",
+        "feature_key, enabled, pilot_ends_at, updated_at, feature_catalog(key, name, description, category, default_enabled)",
       )
       .eq("tenant_id", tenantId)
       .order("feature_key", { ascending: true })
@@ -1037,6 +1065,7 @@ async function handleToggleFeature(
       tenant_id: action.tenantId,
       feature_key: action.featureKey,
       enabled: action.enabled,
+      pilot_ends_at: null,
       updated_by: actorId,
       updated_at: new Date().toISOString(),
     },
@@ -1059,6 +1088,65 @@ async function handleToggleFeature(
     return json(request, { error: { code: "audit_log_write_failed" } }, 500);
   }
   return json(request, { data: { updated: true } });
+}
+
+async function handleSetFeaturePilot(
+  admin: any,
+  request: Request,
+  action: Extract<Action, { type: "setFeaturePilot" }>,
+  actorId: string,
+): Promise<Response> {
+  const { data: feature, error: featureError } = await admin
+    .from("feature_catalog")
+    .select("key")
+    .eq("key", action.featureKey)
+    .maybeSingle();
+  if (featureError)
+    return json(request, { error: { code: "feature_lookup_failed" } }, 500);
+  if (!feature)
+    return json(request, { error: { code: "feature_not_found" } }, 422);
+
+  const { data: existing, error: existingError } = await admin
+    .from("tenant_feature_flags")
+    .select("enabled")
+    .eq("tenant_id", action.tenantId)
+    .eq("feature_key", action.featureKey)
+    .maybeSingle();
+  if (existingError)
+    return json(request, { error: { code: "feature_read_failed" } }, 500);
+
+  const pilotEndsAt = action.pilotEndDate
+    ? `${action.pilotEndDate}T23:59:59Z`
+    : null;
+  const { error } = await admin.from("tenant_feature_flags").upsert(
+    {
+      tenant_id: action.tenantId,
+      feature_key: action.featureKey,
+      // Creating a pilot deliberately enables only the named module. Clearing a
+      // pilot preserves the current manual switch position.
+      enabled: pilotEndsAt !== null ? true : existing?.enabled === true,
+      pilot_ends_at: pilotEndsAt,
+      updated_by: actorId,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "tenant_id,feature_key" },
+  );
+  if (error)
+    return json(request, { error: { code: "feature_pilot_save_failed" } }, 422);
+
+  if (
+    !(await writeAudit(
+      admin,
+      action.tenantId,
+      actorId,
+      "tenant.feature.pilot_updated",
+      "tenant_feature_flag",
+      { feature_key: action.featureKey, pilot_ends_at: pilotEndsAt },
+    ))
+  ) {
+    return json(request, { error: { code: "audit_log_write_failed" } }, 500);
+  }
+  return json(request, { data: { updated: true, pilotEndsAt } });
 }
 
 async function handleListUsers(
@@ -1171,6 +1259,14 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
   }
   if (action.type === "toggleFeature") {
     return handleToggleFeature(context.supabaseAdmin, request, action, actorId);
+  }
+  if (action.type === "setFeaturePilot") {
+    return handleSetFeaturePilot(
+      context.supabaseAdmin,
+      request,
+      action,
+      actorId,
+    );
   }
   if (action.type === "listUsers") {
     return handleListUsers(context.supabaseAdmin, request, action.tenantId);
