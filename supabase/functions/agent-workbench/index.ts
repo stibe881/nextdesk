@@ -895,6 +895,7 @@ async function myMetrics(
       .select("id, status_id, created_at, first_responded_at, resolved_at")
       .eq("tenant_id", action.tenantId)
       .eq("assigned_agent_id", actorId)
+      .order("updated_at", { ascending: false })
       .limit(5000),
     admin
       .from("ticket_statuses")
@@ -920,25 +921,38 @@ async function myMetrics(
     }).format(value);
   const today = zurichDate(new Date());
   const responseMinutes: number[] = [];
+  // Ticket-IDs je Kennzahl, damit Web und App beim Antippen genau die
+  // gezählten Tickets anzeigen können (neueste zuerst, begrenzt).
+  const maxIds = 100;
+  const assignedIds: string[] = [];
+  const solvedTodayIds: string[] = [];
+  const firstResponseIds: string[] = [];
   let open = 0;
   let solvedToday = 0;
   for (const entry of rows.data ?? []) {
     const closed = closedStatusIds.has(entry.status_id);
-    if (!closed) open += 1;
+    if (!closed) {
+      open += 1;
+      if (assignedIds.length < maxIds) assignedIds.push(entry.id);
+    }
     if (
       closed &&
       typeof entry.resolved_at === "string" &&
       zurichDate(new Date(entry.resolved_at)) === today
-    )
+    ) {
       solvedToday += 1;
+      if (solvedTodayIds.length < maxIds) solvedTodayIds.push(entry.id);
+    }
     if (
       typeof entry.created_at === "string" &&
       typeof entry.first_responded_at === "string"
-    )
+    ) {
       responseMinutes.push(
         (Date.parse(entry.first_responded_at) - Date.parse(entry.created_at)) /
           60000,
       );
+      if (firstResponseIds.length < maxIds) firstResponseIds.push(entry.id);
+    }
   }
   responseMinutes.sort((a, b) => a - b);
   const median = responseMinutes.length
@@ -946,12 +960,23 @@ async function myMetrics(
     : null;
   const due = await admin
     .from("experience_follow_ups")
-    .select("id", { count: "exact", head: true })
+    .select("ticket_id", { count: "exact" })
     .eq("tenant_id", action.tenantId)
     .eq("owner_id", actorId)
     .is("resolved_at", null)
-    .lte("due_at", new Date().toISOString());
+    .lte("due_at", new Date().toISOString())
+    .order("due_at", { ascending: true })
+    .limit(500);
   if (due.error) db(due.error);
+  const dueTicketIds: string[] = [];
+  for (const entry of due.data ?? []) {
+    if (
+      typeof entry.ticket_id === "string" &&
+      !dueTicketIds.includes(entry.ticket_id) &&
+      dueTicketIds.length < maxIds
+    )
+      dueTicketIds.push(entry.ticket_id);
+  }
   return reply(request, {
     data: {
       metrics: {
@@ -959,6 +984,12 @@ async function myMetrics(
         solvedToday,
         medianFirstResponseMinutes: median,
         dueFollowUps: due.count ?? 0,
+        ticketIds: {
+          assigned: assignedIds,
+          solvedToday: solvedTodayIds,
+          firstResponse: firstResponseIds,
+          dueFollowUps: dueTicketIds,
+        },
       },
     },
   });

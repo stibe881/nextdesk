@@ -207,6 +207,37 @@ body {
   min-height: 100vh;
 }
 
+.workbench-metrics__value-button {
+  width: 100%;
+  border: 0;
+  border-radius: 6px;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: inherit;
+  font-variant-numeric: inherit;
+  letter-spacing: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background-color 140ms ease,
+    color 140ms ease;
+}
+
+.workbench-metrics__value-button:hover {
+  color: var(--primary);
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 4px;
+}
+
+.workbench-metrics__value-button:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 4px;
+  background: var(--primary-soft);
+}
+
 /* The app uses semantic tokens so light, dark, and system choices share one component path. */
 .app-shell {
   --primary: var(--brand-primary, #4338ca);

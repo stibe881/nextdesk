@@ -81,6 +81,14 @@ type Metrics = {
   medianFirstResponseMinutes: number | null;
   open: number;
   solvedToday: number;
+  ticketIds?: MetricTicketIds;
+};
+
+type MetricTicketIds = {
+  assigned: string[];
+  dueFollowUps: string[];
+  firstResponse: string[];
+  solvedToday: string[];
 };
 
 export type { ActiveIncidentNotice, TeamQueue };
@@ -129,6 +137,25 @@ function isUuid(value: unknown): value is string {
       value,
     )
   );
+}
+
+function metricTicketIdsFromValue(value: unknown): MetricTicketIds | null {
+  if (!isRecord(value)) return null;
+
+  const keys = [
+    "assigned",
+    "solvedToday",
+    "firstResponse",
+    "dueFollowUps",
+  ] as const;
+  const ticketIds: Partial<MetricTicketIds> = {};
+  for (const key of keys) {
+    const ids = value[key];
+    if (!Array.isArray(ids) || !ids.every(isUuid)) return null;
+    ticketIds[key] = ids;
+  }
+
+  return ticketIds as MetricTicketIds;
 }
 
 function isTimestamp(value: unknown): value is string {
@@ -1293,7 +1320,13 @@ function IncidentsPanel({
   );
 }
 
-export function AgentMetricsCard({ tenantId }: { tenantId: string }) {
+export function AgentMetricsCard({
+  onOpenTickets,
+  tenantId,
+}: {
+  onOpenTickets?: (filter: { label: string; ticketIds: string[] }) => void;
+  tenantId: string;
+}) {
   const [metrics, setMetrics] = useState<Metrics | null>(null);
   const [state, setState] = useState<"loading" | "ready" | "unavailable">(
     "loading",
@@ -1316,12 +1349,14 @@ export function AgentMetricsCard({ tenantId }: { tenantId: string }) {
         ) {
           throw new Error("invalid_metrics_response");
         }
+        const ticketIds = metricTicketIdsFromValue(raw.ticketIds);
         if (!mounted) return;
         setMetrics({
           dueFollowUps: raw.dueFollowUps,
           medianFirstResponseMinutes: raw.medianFirstResponseMinutes,
           open: raw.open,
           solvedToday: raw.solvedToday,
+          ...(ticketIds ? { ticketIds } : {}),
         });
         setState("ready");
       })
@@ -1368,19 +1403,91 @@ export function AgentMetricsCard({ tenantId }: { tenantId: string }) {
         <dl>
           <div>
             <dt>Mir zugewiesen</dt>
-            <dd>{metrics.open}</dd>
+            <dd>
+              {onOpenTickets && metrics.ticketIds ? (
+                <button
+                  aria-label={`Mir zugewiesen: ${metrics.open} – passende Tickets anzeigen`}
+                  className="workbench-metrics__value-button"
+                  onClick={() =>
+                    onOpenTickets({
+                      label: "Mir zugewiesen",
+                      ticketIds: metrics.ticketIds?.assigned ?? [],
+                    })
+                  }
+                  type="button"
+                >
+                  {metrics.open}
+                </button>
+              ) : (
+                metrics.open
+              )}
+            </dd>
           </div>
           <div>
             <dt>Heute gelöst</dt>
-            <dd>{metrics.solvedToday}</dd>
+            <dd>
+              {onOpenTickets && metrics.ticketIds ? (
+                <button
+                  aria-label={`Heute gelöst: ${metrics.solvedToday} – passende Tickets anzeigen`}
+                  className="workbench-metrics__value-button"
+                  onClick={() =>
+                    onOpenTickets({
+                      label: "Heute gelöst",
+                      ticketIds: metrics.ticketIds?.solvedToday ?? [],
+                    })
+                  }
+                  type="button"
+                >
+                  {metrics.solvedToday}
+                </button>
+              ) : (
+                metrics.solvedToday
+              )}
+            </dd>
           </div>
           <div>
             <dt>Median erste Antwort</dt>
-            <dd>{responseTime}</dd>
+            <dd>
+              {onOpenTickets && metrics.ticketIds ? (
+                <button
+                  aria-label={`Median erste Antwort: ${responseTime} – passende Tickets anzeigen`}
+                  className="workbench-metrics__value-button"
+                  onClick={() =>
+                    onOpenTickets({
+                      label: "Mit erster Antwort",
+                      ticketIds: metrics.ticketIds?.firstResponse ?? [],
+                    })
+                  }
+                  type="button"
+                >
+                  {responseTime}
+                </button>
+              ) : (
+                responseTime
+              )}
+            </dd>
           </div>
           <div>
             <dt>Fällige Wiedervorlagen</dt>
-            <dd>{metrics.dueFollowUps}</dd>
+            <dd>
+              {onOpenTickets && metrics.ticketIds ? (
+                <button
+                  aria-label={`Fällige Wiedervorlagen: ${metrics.dueFollowUps} – passende Tickets anzeigen`}
+                  className="workbench-metrics__value-button"
+                  onClick={() =>
+                    onOpenTickets({
+                      label: "Fällige Wiedervorlagen",
+                      ticketIds: metrics.ticketIds?.dueFollowUps ?? [],
+                    })
+                  }
+                  type="button"
+                >
+                  {metrics.dueFollowUps}
+                </button>
+              ) : (
+                metrics.dueFollowUps
+              )}
+            </dd>
           </div>
         </dl>
       )}

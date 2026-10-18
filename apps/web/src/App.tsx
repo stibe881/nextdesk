@@ -112,6 +112,10 @@ type Section =
   | "Wiedervorlagen"
   | "Einstellungen";
 type TicketScope = "all" | "mine" | "unassigned" | "open" | "closed";
+type MetricTicketFilter = {
+  label: string;
+  ticketIds: string[];
+};
 type TicketListDensity = "compact" | "standard" | "comfortable";
 type WorkspaceTheme = "light" | "dark" | "system";
 type WorkspacePreferences = {
@@ -1192,6 +1196,8 @@ export function App() {
   const [period, setPeriod] = useState<Period>("Heute");
   const [queue, setQueue] = useState("alle");
   const [ticketScope, setTicketScope] = useState<TicketScope>("all");
+  const [metricTicketFilter, setMetricTicketFilter] =
+    useState<MetricTicketFilter | null>(null);
   const [query, setQuery] = useState("");
   const [savedTicketViews, setSavedTicketViews] = useState<SavedTicketView[]>(
     [],
@@ -1338,6 +1344,10 @@ export function App() {
     if (!workspacePreferencesHydrated) return;
     setSection(workspacePreferences.startSection);
   }, [workspacePreferencesHydrated, workspacePreferencesStorageKey]);
+
+  useEffect(() => {
+    setMetricTicketFilter(null);
+  }, [activeTenantId]);
 
   useEffect(() => {
     if (!supabase) return;
@@ -2177,6 +2187,17 @@ export function App() {
   );
   const parsedTicketSearch = useMemo(() => parseTicketSearch(query), [query]);
   const effectiveTicketScope = canWorkTickets ? ticketScope : "mine";
+  const metricTicketIds = useMemo(
+    () => (metricTicketFilter ? new Set(metricTicketFilter.ticketIds) : null),
+    [metricTicketFilter],
+  );
+  const missingMetricTickets = useMemo(() => {
+    if (!metricTicketIds) return false;
+    const loadedMetricTicketCount = view.tickets.filter((ticket) =>
+      metricTicketIds.has(ticket.recordId ?? ticket.id),
+    ).length;
+    return loadedMetricTicketCount < metricTicketIds.size;
+  }, [metricTicketIds, view.tickets]);
   const filteredTickets = useMemo(
     () =>
       view.tickets.filter((ticket) => {
@@ -2187,10 +2208,18 @@ export function App() {
           (effectiveTicketScope === "unassigned" && ticket.isUnassigned) ||
           (effectiveTicketScope === "open" && !ticket.isClosed) ||
           (effectiveTicketScope === "closed" && ticket.isClosed);
+        const matchesMetricTickets =
+          !metricTicketIds || metricTicketIds.has(ticket.recordId ?? ticket.id);
         const match = matchesTicketSearch(ticket, parsedTicketSearch);
-        return inQueue && inScope && match;
+        return inQueue && inScope && matchesMetricTickets && match;
       }),
-    [effectiveTicketScope, parsedTicketSearch, queue, view.tickets],
+    [
+      effectiveTicketScope,
+      metricTicketIds,
+      parsedTicketSearch,
+      queue,
+      view.tickets,
+    ],
   );
   const splitSelectedTicket = useMemo(
     () =>
@@ -2220,6 +2249,7 @@ export function App() {
   const queueCount = (queueKey: string) =>
     view.tickets.filter((ticket) => ticket.queue === queueKey).length;
   const openTicketScope = (scope: TicketScope) => {
+    setMetricTicketFilter(null);
     setTicketScope(canWorkTickets ? scope : "mine");
     setQueue("alle");
     setSection("Tickets");
@@ -2239,6 +2269,7 @@ export function App() {
       );
       return;
     }
+    setMetricTicketFilter(null);
     setQuery("");
     setQueue(department.key);
     setTicketScope("open");
@@ -2257,9 +2288,23 @@ export function App() {
   const clearTicketSelection = () => setSelectedTicketIds(new Set());
   const clearTicketFilters = () => {
     clearTicketSelection();
+    setMetricTicketFilter(null);
     setQuery("");
     setQueue("alle");
     setTicketScope(canWorkTickets ? "all" : "mine");
+  };
+  const updateTicketSearchQuery = (nextQuery: string) => {
+    if (!nextQuery.trim()) setMetricTicketFilter(null);
+    setQuery(nextQuery);
+  };
+  const openMetricTickets = (filter: MetricTicketFilter) => {
+    clearTicketSelection();
+    setQuery("");
+    setQueue("alle");
+    setTicketScope(canWorkTickets ? "all" : "mine");
+    setMetricTicketFilter(filter);
+    setSection("Tickets");
+    setSplitSelectedTicketId(null);
   };
   const ticketScopeLabel: Record<TicketScope, string> = {
     all: "Alle sichtbaren Tickets",
@@ -2613,6 +2658,7 @@ export function App() {
       <AccessShell>
         <OwnerConsoleScreen
           onOpenTenant={(tenantId) => {
+            setMetricTicketFilter(null);
             setActiveTenantId(tenantId);
             setOwnerView("tenant");
           }}
@@ -2770,7 +2816,10 @@ export function App() {
                 <label className="tenant-selector">
                   <span>Mandant</span>
                   <select
-                    onChange={(event) => setActiveTenantId(event.target.value)}
+                    onChange={(event) => {
+                      setMetricTicketFilter(null);
+                      setActiveTenantId(event.target.value);
+                    }}
                     value={activeTenantId}
                   >
                     {tenants.map((tenant) => (
@@ -2822,7 +2871,9 @@ export function App() {
               <Search aria-hidden="true" size={17} strokeWidth={1.8} />
               <input
                 aria-label="Tickets durchsuchen"
-                onChange={(event) => setQuery(event.target.value)}
+                onChange={(event) =>
+                  updateTicketSearchQuery(event.target.value)
+                }
                 placeholder="Suche oder status:offen"
                 value={query}
               />
@@ -3099,7 +3150,10 @@ export function App() {
               <div className="panel-heading">
                 <div>
                   <p className="eyebrow">Autorisierte Vorgänge</p>
-                  <h2>{ticketScopeLabel[effectiveTicketScope]}</h2>
+                  <h2>
+                    {metricTicketFilter?.label ??
+                      ticketScopeLabel[effectiveTicketScope]}
+                  </h2>
                 </div>
                 <div className="ticket-list-heading-actions">
                   <span className="data-caption">
@@ -3163,6 +3217,7 @@ export function App() {
                   filters={{ query, queue, ticketScope }}
                   loading={savedTicketViewsLoading}
                   onApply={(filters) => {
+                    setMetricTicketFilter(null);
                     setQuery(filters.query);
                     setQueue(filters.queue);
                     setTicketScope(filters.ticketScope);
@@ -3193,6 +3248,21 @@ export function App() {
                 queueOptions={queueOptions}
                 setQueue={setQueue}
               />
+              {metricTicketFilter && (
+                <div className="ticket-search-summary ticket-metrics-filter">
+                  <div>
+                    <strong>Kennzahlenfilter aktiv</strong>
+                    <span>{metricTicketFilter.label}</span>
+                  </div>
+                  <button
+                    className="text-button"
+                    onClick={() => setMetricTicketFilter(null)}
+                    type="button"
+                  >
+                    Filter zurücksetzen
+                  </button>
+                </div>
+              )}
               {(parsedTicketSearch.chips.length > 0 || query.trim()) && (
                 <div className="ticket-search-summary">
                   <div>
@@ -3213,7 +3283,9 @@ export function App() {
                         className="ticket-search-chip"
                         key={chip.raw}
                         onClick={() =>
-                          setQuery(removeTicketSearchClause(query, chip.raw))
+                          updateTicketSearchQuery(
+                            removeTicketSearchClause(query, chip.raw),
+                          )
                         }
                         type="button"
                       >
@@ -3233,6 +3305,11 @@ export function App() {
               )}
               {view.ticketListNote && (
                 <p className="list-note">{view.ticketListNote}</p>
+              )}
+              {missingMetricTickets && (
+                <p className="list-note" role="status">
+                  Einige Tickets sind in der aktuellen Liste nicht geladen.
+                </p>
               )}
               <div
                 className={
@@ -3254,13 +3331,15 @@ export function App() {
                       : {})}
                     {...(query.trim() ||
                     queue !== "alle" ||
-                    (canWorkTickets && ticketScope !== "all")
+                    (canWorkTickets && ticketScope !== "all") ||
+                    metricTicketFilter
                       ? { onClearFilters: clearTicketFilters }
                       : {})}
                     hasActiveFilters={Boolean(
                       query.trim() ||
                       queue !== "alle" ||
-                      (canWorkTickets && ticketScope !== "all"),
+                      (canWorkTickets && ticketScope !== "all") ||
+                      metricTicketFilter,
                     )}
                     keyboardActiveTicketId={keyboardActiveTicketId}
                     loading={dashboardLoading && snapshot === null}
@@ -3449,7 +3528,10 @@ export function App() {
 
               <aside className="side-stack">
                 {activeTenant && agentWorkbenchEnabled && (
-                  <AgentMetricsCard tenantId={activeTenant.id} />
+                  <AgentMetricsCard
+                    onOpenTickets={openMetricTickets}
+                    tenantId={activeTenant.id}
+                  />
                 )}
                 {activeTenant && experienceWorkspaceEnabled && (
                   <MyDayCard
