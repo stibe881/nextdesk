@@ -26,6 +26,7 @@ import {
   X,
 } from "lucide-react";
 import { supabase } from "./lib/supabase";
+import { TicketApprovals } from "./ticket-approvals";
 import { TicketCustomFields } from "./ticket-custom-fields";
 
 type CommentVisibility = "external" | "internal";
@@ -6883,6 +6884,8 @@ export function TicketDetail({
               </ol>
             )}
           </section>
+
+          <TicketApprovals tenantId={tenantId} ticketId={ticketId} />
 
           <section
             className="ticket-detail-comments"
