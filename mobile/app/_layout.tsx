@@ -18,10 +18,15 @@ import {
 import type { EdgeInsets, Metrics, Rect } from "react-native-safe-area-context";
 
 import { trpc, createTRPCClient } from "@/lib/trpc";
+import { DeviceProtection } from "@/components/device-protection";
 import {
   initManusRuntime,
   subscribeSafeAreaInsets,
 } from "@/lib/_core/manus-runtime";
+import {
+  clearMobilePrivateState,
+  prepareMobileUserContext,
+} from "@/lib/mobile-private-state";
 import {
   completeNextDeskAuth,
   isNextDeskAuthCallback,
@@ -73,8 +78,9 @@ function NextDeskSessionNavigator() {
   useEffect(() => {
     if (!nextDesk) return;
 
-    const continueToWorkspace = (hasSession: boolean) => {
-      if (!hasSession) return;
+    const continueToWorkspace = (userId: string | undefined) => {
+      if (!userId) return;
+      void prepareMobileUserContext(userId);
       if (topLevelRoute === "auth" || topLevelRoute === "oauth") {
         // Route groups are an implementation detail on Expo Web. Navigating to
         // the public root keeps native and browser callbacks on one reliable
@@ -83,9 +89,9 @@ function NextDeskSessionNavigator() {
       }
     };
 
-    void nextDesk.auth
-      .getSession()
-      .then(({ data }) => continueToWorkspace(Boolean(data.session)));
+    void nextDesk.auth.getSession().then(({ data }) => {
+      if (data.session?.user.id) continueToWorkspace(data.session.user.id);
+    });
     const {
       data: { subscription },
     } = nextDesk.auth.onAuthStateChange((event, session) => {
@@ -95,7 +101,9 @@ function NextDeskSessionNavigator() {
           event === "SIGNED_IN" ||
           event === "PASSWORD_RECOVERY")
       ) {
-        continueToWorkspace(true);
+        continueToWorkspace(session.user.id);
+      } else if (event === "SIGNED_OUT") {
+        void clearMobilePrivateState();
       }
     });
     return () => subscription.unsubscribe();
@@ -174,6 +182,7 @@ export default function RootLayout() {
           </Stack>
           <NextDeskAuthDeepLinkHandler />
           <NextDeskSessionNavigator />
+          <DeviceProtection />
           <StatusBar style="auto" />
         </QueryClientProvider>
       </trpc.Provider>

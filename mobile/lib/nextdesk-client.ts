@@ -1,7 +1,14 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import Constants from "expo-constants";
 import { Platform } from "react-native";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+
+import {
+  clearMobilePrivateState,
+  getSelectedTenantId,
+  prepareMobileUserContext,
+  setSelectedTenantId,
+} from "@/lib/mobile-private-state";
+import { mobileSecureStorage } from "@/lib/mobile-secure-storage";
 
 type NextDeskExtra = {
   nextDeskSupabaseUrl?: string;
@@ -23,24 +30,6 @@ const publishableKey =
 
 export const isNextDeskConfigured = Boolean(url && publishableKey);
 
-const serverStorage = {
-  getItem: async (_key: string) => null,
-  setItem: async (_key: string, _value: string) => undefined,
-  removeItem: async (_key: string) => undefined,
-};
-
-const webStorage =
-  typeof window === "undefined"
-    ? serverStorage
-    : {
-        getItem: async (key: string) => window.localStorage.getItem(key),
-        setItem: async (key: string, value: string) =>
-          window.localStorage.setItem(key, value),
-        removeItem: async (key: string) => window.localStorage.removeItem(key),
-      };
-
-const authStorage = Platform.OS === "web" ? webStorage : AsyncStorage;
-
 export const nextDesk: SupabaseClient | null = isNextDeskConfigured
   ? createClient(url, publishableKey, {
       auth: {
@@ -48,7 +37,9 @@ export const nextDesk: SupabaseClient | null = isNextDeskConfigured
         detectSessionInUrl: false,
         flowType: "pkce",
         persistSession: true,
-        storage: authStorage,
+        // Expo SecureStore maps to the encrypted iOS Keychain. Browser Preview
+        // deliberately retains its localStorage fallback inside the adapter.
+        storage: mobileSecureStorage,
       },
     })
   : null;
@@ -243,25 +234,90 @@ export type MobileTenant = {
   slug: string;
 };
 
-export async function loadCurrentTenant(): Promise<MobileTenant> {
+type TenantMembershipRow = {
+  tenant_id: string;
+  tenants: MobileTenant | MobileTenant[] | null;
+};
+
+function tenantFromMembership(row: TenantMembershipRow): MobileTenant | null {
+  const tenant = Array.isArray(row.tenants) ? row.tenants[0] : row.tenants;
+  if (
+    !tenant ||
+    typeof tenant.id !== "string" ||
+    typeof tenant.name !== "string" ||
+    typeof tenant.slug !== "string"
+  ) {
+    return null;
+  }
+  return tenant;
+}
+
+export async function getMobileUserId(): Promise<string> {
+  const {
+    data: { user },
+    error,
+  } = await requireNextDesk().auth.getUser();
+  if (error || !user?.id) throw new Error("Die Anmeldung ist abgelaufen.");
+  await prepareMobileUserContext(user.id);
+  return user.id;
+}
+
+export async function listMobileTenants(): Promise<MobileTenant[]> {
   const client = requireNextDesk();
+  const userId = await getMobileUserId();
   const { data, error } = await client
     .from("tenant_memberships")
     .select("tenant_id, tenants(id, name, slug)")
     .eq("status", "active");
   if (error) throw error;
 
-  const tenants = (data ?? [])
-    .map((membership) => membership.tenants as unknown as MobileTenant | null)
+  const tenants = ((data ?? []) as TenantMembershipRow[])
+    .map(tenantFromMembership)
     .filter((tenant): tenant is MobileTenant => Boolean(tenant))
     .sort((left, right) => left.name.localeCompare(right.name, "de-CH"));
-  const tenant = tenants[0];
-  if (!tenant) {
+  if (tenants.length === 0) {
     throw new Error(
       "Für dieses Konto ist kein aktiver nextDesk-Mandant verfügbar.",
     );
   }
+  // Persisting this context is intentionally scoped to the authenticated user.
+  // No tenant information is inferred from ticket content or URL parameters.
+  await prepareMobileUserContext(userId);
+  return tenants;
+}
+
+export async function selectMobileTenant(
+  tenantId: string,
+): Promise<MobileTenant> {
+  const userId = await getMobileUserId();
+  const tenants = await listMobileTenants();
+  const tenant = tenants.find((candidate) => candidate.id === tenantId);
+  if (!tenant) {
+    throw new Error("Dieser Mandant ist für Ihr Konto nicht aktiv.");
+  }
+  await setSelectedTenantId(userId, tenant.id);
   return tenant;
+}
+
+export async function loadCurrentTenant(): Promise<MobileTenant> {
+  const userId = await getMobileUserId();
+  const tenants = await listMobileTenants();
+  const selectedTenantId = await getSelectedTenantId(userId);
+  const selectedTenant = tenants.find(
+    (candidate) => candidate.id === selectedTenantId,
+  );
+  if (selectedTenant) return selectedTenant;
+
+  // Accounts with one active tenant need no extra interaction. For multiple
+  // tenants we retain one initial, user-scoped context and expose a picker in
+  // the account screen; later calls never silently change that selection.
+  const initialTenant = tenants[0];
+  await setSelectedTenantId(userId, initialTenant.id);
+  return initialTenant;
+}
+
+export async function clearMobileWorkspace(): Promise<void> {
+  await clearMobilePrivateState();
 }
 
 /** Uses the production SSO access gate instead of trusting client-side profile data. */

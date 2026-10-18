@@ -11,6 +11,7 @@ type TicketConversationProps = {
   canCommentExternal: boolean;
   canWriteInternalNotes: boolean;
   comments: MobileTicketComment[];
+  draftState: "idle" | "local" | "saving" | "synced";
   isSending: boolean;
   onBodyChange: (body: string) => void;
   onSend: () => void;
@@ -60,11 +61,21 @@ function messageLabel(direction: MessageDirection): string {
   return direction === "incoming" ? "Kundschaft" : "Antwort";
 }
 
+function draftStatusLabel(
+  state: TicketConversationProps["draftState"],
+): string | null {
+  if (state === "saving") return "Entwurf wird gesichert …";
+  if (state === "synced") return "Entwurf sicher gespeichert";
+  if (state === "local") return "Entwurf nur auf diesem Gerät gesichert";
+  return null;
+}
+
 export function TicketConversation({
   body,
   canCommentExternal,
   canWriteInternalNotes,
   comments,
+  draftState,
   isSending,
   onBodyChange,
   onSend,
@@ -77,6 +88,7 @@ export function TicketConversation({
     visibility === "external"
       ? "Für die Kundschaft sichtbar"
       : "Nur für berechtigte Mitarbeitende sichtbar";
+  const draftLabel = draftStatusLabel(draftState);
 
   return (
     <View style={styles.section}>
@@ -302,7 +314,19 @@ export function TicketConversation({
             value={body}
           />
           <View style={styles.composerFooter}>
-            <Text style={styles.visibilityHint}>{externalHint}</Text>
+            <View style={styles.composerHints}>
+              <Text style={styles.visibilityHint}>{externalHint}</Text>
+              {draftLabel ? (
+                <Text
+                  style={[
+                    styles.draftHint,
+                    draftState === "local" && styles.draftHintLocal,
+                  ]}
+                >
+                  {draftLabel}
+                </Text>
+              ) : null}
+            </View>
             <Pressable
               accessibilityLabel="Nachricht senden"
               accessibilityRole="button"
@@ -518,7 +542,15 @@ const styles = StyleSheet.create({
     gap: 12,
     justifyContent: "space-between",
   },
+  composerHints: { flex: 1, gap: 2 },
   visibilityHint: { color: "#77758C", flex: 1, fontSize: 10, lineHeight: 14 },
+  draftHint: {
+    color: "#09725C",
+    fontSize: 10,
+    fontWeight: "700",
+    lineHeight: 14,
+  },
+  draftHintLocal: { color: "#95630F" },
   sendButton: {
     alignItems: "center",
     backgroundColor: "#5145C9",

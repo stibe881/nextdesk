@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
+  Linking,
   Modal,
   Platform,
   Pressable,
@@ -17,10 +18,23 @@ import {
 import { ScreenContainer } from "@/components/screen-container";
 import { RequesterPicker } from "@/components/requester-picker";
 import { TicketConversation } from "@/components/ticket-conversation";
-import { loadCurrentTenant, type MobileTenant } from "@/lib/nextdesk-client";
+import { TicketPhotoAttachments } from "@/components/ticket-photo-attachments";
+import {
+  clearLocalTicketDraft,
+  listFavoriteTicketIds,
+  loadLocalTicketDraft,
+  saveLocalTicketDraft,
+  setFavoriteTicket,
+} from "@/lib/mobile-private-state";
+import {
+  getMobileUserId,
+  loadCurrentTenant,
+  type MobileTenant,
+} from "@/lib/nextdesk-client";
 import {
   addMobileTicketComment,
   loadMobileTicketDetail,
+  saveMobileTicketDraft,
   updateMobileTicket,
   type MobileTicketDetail,
   type TicketRequester,
@@ -39,6 +53,12 @@ export default function TicketDetailScreen() {
   const [comment, setComment] = useState("");
   const [commentVisibility, setCommentVisibility] =
     useState<TicketCommentVisibility>("internal");
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [favorite, setFavorite] = useState(false);
+  const [draftState, setDraftState] = useState<
+    "idle" | "local" | "saving" | "synced"
+  >("idle");
+  const [draftDirty, setDraftDirty] = useState(false);
   const [editingField, setEditingField] = useState<
     "subject" | "description" | "requester" | null
   >(null);
@@ -55,11 +75,32 @@ export default function TicketDetailScreen() {
       if (!id) return;
       try {
         setError("");
-        const currentTenant = await loadCurrentTenant();
+        const [currentTenant, userId] = await Promise.all([
+          loadCurrentTenant(),
+          getMobileUserId(),
+        ]);
         const detail = await loadMobileTicketDetail(currentTenant.id, id);
         setTenant(currentTenant);
+        setCurrentUserId(userId);
         setTicket(detail);
         if (syncEditor) {
+          const initialVisibility = detail.canWriteInternalNotes
+            ? "internal"
+            : "external";
+          const [localDraft, favoriteIds] = await Promise.all([
+            loadLocalTicketDraft({
+              userId,
+              tenantId: currentTenant.id,
+              ticketId: detail.id,
+              visibility: initialVisibility,
+            }),
+            listFavoriteTicketIds({ userId, tenantId: currentTenant.id }),
+          ]);
+          const serverDraft = detail.drafts.find(
+            (draft) =>
+              draft.visibility === initialVisibility &&
+              Boolean(draft.body.trim()),
+          );
           setRequester(detail.requesterContact);
           setSubject(detail.subject);
           setDescription(detail.description);
@@ -72,8 +113,14 @@ export default function TicketDetailScreen() {
               (option) => option.id === detail.priorityId,
             )?.key ?? "",
           );
+          setComment(localDraft?.body ?? serverDraft?.body ?? "");
+          setDraftState(localDraft ? "local" : serverDraft ? "synced" : "idle");
+          setDraftDirty(false);
+          setFavorite(favoriteIds.includes(detail.id));
+          setCommentVisibility(initialVisibility);
         }
         setCommentVisibility((current) => {
+          if (syncEditor) return current;
           if (current === "internal" && detail.canWriteInternalNotes) {
             return current;
           }
@@ -194,6 +241,67 @@ export default function TicketDetailScreen() {
     }
   }
 
+  useEffect(() => {
+    if (!draftDirty || !ticket || !tenant || !currentUserId) return;
+    const draft = {
+      userId: currentUserId,
+      tenantId: tenant.id,
+      ticketId: ticket.id,
+      visibility: commentVisibility,
+      body: comment,
+    };
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      void (async () => {
+        setDraftState("saving");
+        try {
+          // Persist on-device first. The iOS Keychain protects this small
+          // fallback if the network disappears while the server save runs.
+          await saveLocalTicketDraft(draft);
+          await saveMobileTicketDraft(draft);
+          await clearLocalTicketDraft(draft);
+          if (!cancelled) {
+            setDraftState(draft.body.trim() ? "synced" : "idle");
+            setDraftDirty(false);
+          }
+        } catch {
+          if (!cancelled) setDraftState(draft.body.trim() ? "local" : "idle");
+        }
+      })();
+    }, 700);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [comment, commentVisibility, currentUserId, draftDirty, tenant, ticket]);
+
+  function changeComment(nextBody: string) {
+    setComment(nextBody);
+    setDraftDirty(true);
+  }
+
+  function changeCommentVisibility(nextVisibility: TicketCommentVisibility) {
+    if (nextVisibility === commentVisibility) return;
+    setCommentVisibility(nextVisibility);
+    setDraftDirty(true);
+  }
+
+  async function toggleFavorite() {
+    if (!ticket || !tenant || !currentUserId) return;
+    const nextFavorite = !favorite;
+    try {
+      await setFavoriteTicket({
+        userId: currentUserId,
+        tenantId: tenant.id,
+        ticketId: ticket.id,
+        favorite: nextFavorite,
+      });
+      setFavorite(nextFavorite);
+    } catch {
+      setError("Der Favorit konnte nicht auf diesem Gerät gespeichert werden.");
+    }
+  }
+
   async function sendComment() {
     if (!ticket || !tenant) return;
     const body = comment.trim();
@@ -221,6 +329,22 @@ export default function TicketDetailScreen() {
         visibility: commentVisibility,
       });
       setComment("");
+      setDraftDirty(false);
+      setDraftState("idle");
+      await clearLocalTicketDraft({
+        userId: currentUserId ?? "",
+        tenantId: tenant.id,
+        ticketId: ticket.id,
+        visibility: commentVisibility,
+      });
+      // Emptying the same server draft keeps it from resurfacing after a
+      // successfully posted message. It contains no ticket history.
+      await saveMobileTicketDraft({
+        tenantId: tenant.id,
+        ticketId: ticket.id,
+        body: "",
+        visibility: commentVisibility,
+      });
       await load(false);
     } catch (nextError) {
       setError(
@@ -289,7 +413,26 @@ export default function TicketDetailScreen() {
             <Text numberOfLines={1} style={styles.topTitle}>
               Ticketdetails
             </Text>
-            <View style={styles.topSpacer} />
+            <Pressable
+              accessibilityLabel={
+                favorite
+                  ? "Ticket aus Favoriten entfernen"
+                  : "Ticket favorisieren"
+              }
+              accessibilityRole="button"
+              hitSlop={10}
+              onPress={() => void toggleFavorite()}
+              style={[
+                styles.favoriteButton,
+                favorite && styles.favoriteButtonActive,
+              ]}
+            >
+              <Ionicons
+                color={favorite ? "#FFFFFF" : "#4438CA"}
+                name={favorite ? "star" : "star-outline"}
+                size={20}
+              />
+            </Pressable>
           </View>
 
           <View style={styles.ticketHead}>
@@ -388,6 +531,23 @@ export default function TicketDetailScreen() {
                   </Text>
                 </Pressable>
               )}
+              {ticket.requesterContact?.email ? (
+                <Pressable
+                  accessibilityLabel={`${ticket.requesterContact.displayName} per E-Mail kontaktieren`}
+                  accessibilityRole="button"
+                  onPress={() =>
+                    void Linking.openURL(
+                      `mailto:${encodeURIComponent(ticket.requesterContact?.email ?? "")}`,
+                    )
+                  }
+                  style={styles.contactAction}
+                >
+                  <Ionicons color="#087A95" name="mail-outline" size={14} />
+                  <Text numberOfLines={1} style={styles.contactActionText}>
+                    {ticket.requesterContact.email}
+                  </Text>
+                </Pressable>
+              ) : null}
             </View>
             <View style={styles.contextDivider} />
             <View style={styles.contextItem}>
@@ -453,12 +613,21 @@ export default function TicketDetailScreen() {
             canCommentExternal={ticket.canCommentExternal}
             canWriteInternalNotes={ticket.canWriteInternalNotes}
             comments={ticket.comments}
+            draftState={draftState}
             isSending={sendingComment}
-            onBodyChange={setComment}
+            onBodyChange={changeComment}
             onSend={() => void sendComment()}
-            onVisibilityChange={setCommentVisibility}
+            onVisibilityChange={changeCommentVisibility}
             visibility={commentVisibility}
           />
+
+          {tenant ? (
+            <TicketPhotoAttachments
+              canUpload={ticket.canUpdate}
+              tenantId={tenant.id}
+              ticketId={ticket.id}
+            />
+          ) : null}
 
           {error ? <Text style={styles.error}>{error}</Text> : null}
         </ScrollView>
@@ -589,7 +758,15 @@ const styles = StyleSheet.create({
   },
   editButtonText: { color: "#4438CA", fontSize: 12, fontWeight: "800" },
   topTitle: { color: "#202136", fontSize: 17, fontWeight: "800" },
-  topSpacer: { width: 40 },
+  favoriteButton: {
+    alignItems: "center",
+    backgroundColor: "#EEECFF",
+    borderRadius: 18,
+    height: 40,
+    justifyContent: "center",
+    width: 40,
+  },
+  favoriteButtonActive: { backgroundColor: "#4438CA" },
   ticketHead: { gap: 8, paddingTop: 8 },
   ticketId: {
     color: "#77758C",
@@ -668,6 +845,18 @@ const styles = StyleSheet.create({
   cardValue: {
     color: "#202136",
     fontSize: 15,
+    fontWeight: "700",
+  },
+  contactAction: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 5,
+    marginTop: 7,
+  },
+  contactActionText: {
+    color: "#087A95",
+    flex: 1,
+    fontSize: 11,
     fontWeight: "700",
   },
   description: { color: "#4B4C60", fontSize: 15, lineHeight: 23 },

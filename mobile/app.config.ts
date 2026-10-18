@@ -127,6 +127,20 @@ const config: ExpoConfig = {
       },
     ],
     [
+      "expo-image-picker",
+      {
+        photosPermission:
+          "nextDesk benötigt den Fotozugriff nur, um einen Bildanhang zu einem Ticket hinzuzufügen.",
+      },
+    ],
+    [
+      "expo-local-authentication",
+      {
+        faceIDPermission:
+          "nextDesk verwendet Face ID nur, um Ihre bereits angemeldete Sitzung auf diesem Gerät zu schützen.",
+      },
+    ],
+    [
       "expo-video",
       {
         supportsBackgroundPlayback: true,

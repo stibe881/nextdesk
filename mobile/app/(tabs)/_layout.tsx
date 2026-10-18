@@ -72,6 +72,7 @@ export default function TabLayout() {
           ),
         }}
       />
+      <Tabs.Screen name="knowledge/[id]" options={{ href: null }} />
       <Tabs.Screen
         name="scan"
         options={{

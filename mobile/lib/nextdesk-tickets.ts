@@ -19,7 +19,11 @@ export type MobileTicket = {
 
 type Department = { id: string; key: string; name: string; kind: string };
 type Priority = { key: string; label: string; sort_order: number };
-export type TicketRequester = { id: string; displayName: string };
+export type TicketRequester = {
+  id: string;
+  displayName: string;
+  email?: string;
+};
 export type TicketCommentVisibility = "internal" | "external";
 export type MobileTicketComment = {
   id: string;
@@ -28,6 +32,12 @@ export type MobileTicketComment = {
   authorName: string;
   body: string;
   createdAt: string;
+  visibility: TicketCommentVisibility;
+};
+
+export type MobileTicketDraft = {
+  body: string;
+  updatedAt: string;
   visibility: TicketCommentVisibility;
 };
 
@@ -58,6 +68,7 @@ export type MobileTicketDetail = {
   canClose: boolean;
   canWriteInternalNotes: boolean;
   canCommentExternal: boolean;
+  drafts: MobileTicketDraft[];
 };
 
 function envelopeData(value: unknown): Record<string, unknown> {
@@ -75,7 +86,11 @@ function ticketRequester(value: unknown): TicketRequester | null {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     return null;
   }
-  const record = value as { id?: unknown; displayName?: unknown };
+  const record = value as {
+    id?: unknown;
+    displayName?: unknown;
+    email?: unknown;
+  };
   if (
     typeof record.id !== "string" ||
     typeof record.displayName !== "string" ||
@@ -84,7 +99,13 @@ function ticketRequester(value: unknown): TicketRequester | null {
   ) {
     return null;
   }
-  return { id: record.id, displayName: record.displayName.trim() };
+  return {
+    id: record.id,
+    displayName: record.displayName.trim(),
+    ...(typeof record.email === "string" && record.email.trim()
+      ? { email: record.email.trim() }
+      : {}),
+  };
 }
 
 function ticketComment(value: unknown): MobileTicketComment | null {
@@ -114,6 +135,25 @@ function ticketComment(value: unknown): MobileTicketComment | null {
         : "nextDesk Benutzer",
     body: record.body,
     createdAt: record.created_at,
+    visibility: record.visibility,
+  };
+}
+
+function ticketDraft(value: unknown): MobileTicketDraft | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return null;
+  }
+  const record = value as Record<string, unknown>;
+  if (
+    typeof record.body !== "string" ||
+    typeof record.updated_at !== "string" ||
+    (record.visibility !== "internal" && record.visibility !== "external")
+  ) {
+    return null;
+  }
+  return {
+    body: record.body,
+    updatedAt: record.updated_at,
     visibility: record.visibility,
   };
 }
@@ -294,17 +334,22 @@ export async function loadMobileTicketDetail(
     typeof record.priority_id !== "string" ||
     !Array.isArray(data.statuses) ||
     !Array.isArray(data.priorities) ||
-    !Array.isArray(data.comments)
+    !Array.isArray(data.comments) ||
+    !Array.isArray(data.drafts)
   ) {
     throw new Error("Die Ticketdetails sind unvollständig.");
   }
   const comments = data.comments.map(ticketComment);
+  const drafts = data.drafts.map(ticketDraft);
   if (
     !comments.every(
       (comment): comment is MobileTicketComment => comment !== null,
-    )
+    ) ||
+    !drafts.every((draft): draft is MobileTicketDraft => draft !== null)
   ) {
-    throw new Error("Die Ticketkommunikation ist unvollständig.");
+    throw new Error(
+      "Die Ticketkommunikation oder Entwürfe sind unvollständig.",
+    );
   }
   return {
     id: record.id,
@@ -318,6 +363,7 @@ export async function loadMobileTicketDetail(
     statusOptions: data.statuses as MobileTicketDetail["statusOptions"],
     priorityOptions: data.priorities as MobileTicketDetail["priorityOptions"],
     comments,
+    drafts,
     canUpdate: data.canUpdate === true,
     canClose: data.canClose === true,
     canWriteInternalNotes: data.canWriteInternalNotes === true,
@@ -365,6 +411,21 @@ export async function addMobileTicketComment(input: {
     tenantId: input.tenantId,
     ticketId: input.ticketId,
     body,
+    visibility: input.visibility,
+  });
+}
+
+export async function saveMobileTicketDraft(input: {
+  tenantId: string;
+  ticketId: string;
+  body: string;
+  visibility: TicketCommentVisibility;
+}): Promise<void> {
+  await invokeNextDesk<unknown>("ticket-operations", {
+    type: "saveDraft",
+    tenantId: input.tenantId,
+    ticketId: input.ticketId,
+    body: input.body.slice(0, 50_000),
     visibility: input.visibility,
   });
 }
