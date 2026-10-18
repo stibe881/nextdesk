@@ -4,6 +4,8 @@ export const MOBILE_FEATURE_KEYS = [
   "ticketing.detail",
   "knowledge.base",
   "assets.management",
+  "experience.workspace",
+  "portal.self-service",
 ] as const;
 
 export type MobileFeatureKey = (typeof MOBILE_FEATURE_KEYS)[number];
@@ -13,6 +15,8 @@ const DISABLED_FEATURES: MobileFeatureFlags = {
   "ticketing.detail": false,
   "knowledge.base": false,
   "assets.management": false,
+  "experience.workspace": false,
+  "portal.self-service": false,
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {

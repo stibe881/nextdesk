@@ -12,6 +12,7 @@ import {
   View,
 } from "react-native";
 
+import { FollowUpsSection } from "@/components/follow-ups-section";
 import { ScreenContainer } from "@/components/screen-container";
 import { GlobalSearch } from "@/components/global-search";
 import { useMobileFeatures } from "@/components/mobile-feature-gate";
@@ -158,6 +159,8 @@ export default function HomeScreen() {
             <Text style={styles.heroButtonText}>Ticket erfassen</Text>
           </Pressable>
         </View>
+
+        <FollowUpsSection />
 
         {error ? (
           <View style={styles.errorBox}>

@@ -57,8 +57,10 @@ export type MobileTicketDetail = {
   ticketNumber: string;
   subject: string;
   description: string;
+  requesterId: string | null;
   requesterName: string | null;
   requesterContact: TicketRequester | null;
+  resolvedAt: string | null;
   statusId: string;
   priorityId: string;
   statusOptions: {
@@ -442,8 +444,12 @@ export async function loadMobileTicketDetail(
     ticketNumber: record.ticket_number,
     subject: record.subject,
     description: record.description,
+    requesterId:
+      typeof record.requester_id === "string" ? record.requester_id : null,
     requesterName: requesterContact?.displayName ?? null,
     requesterContact,
+    resolvedAt:
+      typeof record.resolved_at === "string" ? record.resolved_at : null,
     statusId: record.status_id,
     priorityId: record.priority_id,
     statusOptions: data.statuses as MobileTicketDetail["statusOptions"],

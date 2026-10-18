@@ -2,6 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  ActivityIndicator,
   KeyboardAvoidingView,
   Linking,
   Modal,
@@ -24,6 +25,12 @@ import { useMobileNetworkStatus } from "@/components/offline-status";
 import { RequesterPicker } from "@/components/requester-picker";
 import { TicketConversation } from "@/components/ticket-conversation";
 import { TicketPhotoAttachments } from "@/components/ticket-photo-attachments";
+import {
+  confirmResolution,
+  ExperienceHubError,
+  isExperienceUnavailableError,
+  saveFollowUp,
+} from "@/lib/nextdesk-experience";
 import { useThemeContext } from "@/lib/theme-provider";
 import {
   clearLocalTicketDraft,
@@ -52,11 +59,42 @@ import {
   type TicketCommentVisibility,
 } from "@/lib/nextdesk-tickets";
 
+type FollowUpDueChoice = "today" | "tomorrow" | "week" | "none";
+
+function followUpDueAt(choice: FollowUpDueChoice): string | null {
+  if (choice === "none") return null;
+  const due = new Date();
+  due.setHours(12, 0, 0, 0);
+  if (choice === "tomorrow") due.setDate(due.getDate() + 1);
+  if (choice === "week") due.setDate(due.getDate() + 7);
+  return due.toISOString();
+}
+
+function followUpDueLabel(choice: FollowUpDueChoice): string {
+  switch (choice) {
+    case "tomorrow":
+      return "morgen";
+    case "week":
+      return "in einer Woche";
+    case "none":
+      return "ohne Termin";
+    default:
+      return "heute";
+  }
+}
+
+function followUpTitle(ticket: MobileTicketDetail): string {
+  const title = `${ticket.ticketNumber}: ${ticket.subject}`.trim();
+  return Array.from(title).slice(0, 240).join("") || "Ticket-Wiedervorlage";
+}
+
 export default function TicketDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { recoveryEpoch } = useMobileNetworkStatus();
   const { isEnabled, loading: checkingFeatures } = useMobileFeatures();
   const ticketDetailEnabled = isEnabled("ticketing.detail");
+  const workspaceEnabled = isEnabled("experience.workspace");
+  const selfServiceEnabled = isEnabled("portal.self-service");
   const { colors, density, reducedMotion } = useThemeContext();
   const tokenStyles = useMemo(
     () => ({
@@ -119,6 +157,21 @@ export default function TicketDetailScreen() {
   const [sendingComment, setSendingComment] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const [workspaceAvailable, setWorkspaceAvailable] = useState(true);
+  const [selfServiceAvailable, setSelfServiceAvailable] = useState(true);
+  const [followUpSheetOpen, setFollowUpSheetOpen] = useState(false);
+  const [followUpDueChoice, setFollowUpDueChoice] = useState<
+    "today" | "tomorrow" | "week" | "none"
+  >("today");
+  const [savingFollowUp, setSavingFollowUp] = useState(false);
+  const [resolutionSheetOpen, setResolutionSheetOpen] = useState(false);
+  const [resolutionDecision, setResolutionDecision] = useState<boolean | null>(
+    null,
+  );
+  const [resolutionComment, setResolutionComment] = useState("");
+  const [resolutionError, setResolutionError] = useState("");
+  const [submittingResolution, setSubmittingResolution] = useState(false);
+  const [resolutionSubmitted, setResolutionSubmitted] = useState(false);
 
   const load = useCallback(
     async (syncEditor = true) => {
@@ -212,6 +265,14 @@ export default function TicketDetailScreen() {
       ) ?? null,
     [ticket],
   );
+  const canSetFollowUp = workspaceEnabled && workspaceAvailable;
+  const canConfirmResolution =
+    selfServiceEnabled &&
+    selfServiceAvailable &&
+    !resolutionSubmitted &&
+    Boolean(ticket?.resolvedAt) &&
+    Boolean(currentUserId) &&
+    ticket?.requesterId === currentUserId;
   const editableStatuses = useMemo(
     () =>
       (ticket?.statusOptions ?? []).filter(
@@ -393,6 +454,110 @@ export default function TicketDetailScreen() {
           ? nextError.message
           : "Die E-Mail-App konnte nicht geöffnet werden.",
       );
+    }
+  }
+
+  function openFollowUpSheet() {
+    setFollowUpDueChoice("today");
+    setFollowUpSheetOpen(true);
+    hapticSelection();
+  }
+
+  async function createTicketFollowUp() {
+    if (!ticket) return;
+    setSavingFollowUp(true);
+    setError("");
+    setMessage("");
+    try {
+      await saveFollowUp({
+        title: followUpTitle(ticket),
+        description: null,
+        dueAt: followUpDueAt(followUpDueChoice),
+        priority: "normal",
+        ticketId: ticket.id,
+      });
+      setFollowUpSheetOpen(false);
+      setMessage(
+        `Wiedervorlage für dieses Ticket ${followUpDueLabel(followUpDueChoice)} gesetzt.`,
+      );
+      hapticSuccess();
+    } catch (nextError) {
+      if (isExperienceUnavailableError(nextError)) {
+        setWorkspaceAvailable(false);
+        setFollowUpSheetOpen(false);
+        setMessage("Diese Zusatzfunktion ist derzeit nicht verfügbar.");
+        return;
+      }
+      hapticError();
+      setError(
+        nextError instanceof Error
+          ? nextError.message
+          : "Die Wiedervorlage konnte nicht gesetzt werden.",
+      );
+    } finally {
+      setSavingFollowUp(false);
+    }
+  }
+
+  function openResolutionSheet(confirmed: boolean) {
+    setResolutionDecision(confirmed);
+    setResolutionComment("");
+    setResolutionError("");
+    setResolutionSheetOpen(true);
+    hapticSelection();
+  }
+
+  async function submitResolutionConfirmation() {
+    if (!ticket || resolutionDecision === null) return;
+    const normalizedComment = resolutionComment.trim();
+    if (
+      normalizedComment.includes("\u0000") ||
+      Array.from(normalizedComment).length > 3_000
+    ) {
+      setResolutionError(
+        "Der Kommentar darf höchstens 3'000 Zeichen lang sein.",
+      );
+      return;
+    }
+
+    setSubmittingResolution(true);
+    setResolutionError("");
+    setError("");
+    setMessage("");
+    try {
+      await confirmResolution({
+        ticketId: ticket.id,
+        confirmed: resolutionDecision,
+        comment: normalizedComment || null,
+      });
+      setResolutionSubmitted(true);
+      setResolutionSheetOpen(false);
+      setMessage(
+        resolutionDecision
+          ? "Danke, Ihre Lösungsbestätigung wurde gespeichert."
+          : "Danke, Ihre Rückmeldung wurde gespeichert.",
+      );
+      hapticSuccess();
+    } catch (nextError) {
+      if (
+        isExperienceUnavailableError(nextError) ||
+        (nextError instanceof ExperienceHubError &&
+          (nextError.code === "resolution_confirmation_not_allowed" ||
+            nextError.code === "ticket_not_resolved"))
+      ) {
+        setSelfServiceAvailable(false);
+        setResolutionSheetOpen(false);
+        setMessage("Diese Zusatzfunktion ist derzeit nicht verfügbar.");
+        return;
+      }
+      hapticError();
+      setResolutionError(
+        nextError instanceof Error
+          ? nextError.message
+          : "Ihre Rückmeldung konnte nicht gespeichert werden.",
+      );
+    } finally {
+      setSubmittingResolution(false);
     }
   }
 
@@ -672,6 +837,159 @@ export default function TicketDetailScreen() {
             ) : null}
           </View>
 
+          {canSetFollowUp ? (
+            <View
+              style={[
+                styles.experienceCard,
+                tokenStyles.card,
+                densityStyles.card,
+              ]}
+            >
+              <View style={styles.experienceHeader}>
+                <View
+                  style={[
+                    styles.experienceIcon,
+                    { backgroundColor: colors.primary + "1A" },
+                  ]}
+                >
+                  <Ionicons
+                    color={colors.primary}
+                    name="alarm-outline"
+                    size={20}
+                  />
+                </View>
+                <View style={styles.experienceCopy}>
+                  <Text
+                    style={[styles.experienceTitle, tokenStyles.foreground]}
+                  >
+                    Wiedervorlage
+                  </Text>
+                  <Text style={[styles.experienceText, tokenStyles.muted]}>
+                    Erinnerung für dieses Ticket setzen, ohne den Ticketstatus
+                    zu ändern.
+                  </Text>
+                </View>
+              </View>
+              <Pressable
+                accessibilityLabel="Wiedervorlage für dieses Ticket setzen"
+                accessibilityRole="button"
+                disabled={savingFollowUp}
+                onPress={openFollowUpSheet}
+                style={[
+                  styles.experienceAction,
+                  {
+                    borderColor: colors.border,
+                    backgroundColor: colors.background,
+                  },
+                  savingFollowUp && styles.disabled,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.experienceActionText,
+                    { color: colors.primary },
+                  ]}
+                >
+                  Wiedervorlage setzen
+                </Text>
+                <Ionicons
+                  color={colors.primary}
+                  name="chevron-forward"
+                  size={19}
+                />
+              </Pressable>
+            </View>
+          ) : null}
+
+          {canConfirmResolution ? (
+            <View
+              style={[
+                styles.experienceCard,
+                tokenStyles.card,
+                densityStyles.card,
+              ]}
+            >
+              <View style={styles.experienceHeader}>
+                <View
+                  style={[
+                    styles.experienceIcon,
+                    { backgroundColor: colors.success + "1A" },
+                  ]}
+                >
+                  <Ionicons
+                    color={colors.success}
+                    name="chatbubble-ellipses-outline"
+                    size={20}
+                  />
+                </View>
+                <View style={styles.experienceCopy}>
+                  <Text
+                    style={[styles.experienceTitle, tokenStyles.foreground]}
+                  >
+                    Wurde Ihr Anliegen gelöst?
+                  </Text>
+                  <Text style={[styles.experienceText, tokenStyles.muted]}>
+                    Ihre Rückmeldung ändert den Ticketstatus nicht.
+                  </Text>
+                </View>
+              </View>
+              <View style={styles.resolutionActions}>
+                <Pressable
+                  accessibilityLabel="Ja, mein Anliegen wurde gelöst"
+                  accessibilityRole="button"
+                  onPress={() => openResolutionSheet(true)}
+                  style={[
+                    styles.resolutionAction,
+                    {
+                      backgroundColor: colors.success + "14",
+                      borderColor: colors.success,
+                    },
+                  ]}
+                >
+                  <Ionicons
+                    color={colors.success}
+                    name="checkmark-circle-outline"
+                    size={19}
+                  />
+                  <Text
+                    style={[
+                      styles.resolutionActionText,
+                      { color: colors.success },
+                    ]}
+                  >
+                    Ja
+                  </Text>
+                </Pressable>
+                <Pressable
+                  accessibilityLabel="Nein, mein Anliegen wurde nicht gelöst"
+                  accessibilityRole="button"
+                  onPress={() => openResolutionSheet(false)}
+                  style={[
+                    styles.resolutionAction,
+                    {
+                      backgroundColor: colors.error + "12",
+                      borderColor: colors.error,
+                    },
+                  ]}
+                >
+                  <Ionicons
+                    color={colors.error}
+                    name="close-circle-outline"
+                    size={19}
+                  />
+                  <Text
+                    style={[
+                      styles.resolutionActionText,
+                      { color: colors.error },
+                    ]}
+                  >
+                    Nein
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
+          ) : null}
+
           <View
             style={[styles.contextCard, tokenStyles.card, densityStyles.card]}
           >
@@ -850,6 +1168,335 @@ export default function TicketDetailScreen() {
             </View>
           ) : null}
         </ScrollView>
+
+        <Modal
+          animationType={reducedMotion ? "none" : "slide"}
+          onRequestClose={() => setFollowUpSheetOpen(false)}
+          transparent
+          visible={followUpSheetOpen}
+        >
+          <KeyboardAvoidingView
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
+            style={styles.experienceSheetRoot}
+          >
+            <Pressable
+              accessibilityLabel="Wiedervorlage schliessen"
+              accessibilityRole="button"
+              disabled={savingFollowUp}
+              onPress={() => setFollowUpSheetOpen(false)}
+              style={StyleSheet.absoluteFill}
+            />
+            <View
+              accessibilityViewIsModal
+              style={[
+                styles.experienceSheet,
+                { backgroundColor: colors.surface },
+              ]}
+            >
+              <View style={styles.experienceSheetHeader}>
+                <View>
+                  <Text style={[styles.selectionEyebrow, tokenStyles.muted]}>
+                    WIEDERVORLAGE
+                  </Text>
+                  <Text
+                    style={[
+                      styles.experienceSheetTitle,
+                      tokenStyles.foreground,
+                    ]}
+                  >
+                    Wann möchten Sie erinnert werden?
+                  </Text>
+                </View>
+                <Pressable
+                  accessibilityLabel="Wiedervorlage schliessen"
+                  accessibilityRole="button"
+                  disabled={savingFollowUp}
+                  hitSlop={10}
+                  onPress={() => setFollowUpSheetOpen(false)}
+                  style={[
+                    styles.selectionClose,
+                    { backgroundColor: colors.primary + "1A" },
+                  ]}
+                >
+                  <Ionicons color={colors.primary} name="close" size={22} />
+                </Pressable>
+              </View>
+              <Text
+                style={[styles.experienceSheetDescription, tokenStyles.muted]}
+              >
+                {ticket.ticketNumber}: {ticket.subject}
+              </Text>
+              <ScrollView
+                automaticallyAdjustKeyboardInsets
+                contentContainerStyle={styles.experienceSheetContent}
+                keyboardDismissMode="interactive"
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+              >
+                {(
+                  [
+                    ["today", "Heute"],
+                    ["tomorrow", "Morgen"],
+                    ["week", "In 1 Woche"],
+                    ["none", "Ohne Termin"],
+                  ] as const
+                ).map(([choice, label]) => {
+                  const selected = followUpDueChoice === choice;
+                  return (
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityState={{ selected }}
+                      key={choice}
+                      onPress={() => {
+                        setFollowUpDueChoice(choice);
+                        hapticSelection();
+                      }}
+                      style={[
+                        styles.experienceChoice,
+                        {
+                          backgroundColor: selected
+                            ? colors.primary + "14"
+                            : colors.background,
+                          borderColor: selected
+                            ? colors.primary
+                            : colors.border,
+                        },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.experienceChoiceText,
+                          {
+                            color: selected
+                              ? colors.primary
+                              : colors.foreground,
+                          },
+                        ]}
+                      >
+                        {label}
+                      </Text>
+                      {selected ? (
+                        <Ionicons
+                          color={colors.primary}
+                          name="checkmark"
+                          size={20}
+                        />
+                      ) : null}
+                    </Pressable>
+                  );
+                })}
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={savingFollowUp}
+                  onPress={() => void createTicketFollowUp()}
+                  style={[
+                    styles.experienceSaveButton,
+                    { backgroundColor: colors.primary },
+                    savingFollowUp && styles.disabled,
+                  ]}
+                >
+                  {savingFollowUp ? (
+                    <ActivityIndicator color={colors.background} size="small" />
+                  ) : (
+                    <Ionicons
+                      color={colors.background}
+                      name="alarm-outline"
+                      size={20}
+                    />
+                  )}
+                  <Text
+                    style={[
+                      styles.experienceSaveButtonText,
+                      tokenStyles.primaryText,
+                    ]}
+                  >
+                    {savingFollowUp ? "Wird gesetzt …" : "Wiedervorlage setzen"}
+                  </Text>
+                </Pressable>
+              </ScrollView>
+            </View>
+          </KeyboardAvoidingView>
+        </Modal>
+
+        <Modal
+          animationType={reducedMotion ? "none" : "slide"}
+          onRequestClose={() => setResolutionSheetOpen(false)}
+          transparent
+          visible={resolutionSheetOpen}
+        >
+          <KeyboardAvoidingView
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
+            style={styles.experienceSheetRoot}
+          >
+            <Pressable
+              accessibilityLabel="Rückmeldung schliessen"
+              accessibilityRole="button"
+              disabled={submittingResolution}
+              onPress={() => setResolutionSheetOpen(false)}
+              style={StyleSheet.absoluteFill}
+            />
+            <View
+              accessibilityViewIsModal
+              style={[
+                styles.experienceSheet,
+                { backgroundColor: colors.surface },
+              ]}
+            >
+              <View style={styles.experienceSheetHeader}>
+                <View>
+                  <Text style={[styles.selectionEyebrow, tokenStyles.muted]}>
+                    IHRE RÜCKMELDUNG
+                  </Text>
+                  <Text
+                    style={[
+                      styles.experienceSheetTitle,
+                      tokenStyles.foreground,
+                    ]}
+                  >
+                    Wurde Ihr Anliegen gelöst?
+                  </Text>
+                </View>
+                <Pressable
+                  accessibilityLabel="Rückmeldung schliessen"
+                  accessibilityRole="button"
+                  disabled={submittingResolution}
+                  hitSlop={10}
+                  onPress={() => setResolutionSheetOpen(false)}
+                  style={[
+                    styles.selectionClose,
+                    { backgroundColor: colors.primary + "1A" },
+                  ]}
+                >
+                  <Ionicons color={colors.primary} name="close" size={22} />
+                </Pressable>
+              </View>
+              <ScrollView
+                automaticallyAdjustKeyboardInsets
+                contentContainerStyle={styles.experienceSheetContent}
+                keyboardDismissMode="interactive"
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+              >
+                <View style={styles.resolutionChoiceRow}>
+                  {(
+                    [
+                      [true, "Ja", "checkmark-circle-outline"],
+                      [false, "Nein", "close-circle-outline"],
+                    ] as const
+                  ).map(([decision, label, icon]) => {
+                    const selected = resolutionDecision === decision;
+                    const accent = decision ? colors.success : colors.error;
+                    return (
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityState={{ selected }}
+                        key={label}
+                        onPress={() => {
+                          setResolutionDecision(decision);
+                          hapticSelection();
+                        }}
+                        style={[
+                          styles.resolutionSheetChoice,
+                          {
+                            backgroundColor: selected
+                              ? accent + "16"
+                              : colors.background,
+                            borderColor: selected ? accent : colors.border,
+                          },
+                        ]}
+                      >
+                        <Ionicons color={accent} name={icon} size={20} />
+                        <Text
+                          style={[
+                            styles.resolutionSheetChoiceText,
+                            { color: accent },
+                          ]}
+                        >
+                          {label}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+                <View style={styles.resolutionField}>
+                  <Text style={[styles.cardLabel, tokenStyles.muted]}>
+                    KOMMENTAR (OPTIONAL)
+                  </Text>
+                  <TextInput
+                    autoCapitalize="sentences"
+                    maxLength={3_000}
+                    multiline
+                    onChangeText={setResolutionComment}
+                    placeholder="Was hat gut funktioniert oder was fehlt noch?"
+                    placeholderTextColor={colors.muted}
+                    style={[
+                      styles.resolutionInput,
+                      {
+                        backgroundColor: colors.background,
+                        borderColor: colors.border,
+                        color: colors.foreground,
+                      },
+                    ]}
+                    textAlignVertical="top"
+                    value={resolutionComment}
+                  />
+                  <Text style={[styles.characterCount, tokenStyles.muted]}>
+                    {`${Array.from(resolutionComment).length}/3'000`}
+                  </Text>
+                </View>
+                <Text style={[styles.resolutionNotice, tokenStyles.muted]}>
+                  Diese Rückmeldung speichert nur Ihre Bestätigung oder
+                  Ablehnung. Der Ticketstatus bleibt unverändert.
+                </Text>
+                {resolutionError ? (
+                  <View style={[styles.feedback, tokenStyles.error]}>
+                    <Ionicons
+                      color={colors.error}
+                      name="alert-circle-outline"
+                      size={20}
+                    />
+                    <Text
+                      style={[styles.feedbackText, { color: colors.error }]}
+                    >
+                      {resolutionError}
+                    </Text>
+                  </View>
+                ) : null}
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={submittingResolution || resolutionDecision === null}
+                  onPress={() => void submitResolutionConfirmation()}
+                  style={[
+                    styles.experienceSaveButton,
+                    { backgroundColor: colors.primary },
+                    (submittingResolution || resolutionDecision === null) &&
+                      styles.disabled,
+                  ]}
+                >
+                  {submittingResolution ? (
+                    <ActivityIndicator color={colors.background} size="small" />
+                  ) : (
+                    <Ionicons
+                      color={colors.background}
+                      name="send-outline"
+                      size={20}
+                    />
+                  )}
+                  <Text
+                    style={[
+                      styles.experienceSaveButtonText,
+                      tokenStyles.primaryText,
+                    ]}
+                  >
+                    {submittingResolution
+                      ? "Wird gespeichert …"
+                      : "Rückmeldung speichern"}
+                  </Text>
+                </Pressable>
+              </ScrollView>
+            </View>
+          </KeyboardAvoidingView>
+        </Modal>
 
         <Modal
           animationType={reducedMotion ? "none" : "slide"}
@@ -1112,6 +1759,48 @@ const styles = StyleSheet.create({
     gap: 7,
     padding: 17,
   },
+  experienceCard: {
+    backgroundColor: "#FFFFFF",
+    borderColor: "#ECECF3",
+    borderRadius: 20,
+    borderWidth: 1,
+    gap: 13,
+    padding: 17,
+  },
+  experienceHeader: { alignItems: "flex-start", flexDirection: "row", gap: 10 },
+  experienceIcon: {
+    alignItems: "center",
+    borderRadius: 13,
+    height: 38,
+    justifyContent: "center",
+    width: 38,
+  },
+  experienceCopy: { flex: 1, gap: 3 },
+  experienceTitle: { fontSize: 16, fontWeight: "800", lineHeight: 21 },
+  experienceText: { fontSize: 12, lineHeight: 18 },
+  experienceAction: {
+    alignItems: "center",
+    borderRadius: 13,
+    borderWidth: 1,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    minHeight: 51,
+    paddingHorizontal: 13,
+  },
+  experienceActionText: { fontSize: 14, fontWeight: "800" },
+  resolutionActions: { flexDirection: "row", gap: 9 },
+  resolutionAction: {
+    alignItems: "center",
+    borderRadius: 13,
+    borderWidth: 1,
+    flex: 1,
+    flexDirection: "row",
+    gap: 6,
+    justifyContent: "center",
+    minHeight: 50,
+    paddingHorizontal: 10,
+  },
+  resolutionActionText: { fontSize: 14, fontWeight: "800" },
   contextCard: {
     alignItems: "stretch",
     backgroundColor: "#FFFFFF",
@@ -1255,6 +1944,76 @@ const styles = StyleSheet.create({
   },
   feedbackText: { flex: 1, fontSize: 13, lineHeight: 19 },
   error: { color: "#A02820", fontSize: 13, lineHeight: 19 },
+  experienceSheetRoot: {
+    backgroundColor: "rgba(25, 25, 42, 0.42)",
+    flex: 1,
+    justifyContent: "flex-end",
+  },
+  experienceSheet: {
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    maxHeight: "84%",
+    padding: 20,
+    paddingBottom: 28,
+  },
+  experienceSheetHeader: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
+  experienceSheetTitle: {
+    fontSize: 21,
+    fontWeight: "800",
+    lineHeight: 27,
+    marginTop: 3,
+  },
+  experienceSheetDescription: { fontSize: 13, lineHeight: 19, marginTop: 12 },
+  experienceSheetContent: { gap: 10, paddingTop: 18 },
+  experienceChoice: {
+    alignItems: "center",
+    borderRadius: 14,
+    borderWidth: 1,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    minHeight: 53,
+    paddingHorizontal: 14,
+  },
+  experienceChoiceText: { fontSize: 15, fontWeight: "800" },
+  experienceSaveButton: {
+    alignItems: "center",
+    borderRadius: 15,
+    flexDirection: "row",
+    gap: 8,
+    justifyContent: "center",
+    marginTop: 7,
+    minHeight: 53,
+    paddingHorizontal: 16,
+  },
+  experienceSaveButtonText: { fontSize: 14, fontWeight: "800" },
+  resolutionChoiceRow: { flexDirection: "row", gap: 9 },
+  resolutionSheetChoice: {
+    alignItems: "center",
+    borderRadius: 13,
+    borderWidth: 1,
+    flex: 1,
+    flexDirection: "row",
+    gap: 6,
+    justifyContent: "center",
+    minHeight: 51,
+    paddingHorizontal: 10,
+  },
+  resolutionSheetChoiceText: { fontSize: 14, fontWeight: "800" },
+  resolutionField: { gap: 7, marginTop: 8 },
+  resolutionInput: {
+    borderRadius: 14,
+    borderWidth: 1,
+    fontSize: 15,
+    lineHeight: 21,
+    minHeight: 118,
+    padding: 12,
+  },
+  characterCount: { alignSelf: "flex-end", fontSize: 11 },
+  resolutionNotice: { fontSize: 12, lineHeight: 18, marginTop: 3 },
   skeletonPage: { flex: 1, gap: 14, justifyContent: "center" },
   skeletonTopBar: { borderRadius: 8, height: 40, width: "100%" },
   skeletonTitle: { borderRadius: 8, height: 42, width: "82%" },
