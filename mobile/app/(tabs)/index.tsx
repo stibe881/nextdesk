@@ -45,12 +45,12 @@ import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
 import { useThemeContext } from "@/lib/theme-provider";
 
 type FocusScope = "assigned" | "solvedToday" | "firstResponse" | "dueFollowUps";
-type TicketScope = "all" | "mine" | "open" | "resolved" | FocusScope;
+type TicketScope = "all" | "mine" | "open" | "unassigned" | FocusScope;
 
 const ticketScopeLabels: Record<Exclude<TicketScope, "all">, string> = {
   mine: "Meine Tickets",
   open: "Offene Tickets",
-  resolved: "Gelöste Tickets",
+  unassigned: "Nicht zugewiesene Tickets",
   assigned: "Mir zugewiesen",
   solvedToday: "Heute gelöst",
   firstResponse: "Mit erster Antwort",
@@ -355,7 +355,7 @@ export default function HomeScreen() {
     return tickets.filter((ticket) => {
       if (ticketScope === "mine") return ticket.assignedToCurrentUser;
       if (ticketScope === "open") return !ticket.resolved;
-      if (ticketScope === "resolved") return ticket.resolved;
+      if (ticketScope === "unassigned") return ticket.unassigned;
       return true;
     });
   })();
@@ -375,7 +375,7 @@ export default function HomeScreen() {
     tickets.filter((ticket) => {
       if (scope === "mine") return ticket.assignedToCurrentUser;
       if (scope === "open") return !ticket.resolved;
-      return ticket.resolved;
+      return ticket.unassigned;
     }).length;
   const unreadMentions = mentions.filter((mention) => !mention.read_at).length;
   const recentMentions = [...mentions]
@@ -635,12 +635,12 @@ export default function HomeScreen() {
             value={String(scopeCount("open"))}
           />
           <Metric
-            color={colors.success}
-            icon="checkmark-circle-outline"
-            label="Gelöst"
-            onPress={() => setTicketScope("resolved")}
-            selected={ticketScope === "resolved"}
-            value={String(scopeCount("resolved"))}
+            color={colors.warning}
+            icon="person-add-outline"
+            label="Nicht zugewiesen"
+            onPress={() => setTicketScope("unassigned")}
+            selected={ticketScope === "unassigned"}
+            value={String(scopeCount("unassigned"))}
           />
         </View>
 

@@ -19,6 +19,8 @@ export type MobileTicket = {
   priority: string;
   assignedToCurrentUser: boolean;
   resolved: boolean;
+  /** Ticket ohne zugewiesene Agentin bzw. zugewiesenen Agenten (wie im Web). */
+  unassigned: boolean;
   requesterId: string;
 };
 
@@ -275,6 +277,7 @@ export async function loadMobileDashboard(input: {
         ticket.assigned_agent_id === activeUser.id ||
         ticket.requester_id === activeUser.id,
       resolved: Boolean(statusById.get(ticket.status_id)?.is_closed),
+      unassigned: !ticket.assigned_agent_id,
       requesterId: ticket.requester_id,
     }));
     try {
@@ -290,6 +293,7 @@ export async function loadMobileDashboard(input: {
             status,
             subject,
             ticketNumber,
+            unassigned,
           }) => ({
             assignedToCurrentUser,
             id,
@@ -298,6 +302,7 @@ export async function loadMobileDashboard(input: {
             status,
             subject,
             ticketNumber,
+            unassigned,
           }),
         ),
       });
@@ -328,6 +333,7 @@ export async function loadMobileDashboard(input: {
             ...ticket,
             description: "",
             requesterId: "",
+            unassigned: ticket.unassigned ?? false,
           })),
           userId: activeUser.id,
         };
@@ -392,6 +398,7 @@ export async function loadMobileTicketsByIds(
     assignedToCurrentUser:
       ticket.assigned_agent_id === userId || ticket.requester_id === userId,
     resolved: Boolean(statusById.get(ticket.status_id)?.is_closed),
+    unassigned: !ticket.assigned_agent_id,
     requesterId: ticket.requester_id,
   }));
 }
