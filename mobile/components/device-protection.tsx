@@ -5,7 +5,6 @@ import {
   ActivityIndicator,
   AppState,
   type AppStateStatus,
-  Modal,
   Platform,
   Pressable,
   StyleSheet,
@@ -104,13 +103,14 @@ export function DeviceProtection() {
     }
   }
 
-  if (Platform.OS === "web") return null;
+  // Deliberately no native <Modal>: presenting and immediately dismissing an
+  // iOS modal at app start left later taps on the sign-in screen without
+  // onPress. A plain overlay is removed completely once the session is clear.
+  if (Platform.OS === "web" || lockState === "unlocked") return null;
   return (
-    <Modal
-      animationType="fade"
-      statusBarTranslucent
-      transparent
-      visible={lockState !== "unlocked"}
+    <View
+      accessibilityViewIsModal
+      style={[StyleSheet.absoluteFill, styles.layer]}
     >
       <View style={styles.overlay}>
         <View style={styles.card}>
@@ -156,11 +156,12 @@ export function DeviceProtection() {
           )}
         </View>
       </View>
-    </Modal>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  layer: { elevation: 1000, zIndex: 1000 },
   overlay: {
     alignItems: "center",
     backgroundColor: "rgba(20, 20, 35, 0.78)",

@@ -10,6 +10,7 @@ import {
   setSelectedTenantId,
 } from "@/lib/mobile-private-state";
 import { mobileSecureStorage } from "@/lib/mobile-secure-storage";
+import { base64UrlEncode, pkceS256Challenge, withTimeout } from "@/lib/pkce";
 
 type NextDeskExtra = {
   nextDeskSupabaseUrl?: string;
@@ -33,6 +34,9 @@ export const isNextDeskConfigured = Boolean(url && publishableKey);
 
 const AUTH_TRANSACTION_KEY = "nextdesk:mobile:auth-transaction:v1";
 const AUTH_TRANSACTION_TTL_MS = 10 * 60 * 1_000;
+const AUTH_STORAGE_STEP_TIMEOUT_MS = 6_000;
+const AUTH_STORAGE_TIMEOUT_MESSAGE =
+  "Der sichere Gerätespeicher hat nicht rechtzeitig geantwortet. Bitte entsperren Sie das iPhone und versuchen Sie es erneut.";
 const SUPABASE_AUTH_STORAGE_KEY = (() => {
   try {
     return `sb-${new URL(url).hostname.split(".")[0]}-auth-token`;
@@ -210,26 +214,42 @@ export async function beginNextDeskOAuth(): Promise<void> {
     expiresAt: Date.now() + AUTH_TRANSACTION_TTL_MS,
     kind: "oauth",
   };
-  await mobileSecureStorage.setItem(
-    AUTH_TRANSACTION_KEY,
-    JSON.stringify(transaction),
+  await withTimeout(
+    mobileSecureStorage.setItem(
+      AUTH_TRANSACTION_KEY,
+      JSON.stringify(transaction),
+    ),
+    AUTH_STORAGE_STEP_TIMEOUT_MS,
+    AUTH_STORAGE_TIMEOUT_MESSAGE,
   );
 }
 
-function base64Url(bytes: Uint8Array): string {
-  let binary = "";
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary)
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/g, "");
+function secureRandomBytes(length: number): Uint8Array {
+  try {
+    // Synchronous OS CSPRNG; no promise can stall the sign-in start.
+    return Crypto.getRandomBytes(length);
+  } catch {
+    const bytes = new Uint8Array(length);
+    const webCrypto = (
+      globalThis as {
+        crypto?: { getRandomValues?: (array: Uint8Array) => Uint8Array };
+      }
+    ).crypto;
+    if (!webCrypto?.getRandomValues) {
+      throw new Error(
+        "Dieses Gerät stellt keinen sicheren Zufallsgenerator für die Anmeldung bereit.",
+      );
+    }
+    webCrypto.getRandomValues(bytes);
+    return bytes;
+  }
 }
 
 /**
- * React Native 0.86 can expose a WebCrypto `subtle` object whose digest promise
- * never resolves. The Supabase SDK then stays in its PKCE preparation phase.
- * Expo Crypto gives the native build an S256 verifier and challenge while the
- * verifier remains only in the encrypted iOS Keychain.
+ * Native SSO start without asynchronous platform crypto: the verifier comes
+ * from the synchronous OS CSPRNG, the S256 challenge is computed in pure
+ * JavaScript and the verifier is stored only in the encrypted iOS Keychain in
+ * exactly the JSON format Supabase reads during `exchangeCodeForSession`.
  */
 export async function createNativeNextDeskOAuthUrl(
   redirectTo: string,
@@ -242,20 +262,15 @@ export async function createNativeNextDeskOAuthUrl(
   if (!url)
     throw new Error("Die mobile nextDesk-Verbindung ist nicht konfiguriert.");
 
-  const verifier = base64Url(await Crypto.getRandomBytesAsync(32));
-  const codeChallenge = (
-    await Crypto.digestStringAsync(
-      Crypto.CryptoDigestAlgorithm.SHA256,
-      verifier,
-      { encoding: Crypto.CryptoEncoding.BASE64 },
-    )
-  )
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/g, "");
-  await mobileSecureStorage.setItem(
-    `${SUPABASE_AUTH_STORAGE_KEY}-code-verifier`,
-    verifier,
+  const verifier = base64UrlEncode(secureRandomBytes(32));
+  const codeChallenge = pkceS256Challenge(verifier);
+  await withTimeout(
+    mobileSecureStorage.setItem(
+      `${SUPABASE_AUTH_STORAGE_KEY}-code-verifier`,
+      JSON.stringify(verifier),
+    ),
+    AUTH_STORAGE_STEP_TIMEOUT_MS,
+    AUTH_STORAGE_TIMEOUT_MESSAGE,
   );
 
   const authorizationUrl = new URL(

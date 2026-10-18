@@ -1,3 +1,4 @@
+import Constants from "expo-constants";
 import * as WebBrowser from "expo-web-browser";
 import * as Linking from "expo-linking";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -23,11 +24,37 @@ import {
   nextDeskAuthFailureMessage,
   requireNextDesk,
 } from "@/lib/nextdesk-client";
+import { withTimeout } from "@/lib/pkce";
 
 WebBrowser.maybeCompleteAuthSession();
 
 const WEB_SSO_CALLBACK_MESSAGE = "nextdesk.sso.callback";
 const NATIVE_SSO_OPEN_TIMEOUT_MS = 8_000;
+const NATIVE_SSO_PREPARE_TIMEOUT_MS = 10_000;
+// iOS can report a stale on-screen position for a freshly shown screen. A
+// generous retention area keeps such a tap from being treated as "moved away".
+const RELIABLE_PRESS_RETENTION = {
+  bottom: 400,
+  left: 400,
+  right: 400,
+  top: 400,
+};
+const APP_VERSION_LABEL = (() => {
+  const version = Constants.expoConfig?.version ?? "";
+  const build =
+    Constants.platform?.ios?.buildNumber ??
+    Constants.expoConfig?.ios?.buildNumber ??
+    "";
+  if (!version && !build) return "";
+  return `nextDesk ${version}${build ? ` · Build ${build}` : ""}`;
+})();
+
+function preparationFailureMessage(error: unknown): string {
+  const detail = error instanceof Error ? error.message.trim() : "";
+  return detail
+    ? `Die SSO-Anmeldung konnte nicht vorbereitet werden. ${detail}`
+    : "Die SSO-Anmeldung konnte nicht vorbereitet werden. Bitte versuchen Sie es erneut.";
+}
 
 async function openNativeSsoInSafari(providerUrl: string): Promise<void> {
   const supported = await Linking.canOpenURL(providerUrl);
@@ -45,6 +72,9 @@ export default function AuthScreen() {
   const [pending, setPending] = useState<"magic" | "sso" | null>(null);
   const popupRef = useRef<Window | null>(null);
   const popupMonitorRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Synchronous guard: a single tap may report both onPressOut and onPress.
+  const ssoStartingRef = useRef(false);
+  const magicStartingRef = useRef(false);
   const redirectTo = getNextDeskAuthRedirectUrl();
   const displayedMessage =
     message ||
@@ -102,7 +132,7 @@ export default function AuthScreen() {
 
   async function continueWithSso() {
     setPending("sso");
-    setMessage("SSO-Verbindung wird vorbereitet …");
+    setMessage("Sichere SSO-Anmeldung wird vorbereitet …");
     const webPopup =
       Platform.OS === "web" && typeof window !== "undefined"
         ? window.open("about:blank", "nextdesk-sso")
@@ -116,6 +146,7 @@ export default function AuthScreen() {
     }
 
     let waitingForWebCallback = false;
+    let stage: "prepare" | "browser" = "prepare";
     try {
       const providerUrl =
         Platform.OS === "web"
@@ -134,10 +165,15 @@ export default function AuthScreen() {
               if (error) throw error;
               return data.url;
             })()
-          : await createNativeNextDeskOAuthUrl(redirectTo);
+          : await withTimeout(
+              createNativeNextDeskOAuthUrl(redirectTo),
+              NATIVE_SSO_PREPARE_TIMEOUT_MS,
+              "Die Vorbereitung hat zu lange gedauert. Bitte versuchen Sie es erneut.",
+            );
       if (!providerUrl)
         throw new Error("Die SSO-Anmeldung konnte nicht vorbereitet werden.");
       await beginNextDeskOAuth();
+      stage = "browser";
       if (Platform.OS === "web") {
         popupRef.current = webPopup;
         webPopup?.location.replace(providerUrl);
@@ -153,6 +189,7 @@ export default function AuthScreen() {
         }, 500);
         return;
       }
+      setMessage("Microsoft-Anmeldung wird geöffnet …");
       const startedAt = Date.now();
       let timeout: ReturnType<typeof setTimeout> | undefined;
       const timeoutResult = new Promise<{ type: "timeout" }>((resolve) => {
@@ -200,12 +237,36 @@ export default function AuthScreen() {
         );
       }
     } catch (error) {
-      await clearNextDeskAuthTransaction();
+      await withTimeout(
+        clearNextDeskAuthTransaction(),
+        3_000,
+        "Auth-Transaktion konnte nicht entfernt werden.",
+      ).catch(() => undefined);
       webPopup?.close();
-      setMessage(nextDeskAuthFailureMessage(nextDeskAuthFailureCode(error)));
+      setMessage(
+        stage === "prepare" && Platform.OS !== "web"
+          ? preparationFailureMessage(error)
+          : nextDeskAuthFailureMessage(nextDeskAuthFailureCode(error)),
+      );
     } finally {
       if (!waitingForWebCallback) setPending(null);
     }
+  }
+
+  function startSsoOnce() {
+    if (ssoStartingRef.current || pending !== null) return;
+    ssoStartingRef.current = true;
+    void continueWithSso().finally(() => {
+      ssoStartingRef.current = false;
+    });
+  }
+
+  function startMagicLinkOnce() {
+    if (magicStartingRef.current || pending !== null) return;
+    magicStartingRef.current = true;
+    void sendMagicLink().finally(() => {
+      magicStartingRef.current = false;
+    });
   }
 
   async function sendMagicLink() {
@@ -249,13 +310,23 @@ export default function AuthScreen() {
 
         <Pressable
           accessibilityRole="button"
-          disabled={pending !== null}
-          onPressIn={() => {
-            if (pending === null)
-              setMessage("SSO-Verbindung wird vorbereitet …");
+          accessibilityLabel="Mit SSO anmelden"
+          accessibilityState={{
+            busy: pending === "sso",
+            disabled: pending !== null,
           }}
-          onPress={() => void continueWithSso()}
-          style={[styles.ssoButton, pending !== null && styles.disabled]}
+          disabled={pending !== null}
+          hitSlop={8}
+          pressRetentionOffset={RELIABLE_PRESS_RETENTION}
+          onPress={startSsoOnce}
+          // On iOS a tap must never be lost: if the system cancels the press
+          // before onPress, the release still starts the sign-in exactly once.
+          onPressOut={Platform.OS === "web" ? undefined : startSsoOnce}
+          style={({ pressed }) => [
+            styles.ssoButton,
+            pressed && styles.pressed,
+            pending !== null && styles.disabled,
+          ]}
         >
           <Text style={styles.ssoButtonText}>
             {pending === "sso" ? "SSO wird geöffnet …" : "MIT SSO ANMELDEN"}
@@ -282,8 +353,15 @@ export default function AuthScreen() {
         <Pressable
           accessibilityRole="button"
           disabled={pending !== null}
-          onPress={() => void sendMagicLink()}
-          style={[styles.magicButton, pending !== null && styles.disabled]}
+          hitSlop={8}
+          pressRetentionOffset={RELIABLE_PRESS_RETENTION}
+          onPress={startMagicLinkOnce}
+          onPressOut={Platform.OS === "web" ? undefined : startMagicLinkOnce}
+          style={({ pressed }) => [
+            styles.magicButton,
+            pressed && styles.pressed,
+            pending !== null && styles.disabled,
+          ]}
         >
           <Text style={styles.magicButtonText}>
             {pending === "magic"
@@ -291,8 +369,16 @@ export default function AuthScreen() {
               : "Anmeldelink senden"}
           </Text>
         </Pressable>
-        {displayedMessage ? (
-          <Text style={styles.message}>{displayedMessage}</Text>
+        {/* Fixed slot: status text must not shift the buttons during a tap. */}
+        <View style={styles.messageSlot}>
+          {displayedMessage ? (
+            <Text accessibilityLiveRegion="polite" style={styles.message}>
+              {displayedMessage}
+            </Text>
+          ) : null}
+        </View>
+        {APP_VERSION_LABEL ? (
+          <Text style={styles.version}>{APP_VERSION_LABEL}</Text>
         ) : null}
       </View>
     </ScreenContainer>
@@ -358,6 +444,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
   },
   magicButtonText: { color: "#4438CA", fontSize: 14, fontWeight: "800" },
-  message: { color: "#4B4C60", fontSize: 13, lineHeight: 19, marginTop: 2 },
+  messageSlot: { marginTop: 2, minHeight: 58 },
+  message: { color: "#4B4C60", fontSize: 13, lineHeight: 19 },
+  version: { color: "#9A99AA", fontSize: 11, textAlign: "center" },
+  pressed: { opacity: 0.82 },
   disabled: { opacity: 0.55 },
 });

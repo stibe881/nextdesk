@@ -212,8 +212,16 @@ export default function RootLayout() {
               {/* in order for ios apps tab switching to work properly, use presentation: "fullScreenModal" for login page, whenever you decide to use presentation: "modal*/}
               <Stack screenOptions={{ headerShown: false }}>
                 <Stack.Screen name="(tabs)" />
-                <Stack.Screen name="auth" />
-                <Stack.Screen name="auth/callback" />
+                {/* No transition for sign-in screens: a still-animating native
+                    screen can report stale tap positions on iOS. */}
+                <Stack.Screen
+                  name="auth"
+                  options={{ animation: "none", gestureEnabled: false }}
+                />
+                <Stack.Screen
+                  name="auth/callback"
+                  options={{ animation: "none", gestureEnabled: false }}
+                />
               </Stack>
               <NextDeskAuthDeepLinkHandler />
               <NextDeskSessionNavigator />
