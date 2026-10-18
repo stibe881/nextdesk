@@ -1,5 +1,9 @@
 import "@/global.css";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+  QueryClient,
+  QueryClientProvider,
+  useQueryClient,
+} from "@tanstack/react-query";
 import * as Linking from "expo-linking";
 import { Stack, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
@@ -77,15 +81,30 @@ function NextDeskAuthDeepLinkHandler() {
 function NextDeskSessionNavigator() {
   const router = useRouter();
   const segments = useSegments();
+  const queryClient = useQueryClient();
   const topLevelRoute = segments[0] ?? "";
 
   useEffect(() => {
-    if (!nextDesk) return;
+    let active = true;
+    const leaveWorkspace = () => {
+      queryClient.clear();
+      void clearMobilePrivateState();
+      if (topLevelRoute !== "auth") {
+        router.replace("/auth");
+      }
+    };
+
+    if (!nextDesk) {
+      leaveWorkspace();
+      return () => {
+        active = false;
+      };
+    }
 
     const continueToWorkspace = (userId: string | undefined) => {
       if (!userId) return;
       void prepareMobileUserContext(userId);
-      if (topLevelRoute === "auth" || topLevelRoute === "oauth") {
+      if (topLevelRoute === "auth") {
         // Route groups are an implementation detail on Expo Web. Navigating to
         // the public root keeps native and browser callbacks on one reliable
         // post-login destination.
@@ -93,9 +112,16 @@ function NextDeskSessionNavigator() {
       }
     };
 
-    void nextDesk.auth.getSession().then(({ data }) => {
-      if (data.session?.user.id) continueToWorkspace(data.session.user.id);
-    });
+    void nextDesk.auth
+      .getSession()
+      .then(({ data }) => {
+        if (!active) return;
+        if (data.session?.user.id) continueToWorkspace(data.session.user.id);
+        else leaveWorkspace();
+      })
+      .catch(() => {
+        if (active) leaveWorkspace();
+      });
     const {
       data: { subscription },
     } = nextDesk.auth.onAuthStateChange((event, session) => {
@@ -107,11 +133,14 @@ function NextDeskSessionNavigator() {
       ) {
         continueToWorkspace(session.user.id);
       } else if (event === "SIGNED_OUT") {
-        void clearMobilePrivateState();
+        leaveWorkspace();
       }
     });
-    return () => subscription.unsubscribe();
-  }, [router, topLevelRoute]);
+    return () => {
+      active = false;
+      subscription.unsubscribe();
+    };
+  }, [queryClient, router, topLevelRoute]);
 
   return null;
 }
@@ -183,7 +212,6 @@ export default function RootLayout() {
               <Stack.Screen name="(tabs)" />
               <Stack.Screen name="auth" />
               <Stack.Screen name="auth/callback" />
-              <Stack.Screen name="oauth/callback" />
             </Stack>
             <NextDeskAuthDeepLinkHandler />
             <NextDeskSessionNavigator />
