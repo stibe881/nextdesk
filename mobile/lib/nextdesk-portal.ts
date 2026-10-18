@@ -46,6 +46,20 @@ export type PortalApproval = {
 
 export type PortalDevice = Record<string, unknown>;
 
+export type TicketWatcher = {
+  userId: string;
+  displayName: string | null;
+  createdAt: string | null;
+};
+
+export type DepartmentTicket = {
+  ticketNumber: string;
+  title: string;
+  statusLabel: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export class NextDeskPortalError extends Error {
   readonly code: string;
 
@@ -68,6 +82,7 @@ export function isNextDeskPortalUnavailableError(error: unknown): boolean {
       "requester_portal_feature_disabled",
       "agent_workbench_not_configured",
       "requester_portal_not_configured",
+      "requester_department_view_feature_disabled",
       "tenant_feature_lookup_failed",
       "authentication_required",
       "tenant_membership_required",
@@ -75,7 +90,9 @@ export function isNextDeskPortalUnavailableError(error: unknown): boolean {
       "permission_denied",
       "agent_ticket_permission_required",
       "ticket_not_available",
+      "watcher_not_found",
       "operation_failed",
+      "invalid_response",
     ].includes(error.code)
   );
 }
@@ -88,7 +105,27 @@ type AgentWorkbenchAction =
 type RequesterPortalAction =
   | { type: "activeIncidentNotices"; tenantId: string }
   | { type: "myDevices"; tenantId: string }
-  | { type: "myApprovals"; tenantId: string };
+  | { type: "myApprovals"; tenantId: string }
+  | { type: "listTicketWatchers"; tenantId: string; ticketId: string }
+  | {
+      type: "addTicketWatcher";
+      tenantId: string;
+      ticketId: string;
+      watcherId: string;
+    }
+  | {
+      type: "removeTicketWatcher";
+      tenantId: string;
+      ticketId: string;
+      watcherId: string;
+    }
+  | { type: "getMyAvailability"; tenantId: string }
+  | {
+      type: "setMyAvailability";
+      tenantId: string;
+      availability: string | null;
+    }
+  | { type: "departmentTickets"; tenantId: string };
 
 type AgentWorkbenchActionWithoutTenant =
   AgentWorkbenchAction extends infer Action
@@ -217,4 +254,62 @@ export async function listMyApprovals(): Promise<{
   approvals: PortalApproval[];
 }> {
   return invokeTenantFunction("requester-portal", { type: "myApprovals" });
+}
+
+export async function listTicketWatchers(ticketId: string): Promise<{
+  watchers: TicketWatcher[];
+}> {
+  return invokeTenantFunction("requester-portal", {
+    type: "listTicketWatchers",
+    ticketId,
+  });
+}
+
+export async function addTicketWatcher(
+  ticketId: string,
+  watcherId: string,
+): Promise<{
+  watcher: Pick<TicketWatcher, "userId" | "createdAt">;
+}> {
+  return invokeTenantFunction("requester-portal", {
+    type: "addTicketWatcher",
+    ticketId,
+    watcherId,
+  });
+}
+
+export async function removeTicketWatcher(
+  ticketId: string,
+  watcherId: string,
+): Promise<{ removedWatcherId: string }> {
+  return invokeTenantFunction("requester-portal", {
+    type: "removeTicketWatcher",
+    ticketId,
+    watcherId,
+  });
+}
+
+export async function getMyAvailability(): Promise<{
+  availability: string | null;
+}> {
+  return invokeTenantFunction("requester-portal", {
+    type: "getMyAvailability",
+  });
+}
+
+export async function setMyAvailability(
+  availability: string | null,
+): Promise<{ availability: string | null }> {
+  return invokeTenantFunction("requester-portal", {
+    type: "setMyAvailability",
+    availability,
+  });
+}
+
+export async function listDepartmentTickets(): Promise<{
+  tickets: DepartmentTicket[];
+}> {
+  return invokeTenantFunction("requester-portal", {
+    type: "departmentTickets",
+  });
 }

@@ -9,6 +9,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from "react-native";
 
@@ -24,6 +25,7 @@ import { useMobileSessionGuard } from "@/lib/use-mobile-session-guard";
 
 export default function AssetScanScreen() {
   const router = useRouter();
+  const { width } = useWindowDimensions();
   const checkingSession = useMobileSessionGuard();
   const { isEnabled, loading: checkingFeatures } = useMobileFeatures();
   const assetsEnabled = isEnabled("assets.management");
@@ -31,6 +33,7 @@ export default function AssetScanScreen() {
   const [manualCode, setManualCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const wideLayout = width >= 768;
 
   const resolveCode = useCallback(
     async (rawCode: string) => {
@@ -82,7 +85,7 @@ export default function AssetScanScreen() {
 
   return (
     <View style={styles.screen}>
-      <View style={styles.topbar}>
+      <View style={[styles.topbar, wideLayout && styles.topbarWide]}>
         <Pressable
           accessibilityLabel="Zurück"
           onPress={() => router.back()}
@@ -94,76 +97,85 @@ export default function AssetScanScreen() {
         <View style={styles.closeButton} />
       </View>
 
-      {cameraAvailable ? (
-        <View style={styles.cameraShell}>
-          <CameraView
-            barcodeScannerSettings={{
-              barcodeTypes: ["qr", "code128", "code39", "ean13", "ean8"],
-            }}
-            onBarcodeScanned={
-              busy ? undefined : ({ data }) => void resolveCode(data)
-            }
-            style={styles.camera}
-          />
-          <View pointerEvents="none" style={styles.overlay}>
-            <View style={styles.scanFrame} />
-            <Text style={styles.cameraHint}>
-              QR-Code, Inventar- oder Seriennummer erfassen
-            </Text>
+      <View style={[styles.scanContent, wideLayout && styles.scanContentWide]}>
+        {cameraAvailable ? (
+          <View
+            style={[styles.cameraShell, wideLayout && styles.cameraShellWide]}
+          >
+            <CameraView
+              barcodeScannerSettings={{
+                barcodeTypes: ["qr", "code128", "code39", "ean13", "ean8"],
+              }}
+              onBarcodeScanned={
+                busy ? undefined : ({ data }) => void resolveCode(data)
+              }
+              style={styles.camera}
+            />
+            <View pointerEvents="none" style={styles.overlay}>
+              <View style={styles.scanFrame} />
+              <Text style={styles.cameraHint}>
+                QR-Code, Inventar- oder Seriennummer erfassen
+              </Text>
+            </View>
           </View>
-        </View>
-      ) : (
-        <View style={styles.permissionCard}>
-          <Ionicons color="#4438CA" name="camera-outline" size={33} />
-          <Text style={styles.permissionTitle}>Kamera aktivieren</Text>
-          <Text style={styles.permissionText}>
-            Die Kamera wird ausschließlich genutzt, um den QR- oder Barcode
-            eines Assets zu lesen.
-          </Text>
-          {Platform.OS !== "web" ? (
-            <Pressable
-              onPress={() => void requestPermission()}
-              style={styles.permissionButton}
-            >
-              <Text style={styles.permissionButtonText}>Kamera erlauben</Text>
-            </Pressable>
-          ) : null}
-        </View>
-      )}
-
-      <View style={styles.manualCard}>
-        <Text style={styles.manualTitle}>Code manuell eingeben</Text>
-        <Text style={styles.manualText}>
-          Zum Beispiel Inventarnummer, Seriennummer oder Asset-Tag.
-        </Text>
-        <View style={styles.inputRow}>
-          <TextInput
-            autoCapitalize="none"
-            autoCorrect={false}
-            onChangeText={setManualCode}
-            onSubmitEditing={() => void resolveCode(manualCode)}
-            placeholder="Code eingeben"
-            returnKeyType="search"
-            style={styles.input}
-            value={manualCode}
-          />
-          <Pressable
-            accessibilityLabel="Assetcode suchen"
-            disabled={busy || !manualCode.trim()}
-            onPress={() => void resolveCode(manualCode)}
+        ) : (
+          <View
             style={[
-              styles.lookupButton,
-              (busy || !manualCode.trim()) && styles.lookupButtonDisabled,
+              styles.permissionCard,
+              wideLayout && styles.permissionCardWide,
             ]}
           >
-            {busy ? (
-              <ActivityIndicator color="#FFFFFF" size="small" />
-            ) : (
-              <Ionicons color="#FFFFFF" name="search" size={19} />
-            )}
-          </Pressable>
+            <Ionicons color="#4438CA" name="camera-outline" size={33} />
+            <Text style={styles.permissionTitle}>Kamera aktivieren</Text>
+            <Text style={styles.permissionText}>
+              Die Kamera wird ausschliesslich genutzt, um den QR- oder Barcode
+              eines Assets zu lesen.
+            </Text>
+            {Platform.OS !== "web" ? (
+              <Pressable
+                onPress={() => void requestPermission()}
+                style={styles.permissionButton}
+              >
+                <Text style={styles.permissionButtonText}>Kamera erlauben</Text>
+              </Pressable>
+            ) : null}
+          </View>
+        )}
+
+        <View style={[styles.manualCard, wideLayout && styles.manualCardWide]}>
+          <Text style={styles.manualTitle}>Code manuell eingeben</Text>
+          <Text style={styles.manualText}>
+            Zum Beispiel Inventarnummer, Seriennummer oder Asset-Tag.
+          </Text>
+          <View style={styles.inputRow}>
+            <TextInput
+              autoCapitalize="none"
+              autoCorrect={false}
+              onChangeText={setManualCode}
+              onSubmitEditing={() => void resolveCode(manualCode)}
+              placeholder="Code eingeben"
+              returnKeyType="search"
+              style={styles.input}
+              value={manualCode}
+            />
+            <Pressable
+              accessibilityLabel="Assetcode suchen"
+              disabled={busy || !manualCode.trim()}
+              onPress={() => void resolveCode(manualCode)}
+              style={[
+                styles.lookupButton,
+                (busy || !manualCode.trim()) && styles.lookupButtonDisabled,
+              ]}
+            >
+              {busy ? (
+                <ActivityIndicator color="#FFFFFF" size="small" />
+              ) : (
+                <Ionicons color="#FFFFFF" name="search" size={19} />
+              )}
+            </Pressable>
+          </View>
+          {error ? <Text style={styles.error}>{error}</Text> : null}
         </View>
-        {error ? <Text style={styles.error}>{error}</Text> : null}
       </View>
     </View>
   );
@@ -183,6 +195,7 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     position: "relative",
   },
+  cameraShellWide: { borderRadius: 24, flex: 1, minHeight: 480 },
   centered: {
     alignItems: "center",
     backgroundColor: "#171827",
@@ -226,6 +239,12 @@ const styles = StyleSheet.create({
     gap: 7,
     padding: 21,
   },
+  manualCardWide: {
+    borderRadius: 24,
+    flex: 1,
+    justifyContent: "center",
+    minHeight: 480,
+  },
   manualText: { color: "#747486", fontSize: 12, lineHeight: 18 },
   manualTitle: { color: "#292A3E", fontSize: 16, fontWeight: "900" },
   overlay: {
@@ -254,6 +273,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     padding: 32,
   },
+  permissionCardWide: { borderRadius: 24, flex: 1 },
   permissionText: {
     color: "#615C8A",
     fontSize: 13,
@@ -274,6 +294,15 @@ const styles = StyleSheet.create({
     width: 210,
   },
   screen: { backgroundColor: "#171827", flex: 1 },
+  scanContent: { flex: 1 },
+  scanContentWide: {
+    alignSelf: "center",
+    flexDirection: "row",
+    gap: 20,
+    maxWidth: 1_120,
+    padding: 20,
+    width: "100%",
+  },
   title: { color: "#FFFFFF", fontSize: 18, fontWeight: "900" },
   topbar: {
     alignItems: "center",
@@ -282,4 +311,5 @@ const styles = StyleSheet.create({
     paddingHorizontal: 13,
     paddingTop: 14,
   },
+  topbarWide: { alignSelf: "center", maxWidth: 1_120, width: "100%" },
 });

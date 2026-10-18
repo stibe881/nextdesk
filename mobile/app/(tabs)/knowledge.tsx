@@ -9,6 +9,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from "react-native";
 
@@ -29,6 +30,7 @@ import { useMobileSessionGuard } from "@/lib/use-mobile-session-guard";
 
 export default function KnowledgeScreen() {
   const router = useRouter();
+  const { width } = useWindowDimensions();
   const { recoveryEpoch } = useMobileNetworkStatus();
   const checkingSession = useMobileSessionGuard();
   const { isEnabled, loading: checkingFeatures } = useMobileFeatures();
@@ -38,6 +40,7 @@ export default function KnowledgeScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
+  const wideLayout = width >= 768;
 
   const loadArticles = useCallback(async () => {
     try {
@@ -87,7 +90,10 @@ export default function KnowledgeScreen() {
   return (
     <ScreenContainer containerClassName="bg-[#F6F7FB]" className="px-5">
       <ScrollView
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[
+          styles.content,
+          wideLayout && styles.contentWide,
+        ]}
         keyboardShouldPersistTaps="handled"
         refreshControl={
           <RefreshControl
@@ -165,63 +171,67 @@ export default function KnowledgeScreen() {
               <Text style={styles.listTitle}>Artikel</Text>
               <Text style={styles.resultCount}>{articles.length}</Text>
             </View>
-            {articles.map((article) => (
-              <Pressable
-                accessibilityLabel={`Artikel ${article.title} öffnen`}
-                accessibilityRole="button"
-                key={article.id}
-                onPress={() => openArticle(article.id)}
-                style={styles.article}
-              >
-                <View style={styles.articleIcon}>
-                  <Ionicons
-                    color="#087A95"
-                    name="document-text-outline"
-                    size={20}
-                  />
-                </View>
-                <View style={styles.articleCopy}>
-                  <Text numberOfLines={2} style={styles.articleTitle}>
-                    {article.title}
-                  </Text>
-                  {article.summary ? (
-                    <Text numberOfLines={2} style={styles.articleSummary}>
-                      {article.summary}
+            <View
+              style={[styles.articleGrid, wideLayout && styles.articleGridWide]}
+            >
+              {articles.map((article) => (
+                <Pressable
+                  accessibilityLabel={`Artikel ${article.title} öffnen`}
+                  accessibilityRole="button"
+                  key={article.id}
+                  onPress={() => openArticle(article.id)}
+                  style={[styles.article, wideLayout && styles.articleWide]}
+                >
+                  <View style={styles.articleIcon}>
+                    <Ionicons
+                      color="#087A95"
+                      name="document-text-outline"
+                      size={20}
+                    />
+                  </View>
+                  <View style={styles.articleCopy}>
+                    <Text numberOfLines={2} style={styles.articleTitle}>
+                      {article.title}
                     </Text>
-                  ) : null}
-                  <View style={styles.articleMetaRow}>
-                    <Text style={styles.articleMeta}>
-                      {article.visibility === "internal"
-                        ? "Intern"
-                        : "Extern freigegeben"}
-                    </Text>
-                    {article.revision ? (
-                      <Text style={styles.articleVersion}>
-                        Version {article.revision}
+                    {article.summary ? (
+                      <Text numberOfLines={2} style={styles.articleSummary}>
+                        {article.summary}
                       </Text>
                     ) : null}
-                  </View>
-                  {article.collections.length > 0 ? (
-                    <View style={styles.collections}>
-                      <Ionicons
-                        color="#77758C"
-                        name="folder-open-outline"
-                        size={13}
-                      />
-                      <Text numberOfLines={1} style={styles.collectionsText}>
-                        {article.collections
-                          .map((collection) => collection.name)
-                          .join(" · ")}
+                    <View style={styles.articleMetaRow}>
+                      <Text style={styles.articleMeta}>
+                        {article.visibility === "internal"
+                          ? "Intern"
+                          : "Extern freigegeben"}
                       </Text>
+                      {article.revision ? (
+                        <Text style={styles.articleVersion}>
+                          Version {article.revision}
+                        </Text>
+                      ) : null}
                     </View>
-                  ) : null}
-                  <Text style={styles.updatedAt}>
-                    {formatMobileKnowledgeUpdatedAt(article.updatedAt)}
-                  </Text>
-                </View>
-                <Ionicons color="#8A8999" name="chevron-forward" size={19} />
-              </Pressable>
-            ))}
+                    {article.collections.length > 0 ? (
+                      <View style={styles.collections}>
+                        <Ionicons
+                          color="#77758C"
+                          name="folder-open-outline"
+                          size={13}
+                        />
+                        <Text numberOfLines={1} style={styles.collectionsText}>
+                          {article.collections
+                            .map((collection) => collection.name)
+                            .join(" · ")}
+                        </Text>
+                      </View>
+                    ) : null}
+                    <Text style={styles.updatedAt}>
+                      {formatMobileKnowledgeUpdatedAt(article.updatedAt)}
+                    </Text>
+                  </View>
+                  <Ionicons color="#8A8999" name="chevron-forward" size={19} />
+                </Pressable>
+              ))}
+            </View>
           </View>
         )}
       </ScrollView>
@@ -230,7 +240,8 @@ export default function KnowledgeScreen() {
 }
 
 const styles = StyleSheet.create({
-  content: { gap: 18, paddingBottom: 34, paddingTop: 18 },
+  articleGrid: { gap: 9 },
+  articleGridWide: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
   centered: { alignItems: "center", flex: 1, justifyContent: "center" },
   eyebrow: {
     color: "#77758C",
@@ -327,6 +338,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 13,
     paddingVertical: 11,
   },
+  articleWide: { width: "49%" },
   articleIcon: {
     alignItems: "center",
     backgroundColor: "#E5F7FA",
@@ -358,5 +370,13 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: "700",
   },
+  content: {
+    alignSelf: "center",
+    gap: 18,
+    paddingBottom: 34,
+    paddingTop: 18,
+    width: "100%",
+  },
+  contentWide: { maxWidth: 1_120 },
   updatedAt: { color: "#8A8999", fontSize: 10, lineHeight: 14 },
 });

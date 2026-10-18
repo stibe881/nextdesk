@@ -6,18 +6,24 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from "react-native";
 
+import { RequesterCollaboration } from "@/components/requester-collaboration";
 import { ScreenContainer } from "@/components/screen-container";
 import { useMobileFeatures } from "@/components/mobile-feature-gate";
 import { useMobileSessionGuard } from "@/lib/use-mobile-session-guard";
 
 export default function ServicesScreen() {
   const router = useRouter();
+  const { width } = useWindowDimensions();
   const checkingSession = useMobileSessionGuard();
   const { isEnabled, loading: checkingFeatures } = useMobileFeatures();
   const assetsEnabled = isEnabled("assets.management");
+  const departmentViewEnabled = isEnabled("requester.department-view");
+  const requesterPortalEnabled = isEnabled("requester.portal");
+  const wideLayout = width >= 768;
 
   if (checkingSession || checkingFeatures) {
     return (
@@ -32,7 +38,10 @@ export default function ServicesScreen() {
   return (
     <ScreenContainer containerClassName="bg-[#F6F7FB]" className="px-5">
       <ScrollView
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[
+          styles.content,
+          wideLayout && styles.contentWide,
+        ]}
         showsVerticalScrollIndicator={false}
       >
         <View>
@@ -43,79 +52,102 @@ export default function ServicesScreen() {
           </Text>
         </View>
 
-        <Pressable
-          accessibilityRole="button"
-          onPress={() => router.push("/ticket/new")}
-          style={styles.primaryCard}
+        <View
+          style={[styles.serviceGrid, wideLayout && styles.serviceGridWide]}
         >
-          <View style={styles.primaryIcon}>
-            <Ionicons color="#4438CA" name="add-circle-outline" size={25} />
-          </View>
-          <View style={styles.cardCopy}>
-            <Text style={styles.primaryTitle}>Service anfragen</Text>
-            <Text style={styles.primaryText}>
-              Erfasse ein Ticket mit Anliegen, Priorität und Abteilung.
-            </Text>
-          </View>
-          <Ionicons color="#D9D5FF" name="arrow-forward" size={21} />
-        </Pressable>
-
-        <Text style={styles.sectionLabel}>SCHNELLZUGRIFF</Text>
-        <View style={styles.list}>
           <Pressable
             accessibilityRole="button"
-            onPress={() => router.navigate("/tickets")}
-            style={styles.action}
+            onPress={() => router.push("/ticket/new")}
+            style={[styles.primaryCard, wideLayout && styles.primaryCardWide]}
           >
-            <View style={[styles.actionIcon, { backgroundColor: "#E8F6FB" }]}>
-              <Ionicons color="#087A95" name="ticket-outline" size={20} />
+            <View style={styles.primaryIcon}>
+              <Ionicons color="#4438CA" name="add-circle-outline" size={25} />
             </View>
             <View style={styles.cardCopy}>
-              <Text style={styles.actionTitle}>Meine Serviceanfragen</Text>
-              <Text style={styles.actionText}>
-                Prüfe Status, Antworten und Bearbeitung deiner Tickets.
+              <Text style={styles.primaryTitle}>Service anfragen</Text>
+              <Text style={styles.primaryText}>
+                Erfasse ein Ticket mit Anliegen, Priorität und Abteilung.
               </Text>
             </View>
-            <Ionicons color="#AAA9B8" name="chevron-forward" size={19} />
+            <Ionicons color="#D9D5FF" name="arrow-forward" size={21} />
           </Pressable>
-          {assetsEnabled ? (
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => router.push("/assets" as never)}
-              style={styles.action}
-            >
-              <View style={[styles.actionIcon, { backgroundColor: "#F0EEFF" }]}>
-                <Ionicons color="#4438CA" name="cube-outline" size={20} />
-              </View>
-              <View style={styles.cardCopy}>
-                <Text style={styles.actionTitle}>Assets & Inventar</Text>
-                <Text style={styles.actionText}>
-                  Finde Geräte, lies Intune-Informationen und scanne QR-Codes.
+
+          <View style={styles.actionsColumn}>
+            <Text style={styles.sectionLabel}>SCHNELLZUGRIFF</Text>
+            <View style={styles.list}>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => router.navigate("/tickets")}
+                style={styles.action}
+              >
+                <View
+                  style={[styles.actionIcon, { backgroundColor: "#E8F6FB" }]}
+                >
+                  <Ionicons color="#087A95" name="ticket-outline" size={20} />
+                </View>
+                <View style={styles.cardCopy}>
+                  <Text style={styles.actionTitle}>Meine Serviceanfragen</Text>
+                  <Text style={styles.actionText}>
+                    Prüfe Status, Antworten und Bearbeitung deiner Tickets.
+                  </Text>
+                </View>
+                <Ionicons color="#AAA9B8" name="chevron-forward" size={19} />
+              </Pressable>
+              {assetsEnabled ? (
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => router.push("/assets" as never)}
+                  style={styles.action}
+                >
+                  <View
+                    style={[styles.actionIcon, { backgroundColor: "#F0EEFF" }]}
+                  >
+                    <Ionicons color="#4438CA" name="cube-outline" size={20} />
+                  </View>
+                  <View style={styles.cardCopy}>
+                    <Text style={styles.actionTitle}>Assets & Inventar</Text>
+                    <Text style={styles.actionText}>
+                      Finde Geräte, lies Intune-Informationen und scanne
+                      QR-Codes.
+                    </Text>
+                  </View>
+                  <Ionicons color="#AAA9B8" name="chevron-forward" size={19} />
+                </Pressable>
+              ) : null}
+              <View style={styles.infoCard}>
+                <Ionicons
+                  color="#6D62D7"
+                  name="information-circle-outline"
+                  size={20}
+                />
+                <Text style={styles.infoText}>
+                  Services werden mandantenbezogen verwaltet. Weitere
+                  Servicekataloge erscheinen hier, sobald sie für deinen
+                  Mandanten freigegeben sind.
                 </Text>
               </View>
-              <Ionicons color="#AAA9B8" name="chevron-forward" size={19} />
-            </Pressable>
-          ) : null}
-          <View style={styles.infoCard}>
-            <Ionicons
-              color="#6D62D7"
-              name="information-circle-outline"
-              size={20}
-            />
-            <Text style={styles.infoText}>
-              Services werden mandantenbezogen verwaltet. Weitere
-              Servicekataloge erscheinen hier, sobald sie für deinen Mandanten
-              freigegeben sind.
-            </Text>
+            </View>
           </View>
         </View>
+
+        {requesterPortalEnabled && departmentViewEnabled ? (
+          <RequesterCollaboration />
+        ) : null}
       </ScrollView>
     </ScreenContainer>
   );
 }
 
 const styles = StyleSheet.create({
-  content: { gap: 20, paddingBottom: 34, paddingTop: 18 },
+  actionsColumn: { flex: 1, gap: 10 },
+  content: {
+    alignSelf: "center",
+    gap: 20,
+    paddingBottom: 34,
+    paddingTop: 18,
+    width: "100%",
+  },
+  contentWide: { maxWidth: 1_120 },
   centered: { alignItems: "center", flex: 1, justifyContent: "center" },
   eyebrow: {
     color: "#77758C",
@@ -147,6 +179,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     width: 46,
   },
+  primaryCardWide: { flex: 1, minHeight: 158 },
   cardCopy: { flex: 1 },
   primaryTitle: { color: "#FFFFFF", fontSize: 16, fontWeight: "900" },
   primaryText: { color: "#E5E1FF", fontSize: 12, lineHeight: 17, marginTop: 4 },
@@ -157,6 +190,8 @@ const styles = StyleSheet.create({
     letterSpacing: 1.2,
     marginTop: 5,
   },
+  serviceGrid: { gap: 20 },
+  serviceGridWide: { alignItems: "stretch", flexDirection: "row" },
   list: { gap: 11 },
   action: {
     alignItems: "center",
