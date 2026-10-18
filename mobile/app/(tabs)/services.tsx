@@ -4,7 +4,6 @@ import {
   ActivityIndicator,
   Pressable,
   ScrollView,
-  StyleSheet,
   Text,
   useWindowDimensions,
   View,
@@ -13,11 +12,14 @@ import {
 import { RequesterCollaboration } from "@/components/requester-collaboration";
 import { ScreenContainer } from "@/components/screen-container";
 import { useMobileFeatures } from "@/components/mobile-feature-gate";
+import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
 import { useMobileSessionGuard } from "@/lib/use-mobile-session-guard";
 
 export default function ServicesScreen() {
   const router = useRouter();
   const { width } = useWindowDimensions();
+  const colors = useAppColors();
+  const styles = useStyles();
   const checkingSession = useMobileSessionGuard();
   const { isEnabled, loading: checkingFeatures } = useMobileFeatures();
   const assetsEnabled = isEnabled("assets.management");
@@ -27,16 +29,16 @@ export default function ServicesScreen() {
 
   if (checkingSession || checkingFeatures) {
     return (
-      <ScreenContainer containerClassName="bg-[#F6F7FB]" className="px-5">
+      <ScreenContainer containerClassName="bg-background" className="px-5">
         <View style={styles.centered}>
-          <ActivityIndicator color="#4438CA" size="large" />
+          <ActivityIndicator color={colors.primary} size="large" />
         </View>
       </ScreenContainer>
     );
   }
 
   return (
-    <ScreenContainer containerClassName="bg-[#F6F7FB]" className="px-5">
+    <ScreenContainer containerClassName="bg-background" className="px-5">
       <ScrollView
         contentContainerStyle={[
           styles.content,
@@ -61,7 +63,11 @@ export default function ServicesScreen() {
             style={[styles.primaryCard, wideLayout && styles.primaryCardWide]}
           >
             <View style={styles.primaryIcon}>
-              <Ionicons color="#4438CA" name="add-circle-outline" size={25} />
+              <Ionicons
+                color={colors.primaryText}
+                name="add-circle-outline"
+                size={25}
+              />
             </View>
             <View style={styles.cardCopy}>
               <Text style={styles.primaryTitle}>Service anfragen</Text>
@@ -69,7 +75,7 @@ export default function ServicesScreen() {
                 Erfasse ein Ticket mit Anliegen, Priorität und Abteilung.
               </Text>
             </View>
-            <Ionicons color="#D9D5FF" name="arrow-forward" size={21} />
+            <Ionicons color={colors.onPrimary} name="arrow-forward" size={21} />
           </Pressable>
 
           <View style={styles.actionsColumn}>
@@ -80,10 +86,12 @@ export default function ServicesScreen() {
                 onPress={() => router.navigate("/tickets")}
                 style={styles.action}
               >
-                <View
-                  style={[styles.actionIcon, { backgroundColor: "#E8F6FB" }]}
-                >
-                  <Ionicons color="#087A95" name="ticket-outline" size={20} />
+                <View style={styles.actionInfoIcon}>
+                  <Ionicons
+                    color={colors.info}
+                    name="ticket-outline"
+                    size={20}
+                  />
                 </View>
                 <View style={styles.cardCopy}>
                   <Text style={styles.actionTitle}>Meine Serviceanfragen</Text>
@@ -91,7 +99,11 @@ export default function ServicesScreen() {
                     Prüfe Status, Antworten und Bearbeitung deiner Tickets.
                   </Text>
                 </View>
-                <Ionicons color="#AAA9B8" name="chevron-forward" size={19} />
+                <Ionicons
+                  color={colors.subtle}
+                  name="chevron-forward"
+                  size={19}
+                />
               </Pressable>
               {assetsEnabled ? (
                 <Pressable
@@ -99,10 +111,12 @@ export default function ServicesScreen() {
                   onPress={() => router.push("/assets" as never)}
                   style={styles.action}
                 >
-                  <View
-                    style={[styles.actionIcon, { backgroundColor: "#F0EEFF" }]}
-                  >
-                    <Ionicons color="#4438CA" name="cube-outline" size={20} />
+                  <View style={styles.actionPrimaryIcon}>
+                    <Ionicons
+                      color={colors.primaryText}
+                      name="cube-outline"
+                      size={20}
+                    />
                   </View>
                   <View style={styles.cardCopy}>
                     <Text style={styles.actionTitle}>Assets & Inventar</Text>
@@ -111,12 +125,16 @@ export default function ServicesScreen() {
                       QR-Codes.
                     </Text>
                   </View>
-                  <Ionicons color="#AAA9B8" name="chevron-forward" size={19} />
+                  <Ionicons
+                    color={colors.subtle}
+                    name="chevron-forward"
+                    size={19}
+                  />
                 </Pressable>
               ) : null}
               <View style={styles.infoCard}>
                 <Ionicons
-                  color="#6D62D7"
+                  color={colors.primaryText}
                   name="information-circle-outline"
                   size={20}
                 />
@@ -138,7 +156,7 @@ export default function ServicesScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeThemedStyles((c) => ({
   actionsColumn: { flex: 1, gap: 10 },
   content: {
     alignSelf: "center",
@@ -150,22 +168,22 @@ const styles = StyleSheet.create({
   contentWide: { maxWidth: 1_120 },
   centered: { alignItems: "center", flex: 1, justifyContent: "center" },
   eyebrow: {
-    color: "#77758C",
+    color: c.muted,
     fontSize: 11,
     fontWeight: "800",
     letterSpacing: 1.2,
   },
   title: {
-    color: "#202136",
+    color: c.foreground,
     fontSize: 29,
     fontWeight: "900",
     letterSpacing: -0.8,
     marginTop: 4,
   },
-  subtitle: { color: "#6B7280", fontSize: 14, lineHeight: 20, marginTop: 5 },
+  subtitle: { color: c.muted, fontSize: 14, lineHeight: 20, marginTop: 5 },
   primaryCard: {
     alignItems: "center",
-    backgroundColor: "#4438CA",
+    backgroundColor: c.primary,
     borderRadius: 23,
     flexDirection: "row",
     gap: 14,
@@ -173,7 +191,7 @@ const styles = StyleSheet.create({
   },
   primaryIcon: {
     alignItems: "center",
-    backgroundColor: "#FFFFFF",
+    backgroundColor: c.surface,
     borderRadius: 15,
     height: 46,
     justifyContent: "center",
@@ -181,10 +199,15 @@ const styles = StyleSheet.create({
   },
   primaryCardWide: { flex: 1, minHeight: 158 },
   cardCopy: { flex: 1 },
-  primaryTitle: { color: "#FFFFFF", fontSize: 16, fontWeight: "900" },
-  primaryText: { color: "#E5E1FF", fontSize: 12, lineHeight: 17, marginTop: 4 },
+  primaryTitle: { color: c.onPrimary, fontSize: 16, fontWeight: "900" },
+  primaryText: {
+    color: c.onPrimary,
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: 4,
+  },
   sectionLabel: {
-    color: "#77758C",
+    color: c.muted,
     fontSize: 11,
     fontWeight: "800",
     letterSpacing: 1.2,
@@ -195,8 +218,8 @@ const styles = StyleSheet.create({
   list: { gap: 11 },
   action: {
     alignItems: "center",
-    backgroundColor: "#FFFFFF",
-    borderColor: "#ECECF3",
+    backgroundColor: c.surface,
+    borderColor: c.border,
     borderRadius: 19,
     borderWidth: 1,
     flexDirection: "row",
@@ -210,15 +233,31 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     width: 42,
   },
-  actionTitle: { color: "#303145", fontSize: 14, fontWeight: "800" },
-  actionText: { color: "#747486", fontSize: 12, lineHeight: 17, marginTop: 3 },
+  actionInfoIcon: {
+    alignItems: "center",
+    backgroundColor: c.infoSoft,
+    borderRadius: 13,
+    height: 42,
+    justifyContent: "center",
+    width: 42,
+  },
+  actionPrimaryIcon: {
+    alignItems: "center",
+    backgroundColor: c.primarySoft,
+    borderRadius: 13,
+    height: 42,
+    justifyContent: "center",
+    width: 42,
+  },
+  actionTitle: { color: c.text, fontSize: 14, fontWeight: "800" },
+  actionText: { color: c.muted, fontSize: 12, lineHeight: 17, marginTop: 3 },
   infoCard: {
     alignItems: "flex-start",
-    backgroundColor: "#F0EEFF",
+    backgroundColor: c.primarySoft,
     borderRadius: 18,
     flexDirection: "row",
     gap: 10,
     padding: 15,
   },
-  infoText: { color: "#5C5892", flex: 1, fontSize: 12, lineHeight: 18 },
-});
+  infoText: { color: c.primaryText, flex: 1, fontSize: 12, lineHeight: 18 },
+}));

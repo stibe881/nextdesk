@@ -4,7 +4,15 @@ import {
   View,
   useColorScheme as useSystemColorScheme,
 } from "react-native";
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { colorScheme as nativewindColorScheme, vars } from "nativewind";
 
 import { SchemeColors, type ColorScheme } from "@/constants/theme";
@@ -34,15 +42,22 @@ type ThemeContextValue = {
   themePreference: ThemePreference;
 };
 
-const THEME_PREFERENCES_KEY = "nextdesk:mobile:theme-preferences:v1";
+const THEME_PREFERENCES_KEY = "nextdesk:mobile:theme-preferences:v2";
+// v1 stored "system" as the implicit default. nextDesk now starts in light mode,
+// so an untouched v1 "system" value is migrated to light. An explicit dark choice
+// is kept.
+const LEGACY_THEME_PREFERENCES_KEY = "nextdesk:mobile:theme-preferences:v1";
 const DEFAULT_PREFERENCES: StoredPreferences = {
   density: "comfortable",
   motion: "system",
-  theme: "system",
+  theme: "light",
 };
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
-function parsePreferences(value: string | null): StoredPreferences {
+function parsePreferences(
+  value: string | null,
+  legacy = false,
+): StoredPreferences {
   if (!value) return DEFAULT_PREFERENCES;
   try {
     const candidate = JSON.parse(value) as Partial<StoredPreferences>;
@@ -50,9 +65,11 @@ function parsePreferences(value: string | null): StoredPreferences {
       density: candidate.density === "compact" ? "compact" : "comfortable",
       motion: candidate.motion === "reduced" ? "reduced" : "system",
       theme:
-        candidate.theme === "light" || candidate.theme === "dark"
-          ? candidate.theme
-          : "system",
+        candidate.theme === "dark"
+          ? "dark"
+          : candidate.theme === "system" && !legacy
+            ? "system"
+            : "light",
     };
   } catch {
     return DEFAULT_PREFERENCES;
@@ -66,7 +83,7 @@ function parsePreferences(value: string | null): StoredPreferences {
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const systemScheme = useSystemColorScheme() === "dark" ? "dark" : "light";
   const [themePreference, setThemePreferenceState] =
-    useState<ThemePreference>("system");
+    useState<ThemePreference>("light");
   const [motionPreference, setMotionPreferenceState] =
     useState<MotionPreference>("system");
   const [density, setDensityState] = useState<DensityPreference>("comfortable");
@@ -76,8 +93,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
   const colorScheme: ColorScheme =
     themePreference === "system" ? systemScheme : themePreference;
-  const reducedMotion =
-    motionPreference === "reduced" || systemReducedMotion;
+  const reducedMotion = motionPreference === "reduced" || systemReducedMotion;
 
   const persist = useCallback((next: StoredPreferences) => {
     preferencesRef.current = next;
@@ -134,12 +150,18 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let active = true;
     void (async () => {
-      const [stored, reduced] = await Promise.all([
+      const [stored, legacy, reduced] = await Promise.all([
         mobileSecureStorage.getItem(THEME_PREFERENCES_KEY).catch(() => null),
+        mobileSecureStorage
+          .getItem(LEGACY_THEME_PREFERENCES_KEY)
+          .catch(() => null),
         AccessibilityInfo.isReduceMotionEnabled().catch(() => false),
       ]);
       if (!active) return;
-      const preferences = parsePreferences(stored);
+      const preferences =
+        stored !== null
+          ? parsePreferences(stored)
+          : parsePreferences(legacy, true);
       preferencesRef.current = preferences;
       setThemePreferenceState(preferences.theme);
       setMotionPreferenceState(preferences.motion);
@@ -164,17 +186,14 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
   const themeVariables = useMemo(
     () =>
-      vars({
-        "color-primary": SchemeColors[colorScheme].primary,
-        "color-background": SchemeColors[colorScheme].background,
-        "color-surface": SchemeColors[colorScheme].surface,
-        "color-foreground": SchemeColors[colorScheme].foreground,
-        "color-muted": SchemeColors[colorScheme].muted,
-        "color-border": SchemeColors[colorScheme].border,
-        "color-success": SchemeColors[colorScheme].success,
-        "color-warning": SchemeColors[colorScheme].warning,
-        "color-error": SchemeColors[colorScheme].error,
-      }),
+      vars(
+        Object.fromEntries(
+          Object.entries(SchemeColors[colorScheme]).map(([token, value]) => [
+            `color-${token}`,
+            value,
+          ]),
+        ),
+      ),
     [colorScheme],
   );
 

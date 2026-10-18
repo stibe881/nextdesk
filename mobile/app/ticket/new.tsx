@@ -6,12 +6,12 @@ import {
   findNodeHandle,
   Pressable,
   ScrollView,
-  StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
 
+import { RequesterPicker } from "@/components/requester-picker";
 import { ScreenContainer } from "@/components/screen-container";
 import { useMobileNetworkStatus } from "@/components/offline-status";
 import {
@@ -26,7 +26,7 @@ import {
   type TicketRequester,
   type TicketFormOptions,
 } from "@/lib/nextdesk-tickets";
-import { RequesterPicker } from "@/components/requester-picker";
+import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
 
 export default function NewTicketScreen() {
   const { isOffline } = useMobileNetworkStatus();
@@ -43,6 +43,8 @@ export default function NewTicketScreen() {
   const scrollViewRef = useRef<ScrollView>(null);
   const subjectInputRef = useRef<TextInput>(null);
   const descriptionInputRef = useRef<TextInput>(null);
+  const styles = useStyles();
+  const colors = useAppColors();
 
   useEffect(() => {
     if (isOffline) return;
@@ -78,10 +80,14 @@ export default function NewTicketScreen() {
 
   if (isOffline) {
     return (
-      <ScreenContainer containerClassName="bg-[#F6F7FB]" className="px-5">
+      <ScreenContainer className="px-5">
         <View style={styles.offlineGuard}>
           <View style={styles.offlineGuardIcon}>
-            <Ionicons color="#9A5B12" name="cloud-offline-outline" size={25} />
+            <Ionicons
+              color={colors.warning}
+              name="cloud-offline-outline"
+              size={25}
+            />
           </View>
           <Text style={styles.offlineGuardTitle}>
             Ticketerfassung benötigt eine Verbindung
@@ -177,7 +183,7 @@ export default function NewTicketScreen() {
   }
 
   return (
-    <ScreenContainer containerClassName="bg-[#F6F7FB]" className="px-5">
+    <ScreenContainer className="px-5">
       <ScrollView
         automaticallyAdjustKeyboardInsets
         contentContainerStyle={styles.content}
@@ -195,7 +201,7 @@ export default function NewTicketScreen() {
             onPress={() => router.back()}
             style={styles.backButton}
           >
-            <Ionicons color="#4438CA" name="arrow-back" size={22} />
+            <Ionicons color={colors.primaryText} name="arrow-back" size={22} />
           </Pressable>
           <Text style={styles.topTitle}>Ticket erfassen</Text>
           <View style={styles.topSpacer} />
@@ -211,7 +217,7 @@ export default function NewTicketScreen() {
 
         {loading ? (
           <View style={styles.centered}>
-            <ActivityIndicator color="#4438CA" />
+            <ActivityIndicator color={colors.primary} />
             <Text style={styles.copy}>Formular wird geladen …</Text>
           </View>
         ) : options ? (
@@ -231,7 +237,7 @@ export default function NewTicketScreen() {
               onChangeText={setSubject}
               onFocus={() => revealFieldAboveKeyboard(subjectInputRef.current)}
               placeholder="z. B. VPN-Zugang für Homeoffice"
-              placeholderTextColor="#9A99AA"
+              placeholderTextColor={colors.subtle}
               ref={subjectInputRef}
               style={styles.input}
               value={subject}
@@ -246,7 +252,7 @@ export default function NewTicketScreen() {
                 revealFieldAboveKeyboard(descriptionInputRef.current)
               }
               placeholder="Beschreibe dein Anliegen möglichst genau."
-              placeholderTextColor="#9A99AA"
+              placeholderTextColor={colors.subtle}
               ref={descriptionInputRef}
               style={[styles.input, styles.descriptionInput]}
               textAlignVertical="top"
@@ -331,9 +337,13 @@ export default function NewTicketScreen() {
           ]}
         >
           {saving ? (
-            <ActivityIndicator color="#FFFFFF" />
+            <ActivityIndicator color={colors.onPrimary} />
           ) : (
-            <Ionicons color="#FFFFFF" name="add-circle-outline" size={20} />
+            <Ionicons
+              color={colors.onPrimary}
+              name="add-circle-outline"
+              size={20}
+            />
           )}
           <Text style={styles.primaryButtonText}>
             {saving ? "Ticket wird erfasst …" : "Ticket erfassen"}
@@ -345,10 +355,11 @@ export default function NewTicketScreen() {
 }
 
 function FieldLabel({ label }: { label: string }) {
+  const styles = useStyles();
   return <Text style={styles.label}>{label}</Text>;
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeThemedStyles((c) => ({
   content: { gap: 16, paddingTop: 14, paddingBottom: 320 },
   offlineGuard: {
     alignItems: "center",
@@ -358,34 +369,38 @@ const styles = StyleSheet.create({
   },
   offlineGuardIcon: {
     alignItems: "center",
-    backgroundColor: "#FFF4DB",
+    backgroundColor: c.warningSoft,
     borderRadius: 20,
     height: 56,
     justifyContent: "center",
     width: 56,
   },
   offlineGuardTitle: {
-    color: "#202136",
+    color: c.foreground,
     fontSize: 19,
     fontWeight: "900",
     marginTop: 16,
     textAlign: "center",
   },
   offlineGuardText: {
-    color: "#626376",
+    color: c.muted,
     fontSize: 14,
     lineHeight: 21,
     marginTop: 8,
     textAlign: "center",
   },
   offlineGuardButton: {
-    backgroundColor: "#EEECFF",
+    backgroundColor: c.primarySoft,
     borderRadius: 14,
     marginTop: 20,
     paddingHorizontal: 16,
     paddingVertical: 12,
   },
-  offlineGuardButtonText: { color: "#4438CA", fontSize: 13, fontWeight: "900" },
+  offlineGuardButtonText: {
+    color: c.primaryText,
+    fontSize: 13,
+    fontWeight: "900",
+  },
   topBar: {
     alignItems: "center",
     flexDirection: "row",
@@ -393,45 +408,45 @@ const styles = StyleSheet.create({
   },
   backButton: {
     alignItems: "center",
-    backgroundColor: "#EEECFF",
+    backgroundColor: c.primarySoft,
     borderRadius: 18,
     height: 40,
     justifyContent: "center",
     width: 40,
   },
-  topTitle: { color: "#202136", fontSize: 17, fontWeight: "800" },
+  topTitle: { color: c.foreground, fontSize: 17, fontWeight: "800" },
   topSpacer: { width: 40 },
   intro: { gap: 8, paddingTop: 10 },
   title: {
-    color: "#202136",
+    color: c.foreground,
     fontSize: 27,
     fontWeight: "800",
     letterSpacing: -0.5,
     lineHeight: 33,
   },
-  copy: { color: "#626376", fontSize: 15, lineHeight: 23 },
+  copy: { color: c.muted, fontSize: 15, lineHeight: 23 },
   centered: { alignItems: "center", gap: 10, paddingVertical: 35 },
   form: {
-    backgroundColor: "#FFFFFF",
-    borderColor: "#ECECF3",
+    backgroundColor: c.surface,
+    borderColor: c.surfaceSubtle,
     borderRadius: 20,
     borderWidth: 1,
     gap: 8,
     padding: 17,
   },
   label: {
-    color: "#77758C",
+    color: c.muted,
     fontSize: 10,
     fontWeight: "800",
     letterSpacing: 0.9,
     marginTop: 7,
   },
   input: {
-    backgroundColor: "#F7F7FB",
-    borderColor: "#E5E5EF",
+    backgroundColor: c.surfaceSubtle,
+    borderColor: c.border,
     borderRadius: 13,
     borderWidth: 1,
-    color: "#202136",
+    color: c.foreground,
     fontSize: 15,
     minHeight: 50,
     paddingHorizontal: 13,
@@ -440,21 +455,24 @@ const styles = StyleSheet.create({
   descriptionInput: { minHeight: 126 },
   choiceList: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   choice: {
-    backgroundColor: "#F7F7FB",
-    borderColor: "#E5E5EF",
+    backgroundColor: c.surfaceSubtle,
+    borderColor: c.border,
     borderRadius: 999,
     borderWidth: 1,
     paddingHorizontal: 12,
     paddingVertical: 9,
   },
-  choiceActive: { backgroundColor: "#EEECFF", borderColor: "#4438CA" },
-  choiceText: { color: "#626376", fontSize: 13, fontWeight: "700" },
-  choiceTextActive: { color: "#4438CA" },
-  hint: { color: "#77758C", fontSize: 12, lineHeight: 18 },
-  error: { color: "#A02820", fontSize: 13, lineHeight: 19 },
+  choiceActive: {
+    backgroundColor: c.primarySoft,
+    borderColor: c.primaryText,
+  },
+  choiceText: { color: c.muted, fontSize: 13, fontWeight: "700" },
+  choiceTextActive: { color: c.primaryText },
+  hint: { color: c.muted, fontSize: 12, lineHeight: 18 },
+  error: { color: c.error, fontSize: 13, lineHeight: 19 },
   primaryButton: {
     alignItems: "center",
-    backgroundColor: "#4438CA",
+    backgroundColor: c.primary,
     borderRadius: 16,
     flexDirection: "row",
     gap: 9,
@@ -462,6 +480,6 @@ const styles = StyleSheet.create({
     minHeight: 52,
     paddingHorizontal: 16,
   },
-  primaryButtonText: { color: "#FFFFFF", fontSize: 15, fontWeight: "800" },
+  primaryButtonText: { color: c.onPrimary, fontSize: 15, fontWeight: "800" },
   disabled: { opacity: 0.55 },
-});
+}));

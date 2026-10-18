@@ -8,7 +8,7 @@ import Animated, {
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { useColors } from "@/hooks/use-colors";
+import { useAppColors } from "@/lib/themed-styles";
 
 const HEADER_HEIGHT = 250;
 
@@ -26,7 +26,7 @@ export default function ParallaxScrollView({
   headerImage,
   headerBackgroundColor,
 }: Props) {
-  const colors = useColors();
+  const colors = useAppColors();
   const insets = useSafeAreaInsets();
   const scrollRef = useAnimatedRef<Animated.ScrollView>();
   const scrollOffset = useScrollOffset(scrollRef);
@@ -43,7 +43,11 @@ export default function ParallaxScrollView({
         ),
       },
       {
-        scale: interpolate(scrollOffset.value, [-headerHeight, 0, headerHeight], [2, 1, 1]),
+        scale: interpolate(
+          scrollOffset.value,
+          [-headerHeight, 0, headerHeight],
+          [2, 1, 1],
+        ),
       },
     ],
   }));

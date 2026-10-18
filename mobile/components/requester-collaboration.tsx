@@ -1,13 +1,14 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "expo-router";
 import { useCallback, useState } from "react";
-import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Text, View } from "react-native";
 
 import { useMobileFeatures } from "@/components/mobile-feature-gate";
 import {
   listDepartmentTickets,
   type DepartmentTicket,
 } from "@/lib/nextdesk-portal";
+import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
 
 type LoadState = "hidden" | "loading" | "ready";
 
@@ -28,6 +29,8 @@ function formatDate(value: string): string {
  * den Bereich vorsorglich aus.
  */
 export function RequesterCollaboration() {
+  const colors = useAppColors();
+  const styles = useStyles();
   const { isEnabled, loading: checkingFeatures } = useMobileFeatures();
   const departmentViewEnabled = isEnabled("requester.department-view");
   const requesterPortalEnabled = isEnabled("requester.portal");
@@ -77,7 +80,7 @@ export function RequesterCollaboration() {
         accessibilityRole="progressbar"
         style={styles.loading}
       >
-        <ActivityIndicator color="#4438CA" size="small" />
+        <ActivityIndicator color={colors.primary} size="small" />
         <Text style={styles.loadingText}>Abteilung wird geladen …</Text>
       </View>
     );
@@ -87,7 +90,7 @@ export function RequesterCollaboration() {
     <View style={styles.section}>
       <View style={styles.heading}>
         <View style={styles.headingIcon}>
-          <Ionicons color="#087A95" name="people-outline" size={20} />
+          <Ionicons color={colors.info} name="people-outline" size={20} />
         </View>
         <View style={styles.headingCopy}>
           <Text style={styles.eyebrow}>ABTEILUNG</Text>
@@ -100,7 +103,11 @@ export function RequesterCollaboration() {
 
       {tickets.length === 0 ? (
         <View style={styles.empty}>
-          <Ionicons color="#087A95" name="checkmark-circle-outline" size={21} />
+          <Ionicons
+            color={colors.info}
+            name="checkmark-circle-outline"
+            size={21}
+          />
           <Text style={styles.emptyText}>
             Für deine Abteilung liegen aktuell keine Tickets vor.
           </Text>
@@ -128,18 +135,18 @@ export function RequesterCollaboration() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeThemedStyles((c) => ({
   empty: {
     alignItems: "flex-start",
-    backgroundColor: "#EAF8FB",
+    backgroundColor: c.infoSoft,
     borderRadius: 16,
     flexDirection: "row",
     gap: 9,
     padding: 14,
   },
-  emptyText: { color: "#276D7C", flex: 1, fontSize: 12, lineHeight: 18 },
+  emptyText: { color: c.info, flex: 1, fontSize: 12, lineHeight: 18 },
   eyebrow: {
-    color: "#087A95",
+    color: c.info,
     fontSize: 10,
     fontWeight: "900",
     letterSpacing: 0.9,
@@ -148,7 +155,7 @@ const styles = StyleSheet.create({
   headingCopy: { flex: 1 },
   headingIcon: {
     alignItems: "center",
-    backgroundColor: "#E5F7FA",
+    backgroundColor: c.infoSoft,
     borderRadius: 12,
     height: 40,
     justifyContent: "center",
@@ -157,26 +164,26 @@ const styles = StyleSheet.create({
   list: { gap: 9 },
   loading: {
     alignItems: "center",
-    backgroundColor: "#FFFFFF",
-    borderColor: "#E7E6EF",
+    backgroundColor: c.surface,
+    borderColor: c.border,
     borderRadius: 17,
     borderWidth: 1,
     flexDirection: "row",
     gap: 9,
     padding: 14,
   },
-  loadingText: { color: "#747486", fontSize: 12, fontWeight: "700" },
+  loadingText: { color: c.muted, fontSize: 12, fontWeight: "700" },
   section: { gap: 12 },
   status: {
-    color: "#087A95",
+    color: c.info,
     fontSize: 11,
     fontWeight: "800",
     textAlign: "right",
   },
-  subtitle: { color: "#747486", fontSize: 12, lineHeight: 17, marginTop: 3 },
+  subtitle: { color: c.muted, fontSize: 12, lineHeight: 17, marginTop: 3 },
   ticket: {
-    backgroundColor: "#FFFFFF",
-    borderColor: "#E7E6EF",
+    backgroundColor: c.surface,
+    borderColor: c.border,
     borderRadius: 16,
     borderWidth: 1,
     gap: 5,
@@ -188,13 +195,13 @@ const styles = StyleSheet.create({
     gap: 10,
     justifyContent: "space-between",
   },
-  ticketMeta: { color: "#77758C", fontSize: 10, lineHeight: 15 },
-  ticketNumber: { color: "#514AA1", fontSize: 11, fontWeight: "900" },
+  ticketMeta: { color: c.muted, fontSize: 10, lineHeight: 15 },
+  ticketNumber: { color: c.primaryText, fontSize: 11, fontWeight: "900" },
   ticketTitle: {
-    color: "#303145",
+    color: c.text,
     fontSize: 14,
     fontWeight: "900",
     lineHeight: 19,
   },
-  title: { color: "#292A3E", fontSize: 17, fontWeight: "900", marginTop: 1 },
-});
+  title: { color: c.foreground, fontSize: 17, fontWeight: "900", marginTop: 1 },
+}));

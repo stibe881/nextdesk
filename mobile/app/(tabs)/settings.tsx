@@ -24,6 +24,7 @@ import {
   useThemeContext,
 } from "@/lib/theme-provider";
 import { useMobileFeatures } from "@/components/mobile-feature-gate";
+import { makeThemedStyles } from "@/lib/themed-styles";
 import {
   clearMobileWorkspace,
   getMobileUserId,
@@ -43,9 +44,9 @@ import {
 } from "@/lib/mobile-private-state";
 
 const themeOptions: { label: string; value: ThemePreference }[] = [
-  { label: "System", value: "system" },
   { label: "Hell", value: "light" },
   { label: "Dunkel", value: "dark" },
+  { label: "Wie iPhone", value: "system" },
 ];
 
 const densityOptions: { label: string; value: DensityPreference }[] = [
@@ -92,6 +93,7 @@ function profileFromUser(
 }
 
 export default function SettingsScreen() {
+  const styles = useStyles();
   const router = useRouter();
   const {
     isEnabled,
@@ -113,26 +115,23 @@ export default function SettingsScreen() {
     () => ({
       card: { backgroundColor: colors.surface, borderColor: colors.border },
       control: {
-        backgroundColor: colors.background,
+        backgroundColor: colors.surfaceSubtle,
         borderColor: colors.border,
       },
       error: {
-        backgroundColor: colors.error + "1A",
-        borderColor: colors.error,
+        backgroundColor: colors.errorSoft,
+        borderColor: colors.errorBorder,
       },
       foreground: { color: colors.foreground },
+      info: { backgroundColor: colors.infoSoft },
       muted: { color: colors.muted },
       primary: { backgroundColor: colors.primary },
-      primaryText: { color: colors.background },
+      primaryText: { color: colors.onPrimary },
       success: {
-        backgroundColor: colors.success + "1A",
-        borderColor: colors.success,
+        backgroundColor: colors.successSoft,
+        borderColor: colors.successBorder,
       },
       successText: { color: colors.success },
-      warning: {
-        backgroundColor: colors.warning + "1A",
-        borderColor: colors.warning,
-      },
     }),
     [colors],
   );
@@ -400,7 +399,7 @@ export default function SettingsScreen() {
               <View
                 style={[
                   styles.skeletonIcon,
-                  { backgroundColor: colors.background },
+                  { backgroundColor: colors.surfaceSubtle },
                 ]}
               />
               <View style={styles.skeletonCopy}>
@@ -435,7 +434,7 @@ export default function SettingsScreen() {
       <ScreenContainer
         containerClassName="bg-background"
         className="px-5"
-        style={{ backgroundColor: colors.background }}
+        style={{ backgroundColor: colors.surfaceSubtle }}
       >
         <ScrollView
           automaticallyAdjustKeyboardInsets
@@ -488,7 +487,11 @@ export default function SettingsScreen() {
           <View style={[styles.card, tokenStyles.card, densityStyles.card]}>
             <View style={styles.cardHeading}>
               <View style={styles.cardIcon}>
-                <Ionicons color="#4438CA" name="person-outline" size={20} />
+                <Ionicons
+                  color={colors.primaryText}
+                  name="person-outline"
+                  size={20}
+                />
               </View>
               <Text style={[styles.cardTitle, tokenStyles.foreground]}>
                 Profil
@@ -506,7 +509,7 @@ export default function SettingsScreen() {
             </Text>
             <View style={styles.providerBadge}>
               <Ionicons
-                color="#5E55B8"
+                color={colors.primaryText}
                 name="shield-checkmark-outline"
                 size={15}
               />
@@ -516,8 +519,14 @@ export default function SettingsScreen() {
 
           <View style={[styles.card, tokenStyles.card, densityStyles.card]}>
             <View style={styles.cardHeading}>
-              <View style={[styles.cardIcon, { backgroundColor: "#E5F7FA" }]}>
-                <Ionicons color="#087A95" name="business-outline" size={20} />
+              <View
+                style={[styles.cardIcon, { backgroundColor: colors.infoSoft }]}
+              >
+                <Ionicons
+                  color={colors.info}
+                  name="business-outline"
+                  size={20}
+                />
               </View>
               <Text style={[styles.cardTitle, tokenStyles.foreground]}>
                 Arbeitsbereich
@@ -553,7 +562,11 @@ export default function SettingsScreen() {
                 </Text>
               </View>
               {tenants.length > 1 ? (
-                <Ionicons color="#4438CA" name="chevron-forward" size={20} />
+                <Ionicons
+                  color={colors.primaryText}
+                  name="chevron-forward"
+                  size={20}
+                />
               ) : null}
             </Pressable>
           </View>
@@ -561,8 +574,13 @@ export default function SettingsScreen() {
           {availabilityAvailable ? (
             <View style={[styles.card, tokenStyles.card, densityStyles.card]}>
               <View style={styles.cardHeading}>
-                <View style={[styles.cardIcon, { backgroundColor: "#E5F7FA" }]}>
-                  <Ionicons color="#087A95" name="time-outline" size={20} />
+                <View
+                  style={[
+                    styles.cardIcon,
+                    { backgroundColor: colors.infoSoft },
+                  ]}
+                >
+                  <Ionicons color={colors.info} name="time-outline" size={20} />
                 </View>
                 <Text style={[styles.cardTitle, tokenStyles.foreground]}>
                   Erreichbarkeit
@@ -584,7 +602,7 @@ export default function SettingsScreen() {
                 multiline
                 onChangeText={setAvailability}
                 placeholder="Zum Beispiel: Heute ab 14 Uhr wieder erreichbar."
-                placeholderTextColor="#9A99AA"
+                placeholderTextColor={colors.subtle}
                 style={[
                   styles.input,
                   styles.availabilityInput,
@@ -612,7 +630,7 @@ export default function SettingsScreen() {
                 ]}
               >
                 {availabilitySaving ? (
-                  <ActivityIndicator color={colors.background} size="small" />
+                  <ActivityIndicator color={colors.onPrimary} size="small" />
                 ) : null}
                 <Text
                   style={[styles.primaryButtonText, tokenStyles.primaryText]}
@@ -630,9 +648,14 @@ export default function SettingsScreen() {
           {deviceProtectionAvailable ? (
             <View style={[styles.card, tokenStyles.card, densityStyles.card]}>
               <View style={styles.cardHeading}>
-                <View style={[styles.cardIcon, { backgroundColor: "#EEECFF" }]}>
+                <View
+                  style={[
+                    styles.cardIcon,
+                    { backgroundColor: colors.primarySoft },
+                  ]}
+                >
                   <Ionicons
-                    color="#4438CA"
+                    color={colors.primaryText}
                     name="phone-portrait-outline"
                     size={20}
                   />
@@ -683,10 +706,12 @@ export default function SettingsScreen() {
                   </Text>
                 </View>
                 {deviceProtectionSaving ? (
-                  <ActivityIndicator color="#4438CA" size="small" />
+                  <ActivityIndicator color={colors.primaryText} size="small" />
                 ) : (
                   <Ionicons
-                    color={deviceProtectionEnabled ? "#2B8A54" : "#77758C"}
+                    color={
+                      deviceProtectionEnabled ? colors.success : colors.muted
+                    }
                     name={
                       deviceProtectionEnabled
                         ? "shield-checkmark-outline"
@@ -699,15 +724,15 @@ export default function SettingsScreen() {
             </View>
           ) : null}
 
-          <View style={[styles.cacheNote, tokenStyles.warning]}>
+          <View style={[styles.cacheNote, tokenStyles.info]}>
             <Ionicons
-              color="#087A95"
+              color={colors.info}
               name="shield-checkmark-outline"
               size={20}
             />
             <View style={styles.noteCopy}>
-              <Text style={styles.noteTitle}>Offline &amp; Cache</Text>
-              <Text style={styles.noteText}>
+              <Text style={styles.cacheNoteTitle}>Offline &amp; Cache</Text>
+              <Text style={styles.cacheNoteText}>
                 Nur Entwürfe und Favoriten bleiben verschlüsselt auf diesem
                 Gerät. Tickets, Fotos, Assets und Wissen werden nicht offline
                 gespeichert.
@@ -730,11 +755,11 @@ export default function SettingsScreen() {
               <View
                 style={[
                   styles.cardIcon,
-                  { backgroundColor: colors.primary + "1A" },
+                  { backgroundColor: colors.primarySoft },
                 ]}
               >
                 <Ionicons
-                  color={colors.primary}
+                  color={colors.primaryText}
                   name="color-palette-outline"
                   size={20}
                 />
@@ -744,8 +769,8 @@ export default function SettingsScreen() {
               </Text>
             </View>
             <Text style={[styles.cardHint, tokenStyles.muted]}>
-              Diese Anzeigepräferenzen bleiben verschlüsselt nur auf diesem
-              Gerät gespeichert.
+              Standard ist Hell. „Wie iPhone“ folgt der Einstellung des Geräts.
+              Die Wahl bleibt verschlüsselt nur auf diesem Gerät gespeichert.
             </Text>
             <Text style={[styles.fieldLabel, tokenStyles.muted]}>
               FARBDARSTELLUNG
@@ -858,8 +883,13 @@ export default function SettingsScreen() {
           {profile?.canChangePassword ? (
             <View style={[styles.card, tokenStyles.card, densityStyles.card]}>
               <View style={styles.cardHeading}>
-                <View style={[styles.cardIcon, { backgroundColor: "#EAF8FB" }]}>
-                  <Ionicons color="#087A95" name="key-outline" size={20} />
+                <View
+                  style={[
+                    styles.cardIcon,
+                    { backgroundColor: colors.infoSoft },
+                  ]}
+                >
+                  <Ionicons color={colors.info} name="key-outline" size={20} />
                 </View>
                 <Text style={[styles.cardTitle, tokenStyles.foreground]}>
                   Passwort ändern
@@ -873,7 +903,7 @@ export default function SettingsScreen() {
                 autoComplete="new-password"
                 onChangeText={setPassword}
                 placeholder="Neues Passwort"
-                placeholderTextColor="#9A99AA"
+                placeholderTextColor={colors.subtle}
                 secureTextEntry
                 allowFontScaling
                 style={[
@@ -888,7 +918,7 @@ export default function SettingsScreen() {
                 autoComplete="new-password"
                 onChangeText={setPasswordConfirmation}
                 placeholder="Neues Passwort bestätigen"
-                placeholderTextColor="#9A99AA"
+                placeholderTextColor={colors.subtle}
                 secureTextEntry
                 allowFontScaling
                 style={[
@@ -914,12 +944,16 @@ export default function SettingsScreen() {
             </View>
           ) : (
             <View style={styles.ssoNote}>
-              <Ionicons color="#5E55B8" name="lock-closed-outline" size={20} />
+              <Ionicons
+                color={colors.primaryText}
+                name="lock-closed-outline"
+                size={20}
+              />
               <View style={styles.noteCopy}>
-                <Text style={styles.noteTitle}>
+                <Text style={styles.ssoNoteTitle}>
                   Passwort wird über SSO verwaltet
                 </Text>
-                <Text style={styles.noteText}>
+                <Text style={styles.ssoNoteText}>
                   Dein Konto wird über Microsoft Entra authentifiziert. Ändere
                   dein Passwort bitte direkt bei deinem Identitätsanbieter.
                 </Text>
@@ -933,12 +967,12 @@ export default function SettingsScreen() {
             style={[
               styles.signOutButton,
               {
-                borderColor: colors.error,
-                backgroundColor: colors.error + "12",
+                borderColor: colors.errorBorder,
+                backgroundColor: colors.errorSoft,
               },
             ]}
           >
-            <Ionicons color="#B42318" name="log-out-outline" size={19} />
+            <Ionicons color={colors.error} name="log-out-outline" size={19} />
             <Text style={styles.signOutText}>Abmelden</Text>
           </Pressable>
         </ScrollView>
@@ -968,7 +1002,7 @@ export default function SettingsScreen() {
                   onPress={() => setTenantPickerOpen(false)}
                   style={styles.sheetClose}
                 >
-                  <Ionicons color="#4438CA" name="close" size={22} />
+                  <Ionicons color={colors.primaryText} name="close" size={22} />
                 </Pressable>
               </View>
               <ScrollView contentContainerStyle={styles.tenantOptions}>
@@ -995,13 +1029,13 @@ export default function SettingsScreen() {
                       </View>
                       {selected ? (
                         <Ionicons
-                          color="#4438CA"
+                          color={colors.primaryText}
                           name="checkmark-circle"
                           size={22}
                         />
                       ) : (
                         <Ionicons
-                          color="#868599"
+                          color={colors.subtle}
                           name="chevron-forward"
                           size={19}
                         />
@@ -1018,7 +1052,7 @@ export default function SettingsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeThemedStyles((c) => ({
   availabilityInput: { minHeight: 102, paddingTop: 12 },
   content: { gap: 16, paddingBottom: 34, paddingTop: 18 },
   characterCount: { alignSelf: "flex-end", fontSize: 11, marginTop: -2 },
@@ -1028,24 +1062,24 @@ const styles = StyleSheet.create({
     gap: 14,
     justifyContent: "center",
   },
-  loadingText: { color: "#626376", fontSize: 14 },
+  loadingText: { color: c.muted, fontSize: 14 },
   eyebrow: {
-    color: "#77758C",
+    color: c.muted,
     fontSize: 11,
     fontWeight: "800",
     letterSpacing: 1.2,
   },
   title: {
-    color: "#202136",
+    color: c.foreground,
     fontSize: 29,
     fontWeight: "900",
     letterSpacing: -0.8,
     marginTop: 4,
   },
-  subtitle: { color: "#6B7280", fontSize: 14, lineHeight: 20, marginTop: 5 },
+  subtitle: { color: c.muted, fontSize: 14, lineHeight: 20, marginTop: 5 },
   card: {
-    backgroundColor: "#FFFFFF",
-    borderColor: "#ECECF3",
+    backgroundColor: c.surface,
+    borderColor: c.border,
     borderRadius: 21,
     borderWidth: 1,
     gap: 10,
@@ -1059,38 +1093,38 @@ const styles = StyleSheet.create({
   },
   cardIcon: {
     alignItems: "center",
-    backgroundColor: "#EEECFF",
+    backgroundColor: c.primarySoft,
     borderRadius: 11,
     height: 37,
     justifyContent: "center",
     width: 37,
   },
-  cardTitle: { color: "#303145", fontSize: 16, fontWeight: "900" },
+  cardTitle: { color: c.text, fontSize: 16, fontWeight: "900" },
   fieldLabel: {
-    color: "#898798",
+    color: c.subtle,
     fontSize: 10,
     fontWeight: "900",
     letterSpacing: 0.8,
     marginTop: 5,
   },
   secondLabel: { marginTop: 10 },
-  fieldValue: { color: "#303145", fontSize: 14, fontWeight: "700" },
+  fieldValue: { color: c.text, fontSize: 14, fontWeight: "700" },
   providerBadge: {
     alignItems: "center",
     alignSelf: "flex-start",
-    backgroundColor: "#F0EEFF",
+    backgroundColor: c.primarySoft,
     borderRadius: 10,
     flexDirection: "row",
     gap: 6,
     paddingHorizontal: 9,
     paddingVertical: 6,
   },
-  providerText: { color: "#5E55B8", fontSize: 12, fontWeight: "800" },
-  cardHint: { color: "#747486", fontSize: 12, lineHeight: 18, marginBottom: 2 },
+  providerText: { color: c.primaryText, fontSize: 12, fontWeight: "800" },
+  cardHint: { color: c.muted, fontSize: 12, lineHeight: 18, marginBottom: 2 },
   tenantControl: {
     alignItems: "center",
-    backgroundColor: "#F7F7FB",
-    borderColor: "#E3E2EC",
+    backgroundColor: c.surfaceSubtle,
+    borderColor: c.border,
     borderRadius: 14,
     borderWidth: 1,
     flexDirection: "row",
@@ -1100,12 +1134,12 @@ const styles = StyleSheet.create({
   },
   tenantControlDisabled: { opacity: 0.72 },
   tenantControlCopy: { flex: 1, gap: 3, paddingRight: 10 },
-  tenantControlName: { color: "#303145", fontSize: 14, fontWeight: "800" },
-  tenantControlHint: { color: "#77758C", fontSize: 12 },
+  tenantControlName: { color: c.text, fontSize: 14, fontWeight: "800" },
+  tenantControlHint: { color: c.muted, fontSize: 12 },
   deviceProtectionControl: {
     alignItems: "center",
-    backgroundColor: "#F7F7FB",
-    borderColor: "#E3E2EC",
+    backgroundColor: c.surfaceSubtle,
+    borderColor: c.border,
     borderRadius: 14,
     borderWidth: 1,
     flexDirection: "row",
@@ -1114,18 +1148,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: 13,
   },
   deviceProtectionControlActive: {
-    backgroundColor: "#F0FAF3",
-    borderColor: "#BCE7CB",
+    backgroundColor: c.successSoft,
+    borderColor: c.successBorder,
   },
   deviceProtectionCopy: { flex: 1, gap: 3, paddingRight: 10 },
-  deviceProtectionTitle: { color: "#303145", fontSize: 14, fontWeight: "900" },
-  deviceProtectionHint: { color: "#77758C", fontSize: 12 },
+  deviceProtectionTitle: { color: c.text, fontSize: 14, fontWeight: "900" },
+  deviceProtectionHint: { color: c.muted, fontSize: 12 },
   input: {
-    backgroundColor: "#FAFAFD",
-    borderColor: "#E5E5EF",
+    backgroundColor: c.surfaceSubtle,
+    borderColor: c.border,
     borderRadius: 13,
     borderWidth: 1,
-    color: "#202136",
+    color: c.foreground,
     fontSize: 14,
     minHeight: 50,
     paddingHorizontal: 13,
@@ -1133,27 +1167,34 @@ const styles = StyleSheet.create({
   keyboardAvoiding: { flex: 1 },
   primaryButton: {
     alignItems: "center",
-    backgroundColor: "#4438CA",
+    backgroundColor: c.primary,
     borderRadius: 13,
-    minHeight: 50,
     justifyContent: "center",
     marginTop: 4,
+    minHeight: 50,
   },
-  primaryButtonText: { color: "#FFFFFF", fontSize: 14, fontWeight: "900" },
+  primaryButtonText: { color: c.onPrimary, fontSize: 14, fontWeight: "900" },
   ssoNote: {
     alignItems: "flex-start",
-    backgroundColor: "#F0EEFF",
+    backgroundColor: c.primarySoft,
     borderRadius: 19,
     flexDirection: "row",
     gap: 11,
     padding: 16,
   },
   noteCopy: { flex: 1 },
-  noteTitle: { color: "#514AA1", fontSize: 13, fontWeight: "900" },
-  noteText: { color: "#625D98", fontSize: 12, lineHeight: 18, marginTop: 3 },
+  cacheNoteTitle: { color: c.info, fontSize: 13, fontWeight: "900" },
+  cacheNoteText: { color: c.info, fontSize: 12, lineHeight: 18, marginTop: 3 },
+  ssoNoteTitle: { color: c.primaryText, fontSize: 13, fontWeight: "900" },
+  ssoNoteText: {
+    color: c.primaryText,
+    fontSize: 12,
+    lineHeight: 18,
+    marginTop: 3,
+  },
   cacheNote: {
     alignItems: "flex-start",
-    backgroundColor: "#EAF8FB",
+    backgroundColor: c.infoSoft,
     borderRadius: 19,
     flexDirection: "row",
     gap: 11,
@@ -1164,20 +1205,20 @@ const styles = StyleSheet.create({
     marginTop: 10,
     paddingVertical: 3,
   },
-  clearCacheText: { color: "#087A95", fontSize: 12, fontWeight: "900" },
+  clearCacheText: { color: c.info, fontSize: 12, fontWeight: "900" },
   signOutButton: {
     alignItems: "center",
-    backgroundColor: "#FFF4F2",
-    borderColor: "#F1CCC7",
+    backgroundColor: c.errorSoft,
+    borderColor: c.errorBorder,
     borderRadius: 14,
     borderWidth: 1,
     flexDirection: "row",
     gap: 8,
     justifyContent: "center",
-    minHeight: 51,
     marginTop: 2,
+    minHeight: 51,
   },
-  signOutText: { color: "#B42318", fontSize: 14, fontWeight: "900" },
+  signOutText: { color: c.error, fontSize: 14, fontWeight: "900" },
   feedback: {
     alignItems: "flex-start",
     borderRadius: 13,
@@ -1195,8 +1236,8 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
     flexGrow: 1,
-    minHeight: 42,
     justifyContent: "center",
+    minHeight: 42,
     paddingHorizontal: 10,
     paddingVertical: 8,
   },
@@ -1222,12 +1263,12 @@ const styles = StyleSheet.create({
   skeletonIcon: { borderRadius: 11, height: 37, width: 37 },
   skeletonCopy: { flex: 1, gap: 10 },
   modalRoot: {
-    backgroundColor: "rgba(25, 25, 42, 0.42)",
+    backgroundColor: c.overlay,
     flex: 1,
     justifyContent: "flex-end",
   },
   sheet: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: c.surface,
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
     gap: 15,
@@ -1241,20 +1282,20 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   sheetEyebrow: {
-    color: "#77758C",
+    color: c.muted,
     fontSize: 10,
     fontWeight: "800",
     letterSpacing: 0.9,
   },
   sheetTitle: {
-    color: "#202136",
+    color: c.foreground,
     fontSize: 21,
     fontWeight: "800",
     marginTop: 3,
   },
   sheetClose: {
     alignItems: "center",
-    backgroundColor: "#EEECFF",
+    backgroundColor: c.primarySoft,
     borderRadius: 16,
     height: 36,
     justifyContent: "center",
@@ -1263,8 +1304,8 @@ const styles = StyleSheet.create({
   tenantOptions: { gap: 8, paddingBottom: 4 },
   tenantOption: {
     alignItems: "center",
-    backgroundColor: "#FFFFFF",
-    borderColor: "#E5E5EF",
+    backgroundColor: c.surface,
+    borderColor: c.border,
     borderRadius: 14,
     borderWidth: 1,
     flexDirection: "row",
@@ -1272,9 +1313,12 @@ const styles = StyleSheet.create({
     minHeight: 62,
     paddingHorizontal: 14,
   },
-  tenantOptionSelected: { backgroundColor: "#F0EFFB", borderColor: "#4438CA" },
+  tenantOptionSelected: {
+    backgroundColor: c.primarySoft,
+    borderColor: c.primarySoftBorder,
+  },
   tenantOptionCopy: { flex: 1, gap: 3, paddingRight: 12 },
-  tenantOptionName: { color: "#303145", fontSize: 15, fontWeight: "800" },
-  tenantOptionSlug: { color: "#77758C", fontSize: 12 },
+  tenantOptionName: { color: c.text, fontSize: 15, fontWeight: "800" },
+  tenantOptionSlug: { color: c.muted, fontSize: 12 },
   disabled: { opacity: 0.55 },
-});
+}));

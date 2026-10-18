@@ -7,7 +7,6 @@ import {
   Pressable,
   RefreshControl,
   ScrollView,
-  StyleSheet,
   Text,
   useWindowDimensions,
   View,
@@ -39,6 +38,7 @@ import {
   type MobileTenant,
 } from "@/lib/nextdesk-client";
 import { loadMobileDashboard, type MobileTicket } from "@/lib/nextdesk-tickets";
+import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
 import { useThemeContext } from "@/lib/theme-provider";
 
 type TicketScope = "all" | "mine" | "open" | "resolved";
@@ -98,7 +98,9 @@ export default function HomeScreen() {
   const ticketDetailsEnabled = isEnabled("ticketing.detail");
   const agentWorkbenchEnabled = isEnabled("agent.workbench");
   const requesterPortalEnabled = isEnabled("requester.portal");
-  const { colors, density } = useThemeContext();
+  const { density } = useThemeContext();
+  const colors = useAppColors();
+  const styles = useStyles();
   const [tenant, setTenant] = useState<MobileTenant | null>(null);
   const [tickets, setTickets] = useState<MobileTicket[]>([]);
   const [ticketScope, setTicketScope] = useState<TicketScope>("all");
@@ -127,7 +129,7 @@ export default function HomeScreen() {
       card: { backgroundColor: colors.surface, borderColor: colors.border },
       foreground: { color: colors.foreground },
       muted: { color: colors.muted },
-      primaryText: { color: colors.primary },
+      primaryText: { color: colors.primaryText },
     }),
     [colors],
   );
@@ -366,10 +368,10 @@ export default function HomeScreen() {
             accessibilityLabel="Persönliche Einstellungen öffnen"
             accessibilityRole="button"
             onPress={() => router.push("/settings")}
-            style={[styles.avatar, { backgroundColor: colors.primary + "1A" }]}
+            style={[styles.avatar, { backgroundColor: colors.primarySoft }]}
           >
             <Ionicons
-              color={colors.primary}
+              color={colors.primaryText}
               name="person-circle-outline"
               size={23}
             />
@@ -381,13 +383,13 @@ export default function HomeScreen() {
         <IncidentBanner notices={incidentNotices} />
 
         <View style={[styles.hero, { backgroundColor: colors.primary }]}>
-          <Text style={[styles.heroEyebrow, { color: colors.background }]}>
+          <Text style={[styles.heroEyebrow, { color: colors.onPrimary }]}>
             HEUTE IM FOKUS
           </Text>
-          <Text style={[styles.heroTitle, { color: colors.background }]}>
+          <Text style={[styles.heroTitle, { color: colors.onPrimary }]}>
             Alles im Blick.
           </Text>
-          <Text style={[styles.heroBody, { color: colors.background }]}>
+          <Text style={[styles.heroBody, { color: colors.onPrimary }]}>
             Bearbeite Tickets schnell, klar und von überall.
           </Text>
           <Pressable
@@ -395,8 +397,10 @@ export default function HomeScreen() {
             onPress={() => router.push("/ticket/new")}
             style={[styles.heroButton, { backgroundColor: colors.surface }]}
           >
-            <Ionicons color={colors.primary} name="add" size={21} />
-            <Text style={[styles.heroButtonText, { color: colors.primary }]}>
+            <Ionicons color={colors.primaryText} name="add" size={21} />
+            <Text
+              style={[styles.heroButtonText, { color: colors.primaryText }]}
+            >
               Ticket erfassen
             </Text>
           </Pressable>
@@ -408,8 +412,8 @@ export default function HomeScreen() {
             style={[
               styles.errorBox,
               {
-                backgroundColor: colors.error + "1A",
-                borderColor: colors.error,
+                backgroundColor: colors.errorSoft,
+                borderColor: colors.errorBorder,
               },
             ]}
           >
@@ -436,8 +440,8 @@ export default function HomeScreen() {
             style={[
               styles.supplementaryMessage,
               {
-                backgroundColor: colors.warning + "1A",
-                borderColor: colors.warning,
+                backgroundColor: colors.warningSoft,
+                borderColor: colors.warningBorder,
               },
             ]}
           >
@@ -459,7 +463,7 @@ export default function HomeScreen() {
         </Text>
         <View style={styles.metrics}>
           <Metric
-            color={colors.primary}
+            color={colors.primaryText}
             icon="person-outline"
             label="Meine Tickets"
             onPress={() => setTicketScope("mine")}
@@ -467,7 +471,7 @@ export default function HomeScreen() {
             value={String(scopeCount("mine"))}
           />
           <Metric
-            color={colors.primary}
+            color={colors.primaryText}
             icon="time-outline"
             label="Offen"
             onPress={() => setTicketScope("open")}
@@ -546,8 +550,8 @@ export default function HomeScreen() {
                     style={[
                       styles.countBadge,
                       {
-                        backgroundColor: colors.primary + "1A",
-                        color: colors.primary,
+                        backgroundColor: colors.primarySoft,
+                        color: colors.primaryText,
                       },
                     ]}
                   >
@@ -595,7 +599,7 @@ export default function HomeScreen() {
                             onPress={() => void readMention(mention)}
                             style={[
                               styles.compactAction,
-                              { borderColor: colors.primary + "66" },
+                              { borderColor: colors.primarySoftBorder },
                             ]}
                           >
                             <Text
@@ -827,13 +831,15 @@ export default function HomeScreen() {
                       styles.status,
                       {
                         backgroundColor: ticket.resolved
-                          ? colors.success + "1A"
-                          : colors.primary + "1A",
+                          ? colors.successSoft
+                          : colors.primarySoft,
                       },
                     ]}
                   >
                     <Ionicons
-                      color={ticket.resolved ? colors.success : colors.primary}
+                      color={
+                        ticket.resolved ? colors.success : colors.primaryText
+                      }
                       name={
                         ticket.resolved
                           ? "checkmark-circle-outline"
@@ -845,7 +851,7 @@ export default function HomeScreen() {
                       style={{
                         color: ticket.resolved
                           ? colors.success
-                          : colors.primary,
+                          : colors.primaryText,
                         fontSize: 10,
                         fontWeight: "800",
                       }}
@@ -854,7 +860,7 @@ export default function HomeScreen() {
                     </Text>
                   </View>
                   <Ionicons
-                    color={colors.muted}
+                    color={colors.subtle}
                     name="chevron-forward"
                     size={18}
                   />
@@ -877,13 +883,14 @@ function SectionTitle({
   subtitle: string;
   title: string;
 }) {
-  const { colors } = useThemeContext();
+  const colors = useAppColors();
+  const styles = useStyles();
   return (
     <View style={styles.sectionTitleRow}>
       <View
-        style={[styles.sectionIcon, { backgroundColor: colors.primary + "1A" }]}
+        style={[styles.sectionIcon, { backgroundColor: colors.primarySoft }]}
       >
-        <Ionicons color={colors.primary} name={icon} size={18} />
+        <Ionicons color={colors.primaryText} name={icon} size={18} />
       </View>
       <View style={styles.sectionTitleCopy}>
         <Text style={[styles.cardTitle, { color: colors.foreground }]}>
@@ -898,9 +905,12 @@ function SectionTitle({
 }
 
 function MiniMetric({ label, value }: { label: string; value: string }) {
-  const { colors } = useThemeContext();
+  const colors = useAppColors();
+  const styles = useStyles();
   return (
-    <View style={[styles.miniMetric, { backgroundColor: colors.background }]}>
+    <View
+      style={[styles.miniMetric, { backgroundColor: colors.surfaceSubtle }]}
+    >
       <Text style={[styles.miniMetricValue, { color: colors.foreground }]}>
         {value}
       </Text>
@@ -926,7 +936,8 @@ function Metric({
   onPress: () => void;
   selected: boolean;
 }) {
-  const { colors } = useThemeContext();
+  const colors = useAppColors();
+  const styles = useStyles();
   return (
     <Pressable
       accessibilityLabel={`${label}: ${value} Tickets anzeigen`}
@@ -937,8 +948,12 @@ function Metric({
         styles.metric,
         { backgroundColor: colors.surface, borderColor: colors.border },
         selected && {
-          backgroundColor: color + "12",
-          borderColor: color + "88",
+          backgroundColor:
+            color === colors.success ? colors.successSoft : colors.primarySoft,
+          borderColor:
+            color === colors.success
+              ? colors.successBorder
+              : colors.primarySoftBorder,
         },
       ]}
     >
@@ -951,7 +966,7 @@ function Metric({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeThemedStyles(() => ({
   all: { fontSize: 14, fontWeight: "800" },
   auxiliaryColumn: { flex: 1, gap: 14, minWidth: 0 },
   auxiliaryGrid: { gap: 14 },
@@ -1119,4 +1134,4 @@ const styles = StyleSheet.create({
   ticketMeta: { fontSize: 11 },
   ticketRight: { alignItems: "flex-end", gap: 7 },
   ticketTitle: { fontSize: 14, fontWeight: "800" },
-});
+}));

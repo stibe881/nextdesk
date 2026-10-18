@@ -5,9 +5,11 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { HapticTab } from "@/components/haptic-tab";
 import { useMobileFeatures } from "@/components/mobile-feature-gate";
+import { useAppColors } from "@/lib/themed-styles";
 
 export default function TabLayout() {
   const insets = useSafeAreaInsets();
+  const colors = useAppColors();
   const { isEnabled, loading } = useMobileFeatures();
   const bottomPadding = Platform.OS === "web" ? 12 : Math.max(insets.bottom, 8);
   const tabBarHeight = 56 + bottomPadding;
@@ -16,18 +18,18 @@ export default function TabLayout() {
     <Tabs
       initialRouteName="index"
       screenOptions={{
-        tabBarActiveTintColor: "#4438CA",
-        tabBarInactiveTintColor: "#68677A",
+        tabBarActiveTintColor: colors.primaryText,
+        tabBarInactiveTintColor: colors.muted,
         headerShown: false,
         tabBarButton: HapticTab,
         tabBarStyle: {
           paddingTop: 8,
           paddingBottom: bottomPadding,
           height: tabBarHeight,
-          backgroundColor: "#FFFFFF",
-          borderTopColor: "#E4E3EE",
+          backgroundColor: colors.surface,
+          borderTopColor: colors.border,
           borderTopWidth: 0.5,
-          shadowColor: "#202136",
+          shadowColor: colors.shadow,
           shadowOffset: { width: 0, height: -3 },
           shadowOpacity: 0.07,
           shadowRadius: 12,

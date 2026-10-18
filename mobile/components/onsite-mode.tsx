@@ -1,9 +1,10 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, Text, View } from "react-native";
 
 import { hapticSelection } from "@/lib/mobile-haptics";
 import { useThemeContext } from "@/lib/theme-provider";
+import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
 
 type OnsiteModeProps = {
   canAddPhoto: boolean;
@@ -29,7 +30,9 @@ export function OnsiteMode({
   onScanAsset,
   onWriteInternalNote,
 }: OnsiteModeProps) {
-  const { colors, density } = useThemeContext();
+  const { density } = useThemeContext();
+  const colors = useAppColors();
+  const styles = useStyles();
   const [enabled, setEnabled] = useState(false);
   const actions: QuickAction[] = [
     ...(canAddPhoto
@@ -68,26 +71,25 @@ export function OnsiteMode({
     <View
       style={[
         styles.card,
-        {
-          backgroundColor: colors.surface,
-          borderColor: enabled ? colors.primary : colors.border,
-          padding: density === "compact" ? 14 : 17,
-        },
+        enabled && styles.cardEnabled,
+        { padding: density === "compact" ? 14 : 17 },
       ]}
     >
       <View style={styles.header}>
         <View style={styles.copy}>
-          <Text style={[styles.eyebrow, { color: colors.muted }]}>VOR ORT</Text>
-          <Text style={[styles.title, { color: colors.foreground }]}>
-            Vor-Ort-Modus
-          </Text>
-          <Text style={[styles.description, { color: colors.muted }]}>
+          <Text style={styles.eyebrow}>VOR ORT</Text>
+          <Text style={styles.title}>Vor-Ort-Modus</Text>
+          <Text style={styles.description}>
             Grosse Schnellzugriffe für Einsätze vor Ort. Der Modus ändert keine
             Ticketdaten.
           </Text>
         </View>
-        <View style={[styles.icon, { backgroundColor: colors.primary + "1A" }]}>
-          <Ionicons color={colors.primary} name="construct-outline" size={22} />
+        <View style={styles.icon}>
+          <Ionicons
+            color={colors.primaryText}
+            name="construct-outline"
+            size={22}
+          />
         </View>
       </View>
 
@@ -101,27 +103,14 @@ export function OnsiteMode({
           setEnabled((current) => !current);
           hapticSelection();
         }}
-        style={[
-          styles.toggle,
-          {
-            backgroundColor: enabled
-              ? colors.primary + "16"
-              : colors.background,
-            borderColor: enabled ? colors.primary : colors.border,
-          },
-        ]}
+        style={[styles.toggle, enabled && styles.toggleEnabled]}
       >
         <Ionicons
-          color={enabled ? colors.primary : colors.muted}
+          color={enabled ? colors.primaryText : colors.muted}
           name={enabled ? "checkmark-circle-outline" : "power-outline"}
           size={20}
         />
-        <Text
-          style={[
-            styles.toggleText,
-            { color: enabled ? colors.primary : colors.foreground },
-          ]}
-        >
+        <Text style={[styles.toggleText, enabled && styles.toggleTextEnabled]}>
           {enabled ? "Vor-Ort-Modus aktiv" : "Vor-Ort-Modus einschalten"}
         </Text>
       </Pressable>
@@ -138,23 +127,19 @@ export function OnsiteMode({
                   hapticSelection();
                   action.onPress();
                 }}
-                style={[
-                  styles.action,
-                  {
-                    backgroundColor: colors.background,
-                    borderColor: colors.border,
-                  },
-                ]}
+                style={styles.action}
               >
-                <Ionicons color={colors.primary} name={action.icon} size={27} />
-                <Text style={[styles.actionText, { color: colors.foreground }]}>
-                  {action.label}
-                </Text>
+                <Ionicons
+                  color={colors.primaryText}
+                  name={action.icon}
+                  size={27}
+                />
+                <Text style={styles.actionText}>{action.label}</Text>
               </Pressable>
             ))}
           </View>
         ) : (
-          <Text style={[styles.unavailable, { color: colors.muted }]}>
+          <Text style={styles.unavailable}>
             Für dieses Ticket stehen keine Vor-Ort-Schnellzugriffe zur
             Verfügung.
           </Text>
@@ -164,9 +149,11 @@ export function OnsiteMode({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeThemedStyles((c) => ({
   action: {
     alignItems: "center",
+    backgroundColor: c.surfaceSubtle,
+    borderColor: c.border,
     borderRadius: 16,
     borderWidth: 1,
     flex: 1,
@@ -175,23 +162,48 @@ const styles = StyleSheet.create({
     minHeight: 88,
     padding: 10,
   },
-  actionText: { fontSize: 13, fontWeight: "800", textAlign: "center" },
+  actionText: {
+    color: c.foreground,
+    fontSize: 13,
+    fontWeight: "800",
+    textAlign: "center",
+  },
   actions: { flexDirection: "row", gap: 9 },
-  card: { borderRadius: 20, borderWidth: 1, gap: 13 },
+  card: {
+    backgroundColor: c.surface,
+    borderColor: c.border,
+    borderRadius: 20,
+    borderWidth: 1,
+    gap: 13,
+  },
+  cardEnabled: { borderColor: c.primaryText },
   copy: { flex: 1, gap: 3 },
-  description: { fontSize: 12, lineHeight: 18 },
-  eyebrow: { fontSize: 10, fontWeight: "800", letterSpacing: 0.9 },
+  description: { color: c.muted, fontSize: 12, lineHeight: 18 },
+  eyebrow: {
+    color: c.muted,
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 0.9,
+  },
   header: { alignItems: "flex-start", flexDirection: "row", gap: 10 },
   icon: {
     alignItems: "center",
+    backgroundColor: c.primarySoft,
     borderRadius: 14,
     height: 42,
     justifyContent: "center",
     width: 42,
   },
-  title: { fontSize: 16, fontWeight: "800", lineHeight: 21 },
+  title: {
+    color: c.foreground,
+    fontSize: 16,
+    fontWeight: "800",
+    lineHeight: 21,
+  },
   toggle: {
     alignItems: "center",
+    backgroundColor: c.surfaceSubtle,
+    borderColor: c.border,
     borderRadius: 14,
     borderWidth: 1,
     flexDirection: "row",
@@ -199,6 +211,8 @@ const styles = StyleSheet.create({
     minHeight: 53,
     paddingHorizontal: 14,
   },
-  toggleText: { fontSize: 14, fontWeight: "800" },
-  unavailable: { fontSize: 12, lineHeight: 18 },
-});
+  toggleEnabled: { backgroundColor: c.primarySoft, borderColor: c.primaryText },
+  toggleText: { color: c.foreground, fontSize: 14, fontWeight: "800" },
+  toggleTextEnabled: { color: c.primaryText },
+  unavailable: { color: c.muted, fontSize: 12, lineHeight: 18 },
+}));

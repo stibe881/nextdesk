@@ -13,7 +13,6 @@ import {
   ActivityIndicator,
   AppState,
   Pressable,
-  StyleSheet,
   Text,
   View,
 } from "react-native";
@@ -29,6 +28,7 @@ import {
   loadCurrentTenant,
   nextDesk,
 } from "@/lib/nextdesk-client";
+import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
 
 type MobileFeatureState = {
   error: string | null;
@@ -154,10 +154,13 @@ export function useMobileFeatures() {
 }
 
 export function MobileFeatureLoadingScreen() {
+  const styles = useStyles();
+  const colors = useAppColors();
+
   return (
-    <ScreenContainer containerClassName="bg-[#F6F7FB]" className="px-5">
+    <ScreenContainer className="px-5">
       <View style={styles.centered}>
-        <ActivityIndicator color="#4438CA" size="large" />
+        <ActivityIndicator color={colors.primary} size="large" />
         <Text style={styles.loadingText}>
           Funktionsfreigaben werden geprüft …
         </Text>
@@ -174,6 +177,8 @@ export function MobileFeatureUnavailableScreen({
   title: string;
 }) {
   const router = useRouter();
+  const styles = useStyles();
+  const colors = useAppColors();
   const { error, refresh } = useMobileFeatures();
   const featureName =
     feature === "assets.management"
@@ -182,10 +187,14 @@ export function MobileFeatureUnavailableScreen({
         ? "Wissensdatenbank"
         : "Ticketdetail";
   return (
-    <ScreenContainer containerClassName="bg-[#F6F7FB]" className="px-5">
+    <ScreenContainer className="px-5">
       <View style={styles.centered}>
         <View style={styles.icon}>
-          <Ionicons color="#4438CA" name="lock-closed-outline" size={26} />
+          <Ionicons
+            color={colors.primaryText}
+            name="lock-closed-outline"
+            size={26}
+          />
         </View>
         <Text style={styles.title}>{title} ist nicht verfügbar</Text>
         <Text style={styles.copy}>
@@ -212,9 +221,9 @@ export function MobileFeatureUnavailableScreen({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeThemedStyles((c) => ({
   back: { alignItems: "center", minHeight: 38, paddingHorizontal: 12 },
-  backText: { color: "#4438CA", fontSize: 13, fontWeight: "800" },
+  backText: { color: c.primaryText, fontSize: 13, fontWeight: "800" },
   centered: {
     alignItems: "center",
     flex: 1,
@@ -222,7 +231,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 26,
   },
   copy: {
-    color: "#626376",
+    color: c.muted,
     fontSize: 14,
     lineHeight: 21,
     marginTop: 8,
@@ -230,27 +239,27 @@ const styles = StyleSheet.create({
   },
   icon: {
     alignItems: "center",
-    backgroundColor: "#EEECFF",
+    backgroundColor: c.primarySoft,
     borderRadius: 22,
     height: 56,
     justifyContent: "center",
     width: 56,
   },
-  loadingText: { color: "#77758C", fontSize: 13, marginTop: 12 },
+  loadingText: { color: c.muted, fontSize: 13, marginTop: 12 },
   retry: {
-    backgroundColor: "#4438CA",
+    backgroundColor: c.primary,
     borderRadius: 14,
     marginTop: 21,
     minHeight: 45,
     justifyContent: "center",
     paddingHorizontal: 17,
   },
-  retryText: { color: "#FFFFFF", fontSize: 13, fontWeight: "900" },
+  retryText: { color: c.onPrimary, fontSize: 13, fontWeight: "900" },
   title: {
-    color: "#202136",
+    color: c.foreground,
     fontSize: 20,
     fontWeight: "900",
     marginTop: 16,
     textAlign: "center",
   },
-});
+}));

@@ -6,7 +6,7 @@ import {
 } from "@tanstack/react-query";
 import * as Linking from "expo-linking";
 import { Stack, useRouter, useSegments } from "expo-router";
-import { StatusBar } from "expo-status-bar";
+import { ThemedStatusBar } from "@/components/themed-status-bar";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import "react-native-reanimated";
@@ -227,7 +227,7 @@ export default function RootLayout() {
               <NextDeskSessionNavigator />
               <OfflineStatus />
               <DeviceProtection />
-              <StatusBar style="auto" />
+              <ThemedStatusBar />
             </MobileFeatureProvider>
           </MobileNetworkStatusProvider>
         </QueryClientProvider>

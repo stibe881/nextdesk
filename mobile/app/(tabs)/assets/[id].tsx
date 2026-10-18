@@ -5,7 +5,6 @@ import {
   ActivityIndicator,
   Pressable,
   ScrollView,
-  StyleSheet,
   Text,
   View,
 } from "react-native";
@@ -19,6 +18,7 @@ import {
 import { useMobileNetworkStatus } from "@/components/offline-status";
 import { getMobileAsset, type MobileAssetDetail } from "@/lib/asset-registry";
 import { loadCurrentTenant } from "@/lib/nextdesk-client";
+import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
 import { useMobileSessionGuard } from "@/lib/use-mobile-session-guard";
 
 function valueOrDash(value: string | null | undefined): string {
@@ -38,6 +38,8 @@ function displayDate(value: string | null): string {
 
 export default function AssetDetailScreen() {
   const router = useRouter();
+  const styles = useStyles();
+  const colors = useAppColors();
   const { id } = useLocalSearchParams<{ id?: string }>();
   const checkingSession = useMobileSessionGuard();
   const { isEnabled, loading: checkingFeatures } = useMobileFeatures();
@@ -88,9 +90,9 @@ export default function AssetDetailScreen() {
 
   if (loading) {
     return (
-      <ScreenContainer containerClassName="bg-[#F6F7FB]" className="px-5">
+      <ScreenContainer className="px-5">
         <View style={styles.centered}>
-          <ActivityIndicator color="#4438CA" size="large" />
+          <ActivityIndicator color={colors.primary} size="large" />
         </View>
       </ScreenContainer>
     );
@@ -98,9 +100,13 @@ export default function AssetDetailScreen() {
 
   if (!detail) {
     return (
-      <ScreenContainer containerClassName="bg-[#F6F7FB]" className="px-5">
+      <ScreenContainer className="px-5">
         <View style={styles.errorPage}>
-          <Ionicons color="#B42335" name="alert-circle-outline" size={31} />
+          <Ionicons
+            color={colors.error}
+            name="alert-circle-outline"
+            size={31}
+          />
           <Text style={styles.errorTitle}>Asset nicht verfügbar</Text>
           <Text style={styles.errorText}>
             {error || "Dieses Asset ist nicht verfügbar."}
@@ -148,7 +154,7 @@ export default function AssetDetailScreen() {
     : [];
 
   return (
-    <ScreenContainer containerClassName="bg-[#F6F7FB]" className="px-5">
+    <ScreenContainer className="px-5">
       <ScrollView
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
@@ -159,7 +165,7 @@ export default function AssetDetailScreen() {
             onPress={() => router.back()}
             style={styles.backButton}
           >
-            <Ionicons color="#4438CA" name="arrow-back" size={23} />
+            <Ionicons color={colors.primaryText} name="arrow-back" size={23} />
           </Pressable>
           <Text style={styles.headerTitle}>Assetdetails</Text>
           <View style={styles.backButton} />
@@ -167,7 +173,11 @@ export default function AssetDetailScreen() {
 
         <View style={styles.hero}>
           <View style={styles.heroIcon}>
-            <Ionicons color="#4438CA" name="laptop-outline" size={29} />
+            <Ionicons
+              color={colors.primaryText}
+              name="laptop-outline"
+              size={29}
+            />
           </View>
           <View style={styles.heroCopy}>
             <Text style={styles.eyebrow}>ASSET</Text>
@@ -223,6 +233,8 @@ export default function AssetDetailScreen() {
 }
 
 function InfoCard({ title, rows }: { title: string; rows: string[][] }) {
+  const styles = useStyles();
+
   return (
     <View style={styles.card}>
       <Text style={styles.cardTitle}>{title}</Text>
@@ -240,9 +252,9 @@ function InfoCard({ title, rows }: { title: string; rows: string[][] }) {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeThemedStyles((c) => ({
   assetName: {
-    color: "#202136",
+    color: c.foreground,
     fontSize: 23,
     fontWeight: "900",
     letterSpacing: -0.5,
@@ -255,14 +267,14 @@ const styles = StyleSheet.create({
     width: 44,
   },
   card: {
-    backgroundColor: "#FFFFFF",
-    borderColor: "#E8E7F0",
+    backgroundColor: c.surface,
+    borderColor: c.border,
     borderRadius: 20,
     borderWidth: 1,
     gap: 13,
     padding: 18,
   },
-  cardTitle: { color: "#36364A", fontSize: 15, fontWeight: "900" },
+  cardTitle: { color: c.foreground, fontSize: 15, fontWeight: "900" },
   centered: { alignItems: "center", flex: 1, justifyContent: "center" },
   content: { gap: 15, paddingBottom: 34, paddingTop: 13 },
   errorPage: {
@@ -273,22 +285,22 @@ const styles = StyleSheet.create({
     padding: 28,
   },
   errorText: {
-    color: "#862334",
+    color: c.error,
     fontSize: 13,
     lineHeight: 19,
     textAlign: "center",
   },
-  errorTitle: { color: "#8E2433", fontSize: 18, fontWeight: "900" },
+  errorTitle: { color: c.error, fontSize: 18, fontWeight: "900" },
   eyebrow: {
-    color: "#77758C",
+    color: c.muted,
     fontSize: 10,
     fontWeight: "800",
     letterSpacing: 1.1,
   },
-  headerTitle: { color: "#202136", fontSize: 18, fontWeight: "900" },
+  headerTitle: { color: c.foreground, fontSize: 18, fontWeight: "900" },
   hero: {
     alignItems: "center",
-    backgroundColor: "#F0EEFF",
+    backgroundColor: c.primarySoft,
     borderRadius: 22,
     flexDirection: "row",
     gap: 14,
@@ -297,23 +309,23 @@ const styles = StyleSheet.create({
   heroCopy: { flex: 1 },
   heroIcon: {
     alignItems: "center",
-    backgroundColor: "#FFFFFF",
+    backgroundColor: c.surface,
     borderRadius: 16,
     height: 54,
     justifyContent: "center",
     width: 54,
   },
   lifecycle: {
-    color: "#4438CA",
+    color: c.primaryText,
     fontSize: 12,
     fontWeight: "800",
     marginTop: 6,
     textTransform: "capitalize",
   },
   row: { flexDirection: "row", gap: 12, justifyContent: "space-between" },
-  rowLabel: { color: "#77758C", flex: 1, fontSize: 12 },
+  rowLabel: { color: c.muted, flex: 1, fontSize: 12 },
   rowValue: {
-    color: "#303145",
+    color: c.text,
     flex: 1.2,
     fontSize: 12,
     fontWeight: "700",
@@ -321,17 +333,21 @@ const styles = StyleSheet.create({
   },
   rows: { gap: 10 },
   secondaryButton: {
-    backgroundColor: "#F0EEFF",
+    backgroundColor: c.primarySoft,
     borderRadius: 12,
     marginTop: 4,
     paddingHorizontal: 16,
     paddingVertical: 12,
   },
-  secondaryButtonText: { color: "#4438CA", fontSize: 13, fontWeight: "800" },
+  secondaryButtonText: {
+    color: c.primaryText,
+    fontSize: 13,
+    fontWeight: "800",
+  },
   timelineCopy: { flex: 1 },
-  timelineDate: { color: "#77758C", fontSize: 11, marginTop: 2 },
+  timelineDate: { color: c.muted, fontSize: 11, marginTop: 2 },
   timelineDot: {
-    backgroundColor: "#6D62D7",
+    backgroundColor: c.primaryText,
     borderRadius: 5,
     height: 10,
     marginTop: 4,
@@ -339,7 +355,7 @@ const styles = StyleSheet.create({
   },
   timelineRow: { flexDirection: "row", gap: 10 },
   timelineState: {
-    color: "#35364A",
+    color: c.text,
     fontSize: 13,
     fontWeight: "800",
     textTransform: "capitalize",
@@ -349,4 +365,4 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
   },
-});
+}));

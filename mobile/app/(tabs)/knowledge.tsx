@@ -6,7 +6,6 @@ import {
   Pressable,
   RefreshControl,
   ScrollView,
-  StyleSheet,
   Text,
   TextInput,
   useWindowDimensions,
@@ -26,6 +25,7 @@ import {
   type MobileKnowledgeArticle,
 } from "@/lib/mobile-knowledge";
 import { loadCurrentTenant } from "@/lib/nextdesk-client";
+import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
 import { useMobileSessionGuard } from "@/lib/use-mobile-session-guard";
 
 export default function KnowledgeScreen() {
@@ -40,6 +40,8 @@ export default function KnowledgeScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
+  const styles = useStyles();
+  const colors = useAppColors();
   const wideLayout = width >= 768;
 
   const loadArticles = useCallback(async () => {
@@ -88,7 +90,7 @@ export default function KnowledgeScreen() {
   }
 
   return (
-    <ScreenContainer containerClassName="bg-[#F6F7FB]" className="px-5">
+    <ScreenContainer className="px-5">
       <ScrollView
         contentContainerStyle={[
           styles.content,
@@ -102,7 +104,7 @@ export default function KnowledgeScreen() {
               void loadArticles();
             }}
             refreshing={refreshing}
-            tintColor="#4438CA"
+            tintColor={colors.primary}
           />
         }
         showsVerticalScrollIndicator={false}
@@ -116,14 +118,14 @@ export default function KnowledgeScreen() {
         </View>
 
         <View style={styles.searchBox}>
-          <Ionicons color="#77758C" name="search-outline" size={21} />
+          <Ionicons color={colors.muted} name="search-outline" size={21} />
           <TextInput
             accessibilityLabel="Wissensartikel suchen"
             autoCapitalize="none"
             autoCorrect={false}
             onChangeText={setQuery}
             placeholder="Wissen durchsuchen"
-            placeholderTextColor="#9A99AA"
+            placeholderTextColor={colors.subtle}
             returnKeyType="search"
             style={styles.searchInput}
             value={query}
@@ -134,27 +136,35 @@ export default function KnowledgeScreen() {
               accessibilityRole="button"
               onPress={() => setQuery("")}
             >
-              <Ionicons color="#77758C" name="close-circle" size={19} />
+              <Ionicons color={colors.muted} name="close-circle" size={19} />
             </Pressable>
           ) : null}
         </View>
 
         {loading ? (
           <View style={styles.loading}>
-            <ActivityIndicator color="#4438CA" size="small" />
+            <ActivityIndicator color={colors.primary} size="small" />
             <Text style={styles.loadingText}>
               Wissensartikel werden geladen …
             </Text>
           </View>
         ) : error ? (
           <View style={styles.notice}>
-            <Ionicons color="#B42318" name="alert-circle-outline" size={19} />
+            <Ionicons
+              color={colors.error}
+              name="alert-circle-outline"
+              size={19}
+            />
             <Text style={styles.noticeText}>{error}</Text>
           </View>
         ) : articles.length === 0 ? (
           <View style={styles.empty}>
             <View style={styles.emptyIcon}>
-              <Ionicons color="#4438CA" name="book-outline" size={27} />
+              <Ionicons
+                color={colors.primaryText}
+                name="book-outline"
+                size={27}
+              />
             </View>
             <Text style={styles.emptyTitle}>
               {query ? "Keine passenden Artikel" : "Noch keine Wissensartikel"}
@@ -184,7 +194,7 @@ export default function KnowledgeScreen() {
                 >
                   <View style={styles.articleIcon}>
                     <Ionicons
-                      color="#087A95"
+                      color={colors.info}
                       name="document-text-outline"
                       size={20}
                     />
@@ -213,7 +223,7 @@ export default function KnowledgeScreen() {
                     {article.collections.length > 0 ? (
                       <View style={styles.collections}>
                         <Ionicons
-                          color="#77758C"
+                          color={colors.muted}
                           name="folder-open-outline"
                           size={13}
                         />
@@ -228,7 +238,11 @@ export default function KnowledgeScreen() {
                       {formatMobileKnowledgeUpdatedAt(article.updatedAt)}
                     </Text>
                   </View>
-                  <Ionicons color="#8A8999" name="chevron-forward" size={19} />
+                  <Ionicons
+                    color={colors.subtle}
+                    name="chevron-forward"
+                    size={19}
+                  />
                 </Pressable>
               ))}
             </View>
@@ -239,28 +253,28 @@ export default function KnowledgeScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeThemedStyles((c) => ({
   articleGrid: { gap: 9 },
   articleGridWide: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
   centered: { alignItems: "center", flex: 1, justifyContent: "center" },
   eyebrow: {
-    color: "#77758C",
+    color: c.muted,
     fontSize: 11,
     fontWeight: "800",
     letterSpacing: 1.2,
   },
   title: {
-    color: "#202136",
+    color: c.foreground,
     fontSize: 29,
     fontWeight: "900",
     letterSpacing: -0.8,
     marginTop: 4,
   },
-  subtitle: { color: "#6B7280", fontSize: 14, lineHeight: 20, marginTop: 5 },
+  subtitle: { color: c.muted, fontSize: 14, lineHeight: 20, marginTop: 5 },
   searchBox: {
     alignItems: "center",
-    backgroundColor: "#FFFFFF",
-    borderColor: "#DFDEE8",
+    backgroundColor: c.surface,
+    borderColor: c.borderStrong,
     borderRadius: 15,
     borderWidth: 1,
     flexDirection: "row",
@@ -268,22 +282,22 @@ const styles = StyleSheet.create({
     minHeight: 52,
     paddingHorizontal: 14,
   },
-  searchInput: { color: "#25263A", flex: 1, fontSize: 15, minHeight: 50 },
+  searchInput: { color: c.foreground, flex: 1, fontSize: 15, minHeight: 50 },
   loading: { alignItems: "center", flexDirection: "row", gap: 9, padding: 18 },
-  loadingText: { color: "#77758C", fontSize: 13 },
+  loadingText: { color: c.muted, fontSize: 13 },
   notice: {
     alignItems: "flex-start",
-    backgroundColor: "#FFF3F2",
+    backgroundColor: c.errorSoft,
     borderRadius: 15,
     flexDirection: "row",
     gap: 9,
     padding: 14,
   },
-  noticeText: { color: "#9C2D2D", flex: 1, fontSize: 13, lineHeight: 18 },
+  noticeText: { color: c.error, flex: 1, fontSize: 13, lineHeight: 18 },
   empty: {
     alignItems: "center",
-    backgroundColor: "#FFFFFF",
-    borderColor: "#E7E6EF",
+    backgroundColor: c.surface,
+    borderColor: c.border,
     borderRadius: 22,
     borderWidth: 1,
     gap: 9,
@@ -291,20 +305,20 @@ const styles = StyleSheet.create({
   },
   emptyIcon: {
     alignItems: "center",
-    backgroundColor: "#F0EEFF",
+    backgroundColor: c.primarySoft,
     borderRadius: 17,
     height: 52,
     justifyContent: "center",
     width: 52,
   },
   emptyTitle: {
-    color: "#292A3E",
+    color: c.foreground,
     fontSize: 17,
     fontWeight: "900",
     marginTop: 3,
   },
   emptyCopy: {
-    color: "#747486",
+    color: c.muted,
     fontSize: 13,
     lineHeight: 20,
     textAlign: "center",
@@ -315,11 +329,11 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
   },
-  listTitle: { color: "#292A3E", fontSize: 18, fontWeight: "900" },
+  listTitle: { color: c.foreground, fontSize: 18, fontWeight: "900" },
   resultCount: {
-    backgroundColor: "#F0EEFF",
+    backgroundColor: c.primarySoft,
     borderRadius: 10,
-    color: "#514AA1",
+    color: c.primaryText,
     fontSize: 12,
     fontWeight: "900",
     overflow: "hidden",
@@ -328,8 +342,8 @@ const styles = StyleSheet.create({
   },
   article: {
     alignItems: "center",
-    backgroundColor: "#FFFFFF",
-    borderColor: "#E7E6EF",
+    backgroundColor: c.surface,
+    borderColor: c.border,
     borderRadius: 17,
     borderWidth: 1,
     flexDirection: "row",
@@ -341,7 +355,7 @@ const styles = StyleSheet.create({
   articleWide: { width: "49%" },
   articleIcon: {
     alignItems: "center",
-    backgroundColor: "#E5F7FA",
+    backgroundColor: c.infoSoft,
     borderRadius: 13,
     height: 42,
     justifyContent: "center",
@@ -349,23 +363,23 @@ const styles = StyleSheet.create({
   },
   articleCopy: { flex: 1, gap: 3 },
   articleTitle: {
-    color: "#292A3E",
+    color: c.foreground,
     fontSize: 14,
     fontWeight: "900",
     lineHeight: 19,
   },
-  articleSummary: { color: "#77758C", fontSize: 12, lineHeight: 16 },
+  articleSummary: { color: c.muted, fontSize: 12, lineHeight: 16 },
   articleMeta: {
-    color: "#087A95",
+    color: c.info,
     fontSize: 10,
     fontWeight: "800",
     marginTop: 1,
   },
   articleMetaRow: { alignItems: "center", flexDirection: "row", gap: 7 },
-  articleVersion: { color: "#77758C", fontSize: 10, fontWeight: "700" },
+  articleVersion: { color: c.muted, fontSize: 10, fontWeight: "700" },
   collections: { alignItems: "center", flexDirection: "row", gap: 4 },
   collectionsText: {
-    color: "#656477",
+    color: c.muted,
     flex: 1,
     fontSize: 11,
     fontWeight: "700",
@@ -378,5 +392,5 @@ const styles = StyleSheet.create({
     width: "100%",
   },
   contentWide: { maxWidth: 1_120 },
-  updatedAt: { color: "#8A8999", fontSize: 10, lineHeight: 14 },
-});
+  updatedAt: { color: c.subtle, fontSize: 10, lineHeight: 14 },
+}));

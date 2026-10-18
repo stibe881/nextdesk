@@ -6,7 +6,6 @@ import {
   ActivityIndicator,
   Platform,
   Pressable,
-  StyleSheet,
   Text,
   TextInput,
   useWindowDimensions,
@@ -21,10 +20,19 @@ import {
 } from "@/components/mobile-feature-gate";
 import { hapticError, hapticSuccess } from "@/lib/mobile-haptics";
 import { loadCurrentTenant } from "@/lib/nextdesk-client";
+import {
+  makeThemedStyles,
+  useAppColors,
+  useIsDarkScheme,
+} from "@/lib/themed-styles";
 import { useMobileSessionGuard } from "@/lib/use-mobile-session-guard";
 
 export default function AssetScanScreen() {
   const router = useRouter();
+  const styles = useStyles();
+  const colors = useAppColors();
+  const isDarkScheme = useIsDarkScheme();
+  const chromeColor = isDarkScheme ? colors.foreground : colors.onPrimary;
   const { width } = useWindowDimensions();
   const checkingSession = useMobileSessionGuard();
   const { isEnabled, loading: checkingFeatures } = useMobileFeatures();
@@ -76,7 +84,7 @@ export default function AssetScanScreen() {
   if (!permission) {
     return (
       <View style={styles.centered}>
-        <ActivityIndicator color="#4438CA" size="large" />
+        <ActivityIndicator color={colors.primary} size="large" />
       </View>
     );
   }
@@ -91,7 +99,7 @@ export default function AssetScanScreen() {
           onPress={() => router.back()}
           style={styles.closeButton}
         >
-          <Ionicons color="#FFFFFF" name="close" size={25} />
+          <Ionicons color={chromeColor} name="close" size={25} />
         </Pressable>
         <Text style={styles.title}>Asset scannen</Text>
         <View style={styles.closeButton} />
@@ -125,7 +133,11 @@ export default function AssetScanScreen() {
               wideLayout && styles.permissionCardWide,
             ]}
           >
-            <Ionicons color="#4438CA" name="camera-outline" size={33} />
+            <Ionicons
+              color={colors.primaryText}
+              name="camera-outline"
+              size={33}
+            />
             <Text style={styles.permissionTitle}>Kamera aktivieren</Text>
             <Text style={styles.permissionText}>
               Die Kamera wird ausschliesslich genutzt, um den QR- oder Barcode
@@ -154,6 +166,7 @@ export default function AssetScanScreen() {
               onChangeText={setManualCode}
               onSubmitEditing={() => void resolveCode(manualCode)}
               placeholder="Code eingeben"
+              placeholderTextColor={colors.subtle}
               returnKeyType="search"
               style={styles.input}
               value={manualCode}
@@ -168,9 +181,9 @@ export default function AssetScanScreen() {
               ]}
             >
               {busy ? (
-                <ActivityIndicator color="#FFFFFF" size="small" />
+                <ActivityIndicator color={colors.onPrimary} size="small" />
               ) : (
-                <Ionicons color="#FFFFFF" name="search" size={19} />
+                <Ionicons color={colors.onPrimary} name="search" size={19} />
               )}
             </Pressable>
           </View>
@@ -181,135 +194,144 @@ export default function AssetScanScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  camera: { flex: 1 },
-  cameraHint: {
-    color: "#FFFFFF",
-    fontSize: 13,
-    fontWeight: "700",
-    textAlign: "center",
-  },
-  cameraShell: {
-    flex: 1,
-    minHeight: 330,
-    overflow: "hidden",
-    position: "relative",
-  },
-  cameraShellWide: { borderRadius: 24, flex: 1, minHeight: 480 },
-  centered: {
-    alignItems: "center",
-    backgroundColor: "#171827",
-    flex: 1,
-    justifyContent: "center",
-  },
-  closeButton: {
-    alignItems: "center",
-    height: 44,
-    justifyContent: "center",
-    width: 44,
-  },
-  error: { color: "#B42335", fontSize: 12, lineHeight: 18, marginTop: 10 },
-  input: {
-    color: "#303145",
-    flex: 1,
-    fontSize: 14,
-    paddingHorizontal: 12,
-    paddingVertical: 11,
-  },
-  inputRow: {
-    alignItems: "center",
-    borderColor: "#DDDDE7",
-    borderRadius: 13,
-    borderWidth: 1,
-    flexDirection: "row",
-    overflow: "hidden",
-  },
-  lookupButton: {
-    alignItems: "center",
-    backgroundColor: "#4438CA",
-    height: 44,
-    justifyContent: "center",
-    width: 47,
-  },
-  lookupButtonDisabled: { backgroundColor: "#9996B6" },
-  manualCard: {
-    backgroundColor: "#FFFFFF",
-    borderTopLeftRadius: 25,
-    borderTopRightRadius: 25,
-    gap: 7,
-    padding: 21,
-  },
-  manualCardWide: {
-    borderRadius: 24,
-    flex: 1,
-    justifyContent: "center",
-    minHeight: 480,
-  },
-  manualText: { color: "#747486", fontSize: 12, lineHeight: 18 },
-  manualTitle: { color: "#292A3E", fontSize: 16, fontWeight: "900" },
-  overlay: {
-    alignItems: "center",
-    bottom: 0,
-    justifyContent: "center",
-    left: 0,
-    padding: 28,
-    position: "absolute",
-    right: 0,
-    top: 0,
-  },
-  permissionButton: {
-    backgroundColor: "#4438CA",
-    borderRadius: 12,
-    marginTop: 4,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-  },
-  permissionButtonText: { color: "#FFFFFF", fontSize: 13, fontWeight: "800" },
-  permissionCard: {
-    alignItems: "center",
-    backgroundColor: "#F0EEFF",
-    flex: 1,
-    gap: 8,
-    justifyContent: "center",
-    padding: 32,
-  },
-  permissionCardWide: { borderRadius: 24, flex: 1 },
-  permissionText: {
-    color: "#615C8A",
-    fontSize: 13,
-    lineHeight: 19,
-    textAlign: "center",
-  },
-  permissionTitle: {
-    color: "#332C70",
-    fontSize: 18,
-    fontWeight: "900",
-    marginTop: 3,
-  },
-  scanFrame: {
-    borderColor: "#FFFFFF",
-    borderRadius: 21,
-    borderWidth: 3,
-    height: 210,
-    width: 210,
-  },
-  screen: { backgroundColor: "#171827", flex: 1 },
-  scanContent: { flex: 1 },
-  scanContentWide: {
-    alignSelf: "center",
-    flexDirection: "row",
-    gap: 20,
-    maxWidth: 1_120,
-    padding: 20,
-    width: "100%",
-  },
-  title: { color: "#FFFFFF", fontSize: 18, fontWeight: "900" },
-  topbar: {
-    alignItems: "center",
-    flexDirection: "row",
-    justifyContent: "space-between",
-    paddingHorizontal: 13,
-    paddingTop: 14,
-  },
-  topbarWide: { alignSelf: "center", maxWidth: 1_120, width: "100%" },
+const useStyles = makeThemedStyles((c, scheme) => {
+  const chromeSurface = scheme === "dark" ? c.background : c.foreground;
+  const chromeContent = scheme === "dark" ? c.foreground : c.onPrimary;
+
+  return {
+    camera: { flex: 1 },
+    cameraHint: {
+      color: c.onPrimary,
+      fontSize: 13,
+      fontWeight: "700",
+      textAlign: "center",
+    },
+    cameraShell: {
+      flex: 1,
+      minHeight: 330,
+      overflow: "hidden",
+      position: "relative",
+    },
+    cameraShellWide: { borderRadius: 24, flex: 1, minHeight: 480 },
+    centered: {
+      alignItems: "center",
+      backgroundColor: chromeSurface,
+      flex: 1,
+      justifyContent: "center",
+    },
+    closeButton: {
+      alignItems: "center",
+      height: 44,
+      justifyContent: "center",
+      width: 44,
+    },
+    error: { color: c.error, fontSize: 12, lineHeight: 18, marginTop: 10 },
+    input: {
+      color: c.text,
+      flex: 1,
+      fontSize: 14,
+      paddingHorizontal: 12,
+      paddingVertical: 11,
+    },
+    inputRow: {
+      alignItems: "center",
+      borderColor: c.borderStrong,
+      borderRadius: 13,
+      borderWidth: 1,
+      flexDirection: "row",
+      overflow: "hidden",
+    },
+    lookupButton: {
+      alignItems: "center",
+      backgroundColor: c.primary,
+      height: 44,
+      justifyContent: "center",
+      width: 47,
+    },
+    lookupButtonDisabled: { opacity: 0.56 },
+    manualCard: {
+      backgroundColor: c.surface,
+      borderTopLeftRadius: 25,
+      borderTopRightRadius: 25,
+      gap: 7,
+      padding: 21,
+    },
+    manualCardWide: {
+      borderRadius: 24,
+      flex: 1,
+      justifyContent: "center",
+      minHeight: 480,
+    },
+    manualText: { color: c.muted, fontSize: 12, lineHeight: 18 },
+    manualTitle: { color: c.foreground, fontSize: 16, fontWeight: "900" },
+    overlay: {
+      alignItems: "center",
+      bottom: 0,
+      justifyContent: "center",
+      left: 0,
+      padding: 28,
+      position: "absolute",
+      right: 0,
+      top: 0,
+    },
+    permissionButton: {
+      backgroundColor: c.primary,
+      borderRadius: 12,
+      marginTop: 4,
+      paddingHorizontal: 16,
+      paddingVertical: 12,
+    },
+    permissionButtonText: {
+      color: c.onPrimary,
+      fontSize: 13,
+      fontWeight: "800",
+    },
+    permissionCard: {
+      alignItems: "center",
+      backgroundColor: c.primarySoft,
+      flex: 1,
+      gap: 8,
+      justifyContent: "center",
+      padding: 32,
+    },
+    permissionCardWide: { borderRadius: 24, flex: 1 },
+    permissionText: {
+      color: c.primaryText,
+      fontSize: 13,
+      lineHeight: 19,
+      textAlign: "center",
+    },
+    permissionTitle: {
+      color: c.primaryText,
+      fontSize: 18,
+      fontWeight: "900",
+      marginTop: 3,
+    },
+    scanFrame: {
+      borderColor: c.onPrimary,
+      borderRadius: 21,
+      borderWidth: 3,
+      height: 210,
+      width: 210,
+    },
+    screen: { backgroundColor: chromeSurface, flex: 1 },
+    scanContent: { flex: 1 },
+    scanContentWide: {
+      alignSelf: "center",
+      flexDirection: "row",
+      gap: 20,
+      maxWidth: 1_120,
+      padding: 20,
+      width: "100%",
+    },
+    title: { color: chromeContent, fontSize: 18, fontWeight: "900" },
+    topbar: {
+      alignItems: "center",
+      flexDirection: "row",
+      justifyContent: "space-between",
+      paddingHorizontal: 13,
+      paddingTop: 14,
+    },
+    topbarWide: { alignSelf: "center", maxWidth: 1_120, width: "100%" },
+  };
 });

@@ -17,8 +17,11 @@ import {
   setDeviceProtectionPreference,
 } from "@/lib/mobile-private-state";
 import { clearMobileWorkspace, nextDesk } from "@/lib/nextdesk-client";
+import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
 
 export function DeviceProtection() {
+  const styles = useStyles();
+  const colors = useAppColors();
   const router = useRouter();
   const appState = useRef<AppStateStatus>(AppState.currentState);
   const checkingRef = useRef(false);
@@ -129,7 +132,7 @@ export function DeviceProtection() {
           </Text>
           {message ? <Text style={styles.message}>{message}</Text> : null}
           {lockState === "checking-session" ? (
-            <ActivityIndicator color="#4438CA" size="small" />
+            <ActivityIndicator color={colors.primary} size="small" />
           ) : (
             <>
               <Pressable
@@ -139,7 +142,7 @@ export function DeviceProtection() {
                 style={[styles.unlock, checking && styles.disabled]}
               >
                 {checking ? (
-                  <ActivityIndicator color="#FFFFFF" size="small" />
+                  <ActivityIndicator color={colors.onPrimary} size="small" />
                 ) : (
                   <Text style={styles.unlockText}>Jetzt entsperren</Text>
                 )}
@@ -160,18 +163,18 @@ export function DeviceProtection() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeThemedStyles((c) => ({
   layer: { elevation: 1000, zIndex: 1000 },
   overlay: {
     alignItems: "center",
-    backgroundColor: "rgba(20, 20, 35, 0.78)",
+    backgroundColor: c.overlay,
     flex: 1,
     justifyContent: "center",
     padding: 24,
   },
   card: {
     alignItems: "center",
-    backgroundColor: "#FFFFFF",
+    backgroundColor: c.surface,
     borderRadius: 28,
     gap: 14,
     maxWidth: 380,
@@ -180,32 +183,37 @@ const styles = StyleSheet.create({
   },
   iconWrap: {
     alignItems: "center",
-    backgroundColor: "#EEECFF",
+    backgroundColor: c.primarySoft,
     borderRadius: 22,
     height: 56,
     justifyContent: "center",
     width: 56,
   },
-  icon: { color: "#4438CA", fontSize: 34, fontWeight: "900", lineHeight: 38 },
-  title: { color: "#202136", fontSize: 21, fontWeight: "900" },
-  copy: { color: "#656477", fontSize: 14, lineHeight: 21, textAlign: "center" },
+  icon: {
+    color: c.primaryText,
+    fontSize: 34,
+    fontWeight: "900",
+    lineHeight: 38,
+  },
+  title: { color: c.foreground, fontSize: 21, fontWeight: "900" },
+  copy: { color: c.muted, fontSize: 14, lineHeight: 21, textAlign: "center" },
   message: {
-    color: "#95630F",
+    color: c.warning,
     fontSize: 12,
     lineHeight: 17,
     textAlign: "center",
   },
   unlock: {
     alignItems: "center",
-    backgroundColor: "#4438CA",
+    backgroundColor: c.primary,
     borderRadius: 14,
     justifyContent: "center",
     marginTop: 4,
     minHeight: 48,
     width: "100%",
   },
-  unlockText: { color: "#FFFFFF", fontSize: 14, fontWeight: "900" },
-  signOut: { minHeight: 36, justifyContent: "center", paddingHorizontal: 12 },
-  signOutText: { color: "#9C2D2D", fontSize: 13, fontWeight: "800" },
+  unlockText: { color: c.onPrimary, fontSize: 14, fontWeight: "900" },
+  signOut: { justifyContent: "center", minHeight: 36, paddingHorizontal: 12 },
+  signOutText: { color: c.error, fontSize: 13, fontWeight: "800" },
   disabled: { opacity: 0.55 },
-});
+}));

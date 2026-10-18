@@ -18,6 +18,7 @@ import {
   searchTicketRequesters,
   type TicketRequester,
 } from "@/lib/nextdesk-tickets";
+import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
 
 type RequesterPickerProps = {
   autoOpen?: boolean;
@@ -38,6 +39,8 @@ export function RequesterPicker({
   tenantId,
   value,
 }: RequesterPickerProps) {
+  const styles = useStyles();
+  const colors = useAppColors();
   const [isOpen, setIsOpen] = useState(autoOpen);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<TicketRequester[]>([]);
@@ -176,7 +179,11 @@ export function RequesterPicker({
           <Text style={styles.controlHint}>Antippen zum Ändern</Text>
         </View>
         <View style={styles.editIcon}>
-          <Ionicons color="#4438CA" name="pencil-outline" size={18} />
+          <Ionicons
+            color={colors.primaryText}
+            name="pencil-outline"
+            size={18}
+          />
         </View>
       </Pressable>
 
@@ -209,7 +216,7 @@ export function RequesterPicker({
                 onPress={closePicker}
                 style={styles.closeButton}
               >
-                <Ionicons color="#4438CA" name="close" size={22} />
+                <Ionicons color={colors.primaryText} name="close" size={22} />
               </Pressable>
             </View>
 
@@ -229,24 +236,28 @@ export function RequesterPicker({
                 </Text>
               </View>
               {selected.id === defaultRequester.id ? (
-                <Ionicons color="#4438CA" name="checkmark-circle" size={22} />
+                <Ionicons
+                  color={colors.primaryText}
+                  name="checkmark-circle"
+                  size={22}
+                />
               ) : null}
             </Pressable>
 
             <Text style={styles.searchLabel}>ANDERE PERSON SUCHEN</Text>
             <View style={styles.searchInputWrap}>
-              <Ionicons color="#77758C" name="search-outline" size={19} />
+              <Ionicons color={colors.muted} name="search-outline" size={19} />
               <TextInput
                 autoCapitalize="words"
                 autoCorrect={false}
                 onChangeText={changeQuery}
                 placeholder="Name eingeben"
-                placeholderTextColor="#9A99AA"
+                placeholderTextColor={colors.subtle}
                 style={styles.searchInput}
                 value={query}
               />
               {isSearching ? (
-                <ActivityIndicator color="#4438CA" size="small" />
+                <ActivityIndicator color={colors.primary} size="small" />
               ) : null}
             </View>
 
@@ -287,10 +298,14 @@ export function RequesterPicker({
                         {requester.displayName}
                       </Text>
                       {requester.id === selected.id ? (
-                        <Ionicons color="#4438CA" name="checkmark" size={20} />
+                        <Ionicons
+                          color={colors.primaryText}
+                          name="checkmark"
+                          size={20}
+                        />
                       ) : (
                         <Ionicons
-                          color="#77758C"
+                          color={colors.muted}
                           name="chevron-forward"
                           size={18}
                         />
@@ -304,7 +319,7 @@ export function RequesterPicker({
                       style={styles.createAction}
                     >
                       <Ionicons
-                        color="#4438CA"
+                        color={colors.primaryText}
                         name="person-add-outline"
                         size={19}
                       />
@@ -323,7 +338,7 @@ export function RequesterPicker({
                         onChangeText={setNewName}
                         onFocus={revealCreateFormAboveKeyboard}
                         placeholder="Vor- und Nachname"
-                        placeholderTextColor="#9A99AA"
+                        placeholderTextColor={colors.subtle}
                         style={styles.createInput}
                         value={newName}
                       />
@@ -334,7 +349,7 @@ export function RequesterPicker({
                         onChangeText={setNewEmail}
                         onFocus={revealCreateFormAboveKeyboard}
                         placeholder="E-Mail-Adresse (optional)"
-                        placeholderTextColor="#9A99AA"
+                        placeholderTextColor={colors.subtle}
                         style={styles.createInput}
                         value={newEmail}
                       />
@@ -351,10 +366,13 @@ export function RequesterPicker({
                         ]}
                       >
                         {creating ? (
-                          <ActivityIndicator color="#FFFFFF" size="small" />
+                          <ActivityIndicator
+                            color={colors.onPrimary}
+                            size="small"
+                          />
                         ) : (
                           <Ionicons
-                            color="#FFFFFF"
+                            color={colors.onPrimary}
                             name="person-add"
                             size={18}
                           />
@@ -375,11 +393,11 @@ export function RequesterPicker({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeThemedStyles((c) => ({
   control: {
     alignItems: "center",
-    backgroundColor: "#F0EFFB",
-    borderColor: "#E0DDF7",
+    backgroundColor: c.primarySoft,
+    borderColor: c.primarySoftBorder,
     borderRadius: 13,
     borderWidth: 1,
     flexDirection: "row",
@@ -388,27 +406,27 @@ const styles = StyleSheet.create({
     paddingHorizontal: 13,
   },
   controlCopy: { flex: 1, gap: 2, paddingRight: 10 },
-  controlName: { color: "#363653", fontSize: 15, fontWeight: "800" },
-  controlHint: { color: "#77758C", fontSize: 12, fontWeight: "600" },
+  controlName: { color: c.text, fontSize: 15, fontWeight: "800" },
+  controlHint: { color: c.muted, fontSize: 12, fontWeight: "600" },
   editIcon: {
     alignItems: "center",
-    backgroundColor: "#FFFFFF",
+    backgroundColor: c.surface,
     borderRadius: 14,
     height: 32,
     justifyContent: "center",
     width: 32,
   },
   modalRoot: {
-    backgroundColor: "rgba(25, 25, 42, 0.42)",
+    backgroundColor: c.overlay,
     flex: 1,
     justifyContent: "flex-end",
   },
   sheet: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: c.surface,
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
-    gap: 15,
     flexShrink: 1,
+    gap: 15,
     maxHeight: "88%",
     padding: 20,
     paddingBottom: 28,
@@ -419,20 +437,20 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   sheetEyebrow: {
-    color: "#77758C",
+    color: c.muted,
     fontSize: 10,
     fontWeight: "800",
     letterSpacing: 0.9,
   },
   sheetTitle: {
-    color: "#202136",
+    color: c.foreground,
     fontSize: 21,
     fontWeight: "800",
     marginTop: 3,
   },
   closeButton: {
     alignItems: "center",
-    backgroundColor: "#EEECFF",
+    backgroundColor: c.primarySoft,
     borderRadius: 16,
     height: 36,
     justifyContent: "center",
@@ -440,8 +458,8 @@ const styles = StyleSheet.create({
   },
   defaultRequester: {
     alignItems: "center",
-    backgroundColor: "#F7F7FB",
-    borderColor: "#E5E5EF",
+    backgroundColor: c.surfaceSubtle,
+    borderColor: c.border,
     borderRadius: 15,
     borderWidth: 1,
     flexDirection: "row",
@@ -450,19 +468,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
   },
   defaultRequesterActive: {
-    backgroundColor: "#F0EFFB",
-    borderColor: "#4438CA",
+    backgroundColor: c.primarySoft,
+    borderColor: c.primarySoftBorder,
   },
-  defaultCopy: { gap: 3, flex: 1 },
+  defaultCopy: { flex: 1, gap: 3 },
   defaultLabel: {
-    color: "#77758C",
+    color: c.muted,
     fontSize: 10,
     fontWeight: "800",
     letterSpacing: 0.8,
   },
-  defaultName: { color: "#363653", fontSize: 15, fontWeight: "800" },
+  defaultName: { color: c.text, fontSize: 15, fontWeight: "800" },
   searchLabel: {
-    color: "#77758C",
+    color: c.muted,
     fontSize: 10,
     fontWeight: "800",
     letterSpacing: 0.9,
@@ -470,8 +488,8 @@ const styles = StyleSheet.create({
   },
   searchInputWrap: {
     alignItems: "center",
-    backgroundColor: "#F7F7FB",
-    borderColor: "#E5E5EF",
+    backgroundColor: c.surfaceSubtle,
+    borderColor: c.border,
     borderRadius: 13,
     borderWidth: 1,
     flexDirection: "row",
@@ -479,20 +497,20 @@ const styles = StyleSheet.create({
     minHeight: 50,
     paddingHorizontal: 13,
   },
-  searchInput: { color: "#202136", flex: 1, fontSize: 15, minHeight: 46 },
+  searchInput: { color: c.foreground, flex: 1, fontSize: 15, minHeight: 46 },
   resultsScroll: { flexShrink: 1 },
   results: { flexGrow: 1, gap: 8, paddingBottom: 24 },
   searchNote: {
-    color: "#77758C",
+    color: c.muted,
     fontSize: 13,
     lineHeight: 19,
     paddingVertical: 6,
   },
-  error: { color: "#A02820", fontSize: 13, lineHeight: 19, paddingVertical: 6 },
+  error: { color: c.error, fontSize: 13, lineHeight: 19, paddingVertical: 6 },
   result: {
     alignItems: "center",
-    backgroundColor: "#FFFFFF",
-    borderColor: "#E5E5EF",
+    backgroundColor: c.surface,
+    borderColor: c.border,
     borderRadius: 13,
     borderWidth: 1,
     flexDirection: "row",
@@ -500,9 +518,12 @@ const styles = StyleSheet.create({
     minHeight: 52,
     paddingHorizontal: 13,
   },
-  resultActive: { backgroundColor: "#F0EFFB", borderColor: "#4438CA" },
+  resultActive: {
+    backgroundColor: c.primarySoft,
+    borderColor: c.primarySoftBorder,
+  },
   resultName: {
-    color: "#363653",
+    color: c.text,
     flex: 1,
     fontSize: 15,
     fontWeight: "700",
@@ -510,8 +531,8 @@ const styles = StyleSheet.create({
   },
   createAction: {
     alignItems: "center",
-    backgroundColor: "#F0EFFB",
-    borderColor: "#D9D5FF",
+    backgroundColor: c.primarySoft,
+    borderColor: c.primarySoftBorder,
     borderRadius: 13,
     borderWidth: 1,
     flexDirection: "row",
@@ -520,22 +541,22 @@ const styles = StyleSheet.create({
     minHeight: 50,
     paddingHorizontal: 13,
   },
-  createActionText: { color: "#4438CA", fontSize: 14, fontWeight: "800" },
+  createActionText: { color: c.primaryText, fontSize: 14, fontWeight: "800" },
   createForm: {
-    backgroundColor: "#F7F7FB",
-    borderColor: "#E2E0ED",
+    backgroundColor: c.surfaceSubtle,
+    borderColor: c.border,
     borderRadius: 15,
     borderWidth: 1,
     gap: 9,
     padding: 13,
   },
-  createTitle: { color: "#363653", fontSize: 14, fontWeight: "900" },
+  createTitle: { color: c.text, fontSize: 14, fontWeight: "900" },
   createInput: {
-    backgroundColor: "#FFFFFF",
-    borderColor: "#E2E0ED",
+    backgroundColor: c.surface,
+    borderColor: c.border,
     borderRadius: 11,
     borderWidth: 1,
-    color: "#202136",
+    color: c.foreground,
     fontSize: 14,
     minHeight: 46,
     paddingHorizontal: 12,
@@ -543,7 +564,7 @@ const styles = StyleSheet.create({
   },
   createSubmit: {
     alignItems: "center",
-    backgroundColor: "#4438CA",
+    backgroundColor: c.primary,
     borderRadius: 11,
     flexDirection: "row",
     gap: 8,
@@ -552,5 +573,5 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
   },
   createSubmitDisabled: { opacity: 0.6 },
-  createSubmitText: { color: "#FFFFFF", fontSize: 14, fontWeight: "800" },
-});
+  createSubmitText: { color: c.onPrimary, fontSize: 14, fontWeight: "800" },
+}));

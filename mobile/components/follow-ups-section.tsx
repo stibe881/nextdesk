@@ -28,6 +28,11 @@ import {
   hapticSuccess,
 } from "@/lib/mobile-haptics";
 import { useThemeContext } from "@/lib/theme-provider";
+import {
+  makeThemedStyles,
+  type AppPalette,
+  useAppColors,
+} from "@/lib/themed-styles";
 
 type DueChoice = "today" | "tomorrow" | "week" | "none";
 
@@ -97,7 +102,9 @@ function priorityLabel(priority: ExperienceFollowUp["priority"]): string {
 
 export function FollowUpsSection() {
   const { isEnabled, loading: checkingFeatures } = useMobileFeatures();
-  const { colors, density, reducedMotion } = useThemeContext();
+  const { density, reducedMotion } = useThemeContext();
+  const colors = useAppColors();
+  const styles = useStyles();
   const workspaceEnabled = isEnabled("experience.workspace");
   const [followUps, setFollowUps] = useState<ExperienceFollowUp[]>([]);
   const [loading, setLoading] = useState(false);
@@ -232,40 +239,24 @@ export function FollowUpsSection() {
     <>
       <View
         accessibilityLabel="Mein Tag: Wiedervorlagen"
-        style={[
-          styles.card,
-          {
-            backgroundColor: colors.surface,
-            borderColor: colors.border,
-            padding,
-          },
-        ]}
+        style={[styles.card, { padding }]}
       >
         <View style={styles.header}>
           <View style={styles.headerCopy}>
             <View style={styles.headingRow}>
-              <View
-                style={[
-                  styles.icon,
-                  { backgroundColor: `${colors.primary}1A` },
-                ]}
-              >
+              <View style={styles.icon}>
                 <Ionicons
-                  color={colors.primary}
+                  color={colors.primaryText}
                   name="today-outline"
                   size={19}
                 />
               </View>
               <View>
-                <Text style={[styles.eyebrow, { color: colors.muted }]}>
-                  MEIN TAG
-                </Text>
-                <Text style={[styles.title, { color: colors.foreground }]}>
-                  Wiedervorlagen
-                </Text>
+                <Text style={styles.eyebrow}>MEIN TAG</Text>
+                <Text style={styles.title}>Wiedervorlagen</Text>
               </View>
             </View>
-            <Text style={[styles.subtitle, { color: colors.muted }]}>
+            <Text style={styles.subtitle}>
               {relevant.length === 0
                 ? "Für heute ist nichts offen."
                 : `${buckets.overdue.length} überfällig · ${buckets.today.length} heute`}
@@ -276,64 +267,32 @@ export function FollowUpsSection() {
             accessibilityRole="button"
             hitSlop={8}
             onPress={openSheet}
-            style={[
-              styles.addButton,
-              { backgroundColor: `${colors.primary}1A` },
-            ]}
+            style={styles.addButton}
           >
-            <Ionicons color={colors.primary} name="add" size={23} />
+            <Ionicons color={colors.primaryText} name="add" size={23} />
           </Pressable>
         </View>
 
         {loading ? (
           <View accessibilityRole="progressbar" style={styles.skeletonList}>
             {[1, 2].map((item) => (
-              <View
-                key={item}
-                style={[
-                  styles.skeletonRow,
-                  { backgroundColor: colors.background },
-                ]}
-              >
-                <View
-                  style={[
-                    styles.skeletonMark,
-                    { backgroundColor: colors.border },
-                  ]}
-                />
+              <View key={item} style={styles.skeletonRow}>
+                <View style={styles.skeletonMark} />
                 <View style={styles.skeletonCopy}>
-                  <View
-                    style={[
-                      styles.skeletonLine,
-                      { backgroundColor: colors.border },
-                    ]}
-                  />
-                  <View
-                    style={[
-                      styles.skeletonShort,
-                      { backgroundColor: colors.border },
-                    ]}
-                  />
+                  <View style={styles.skeletonLine} />
+                  <View style={styles.skeletonShort} />
                 </View>
               </View>
             ))}
           </View>
         ) : relevant.length === 0 ? (
-          <View
-            style={[
-              styles.empty,
-              {
-                backgroundColor: colors.background,
-                borderColor: colors.border,
-              },
-            ]}
-          >
+          <View style={styles.empty}>
             <Ionicons
               color={colors.muted}
               name="checkmark-circle-outline"
               size={20}
             />
-            <Text style={[styles.emptyText, { color: colors.muted }]}>
+            <Text style={styles.emptyText}>
               Keine überfälligen oder heutigen Wiedervorlagen.
             </Text>
           </View>
@@ -366,55 +325,37 @@ export function FollowUpsSection() {
           accessibilityLabel="Wiedervorlage schnell erstellen"
           accessibilityRole="button"
           onPress={openSheet}
-          style={[styles.quickAction, { borderColor: colors.border }]}
+          style={styles.quickAction}
         >
           <Ionicons
-            color={colors.primary}
+            color={colors.primaryText}
             name="add-circle-outline"
             size={20}
           />
-          <Text style={[styles.quickActionText, { color: colors.primary }]}>
-            Wiedervorlage erstellen
-          </Text>
+          <Text style={styles.quickActionText}>Wiedervorlage erstellen</Text>
           <Ionicons color={colors.muted} name="chevron-forward" size={18} />
         </Pressable>
 
         {error ? (
-          <View
-            style={[
-              styles.feedback,
-              {
-                backgroundColor: `${colors.error}14`,
-                borderColor: colors.error,
-              },
-            ]}
-          >
+          <View style={[styles.feedback, styles.feedbackError]}>
             <Ionicons
               color={colors.error}
               name="alert-circle-outline"
               size={19}
             />
-            <Text style={[styles.feedbackText, { color: colors.error }]}>
+            <Text style={[styles.feedbackText, styles.feedbackTextError]}>
               {error}
             </Text>
           </View>
         ) : null}
         {message ? (
-          <View
-            style={[
-              styles.feedback,
-              {
-                backgroundColor: `${colors.success}14`,
-                borderColor: colors.success,
-              },
-            ]}
-          >
+          <View style={[styles.feedback, styles.feedbackSuccess]}>
             <Ionicons
               color={colors.success}
               name="checkmark-circle-outline"
               size={19}
             />
-            <Text style={[styles.feedbackText, { color: colors.success }]}>
+            <Text style={[styles.feedbackText, styles.feedbackTextSuccess]}>
               {message}
             </Text>
           </View>
@@ -438,18 +379,11 @@ export function FollowUpsSection() {
             onPress={() => setSheetOpen(false)}
             style={StyleSheet.absoluteFill}
           />
-          <View
-            accessibilityViewIsModal
-            style={[styles.sheet, { backgroundColor: colors.surface }]}
-          >
+          <View accessibilityViewIsModal style={styles.sheet}>
             <View style={styles.sheetHeader}>
               <View>
-                <Text style={[styles.eyebrow, { color: colors.muted }]}>
-                  SCHNELLAKTION
-                </Text>
-                <Text style={[styles.sheetTitle, { color: colors.foreground }]}>
-                  Wiedervorlage setzen
-                </Text>
+                <Text style={styles.eyebrow}>SCHNELLAKTION</Text>
+                <Text style={styles.sheetTitle}>Wiedervorlage setzen</Text>
               </View>
               <Pressable
                 accessibilityLabel="Wiedervorlage schliessen"
@@ -457,12 +391,9 @@ export function FollowUpsSection() {
                 disabled={saving}
                 hitSlop={8}
                 onPress={() => setSheetOpen(false)}
-                style={[
-                  styles.closeButton,
-                  { backgroundColor: `${colors.primary}1A` },
-                ]}
+                style={styles.closeButton}
               >
-                <Ionicons color={colors.primary} name="close" size={22} />
+                <Ionicons color={colors.primaryText} name="close" size={22} />
               </Pressable>
             </View>
             <ScrollView
@@ -473,7 +404,7 @@ export function FollowUpsSection() {
               showsVerticalScrollIndicator={false}
             >
               <View style={styles.field}>
-                <Text style={[styles.fieldLabel, { color: colors.muted }]}>
+                <Text style={styles.fieldLabel}>
                   WORAN MÖCHTEN SIE ERINNERT WERDEN?
                 </Text>
                 <TextInput
@@ -482,23 +413,14 @@ export function FollowUpsSection() {
                   maxLength={240}
                   onChangeText={setTitle}
                   placeholder="Zum Beispiel: Rückmeldung einholen"
-                  placeholderTextColor={colors.muted}
+                  placeholderTextColor={colors.subtle}
                   returnKeyType="done"
-                  style={[
-                    styles.input,
-                    {
-                      backgroundColor: colors.background,
-                      borderColor: colors.border,
-                      color: colors.foreground,
-                    },
-                  ]}
+                  style={styles.input}
                   value={title}
                 />
               </View>
               <View style={styles.field}>
-                <Text style={[styles.fieldLabel, { color: colors.muted }]}>
-                  FÄLLIG
-                </Text>
+                <Text style={styles.fieldLabel}>FÄLLIG</Text>
                 <View style={styles.choiceList}>
                   {dueChoices.map((choice) => {
                     const selected = dueChoice === choice.value;
@@ -513,31 +435,20 @@ export function FollowUpsSection() {
                         }}
                         style={[
                           styles.choice,
-                          {
-                            backgroundColor: selected
-                              ? `${colors.primary}14`
-                              : colors.background,
-                            borderColor: selected
-                              ? colors.primary
-                              : colors.border,
-                          },
+                          selected && styles.choiceSelected,
                         ]}
                       >
                         <Text
                           style={[
                             styles.choiceText,
-                            {
-                              color: selected
-                                ? colors.primary
-                                : colors.foreground,
-                            },
+                            selected && styles.choiceTextSelected,
                           ]}
                         >
                           {choice.label}
                         </Text>
                         {selected ? (
                           <Ionicons
-                            color={colors.primary}
+                            color={colors.primaryText}
                             name="checkmark"
                             size={19}
                           />
@@ -548,21 +459,13 @@ export function FollowUpsSection() {
                 </View>
               </View>
               {sheetError ? (
-                <View
-                  style={[
-                    styles.feedback,
-                    {
-                      backgroundColor: `${colors.error}14`,
-                      borderColor: colors.error,
-                    },
-                  ]}
-                >
+                <View style={[styles.feedback, styles.feedbackError]}>
                   <Ionicons
                     color={colors.error}
                     name="alert-circle-outline"
                     size={19}
                   />
-                  <Text style={[styles.feedbackText, { color: colors.error }]}>
+                  <Text style={[styles.feedbackText, styles.feedbackTextError]}>
                     {sheetError}
                   </Text>
                 </View>
@@ -571,24 +474,18 @@ export function FollowUpsSection() {
                 accessibilityRole="button"
                 disabled={saving}
                 onPress={() => void createFollowUp()}
-                style={[
-                  styles.saveButton,
-                  { backgroundColor: colors.primary },
-                  saving && styles.disabled,
-                ]}
+                style={[styles.saveButton, saving && styles.disabled]}
               >
                 {saving ? (
-                  <ActivityIndicator color={colors.background} size="small" />
+                  <ActivityIndicator color={colors.onPrimary} size="small" />
                 ) : (
                   <Ionicons
-                    color={colors.background}
+                    color={colors.onPrimary}
                     name="alarm-outline"
                     size={20}
                   />
                 )}
-                <Text
-                  style={[styles.saveButtonText, { color: colors.background }]}
-                >
+                <Text style={styles.saveButtonText}>
                   {saving ? "Wird gespeichert …" : "Wiedervorlage speichern"}
                 </Text>
               </Pressable>
@@ -607,43 +504,28 @@ function FollowUpRow({
   resolving,
   timingLabel,
 }: {
-  colors: ReturnType<typeof useThemeContext>["colors"];
+  colors: AppPalette;
   followUp: ExperienceFollowUp;
   onComplete: () => void;
   resolving: boolean;
   timingLabel: string;
 }) {
+  const styles = useStyles();
   const overdue = timingLabel === "Überfällig";
   return (
-    <View
-      style={[
-        styles.followUp,
-        { backgroundColor: colors.background, borderColor: colors.border },
-      ]}
-    >
-      <View
-        style={[
-          styles.timingIcon,
-          { backgroundColor: `${overdue ? colors.error : colors.primary}18` },
-        ]}
-      >
+    <View style={styles.followUp}>
+      <View style={[styles.timingIcon, overdue && styles.timingIconOverdue]}>
         <Ionicons
-          color={overdue ? colors.error : colors.primary}
+          color={overdue ? colors.error : colors.primaryText}
           name={overdue ? "alert-circle-outline" : "time-outline"}
           size={19}
         />
       </View>
       <View style={styles.followUpCopy}>
-        <Text
-          numberOfLines={1}
-          style={[styles.followUpTitle, { color: colors.foreground }]}
-        >
+        <Text numberOfLines={1} style={styles.followUpTitle}>
           {followUp.title}
         </Text>
-        <Text
-          numberOfLines={1}
-          style={[styles.followUpMeta, { color: colors.muted }]}
-        >
+        <Text numberOfLines={1} style={styles.followUpMeta}>
           {timingLabel} · {priorityLabel(followUp.priority)}
         </Text>
       </View>
@@ -652,14 +534,7 @@ function FollowUpRow({
         accessibilityRole="button"
         disabled={resolving}
         onPress={onComplete}
-        style={[
-          styles.completeButton,
-          {
-            borderColor: colors.success,
-            backgroundColor: `${colors.success}12`,
-          },
-          resolving && styles.disabled,
-        ]}
+        style={[styles.completeButton, resolving && styles.disabled]}
       >
         {resolving ? (
           <ActivityIndicator color={colors.success} size="small" />
@@ -671,8 +546,14 @@ function FollowUpRow({
   );
 }
 
-const styles = StyleSheet.create({
-  card: { borderRadius: 22, borderWidth: 1, gap: 14 },
+const useStyles = makeThemedStyles((c) => ({
+  card: {
+    backgroundColor: c.surface,
+    borderColor: c.border,
+    borderRadius: 22,
+    borderWidth: 1,
+    gap: 14,
+  },
   header: {
     alignItems: "flex-start",
     flexDirection: "row",
@@ -683,16 +564,23 @@ const styles = StyleSheet.create({
   headingRow: { alignItems: "center", flexDirection: "row", gap: 10 },
   icon: {
     alignItems: "center",
+    backgroundColor: c.primarySoft,
     borderRadius: 14,
     height: 38,
     justifyContent: "center",
     width: 38,
   },
-  eyebrow: { fontSize: 10, fontWeight: "800", letterSpacing: 1 },
-  title: { fontSize: 19, fontWeight: "800", marginTop: 2 },
-  subtitle: { fontSize: 12, lineHeight: 18, marginTop: 8 },
+  eyebrow: {
+    color: c.muted,
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 1,
+  },
+  title: { color: c.foreground, fontSize: 19, fontWeight: "800", marginTop: 2 },
+  subtitle: { color: c.muted, fontSize: 12, lineHeight: 18, marginTop: 8 },
   addButton: {
     alignItems: "center",
+    backgroundColor: c.primarySoft,
     borderRadius: 18,
     height: 42,
     justifyContent: "center",
@@ -701,18 +589,36 @@ const styles = StyleSheet.create({
   skeletonList: { gap: 8 },
   skeletonRow: {
     alignItems: "center",
+    backgroundColor: c.surfaceSubtle,
     borderRadius: 15,
     flexDirection: "row",
     gap: 10,
     minHeight: 62,
     padding: 11,
   },
-  skeletonMark: { borderRadius: 10, height: 31, width: 31 },
+  skeletonMark: {
+    backgroundColor: c.border,
+    borderRadius: 10,
+    height: 31,
+    width: 31,
+  },
   skeletonCopy: { flex: 1, gap: 8 },
-  skeletonLine: { borderRadius: 5, height: 11, width: "84%" },
-  skeletonShort: { borderRadius: 5, height: 9, width: "52%" },
+  skeletonLine: {
+    backgroundColor: c.border,
+    borderRadius: 5,
+    height: 11,
+    width: "84%",
+  },
+  skeletonShort: {
+    backgroundColor: c.border,
+    borderRadius: 5,
+    height: 9,
+    width: "52%",
+  },
   empty: {
     alignItems: "center",
+    backgroundColor: c.surfaceSubtle,
+    borderColor: c.border,
     borderRadius: 15,
     borderWidth: 1,
     flexDirection: "row",
@@ -720,10 +626,12 @@ const styles = StyleSheet.create({
     minHeight: 58,
     paddingHorizontal: 13,
   },
-  emptyText: { flex: 1, fontSize: 13, lineHeight: 18 },
+  emptyText: { color: c.muted, flex: 1, fontSize: 13, lineHeight: 18 },
   list: { gap: 8 },
   followUp: {
     alignItems: "center",
+    backgroundColor: c.surfaceSubtle,
+    borderColor: c.border,
     borderRadius: 15,
     borderWidth: 1,
     flexDirection: "row",
@@ -733,16 +641,20 @@ const styles = StyleSheet.create({
   },
   timingIcon: {
     alignItems: "center",
+    backgroundColor: c.primarySoft,
     borderRadius: 11,
     height: 36,
     justifyContent: "center",
     width: 36,
   },
+  timingIconOverdue: { backgroundColor: c.errorSoft },
   followUpCopy: { flex: 1, gap: 3 },
-  followUpTitle: { fontSize: 14, fontWeight: "800" },
-  followUpMeta: { fontSize: 11, lineHeight: 16 },
+  followUpTitle: { color: c.foreground, fontSize: 14, fontWeight: "800" },
+  followUpMeta: { color: c.muted, fontSize: 11, lineHeight: 16 },
   completeButton: {
     alignItems: "center",
+    backgroundColor: c.successSoft,
+    borderColor: c.successBorder,
     borderRadius: 16,
     borderWidth: 1,
     height: 42,
@@ -751,6 +663,7 @@ const styles = StyleSheet.create({
   },
   quickAction: {
     alignItems: "center",
+    borderColor: c.border,
     borderRadius: 14,
     borderWidth: 1,
     flexDirection: "row",
@@ -759,7 +672,12 @@ const styles = StyleSheet.create({
     minHeight: 50,
     paddingHorizontal: 13,
   },
-  quickActionText: { flex: 1, fontSize: 14, fontWeight: "800" },
+  quickActionText: {
+    color: c.primaryText,
+    flex: 1,
+    fontSize: 14,
+    fontWeight: "800",
+  },
   feedback: {
     alignItems: "flex-start",
     borderRadius: 13,
@@ -768,13 +686,21 @@ const styles = StyleSheet.create({
     gap: 8,
     padding: 11,
   },
+  feedbackError: { backgroundColor: c.errorSoft, borderColor: c.errorBorder },
+  feedbackSuccess: {
+    backgroundColor: c.successSoft,
+    borderColor: c.successBorder,
+  },
   feedbackText: { flex: 1, fontSize: 12, lineHeight: 18 },
+  feedbackTextError: { color: c.error },
+  feedbackTextSuccess: { color: c.success },
   modalRoot: {
-    backgroundColor: "rgba(25, 25, 42, 0.42)",
+    backgroundColor: c.overlay,
     flex: 1,
     justifyContent: "flex-end",
   },
   sheet: {
+    backgroundColor: c.surface,
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
     maxHeight: "84%",
@@ -786,9 +712,15 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
   },
-  sheetTitle: { fontSize: 21, fontWeight: "800", marginTop: 3 },
+  sheetTitle: {
+    color: c.foreground,
+    fontSize: 21,
+    fontWeight: "800",
+    marginTop: 3,
+  },
   closeButton: {
     alignItems: "center",
+    backgroundColor: c.primarySoft,
     borderRadius: 17,
     height: 38,
     justifyContent: "center",
@@ -796,10 +728,18 @@ const styles = StyleSheet.create({
   },
   sheetContent: { gap: 17, paddingTop: 18 },
   field: { gap: 8 },
-  fieldLabel: { fontSize: 10, fontWeight: "800", letterSpacing: 0.9 },
+  fieldLabel: {
+    color: c.muted,
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 0.9,
+  },
   input: {
+    backgroundColor: c.surfaceSubtle,
+    borderColor: c.border,
     borderRadius: 14,
     borderWidth: 1,
+    color: c.foreground,
     fontSize: 15,
     minHeight: 52,
     paddingHorizontal: 13,
@@ -807,6 +747,8 @@ const styles = StyleSheet.create({
   choiceList: { gap: 8 },
   choice: {
     alignItems: "center",
+    backgroundColor: c.surfaceSubtle,
+    borderColor: c.border,
     borderRadius: 13,
     borderWidth: 1,
     flexDirection: "row",
@@ -814,9 +756,15 @@ const styles = StyleSheet.create({
     minHeight: 50,
     paddingHorizontal: 13,
   },
-  choiceText: { fontSize: 14, fontWeight: "800" },
+  choiceSelected: {
+    backgroundColor: c.primarySoft,
+    borderColor: c.primarySoftBorder,
+  },
+  choiceText: { color: c.foreground, fontSize: 14, fontWeight: "800" },
+  choiceTextSelected: { color: c.primaryText },
   saveButton: {
     alignItems: "center",
+    backgroundColor: c.primary,
     borderRadius: 15,
     flexDirection: "row",
     gap: 8,
@@ -824,6 +772,6 @@ const styles = StyleSheet.create({
     minHeight: 52,
     paddingHorizontal: 16,
   },
-  saveButtonText: { fontSize: 14, fontWeight: "800" },
+  saveButtonText: { color: c.onPrimary, fontSize: 14, fontWeight: "800" },
   disabled: { opacity: 0.55 },
-});
+}));

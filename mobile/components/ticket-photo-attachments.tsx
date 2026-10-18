@@ -8,7 +8,6 @@ import {
   ActivityIndicator,
   Linking,
   Pressable,
-  StyleSheet,
   Text,
   View,
 } from "react-native";
@@ -20,6 +19,7 @@ import {
   type MobileTicketAttachment,
 } from "@/lib/mobile-ticket-attachments";
 import { hapticError, hapticSuccess } from "@/lib/mobile-haptics";
+import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
 
 type TicketPhotoAttachmentsProps = {
   canUpload: boolean;
@@ -41,6 +41,8 @@ export function TicketPhotoAttachments({
   tenantId,
   ticketId,
 }: TicketPhotoAttachmentsProps) {
+  const styles = useStyles();
+  const colors = useAppColors();
   const [attachments, setAttachments] = useState<MobileTicketAttachment[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -173,9 +175,13 @@ export function TicketPhotoAttachments({
             style={[styles.addButton, uploading && styles.disabled]}
           >
             {uploading ? (
-              <ActivityIndicator color="#FFFFFF" size="small" />
+              <ActivityIndicator color={colors.onPrimary} size="small" />
             ) : (
-              <Ionicons color="#FFFFFF" name="camera-outline" size={18} />
+              <Ionicons
+                color={colors.onPrimary}
+                name="camera-outline"
+                size={18}
+              />
             )}
             <Text style={styles.addButtonText}>
               {uploading ? "Lädt hoch …" : "Foto"}
@@ -190,12 +196,16 @@ export function TicketPhotoAttachments({
       {message ? <Text style={styles.message}>{message}</Text> : null}
       {loading ? (
         <View style={styles.loading}>
-          <ActivityIndicator color="#4438CA" size="small" />
+          <ActivityIndicator color={colors.primary} size="small" />
           <Text style={styles.loadingText}>Anhänge werden geladen …</Text>
         </View>
       ) : attachments.length === 0 ? (
         <View style={styles.empty}>
-          <Ionicons color="#7069C7" name="images-outline" size={21} />
+          <Ionicons
+            color={colors.primaryText}
+            name="images-outline"
+            size={21}
+          />
           <Text style={styles.emptyText}>
             Noch keine Fotoanhänge vorhanden.
           </Text>
@@ -213,9 +223,13 @@ export function TicketPhotoAttachments({
             >
               <View style={styles.itemIcon}>
                 {openingId === attachment.id ? (
-                  <ActivityIndicator color="#087A95" size="small" />
+                  <ActivityIndicator color={colors.info} size="small" />
                 ) : (
-                  <Ionicons color="#087A95" name="image-outline" size={19} />
+                  <Ionicons
+                    color={colors.info}
+                    name="image-outline"
+                    size={19}
+                  />
                 )}
               </View>
               <View style={styles.itemCopy}>
@@ -226,7 +240,11 @@ export function TicketPhotoAttachments({
                   {formatSize(attachment.byteSize)}
                 </Text>
               </View>
-              <Ionicons color="#838295" name="chevron-forward" size={18} />
+              <Ionicons
+                color={colors.subtle}
+                name="chevron-forward"
+                size={18}
+              />
             </Pressable>
           ))}
         </View>
@@ -235,7 +253,7 @@ export function TicketPhotoAttachments({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeThemedStyles((c) => ({
   section: { gap: 12 },
   header: {
     alignItems: "center",
@@ -243,27 +261,27 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   eyebrow: {
-    color: "#77758C",
+    color: c.muted,
     fontSize: 10,
     fontWeight: "800",
     letterSpacing: 1,
   },
-  title: { color: "#202136", fontSize: 22, fontWeight: "800", marginTop: 3 },
+  title: { color: c.foreground, fontSize: 22, fontWeight: "800", marginTop: 3 },
   addButton: {
     alignItems: "center",
-    backgroundColor: "#4438CA",
+    backgroundColor: c.primary,
     borderRadius: 12,
     flexDirection: "row",
     gap: 6,
     minHeight: 40,
     paddingHorizontal: 12,
   },
-  addButtonText: { color: "#FFFFFF", fontSize: 12, fontWeight: "900" },
-  hint: { color: "#77758C", fontSize: 11, lineHeight: 16 },
+  addButtonText: { color: c.onPrimary, fontSize: 12, fontWeight: "900" },
+  hint: { color: c.muted, fontSize: 11, lineHeight: 16 },
   message: {
-    backgroundColor: "#F0EFFB",
+    backgroundColor: c.primarySoft,
     borderRadius: 12,
-    color: "#4D4794",
+    color: c.primaryText,
     fontSize: 12,
     lineHeight: 17,
     padding: 11,
@@ -274,23 +292,23 @@ const styles = StyleSheet.create({
     gap: 9,
     paddingVertical: 14,
   },
-  loadingText: { color: "#77758C", fontSize: 12 },
+  loadingText: { color: c.muted, fontSize: 12 },
   empty: {
     alignItems: "center",
-    backgroundColor: "#FFFFFF",
-    borderColor: "#E8E7F0",
+    backgroundColor: c.surface,
+    borderColor: c.border,
     borderRadius: 15,
     borderWidth: 1,
     flexDirection: "row",
     gap: 10,
     padding: 14,
   },
-  emptyText: { color: "#77758C", fontSize: 12 },
+  emptyText: { color: c.muted, fontSize: 12 },
   list: { gap: 8 },
   item: {
     alignItems: "center",
-    backgroundColor: "#FFFFFF",
-    borderColor: "#E8E7F0",
+    backgroundColor: c.surface,
+    borderColor: c.border,
     borderRadius: 14,
     borderWidth: 1,
     flexDirection: "row",
@@ -300,14 +318,14 @@ const styles = StyleSheet.create({
   },
   itemIcon: {
     alignItems: "center",
-    backgroundColor: "#E5F7FA",
+    backgroundColor: c.infoSoft,
     borderRadius: 12,
     height: 37,
     justifyContent: "center",
     width: 37,
   },
   itemCopy: { flex: 1, gap: 2 },
-  itemName: { color: "#303145", fontSize: 13, fontWeight: "800" },
-  itemMeta: { color: "#77758C", fontSize: 11 },
+  itemName: { color: c.text, fontSize: 13, fontWeight: "800" },
+  itemMeta: { color: c.muted, fontSize: 11 },
   disabled: { opacity: 0.56 },
-});
+}));

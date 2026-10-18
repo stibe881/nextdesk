@@ -14,10 +14,11 @@ import {
   View,
 } from "react-native";
 
-import { listMobileAssets, type MobileAsset } from "@/lib/asset-registry";
 import { useMobileFeatures } from "@/components/mobile-feature-gate";
+import { listMobileAssets, type MobileAsset } from "@/lib/asset-registry";
 import type { MobileTenant } from "@/lib/nextdesk-client";
 import type { MobileTicket } from "@/lib/nextdesk-tickets";
+import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
 
 type GlobalSearchProps = {
   tenant: MobileTenant | null;
@@ -50,6 +51,8 @@ export function GlobalSearch({ tenant, tickets }: GlobalSearchProps) {
   const [assets, setAssets] = useState<MobileAsset[]>([]);
   const [searchingAssets, setSearchingAssets] = useState(false);
   const [assetSearchUnavailable, setAssetSearchUnavailable] = useState(false);
+  const styles = useStyles();
+  const colors = useAppColors();
 
   const needle = normalized(query);
   const queryLength = Array.from(needle).length;
@@ -141,9 +144,9 @@ export function GlobalSearch({ tenant, tickets }: GlobalSearchProps) {
         onPress={openSearch}
         style={styles.trigger}
       >
-        <Ionicons color="#77758C" name="search-outline" size={20} />
+        <Ionicons color={colors.muted} name="search-outline" size={20} />
         <Text style={styles.triggerText}>nextDesk durchsuchen</Text>
-        <Ionicons color="#8C84E8" name="arrow-forward" size={18} />
+        <Ionicons color={colors.primaryText} name="arrow-forward" size={18} />
       </Pressable>
 
       <Modal
@@ -175,25 +178,25 @@ export function GlobalSearch({ tenant, tickets }: GlobalSearchProps) {
                 onPress={close}
                 style={styles.close}
               >
-                <Ionicons color="#4438CA" name="close" size={23} />
+                <Ionicons color={colors.primaryText} name="close" size={23} />
               </Pressable>
             </View>
 
             <View style={styles.inputWrap}>
-              <Ionicons color="#77758C" name="search-outline" size={21} />
+              <Ionicons color={colors.muted} name="search-outline" size={21} />
               <TextInput
                 autoCapitalize="none"
                 autoCorrect={false}
                 autoFocus
                 onChangeText={changeQuery}
                 placeholder="Freigegebene Vorgänge durchsuchen"
-                placeholderTextColor="#9A99AA"
+                placeholderTextColor={colors.subtle}
                 returnKeyType="search"
                 style={styles.input}
                 value={query}
               />
               {searchingAssets ? (
-                <ActivityIndicator color="#4438CA" size="small" />
+                <ActivityIndicator color={colors.primary} size="small" />
               ) : null}
             </View>
 
@@ -221,7 +224,7 @@ export function GlobalSearch({ tenant, tickets }: GlobalSearchProps) {
                         >
                           <View style={[styles.resultIcon, styles.ticketIcon]}>
                             <Ionicons
-                              color="#4438CA"
+                              color={colors.primaryText}
                               name="ticket-outline"
                               size={18}
                             />
@@ -236,7 +239,7 @@ export function GlobalSearch({ tenant, tickets }: GlobalSearchProps) {
                             </Text>
                           </View>
                           <Ionicons
-                            color="#9A99AA"
+                            color={colors.subtle}
                             name="chevron-forward"
                             size={18}
                           />
@@ -256,7 +259,7 @@ export function GlobalSearch({ tenant, tickets }: GlobalSearchProps) {
                         >
                           <View style={[styles.resultIcon, styles.assetIcon]}>
                             <Ionicons
-                              color="#087A95"
+                              color={colors.info}
                               name="cube-outline"
                               size={18}
                             />
@@ -268,7 +271,7 @@ export function GlobalSearch({ tenant, tickets }: GlobalSearchProps) {
                             </Text>
                           </View>
                           <Ionicons
-                            color="#9A99AA"
+                            color={colors.subtle}
                             name="chevron-forward"
                             size={18}
                           />
@@ -313,6 +316,7 @@ function ResultGroup({
   children: ReactNode;
   label: string;
 }) {
+  const styles = useStyles();
   return (
     <View style={styles.group}>
       <Text style={styles.groupLabel}>{label}</Text>
@@ -321,11 +325,11 @@ function ResultGroup({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeThemedStyles((c) => ({
   trigger: {
     alignItems: "center",
-    backgroundColor: "#FFFFFF",
-    borderColor: "#E9E8F1",
+    backgroundColor: c.surface,
+    borderColor: c.border,
     borderRadius: 15,
     borderWidth: 1,
     flexDirection: "row",
@@ -333,14 +337,14 @@ const styles = StyleSheet.create({
     minHeight: 52,
     paddingHorizontal: 15,
   },
-  triggerText: { color: "#707083", flex: 1, fontSize: 14, fontWeight: "700" },
+  triggerText: { color: c.muted, flex: 1, fontSize: 14, fontWeight: "700" },
   overlay: {
-    backgroundColor: "rgba(25, 25, 42, 0.42)",
+    backgroundColor: c.overlay,
     flex: 1,
     justifyContent: "flex-end",
   },
   sheet: {
-    backgroundColor: "#F6F7FB",
+    backgroundColor: c.background,
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
     gap: 16,
@@ -355,15 +359,15 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   eyebrow: {
-    color: "#77758C",
+    color: c.muted,
     fontSize: 10,
     fontWeight: "800",
     letterSpacing: 1,
   },
-  title: { color: "#202136", fontSize: 22, fontWeight: "900", marginTop: 3 },
+  title: { color: c.foreground, fontSize: 22, fontWeight: "900", marginTop: 3 },
   close: {
     alignItems: "center",
-    backgroundColor: "#EEECFF",
+    backgroundColor: c.primarySoft,
     borderRadius: 17,
     height: 38,
     justifyContent: "center",
@@ -371,8 +375,8 @@ const styles = StyleSheet.create({
   },
   inputWrap: {
     alignItems: "center",
-    backgroundColor: "#FFFFFF",
-    borderColor: "#DCD9EC",
+    backgroundColor: c.surface,
+    borderColor: c.borderStrong,
     borderRadius: 14,
     borderWidth: 1,
     flexDirection: "row",
@@ -380,20 +384,20 @@ const styles = StyleSheet.create({
     minHeight: 54,
     paddingHorizontal: 14,
   },
-  input: { color: "#202136", flex: 1, fontSize: 15, minHeight: 50 },
+  input: { color: c.foreground, flex: 1, fontSize: 15, minHeight: 50 },
   results: { gap: 16, paddingBottom: 12 },
-  note: { color: "#77758C", fontSize: 14, lineHeight: 21, paddingVertical: 7 },
+  note: { color: c.muted, fontSize: 14, lineHeight: 21, paddingVertical: 7 },
   group: { gap: 8 },
   groupLabel: {
-    color: "#77758C",
+    color: c.muted,
     fontSize: 10,
     fontWeight: "800",
     letterSpacing: 1,
   },
   result: {
     alignItems: "center",
-    backgroundColor: "#FFFFFF",
-    borderColor: "#E8E7F0",
+    backgroundColor: c.surface,
+    borderColor: c.border,
     borderRadius: 14,
     borderWidth: 1,
     flexDirection: "row",
@@ -408,9 +412,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     width: 38,
   },
-  ticketIcon: { backgroundColor: "#EEEAFE" },
-  assetIcon: { backgroundColor: "#E5F7FA" },
+  ticketIcon: { backgroundColor: c.primarySoft },
+  assetIcon: { backgroundColor: c.infoSoft },
   resultCopy: { flex: 1, gap: 3 },
-  resultTitle: { color: "#28293D", fontSize: 14, fontWeight: "800" },
-  resultMeta: { color: "#747486", fontSize: 12 },
-});
+  resultTitle: { color: c.foreground, fontSize: 14, fontWeight: "800" },
+  resultMeta: { color: c.muted, fontSize: 12 },
+}));

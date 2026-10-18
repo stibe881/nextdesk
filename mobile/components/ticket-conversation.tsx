@@ -1,10 +1,11 @@
 import { Ionicons } from "@expo/vector-icons";
-import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { Pressable, Text, TextInput, View } from "react-native";
 
 import {
   type MobileTicketComment,
   type TicketCommentVisibility,
 } from "@/lib/nextdesk-tickets";
+import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
 
 type TicketConversationProps = {
   body: string;
@@ -82,6 +83,8 @@ export function TicketConversation({
   onVisibilityChange,
   visibility,
 }: TicketConversationProps) {
+  const colors = useAppColors();
+  const styles = useStyles();
   const canWrite = canWriteInternalNotes || canCommentExternal;
   const externalOnly = canCommentExternal && !canWriteInternalNotes;
   const externalHint =
@@ -98,7 +101,11 @@ export function TicketConversation({
           <Text style={styles.title}>Nachrichten</Text>
         </View>
         <View style={styles.countBadge}>
-          <Ionicons color="#5145C9" name="chatbubble-outline" size={14} />
+          <Ionicons
+            color={colors.primaryText}
+            name="chatbubble-outline"
+            size={14}
+          />
           <Text style={styles.count}>{comments.length}</Text>
         </View>
       </View>
@@ -107,7 +114,7 @@ export function TicketConversation({
         <View style={styles.empty}>
           <View style={styles.emptyIcon}>
             <Ionicons
-              color="#5D56BE"
+              color={colors.primaryText}
               name="chatbubble-ellipses-outline"
               size={22}
             />
@@ -145,7 +152,11 @@ export function TicketConversation({
                 {isInternal ? (
                   <View style={styles.internalNote}>
                     <View style={styles.internalHeader}>
-                      <Ionicons color="#8A5B0D" name="lock-closed" size={13} />
+                      <Ionicons
+                        color={colors.warning}
+                        name="lock-closed"
+                        size={13}
+                      />
                       <Text style={styles.internalLabel}>Interne Notiz</Text>
                     </View>
                     <Text style={styles.internalBody}>{comment.body}</Text>
@@ -240,9 +251,13 @@ export function TicketConversation({
               </Text>
             </View>
             {visibility === "internal" ? (
-              <Ionicons color="#8A5B0D" name="lock-closed" size={18} />
+              <Ionicons color={colors.warning} name="lock-closed" size={18} />
             ) : (
-              <Ionicons color="#5145C9" name="paper-plane-outline" size={19} />
+              <Ionicons
+                color={colors.primaryText}
+                name="paper-plane-outline"
+                size={19}
+              />
             )}
           </View>
           {canWriteInternalNotes && canCommentExternal ? (
@@ -257,7 +272,11 @@ export function TicketConversation({
                 ]}
               >
                 <Ionicons
-                  color={visibility === "internal" ? "#FFFFFF" : "#8A5B0D"}
+                  color={
+                    visibility === "internal"
+                      ? colors.onPrimary
+                      : colors.warning
+                  }
                   name="lock-closed-outline"
                   size={15}
                 />
@@ -281,7 +300,11 @@ export function TicketConversation({
                 ]}
               >
                 <Ionicons
-                  color={visibility === "external" ? "#FFFFFF" : "#5145C9"}
+                  color={
+                    visibility === "external"
+                      ? colors.onPrimary
+                      : colors.primaryText
+                  }
                   name="paper-plane-outline"
                   size={15}
                 />
@@ -308,7 +331,7 @@ export function TicketConversation({
                 ? "Interne Notiz für das Team schreiben …"
                 : "Nachricht an die Kundschaft schreiben …"
             }
-            placeholderTextColor="#9291A3"
+            placeholderTextColor={colors.subtle}
             style={styles.composerInput}
             textAlignVertical="top"
             value={body}
@@ -337,7 +360,7 @@ export function TicketConversation({
                 (isSending || !body.trim()) && styles.disabled,
               ]}
             >
-              <Ionicons color="#FFFFFF" name="send" size={15} />
+              <Ionicons color={colors.onPrimary} name="send" size={15} />
               <Text style={styles.sendButtonText}>
                 {isSending ? "Sendet …" : "Senden"}
               </Text>
@@ -346,7 +369,7 @@ export function TicketConversation({
         </View>
       ) : (
         <View style={styles.readOnly}>
-          <Ionicons color="#77758C" name="lock-closed-outline" size={16} />
+          <Ionicons color={colors.muted} name="lock-closed-outline" size={16} />
           <Text style={styles.readOnlyHint}>
             Für dieses Ticket steht Ihnen nur der Lesezugriff zur Verfügung.
           </Text>
@@ -356,7 +379,7 @@ export function TicketConversation({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeThemedStyles((c) => ({
   section: { gap: 16 },
   sectionHeader: {
     alignItems: "center",
@@ -365,26 +388,26 @@ const styles = StyleSheet.create({
     paddingHorizontal: 2,
   },
   eyebrow: {
-    color: "#77758C",
+    color: c.muted,
     fontSize: 10,
     fontWeight: "800",
     letterSpacing: 1.05,
   },
-  title: { color: "#202136", fontSize: 23, fontWeight: "800", marginTop: 4 },
+  title: { color: c.foreground, fontSize: 23, fontWeight: "800", marginTop: 4 },
   countBadge: {
     alignItems: "center",
-    backgroundColor: "#EEECFF",
+    backgroundColor: c.primarySoft,
     borderRadius: 15,
     flexDirection: "row",
     gap: 6,
     minHeight: 30,
     paddingHorizontal: 10,
   },
-  count: { color: "#5145C9", fontSize: 12, fontWeight: "800" },
+  count: { color: c.primaryText, fontSize: 12, fontWeight: "800" },
   empty: {
     alignItems: "center",
-    backgroundColor: "#FFFFFF",
-    borderColor: "#EAEAF2",
+    backgroundColor: c.surface,
+    borderColor: c.border,
     borderRadius: 18,
     borderWidth: 1,
     flexDirection: "row",
@@ -393,15 +416,15 @@ const styles = StyleSheet.create({
   },
   emptyIcon: {
     alignItems: "center",
-    backgroundColor: "#EEECFF",
+    backgroundColor: c.primarySoft,
     borderRadius: 15,
     height: 42,
     justifyContent: "center",
     width: 42,
   },
   emptyCopy: { flex: 1, gap: 3 },
-  emptyTitle: { color: "#28293D", fontSize: 14, fontWeight: "800" },
-  emptyText: { color: "#77758C", fontSize: 12, lineHeight: 17 },
+  emptyTitle: { color: c.foreground, fontSize: 14, fontWeight: "800" },
+  emptyText: { color: c.muted, fontSize: 12, lineHeight: 17 },
   messages: { gap: 12 },
   messageBlock: { gap: 9 },
   dayDivider: {
@@ -410,8 +433,8 @@ const styles = StyleSheet.create({
     gap: 9,
     marginTop: 2,
   },
-  dayLine: { backgroundColor: "#E5E5ED", flex: 1, height: 1 },
-  dayLabel: { color: "#88879A", fontSize: 10, fontWeight: "700" },
+  dayLine: { backgroundColor: c.border, flex: 1, height: 1 },
+  dayLabel: { color: c.subtle, fontSize: 10, fontWeight: "700" },
   messageRow: { alignItems: "flex-end", flexDirection: "row", gap: 8 },
   messageRowIncoming: { justifyContent: "flex-start" },
   messageRowOutgoing: {
@@ -425,24 +448,24 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     width: 30,
   },
-  avatarIncoming: { backgroundColor: "#DDF4F6" },
-  avatarOutgoing: { backgroundColor: "#E7E3FF" },
-  avatarText: { color: "#087287", fontSize: 10, fontWeight: "900" },
-  avatarTextOutgoing: { color: "#5145C9", fontSize: 10, fontWeight: "900" },
+  avatarIncoming: { backgroundColor: c.infoSoft },
+  avatarOutgoing: { backgroundColor: c.primarySoft },
+  avatarText: { color: c.info, fontSize: 10, fontWeight: "900" },
+  avatarTextOutgoing: { color: c.primaryText, fontSize: 10, fontWeight: "900" },
   bubble: { borderRadius: 18, maxWidth: "78%", padding: 13 },
-  bubbleIncoming: { backgroundColor: "#EAF7F8", borderBottomLeftRadius: 5 },
-  bubbleOutgoing: { backgroundColor: "#5145C9", borderBottomRightRadius: 5 },
+  bubbleIncoming: { backgroundColor: c.infoSoft, borderBottomLeftRadius: 5 },
+  bubbleOutgoing: { backgroundColor: c.primary, borderBottomRightRadius: 5 },
   bubbleLabelRow: { marginBottom: 5 },
   bubbleLabel: {
-    color: "#087287",
+    color: c.info,
     fontSize: 10,
     fontWeight: "900",
     letterSpacing: 0.45,
     textTransform: "uppercase",
   },
-  bubbleLabelOutgoing: { color: "#DCD8FF" },
-  messageBody: { color: "#1D3541", fontSize: 15, lineHeight: 22 },
-  messageBodyOutgoing: { color: "#FFFFFF" },
+  bubbleLabelOutgoing: { color: c.onPrimary },
+  messageBody: { color: c.text, fontSize: 15, lineHeight: 22 },
+  messageBodyOutgoing: { color: c.onPrimary },
   messageFooter: {
     alignItems: "center",
     flexDirection: "row",
@@ -450,14 +473,14 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     marginTop: 9,
   },
-  author: { color: "#2B6875", flex: 1, fontSize: 10, fontWeight: "800" },
-  authorOutgoing: { color: "#FFFFFF" },
-  timestamp: { color: "#4C8792", fontSize: 10, fontWeight: "600" },
-  timestampOutgoing: { color: "#DCD8FF" },
+  author: { color: c.info, flex: 1, fontSize: 10, fontWeight: "800" },
+  authorOutgoing: { color: c.onPrimary },
+  timestamp: { color: c.info, fontSize: 10, fontWeight: "600" },
+  timestampOutgoing: { color: c.onPrimary },
   internalNote: {
     alignSelf: "center",
-    backgroundColor: "#FFF7E6",
-    borderColor: "#F0D59E",
+    backgroundColor: c.warningSoft,
+    borderColor: c.warningBorder,
     borderRadius: 14,
     borderWidth: 1,
     gap: 7,
@@ -466,22 +489,22 @@ const styles = StyleSheet.create({
   },
   internalHeader: { alignItems: "center", flexDirection: "row", gap: 6 },
   internalLabel: {
-    color: "#8A5B0D",
+    color: c.warning,
     fontSize: 10,
     fontWeight: "900",
     letterSpacing: 0.5,
     textTransform: "uppercase",
   },
-  internalBody: { color: "#5B4320", fontSize: 14, lineHeight: 20 },
-  internalMeta: { color: "#987840", fontSize: 10, fontWeight: "600" },
+  internalBody: { color: c.warning, fontSize: 14, lineHeight: 20 },
+  internalMeta: { color: c.warning, fontSize: 10, fontWeight: "600" },
   composer: {
-    backgroundColor: "#FFFFFF",
-    borderColor: "#DCD9F5",
+    backgroundColor: c.surface,
+    borderColor: c.primarySoftBorder,
     borderRadius: 20,
     borderWidth: 1,
     gap: 12,
     padding: 14,
-    shadowColor: "#29215B",
+    shadowColor: c.shadow,
     shadowOffset: { width: 0, height: 7 },
     shadowOpacity: 0.06,
     shadowRadius: 16,
@@ -492,13 +515,13 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   composerLabel: {
-    color: "#77758C",
+    color: c.muted,
     fontSize: 10,
     fontWeight: "800",
     letterSpacing: 1,
   },
   composerTitle: {
-    color: "#202136",
+    color: c.foreground,
     fontSize: 15,
     fontWeight: "800",
     marginTop: 3,
@@ -506,8 +529,8 @@ const styles = StyleSheet.create({
   visibilityToggle: { flexDirection: "row", gap: 8 },
   visibilityButton: {
     alignItems: "center",
-    backgroundColor: "#FFFFFF",
-    borderColor: "#DDD9F2",
+    backgroundColor: c.surface,
+    borderColor: c.primarySoftBorder,
     borderRadius: 12,
     borderWidth: 1,
     flexDirection: "row",
@@ -516,21 +539,25 @@ const styles = StyleSheet.create({
     paddingHorizontal: 11,
   },
   visibilityButtonInternalActive: {
-    backgroundColor: "#9A6812",
-    borderColor: "#9A6812",
+    backgroundColor: c.warningStrong,
+    borderColor: c.warningStrong,
   },
   visibilityButtonExternalActive: {
-    backgroundColor: "#5145C9",
-    borderColor: "#5145C9",
+    backgroundColor: c.primary,
+    borderColor: c.primary,
   },
-  visibilityButtonText: { color: "#5145C9", fontSize: 12, fontWeight: "800" },
-  visibilityButtonTextActive: { color: "#FFFFFF" },
+  visibilityButtonText: {
+    color: c.primaryText,
+    fontSize: 12,
+    fontWeight: "800",
+  },
+  visibilityButtonTextActive: { color: c.onPrimary },
   composerInput: {
-    backgroundColor: "#F8F8FC",
-    borderColor: "#DEDEE8",
+    backgroundColor: c.surfaceSubtle,
+    borderColor: c.borderStrong,
     borderRadius: 14,
     borderWidth: 1,
-    color: "#202136",
+    color: c.foreground,
     fontSize: 15,
     lineHeight: 21,
     minHeight: 96,
@@ -543,17 +570,17 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   composerHints: { flex: 1, gap: 2 },
-  visibilityHint: { color: "#77758C", flex: 1, fontSize: 10, lineHeight: 14 },
+  visibilityHint: { color: c.muted, flex: 1, fontSize: 10, lineHeight: 14 },
   draftHint: {
-    color: "#09725C",
+    color: c.success,
     fontSize: 10,
     fontWeight: "700",
     lineHeight: 14,
   },
-  draftHintLocal: { color: "#95630F" },
+  draftHintLocal: { color: c.warning },
   sendButton: {
     alignItems: "center",
-    backgroundColor: "#5145C9",
+    backgroundColor: c.primary,
     borderRadius: 12,
     flexDirection: "row",
     gap: 6,
@@ -561,15 +588,15 @@ const styles = StyleSheet.create({
     minHeight: 40,
     paddingHorizontal: 12,
   },
-  sendButtonText: { color: "#FFFFFF", fontSize: 12, fontWeight: "900" },
+  sendButtonText: { color: c.onPrimary, fontSize: 12, fontWeight: "900" },
   readOnly: {
     alignItems: "center",
-    backgroundColor: "#F4F4F8",
+    backgroundColor: c.surfaceSubtle,
     borderRadius: 14,
     flexDirection: "row",
     gap: 9,
     padding: 13,
   },
-  readOnlyHint: { color: "#6E6E80", flex: 1, fontSize: 12, lineHeight: 17 },
+  readOnlyHint: { color: c.muted, flex: 1, fontSize: 12, lineHeight: 17 },
   disabled: { opacity: 0.5 },
-}) as Record<string, any>;
+}));

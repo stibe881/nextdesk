@@ -9,7 +9,9 @@ import {
   useState,
   type PropsWithChildren,
 } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { Text, View } from "react-native";
+
+import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
 
 type MobileNetworkStatus = {
   isOffline: boolean;
@@ -62,6 +64,8 @@ export function useMobileNetworkStatus(): MobileNetworkStatus {
 }
 
 export function OfflineStatus() {
+  const styles = useStyles();
+  const colors = useAppColors();
   const { isOffline, recoveryEpoch } = useMobileNetworkStatus();
   const [dismissedRecoveryEpoch, setDismissedRecoveryEpoch] = useState(0);
 
@@ -77,7 +81,11 @@ export function OfflineStatus() {
   if (isOffline) {
     return (
       <View accessibilityLiveRegion="polite" style={styles.banner}>
-        <Ionicons color="#71420C" name="cloud-offline-outline" size={17} />
+        <Ionicons
+          color={colors.warning}
+          name="cloud-offline-outline"
+          size={17}
+        />
         <View style={styles.copy}>
           <Text style={styles.title}>Offline</Text>
           <Text style={styles.text}>
@@ -97,7 +105,7 @@ export function OfflineStatus() {
       accessibilityLiveRegion="polite"
       style={[styles.banner, styles.recoveredBanner]}
     >
-      <Ionicons color="#166534" name="cloud-done-outline" size={17} />
+      <Ionicons color={colors.success} name="cloud-done-outline" size={17} />
       <View style={styles.copy}>
         <Text style={[styles.title, styles.recoveredTitle]}>Wieder online</Text>
         <Text style={[styles.text, styles.recoveredText]}>
@@ -108,11 +116,11 @@ export function OfflineStatus() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeThemedStyles((c) => ({
   banner: {
     alignItems: "flex-start",
-    backgroundColor: "#FFF4DB",
-    borderBottomColor: "#F0D49B",
+    backgroundColor: c.warningSoft,
+    borderBottomColor: c.warningBorder,
     borderBottomWidth: 1,
     flexDirection: "row",
     gap: 9,
@@ -126,9 +134,12 @@ const styles = StyleSheet.create({
     zIndex: 50,
   },
   copy: { flex: 1, gap: 1 },
-  title: { color: "#71420C", fontSize: 12, fontWeight: "900" },
-  text: { color: "#71420C", fontSize: 11, lineHeight: 15 },
-  recoveredBanner: { backgroundColor: "#ECFDF3", borderBottomColor: "#BBF7D0" },
-  recoveredTitle: { color: "#166534" },
-  recoveredText: { color: "#166534" },
-});
+  title: { color: c.warning, fontSize: 12, fontWeight: "900" },
+  text: { color: c.warning, fontSize: 11, lineHeight: 15 },
+  recoveredBanner: {
+    backgroundColor: c.successSoft,
+    borderBottomColor: c.successBorder,
+  },
+  recoveredTitle: { color: c.success },
+  recoveredText: { color: c.success },
+}));

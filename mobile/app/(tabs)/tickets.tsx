@@ -7,7 +7,6 @@ import {
   Pressable,
   RefreshControl,
   ScrollView,
-  StyleSheet,
   Text,
   TextInput,
   useWindowDimensions,
@@ -29,6 +28,7 @@ import {
   reconcileFavoriteTicketIds,
   setFavoriteTicket,
 } from "@/lib/mobile-private-state";
+import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
 import { useThemeContext } from "@/lib/theme-provider";
 
 type TicketScope = "all" | "mine" | "favorites" | "open" | "resolved";
@@ -73,30 +73,32 @@ export default function TicketsScreen() {
   const { isEnabled, loading: checkingFeatures } = useMobileFeatures();
   const ticketDetailsEnabled = isEnabled("ticketing.detail");
   const workspaceEnabled = isEnabled("experience.workspace");
-  const { colors, density, reducedMotion } = useThemeContext();
+  const { density, reducedMotion } = useThemeContext();
+  const colors = useAppColors();
+  const styles = useStyles();
   const tokenStyles = useMemo(
     () => ({
       card: { backgroundColor: colors.surface, borderColor: colors.border },
       control: {
-        backgroundColor: colors.background,
+        backgroundColor: colors.surfaceSubtle,
         borderColor: colors.border,
       },
       error: {
-        backgroundColor: colors.error + "1A",
-        borderColor: colors.error,
+        backgroundColor: colors.errorSoft,
+        borderColor: colors.errorBorder,
       },
       foreground: { color: colors.foreground },
       muted: { color: colors.muted },
       primary: { backgroundColor: colors.primary },
-      primaryText: { color: colors.background },
+      onPrimary: { color: colors.onPrimary },
       success: {
-        backgroundColor: colors.success + "1A",
-        borderColor: colors.success,
+        backgroundColor: colors.successSoft,
+        borderColor: colors.successBorder,
       },
       successText: { color: colors.success },
       warning: {
-        backgroundColor: colors.warning + "1A",
-        borderColor: colors.warning,
+        backgroundColor: colors.warningSoft,
+        borderColor: colors.warningBorder,
       },
     }),
     [colors],
@@ -320,7 +322,7 @@ export default function TicketsScreen() {
               <View
                 style={[
                   styles.skeletonMark,
-                  { backgroundColor: colors.primary + "33" },
+                  { backgroundColor: colors.primarySoft },
                 ]}
               />
               <View style={styles.skeletonCopy}>
@@ -394,7 +396,7 @@ export default function TicketsScreen() {
               (offlineCacheAt || isOffline) && styles.addButtonOffline,
             ]}
           >
-            <Ionicons color={colors.background} name="add" size={23} />
+            <Ionicons color={colors.onPrimary} name="add" size={23} />
           </Pressable>
         </View>
 
@@ -419,7 +421,7 @@ export default function TicketsScreen() {
                 style={[
                   styles.filterText,
                   tokenStyles.muted,
-                  scope === option.key && tokenStyles.primaryText,
+                  scope === option.key && tokenStyles.onPrimary,
                 ]}
               >
                 {option.label}
@@ -436,7 +438,7 @@ export default function TicketsScreen() {
             autoCorrect={false}
             onChangeText={setQuery}
             placeholder="Tickets durchsuchen"
-            placeholderTextColor={colors.muted}
+            placeholderTextColor={colors.subtle}
             style={[styles.searchInput, tokenStyles.foreground]}
             value={query}
           />
@@ -473,7 +475,7 @@ export default function TicketsScreen() {
                   void load();
                 }}
               >
-                <Text style={[styles.retryText, { color: colors.primary }]}>
+                <Text style={[styles.retryText, { color: colors.primaryText }]}>
                   Erneut versuchen
                 </Text>
               </Pressable>
@@ -555,7 +557,10 @@ export default function TicketsScreen() {
             accessibilityLabel={`${visibleTickets.length} Tickets`}
             style={[
               styles.listCount,
-              { backgroundColor: colors.primary + "1A", color: colors.primary },
+              {
+                backgroundColor: colors.primarySoft,
+                color: colors.primaryText,
+              },
             ]}
           >
             {visibleTickets.length}
@@ -586,7 +591,6 @@ export default function TicketsScreen() {
                 <SwipeableTicketRow
                   actionsDisabled={actionsDisabled}
                   canCreateFollowUp={canCreateFollowUp}
-                  colors={colors}
                   densityStyle={densityStyles.ticket}
                   favorite={favoriteIds.includes(ticket.id)}
                   key={ticket.id}
@@ -626,7 +630,6 @@ export default function TicketsScreen() {
 function SwipeableTicketRow({
   actionsDisabled,
   canCreateFollowUp,
-  colors,
   densityStyle,
   favorite,
   onCreateFollowUp,
@@ -639,7 +642,6 @@ function SwipeableTicketRow({
 }: {
   actionsDisabled: boolean;
   canCreateFollowUp: boolean;
-  colors: ReturnType<typeof useThemeContext>["colors"];
   densityStyle: { padding: number };
   favorite: boolean;
   onCreateFollowUp: () => void;
@@ -650,6 +652,8 @@ function SwipeableTicketRow({
   swipeEnabled: boolean;
   ticket: MobileTicket;
 }) {
+  const colors = useAppColors();
+  const styles = useStyles();
   const swipeable = useRef<Swipeable>(null);
   const actionsAvailable = !actionsDisabled;
   const followUpAvailable = actionsAvailable && canCreateFollowUp;
@@ -673,14 +677,17 @@ function SwipeableTicketRow({
           }
           accessibilityRole="button"
           onPress={() => closeAndRun(onFavorite)}
-          style={[styles.swipeAction, { backgroundColor: colors.warning }]}
+          style={[
+            styles.swipeAction,
+            { backgroundColor: colors.warningStrong },
+          ]}
         >
           <Ionicons
-            color={colors.background}
+            color={colors.onPrimary}
             name={favorite ? "star-outline" : "star"}
             size={20}
           />
-          <Text style={[styles.swipeActionText, { color: colors.background }]}>
+          <Text style={[styles.swipeActionText, { color: colors.onPrimary }]}>
             {favorite ? "Entfernen" : "Favorit"}
           </Text>
         </Pressable>
@@ -694,13 +701,11 @@ function SwipeableTicketRow({
             style={[styles.swipeAction, { backgroundColor: colors.primary }]}
           >
             <Ionicons
-              color={colors.background}
+              color={colors.onPrimary}
               name="calendar-outline"
               size={20}
             />
-            <Text
-              style={[styles.swipeActionText, { color: colors.background }]}
-            >
+            <Text style={[styles.swipeActionText, { color: colors.onPrimary }]}>
               Wiedervorlage
             </Text>
           </Pressable>
@@ -712,7 +717,6 @@ function SwipeableTicketRow({
       <TicketRow
         actionsDisabled={actionsDisabled}
         canCreateFollowUp={canCreateFollowUp}
-        colors={colors}
         densityStyle={densityStyle}
         favorite={favorite}
         onCreateFollowUp={onCreateFollowUp}
@@ -729,7 +733,6 @@ function SwipeableTicketRow({
 function TicketRow({
   actionsDisabled,
   canCreateFollowUp,
-  colors,
   densityStyle,
   favorite,
   onCreateFollowUp,
@@ -741,7 +744,6 @@ function TicketRow({
 }: {
   actionsDisabled: boolean;
   canCreateFollowUp: boolean;
-  colors: ReturnType<typeof useThemeContext>["colors"];
   densityStyle: { padding: number };
   favorite: boolean;
   onCreateFollowUp: () => void;
@@ -751,6 +753,8 @@ function TicketRow({
   openDisabled: boolean;
   ticket: MobileTicket;
 }) {
+  const colors = useAppColors();
+  const styles = useStyles();
   const tone = ticket.resolved
     ? styles.markResolved
     : ticket.status === "Neu"
@@ -842,8 +846,8 @@ function TicketRow({
                 ticket.resolved
                   ? colors.success
                   : ticket.status === "Neu"
-                    ? colors.primary
-                    : colors.primary
+                    ? colors.info
+                    : colors.primaryText
               }
               name={
                 ticket.resolved
@@ -857,13 +861,19 @@ function TicketRow({
             <Text
               style={[
                 styles.statusText,
-                { color: ticket.resolved ? colors.success : colors.primary },
+                {
+                  color: ticket.resolved
+                    ? colors.success
+                    : ticket.status === "Neu"
+                      ? colors.info
+                      : colors.primaryText,
+                },
               ]}
             >
               {ticket.status}
             </Text>
           </View>
-          <Ionicons color={colors.muted} name="chevron-forward" size={18} />
+          <Ionicons color={colors.subtle} name="chevron-forward" size={18} />
         </View>
       </Pressable>
       <View style={[styles.ticketActions, { borderColor: colors.border }]}>
@@ -900,7 +910,7 @@ function TicketRow({
           ]}
         >
           <Ionicons
-            color={canCreateFollowUp ? colors.primary : colors.muted}
+            color={canCreateFollowUp ? colors.primaryText : colors.muted}
             name="calendar-outline"
             size={18}
           />
@@ -918,7 +928,7 @@ function TicketRow({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeThemedStyles((c) => ({
   actionMuted: { opacity: 0.45 },
   addButton: {
     alignItems: "center",
@@ -1012,9 +1022,9 @@ const styles = StyleSheet.create({
   listTitle: { fontSize: 18, fontWeight: "800" },
   loadingText: { fontSize: 14 },
   mark: { borderRadius: 2, height: 46, width: 4 },
-  markActive: { backgroundColor: "#7C3AED" },
-  markNew: { backgroundColor: "#0EA5C6" },
-  markResolved: { backgroundColor: "#15803D" },
+  markActive: { backgroundColor: c.primary },
+  markNew: { backgroundColor: c.info },
+  markResolved: { backgroundColor: c.success },
   retryText: { fontSize: 13, fontWeight: "800" },
   searchInput: { flex: 1, fontSize: 14, minHeight: 48 },
   searchWrap: {
@@ -1050,9 +1060,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 4,
   },
-  statusActive: { backgroundColor: "#F0E9FF" },
-  statusNew: { backgroundColor: "#E0F6FB" },
-  statusResolved: { backgroundColor: "#E9F8EE" },
+  statusActive: { backgroundColor: c.primarySoft },
+  statusNew: { backgroundColor: c.infoSoft },
+  statusResolved: { backgroundColor: c.successSoft },
   statusText: { fontSize: 10, fontWeight: "900" },
   subtitle: { fontSize: 13, marginTop: 3 },
   swipeAction: {
@@ -1093,4 +1103,4 @@ const styles = StyleSheet.create({
   ticketState: { alignItems: "flex-end", gap: 8 },
   ticketTitle: { fontSize: 14, fontWeight: "800", lineHeight: 19 },
   title: { fontSize: 29, fontWeight: "900", letterSpacing: -0.8, marginTop: 4 },
-});
+}));

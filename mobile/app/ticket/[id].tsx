@@ -45,6 +45,7 @@ import {
   type TicketReopenRequest,
   type TicketWorkbenchContext,
 } from "@/lib/nextdesk-workbench";
+import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
 import { useThemeContext } from "@/lib/theme-provider";
 import {
   clearLocalTicketDraft,
@@ -150,25 +151,27 @@ export default function TicketDetailScreen() {
   const agentWorkbenchEnabled = isEnabled("agent.workbench");
   const assetsEnabled = isEnabled("assets.management");
   const requesterPortalEnabled = isEnabled("requester.portal");
-  const { colors, density, reducedMotion } = useThemeContext();
+  const { density, reducedMotion } = useThemeContext();
+  const colors = useAppColors();
+  const styles = useStyles();
   const tokenStyles = useMemo(
     () => ({
       card: { backgroundColor: colors.surface, borderColor: colors.border },
       control: {
-        backgroundColor: colors.background,
+        backgroundColor: colors.surfaceSubtle,
         borderColor: colors.border,
       },
       error: {
-        backgroundColor: colors.error + "1A",
-        borderColor: colors.error,
+        backgroundColor: colors.errorSoft,
+        borderColor: colors.errorBorder,
       },
       foreground: { color: colors.foreground },
       muted: { color: colors.muted },
       primary: { backgroundColor: colors.primary },
-      primaryText: { color: colors.background },
+      primaryText: { color: colors.onPrimary },
       success: {
-        backgroundColor: colors.success + "1A",
-        borderColor: colors.success,
+        backgroundColor: colors.successSoft,
+        borderColor: colors.successBorder,
       },
       successText: { color: colors.success },
     }),
@@ -1030,7 +1033,7 @@ export default function TicketDetailScreen() {
           <View
             style={[
               styles.skeletonStatus,
-              { backgroundColor: colors.primary + "33" },
+              { backgroundColor: colors.primarySoft },
             ]}
           />
           {[1, 2, 3].map((item) => (
@@ -1106,7 +1109,11 @@ export default function TicketDetailScreen() {
               onPress={() => router.back()}
               style={styles.backButton}
             >
-              <Ionicons color="#4438CA" name="arrow-back" size={22} />
+              <Ionicons
+                color={colors.primaryText}
+                name="arrow-back"
+                size={22}
+              />
             </Pressable>
             <Text numberOfLines={1} style={styles.topTitle}>
               Ticketdetails
@@ -1126,7 +1133,7 @@ export default function TicketDetailScreen() {
               ]}
             >
               <Ionicons
-                color={favorite ? "#FFFFFF" : "#4438CA"}
+                color={favorite ? colors.onPrimary : colors.primaryText}
                 name={favorite ? "star" : "star-outline"}
                 size={20}
               />
@@ -1157,7 +1164,11 @@ export default function TicketDetailScreen() {
                   onPress={() => void saveChange({ subject })}
                   style={styles.inlineSave}
                 >
-                  <Ionicons color="#FFFFFF" name="checkmark" size={18} />
+                  <Ionicons
+                    color={colors.onPrimary}
+                    name="checkmark"
+                    size={18}
+                  />
                 </Pressable>
               </View>
             ) : (
@@ -1210,7 +1221,9 @@ export default function TicketDetailScreen() {
                   style={[
                     styles.statusText,
                     {
-                      color: status.is_closed ? colors.success : colors.primary,
+                      color: status.is_closed
+                        ? colors.success
+                        : colors.primaryText,
                     },
                   ]}
                 >
@@ -1232,11 +1245,11 @@ export default function TicketDetailScreen() {
                 <View
                   style={[
                     styles.experienceIcon,
-                    { backgroundColor: colors.primary + "1A" },
+                    { backgroundColor: colors.primarySoft },
                   ]}
                 >
                   <Ionicons
-                    color={colors.primary}
+                    color={colors.primaryText}
                     name="alarm-outline"
                     size={20}
                   />
@@ -1262,7 +1275,7 @@ export default function TicketDetailScreen() {
                   styles.experienceAction,
                   {
                     borderColor: colors.border,
-                    backgroundColor: colors.background,
+                    backgroundColor: colors.surfaceSubtle,
                   },
                   savingFollowUp && styles.disabled,
                 ]}
@@ -1270,13 +1283,13 @@ export default function TicketDetailScreen() {
                 <Text
                   style={[
                     styles.experienceActionText,
-                    { color: colors.primary },
+                    { color: colors.primaryText },
                   ]}
                 >
                   Wiedervorlage setzen
                 </Text>
                 <Ionicons
-                  color={colors.primary}
+                  color={colors.primaryText}
                   name="chevron-forward"
                   size={19}
                 />
@@ -1296,7 +1309,7 @@ export default function TicketDetailScreen() {
                 <View
                   style={[
                     styles.experienceIcon,
-                    { backgroundColor: colors.success + "1A" },
+                    { backgroundColor: colors.successSoft },
                   ]}
                 >
                   <Ionicons
@@ -1324,8 +1337,8 @@ export default function TicketDetailScreen() {
                   style={[
                     styles.resolutionAction,
                     {
-                      backgroundColor: colors.success + "14",
-                      borderColor: colors.success,
+                      backgroundColor: colors.successSoft,
+                      borderColor: colors.successBorder,
                     },
                   ]}
                 >
@@ -1350,8 +1363,8 @@ export default function TicketDetailScreen() {
                   style={[
                     styles.resolutionAction,
                     {
-                      backgroundColor: colors.error + "12",
-                      borderColor: colors.error,
+                      backgroundColor: colors.errorSoft,
+                      borderColor: colors.errorBorder,
                     },
                   ]}
                 >
@@ -1391,14 +1404,14 @@ export default function TicketDetailScreen() {
                   </Text>
                 </View>
                 <Ionicons
-                  color={colors.primary}
+                  color={colors.primaryText}
                   name="time-outline"
                   size={22}
                 />
               </View>
               {timelineLoading ? (
                 <View style={styles.inlineLoading}>
-                  <ActivityIndicator color={colors.primary} size="small" />
+                  <ActivityIndicator color={colors.primaryText} size="small" />
                   <Text style={[styles.experienceText, tokenStyles.muted]}>
                     Öffentlicher Verlauf wird geladen …
                   </Text>
@@ -1410,11 +1423,11 @@ export default function TicketDetailScreen() {
                       <View
                         style={[
                           styles.timelineIcon,
-                          { backgroundColor: colors.primary + "14" },
+                          { backgroundColor: colors.primarySoft },
                         ]}
                       >
                         <Ionicons
-                          color={colors.primary}
+                          color={colors.primaryText}
                           name={
                             item.type === "comment"
                               ? "chatbubble-outline"
@@ -1488,7 +1501,7 @@ export default function TicketDetailScreen() {
                 style={[
                   styles.workbenchAction,
                   {
-                    backgroundColor: colors.background,
+                    backgroundColor: colors.surfaceSubtle,
                     borderColor: colors.border,
                   },
                 ]}
@@ -1496,13 +1509,13 @@ export default function TicketDetailScreen() {
                 <Text
                   style={[
                     styles.experienceActionText,
-                    { color: colors.primary },
+                    { color: colors.primaryText },
                   ]}
                 >
                   Antrag erfassen
                 </Text>
                 <Ionicons
-                  color={colors.primary}
+                  color={colors.primaryText}
                   name="chevron-forward"
                   size={19}
                 />
@@ -1528,7 +1541,7 @@ export default function TicketDetailScreen() {
                   </Text>
                 </View>
                 <Ionicons
-                  color={colors.primary}
+                  color={colors.primaryText}
                   name="layers-outline"
                   size={22}
                 />
@@ -1546,7 +1559,7 @@ export default function TicketDetailScreen() {
                 style={[
                   styles.workbenchAction,
                   {
-                    backgroundColor: colors.background,
+                    backgroundColor: colors.surfaceSubtle,
                     borderColor: colors.border,
                   },
                   contextLoading && styles.disabled,
@@ -1555,7 +1568,7 @@ export default function TicketDetailScreen() {
                 <Text
                   style={[
                     styles.experienceActionText,
-                    { color: colors.primary },
+                    { color: colors.primaryText },
                   ]}
                 >
                   {contextLoading
@@ -1565,10 +1578,10 @@ export default function TicketDetailScreen() {
                       : "Kontext anzeigen"}
                 </Text>
                 {contextLoading ? (
-                  <ActivityIndicator color={colors.primary} size="small" />
+                  <ActivityIndicator color={colors.primaryText} size="small" />
                 ) : (
                   <Ionicons
-                    color={colors.primary}
+                    color={colors.primaryText}
                     name={agentContextOpen ? "chevron-up" : "chevron-down"}
                     size={19}
                   />
@@ -1634,7 +1647,7 @@ export default function TicketDetailScreen() {
                   </Text>
                 </View>
                 <Ionicons
-                  color={colors.primary}
+                  color={colors.primaryText}
                   name="people-outline"
                   size={22}
                 />
@@ -1652,7 +1665,7 @@ export default function TicketDetailScreen() {
                   style={[
                     styles.workbenchAction,
                     {
-                      backgroundColor: colors.background,
+                      backgroundColor: colors.surfaceSubtle,
                       borderColor: colors.border,
                     },
                     suggestionsLoading && styles.disabled,
@@ -1661,7 +1674,7 @@ export default function TicketDetailScreen() {
                   <Text
                     style={[
                       styles.experienceActionText,
-                      { color: colors.primary },
+                      { color: colors.primaryText },
                     ]}
                   >
                     {suggestionsLoading
@@ -1669,10 +1682,13 @@ export default function TicketDetailScreen() {
                       : "Vorschläge anzeigen"}
                   </Text>
                   {suggestionsLoading ? (
-                    <ActivityIndicator color={colors.primary} size="small" />
+                    <ActivityIndicator
+                      color={colors.primaryText}
+                      size="small"
+                    />
                   ) : (
                     <Ionicons
-                      color={colors.primary}
+                      color={colors.primaryText}
                       name="sparkles-outline"
                       size={19}
                     />
@@ -1686,7 +1702,7 @@ export default function TicketDetailScreen() {
                       style={[
                         styles.suggestion,
                         {
-                          backgroundColor: colors.background,
+                          backgroundColor: colors.surfaceSubtle,
                           borderColor: colors.border,
                         },
                       ]}
@@ -1745,7 +1761,7 @@ export default function TicketDetailScreen() {
               </View>
               {reopenRequestsLoading ? (
                 <View style={styles.inlineLoading}>
-                  <ActivityIndicator color={colors.primary} size="small" />
+                  <ActivityIndicator color={colors.primaryText} size="small" />
                   <Text style={[styles.experienceText, tokenStyles.muted]}>
                     Anfragen werden geladen …
                   </Text>
@@ -1758,7 +1774,7 @@ export default function TicketDetailScreen() {
                       style={[
                         styles.reopenRequest,
                         {
-                          backgroundColor: colors.background,
+                          backgroundColor: colors.surfaceSubtle,
                           borderColor: colors.border,
                         },
                       ]}
@@ -1784,8 +1800,8 @@ export default function TicketDetailScreen() {
                           style={[
                             styles.decisionButton,
                             {
-                              backgroundColor: colors.success + "14",
-                              borderColor: colors.success,
+                              backgroundColor: colors.successSoft,
+                              borderColor: colors.successBorder,
                             },
                           ]}
                         >
@@ -1807,8 +1823,8 @@ export default function TicketDetailScreen() {
                           style={[
                             styles.decisionButton,
                             {
-                              backgroundColor: colors.error + "12",
-                              borderColor: colors.error,
+                              backgroundColor: colors.errorSoft,
+                              borderColor: colors.errorBorder,
                             },
                           ]}
                         >
@@ -1878,7 +1894,7 @@ export default function TicketDetailScreen() {
                   }
                   style={styles.contactAction}
                 >
-                  <Ionicons color="#087A95" name="mail-outline" size={14} />
+                  <Ionicons color={colors.info} name="mail-outline" size={14} />
                   <Text numberOfLines={1} style={styles.contactActionText}>
                     {ticket.requesterContact.email}
                   </Text>
@@ -2012,7 +2028,7 @@ export default function TicketDetailScreen() {
                 </Text>
               </View>
               <Ionicons
-                color={colors.primary}
+                color={colors.primaryText}
                 name="chatbox-ellipses-outline"
                 size={22}
               />
@@ -2028,18 +2044,21 @@ export default function TicketDetailScreen() {
               style={[
                 styles.workbenchAction,
                 {
-                  backgroundColor: colors.background,
+                  backgroundColor: colors.surfaceSubtle,
                   borderColor: colors.border,
                 },
               ]}
             >
               <Text
-                style={[styles.experienceActionText, { color: colors.primary }]}
+                style={[
+                  styles.experienceActionText,
+                  { color: colors.primaryText },
+                ]}
               >
                 Feedback geben
               </Text>
               <Ionicons
-                color={colors.primary}
+                color={colors.primaryText}
                 name="chevron-forward"
                 size={19}
               />
@@ -2124,10 +2143,10 @@ export default function TicketDetailScreen() {
                   onPress={() => setFollowUpSheetOpen(false)}
                   style={[
                     styles.selectionClose,
-                    { backgroundColor: colors.primary + "1A" },
+                    { backgroundColor: colors.primarySoft },
                   ]}
                 >
-                  <Ionicons color={colors.primary} name="close" size={22} />
+                  <Ionicons color={colors.primaryText} name="close" size={22} />
                 </Pressable>
               </View>
               <Text
@@ -2164,10 +2183,10 @@ export default function TicketDetailScreen() {
                         styles.experienceChoice,
                         {
                           backgroundColor: selected
-                            ? colors.primary + "14"
+                            ? colors.primarySoft
                             : colors.background,
                           borderColor: selected
-                            ? colors.primary
+                            ? colors.primaryText
                             : colors.border,
                         },
                       ]}
@@ -2177,7 +2196,7 @@ export default function TicketDetailScreen() {
                           styles.experienceChoiceText,
                           {
                             color: selected
-                              ? colors.primary
+                              ? colors.primaryText
                               : colors.foreground,
                           },
                         ]}
@@ -2186,7 +2205,7 @@ export default function TicketDetailScreen() {
                       </Text>
                       {selected ? (
                         <Ionicons
-                          color={colors.primary}
+                          color={colors.primaryText}
                           name="checkmark"
                           size={20}
                         />
@@ -2205,10 +2224,10 @@ export default function TicketDetailScreen() {
                   ]}
                 >
                   {savingFollowUp ? (
-                    <ActivityIndicator color={colors.background} size="small" />
+                    <ActivityIndicator color={colors.onPrimary} size="small" />
                   ) : (
                     <Ionicons
-                      color={colors.background}
+                      color={colors.onPrimary}
                       name="alarm-outline"
                       size={20}
                     />
@@ -2273,10 +2292,10 @@ export default function TicketDetailScreen() {
                   onPress={() => setResolutionSheetOpen(false)}
                   style={[
                     styles.selectionClose,
-                    { backgroundColor: colors.primary + "1A" },
+                    { backgroundColor: colors.primarySoft },
                   ]}
                 >
-                  <Ionicons color={colors.primary} name="close" size={22} />
+                  <Ionicons color={colors.primaryText} name="close" size={22} />
                 </Pressable>
               </View>
               <ScrollView
@@ -2308,9 +2327,15 @@ export default function TicketDetailScreen() {
                           styles.resolutionSheetChoice,
                           {
                             backgroundColor: selected
-                              ? accent + "16"
-                              : colors.background,
-                            borderColor: selected ? accent : colors.border,
+                              ? decision
+                                ? colors.successSoft
+                                : colors.errorSoft
+                              : colors.surfaceSubtle,
+                            borderColor: selected
+                              ? decision
+                                ? colors.successBorder
+                                : colors.errorBorder
+                              : colors.border,
                           },
                         ]}
                       >
@@ -2337,11 +2362,11 @@ export default function TicketDetailScreen() {
                     multiline
                     onChangeText={setResolutionComment}
                     placeholder="Was hat gut funktioniert oder was fehlt noch?"
-                    placeholderTextColor={colors.muted}
+                    placeholderTextColor={colors.subtle}
                     style={[
                       styles.resolutionInput,
                       {
-                        backgroundColor: colors.background,
+                        backgroundColor: colors.surfaceSubtle,
                         borderColor: colors.border,
                         color: colors.foreground,
                       },
@@ -2383,10 +2408,10 @@ export default function TicketDetailScreen() {
                   ]}
                 >
                   {submittingResolution ? (
-                    <ActivityIndicator color={colors.background} size="small" />
+                    <ActivityIndicator color={colors.onPrimary} size="small" />
                   ) : (
                     <Ionicons
-                      color={colors.background}
+                      color={colors.onPrimary}
                       name="send-outline"
                       size={20}
                     />
@@ -2453,10 +2478,10 @@ export default function TicketDetailScreen() {
                   onPress={() => setReopenSheetOpen(false)}
                   style={[
                     styles.selectionClose,
-                    { backgroundColor: colors.primary + "1A" },
+                    { backgroundColor: colors.primarySoft },
                   ]}
                 >
-                  <Ionicons color={colors.primary} name="close" size={22} />
+                  <Ionicons color={colors.primaryText} name="close" size={22} />
                 </Pressable>
               </View>
               <ScrollView
@@ -2482,11 +2507,11 @@ export default function TicketDetailScreen() {
                     multiline
                     onChangeText={setReopenReason}
                     placeholder="Was ist noch offen?"
-                    placeholderTextColor={colors.muted}
+                    placeholderTextColor={colors.subtle}
                     style={[
                       styles.resolutionInput,
                       {
-                        backgroundColor: colors.background,
+                        backgroundColor: colors.surfaceSubtle,
                         borderColor: colors.border,
                         color: colors.foreground,
                       },
@@ -2524,10 +2549,10 @@ export default function TicketDetailScreen() {
                   ]}
                 >
                   {requestingReopen ? (
-                    <ActivityIndicator color={colors.background} size="small" />
+                    <ActivityIndicator color={colors.onPrimary} size="small" />
                   ) : (
                     <Ionicons
-                      color={colors.background}
+                      color={colors.onPrimary}
                       name="send-outline"
                       size={20}
                     />
@@ -2594,10 +2619,10 @@ export default function TicketDetailScreen() {
                   onPress={() => setFeedbackSheetOpen(false)}
                   style={[
                     styles.selectionClose,
-                    { backgroundColor: colors.primary + "1A" },
+                    { backgroundColor: colors.primarySoft },
                   ]}
                 >
-                  <Ionicons color={colors.primary} name="close" size={22} />
+                  <Ionicons color={colors.primaryText} name="close" size={22} />
                 </Pressable>
               </View>
               <ScrollView
@@ -2615,7 +2640,10 @@ export default function TicketDetailScreen() {
                 </Text>
                 {feedbackLoading ? (
                   <View style={styles.inlineLoading}>
-                    <ActivityIndicator color={colors.primary} size="small" />
+                    <ActivityIndicator
+                      color={colors.primaryText}
+                      size="small"
+                    />
                     <Text style={[styles.experienceText, tokenStyles.muted]}>
                       Formular wird vorbereitet …
                     </Text>
@@ -2630,11 +2658,11 @@ export default function TicketDetailScreen() {
                       maxLength={180}
                       onChangeText={setFeedbackSubject}
                       placeholder="z. B. Bedienung im Ticketdetail"
-                      placeholderTextColor={colors.muted}
+                      placeholderTextColor={colors.subtle}
                       style={[
                         styles.feedbackInput,
                         {
-                          backgroundColor: colors.background,
+                          backgroundColor: colors.surfaceSubtle,
                           borderColor: colors.border,
                           color: colors.foreground,
                         },
@@ -2650,12 +2678,12 @@ export default function TicketDetailScreen() {
                       multiline
                       onChangeText={setFeedbackDescription}
                       placeholder="Was gefällt Ihnen oder was können wir verbessern?"
-                      placeholderTextColor={colors.muted}
+                      placeholderTextColor={colors.subtle}
                       style={[
                         styles.feedbackInput,
                         styles.feedbackDescriptionInput,
                         {
-                          backgroundColor: colors.background,
+                          backgroundColor: colors.surfaceSubtle,
                           borderColor: colors.border,
                           color: colors.foreground,
                         },
@@ -2682,7 +2710,7 @@ export default function TicketDetailScreen() {
                       ]}
                     >
                       <Ionicons
-                        color={colors.background}
+                        color={colors.onPrimary}
                         name="checkmark-circle-outline"
                         size={20}
                       />
@@ -2740,11 +2768,11 @@ export default function TicketDetailScreen() {
               <View
                 style={[
                   styles.closeConfirmationIcon,
-                  { backgroundColor: colors.primary + "1A" },
+                  { backgroundColor: colors.primarySoft },
                 ]}
               >
                 <Ionicons
-                  color={colors.primary}
+                  color={colors.primaryText}
                   name="send-outline"
                   size={22}
                 />
@@ -2770,7 +2798,7 @@ export default function TicketDetailScreen() {
                 ]}
               >
                 {submittingFeedback ? (
-                  <ActivityIndicator color={colors.background} size="small" />
+                  <ActivityIndicator color={colors.onPrimary} size="small" />
                 ) : null}
                 <Text style={styles.closeConfirmationButtonText}>
                   {submittingFeedback
@@ -2788,7 +2816,7 @@ export default function TicketDetailScreen() {
                 <Text
                   style={[
                     styles.closeConfirmationCancelText,
-                    { color: colors.primary },
+                    { color: colors.primaryText },
                   ]}
                 >
                   Abbrechen
@@ -2825,8 +2853,8 @@ export default function TicketDetailScreen() {
                   {
                     backgroundColor:
                       pendingReopenDecision?.decision === "accepted"
-                        ? colors.success + "1A"
-                        : colors.error + "12",
+                        ? colors.successSoft
+                        : colors.errorSoft,
                   },
                 ]}
               >
@@ -2874,7 +2902,7 @@ export default function TicketDetailScreen() {
                 ]}
               >
                 {decidingReopen ? (
-                  <ActivityIndicator color={colors.background} size="small" />
+                  <ActivityIndicator color={colors.onPrimary} size="small" />
                 ) : null}
                 <Text style={styles.closeConfirmationButtonText}>
                   {decidingReopen
@@ -2892,7 +2920,7 @@ export default function TicketDetailScreen() {
                 <Text
                   style={[
                     styles.closeConfirmationCancelText,
-                    { color: colors.primary },
+                    { color: colors.primaryText },
                   ]}
                 >
                   Abbrechen
@@ -2931,7 +2959,7 @@ export default function TicketDetailScreen() {
                   onPress={() => setSelection(null)}
                   style={styles.selectionClose}
                 >
-                  <Ionicons color="#4438CA" name="close" size={22} />
+                  <Ionicons color={colors.primaryText} name="close" size={22} />
                 </Pressable>
               </View>
               <ScrollView
@@ -2974,10 +3002,14 @@ export default function TicketDetailScreen() {
                         {option.label}
                       </Text>
                       {selected ? (
-                        <Ionicons color="#4438CA" name="checkmark" size={21} />
+                        <Ionicons
+                          color={colors.primaryText}
+                          name="checkmark"
+                          size={21}
+                        />
                       ) : (
                         <Ionicons
-                          color="#858398"
+                          color={colors.subtle}
                           name="chevron-forward"
                           size={19}
                         />
@@ -3006,7 +3038,7 @@ export default function TicketDetailScreen() {
             <View accessibilityViewIsModal style={styles.closeConfirmationCard}>
               <View style={styles.closeConfirmationIcon}>
                 <Ionicons
-                  color="#9A5B12"
+                  color={colors.warning}
                   name="lock-closed-outline"
                   size={22}
                 />
@@ -3061,7 +3093,7 @@ export default function TicketDetailScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeThemedStyles((c) => ({
   keyboardAvoider: { flex: 1 },
   content: { gap: 16, paddingTop: 14, paddingBottom: 220 },
   centered: {
@@ -3077,7 +3109,7 @@ const styles = StyleSheet.create({
   },
   backButton: {
     alignItems: "center",
-    backgroundColor: "#EEECFF",
+    backgroundColor: c.primarySoft,
     borderRadius: 18,
     height: 40,
     justifyContent: "center",
@@ -3085,7 +3117,7 @@ const styles = StyleSheet.create({
   },
   editButton: {
     alignItems: "center",
-    backgroundColor: "#EEECFF",
+    backgroundColor: c.primarySoft,
     borderRadius: 14,
     flexDirection: "row",
     gap: 5,
@@ -3093,37 +3125,37 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     paddingHorizontal: 10,
   },
-  editButtonText: { color: "#4438CA", fontSize: 12, fontWeight: "800" },
-  topTitle: { color: "#202136", fontSize: 17, fontWeight: "800" },
+  editButtonText: { color: c.primaryText, fontSize: 12, fontWeight: "800" },
+  topTitle: { color: c.foreground, fontSize: 17, fontWeight: "800" },
   favoriteButton: {
     alignItems: "center",
-    backgroundColor: "#EEECFF",
+    backgroundColor: c.primarySoft,
     borderRadius: 18,
     height: 40,
     justifyContent: "center",
     width: 40,
   },
-  favoriteButtonActive: { backgroundColor: "#4438CA" },
+  favoriteButtonActive: { backgroundColor: c.primary },
   ticketHead: { gap: 8, paddingTop: 8 },
   ticketId: {
-    color: "#77758C",
+    color: c.muted,
     fontSize: 11,
     fontWeight: "800",
     letterSpacing: 0.8,
   },
   title: {
-    color: "#202136",
+    color: c.foreground,
     fontSize: 27,
     fontWeight: "800",
     letterSpacing: -0.5,
     lineHeight: 33,
   },
   titleInput: {
-    backgroundColor: "#FFFFFF",
-    borderColor: "#8B82F4",
+    backgroundColor: c.surface,
+    borderColor: c.primaryText,
     borderRadius: 13,
     borderWidth: 1,
-    color: "#202136",
+    color: c.foreground,
     fontSize: 22,
     fontWeight: "800",
     lineHeight: 29,
@@ -3133,14 +3165,14 @@ const styles = StyleSheet.create({
   inlineSave: {
     alignItems: "center",
     alignSelf: "flex-end",
-    backgroundColor: "#4438CA",
+    backgroundColor: c.primary,
     borderRadius: 12,
     justifyContent: "center",
     minHeight: 38,
     minWidth: 42,
     paddingHorizontal: 13,
   },
-  inlineSaveText: { color: "#FFFFFF", fontSize: 13, fontWeight: "800" },
+  inlineSaveText: { color: c.onPrimary, fontSize: 13, fontWeight: "800" },
   status: {
     alignItems: "center",
     alignSelf: "flex-start",
@@ -3151,21 +3183,21 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
   },
   statusText: { fontSize: 12, fontWeight: "800" },
-  statusOpen: { backgroundColor: "#E0F6FB" },
-  statusResolved: { backgroundColor: "#E9F8EE" },
-  statusTextOpen: { color: "#036B83" },
-  statusTextResolved: { color: "#166534" },
+  statusOpen: { backgroundColor: c.infoSoft },
+  statusResolved: { backgroundColor: c.successSoft },
+  statusTextOpen: { color: c.info },
+  statusTextResolved: { color: c.success },
   card: {
-    backgroundColor: "#FFFFFF",
-    borderColor: "#ECECF3",
+    backgroundColor: c.surface,
+    borderColor: c.border,
     borderRadius: 20,
     borderWidth: 1,
     gap: 7,
     padding: 17,
   },
   experienceCard: {
-    backgroundColor: "#FFFFFF",
-    borderColor: "#ECECF3",
+    backgroundColor: c.surface,
+    borderColor: c.border,
     borderRadius: 20,
     borderWidth: 1,
     gap: 13,
@@ -3281,8 +3313,8 @@ const styles = StyleSheet.create({
   resolutionActionText: { fontSize: 14, fontWeight: "800" },
   contextCard: {
     alignItems: "stretch",
-    backgroundColor: "#FFFFFF",
-    borderColor: "#ECECF3",
+    backgroundColor: c.surface,
+    borderColor: c.border,
     borderRadius: 18,
     borderWidth: 1,
     flexDirection: "row",
@@ -3290,16 +3322,16 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   contextItem: { flex: 1, gap: 5 },
-  contextDivider: { backgroundColor: "#ECECF3", width: 1 },
+  contextDivider: { backgroundColor: c.border, width: 1 },
   cardLabel: {
-    color: "#77758C",
+    color: c.muted,
     fontSize: 10,
     fontWeight: "800",
     letterSpacing: 0.9,
     marginTop: 2,
   },
   cardValue: {
-    color: "#202136",
+    color: c.foreground,
     fontSize: 15,
     fontWeight: "700",
   },
@@ -3310,26 +3342,26 @@ const styles = StyleSheet.create({
     marginTop: 7,
   },
   contactActionText: {
-    color: "#087A95",
+    color: c.info,
     flex: 1,
     fontSize: 11,
     fontWeight: "700",
   },
-  description: { color: "#4B4C60", fontSize: 15, lineHeight: 23 },
+  description: { color: c.text, fontSize: 15, lineHeight: 23 },
   descriptionInput: {
-    backgroundColor: "#F7F7FB",
-    borderColor: "#8B82F4",
+    backgroundColor: c.surfaceSubtle,
+    borderColor: c.primaryText,
     borderRadius: 13,
     borderWidth: 1,
-    color: "#202136",
+    color: c.foreground,
     fontSize: 15,
     lineHeight: 23,
     minHeight: 145,
     padding: 12,
   },
   editorCard: {
-    backgroundColor: "#FFFFFF",
-    borderColor: "#DCD9F0",
+    backgroundColor: c.surface,
+    borderColor: c.borderStrong,
     borderRadius: 22,
     borderWidth: 1,
     gap: 16,
@@ -3340,21 +3372,21 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
   },
-  editorCopy: { color: "#77758C", fontSize: 12, lineHeight: 18, marginTop: 3 },
+  editorCopy: { color: c.muted, fontSize: 12, lineHeight: 18, marginTop: 3 },
   editorIcon: {
     alignItems: "center",
-    backgroundColor: "#EEECFF",
+    backgroundColor: c.primarySoft,
     borderRadius: 15,
     height: 36,
     justifyContent: "center",
     width: 36,
   },
   editorField: { gap: 7 },
-  missingRequester: { color: "#77758C", fontSize: 13, lineHeight: 19 },
+  missingRequester: { color: c.muted, fontSize: 13, lineHeight: 19 },
   selector: {
     alignItems: "center",
-    backgroundColor: "#F7F7FB",
-    borderColor: "#E1E0EC",
+    backgroundColor: c.surfaceSubtle,
+    borderColor: c.border,
     borderRadius: 14,
     borderWidth: 1,
     flexDirection: "row",
@@ -3362,11 +3394,11 @@ const styles = StyleSheet.create({
     minHeight: 58,
     paddingHorizontal: 14,
   },
-  selectorValue: { color: "#292A3E", fontSize: 15, fontWeight: "800" },
-  selectorHint: { color: "#77758C", fontSize: 11, marginTop: 2 },
-  editTitle: { color: "#202136", fontSize: 18, fontWeight: "800" },
+  selectorValue: { color: c.foreground, fontSize: 15, fontWeight: "800" },
+  selectorHint: { color: c.muted, fontSize: 11, marginTop: 2 },
+  editTitle: { color: c.foreground, fontSize: 18, fontWeight: "800" },
   fieldLabel: {
-    color: "#77758C",
+    color: c.muted,
     fontSize: 10,
     fontWeight: "800",
     letterSpacing: 0.9,
@@ -3374,20 +3406,20 @@ const styles = StyleSheet.create({
   },
   optionWrap: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   option: {
-    backgroundColor: "#F7F7FB",
-    borderColor: "#E5E5EF",
+    backgroundColor: c.surfaceSubtle,
+    borderColor: c.border,
     borderRadius: 13,
     borderWidth: 1,
     minHeight: 39,
     paddingHorizontal: 12,
     paddingVertical: 9,
   },
-  optionActive: { backgroundColor: "#4438CA", borderColor: "#4438CA" },
-  optionText: { color: "#555568", fontSize: 13, fontWeight: "800" },
-  optionTextActive: { color: "#FFFFFF" },
+  optionActive: { backgroundColor: c.primary, borderColor: c.primary },
+  optionText: { color: c.text, fontSize: 13, fontWeight: "800" },
+  optionTextActive: { color: c.onPrimary },
   primaryButton: {
     alignItems: "center",
-    backgroundColor: "#4438CA",
+    backgroundColor: c.primary,
     borderRadius: 16,
     flexDirection: "row",
     gap: 9,
@@ -3396,18 +3428,18 @@ const styles = StyleSheet.create({
     minHeight: 52,
     paddingHorizontal: 16,
   },
-  primaryButtonText: { color: "#FFFFFF", fontSize: 15, fontWeight: "800" },
+  primaryButtonText: { color: c.onPrimary, fontSize: 15, fontWeight: "800" },
   secondaryButton: {
-    backgroundColor: "#EEECFF",
+    backgroundColor: c.primarySoft,
     borderRadius: 14,
     paddingHorizontal: 16,
     paddingVertical: 12,
   },
-  secondaryButtonText: { color: "#4438CA", fontWeight: "800" },
-  hint: { color: "#77758C", fontSize: 12, lineHeight: 18, textAlign: "center" },
-  copy: { color: "#626376", fontSize: 15 },
+  secondaryButtonText: { color: c.primaryText, fontWeight: "800" },
+  hint: { color: c.muted, fontSize: 12, lineHeight: 18, textAlign: "center" },
+  copy: { color: c.muted, fontSize: 15 },
   emptyTitle: {
-    color: "#202136",
+    color: c.foreground,
     fontSize: 17,
     fontWeight: "800",
     textAlign: "center",
@@ -3421,9 +3453,9 @@ const styles = StyleSheet.create({
     padding: 13,
   },
   feedbackText: { flex: 1, fontSize: 13, lineHeight: 19 },
-  error: { color: "#A02820", fontSize: 13, lineHeight: 19 },
+  error: { color: c.error, fontSize: 13, lineHeight: 19 },
   experienceSheetRoot: {
-    backgroundColor: "rgba(25, 25, 42, 0.42)",
+    backgroundColor: c.overlay,
     flex: 1,
     justifyContent: "flex-end",
   },
@@ -3507,12 +3539,12 @@ const styles = StyleSheet.create({
   skeletonShortLine: { borderRadius: 6, height: 13, width: "64%" },
   disabled: { opacity: 0.55 },
   selectionModalRoot: {
-    backgroundColor: "rgba(25, 25, 42, 0.42)",
+    backgroundColor: c.overlay,
     flex: 1,
     justifyContent: "flex-end",
   },
   selectionSheet: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: c.surface,
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
     gap: 15,
@@ -3526,20 +3558,20 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   selectionEyebrow: {
-    color: "#77758C",
+    color: c.muted,
     fontSize: 10,
     fontWeight: "800",
     letterSpacing: 0.9,
   },
   selectionTitle: {
-    color: "#202136",
+    color: c.foreground,
     fontSize: 21,
     fontWeight: "800",
     marginTop: 3,
   },
   selectionClose: {
     alignItems: "center",
-    backgroundColor: "#EEECFF",
+    backgroundColor: c.primarySoft,
     borderRadius: 16,
     height: 36,
     justifyContent: "center",
@@ -3548,8 +3580,8 @@ const styles = StyleSheet.create({
   selectionOptions: { gap: 8, paddingBottom: 4 },
   selectionOption: {
     alignItems: "center",
-    backgroundColor: "#FFFFFF",
-    borderColor: "#E5E5EF",
+    backgroundColor: c.surface,
+    borderColor: c.border,
     borderRadius: 14,
     borderWidth: 1,
     flexDirection: "row",
@@ -3557,19 +3589,22 @@ const styles = StyleSheet.create({
     minHeight: 54,
     paddingHorizontal: 14,
   },
-  selectionOptionActive: { backgroundColor: "#F0EFFB", borderColor: "#4438CA" },
-  selectionOptionText: { color: "#363653", fontSize: 15, fontWeight: "800" },
-  selectionOptionTextActive: { color: "#4438CA" },
+  selectionOptionActive: {
+    backgroundColor: c.primarySoft,
+    borderColor: c.primaryText,
+  },
+  selectionOptionText: { color: c.text, fontSize: 15, fontWeight: "800" },
+  selectionOptionTextActive: { color: c.primaryText },
   closeConfirmationRoot: {
     alignItems: "center",
-    backgroundColor: "rgba(25, 25, 42, 0.42)",
+    backgroundColor: c.overlay,
     flex: 1,
     justifyContent: "center",
     padding: 24,
   },
   closeConfirmationCard: {
     alignItems: "stretch",
-    backgroundColor: "#FFFFFF",
+    backgroundColor: c.surface,
     borderRadius: 24,
     gap: 13,
     maxWidth: 420,
@@ -3578,17 +3613,21 @@ const styles = StyleSheet.create({
   },
   closeConfirmationIcon: {
     alignItems: "center",
-    backgroundColor: "#FFF4DB",
+    backgroundColor: c.warningSoft,
     borderRadius: 17,
     height: 44,
     justifyContent: "center",
     width: 44,
   },
-  closeConfirmationTitle: { color: "#202136", fontSize: 21, fontWeight: "900" },
-  closeConfirmationText: { color: "#626376", fontSize: 14, lineHeight: 21 },
+  closeConfirmationTitle: {
+    color: c.foreground,
+    fontSize: 21,
+    fontWeight: "900",
+  },
+  closeConfirmationText: { color: c.muted, fontSize: 14, lineHeight: 21 },
   closeConfirmationButton: {
     alignItems: "center",
-    backgroundColor: "#9A5B12",
+    backgroundColor: c.warningStrong,
     borderRadius: 14,
     justifyContent: "center",
     marginTop: 5,
@@ -3596,7 +3635,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   closeConfirmationButtonText: {
-    color: "#FFFFFF",
+    color: c.onPrimary,
     fontSize: 14,
     fontWeight: "900",
   },
@@ -3606,8 +3645,8 @@ const styles = StyleSheet.create({
     minHeight: 40,
   },
   closeConfirmationCancelText: {
-    color: "#4438CA",
+    color: c.primaryText,
     fontSize: 13,
     fontWeight: "800",
   },
-});
+}));

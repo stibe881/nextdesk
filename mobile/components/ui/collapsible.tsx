@@ -2,11 +2,14 @@ import { PropsWithChildren, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 
 import { IconSymbol } from "@/components/ui/icon-symbol";
-import { useColors } from "@/hooks/use-colors";
+import { useAppColors } from "@/lib/themed-styles";
 
-export function Collapsible({ children, title }: PropsWithChildren & { title: string }) {
+export function Collapsible({
+  children,
+  title,
+}: PropsWithChildren & { title: string }) {
   const [isOpen, setIsOpen] = useState(false);
-  const colors = useColors();
+  const colors = useAppColors();
 
   return (
     <View className="bg-background">
@@ -19,7 +22,7 @@ export function Collapsible({ children, title }: PropsWithChildren & { title: st
           name="chevron.right"
           size={18}
           weight="medium"
-          color={colors.icon}
+          color={colors.subtle}
           style={{ transform: [{ rotate: isOpen ? "90deg" : "0deg" }] }}
         />
         <Text className="text-base font-semibold text-foreground">{title}</Text>
