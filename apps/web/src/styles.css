@@ -8303,3 +8303,77 @@ body:has(.ticket-detail) {
     align-self: flex-start;
   }
 }
+
+.ticket-csv-export {
+  align-items: center;
+  display: inline-flex;
+  gap: 8px;
+}
+.ticket-csv-import {
+  position: relative;
+}
+.ticket-csv-import > summary {
+  align-items: center;
+  color: var(--primary);
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 14px;
+  font-weight: 650;
+  gap: 7px;
+  min-height: 42px;
+}
+.ticket-csv-import__content {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow-lg);
+  display: grid;
+  gap: 12px;
+  margin-top: 8px;
+  min-width: min(420px, 88vw);
+  padding: 16px;
+  position: absolute;
+  right: 0;
+  top: 100%;
+  z-index: 20;
+}
+.ticket-csv-import__content p {
+  color: var(--muted);
+  font-size: 0.9rem;
+  margin: 0;
+}
+.ticket-csv-import__content label {
+  color: var(--ink);
+  display: grid;
+  font-size: 0.85rem;
+  font-weight: 650;
+  gap: 5px;
+}
+.ticket-csv-import__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.ticket-csv-import__preview {
+  background: var(--warning-soft);
+  border: 1px solid #fed7aa;
+  border-radius: 9px;
+  display: grid;
+  font-size: 0.88rem;
+  gap: 5px;
+  padding: 10px;
+}
+.ticket-csv-import__preview ul {
+  margin: 0;
+  padding-left: 18px;
+}
+@media (max-width: 760px) {
+  .ticket-csv-import__content {
+    left: 0;
+    right: auto;
+  }
+  .ticket-list-heading-actions {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+}

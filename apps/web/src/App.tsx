@@ -50,6 +50,7 @@ import {
 import { acceptTenantInvitations } from "./lib/tenant-invitations";
 import { TicketComposer } from "./ticket-composer";
 import { TicketCsvExport } from "./ticket-csv-export";
+import { TicketCsvImport } from "./ticket-csv-import";
 import { TicketDetail } from "./ticket-detail";
 import { TenantAdminSettings } from "./tenant-admin-settings";
 import { KnowledgeBase } from "./knowledge-base";
@@ -2084,6 +2085,16 @@ export function App() {
                   </span>
                   {activeTenant && (
                     <TicketCsvExport tenantId={activeTenant.id} />
+                  )}
+                  {activeTenant && (
+                    <TicketCsvImport
+                      onImported={() => {
+                        clearTicketSelection();
+                        setTicketPage(0);
+                        setDashboardRevision((revision) => revision + 1);
+                      }}
+                      tenantId={activeTenant.id}
+                    />
                   )}
                   {canWorkTickets && ticketScope !== "all" && (
                     <button
