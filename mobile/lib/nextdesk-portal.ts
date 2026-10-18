@@ -28,12 +28,47 @@ export type AgentMention = {
   created_at: string;
 };
 
+export type AgentMetricTicketIds = {
+  assigned: string[];
+  solvedToday: string[];
+  firstResponse: string[];
+  dueFollowUps: string[];
+};
+
 export type AgentMetrics = {
   open: number;
   solvedToday: number;
   medianFirstResponseMinutes: number | null;
   dueFollowUps: number;
+  /** Fehlt bei älteren Serverständen; dann sind die Kennzahlen nicht antippbar. */
+  ticketIds?: AgentMetricTicketIds;
 };
+
+const metricTicketIdPattern =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function parseMetricTicketIdList(value: unknown): string[] | null {
+  if (!Array.isArray(value) || value.length > 100) return null;
+  const ids = value.filter(
+    (entry): entry is string =>
+      typeof entry === "string" && metricTicketIdPattern.test(entry),
+  );
+  return ids.length === value.length ? ids : null;
+}
+
+function parseMetricTicketIds(
+  value: unknown,
+): AgentMetricTicketIds | undefined {
+  if (typeof value !== "object" || value === null) return undefined;
+  const record = value as Record<string, unknown>;
+  const assigned = parseMetricTicketIdList(record.assigned);
+  const solvedToday = parseMetricTicketIdList(record.solvedToday);
+  const firstResponse = parseMetricTicketIdList(record.firstResponse);
+  const dueFollowUps = parseMetricTicketIdList(record.dueFollowUps);
+  if (!assigned || !solvedToday || !firstResponse || !dueFollowUps)
+    return undefined;
+  return { assigned, solvedToday, firstResponse, dueFollowUps };
+}
 
 export type PortalApproval = {
   id: string;
@@ -232,7 +267,15 @@ export async function markMentionRead(mentionId: string): Promise<{
 }
 
 export async function getMyMetrics(): Promise<{ metrics: AgentMetrics }> {
-  return invokeTenantFunction("agent-workbench", { type: "myMetrics" });
+  const result = await invokeTenantFunction<{
+    metrics: AgentMetrics & { ticketIds?: unknown };
+  }>("agent-workbench", { type: "myMetrics" });
+  return {
+    metrics: {
+      ...result.metrics,
+      ticketIds: parseMetricTicketIds(result.metrics.ticketIds),
+    },
+  };
 }
 
 export async function listActiveIncidentNotices(): Promise<{

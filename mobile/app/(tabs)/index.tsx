@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Image,
@@ -36,17 +36,35 @@ import {
   nextDesk,
   type MobileTenant,
 } from "@/lib/nextdesk-client";
-import { loadMobileDashboard, type MobileTicket } from "@/lib/nextdesk-tickets";
+import {
+  loadMobileDashboard,
+  loadMobileTicketsByIds,
+  type MobileTicket,
+} from "@/lib/nextdesk-tickets";
 import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
 import { useThemeContext } from "@/lib/theme-provider";
 
-type TicketScope = "all" | "mine" | "open" | "resolved";
+type FocusScope = "assigned" | "solvedToday" | "firstResponse" | "dueFollowUps";
+type TicketScope = "all" | "mine" | "open" | "resolved" | FocusScope;
 
 const ticketScopeLabels: Record<Exclude<TicketScope, "all">, string> = {
   mine: "Meine Tickets",
   open: "Offene Tickets",
   resolved: "Gelöste Tickets",
+  assigned: "Mir zugewiesen",
+  solvedToday: "Heute gelöst",
+  firstResponse: "Mit erster Antwort",
+  dueFollowUps: "Fällige Wiedervorlagen",
 };
+
+function isFocusScope(scope: TicketScope): scope is FocusScope {
+  return (
+    scope === "assigned" ||
+    scope === "solvedToday" ||
+    scope === "firstResponse" ||
+    scope === "dueFollowUps"
+  );
+}
 
 function formatDateTime(value: string): string {
   const date = new Date(value);
@@ -103,6 +121,16 @@ export default function HomeScreen() {
   const [tenant, setTenant] = useState<MobileTenant | null>(null);
   const [tickets, setTickets] = useState<MobileTicket[]>([]);
   const [ticketScope, setTicketScope] = useState<TicketScope>("all");
+  // Tickets, die eine Kennzahl enthält, aber nicht unter den zuletzt
+  // geänderten Tickets der Startseite sind.
+  const [extraTickets, setExtraTickets] = useState<MobileTicket[]>([]);
+  // IDs, deren Nachladen bereits versucht wurde (erfolgreich oder nicht).
+  const [attemptedFocusIds, setAttemptedFocusIds] = useState<
+    ReadonlySet<string>
+  >(() => new Set());
+  const focusLoadInFlight = useRef("");
+  const scrollRef = useRef<ScrollView>(null);
+  const ticketListOffset = useRef(0);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
@@ -153,6 +181,8 @@ export default function HomeScreen() {
       if (requestId !== dashboardRequest.current) return;
       setTenant(result.tenant);
       setTickets(result.tickets);
+      setExtraTickets([]);
+      setAttemptedFocusIds(new Set());
     } catch (nextError) {
       if (requestId !== dashboardRequest.current) return;
       setError(
@@ -266,12 +296,81 @@ export default function HomeScreen() {
     }, [loadSupplementaryData]),
   );
 
-  const visibleTickets = tickets.filter((ticket) => {
-    if (ticketScope === "mine") return ticket.assignedToCurrentUser;
-    if (ticketScope === "open") return !ticket.resolved;
-    if (ticketScope === "resolved") return ticket.resolved;
-    return true;
-  });
+  const focusTicketIds = useMemo(
+    () =>
+      isFocusScope(ticketScope)
+        ? (agentMetrics?.ticketIds?.[ticketScope] ?? [])
+        : [],
+    [agentMetrics, ticketScope],
+  );
+  const missingFocusIds = useMemo(() => {
+    const known = new Set([
+      ...tickets.map((ticket) => ticket.id),
+      ...extraTickets.map((ticket) => ticket.id),
+    ]);
+    return focusTicketIds.filter(
+      (id) => !known.has(id) && !attemptedFocusIds.has(id),
+    );
+  }, [attemptedFocusIds, extraTickets, focusTicketIds, tickets]);
+  const focusLoading = missingFocusIds.length > 0;
+  useEffect(() => {
+    if (missingFocusIds.length === 0) return;
+    const key = missingFocusIds.join(",");
+    if (focusLoadInFlight.current === key) return;
+    focusLoadInFlight.current = key;
+    const markAttempted = () =>
+      setAttemptedFocusIds((current) => {
+        const next = new Set(current);
+        missingFocusIds.forEach((id) => next.add(id));
+        return next;
+      });
+    loadMobileTicketsByIds(missingFocusIds)
+      .then((loaded) => {
+        setExtraTickets((current) => {
+          const ids = new Set(current.map((ticket) => ticket.id));
+          return [
+            ...current,
+            ...loaded.filter((ticket) => !ids.has(ticket.id)),
+          ];
+        });
+        markAttempted();
+      })
+      .catch(() => {
+        // Nicht ladbare Tickets (z. B. offline) werden nicht angezeigt.
+        markAttempted();
+      })
+      .finally(() => {
+        if (focusLoadInFlight.current === key) focusLoadInFlight.current = "";
+      });
+  }, [missingFocusIds]);
+  const visibleTickets = (() => {
+    if (isFocusScope(ticketScope)) {
+      const byId = new Map(
+        [...extraTickets, ...tickets].map((ticket) => [ticket.id, ticket]),
+      );
+      return focusTicketIds
+        .map((id) => byId.get(id))
+        .filter((ticket): ticket is MobileTicket => ticket !== undefined);
+    }
+    return tickets.filter((ticket) => {
+      if (ticketScope === "mine") return ticket.assignedToCurrentUser;
+      if (ticketScope === "open") return !ticket.resolved;
+      if (ticketScope === "resolved") return ticket.resolved;
+      return true;
+    });
+  })();
+  const canOpenFocus = Boolean(agentMetrics?.ticketIds);
+  const selectFocusScope = (scope: FocusScope) => {
+    if (ticketScope === scope) {
+      setTicketScope("all");
+      return;
+    }
+    setTicketScope(scope);
+    scrollRef.current?.scrollTo({
+      animated: true,
+      y: Math.max(0, ticketListOffset.current - 12),
+    });
+  };
   const scopeCount = (scope: Exclude<TicketScope, "all">) =>
     tickets.filter((ticket) => {
       if (scope === "mine") return ticket.assignedToCurrentUser;
@@ -334,6 +433,7 @@ export default function HomeScreen() {
       style={{ backgroundColor: colors.background }}
     >
       <ScrollView
+        ref={scrollRef}
         contentContainerStyle={[styles.content, isWide && styles.contentWide]}
         refreshControl={
           <RefreshControl
@@ -388,7 +488,10 @@ export default function HomeScreen() {
           {metricsAvailable && agentMetrics ? (
             <View style={styles.heroKpis}>
               <HeroKpi
+                disabled={!canOpenFocus}
                 label="Mir zugewiesen"
+                onPress={() => selectFocusScope("assigned")}
+                selected={ticketScope === "assigned"}
                 value={String(agentMetrics.open)}
               />
               <View
@@ -398,7 +501,10 @@ export default function HomeScreen() {
                 ]}
               />
               <HeroKpi
+                disabled={!canOpenFocus}
                 label="Heute gelöst"
+                onPress={() => selectFocusScope("solvedToday")}
+                selected={ticketScope === "solvedToday"}
                 value={String(agentMetrics.solvedToday)}
               />
               <View
@@ -408,7 +514,10 @@ export default function HomeScreen() {
                 ]}
               />
               <HeroKpi
+                disabled={!canOpenFocus}
                 label="Erste Antwort"
+                onPress={() => selectFocusScope("firstResponse")}
+                selected={ticketScope === "firstResponse"}
                 value={
                   agentMetrics.medianFirstResponseMinutes === null
                     ? "—"
@@ -422,7 +531,10 @@ export default function HomeScreen() {
                 ]}
               />
               <HeroKpi
+                disabled={!canOpenFocus}
                 label="Fällig"
+                onPress={() => selectFocusScope("dueFollowUps")}
+                selected={ticketScope === "dueFollowUps"}
                 value={String(agentMetrics.dueFollowUps)}
               />
             </View>
@@ -532,7 +644,12 @@ export default function HomeScreen() {
           />
         </View>
 
-        <View style={styles.sectionHeader}>
+        <View
+          onLayout={(event) => {
+            ticketListOffset.current = event.nativeEvent.layout.y;
+          }}
+          style={styles.sectionHeader}
+        >
           <View>
             <Text style={[styles.sectionTitle, tokenStyles.foreground]}>
               {ticketScope === "all"
@@ -542,7 +659,11 @@ export default function HomeScreen() {
             <Text style={[styles.sectionSub, tokenStyles.muted]}>
               {ticketScope === "all"
                 ? "Deine zuletzt bearbeiteten Vorgänge"
-                : `${visibleTickets.length} passende Vorgänge`}
+                : focusLoading
+                  ? "Passende Tickets werden geladen …"
+                  : ticketScope === "firstResponse"
+                    ? `${visibleTickets.length} Tickets · Grundlage der ersten Antwortzeit`
+                    : `${visibleTickets.length} passende Vorgänge`}
             </Text>
           </View>
           <Pressable
@@ -567,94 +688,96 @@ export default function HomeScreen() {
           </View>
         ) : (
           <View style={styles.list}>
-            {visibleTickets.slice(0, 10).map((ticket) => (
-              <Pressable
-                accessibilityRole="button"
-                accessibilityState={{
-                  disabled: checkingFeatures || !ticketDetailsEnabled,
-                }}
-                disabled={checkingFeatures || !ticketDetailsEnabled}
-                key={ticket.id}
-                onPress={() =>
-                  router.push({
-                    pathname: "/ticket/[id]",
-                    params: { id: ticket.id },
-                  })
-                }
-                style={[
-                  styles.ticket,
-                  tokenStyles.card,
-                  (checkingFeatures || !ticketDetailsEnabled) &&
-                    styles.ticketDisabled,
-                ]}
-              >
-                <View
+            {visibleTickets
+              .slice(0, isFocusScope(ticketScope) ? 100 : 10)
+              .map((ticket) => (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityState={{
+                    disabled: checkingFeatures || !ticketDetailsEnabled,
+                  }}
+                  disabled={checkingFeatures || !ticketDetailsEnabled}
+                  key={ticket.id}
+                  onPress={() =>
+                    router.push({
+                      pathname: "/ticket/[id]",
+                      params: { id: ticket.id },
+                    })
+                  }
                   style={[
-                    styles.ticketMark,
-                    {
-                      backgroundColor: ticket.resolved
-                        ? colors.success
-                        : colors.primary,
-                    },
+                    styles.ticket,
+                    tokenStyles.card,
+                    (checkingFeatures || !ticketDetailsEnabled) &&
+                      styles.ticketDisabled,
                   ]}
-                />
-                <View style={styles.ticketContent}>
-                  <Text style={[styles.ticketId, tokenStyles.muted]}>
-                    {ticket.ticketNumber}
-                  </Text>
-                  <Text
-                    numberOfLines={1}
-                    style={[styles.ticketTitle, tokenStyles.foreground]}
-                  >
-                    {ticket.subject}
-                  </Text>
-                  <Text style={[styles.ticketMeta, tokenStyles.muted]}>
-                    {ticket.priority}
-                  </Text>
-                </View>
-                <View style={styles.ticketRight}>
+                >
                   <View
-                    accessibilityLabel={`Status: ${ticket.status}`}
                     style={[
-                      styles.status,
+                      styles.ticketMark,
                       {
                         backgroundColor: ticket.resolved
-                          ? colors.successSoft
-                          : colors.primarySoft,
+                          ? colors.success
+                          : colors.primary,
                       },
                     ]}
-                  >
-                    <Ionicons
-                      color={
-                        ticket.resolved ? colors.success : colors.primaryText
-                      }
-                      name={
-                        ticket.resolved
-                          ? "checkmark-circle-outline"
-                          : "time-outline"
-                      }
-                      size={13}
-                    />
+                  />
+                  <View style={styles.ticketContent}>
+                    <Text style={[styles.ticketId, tokenStyles.muted]}>
+                      {ticket.ticketNumber}
+                    </Text>
                     <Text
-                      style={{
-                        color: ticket.resolved
-                          ? colors.success
-                          : colors.primaryText,
-                        fontSize: 10,
-                        fontWeight: "800",
-                      }}
+                      numberOfLines={1}
+                      style={[styles.ticketTitle, tokenStyles.foreground]}
                     >
-                      {ticket.status}
+                      {ticket.subject}
+                    </Text>
+                    <Text style={[styles.ticketMeta, tokenStyles.muted]}>
+                      {ticket.priority}
                     </Text>
                   </View>
-                  <Ionicons
-                    color={colors.subtle}
-                    name="chevron-forward"
-                    size={18}
-                  />
-                </View>
-              </Pressable>
-            ))}
+                  <View style={styles.ticketRight}>
+                    <View
+                      accessibilityLabel={`Status: ${ticket.status}`}
+                      style={[
+                        styles.status,
+                        {
+                          backgroundColor: ticket.resolved
+                            ? colors.successSoft
+                            : colors.primarySoft,
+                        },
+                      ]}
+                    >
+                      <Ionicons
+                        color={
+                          ticket.resolved ? colors.success : colors.primaryText
+                        }
+                        name={
+                          ticket.resolved
+                            ? "checkmark-circle-outline"
+                            : "time-outline"
+                        }
+                        size={13}
+                      />
+                      <Text
+                        style={{
+                          color: ticket.resolved
+                            ? colors.success
+                            : colors.primaryText,
+                          fontSize: 10,
+                          fontWeight: "800",
+                        }}
+                      >
+                        {ticket.status}
+                      </Text>
+                    </View>
+                    <Ionicons
+                      color={colors.subtle}
+                      name="chevron-forward"
+                      size={18}
+                    />
+                  </View>
+                </Pressable>
+              ))}
             {visibleTickets.length > 10 ? (
               <Pressable
                 accessibilityLabel={`Alle ${visibleTickets.length} Tickets anzeigen`}
@@ -939,15 +1062,46 @@ function SectionTitle({
   );
 }
 
-function HeroKpi({ label, value }: { label: string; value: string }) {
+function HeroKpi({
+  disabled,
+  label,
+  onPress,
+  selected,
+  value,
+}: {
+  disabled: boolean;
+  label: string;
+  onPress: () => void;
+  selected: boolean;
+  value: string;
+}) {
   const colors = useAppColors();
   const styles = useStyles();
   return (
-    <View
-      accessible
+    <Pressable
+      accessibilityHint={
+        disabled ? undefined : "Zeigt die passenden Tickets in der Liste."
+      }
       accessibilityLabel={`${label}: ${value}`}
-      style={styles.heroKpi}
+      accessibilityRole="button"
+      accessibilityState={{ disabled, selected }}
+      disabled={disabled}
+      hitSlop={6}
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.heroKpi,
+        pressed && styles.heroKpiPressed,
+      ]}
     >
+      {selected ? (
+        <View
+          pointerEvents="none"
+          style={[
+            styles.heroKpiHighlight,
+            { backgroundColor: colors.onPrimary },
+          ]}
+        />
+      ) : null}
       <Text
         numberOfLines={1}
         style={[styles.heroKpiValue, { color: colors.onPrimary }]}
@@ -956,11 +1110,15 @@ function HeroKpi({ label, value }: { label: string; value: string }) {
       </Text>
       <Text
         numberOfLines={2}
-        style={[styles.heroKpiLabel, { color: colors.onPrimary }]}
+        style={[
+          styles.heroKpiLabel,
+          { color: colors.onPrimary },
+          selected && styles.heroKpiLabelSelected,
+        ]}
       >
         {label}
       </Text>
-    </View>
+    </Pressable>
   );
 }
 
@@ -1104,7 +1262,24 @@ const useStyles = makeThemedStyles(() => ({
     letterSpacing: 1.3,
     opacity: 0.86,
   },
-  heroKpi: { flex: 1, gap: 4, minWidth: 0, paddingHorizontal: 7 },
+  heroKpi: {
+    flex: 1,
+    gap: 4,
+    minWidth: 0,
+    paddingHorizontal: 7,
+    paddingVertical: 6,
+  },
+  heroKpiHighlight: {
+    borderRadius: 12,
+    bottom: 0,
+    left: 2,
+    opacity: 0.18,
+    position: "absolute",
+    right: 2,
+    top: 0,
+  },
+  heroKpiLabelSelected: { opacity: 1 },
+  heroKpiPressed: { opacity: 0.7 },
   heroKpiDivider: { opacity: 0.28, width: 1 },
   heroKpiLabel: {
     fontSize: 10,

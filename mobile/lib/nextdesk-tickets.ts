@@ -337,6 +337,65 @@ export async function loadMobileDashboard(input: {
   }
 }
 
+/**
+ * Lädt einzelne Tickets per ID nach, z. B. wenn eine Kennzahl Tickets enthält,
+ * die nicht unter den 50 zuletzt geänderten der Startseite sind. Die Abfrage
+ * läuft wie alle Ticketabfragen über RLS und den aktiven Mandanten.
+ */
+export async function loadMobileTicketsByIds(
+  ids: string[],
+): Promise<MobileTicket[]> {
+  const uniqueIds = [...new Set(ids)].slice(0, 100);
+  if (uniqueIds.length === 0) return [];
+  const client = requireNextDesk();
+  const {
+    data: { session },
+  } = await client.auth.getSession();
+  const userId = session?.user?.id;
+  if (!userId) throw new Error("Die Anmeldung ist abgelaufen.");
+  const tenant = await loadCurrentTenant();
+  const [ticketsResult, statusesResult, prioritiesResult] = await Promise.all([
+    client
+      .from("tickets")
+      .select(
+        "id, ticket_number, subject, description, status_id, priority_id, requester_id, assigned_agent_id, created_at",
+      )
+      .eq("tenant_id", tenant.id)
+      .in("id", uniqueIds)
+      .order("updated_at", { ascending: false })
+      .limit(100),
+    client
+      .from("ticket_statuses")
+      .select("id, label, is_closed")
+      .eq("tenant_id", tenant.id),
+    client
+      .from("ticket_priorities")
+      .select("id, label")
+      .eq("tenant_id", tenant.id),
+  ]);
+  if (ticketsResult.error || statusesResult.error || prioritiesResult.error) {
+    throw new Error("Die Tickets konnten nicht geladen werden.");
+  }
+  const statusById = new Map(
+    (statusesResult.data ?? []).map((status) => [status.id, status]),
+  );
+  const priorityById = new Map(
+    (prioritiesResult.data ?? []).map((priority) => [priority.id, priority]),
+  );
+  return (ticketsResult.data ?? []).map((ticket) => ({
+    id: ticket.id,
+    ticketNumber: ticket.ticket_number,
+    subject: ticket.subject,
+    description: ticket.description,
+    status: statusById.get(ticket.status_id)?.label ?? "Unbekannt",
+    priority: priorityById.get(ticket.priority_id)?.label ?? "Ohne Priorität",
+    assignedToCurrentUser:
+      ticket.assigned_agent_id === userId || ticket.requester_id === userId,
+    resolved: Boolean(statusById.get(ticket.status_id)?.is_closed),
+    requesterId: ticket.requester_id,
+  }));
+}
+
 export async function loadTicketFormOptions(
   tenantId: string,
 ): Promise<TicketFormOptions> {
