@@ -8,6 +8,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from "react-native";
 
@@ -29,6 +30,7 @@ export default function TicketsScreen() {
   const [tickets, setTickets] = useState<MobileTicket[]>([]);
   const [tenantName, setTenantName] = useState("");
   const [scope, setScope] = useState<TicketScope>("all");
+  const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
@@ -70,11 +72,26 @@ export default function TicketsScreen() {
     }, [load]),
   );
 
+  const normalizedQuery = query.trim().toLocaleLowerCase("de-CH");
   const visibleTickets = tickets.filter((ticket) => {
-    if (scope === "mine") return ticket.assignedToCurrentUser;
-    if (scope === "open") return !ticket.resolved;
-    if (scope === "resolved") return ticket.resolved;
-    return true;
+    const matchesScope =
+      scope === "mine"
+        ? ticket.assignedToCurrentUser
+        : scope === "open"
+          ? !ticket.resolved
+          : scope === "resolved"
+            ? ticket.resolved
+            : true;
+    if (!matchesScope || !normalizedQuery) return matchesScope;
+    return [
+      ticket.ticketNumber,
+      ticket.subject,
+      ticket.description,
+      ticket.status,
+      ticket.priority,
+    ].some((value) =>
+      value.toLocaleLowerCase("de-CH").includes(normalizedQuery),
+    );
   });
 
   if (loading && tickets.length === 0) {
@@ -148,6 +165,29 @@ export default function TicketsScreen() {
             </Pressable>
           ))}
         </ScrollView>
+
+        <View style={styles.searchWrap}>
+          <Ionicons color="#77758C" name="search-outline" size={20} />
+          <TextInput
+            autoCapitalize="none"
+            autoCorrect={false}
+            onChangeText={setQuery}
+            placeholder="Tickets durchsuchen"
+            placeholderTextColor="#9A99AA"
+            style={styles.searchInput}
+            value={query}
+          />
+          {query ? (
+            <Pressable
+              accessibilityLabel="Ticketsuche löschen"
+              accessibilityRole="button"
+              hitSlop={10}
+              onPress={() => setQuery("")}
+            >
+              <Ionicons color="#77758C" name="close-circle" size={19} />
+            </Pressable>
+          ) : null}
+        </View>
 
         {error ? (
           <View style={styles.errorBox}>
@@ -277,6 +317,18 @@ const styles = StyleSheet.create({
     width: 48,
   },
   filters: { gap: 9, paddingRight: 16 },
+  searchWrap: {
+    alignItems: "center",
+    backgroundColor: "#FFFFFF",
+    borderColor: "#E5E5EF",
+    borderRadius: 14,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 9,
+    minHeight: 52,
+    paddingHorizontal: 14,
+  },
+  searchInput: { color: "#202136", flex: 1, fontSize: 14, minHeight: 48 },
   filter: {
     backgroundColor: "#FFFFFF",
     borderColor: "#E6E5EE",

@@ -13,6 +13,7 @@ import {
 } from "react-native";
 
 import { ScreenContainer } from "@/components/screen-container";
+import { GlobalSearch } from "@/components/global-search";
 import {
   isNextDeskConfigured,
   nextDesk,
@@ -133,6 +134,8 @@ export default function HomeScreen() {
             <Ionicons color="#4438CA" name="person-circle-outline" size={23} />
           </Pressable>
         </View>
+
+        <GlobalSearch tenant={tenant} tickets={tickets} />
 
         <View style={styles.hero}>
           <Text style={styles.heroEyebrow}>HEUTE IM FOKUS</Text>
