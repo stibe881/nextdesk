@@ -107,3 +107,10 @@ Im Ticketdetail (iOS und Web) setzt man eine Erinnerung mit Datum und Uhrzeit, S
 - Vorabprüfung: sauberer Stand gleich origin/main, TypeScript, Lint, Schlüsselbund- und PKCE-Prüfung grün; Bundle-ID und URL-Schema `ch.grossict.nextdesk`.
 - Enthält gegenüber Build 10023 den Face-ID-Fix, die Kachel «Nicht zugewiesen», antippbare Fokuskennzahlen und die Kennzahl «Mir zugewiesen».
 - Offen: reale iPhone-Abnahme, insbesondere Face ID (aktivieren, entsperren, in den Hintergrund und zurück, erneut entsperren – ohne Schleife).
+
+## Kennzahl «Fällig» nach Antwort- und Lösungsfrist (22:05)
+
+- «Fällig» zählt neu die mir zugewiesenen offenen Tickets, bei denen die Frist für die erste Antwort (noch ohne erste Antwort) oder die Lösungsfrist (noch ohne Lösung) erreicht ist; gleiche Regel wie die SLA-Automation. Antippen öffnet genau diese Tickets, am längsten überfällige zuerst. Fällige Wiedervorlagen werden dort nicht mehr gezählt.
+- Produktiv: agent-workbench v6 (Commit `c90d37c`, zusätzliches Feld `slaDue`; `dueFollowUps` bleibt für ältere App-Versionen erhalten). Web auf Hetzner ausgerollt («Antwort/Lösung fällig»), Smoke-Test erfolgreich.
+- iOS-Quellstand `c7be8a7` (gespiegelt `a8f5e70`) ist noch in keinem TestFlight-Build; Build 10024 zeigt unter «Fällig» weiterhin fällige Wiedervorlagen.
+- Voraussetzung: Fristen entstehen nur aus einem aktiven SLA-Profil mit Regeln je Priorität und nur für danach erstellte Tickets. Für Verein SONNENBERG Baar ist der Schalter `automation.sla` aus und es besteht kein SLA-Profil; die Kennzahl bleibt deshalb vorerst bei 0.
