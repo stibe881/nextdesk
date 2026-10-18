@@ -17,7 +17,8 @@ export type KnowledgeBaseProps = {
 type ArticleVisibility = "internal" | "external";
 type ArticleStatus = "draft" | "review" | "published" | "archived";
 type EditableArticleStatus = Exclude<ArticleStatus, "archived">;
-type SaveState = "save" | "archive" | null;
+type SaveState =
+  "save" | "archive" | "review" | "decision" | "collection" | null;
 
 type KnowledgeArticle = {
   id: string;
@@ -26,6 +27,9 @@ type KnowledgeArticle = {
   visibility: ArticleVisibility;
   status: ArticleStatus;
   currentRevision: number | null;
+  publishedRevision: number | null;
+  reviewRequestedAt: string | null;
+  collectionIds: string[];
   publishedAt: string | null;
   createdAt: string;
   updatedAt: string;
@@ -55,6 +59,37 @@ type ArticleDraft = {
   bodyMarkdown: string;
   visibility: ArticleVisibility;
   status: EditableArticleStatus;
+  collectionIds: string[];
+};
+
+type KnowledgeCollection = {
+  id: string;
+  name: string;
+  slug: string;
+};
+
+type ListCollectionsRequest = { type: "listCollections"; tenantId: string };
+type CreateCollectionRequest = {
+  type: "createCollection";
+  tenantId: string;
+  name: string;
+};
+type SetArticleCollectionsRequest = {
+  type: "setArticleCollections";
+  tenantId: string;
+  articleId: string;
+  collectionIds: string[];
+};
+type ReviewRequest = {
+  type: "requestReview";
+  tenantId: string;
+  articleId: string;
+};
+type ReviewDecisionRequest = {
+  type: "decideReview";
+  tenantId: string;
+  articleId: string;
+  decision: "approved" | "rejected";
 };
 
 type ListArticlesRequest = {
@@ -85,6 +120,11 @@ type ArchiveArticleRequest = {
 };
 
 type KnowledgeBaseRequest =
+  | ListCollectionsRequest
+  | CreateCollectionRequest
+  | SetArticleCollectionsRequest
+  | ReviewRequest
+  | ReviewDecisionRequest
   | ListArticlesRequest
   | GetArticleRequest
   | SaveArticleRequest
@@ -95,6 +135,7 @@ const EMPTY_DRAFT: ArticleDraft = {
   bodyMarkdown: "",
   visibility: "internal",
   status: "draft",
+  collectionIds: [],
 };
 
 const statusLabels: Record<ArticleStatus, string> = {
@@ -389,6 +430,9 @@ function parseArticle(value: unknown): KnowledgeArticle | null {
     return null;
   }
 
+  const collectionIds = Array.isArray(value.collection_ids)
+    ? value.collection_ids.filter((id): id is string => typeof id === "string")
+    : [];
   return {
     id: value.id,
     title: value.title,
@@ -396,6 +440,12 @@ function parseArticle(value: unknown): KnowledgeArticle | null {
     visibility: value.visibility,
     status: value.status,
     currentRevision: value.current_revision,
+    publishedRevision:
+      typeof value.published_revision === "number"
+        ? value.published_revision
+        : null,
+    reviewRequestedAt: asNullableString(value.review_requested_at),
+    collectionIds,
     publishedAt: asNullableString(value.published_at),
     createdAt: value.created_at,
     updatedAt: value.updated_at,
@@ -483,6 +533,48 @@ function parseArchivedArticle(value: unknown): KnowledgeArticle {
   return article;
 }
 
+function parseCollection(value: unknown): KnowledgeCollection | null {
+  if (
+    !isRecord(value) ||
+    typeof value.id !== "string" ||
+    typeof value.name !== "string" ||
+    typeof value.slug !== "string"
+  ) {
+    return null;
+  }
+  return { id: value.id, name: value.name, slug: value.slug };
+}
+
+function parseCollections(value: unknown): KnowledgeCollection[] {
+  const collections = responseData(value).collections;
+  if (!Array.isArray(collections)) {
+    throw new KnowledgeBaseRequestError(
+      "Die Kategorien der Wissensdatenbank sind unvollständig.",
+    );
+  }
+  const parsed = collections.map(parseCollection);
+  if (
+    !parsed.every(
+      (collection): collection is KnowledgeCollection => collection !== null,
+    )
+  ) {
+    throw new KnowledgeBaseRequestError(
+      "Die Kategorien der Wissensdatenbank sind ungültig.",
+    );
+  }
+  return parsed;
+}
+
+function parseReturnedArticle(value: unknown): KnowledgeArticle {
+  const article = parseArticle(responseData(value).article);
+  if (!article) {
+    throw new KnowledgeBaseRequestError(
+      "Die Artikelantwort ist unvollständig.",
+    );
+  }
+  return article;
+}
+
 function statusFromError(error: unknown): number | null {
   if (!isRecord(error)) return null;
   if (typeof error.status === "number") return error.status;
@@ -533,6 +625,7 @@ function draftFromDetail(detail: ArticleDetail): ArticleDraft {
     visibility: detail.article.visibility,
     status:
       detail.article.status === "archived" ? "draft" : detail.article.status,
+    collectionIds: detail.article.collectionIds,
   };
 }
 
@@ -571,6 +664,7 @@ function writeErrorMessage(error: unknown, action: "save" | "archive"): string {
  */
 export function KnowledgeBase({ tenantId }: KnowledgeBaseProps) {
   const [articles, setArticles] = useState<ArticleListItem[]>([]);
+  const [collections, setCollections] = useState<KnowledgeCollection[]>([]);
   const [searchInput, setSearchInput] = useState("");
   const [activeQuery, setActiveQuery] = useState("");
   const [selected, setSelected] = useState<ArticleDetail | null>(null);
@@ -630,6 +724,20 @@ export function KnowledgeBase({ tenantId }: KnowledgeBaseProps) {
     [tenantId],
   );
 
+  const loadCollections = useCallback(async () => {
+    try {
+      const nextCollections = await invokeKnowledgeBase(
+        { type: "listCollections", tenantId },
+        parseCollections,
+      );
+      setCollections(nextCollections);
+    } catch {
+      // The article reader stays usable for people without internal knowledge
+      // permissions. Category management is intentionally hidden for them.
+      setCollections([]);
+    }
+  }, [tenantId]);
+
   useEffect(() => {
     setSelected(null);
     setEditingArticleId(null);
@@ -638,12 +746,13 @@ export function KnowledgeBase({ tenantId }: KnowledgeBaseProps) {
     setActiveQuery("");
     setSearchInput("");
     void loadArticles("");
+    void loadCollections();
 
     return () => {
       listRequestVersion.current += 1;
       detailRequestVersion.current += 1;
     };
-  }, [loadArticles]);
+  }, [loadArticles, loadCollections]);
 
   const openArticle = useCallback(
     async (articleId: string) => {
@@ -745,6 +854,15 @@ export function KnowledgeBase({ tenantId }: KnowledgeBaseProps) {
         },
         parseArticleDetail,
       );
+      await invokeKnowledgeBase(
+        {
+          type: "setArticleCollections",
+          tenantId,
+          articleId: detail.article.id,
+          collectionIds: draft.collectionIds,
+        },
+        () => undefined,
+      );
       setArticles((current) => {
         const withoutSaved = current.filter(
           ({ article }) => article.id !== detail.article.id,
@@ -795,6 +913,110 @@ export function KnowledgeBase({ tenantId }: KnowledgeBaseProps) {
       setSuccess("Der Wissensartikel wurde archiviert.");
     } catch (nextError) {
       setError(writeErrorMessage(nextError, "archive"));
+    } finally {
+      setSaving(null);
+    }
+  }
+
+  async function createCollection() {
+    const name = window.prompt("Name der neuen Wissenskategorie");
+    if (!name?.trim()) return;
+    setSaving("collection");
+    setError("");
+    setSuccess("");
+    try {
+      const collection = await invokeKnowledgeBase(
+        { type: "createCollection", tenantId, name: name.trim() },
+        (value) => {
+          const parsed = parseCollection(responseData(value).collection);
+          if (!parsed)
+            throw new KnowledgeBaseRequestError(
+              "Die Kategorieantwort ist ungültig.",
+            );
+          return parsed;
+        },
+      );
+      setCollections((current) =>
+        [...current, collection].sort((left, right) =>
+          left.name.localeCompare(right.name, "de-CH"),
+        ),
+      );
+      setDraft((current) => ({
+        ...current,
+        collectionIds: [...new Set([...current.collectionIds, collection.id])],
+      }));
+      setSuccess(`Kategorie „${collection.name}“ wurde angelegt.`);
+    } catch (nextError) {
+      setError(
+        errorMessage(nextError, "Die Kategorie konnte nicht angelegt werden."),
+      );
+    } finally {
+      setSaving(null);
+    }
+  }
+
+  async function requestReview() {
+    if (!selected) return;
+    setSaving("review");
+    setError("");
+    setSuccess("");
+    try {
+      const article = await invokeKnowledgeBase(
+        { type: "requestReview", tenantId, articleId: selected.article.id },
+        parseReturnedArticle,
+      );
+      setSelected((current) => (current ? { ...current, article } : current));
+      setArticles((current) =>
+        current.map((item) =>
+          item.article.id === article.id ? { ...item, article } : item,
+        ),
+      );
+      setSuccess("Der Artikel wurde zur Freigabe eingereicht.");
+    } catch (nextError) {
+      setError(
+        errorMessage(
+          nextError,
+          "Der Artikel konnte nicht zur Freigabe eingereicht werden.",
+        ),
+      );
+    } finally {
+      setSaving(null);
+    }
+  }
+
+  async function decideReview(decision: "approved" | "rejected") {
+    if (!selected) return;
+    setSaving("decision");
+    setError("");
+    setSuccess("");
+    try {
+      const article = await invokeKnowledgeBase(
+        {
+          type: "decideReview",
+          tenantId,
+          articleId: selected.article.id,
+          decision,
+        },
+        parseReturnedArticle,
+      );
+      setSelected((current) => (current ? { ...current, article } : current));
+      setArticles((current) =>
+        current.map((item) =>
+          item.article.id === article.id ? { ...item, article } : item,
+        ),
+      );
+      setSuccess(
+        decision === "approved"
+          ? "Die aktuelle Revision ist veröffentlicht."
+          : "Die Freigabe wurde abgelehnt; der Artikel bleibt ein Entwurf.",
+      );
+    } catch (nextError) {
+      setError(
+        errorMessage(
+          nextError,
+          "Die Freigabeentscheidung konnte nicht gespeichert werden.",
+        ),
+      );
     } finally {
       setSaving(null);
     }
@@ -864,6 +1086,14 @@ export function KnowledgeBase({ tenantId }: KnowledgeBaseProps) {
             type="button"
           >
             Neuer Artikel
+          </button>
+          <button
+            className="knowledge-base__button"
+            disabled={isBusy}
+            onClick={() => void createCollection()}
+            type="button"
+          >
+            Kategorie anlegen
           </button>
         </div>
 
@@ -948,6 +1178,12 @@ export function KnowledgeBase({ tenantId }: KnowledgeBaseProps) {
                           Revision {selected.revision.revision} · Aktualisiert{" "}
                           {formatDate(detailArticle.updatedAt)}
                         </span>
+                        {detailArticle.publishedRevision ? (
+                          <span>
+                            Veröffentlichte Revision{" "}
+                            {detailArticle.publishedRevision}
+                          </span>
+                        ) : null}
                       </p>
                     </div>
                   </div>
@@ -970,6 +1206,40 @@ export function KnowledgeBase({ tenantId }: KnowledgeBaseProps) {
                     >
                       Bearbeiten
                     </button>
+                    {detailArticle.status === "draft" ? (
+                      <button
+                        className="knowledge-base__button"
+                        disabled={isBusy}
+                        onClick={() => void requestReview()}
+                        type="button"
+                      >
+                        {saving === "review"
+                          ? "Wird eingereicht …"
+                          : "Zur Freigabe einreichen"}
+                      </button>
+                    ) : null}
+                    {detailArticle.status === "review" ? (
+                      <>
+                        <button
+                          className="knowledge-base__button"
+                          disabled={isBusy}
+                          onClick={() => void decideReview("approved")}
+                          type="button"
+                        >
+                          {saving === "decision"
+                            ? "Wird gespeichert …"
+                            : "Freigeben"}
+                        </button>
+                        <button
+                          className="knowledge-base__button knowledge-base__button--danger"
+                          disabled={isBusy}
+                          onClick={() => void decideReview("rejected")}
+                          type="button"
+                        >
+                          Ablehnen
+                        </button>
+                      </>
+                    ) : null}
                     <button
                       className="knowledge-base__button knowledge-base__button--danger"
                       disabled={isBusy}
@@ -1047,18 +1317,34 @@ export function KnowledgeBase({ tenantId }: KnowledgeBaseProps) {
             </label>
 
             <label>
-              Status
-              <select disabled value={draft.status}>
-                <option value="draft">Entwurf</option>
-                <option value="review">Prüfung</option>
-                <option value="published">Veröffentlicht</option>
+              Kategorien
+              <select
+                disabled={isBusy || collections.length === 0}
+                multiple
+                onChange={(event) =>
+                  setDraft((current) => ({
+                    ...current,
+                    collectionIds: Array.from(
+                      event.currentTarget.selectedOptions,
+                      (option) => option.value,
+                    ),
+                  }))
+                }
+                value={draft.collectionIds}
+              >
+                {collections.map((collection) => (
+                  <option key={collection.id} value={collection.id}>
+                    {collection.name}
+                  </option>
+                ))}
               </select>
             </label>
 
             <p className="knowledge-base__hint">
-              Der Status wird vom Veröffentlichungsworkflow verwaltet. Die
-              vorhandene Edge Function liefert den aktuellen Status, nimmt bei{" "}
-              <code>saveArticle</code> jedoch keine Statusänderung entgegen.
+              Kategorien können mehrfach ausgewählt werden. Speichern erstellt
+              immer einen Entwurf; für externe Artikel bleibt die letzte
+              freigegebene Revision sichtbar, bis die neue Revision erneut
+              freigegeben wird.
             </p>
 
             <label className="knowledge-base__full-width">

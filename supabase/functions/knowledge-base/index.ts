@@ -3,19 +3,36 @@ import { withSupabase } from "@supabase/server";
 const ALLOWED_ORIGIN = "https://app.nextdesk.ch";
 const KNOWLEDGE_MANAGE_PERMISSION = "knowledge.manage";
 const KNOWLEDGE_READ_PERMISSION = "knowledge.read";
+const KNOWLEDGE_PUBLISH_PERMISSION = "knowledge.publish";
 const MAX_TITLE_LENGTH = 240;
 const MAX_BODY_LENGTH = 100_000;
 const MAX_QUERY_LENGTH = 120;
 const ARTICLE_SELECT =
-  "id, tenant_id, title, slug, visibility, customer_organization_id, status, current_revision, created_by, published_at, created_at, updated_at";
+  "id, tenant_id, title, slug, visibility, customer_organization_id, status, current_revision, published_revision, review_requested_at, created_by, published_at, created_at, updated_at";
 const REVISION_SELECT =
   "id, article_id, revision, body, summary, author_id, created_at";
 
 type Visibility = "internal" | "external";
 type Action =
   | { type: "listCollections"; tenantId: string }
+  | { type: "createCollection"; tenantId: string; name: string }
   | { type: "listArticles"; tenantId: string; query?: string }
   | { type: "getArticle"; tenantId: string; articleId: string }
+  | { type: "listRevisions"; tenantId: string; articleId: string }
+  | {
+      type: "setArticleCollections";
+      tenantId: string;
+      articleId: string;
+      collectionIds: string[];
+    }
+  | { type: "requestReview"; tenantId: string; articleId: string }
+  | {
+      type: "decideReview";
+      tenantId: string;
+      articleId: string;
+      decision: "approved" | "rejected";
+      note?: string;
+    }
   | {
       type: "saveArticle";
       tenantId: string;
@@ -82,6 +99,11 @@ function parseAction(value: unknown): Action | null {
   if (value.type === "listCollections")
     return { type: value.type, tenantId: value.tenantId };
 
+  if (value.type === "createCollection") {
+    const name = requiredText(value.name, 2, 100);
+    return name ? { type: value.type, tenantId: value.tenantId, name } : null;
+  }
+
   if (value.type === "listArticles") {
     const query = optionalQuery(value.query);
     if (query === null) return null;
@@ -98,6 +120,52 @@ function parseAction(value: unknown): Action | null {
       tenantId: value.tenantId,
       articleId: value.articleId,
     };
+
+  if (value.type === "listRevisions" && isUuid(value.articleId))
+    return {
+      type: value.type,
+      tenantId: value.tenantId,
+      articleId: value.articleId,
+    };
+
+  if (value.type === "setArticleCollections" && isUuid(value.articleId)) {
+    if (
+      !Array.isArray(value.collectionIds) ||
+      value.collectionIds.length > 12 ||
+      !value.collectionIds.every(isUuid) ||
+      new Set(value.collectionIds).size !== value.collectionIds.length
+    )
+      return null;
+    return {
+      type: value.type,
+      tenantId: value.tenantId,
+      articleId: value.articleId,
+      collectionIds: value.collectionIds,
+    };
+  }
+
+  if (value.type === "requestReview" && isUuid(value.articleId))
+    return {
+      type: value.type,
+      tenantId: value.tenantId,
+      articleId: value.articleId,
+    };
+
+  if (value.type === "decideReview" && isUuid(value.articleId)) {
+    const note = optionalQuery(value.note);
+    if (
+      (value.decision !== "approved" && value.decision !== "rejected") ||
+      note === null
+    )
+      return null;
+    return {
+      type: value.type,
+      tenantId: value.tenantId,
+      articleId: value.articleId,
+      decision: value.decision,
+      ...(note?.length ? { note } : {}),
+    };
+  }
 
   if (value.type === "archiveArticle" && isUuid(value.articleId))
     return {
@@ -308,6 +376,7 @@ async function fetchCurrentRevision(
 async function fetchLatestRevisions(
   admin: any,
   articles: any[],
+  publishedOnly = false,
 ): Promise<{ data: Map<string, any>; error: boolean }> {
   if (articles.length === 0) return { data: new Map(), error: false };
 
@@ -323,12 +392,72 @@ async function fetchLatestRevisions(
   for (const revision of data ?? []) {
     if (
       typeof revision.article_id === "string" &&
+      (!publishedOnly ||
+        revision.revision ===
+          articles.find((article) => article.id === revision.article_id)
+            ?.published_revision) &&
       !newestByArticle.has(revision.article_id)
     ) {
       newestByArticle.set(revision.article_id, revision);
     }
   }
   return { data: newestByArticle, error: false };
+}
+
+async function customerOrganizationIds(
+  admin: any,
+  userId: string,
+): Promise<string[] | null> {
+  const { data, error } = await admin
+    .from("customer_memberships")
+    .select("customer_organization_id")
+    .eq("user_id", userId)
+    .eq("access", "company");
+  if (error) return null;
+  return (data ?? [])
+    .map((membership: any) => membership.customer_organization_id)
+    .filter(
+      (id: unknown): id is string => typeof id === "string" && isUuid(id),
+    );
+}
+
+function applyExternalArticleScope(query: any, organizationIds: string[]): any {
+  const scope = ["customer_organization_id.is.null"];
+  if (organizationIds.length) {
+    scope.push(`customer_organization_id.in.(${organizationIds.join(",")})`);
+  }
+  return query
+    .eq("visibility", "external")
+    .neq("status", "archived")
+    .not("published_revision", "is", null)
+    .or(scope.join(","));
+}
+
+async function fetchArticleCollectionIds(
+  admin: any,
+  tenantId: string,
+  articleIds: string[],
+): Promise<{ data: Map<string, string[]>; error: boolean }> {
+  if (!articleIds.length) return { data: new Map(), error: false };
+  const { data, error } = await admin
+    .from("knowledge_article_collections")
+    .select("article_id, collection_id")
+    .eq("tenant_id", tenantId)
+    .in("article_id", articleIds);
+  if (error) return { data: new Map(), error: true };
+  const byArticle = new Map<string, string[]>();
+  for (const row of data ?? []) {
+    if (
+      typeof row.article_id !== "string" ||
+      typeof row.collection_id !== "string"
+    )
+      continue;
+    byArticle.set(row.article_id, [
+      ...(byArticle.get(row.article_id) ?? []),
+      row.collection_id,
+    ]);
+  }
+  return { data: byArticle, error: false };
 }
 
 const handler = withSupabase({ auth: "user" }, async (request, context) => {
@@ -344,7 +473,12 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
 
   const admin = context.supabaseAdmin;
   const mutation =
-    action.type === "saveArticle" || action.type === "archiveArticle";
+    action.type === "saveArticle" ||
+    action.type === "archiveArticle" ||
+    action.type === "createCollection" ||
+    action.type === "setArticleCollections" ||
+    action.type === "requestReview" ||
+    action.type === "decideReview";
   const authorization = await requireAuthorization(
     admin,
     actorId,
@@ -358,9 +492,334 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       authorization.status,
     );
 
-  // Collections are not part of the knowledge_articles schema.
   if (action.type === "listCollections") {
-    return json(request, { error: { code: "feature_not_available" } }, 501);
+    const canReadInternal = await hasTenantPermission(
+      admin,
+      actorId,
+      action.tenantId,
+      KNOWLEDGE_READ_PERMISSION,
+    );
+    if (canReadInternal !== true)
+      return json(request, { error: { code: "article_read_denied" } }, 403);
+    const { data, error } = await admin
+      .from("knowledge_collections")
+      .select("id, name, slug, active")
+      .eq("tenant_id", action.tenantId)
+      .eq("active", true)
+      .order("name", { ascending: true })
+      .limit(100);
+    if (error)
+      return json(request, { error: { code: "collection_list_failed" } }, 500);
+    return json(request, { data: { collections: data ?? [] } });
+  }
+
+  if (action.type === "createCollection") {
+    const { data: existing } = await admin
+      .from("knowledge_collections")
+      .select("id")
+      .eq("tenant_id", action.tenantId)
+      .eq("name", action.name)
+      .maybeSingle();
+    if (existing)
+      return json(
+        request,
+        { error: { code: "collection_name_conflict" } },
+        409,
+      );
+    const slug = createSlug(action.name);
+    const { data, error } = await admin
+      .from("knowledge_collections")
+      .insert({
+        tenant_id: action.tenantId,
+        name: action.name,
+        slug,
+        created_by: actorId,
+      })
+      .select("id, name, slug, active")
+      .single();
+    if (error || !data)
+      return json(
+        request,
+        { error: { code: "collection_create_failed" } },
+        422,
+      );
+    await writeAudit(
+      admin,
+      action.tenantId,
+      actorId,
+      "knowledge.collection.created",
+      data.id,
+      null,
+      {
+        title: data.name,
+        visibility: "internal",
+        status: "active",
+        currentRevision: null,
+        bodyLength: 0,
+      },
+    );
+    return json(request, { data: { collection: data } }, 201);
+  }
+
+  if (action.type === "decideReview") {
+    const permitted = await hasTenantPermission(
+      admin,
+      actorId,
+      action.tenantId,
+      KNOWLEDGE_PUBLISH_PERMISSION,
+    );
+    if (permitted !== true)
+      return json(request, { error: { code: "article_publish_denied" } }, 403);
+  }
+
+  if (action.type === "listRevisions") {
+    const permitted = await hasTenantPermission(
+      admin,
+      actorId,
+      action.tenantId,
+      KNOWLEDGE_MANAGE_PERMISSION,
+    );
+    if (permitted !== true)
+      return json(request, { error: { code: "article_manage_denied" } }, 403);
+    const { data: article, error: articleError } = await admin
+      .from("knowledge_articles")
+      .select("id")
+      .eq("tenant_id", action.tenantId)
+      .eq("id", action.articleId)
+      .maybeSingle();
+    if (articleError)
+      return json(request, { error: { code: "article_read_failed" } }, 500);
+    if (!article)
+      return json(request, { error: { code: "article_not_found" } }, 404);
+    const { data, error } = await admin
+      .from("knowledge_article_revisions")
+      .select("id, article_id, revision, summary, author_id, created_at")
+      .eq("article_id", action.articleId)
+      .order("revision", { ascending: false })
+      .limit(50);
+    if (error)
+      return json(
+        request,
+        { error: { code: "article_revision_list_failed" } },
+        500,
+      );
+    return json(request, { data: { revisions: data ?? [] } });
+  }
+
+  if (action.type === "setArticleCollections") {
+    const { data: article, error: articleError } = await admin
+      .from("knowledge_articles")
+      .select(ARTICLE_SELECT)
+      .eq("tenant_id", action.tenantId)
+      .eq("id", action.articleId)
+      .neq("status", "archived")
+      .maybeSingle();
+    if (articleError)
+      return json(request, { error: { code: "article_read_failed" } }, 500);
+    if (!article)
+      return json(request, { error: { code: "article_not_found" } }, 404);
+
+    if (action.collectionIds.length) {
+      const { data: collections, error: collectionError } = await admin
+        .from("knowledge_collections")
+        .select("id")
+        .eq("tenant_id", action.tenantId)
+        .eq("active", true)
+        .in("id", action.collectionIds);
+      if (collectionError)
+        return json(
+          request,
+          { error: { code: "collection_read_failed" } },
+          500,
+        );
+      if ((collections ?? []).length !== action.collectionIds.length)
+        return json(request, { error: { code: "collection_not_found" } }, 422);
+    }
+
+    const { error: deleteError } = await admin
+      .from("knowledge_article_collections")
+      .delete()
+      .eq("tenant_id", action.tenantId)
+      .eq("article_id", action.articleId);
+    if (deleteError)
+      return json(
+        request,
+        { error: { code: "collection_assignment_failed" } },
+        500,
+      );
+    if (action.collectionIds.length) {
+      const { error: insertError } = await admin
+        .from("knowledge_article_collections")
+        .insert(
+          action.collectionIds.map((collectionId) => ({
+            tenant_id: action.tenantId,
+            article_id: action.articleId,
+            collection_id: collectionId,
+            created_by: actorId,
+          })),
+        );
+      if (insertError)
+        return json(
+          request,
+          { error: { code: "collection_assignment_failed" } },
+          500,
+        );
+    }
+    await writeAudit(
+      admin,
+      action.tenantId,
+      actorId,
+      "knowledge.article.collections_updated",
+      action.articleId,
+      auditData(article, null),
+      auditData(article, null),
+    );
+    return json(request, {
+      data: {
+        articleId: action.articleId,
+        collectionIds: action.collectionIds,
+      },
+    });
+  }
+
+  if (action.type === "requestReview") {
+    const { data: article, error: articleError } = await admin
+      .from("knowledge_articles")
+      .select(ARTICLE_SELECT)
+      .eq("tenant_id", action.tenantId)
+      .eq("id", action.articleId)
+      .eq("status", "draft")
+      .maybeSingle();
+    if (articleError)
+      return json(request, { error: { code: "article_read_failed" } }, 500);
+    if (!article)
+      return json(
+        request,
+        { error: { code: "article_not_ready_for_review" } },
+        409,
+      );
+    const now = new Date().toISOString();
+    const { error: reviewError } = await admin
+      .from("knowledge_article_reviews")
+      .upsert(
+        {
+          tenant_id: action.tenantId,
+          article_id: action.articleId,
+          revision: article.current_revision,
+          requested_by: actorId,
+          requested_at: now,
+          decided_by: null,
+          decided_at: null,
+          decision: null,
+          note: null,
+        },
+        { onConflict: "article_id,revision" },
+      );
+    if (reviewError)
+      return json(
+        request,
+        { error: { code: "article_review_request_failed" } },
+        500,
+      );
+    const { data: updated, error: updateError } = await admin
+      .from("knowledge_articles")
+      .update({
+        status: "review",
+        review_requested_at: now,
+        review_requested_by: actorId,
+        updated_at: now,
+      })
+      .eq("tenant_id", action.tenantId)
+      .eq("id", action.articleId)
+      .eq("current_revision", article.current_revision)
+      .eq("status", "draft")
+      .select(ARTICLE_SELECT)
+      .maybeSingle();
+    if (updateError || !updated)
+      return json(
+        request,
+        { error: { code: "article_review_request_conflict" } },
+        409,
+      );
+    await writeAudit(
+      admin,
+      action.tenantId,
+      actorId,
+      "knowledge.article.review_requested",
+      article.id,
+      auditData(article, null),
+      auditData(updated, null),
+    );
+    return json(request, { data: { article: updated } });
+  }
+
+  if (action.type === "decideReview") {
+    const { data: article, error: articleError } = await admin
+      .from("knowledge_articles")
+      .select(ARTICLE_SELECT)
+      .eq("tenant_id", action.tenantId)
+      .eq("id", action.articleId)
+      .eq("status", "review")
+      .maybeSingle();
+    if (articleError)
+      return json(request, { error: { code: "article_read_failed" } }, 500);
+    if (!article)
+      return json(request, { error: { code: "article_not_in_review" } }, 409);
+    const now = new Date().toISOString();
+    const { data: review, error: reviewError } = await admin
+      .from("knowledge_article_reviews")
+      .update({
+        decision: action.decision,
+        note: action.note ?? null,
+        decided_by: actorId,
+        decided_at: now,
+      })
+      .eq("tenant_id", action.tenantId)
+      .eq("article_id", article.id)
+      .eq("revision", article.current_revision)
+      .is("decision", null)
+      .select("id")
+      .maybeSingle();
+    if (reviewError || !review)
+      return json(
+        request,
+        { error: { code: "article_review_decision_conflict" } },
+        409,
+      );
+    const approved = action.decision === "approved";
+    const { data: updated, error: updateError } = await admin
+      .from("knowledge_articles")
+      .update({
+        status: approved ? "published" : "draft",
+        ...(approved
+          ? { published_revision: article.current_revision, published_at: now }
+          : {}),
+        reviewed_at: now,
+        reviewed_by: actorId,
+        updated_at: now,
+      })
+      .eq("tenant_id", action.tenantId)
+      .eq("id", article.id)
+      .eq("current_revision", article.current_revision)
+      .eq("status", "review")
+      .select(ARTICLE_SELECT)
+      .maybeSingle();
+    if (updateError || !updated)
+      return json(
+        request,
+        { error: { code: "article_review_decision_conflict" } },
+        409,
+      );
+    await writeAudit(
+      admin,
+      action.tenantId,
+      actorId,
+      `knowledge.article.${approved ? "published" : "review_rejected"}`,
+      article.id,
+      auditData(article, null),
+      auditData(updated, null),
+    );
+    return json(request, { data: { article: updated } });
   }
 
   if (action.type === "listArticles" || action.type === "getArticle") {
@@ -377,6 +836,16 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         500,
       );
 
+    const organizationIds = canReadInternal
+      ? []
+      : await customerOrganizationIds(admin, actorId);
+    if (organizationIds === null)
+      return json(
+        request,
+        { error: { code: "authorization_check_failed" } },
+        500,
+      );
+
     if (action.type === "listArticles") {
       let query = admin
         .from("knowledge_articles")
@@ -385,7 +854,9 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         .neq("status", "archived")
         .order("updated_at", { ascending: false })
         .limit(200);
-      if (!canReadInternal) query = query.eq("visibility", "external");
+      if (!canReadInternal) {
+        query = applyExternalArticleScope(query, organizationIds);
+      }
       if (action.query)
         query = query.ilike("title", `%${escapeIlikePattern(action.query)}%`);
 
@@ -394,11 +865,28 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         return json(request, { error: { code: "article_list_failed" } }, 500);
 
       const articles = data ?? [];
-      const revisions = await fetchLatestRevisions(admin, articles);
+      const revisions = await fetchLatestRevisions(
+        admin,
+        articles,
+        !canReadInternal,
+      );
       if (revisions.error)
         return json(
           request,
           { error: { code: "article_revision_list_failed" } },
+          500,
+        );
+      const articleCollections = canReadInternal
+        ? await fetchArticleCollectionIds(
+            admin,
+            action.tenantId,
+            articles.map((article: any) => article.id),
+          )
+        : { data: new Map<string, string[]>(), error: false };
+      if (articleCollections.error)
+        return json(
+          request,
+          { error: { code: "collection_assignment_read_failed" } },
           500,
         );
       return json(request, {
@@ -406,6 +894,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
           articles: articles.map((article: any) => ({
             ...article,
             revision: revisions.data.get(article.id) ?? null,
+            collection_ids: articleCollections.data.get(article.id) ?? [],
           })),
         },
       });
@@ -417,14 +906,38 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       .eq("tenant_id", action.tenantId)
       .eq("id", action.articleId)
       .neq("status", "archived");
-    if (!canReadInternal) query = query.eq("visibility", "external");
+    if (!canReadInternal) {
+      query = applyExternalArticleScope(query, organizationIds);
+    }
     const { data: article, error } = await query.maybeSingle();
     if (error)
       return json(request, { error: { code: "article_read_failed" } }, 500);
     if (!article)
       return json(request, { error: { code: "article_not_found" } }, 404);
 
-    const revision = await fetchCurrentRevision(admin, article);
+    const articleCollections = canReadInternal
+      ? await fetchArticleCollectionIds(admin, action.tenantId, [article.id])
+      : { data: new Map<string, string[]>(), error: false };
+    if (articleCollections.error)
+      return json(
+        request,
+        { error: { code: "collection_assignment_read_failed" } },
+        500,
+      );
+
+    const revision =
+      !canReadInternal && Number.isInteger(article.published_revision)
+        ? await admin
+            .from("knowledge_article_revisions")
+            .select(REVISION_SELECT)
+            .eq("article_id", article.id)
+            .eq("revision", article.published_revision)
+            .maybeSingle()
+            .then(({ data, error }: any) => ({
+              data: data ?? null,
+              error: Boolean(error),
+            }))
+        : await fetchCurrentRevision(admin, article);
     if (revision.error)
       return json(
         request,
@@ -437,7 +950,15 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         { error: { code: "article_revision_not_found" } },
         500,
       );
-    return json(request, { data: { article, revision: revision.data } });
+    return json(request, {
+      data: {
+        article: {
+          ...article,
+          collection_ids: articleCollections.data.get(article.id) ?? [],
+        },
+        revision: revision.data,
+      },
+    });
   }
 
   if (action.type === "saveArticle") {
@@ -549,6 +1070,13 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         title: action.title,
         visibility: action.visibility,
         current_revision: nextRevision,
+        // A previous published revision remains readable to customers. The new
+        // text always returns to a draft and requires a fresh review.
+        status: "draft",
+        review_requested_at: null,
+        review_requested_by: null,
+        reviewed_at: null,
+        reviewed_by: null,
         updated_at: updatedAt,
       })
       .eq("tenant_id", action.tenantId)
