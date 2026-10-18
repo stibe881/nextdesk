@@ -6,7 +6,14 @@ import {
   useState,
   type FormEvent,
 } from "react";
-import { CheckCircle2, Pencil, Plus, RefreshCw, Trash2, X } from "lucide-react";
+import {
+  Archive,
+  CheckCircle2,
+  Pencil,
+  Plus,
+  RefreshCw,
+  X,
+} from "lucide-react";
 import { supabase } from "./lib/supabase";
 
 type Department = {
@@ -716,9 +723,9 @@ export function TicketTemplates({ tenantId }: { tenantId: string }) {
     }
   }
 
-  async function deleteTemplate(template: TicketTemplate) {
+  async function archiveTemplate(template: TicketTemplate) {
     const confirmed = window.confirm(
-      `Möchten Sie die Vorlage „${template.name}“ wirklich endgültig löschen?`,
+      `Möchten Sie die Vorlage „${template.name}“ archivieren? Sie bleibt nachvollziehbar, ist aber nicht mehr auswählbar.`,
     );
     if (!confirmed) return;
 
@@ -732,10 +739,12 @@ export function TicketTemplates({ tenantId }: { tenantId: string }) {
         templateId: template.id,
       });
       setTemplates((current) =>
-        current.filter((item) => item.id !== template.id),
+        current.map((item) =>
+          item.id === template.id ? { ...item, active: false } : item,
+        ),
       );
       if (editingTemplateId === template.id) resetForm();
-      setSuccess("Die Vorlage wurde gelöscht.");
+      setSuccess("Die Vorlage wurde archiviert.");
     } catch {
       setError(genericError("delete"));
     } finally {
@@ -845,13 +854,13 @@ export function TicketTemplates({ tenantId }: { tenantId: string }) {
                         Bearbeiten
                       </button>
                       <button
-                        className="ticket-templates__button ticket-templates__button--danger"
+                        className="ticket-templates__button"
                         disabled={isBusy}
-                        onClick={() => void deleteTemplate(template)}
+                        onClick={() => void archiveTemplate(template)}
                         type="button"
                       >
-                        <Trash2 aria-hidden="true" size={14} />
-                        {deleting ? "Wird gelöscht …" : "Löschen"}
+                        <Archive aria-hidden="true" size={14} />
+                        {deleting ? "Wird archiviert …" : "Archivieren"}
                       </button>
                     </div>
                   </li>

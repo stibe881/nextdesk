@@ -518,20 +518,20 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     );
 
   if (action.type === "deleteTemplate") {
-    const { data: deleted, error: deleteError } = await admin
+    const { data: archived, error: archiveError } = await admin
       .from("ticket_templates")
-      .delete()
+      .update({ active: false, updated_at: new Date().toISOString() })
       .eq("tenant_id", action.tenantId)
       .eq("id", action.templateId)
       .select("id")
       .maybeSingle();
-    if (deleteError)
+    if (archiveError)
       return json(
         request,
-        { error: { code: "ticket_template_delete_failed" } },
+        { error: { code: "ticket_template_archive_failed" } },
         500,
       );
-    if (!deleted)
+    if (!archived)
       return json(
         request,
         { error: { code: "ticket_template_not_found" } },
@@ -541,10 +541,10 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       admin,
       action.tenantId,
       actorId,
-      "ticket.template.deleted",
+      "ticket.template.archived",
       action.templateId,
       auditData(existing),
-      null,
+      { ...auditData(existing), active: false },
     );
     if (auditError)
       return json(
@@ -552,7 +552,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         { error: { code: "ticket_template_audit_failed" } },
         500,
       );
-    return json(request, { data: { deleted: true } });
+    return json(request, { data: { archived: true } });
   }
 
   const nextDepartmentId =
