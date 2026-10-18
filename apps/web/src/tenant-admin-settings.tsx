@@ -13,6 +13,7 @@ import { AssetIntuneSettings } from "./asset-intune-settings";
 import { DepartmentManagement } from "./department-management";
 import { TicketTemplates } from "./ticket-templates";
 import { TenantAutomation } from "./tenant-automation";
+import { TenantDataRetention } from "./tenant-data-retention";
 
 export type TenantAdminSettingsProps = {
   tenantId: string;
@@ -44,6 +45,7 @@ type SettingsArea =
   | "templates"
   | "departments"
   | "assets"
+  | "privacy"
   | "users"
   | "roles"
   | "audit";
@@ -1607,6 +1609,7 @@ export function TenantAdminSettings({
                 ["features", "Funktionen"],
                 ["ticket-fields", "Ticketfelder"],
                 ["departments", "Abteilungen"],
+                ["privacy", "Datenschutz"],
                 ["users", "Personen"],
                 ["roles", "Rollen"],
                 ["audit", "Protokoll"],
@@ -2213,6 +2216,10 @@ export function TenantAdminSettings({
 
             {activeArea === "departments" && (
               <DepartmentManagement tenantId={tenantId} />
+            )}
+
+            {activeArea === "privacy" && (
+              <TenantDataRetention tenantId={tenantId} />
             )}
 
             {(activeArea === "assets" || activeArea === "features") &&

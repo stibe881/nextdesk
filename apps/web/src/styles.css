@@ -8377,3 +8377,71 @@ body:has(.ticket-detail) {
     flex-wrap: wrap;
   }
 }
+
+/* Mandantenbezogene Datenschutz- und Retentionsteuerung */
+.tenant-retention__form {
+  display: grid;
+  gap: 1.25rem;
+}
+
+.tenant-retention__grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.tenant-retention__grid label {
+  display: grid;
+  gap: 0.5rem;
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.tenant-retention__grid label span {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 500;
+}
+
+.tenant-retention__grid input {
+  max-width: 12rem;
+}
+
+.tenant-retention__hold {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.8rem;
+  border: 1px solid color-mix(in srgb, var(--primary) 20%, var(--border));
+  border-radius: 1rem;
+  padding: 1rem;
+  background: color-mix(in srgb, var(--primary) 5%, white);
+}
+
+.tenant-retention__hold input {
+  width: 1.1rem;
+  height: 1.1rem;
+  margin-top: 0.2rem;
+}
+
+.tenant-retention__hold span {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.tenant-retention__hold small,
+.tenant-retention__note {
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.tenant-retention__note {
+  margin: 0;
+  border-left: 3px solid var(--accent, #14b8a6);
+  padding-left: 0.8rem;
+}
+
+@media (max-width: 760px) {
+  .tenant-retention__grid {
+    grid-template-columns: 1fr;
+  }
+}
