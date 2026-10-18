@@ -471,6 +471,118 @@ function requesterSearchFilter(query: string): string {
   return `display_name.ilike.${quoted},email.ilike.${quoted}`;
 }
 
+type EntraDirectoryPerson = {
+  email: string;
+  display_name: string;
+  local_user_id: string | null;
+};
+
+async function searchRequestersIncludingEntraDirectory(
+  admin: any,
+  tenantId: string,
+  query: string,
+): Promise<{ requesters: RequesterOption[]; error: boolean }> {
+  const [requesterResult, directoryResult] = await Promise.all([
+    admin
+      .from("ticket_requesters")
+      .select("id, display_name, email, user_id")
+      .eq("tenant_id", tenantId)
+      .or(requesterSearchFilter(query))
+      .order("display_name")
+      .order("id")
+      .limit(30),
+    admin
+      .from("tenant_entra_directory_people")
+      .select("email, display_name, local_user_id")
+      .eq("tenant_id", tenantId)
+      .eq("account_enabled", true)
+      .is("inactive_at", null)
+      .or(requesterSearchFilter(query))
+      .order("display_name")
+      .limit(30),
+  ]);
+  if (requesterResult.error || directoryResult.error) {
+    return { requesters: [], error: true };
+  }
+
+  const contacts = (requesterResult.data ?? []) as Array<{
+    id: string;
+    display_name: string;
+    email: string | null;
+    user_id: string | null;
+  }>;
+  const byEmail = new Map<string, (typeof contacts)[number]>();
+  const byUserId = new Map<string, (typeof contacts)[number]>();
+  for (const contact of contacts) {
+    if (typeof contact.email === "string") {
+      byEmail.set(contact.email.toLowerCase(), contact);
+    }
+    if (isUuid(contact.user_id)) byUserId.set(contact.user_id, contact);
+  }
+
+  for (const person of (directoryResult.data ?? []) as EntraDirectoryPerson[]) {
+    if (
+      typeof person.email !== "string" ||
+      typeof person.display_name !== "string" ||
+      !isRequesterName(person.display_name)
+    ) {
+      continue;
+    }
+    const normalizedEmail = person.email.trim().toLowerCase();
+    let contact =
+      byEmail.get(normalizedEmail) ??
+      (isUuid(person.local_user_id)
+        ? byUserId.get(person.local_user_id)
+        : undefined);
+    if (!contact) {
+      const { data: created, error } = await admin
+        .from("ticket_requesters")
+        .insert({
+          tenant_id: tenantId,
+          display_name: person.display_name.trim(),
+          email: normalizedEmail,
+          source: "entra",
+        })
+        .select("id, display_name, email, user_id")
+        .single();
+      if (error?.code === "23505") {
+        const { data: existing, error: existingError } = await admin
+          .from("ticket_requesters")
+          .select("id, display_name, email, user_id")
+          .eq("tenant_id", tenantId)
+          .eq("email", normalizedEmail)
+          .maybeSingle();
+        if (existingError || !existing) return { requesters: [], error: true };
+        contact = existing;
+      } else if (error || !created) {
+        return { requesters: [], error: true };
+      } else {
+        contact = created;
+      }
+      if (!contact) return { requesters: [], error: true };
+      contacts.push(contact);
+      byEmail.set(normalizedEmail, contact);
+      if (isUuid(contact.user_id)) byUserId.set(contact.user_id, contact);
+    }
+  }
+
+  const unique = new Map<string, RequesterOption>();
+  for (const contact of contacts) {
+    if (isRequesterContactId(contact.id)) {
+      unique.set(contact.id, publicRequester(contact));
+    }
+  }
+  const requesters = [...unique.values()]
+    .sort(
+      (left, right) =>
+        left.displayName.localeCompare(right.displayName, "de-CH", {
+          sensitivity: "base",
+        }) || left.id.localeCompare(right.id),
+    )
+    .slice(0, 30);
+  return { requesters, error: false };
+}
+
 type CategoryOption = { id: string; name: string; parentId: string | null };
 
 function publicCategory(row: {
@@ -1096,15 +1208,12 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       );
     }
     if (action.type === "searchRequesters") {
-      const { data: requesters, error } = await context.supabaseAdmin
-        .from("ticket_requesters")
-        .select("id, display_name")
-        .eq("tenant_id", action.tenantId)
-        .or(requesterSearchFilter(action.query))
-        .order("display_name")
-        .order("id")
-        .limit(30);
-      if (error) {
+      const result = await searchRequestersIncludingEntraDirectory(
+        context.supabaseAdmin,
+        action.tenantId,
+        action.query,
+      );
+      if (result.error) {
         return requesterError(
           request,
           "requesters_lookup_failed",
@@ -1113,7 +1222,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         );
       }
       return json(request, {
-        data: { requesters: (requesters ?? []).map(publicRequester) },
+        data: { requesters: result.requesters },
       });
     }
     const result = await createRequester(

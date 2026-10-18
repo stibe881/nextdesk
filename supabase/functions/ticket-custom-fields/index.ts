@@ -34,12 +34,31 @@ type SetValuesAction = {
   ticketId: string;
   values: Array<{ definitionId: string; value: FieldValue }>;
 };
+type GetLayoutAction = { type: "getLayout"; tenantId: string };
+type SaveSectionAction = {
+  type: "saveSection";
+  tenantId: string;
+  sectionId: string | null;
+  label: string;
+  expectedVersion: number;
+};
+type MoveDefinitionAction = {
+  type: "moveDefinition";
+  tenantId: string;
+  definitionId: string;
+  sectionId: string;
+  position: number;
+  expectedVersion: number;
+};
 type Action =
   | ListDefinitionsAction
   | UpsertDefinitionAction
   | RetireDefinitionAction
   | ListValuesAction
-  | SetValuesAction;
+  | SetValuesAction
+  | GetLayoutAction
+  | SaveSectionAction
+  | MoveDefinitionAction;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -126,6 +145,66 @@ function parseAction(value: unknown): Action | null {
     Object.keys(value).every((key) => key === "type" || key === "tenantId")
   ) {
     return { type: value.type, tenantId: value.tenantId };
+  }
+
+  if (
+    value.type === "getLayout" &&
+    Object.keys(value).every((key) => key === "type" || key === "tenantId")
+  ) {
+    return { type: value.type, tenantId: value.tenantId };
+  }
+
+  if (
+    value.type === "saveSection" &&
+    Object.keys(value).every((key) =>
+      ["type", "tenantId", "sectionId", "label", "expectedVersion"].includes(
+        key,
+      ),
+    ) &&
+    (value.sectionId === null || isUuid(value.sectionId)) &&
+    isText(value.label, 2, 120) &&
+    typeof value.expectedVersion === "number" &&
+    Number.isSafeInteger(value.expectedVersion) &&
+    value.expectedVersion > 0
+  ) {
+    return {
+      type: value.type,
+      tenantId: value.tenantId,
+      sectionId: value.sectionId,
+      label: value.label.trim(),
+      expectedVersion: value.expectedVersion,
+    };
+  }
+
+  if (
+    value.type === "moveDefinition" &&
+    Object.keys(value).every((key) =>
+      [
+        "type",
+        "tenantId",
+        "definitionId",
+        "sectionId",
+        "position",
+        "expectedVersion",
+      ].includes(key),
+    ) &&
+    isUuid(value.definitionId) &&
+    isUuid(value.sectionId) &&
+    typeof value.position === "number" &&
+    Number.isSafeInteger(value.position) &&
+    value.position >= 0 &&
+    typeof value.expectedVersion === "number" &&
+    Number.isSafeInteger(value.expectedVersion) &&
+    value.expectedVersion > 0
+  ) {
+    return {
+      type: value.type,
+      tenantId: value.tenantId,
+      definitionId: value.definitionId,
+      sectionId: value.sectionId,
+      position: value.position,
+      expectedVersion: value.expectedVersion,
+    };
   }
 
   if (
@@ -260,6 +339,13 @@ function errorResponse(
       404,
     );
   }
+  if (error.message === "layout_version_conflict") {
+    return response(
+      request,
+      { error: { code: "layout_version_conflict" } },
+      409,
+    );
+  }
   if (error.code === "42501") {
     return response(
       request,
@@ -305,6 +391,40 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       ({ data: result, error } = await context.supabaseAdmin.rpc(
         "list_ticket_custom_field_definitions",
         { p_actor_id: actorId, p_tenant_id: action.tenantId },
+      ));
+      break;
+    }
+    case "getLayout": {
+      ({ data: result, error } = await context.supabaseAdmin.rpc(
+        "list_ticket_custom_field_layout",
+        { p_actor_id: actorId, p_tenant_id: action.tenantId },
+      ));
+      break;
+    }
+    case "saveSection": {
+      ({ data: result, error } = await context.supabaseAdmin.rpc(
+        "save_ticket_custom_field_section",
+        {
+          p_actor_id: actorId,
+          p_tenant_id: action.tenantId,
+          p_section_id: action.sectionId,
+          p_label: action.label,
+          p_expected_version: action.expectedVersion,
+        },
+      ));
+      break;
+    }
+    case "moveDefinition": {
+      ({ data: result, error } = await context.supabaseAdmin.rpc(
+        "move_ticket_custom_field_definition",
+        {
+          p_actor_id: actorId,
+          p_tenant_id: action.tenantId,
+          p_definition_id: action.definitionId,
+          p_section_id: action.sectionId,
+          p_position: action.position,
+          p_expected_version: action.expectedVersion,
+        },
       ));
       break;
     }
