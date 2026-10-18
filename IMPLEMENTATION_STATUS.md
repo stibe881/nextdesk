@@ -45,3 +45,7 @@ _Stand: 18. Oktober 2026_
 ## E-Mail-Kanal Exchange Online (Stand 18.10.2026, 19:36)
 
 Implementiert und produktiv bereitgestellt (Migration 0061, Functions exchange-mail-admin/-webhook/-worker, ticket-operations v22, requester-portal v3, Web auf Hetzner). Funktionsschalter `integrations.email` bei allen Mandanten aus. Offen und extern: zentrale Entra-App `nextDesk – Exchange Online`, Supabase-Secrets `EXCHANGE_MAIL_CLIENT_ID` und `EXCHANGE_MAIL_CLIENT_SECRET`, Bereitstellung und Exchange-RBAC im Kundenmandanten, danach Verbindungstest, Aktivierung und realer End-to-End-Test. iOS-Kennzeichnung (2729061) noch nicht in TestFlight.
+
+## Push-Arbeitszeit-Check-in (18.10.2026)
+
+Produktiv: Migration 0062 (`push_work_checkins`, `push_work_state`, Versandsperre `off_shift` in `push_claim_outbox`), push-notifications v2 mit `checkIn`/`checkOut`/`declineCheckIn` und Mandanteneinstellungen für Arbeitszeiten (Standard 06:00–17:00 Uhr, Check-in erforderlich). Web-Einstellungen sind ausgerollt. iOS-Nachfrage und Arbeitszeitbereich sind in Commit c2d8768 umgesetzt, aber noch in keinem TestFlight-Build enthalten (letzter Build 10022). Push bleibt insgesamt inaktiv, bis APNs-Secrets gesetzt und der Funktionsschalter aktiviert sind.
