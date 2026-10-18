@@ -15,7 +15,7 @@ _Stand: 18. Oktober 2026_
 
 - Die Expo-iOS-App besitzt die Bundle-ID `ch.grossict.nextdesk`, den nativen PKCE-SSO-Rückweg `ch.grossict.nextdesk://auth/callback`, SecureStore/Keychain-Sitzungen, optionalen Geräteschutz, Haptik, sichere Fotoanhänge, Entwürfe, Favoriten, Tastaturvermeidung, globale Suche, Wissen, Assets und Scanner.
 - Offline werden keine Ticketdetails, Kommunikation, Anfragendendaten, Anhänge, Assets oder Wissensinhalte gespeichert. Ausschliesslich auf iOS kann eine maximal zwölf Stunden alte, verschlüsselte und schreibgeschützte Ticketlisten-Metadatenansicht bei eindeutig erkanntem Offlinezustand erscheinen. Sie wird bei Abmeldung, Benutzerwechsel oder lokaler Bereinigung vollständig gelöscht.
-- Der bestätigte letzte TestFlight-Upload vor der aktuellen Quellserie war Build **10015**. Ein neuer beauftragter Produktionsbuild mit automatischer App-Store-Connect-Übermittlung läuft zum Zeitpunkt dieses Dokuments; sein Ergebnis wird erst nach der EAS-Bestätigung als veröffentlicht ausgewiesen.
+- Der bestätigte letzte TestFlight-Upload ist Build **10018** (`29c10d54-80fe-4223-9d0e-5769f020bc57`) aus Quellcommit `30e9d3e`, mit der abgeschlossenen automatischen App-Store-Connect-Übermittlung `51d368f9-85b0-4605-b06a-99070462569a`. Er enthält die mobile Funktionssteuerung und den nativen SSO-Safari-Fallback; Apple verarbeitet die TestFlight-Version separat.
 
 ## Ausgeführte Qualitätsprüfungen
 
