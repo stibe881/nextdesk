@@ -1219,7 +1219,7 @@ export function TicketComposer({
         <p className="empty-state">Erfassungsoptionen werden geladen …</p>
       ) : (
         <form className="ticket-compose-form" onSubmit={createTicket}>
-          <div className="ticket-compose-description">
+          <div className="ticket-compose-description ticket-compose-requester">
             <label>
               Anfragende Person <span aria-hidden="true">*</span>
               <input
@@ -1442,7 +1442,7 @@ export function TicketComposer({
               </p>
             )}
           </div>
-          <label>
+          <label className="ticket-compose-subject">
             Betreff
             <input
               aria-describedby={
@@ -1457,282 +1457,299 @@ export function TicketComposer({
               value={selectedTemplatePreview?.subject ?? subject}
             />
           </label>
-          {showDepartmentSelection && (
-            <label>
-              Abteilung / Angebot
-              <select
-                aria-describedby={
-                  options.requesterContext.isInternal && contextDepartmentName
-                    ? "ticket-requester-department"
+          <section
+            aria-labelledby="ticket-routing-heading"
+            className="ticket-compose-routing"
+          >
+            <div className="ticket-compose-section-heading">
+              <p className="eyebrow">EINORDNUNG & ZUSTÄNDIGKEIT</p>
+              <h3 id="ticket-routing-heading">Ticket einordnen</h3>
+            </div>
+            {showDepartmentSelection && (
+              <label>
+                Abteilung / Angebot
+                <select
+                  aria-describedby={
+                    options.requesterContext.isInternal && contextDepartmentName
+                      ? "ticket-requester-department"
+                      : undefined
+                  }
+                  disabled={saving || options.departments.length === 0}
+                  id="ticket-department-selection"
+                  onChange={(event) => changeDepartment(event.target.value)}
+                  ref={departmentSelectRef}
+                  required
+                  value={departmentId}
+                >
+                  {options.departments.map((department) => (
+                    <option key={department.id} value={department.id}>
+                      {department.name}
+                    </option>
+                  ))}
+                </select>
+                {options.requesterContext.isInternal &&
+                  contextDepartmentName && (
+                    <span
+                      className="data-caption"
+                      id="ticket-requester-department"
+                    >
+                      Vorausgefüllt: {contextDepartmentName}
+                    </span>
+                  )}
+              </label>
+            )}
+            {!showDepartmentSelection && (
+              <button
+                aria-controls={
+                  showDepartmentSelection
+                    ? "ticket-department-selection"
                     : undefined
                 }
+                aria-expanded={showDepartmentSelection}
+                className="text-button"
                 disabled={saving || options.departments.length === 0}
-                id="ticket-department-selection"
-                onChange={(event) => changeDepartment(event.target.value)}
-                ref={departmentSelectRef}
-                required
-                value={departmentId}
+                onClick={openDepartmentSelection}
+                type="button"
               >
-                {options.departments.map((department) => (
-                  <option key={department.id} value={department.id}>
-                    {department.name}
-                  </option>
-                ))}
-              </select>
-              {options.requesterContext.isInternal && contextDepartmentName && (
-                <span className="data-caption" id="ticket-requester-department">
-                  Vorausgefüllt: {contextDepartmentName}
-                </span>
-              )}
-            </label>
-          )}
-          <button
-            aria-controls={
-              showDepartmentSelection
-                ? "ticket-department-selection"
-                : undefined
-            }
-            aria-expanded={showDepartmentSelection}
-            className="text-button"
-            disabled={saving || options.departments.length === 0}
-            onClick={openDepartmentSelection}
-            type="button"
-          >
-            Zuordnung anpassen
-          </button>
-          <div className="ticket-compose-description">
-            <label>
-              Ticketvorlage (optional)
-              <select
-                disabled={
-                  saving ||
-                  options.departments.length === 0 ||
-                  currentTemplateLookup?.status === "loading"
-                }
-                onChange={(event) => setTemplateId(event.target.value)}
-                value={selectedTemplate?.id ?? ""}
-              >
-                <option value="">
-                  {currentTemplateLookup?.status === "loading"
-                    ? "Vorlagen werden geladen …"
-                    : "Ohne Vorlage erfassen"}
-                </option>
-                {availableTemplates.map((template) => (
-                  <option key={template.id} value={template.id}>
-                    {template.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            {currentTemplateLookup?.error && (
-              <p className="error" role="alert">
-                {currentTemplateLookup.error}
-              </p>
+                Zuordnung anpassen
+              </button>
             )}
-            {selectedTemplate && (
-              <p className="data-caption" id="ticket-template-preview">
-                Betreff, Beschreibung und
-                {selectedTemplate.priorityKey ? " die Priorität" : ""} werden
-                beim Erstellen auf dem Server aus dieser Vorlage übernommen.
-                Platzhalter werden nur mit Mandantenkontext ersetzt; die
-                Ticketnummer wird erst beim Erstellen vergeben.
-              </p>
-            )}
-          </div>
-          {agentLookupAllowed && assignableAgents.length > 0 && (
-            <label>
-              Zugewiesener Agent
-              <select
-                disabled={saving}
-                onChange={(event) => setAssignedAgentId(event.target.value)}
-                value={assignedAgentId}
-              >
-                <option value="">Nicht zugewiesen</option>
-                {assignableAgents.map((agent) => (
-                  <option key={agent.id} value={agent.id}>
-                    {agent.displayName ?? "Aktiver Agent"}
-                    {agent.id === currentUserId ? " (Ich)" : ""}
-                  </option>
-                ))}
-              </select>
-              <span className="data-caption">
-                Alle aktiven, für diese Abteilung berechtigten Agenten des
-                Mandanten stehen zur Auswahl.
-              </span>
-            </label>
-          )}
-          {currentCategoryLookup?.status === "loading" && (
-            <p
-              className="data-caption ticket-compose-description"
-              role="status"
-            >
-              Kategorien werden geladen …
-            </p>
-          )}
-          {currentCategoryLookup?.error && (
-            <p className="ticket-compose-description error" role="alert">
-              {currentCategoryLookup.error}
-            </p>
-          )}
-          {categoriesLoaded && (
-            <div className="ticket-compose-description">
+            <div className="ticket-compose-description ticket-compose-template">
               <label>
-                Kategorie
+                Ticketvorlage (optional)
                 <select
-                  disabled={saving || categorySaving || categoryDraft !== null}
-                  onChange={(event) => {
-                    setCategoryId(event.target.value);
-                    setSubcategoryId("");
-                    setCategoryError("");
-                  }}
-                  value={selectedCategory?.id ?? ""}
+                  disabled={
+                    saving ||
+                    options.departments.length === 0 ||
+                    currentTemplateLookup?.status === "loading"
+                  }
+                  onChange={(event) => setTemplateId(event.target.value)}
+                  value={selectedTemplate?.id ?? ""}
                 >
-                  <option value="">Keine Auswahl</option>
-                  {rootCategories.map((category) => (
-                    <option key={category.id} value={category.id}>
-                      {category.name}
+                  <option value="">
+                    {currentTemplateLookup?.status === "loading"
+                      ? "Vorlagen werden geladen …"
+                      : "Ohne Vorlage erfassen"}
+                  </option>
+                  {availableTemplates.map((template) => (
+                    <option key={template.id} value={template.id}>
+                      {template.name}
                     </option>
                   ))}
                 </select>
               </label>
-              {selectedCategory && (
+              {currentTemplateLookup?.error && (
+                <p className="error" role="alert">
+                  {currentTemplateLookup.error}
+                </p>
+              )}
+              {selectedTemplate && (
+                <p className="data-caption" id="ticket-template-preview">
+                  Betreff, Beschreibung und
+                  {selectedTemplate.priorityKey ? " die Priorität" : ""} werden
+                  beim Erstellen auf dem Server aus dieser Vorlage übernommen.
+                  Platzhalter werden nur mit Mandantenkontext ersetzt; die
+                  Ticketnummer wird erst beim Erstellen vergeben.
+                </p>
+              )}
+            </div>
+            {agentLookupAllowed && assignableAgents.length > 0 && (
+              <label>
+                Zugewiesener Agent
+                <select
+                  disabled={saving}
+                  onChange={(event) => setAssignedAgentId(event.target.value)}
+                  value={assignedAgentId}
+                >
+                  <option value="">Nicht zugewiesen</option>
+                  {assignableAgents.map((agent) => (
+                    <option key={agent.id} value={agent.id}>
+                      {agent.displayName ?? "Aktiver Agent"}
+                      {agent.id === currentUserId ? " (Ich)" : ""}
+                    </option>
+                  ))}
+                </select>
+                <span className="data-caption">
+                  Alle aktiven, für diese Abteilung berechtigten Agenten des
+                  Mandanten stehen zur Auswahl.
+                </span>
+              </label>
+            )}
+            {currentCategoryLookup?.status === "loading" && (
+              <p
+                className="data-caption ticket-compose-description"
+                role="status"
+              >
+                Kategorien werden geladen …
+              </p>
+            )}
+            {currentCategoryLookup?.error && (
+              <p className="ticket-compose-description error" role="alert">
+                {currentCategoryLookup.error}
+              </p>
+            )}
+            {categoriesLoaded && (
+              <div className="ticket-compose-description ticket-compose-category">
                 <label>
-                  Unterkategorie
+                  Kategorie
                   <select
                     disabled={
                       saving || categorySaving || categoryDraft !== null
                     }
-                    onChange={(event) => setSubcategoryId(event.target.value)}
-                    value={selectedSubcategory?.id ?? ""}
+                    onChange={(event) => {
+                      setCategoryId(event.target.value);
+                      setSubcategoryId("");
+                      setCategoryError("");
+                    }}
+                    value={selectedCategory?.id ?? ""}
                   >
                     <option value="">Keine Auswahl</option>
-                    {subcategories.map((category) => (
+                    {rootCategories.map((category) => (
                       <option key={category.id} value={category.id}>
                         {category.name}
                       </option>
                     ))}
                   </select>
                 </label>
-              )}
-              <div>
-                <button
-                  aria-controls={
-                    categoryDraft ? "ticket-category-form" : undefined
-                  }
-                  aria-expanded={categoryDraft?.parentId === null}
-                  className="text-button"
-                  disabled={saving || categorySaving}
-                  onClick={() => openCategoryForm(null)}
-                  type="button"
-                >
-                  Neue Kategorie
-                </button>
                 {selectedCategory && (
+                  <label>
+                    Unterkategorie
+                    <select
+                      disabled={
+                        saving || categorySaving || categoryDraft !== null
+                      }
+                      onChange={(event) => setSubcategoryId(event.target.value)}
+                      value={selectedSubcategory?.id ?? ""}
+                    >
+                      <option value="">Keine Auswahl</option>
+                      {subcategories.map((category) => (
+                        <option key={category.id} value={category.id}>
+                          {category.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+                <div>
                   <button
                     aria-controls={
                       categoryDraft ? "ticket-category-form" : undefined
                     }
-                    aria-expanded={
-                      categoryDraft?.parentId === selectedCategory.id
-                    }
+                    aria-expanded={categoryDraft?.parentId === null}
                     className="text-button"
                     disabled={saving || categorySaving}
-                    onClick={() => openCategoryForm(selectedCategory.id)}
+                    onClick={() => openCategoryForm(null)}
                     type="button"
                   >
-                    Neue Unterkategorie
+                    Neue Kategorie
                   </button>
-                )}
-              </div>
-              {categoryDraft && (
-                <div
-                  aria-label={
-                    draftParent ? "Neue Unterkategorie" : "Neue Kategorie"
-                  }
-                  id="ticket-category-form"
-                  role="group"
-                >
-                  <p className="data-caption">
-                    {draftParent
-                      ? `Unterkategorie von: ${draftParent.name}`
-                      : "Neue Kategorie ohne übergeordnete Kategorie"}
-                  </p>
-                  <label>
-                    Name
-                    <input
-                      autoFocus
+                  {selectedCategory && (
+                    <button
+                      aria-controls={
+                        categoryDraft ? "ticket-category-form" : undefined
+                      }
+                      aria-expanded={
+                        categoryDraft?.parentId === selectedCategory.id
+                      }
+                      className="text-button"
                       disabled={saving || categorySaving}
-                      onChange={(event) => {
-                        const name = event.target.value;
-                        setCategoryDraft((current) =>
-                          current ? { ...current, name } : null,
-                        );
+                      onClick={() => openCategoryForm(selectedCategory.id)}
+                      type="button"
+                    >
+                      Neue Unterkategorie
+                    </button>
+                  )}
+                </div>
+                {categoryDraft && (
+                  <div
+                    aria-label={
+                      draftParent ? "Neue Unterkategorie" : "Neue Kategorie"
+                    }
+                    id="ticket-category-form"
+                    role="group"
+                  >
+                    <p className="data-caption">
+                      {draftParent
+                        ? `Unterkategorie von: ${draftParent.name}`
+                        : "Neue Kategorie ohne übergeordnete Kategorie"}
+                    </p>
+                    <label>
+                      Name
+                      <input
+                        autoFocus
+                        disabled={saving || categorySaving}
+                        onChange={(event) => {
+                          const name = event.target.value;
+                          setCategoryDraft((current) =>
+                            current ? { ...current, name } : null,
+                          );
+                          setCategoryError("");
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            event.preventDefault();
+                            void createCategory();
+                          }
+                        }}
+                        placeholder={
+                          draftParent
+                            ? "Name der Unterkategorie"
+                            : "Name der Kategorie"
+                        }
+                        value={categoryDraft.name}
+                      />
+                    </label>
+                    <button
+                      className="text-button"
+                      disabled={saving || categorySaving}
+                      onClick={() => {
+                        setCategoryDraft(null);
                         setCategoryError("");
                       }}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter") {
-                          event.preventDefault();
-                          void createCategory();
-                        }
-                      }}
-                      placeholder={
-                        draftParent
-                          ? "Name der Unterkategorie"
-                          : "Name der Kategorie"
+                      type="button"
+                    >
+                      Abbrechen
+                    </button>
+                    <button
+                      className="primary-button"
+                      disabled={
+                        saving || categorySaving || !categoryDraft.name.trim()
                       }
-                      value={categoryDraft.name}
-                    />
-                  </label>
-                  <button
-                    className="text-button"
-                    disabled={saving || categorySaving}
-                    onClick={() => {
-                      setCategoryDraft(null);
-                      setCategoryError("");
-                    }}
-                    type="button"
-                  >
-                    Abbrechen
-                  </button>
-                  <button
-                    className="primary-button"
-                    disabled={
-                      saving || categorySaving || !categoryDraft.name.trim()
-                    }
-                    onClick={() => void createCategory()}
-                    type="button"
-                  >
-                    {categorySaving ? "Wird gespeichert …" : "Speichern"}
-                  </button>
-                </div>
-              )}
-              {categoryError && (
-                <p className="error" role="alert">
-                  {categoryError}
-                </p>
-              )}
-            </div>
-          )}
-          <label>
-            Priorität
-            <select
-              disabled={
-                saving ||
-                options.priorities.length === 0 ||
-                (selectedTemplate?.priorityKey !== null &&
-                  selectedTemplate?.priorityKey !== undefined)
-              }
-              onChange={(event) => setPriorityKey(event.target.value)}
-              required
-              value={effectivePriorityKey}
-            >
-              {options.priorities.map((priority) => (
-                <option key={priority.key} value={priority.key}>
-                  {priority.label}
-                </option>
-              ))}
-            </select>
-          </label>
+                      onClick={() => void createCategory()}
+                      type="button"
+                    >
+                      {categorySaving ? "Wird gespeichert …" : "Speichern"}
+                    </button>
+                  </div>
+                )}
+                {categoryError && (
+                  <p className="error" role="alert">
+                    {categoryError}
+                  </p>
+                )}
+              </div>
+            )}
+            <label className="ticket-compose-priority">
+              Priorität
+              <select
+                disabled={
+                  saving ||
+                  options.priorities.length === 0 ||
+                  (selectedTemplate?.priorityKey !== null &&
+                    selectedTemplate?.priorityKey !== undefined)
+                }
+                onChange={(event) => setPriorityKey(event.target.value)}
+                required
+                value={effectivePriorityKey}
+              >
+                {options.priorities.map((priority) => (
+                  <option key={priority.key} value={priority.key}>
+                    {priority.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </section>
           <label className="ticket-compose-description">
             Beschreibung
             <textarea

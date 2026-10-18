@@ -2648,14 +2648,76 @@ pre {
 
 .ticket-compose-form {
   display: grid;
-  grid-template-columns: minmax(0, 1.4fr) minmax(0, 0.8fr) minmax(0, 0.8fr) auto;
-  align-items: end;
-  gap: 18px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  gap: 20px;
   padding: 0 24px 24px;
 }
 
 .ticket-compose-description {
-  grid-column: 1 / -2;
+  grid-column: 1 / -1;
+}
+
+.ticket-compose-subject,
+.ticket-compose-form > .primary-button {
+  grid-column: 1 / -1;
+}
+
+.ticket-compose-routing {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px 20px;
+  border: 1px solid #e2e5ef;
+  border-radius: 16px;
+  padding: 18px;
+  background: linear-gradient(135deg, #fbfcff, #f7f8fe);
+}
+
+.ticket-compose-section-heading,
+.ticket-compose-routing > .ticket-compose-category,
+.ticket-compose-routing > .ticket-compose-description[role="status"],
+.ticket-compose-routing > .ticket-compose-description.error {
+  grid-column: 1 / -1;
+}
+
+.ticket-compose-section-heading {
+  display: grid;
+  gap: 3px;
+}
+
+.ticket-compose-section-heading .eyebrow {
+  margin: 0;
+}
+
+.ticket-compose-section-heading h3 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 16px;
+}
+
+.ticket-compose-routing > .ticket-compose-template {
+  grid-column: auto;
+}
+
+.ticket-compose-routing > .ticket-compose-category {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 16px;
+}
+
+.ticket-compose-routing > .ticket-compose-category > div,
+.ticket-compose-routing > .ticket-compose-category > .error,
+.ticket-compose-routing > .ticket-compose-category > [role="group"] {
+  grid-column: 1 / -1;
+}
+
+.ticket-compose-routing > .ticket-compose-category > .text-button {
+  justify-self: start;
+}
+
+.ticket-compose-routing > .ticket-compose-priority {
+  align-self: end;
 }
 
 .ticket-compose-message {
@@ -5127,6 +5189,32 @@ body:has(.ticket-detail) {
   }
 
   .ticket-compose-description {
+    grid-column: 1;
+  }
+
+  .ticket-compose-subject,
+  .ticket-compose-form > .primary-button,
+  .ticket-compose-routing {
+    grid-column: 1;
+  }
+
+  .ticket-compose-routing,
+  .ticket-compose-routing > .ticket-compose-category {
+    grid-template-columns: 1fr;
+  }
+
+  .ticket-compose-routing {
+    gap: 14px;
+    padding: 16px;
+  }
+
+  .ticket-compose-routing > .ticket-compose-template,
+  .ticket-compose-routing > .ticket-compose-category,
+  .ticket-compose-routing > .ticket-compose-description[role="status"],
+  .ticket-compose-routing > .ticket-compose-description.error,
+  .ticket-compose-routing > .ticket-compose-category > div,
+  .ticket-compose-routing > .ticket-compose-category > .error,
+  .ticket-compose-routing > .ticket-compose-category > [role="group"] {
     grid-column: 1;
   }
 

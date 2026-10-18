@@ -1856,10 +1856,7 @@ export function App() {
         ) : section === "Wissen" && activeTenant ? (
           <KnowledgeBase tenantId={activeTenant.id} />
         ) : section === "Assets" && activeTenant ? (
-          <>
-            <AssetIntuneSettings tenantId={activeTenant.id} />
-            <ServiceAssets initialTab="assets" tenantId={activeTenant.id} />
-          </>
+          <ServiceAssets initialTab="assets" tenantId={activeTenant.id} />
         ) : section === "Services" && activeTenant ? (
           <>
             <ServiceAssets tenantId={activeTenant.id} />
