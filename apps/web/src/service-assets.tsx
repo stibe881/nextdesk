@@ -12,6 +12,7 @@ import { supabase } from "./lib/supabase";
 export type ServiceAssetsProps = {
   tenantId: string;
   initialTab?: CatalogTab;
+  allowAssets?: boolean;
 };
 
 type CatalogTab = "services" | "assets" | "problems";
@@ -610,8 +611,11 @@ function problemDraft(problem: Problem): ProblemForm {
 export function ServiceAssets({
   tenantId,
   initialTab = "services",
+  allowAssets = true,
 }: ServiceAssetsProps) {
-  const [activeTab, setActiveTab] = useState<CatalogTab>(initialTab);
+  const [activeTab, setActiveTab] = useState<CatalogTab>(
+    allowAssets || initialTab !== "assets" ? initialTab : "services",
+  );
   const [services, setServices] = useState<Service[]>([]);
   const [assets, setAssets] = useState<Asset[]>([]);
   const [problems, setProblems] = useState<Problem[]>([]);
@@ -721,6 +725,12 @@ export function ServiceAssets({
       ticketSearchResults.filter((ticket) => !attachedTicketIds.has(ticket.id)),
     [attachedTicketIds, ticketSearchResults],
   );
+
+  useEffect(() => {
+    if (!allowAssets && activeTab === "assets") {
+      setActiveTab("services");
+    }
+  }, [activeTab, allowAssets]);
 
   const loadCatalog = useCallback(async () => {
     const version = requestVersion.current + 1;
@@ -907,7 +917,9 @@ export function ServiceAssets({
   }
 
   function moveTab(event: KeyboardEvent<HTMLButtonElement>, tab: CatalogTab) {
-    const tabs: CatalogTab[] = ["services", "assets", "problems"];
+    const tabs: CatalogTab[] = allowAssets
+      ? ["services", "assets", "problems"]
+      : ["services", "problems"];
     const currentIndex = tabs.indexOf(tab);
     let nextIndex = currentIndex;
     if (event.key === "ArrowRight")
@@ -1317,18 +1329,20 @@ export function ServiceAssets({
         >
           Services ({services.length})
         </button>
-        <button
-          aria-controls="service-assets-assets-panel"
-          aria-selected={activeTab === "assets"}
-          id="service-assets-assets-tab"
-          onClick={() => selectTab("assets")}
-          onKeyDown={(event) => moveTab(event, "assets")}
-          role="tab"
-          tabIndex={activeTab === "assets" ? 0 : -1}
-          type="button"
-        >
-          Assets ({assets.length})
-        </button>
+        {allowAssets ? (
+          <button
+            aria-controls="service-assets-assets-panel"
+            aria-selected={activeTab === "assets"}
+            id="service-assets-assets-tab"
+            onClick={() => selectTab("assets")}
+            onKeyDown={(event) => moveTab(event, "assets")}
+            role="tab"
+            tabIndex={activeTab === "assets" ? 0 : -1}
+            type="button"
+          >
+            Assets ({assets.length})
+          </button>
+        ) : null}
         <button
           aria-controls="service-assets-problems-panel"
           aria-selected={activeTab === "problems"}
@@ -1534,7 +1548,7 @@ export function ServiceAssets({
         </section>
       ) : null}
 
-      {!loading && !forbidden && activeTab === "assets" ? (
+      {!loading && !forbidden && allowAssets && activeTab === "assets" ? (
         <section
           aria-labelledby="service-assets-assets-tab"
           id="service-assets-assets-panel"

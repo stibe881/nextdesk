@@ -139,6 +139,12 @@ type TenantTicketAccess = {
   isTenantAdmin: boolean;
 };
 
+type TenantFeatureFlag = {
+  defaultEnabled: boolean;
+  enabled: boolean;
+  key: string;
+};
+
 const sections: readonly { label: Section; Icon: LucideIcon }[] = [
   { label: "Übersicht", Icon: LayoutDashboard },
   { label: "Tickets", Icon: Ticket },
@@ -205,6 +211,33 @@ function tenantTicketAccessFromResponse(
         isTenantAdmin: parsed.isTenantAdmin,
       }
     : null;
+}
+
+function tenantFeatureFlagsFromResponse(
+  value: unknown,
+): Record<string, boolean> | null {
+  if (
+    !isRecord(value) ||
+    !isRecord(value.data) ||
+    !Array.isArray(value.data.features)
+  ) {
+    return null;
+  }
+
+  const flags: Record<string, boolean> = {};
+  for (const rawFeature of value.data.features) {
+    if (!isRecord(rawFeature)) return null;
+    const feature = rawFeature as Partial<TenantFeatureFlag>;
+    if (
+      typeof feature.key !== "string" ||
+      typeof feature.enabled !== "boolean" ||
+      typeof feature.defaultEnabled !== "boolean"
+    ) {
+      return null;
+    }
+    flags[feature.key] = feature.enabled;
+  }
+  return flags;
 }
 
 function displayAuthError(message: string): string {
@@ -799,6 +832,9 @@ export function App() {
     useState(false);
   const [personalSettingsOpen, setPersonalSettingsOpen] = useState(false);
   const [ssoEnforced, setSsoEnforced] = useState(false);
+  const [tenantFeatures, setTenantFeatures] = useState<Record<string, boolean>>(
+    {},
+  );
   const notificationButtonRef = useRef<HTMLButtonElement>(null);
   const notificationPanelRef = useRef<HTMLElement>(null);
   const commandInputRef = useRef<HTMLInputElement>(null);
@@ -864,6 +900,7 @@ export function App() {
       setIsTenantAdmin(false);
       setPersonalSettingsOpen(false);
       setSsoEnforced(false);
+      setTenantFeatures({});
     });
 
     return () => {
@@ -1103,6 +1140,34 @@ export function App() {
         setCanWorkTickets(false);
         setIsTenantAdmin(false);
       });
+    return () => {
+      mounted = false;
+    };
+  }, [activeTenant, session]);
+
+  useEffect(() => {
+    if (!isSupabaseConfigured || !supabase || !session || !activeTenant) {
+      setTenantFeatures({});
+      return;
+    }
+
+    let mounted = true;
+    void supabase.functions
+      .invoke("tenant-feature-flags", {
+        body: { type: "list", tenantId: activeTenant.id },
+      })
+      .then(({ data, error }) => {
+        if (error) throw error;
+        const flags = tenantFeatureFlagsFromResponse(data);
+        if (!flags) throw new Error("invalid_tenant_feature_flags_response");
+        if (mounted) setTenantFeatures(flags);
+      })
+      .catch(() => {
+        // Optional modules fail closed so they never appear before the current
+        // tenant entitlement has been verified by the server.
+        if (mounted) setTenantFeatures({});
+      });
+
     return () => {
       mounted = false;
     };
@@ -1355,11 +1420,35 @@ export function App() {
     unassigned: "Nicht zugewiesene Tickets",
   };
   const normalizedCommandQuery = commandQuery.trim().toLocaleLowerCase("de-CH");
+  const isFeatureEnabled = (featureKey: string) =>
+    !isSupabaseConfigured || tenantFeatures[featureKey] === true;
+  const featureSections = sections.filter((item) => {
+    if (item.label === "Assets") return isFeatureEnabled("assets.management");
+    if (item.label === "Wissen") return isFeatureEnabled("knowledge.base");
+    if (item.label === "Berichte") return isFeatureEnabled("reporting.service");
+    return true;
+  });
   const workSections = canWorkTickets
-    ? sections
-    : sections.filter(
+    ? featureSections
+    : featureSections.filter(
         (item) => item.label === "Übersicht" || item.label === "Tickets",
       );
+
+  useEffect(() => {
+    const sectionFeature: Partial<Record<Section, string>> = {
+      Assets: "assets.management",
+      Berichte: "reporting.service",
+      Wissen: "knowledge.base",
+    };
+    const featureKey = sectionFeature[section];
+    if (
+      featureKey &&
+      isSupabaseConfigured &&
+      tenantFeatures[featureKey] !== true
+    ) {
+      setSection("Übersicht");
+    }
+  }, [section, tenantFeatures]);
   const commandActions = [
     {
       id: "create-ticket",
@@ -1847,16 +1936,27 @@ export function App() {
               tenantId={activeTenant.id}
             />
           </>
-        ) : section === "Wissen" && activeTenant ? (
+        ) : section === "Wissen" &&
+          activeTenant &&
+          isFeatureEnabled("knowledge.base") ? (
           <KnowledgeBase tenantId={activeTenant.id} />
-        ) : section === "Assets" && activeTenant ? (
+        ) : section === "Assets" &&
+          activeTenant &&
+          isFeatureEnabled("assets.management") ? (
           <ServiceAssets initialTab="assets" tenantId={activeTenant.id} />
         ) : section === "Services" && activeTenant ? (
           <>
-            <ServiceAssets tenantId={activeTenant.id} />
-            <SlaManagement tenantId={activeTenant.id} />
+            <ServiceAssets
+              allowAssets={isFeatureEnabled("assets.management")}
+              tenantId={activeTenant.id}
+            />
+            {isFeatureEnabled("automation.sla") ? (
+              <SlaManagement tenantId={activeTenant.id} />
+            ) : null}
           </>
-        ) : section === "Berichte" && activeTenant ? (
+        ) : section === "Berichte" &&
+          activeTenant &&
+          isFeatureEnabled("reporting.service") ? (
           <ServiceReporting tenantId={activeTenant.id} />
         ) : section === "Tickets" ? (
           <>
@@ -2235,7 +2335,7 @@ export function App() {
                   }
                   value={workspacePreferences.startSection}
                 >
-                  {sections.map((item) => (
+                  {workSections.map((item) => (
                     <option key={item.label} value={item.label}>
                       {item.label}
                     </option>

@@ -1,9 +1,9 @@
-import { Tabs } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { Tabs } from "expo-router";
+import { Platform } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { HapticTab } from "@/components/haptic-tab";
-import { Platform } from "react-native";
 
 export default function TabLayout() {
   const insets = useSafeAreaInsets();
@@ -53,15 +53,6 @@ export default function TabLayout() {
           ),
         }}
       />
-      <Tabs.Screen
-        name="scan"
-        options={{
-          title: "Scan",
-          tabBarIcon: ({ color }) => (
-            <Ionicons color={color} name="scan-outline" size={23} />
-          ),
-        }}
-      />
       <Tabs.Screen name="assets" options={{ href: null }} />
       <Tabs.Screen
         name="index"
@@ -82,14 +73,15 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="settings"
+        name="scan"
         options={{
-          title: "Einstellungen",
+          title: "Scan",
           tabBarIcon: ({ color }) => (
-            <Ionicons color={color} name="settings-outline" size={23} />
+            <Ionicons color={color} name="scan-outline" size={23} />
           ),
         }}
       />
+      <Tabs.Screen name="settings" options={{ href: null }} />
     </Tabs>
   );
 }

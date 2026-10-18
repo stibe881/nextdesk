@@ -1431,12 +1431,9 @@ export function TenantAdminSettings({
               [
                 ["overview", "Übersicht"],
                 ["branding", "Design"],
-                ["sso", "Anmeldung"],
                 ["features", "Funktionen"],
                 ["ticket-fields", "Ticketfelder"],
-                ["templates", "Vorlagen"],
                 ["departments", "Abteilungen"],
-                ["assets", "Assets & Intune"],
                 ["users", "Personen"],
                 ["roles", "Rollen"],
                 ["audit", "Protokoll"],
@@ -1786,7 +1783,7 @@ export function TenantAdminSettings({
               </section>
             )}
 
-            {activeArea === "sso" && (
+            {(activeArea === "sso" || activeArea === "features") && (
               <section
                 className="tenant-admin-settings__section"
                 aria-labelledby="tenant-sso-heading"
@@ -2043,17 +2040,26 @@ export function TenantAdminSettings({
               <TicketCustomFieldsAdmin tenantId={tenantId} />
             )}
 
-            {activeArea === "templates" && (
+            {(activeArea === "templates" || activeArea === "features") &&
+            settings.tenant_feature_flags.some(
+              (feature) =>
+                feature.feature_key === "ticketing.templates" &&
+                feature.enabled,
+            ) ? (
               <TicketTemplates tenantId={tenantId} />
-            )}
+            ) : null}
 
             {activeArea === "departments" && (
               <DepartmentManagement tenantId={tenantId} />
             )}
 
-            {activeArea === "assets" && (
+            {(activeArea === "assets" || activeArea === "features") &&
+            settings.tenant_feature_flags.some(
+              (feature) =>
+                feature.feature_key === "assets.management" && feature.enabled,
+            ) ? (
               <AssetIntuneSettings tenantId={tenantId} />
-            )}
+            ) : null}
 
             {activeArea === "users" && (
               <section
