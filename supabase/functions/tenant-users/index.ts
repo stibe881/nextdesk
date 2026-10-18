@@ -37,6 +37,17 @@ type DirectoryProfile = {
   offer: string | null;
 };
 
+type EntraDirectoryPerson = {
+  entra_object_id: string;
+  email: string;
+  display_name: string;
+  job_title: string | null;
+  source_department_name: string | null;
+  account_enabled: boolean;
+  local_user_id: string | null;
+  last_synced_at: string;
+};
+
 type AssignmentRole = {
   name: string;
   scope: string;
@@ -463,6 +474,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       membershipsResult,
       invitationsResult,
       directoryResult,
+      entraDirectoryResult,
       departmentsResult,
       assignmentsResult,
     ] = await Promise.all([
@@ -487,6 +499,14 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         .eq("tenant_id", action.tenantId)
         .limit(500),
       context.supabaseAdmin
+        .from("tenant_entra_directory_people")
+        .select(
+          "entra_object_id, email, display_name, job_title, source_department_name, account_enabled, local_user_id, last_synced_at",
+        )
+        .eq("tenant_id", action.tenantId)
+        .order("display_name", { ascending: true })
+        .limit(1000),
+      context.supabaseAdmin
         .from("departments")
         .select("id, name, active")
         .eq("tenant_id", action.tenantId)
@@ -504,6 +524,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       membershipsResult.error ||
       invitationsResult.error ||
       directoryResult.error ||
+      entraDirectoryResult.error ||
       departmentsResult.error ||
       assignmentsResult.error
     ) {
@@ -602,7 +623,21 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         active: department.active === true,
       }),
     );
-    return json(request, { data: { members, invitations, departments } });
+    const directoryPeople = (
+      (entraDirectoryResult.data ?? []) as EntraDirectoryPerson[]
+    ).map((person) => ({
+      id: person.entra_object_id,
+      email: person.email,
+      displayName: person.display_name,
+      jobTitle: person.job_title,
+      sourceDepartmentName: person.source_department_name,
+      accountEnabled: person.account_enabled,
+      linkedToNextDesk: person.local_user_id !== null,
+      lastSyncedAt: person.last_synced_at,
+    }));
+    return json(request, {
+      data: { members, invitations, departments, directoryPeople },
+    });
   }
 
   if (action.type === "acceptMyInvitations") {

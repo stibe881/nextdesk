@@ -23,6 +23,7 @@ type SsoProviderSelection = SsoProvider | "";
 type SaveTarget =
   | "branding"
   | "sso"
+  | "entra-sync"
   | "invite-user"
   | `person:${string}`
   | `feature:${string}`
@@ -152,6 +153,17 @@ type TenantInvitation = {
   isAgent: boolean;
 };
 
+type TenantEntraDirectoryPerson = {
+  id: string;
+  email: string;
+  displayName: string;
+  jobTitle: string | null;
+  sourceDepartmentName: string | null;
+  accountEnabled: boolean;
+  linkedToNextDesk: boolean;
+  lastSyncedAt: string;
+};
+
 type TenantDepartment = {
   id: string;
   name: string;
@@ -170,6 +182,7 @@ type TenantUserDirectory = {
   members: TenantDirectoryMember[];
   invitations: TenantInvitation[];
   departments: TenantDepartment[];
+  directoryPeople: TenantEntraDirectoryPerson[];
 };
 
 type AuditEntry = {
@@ -616,6 +629,7 @@ export function TenantAdminSettings({
     members: [],
     invitations: [],
     departments: [],
+    directoryPeople: [],
   });
   const [roles, setRoles] = useState<TenantRole[]>([]);
   const [permissions, setPermissions] = useState<TenantPermission[]>([]);
@@ -710,7 +724,12 @@ export function TenantAdminSettings({
       );
     } catch (nextError) {
       setSettings(null);
-      setUserDirectory({ members: [], invitations: [], departments: [] });
+      setUserDirectory({
+        members: [],
+        invitations: [],
+        departments: [],
+        directoryPeople: [],
+      });
       setRoles([]);
       setRoleAssignments([]);
       setPermissions([]);
@@ -728,6 +747,36 @@ export function TenantAdminSettings({
   useEffect(() => {
     void loadData();
   }, [loadData]);
+
+  const syncEntraDirectory = async () => {
+    if (!supabase) {
+      setError("Die Entra-Verzeichnissynchronisation ist nicht verfügbar.");
+      return;
+    }
+    setSaving("entra-sync");
+    setError("");
+    setSuccess("");
+    try {
+      const { error: invokeError } = await supabase.functions.invoke(
+        "entra-directory-sync",
+        { body: { type: "syncTenant", tenantId } },
+      );
+      if (invokeError) throw invokeError;
+      await loadData();
+      setSuccess(
+        "Der Entra-Abgleich ist abgeschlossen. Die synchronisierten Personen erscheinen unten im Verzeichnis.",
+      );
+    } catch (nextError) {
+      setError(
+        messageFromError(
+          nextError,
+          "Das Entra-Verzeichnis konnte nicht abgeglichen werden.",
+        ),
+      );
+    } finally {
+      setSaving(null);
+    }
+  };
 
   const loadAudit = useCallback(async () => {
     setAuditLoading(true);
@@ -2072,6 +2121,24 @@ export function TenantAdminSettings({
                   Angebot und Funktion und bestimmen Sie, wer als Support-Agent
                   in der Ticketbearbeitung arbeitet.
                 </p>
+                <div className="tenant-admin-settings__directory-sync">
+                  <div>
+                    <strong>Microsoft Entra-Verzeichnis</strong>
+                    <span>
+                      Lädt nur Personenprofile aus dem eigenen Entra-Mandanten;
+                      es werden keine Agentenrechte vergeben.
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={saving !== null}
+                    onClick={() => void syncEntraDirectory()}
+                  >
+                    {saving === "entra-sync"
+                      ? "Entra wird abgeglichen …"
+                      : "Entra-Personen abgleichen"}
+                  </button>
+                </div>
                 <form
                   className="tenant-admin-settings__form"
                   onSubmit={inviteUser}
@@ -2361,6 +2428,45 @@ export function TenantAdminSettings({
                   </ul>
                 ) : (
                   <p>Für diese Suche wurden keine aktiven Personen gefunden.</p>
+                )}
+
+                <h3>Synchronisierte Entra-Personen</h3>
+                {userDirectory.directoryPeople.length > 0 ? (
+                  <ul className="tenant-admin-settings__person-list">
+                    {userDirectory.directoryPeople.map((person) => (
+                      <li key={person.id}>
+                        <div className="tenant-admin-settings__person-summary">
+                          <div>
+                            <strong>{person.displayName}</strong>
+                            <span>{person.email}</span>
+                          </div>
+                          <div className="tenant-admin-settings__person-badges">
+                            {person.sourceDepartmentName ? (
+                              <span>{person.sourceDepartmentName}</span>
+                            ) : null}
+                            {person.jobTitle ? (
+                              <span>{person.jobTitle}</span>
+                            ) : null}
+                            <span>
+                              {person.accountEnabled
+                                ? "Entra aktiv"
+                                : "In Entra deaktiviert"}
+                            </span>
+                            <span>
+                              {person.linkedToNextDesk
+                                ? "nextDesk verknüpft"
+                                : "Noch nicht angemeldet"}
+                            </span>
+                          </div>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p>
+                    Nach dem Abgleich erscheinen hier die Personen aus Microsoft
+                    Entra.
+                  </p>
                 )}
 
                 <h3>Offene Einladungen</h3>

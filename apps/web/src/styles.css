@@ -7436,3 +7436,33 @@ body:has(.ticket-detail) {
     flex: 1 1 160px;
   }
 }
+
+.tenant-admin-settings__directory-sync {
+  align-items: center;
+  background: var(--primary-soft);
+  border: 1px solid #d8dcff;
+  border-radius: var(--radius);
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  margin: 16px 0;
+  padding: 16px;
+}
+
+.tenant-admin-settings__directory-sync > div {
+  display: grid;
+  gap: 4px;
+}
+
+.tenant-admin-settings__directory-sync span {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+@media (max-width: 640px) {
+  .tenant-admin-settings__directory-sync {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
