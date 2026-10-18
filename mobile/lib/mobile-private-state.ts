@@ -172,6 +172,11 @@ export async function setSelectedTenantId(
   await mobileSecureStorage.setItem(tenantKey(userId), tenantId);
 }
 
+/** Entfernt nur die Arbeitsbereichsauswahl des angemeldeten Kontos. */
+export async function clearSelectedTenantId(userId: string): Promise<void> {
+  await mobileSecureStorage.removeItem(tenantKey(userId));
+}
+
 export async function getDeviceProtectionPreference(
   userId: string,
 ): Promise<boolean> {

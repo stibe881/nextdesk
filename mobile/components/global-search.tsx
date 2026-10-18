@@ -21,6 +21,7 @@ import type { MobileTicket } from "@/lib/nextdesk-tickets";
 import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
 
 type GlobalSearchProps = {
+  platformName: string;
   tenant: MobileTenant | null;
   tickets: MobileTicket[];
 };
@@ -41,9 +42,17 @@ function assetSubtitle(asset: MobileAsset): string {
   );
 }
 
-export function GlobalSearch({ tenant, tickets }: GlobalSearchProps) {
+export function GlobalSearch({
+  platformName,
+  tenant,
+  tickets,
+}: GlobalSearchProps) {
   const router = useRouter();
-  const { isEnabled, loading: checkingFeatures } = useMobileFeatures();
+  const {
+    isEnabled,
+    loading: checkingFeatures,
+    tenantId: confirmedTenantId,
+  } = useMobileFeatures();
   const assetsEnabled = isEnabled("assets.management");
   const ticketDetailsEnabled = isEnabled("ticketing.detail");
   const [open, setOpen] = useState(false);
@@ -145,7 +154,9 @@ export function GlobalSearch({ tenant, tickets }: GlobalSearchProps) {
         style={styles.trigger}
       >
         <Ionicons color={colors.muted} name="search-outline" size={20} />
-        <Text style={styles.triggerText}>nextDesk durchsuchen</Text>
+        <Text numberOfLines={1} style={styles.triggerText}>
+          {platformName} durchsuchen
+        </Text>
         <Ionicons color={colors.primaryText} name="arrow-forward" size={18} />
       </Pressable>
 
@@ -153,7 +164,7 @@ export function GlobalSearch({ tenant, tickets }: GlobalSearchProps) {
         animationType="slide"
         onRequestClose={close}
         transparent
-        visible={open}
+        visible={open && !checkingFeatures && Boolean(confirmedTenantId)}
       >
         <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -167,9 +178,11 @@ export function GlobalSearch({ tenant, tickets }: GlobalSearchProps) {
           />
           <View style={styles.sheet}>
             <View style={styles.header}>
-              <View>
+              <View style={styles.headerCopy}>
                 <Text style={styles.eyebrow}>GLOBALE SUCHE</Text>
-                <Text style={styles.title}>In nextDesk suchen</Text>
+                <Text numberOfLines={2} style={styles.title}>
+                  In {platformName} suchen
+                </Text>
               </View>
               <Pressable
                 accessibilityLabel="Globale Suche schliessen"
@@ -358,6 +371,7 @@ const useStyles = makeThemedStyles((c) => ({
     flexDirection: "row",
     justifyContent: "space-between",
   },
+  headerCopy: { flex: 1, marginRight: 12, minWidth: 0 },
   eyebrow: {
     color: c.muted,
     fontSize: 10,

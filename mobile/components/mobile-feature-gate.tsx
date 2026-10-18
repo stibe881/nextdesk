@@ -6,6 +6,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type PropsWithChildren,
 } from "react";
@@ -26,34 +27,57 @@ import {
 import {
   isNextDeskConfigured,
   loadCurrentTenant,
+  MobileTenantSelectionChangedError,
   nextDesk,
+  selectMobileTenant,
+  subscribeMobileTenantContextInvalidation,
+  type MobileTenant,
 } from "@/lib/nextdesk-client";
 import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
 
 type MobileFeatureState = {
   error: string | null;
   flags: MobileFeatureFlags | null;
+  lastConfirmedTenantId: string | null;
   loading: boolean;
   refresh: () => Promise<void>;
+  switchTenant: (tenantId: string) => Promise<MobileTenant>;
+  switchingTenant: boolean;
   tenantId: string | null;
 };
 
 const MobileFeatureContext = createContext<MobileFeatureState>({
   error: null,
   flags: null,
+  lastConfirmedTenantId: null,
   loading: true,
   refresh: async () => undefined,
+  switchTenant: async () => {
+    throw new Error("Der Arbeitsbereich kann derzeit nicht gewechselt werden.");
+  },
+  switchingTenant: false,
   tenantId: null,
 });
 
 export function MobileFeatureProvider({ children }: PropsWithChildren) {
   const [flags, setFlags] = useState<MobileFeatureFlags | null>(null);
   const [tenantId, setTenantId] = useState<string | null>(null);
+  const [lastConfirmedTenantId, setLastConfirmedTenantId] = useState<
+    string | null
+  >(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [switchingTenant, setSwitchingTenant] = useState(false);
+  const refreshRequest = useRef(0);
+  const tenantSwitchInFlight = useRef(false);
 
   const refresh = useCallback(async () => {
+    if (tenantSwitchInFlight.current) return;
+    const requestId = refreshRequest.current + 1;
+    refreshRequest.current = requestId;
+    const stillCurrent = () => refreshRequest.current === requestId;
     if (!isNextDeskConfigured || !nextDesk) {
+      if (!stillCurrent()) return;
       setFlags(null);
       setTenantId(null);
       setError("Die mobile nextDesk-Verbindung ist nicht konfiguriert.");
@@ -61,35 +85,115 @@ export function MobileFeatureProvider({ children }: PropsWithChildren) {
       return;
     }
 
-    const {
-      data: { session },
-    } = await nextDesk.auth.getSession();
-    if (!session?.user.id) {
-      setFlags(null);
-      setTenantId(null);
-      setError(null);
-      setLoading(false);
-      return;
-    }
-
+    // Ohne eine frisch bestätigte Kombination aus Mandant und Freigaben darf
+    // kein zuvor geladener Mandantenkontext sichtbar bleiben – auch nicht,
+    // während die Session noch abgefragt wird.
+    if (!stillCurrent()) return;
     setLoading(true);
+    setFlags(null);
+    setTenantId(null);
     setError(null);
     try {
-      const tenant = await loadCurrentTenant();
+      const {
+        data: { session },
+      } = await nextDesk.auth.getSession();
+      if (!stillCurrent()) return;
+      if (!session?.user.id) return;
+      let tenant: MobileTenant | null = null;
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        try {
+          tenant = await loadCurrentTenant({ allowInitialSelection: true });
+          break;
+        } catch (nextError) {
+          if (
+            nextError instanceof MobileTenantSelectionChangedError &&
+            attempt === 0 &&
+            stillCurrent()
+          ) {
+            continue;
+          }
+          throw nextError;
+        }
+      }
+      if (!tenant) {
+        throw new Error("Der Arbeitsbereich konnte nicht bestätigt werden.");
+      }
+      if (!stillCurrent()) return;
       const nextFlags = await loadMobileFeatureFlags(tenant.id);
+      if (!stillCurrent()) return;
       setTenantId(tenant.id);
       setFlags(nextFlags);
+      setLastConfirmedTenantId(tenant.id);
     } catch (nextError) {
+      if (!stillCurrent()) return;
       setFlags(null);
       setTenantId(null);
       setError(
         nextError instanceof Error
           ? nextError.message
-          : "Die Funktionsfreigaben konnten nicht geprüft werden.",
+          : "Der Arbeitsbereich konnte nicht geprüft werden.",
       );
     } finally {
-      setLoading(false);
+      if (stillCurrent()) setLoading(false);
     }
+  }, []);
+
+  const switchTenant = useCallback(async (targetTenantId: string) => {
+    if (tenantSwitchInFlight.current) {
+      throw new Error("Ein Arbeitsbereichswechsel wird bereits verarbeitet.");
+    }
+    tenantSwitchInFlight.current = true;
+    setSwitchingTenant(true);
+    const requestId = refreshRequest.current + 1;
+    refreshRequest.current = requestId;
+    const stillCurrent = () => refreshRequest.current === requestId;
+
+    // Bereits vor dem Schreiben der Auswahl wird der bisherige Kontext
+    // verborgen. Nur der vollständig bestätigte neue Mandant wird danach
+    // freigegeben.
+    setLoading(true);
+    setFlags(null);
+    setTenantId(null);
+    setError(null);
+    try {
+      const tenant = await selectMobileTenant(targetTenantId);
+      if (!stillCurrent())
+        throw new Error("Der Arbeitsbereichswechsel wurde abgebrochen.");
+      const nextFlags = await loadMobileFeatureFlags(tenant.id);
+      if (!stillCurrent())
+        throw new Error("Der Arbeitsbereichswechsel wurde abgebrochen.");
+      setTenantId(tenant.id);
+      setFlags(nextFlags);
+      setLastConfirmedTenantId(tenant.id);
+      return tenant;
+    } catch (nextError) {
+      if (stillCurrent()) {
+        setFlags(null);
+        setTenantId(null);
+        setError(
+          nextError instanceof Error
+            ? nextError.message
+            : "Der Arbeitsbereich konnte nicht gewechselt werden.",
+        );
+      }
+      throw nextError;
+    } finally {
+      if (stillCurrent()) setLoading(false);
+      tenantSwitchInFlight.current = false;
+      setSwitchingTenant(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    return subscribeMobileTenantContextInvalidation((message) => {
+      // Eine Datenabfrage hat eine nicht mehr zulässige gespeicherte Auswahl
+      // erkannt. Der gesamte Arbeitsbereich wird sofort fail-closed gesperrt.
+      refreshRequest.current += 1;
+      setFlags(null);
+      setTenantId(null);
+      setError(message);
+      setLoading(false);
+    });
   }, []);
 
   useEffect(() => {
@@ -108,8 +212,10 @@ export function MobileFeatureProvider({ children }: PropsWithChildren) {
     } = nextDesk.auth.onAuthStateChange((event) => {
       if (!active) return;
       if (event === "SIGNED_OUT") {
+        refreshRequest.current += 1;
         setFlags(null);
         setTenantId(null);
+        setLastConfirmedTenantId(null);
         setError(null);
         setLoading(false);
         return;
@@ -135,8 +241,26 @@ export function MobileFeatureProvider({ children }: PropsWithChildren) {
   }, [refresh]);
 
   const value = useMemo(
-    () => ({ error, flags, loading, refresh, tenantId }),
-    [error, flags, loading, refresh, tenantId],
+    () => ({
+      error,
+      flags,
+      lastConfirmedTenantId,
+      loading,
+      refresh,
+      switchTenant,
+      switchingTenant,
+      tenantId,
+    }),
+    [
+      error,
+      flags,
+      lastConfirmedTenantId,
+      loading,
+      refresh,
+      switchTenant,
+      switchingTenant,
+      tenantId,
+    ],
   );
   return (
     <MobileFeatureContext.Provider value={value}>

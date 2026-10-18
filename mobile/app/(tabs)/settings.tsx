@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import * as LocalAuthentication from "expo-local-authentication";
 import { useFocusEffect, useRouter } from "expo-router";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -35,7 +35,6 @@ import {
   nextDesk,
   requireNextDesk,
   resolveMobileSsoEnforcement,
-  selectMobileTenant,
 } from "@/lib/nextdesk-client";
 import {
   clearMobileWorkingData,
@@ -100,6 +99,9 @@ export default function SettingsScreen() {
     isEnabled,
     loading: checkingFeatures,
     refresh: refreshFeatures,
+    switchTenant,
+    switchingTenant,
+    tenantId: confirmedTenantId,
   } = useMobileFeatures();
   const {
     colors,
@@ -148,6 +150,8 @@ export default function SettingsScreen() {
   const [tenants, setTenants] = useState<MobileTenant[]>([]);
   const [currentTenant, setCurrentTenant] = useState<MobileTenant | null>(null);
   const [tenantPickerOpen, setTenantPickerOpen] = useState(false);
+  const [tenantChangeSaving, setTenantChangeSaving] = useState(false);
+  const tenantChangeInFlight = useRef(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [password, setPassword] = useState("");
@@ -159,6 +163,7 @@ export default function SettingsScreen() {
   const [availability, setAvailability] = useState("");
   const [availabilityAvailable, setAvailabilityAvailable] = useState(false);
   const [availabilitySaving, setAvailabilitySaving] = useState(false);
+  const availabilityDirty = useRef(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const requesterPortalEnabled = isEnabled("requester.portal");
@@ -228,14 +233,15 @@ export default function SettingsScreen() {
       void getMyAvailability()
         .then(({ availability: nextAvailability }) => {
           if (!active) return;
-          setAvailability(nextAvailability ?? "");
+          if (!availabilityDirty.current)
+            setAvailability(nextAvailability ?? "");
           setAvailabilityAvailable(true);
         })
         .catch(() => {
           // Ohne bestätigte Freigabe oder bei Netzwerkfehlern bleibt der
           // optionale Bereich unsichtbar.
           if (!active) return;
-          setAvailability("");
+          if (!availabilityDirty.current) setAvailability("");
           setAvailabilityAvailable(false);
         });
 
@@ -344,6 +350,7 @@ export default function SettingsScreen() {
       const nextAvailability = availability.trim() || null;
       const result = await setMyAvailability(nextAvailability);
       setAvailability(result.availability ?? "");
+      availabilityDirty.current = false;
       setMessage(
         result.availability
           ? "Deine Erreichbarkeit wurde gespeichert."
@@ -360,9 +367,14 @@ export default function SettingsScreen() {
   }
 
   async function changeTenant(tenantId: string) {
+    if (tenantChangeInFlight.current || tenantId === currentTenant?.id) {
+      return;
+    }
+    tenantChangeInFlight.current = true;
+    setTenantChangeSaving(true);
     setError("");
     try {
-      const selectedTenant = await selectMobileTenant(tenantId);
+      const selectedTenant = await switchTenant(tenantId);
       setCurrentTenant(selectedTenant);
       setTenantPickerOpen(false);
       await refreshFeatures();
@@ -374,6 +386,9 @@ export default function SettingsScreen() {
           ? nextError.message
           : "Der Arbeitsbereich konnte nicht gewechselt werden.",
       );
+    } finally {
+      tenantChangeInFlight.current = false;
+      setTenantChangeSaving(false);
     }
   }
 
@@ -656,7 +671,10 @@ export default function SettingsScreen() {
                 allowFontScaling
                 maxLength={300}
                 multiline
-                onChangeText={setAvailability}
+                onChangeText={(value) => {
+                  availabilityDirty.current = true;
+                  setAvailability(value);
+                }}
                 placeholder="Zum Beispiel: Heute ab 14 Uhr wieder erreichbar."
                 placeholderTextColor={colors.subtle}
                 style={[
@@ -1037,7 +1055,12 @@ export default function SettingsScreen() {
           animationType={reducedMotion ? "none" : "slide"}
           onRequestClose={() => setTenantPickerOpen(false)}
           transparent
-          visible={tenantPickerOpen}
+          visible={
+            tenantPickerOpen &&
+            !checkingFeatures &&
+            !switchingTenant &&
+            Boolean(confirmedTenantId)
+          }
         >
           <View style={styles.modalRoot}>
             <Pressable
@@ -1067,7 +1090,12 @@ export default function SettingsScreen() {
                   return (
                     <Pressable
                       accessibilityRole="button"
-                      accessibilityState={{ selected }}
+                      accessibilityState={{
+                        busy: tenantChangeSaving || switchingTenant,
+                        disabled: tenantChangeSaving || switchingTenant,
+                        selected,
+                      }}
+                      disabled={tenantChangeSaving || switchingTenant}
                       key={tenant.id}
                       onPress={() => void changeTenant(tenant.id)}
                       style={[

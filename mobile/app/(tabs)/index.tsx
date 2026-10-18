@@ -43,6 +43,7 @@ import {
 } from "@/lib/nextdesk-tickets";
 import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
 import { useThemeContext } from "@/lib/theme-provider";
+import { loadTenantBranding, type TenantBranding } from "@/lib/tenant-branding";
 
 type FocusScope = "assigned" | "solvedToday" | "firstResponse" | "slaDue";
 type TicketScope = "all" | "mine" | "open" | "unassigned" | FocusScope;
@@ -108,8 +109,10 @@ export default function HomeScreen() {
   const { width } = useWindowDimensions();
   const { recoveryEpoch } = useMobileNetworkStatus();
   const {
+    error: featureError,
     isEnabled,
     loading: checkingFeatures,
+    refresh: refreshFeatures,
     tenantId: featureTenantId,
   } = useMobileFeatures();
   const ticketDetailsEnabled = isEnabled("ticketing.detail");
@@ -145,10 +148,50 @@ export default function HomeScreen() {
   const [mentionsAvailable, setMentionsAvailable] = useState(false);
   const [approvalsAvailable, setApprovalsAvailable] = useState(false);
   const [devicesAvailable, setDevicesAvailable] = useState(false);
+  // Ergänzende Daten werden erst angezeigt, wenn sie für diesen Mandanten
+  // vollständig und aktuell geladen wurden.
+  const [supplementaryTenantId, setSupplementaryTenantId] = useState<
+    string | null
+  >(null);
   const [readingMentionId, setReadingMentionId] = useState<string | null>(null);
   const [supplementaryMessage, setSupplementaryMessage] = useState("");
   const dashboardRequest = useRef(0);
+  const dashboardTenant = useRef<string | null>(null);
+  const tenantEpoch = useRef(0);
   const supplementaryRequest = useRef(0);
+  const tenantId = tenant?.id ?? null;
+  // Nach einem Mandantenwechsel kann dieser Tab noch kurz den vorherigen
+  // Dashboard-Stand halten. Bis der neue Stand geladen ist, wird nichts aus
+  // dem alten Mandanten angezeigt.
+  const tenantContextMismatch =
+    Boolean(tenantId) && (checkingFeatures || featureTenantId !== tenantId);
+  const brandingTenantId = tenantContextMismatch ? null : tenantId;
+  const supplementaryIsCurrent = Boolean(
+    tenantId && !tenantContextMismatch && supplementaryTenantId === tenantId,
+  );
+  const visibleAgentMetrics = supplementaryIsCurrent ? agentMetrics : null;
+  const visibleIncidentNotices = supplementaryIsCurrent ? incidentNotices : [];
+  const visibleMentions = supplementaryIsCurrent ? mentions : [];
+  const visibleApprovals = supplementaryIsCurrent ? approvals : [];
+  const visibleDevices = supplementaryIsCurrent ? devices : [];
+  const metricsAvailableForTenant = supplementaryIsCurrent && metricsAvailable;
+  const mentionsAvailableForTenant =
+    supplementaryIsCurrent && mentionsAvailable;
+  const approvalsAvailableForTenant =
+    supplementaryIsCurrent && approvalsAvailable;
+  const devicesAvailableForTenant = supplementaryIsCurrent && devicesAvailable;
+  // Logo und Portalname aus den Web-Einstellungen des aktiven Mandanten.
+  const [branding, setBranding] = useState<{
+    tenantId: string;
+    value: TenantBranding;
+  } | null>(null);
+  const [logoLoad, setLogoLoad] = useState<{
+    aspect: number | null;
+    failed: boolean;
+    url: string;
+  } | null>(null);
+  const brandingTenant = useRef<string | null>(null);
+  const brandingRequest = useRef(0);
   const isWide = width >= 760;
   const cardPadding = density === "compact" ? 14 : 17;
   const tokenStyles = useMemo(
@@ -179,6 +222,20 @@ export default function HomeScreen() {
       setError("");
       const result = await loadMobileDashboard({ allowOfflineCache: false });
       if (requestId !== dashboardRequest.current) return;
+      const tenantChanged =
+        dashboardTenant.current !== null &&
+        dashboardTenant.current !== result.tenant.id;
+      dashboardTenant.current = result.tenant.id;
+      if (tenantChanged) {
+        // Alle laufenden Antworten des bisherigen Mandanten werden verworfen.
+        tenantEpoch.current += 1;
+        supplementaryRequest.current += 1;
+        focusLoadInFlight.current = "";
+        setSupplementaryTenantId(null);
+        setSupplementaryMessage("");
+        setReadingMentionId(null);
+        setTicketScope("all");
+      }
       setTenant(result.tenant);
       setTickets(result.tickets);
       setExtraTickets([]);
@@ -209,6 +266,9 @@ export default function HomeScreen() {
     const requestId = supplementaryRequest.current + 1;
     supplementaryRequest.current = requestId;
     const stillCurrent = () => supplementaryRequest.current === requestId;
+    const markTenantReady = () => {
+      if (stillCurrent()) setSupplementaryTenantId(tenant.id);
+    };
 
     if (!agentWorkbenchEnabled) {
       setAgentMetrics(null);
@@ -243,6 +303,7 @@ export default function HomeScreen() {
       setDevices([]);
       setApprovalsAvailable(false);
       setDevicesAvailable(false);
+      markTenantReady();
       return;
     }
 
@@ -275,6 +336,7 @@ export default function HomeScreen() {
       setDevices([]);
       setDevicesAvailable(false);
     }
+    markTenantReady();
   }, [
     agentWorkbenchEnabled,
     checkingFeatures,
@@ -290,6 +352,91 @@ export default function HomeScreen() {
     }, [load, recoveryEpoch]),
   );
 
+  const loadBranding = useCallback(async (id: string) => {
+    const requestId = brandingRequest.current + 1;
+    brandingRequest.current = requestId;
+    const stillCurrent = () =>
+      brandingRequest.current === requestId && brandingTenant.current === id;
+    brandingTenant.current = id;
+    // Web-Einstellungen sind massgebend: Bis sie neu bestätigt sind, wird
+    // kein möglicherweise veraltetes eigenes Branding angezeigt.
+    setBranding({ tenantId: id, value: { logoUrl: null, portalName: null } });
+    try {
+      const value = await loadTenantBranding(id);
+      if (stillCurrent()) setBranding({ tenantId: id, value });
+    } catch {
+      // Bei nicht bestätigtem Branding darf kein alter Mandantenstand
+      // weiter sichtbar bleiben.
+      if (stillCurrent())
+        setBranding({
+          tenantId: id,
+          value: { logoUrl: null, portalName: null },
+        });
+    }
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!brandingTenantId) {
+        brandingRequest.current += 1;
+        brandingTenant.current = null;
+        return;
+      }
+      void loadBranding(brandingTenantId);
+    }, [brandingTenantId, loadBranding]),
+  );
+
+  const activeBranding =
+    branding && branding.tenantId === brandingTenantId ? branding.value : null;
+  const configuredLogoUrl = activeBranding?.logoUrl ?? null;
+  const customLogoUrl =
+    configuredLogoUrl &&
+    !(logoLoad?.url === configuredLogoUrl && logoLoad.failed)
+      ? configuredLogoUrl
+      : null;
+  const brandName = activeBranding?.portalName ?? "nextDesk";
+  const hasCustomName = Boolean(activeBranding?.portalName);
+  // Der Mandantenname bleibt als Unterzeile, ausser der Portalname enthält ihn.
+  const showTenantLine =
+    !tenant ||
+    !hasCustomName ||
+    !brandName
+      .toLocaleLowerCase("de-CH")
+      .includes(tenant.name.toLocaleLowerCase("de-CH"));
+
+  useEffect(() => {
+    if (!configuredLogoUrl) return;
+    let active = true;
+    Image.getSize(
+      configuredLogoUrl,
+      (logoWidth, logoHeight) => {
+        if (active && logoWidth > 0 && logoHeight > 0)
+          setLogoLoad({
+            aspect: logoWidth / logoHeight,
+            failed: false,
+            url: configuredLogoUrl,
+          });
+      },
+      () => {
+        if (active)
+          setLogoLoad({
+            aspect: null,
+            failed: true,
+            url: configuredLogoUrl,
+          });
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, [configuredLogoUrl]);
+  const logoHeight = 30;
+  const logoAspect =
+    logoLoad?.url === configuredLogoUrl ? logoLoad.aspect : null;
+  const logoWidth = logoAspect
+    ? Math.min(Math.max(logoHeight * logoAspect, logoHeight), 104)
+    : logoHeight;
+
   useFocusEffect(
     useCallback(() => {
       void loadSupplementaryData();
@@ -299,9 +446,9 @@ export default function HomeScreen() {
   const focusTicketIds = useMemo(
     () =>
       isFocusScope(ticketScope)
-        ? (agentMetrics?.ticketIds?.[ticketScope] ?? [])
+        ? (visibleAgentMetrics?.ticketIds?.[ticketScope] ?? [])
         : [],
-    [agentMetrics, ticketScope],
+    [ticketScope, visibleAgentMetrics],
   );
   const missingFocusIds = useMemo(() => {
     const known = new Set([
@@ -315,9 +462,15 @@ export default function HomeScreen() {
   const focusLoading = missingFocusIds.length > 0;
   useEffect(() => {
     if (missingFocusIds.length === 0) return;
-    const key = missingFocusIds.join(",");
+    const focusTenantId = tenantId;
+    if (!focusTenantId) return;
+    const focusEpoch = tenantEpoch.current;
+    const key = `${focusEpoch}:${missingFocusIds.join(",")}`;
     if (focusLoadInFlight.current === key) return;
     focusLoadInFlight.current = key;
+    const isFocusTenantCurrent = () =>
+      dashboardTenant.current === focusTenantId &&
+      tenantEpoch.current === focusEpoch;
     const markAttempted = () =>
       setAttemptedFocusIds((current) => {
         const next = new Set(current);
@@ -326,6 +479,7 @@ export default function HomeScreen() {
       });
     loadMobileTicketsByIds(missingFocusIds)
       .then((loaded) => {
+        if (!isFocusTenantCurrent()) return;
         setExtraTickets((current) => {
           const ids = new Set(current.map((ticket) => ticket.id));
           return [
@@ -337,12 +491,13 @@ export default function HomeScreen() {
       })
       .catch(() => {
         // Nicht ladbare Tickets (z. B. offline) werden nicht angezeigt.
+        if (!isFocusTenantCurrent()) return;
         markAttempted();
       })
       .finally(() => {
         if (focusLoadInFlight.current === key) focusLoadInFlight.current = "";
       });
-  }, [missingFocusIds]);
+  }, [missingFocusIds, tenantId]);
   const visibleTickets = (() => {
     if (isFocusScope(ticketScope)) {
       const byId = new Map(
@@ -359,7 +514,7 @@ export default function HomeScreen() {
       return true;
     });
   })();
-  const canOpenFocus = Boolean(agentMetrics?.ticketIds);
+  const canOpenFocus = Boolean(visibleAgentMetrics?.ticketIds);
   const selectFocusScope = (scope: FocusScope) => {
     if (ticketScope === scope) {
       setTicketScope("all");
@@ -377,17 +532,25 @@ export default function HomeScreen() {
       if (scope === "open") return !ticket.resolved;
       return ticket.unassigned;
     }).length;
-  const unreadMentions = mentions.filter((mention) => !mention.read_at).length;
-  const recentMentions = [...mentions]
+  const unreadMentions = visibleMentions.filter(
+    (mention) => !mention.read_at,
+  ).length;
+  const recentMentions = [...visibleMentions]
     .sort((left, right) => right.created_at.localeCompare(left.created_at))
     .slice(0, 3);
 
   async function readMention(mention: AgentMention) {
-    if (mention.read_at || readingMentionId) return;
+    const mentionTenantId = tenantId;
+    if (!mentionTenantId || mention.read_at || readingMentionId) return;
+    const mentionEpoch = tenantEpoch.current;
+    const isMentionTenantCurrent = () =>
+      dashboardTenant.current === mentionTenantId &&
+      tenantEpoch.current === mentionEpoch;
     setReadingMentionId(mention.id);
     setSupplementaryMessage("");
     try {
       const result = await markMentionRead(mention.id);
+      if (!isMentionTenantCurrent()) return;
       setMentions((current) =>
         current.map((entry) =>
           entry.id === result.mention.id
@@ -396,6 +559,7 @@ export default function HomeScreen() {
         ),
       );
     } catch (nextError) {
+      if (!isMentionTenantCurrent()) return;
       if (isNextDeskPortalUnavailableError(nextError)) {
         setMentions([]);
         setMentionsAvailable(false);
@@ -405,11 +569,11 @@ export default function HomeScreen() {
         );
       }
     } finally {
-      setReadingMentionId(null);
+      if (isMentionTenantCurrent()) setReadingMentionId(null);
     }
   }
 
-  if (loading && !tenant) {
+  if ((loading && !tenant) || tenantContextMismatch) {
     return (
       <ScreenContainer
         containerClassName="bg-background"
@@ -419,8 +583,24 @@ export default function HomeScreen() {
         <View style={styles.centered}>
           <ActivityIndicator color={colors.primary} size="large" />
           <Text style={[styles.loadingText, tokenStyles.muted]}>
-            nextDesk wird geladen …
+            {featureError
+              ? "Der Arbeitsbereich konnte nicht sicher bestätigt werden."
+              : "nextDesk wird geladen …"}
           </Text>
+          {featureError ? (
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => void refreshFeatures()}
+              style={[
+                styles.loadingRetry,
+                { borderColor: colors.primarySoftBorder },
+              ]}
+            >
+              <Text style={[styles.retryText, tokenStyles.primaryText]}>
+                Erneut versuchen
+              </Text>
+            </Pressable>
+          ) : null}
         </View>
       </ScreenContainer>
     );
@@ -442,26 +622,57 @@ export default function HomeScreen() {
               setRefreshing(true);
               void load();
               void loadSupplementaryData();
+              if (brandingTenantId) void loadBranding(brandingTenantId);
             }}
           />
         }
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.header}>
-          <View>
+          <View style={styles.headerBrand}>
             <View style={styles.brandRow}>
-              <Image
-                accessibilityLabel="nextDesk Logo"
-                source={require("@/assets/images/icon.png")}
-                style={styles.brandLogo}
-              />
-              <Text style={[styles.brand, tokenStyles.foreground]}>
-                nextDesk
+              {customLogoUrl ? (
+                <Image
+                  accessibilityLabel={`${brandName} Logo`}
+                  onError={() =>
+                    setLogoLoad({
+                      aspect: null,
+                      failed: true,
+                      url: customLogoUrl,
+                    })
+                  }
+                  resizeMode="contain"
+                  source={{ uri: customLogoUrl }}
+                  style={{ height: logoHeight, width: logoWidth }}
+                />
+              ) : (
+                <Image
+                  accessibilityLabel="nextDesk Logo"
+                  source={require("@/assets/images/icon.png")}
+                  style={styles.brandLogo}
+                />
+              )}
+              <Text
+                adjustsFontSizeToFit
+                minimumFontScale={0.8}
+                numberOfLines={hasCustomName ? 2 : 1}
+                style={[
+                  styles.brand,
+                  hasCustomName && styles.brandCustom,
+                  tokenStyles.foreground,
+                ]}
+              >
+                {brandName}
               </Text>
             </View>
-            <Text style={[styles.greeting, tokenStyles.muted]}>
-              {tenant?.name ?? "Dein Arbeitsbereich"}
-            </Text>
+            {showTenantLine ? (
+              <Text
+                numberOfLines={1}
+                style={[styles.greeting, tokenStyles.muted]}
+              >
+                {tenant?.name ?? "Dein Arbeitsbereich"}
+              </Text>
+            ) : null}
           </View>
           <Pressable
             accessibilityLabel="Persönliche Einstellungen öffnen"
@@ -477,22 +688,27 @@ export default function HomeScreen() {
           </Pressable>
         </View>
 
-        <GlobalSearch tenant={tenant} tickets={tickets} />
+        <GlobalSearch
+          key={tenantId ?? "kein-mandant"}
+          platformName={brandName}
+          tenant={tenant}
+          tickets={tickets}
+        />
 
-        <IncidentBanner notices={incidentNotices} />
+        <IncidentBanner notices={visibleIncidentNotices} />
 
         <View style={[styles.hero, { backgroundColor: colors.primary }]}>
           <Text style={[styles.heroEyebrow, { color: colors.onPrimary }]}>
             HEUTE IM FOKUS
           </Text>
-          {metricsAvailable && agentMetrics ? (
+          {metricsAvailableForTenant && visibleAgentMetrics ? (
             <View style={styles.heroKpis}>
               <HeroKpi
                 disabled={!canOpenFocus}
                 label="Mir zugewiesen"
                 onPress={() => selectFocusScope("assigned")}
                 selected={ticketScope === "assigned"}
-                value={String(agentMetrics.open)}
+                value={String(visibleAgentMetrics.open)}
               />
               <View
                 style={[
@@ -505,7 +721,7 @@ export default function HomeScreen() {
                 label="Heute gelöst"
                 onPress={() => selectFocusScope("solvedToday")}
                 selected={ticketScope === "solvedToday"}
-                value={String(agentMetrics.solvedToday)}
+                value={String(visibleAgentMetrics.solvedToday)}
               />
               <View
                 style={[
@@ -519,9 +735,9 @@ export default function HomeScreen() {
                 onPress={() => selectFocusScope("firstResponse")}
                 selected={ticketScope === "firstResponse"}
                 value={
-                  agentMetrics.medianFirstResponseMinutes === null
+                  visibleAgentMetrics.medianFirstResponseMinutes === null
                     ? "—"
-                    : `${agentMetrics.medianFirstResponseMinutes} Min.`
+                    : `${visibleAgentMetrics.medianFirstResponseMinutes} Min.`
                 }
               />
               <View
@@ -531,14 +747,16 @@ export default function HomeScreen() {
                 ]}
               />
               <HeroKpi
-                disabled={!canOpenFocus || !agentMetrics.ticketIds?.slaDue}
+                disabled={
+                  !canOpenFocus || !visibleAgentMetrics.ticketIds?.slaDue
+                }
                 label="Fällig"
                 onPress={() => selectFocusScope("slaDue")}
                 selected={ticketScope === "slaDue"}
                 value={
-                  agentMetrics.slaDue === undefined
+                  visibleAgentMetrics.slaDue === undefined
                     ? "—"
-                    : String(agentMetrics.slaDue)
+                    : String(visibleAgentMetrics.slaDue)
                 }
               />
             </View>
@@ -811,7 +1029,7 @@ export default function HomeScreen() {
           style={[styles.auxiliaryGrid, isWide && styles.auxiliaryGridWide]}
         >
           <View style={styles.auxiliaryColumn}>
-            {mentionsAvailable ? (
+            {mentionsAvailableForTenant ? (
               <View
                 style={[
                   styles.card,
@@ -907,7 +1125,7 @@ export default function HomeScreen() {
           </View>
 
           <View style={styles.auxiliaryColumn}>
-            {approvalsAvailable ? (
+            {approvalsAvailableForTenant ? (
               <View
                 style={[
                   styles.card,
@@ -918,15 +1136,15 @@ export default function HomeScreen() {
                 <SectionTitle
                   icon="checkbox-outline"
                   title="Freigabe-Eingang"
-                  subtitle={`${approvals.length} offene Anfrage${approvals.length === 1 ? "" : "n"}`}
+                  subtitle={`${visibleApprovals.length} offene Anfrage${visibleApprovals.length === 1 ? "" : "n"}`}
                 />
-                {approvals.length === 0 ? (
+                {visibleApprovals.length === 0 ? (
                   <Text style={[styles.emptyCardText, tokenStyles.muted]}>
                     Keine offenen Freigaben.
                   </Text>
                 ) : (
                   <View style={styles.compactList}>
-                    {approvals.slice(0, 3).map((approval) => (
+                    {visibleApprovals.slice(0, 3).map((approval) => (
                       <View
                         key={approval.id}
                         style={[
@@ -962,7 +1180,7 @@ export default function HomeScreen() {
                 )}
               </View>
             ) : null}
-            {devicesAvailable ? (
+            {devicesAvailableForTenant ? (
               <View
                 style={[
                   styles.card,
@@ -973,15 +1191,15 @@ export default function HomeScreen() {
                 <SectionTitle
                   icon="hardware-chip-outline"
                   title="Meine Geräte"
-                  subtitle={`${devices.length} zugeordnet`}
+                  subtitle={`${visibleDevices.length} zugeordnet`}
                 />
-                {devices.length === 0 ? (
+                {visibleDevices.length === 0 ? (
                   <Text style={[styles.emptyCardText, tokenStyles.muted]}>
                     Derzeit sind keine Geräte zugeordnet.
                   </Text>
                 ) : (
                   <View style={styles.compactList}>
-                    {devices.slice(0, 3).map((device, index) => {
+                    {visibleDevices.slice(0, 3).map((device, index) => {
                       const detail = compactDeviceDetail(device);
                       return (
                         <View
@@ -1183,9 +1401,15 @@ const useStyles = makeThemedStyles(() => ({
     justifyContent: "center",
     width: 42,
   },
-  brand: { fontSize: 28, fontWeight: "800", letterSpacing: -0.8 },
+  brand: {
+    flexShrink: 1,
+    fontSize: 28,
+    fontWeight: "800",
+    letterSpacing: -0.8,
+  },
+  brandCustom: { fontSize: 22, letterSpacing: -0.5, lineHeight: 26 },
   brandLogo: { height: 27, width: 27 },
-  brandRow: { alignItems: "center", flexDirection: "row", gap: 7 },
+  brandRow: { alignItems: "center", flexDirection: "row", gap: 8 },
   card: { borderRadius: 18, borderWidth: 1, gap: 14 },
   cardHeadingRow: {
     alignItems: "flex-start",
@@ -1247,6 +1471,7 @@ const useStyles = makeThemedStyles(() => ({
     flexDirection: "row",
     justifyContent: "space-between",
   },
+  headerBrand: { flex: 1, marginRight: 12 },
   hero: { borderRadius: 26, gap: 9, padding: 22 },
   heroBody: { fontSize: 15, lineHeight: 21, opacity: 0.86 },
   heroButton: {
@@ -1300,6 +1525,13 @@ const useStyles = makeThemedStyles(() => ({
   heroTitle: { fontSize: 27, fontWeight: "800", letterSpacing: -0.5 },
   list: { gap: 9 },
   loadingText: { fontSize: 14 },
+  loadingRetry: {
+    borderRadius: 12,
+    borderWidth: 1,
+    minHeight: 40,
+    paddingHorizontal: 14,
+    justifyContent: "center",
+  },
   metric: { borderRadius: 18, borderWidth: 1, flex: 1, gap: 4, padding: 13 },
   metricLabel: { fontSize: 11, fontWeight: "600" },
   metricValue: { fontSize: 22, fontWeight: "800", marginTop: 2 },

@@ -4,6 +4,7 @@ import { Platform } from "react-native";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 import {
+  clearSelectedTenantId,
   clearMobilePrivateState,
   getSelectedTenantId,
   prepareMobileUserContext,
@@ -15,6 +16,69 @@ import {
   NextDeskRequestError,
   nextDeskErrorMessage,
 } from "@/lib/nextdesk-error-messages";
+
+type TenantContextInvalidationListener = (message: string) => void;
+const tenantContextInvalidationListeners =
+  new Set<TenantContextInvalidationListener>();
+let tenantSelectionGeneration = 0;
+let tenantSelectionQueue: Promise<void> = Promise.resolve();
+
+class NoActiveMobileTenantError extends Error {}
+
+/** Eine parallele Auswahl wurde atomar von einer neueren Auswahl überholt. */
+export class MobileTenantSelectionChangedError extends Error {}
+
+/**
+ * Benachrichtigt den zentralen mobilen Arbeitsbereich, falls die gespeicherte
+ * Mandantenauswahl nicht mehr aktiv ist. Datenlader dürfen nicht selbst auf
+ * einen anderen Mandanten ausweichen.
+ */
+export function subscribeMobileTenantContextInvalidation(
+  listener: TenantContextInvalidationListener,
+): () => void {
+  tenantContextInvalidationListeners.add(listener);
+  return () => tenantContextInvalidationListeners.delete(listener);
+}
+
+function invalidateMobileTenantContext(message: string): void {
+  tenantContextInvalidationListeners.forEach((listener) => listener(message));
+}
+
+async function withTenantSelectionLock<T>(
+  operation: () => Promise<T>,
+): Promise<T> {
+  const previous = tenantSelectionQueue;
+  let release: () => void = () => {};
+  tenantSelectionQueue = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await previous;
+  try {
+    return await operation();
+  } finally {
+    release();
+  }
+}
+
+function tenantSelectionChangedError(): MobileTenantSelectionChangedError {
+  return new MobileTenantSelectionChangedError(
+    "Die Arbeitsbereichsauswahl wurde inzwischen geändert.",
+  );
+}
+
+async function invalidateUnavailableTenantSelection(input: {
+  message: string;
+  selectionGeneration: number;
+  userId: string;
+}): Promise<boolean> {
+  return withTenantSelectionLock(async () => {
+    if (input.selectionGeneration !== tenantSelectionGeneration) return false;
+    await clearSelectedTenantId(input.userId);
+    if (input.selectionGeneration !== tenantSelectionGeneration) return false;
+    invalidateMobileTenantContext(input.message);
+    return true;
+  });
+}
 
 type NextDeskExtra = {
   nextDeskSupabaseUrl?: string;
@@ -414,7 +478,7 @@ export async function listMobileTenants(): Promise<MobileTenant[]> {
     .filter((tenant): tenant is MobileTenant => Boolean(tenant))
     .sort((left, right) => left.name.localeCompare(right.name, "de-CH"));
   if (tenants.length === 0) {
-    throw new Error(
+    throw new NoActiveMobileTenantError(
       "Für dieses Konto ist kein aktiver nextDesk-Mandant verfügbar.",
     );
   }
@@ -427,31 +491,93 @@ export async function listMobileTenants(): Promise<MobileTenant[]> {
 export async function selectMobileTenant(
   tenantId: string,
 ): Promise<MobileTenant> {
+  const selectionGeneration = tenantSelectionGeneration + 1;
+  tenantSelectionGeneration = selectionGeneration;
   const userId = await getMobileUserId();
-  const tenants = await listMobileTenants();
+  let tenants: MobileTenant[];
+  try {
+    tenants = await listMobileTenants();
+  } catch (error) {
+    if (!(error instanceof NoActiveMobileTenantError)) throw error;
+    const message =
+      "Für dieses Konto ist kein aktiver Arbeitsbereich verfügbar.";
+    const invalidated = await invalidateUnavailableTenantSelection({
+      message,
+      selectionGeneration,
+      userId,
+    });
+    if (!invalidated) throw tenantSelectionChangedError();
+    throw new Error(message);
+  }
   const tenant = tenants.find((candidate) => candidate.id === tenantId);
   if (!tenant) {
     throw new Error("Dieser Mandant ist für Ihr Konto nicht aktiv.");
   }
-  await setSelectedTenantId(userId, tenant.id);
-  return tenant;
+  return withTenantSelectionLock(async () => {
+    if (selectionGeneration !== tenantSelectionGeneration)
+      throw tenantSelectionChangedError();
+    await setSelectedTenantId(userId, tenant.id);
+    if (selectionGeneration !== tenantSelectionGeneration)
+      throw tenantSelectionChangedError();
+    return tenant;
+  });
 }
 
-export async function loadCurrentTenant(): Promise<MobileTenant> {
+export async function loadCurrentTenant(options?: {
+  allowInitialSelection?: boolean;
+}): Promise<MobileTenant> {
+  const selectionGeneration = tenantSelectionGeneration;
   const userId = await getMobileUserId();
-  const tenants = await listMobileTenants();
-  const selectedTenantId = await getSelectedTenantId(userId);
-  const selectedTenant = tenants.find(
-    (candidate) => candidate.id === selectedTenantId,
-  );
-  if (selectedTenant) return selectedTenant;
+  let tenants: MobileTenant[];
+  try {
+    tenants = await listMobileTenants();
+  } catch (error) {
+    if (!(error instanceof NoActiveMobileTenantError)) throw error;
+    const message =
+      "Für dieses Konto ist kein aktiver Arbeitsbereich verfügbar.";
+    const invalidated = await invalidateUnavailableTenantSelection({
+      message,
+      selectionGeneration,
+      userId,
+    });
+    if (!invalidated) throw tenantSelectionChangedError();
+    throw new Error(message);
+  }
+  // Bei einer erstmaligen Anmeldung wird ein initialer, benutzergebundener
+  // Arbeitsbereich festgelegt. Bestehende Auswahlen werden nie still ersetzt.
+  return withTenantSelectionLock(async () => {
+    if (selectionGeneration !== tenantSelectionGeneration)
+      throw tenantSelectionChangedError();
+    const selectedTenantId = await getSelectedTenantId(userId);
+    if (selectionGeneration !== tenantSelectionGeneration)
+      throw tenantSelectionChangedError();
+    if (selectedTenantId) {
+      const selectedTenant = tenants.find(
+        (candidate) => candidate.id === selectedTenantId,
+      );
+      if (selectedTenant) return selectedTenant;
 
-  // Accounts with one active tenant need no extra interaction. For multiple
-  // tenants we retain one initial, user-scoped context and expose a picker in
-  // the account screen; later calls never silently change that selection.
-  const initialTenant = tenants[0];
-  await setSelectedTenantId(userId, initialTenant.id);
-  return initialTenant;
+      const message =
+        "Der bisherige Arbeitsbereich ist nicht mehr aktiv. Bitte den Arbeitsbereich erneut bestätigen.";
+      await clearSelectedTenantId(userId);
+      if (selectionGeneration !== tenantSelectionGeneration)
+        throw tenantSelectionChangedError();
+      invalidateMobileTenantContext(message);
+      throw new Error(message);
+    }
+    if (options?.allowInitialSelection !== true) {
+      throw new Error(
+        "Der Arbeitsbereich muss zuerst zentral bestätigt werden.",
+      );
+    }
+    const initialSelectionGeneration = tenantSelectionGeneration + 1;
+    tenantSelectionGeneration = initialSelectionGeneration;
+    const initialTenant = tenants[0];
+    await setSelectedTenantId(userId, initialTenant.id);
+    if (initialSelectionGeneration !== tenantSelectionGeneration)
+      throw tenantSelectionChangedError();
+    return initialTenant;
+  });
 }
 
 export async function clearMobileWorkspace(): Promise<void> {

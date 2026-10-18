@@ -5,7 +5,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import * as Linking from "expo-linking";
-import { Stack, useRouter, useSegments } from "expo-router";
+import { useRouter, useSegments } from "expo-router";
 import { ThemedStatusBar } from "@/components/themed-status-bar";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
@@ -24,6 +24,7 @@ import type { EdgeInsets, Metrics, Rect } from "react-native-safe-area-context";
 import { trpc, createTRPCClient } from "@/lib/trpc";
 import { DeviceProtection } from "@/components/device-protection";
 import { MobileFeatureProvider } from "@/components/mobile-feature-gate";
+import { TenantBoundRouteStack } from "@/components/tenant-bound-route-stack";
 import {
   MobileNetworkStatusProvider,
   OfflineStatus,
@@ -208,22 +209,7 @@ export default function RootLayout() {
         <QueryClientProvider client={queryClient}>
           <MobileNetworkStatusProvider>
             <MobileFeatureProvider>
-              {/* Default to hiding native headers so raw route segments don't appear (e.g. "(tabs)", "products/[id]"). */}
-              {/* If a screen needs the native header, explicitly enable it and set a human title via Stack.Screen options. */}
-              {/* in order for ios apps tab switching to work properly, use presentation: "fullScreenModal" for login page, whenever you decide to use presentation: "modal*/}
-              <Stack screenOptions={{ headerShown: false }}>
-                <Stack.Screen name="(tabs)" />
-                {/* No transition for sign-in screens: a still-animating native
-                    screen can report stale tap positions on iOS. */}
-                <Stack.Screen
-                  name="auth"
-                  options={{ animation: "none", gestureEnabled: false }}
-                />
-                <Stack.Screen
-                  name="auth/callback"
-                  options={{ animation: "none", gestureEnabled: false }}
-                />
-              </Stack>
+              <TenantBoundRouteStack />
               <NextDeskAuthDeepLinkHandler />
               <NextDeskSessionNavigator />
               <PushNotificationBridge />

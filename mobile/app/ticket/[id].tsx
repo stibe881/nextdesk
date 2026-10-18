@@ -229,13 +229,17 @@ function compactContextValue(value: unknown): string | null {
 export default function TicketDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { recoveryEpoch } = useMobileNetworkStatus();
-  const { isEnabled, loading: checkingFeatures } = useMobileFeatures();
+  const {
+    isEnabled,
+    loading: checkingFeatures,
+    tenantId: confirmedTenantId,
+  } = useMobileFeatures();
   const ticketDetailEnabled = isEnabled("ticketing.detail");
   const workspaceEnabled = isEnabled("experience.workspace");
   const selfServiceEnabled = isEnabled("portal.self-service");
   const agentWorkbenchEnabled = isEnabled("agent.workbench");
   const requesterPortalEnabled = isEnabled("requester.portal");
-  const { colorScheme, density, reducedMotion } = useThemeContext();
+  const { colorScheme, density } = useThemeContext();
   const colors = useAppColors();
   const styles = useStyles();
   const tokenStyles = useMemo(
@@ -2407,10 +2411,12 @@ export default function TicketDetailScreen() {
         </ScrollView>
 
         <Modal
-          animationType={reducedMotion ? "none" : "slide"}
+          animationType="slide"
           onRequestClose={() => setFollowUpSheetOpen(false)}
           transparent
-          visible={followUpSheetOpen}
+          visible={
+            followUpSheetOpen && !checkingFeatures && Boolean(confirmedTenantId)
+          }
         >
           <KeyboardAvoidingView
             behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -2682,10 +2688,14 @@ export default function TicketDetailScreen() {
         </Modal>
 
         <Modal
-          animationType={reducedMotion ? "none" : "slide"}
+          animationType="slide"
           onRequestClose={() => setResolutionSheetOpen(false)}
           transparent
-          visible={resolutionSheetOpen}
+          visible={
+            resolutionSheetOpen &&
+            !checkingFeatures &&
+            Boolean(confirmedTenantId)
+          }
         >
           <KeyboardAvoidingView
             behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -2868,10 +2878,12 @@ export default function TicketDetailScreen() {
         </Modal>
 
         <Modal
-          animationType={reducedMotion ? "none" : "slide"}
+          animationType="slide"
           onRequestClose={() => setReopenSheetOpen(false)}
           transparent
-          visible={reopenSheetOpen}
+          visible={
+            reopenSheetOpen && !checkingFeatures && Boolean(confirmedTenantId)
+          }
         >
           <KeyboardAvoidingView
             behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -3009,10 +3021,14 @@ export default function TicketDetailScreen() {
         </Modal>
 
         <Modal
-          animationType={reducedMotion ? "none" : "fade"}
+          animationType="fade"
           onRequestClose={() => setPendingReopenDecision(null)}
           transparent
-          visible={pendingReopenDecision !== null}
+          visible={
+            pendingReopenDecision !== null &&
+            !checkingFeatures &&
+            Boolean(confirmedTenantId)
+          }
         >
           <View style={styles.closeConfirmationRoot}>
             <Pressable
@@ -3113,10 +3129,14 @@ export default function TicketDetailScreen() {
         </Modal>
 
         <Modal
-          animationType={reducedMotion ? "none" : "slide"}
+          animationType="slide"
           onRequestClose={() => setSelection(null)}
           transparent
-          visible={selection !== null}
+          visible={
+            selection !== null &&
+            !checkingFeatures &&
+            Boolean(confirmedTenantId)
+          }
         >
           <View style={styles.selectionModalRoot}>
             <Pressable
@@ -3205,10 +3225,14 @@ export default function TicketDetailScreen() {
         </Modal>
 
         <Modal
-          animationType={reducedMotion ? "none" : "fade"}
+          animationType="fade"
           onRequestClose={() => setPendingCloseStatus(null)}
           transparent
-          visible={pendingCloseStatus !== null}
+          visible={
+            pendingCloseStatus !== null &&
+            !checkingFeatures &&
+            Boolean(confirmedTenantId)
+          }
         >
           <View style={styles.closeConfirmationRoot}>
             <Pressable

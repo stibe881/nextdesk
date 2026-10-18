@@ -27,6 +27,7 @@ import {
   hapticSelection,
   hapticSuccess,
 } from "@/lib/mobile-haptics";
+import { useMobileFeatures } from "@/components/mobile-feature-gate";
 import { useThemeContext } from "@/lib/theme-provider";
 import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
 
@@ -100,6 +101,8 @@ export function TicketPhotoAttachments({
 }: TicketPhotoAttachmentsProps) {
   const styles = useStyles();
   const colors = useAppColors();
+  const { loading: checkingFeatures, tenantId: confirmedTenantId } =
+    useMobileFeatures();
   const { reducedMotion } = useThemeContext();
   const insets = useSafeAreaInsets();
   const [attachments, setAttachments] = useState<MobileTicketAttachment[]>([]);
@@ -553,7 +556,12 @@ export function TicketPhotoAttachments({
         onRequestClose={closeViewer}
         statusBarTranslucent
         transparent
-        visible={viewerItem !== null && viewerItem !== undefined}
+        visible={
+          !checkingFeatures &&
+          Boolean(confirmedTenantId) &&
+          viewerItem !== null &&
+          viewerItem !== undefined
+        }
       >
         <View style={styles.viewerRoot}>
           <View style={[styles.viewerTop, { paddingTop: insets.top + 8 }]}>

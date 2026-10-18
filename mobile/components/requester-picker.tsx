@@ -18,6 +18,7 @@ import {
   searchTicketRequesters,
   type TicketRequester,
 } from "@/lib/nextdesk-tickets";
+import { useMobileFeatures } from "@/components/mobile-feature-gate";
 import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
 
 type RequesterPickerProps = {
@@ -41,6 +42,8 @@ export function RequesterPicker({
 }: RequesterPickerProps) {
   const styles = useStyles();
   const colors = useAppColors();
+  const { loading: checkingFeatures, tenantId: confirmedTenantId } =
+    useMobileFeatures();
   const [isOpen, setIsOpen] = useState(autoOpen);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<TicketRequester[]>([]);
@@ -191,7 +194,7 @@ export function RequesterPicker({
         animationType="slide"
         onRequestClose={closePicker}
         transparent
-        visible={isOpen}
+        visible={isOpen && !checkingFeatures && Boolean(confirmedTenantId)}
       >
         <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : "height"}
