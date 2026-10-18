@@ -14,6 +14,7 @@ import {
 
 import { ScreenContainer } from "@/components/screen-container";
 import {
+  formatMobileKnowledgeUpdatedAt,
   searchMobileKnowledge,
   type MobileKnowledgeArticle,
 } from "@/lib/mobile-knowledge";
@@ -172,10 +173,34 @@ export default function KnowledgeScreen() {
                       {article.summary}
                     </Text>
                   ) : null}
-                  <Text style={styles.articleMeta}>
-                    {article.visibility === "internal"
-                      ? "Intern"
-                      : "Freigegeben"}
+                  <View style={styles.articleMetaRow}>
+                    <Text style={styles.articleMeta}>
+                      {article.visibility === "internal"
+                        ? "Intern"
+                        : "Extern freigegeben"}
+                    </Text>
+                    {article.revision ? (
+                      <Text style={styles.articleVersion}>
+                        Version {article.revision}
+                      </Text>
+                    ) : null}
+                  </View>
+                  {article.collections.length > 0 ? (
+                    <View style={styles.collections}>
+                      <Ionicons
+                        color="#77758C"
+                        name="folder-open-outline"
+                        size={13}
+                      />
+                      <Text numberOfLines={1} style={styles.collectionsText}>
+                        {article.collections
+                          .map((collection) => collection.name)
+                          .join(" · ")}
+                      </Text>
+                    </View>
+                  ) : null}
+                  <Text style={styles.updatedAt}>
+                    {formatMobileKnowledgeUpdatedAt(article.updatedAt)}
                   </Text>
                 </View>
                 <Ionicons color="#8A8999" name="chevron-forward" size={19} />
@@ -308,4 +333,14 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     marginTop: 1,
   },
+  articleMetaRow: { alignItems: "center", flexDirection: "row", gap: 7 },
+  articleVersion: { color: "#77758C", fontSize: 10, fontWeight: "700" },
+  collections: { alignItems: "center", flexDirection: "row", gap: 4 },
+  collectionsText: {
+    color: "#656477",
+    flex: 1,
+    fontSize: 11,
+    fontWeight: "700",
+  },
+  updatedAt: { color: "#8A8999", fontSize: 10, lineHeight: 14 },
 });

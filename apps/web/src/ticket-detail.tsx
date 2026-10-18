@@ -466,6 +466,7 @@ type TicketQualityReview = {
 };
 
 type TicketQualityData = {
+  canRead: boolean;
   count: number;
   averageScore: number | null;
   ownReview: TicketQualityReview | null;
@@ -557,6 +558,8 @@ type TicketDetailData = {
   canAssign: boolean;
   canMerge: boolean;
   canExport: boolean;
+  /** Geschlossene Status bleiben ohne diese Berechtigung nicht auswählbar. */
+  canClose: boolean;
   /** Bei älteren Edge-Function-Deployments nicht vorhanden; kein Fallback auf canUpdate. */
   canEscalate?: boolean;
   canUseInternalNotes: boolean;
@@ -1244,6 +1247,7 @@ function parseTicketQuality(value: unknown): TicketQualityData | null {
     typeof data.count !== "number" ||
     !Number.isSafeInteger(data.count) ||
     data.count < 0 ||
+    typeof data.canRead !== "boolean" ||
     typeof data.canReview !== "boolean"
   ) {
     return null;
@@ -1265,6 +1269,7 @@ function parseTicketQuality(value: unknown): TicketQualityData | null {
       count: data.count,
       averageScore: null,
       ownReview,
+      canRead: data.canRead,
       canReview: data.canReview,
     };
   }
@@ -1283,6 +1288,7 @@ function parseTicketQuality(value: unknown): TicketQualityData | null {
     count: data.count,
     averageScore,
     ownReview,
+    canRead: data.canRead,
     canReview: data.canReview,
   };
 }
@@ -1651,6 +1657,7 @@ function parseTicketDetail(
     canAssign,
     canMerge,
     canExport: data.canExport === true,
+    canClose: data.canClose === true,
     ...(canEscalate === undefined ? {} : { canEscalate }),
     canUseInternalNotes: data.canUseInternalNotes === true,
     canTrackTime: data.canTrackTime === true,
@@ -3258,11 +3265,13 @@ export function TicketDetail({
   const [feedbackError, setFeedbackError] = useState("");
   const [feedbackScore, setFeedbackScore] = useState<number | null>(null);
   const [feedbackComment, setFeedbackComment] = useState("");
+  const [feedbackSuccess, setFeedbackSuccess] = useState("");
   const [quality, setQuality] = useState<TicketQualityData | null>(null);
   const [qualityLoading, setQualityLoading] = useState(true);
   const [qualityError, setQualityError] = useState("");
   const [qualityScore, setQualityScore] = useState<number | null>(null);
   const [qualityNotes, setQualityNotes] = useState("");
+  const [qualitySuccess, setQualitySuccess] = useState("");
   const [handovers, setHandovers] = useState<TicketHandover[]>([]);
   const [handoversLoading, setHandoversLoading] = useState(false);
   const [handoversLoaded, setHandoversLoaded] = useState(false);
@@ -3299,6 +3308,11 @@ export function TicketDetail({
   const assignableAgentsRequestSequence = useRef(0);
   const ticketCategoriesRequestSequence = useRef(0);
   const attachmentInputRef = useRef<HTMLInputElement>(null);
+  const ticketIsClosed = Boolean(
+    detail?.statuses.some(
+      (status) => status.id === detail.ticket.status_id && status.is_closed,
+    ),
+  );
 
   const loadFeedback = useCallback(async () => {
     const requestId = ++feedbackRequestSequence.current;
@@ -3846,12 +3860,10 @@ export function TicketDetail({
   }, [detail?.ticket.id, isEditingTicket, tenantId, ticketId]);
 
   useEffect(() => {
-    const isClosed = detail?.statuses.some(
-      (status) => status.id === detail.ticket.status_id && status.is_closed,
-    );
-    if (!isClosed) {
+    if (!ticketIsClosed) {
       setFeedback(null);
       setFeedbackError("");
+      setFeedbackSuccess("");
       setFeedbackLoading(false);
       return;
     }
@@ -3859,15 +3871,13 @@ export function TicketDetail({
     return () => {
       feedbackRequestSequence.current += 1;
     };
-  }, [loadFeedback, detail?.ticket.status_id, detail?.statuses]);
+  }, [loadFeedback, ticketIsClosed]);
 
   useEffect(() => {
-    const isClosed = detail?.statuses.some(
-      (status) => status.id === detail.ticket.status_id && status.is_closed,
-    );
-    if (!isClosed) {
+    if (!ticketIsClosed) {
       setQuality(null);
       setQualityError("");
+      setQualitySuccess("");
       setQualityLoading(false);
       return;
     }
@@ -3875,7 +3885,7 @@ export function TicketDetail({
     return () => {
       qualityRequestSequence.current += 1;
     };
-  }, [loadQuality, detail?.ticket.status_id, detail?.statuses]);
+  }, [loadQuality, ticketIsClosed]);
 
   useEffect(() => {
     setAttachments([]);
@@ -3989,6 +3999,16 @@ export function TicketDetail({
         (status) => status.id === detail.ticket.status_id,
       ) ?? null,
     [detail],
+  );
+  const selectableStatuses = useMemo(
+    () =>
+      (detail?.statuses ?? []).filter(
+        (status) =>
+          !status.is_closed ||
+          detail?.canClose ||
+          status.id === selectedStatus?.id,
+      ),
+    [detail?.canClose, detail?.statuses, selectedStatus?.id],
   );
   const selectedPriority = useMemo(
     () =>
@@ -4165,10 +4185,12 @@ export function TicketDetail({
 
     setPendingAction("feedback");
     setFeedbackError("");
+    setFeedbackSuccess("");
     try {
       await invokeTicketFeedbackAction(action);
       onChanged();
       await loadFeedback();
+      setFeedbackSuccess("Ihre Bewertung wurde gespeichert.");
     } catch (nextError) {
       setFeedbackError(feedbackErrorMessage(nextError, "submit"));
     } finally {
@@ -4201,6 +4223,7 @@ export function TicketDetail({
 
     setPendingAction("quality-review");
     setQualityError("");
+    setQualitySuccess("");
     try {
       const response = await invokeTicketQualityAction({
         type: "submit",
@@ -4214,6 +4237,7 @@ export function TicketDetail({
       }
       onChanged();
       await loadQuality();
+      setQualitySuccess("Die Qualitätsprüfung wurde gespeichert.");
     } catch (nextError) {
       setQualityError(qualityErrorMessage(nextError, "submit"));
     } finally {
@@ -5524,6 +5548,9 @@ export function TicketDetail({
         {(detail.canUpdate || detail.canAssign) && (
           <p className="ticket-detail-facts-hint" role="status">
             Änderungen werden beim Auswählen direkt gespeichert.
+            {detail.canUpdate && !detail.canClose
+              ? " Geschlossene Status sind nur mit Abschlussberechtigung verfügbar."
+              : ""}
           </p>
         )}
         <dl className="ticket-detail-facts-grid">
@@ -5544,7 +5571,7 @@ export function TicketDetail({
                   }}
                   value={selectedStatus?.key ?? ""}
                 >
-                  {detail.statuses.map((status) => (
+                  {selectableStatuses.map((status) => (
                     <option key={status.id} value={status.key}>
                       {status.label}
                     </option>
@@ -5928,14 +5955,14 @@ export function TicketDetail({
         </p>
       )}
 
-      <details className="ticket-detail-disclosure">
+      <details className="ticket-detail-disclosure" open={ticketIsClosed}>
         <summary>
           <span className="ticket-detail-disclosure-label">
-            <MessageSquare aria-hidden="true" size={17} strokeWidth={1.8} />
-            Kontext & Anhänge
+            <CircleCheck aria-hidden="true" size={17} strokeWidth={1.8} />
+            Abschluss & Kontext
           </span>
           <span className="ticket-detail-disclosure-meta">
-            Wissen, Übergaben, Dateien
+            Bewertungen, Wissen, Übergaben, Dateien
             <ChevronDown
               aria-hidden="true"
               className="ticket-detail-disclosure-icon"
@@ -6331,8 +6358,22 @@ export function TicketDetail({
                 {qualityError}
               </p>
             )}
+            {qualitySuccess && (
+              <p className="ticket-detail-message success" role="status">
+                <CircleCheck aria-hidden="true" size={17} />
+                {qualitySuccess}
+              </p>
+            )}
 
-            {quality && (
+            {!qualityLoading && !quality && !qualityError ? (
+              <p className="data-caption">
+                {ticketIsClosed
+                  ? "Die Qualitätsprüfung wird nach einer erneuten Berechtigungsprüfung angezeigt."
+                  : "Nach dem Schliessen können berechtigte Mitarbeitende eine Qualitätsprüfung abgeben."}
+              </p>
+            ) : null}
+
+            {quality && quality.canRead ? (
               <>
                 <div className="ticket-comment">
                   <div className="ticket-comment-meta">
@@ -6419,7 +6460,12 @@ export function TicketDetail({
                   </p>
                 )}
               </>
-            )}
+            ) : quality && !quality.canRead ? (
+              <p className="data-caption">
+                Die Qualitätsübersicht ist nur für berechtigte Mitarbeitende
+                sichtbar.
+              </p>
+            ) : null}
           </section>
 
           <section
@@ -6451,6 +6497,19 @@ export function TicketDetail({
                 {feedbackError}
               </p>
             )}
+            {feedbackSuccess && (
+              <p className="ticket-detail-message success" role="status">
+                <CircleCheck aria-hidden="true" size={17} />
+                {feedbackSuccess}
+              </p>
+            )}
+
+            {!feedbackLoading && !feedback && !feedbackError ? (
+              <p className="data-caption">
+                Kundenfeedback kann abgegeben werden, sobald das Ticket
+                geschlossen ist.
+              </p>
+            ) : null}
 
             {feedback && (
               <>

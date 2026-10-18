@@ -12,6 +12,7 @@ import {
 
 import { ScreenContainer } from "@/components/screen-container";
 import {
+  formatMobileKnowledgeUpdatedAt,
   loadMobileKnowledgeArticle,
   type MobileKnowledgeArticleDetail,
 } from "@/lib/mobile-knowledge";
@@ -109,11 +110,32 @@ export default function KnowledgeArticleScreen() {
                   size={14}
                 />
                 <Text style={styles.visibilityText}>
-                  {article.visibility === "internal" ? "Intern" : "Freigegeben"}
+                  {article.visibility === "internal"
+                    ? "Intern"
+                    : "Extern freigegeben"}
                 </Text>
               </View>
-              <Text style={styles.revision}>Version {article.revision}</Text>
+              <View style={styles.metaDetails}>
+                <Text style={styles.revision}>Version {article.revision}</Text>
+                <Text style={styles.updatedAt}>
+                  {formatMobileKnowledgeUpdatedAt(article.updatedAt)}
+                </Text>
+              </View>
             </View>
+            {article.collections.length > 0 ? (
+              <View style={styles.collections}>
+                <Ionicons
+                  color="#656477"
+                  name="folder-open-outline"
+                  size={15}
+                />
+                <Text style={styles.collectionsText}>
+                  {article.collections
+                    .map((collection) => collection.name)
+                    .join(" · ")}
+                </Text>
+              </View>
+            ) : null}
             <Text style={styles.title}>{article.title}</Text>
             {article.summary ? (
               <Text style={styles.summary}>{article.summary}</Text>
@@ -177,7 +199,21 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
   },
   visibilityText: { color: "#087A95", fontSize: 10, fontWeight: "900" },
+  metaDetails: { alignItems: "flex-end", flex: 1, gap: 2 },
   revision: { color: "#77758C", fontSize: 11, fontWeight: "700" },
+  updatedAt: { color: "#8A8999", fontSize: 10, textAlign: "right" },
+  collections: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 5,
+    marginTop: 12,
+  },
+  collectionsText: {
+    color: "#656477",
+    flex: 1,
+    fontSize: 12,
+    fontWeight: "700",
+  },
   title: {
     color: "#202136",
     fontSize: 25,

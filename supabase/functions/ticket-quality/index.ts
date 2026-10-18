@@ -353,18 +353,11 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     );
 
   if (action.type === "get") {
-    const [permission, scoresResult, ownResult] = await Promise.all([
-      hasReviewPermission(
-        context.supabase,
-        action.tenantId,
-        callerTicket.ticket.department_id,
-      ),
-      context.supabaseAdmin
-        .from("ticket_quality_reviews")
-        .select("score")
-        .eq("ticket_id", callerTicket.ticket.id),
-      getOwnReview(context.supabaseAdmin, callerTicket.ticket.id, actorId),
-    ]);
+    const permission = await hasReviewPermission(
+      context.supabase,
+      action.tenantId,
+      callerTicket.ticket.department_id,
+    );
 
     if (permission.failed)
       return error(
@@ -373,6 +366,24 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         "permission_check_failed",
         "Die Berechtigung kann derzeit nicht geprüft werden.",
       );
+    if (!permission.allowed)
+      return json(request, {
+        data: {
+          canRead: false,
+          canReview: false,
+          count: 0,
+          averageScore: null,
+          ownReview: null,
+        },
+      });
+
+    const [scoresResult, ownResult] = await Promise.all([
+      context.supabaseAdmin
+        .from("ticket_quality_reviews")
+        .select("score")
+        .eq("ticket_id", callerTicket.ticket.id),
+      getOwnReview(context.supabaseAdmin, callerTicket.ticket.id, actorId),
+    ]);
     if (
       scoresResult.error ||
       !Array.isArray(scoresResult.data) ||
@@ -407,6 +418,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
 
     return json(request, {
       data: {
+        canRead: true,
         count,
         averageScore,
         ownReview: publicOwnReview(ownResult.review),
