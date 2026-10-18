@@ -55,7 +55,13 @@ export function isWorkbenchUnavailableError(error: unknown): boolean {
 }
 
 export type PublicTicketTimelineItem =
-  | { type: "event"; id: string; eventType: string; occurredAt: string }
+  | {
+      type: "event";
+      id: string;
+      eventType: string;
+      occurredAt: string;
+      statusLabel?: string | null;
+    }
   | {
       type: "comment";
       id: string;
@@ -66,6 +72,8 @@ export type PublicTicketTimelineItem =
 
 export type AssigneeSuggestion = {
   userId: string;
+  displayName?: string;
+  isCurrentAssignee: boolean;
   score: number;
   reasons: string[];
   automaticAssignment: false;
@@ -155,12 +163,13 @@ async function errorFromInvoke(
   return parseErrorEnvelope(payload);
 }
 
-async function invokeFunction<Action extends { tenantId: string }, Result>(
-  functionName: "agent-workbench" | "requester-portal",
-  action: WithoutTenant<Action>,
+async function invokeWithBody<Result>(
+  functionName:
+    | "agent-workbench"
+    | "requester-portal"
+    | "ticket-agent-assignment",
+  body: Record<string, unknown>,
 ): Promise<Result> {
-  const tenant = await loadCurrentTenant();
-  const body = { ...action, tenantId: tenant.id } as unknown as Action;
   const { data, error } = await requireNextDesk().functions.invoke(
     functionName,
     {
@@ -181,6 +190,17 @@ async function invokeFunction<Action extends { tenantId: string }, Result>(
   if (serverError) throw serverError;
   if (!isRecord(data) || !("data" in data)) invalidResponse();
   return (data as ApiEnvelope<Result>).data;
+}
+
+async function invokeFunction<Action extends { tenantId: string }, Result>(
+  functionName: "agent-workbench" | "requester-portal",
+  action: WithoutTenant<Action>,
+): Promise<Result> {
+  const tenant = await loadCurrentTenant();
+  return invokeWithBody<Result>(functionName, {
+    ...action,
+    tenantId: tenant.id,
+  });
 }
 
 function invokeAgentWorkbench<Result>(
@@ -235,6 +255,19 @@ export function loadAssigneeSuggestions(ticketId: string): Promise<{
   notice: string;
 }> {
   return invokeAgentWorkbench({ type: "suggestAssignees", ticketId });
+}
+
+export function assignTicketAgent(
+  tenantId: string,
+  ticketId: string,
+  agentId: string,
+): Promise<Record<string, unknown>> {
+  return invokeWithBody("ticket-agent-assignment", {
+    type: "assign",
+    tenantId,
+    ticketId,
+    assignedAgentId: agentId,
+  });
 }
 
 export function loadReopenRequests(): Promise<{

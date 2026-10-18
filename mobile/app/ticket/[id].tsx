@@ -15,7 +15,6 @@ import {
   View,
 } from "react-native";
 
-import { OnsiteMode } from "@/components/onsite-mode";
 import { ScreenContainer } from "@/components/screen-container";
 import {
   MobileFeatureLoadingScreen,
@@ -33,6 +32,7 @@ import {
   saveFollowUp,
 } from "@/lib/nextdesk-experience";
 import {
+  assignTicketAgent,
   decideTicketReopenRequest,
   isWorkbenchUnavailableError,
   loadAssigneeSuggestions,
@@ -66,13 +66,10 @@ import {
 } from "@/lib/nextdesk-client";
 import {
   addMobileTicketComment,
-  createMobileTicket,
   loadMobileTicketDetail,
-  loadTicketFormOptions,
   saveMobileTicketDraft,
   updateMobileTicket,
   type MobileTicketDetail,
-  type TicketFormOptions,
   type TicketRequester,
   type TicketCommentVisibility,
 } from "@/lib/nextdesk-tickets";
@@ -117,15 +114,30 @@ function formatWorkbenchDate(value: string): string {
   }).format(date);
 }
 
-function publicTimelineEventLabel(eventType: string): string {
+function publicTimelineEventLabel(
+  item: Extract<PublicTicketTimelineItem, { type: "event" }>,
+): string {
+  const eventType = item.eventType.toLocaleLowerCase("de-CH");
+  if (eventType === "status_changed" || eventType === "ticket_status_changed") {
+    return item.statusLabel?.trim()
+      ? `Status geändert: ${item.statusLabel.trim()}`
+      : "Status geändert";
+  }
   const labels: Record<string, string> = {
+    assigned: "Ticket zugewiesen",
+    comment: "Kommentar hinzugefügt",
+    created: "Ticket erfasst",
+    closed: "Ticket geschlossen",
+    reopened: "Ticket wieder geöffnet",
+    reply: "Antwort hinzugefügt",
+    resolved: "Ticket gelöst",
+    ticket_assigned: "Ticket zugewiesen",
     ticket_closed: "Ticket geschlossen",
     ticket_created: "Ticket erfasst",
     ticket_reopened: "Ticket wieder geöffnet",
     ticket_resolved: "Ticket gelöst",
-    status_changed: "Status geändert",
   };
-  return labels[eventType] ?? "Öffentliches Ereignis";
+  return labels[eventType] ?? "Aktualisiert";
 }
 
 function compactContextValue(value: unknown): string | null {
@@ -149,7 +161,6 @@ export default function TicketDetailScreen() {
   const workspaceEnabled = isEnabled("experience.workspace");
   const selfServiceEnabled = isEnabled("portal.self-service");
   const agentWorkbenchEnabled = isEnabled("agent.workbench");
-  const assetsEnabled = isEnabled("assets.management");
   const requesterPortalEnabled = isEnabled("requester.portal");
   const { density, reducedMotion } = useThemeContext();
   const colors = useAppColors();
@@ -230,7 +241,6 @@ export default function TicketDetailScreen() {
   const [resolutionError, setResolutionError] = useState("");
   const [submittingResolution, setSubmittingResolution] = useState(false);
   const [resolutionSubmitted, setResolutionSubmitted] = useState(false);
-  const scrollViewRef = useRef<ScrollView>(null);
   // Background reloads (reconnect, recovery, refresh after actions) must never
   // overwrite text that is currently being edited. Refs expose the latest
   // editing state to the stable load() callback.
@@ -242,8 +252,6 @@ export default function TicketDetailScreen() {
   useEffect(() => {
     draftDirtyRef.current = draftDirty;
   }, [draftDirty]);
-  const [conversationOffset, setConversationOffset] = useState(0);
-  const [attachmentsOffset, setAttachmentsOffset] = useState(0);
   const [requesterPortalAvailable, setRequesterPortalAvailable] =
     useState(true);
   const [timeline, setTimeline] = useState<PublicTicketTimelineItem[] | null>(
@@ -256,15 +264,20 @@ export default function TicketDetailScreen() {
   const [requestingReopen, setRequestingReopen] = useState(false);
   const [reopenSubmitted, setReopenSubmitted] = useState(false);
   const [agentWorkbenchAvailable, setAgentWorkbenchAvailable] = useState(true);
+  const [timelineOpen, setTimelineOpen] = useState(false);
   const [agentContextOpen, setAgentContextOpen] = useState(false);
   const [agentContext, setAgentContext] =
     useState<TicketWorkbenchContext | null>(null);
   const [contextLoading, setContextLoading] = useState(false);
+  const [assigneeSuggestionsOpen, setAssigneeSuggestionsOpen] = useState(false);
   const [assigneeSuggestions, setAssigneeSuggestions] = useState<
     AssigneeSuggestion[] | null
   >(null);
-  const [assigneeNotice, setAssigneeNotice] = useState("");
   const [suggestionsLoading, setSuggestionsLoading] = useState(false);
+  const [pendingAgentAssignment, setPendingAgentAssignment] =
+    useState<AssigneeSuggestion | null>(null);
+  const [assigningAgent, setAssigningAgent] = useState(false);
+  const [reopenRequestsOpen, setReopenRequestsOpen] = useState(false);
   const [reopenRequests, setReopenRequests] = useState<TicketReopenRequest[]>(
     [],
   );
@@ -274,16 +287,6 @@ export default function TicketDetailScreen() {
     request: TicketReopenRequest;
   } | null>(null);
   const [decidingReopen, setDecidingReopen] = useState(false);
-  const [feedbackSheetOpen, setFeedbackSheetOpen] = useState(false);
-  const [feedbackOptions, setFeedbackOptions] =
-    useState<TicketFormOptions | null>(null);
-  const [feedbackSubject, setFeedbackSubject] = useState("");
-  const [feedbackDescription, setFeedbackDescription] = useState("");
-  const [feedbackError, setFeedbackError] = useState("");
-  const [feedbackLoading, setFeedbackLoading] = useState(false);
-  const [feedbackConfirmationOpen, setFeedbackConfirmationOpen] =
-    useState(false);
-  const [submittingFeedback, setSubmittingFeedback] = useState(false);
 
   const load = useCallback(
     async (syncEditor = true) => {
@@ -464,29 +467,6 @@ export default function TicketDetailScreen() {
     };
   }, [canUseAgentWorkbench, ticket]);
 
-  function scrollToTicketSection(offset: number) {
-    scrollViewRef.current?.scrollTo({
-      animated: !reducedMotion,
-      y: Math.max(0, offset - 8),
-    });
-  }
-
-  function openOnsiteInternalNote() {
-    if (!ticket?.canWriteInternalNotes) return;
-    changeCommentVisibility("internal");
-    scrollToTicketSection(conversationOffset);
-    setMessage("Interne Notiz ist für dieses Ticket vorbereitet.");
-  }
-
-  function openOnsitePhotoAttachments() {
-    scrollToTicketSection(attachmentsOffset);
-    setMessage("Fotoanhänge sind für dieses Ticket geöffnet.");
-  }
-
-  function openOnsiteAssetScan() {
-    router.push("/assets/scan" as never);
-  }
-
   function openReopenSheet() {
     setReopenReason("");
     setReopenError("");
@@ -561,12 +541,51 @@ export default function TicketDetailScreen() {
     try {
       const result = await loadAssigneeSuggestions(ticket.id);
       setAssigneeSuggestions(result.suggestions);
-      setAssigneeNotice(result.notice);
     } catch {
       setAgentWorkbenchAvailable(false);
       setAssigneeSuggestions(null);
     } finally {
       setSuggestionsLoading(false);
+    }
+  }
+
+  async function toggleAssigneeSuggestions() {
+    const nextOpen = !assigneeSuggestionsOpen;
+    setAssigneeSuggestionsOpen(nextOpen);
+    if (nextOpen && assigneeSuggestions === null) {
+      await loadSuggestions();
+    }
+  }
+
+  async function confirmAgentAssignment() {
+    if (!tenant || !ticket || !pendingAgentAssignment) return;
+    const displayName = pendingAgentAssignment.displayName?.trim() || "Agent";
+    setAssigningAgent(true);
+    setError("");
+    try {
+      await assignTicketAgent(
+        tenant.id,
+        ticket.id,
+        pendingAgentAssignment.userId,
+      );
+      setPendingAgentAssignment(null);
+      await Promise.all([load(false), loadSuggestions()]);
+      setMessage(`${displayName} wurde zugewiesen.`);
+      hapticSuccess();
+    } catch (nextError) {
+      if (isWorkbenchUnavailableError(nextError)) {
+        setAgentWorkbenchAvailable(false);
+        setPendingAgentAssignment(null);
+        return;
+      }
+      hapticError();
+      setError(
+        nextError instanceof Error
+          ? nextError.message
+          : "Der Agent konnte nicht zugewiesen werden.",
+      );
+    } finally {
+      setAssigningAgent(false);
     }
   }
 
@@ -598,92 +617,6 @@ export default function TicketDetailScreen() {
       );
     } finally {
       setDecidingReopen(false);
-    }
-  }
-
-  async function openFeedbackSheet() {
-    if (!tenant) return;
-    setFeedbackError("");
-    setFeedbackSubject("");
-    setFeedbackDescription("");
-    setFeedbackOptions(null);
-    setFeedbackSheetOpen(true);
-    setFeedbackLoading(true);
-    try {
-      setFeedbackOptions(await loadTicketFormOptions(tenant.id));
-    } catch (nextError) {
-      setFeedbackError(
-        nextError instanceof Error
-          ? nextError.message
-          : "Das Feedbackformular konnte nicht vorbereitet werden.",
-      );
-    } finally {
-      setFeedbackLoading(false);
-    }
-  }
-
-  function requestFeedbackConfirmation() {
-    const subjectValue = feedbackSubject.trim();
-    if (subjectValue.length < 3) {
-      setFeedbackError(
-        "Bitte geben Sie einen Betreff mit mindestens 3 Zeichen ein.",
-      );
-      return;
-    }
-    if (!feedbackDescription.trim()) {
-      setFeedbackError("Bitte beschreiben Sie Ihr Feedback kurz.");
-      return;
-    }
-    if (!feedbackOptions) return;
-    setFeedbackError("");
-    setFeedbackConfirmationOpen(true);
-  }
-
-  async function submitFeedbackTicket() {
-    if (!tenant || !feedbackOptions) return;
-    const department =
-      feedbackOptions.departments.find((candidate) =>
-        `${candidate.key} ${candidate.name}`
-          .toLocaleLowerCase("de-CH")
-          .includes("feedback"),
-      ) ?? feedbackOptions.departments[0];
-    const priority = feedbackOptions.priorities[0];
-    if (!department || !priority) {
-      setFeedbackConfirmationOpen(false);
-      setFeedbackError(
-        "Für Feedback steht in diesem Mandanten keine Ticketerfassung bereit.",
-      );
-      return;
-    }
-
-    setSubmittingFeedback(true);
-    try {
-      const feedbackTicket = await createMobileTicket({
-        departmentId: department.id,
-        description: feedbackDescription.trim(),
-        priorityKey: priority.key,
-        requesterContactId: feedbackOptions.currentRequester.id,
-        subject: Array.from(
-          `Feedback zur nextDesk App: ${feedbackSubject.trim()}`,
-        )
-          .slice(0, 240)
-          .join(""),
-        tenantId: tenant.id,
-      });
-      setFeedbackConfirmationOpen(false);
-      setFeedbackSheetOpen(false);
-      setMessage(`Feedback als Ticket ${feedbackTicket.ticketNumber} erfasst.`);
-      hapticSuccess();
-    } catch (nextError) {
-      hapticError();
-      setFeedbackConfirmationOpen(false);
-      setFeedbackError(
-        nextError instanceof Error
-          ? nextError.message
-          : "Das Feedback konnte nicht als Ticket erfasst werden.",
-      );
-    } finally {
-      setSubmittingFeedback(false);
     }
   }
 
@@ -872,6 +805,24 @@ export default function TicketDetailScreen() {
         nextError instanceof Error
           ? nextError.message
           : "Die E-Mail-App konnte nicht geöffnet werden.",
+      );
+    }
+  }
+  async function contactRequesterByPhone(number: string) {
+    const target = `tel:${encodeURIComponent(number)}`;
+    try {
+      if (!(await Linking.canOpenURL(target))) {
+        throw new Error(
+          "Auf diesem Gerät ist keine Telefon-App für die Kontaktaufnahme verfügbar.",
+        );
+      }
+      await Linking.openURL(target);
+    } catch (nextError) {
+      hapticError();
+      setError(
+        nextError instanceof Error
+          ? nextError.message
+          : "Die Telefon-App konnte nicht geöffnet werden.",
       );
     }
   }
@@ -1132,7 +1083,6 @@ export default function TicketDetailScreen() {
           contentContainerStyle={[styles.content, densityStyles.content]}
           keyboardDismissMode="interactive"
           keyboardShouldPersistTaps="handled"
-          ref={scrollViewRef}
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.topBar}>
@@ -1268,69 +1218,703 @@ export default function TicketDetailScreen() {
             ) : null}
           </View>
 
-          {canSetFollowUp ? (
-            <View
-              style={[
-                styles.experienceCard,
-                tokenStyles.card,
-                densityStyles.card,
-              ]}
+          <View
+            style={[styles.detailsCard, tokenStyles.card, densityStyles.card]}
+          >
+            <Text style={[styles.detailsTitle, tokenStyles.foreground]}>
+              Details
+            </Text>
+
+            <View style={styles.detailsRequester}>
+              <Text style={[styles.cardLabel, tokenStyles.muted]}>
+                ANFRAGENDE PERSON
+              </Text>
+              {ticket.canUpdate && editingField === "requester" && requester ? (
+                <RequesterPicker
+                  autoOpen
+                  contextLabel="TICKET BEARBEITEN"
+                  defaultRequester={ticket.requesterContact ?? requester}
+                  onChange={(nextRequester) =>
+                    void saveChange({ requester: nextRequester })
+                  }
+                  onClose={() => setEditingField(null)}
+                  tenantId={tenant?.id ?? ""}
+                  value={requester}
+                />
+              ) : (
+                <Pressable
+                  accessibilityHint={
+                    ticket.canUpdate
+                      ? "Antippen, um die anfragende Person zu ändern."
+                      : undefined
+                  }
+                  accessibilityRole={ticket.canUpdate ? "button" : undefined}
+                  disabled={!ticket.canUpdate || !requester}
+                  onPress={() => {
+                    hapticSelection();
+                    setEditingField("requester");
+                  }}
+                  style={styles.requesterPressable}
+                >
+                  <Text numberOfLines={2} style={styles.requesterName}>
+                    {ticket.requesterName ?? "Anfragende Person"}
+                  </Text>
+                  {ticket.requesterContact?.department ||
+                  ticket.requesterContact?.offering ? (
+                    <Text style={styles.requesterMeta}>
+                      {[
+                        ticket.requesterContact?.department,
+                        ticket.requesterContact?.offering,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </Text>
+                  ) : null}
+                </Pressable>
+              )}
+              {ticket.requesterContact?.email ? (
+                <Pressable
+                  accessibilityLabel={`${ticket.requesterContact.displayName} per E-Mail kontaktieren`}
+                  accessibilityRole="button"
+                  onPress={() =>
+                    void contactRequesterByEmail(
+                      ticket.requesterContact?.email ?? "",
+                    )
+                  }
+                  style={styles.contactAction}
+                >
+                  <Ionicons color={colors.info} name="mail-outline" size={15} />
+                  <Text numberOfLines={1} style={styles.contactActionText}>
+                    {ticket.requesterContact.email}
+                  </Text>
+                </Pressable>
+              ) : null}
+              {ticket.requesterContact?.phone ? (
+                <Pressable
+                  accessibilityLabel={`${ticket.requesterContact.displayName} anrufen`}
+                  accessibilityRole="button"
+                  onPress={() =>
+                    void contactRequesterByPhone(
+                      ticket.requesterContact?.phone ?? "",
+                    )
+                  }
+                  style={styles.contactAction}
+                >
+                  <Ionicons color={colors.info} name="call-outline" size={15} />
+                  <Text numberOfLines={1} style={styles.contactActionText}>
+                    {ticket.requesterContact.phone}
+                  </Text>
+                </Pressable>
+              ) : null}
+            </View>
+
+            <View style={styles.detailsDivider} />
+            <Pressable
+              accessibilityHint={
+                ticket.canUpdate
+                  ? "Antippen, um die Priorität zu ändern."
+                  : undefined
+              }
+              accessibilityLabel="Priorität"
+              accessibilityRole={ticket.canUpdate ? "button" : undefined}
+              disabled={!ticket.canUpdate}
+              onPress={() => {
+                hapticSelection();
+                setSelection("priority");
+              }}
+              style={styles.detailsValueRow}
             >
-              <View style={styles.experienceHeader}>
-                <View
-                  style={[
-                    styles.experienceIcon,
-                    { backgroundColor: colors.primarySoft },
-                  ]}
-                >
-                  <Ionicons
-                    color={colors.primaryText}
-                    name="alarm-outline"
-                    size={20}
-                  />
-                </View>
-                <View style={styles.experienceCopy}>
-                  <Text
-                    style={[styles.experienceTitle, tokenStyles.foreground]}
-                  >
-                    Wiedervorlage
-                  </Text>
-                  <Text style={[styles.experienceText, tokenStyles.muted]}>
-                    Erinnerung für dieses Ticket setzen, ohne den Ticketstatus
-                    zu ändern.
-                  </Text>
-                </View>
-              </View>
-              <Pressable
-                accessibilityLabel="Wiedervorlage für dieses Ticket setzen"
-                accessibilityRole="button"
-                disabled={savingFollowUp}
-                onPress={openFollowUpSheet}
-                style={[
-                  styles.experienceAction,
-                  {
-                    borderColor: colors.border,
-                    backgroundColor: colors.surfaceSubtle,
-                  },
-                  savingFollowUp && styles.disabled,
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.experienceActionText,
-                    { color: colors.primaryText },
-                  ]}
-                >
-                  Wiedervorlage setzen
+              <View>
+                <Text style={[styles.cardLabel, tokenStyles.muted]}>
+                  PRIORITÄT
                 </Text>
+                <Text style={styles.detailsValue}>
+                  {priority?.label ?? "Ohne Priorität"}
+                </Text>
+              </View>
+              {ticket.canUpdate ? (
                 <Ionicons
                   color={colors.primaryText}
                   name="chevron-forward"
-                  size={19}
+                  size={18}
                 />
-              </Pressable>
-            </View>
-          ) : null}
+              ) : null}
+            </Pressable>
+
+            {canSetFollowUp ? (
+              <>
+                <View style={styles.detailsDivider} />
+                <Pressable
+                  accessibilityLabel="Wiedervorlage für dieses Ticket setzen"
+                  accessibilityRole="button"
+                  disabled={savingFollowUp}
+                  onPress={openFollowUpSheet}
+                  style={styles.detailsActionRow}
+                >
+                  <View style={styles.detailsActionLead}>
+                    <Ionicons
+                      color={colors.primaryText}
+                      name="alarm-outline"
+                      size={19}
+                    />
+                    <Text style={styles.detailsActionLabel}>Wiedervorlage</Text>
+                  </View>
+                  <View style={styles.detailsActionLead}>
+                    <Text style={styles.detailsActionLink}>Setzen</Text>
+                    <Ionicons
+                      color={colors.primaryText}
+                      name="chevron-forward"
+                      size={18}
+                    />
+                  </View>
+                </Pressable>
+              </>
+            ) : null}
+
+            {canUseRequesterPortal ? (
+              <>
+                <View style={styles.detailsDivider} />
+                <Pressable
+                  accessibilityLabel="Statuszeitleiste"
+                  accessibilityRole="button"
+                  accessibilityState={{ expanded: timelineOpen }}
+                  onPress={() => {
+                    setTimelineOpen((current) => !current);
+                    hapticSelection();
+                  }}
+                  style={styles.detailsAccordionRow}
+                >
+                  <View style={styles.detailsActionLead}>
+                    <Ionicons
+                      color={colors.primaryText}
+                      name="time-outline"
+                      size={19}
+                    />
+                    <Text style={styles.detailsActionLabel}>
+                      Statuszeitleiste
+                    </Text>
+                  </View>
+                  <View style={styles.detailsActionLead}>
+                    <Text numberOfLines={1} style={styles.detailsSummary}>
+                      {timelineLoading || timeline === null
+                        ? "Lädt …"
+                        : timeline?.length
+                          ? `${timeline.length} Ereignisse · ${formatWorkbenchDate(
+                              timeline.reduce((latest, item) =>
+                                new Date(item.occurredAt).getTime() >
+                                new Date(latest.occurredAt).getTime()
+                                  ? item
+                                  : latest,
+                              ).occurredAt,
+                            )}`
+                          : "Keine"}
+                    </Text>
+                    {timelineLoading || timeline === null ? (
+                      <ActivityIndicator
+                        color={colors.primaryText}
+                        size="small"
+                      />
+                    ) : (
+                      <Ionicons
+                        color={colors.primaryText}
+                        name={timelineOpen ? "chevron-up" : "chevron-down"}
+                        size={18}
+                      />
+                    )}
+                  </View>
+                </Pressable>
+                {timelineOpen ? (
+                  <View style={styles.detailsExpansion}>
+                    {timelineLoading || timeline === null ? (
+                      <View style={styles.inlineLoading}>
+                        <ActivityIndicator
+                          color={colors.primaryText}
+                          size="small"
+                        />
+                        <Text style={[styles.timelineText, tokenStyles.muted]}>
+                          Öffentlicher Verlauf wird geladen …
+                        </Text>
+                      </View>
+                    ) : timeline?.length ? (
+                      <View style={styles.timelineList}>
+                        {timeline.map((item) => (
+                          <View key={item.id} style={styles.timelineItem}>
+                            <View
+                              style={[
+                                styles.timelineIcon,
+                                { backgroundColor: colors.primarySoft },
+                              ]}
+                            >
+                              <Ionicons
+                                color={colors.primaryText}
+                                name={
+                                  item.type === "comment"
+                                    ? "chatbubble-outline"
+                                    : "ellipse-outline"
+                                }
+                                size={15}
+                              />
+                            </View>
+                            <View style={styles.timelineCopy}>
+                              <Text
+                                style={[
+                                  styles.timelineTitle,
+                                  tokenStyles.foreground,
+                                ]}
+                              >
+                                {item.type === "comment"
+                                  ? item.authorDisplayName
+                                    ? `Kommentar von ${item.authorDisplayName}`
+                                    : "Kommentar"
+                                  : publicTimelineEventLabel(item)}
+                              </Text>
+                              {item.type === "comment" && item.body ? (
+                                <Text
+                                  numberOfLines={2}
+                                  style={[
+                                    styles.timelineText,
+                                    tokenStyles.muted,
+                                  ]}
+                                >
+                                  {item.body}
+                                </Text>
+                              ) : null}
+                              <Text
+                                style={[styles.timelineDate, tokenStyles.muted]}
+                              >
+                                {formatWorkbenchDate(item.occurredAt)}
+                              </Text>
+                            </View>
+                          </View>
+                        ))}
+                      </View>
+                    ) : (
+                      <Text style={[styles.timelineText, tokenStyles.muted]}>
+                        Noch keine öffentlichen Einträge vorhanden.
+                      </Text>
+                    )}
+                  </View>
+                ) : null}
+              </>
+            ) : null}
+
+            {canUseAgentWorkbench ? (
+              <>
+                <View style={styles.detailsDivider} />
+                <Pressable
+                  accessibilityLabel="360°-Kontext"
+                  accessibilityRole="button"
+                  accessibilityState={{ expanded: agentContextOpen }}
+                  disabled={contextLoading}
+                  onPress={() => void toggleAgentContext()}
+                  style={styles.detailsAccordionRow}
+                >
+                  <View style={styles.detailsActionLead}>
+                    <Ionicons
+                      color={colors.primaryText}
+                      name="layers-outline"
+                      size={19}
+                    />
+                    <Text style={styles.detailsActionLabel}>360°-Kontext</Text>
+                  </View>
+                  <View style={styles.detailsActionLead}>
+                    <Text numberOfLines={1} style={styles.detailsSummary}>
+                      {contextLoading
+                        ? "Lädt …"
+                        : agentContext
+                          ? `${agentContext.requesterTickets.length} weitere Tickets`
+                          : "Aufklappen"}
+                    </Text>
+                    {contextLoading ? (
+                      <ActivityIndicator
+                        color={colors.primaryText}
+                        size="small"
+                      />
+                    ) : (
+                      <Ionicons
+                        color={colors.primaryText}
+                        name={agentContextOpen ? "chevron-up" : "chevron-down"}
+                        size={18}
+                      />
+                    )}
+                  </View>
+                </Pressable>
+                {agentContextOpen && agentContext ? (
+                  <View style={styles.detailsExpansion}>
+                    {compactContextValue(agentContext.ticket.ticket_number) ? (
+                      <Text
+                        style={[
+                          styles.contextReference,
+                          tokenStyles.foreground,
+                        ]}
+                      >
+                        {compactContextValue(agentContext.ticket.ticket_number)}
+                      </Text>
+                    ) : null}
+                    {[
+                      ["Weitere Tickets", agentContext.requesterTickets.length],
+                      ["Assets", agentContext.assets.length],
+                      ["Assetverlauf", agentContext.assetHistory.length],
+                      [
+                        "Lösungsbestätigungen",
+                        agentContext.resolutionConfirmations.length,
+                      ],
+                    ].map(([label, value]) => (
+                      <View key={label} style={styles.contextSummaryRow}>
+                        <Text style={[styles.timelineText, tokenStyles.muted]}>
+                          {label}
+                        </Text>
+                        <Text
+                          style={[
+                            styles.contextSummaryValue,
+                            tokenStyles.foreground,
+                          ]}
+                        >
+                          {value}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                ) : null}
+              </>
+            ) : null}
+
+            {canUseAgentWorkbench ? (
+              <>
+                <View style={styles.detailsDivider} />
+                <Pressable
+                  accessibilityLabel="Passende Agenten"
+                  accessibilityRole="button"
+                  accessibilityState={{ expanded: assigneeSuggestionsOpen }}
+                  disabled={suggestionsLoading}
+                  onPress={() => void toggleAssigneeSuggestions()}
+                  style={styles.detailsAccordionRow}
+                >
+                  <View style={styles.detailsActionLead}>
+                    <Ionicons
+                      color={colors.primaryText}
+                      name="people-outline"
+                      size={19}
+                    />
+                    <Text style={styles.detailsActionLabel}>
+                      Passende Agenten
+                    </Text>
+                  </View>
+                  <View style={styles.detailsActionLead}>
+                    <Text numberOfLines={1} style={styles.detailsSummary}>
+                      {suggestionsLoading
+                        ? "Lädt …"
+                        : assigneeSuggestions
+                          ? assigneeSuggestions.length
+                            ? `${Math.min(assigneeSuggestions.length, 5)} Vorschläge`
+                            : "Keine"
+                          : "Aufklappen"}
+                    </Text>
+                    {suggestionsLoading ? (
+                      <ActivityIndicator
+                        color={colors.primaryText}
+                        size="small"
+                      />
+                    ) : (
+                      <Ionicons
+                        color={colors.primaryText}
+                        name={
+                          assigneeSuggestionsOpen
+                            ? "chevron-up"
+                            : "chevron-down"
+                        }
+                        size={18}
+                      />
+                    )}
+                  </View>
+                </Pressable>
+                {assigneeSuggestionsOpen ? (
+                  <View style={styles.detailsExpansion}>
+                    {suggestionsLoading ? (
+                      <View style={styles.inlineLoading}>
+                        <ActivityIndicator
+                          color={colors.primaryText}
+                          size="small"
+                        />
+                        <Text style={[styles.timelineText, tokenStyles.muted]}>
+                          Vorschläge werden geladen …
+                        </Text>
+                      </View>
+                    ) : assigneeSuggestions?.length ? (
+                      <View style={styles.suggestionList}>
+                        {assigneeSuggestions.slice(0, 5).map((suggestion) => {
+                          const displayName =
+                            suggestion.displayName?.trim() || "Agent";
+                          const confirming =
+                            pendingAgentAssignment?.userId ===
+                            suggestion.userId;
+                          return (
+                            <View
+                              key={suggestion.userId}
+                              style={[
+                                styles.suggestion,
+                                {
+                                  backgroundColor: colors.surfaceSubtle,
+                                  borderColor: colors.border,
+                                },
+                              ]}
+                            >
+                              <View style={styles.suggestionHeader}>
+                                <View style={styles.suggestionCopy}>
+                                  <Text
+                                    numberOfLines={1}
+                                    style={[
+                                      styles.suggestionUser,
+                                      tokenStyles.foreground,
+                                    ]}
+                                  >
+                                    {displayName}
+                                  </Text>
+                                  <Text
+                                    numberOfLines={1}
+                                    style={[
+                                      styles.timelineText,
+                                      tokenStyles.muted,
+                                    ]}
+                                  >
+                                    {suggestion.reasons
+                                      .slice(0, 2)
+                                      .join(" · ") ||
+                                      "Keine Begründung verfügbar"}
+                                  </Text>
+                                </View>
+                                {suggestion.isCurrentAssignee ? (
+                                  <View
+                                    accessibilityLabel={`${displayName} ist bereits zugewiesen`}
+                                    style={styles.assignedBadge}
+                                  >
+                                    <Text style={styles.assignedBadgeText}>
+                                      Zugewiesen
+                                    </Text>
+                                  </View>
+                                ) : (
+                                  <Pressable
+                                    accessibilityLabel={`${displayName} zuweisen`}
+                                    accessibilityRole="button"
+                                    disabled={assigningAgent}
+                                    onPress={() => {
+                                      setPendingAgentAssignment(suggestion);
+                                      hapticSelection();
+                                    }}
+                                    style={styles.assignButton}
+                                  >
+                                    <Text style={styles.assignButtonText}>
+                                      Zuweisen
+                                    </Text>
+                                  </Pressable>
+                                )}
+                              </View>
+                              {confirming ? (
+                                <View style={styles.assignmentConfirmation}>
+                                  <Text
+                                    style={styles.assignmentConfirmationText}
+                                  >
+                                    {displayName} zuweisen?
+                                  </Text>
+                                  <View style={styles.assignmentActions}>
+                                    <Pressable
+                                      accessibilityLabel={`${displayName} zuweisen bestätigen`}
+                                      accessibilityRole="button"
+                                      disabled={assigningAgent}
+                                      onPress={() =>
+                                        void confirmAgentAssignment()
+                                      }
+                                      style={styles.assignmentConfirmButton}
+                                    >
+                                      {assigningAgent ? (
+                                        <ActivityIndicator
+                                          color={colors.onPrimary}
+                                          size="small"
+                                        />
+                                      ) : null}
+                                      <Text
+                                        style={styles.assignmentConfirmText}
+                                      >
+                                        Bestätigen
+                                      </Text>
+                                    </Pressable>
+                                    <Pressable
+                                      accessibilityLabel="Zuweisung abbrechen"
+                                      accessibilityRole="button"
+                                      disabled={assigningAgent}
+                                      onPress={() =>
+                                        setPendingAgentAssignment(null)
+                                      }
+                                      style={styles.assignmentCancelButton}
+                                    >
+                                      <Text style={styles.assignmentCancelText}>
+                                        Abbrechen
+                                      </Text>
+                                    </Pressable>
+                                  </View>
+                                </View>
+                              ) : null}
+                            </View>
+                          );
+                        })}
+                        <Text style={styles.assignmentFootnote}>
+                          Zuweisung nur nach Bestätigung
+                        </Text>
+                      </View>
+                    ) : (
+                      <Text style={[styles.timelineText, tokenStyles.muted]}>
+                        Derzeit liegen keine Zuweisungsvorschläge vor.
+                      </Text>
+                    )}
+                  </View>
+                ) : null}
+              </>
+            ) : null}
+
+            {canUseAgentWorkbench ? (
+              <>
+                <View style={styles.detailsDivider} />
+                <Pressable
+                  accessibilityLabel="Offene Entscheide"
+                  accessibilityRole="button"
+                  accessibilityState={{ expanded: reopenRequestsOpen }}
+                  onPress={() => {
+                    setReopenRequestsOpen((current) => !current);
+                    hapticSelection();
+                  }}
+                  style={styles.detailsAccordionRow}
+                >
+                  <View style={styles.detailsActionLead}>
+                    <Ionicons
+                      color={colors.warning}
+                      name="git-pull-request-outline"
+                      size={19}
+                    />
+                    <Text style={styles.detailsActionLabel}>
+                      Offene Entscheide
+                    </Text>
+                  </View>
+                  <View style={styles.detailsActionLead}>
+                    {reopenRequestsLoading ? (
+                      <ActivityIndicator
+                        color={colors.primaryText}
+                        size="small"
+                      />
+                    ) : (
+                      <>
+                        <View style={styles.detailsCountBadge}>
+                          <Text style={styles.detailsCountBadgeText}>
+                            {reopenRequests.length || "Keine"}
+                          </Text>
+                        </View>
+                        <Ionicons
+                          color={colors.primaryText}
+                          name={
+                            reopenRequestsOpen ? "chevron-up" : "chevron-down"
+                          }
+                          size={18}
+                        />
+                      </>
+                    )}
+                  </View>
+                </Pressable>
+                {reopenRequestsOpen ? (
+                  <View style={styles.detailsExpansion}>
+                    {reopenRequestsLoading ? (
+                      <View style={styles.inlineLoading}>
+                        <ActivityIndicator
+                          color={colors.primaryText}
+                          size="small"
+                        />
+                        <Text style={[styles.timelineText, tokenStyles.muted]}>
+                          Anfragen werden geladen …
+                        </Text>
+                      </View>
+                    ) : reopenRequests.length ? (
+                      <View style={styles.reopenRequestList}>
+                        {reopenRequests.map((request) => (
+                          <View
+                            key={request.id}
+                            style={[
+                              styles.reopenRequest,
+                              {
+                                backgroundColor: colors.surfaceSubtle,
+                                borderColor: colors.border,
+                              },
+                            ]}
+                          >
+                            <Text
+                              style={[
+                                styles.timelineText,
+                                tokenStyles.foreground,
+                              ]}
+                            >
+                              {request.reason}
+                            </Text>
+                            <Text
+                              style={[styles.timelineDate, tokenStyles.muted]}
+                            >
+                              Eingereicht:{" "}
+                              {formatWorkbenchDate(request.created_at)}
+                            </Text>
+                            <View style={styles.decisionActions}>
+                              <Pressable
+                                accessibilityLabel="Wiedereröffnungsantrag annehmen"
+                                accessibilityRole="button"
+                                onPress={() =>
+                                  setPendingReopenDecision({
+                                    decision: "accepted",
+                                    request,
+                                  })
+                                }
+                                style={[
+                                  styles.decisionButton,
+                                  {
+                                    backgroundColor: colors.successSoft,
+                                    borderColor: colors.successBorder,
+                                  },
+                                ]}
+                              >
+                                <Text style={styles.decisionAcceptText}>
+                                  Annehmen
+                                </Text>
+                              </Pressable>
+                              <Pressable
+                                accessibilityLabel="Wiedereröffnungsantrag ablehnen"
+                                accessibilityRole="button"
+                                onPress={() =>
+                                  setPendingReopenDecision({
+                                    decision: "declined",
+                                    request,
+                                  })
+                                }
+                                style={[
+                                  styles.decisionButton,
+                                  {
+                                    backgroundColor: colors.errorSoft,
+                                    borderColor: colors.errorBorder,
+                                  },
+                                ]}
+                              >
+                                <Text style={styles.decisionDeclineText}>
+                                  Ablehnen
+                                </Text>
+                              </Pressable>
+                            </View>
+                          </View>
+                        ))}
+                      </View>
+                    ) : (
+                      <Text style={[styles.timelineText, tokenStyles.muted]}>
+                        Für dieses Ticket liegen keine offenen
+                        Wiedereröffnungsanfragen vor.
+                      </Text>
+                    )}
+                  </View>
+                ) : null}
+              </>
+            ) : null}
+          </View>
 
           {canConfirmResolution ? (
             <View
@@ -1421,544 +2005,6 @@ export default function TicketDetailScreen() {
             </View>
           ) : null}
 
-          {canUseRequesterPortal && (timelineLoading || timeline) ? (
-            <View
-              style={[
-                styles.workbenchCard,
-                tokenStyles.card,
-                densityStyles.card,
-              ]}
-            >
-              <View style={styles.workbenchHeader}>
-                <View style={styles.experienceCopy}>
-                  <Text style={[styles.cardLabel, tokenStyles.muted]}>
-                    ÖFFENTLICHER VERLAUF
-                  </Text>
-                  <Text style={[styles.workbenchTitle, tokenStyles.foreground]}>
-                    Statuszeitleiste
-                  </Text>
-                </View>
-                <Ionicons
-                  color={colors.primaryText}
-                  name="time-outline"
-                  size={22}
-                />
-              </View>
-              {timelineLoading ? (
-                <View style={styles.inlineLoading}>
-                  <ActivityIndicator color={colors.primaryText} size="small" />
-                  <Text style={[styles.experienceText, tokenStyles.muted]}>
-                    Öffentlicher Verlauf wird geladen …
-                  </Text>
-                </View>
-              ) : timeline?.length ? (
-                <View style={styles.timelineList}>
-                  {timeline.map((item) => (
-                    <View key={item.id} style={styles.timelineItem}>
-                      <View
-                        style={[
-                          styles.timelineIcon,
-                          { backgroundColor: colors.primarySoft },
-                        ]}
-                      >
-                        <Ionicons
-                          color={colors.primaryText}
-                          name={
-                            item.type === "comment"
-                              ? "chatbubble-outline"
-                              : "ellipse-outline"
-                          }
-                          size={15}
-                        />
-                      </View>
-                      <View style={styles.timelineCopy}>
-                        <Text
-                          style={[styles.timelineTitle, tokenStyles.foreground]}
-                        >
-                          {item.type === "comment"
-                            ? (item.authorDisplayName ?? "Nachricht")
-                            : publicTimelineEventLabel(item.eventType)}
-                        </Text>
-                        {item.type === "comment" ? (
-                          <Text
-                            numberOfLines={3}
-                            style={[styles.timelineText, tokenStyles.muted]}
-                          >
-                            {item.body}
-                          </Text>
-                        ) : null}
-                        <Text style={[styles.timelineDate, tokenStyles.muted]}>
-                          {formatWorkbenchDate(item.occurredAt)}
-                        </Text>
-                      </View>
-                    </View>
-                  ))}
-                </View>
-              ) : (
-                <Text style={[styles.experienceText, tokenStyles.muted]}>
-                  Noch keine öffentlichen Einträge vorhanden.
-                </Text>
-              )}
-            </View>
-          ) : null}
-
-          {canUseRequesterPortal && ticketIsResolved && !reopenSubmitted ? (
-            <View
-              style={[
-                styles.workbenchCard,
-                tokenStyles.card,
-                densityStyles.card,
-              ]}
-            >
-              <View style={styles.workbenchHeader}>
-                <View style={styles.experienceCopy}>
-                  <Text style={[styles.cardLabel, tokenStyles.muted]}>
-                    GELÖSTES TICKET
-                  </Text>
-                  <Text style={[styles.workbenchTitle, tokenStyles.foreground]}>
-                    Wiedereröffnung beantragen
-                  </Text>
-                </View>
-                <Ionicons
-                  color={colors.warning}
-                  name="refresh-outline"
-                  size={22}
-                />
-              </View>
-              <Text style={[styles.experienceText, tokenStyles.muted]}>
-                Ein Antrag ändert den Ticketstatus nicht. Ein berechtigter Agent
-                entscheidet anschliessend.
-              </Text>
-              <Pressable
-                accessibilityLabel="Wiedereröffnung beantragen"
-                accessibilityRole="button"
-                onPress={openReopenSheet}
-                style={[
-                  styles.workbenchAction,
-                  {
-                    backgroundColor: colors.surfaceSubtle,
-                    borderColor: colors.border,
-                  },
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.experienceActionText,
-                    { color: colors.primaryText },
-                  ]}
-                >
-                  Antrag erfassen
-                </Text>
-                <Ionicons
-                  color={colors.primaryText}
-                  name="chevron-forward"
-                  size={19}
-                />
-              </Pressable>
-            </View>
-          ) : null}
-
-          {canUseAgentWorkbench ? (
-            <View
-              style={[
-                styles.workbenchCard,
-                tokenStyles.card,
-                densityStyles.card,
-              ]}
-            >
-              <View style={styles.workbenchHeader}>
-                <View style={styles.experienceCopy}>
-                  <Text style={[styles.cardLabel, tokenStyles.muted]}>
-                    AGENTENWERKBANK
-                  </Text>
-                  <Text style={[styles.workbenchTitle, tokenStyles.foreground]}>
-                    360°-Kontext
-                  </Text>
-                </View>
-                <Ionicons
-                  color={colors.primaryText}
-                  name="layers-outline"
-                  size={22}
-                />
-              </View>
-              <Pressable
-                accessibilityLabel={
-                  agentContextOpen
-                    ? "Ticketkontext einklappen"
-                    : "Ticketkontext aufklappen"
-                }
-                accessibilityRole="button"
-                accessibilityState={{ expanded: agentContextOpen }}
-                disabled={contextLoading}
-                onPress={() => void toggleAgentContext()}
-                style={[
-                  styles.workbenchAction,
-                  {
-                    backgroundColor: colors.surfaceSubtle,
-                    borderColor: colors.border,
-                  },
-                  contextLoading && styles.disabled,
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.experienceActionText,
-                    { color: colors.primaryText },
-                  ]}
-                >
-                  {contextLoading
-                    ? "Kontext wird geladen …"
-                    : agentContextOpen
-                      ? "Kontext einklappen"
-                      : "Kontext anzeigen"}
-                </Text>
-                {contextLoading ? (
-                  <ActivityIndicator color={colors.primaryText} size="small" />
-                ) : (
-                  <Ionicons
-                    color={colors.primaryText}
-                    name={agentContextOpen ? "chevron-up" : "chevron-down"}
-                    size={19}
-                  />
-                )}
-              </Pressable>
-              {agentContextOpen && agentContext ? (
-                <View
-                  style={[
-                    styles.contextSummary,
-                    { borderTopColor: colors.border },
-                  ]}
-                >
-                  {compactContextValue(agentContext.ticket.ticket_number) ? (
-                    <Text
-                      style={[styles.contextReference, tokenStyles.foreground]}
-                    >
-                      {compactContextValue(agentContext.ticket.ticket_number)}
-                    </Text>
-                  ) : null}
-                  {[
-                    ["Weitere Tickets", agentContext.requesterTickets.length],
-                    ["Assets", agentContext.assets.length],
-                    ["Assetverlauf", agentContext.assetHistory.length],
-                    [
-                      "Lösungsbestätigungen",
-                      agentContext.resolutionConfirmations.length,
-                    ],
-                  ].map(([label, value]) => (
-                    <View key={label} style={styles.contextSummaryRow}>
-                      <Text style={[styles.experienceText, tokenStyles.muted]}>
-                        {label}
-                      </Text>
-                      <Text
-                        style={[
-                          styles.contextSummaryValue,
-                          tokenStyles.foreground,
-                        ]}
-                      >
-                        {value}
-                      </Text>
-                    </View>
-                  ))}
-                </View>
-              ) : null}
-            </View>
-          ) : null}
-
-          {canUseAgentWorkbench ? (
-            <View
-              style={[
-                styles.workbenchCard,
-                tokenStyles.card,
-                densityStyles.card,
-              ]}
-            >
-              <View style={styles.workbenchHeader}>
-                <View style={styles.experienceCopy}>
-                  <Text style={[styles.cardLabel, tokenStyles.muted]}>
-                    ZUWEISUNGSVORSCHLÄGE
-                  </Text>
-                  <Text style={[styles.workbenchTitle, tokenStyles.foreground]}>
-                    Passende Agenten
-                  </Text>
-                </View>
-                <Ionicons
-                  color={colors.primaryText}
-                  name="people-outline"
-                  size={22}
-                />
-              </View>
-              <Text style={[styles.experienceText, tokenStyles.muted]}>
-                Vorschläge weisen nie automatisch zu. Eine Übernahme erfolgt nur
-                über die bestehende bestätigte manuelle Zuweisung.
-              </Text>
-              {assigneeSuggestions === null ? (
-                <Pressable
-                  accessibilityLabel="Zuweisungsvorschläge laden"
-                  accessibilityRole="button"
-                  disabled={suggestionsLoading}
-                  onPress={() => void loadSuggestions()}
-                  style={[
-                    styles.workbenchAction,
-                    {
-                      backgroundColor: colors.surfaceSubtle,
-                      borderColor: colors.border,
-                    },
-                    suggestionsLoading && styles.disabled,
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.experienceActionText,
-                      { color: colors.primaryText },
-                    ]}
-                  >
-                    {suggestionsLoading
-                      ? "Vorschläge werden geladen …"
-                      : "Vorschläge anzeigen"}
-                  </Text>
-                  {suggestionsLoading ? (
-                    <ActivityIndicator
-                      color={colors.primaryText}
-                      size="small"
-                    />
-                  ) : (
-                    <Ionicons
-                      color={colors.primaryText}
-                      name="sparkles-outline"
-                      size={19}
-                    />
-                  )}
-                </Pressable>
-              ) : assigneeSuggestions.length ? (
-                <View style={styles.suggestionList}>
-                  {assigneeSuggestions.map((suggestion) => (
-                    <View
-                      key={suggestion.userId}
-                      style={[
-                        styles.suggestion,
-                        {
-                          backgroundColor: colors.surfaceSubtle,
-                          borderColor: colors.border,
-                        },
-                      ]}
-                    >
-                      <Text
-                        style={[styles.suggestionUser, tokenStyles.foreground]}
-                      >
-                        {suggestion.userId}
-                      </Text>
-                      <Text style={[styles.timelineText, tokenStyles.muted]}>
-                        {suggestion.reasons.join(" · ") ||
-                          "Keine Begründung verfügbar"}
-                      </Text>
-                      <Text style={[styles.timelineDate, tokenStyles.muted]}>
-                        Relevanz: {Math.round(suggestion.score)} · Keine
-                        automatische Zuweisung
-                      </Text>
-                    </View>
-                  ))}
-                  {assigneeNotice ? (
-                    <Text style={[styles.timelineText, tokenStyles.muted]}>
-                      {assigneeNotice}
-                    </Text>
-                  ) : null}
-                </View>
-              ) : (
-                <Text style={[styles.experienceText, tokenStyles.muted]}>
-                  Derzeit liegen keine Zuweisungsvorschläge vor.
-                </Text>
-              )}
-            </View>
-          ) : null}
-
-          {canUseAgentWorkbench ? (
-            <View
-              style={[
-                styles.workbenchCard,
-                tokenStyles.card,
-                densityStyles.card,
-              ]}
-            >
-              <View style={styles.workbenchHeader}>
-                <View style={styles.experienceCopy}>
-                  <Text style={[styles.cardLabel, tokenStyles.muted]}>
-                    WIEDEROEFFNUNGSANFRAGEN
-                  </Text>
-                  <Text style={[styles.workbenchTitle, tokenStyles.foreground]}>
-                    Offene Entscheide
-                  </Text>
-                </View>
-                <Ionicons
-                  color={colors.warning}
-                  name="git-pull-request-outline"
-                  size={22}
-                />
-              </View>
-              {reopenRequestsLoading ? (
-                <View style={styles.inlineLoading}>
-                  <ActivityIndicator color={colors.primaryText} size="small" />
-                  <Text style={[styles.experienceText, tokenStyles.muted]}>
-                    Anfragen werden geladen …
-                  </Text>
-                </View>
-              ) : reopenRequests.length ? (
-                <View style={styles.reopenRequestList}>
-                  {reopenRequests.map((request) => (
-                    <View
-                      key={request.id}
-                      style={[
-                        styles.reopenRequest,
-                        {
-                          backgroundColor: colors.surfaceSubtle,
-                          borderColor: colors.border,
-                        },
-                      ]}
-                    >
-                      <Text
-                        style={[styles.timelineText, tokenStyles.foreground]}
-                      >
-                        {request.reason}
-                      </Text>
-                      <Text style={[styles.timelineDate, tokenStyles.muted]}>
-                        Eingereicht: {formatWorkbenchDate(request.created_at)}
-                      </Text>
-                      <View style={styles.decisionActions}>
-                        <Pressable
-                          accessibilityLabel="Wiedereröffnungsantrag annehmen"
-                          accessibilityRole="button"
-                          onPress={() =>
-                            setPendingReopenDecision({
-                              decision: "accepted",
-                              request,
-                            })
-                          }
-                          style={[
-                            styles.decisionButton,
-                            {
-                              backgroundColor: colors.successSoft,
-                              borderColor: colors.successBorder,
-                            },
-                          ]}
-                        >
-                          <Text
-                            style={{ color: colors.success, fontWeight: "800" }}
-                          >
-                            Annehmen
-                          </Text>
-                        </Pressable>
-                        <Pressable
-                          accessibilityLabel="Wiedereröffnungsantrag ablehnen"
-                          accessibilityRole="button"
-                          onPress={() =>
-                            setPendingReopenDecision({
-                              decision: "declined",
-                              request,
-                            })
-                          }
-                          style={[
-                            styles.decisionButton,
-                            {
-                              backgroundColor: colors.errorSoft,
-                              borderColor: colors.errorBorder,
-                            },
-                          ]}
-                        >
-                          <Text
-                            style={{ color: colors.error, fontWeight: "800" }}
-                          >
-                            Ablehnen
-                          </Text>
-                        </Pressable>
-                      </View>
-                    </View>
-                  ))}
-                </View>
-              ) : (
-                <Text style={[styles.experienceText, tokenStyles.muted]}>
-                  Für dieses Ticket liegen keine offenen
-                  Wiedereröffnungsanfragen vor.
-                </Text>
-              )}
-            </View>
-          ) : null}
-
-          <View
-            style={[styles.contextCard, tokenStyles.card, densityStyles.card]}
-          >
-            <View style={styles.contextItem}>
-              <Text style={styles.cardLabel}>ANFRAGENDE PERSON</Text>
-              {ticket.canUpdate && editingField === "requester" && requester ? (
-                <RequesterPicker
-                  autoOpen
-                  contextLabel="TICKET BEARBEITEN"
-                  defaultRequester={ticket.requesterContact ?? requester}
-                  onChange={(nextRequester) =>
-                    void saveChange({ requester: nextRequester })
-                  }
-                  onClose={() => setEditingField(null)}
-                  tenantId={tenant?.id ?? ""}
-                  value={requester}
-                />
-              ) : (
-                <Pressable
-                  accessibilityHint={
-                    ticket.canUpdate
-                      ? "Antippen, um die anfragende Person zu ändern."
-                      : undefined
-                  }
-                  accessibilityRole={ticket.canUpdate ? "button" : undefined}
-                  disabled={!ticket.canUpdate || !requester}
-                  onPress={() => {
-                    hapticSelection();
-                    setEditingField("requester");
-                  }}
-                >
-                  <Text numberOfLines={2} style={styles.cardValue}>
-                    {ticket.requesterName ?? "Anfragende Person"}
-                  </Text>
-                </Pressable>
-              )}
-              {ticket.requesterContact?.email ? (
-                <Pressable
-                  accessibilityLabel={`${ticket.requesterContact.displayName} per E-Mail kontaktieren`}
-                  accessibilityRole="button"
-                  onPress={() =>
-                    void contactRequesterByEmail(
-                      ticket.requesterContact?.email ?? "",
-                    )
-                  }
-                  style={styles.contactAction}
-                >
-                  <Ionicons color={colors.info} name="mail-outline" size={14} />
-                  <Text numberOfLines={1} style={styles.contactActionText}>
-                    {ticket.requesterContact.email}
-                  </Text>
-                </Pressable>
-              ) : null}
-            </View>
-            <View style={styles.contextDivider} />
-            <View style={styles.contextItem}>
-              <Text style={styles.cardLabel}>PRIORITÄT</Text>
-              <Pressable
-                accessibilityHint={
-                  ticket.canUpdate
-                    ? "Antippen, um die Priorität zu ändern."
-                    : undefined
-                }
-                accessibilityRole={ticket.canUpdate ? "button" : undefined}
-                disabled={!ticket.canUpdate}
-                onPress={() => {
-                  hapticSelection();
-                  setSelection("priority");
-                }}
-              >
-                <Text style={styles.cardValue}>
-                  {priority?.label ?? "Ohne Priorität"}
-                </Text>
-              </Pressable>
-            </View>
-          </View>
-
           <View style={[styles.card, tokenStyles.card, densityStyles.card]}>
             <Text style={[styles.cardLabel, tokenStyles.muted]}>
               BESCHREIBUNG
@@ -2009,20 +2055,62 @@ export default function TicketDetailScreen() {
             )}
           </View>
 
-          <OnsiteMode
-            canAddPhoto={ticket.canUpdate}
-            canScanAsset={assetsEnabled}
-            canWriteInternalNote={ticket.canWriteInternalNotes}
-            onAddPhoto={openOnsitePhotoAttachments}
-            onScanAsset={openOnsiteAssetScan}
-            onWriteInternalNote={openOnsiteInternalNote}
-          />
+          {canUseRequesterPortal && ticketIsResolved && !reopenSubmitted ? (
+            <View
+              style={[
+                styles.experienceCard,
+                tokenStyles.card,
+                densityStyles.card,
+              ]}
+            >
+              <View style={styles.experienceHeader}>
+                <View
+                  style={[
+                    styles.experienceIcon,
+                    { backgroundColor: colors.warningSoft },
+                  ]}
+                >
+                  <Ionicons
+                    color={colors.warning}
+                    name="refresh-outline"
+                    size={20}
+                  />
+                </View>
+                <View style={styles.experienceCopy}>
+                  <Text
+                    style={[styles.experienceTitle, tokenStyles.foreground]}
+                  >
+                    Wiedereröffnung beantragen
+                  </Text>
+                  <Text style={[styles.experienceText, tokenStyles.muted]}>
+                    Ein Antrag ändert den Ticketstatus nicht.
+                  </Text>
+                </View>
+              </View>
+              <Pressable
+                accessibilityLabel="Wiedereröffnung beantragen"
+                accessibilityRole="button"
+                onPress={openReopenSheet}
+                style={[styles.experienceAction, tokenStyles.control]}
+              >
+                <Text
+                  style={[
+                    styles.experienceActionText,
+                    { color: colors.primaryText },
+                  ]}
+                >
+                  Antrag erfassen
+                </Text>
+                <Ionicons
+                  color={colors.primaryText}
+                  name="chevron-forward"
+                  size={19}
+                />
+              </Pressable>
+            </View>
+          ) : null}
 
-          <View
-            onLayout={({ nativeEvent }) =>
-              setConversationOffset(nativeEvent.layout.y)
-            }
-          >
+          <View>
             <TicketConversation
               body={comment}
               canCommentExternal={ticket.canCommentExternal}
@@ -2107,68 +2195,12 @@ export default function TicketDetailScreen() {
           </View>
 
           {tenant ? (
-            <View
-              onLayout={({ nativeEvent }) =>
-                setAttachmentsOffset(nativeEvent.layout.y)
-              }
-            >
-              <TicketPhotoAttachments
-                canUpload={ticket.canUpdate}
-                tenantId={tenant.id}
-                ticketId={ticket.id}
-              />
-            </View>
+            <TicketPhotoAttachments
+              canUpload={ticket.canUpdate}
+              tenantId={tenant.id}
+              ticketId={ticket.id}
+            />
           ) : null}
-
-          <View
-            style={[styles.workbenchCard, tokenStyles.card, densityStyles.card]}
-          >
-            <View style={styles.workbenchHeader}>
-              <View style={styles.experienceCopy}>
-                <Text style={[styles.cardLabel, tokenStyles.muted]}>
-                  RÜCKMELDUNG ZUR APP
-                </Text>
-                <Text style={[styles.workbenchTitle, tokenStyles.foreground]}>
-                  Feedback zu nextDesk
-                </Text>
-              </View>
-              <Ionicons
-                color={colors.primaryText}
-                name="chatbox-ellipses-outline"
-                size={22}
-              />
-            </View>
-            <Text style={[styles.experienceText, tokenStyles.muted]}>
-              Ihre Rückmeldung wird erst nach Ihrer Bestätigung als separates
-              Feedbackticket erfasst.
-            </Text>
-            <Pressable
-              accessibilityLabel="Feedback zur nextDesk App erfassen"
-              accessibilityRole="button"
-              onPress={() => void openFeedbackSheet()}
-              style={[
-                styles.workbenchAction,
-                {
-                  backgroundColor: colors.surfaceSubtle,
-                  borderColor: colors.border,
-                },
-              ]}
-            >
-              <Text
-                style={[
-                  styles.experienceActionText,
-                  { color: colors.primaryText },
-                ]}
-              >
-                Feedback geben
-              </Text>
-              <Ionicons
-                color={colors.primaryText}
-                name="chevron-forward"
-                size={19}
-              />
-            </Pressable>
-          </View>
 
           {error ? (
             <View
@@ -2679,259 +2711,6 @@ export default function TicketDetailScreen() {
         </Modal>
 
         <Modal
-          animationType={reducedMotion ? "none" : "slide"}
-          onRequestClose={() => setFeedbackSheetOpen(false)}
-          transparent
-          visible={feedbackSheetOpen}
-        >
-          <KeyboardAvoidingView
-            behavior={Platform.OS === "ios" ? "padding" : "height"}
-            style={styles.experienceSheetRoot}
-          >
-            <Pressable
-              accessibilityLabel="Feedbackformular schliessen"
-              accessibilityRole="button"
-              disabled={submittingFeedback}
-              onPress={() => setFeedbackSheetOpen(false)}
-              style={StyleSheet.absoluteFill}
-            />
-            <View
-              accessibilityViewIsModal
-              style={[
-                styles.experienceSheet,
-                { backgroundColor: colors.surface },
-              ]}
-            >
-              <View style={styles.experienceSheetHeader}>
-                <View>
-                  <Text style={[styles.selectionEyebrow, tokenStyles.muted]}>
-                    RÜCKMELDUNG ZUR APP
-                  </Text>
-                  <Text
-                    style={[
-                      styles.experienceSheetTitle,
-                      tokenStyles.foreground,
-                    ]}
-                  >
-                    Feedback zu nextDesk
-                  </Text>
-                </View>
-                <Pressable
-                  accessibilityLabel="Feedbackformular schliessen"
-                  accessibilityRole="button"
-                  disabled={submittingFeedback}
-                  hitSlop={10}
-                  onPress={() => setFeedbackSheetOpen(false)}
-                  style={[
-                    styles.selectionClose,
-                    { backgroundColor: colors.primarySoft },
-                  ]}
-                >
-                  <Ionicons color={colors.primaryText} name="close" size={22} />
-                </Pressable>
-              </View>
-              <ScrollView
-                automaticallyAdjustKeyboardInsets
-                contentContainerStyle={styles.experienceSheetContent}
-                keyboardDismissMode="interactive"
-                keyboardShouldPersistTaps="handled"
-                showsVerticalScrollIndicator={false}
-              >
-                <Text
-                  style={[styles.experienceSheetDescription, tokenStyles.muted]}
-                >
-                  Ihr Feedback wird als separates Ticket mit eindeutigem Betreff
-                  erfasst. Erst die nächste Bestätigung erstellt das Ticket.
-                </Text>
-                {feedbackLoading ? (
-                  <View style={styles.inlineLoading}>
-                    <ActivityIndicator
-                      color={colors.primaryText}
-                      size="small"
-                    />
-                    <Text style={[styles.experienceText, tokenStyles.muted]}>
-                      Formular wird vorbereitet …
-                    </Text>
-                  </View>
-                ) : feedbackOptions ? (
-                  <View style={styles.feedbackFields}>
-                    <Text style={[styles.cardLabel, tokenStyles.muted]}>
-                      BETREFF
-                    </Text>
-                    <TextInput
-                      autoCapitalize="sentences"
-                      maxLength={180}
-                      onChangeText={setFeedbackSubject}
-                      placeholder="z. B. Bedienung im Ticketdetail"
-                      placeholderTextColor={colors.subtle}
-                      style={[
-                        styles.feedbackInput,
-                        {
-                          backgroundColor: colors.surfaceSubtle,
-                          borderColor: colors.border,
-                          color: colors.foreground,
-                        },
-                      ]}
-                      value={feedbackSubject}
-                    />
-                    <Text style={[styles.cardLabel, tokenStyles.muted]}>
-                      BESCHREIBUNG
-                    </Text>
-                    <TextInput
-                      autoCapitalize="sentences"
-                      maxLength={3_000}
-                      multiline
-                      onChangeText={setFeedbackDescription}
-                      placeholder="Was gefällt Ihnen oder was können wir verbessern?"
-                      placeholderTextColor={colors.subtle}
-                      style={[
-                        styles.feedbackInput,
-                        styles.feedbackDescriptionInput,
-                        {
-                          backgroundColor: colors.surfaceSubtle,
-                          borderColor: colors.border,
-                          color: colors.foreground,
-                        },
-                      ]}
-                      textAlignVertical="top"
-                      value={feedbackDescription}
-                    />
-                    <Text style={[styles.characterCount, tokenStyles.muted]}>
-                      {`${Array.from(feedbackDescription).length}/3'000`}
-                    </Text>
-                    <Pressable
-                      accessibilityRole="button"
-                      disabled={
-                        feedbackSubject.trim().length < 3 ||
-                        !feedbackDescription.trim()
-                      }
-                      onPress={requestFeedbackConfirmation}
-                      style={[
-                        styles.experienceSaveButton,
-                        { backgroundColor: colors.primary },
-                        (feedbackSubject.trim().length < 3 ||
-                          !feedbackDescription.trim()) &&
-                          styles.disabled,
-                      ]}
-                    >
-                      <Ionicons
-                        color={colors.onPrimary}
-                        name="checkmark-circle-outline"
-                        size={20}
-                      />
-                      <Text
-                        style={[
-                          styles.experienceSaveButtonText,
-                          tokenStyles.primaryText,
-                        ]}
-                      >
-                        Zur Bestätigung
-                      </Text>
-                    </Pressable>
-                  </View>
-                ) : null}
-                {feedbackError ? (
-                  <View style={[styles.feedback, tokenStyles.error]}>
-                    <Ionicons
-                      color={colors.error}
-                      name="alert-circle-outline"
-                      size={20}
-                    />
-                    <Text
-                      style={[styles.feedbackText, { color: colors.error }]}
-                    >
-                      {feedbackError}
-                    </Text>
-                  </View>
-                ) : null}
-              </ScrollView>
-            </View>
-          </KeyboardAvoidingView>
-        </Modal>
-
-        <Modal
-          animationType={reducedMotion ? "none" : "fade"}
-          onRequestClose={() => setFeedbackConfirmationOpen(false)}
-          transparent
-          visible={feedbackConfirmationOpen}
-        >
-          <View style={styles.closeConfirmationRoot}>
-            <Pressable
-              accessibilityLabel="Feedbackerfassung abbrechen"
-              accessibilityRole="button"
-              disabled={submittingFeedback}
-              onPress={() => setFeedbackConfirmationOpen(false)}
-              style={StyleSheet.absoluteFill}
-            />
-            <View
-              accessibilityViewIsModal
-              style={[
-                styles.closeConfirmationCard,
-                { backgroundColor: colors.surface },
-              ]}
-            >
-              <View
-                style={[
-                  styles.closeConfirmationIcon,
-                  { backgroundColor: colors.primarySoft },
-                ]}
-              >
-                <Ionicons
-                  color={colors.primaryText}
-                  name="send-outline"
-                  size={22}
-                />
-              </View>
-              <Text
-                style={[styles.closeConfirmationTitle, tokenStyles.foreground]}
-              >
-                Feedbackticket erfassen?
-              </Text>
-              <Text style={[styles.closeConfirmationText, tokenStyles.muted]}>
-                Ihr Feedback wird als neues Ticket mit dem Betreff «Feedback zur
-                nextDesk App: {feedbackSubject.trim()}» erfasst.
-              </Text>
-              <Pressable
-                accessibilityLabel="Feedbackticket verbindlich erfassen"
-                accessibilityRole="button"
-                disabled={submittingFeedback}
-                onPress={() => void submitFeedbackTicket()}
-                style={[
-                  styles.closeConfirmationButton,
-                  { backgroundColor: colors.primary },
-                  submittingFeedback && styles.disabled,
-                ]}
-              >
-                {submittingFeedback ? (
-                  <ActivityIndicator color={colors.onPrimary} size="small" />
-                ) : null}
-                <Text style={styles.closeConfirmationButtonText}>
-                  {submittingFeedback
-                    ? "Feedback wird erfasst …"
-                    : "Feedback verbindlich erfassen"}
-                </Text>
-              </Pressable>
-              <Pressable
-                accessibilityLabel="Feedbackerfassung abbrechen"
-                accessibilityRole="button"
-                disabled={submittingFeedback}
-                onPress={() => setFeedbackConfirmationOpen(false)}
-                style={styles.closeConfirmationCancel}
-              >
-                <Text
-                  style={[
-                    styles.closeConfirmationCancelText,
-                    { color: colors.primaryText },
-                  ]}
-                >
-                  Abbrechen
-                </Text>
-              </Pressable>
-            </View>
-          </View>
-        </Modal>
-
-        <Modal
           animationType={reducedMotion ? "none" : "fade"}
           onRequestClose={() => setPendingReopenDecision(null)}
           transparent
@@ -3300,6 +3079,61 @@ const useStyles = makeThemedStyles((c) => ({
     gap: 7,
     padding: 17,
   },
+  detailsCard: {
+    backgroundColor: c.surface,
+    borderColor: c.border,
+    borderRadius: 18,
+    borderWidth: 1,
+    gap: 0,
+  },
+  detailsTitle: { fontSize: 16, fontWeight: "800", marginBottom: 5 },
+  detailsRequester: { gap: 4, paddingVertical: 2 },
+  requesterPressable: { gap: 3, justifyContent: "center", minHeight: 44 },
+  requesterName: { color: c.foreground, fontSize: 15, fontWeight: "800" },
+  requesterMeta: { color: c.muted, fontSize: 13, lineHeight: 18 },
+  detailsDivider: { backgroundColor: c.border, height: 1, marginVertical: 5 },
+  detailsValueRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    minHeight: 44,
+  },
+  detailsValue: { color: c.foreground, fontSize: 14, fontWeight: "700" },
+  detailsActionRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    minHeight: 44,
+  },
+  detailsActionLead: { alignItems: "center", flexDirection: "row", gap: 7 },
+  detailsActionLabel: { color: c.foreground, fontSize: 14, fontWeight: "700" },
+  detailsActionLink: { color: c.primaryText, fontSize: 13, fontWeight: "800" },
+  detailsAccordionRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    minHeight: 44,
+  },
+  detailsSummary: {
+    color: c.muted,
+    flexShrink: 1,
+    fontSize: 12,
+    maxWidth: 155,
+    textAlign: "right",
+  },
+  detailsCountBadge: {
+    alignItems: "center",
+    backgroundColor: c.warningSoft,
+    borderColor: c.warningBorder,
+    borderRadius: 999,
+    borderWidth: 1,
+    justifyContent: "center",
+    minHeight: 24,
+    minWidth: 24,
+    paddingHorizontal: 8,
+  },
+  detailsCountBadgeText: { color: c.warning, fontSize: 11, fontWeight: "800" },
+  detailsExpansion: { gap: 9, paddingBottom: 4, paddingTop: 8 },
   experienceCard: {
     backgroundColor: c.surface,
     borderColor: c.border,
@@ -3329,26 +3163,6 @@ const useStyles = makeThemedStyles((c) => ({
     paddingHorizontal: 13,
   },
   experienceActionText: { fontSize: 14, fontWeight: "800" },
-  workbenchCard: {
-    borderRadius: 20,
-    borderWidth: 1,
-    gap: 12,
-  },
-  workbenchHeader: {
-    alignItems: "center",
-    flexDirection: "row",
-    gap: 10,
-  },
-  workbenchTitle: { fontSize: 16, fontWeight: "800", lineHeight: 21 },
-  workbenchAction: {
-    alignItems: "center",
-    borderRadius: 13,
-    borderWidth: 1,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    minHeight: 50,
-    paddingHorizontal: 13,
-  },
   inlineLoading: { alignItems: "center", flexDirection: "row", gap: 9 },
   timelineList: { gap: 11 },
   timelineItem: { alignItems: "flex-start", flexDirection: "row", gap: 10 },
@@ -3380,8 +3194,78 @@ const useStyles = makeThemedStyles((c) => ({
   },
   contextSummaryValue: { fontSize: 13, fontWeight: "800" },
   suggestionList: { gap: 8 },
-  suggestion: { borderRadius: 13, borderWidth: 1, gap: 4, padding: 11 },
+  suggestion: { borderRadius: 13, borderWidth: 1, gap: 7, padding: 10 },
+  suggestionHeader: { alignItems: "center", flexDirection: "row", gap: 8 },
+  suggestionCopy: { flex: 1, gap: 2 },
   suggestionUser: { fontSize: 13, fontWeight: "800" },
+  assignedBadge: {
+    alignItems: "center",
+    backgroundColor: c.successSoft,
+    borderColor: c.successBorder,
+    borderRadius: 9,
+    borderWidth: 1,
+    justifyContent: "center",
+    minHeight: 32,
+    paddingHorizontal: 8,
+  },
+  assignedBadgeText: { color: c.success, fontSize: 11, fontWeight: "800" },
+  assignButton: {
+    alignItems: "center",
+    backgroundColor: c.primarySoft,
+    borderColor: c.primarySoftBorder,
+    borderRadius: 10,
+    borderWidth: 1,
+    justifyContent: "center",
+    minHeight: 44,
+    paddingHorizontal: 10,
+  },
+  assignButtonText: { color: c.primaryText, fontSize: 12, fontWeight: "800" },
+  assignmentConfirmation: {
+    backgroundColor: c.primarySoft,
+    borderColor: c.primarySoftBorder,
+    borderRadius: 10,
+    borderWidth: 1,
+    gap: 7,
+    padding: 9,
+  },
+  assignmentConfirmationText: {
+    color: c.foreground,
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  assignmentActions: { flexDirection: "row", gap: 8 },
+  assignmentConfirmButton: {
+    alignItems: "center",
+    backgroundColor: c.primary,
+    borderRadius: 9,
+    flex: 1,
+    flexDirection: "row",
+    gap: 6,
+    justifyContent: "center",
+    minHeight: 44,
+    paddingHorizontal: 10,
+  },
+  assignmentConfirmText: {
+    color: c.onPrimary,
+    fontSize: 12,
+    fontWeight: "800",
+  },
+  assignmentCancelButton: {
+    alignItems: "center",
+    borderColor: c.primarySoftBorder,
+    borderRadius: 9,
+    borderWidth: 1,
+    flex: 1,
+    justifyContent: "center",
+    minHeight: 44,
+    paddingHorizontal: 10,
+  },
+  assignmentCancelText: {
+    color: c.primaryText,
+    fontSize: 12,
+    fontWeight: "800",
+  },
+  assignmentFootnote: { color: c.muted, fontSize: 11, lineHeight: 16 },
   reopenRequestList: { gap: 9 },
   reopenRequest: { borderRadius: 13, borderWidth: 1, gap: 8, padding: 11 },
   decisionActions: { flexDirection: "row", gap: 8 },
@@ -3391,18 +3275,10 @@ const useStyles = makeThemedStyles((c) => ({
     borderWidth: 1,
     flex: 1,
     justifyContent: "center",
-    minHeight: 40,
+    minHeight: 44,
   },
-  feedbackFields: { gap: 8 },
-  feedbackInput: {
-    borderRadius: 14,
-    borderWidth: 1,
-    fontSize: 15,
-    minHeight: 50,
-    paddingHorizontal: 12,
-    paddingVertical: 11,
-  },
-  feedbackDescriptionInput: { lineHeight: 21, minHeight: 118 },
+  decisionAcceptText: { color: c.success, fontWeight: "800" },
+  decisionDeclineText: { color: c.error, fontWeight: "800" },
   resolutionActions: { flexDirection: "row", gap: 9 },
   resolutionAction: {
     alignItems: "center",
@@ -3416,29 +3292,12 @@ const useStyles = makeThemedStyles((c) => ({
     paddingHorizontal: 10,
   },
   resolutionActionText: { fontSize: 14, fontWeight: "800" },
-  contextCard: {
-    alignItems: "stretch",
-    backgroundColor: c.surface,
-    borderColor: c.border,
-    borderRadius: 18,
-    borderWidth: 1,
-    flexDirection: "row",
-    gap: 13,
-    padding: 16,
-  },
-  contextItem: { flex: 1, gap: 5 },
-  contextDivider: { backgroundColor: c.border, width: 1 },
   cardLabel: {
     color: c.muted,
     fontSize: 10,
     fontWeight: "800",
     letterSpacing: 0.9,
     marginTop: 2,
-  },
-  cardValue: {
-    color: c.foreground,
-    fontSize: 15,
-    fontWeight: "700",
   },
   contactAction: {
     alignItems: "center",

@@ -27,7 +27,10 @@ type Priority = { key: string; label: string; sort_order: number };
 export type TicketRequester = {
   id: string;
   displayName: string;
+  department?: string;
   email?: string;
+  offering?: string;
+  phone?: string;
 };
 export type TicketCommentVisibility = "internal" | "external";
 export type MobileTicketComment = {
@@ -96,9 +99,15 @@ function ticketRequester(value: unknown): TicketRequester | null {
     return null;
   }
   const record = value as {
+    department?: unknown;
+    departmentName?: unknown;
     id?: unknown;
     displayName?: unknown;
     email?: unknown;
+    offering?: unknown;
+    offeringName?: unknown;
+    phone?: unknown;
+    phoneNumber?: unknown;
   };
   if (
     typeof record.id !== "string" ||
@@ -111,9 +120,25 @@ function ticketRequester(value: unknown): TicketRequester | null {
   return {
     id: record.id,
     displayName: record.displayName.trim(),
+    ...(typeof record.department === "string" && record.department.trim()
+      ? { department: record.department.trim() }
+      : typeof record.departmentName === "string" &&
+          record.departmentName.trim()
+        ? { department: record.departmentName.trim() }
+        : {}),
     ...(typeof record.email === "string" && record.email.trim()
       ? { email: record.email.trim() }
       : {}),
+    ...(typeof record.offering === "string" && record.offering.trim()
+      ? { offering: record.offering.trim() }
+      : typeof record.offeringName === "string" && record.offeringName.trim()
+        ? { offering: record.offeringName.trim() }
+        : {}),
+    ...(typeof record.phone === "string" && record.phone.trim()
+      ? { phone: record.phone.trim() }
+      : typeof record.phoneNumber === "string" && record.phoneNumber.trim()
+        ? { phone: record.phoneNumber.trim() }
+        : {}),
   };
 }
 
