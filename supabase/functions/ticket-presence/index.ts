@@ -1,4 +1,5 @@
 import { withSupabase } from "@supabase/server";
+import { resolveTenantFeatureStates } from "../_shared/tenant-features.ts";
 
 type Action =
   | { type: "heartbeat"; tenantId: string; ticketId: string; editing: boolean }
@@ -201,6 +202,24 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
   if (!ticket || !(await canReadTicket(admin, actorId, ticket))) {
     return response(request, { error: { code: "ticket_not_found" } }, 404);
   }
+
+  const featureStates = await resolveTenantFeatureStates(
+    admin,
+    ticket.tenant_id,
+    ["ticketing.detail"],
+  );
+  if (!featureStates)
+    return response(
+      request,
+      { error: { code: "tenant_feature_lookup_failed" } },
+      503,
+    );
+  if (featureStates["ticketing.detail"] !== true)
+    return response(
+      request,
+      { error: { code: "ticket_feature_disabled" } },
+      403,
+    );
 
   const now = new Date();
   const visibleSince = new Date(

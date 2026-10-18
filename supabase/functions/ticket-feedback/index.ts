@@ -1,4 +1,5 @@
 import { withSupabase } from "@supabase/server";
+import { resolveTenantFeatureStates } from "../_shared/tenant-features.ts";
 
 const ALLOWED_ORIGIN = "https://app.nextdesk.ch";
 const FOURTEEN_DAYS_MS = 14 * 24 * 60 * 60 * 1000;
@@ -216,6 +217,20 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     return json(request, { error: { code: "ticket_lookup_failed" } }, 500);
   if (!callerTicket)
     return json(request, { error: { code: "ticket_access_denied" } }, 403);
+
+  const featureStates = await resolveTenantFeatureStates(
+    context.supabaseAdmin,
+    action.tenantId,
+    ["ticketing.detail"],
+  );
+  if (!featureStates)
+    return json(
+      request,
+      { error: { code: "tenant_feature_lookup_failed" } },
+      503,
+    );
+  if (featureStates["ticketing.detail"] !== true)
+    return json(request, { error: { code: "ticket_feature_disabled" } }, 403);
 
   const status = getStatus(callerTicket.status);
   if (!status)

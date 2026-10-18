@@ -103,6 +103,14 @@ export async function functionErrorMessage(
       return "Mindestens eines der ausgewählten Tickets ist nicht mehr verfügbar. Bitte laden Sie die Ticketliste neu.";
     case "bulk_status_invalid":
       return "Die ausgewählten Tickets oder der gewünschte Status sind ungültig. Bitte laden Sie die Ticketliste neu.";
+    case "ticket_close_confirmation_required":
+      return "Bitte bestätigen Sie den Ticketabschluss ausdrücklich, bevor der geschlossene Status gespeichert wird.";
+    case "ticket_feature_disabled":
+      return "Diese Ticketfunktion ist für Ihren Mandanten derzeit deaktiviert.";
+    case "asset_feature_disabled":
+      return "Asset-Management ist für Ihren Mandanten derzeit deaktiviert.";
+    case "tenant_feature_lookup_failed":
+      return "Die Funktionsberechtigung konnte nicht geprüft werden. Bitte versuchen Sie es erneut.";
     case "ticket_category_change_denied":
       return "Sie dürfen die Kategorie dieses Tickets nicht ändern.";
     case "invalid_ticket_category":

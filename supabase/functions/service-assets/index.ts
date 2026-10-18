@@ -1,4 +1,5 @@
 import { type SupabaseContext, withSupabase } from "@supabase/server";
+import { resolveTenantFeatureStates } from "../_shared/tenant-features.ts";
 
 const ALLOWED_ORIGIN = "https://app.nextdesk.ch";
 const MAX_REQUEST_BYTES = 512 * 1024;
@@ -815,6 +816,25 @@ const handler = withSupabase(
         },
         "tenant_membership_required",
       );
+      const featureStates = await resolveTenantFeatureStates(
+        context.supabaseAdmin,
+        action.tenantId,
+        ["assets.management"],
+      );
+      if (!featureStates) {
+        throw new HttpError(
+          503,
+          "tenant_feature_lookup_failed",
+          "Die Funktionsberechtigung konnte nicht geprüft werden.",
+        );
+      }
+      if (featureStates["assets.management"] !== true) {
+        throw new HttpError(
+          403,
+          "asset_feature_disabled",
+          "Das Asset-Management ist für diesen Mandanten deaktiviert.",
+        );
+      }
       if (action.type === "listCatalog") {
         const [services, assets, problems] = await Promise.all([
           readCatalog(client, action.tenantId, RESOURCES.manageService),

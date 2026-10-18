@@ -57,6 +57,11 @@ type PendingHandoverAction = "create" | "acknowledge" | "resolve" | null;
 type CatalogKind = "service" | "asset" | "problem";
 type HandoverRiskLevel = "low" | "medium" | "high";
 type HandoverStatus = "open" | "acknowledged" | "resolved";
+type PendingCloseConfirmation = {
+  statusKey: string;
+  statusLabel: string;
+  source: "overview" | "editor";
+};
 
 type GetTicketAction = {
   type: "getTicket";
@@ -116,6 +121,7 @@ type UpdateTicketAction = {
   tenantId: string;
   ticketId: string;
   statusKey?: string;
+  confirmClose?: boolean;
   priorityKey?: string;
   assignedAgentId?: string | null;
   assignedTeamId?: string | null;
@@ -1822,6 +1828,7 @@ function eventLabel(eventType: string): string {
     "comment.external_added": "Externer Kommentar hinzugefügt",
     "comment.internal_added": "Interne Notiz hinzugefügt",
     "ticket.updated": "Ticket aktualisiert",
+    "ticket.closed": "Ticket abgeschlossen",
     "ticket.category_changed": "Kategorie aktualisiert",
     "ticket.knowledge.sent":
       "Wissensartikel als externe Ticketantwort versendet",
@@ -3209,6 +3216,8 @@ export function TicketDetail({
   const [presence, setPresence] = useState<TicketPresencePerson[]>([]);
   const [pendingAction, setPendingAction] = useState<PendingAction>(null);
   const [statusKey, setStatusKey] = useState("");
+  const [pendingCloseConfirmation, setPendingCloseConfirmation] =
+    useState<PendingCloseConfirmation | null>(null);
   const [priorityKey, setPriorityKey] = useState("");
   const [isEditingTicket, setIsEditingTicket] = useState(false);
   const [focusMode, setFocusMode] = useState(false);
@@ -4024,6 +4033,19 @@ export function TicketDetail({
       ),
     [detail?.canClose, detail?.statuses, selectedStatus?.id],
   );
+  const closingStatusForKey = useCallback(
+    (nextStatusKey: string | undefined) => {
+      if (!nextStatusKey) return null;
+      const nextStatus = detail?.statuses.find(
+        (status) => status.key === nextStatusKey,
+      );
+      return nextStatus?.is_closed === true &&
+        nextStatus.id !== selectedStatus?.id
+        ? nextStatus
+        : null;
+    },
+    [detail?.statuses, selectedStatus?.id],
+  );
   const selectedPriority = useMemo(
     () =>
       detail?.priorities.find(
@@ -4545,15 +4567,19 @@ export function TicketDetail({
     setSelectedAgentId(detail.ticket.assigned_agent_id ?? "");
     setSelectedDepartmentId(detail.ticket.department_id);
     setIsEditingTicket(false);
+    setPendingCloseConfirmation(null);
     setError("");
   }
 
-  async function saveOverviewChange(change: {
-    statusKey?: string;
-    priorityKey?: string;
-    assignedTeamId?: string | null;
-    assignedAgentId?: string | null;
-  }) {
+  async function saveOverviewChange(
+    change: {
+      statusKey?: string;
+      priorityKey?: string;
+      assignedTeamId?: string | null;
+      assignedAgentId?: string | null;
+    },
+    confirmedClose = false,
+  ) {
     if (!detail || busy) return;
 
     const updatesTicket =
@@ -4562,6 +4588,15 @@ export function TicketDetail({
       change.assignedTeamId !== undefined;
     const updatesAgent = change.assignedAgentId !== undefined;
     if (!updatesTicket && !updatesAgent) return;
+    const closingStatus = closingStatusForKey(change.statusKey);
+    if (closingStatus && !confirmedClose) {
+      setPendingCloseConfirmation({
+        statusKey: closingStatus.key,
+        statusLabel: closingStatus.label,
+        source: "overview",
+      });
+      return;
+    }
 
     setPendingAction("update");
     setError("");
@@ -4572,7 +4607,10 @@ export function TicketDetail({
           tenantId,
           ticketId,
           ...(change.statusKey !== undefined
-            ? { statusKey: change.statusKey }
+            ? {
+                statusKey: change.statusKey,
+                ...(closingStatus ? { confirmClose: true } : {}),
+              }
             : {}),
           ...(change.priorityKey !== undefined
             ? { priorityKey: change.priorityKey }
@@ -4655,7 +4693,7 @@ export function TicketDetail({
     }
   }
 
-  async function saveTicketChanges() {
+  async function saveTicketChanges(confirmedClose = false) {
     if (!detail || !detail.canUpdate || !hasChanges) return;
 
     const subject = editSubject.trim();
@@ -4714,6 +4752,17 @@ export function TicketDetail({
       return;
     }
 
+    const closingStatus = closingStatusForKey(action.statusKey);
+    if (closingStatus && !confirmedClose) {
+      setPendingCloseConfirmation({
+        statusKey: closingStatus.key,
+        statusLabel: closingStatus.label,
+        source: "editor",
+      });
+      return;
+    }
+    if (closingStatus) action.confirmClose = true;
+
     setPendingAction("update");
     setError("");
     try {
@@ -4742,6 +4791,23 @@ export function TicketDetail({
     } finally {
       setPendingAction(null);
     }
+  }
+
+  async function confirmTicketClose() {
+    const confirmation = pendingCloseConfirmation;
+    if (!confirmation || busy) return;
+    setPendingCloseConfirmation(null);
+    if (confirmation.source === "overview") {
+      await saveOverviewChange({ statusKey: confirmation.statusKey }, true);
+      return;
+    }
+    if (statusKey !== confirmation.statusKey) {
+      setError(
+        "Der Abschlussstatus wurde geändert. Bitte wählen Sie ihn erneut aus.",
+      );
+      return;
+    }
+    await saveTicketChanges(true);
   }
 
   async function saveComment(event: FormEvent<HTMLFormElement>) {
@@ -5562,10 +5628,52 @@ export function TicketDetail({
         {(detail.canUpdate || detail.canAssign) && (
           <p className="ticket-detail-facts-hint" role="status">
             Änderungen werden beim Auswählen direkt gespeichert.
-            {detail.canUpdate && !detail.canClose
-              ? " Geschlossene Status sind nur mit Abschlussberechtigung verfügbar."
+            {detail.canUpdate
+              ? detail.canClose
+                ? " Ein geschlossener Status braucht zusätzlich eine ausdrückliche Bestätigung."
+                : " Geschlossene Status sind nur mit Abschlussberechtigung verfügbar."
               : ""}
           </p>
+        )}
+        {pendingCloseConfirmation && (
+          <div
+            aria-live="assertive"
+            className="ticket-detail-message warning"
+            role="alert"
+          >
+            <AlertCircle aria-hidden="true" size={17} />
+            <div>
+              <strong>Ticketabschluss bestätigen</strong>
+              <p>
+                Das Ticket wird in den Status „
+                {pendingCloseConfirmation.statusLabel}“ verschoben. Offene
+                Bearbeitung wird damit beendet.
+              </p>
+              <div className="ticket-detail-actions">
+                <button
+                  className="primary-button"
+                  disabled={busy}
+                  onClick={() => void confirmTicketClose()}
+                  type="button"
+                >
+                  Abschluss bestätigen
+                </button>
+                <button
+                  className="secondary-button"
+                  disabled={busy}
+                  onClick={() => {
+                    if (pendingCloseConfirmation.source === "editor") {
+                      setStatusKey(selectedStatus?.key ?? "");
+                    }
+                    setPendingCloseConfirmation(null);
+                  }}
+                  type="button"
+                >
+                  Abbrechen
+                </button>
+              </div>
+            </div>
+          </div>
         )}
         <dl className="ticket-detail-facts-grid">
           <div
@@ -5580,7 +5688,6 @@ export function TicketDetail({
                   aria-label="Ticketstatus direkt ändern"
                   disabled={busy}
                   onChange={(event) => {
-                    setStatusKey(event.target.value);
                     void saveOverviewChange({ statusKey: event.target.value });
                   }}
                   value={selectedStatus?.key ?? ""}
@@ -7558,7 +7665,7 @@ export function TicketDetail({
                     onChange={(event) => setStatusKey(event.target.value)}
                     value={statusKey}
                   >
-                    {detail.statuses.map((status) => (
+                    {selectableStatuses.map((status) => (
                       <option key={status.id} value={status.key}>
                         {status.label}
                       </option>

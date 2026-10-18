@@ -1,4 +1,5 @@
 import { withSupabase } from "@supabase/server";
+import { resolveTenantFeatureStates } from "../_shared/tenant-features.ts";
 
 const ORIGIN = "https://app.nextdesk.ch";
 const UUID =
@@ -70,6 +71,15 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       .maybeSingle();
   if (membershipError) return fail(request, "authorization_check_failed", 500);
   if (!membership) return fail(request, "tenant_membership_required", 403);
+
+  const featureStates = await resolveTenantFeatureStates(
+    context.supabaseAdmin,
+    input.tenantId,
+    ["ticketing.detail"],
+  );
+  if (!featureStates) return fail(request, "tenant_feature_lookup_failed", 503);
+  if (featureStates["ticketing.detail"] !== true)
+    return fail(request, "ticket_feature_disabled", 403);
 
   const [
     { data: ticket, error: ticketError },

@@ -1,4 +1,5 @@
 import { withSupabase } from "@supabase/server";
+import { resolveTenantFeatureStates } from "../_shared/tenant-features.ts";
 
 type RiskLevel = "low" | "medium" | "high";
 type Action =
@@ -319,6 +320,27 @@ const handler = withSupabase(
       );
     }
     const ticket = ticketAccess.ticket;
+    const featureStates = await resolveTenantFeatureStates(
+      context.supabaseAdmin,
+      ticket.tenant_id,
+      ["ticketing.detail"],
+    );
+    if (!featureStates) {
+      return secureError(
+        request,
+        "tenant_feature_lookup_failed",
+        "Die Funktionsberechtigung konnte nicht geprüft werden.",
+        503,
+      );
+    }
+    if (featureStates["ticketing.detail"] !== true) {
+      return secureError(
+        request,
+        "ticket_feature_disabled",
+        "Diese Ticketfunktion ist für Ihren Mandanten deaktiviert.",
+        403,
+      );
+    }
 
     if (action.type === "list") {
       const { data, error } = await context.supabase

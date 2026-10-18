@@ -1,4 +1,5 @@
 import { withSupabase } from "@supabase/server";
+import { resolveTenantFeatureStates } from "../_shared/tenant-features.ts";
 
 const ALLOWED_ORIGIN = "https://app.nextdesk.ch";
 const MAX_REQUEST_BYTES = 420 * 1024;
@@ -232,9 +233,33 @@ const handler = withSupabase(
     if (parsed.tooLarge) return error(request, "payload_too_large", 413);
     const action = parsed.action;
     if (!action) return error(request, "invalid_request", 422);
-    if (!uuid(context.userClaims?.id)) {
+    const actorId = uuid(context.userClaims?.id);
+    if (!actorId) {
       return error(request, "unauthorized", 401);
     }
+
+    const { data: membership, error: membershipError } =
+      await context.supabaseAdmin
+        .from("tenant_memberships")
+        .select("tenant_id")
+        .eq("tenant_id", action.tenantId)
+        .eq("user_id", actorId)
+        .eq("status", "active")
+        .maybeSingle();
+    if (membershipError) {
+      return error(request, "tenant_feature_lookup_failed", 503);
+    }
+    if (!membership) return error(request, "permission_denied", 403);
+
+    const featureStates = await resolveTenantFeatureStates(
+      context.supabaseAdmin,
+      action.tenantId,
+      ["ticketing.detail"],
+    );
+    if (!featureStates)
+      return error(request, "tenant_feature_lookup_failed", 503);
+    if (featureStates["ticketing.detail"] !== true)
+      return error(request, "ticket_feature_disabled", 403);
 
     // The caller-scoped client preserves auth.uid() and never uses service-role
     // bypass. SQL rechecks membership, can_read_ticket, ticket.update, and (for

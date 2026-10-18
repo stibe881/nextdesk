@@ -1,4 +1,5 @@
 import { withSupabase } from "@supabase/server";
+import { resolveTenantFeatureStates } from "../_shared/tenant-features.ts";
 
 type Action =
   | { type: "getFormOptions"; tenantId: string; departmentId?: string }
@@ -1026,6 +1027,27 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       403,
     );
   }
+  const requiresTemplateFeature =
+    action.type === "listAvailableTemplates" ||
+    (action.type === "createTicket" && action.templateId !== undefined);
+  const templateFeatureStates = requiresTemplateFeature
+    ? await resolveTenantFeatureStates(context.supabaseAdmin, action.tenantId, [
+        "ticketing.templates",
+        "ticketing.checklists",
+      ])
+    : null;
+  if (requiresTemplateFeature && !templateFeatureStates)
+    return json(
+      request,
+      { error: { code: "tenant_feature_lookup_failed" } },
+      503,
+    );
+  if (
+    requiresTemplateFeature &&
+    templateFeatureStates?.["ticketing.templates"] !== true
+  )
+    return json(request, { error: { code: "ticket_feature_disabled" } }, 403);
+
   if (action.type === "listAvailableTemplates") {
     const { data: department, error: departmentError } =
       await context.supabaseAdmin
@@ -1563,6 +1585,11 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         422,
       );
     }
+    if (
+      ticketTemplate.checklistItems.length > 0 &&
+      templateFeatureStates?.["ticketing.checklists"] !== true
+    )
+      return json(request, { error: { code: "ticket_feature_disabled" } }, 403);
   }
   const effectivePriorityKey =
     ticketTemplate?.priorityKey ?? action.priorityKey;

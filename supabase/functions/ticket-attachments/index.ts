@@ -1,4 +1,5 @@
 import { withSupabase } from "@supabase/server";
+import { resolveTenantFeatureStates } from "../_shared/tenant-features.ts";
 
 type Action =
   | { type: "list"; tenantId: string; ticketId: string }
@@ -420,6 +421,19 @@ const handler = withSupabase(
         404,
       );
     const ticket = access.ticket;
+    const featureStates = await resolveTenantFeatureStates(
+      admin,
+      ticket.tenant_id,
+      ["ticketing.detail"],
+    );
+    if (!featureStates)
+      return json(
+        request,
+        { error: { code: "tenant_feature_lookup_failed" } },
+        503,
+      );
+    if (featureStates["ticketing.detail"] !== true)
+      return json(request, { error: { code: "ticket_feature_disabled" } }, 403);
 
     if (action.type === "list") {
       const { data: attachments, error } = await admin

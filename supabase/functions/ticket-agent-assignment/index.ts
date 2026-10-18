@@ -1,4 +1,5 @@
 import { withSupabase } from "@supabase/server";
+import { resolveTenantFeatureStates } from "../_shared/tenant-features.ts";
 
 type Action =
   | { type: "list"; tenantId: string; ticketId: string }
@@ -284,6 +285,26 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       { error: { code: "tenant_membership_required" } },
       403,
     );
+  }
+
+  if (action.type !== "listForDepartment") {
+    const featureStates = await resolveTenantFeatureStates(
+      context.supabaseAdmin,
+      action.tenantId,
+      ["ticketing.detail"],
+    );
+    if (!featureStates)
+      return response(
+        request,
+        { error: { code: "tenant_feature_lookup_failed" } },
+        503,
+      );
+    if (featureStates["ticketing.detail"] !== true)
+      return response(
+        request,
+        { error: { code: "ticket_feature_disabled" } },
+        403,
+      );
   }
 
   if (action.type === "listForDepartment") {

@@ -1,4 +1,5 @@
 import { withSupabase } from "@supabase/server";
+import { resolveTenantFeatureStates } from "../_shared/tenant-features.ts";
 
 type BillingKind = "internal" | "billable" | "goodwill";
 type EscalationKind = "technical" | "organizational" | "sla";
@@ -57,6 +58,7 @@ type Action =
       tenantId: string;
       ticketId: string;
       statusKey?: string;
+      confirmClose?: boolean;
       priorityKey?: string;
       subject?: string;
       description?: string;
@@ -309,6 +311,21 @@ function parseAction(value: unknown): Action | null {
     };
   if (
     value.type === "updateTicket" &&
+    hasOnlyKeys(value, [
+      "type",
+      "tenantId",
+      "ticketId",
+      "statusKey",
+      "confirmClose",
+      "priorityKey",
+      "subject",
+      "description",
+      "requesterContactId",
+      "assignedAgentId",
+      "assignedTeamId",
+    ]) &&
+    (value.confirmClose === undefined ||
+      typeof value.confirmClose === "boolean") &&
     (value.requesterContactId === undefined ||
       isRequesterContactId(value.requesterContactId)) &&
     (value.assignedAgentId === undefined ||
@@ -340,6 +357,10 @@ function parseAction(value: unknown): Action | null {
       ticketId: value.ticketId,
       statusKey:
         typeof value.statusKey === "string" ? value.statusKey : undefined,
+      confirmClose:
+        typeof value.confirmClose === "boolean"
+          ? value.confirmClose
+          : undefined,
       priorityKey:
         typeof value.priorityKey === "string" ? value.priorityKey : undefined,
       subject,
@@ -705,37 +726,17 @@ async function getTicketModules(
   admin: any,
   tenantId: string,
 ): Promise<TicketModules | null> {
-  const { data, error } = await admin
-    .from("tenant_feature_flags")
-    .select("feature_key, enabled, pilot_ends_at")
-    .eq("tenant_id", tenantId)
-    .in("feature_key", [
-      "ticketing.detail",
-      "ticketing.checklists",
-      "ticketing.time-tracking",
-    ]);
-  if (error) return null;
-
-  const now = Date.now();
-  const active = new Set(
-    (data ?? [])
-      .filter((row: any) => {
-        if (row?.enabled !== true || typeof row.feature_key !== "string") {
-          return false;
-        }
-        if (row.pilot_ends_at === null || row.pilot_ends_at === undefined) {
-          return true;
-        }
-        const endsAt = Date.parse(row.pilot_ends_at);
-        return Number.isFinite(endsAt) && endsAt > now;
-      })
-      .map((row: any) => row.feature_key),
-  );
+  const states = await resolveTenantFeatureStates(admin, tenantId, [
+    "ticketing.detail",
+    "ticketing.checklists",
+    "ticketing.time-tracking",
+  ]);
+  if (!states) return null;
 
   return {
-    detail: active.has("ticketing.detail"),
-    checklists: active.has("ticketing.checklists"),
-    timeTracking: active.has("ticketing.time-tracking"),
+    detail: states["ticketing.detail"] === true,
+    checklists: states["ticketing.checklists"] === true,
+    timeTracking: states["ticketing.time-tracking"] === true,
   };
 }
 
@@ -2033,6 +2034,20 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     const statusAutomaticallyUpdated =
       !resolvedStatusError && resolvedStatus?.is_closed === true;
     if (statusAutomaticallyUpdated) {
+      if (
+        !(await hasPermission(
+          context.supabaseAdmin,
+          actorId,
+          ticket.tenant_id,
+          ticket.department_id,
+          "ticket.close",
+        ))
+      )
+        return response(
+          request,
+          { error: { code: "ticket_close_denied" } },
+          403,
+        );
       mergeUpdate.status_id = resolvedStatus.id;
       mergeUpdate.closed_at = mergedAt;
       mergeUpdate.resolved_at = mergedAt;
@@ -2397,6 +2412,15 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     return response(request, { error: { code: "ticket_update_denied" } }, 403);
   const update: Record<string, unknown> = {};
   const changedFields: string[] = [];
+  let statusTransition:
+    | {
+        fromStatusId: string;
+        toStatusKey: string;
+        isClosed: boolean;
+        confirmed: boolean;
+        occurredAt: string;
+      }
+    | undefined;
   if (action.subject !== undefined && action.subject !== ticket.subject) {
     update.subject = action.subject;
     changedFields.push("subject");
@@ -2429,16 +2453,30 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     )
       return response(request, { error: { code: "ticket_close_denied" } }, 403);
     if (status.id !== ticket.status_id) {
+      if (status.is_closed) {
+        if (action.confirmClose !== true)
+          return response(
+            request,
+            { error: { code: "ticket_close_confirmation_required" } },
+            422,
+          );
+      }
+      const occurredAt = new Date().toISOString();
       update.status_id = status.id;
-      update.closed_at = status.is_closed ? new Date().toISOString() : null;
+      update.closed_at = status.is_closed ? occurredAt : null;
       update.resolved_at =
-        status.key === "resolved"
-          ? new Date().toISOString()
-          : ticket.resolved_at;
+        status.key === "resolved" ? occurredAt : ticket.resolved_at;
       update.waiting_since = status.key.startsWith("waiting")
-        ? new Date().toISOString()
+        ? occurredAt
         : null;
       changedFields.push("status");
+      statusTransition = {
+        fromStatusId: ticket.status_id,
+        toStatusKey: status.key,
+        isClosed: status.is_closed,
+        confirmed: status.is_closed && action.confirmClose === true,
+        occurredAt,
+      };
     }
   }
   if (action.priorityKey) {
@@ -2536,8 +2574,12 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
   await context.supabaseAdmin.from("ticket_events").insert({
     ticket_id: ticket.id,
     actor_id: actorId,
-    event_type: "ticket.updated",
-    payload: { changedFields },
+    event_type:
+      statusTransition?.isClosed === true ? "ticket.closed" : "ticket.updated",
+    payload: {
+      changedFields,
+      ...(statusTransition ? { statusTransition } : {}),
+    },
   });
   return response(request, { data: { updated: true } });
 });

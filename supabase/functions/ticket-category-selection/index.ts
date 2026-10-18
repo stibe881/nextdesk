@@ -1,4 +1,5 @@
 import { withSupabase } from "@supabase/server";
+import { resolveTenantFeatureStates } from "../_shared/tenant-features.ts";
 
 type CategorySelection = {
   tenantId: string;
@@ -106,6 +107,41 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
   if (!input || !isUuid(actorId)) {
     return json(request, { error: { code: "invalid_request" } }, 400);
   }
+
+  const { data: membership, error: membershipError } =
+    await context.supabaseAdmin
+      .from("tenant_memberships")
+      .select("tenant_id")
+      .eq("tenant_id", input.tenantId)
+      .eq("user_id", actorId)
+      .eq("status", "active")
+      .maybeSingle();
+  if (membershipError)
+    return json(
+      request,
+      { error: { code: "tenant_feature_lookup_failed" } },
+      503,
+    );
+  if (!membership)
+    return json(
+      request,
+      { error: { code: "ticket_category_change_denied" } },
+      403,
+    );
+
+  const featureStates = await resolveTenantFeatureStates(
+    context.supabaseAdmin,
+    input.tenantId,
+    ["ticketing.detail"],
+  );
+  if (!featureStates)
+    return json(
+      request,
+      { error: { code: "tenant_feature_lookup_failed" } },
+      503,
+    );
+  if (featureStates["ticketing.detail"] !== true)
+    return json(request, { error: { code: "ticket_feature_disabled" } }, 403);
 
   const { data, error } = await context.supabaseAdmin.rpc(
     "apply_ticket_category_selection",

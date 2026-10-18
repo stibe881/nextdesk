@@ -1,4 +1,5 @@
 import { withSupabase } from "@supabase/server";
+import { resolveTenantFeatureStates } from "../_shared/tenant-features.ts";
 
 const APP_ORIGIN = "https://app.nextdesk.ch";
 const UUID =
@@ -382,6 +383,47 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
   const actorId = context.userClaims?.id;
   if (!action || !isUuid(actorId)) {
     return response(request, { error: { code: "invalid_request" } }, 400);
+  }
+
+  if (action.type === "listValues" || action.type === "setValues") {
+    const { data: membership, error: membershipError } =
+      await context.supabaseAdmin
+        .from("tenant_memberships")
+        .select("tenant_id")
+        .eq("tenant_id", action.tenantId)
+        .eq("user_id", actorId)
+        .eq("status", "active")
+        .maybeSingle();
+    if (membershipError)
+      return response(
+        request,
+        { error: { code: "tenant_feature_lookup_failed" } },
+        503,
+      );
+    if (!membership)
+      return response(
+        request,
+        { error: { code: "ticket_custom_field_access_denied" } },
+        403,
+      );
+
+    const featureStates = await resolveTenantFeatureStates(
+      context.supabaseAdmin,
+      action.tenantId,
+      ["ticketing.detail"],
+    );
+    if (!featureStates)
+      return response(
+        request,
+        { error: { code: "tenant_feature_lookup_failed" } },
+        503,
+      );
+    if (featureStates["ticketing.detail"] !== true)
+      return response(
+        request,
+        { error: { code: "ticket_feature_disabled" } },
+        403,
+      );
   }
 
   let result: unknown;

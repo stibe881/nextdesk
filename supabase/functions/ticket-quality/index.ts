@@ -1,4 +1,5 @@
 import { withSupabase } from "@supabase/server";
+import { resolveTenantFeatureStates } from "../_shared/tenant-features.ts";
 
 const ALLOWED_ORIGIN = "https://app.nextdesk.ch";
 const FOURTEEN_DAYS_MS = 14 * 24 * 60 * 60 * 1000;
@@ -341,6 +342,26 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       403,
       "ticket_access_denied",
       "Das Ticket ist nicht verfügbar.",
+    );
+
+  const featureStates = await resolveTenantFeatureStates(
+    context.supabaseAdmin,
+    action.tenantId,
+    ["ticketing.detail"],
+  );
+  if (!featureStates)
+    return error(
+      request,
+      503,
+      "tenant_feature_lookup_failed",
+      "Die Funktionsberechtigung konnte nicht geprüft werden.",
+    );
+  if (featureStates["ticketing.detail"] !== true)
+    return error(
+      request,
+      403,
+      "ticket_feature_disabled",
+      "Diese Ticketfunktion ist für Ihren Mandanten deaktiviert.",
     );
 
   const status = ticketStatus(callerTicket.ticket);

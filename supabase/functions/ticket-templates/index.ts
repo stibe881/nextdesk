@@ -1,4 +1,5 @@
 import { withSupabase } from "@supabase/server";
+import { resolveTenantFeatureStates } from "../_shared/tenant-features.ts";
 
 type ChecklistItem = { description: string };
 type TemplateFields = {
@@ -366,6 +367,21 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       403,
     );
 
+  const featureStates = await resolveTenantFeatureStates(
+    admin,
+    action.tenantId,
+    ["ticketing.templates", "ticketing.checklists"],
+  );
+  if (!featureStates)
+    return json(
+      request,
+      { error: { code: "tenant_feature_lookup_failed" } },
+      503,
+    );
+  if (featureStates["ticketing.templates"] !== true)
+    return json(request, { error: { code: "ticket_feature_disabled" } }, 403);
+  const checklistsEnabled = featureStates["ticketing.checklists"] === true;
+
   const scopes = await getManagementScopes(admin, actorId, action.tenantId);
   if (!scopes)
     return json(
@@ -402,6 +418,12 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
   }
 
   if (action.type === "createTemplate") {
+    if (
+      action.checklistItems !== undefined &&
+      action.checklistItems.length > 0 &&
+      !checklistsEnabled
+    )
+      return json(request, { error: { code: "ticket_feature_disabled" } }, 403);
     const departmentId = action.departmentId ?? null;
     if (!canManageTemplate(scopes, departmentId))
       return json(
@@ -554,6 +576,9 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       );
     return json(request, { data: { archived: true } });
   }
+
+  if (action.checklistItems !== undefined && !checklistsEnabled)
+    return json(request, { error: { code: "ticket_feature_disabled" } }, 403);
 
   const nextDepartmentId =
     action.departmentId === undefined

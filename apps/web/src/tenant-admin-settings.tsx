@@ -740,6 +740,13 @@ function asFeatureCatalogEntry(
   return value;
 }
 
+function isTenantFeatureActive(feature: TenantFeature): boolean {
+  if (!feature.enabled) return false;
+  if (!feature.pilot_ends_at) return true;
+  const endsAt = Date.parse(feature.pilot_ends_at);
+  return Number.isFinite(endsAt) && endsAt > Date.now();
+}
+
 function realValue(value: string | null | undefined): string {
   return value?.trim() || "Nicht hinterlegt";
 }
@@ -2255,9 +2262,11 @@ export function TenantAdminSettings({
                             <span aria-hidden="true">
                               {saving === target
                                 ? "Wird gespeichert …"
-                                : feature.enabled
+                                : isTenantFeatureActive(feature)
                                   ? "Aktiviert"
-                                  : "Deaktiviert"}
+                                  : feature.enabled
+                                    ? "Pilot abgelaufen"
+                                    : "Deaktiviert"}
                             </span>
                           </label>
                         </li>
@@ -2286,7 +2295,7 @@ export function TenantAdminSettings({
               settings.tenant_feature_flags.some(
                 (feature) =>
                   feature.feature_key === "ticketing.templates" &&
-                  feature.enabled,
+                  isTenantFeatureActive(feature),
               )) ? (
               <TicketTemplates tenantId={tenantId} />
             ) : null}
@@ -2304,7 +2313,7 @@ export function TenantAdminSettings({
               settings.tenant_feature_flags.some(
                 (feature) =>
                   feature.feature_key === "assets.management" &&
-                  feature.enabled,
+                  isTenantFeatureActive(feature),
               )) ? (
               <AssetIntuneSettings tenantId={tenantId} />
             ) : null}
