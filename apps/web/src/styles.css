@@ -8048,3 +8048,112 @@ body:has(.ticket-detail) {
     flex-direction: column;
   }
 }
+
+.ticket-comparison {
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: var(--surface);
+  display: grid;
+  gap: 1rem;
+  padding: 1.15rem 1.2rem 1.25rem;
+}
+.ticket-comparison__heading {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.ticket-comparison__heading > div {
+  display: grid;
+  gap: 0.2rem;
+}
+.ticket-comparison__heading h3 {
+  margin: 0;
+}
+.ticket-comparison__heading .eyebrow {
+  margin: 0;
+}
+.ticket-comparison__heading > svg {
+  color: var(--primary);
+}
+.ticket-comparison__picker {
+  color: var(--ink);
+  display: grid;
+  font-size: 0.83rem;
+  font-weight: 680;
+  gap: 0.37rem;
+  max-width: 520px;
+}
+.ticket-comparison__table {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.ticket-comparison__row {
+  display: grid;
+  grid-template-columns: minmax(128px, 0.55fr) minmax(180px, 1fr) minmax(
+      180px,
+      1fr
+    );
+}
+.ticket-comparison__row > * {
+  border-bottom: 1px solid var(--border);
+  min-width: 0;
+  padding: 0.7rem 0.8rem;
+  overflow-wrap: anywhere;
+}
+.ticket-comparison__row > * + * {
+  border-left: 1px solid var(--border);
+}
+.ticket-comparison__row:last-child > * {
+  border-bottom: 0;
+}
+.ticket-comparison__row > span:first-child {
+  background: var(--surface-subtle);
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 650;
+}
+.ticket-comparison__row--head {
+  background: var(--surface-subtle);
+  color: var(--muted);
+  font-size: 0.76rem;
+  text-transform: uppercase;
+  letter-spacing: 0.055em;
+}
+.ticket-comparison__row--head strong {
+  color: var(--ink);
+  font-size: 0.76rem;
+}
+.ticket-comparison__row.is-different > span:not(:first-child) {
+  background: color-mix(in srgb, var(--primary) 5%, #fff);
+}
+.ticket-comparison__row--long > span:not(:first-child) {
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+@media (max-width: 720px) {
+  .ticket-comparison__table {
+    border: 0;
+    border-radius: 0;
+    display: grid;
+    gap: 0.65rem;
+    overflow: visible;
+  }
+  .ticket-comparison__row {
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    grid-template-columns: 1fr 1fr;
+    overflow: hidden;
+  }
+  .ticket-comparison__row > * {
+    border-bottom: 0;
+  }
+  .ticket-comparison__row > span:first-child {
+    grid-column: 1 / -1;
+    border-bottom: 1px solid var(--border);
+  }
+  .ticket-comparison__row--head {
+    display: none;
+  }
+}

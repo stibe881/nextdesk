@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 import { supabase } from "./lib/supabase";
 import { TicketApprovals } from "./ticket-approvals";
+import { TicketComparison } from "./ticket-comparison";
 import { TicketCustomFields } from "./ticket-custom-fields";
 
 type CommentVisibility = "external" | "internal";
@@ -7034,6 +7035,20 @@ export function TicketDetail({
               </ol>
             )}
           </section>
+
+          <TicketComparison
+            candidates={[
+              ...detail.relations.map((relation) => ({
+                id: relation.relatedTicketId,
+                ticketNumber: relation.ticketNumber,
+                subject: relation.subject,
+                statusLabel: relation.statusLabel,
+              })),
+              ...detail.similarTickets,
+            ]}
+            tenantId={tenantId}
+            ticketId={ticketId}
+          />
 
           {detail.canMerge && (
             <section
