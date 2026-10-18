@@ -82,11 +82,13 @@ type Section =
   | "Einstellungen";
 type TicketScope = "all" | "mine" | "unassigned" | "open" | "closed";
 type TicketListDensity = "compact" | "standard" | "comfortable";
+type WorkspaceTheme = "light" | "dark" | "system";
 type WorkspacePreferences = {
   density: TicketListDensity;
   highContrast: boolean;
   reduceMotion: boolean;
   startSection: Section;
+  theme: WorkspaceTheme;
 };
 
 type DashboardView = {
@@ -170,6 +172,7 @@ const DEFAULT_WORKSPACE_PREFERENCES: WorkspacePreferences = {
   highContrast: false,
   reduceMotion: false,
   startSection: "Übersicht",
+  theme: "system",
 };
 
 const previewView: DashboardView = {
@@ -293,6 +296,18 @@ function isSection(value: unknown): value is Section {
   return sections.some((section) => section.label === value);
 }
 
+function isInputLikeTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  return (
+    target.isContentEditable ||
+    Boolean(
+      target.closest(
+        "input, textarea, select, [contenteditable='true'], [role='textbox']",
+      ),
+    )
+  );
+}
+
 function workspacePreferencesFromValue(
   value: unknown,
 ): WorkspacePreferences | null {
@@ -315,6 +330,12 @@ function workspacePreferencesFromValue(
     highContrast: value.highContrast,
     reduceMotion: value.reduceMotion,
     startSection: value.startSection,
+    theme:
+      value.theme === "light" ||
+      value.theme === "dark" ||
+      value.theme === "system"
+        ? value.theme
+        : DEFAULT_WORKSPACE_PREFERENCES.theme,
   };
 }
 
@@ -678,16 +699,20 @@ function MembershipErrorScreen({
 function TicketList({
   loading = false,
   hasActiveFilters = false,
+  keyboardActiveTicketId,
   tickets,
   onClearFilters,
+  onCreateTicket,
   onOpen,
   onSelectionChange,
   selectedTicketIds,
 }: {
   loading?: boolean;
   hasActiveFilters?: boolean;
+  keyboardActiveTicketId?: string | null;
   tickets: readonly DashboardTicket[];
   onClearFilters?: () => void;
+  onCreateTicket?: () => void;
   onOpen?: (ticketId: string) => void;
   onSelectionChange?: (ticketId: string, selected: boolean) => void;
   selectedTicketIds?: ReadonlySet<string>;
@@ -708,19 +733,31 @@ function TicketList({
       <div className="empty-state ticket-empty-state">
         <strong>
           {hasActiveFilters
-            ? "Keine passenden Tickets gefunden."
-            : "Noch keine Tickets vorhanden."}
+            ? "Keine Tickets entsprechen den aktiven Filtern."
+            : onCreateTicket
+              ? "Ihre Ticketliste ist bereit."
+              : "Aktuell liegen keine Tickets in Ihrer Queue."}
         </strong>
         <span>
           {hasActiveFilters
-            ? "Prüfen Sie die Suchbegriffe oder setzen Sie die aktiven Filter zurück."
-            : "Neue Tickets erscheinen hier, sobald sie für Ihre Queue erfasst oder zugewiesen wurden."}
+            ? "Passen Sie Suche oder Queue an oder setzen Sie alle Filter zurück."
+            : onCreateTicket
+              ? "Erfassen Sie den ersten Vorgang, damit er priorisiert und nachvollziehbar bearbeitet werden kann."
+              : "Prüfen Sie später erneut oder wechseln Sie zu einer anderen Queue."}
         </span>
-        {onClearFilters && (
+        {hasActiveFilters && onClearFilters ? (
           <button onClick={onClearFilters} type="button">
             Filter zurücksetzen
           </button>
-        )}
+        ) : onCreateTicket ? (
+          <button
+            className="primary-button"
+            onClick={onCreateTicket}
+            type="button"
+          >
+            Ticket erfassen
+          </button>
+        ) : null}
       </div>
     );
   }
@@ -729,6 +766,7 @@ function TicketList({
     <div className="ticket-list">
       {tickets.map((ticket) => {
         const ticketId = ticket.recordId ?? ticket.id;
+        const keyboardActive = keyboardActiveTicketId === ticketId;
         const slaLabel =
           ticket.sla.includes("SLA") || ticket.sla === "kein SLA-Ziel"
             ? ticket.sla
@@ -740,9 +778,11 @@ function TicketList({
                 ? `Ticket ${ticket.id}: ${ticket.subject} öffnen`
                 : undefined
             }
+            aria-current={keyboardActive ? "true" : undefined}
             className={`${onOpen ? "ticket-row ticket-row--actionable" : "ticket-row"}${
               onSelectionChange ? " ticket-row--selectable" : ""
-            }`}
+            }${keyboardActive ? " ticket-row--keyboard-active" : ""}`}
+            id={onOpen ? `ticket-shortcut-${ticketId}` : undefined}
             key={ticket.id}
             onClick={onOpen ? () => onOpen(ticketId) : undefined}
             onKeyDown={
@@ -757,7 +797,15 @@ function TicketList({
                 : undefined
             }
             role={onOpen && !onSelectionChange ? "button" : undefined}
-            tabIndex={onOpen && !onSelectionChange ? 0 : undefined}
+            tabIndex={
+              onOpen
+                ? onSelectionChange
+                  ? keyboardActive
+                    ? 0
+                    : -1
+                  : 0
+                : undefined
+            }
           >
             {onSelectionChange && (
               <label
@@ -787,10 +835,19 @@ function TicketList({
               </p>
             </div>
             <div className="ticket-state">
-              <span className={`state-badge ${statusClass(ticket.state)}`}>
+              <span
+                aria-label={`Status: ${ticket.state}`}
+                className={`state-badge ${statusClass(ticket.state)}`}
+              >
+                <span aria-hidden="true" className="state-badge__indicator" />
                 {ticket.state}
               </span>
-              <span className={`sla ${ticket.risk}`}>{slaLabel}</span>
+              <span
+                aria-label={`SLA: ${slaLabel}`}
+                className={`sla ${ticket.risk}`}
+              >
+                {slaLabel}
+              </span>
             </div>
             {onOpen ? (
               <ArrowRight
@@ -852,6 +909,14 @@ export function App() {
   >(null);
   const [commandMenuOpen, setCommandMenuOpen] = useState(false);
   const [commandQuery, setCommandQuery] = useState("");
+  const [commandActiveIndex, setCommandActiveIndex] = useState(0);
+  const [keyboardHelpOpen, setKeyboardHelpOpen] = useState(false);
+  const [keyboardActiveTicketId, setKeyboardActiveTicketId] = useState<
+    string | null
+  >(null);
+  const [dismissedLiveMessage, setDismissedLiveMessage] = useState<
+    string | null
+  >(null);
   const [workspacePreferences, setWorkspacePreferences] =
     useState<WorkspacePreferences>(DEFAULT_WORKSPACE_PREFERENCES);
   const [workspacePreferencesHydrated, setWorkspacePreferencesHydrated] =
@@ -870,6 +935,7 @@ export function App() {
   const notificationButtonRef = useRef<HTMLButtonElement>(null);
   const notificationPanelRef = useRef<HTMLElement>(null);
   const commandInputRef = useRef<HTMLInputElement>(null);
+  const keyboardHelpCloseRef = useRef<HTMLButtonElement>(null);
   const workspacePreferencesStorageKey = `nextdesk:workspace-preferences:${session?.user.id ?? "preview"}`;
 
   useEffect(() => {
@@ -1181,23 +1247,20 @@ export function App() {
   }, [notificationPanelOpen]);
 
   useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
-        event.preventDefault();
-        setCommandMenuOpen(true);
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
-
-  useEffect(() => {
     if (!commandMenuOpen) return;
     const frame = window.requestAnimationFrame(() =>
       commandInputRef.current?.focus(),
     );
     return () => window.cancelAnimationFrame(frame);
   }, [commandMenuOpen]);
+
+  useEffect(() => {
+    if (!keyboardHelpOpen) return;
+    const frame = window.requestAnimationFrame(() =>
+      keyboardHelpCloseRef.current?.focus(),
+    );
+    return () => window.cancelAnimationFrame(frame);
+  }, [keyboardHelpOpen]);
 
   useEffect(() => {
     if (!supabase || !session || !activeTenant) {
@@ -1573,10 +1636,146 @@ export function App() {
         })
         .slice(0, 6)
     : [];
+  const commandResults = [
+    ...matchingCommandActions.map((action) => ({
+      actionId: action.id,
+      id: `action:${action.id}`,
+      kind: "action" as const,
+      label: action.label,
+    })),
+    ...matchingCommandTickets.map((ticket) => ({
+      id: `ticket:${ticket.recordId ?? ticket.id}`,
+      kind: "ticket" as const,
+      label: ticket.id,
+      ticketId: ticket.recordId ?? ticket.id,
+    })),
+  ];
+  const activeCommandResult = commandResults[commandActiveIndex];
+  const keyboardNavigableTickets =
+    (section === "Tickets" || section === "Übersicht") &&
+    isSupabaseConfigured &&
+    isFeatureEnabled("ticketing.detail")
+      ? filteredTickets
+      : [];
+  const activeKeyboardTicketIndex = keyboardNavigableTickets.findIndex(
+    (ticket) => (ticket.recordId ?? ticket.id) === keyboardActiveTicketId,
+  );
+
+  useEffect(() => {
+    if (
+      keyboardActiveTicketId &&
+      !keyboardNavigableTickets.some(
+        (ticket) => (ticket.recordId ?? ticket.id) === keyboardActiveTicketId,
+      )
+    ) {
+      setKeyboardActiveTicketId(null);
+    }
+  }, [keyboardActiveTicketId, keyboardNavigableTickets]);
+
+  useEffect(() => {
+    if (!keyboardActiveTicketId) return;
+    const frame = window.requestAnimationFrame(() =>
+      document
+        .getElementById(`ticket-shortcut-${keyboardActiveTicketId}`)
+        ?.focus(),
+    );
+    return () => window.cancelAnimationFrame(frame);
+  }, [keyboardActiveTicketId, section]);
+
+  useEffect(() => {
+    if (!commandMenuOpen) return;
+    setCommandActiveIndex(0);
+  }, [commandMenuOpen, commandQuery]);
+
+  useEffect(() => {
+    if (commandActiveIndex < commandResults.length) return;
+    setCommandActiveIndex(Math.max(commandResults.length - 1, 0));
+  }, [commandActiveIndex, commandResults.length]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || isInputLikeTarget(event.target)) return;
+
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setCommandMenuOpen(true);
+        return;
+      }
+
+      if (
+        !event.ctrlKey &&
+        !event.metaKey &&
+        !event.altKey &&
+        event.key === "?" &&
+        !commandMenuOpen &&
+        !workspacePreferencesOpen &&
+        !ticketComposerOpen &&
+        !selectedTicketId &&
+        !notificationPanelOpen
+      ) {
+        event.preventDefault();
+        setKeyboardHelpOpen(true);
+        return;
+      }
+
+      if (
+        commandMenuOpen ||
+        workspacePreferencesOpen ||
+        keyboardHelpOpen ||
+        ticketComposerOpen ||
+        selectedTicketId ||
+        notificationPanelOpen ||
+        event.ctrlKey ||
+        event.metaKey ||
+        event.altKey ||
+        keyboardNavigableTickets.length === 0
+      ) {
+        return;
+      }
+
+      const key = event.key.toLocaleLowerCase("de-CH");
+      if (key === "j" || key === "k") {
+        event.preventDefault();
+        const direction = key === "j" ? 1 : -1;
+        const startIndex =
+          activeKeyboardTicketIndex === -1
+            ? direction === 1
+              ? 0
+              : keyboardNavigableTickets.length - 1
+            : (activeKeyboardTicketIndex +
+                direction +
+                keyboardNavigableTickets.length) %
+              keyboardNavigableTickets.length;
+        const ticket = keyboardNavigableTickets[startIndex];
+        if (!ticket) return;
+        setKeyboardActiveTicketId(ticket.recordId ?? ticket.id);
+        return;
+      }
+
+      if (event.key === "Enter" && activeKeyboardTicketIndex !== -1) {
+        event.preventDefault();
+        const ticket = keyboardNavigableTickets[activeKeyboardTicketIndex];
+        if (!ticket) return;
+        setSelectedTicketId(ticket.recordId ?? ticket.id);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [
+    activeKeyboardTicketIndex,
+    commandMenuOpen,
+    keyboardHelpOpen,
+    keyboardNavigableTickets,
+    notificationPanelOpen,
+    selectedTicketId,
+    ticketComposerOpen,
+    workspacePreferencesOpen,
+  ]);
 
   function closeCommandMenu() {
     setCommandMenuOpen(false);
     setCommandQuery("");
+    setCommandActiveIndex(0);
   }
 
   function runCommand(actionId: string) {
@@ -1592,12 +1791,57 @@ export function App() {
     }
   }
 
+  function runCommandResult(result: (typeof commandResults)[number]) {
+    if (result.kind === "action") {
+      runCommand(result.actionId);
+      return;
+    }
+    closeCommandMenu();
+    setSection("Tickets");
+    setSelectedTicketId(result.ticketId);
+  }
+
   function updateWorkspacePreferences(updates: Partial<WorkspacePreferences>) {
     setWorkspacePreferences((current) => ({ ...current, ...updates }));
   }
 
+  const workspaceLiveMessage = errorMessage
+    ? {
+        id: `error:${errorMessage}`,
+        message: errorMessage,
+        title: "Datenzugriff prüfen",
+        tone: "error" as const,
+      }
+    : notificationsError
+      ? {
+          id: `notification-error:${notificationsError}`,
+          message: notificationsError,
+          title: "Benachrichtigungen prüfen",
+          tone: "error" as const,
+        }
+      : ticketActionStatus
+        ? {
+            id: `ticket-status:${ticketActionStatus}`,
+            message: ticketActionStatus,
+            title: "Ticketstatus aktualisiert",
+            tone: "success" as const,
+          }
+        : notificationStatus
+          ? {
+              id: `notification-status:${notificationStatus}`,
+              message: notificationStatus,
+              title: "Benachrichtigungen aktualisiert",
+              tone: "success" as const,
+            }
+          : null;
+
+  useEffect(() => {
+    if (!workspaceLiveMessage) setDismissedLiveMessage(null);
+  }, [workspaceLiveMessage]);
+
   const workspaceClassName = [
     "app-shell",
+    `app-shell--theme-${workspacePreferences.theme}`,
     `app-shell--density-${workspacePreferences.density}`,
     workspacePreferences.highContrast ? "app-shell--high-contrast" : "",
     workspacePreferences.reduceMotion ? "app-shell--reduced-motion" : "",
@@ -1611,15 +1855,10 @@ export function App() {
   const workspaceBrandLogo =
     tenantWorkspaceBranding?.logoUrl ?? "/assets/nextdesk-logo-product.png";
   const workspaceBrandStyle = {
-    "--primary": tenantWorkspaceBranding?.primaryColor ?? "#4338CA",
-    "--primary-hover": tenantWorkspaceBranding?.secondaryColor ?? "#3730A3",
-    "--primary-soft": `color-mix(in srgb, ${
-      tenantWorkspaceBranding?.primaryColor ?? "#4338CA"
-    } 11%, #FFFFFF)`,
-    "--info": tenantWorkspaceBranding?.accentColor ?? "#075985",
-    "--info-soft": `color-mix(in srgb, ${
-      tenantWorkspaceBranding?.accentColor ?? "#075985"
-    } 11%, #FFFFFF)`,
+    "--brand-accent": tenantWorkspaceBranding?.accentColor ?? "#075985",
+    "--brand-primary": tenantWorkspaceBranding?.primaryColor ?? "#4338CA",
+    "--brand-primary-hover":
+      tenantWorkspaceBranding?.secondaryColor ?? "#3730A3",
   } as CSSProperties;
 
   const visibleSections = isTenantAdmin
@@ -1857,7 +2096,7 @@ export function App() {
                 value={query}
               />
             </label>
-            <div style={{ position: "relative" }}>
+            <div className="notification-center-anchor">
               <button
                 aria-controls="notification-center-panel"
                 aria-expanded={notificationPanelOpen}
@@ -1874,53 +2113,25 @@ export function App() {
               {notificationPanelOpen && (
                 <section
                   aria-labelledby="notification-center-heading"
+                  className="notification-center-panel"
                   id="notification-center-panel"
                   onKeyDown={(event) => {
                     if (event.key === "Escape") closeNotificationPanel();
                   }}
                   ref={notificationPanelRef}
                   role="dialog"
-                  style={{
-                    background: "#fff",
-                    border: "1px solid #dbe3e6",
-                    borderRadius: "6px",
-                    boxShadow: "0 14px 32px rgba(18, 40, 58, 0.18)",
-                    maxHeight: "min(540px, calc(100vh - 96px))",
-                    overflowY: "auto",
-                    padding: "14px",
-                    position: "absolute",
-                    right: 0,
-                    top: "calc(100% + 8px)",
-                    width: "min(380px, calc(100vw - 32px))",
-                    zIndex: 20,
-                  }}
                   tabIndex={-1}
                 >
-                  <div
-                    style={{
-                      alignItems: "center",
-                      display: "flex",
-                      gap: "12px",
-                      justifyContent: "space-between",
-                      marginBottom: "12px",
-                    }}
-                  >
+                  <div className="notification-center-panel__header">
                     <div>
                       <p className="eyebrow">Benachrichtigungen</p>
-                      <h2
-                        id="notification-center-heading"
-                        style={{ fontSize: "18px", margin: 0 }}
-                      >
+                      <h2 id="notification-center-heading">
                         Aktueller Mandant
                       </h2>
                     </div>
                     <button
+                      className="notification-center-panel__close"
                       onClick={closeNotificationPanel}
-                      style={{
-                        background: "transparent",
-                        border: 0,
-                        padding: "4px",
-                      }}
                       type="button"
                     >
                       Schließen
@@ -1928,9 +2139,9 @@ export function App() {
                   </div>
                   {!notificationsLoading && unreadNotificationCount > 0 && (
                     <button
+                      className="notification-center-panel__mark-all"
                       disabled={notificationActionPending !== null}
                       onClick={() => void markAllNotificationsAsRead()}
-                      style={{ marginBottom: "12px" }}
                       type="button"
                     >
                       {notificationActionPending === "all"
@@ -1953,7 +2164,7 @@ export function App() {
                   ) : (
                     <ul
                       aria-label="Benachrichtigungen"
-                      style={{ listStyle: "none", margin: 0, padding: 0 }}
+                      className="notification-center-panel__list"
                     >
                       {notifications.map((notification) => {
                         const subject = notificationSubject(notification);
@@ -1962,32 +2173,20 @@ export function App() {
                           ? `Ticket ${notification.ticket.ticketNumber}`
                           : "";
                         return (
-                          <li
-                            key={notification.id}
-                            style={{ marginBottom: "8px" }}
-                          >
+                          <li key={notification.id}>
                             <button
                               aria-label={`${subject}. Art: ${notification.kind}. ${time}${
                                 ticketLabel ? `. ${ticketLabel}` : ""
                               }${notification.readAt ? "" : ". Ungelesen"}`}
+                              className={
+                                notification.readAt
+                                  ? "notification-center-panel__item"
+                                  : "notification-center-panel__item notification-center-panel__item--unread"
+                              }
                               disabled={notificationActionPending !== null}
                               onClick={() =>
                                 void handleNotificationClick(notification)
                               }
-                              style={{
-                                background: notification.readAt
-                                  ? "#fff"
-                                  : "#f6fafb",
-                                border: "1px solid #dbe3e6",
-                                borderRadius: "5px",
-                                color: "#183042",
-                                cursor: "pointer",
-                                display: "grid",
-                                gap: "4px",
-                                padding: "10px",
-                                textAlign: "left",
-                                width: "100%",
-                              }}
                               type="button"
                             >
                               <strong>{subject}</strong>
@@ -2030,16 +2229,6 @@ export function App() {
             <span className="notice-code">PHASE 3</span>
           </section>
         )}
-        {isSupabaseConfigured && errorMessage && (
-          <section className="preview-notice error-notice" aria-live="polite">
-            <span className="notice-beacon" aria-hidden="true" />
-            <div>
-              <strong>Datenzugriff prüfen</strong>
-              <span>{errorMessage}</span>
-            </div>
-          </section>
-        )}
-
         {personalSettingsOpen && session ? (
           <PersonalSettings
             onBack={() => setPersonalSettingsOpen(false)}
@@ -2159,15 +2348,6 @@ export function App() {
                   tenantId={activeTenant.id}
                 />
               )}
-              {ticketActionStatus && (
-                <p
-                  aria-live="polite"
-                  className="ticket-action-status"
-                  role="status"
-                >
-                  {ticketActionStatus}
-                </p>
-              )}
               <QueueTabs
                 queue={queue}
                 queueCount={queueCount}
@@ -2233,7 +2413,11 @@ export function App() {
                   queue !== "alle" ||
                   (canWorkTickets && ticketScope !== "all"),
                 )}
+                keyboardActiveTicketId={keyboardActiveTicketId}
                 loading={dashboardLoading && snapshot === null}
+                {...(activeTenant
+                  ? { onCreateTicket: () => setTicketComposerOpen(true) }
+                  : {})}
                 tickets={filteredTickets}
               />
               {isSupabaseConfigured && view.hasMoreTickets && (
@@ -2386,6 +2570,10 @@ export function App() {
                   {...(isSupabaseConfigured
                     ? { onOpen: setSelectedTicketId }
                     : {})}
+                  keyboardActiveTicketId={keyboardActiveTicketId}
+                  {...(activeTenant
+                    ? { onCreateTicket: () => setTicketComposerOpen(true) }
+                    : {})}
                   tickets={filteredTickets}
                 />
               </article>
@@ -2425,6 +2613,114 @@ export function App() {
           </>
         )}
       </main>
+      {workspaceLiveMessage &&
+        dismissedLiveMessage !== workspaceLiveMessage.id && (
+          <section
+            aria-atomic="true"
+            aria-live={
+              workspaceLiveMessage.tone === "error" ? "assertive" : "polite"
+            }
+            className={`workspace-live-message workspace-live-message--${workspaceLiveMessage.tone}`}
+            role={workspaceLiveMessage.tone === "error" ? "alert" : "status"}
+          >
+            <div>
+              <strong>{workspaceLiveMessage.title}</strong>
+              <span>{workspaceLiveMessage.message}</span>
+            </div>
+            <button
+              aria-label="Meldung ausblenden"
+              className="workspace-live-message__dismiss"
+              onClick={() => setDismissedLiveMessage(workspaceLiveMessage.id)}
+              type="button"
+            >
+              <X aria-hidden="true" size={17} strokeWidth={1.8} />
+            </button>
+          </section>
+        )}
+      {keyboardHelpOpen && (
+        <div
+          aria-label="Tastaturhilfe"
+          aria-modal="true"
+          className="keyboard-help-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget)
+              setKeyboardHelpOpen(false);
+          }}
+          role="dialog"
+        >
+          <section
+            aria-labelledby="keyboard-help-heading"
+            className="keyboard-help"
+            onKeyDown={(event) => {
+              if (event.key === "Escape") setKeyboardHelpOpen(false);
+            }}
+          >
+            <header>
+              <div>
+                <p className="eyebrow">TASTATUR</p>
+                <h2 id="keyboard-help-heading">Schnell navigieren</h2>
+              </div>
+              <button
+                aria-label="Tastaturhilfe schliessen"
+                className="keyboard-help__close"
+                onClick={() => setKeyboardHelpOpen(false)}
+                ref={keyboardHelpCloseRef}
+                type="button"
+              >
+                <X aria-hidden="true" size={18} strokeWidth={1.8} />
+              </button>
+            </header>
+            <p>
+              Die Kürzel sind in Eingabefeldern deaktiviert, damit Sie ungestört
+              suchen und schreiben können.
+            </p>
+            <dl>
+              <div>
+                <dt>
+                  <kbd>?</kbd>
+                </dt>
+                <dd>Diese Tastaturhilfe öffnen</dd>
+              </div>
+              <div>
+                <dt>
+                  <kbd>J</kbd> <kbd>K</kbd>
+                </dt>
+                <dd>
+                  Vorheriges oder nächstes Ticket der gefilterten Liste
+                  auswählen
+                </dd>
+              </div>
+              <div>
+                <dt>
+                  <kbd>Enter</kbd>
+                </dt>
+                <dd>Ausgewähltes Ticket öffnen</dd>
+              </div>
+              <div>
+                <dt>
+                  <kbd>Ctrl</kbd>/<kbd>⌘</kbd> <kbd>K</kbd>
+                </dt>
+                <dd>Befehlspalette öffnen</dd>
+              </div>
+              <div>
+                <dt>
+                  <kbd>Esc</kbd>
+                </dt>
+                <dd>Dialog oder Befehlspalette schliessen</dd>
+              </div>
+            </dl>
+            <div className="keyboard-help__actions">
+              <button
+                className="primary-button"
+                onClick={() => setKeyboardHelpOpen(false)}
+                type="button"
+              >
+                Verstanden
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
       {workspacePreferencesOpen && (
         <div
           aria-label="Arbeitsbereichseinstellungen"
@@ -2480,6 +2776,25 @@ export function App() {
                 </select>
                 <span>
                   Wird bei der nächsten Anmeldung als erste Ansicht geöffnet.
+                </span>
+              </label>
+              <label>
+                Farbschema
+                <select
+                  onChange={(event) =>
+                    updateWorkspacePreferences({
+                      theme: event.target.value as WorkspaceTheme,
+                    })
+                  }
+                  value={workspacePreferences.theme}
+                >
+                  <option value="system">Systemeinstellung</option>
+                  <option value="light">Hell</option>
+                  <option value="dark">Dunkel</option>
+                </select>
+                <span>
+                  Folgt der Systemeinstellung oder verwendet dauerhaft ein
+                  helles beziehungsweise dunkles Farbschema.
                 </span>
               </label>
               <label>
@@ -2572,13 +2887,36 @@ export function App() {
             className="command-menu"
             id="workspace-command-menu"
             onKeyDown={(event) => {
-              if (event.key === "Escape") closeCommandMenu();
+              if (event.key === "Escape") {
+                event.preventDefault();
+                closeCommandMenu();
+                return;
+              }
+              if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+                if (commandResults.length === 0) return;
+                event.preventDefault();
+                setCommandActiveIndex((current) =>
+                  event.key === "ArrowDown"
+                    ? (current + 1) % commandResults.length
+                    : (current - 1 + commandResults.length) %
+                      commandResults.length,
+                );
+                return;
+              }
+              if (
+                event.key === "Enter" &&
+                event.target === commandInputRef.current &&
+                activeCommandResult
+              ) {
+                event.preventDefault();
+                runCommandResult(activeCommandResult);
+              }
             }}
           >
             <div className="command-menu__search">
               <Search aria-hidden="true" size={18} strokeWidth={1.9} />
               <input
-                aria-describedby="workspace-command-menu-hint"
+                aria-describedby="workspace-command-menu-hint workspace-command-menu-selection"
                 aria-label="Befehle oder Tickets suchen"
                 onChange={(event) => setCommandQuery(event.target.value)}
                 placeholder="Befehl oder Ticket suchen …"
@@ -2595,17 +2933,38 @@ export function App() {
               </button>
             </div>
             <p className="data-caption" id="workspace-command-menu-hint">
-              Schnellnavigation und aktuell geladene Tickets · Esc zum
-              Schliessen
+              Schnellnavigation und aktuell geladene Tickets · Mit Pfeil
+              hoch/runter auswählen, mit Enter öffnen · Esc zum Schliessen
+            </p>
+            <p
+              aria-live="polite"
+              className="sr-only"
+              id="workspace-command-menu-selection"
+            >
+              {activeCommandResult
+                ? `${activeCommandResult.label} ausgewählt, Enter zum Öffnen.`
+                : "Keine Auswahl verfügbar."}
             </p>
             {matchingCommandActions.length > 0 && (
               <div className="command-menu__group">
                 <p className="command-menu__label">AKTIONEN</p>
-                {matchingCommandActions.map((action) => (
+                {matchingCommandActions.map((action, index) => (
                   <button
-                    className="command-menu__item"
+                    aria-current={
+                      commandActiveIndex === index ? "true" : undefined
+                    }
+                    className={`command-menu__item${
+                      commandActiveIndex === index
+                        ? " command-menu__item--active"
+                        : ""
+                    }`}
                     key={action.id}
-                    onClick={() => runCommand(action.id)}
+                    onClick={() => {
+                      const result = commandResults[index];
+                      if (result) runCommandResult(result);
+                    }}
+                    onFocus={() => setCommandActiveIndex(index)}
+                    onMouseMove={() => setCommandActiveIndex(index)}
                     type="button"
                   >
                     <Command aria-hidden="true" size={16} strokeWidth={1.8} />
@@ -2625,29 +2984,40 @@ export function App() {
             {matchingCommandTickets.length > 0 && (
               <div className="command-menu__group">
                 <p className="command-menu__label">TICKETS</p>
-                {matchingCommandTickets.map((ticket) => (
-                  <button
-                    className="command-menu__item"
-                    key={ticket.recordId ?? ticket.id}
-                    onClick={() => {
-                      closeCommandMenu();
-                      setSection("Tickets");
-                      setSelectedTicketId(ticket.recordId ?? ticket.id);
-                    }}
-                    type="button"
-                  >
-                    <Ticket aria-hidden="true" size={16} strokeWidth={1.8} />
-                    <span>
-                      <strong>{ticket.id}</strong>
-                      <small>{ticket.subject}</small>
-                    </span>
-                    <ArrowRight
-                      aria-hidden="true"
-                      size={16}
-                      strokeWidth={1.8}
-                    />
-                  </button>
-                ))}
+                {matchingCommandTickets.map((ticket, index) => {
+                  const resultIndex = matchingCommandActions.length + index;
+                  return (
+                    <button
+                      aria-current={
+                        commandActiveIndex === resultIndex ? "true" : undefined
+                      }
+                      className={`command-menu__item${
+                        commandActiveIndex === resultIndex
+                          ? " command-menu__item--active"
+                          : ""
+                      }`}
+                      key={ticket.recordId ?? ticket.id}
+                      onClick={() => {
+                        const result = commandResults[resultIndex];
+                        if (result) runCommandResult(result);
+                      }}
+                      onFocus={() => setCommandActiveIndex(resultIndex)}
+                      onMouseMove={() => setCommandActiveIndex(resultIndex)}
+                      type="button"
+                    >
+                      <Ticket aria-hidden="true" size={16} strokeWidth={1.8} />
+                      <span>
+                        <strong>{ticket.id}</strong>
+                        <small>{ticket.subject}</small>
+                      </span>
+                      <ArrowRight
+                        aria-hidden="true"
+                        size={16}
+                        strokeWidth={1.8}
+                      />
+                    </button>
+                  );
+                })}
               </div>
             )}
             {matchingCommandActions.length === 0 &&

@@ -24,6 +24,11 @@
   --warning-soft: #fff4ed;
   --danger: #b42335;
   --danger-soft: #fff1f3;
+  --on-primary: #ffffff;
+  --overlay: rgb(20 27 42 / 36%);
+  --disabled-surface: #edf0f5;
+  --disabled-border: #ccd4e1;
+  --shadow-color: rgb(23 35 63 / 10%);
   --radius: 10px;
   --radius-card: 12px;
   --shadow-sm: 0 1px 2px rgb(23 35 63 / 4%), 0 3px 10px rgb(23 35 63 / 3%);
@@ -62,6 +67,93 @@ body {
   min-height: 100vh;
 }
 
+/* The app uses semantic tokens so light, dark, and system choices share one component path. */
+.app-shell {
+  --primary: var(--brand-primary, #4338ca);
+  --primary-hover: var(--brand-primary-hover, #3730a3);
+  --primary-soft: color-mix(in srgb, var(--primary) 11%, var(--surface));
+  --info: var(--brand-accent, #075985);
+  --info-soft: color-mix(in srgb, var(--info) 11%, var(--surface));
+}
+
+.app-shell--theme-light {
+  color-scheme: light;
+  --canvas: #f5f7fb;
+  --surface: #ffffff;
+  --surface-subtle: #f8f9fc;
+  --ink: #17233f;
+  --text: #34435b;
+  --muted: #59677c;
+  --border: #dfe5ef;
+  --control-border: #8794a8;
+  --success: #11664e;
+  --success-soft: #edf8f3;
+  --warning: #9a3412;
+  --warning-soft: #fff4ed;
+  --danger: #b42335;
+  --danger-soft: #fff1f3;
+  --on-primary: #ffffff;
+  --overlay: rgb(20 27 42 / 36%);
+  --disabled-surface: #edf0f5;
+  --disabled-border: #ccd4e1;
+  --shadow-sm: 0 1px 2px rgb(23 35 63 / 4%), 0 3px 10px rgb(23 35 63 / 3%);
+  --shadow-lg: 0 12px 36px rgb(23 35 63 / 10%), 0 2px 8px rgb(23 35 63 / 5%);
+}
+
+.app-shell--theme-dark {
+  color-scheme: dark;
+  --canvas: #111827;
+  --surface: #182235;
+  --surface-subtle: #202c42;
+  --ink: #f4f7ff;
+  --text: #d8e1f0;
+  --muted: #aebbd0;
+  --border: #40516d;
+  --control-border: #71829e;
+  --success: #61d9ac;
+  --success-soft: #173d35;
+  --warning: #ffbc7a;
+  --warning-soft: #4b2c16;
+  --danger: #ff9aa8;
+  --danger-soft: #4d202c;
+  --on-primary: #ffffff;
+  --overlay: rgb(4 9 19 / 72%);
+  --disabled-surface: #29364d;
+  --disabled-border: #53627c;
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 35%), 0 3px 10px rgb(0 0 0 / 22%);
+  --shadow-lg: 0 18px 44px rgb(0 0 0 / 46%), 0 3px 12px rgb(0 0 0 / 30%);
+}
+
+.app-shell--theme-system {
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  .app-shell--theme-system {
+    color-scheme: dark;
+    --canvas: #111827;
+    --surface: #182235;
+    --surface-subtle: #202c42;
+    --ink: #f4f7ff;
+    --text: #d8e1f0;
+    --muted: #aebbd0;
+    --border: #40516d;
+    --control-border: #71829e;
+    --success: #61d9ac;
+    --success-soft: #173d35;
+    --warning: #ffbc7a;
+    --warning-soft: #4b2c16;
+    --danger: #ff9aa8;
+    --danger-soft: #4d202c;
+    --on-primary: #ffffff;
+    --overlay: rgb(4 9 19 / 72%);
+    --disabled-surface: #29364d;
+    --disabled-border: #53627c;
+    --shadow-sm: 0 1px 2px rgb(0 0 0 / 35%), 0 3px 10px rgb(0 0 0 / 22%);
+    --shadow-lg: 0 18px 44px rgb(0 0 0 / 46%), 0 3px 12px rgb(0 0 0 / 30%);
+  }
+}
+
 button,
 input,
 select,
@@ -97,7 +189,7 @@ button:hover:not(:disabled) {
 }
 
 button:active:not(:disabled) {
-  background: #e4e7ff;
+  background: var(--primary-soft);
 }
 
 /* Disabled text stays readable; state is communicated by surface and cursor. */
@@ -107,8 +199,8 @@ select:disabled,
 textarea:disabled {
   opacity: 1;
   cursor: not-allowed;
-  background: #edf0f5;
-  border-color: #ccd4e1;
+  background: var(--disabled-surface);
+  border-color: var(--disabled-border);
   color: var(--muted);
   box-shadow: none;
 }
@@ -192,7 +284,7 @@ input:focus-visible,
 select:focus-visible,
 textarea:focus-visible {
   border-color: var(--primary);
-  box-shadow: 0 0 0 4px rgb(67 56 202 / 10%);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--primary) 18%, transparent);
 }
 
 input[aria-invalid="true"],
@@ -267,9 +359,23 @@ pre {
   font-size: 0.875em;
 }
 
+.time,
+time,
+.ticket-number,
+.ticket-id,
+.data-caption,
+.list-note,
+.queue-tab span,
+.metric-card strong,
+.delta,
+.sla,
+.notice-code {
+  font-variant-numeric: tabular-nums slashed-zero;
+}
+
 ::selection {
   color: var(--ink);
-  background: #dce3ff;
+  background: var(--primary-soft);
 }
 
 /* Workspace and compact, light navigation. */
@@ -837,7 +943,7 @@ pre {
   display: grid;
   place-items: center;
   padding: 20px;
-  background: rgb(20 27 42 / 36%);
+  background: var(--overlay);
   backdrop-filter: blur(5px);
 }
 
@@ -1010,7 +1116,7 @@ pre {
   place-items: start center;
   overflow-y: auto;
   padding: min(14vh, 128px) 20px 32px;
-  background: rgb(20 27 42 / 36%);
+  background: var(--overlay);
   backdrop-filter: blur(5px);
 }
 
@@ -1100,8 +1206,9 @@ pre {
   text-align: left;
 }
 
-.command-menu__item:hover:not(:disabled) {
-  border-color: #d8dcff;
+.command-menu__item:hover:not(:disabled),
+.command-menu__item--active:not(:disabled) {
+  border-color: color-mix(in srgb, var(--primary) 30%, var(--border));
   background: var(--primary-soft);
 }
 
@@ -1638,8 +1745,9 @@ pre {
   transition: background-color 150ms ease;
 }
 
-.ticket-row--actionable:hover {
-  background: #f5f6ff;
+.ticket-row--actionable:hover,
+.ticket-row--keyboard-active {
+  background: var(--primary-soft);
 }
 
 .ticket-row--actionable:focus-visible {
@@ -1726,6 +1834,19 @@ pre {
   white-space: normal;
 }
 
+.state-badge {
+  gap: 6px;
+  border-color: color-mix(in srgb, currentColor 24%, transparent);
+}
+
+.state-badge__indicator {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: currentColor;
+}
+
 .state-badge.eskaliert,
 .ticket-comment-visibility-badge.internal {
   background: var(--danger-soft);
@@ -1757,7 +1878,7 @@ pre {
   font-family: var(--font-sans);
   font-size: 12px;
   font-weight: 600;
-  font-variant-numeric: tabular-nums;
+  font-variant-numeric: tabular-nums slashed-zero;
 }
 
 .sla.warnung {
@@ -1794,6 +1915,10 @@ pre {
 .ticket-empty-state button {
   margin-top: 5px;
   color: var(--primary);
+}
+
+.ticket-empty-state .primary-button {
+  color: var(--on-primary);
 }
 
 .side-stack {
@@ -3098,6 +3223,159 @@ body:has(.ticket-detail) {
   to {
     transform: rotate(360deg);
   }
+}
+
+.workspace-live-message {
+  position: fixed;
+  z-index: 90;
+  right: 24px;
+  bottom: 24px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 14px;
+  width: min(520px, calc(100% - 48px));
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--info);
+  border-radius: var(--radius-card);
+  padding: 14px 14px 14px 16px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-lg);
+}
+
+.workspace-live-message--success {
+  border-left-color: var(--success);
+}
+
+.workspace-live-message--error {
+  border-left-color: var(--danger);
+  background: color-mix(in srgb, var(--danger-soft) 56%, var(--surface));
+}
+
+.workspace-live-message div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.workspace-live-message strong {
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.workspace-live-message span {
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.workspace-live-message__dismiss,
+.keyboard-help__close {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  min-height: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: 8px;
+  padding: 0;
+  background: transparent;
+  color: var(--muted);
+}
+
+.workspace-live-message__dismiss:hover:not(:disabled),
+.keyboard-help__close:hover:not(:disabled) {
+  background: var(--surface-subtle);
+  color: var(--ink);
+}
+
+.keyboard-help-backdrop {
+  position: fixed;
+  z-index: 82;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: var(--overlay);
+  backdrop-filter: blur(5px);
+}
+
+.keyboard-help {
+  width: min(560px, 100%);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 20px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-lg);
+}
+
+.keyboard-help header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.keyboard-help h2 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 20px;
+}
+
+.keyboard-help > p {
+  margin: 16px 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.keyboard-help dl {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.keyboard-help dl > div {
+  display: grid;
+  grid-template-columns: minmax(116px, auto) minmax(0, 1fr);
+  align-items: center;
+  gap: 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: var(--surface-subtle);
+}
+
+.keyboard-help dt,
+.keyboard-help dd {
+  margin: 0;
+}
+
+.keyboard-help dd {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.keyboard-help kbd {
+  display: inline-block;
+  min-width: 26px;
+  border: 1px solid var(--control-border);
+  border-radius: 5px;
+  padding: 3px 6px;
+  background: var(--surface);
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.keyboard-help__actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 18px;
 }
 
 .ticket-success-toast {
@@ -4764,53 +5042,96 @@ body:has(.ticket-detail) {
   color: var(--danger);
 }
 
-/* Inline notification styles need targeted overrides, not markup edits. */
-#notification-center-panel {
-  border-color: var(--border) !important;
-  border-radius: var(--radius-card) !important;
-  padding: 20px !important;
+.notification-center-anchor {
+  position: relative;
+}
+
+.notification-center-panel {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 8px);
+  right: 0;
+  width: min(380px, calc(100vw - 32px));
+  max-height: min(540px, calc(100vh - 96px));
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  padding: 20px;
+  background: var(--surface);
   color: var(--text);
-  background: var(--surface) !important;
-  box-shadow: var(--shadow-lg) !important;
+  box-shadow: var(--shadow-lg);
   overscroll-behavior: contain;
 }
 
-#notification-center-panel > div:first-child {
+.notification-center-panel__header {
+  display: flex;
   flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
 }
 
-#notification-center-panel h2 {
+.notification-center-panel h2 {
+  margin: 0;
   color: var(--ink);
+  font-size: 18px;
 }
 
-#notification-center-panel button {
+.notification-center-panel__close,
+.notification-center-panel__mark-all {
   min-height: 42px;
-  border-radius: 8px !important;
-  color: var(--primary) !important;
+  border-radius: 8px;
+  color: var(--primary);
 }
 
-#notification-center-panel > div:first-child > button {
-  padding: 8px 12px !important;
+.notification-center-panel__close {
+  min-height: 34px;
+  padding: 4px 8px;
+  background: transparent;
 }
 
-#notification-center-panel li button {
-  border-color: var(--border) !important;
-  padding: 14px !important;
-  color: var(--text) !important;
+.notification-center-panel__mark-all {
+  margin-bottom: 12px;
 }
 
-#notification-center-panel li button:hover:not(:disabled) {
-  border-color: var(--primary) !important;
-  background: var(--primary-soft) !important;
+.notification-center-panel__list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
 
-#notification-center-panel li button:disabled {
-  background: #edf0f5 !important;
-  color: var(--muted) !important;
-  cursor: not-allowed !important;
+.notification-center-panel__item {
+  display: grid;
+  width: 100%;
+  gap: 4px;
+  border-color: var(--border);
+  border-radius: 8px;
+  padding: 14px;
+  background: var(--surface);
+  color: var(--text);
+  text-align: left;
 }
 
-#notification-center-panel small {
+.notification-center-panel__item--unread {
+  border-color: color-mix(in srgb, var(--info) 36%, var(--border));
+  background: var(--info-soft);
+}
+
+.notification-center-panel__item:hover:not(:disabled) {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+}
+
+.notification-center-panel__item:disabled {
+  background: var(--disabled-surface);
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+.notification-center-panel small {
   color: var(--muted);
   font-size: 12px;
   line-height: 1.6;
@@ -4906,6 +5227,21 @@ body:has(.ticket-detail) {
 }
 
 @media (max-width: 760px) {
+  .workspace-live-message {
+    right: 12px;
+    bottom: max(12px, env(safe-area-inset-bottom));
+    width: calc(100% - 24px);
+  }
+
+  .keyboard-help {
+    padding: 16px;
+  }
+
+  .keyboard-help dl > div {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
   .app-shell {
     display: block;
   }

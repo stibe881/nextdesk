@@ -1,8 +1,9 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import {
-  ActivityIndicator,
+  ActionSheetIOS,
+  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -20,7 +21,9 @@ import { loadMobileDashboard, type MobileTicket } from "@/lib/nextdesk-tickets";
 import {
   listFavoriteTicketIds,
   reconcileFavoriteTicketIds,
+  setFavoriteTicket,
 } from "@/lib/mobile-private-state";
+import { useThemeContext } from "@/lib/theme-provider";
 
 type TicketScope = "all" | "mine" | "favorites" | "open" | "resolved";
 
@@ -48,14 +51,52 @@ export default function TicketsScreen() {
   const { isOffline, recoveryEpoch } = useMobileNetworkStatus();
   const { isEnabled, loading: checkingFeatures } = useMobileFeatures();
   const ticketDetailsEnabled = isEnabled("ticketing.detail");
+  const { colors, density } = useThemeContext();
+  const tokenStyles = useMemo(
+    () => ({
+      card: { backgroundColor: colors.surface, borderColor: colors.border },
+      control: {
+        backgroundColor: colors.background,
+        borderColor: colors.border,
+      },
+      error: {
+        backgroundColor: colors.error + "1A",
+        borderColor: colors.error,
+      },
+      foreground: { color: colors.foreground },
+      muted: { color: colors.muted },
+      primary: { backgroundColor: colors.primary },
+      primaryText: { color: colors.background },
+      success: {
+        backgroundColor: colors.success + "1A",
+        borderColor: colors.success,
+      },
+      successText: { color: colors.success },
+      warning: {
+        backgroundColor: colors.warning + "1A",
+        borderColor: colors.warning,
+      },
+    }),
+    [colors],
+  );
+  const densityStyles = useMemo(
+    () => ({
+      content: { gap: density === "compact" ? 13 : 18 },
+      ticket: { padding: density === "compact" ? 11 : 14 },
+    }),
+    [density],
+  );
   const [tickets, setTickets] = useState<MobileTicket[]>([]);
   const [tenantName, setTenantName] = useState("");
+  const [tenantId, setTenantId] = useState("");
+  const [currentUserId, setCurrentUserId] = useState("");
   const [scope, setScope] = useState<TicketScope>("all");
   const [favoriteIds, setFavoriteIds] = useState<string[]>([]);
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
   const [offlineCacheAt, setOfflineCacheAt] = useState<string | null>(null);
   const latestLoad = useRef(0);
 
@@ -93,6 +134,8 @@ export default function TicketsScreen() {
       if (loadId !== latestLoad.current) return;
       setTickets(result.tickets);
       setTenantName(result.tenant.name);
+      setTenantId(result.tenant.id);
+      setCurrentUserId(result.userId);
       setFavoriteIds(favorites);
       setOfflineCacheAt(result.isOfflineCache ? result.cachedAt : null);
     } catch (nextError) {
@@ -116,6 +159,50 @@ export default function TicketsScreen() {
       void load();
     }, [load, recoveryEpoch]),
   );
+
+  async function toggleFavorite(ticket: MobileTicket) {
+    if (!tenantId || !currentUserId) return;
+    const nextFavorite = !favoriteIds.includes(ticket.id);
+    setError("");
+    setMessage("");
+    try {
+      const nextIds = await setFavoriteTicket({
+        userId: currentUserId,
+        tenantId,
+        ticketId: ticket.id,
+        favorite: nextFavorite,
+      });
+      setFavoriteIds(nextIds);
+      setMessage(
+        nextFavorite
+          ? `«${ticket.ticketNumber}» wurde zu Favoriten hinzugefügt.`
+          : `«${ticket.ticketNumber}» wurde aus Favoriten entfernt.`,
+      );
+    } catch {
+      setError("Der Favorit konnte nicht auf diesem Gerät gespeichert werden.");
+    }
+  }
+
+  function openFavoriteActions(ticket: MobileTicket) {
+    if (Platform.OS !== "ios" || !tenantId || !currentUserId) return;
+    const isFavorite = favoriteIds.includes(ticket.id);
+    ActionSheetIOS.showActionSheetWithOptions(
+      {
+        cancelButtonIndex: 0,
+        message: isFavorite
+          ? "Der Favorit wird nur verschlüsselt auf diesem Gerät gespeichert."
+          : "Favoriten werden nur verschlüsselt auf diesem Gerät gespeichert.",
+        options: [
+          "Abbrechen",
+          isFavorite ? "Aus Favoriten entfernen" : "Zu Favoriten hinzufügen",
+        ],
+        title: ticket.ticketNumber,
+      },
+      (buttonIndex) => {
+        if (buttonIndex === 1) void toggleFavorite(ticket);
+      },
+    );
+  }
 
   const normalizedQuery = query.trim().toLocaleLowerCase("de-CH");
   const visibleTickets = tickets.filter((ticket) => {
@@ -143,19 +230,58 @@ export default function TicketsScreen() {
 
   if (loading && tickets.length === 0) {
     return (
-      <ScreenContainer containerClassName="bg-[#F6F7FB]" className="px-5">
-        <View style={styles.centered}>
-          <ActivityIndicator color="#4438CA" size="large" />
-          <Text style={styles.loadingText}>Tickets werden geladen …</Text>
+      <ScreenContainer containerClassName="bg-background" className="px-5">
+        <View
+          accessibilityLabel="Tickets werden geladen"
+          accessibilityRole="progressbar"
+          style={styles.skeletonPage}
+        >
+          <View
+            style={[styles.skeletonTitle, { backgroundColor: colors.border }]}
+          />
+          <View
+            style={[styles.skeletonLine, { backgroundColor: colors.border }]}
+          />
+          {[1, 2, 3, 4].map((item) => (
+            <View key={item} style={[styles.skeletonTicket, tokenStyles.card]}>
+              <View
+                style={[
+                  styles.skeletonMark,
+                  { backgroundColor: colors.primary + "33" },
+                ]}
+              />
+              <View style={styles.skeletonCopy}>
+                <View
+                  style={[
+                    styles.skeletonShortLine,
+                    { backgroundColor: colors.border },
+                  ]}
+                />
+                <View
+                  style={[
+                    styles.skeletonLine,
+                    { backgroundColor: colors.border },
+                  ]}
+                />
+              </View>
+            </View>
+          ))}
+          <Text style={[styles.loadingText, tokenStyles.muted]}>
+            Tickets werden geladen …
+          </Text>
         </View>
       </ScreenContainer>
     );
   }
 
   return (
-    <ScreenContainer containerClassName="bg-[#F6F7FB]" className="px-5">
+    <ScreenContainer
+      containerClassName="bg-background"
+      className="px-5"
+      style={{ backgroundColor: colors.background }}
+    >
       <ScrollView
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, densityStyles.content]}
         refreshControl={
           <RefreshControl
             onRefresh={() => {
@@ -169,9 +295,11 @@ export default function TicketsScreen() {
       >
         <View style={styles.header}>
           <View>
-            <Text style={styles.eyebrow}>ARBEITSBEREICH</Text>
-            <Text style={styles.title}>Tickets</Text>
-            <Text style={styles.subtitle}>
+            <Text style={[styles.eyebrow, tokenStyles.muted]}>
+              ARBEITSBEREICH
+            </Text>
+            <Text style={[styles.title, tokenStyles.foreground]}>Tickets</Text>
+            <Text style={[styles.subtitle, tokenStyles.muted]}>
               {tenantName || "Deine autorisierten Vorgänge"}
             </Text>
           </View>
@@ -185,6 +313,7 @@ export default function TicketsScreen() {
             onPress={() => router.push("/ticket/new")}
             style={[
               styles.addButton,
+              tokenStyles.primary,
               (offlineCacheAt || isOffline) && styles.addButtonOffline,
             ]}
           >
@@ -228,7 +357,8 @@ export default function TicketsScreen() {
             onChangeText={setQuery}
             placeholder="Tickets durchsuchen"
             placeholderTextColor="#9A99AA"
-            style={styles.searchInput}
+            allowFontScaling
+            style={[styles.searchInput, tokenStyles.foreground]}
             value={query}
           />
           {query ? (
@@ -244,17 +374,45 @@ export default function TicketsScreen() {
         </View>
 
         {error ? (
-          <View style={styles.errorBox}>
-            <Text style={styles.errorText}>{error}</Text>
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => {
-                setLoading(true);
-                void load();
-              }}
-            >
-              <Text style={styles.retryText}>Erneut versuchen</Text>
-            </Pressable>
+          <View
+            accessibilityRole="alert"
+            style={[styles.feedback, tokenStyles.error]}
+          >
+            <Ionicons
+              color={colors.error}
+              name="alert-circle-outline"
+              size={20}
+            />
+            <View style={styles.feedbackCopy}>
+              <Text style={[styles.errorText, { color: colors.error }]}>
+                {error}
+              </Text>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => {
+                  setLoading(true);
+                  void load();
+                }}
+              >
+                <Text style={styles.retryText}>Erneut versuchen</Text>
+              </Pressable>
+            </View>
+          </View>
+        ) : null}
+
+        {message ? (
+          <View
+            accessibilityRole="alert"
+            style={[styles.feedback, tokenStyles.success]}
+          >
+            <Ionicons
+              color={colors.success}
+              name="checkmark-circle-outline"
+              size={20}
+            />
+            <Text style={[styles.feedbackText, tokenStyles.successText]}>
+              {message}
+            </Text>
           </View>
         ) : null}
 
@@ -283,7 +441,7 @@ export default function TicketsScreen() {
         ) : null}
 
         <View style={styles.listHeading}>
-          <Text style={styles.listTitle}>
+          <Text style={[styles.listTitle, tokenStyles.foreground]}>
             {scope === "all"
               ? "Alle Tickets"
               : scope === "favorites"
@@ -311,6 +469,10 @@ export default function TicketsScreen() {
                   checkingFeatures ||
                   !ticketDetailsEnabled
                 }
+                favorite={favoriteIds.includes(ticket.id)}
+                colors={colors}
+                densityStyle={densityStyles.ticket}
+                onLongPress={() => openFavoriteActions(ticket)}
                 onPress={() => {
                   if (
                     offlineCacheAt ||
@@ -335,11 +497,19 @@ export default function TicketsScreen() {
 }
 
 function TicketRow({
+  colors,
+  densityStyle,
   disabled = false,
+  favorite,
+  onLongPress,
   onPress,
   ticket,
 }: {
+  colors: ReturnType<typeof useThemeContext>["colors"];
+  densityStyle: { padding: number };
   disabled?: boolean;
+  favorite: boolean;
+  onLongPress: () => void;
   onPress: () => void;
   ticket: MobileTicket;
 }) {
@@ -356,23 +526,88 @@ function TicketRow({
 
   return (
     <Pressable
+      accessibilityActions={[
+        {
+          label: favorite
+            ? "Aus Favoriten entfernen"
+            : "Zu Favoriten hinzufügen",
+          name: "favorite",
+        },
+      ]}
+      accessibilityHint={
+        Platform.OS === "ios"
+          ? "Für Favoritenaktionen lange drücken."
+          : undefined
+      }
+      accessibilityLabel={`${ticket.ticketNumber}: ${ticket.subject}. Status: ${ticket.status}. ${favorite ? "Favorit." : "Kein Favorit."}`}
       accessibilityRole="button"
       accessibilityState={{ disabled }}
       disabled={disabled}
+      onAccessibilityAction={(event) => {
+        if (event.nativeEvent.actionName === "favorite") onLongPress();
+      }}
+      onLongPress={disabled ? undefined : onLongPress}
       onPress={onPress}
-      style={[styles.ticket, disabled && styles.ticketOffline]}
+      style={[
+        styles.ticket,
+        { backgroundColor: colors.surface, borderColor: colors.border },
+        densityStyle,
+        disabled && styles.ticketOffline,
+      ]}
     >
       <View style={[styles.mark, tone]} />
       <View style={styles.ticketCopy}>
-        <Text style={styles.ticketNumber}>{ticket.ticketNumber}</Text>
-        <Text numberOfLines={2} style={styles.ticketTitle}>
+        <Text style={[styles.ticketNumber, { color: colors.muted }]}>
+          {ticket.ticketNumber}
+        </Text>
+        <Text
+          numberOfLines={2}
+          style={[styles.ticketTitle, { color: colors.foreground }]}
+        >
           {ticket.subject}
         </Text>
         <Text style={styles.ticketMeta}>{ticket.priority}</Text>
       </View>
       <View style={styles.ticketState}>
-        <Text style={[styles.status, statusTone]}>{ticket.status}</Text>
-        <Ionicons color="#A1A0AF" name="chevron-forward" size={18} />
+        {favorite ? (
+          <View accessibilityLabel="Favorit" style={styles.favoriteMark}>
+            <Ionicons color={colors.warning} name="star" size={14} />
+            <Text style={[styles.favoriteText, { color: colors.warning }]}>
+              Favorit
+            </Text>
+          </View>
+        ) : null}
+        <View
+          accessibilityLabel={`Status: ${ticket.status}`}
+          style={[styles.status, statusTone]}
+        >
+          <Ionicons
+            color={
+              ticket.resolved
+                ? colors.success
+                : ticket.status === "Neu"
+                  ? colors.primary
+                  : colors.primary
+            }
+            name={
+              ticket.resolved
+                ? "checkmark-circle-outline"
+                : ticket.status === "Neu"
+                  ? "sparkles-outline"
+                  : "time-outline"
+            }
+            size={14}
+          />
+          <Text
+            style={[
+              styles.statusText,
+              { color: ticket.resolved ? colors.success : colors.primary },
+            ]}
+          >
+            {ticket.status}
+          </Text>
+        </View>
+        <Ionicons color={colors.muted} name="chevron-forward" size={18} />
       </View>
     </Pressable>
   );
@@ -439,15 +674,17 @@ const styles = StyleSheet.create({
   filterSelected: { backgroundColor: "#4438CA", borderColor: "#4438CA" },
   filterText: { color: "#626376", fontSize: 13, fontWeight: "800" },
   filterTextSelected: { color: "#FFFFFF" },
-  errorBox: {
-    backgroundColor: "#FFF3F2",
-    borderColor: "#F5C2C0",
+  feedback: {
+    alignItems: "flex-start",
     borderRadius: 15,
     borderWidth: 1,
-    gap: 7,
+    flexDirection: "row",
+    gap: 9,
     padding: 14,
   },
-  errorText: { color: "#A02820", fontSize: 13, lineHeight: 19 },
+  feedbackCopy: { flex: 1, gap: 7 },
+  feedbackText: { flex: 1, fontSize: 13, lineHeight: 19 },
+  errorText: { fontSize: 13, lineHeight: 19 },
   retryText: { color: "#4438CA", fontSize: 13, fontWeight: "800" },
   cacheNotice: {
     alignItems: "flex-start",
@@ -527,13 +764,17 @@ const styles = StyleSheet.create({
   ticketMeta: { color: "#6B7280", fontSize: 11 },
   ticketState: { alignItems: "flex-end", gap: 8 },
   status: {
+    alignItems: "center",
     borderRadius: 8,
-    fontSize: 10,
-    fontWeight: "900",
+    flexDirection: "row",
+    gap: 4,
     overflow: "hidden",
     paddingHorizontal: 8,
     paddingVertical: 4,
   },
+  statusText: { fontSize: 10, fontWeight: "900" },
+  favoriteMark: { alignItems: "center", flexDirection: "row", gap: 3 },
+  favoriteText: { fontSize: 10, fontWeight: "800" },
   statusNew: { backgroundColor: "#E0F6FB", color: "#036B83" },
   statusActive: { backgroundColor: "#F0E9FF", color: "#6432B7" },
   statusResolved: { backgroundColor: "#E9F8EE", color: "#166534" },
@@ -558,4 +799,19 @@ const styles = StyleSheet.create({
     lineHeight: 19,
     textAlign: "center",
   },
+  skeletonPage: { flex: 1, gap: 14, justifyContent: "center" },
+  skeletonTitle: { borderRadius: 8, height: 31, width: "42%" },
+  skeletonLine: { borderRadius: 6, height: 12, width: "100%" },
+  skeletonShortLine: { borderRadius: 6, height: 10, width: "38%" },
+  skeletonTicket: {
+    alignItems: "center",
+    borderRadius: 18,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 11,
+    minHeight: 74,
+    padding: 14,
+  },
+  skeletonMark: { borderRadius: 2, height: 46, width: 4 },
+  skeletonCopy: { flex: 1, gap: 9 },
 });

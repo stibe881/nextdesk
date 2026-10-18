@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import * as LocalAuthentication from "expo-local-authentication";
 import { useFocusEffect, useRouter } from "expo-router";
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Modal,
@@ -15,6 +15,12 @@ import {
 } from "react-native";
 
 import { ScreenContainer } from "@/components/screen-container";
+import {
+  type DensityPreference,
+  type MotionPreference,
+  type ThemePreference,
+  useThemeContext,
+} from "@/lib/theme-provider";
 import { useMobileFeatures } from "@/components/mobile-feature-gate";
 import {
   clearMobileWorkspace,
@@ -33,6 +39,22 @@ import {
   getDeviceProtectionPreference,
   setDeviceProtectionPreference,
 } from "@/lib/mobile-private-state";
+
+const themeOptions: { label: string; value: ThemePreference }[] = [
+  { label: "System", value: "system" },
+  { label: "Hell", value: "light" },
+  { label: "Dunkel", value: "dark" },
+];
+
+const densityOptions: { label: string; value: DensityPreference }[] = [
+  { label: "Komfortabel", value: "comfortable" },
+  { label: "Kompakt", value: "compact" },
+];
+
+const motionOptions: { label: string; value: MotionPreference }[] = [
+  { label: "System", value: "system" },
+  { label: "Reduziert", value: "reduced" },
+];
 
 type AccountProfile = {
   email: string;
@@ -70,6 +92,52 @@ function profileFromUser(
 export default function SettingsScreen() {
   const router = useRouter();
   const { refresh: refreshFeatures } = useMobileFeatures();
+  const {
+    colors,
+    density,
+    motionPreference,
+    preferencesReady,
+    reducedMotion,
+    setDensity,
+    setMotionPreference,
+    setThemePreference,
+    themePreference,
+  } = useThemeContext();
+  const tokenStyles = useMemo(
+    () => ({
+      card: { backgroundColor: colors.surface, borderColor: colors.border },
+      control: {
+        backgroundColor: colors.background,
+        borderColor: colors.border,
+      },
+      error: {
+        backgroundColor: colors.error + "1A",
+        borderColor: colors.error,
+      },
+      foreground: { color: colors.foreground },
+      muted: { color: colors.muted },
+      primary: { backgroundColor: colors.primary },
+      primaryText: { color: colors.background },
+      success: {
+        backgroundColor: colors.success + "1A",
+        borderColor: colors.success,
+      },
+      successText: { color: colors.success },
+      warning: {
+        backgroundColor: colors.warning + "1A",
+        borderColor: colors.warning,
+      },
+    }),
+    [colors],
+  );
+  const densityStyles = useMemo(
+    () => ({
+      card: { padding: density === "compact" ? 14 : 17 },
+      content: { gap: density === "compact" ? 12 : 16 },
+      control: { minHeight: density === "compact" ? 54 : 62 },
+    }),
+    [density],
+  );
   const [profile, setProfile] = useState<AccountProfile | null>(null);
   const [tenants, setTenants] = useState<MobileTenant[]>([]);
   const [currentTenant, setCurrentTenant] = useState<MobileTenant | null>(null);
@@ -246,41 +314,118 @@ export default function SettingsScreen() {
 
   if (loading && !profile) {
     return (
-      <ScreenContainer containerClassName="bg-[#F6F7FB]" className="px-5">
-        <View style={styles.centered}>
-          <ActivityIndicator color="#4438CA" size="large" />
-          <Text style={styles.loadingText}>Einstellungen werden geladen …</Text>
+      <ScreenContainer containerClassName="bg-background" className="px-5">
+        <View
+          accessibilityLabel="Einstellungen werden geladen"
+          accessibilityRole="progressbar"
+          style={styles.skeletonPage}
+        >
+          <View
+            style={[styles.skeletonTitle, { backgroundColor: colors.border }]}
+          />
+          <View
+            style={[styles.skeletonLine, { backgroundColor: colors.border }]}
+          />
+          {[1, 2, 3].map((item) => (
+            <View
+              key={item}
+              style={[
+                styles.skeletonCard,
+                { backgroundColor: colors.surface, borderColor: colors.border },
+              ]}
+            >
+              <View
+                style={[
+                  styles.skeletonIcon,
+                  { backgroundColor: colors.background },
+                ]}
+              />
+              <View style={styles.skeletonCopy}>
+                <View
+                  style={[
+                    styles.skeletonLine,
+                    { backgroundColor: colors.border },
+                  ]}
+                />
+                <View
+                  style={[
+                    styles.skeletonShortLine,
+                    { backgroundColor: colors.border },
+                  ]}
+                />
+              </View>
+            </View>
+          ))}
+          <Text style={[styles.loadingText, tokenStyles.muted]}>
+            Einstellungen werden geladen …
+          </Text>
         </View>
       </ScreenContainer>
     );
   }
 
   return (
-    <ScreenContainer containerClassName="bg-[#F6F7FB]" className="px-5">
+    <ScreenContainer
+      containerClassName="bg-background"
+      className="px-5"
+      style={{ backgroundColor: colors.background }}
+    >
       <ScrollView
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, densityStyles.content]}
         showsVerticalScrollIndicator={false}
       >
         <View>
-          <Text style={styles.eyebrow}>MEIN KONTO</Text>
-          <Text style={styles.title}>Einstellungen</Text>
-          <Text style={styles.subtitle}>
+          <Text style={[styles.eyebrow, tokenStyles.muted]}>MEIN KONTO</Text>
+          <Text style={[styles.title, tokenStyles.foreground]}>
+            Einstellungen
+          </Text>
+          <Text style={[styles.subtitle, tokenStyles.muted]}>
             Verwalte deine persönlichen Zugangs- und Sicherheitsangaben.
           </Text>
         </View>
 
-        {error ? <Text style={styles.errorText}>{error}</Text> : null}
-        {message ? <Text style={styles.successText}>{message}</Text> : null}
+        {error ? (
+          <View
+            accessibilityRole="alert"
+            style={[styles.feedback, styles.errorText, tokenStyles.error]}
+          >
+            <Ionicons
+              color={colors.error}
+              name="alert-circle-outline"
+              size={20}
+            />
+            <Text style={[styles.feedbackText, { color: colors.error }]}>
+              {error}
+            </Text>
+          </View>
+        ) : null}
+        {message ? (
+          <View
+            accessibilityRole="alert"
+            style={[styles.feedback, styles.successText, tokenStyles.success]}
+          >
+            <Ionicons
+              color={colors.success}
+              name="checkmark-circle-outline"
+              size={20}
+            />
+            <Text style={[styles.feedbackText, tokenStyles.successText]}>
+              {message}
+            </Text>
+          </View>
+        ) : null}
 
-        <View style={styles.card}>
+        <View style={[styles.card, tokenStyles.card, densityStyles.card]}>
           <View style={styles.cardHeading}>
             <View style={styles.cardIcon}>
               <Ionicons color="#4438CA" name="person-outline" size={20} />
             </View>
-            <Text style={styles.cardTitle}>Profil</Text>
+            <Text style={[styles.cardTitle, tokenStyles.foreground]}>
+              Profil
+            </Text>
           </View>
           <Text style={styles.fieldLabel}>E-MAIL-ADRESSE</Text>
-          <Text selectable style={styles.fieldValue}>
+          <Text selectable style={[styles.fieldValue, tokenStyles.foreground]}>
             {profile?.email ?? "Keine E-Mail-Adresse hinterlegt"}
           </Text>
           <Text style={[styles.fieldLabel, styles.secondLabel]}>
@@ -296,14 +441,16 @@ export default function SettingsScreen() {
           </View>
         </View>
 
-        <View style={styles.card}>
+        <View style={[styles.card, tokenStyles.card, densityStyles.card]}>
           <View style={styles.cardHeading}>
             <View style={[styles.cardIcon, { backgroundColor: "#E5F7FA" }]}>
               <Ionicons color="#087A95" name="business-outline" size={20} />
             </View>
-            <Text style={styles.cardTitle}>Arbeitsbereich</Text>
+            <Text style={[styles.cardTitle, tokenStyles.foreground]}>
+              Arbeitsbereich
+            </Text>
           </View>
-          <Text style={styles.cardHint}>
+          <Text style={[styles.cardHint, tokenStyles.muted]}>
             Alle Tickets, Assets und Suchen beziehen sich auf diesen aktiven
             Mandanten.
           </Text>
@@ -315,14 +462,16 @@ export default function SettingsScreen() {
             onPress={() => setTenantPickerOpen(true)}
             style={[
               styles.tenantControl,
+              tokenStyles.control,
+              densityStyles.control,
               tenants.length < 2 && styles.tenantControlDisabled,
             ]}
           >
             <View style={styles.tenantControlCopy}>
-              <Text style={styles.tenantControlName}>
+              <Text style={[styles.tenantControlName, tokenStyles.foreground]}>
                 {currentTenant?.name ?? "Arbeitsbereich wird geladen …"}
               </Text>
-              <Text style={styles.tenantControlHint}>
+              <Text style={[styles.tenantControlHint, tokenStyles.muted]}>
                 {tenants.length < 2
                   ? "Ihr einziger aktiver Mandant"
                   : "Antippen zum Wechseln"}
@@ -335,7 +484,7 @@ export default function SettingsScreen() {
         </View>
 
         {deviceProtectionAvailable ? (
-          <View style={styles.card}>
+          <View style={[styles.card, tokenStyles.card, densityStyles.card]}>
             <View style={styles.cardHeading}>
               <View style={[styles.cardIcon, { backgroundColor: "#EEECFF" }]}>
                 <Ionicons
@@ -344,9 +493,11 @@ export default function SettingsScreen() {
                   size={20}
                 />
               </View>
-              <Text style={styles.cardTitle}>Geräteschutz</Text>
+              <Text style={[styles.cardTitle, tokenStyles.foreground]}>
+                Geräteschutz
+              </Text>
             </View>
-            <Text style={styles.cardHint}>
+            <Text style={[styles.cardHint, tokenStyles.muted]}>
               Schützt Ihre geöffnete nextDesk-Sitzung nach der Rückkehr in die
               App mit Face ID, Touch ID oder Gerätecode.
             </Text>
@@ -363,15 +514,19 @@ export default function SettingsScreen() {
               onPress={() => void toggleDeviceProtection()}
               style={[
                 styles.deviceProtectionControl,
+                tokenStyles.control,
+                densityStyles.control,
                 deviceProtectionEnabled && styles.deviceProtectionControlActive,
                 deviceProtectionSaving && styles.disabled,
               ]}
             >
               <View style={styles.deviceProtectionCopy}>
-                <Text style={styles.deviceProtectionTitle}>
+                <Text
+                  style={[styles.deviceProtectionTitle, tokenStyles.foreground]}
+                >
                   {deviceProtectionEnabled ? "Aktiv" : "Deaktiviert"}
                 </Text>
-                <Text style={styles.deviceProtectionHint}>
+                <Text style={[styles.deviceProtectionHint, tokenStyles.muted]}>
                   {deviceProtectionEnabled
                     ? "Beim Zurückkehren entsperren"
                     : "Auf diesem Gerät nicht geschützt"}
@@ -394,7 +549,7 @@ export default function SettingsScreen() {
           </View>
         ) : null}
 
-        <View style={styles.cacheNote}>
+        <View style={[styles.cacheNote, tokenStyles.warning]}>
           <Ionicons color="#087A95" name="shield-checkmark-outline" size={20} />
           <View style={styles.noteCopy}>
             <Text style={styles.noteTitle}>Offline &amp; Cache</Text>
@@ -414,15 +569,147 @@ export default function SettingsScreen() {
           </View>
         </View>
 
+        <View style={[styles.card, tokenStyles.card, densityStyles.card]}>
+          <View style={styles.cardHeading}>
+            <View
+              style={[
+                styles.cardIcon,
+                { backgroundColor: colors.primary + "1A" },
+              ]}
+            >
+              <Ionicons
+                color={colors.primary}
+                name="color-palette-outline"
+                size={20}
+              />
+            </View>
+            <Text style={[styles.cardTitle, tokenStyles.foreground]}>
+              Darstellung
+            </Text>
+          </View>
+          <Text style={[styles.cardHint, tokenStyles.muted]}>
+            Diese Anzeigepräferenzen bleiben verschlüsselt nur auf diesem Gerät
+            gespeichert.
+          </Text>
+          <Text style={[styles.fieldLabel, tokenStyles.muted]}>
+            FARBDARSTELLUNG
+          </Text>
+          <View style={styles.preferenceOptions}>
+            {themeOptions.map((option) => {
+              const selected = themePreference === option.value;
+              return (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityState={{ selected }}
+                  key={option.value}
+                  onPress={() => setThemePreference(option.value)}
+                  style={[
+                    styles.preferenceOption,
+                    tokenStyles.control,
+                    selected && tokenStyles.primary,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.preferenceOptionText,
+                      selected
+                        ? tokenStyles.primaryText
+                        : tokenStyles.foreground,
+                    ]}
+                  >
+                    {option.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+          <Text style={[styles.fieldLabel, tokenStyles.muted]}>
+            ANZEIGEDICHTE
+          </Text>
+          <View style={styles.preferenceOptions}>
+            {densityOptions.map((option) => {
+              const selected = density === option.value;
+              return (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityState={{ selected }}
+                  key={option.value}
+                  onPress={() => setDensity(option.value)}
+                  style={[
+                    styles.preferenceOption,
+                    tokenStyles.control,
+                    selected && tokenStyles.primary,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.preferenceOptionText,
+                      selected
+                        ? tokenStyles.primaryText
+                        : tokenStyles.foreground,
+                    ]}
+                  >
+                    {option.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+          <Text style={[styles.fieldLabel, tokenStyles.muted]}>BEWEGUNG</Text>
+          <View style={styles.preferenceOptions}>
+            {motionOptions.map((option) => {
+              const selected = motionPreference === option.value;
+              return (
+                <Pressable
+                  accessibilityHint={
+                    option.value === "system"
+                      ? "Folgt der Bedienungshilfe Ihres Geräts."
+                      : "Reduziert Bewegungen in dieser App."
+                  }
+                  accessibilityRole="button"
+                  accessibilityState={{ selected }}
+                  key={option.value}
+                  onPress={() => setMotionPreference(option.value)}
+                  style={[
+                    styles.preferenceOption,
+                    tokenStyles.control,
+                    selected && tokenStyles.primary,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.preferenceOptionText,
+                      selected
+                        ? tokenStyles.primaryText
+                        : tokenStyles.foreground,
+                    ]}
+                  >
+                    {option.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+          <Text style={[styles.preferenceSummary, tokenStyles.muted]}>
+            {preferencesReady
+              ? reducedMotion
+                ? "Bewegungen sind reduziert."
+                : "Bewegungen folgen der Systemvorgabe."
+              : "Darstellungspräferenzen werden geladen …"}
+          </Text>
+        </View>
+
         {profile?.canChangePassword ? (
-          <View style={styles.card}>
+          <View style={[styles.card, tokenStyles.card, densityStyles.card]}>
             <View style={styles.cardHeading}>
               <View style={[styles.cardIcon, { backgroundColor: "#EAF8FB" }]}>
                 <Ionicons color="#087A95" name="key-outline" size={20} />
               </View>
-              <Text style={styles.cardTitle}>Passwort ändern</Text>
+              <Text style={[styles.cardTitle, tokenStyles.foreground]}>
+                Passwort ändern
+              </Text>
             </View>
-            <Text style={styles.cardHint}>
+            <Text style={[styles.cardHint, tokenStyles.muted]}>
               Verwende mindestens 12 Zeichen. Dein Passwort wird nie angezeigt
               oder in deinem Profil hinterlegt.
             </Text>
@@ -432,7 +719,12 @@ export default function SettingsScreen() {
               placeholder="Neues Passwort"
               placeholderTextColor="#9A99AA"
               secureTextEntry
-              style={styles.input}
+              allowFontScaling
+              style={[
+                styles.input,
+                tokenStyles.control,
+                tokenStyles.foreground,
+              ]}
               textContentType="newPassword"
               value={password}
             />
@@ -442,7 +734,12 @@ export default function SettingsScreen() {
               placeholder="Neues Passwort bestätigen"
               placeholderTextColor="#9A99AA"
               secureTextEntry
-              style={styles.input}
+              allowFontScaling
+              style={[
+                styles.input,
+                tokenStyles.control,
+                tokenStyles.foreground,
+              ]}
               textContentType="newPassword"
               value={passwordConfirmation}
             />
@@ -452,7 +749,7 @@ export default function SettingsScreen() {
               onPress={() => void changePassword()}
               style={[styles.primaryButton, saving && styles.disabled]}
             >
-              <Text style={styles.primaryButtonText}>
+              <Text style={[styles.primaryButtonText, tokenStyles.primaryText]}>
                 {saving ? "Passwort wird geändert …" : "Passwort ändern"}
               </Text>
             </Pressable>
@@ -475,7 +772,10 @@ export default function SettingsScreen() {
         <Pressable
           accessibilityRole="button"
           onPress={() => void signOut()}
-          style={styles.signOutButton}
+          style={[
+            styles.signOutButton,
+            { borderColor: colors.error, backgroundColor: colors.error + "12" },
+          ]}
         >
           <Ionicons color="#B42318" name="log-out-outline" size={19} />
           <Text style={styles.signOutText}>Abmelden</Text>
@@ -483,7 +783,7 @@ export default function SettingsScreen() {
       </ScrollView>
 
       <Modal
-        animationType="slide"
+        animationType={reducedMotion ? "none" : "slide"}
         onRequestClose={() => setTenantPickerOpen(false)}
         transparent
         visible={tenantPickerOpen}
@@ -709,26 +1009,49 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   signOutText: { color: "#B42318", fontSize: 14, fontWeight: "900" },
-  errorText: {
-    backgroundColor: "#FFF3F2",
-    borderColor: "#F5C2C0",
+  feedback: {
+    alignItems: "flex-start",
     borderRadius: 13,
     borderWidth: 1,
-    color: "#A02820",
-    fontSize: 13,
-    lineHeight: 19,
+    flexDirection: "row",
+    gap: 9,
     padding: 13,
   },
-  successText: {
-    backgroundColor: "#ECFDF3",
-    borderColor: "#ABEFCA",
-    borderRadius: 13,
+  feedbackText: { flex: 1, fontSize: 13, lineHeight: 19 },
+  errorText: {},
+  successText: {},
+  preferenceOptions: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  preferenceOption: {
+    alignItems: "center",
+    borderRadius: 12,
     borderWidth: 1,
-    color: "#067647",
-    fontSize: 13,
-    lineHeight: 19,
-    padding: 13,
+    flexGrow: 1,
+    minHeight: 42,
+    justifyContent: "center",
+    paddingHorizontal: 10,
+    paddingVertical: 8,
   },
+  preferenceOptionText: {
+    fontSize: 12,
+    fontWeight: "800",
+    textAlign: "center",
+  },
+  preferenceSummary: { fontSize: 12, lineHeight: 18 },
+  skeletonPage: { flex: 1, gap: 15, justifyContent: "center" },
+  skeletonTitle: { borderRadius: 8, height: 30, width: "47%" },
+  skeletonLine: { borderRadius: 6, height: 13, width: "100%" },
+  skeletonShortLine: { borderRadius: 6, height: 12, width: "62%" },
+  skeletonCard: {
+    alignItems: "center",
+    borderRadius: 21,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 12,
+    minHeight: 92,
+    padding: 17,
+  },
+  skeletonIcon: { borderRadius: 11, height: 37, width: 37 },
+  skeletonCopy: { flex: 1, gap: 10 },
   modalRoot: {
     backgroundColor: "rgba(25, 25, 42, 0.42)",
     flex: 1,

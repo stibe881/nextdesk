@@ -2,7 +2,6 @@ import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  ActivityIndicator,
   KeyboardAvoidingView,
   Linking,
   Modal,
@@ -25,6 +24,7 @@ import { useMobileNetworkStatus } from "@/components/offline-status";
 import { RequesterPicker } from "@/components/requester-picker";
 import { TicketConversation } from "@/components/ticket-conversation";
 import { TicketPhotoAttachments } from "@/components/ticket-photo-attachments";
+import { useThemeContext } from "@/lib/theme-provider";
 import {
   clearLocalTicketDraft,
   listFavoriteTicketIds,
@@ -57,6 +57,37 @@ export default function TicketDetailScreen() {
   const { recoveryEpoch } = useMobileNetworkStatus();
   const { isEnabled, loading: checkingFeatures } = useMobileFeatures();
   const ticketDetailEnabled = isEnabled("ticketing.detail");
+  const { colors, density, reducedMotion } = useThemeContext();
+  const tokenStyles = useMemo(
+    () => ({
+      card: { backgroundColor: colors.surface, borderColor: colors.border },
+      control: {
+        backgroundColor: colors.background,
+        borderColor: colors.border,
+      },
+      error: {
+        backgroundColor: colors.error + "1A",
+        borderColor: colors.error,
+      },
+      foreground: { color: colors.foreground },
+      muted: { color: colors.muted },
+      primary: { backgroundColor: colors.primary },
+      primaryText: { color: colors.background },
+      success: {
+        backgroundColor: colors.success + "1A",
+        borderColor: colors.success,
+      },
+      successText: { color: colors.success },
+    }),
+    [colors],
+  );
+  const densityStyles = useMemo(
+    () => ({
+      card: { padding: density === "compact" ? 14 : 17 },
+      content: { gap: density === "compact" ? 12 : 16 },
+    }),
+    [density],
+  );
   const [tenant, setTenant] = useState<MobileTenant | null>(null);
   const [ticket, setTicket] = useState<MobileTicketDetail | null>(null);
   const [subject, setSubject] = useState("");
@@ -87,6 +118,7 @@ export default function TicketDetailScreen() {
   const [saving, setSaving] = useState(false);
   const [sendingComment, setSendingComment] = useState(false);
   const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
 
   const load = useCallback(
     async (syncEditor = true) => {
@@ -234,6 +266,7 @@ export default function TicketDetailScreen() {
 
     setSaving(true);
     setError("");
+    setMessage("");
     try {
       await updateMobileTicket({
         tenantId: tenant.id,
@@ -260,6 +293,7 @@ export default function TicketDetailScreen() {
       setPriorityKey(nextPriorityKey);
       setRequester(nextRequester);
       setEditingField(null);
+      setMessage("Ticket wurde erfolgreich gespeichert.");
       hapticSuccess();
     } catch (nextError) {
       hapticError();
@@ -321,6 +355,8 @@ export default function TicketDetailScreen() {
   async function toggleFavorite() {
     if (!ticket || !tenant || !currentUserId) return;
     const nextFavorite = !favorite;
+    setError("");
+    setMessage("");
     try {
       await setFavoriteTicket({
         userId: currentUserId,
@@ -329,6 +365,11 @@ export default function TicketDetailScreen() {
         favorite: nextFavorite,
       });
       setFavorite(nextFavorite);
+      setMessage(
+        nextFavorite
+          ? "Ticket wurde zu Favoriten hinzugefügt."
+          : "Ticket wurde aus Favoriten entfernt.",
+      );
       hapticSelection();
     } catch {
       hapticError();
@@ -374,6 +415,7 @@ export default function TicketDetailScreen() {
 
     setSendingComment(true);
     setError("");
+    setMessage("");
     try {
       await addMobileTicketComment({
         tenantId: tenant.id,
@@ -399,6 +441,7 @@ export default function TicketDetailScreen() {
         visibility: commentVisibility,
       });
       await load(false);
+      setMessage("Nachricht wurde erfolgreich veröffentlicht.");
       hapticSuccess();
     } catch (nextError) {
       hapticError();
@@ -425,10 +468,43 @@ export default function TicketDetailScreen() {
 
   if (loading) {
     return (
-      <ScreenContainer containerClassName="bg-[#F6F7FB]" className="px-5">
-        <View style={styles.centered}>
-          <ActivityIndicator color="#4438CA" size="large" />
-          <Text style={styles.copy}>Ticketdetails werden geladen …</Text>
+      <ScreenContainer containerClassName="bg-background" className="px-5">
+        <View
+          accessibilityLabel="Ticketdetails werden geladen"
+          accessibilityRole="progressbar"
+          style={styles.skeletonPage}
+        >
+          <View
+            style={[styles.skeletonTopBar, { backgroundColor: colors.border }]}
+          />
+          <View
+            style={[styles.skeletonTitle, { backgroundColor: colors.border }]}
+          />
+          <View
+            style={[
+              styles.skeletonStatus,
+              { backgroundColor: colors.primary + "33" },
+            ]}
+          />
+          {[1, 2, 3].map((item) => (
+            <View key={item} style={[styles.skeletonCard, tokenStyles.card]}>
+              <View
+                style={[
+                  styles.skeletonLine,
+                  { backgroundColor: colors.border },
+                ]}
+              />
+              <View
+                style={[
+                  styles.skeletonShortLine,
+                  { backgroundColor: colors.border },
+                ]}
+              />
+            </View>
+          ))}
+          <Text style={[styles.copy, tokenStyles.muted]}>
+            Ticketdetails werden geladen …
+          </Text>
         </View>
       </ScreenContainer>
     );
@@ -436,7 +512,11 @@ export default function TicketDetailScreen() {
 
   if (!ticket) {
     return (
-      <ScreenContainer containerClassName="bg-[#F6F7FB]" className="px-5">
+      <ScreenContainer
+        containerClassName="bg-background"
+        className="px-5"
+        style={{ backgroundColor: colors.background }}
+      >
         <View style={styles.centered}>
           <Text style={styles.emptyTitle}>
             {error || "Ticket nicht gefunden"}
@@ -458,10 +538,14 @@ export default function TicketDetailScreen() {
       behavior={Platform.OS === "ios" ? "padding" : "height"}
       style={styles.keyboardAvoider}
     >
-      <ScreenContainer containerClassName="bg-[#F6F7FB]" className="px-5">
+      <ScreenContainer
+        containerClassName="bg-background"
+        className="px-5"
+        style={{ backgroundColor: colors.background }}
+      >
         <ScrollView
           automaticallyAdjustKeyboardInsets
-          contentContainerStyle={styles.content}
+          contentContainerStyle={[styles.content, densityStyles.content]}
           keyboardDismissMode="interactive"
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
@@ -510,7 +594,12 @@ export default function TicketDetailScreen() {
                   autoFocus
                   maxLength={240}
                   onChangeText={setSubject}
-                  style={styles.titleInput}
+                  allowFontScaling
+                  style={[
+                    styles.titleInput,
+                    tokenStyles.card,
+                    tokenStyles.foreground,
+                  ]}
                   value={subject}
                 />
                 <Pressable
@@ -537,7 +626,9 @@ export default function TicketDetailScreen() {
                   setEditingField("subject");
                 }}
               >
-                <Text style={styles.title}>{ticket.subject}</Text>
+                <Text style={[styles.title, tokenStyles.foreground]}>
+                  {ticket.subject}
+                </Text>
               </Pressable>
             )}
             {status ? (
@@ -558,12 +649,21 @@ export default function TicketDetailScreen() {
                   status.is_closed ? styles.statusResolved : styles.statusOpen,
                 ]}
               >
+                <Ionicons
+                  color={status.is_closed ? colors.success : colors.primary}
+                  name={
+                    status.is_closed
+                      ? "checkmark-circle-outline"
+                      : "time-outline"
+                  }
+                  size={15}
+                />
                 <Text
                   style={[
                     styles.statusText,
-                    status.is_closed
-                      ? styles.statusTextResolved
-                      : styles.statusTextOpen,
+                    {
+                      color: status.is_closed ? colors.success : colors.primary,
+                    },
                   ]}
                 >
                   {status.label}
@@ -572,7 +672,9 @@ export default function TicketDetailScreen() {
             ) : null}
           </View>
 
-          <View style={styles.contextCard}>
+          <View
+            style={[styles.contextCard, tokenStyles.card, densityStyles.card]}
+          >
             <View style={styles.contextItem}>
               <Text style={styles.cardLabel}>ANFRAGENDE PERSON</Text>
               {ticket.canUpdate && editingField === "requester" && requester ? (
@@ -647,8 +749,10 @@ export default function TicketDetailScreen() {
             </View>
           </View>
 
-          <View style={styles.card}>
-            <Text style={styles.cardLabel}>BESCHREIBUNG</Text>
+          <View style={[styles.card, tokenStyles.card, densityStyles.card]}>
+            <Text style={[styles.cardLabel, tokenStyles.muted]}>
+              BESCHREIBUNG
+            </Text>
             {ticket.canUpdate && editingField === "description" ? (
               <View style={styles.inlineEdit}>
                 <TextInput
@@ -656,7 +760,12 @@ export default function TicketDetailScreen() {
                   autoFocus
                   multiline
                   onChangeText={setDescription}
-                  style={styles.descriptionInput}
+                  allowFontScaling
+                  style={[
+                    styles.descriptionInput,
+                    tokenStyles.control,
+                    tokenStyles.foreground,
+                  ]}
                   textAlignVertical="top"
                   value={description}
                 />
@@ -710,11 +819,40 @@ export default function TicketDetailScreen() {
             />
           ) : null}
 
-          {error ? <Text style={styles.error}>{error}</Text> : null}
+          {error ? (
+            <View
+              accessibilityRole="alert"
+              style={[styles.feedback, tokenStyles.error]}
+            >
+              <Ionicons
+                color={colors.error}
+                name="alert-circle-outline"
+                size={20}
+              />
+              <Text style={[styles.feedbackText, { color: colors.error }]}>
+                {error}
+              </Text>
+            </View>
+          ) : null}
+          {message ? (
+            <View
+              accessibilityRole="alert"
+              style={[styles.feedback, tokenStyles.success]}
+            >
+              <Ionicons
+                color={colors.success}
+                name="checkmark-circle-outline"
+                size={20}
+              />
+              <Text style={[styles.feedbackText, tokenStyles.successText]}>
+                {message}
+              </Text>
+            </View>
+          ) : null}
         </ScrollView>
 
         <Modal
-          animationType="slide"
+          animationType={reducedMotion ? "none" : "slide"}
           onRequestClose={() => setSelection(null)}
           transparent
           visible={selection !== null}
@@ -802,7 +940,7 @@ export default function TicketDetailScreen() {
         </Modal>
 
         <Modal
-          animationType="fade"
+          animationType={reducedMotion ? "none" : "fade"}
           onRequestClose={() => setPendingCloseStatus(null)}
           transparent
           visible={pendingCloseStatus !== null}
@@ -953,8 +1091,11 @@ const styles = StyleSheet.create({
   },
   inlineSaveText: { color: "#FFFFFF", fontSize: 13, fontWeight: "800" },
   status: {
+    alignItems: "center",
     alignSelf: "flex-start",
     borderRadius: 999,
+    flexDirection: "row",
+    gap: 5,
     paddingHorizontal: 10,
     paddingVertical: 6,
   },
@@ -1104,7 +1245,29 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     textAlign: "center",
   },
+  feedback: {
+    alignItems: "flex-start",
+    borderRadius: 14,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 9,
+    padding: 13,
+  },
+  feedbackText: { flex: 1, fontSize: 13, lineHeight: 19 },
   error: { color: "#A02820", fontSize: 13, lineHeight: 19 },
+  skeletonPage: { flex: 1, gap: 14, justifyContent: "center" },
+  skeletonTopBar: { borderRadius: 8, height: 40, width: "100%" },
+  skeletonTitle: { borderRadius: 8, height: 42, width: "82%" },
+  skeletonStatus: { borderRadius: 999, height: 28, width: "30%" },
+  skeletonCard: {
+    borderRadius: 20,
+    borderWidth: 1,
+    gap: 12,
+    minHeight: 95,
+    padding: 17,
+  },
+  skeletonLine: { borderRadius: 6, height: 13, width: "100%" },
+  skeletonShortLine: { borderRadius: 6, height: 13, width: "64%" },
   disabled: { opacity: 0.55 },
   selectionModalRoot: {
     backgroundColor: "rgba(25, 25, 42, 0.42)",
