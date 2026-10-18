@@ -37,7 +37,9 @@ export default function TicketDetailScreen() {
   const [comment, setComment] = useState("");
   const [commentVisibility, setCommentVisibility] =
     useState<TicketCommentVisibility>("internal");
-  const [editing, setEditing] = useState(false);
+  const [editingField, setEditingField] = useState<
+    "subject" | "description" | "requester" | null
+  >(null);
   const [selection, setSelection] = useState<"status" | "priority" | null>(
     null,
   );
@@ -120,43 +122,32 @@ export default function TicketDetailScreen() {
     [ticket],
   );
 
-  function resetEditor() {
-    if (!ticket) return;
-    setSubject(ticket.subject);
-    setDescription(ticket.description);
-    setStatusKey(
-      ticket.statusOptions.find((option) => option.id === ticket.statusId)
-        ?.key ?? "",
-    );
-    setPriorityKey(
-      ticket.priorityOptions.find((option) => option.id === ticket.priorityId)
-        ?.key ?? "",
-    );
-    setRequester(ticket.requesterContact);
-  }
-
-  function toggleEditing() {
-    if (editing) resetEditor();
-    setError("");
-    setSelection(null);
-    setEditing((current) => !current);
-  }
-
-  async function save() {
+  async function saveChange(changes: {
+    description?: string;
+    priorityKey?: string;
+    requester?: TicketRequester;
+    statusKey?: string;
+    subject?: string;
+  }) {
     if (!ticket || !tenant) return;
-    if (subject.trim().length < 3 || !description.trim()) {
+    const nextSubject = (changes.subject ?? ticket.subject).trim();
+    const nextDescription = (changes.description ?? ticket.description).trim();
+    const nextStatusKey = changes.statusKey ?? statusKey;
+    const nextPriorityKey = changes.priorityKey ?? priorityKey;
+    const nextRequester = changes.requester ?? requester;
+    if (nextSubject.length < 3 || !nextDescription) {
       setError("Betreff und Beschreibung müssen ausgefüllt sein.");
       return;
     }
-    if (!statusKey || !priorityKey) {
+    if (!nextStatusKey || !nextPriorityKey) {
       setError("Bitte wählen Sie Status und Priorität.");
       return;
     }
     const nextStatus = ticket.statusOptions.find(
-      (option) => option.key === statusKey,
+      (option) => option.key === nextStatusKey,
     );
     const nextPriority = ticket.priorityOptions.find(
-      (option) => option.key === priorityKey,
+      (option) => option.key === nextPriorityKey,
     );
     if (!nextStatus || !nextPriority) {
       setError("Status oder Priorität sind nicht gültig.");
@@ -169,22 +160,27 @@ export default function TicketDetailScreen() {
       await updateMobileTicket({
         tenantId: tenant.id,
         ticketId: ticket.id,
-        subject: subject.trim(),
-        description: description.trim(),
-        statusKey,
-        priorityKey,
-        ...(requester ? { requesterContactId: requester.id } : {}),
+        subject: nextSubject,
+        description: nextDescription,
+        statusKey: nextStatusKey,
+        priorityKey: nextPriorityKey,
+        ...(nextRequester ? { requesterContactId: nextRequester.id } : {}),
       });
       setTicket({
         ...ticket,
-        subject: subject.trim(),
-        description: description.trim(),
+        subject: nextSubject,
+        description: nextDescription,
         statusId: nextStatus.id,
         priorityId: nextPriority.id,
-        requesterContact: requester,
-        requesterName: requester?.displayName ?? null,
+        requesterContact: nextRequester,
+        requesterName: nextRequester?.displayName ?? null,
       });
-      setEditing(false);
+      setSubject(nextSubject);
+      setDescription(nextDescription);
+      setStatusKey(nextStatusKey);
+      setPriorityKey(nextPriorityKey);
+      setRequester(nextRequester);
+      setEditingField(null);
     } catch (nextError) {
       setError(
         nextError instanceof Error
@@ -285,45 +281,55 @@ export default function TicketDetailScreen() {
           <Text numberOfLines={1} style={styles.topTitle}>
             Ticketdetails
           </Text>
-          {ticket.canUpdate ? (
-            <Pressable
-              accessibilityLabel={
-                editing ? "Bearbeitung abbrechen" : "Ticket bearbeiten"
-              }
-              accessibilityRole="button"
-              disabled={saving || sendingComment}
-              onPress={toggleEditing}
-              style={styles.editButton}
-            >
-              <Ionicons
-                color="#4438CA"
-                name={editing ? "close" : "create-outline"}
-                size={19}
-              />
-              <Text style={styles.editButtonText}>
-                {editing ? "Abbrechen" : "Bearbeiten"}
-              </Text>
-            </Pressable>
-          ) : (
-            <View style={styles.topSpacer} />
-          )}
+          <View style={styles.topSpacer} />
         </View>
 
         <View style={styles.ticketHead}>
           <Text style={styles.ticketId}>{ticket.ticketNumber}</Text>
-          {editing ? (
-            <TextInput
-              autoCapitalize="sentences"
-              maxLength={240}
-              onChangeText={setSubject}
-              style={styles.titleInput}
-              value={subject}
-            />
+          {ticket.canUpdate && editingField === "subject" ? (
+            <View style={styles.inlineEdit}>
+              <TextInput
+                autoCapitalize="sentences"
+                autoFocus
+                maxLength={240}
+                onChangeText={setSubject}
+                style={styles.titleInput}
+                value={subject}
+              />
+              <Pressable
+                accessibilityLabel="Betreff speichern"
+                accessibilityRole="button"
+                disabled={saving}
+                onPress={() => void saveChange({ subject })}
+                style={styles.inlineSave}
+              >
+                <Ionicons color="#FFFFFF" name="checkmark" size={18} />
+              </Pressable>
+            </View>
           ) : (
-            <Text style={styles.title}>{ticket.subject}</Text>
+            <Pressable
+              accessibilityHint={
+                ticket.canUpdate
+                  ? "Antippen, um den Betreff zu ändern."
+                  : undefined
+              }
+              accessibilityRole={ticket.canUpdate ? "button" : undefined}
+              disabled={!ticket.canUpdate}
+              onPress={() => setEditingField("subject")}
+            >
+              <Text style={styles.title}>{ticket.subject}</Text>
+            </Pressable>
           )}
           {status ? (
-            <View
+            <Pressable
+              accessibilityHint={
+                ticket.canUpdate
+                  ? "Antippen, um den Status zu ändern."
+                  : undefined
+              }
+              accessibilityRole={ticket.canUpdate ? "button" : undefined}
+              disabled={!ticket.canUpdate}
+              onPress={() => setSelection("status")}
               style={[
                 styles.status,
                 status.is_closed ? styles.statusResolved : styles.statusOpen,
@@ -339,136 +345,100 @@ export default function TicketDetailScreen() {
               >
                 {status.label}
               </Text>
-            </View>
+            </Pressable>
           ) : null}
         </View>
 
         <View style={styles.contextCard}>
           <View style={styles.contextItem}>
             <Text style={styles.cardLabel}>ANFRAGENDE PERSON</Text>
-            <Text numberOfLines={2} style={styles.cardValue}>
-              {ticket.requesterName ?? "Anfragende Person"}
-            </Text>
+            {ticket.canUpdate && editingField === "requester" && requester ? (
+              <RequesterPicker
+                autoOpen
+                contextLabel="TICKET BEARBEITEN"
+                defaultRequester={ticket.requesterContact ?? requester}
+                onChange={(nextRequester) =>
+                  void saveChange({ requester: nextRequester })
+                }
+                onClose={() => setEditingField(null)}
+                tenantId={tenant?.id ?? ""}
+                value={requester}
+              />
+            ) : (
+              <Pressable
+                accessibilityHint={
+                  ticket.canUpdate
+                    ? "Antippen, um die anfragende Person zu ändern."
+                    : undefined
+                }
+                accessibilityRole={ticket.canUpdate ? "button" : undefined}
+                disabled={!ticket.canUpdate || !requester}
+                onPress={() => setEditingField("requester")}
+              >
+                <Text numberOfLines={2} style={styles.cardValue}>
+                  {ticket.requesterName ?? "Anfragende Person"}
+                </Text>
+              </Pressable>
+            )}
           </View>
           <View style={styles.contextDivider} />
           <View style={styles.contextItem}>
             <Text style={styles.cardLabel}>PRIORITÄT</Text>
-            <Text style={styles.cardValue}>
-              {priority?.label ?? "Ohne Priorität"}
-            </Text>
+            <Pressable
+              accessibilityHint={
+                ticket.canUpdate
+                  ? "Antippen, um die Priorität zu ändern."
+                  : undefined
+              }
+              accessibilityRole={ticket.canUpdate ? "button" : undefined}
+              disabled={!ticket.canUpdate}
+              onPress={() => setSelection("priority")}
+            >
+              <Text style={styles.cardValue}>
+                {priority?.label ?? "Ohne Priorität"}
+              </Text>
+            </Pressable>
           </View>
         </View>
 
         <View style={styles.card}>
           <Text style={styles.cardLabel}>BESCHREIBUNG</Text>
-          {editing ? (
-            <TextInput
-              autoCapitalize="sentences"
-              multiline
-              onChangeText={setDescription}
-              style={styles.descriptionInput}
-              textAlignVertical="top"
-              value={description}
-            />
+          {ticket.canUpdate && editingField === "description" ? (
+            <View style={styles.inlineEdit}>
+              <TextInput
+                autoCapitalize="sentences"
+                autoFocus
+                multiline
+                onChangeText={setDescription}
+                style={styles.descriptionInput}
+                textAlignVertical="top"
+                value={description}
+              />
+              <Pressable
+                accessibilityLabel="Beschreibung speichern"
+                accessibilityRole="button"
+                disabled={saving}
+                onPress={() => void saveChange({ description })}
+                style={styles.inlineSave}
+              >
+                <Text style={styles.inlineSaveText}>Speichern</Text>
+              </Pressable>
+            </View>
           ) : (
-            <Text style={styles.description}>{ticket.description}</Text>
+            <Pressable
+              accessibilityHint={
+                ticket.canUpdate
+                  ? "Antippen, um die Beschreibung zu ändern."
+                  : undefined
+              }
+              accessibilityRole={ticket.canUpdate ? "button" : undefined}
+              disabled={!ticket.canUpdate}
+              onPress={() => setEditingField("description")}
+            >
+              <Text style={styles.description}>{ticket.description}</Text>
+            </Pressable>
           )}
         </View>
-
-        {editing ? (
-          <View style={styles.editorCard}>
-            <View style={styles.editorHeader}>
-              <View>
-                <Text style={styles.editTitle}>Ticket bearbeiten</Text>
-                <Text style={styles.editorCopy}>
-                  Passe die Angaben an und speichere sie gemeinsam.
-                </Text>
-              </View>
-              <View style={styles.editorIcon}>
-                <Ionicons color="#4438CA" name="create-outline" size={20} />
-              </View>
-            </View>
-
-            <View style={styles.editorField}>
-              <Text style={styles.fieldLabel}>ANFRAGENDE PERSON</Text>
-              {requester ? (
-                <RequesterPicker
-                  contextLabel="TICKET BEARBEITEN"
-                  defaultRequester={ticket.requesterContact ?? requester}
-                  onChange={setRequester}
-                  tenantId={tenant?.id ?? ""}
-                  value={requester}
-                />
-              ) : (
-                <Text style={styles.missingRequester}>
-                  Für dieses Ticket ist keine anfragende Person hinterlegt.
-                </Text>
-              )}
-            </View>
-
-            <View style={styles.editorField}>
-              <Text style={styles.fieldLabel}>STATUS</Text>
-              <Pressable
-                accessibilityLabel="Status auswählen"
-                accessibilityRole="button"
-                onPress={() => setSelection("status")}
-                style={styles.selector}
-              >
-                <View>
-                  <Text style={styles.selectorValue}>
-                    {editableStatuses.find((option) => option.key === statusKey)
-                      ?.label ?? "Status wählen"}
-                  </Text>
-                  <Text style={styles.selectorHint}>Antippen zum Ändern</Text>
-                </View>
-                <Ionicons color="#4438CA" name="chevron-down" size={19} />
-              </Pressable>
-            </View>
-
-            <View style={styles.editorField}>
-              <Text style={styles.fieldLabel}>PRIORITÄT</Text>
-              <Pressable
-                accessibilityLabel="Priorität auswählen"
-                accessibilityRole="button"
-                onPress={() => setSelection("priority")}
-                style={styles.selector}
-              >
-                <View>
-                  <Text style={styles.selectorValue}>
-                    {ticket.priorityOptions.find(
-                      (option) => option.key === priorityKey,
-                    )?.label ?? "Priorität wählen"}
-                  </Text>
-                  <Text style={styles.selectorHint}>Antippen zum Ändern</Text>
-                </View>
-                <Ionicons color="#4438CA" name="chevron-down" size={19} />
-              </Pressable>
-            </View>
-
-            <Pressable
-              accessibilityRole="button"
-              disabled={saving}
-              onPress={() => void save()}
-              style={[styles.primaryButton, saving && styles.disabled]}
-            >
-              {saving ? (
-                <ActivityIndicator color="#FFFFFF" />
-              ) : (
-                <Ionicons color="#FFFFFF" name="save-outline" size={19} />
-              )}
-              <Text style={styles.primaryButtonText}>
-                {saving
-                  ? "Änderungen werden gespeichert …"
-                  : "Änderungen speichern"}
-              </Text>
-            </Pressable>
-          </View>
-        ) : ticket.canUpdate ? (
-          <Text style={styles.hint}>
-            Über «Bearbeiten» können Sie Betreff, Beschreibung, Status und
-            Priorität anpassen.
-          </Text>
-        ) : null}
 
         <TicketConversation
           body={comment}
@@ -532,11 +502,16 @@ export default function TicketDetailScreen() {
                 return (
                   <Pressable
                     accessibilityRole="button"
+                    disabled={saving}
                     key={option.id}
                     onPress={() => {
-                      if (selection === "status") setStatusKey(option.key);
-                      else setPriorityKey(option.key);
+                      const field = selection;
                       setSelection(null);
+                      if (field === "status") {
+                        void saveChange({ statusKey: option.key });
+                      } else {
+                        void saveChange({ priorityKey: option.key });
+                      }
                     }}
                     style={[
                       styles.selectionOption,
@@ -630,6 +605,18 @@ const styles = StyleSheet.create({
     lineHeight: 29,
     padding: 11,
   },
+  inlineEdit: { gap: 9 },
+  inlineSave: {
+    alignItems: "center",
+    alignSelf: "flex-end",
+    backgroundColor: "#4438CA",
+    borderRadius: 12,
+    justifyContent: "center",
+    minHeight: 38,
+    minWidth: 42,
+    paddingHorizontal: 13,
+  },
+  inlineSaveText: { color: "#FFFFFF", fontSize: 13, fontWeight: "800" },
   status: {
     alignSelf: "flex-start",
     borderRadius: 999,

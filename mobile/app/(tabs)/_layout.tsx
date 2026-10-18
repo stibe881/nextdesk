@@ -4,10 +4,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { HapticTab } from "@/components/haptic-tab";
 import { Platform } from "react-native";
-import { useColors } from "@/hooks/use-colors";
 
 export default function TabLayout() {
-  const colors = useColors();
   const insets = useSafeAreaInsets();
   const bottomPadding = Platform.OS === "web" ? 12 : Math.max(insets.bottom, 8);
   const tabBarHeight = 56 + bottomPadding;
@@ -16,19 +14,25 @@ export default function TabLayout() {
     <Tabs
       initialRouteName="index"
       screenOptions={{
-        tabBarActiveTintColor: colors.tint,
+        tabBarActiveTintColor: "#4438CA",
+        tabBarInactiveTintColor: "#68677A",
         headerShown: false,
         tabBarButton: HapticTab,
         tabBarStyle: {
           paddingTop: 8,
           paddingBottom: bottomPadding,
           height: tabBarHeight,
-          backgroundColor: colors.background,
-          borderTopColor: colors.border,
+          backgroundColor: "#FFFFFF",
+          borderTopColor: "#E4E3EE",
           borderTopWidth: 0.5,
+          shadowColor: "#202136",
+          shadowOffset: { width: 0, height: -3 },
+          shadowOpacity: 0.07,
+          shadowRadius: 12,
+          elevation: 10,
         },
         tabBarItemStyle: { paddingHorizontal: 0 },
-        tabBarLabelStyle: { fontSize: 10, fontWeight: "700" },
+        tabBarLabelStyle: { fontSize: 10, fontWeight: "800", marginTop: 1 },
       }}
     >
       <Tabs.Screen
@@ -49,6 +53,16 @@ export default function TabLayout() {
           ),
         }}
       />
+      <Tabs.Screen
+        name="scan"
+        options={{
+          title: "Scan",
+          tabBarIcon: ({ color }) => (
+            <Ionicons color={color} name="scan-outline" size={23} />
+          ),
+        }}
+      />
+      <Tabs.Screen name="assets" options={{ href: null }} />
       <Tabs.Screen
         name="index"
         options={{

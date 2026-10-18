@@ -17,27 +17,36 @@ import {
 } from "@/lib/nextdesk-tickets";
 
 type RequesterPickerProps = {
+  autoOpen?: boolean;
   contextLabel?: string;
   defaultRequester: TicketRequester;
   onChange: (requester: TicketRequester) => void;
+  onClose?: () => void;
   tenantId: string;
   value: TicketRequester | null;
 };
 
 export function RequesterPicker({
+  autoOpen = false,
   contextLabel = "TICKET ERFASSEN",
   defaultRequester,
   onChange,
+  onClose,
   tenantId,
   value,
 }: RequesterPickerProps) {
-  const [isOpen, setIsOpen] = useState(false);
+  const [isOpen, setIsOpen] = useState(autoOpen);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<TicketRequester[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [searchError, setSearchError] = useState("");
   const queryLength = Array.from(query.trim()).length;
   const selected = value ?? defaultRequester;
+
+  function closePicker() {
+    setIsOpen(false);
+    onClose?.();
+  }
 
   useEffect(() => {
     if (!isOpen || queryLength < 2 || !tenantId) return;
@@ -89,7 +98,7 @@ export function RequesterPicker({
 
   function selectRequester(requester: TicketRequester) {
     onChange(requester);
-    setIsOpen(false);
+    closePicker();
   }
 
   return (
@@ -114,7 +123,7 @@ export function RequesterPicker({
 
       <Modal
         animationType="slide"
-        onRequestClose={() => setIsOpen(false)}
+        onRequestClose={closePicker}
         transparent
         visible={isOpen}
       >
@@ -122,7 +131,7 @@ export function RequesterPicker({
           <Pressable
             accessibilityLabel="Auswahl schliessen"
             accessibilityRole="button"
-            onPress={() => setIsOpen(false)}
+            onPress={closePicker}
             style={StyleSheet.absoluteFill}
           />
           <View style={styles.sheet}>
@@ -135,7 +144,7 @@ export function RequesterPicker({
                 accessibilityLabel="Auswahl schliessen"
                 accessibilityRole="button"
                 hitSlop={10}
-                onPress={() => setIsOpen(false)}
+                onPress={closePicker}
                 style={styles.closeButton}
               >
                 <Ionicons color="#4438CA" name="close" size={22} />

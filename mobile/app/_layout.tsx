@@ -171,7 +171,6 @@ export default function RootLayout() {
             <Stack.Screen name="auth" />
             <Stack.Screen name="auth/callback" />
             <Stack.Screen name="oauth/callback" />
-            <Stack.Screen name="assets" />
           </Stack>
           <NextDeskAuthDeepLinkHandler />
           <NextDeskSessionNavigator />

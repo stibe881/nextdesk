@@ -30,7 +30,7 @@ export default function KnowledgeScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View>
-          <Text style={styles.eyebrow}>WISSENSCENTER</Text>
+          <Text style={styles.eyebrow}>WISSEN</Text>
           <Text style={styles.title}>Wissen</Text>
           <Text style={styles.subtitle}>
             Hilfreiche Informationen und freigegebene Anleitungen für deinen
@@ -48,17 +48,6 @@ export default function KnowledgeScreen() {
             Artikel erscheinen hier automatisch und bleiben vom Ticketverlauf
             getrennt.
           </Text>
-        </View>
-
-        <View style={styles.notice}>
-          <Ionicons color="#087A95" name="shield-checkmark-outline" size={21} />
-          <View style={styles.noticeCopy}>
-            <Text style={styles.noticeTitle}>Mandantenisoliert</Text>
-            <Text style={styles.noticeText}>
-              Du siehst ausschliesslich Wissen, das für deinen Mandanten und
-              deine Rolle bestimmt ist.
-            </Text>
-          </View>
         </View>
       </ScrollView>
     </ScreenContainer>
@@ -111,15 +100,4 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     textAlign: "center",
   },
-  notice: {
-    alignItems: "flex-start",
-    backgroundColor: "#EAF8FB",
-    borderRadius: 18,
-    flexDirection: "row",
-    gap: 11,
-    padding: 16,
-  },
-  noticeCopy: { flex: 1 },
-  noticeTitle: { color: "#146B7D", fontSize: 13, fontWeight: "900" },
-  noticeText: { color: "#397887", fontSize: 12, lineHeight: 18, marginTop: 3 },
 });
