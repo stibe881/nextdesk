@@ -54,6 +54,7 @@ type Action =
       priorityKey?: string;
       subject?: string;
       description?: string;
+      requesterContactId?: string;
       assignedAgentId?: string | null;
       assignedTeamId?: string | null;
     }
@@ -127,6 +128,9 @@ const isUuid = (value: unknown): value is string =>
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
     value,
   );
+const isRequesterContactId = (value: unknown): value is string =>
+  typeof value === "string" &&
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 const isRelationType = (value: unknown): value is RelationType =>
   value === "duplicates" ||
   value === "blocks" ||
@@ -290,6 +294,8 @@ function parseAction(value: unknown): Action | null {
     };
   if (
     value.type === "updateTicket" &&
+    (value.requesterContactId === undefined ||
+      isRequesterContactId(value.requesterContactId)) &&
     (value.assignedAgentId === undefined ||
       value.assignedAgentId === null ||
       isUuid(value.assignedAgentId)) &&
@@ -323,6 +329,10 @@ function parseAction(value: unknown): Action | null {
         typeof value.priorityKey === "string" ? value.priorityKey : undefined,
       subject,
       description,
+      requesterContactId:
+        value.requesterContactId === undefined
+          ? undefined
+          : value.requesterContactId,
       assignedAgentId:
         value.assignedAgentId === null || isUuid(value.assignedAgentId)
           ? value.assignedAgentId
@@ -2296,6 +2306,26 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       update.priority_id = priority.id;
       changedFields.push("priority");
     }
+  }
+  if (
+    action.requesterContactId !== undefined &&
+    action.requesterContactId !== ticket.requester_contact_id
+  ) {
+    const { data: requesterContact, error: requesterContactError } =
+      await context.supabaseAdmin
+        .from("ticket_requesters")
+        .select("id")
+        .eq("tenant_id", ticket.tenant_id)
+        .eq("id", action.requesterContactId)
+        .maybeSingle();
+    if (requesterContactError || !requesterContact)
+      return response(
+        request,
+        { error: { code: "requester_contact_invalid" } },
+        422,
+      );
+    update.requester_contact_id = requesterContact.id;
+    changedFields.push("requesterContact");
   }
   if (
     action.assignedAgentId !== undefined ||
