@@ -61,6 +61,7 @@ const expectedFiles = [
   "0056_confirmed_bulk_ticket_closures.sql",
   "0057_experience_value_and_ai_foundation.sql",
   "0058_agent_workbench_and_requester_portal.sql",
+  "0059_requester_collaboration_and_ops_foundation.sql",
 ];
 
 const availableFiles = await readdir(migrationDirectory);
@@ -528,6 +529,27 @@ const requiredFragments = [
   [
     "0058_agent_workbench_and_requester_portal.sql",
     "alter table public.ticket_reopen_requests force row level security",
+  ],
+  [
+    "0059_requester_collaboration_and_ops_foundation.sql",
+    "'requester.department-view',",
+  ],
+  ["0059_requester_collaboration_and_ops_foundation.sql", "'portal',\n  false"],
+  [
+    "0059_requester_collaboration_and_ops_foundation.sql",
+    "create table public.outbound_events",
+  ],
+  [
+    "0059_requester_collaboration_and_ops_foundation.sql",
+    "alter table public.outbound_events force row level security",
+  ],
+  [
+    "0059_requester_collaboration_and_ops_foundation.sql",
+    "revoke all on table public.outbound_events from public, anon, authenticated",
+  ],
+  [
+    "0059_requester_collaboration_and_ops_foundation.sql",
+    "grant select, insert, update, delete on table public.outbound_events to service_role",
   ],
 ];
 

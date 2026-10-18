@@ -2,9 +2,11 @@ import {
   AlertTriangle,
   CheckCircle2,
   ClipboardCheck,
+  Clock3,
   Laptop,
   RefreshCw,
   Ticket,
+  UsersRound,
   type LucideIcon,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type JSX } from "react";
@@ -42,6 +44,14 @@ type Device = {
   name: string;
 };
 
+type DepartmentTicket = {
+  createdAt: string;
+  statusLabel: string;
+  ticketNumber: string;
+  title: string;
+  updatedAt: string;
+};
+
 type PortalData = {
   approvals: Approval[];
   devices: Device[];
@@ -50,6 +60,7 @@ type PortalData = {
 };
 
 type PortalState = "hidden" | "loading" | "ready" | "unavailable";
+type PortalAreaState = "hidden" | "loading" | "ready";
 
 type StatusMeta = {
   Icon: LucideIcon;
@@ -219,6 +230,58 @@ function portalDataFromResponses(
   };
 }
 
+function availabilityFromResponse(value: unknown): string | null {
+  if (!isRecord(value) || !isRecord(value.data)) {
+    throw new Error("invalid_availability_response");
+  }
+  const availability = value.data.availability;
+  if (availability === null) return null;
+  const text = textValue(availability, 300);
+  if (!text) throw new Error("invalid_availability_response");
+  return text;
+}
+
+function departmentTicketsFromResponse(value: unknown): DepartmentTicket[] {
+  if (
+    !isRecord(value) ||
+    !isRecord(value.data) ||
+    !Array.isArray(value.data.tickets) ||
+    value.data.tickets.length > 500
+  ) {
+    throw new Error("invalid_department_tickets_response");
+  }
+  const tickets = value.data.tickets.map((value) => {
+    if (!isRecord(value)) return null;
+    const ticketNumber = textValue(value.ticketNumber, 120);
+    const title = textValue(value.title, 1000);
+    const statusLabel = textValue(value.statusLabel, 160);
+    if (
+      !ticketNumber ||
+      !title ||
+      !statusLabel ||
+      !isIsoDate(value.createdAt) ||
+      !isIsoDate(value.updatedAt)
+    ) {
+      return null;
+    }
+    return {
+      createdAt: value.createdAt,
+      statusLabel,
+      ticketNumber,
+      title,
+      updatedAt: value.updatedAt,
+    };
+  });
+  if (
+    !tickets.every((ticket): ticket is DepartmentTicket => ticket !== null) ||
+    new Set(tickets.map((ticket) => ticket.ticketNumber)).size !==
+      tickets.length
+  ) {
+    throw new Error("invalid_department_tickets_response");
+  }
+  return tickets;
+}
+
 async function requesterPortalUnavailable(error: unknown): Promise<boolean> {
   const response =
     isRecord(error) && error.context instanceof Response ? error.context : null;
@@ -226,7 +289,7 @@ async function requesterPortalUnavailable(error: unknown): Promise<boolean> {
   if (isRecord(error) && typeof error.status === "number") {
     return [401, 403, 404].includes(error.status);
   }
-  if (!response) return false;
+  if (!response) return true;
 
   try {
     const payload = await response.clone().json();
@@ -270,6 +333,17 @@ export function RequesterPortalPanel(props: { tenantId: string }): JSX.Element {
   );
   const [reloadVersion, setReloadVersion] = useState(0);
   const requestVersion = useRef(0);
+  const [availability, setAvailability] = useState<string | null>(null);
+  const [availabilityDraft, setAvailabilityDraft] = useState("");
+  const [availabilityNotice, setAvailabilityNotice] = useState("");
+  const [availabilitySaving, setAvailabilitySaving] = useState(false);
+  const [availabilityState, setAvailabilityState] =
+    useState<PortalAreaState>("hidden");
+  const [departmentTickets, setDepartmentTickets] = useState<
+    DepartmentTicket[] | null
+  >(null);
+  const availabilityRequestVersion = useRef(0);
+  const departmentRequestVersion = useRef(0);
 
   useEffect(() => {
     if (!supabase) {
@@ -317,6 +391,114 @@ export function RequesterPortalPanel(props: { tenantId: string }): JSX.Element {
       ++requestVersion.current;
     };
   }, [reloadVersion, tenantId]);
+
+  useEffect(() => {
+    const version = ++availabilityRequestVersion.current;
+    setAvailability(null);
+    setAvailabilityDraft("");
+    setAvailabilityNotice("");
+    setAvailabilitySaving(false);
+    if (!supabase || state !== "ready") {
+      setAvailabilityState("hidden");
+      return;
+    }
+    setAvailabilityState("loading");
+    void supabase.functions
+      .invoke("requester-portal", {
+        body: { tenantId, type: "getMyAvailability" },
+      })
+      .then(({ data: response, error }) => {
+        if (error) throw error;
+        const value = availabilityFromResponse(response);
+        if (availabilityRequestVersion.current !== version) return;
+        setAvailability(value);
+        setAvailabilityDraft(value ?? "");
+        setAvailabilityState("ready");
+      })
+      .catch(() => {
+        if (availabilityRequestVersion.current !== version) return;
+        setAvailabilityState("hidden");
+      });
+    return () => {
+      ++availabilityRequestVersion.current;
+    };
+  }, [reloadVersion, state, tenantId]);
+
+  useEffect(() => {
+    const version = ++departmentRequestVersion.current;
+    setDepartmentTickets(null);
+    if (!supabase || state !== "ready") return;
+    void supabase.functions
+      .invoke("requester-portal", {
+        body: { tenantId, type: "departmentTickets" },
+      })
+      .then(({ data: response, error }) => {
+        if (error) throw error;
+        const tickets = departmentTicketsFromResponse(response);
+        if (departmentRequestVersion.current !== version) return;
+        setDepartmentTickets(tickets);
+      })
+      .catch(() => {
+        // The entitlement is intentionally discovered only through the guarded API.
+        // Any missing entitlement or transient failure keeps this area invisible.
+        if (departmentRequestVersion.current !== version) return;
+        setDepartmentTickets(null);
+      });
+    return () => {
+      ++departmentRequestVersion.current;
+    };
+  }, [reloadVersion, state, tenantId]);
+
+  async function saveAvailability() {
+    if (!supabase || availabilityState !== "ready" || availabilitySaving)
+      return;
+    const next = availabilityDraft.trim();
+    if (
+      (next.length > 0 &&
+        (Array.from(next).length > 300 ||
+          /[\u0000-\u001f\u007f]/u.test(next))) ||
+      /\p{Cs}/u.test(next)
+    ) {
+      setAvailabilityNotice(
+        "Bitte geben Sie höchstens 300 gültige Zeichen für Ihre Erreichbarkeit ein.",
+      );
+      return;
+    }
+    setAvailabilitySaving(true);
+    setAvailabilityNotice("");
+    try {
+      const { data: response, error } = await supabase.functions.invoke(
+        "requester-portal",
+        {
+          body: {
+            tenantId,
+            type: "setMyAvailability",
+            availability: next || null,
+          },
+        },
+      );
+      if (error) throw error;
+      const saved = availabilityFromResponse(response);
+      setAvailability(saved);
+      setAvailabilityDraft(saved ?? "");
+      setAvailabilityNotice(
+        saved
+          ? "Ihre Erreichbarkeit wurde gespeichert."
+          : "Ihre Erreichbarkeit wurde entfernt.",
+      );
+    } catch (error) {
+      if (await requesterPortalUnavailable(error)) {
+        setAvailabilityState("hidden");
+        setAvailability(null);
+        return;
+      }
+      setAvailabilityNotice(
+        "Die Erreichbarkeit konnte nicht gespeichert werden. Bitte versuchen Sie es später erneut.",
+      );
+    } finally {
+      setAvailabilitySaving(false);
+    }
+  }
 
   const sortedNotices = useMemo(
     () =>
@@ -481,6 +663,110 @@ export function RequesterPortalPanel(props: { tenantId: string }): JSX.Element {
               </ul>
             )}
           </section>
+
+          {availabilityState === "ready" && (
+            <section
+              aria-labelledby="requester-availability-heading"
+              className="requester-portal__card"
+            >
+              <div className="requester-portal__card-heading">
+                <span aria-hidden="true" className="requester-portal__icon">
+                  <Clock3 size={19} strokeWidth={1.9} />
+                </span>
+                <div>
+                  <h3 id="requester-availability-heading">
+                    Meine Erreichbarkeit
+                  </h3>
+                  <p>
+                    Teilen Sie dem Support mit, wann oder wie Sie gut erreichbar
+                    sind.
+                  </p>
+                </div>
+              </div>
+              <label className="requester-portal__availability-field">
+                Hinweis für die Bearbeitung
+                <textarea
+                  aria-describedby="requester-availability-help"
+                  disabled={availabilitySaving}
+                  maxLength={300}
+                  onChange={(event) => {
+                    setAvailabilityDraft(event.target.value);
+                    setAvailabilityNotice("");
+                  }}
+                  placeholder="Zum Beispiel: Werktags zwischen 09:00 und 16:00 Uhr erreichbar."
+                  rows={3}
+                  value={availabilityDraft}
+                />
+              </label>
+              <p
+                className="requester-portal__hint"
+                id="requester-availability-help"
+              >
+                {availability
+                  ? "Löschen Sie den Text und speichern Sie, um den Hinweis zu entfernen."
+                  : "Derzeit ist kein Hinweis hinterlegt."}
+              </p>
+              <div className="requester-portal__availability-actions">
+                <button
+                  className="secondary-button"
+                  disabled={availabilitySaving}
+                  onClick={() => void saveAvailability()}
+                  type="button"
+                >
+                  {availabilitySaving
+                    ? "Wird gespeichert …"
+                    : availabilityDraft.trim()
+                      ? "Erreichbarkeit speichern"
+                      : "Erreichbarkeit entfernen"}
+                </button>
+                {availabilityNotice && (
+                  <p role="status">{availabilityNotice}</p>
+                )}
+              </div>
+            </section>
+          )}
+
+          {departmentTickets !== null && (
+            <section
+              aria-labelledby="requester-department-tickets-heading"
+              className="requester-portal__card requester-portal__card--wide"
+            >
+              <div className="requester-portal__card-heading">
+                <span aria-hidden="true" className="requester-portal__icon">
+                  <UsersRound size={19} strokeWidth={1.9} />
+                </span>
+                <div>
+                  <h3 id="requester-department-tickets-heading">
+                    Tickets meiner Abteilung
+                  </h3>
+                  <p>
+                    Übersicht ohne Nachrichten, Beschreibungen oder weitere
+                    Ticketinhalte.
+                  </p>
+                </div>
+              </div>
+              {departmentTickets.length === 0 ? (
+                <p className="requester-portal__empty">
+                  Für Ihre Abteilung sind keine Tickets sichtbar.
+                </p>
+              ) : (
+                <ul className="requester-portal__department-list">
+                  {departmentTickets.map((ticket) => (
+                    <li key={ticket.ticketNumber}>
+                      <div>
+                        <code>{ticket.ticketNumber}</code>
+                        <strong>{ticket.title}</strong>
+                      </div>
+                      <span>{ticket.statusLabel}</span>
+                      <time dateTime={ticket.updatedAt}>
+                        Aktualisiert: {formatDate(ticket.updatedAt)}
+                      </time>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          )}
 
           <section
             aria-labelledby="requester-tickets-heading"

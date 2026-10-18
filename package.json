@@ -19,7 +19,10 @@
     "smoke:web": "node scripts/smoke-web-release.mjs",
     "check": "pnpm typecheck && pnpm test",
     "format:check": "prettier --check .",
-    "performance:check": "node scripts/verify-web-performance-budget.mjs"
+    "performance:check": "node scripts/verify-web-performance-budget.mjs",
+    "test:e2e": "node scripts/e2e-unauthenticated.mjs",
+    "check:load": "node scripts/load-check.mjs",
+    "drill:backup": "bash scripts/backup-restore-drill.sh"
   },
   "devDependencies": {
     "@types/node": "^22.15.3",

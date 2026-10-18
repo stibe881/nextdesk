@@ -4,6 +4,8 @@ import {
   ArrowRight,
   CheckCircle2,
   Clock3,
+  Plus,
+  Users,
   X,
 } from "lucide-react";
 import { supabase } from "./lib/supabase";
@@ -22,6 +24,12 @@ type RequesterLookup = {
   status: "loading" | "loaded" | "error";
   requesters: RequesterContact[];
   error: string;
+};
+type ActiveTenantPerson = { id: string; displayName: string };
+type WatcherLookup = {
+  status: "loading" | "ready";
+  tenantId: string;
+  ticketId: string;
 };
 type RequesterContext = {
   isInternal: boolean;
@@ -144,6 +152,53 @@ function parseRequesters(value: unknown): RequesterContact[] {
     throw new Error("Die Personensuche enthält doppelte Einträge.");
   }
   return requesters;
+}
+
+function parseColleagues(value: unknown): ActiveTenantPerson[] {
+  if (
+    !isRecord(value) ||
+    !isRecord(value.data) ||
+    !Array.isArray(value.data.people) ||
+    value.data.people.length > 20
+  ) {
+    throw new Error("Die Personenliste ist ungültig.");
+  }
+  return value.data.people.map((entry) => {
+    if (
+      !isRecord(entry) ||
+      !isUuid(entry.userId) ||
+      !isNonemptyString(entry.displayName) ||
+      Array.from(entry.displayName.trim()).length > 160
+    ) {
+      throw new Error("Die Personenliste enthält ungültige Daten.");
+    }
+    return { id: entry.userId, displayName: entry.displayName.trim() };
+  });
+}
+
+function parseAddedWatcher(value: unknown): { userId: string } {
+  if (
+    !isRecord(value) ||
+    !isRecord(value.data) ||
+    !isRecord(value.data.watcher) ||
+    !isUuid(value.data.watcher.userId) ||
+    (value.data.watcher.createdAt !== null &&
+      typeof value.data.watcher.createdAt !== "string")
+  ) {
+    throw new Error("Die Bestätigung zur Kopie fehlt.");
+  }
+  return { userId: value.data.watcher.userId };
+}
+
+function functionErrorStatus(value: unknown): number | null {
+  if (!isRecord(value)) return null;
+  if (typeof value.status === "number") return value.status;
+  return value.context instanceof Response ? value.context.status : null;
+}
+
+function isQuietWatcherUnavailable(value: unknown): boolean {
+  const status = functionErrorStatus(value);
+  return status === null || [401, 403, 404].includes(status);
 }
 
 function parseCreatedRequester(value: unknown): RequesterContact {
@@ -588,6 +643,19 @@ export function TicketComposer({
     ticketId: string;
     ticketNumber: string;
   } | null>(null);
+  const [watcherLookup, setWatcherLookup] = useState<WatcherLookup | null>(
+    null,
+  );
+  const [watcherQuery, setWatcherQuery] = useState("");
+  const [selectedWatchers, setSelectedWatchers] = useState<
+    ActiveTenantPerson[]
+  >([]);
+  const [watcherResults, setWatcherResults] = useState<ActiveTenantPerson[]>(
+    [],
+  );
+  const [watcherSearching, setWatcherSearching] = useState(false);
+  const [watcherSaving, setWatcherSaving] = useState(false);
+  const [watcherNotice, setWatcherNotice] = useState("");
   const [error, setError] = useState("");
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [incidentNotices, setIncidentNotices] = useState<
@@ -600,6 +668,8 @@ export function TicketComposer({
   const requesterScopeRef = useRef(0);
   const requesterSearchRef = useRef(0);
   const requesterCreationRef = useRef<number | null>(null);
+  const watcherRequestRef = useRef(0);
+  const watcherSearchRef = useRef(0);
   const formReady = !loading && optionsTenantId === tenantId;
   const currentRequesterManagement =
     formReady && requesterManagement?.tenantId === tenantId
@@ -681,6 +751,82 @@ export function TicketComposer({
       mounted = false;
     };
   }, [tenantId]);
+
+  useEffect(() => {
+    const requestId = ++watcherRequestRef.current;
+    setWatcherLookup(null);
+    setWatcherQuery("");
+    setSelectedWatchers([]);
+    setWatcherResults([]);
+    setWatcherSaving(false);
+    setWatcherNotice("");
+    if (!supabase || !confirmation) return;
+    const ticketId = confirmation.ticketId;
+    setWatcherLookup({ status: "loading", tenantId, ticketId });
+    // listTicketWatchers verifies on the server that the portal is enabled and
+    // that the caller is the requester of this ticket before copy is offered.
+    void supabase.functions
+      .invoke("requester-portal", {
+        body: { tenantId, ticketId, type: "listTicketWatchers" },
+      })
+      .then(({ data, error: requestError }) => {
+        if (requestError) throw requestError;
+        if (
+          !isRecord(data) ||
+          !isRecord(data.data) ||
+          !Array.isArray(data.data.watchers)
+        ) {
+          throw new Error("invalid_watchers");
+        }
+        if (watcherRequestRef.current !== requestId) return;
+        setWatcherLookup({ status: "ready", tenantId, ticketId });
+      })
+      .then(undefined, () => {
+        // Copy is optional. Hide it quietly when it is not available.
+        if (watcherRequestRef.current !== requestId) return;
+        setWatcherLookup(null);
+      });
+
+    return () => {
+      ++watcherRequestRef.current;
+    };
+  }, [confirmation?.ticketId, tenantId]);
+
+  useEffect(() => {
+    const requestId = ++watcherSearchRef.current;
+    const query = watcherQuery.trim();
+    const ready =
+      watcherLookup?.status === "ready" && watcherLookup.tenantId === tenantId;
+    if (!supabase || !ready || Array.from(query).length < 2) {
+      setWatcherResults([]);
+      setWatcherSearching(false);
+      return;
+    }
+    const client = supabase;
+    setWatcherSearching(true);
+    const timer = window.setTimeout(() => {
+      void client.functions
+        .invoke("requester-portal", {
+          body: { tenantId, type: "searchColleagues", query },
+        })
+        .then(({ data, error: requestError }) => {
+          if (requestError) throw requestError;
+          const people = parseColleagues(data);
+          if (watcherSearchRef.current !== requestId) return;
+          setWatcherResults(people);
+          setWatcherSearching(false);
+        })
+        .then(undefined, () => {
+          if (watcherSearchRef.current !== requestId) return;
+          setWatcherResults([]);
+          setWatcherSearching(false);
+        });
+    }, 250);
+    return () => {
+      window.clearTimeout(timer);
+      ++watcherSearchRef.current;
+    };
+  }, [watcherLookup, watcherQuery, tenantId]);
 
   useEffect(() => {
     const requestId = ++incidentRequestRef.current;
@@ -1225,6 +1371,72 @@ export function TicketComposer({
     }
   }
 
+  async function addSelectedWatchers() {
+    const lookup =
+      confirmation &&
+      watcherLookup?.status === "ready" &&
+      watcherLookup.tenantId === tenantId &&
+      watcherLookup.ticketId === confirmation.ticketId
+        ? watcherLookup
+        : null;
+    const watcherIds = selectedWatchers.map((person) => person.id);
+    const client = supabase;
+    if (!client || !lookup || watcherSaving) return;
+    if (watcherIds.length === 0) {
+      setWatcherNotice("Bitte wählen Sie mindestens eine Person aus.");
+      return;
+    }
+    setWatcherSaving(true);
+    setWatcherNotice("");
+    const results = await Promise.allSettled(
+      watcherIds.map(async (watcherId) => {
+        const { data, error: requestError } = await client.functions.invoke(
+          "requester-portal",
+          {
+            body: {
+              tenantId,
+              ticketId: lookup.ticketId,
+              type: "addTicketWatcher",
+              watcherId,
+            },
+          },
+        );
+        if (requestError) throw requestError;
+        const watcher = parseAddedWatcher(data);
+        if (watcher.userId !== watcherId) {
+          throw new Error("invalid_added_watcher");
+        }
+        return watcher.userId;
+      }),
+    );
+    const added = results.flatMap((result) =>
+      result.status === "fulfilled" ? [result.value] : [],
+    );
+    const failures = results.flatMap((result) =>
+      result.status === "rejected" ? [result.reason] : [],
+    );
+    if (failures.some(isQuietWatcherUnavailable)) {
+      setWatcherLookup(null);
+      setSelectedWatchers([]);
+    } else {
+      if (added.length > 0) {
+        setSelectedWatchers((current) =>
+          current.filter((person) => !added.includes(person.id)),
+        );
+      }
+      if (failures.length > 0) {
+        setWatcherNotice(
+          "Nicht alle Personen konnten in Kopie gesetzt werden. Bitte versuchen Sie es erneut.",
+        );
+      } else {
+        setWatcherNotice(
+          `${added.length} ${added.length === 1 ? "Person wurde" : "Personen wurden"} in Kopie gesetzt.`,
+        );
+      }
+    }
+    setWatcherSaving(false);
+  }
+
   async function createTicket(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!validateTicketDraft()) return;
@@ -1391,6 +1603,20 @@ export function TicketComposer({
       (notice.categoryId === null ||
         notice.categoryId === selectedCategory?.id),
   );
+  const currentWatcherLookup =
+    confirmation &&
+    watcherLookup?.status === "ready" &&
+    watcherLookup.tenantId === tenantId &&
+    watcherLookup.ticketId === confirmation.ticketId
+      ? watcherLookup
+      : null;
+  const matchingWatcherPeople = currentWatcherLookup
+    ? watcherResults.filter(
+        (person) =>
+          person.id !== currentUserId &&
+          !selectedWatchers.some((selected) => selected.id === person.id),
+      )
+    : [];
 
   return (
     <section className="ticket-compose panel" aria-label="Ticket erfassen">
@@ -2091,6 +2317,105 @@ export function TicketComposer({
             <X aria-hidden="true" size={16} strokeWidth={1.8} />
           </button>
         </aside>
+      )}
+      {confirmation && currentWatcherLookup && (
+        <section
+          aria-labelledby="ticket-watcher-title"
+          className="ticket-watcher-panel"
+        >
+          <div className="ticket-watcher-head">
+            <Users aria-hidden="true" size={18} strokeWidth={1.8} />
+            <div>
+              <h3 id="ticket-watcher-title">Personen in Kopie setzen</h3>
+              <p>
+                Personen in Kopie sehen den Verlauf dieses Tickets. Sie werden
+                nicht zugewiesen.
+              </p>
+            </div>
+          </div>
+          <label className="ticket-watcher-search">
+            <span>Person suchen</span>
+            <input
+              autoComplete="off"
+              onChange={(event) => setWatcherQuery(event.target.value)}
+              placeholder="Mindestens zwei Zeichen des Namens"
+              type="search"
+              value={watcherQuery}
+            />
+          </label>
+          {watcherSearching && (
+            <p className="ticket-watcher-hint" role="status">
+              Personen werden gesucht …
+            </p>
+          )}
+          {!watcherSearching &&
+            Array.from(watcherQuery.trim()).length >= 2 &&
+            matchingWatcherPeople.length === 0 && (
+              <p className="ticket-watcher-hint">
+                Keine passende Person gefunden.
+              </p>
+            )}
+          {matchingWatcherPeople.length > 0 && (
+            <ul className="ticket-watcher-results" aria-label="Suchtreffer">
+              {matchingWatcherPeople.map((person) => (
+                <li key={person.id}>
+                  <button
+                    onClick={() => {
+                      setSelectedWatchers((current) =>
+                        current.some((selected) => selected.id === person.id)
+                          ? current
+                          : [...current, person].slice(0, 20),
+                      );
+                      setWatcherNotice("");
+                    }}
+                    type="button"
+                  >
+                    <Plus aria-hidden="true" size={14} strokeWidth={1.8} />
+                    {person.displayName}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          {selectedWatchers.length > 0 && (
+            <ul
+              className="ticket-watcher-chips"
+              aria-label="Ausgewählte Personen"
+            >
+              {selectedWatchers.map((person) => (
+                <li key={person.id}>
+                  <span>{person.displayName}</span>
+                  <button
+                    aria-label={`${person.displayName} entfernen`}
+                    onClick={() =>
+                      setSelectedWatchers((current) =>
+                        current.filter((selected) => selected.id !== person.id),
+                      )
+                    }
+                    type="button"
+                  >
+                    <X aria-hidden="true" size={14} strokeWidth={1.8} />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          <div className="ticket-watcher-actions">
+            <button
+              className="primary-action"
+              disabled={watcherSaving || selectedWatchers.length === 0}
+              onClick={() => void addSelectedWatchers()}
+              type="button"
+            >
+              {watcherSaving ? "Wird gespeichert …" : "In Kopie setzen"}
+            </button>
+            {watcherNotice && (
+              <p className="ticket-watcher-hint" role="status">
+                {watcherNotice}
+              </p>
+            )}
+          </div>
+        </section>
       )}
     </section>
   );

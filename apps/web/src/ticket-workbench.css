@@ -330,6 +330,58 @@
   background: var(--surface);
 }
 
+.ticket-workbench__watchers {
+  margin-top: 12px;
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+
+.ticket-workbench__watcher-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ticket-workbench__watcher-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: var(--surface-subtle);
+}
+
+.ticket-workbench__watcher-list svg {
+  flex: 0 0 auto;
+  color: var(--primary);
+}
+
+.ticket-workbench__watcher-list div {
+  display: grid;
+  flex: 1 1 auto;
+  min-width: 0;
+  gap: 1px;
+}
+
+.ticket-workbench__watcher-list strong {
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.ticket-workbench__watcher-list span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.ticket-workbench__watcher-list .text-button {
+  flex: 0 0 auto;
+  font-size: 12px;
+}
+
 .ticket-workbench__public-timeline {
   margin-top: 8px;
 }

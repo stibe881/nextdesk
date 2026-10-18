@@ -10,8 +10,10 @@ import {
 import type { Session } from "@supabase/supabase-js";
 import {
   AtSign,
+  ArrowDown,
   ArrowLeft,
   ArrowRight,
+  ArrowUp,
   Bell,
   BookOpen,
   BriefcaseBusiness,
@@ -21,6 +23,7 @@ import {
   LayoutDashboard,
   ListTodo,
   LogOut,
+  Minus,
   MonitorCog,
   Plus,
   Search,
@@ -35,9 +38,13 @@ import {
 import { productDefaults } from "@nextdesk/config";
 import {
   activityItems,
+  dashboardComparisonWindow,
   dashboardTickets,
+  dashboardTrendFromComparison,
   previewMetrics,
   serviceHealth,
+  type DashboardMetricTrend,
+  type DashboardMetricTrends,
   type DashboardMetrics,
   type DashboardTicket,
   type Period,
@@ -73,6 +80,7 @@ import {
 } from "./agent-workbench";
 import { OpsCenterPanel } from "./ops-center";
 import { RequesterPortalPanel } from "./requester-portal";
+import { IntroTip } from "./intro-tips";
 import {
   OwnerConsoleScreen,
   resolveOwnerAccess,
@@ -232,6 +240,27 @@ function initials(name: string): string {
 
 function metricDisplay(value: string): string {
   return value === "—" ? value : value;
+}
+
+function MetricTrend({ trend }: { trend: DashboardMetricTrend | undefined }) {
+  if (!trend) return null;
+  const Icon =
+    trend.direction === "up"
+      ? ArrowUp
+      : trend.direction === "down"
+        ? ArrowDown
+        : Minus;
+  const text =
+    trend.direction === "same"
+      ? "wie in der Vorperiode"
+      : `${trend.percentage} % ${trend.direction === "up" ? "mehr" : "weniger"} als in der Vorperiode`;
+
+  return (
+    <span className="metric-trend">
+      <Icon aria-hidden="true" size={14} strokeWidth={2} />
+      {text}
+    </span>
+  );
 }
 
 function tenantTicketAccessFromResponse(
@@ -1061,6 +1090,9 @@ export function App() {
   const [snapshot, setSnapshot] = useState<LiveDashboardSnapshot | null>(null);
   const [dashboardLoading, setDashboardLoading] = useState(false);
   const [dashboardRevision, setDashboardRevision] = useState(0);
+  const [dashboardTrends, setDashboardTrends] = useState<DashboardMetricTrends>(
+    {},
+  );
   const [ticketPage, setTicketPage] = useState(0);
   const [selectedTicketIds, setSelectedTicketIds] = useState<Set<string>>(
     () => new Set(),
@@ -1887,6 +1919,99 @@ export function App() {
     snapshot?.tenantId === activeTenantId && snapshot.period === period
       ? snapshot
       : null;
+
+  useEffect(() => {
+    if (!supabase || !session || !activeTenant || !currentSnapshot) {
+      setDashboardTrends({});
+      return;
+    }
+
+    let mounted = true;
+    const dashboardSupabase = supabase;
+    const tenantId = activeTenant.id;
+    const userId = session.user.id;
+    const { currentStart, previousStart } = dashboardComparisonWindow(period);
+
+    void (async () => {
+      const { data: statuses, error: statusesError } = await dashboardSupabase
+        .from("ticket_statuses")
+        .select("id, is_closed")
+        .eq("tenant_id", tenantId);
+      if (statusesError) throw statusesError;
+      const closedStatusIds = (statuses ?? [])
+        .filter((status) => status.is_closed)
+        .map((status) => status.id);
+      const previousTicketCount = (
+        scope: "all" | "closed" | "mine" | "unassigned",
+      ) => {
+        let query = dashboardSupabase
+          .from("tickets")
+          .select("id", { count: "exact", head: true })
+          .eq("tenant_id", tenantId)
+          .gte("created_at", previousStart)
+          .lt("created_at", currentStart);
+        if (scope === "closed") {
+          return closedStatusIds.length > 0
+            ? query.in("status_id", closedStatusIds)
+            : Promise.resolve({ count: 0, error: null });
+        }
+        if (scope === "mine") {
+          return query.or(
+            `assigned_agent_id.eq.${userId},requester_id.eq.${userId}`,
+          );
+        }
+        if (scope === "unassigned") return query.is("assigned_agent_id", null);
+        return query;
+      };
+
+      const [all, closed, mine, unassigned] = await Promise.all([
+        previousTicketCount("all"),
+        previousTicketCount("closed"),
+        previousTicketCount("mine"),
+        previousTicketCount("unassigned"),
+      ]);
+      if (all.error || closed.error || mine.error || unassigned.error) {
+        throw new Error("previous_dashboard_metrics_unavailable");
+      }
+
+      const toCount = (value: string): number | null => {
+        const count = Number(value);
+        return Number.isInteger(count) && count >= 0 ? count : null;
+      };
+      const previousValues = {
+        closed: closed.count ?? 0,
+        mine: mine.count ?? 0,
+        open: Math.max(0, (all.count ?? 0) - (closed.count ?? 0)),
+        unassigned: unassigned.count ?? 0,
+      };
+      const currentValues = {
+        closed: toCount(currentSnapshot.metrics.closed),
+        mine: toCount(currentSnapshot.metrics.mine),
+        open: toCount(currentSnapshot.metrics.open),
+        unassigned: toCount(currentSnapshot.metrics.unassigned),
+      };
+      const nextTrends: DashboardMetricTrends = {};
+      for (const key of ["closed", "mine", "open", "unassigned"] as const) {
+        const current = currentValues[key];
+        if (current === null) continue;
+        const trend = dashboardTrendFromComparison(
+          current,
+          previousValues[key],
+        );
+        if (trend) nextTrends[key] = trend;
+      }
+      if (mounted) setDashboardTrends(nextTrends);
+    })().catch(() => {
+      // Historical comparison data is optional and remains invisible when
+      // RLS, membership or the network cannot provide it safely.
+      if (mounted) setDashboardTrends({});
+    });
+
+    return () => {
+      mounted = false;
+    };
+  }, [activeTenant, currentSnapshot, period, session]);
+
   const view: DashboardView = isSupabaseConfigured
     ? (currentSnapshot ?? {
         activity: [],
@@ -2695,6 +2820,14 @@ export function App() {
         {activeTenant && requesterPortalEnabled && (
           <IncidentBanner notices={activeIncidentNotices} />
         )}
+        {section === "Übersicht" && activeTenant && session ? (
+          <IntroTip
+            onAction={() => setCommandMenuOpen(true)}
+            tenantId={activeTenant.id}
+            tip="befehle"
+            userId={session.user.id}
+          />
+        ) : null}
         {personalSettingsOpen && session ? (
           <PersonalSettings
             onBack={() => setPersonalSettingsOpen(false)}
@@ -2759,17 +2892,25 @@ export function App() {
           />
         ) : section === "Arbeitsplatz" &&
           activeTenant &&
+          session &&
           agentWorkbenchEnabled ? (
-          <AgentWorkbenchPanel
-            canManageIncidents={isTenantAdmin}
-            onOpenQueue={openTeamQueue}
-            onOpenTicket={(ticketId) => {
-              setSection("Tickets");
-              setSelectedTicketId(ticketId);
-            }}
-            onUnreadMentionsChange={setUnreadMentionCount}
-            tenantId={activeTenant.id}
-          />
+          <>
+            <IntroTip
+              tenantId={activeTenant.id}
+              tip="arbeitsplatz"
+              userId={session.user.id}
+            />
+            <AgentWorkbenchPanel
+              canManageIncidents={isTenantAdmin}
+              onOpenQueue={openTeamQueue}
+              onOpenTicket={(ticketId) => {
+                setSection("Tickets");
+                setSelectedTicketId(ticketId);
+              }}
+              onUnreadMentionsChange={setUnreadMentionCount}
+              tenantId={activeTenant.id}
+            />
+          </>
         ) : section === "Erwähnungen" &&
           activeTenant &&
           agentWorkbenchEnabled ? (
@@ -2786,8 +2927,16 @@ export function App() {
           />
         ) : section === "Mein Portal" &&
           activeTenant &&
+          session &&
           requesterPortalEnabled ? (
-          <RequesterPortalPanel tenantId={activeTenant.id} />
+          <>
+            <IntroTip
+              tenantId={activeTenant.id}
+              tip="mein-portal"
+              userId={session.user.id}
+            />
+            <RequesterPortalPanel tenantId={activeTenant.id} />
+          </>
         ) : section === "Tickets" ? (
           <>
             <section className="ticket-panel panel ticket-module">
@@ -3056,6 +3205,7 @@ export function App() {
                 <div>
                   <strong>{metricDisplay(view.metrics.mine)}</strong>
                 </div>
+                <MetricTrend trend={dashboardTrends.mine} />
                 <small>{view.metrics.mineDetail}</small>
               </button>
               {canWorkTickets && (
@@ -3069,6 +3219,7 @@ export function App() {
                     <div>
                       <strong>{metricDisplay(view.metrics.unassigned)}</strong>
                     </div>
+                    <MetricTrend trend={dashboardTrends.unassigned} />
                     <small>{view.metrics.unassignedDetail}</small>
                   </button>
                   <button
@@ -3080,6 +3231,7 @@ export function App() {
                     <div>
                       <strong>{metricDisplay(view.metrics.open)}</strong>
                     </div>
+                    <MetricTrend trend={dashboardTrends.open} />
                     <small>{view.metrics.openDetail}</small>
                   </button>
                   <button
@@ -3091,6 +3243,7 @@ export function App() {
                     <div>
                       <strong>{metricDisplay(view.metrics.closed)}</strong>
                     </div>
+                    <MetricTrend trend={dashboardTrends.closed} />
                     <small>{view.metrics.closedDetail}</small>
                   </button>
                 </>

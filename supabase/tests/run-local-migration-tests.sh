@@ -1160,6 +1160,113 @@ begin
   end if;
 end;
 $$;
+
+-- 0059 Anfragendenzusammenarbeit und Outbox-Grundlage: Die Abteilungsansicht
+-- ist standardmässig deaktiviert. Outbox-Ereignisse sind ausschliesslich für
+-- service_role les- und schreibbar, auch nicht für Mitglieder anderer Mandanten.
+do $$
+begin
+  if (select default_enabled from public.feature_catalog where key = 'requester.department-view') then
+    raise exception 'requester.department-view must default to disabled';
+  end if;
+  if not exists (
+    select 1
+    from public.tenant_feature_flags
+    where tenant_id = '10000000-0000-4000-8000-000000000001'
+      and feature_key = 'requester.department-view'
+      and not enabled
+  ) then
+    raise exception 'Existing tenant did not receive disabled requester.department-view flag';
+  end if;
+  if not (
+    select relrowsecurity and relforcerowsecurity
+    from pg_class
+    where oid = 'public.outbound_events'::regclass
+  ) then
+    raise exception 'outbound_events must enable and force RLS';
+  end if;
+  if not has_table_privilege('service_role', 'public.outbound_events', 'select')
+    or not has_table_privilege('service_role', 'public.outbound_events', 'insert') then
+    raise exception 'service_role must access outbound_events';
+  end if;
+end;
+$$;
+
+begin;
+set local role service_role;
+insert into public.outbound_events (tenant_id, event_type, entity_type, entity_id, payload)
+values (
+  '10000000-0000-4000-8000-000000000001',
+  'ticket.watcher.added',
+  'ticket',
+  '17000000-0000-4000-8000-000000000001',
+  '{"watcherId":"00000000-0000-4000-8000-000000000001"}'::jsonb
+);
+reset role;
+commit;
+
+begin;
+set local "request.jwt.claim.sub" = '00000000-0000-4000-8000-000000000004';
+set local role authenticated;
+do $$
+begin
+  if has_table_privilege('authenticated', 'public.outbound_events', 'select')
+    or has_table_privilege('authenticated', 'public.outbound_events', 'insert') then
+    raise exception 'Authenticated users retained outbound_events privileges';
+  end if;
+  begin
+    perform count(*) from public.outbound_events;
+    raise exception 'Foreign tenant member could read outbound_events';
+  exception when insufficient_privilege then
+    null;
+  end;
+  begin
+    insert into public.outbound_events (tenant_id, event_type, entity_type, entity_id)
+    values (
+      '20000000-0000-4000-8000-000000000002',
+      'unapproved.event',
+      'ticket',
+      '17000000-0000-4000-8000-000000000001'
+    );
+    raise exception 'Foreign tenant member could write outbound_events';
+  exception when insufficient_privilege then
+    null;
+  end;
+end;
+$$;
+reset role;
+rollback;
+
+begin;
+set local role anon;
+do $$
+begin
+  if has_table_privilege('anon', 'public.outbound_events', 'select')
+    or has_table_privilege('anon', 'public.outbound_events', 'insert') then
+    raise exception 'anon retained outbound_events privileges';
+  end if;
+  begin
+    perform count(*) from public.outbound_events;
+    raise exception 'anon could read outbound_events';
+  exception when insufficient_privilege then
+    null;
+  end;
+  begin
+    insert into public.outbound_events (tenant_id, event_type, entity_type, entity_id)
+    values (
+      '10000000-0000-4000-8000-000000000001',
+      'unapproved.event',
+      'ticket',
+      '17000000-0000-4000-8000-000000000001'
+    );
+    raise exception 'anon could write outbound_events';
+  exception when insufficient_privilege then
+    null;
+  end;
+end;
+$$;
+reset role;
+rollback;
 SQL
 
 echo "PostgreSQL 16 migration and RLS integration checks passed."

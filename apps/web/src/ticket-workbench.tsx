@@ -96,7 +96,15 @@ type AgentContext = {
   assets: Array<Record<string, unknown>>;
   assetHistory: Array<Record<string, unknown>>;
   resolutionConfirmations: Array<Record<string, unknown>>;
+  requesterAvailability: string | null;
   sla: SlaExpectation | null;
+  watchers: string[];
+};
+
+type TicketWatcher = {
+  createdAt: string | null;
+  displayName: string | null;
+  userId: string;
 };
 
 type Availability = "checking" | "available" | "unavailable";
@@ -337,11 +345,24 @@ function parseAgentContext(value: unknown): AgentContext | null {
   const assets = toRecords(data.assets);
   const assetHistory = toRecords(data.assetHistory);
   const resolutionConfirmations = toRecords(data.resolutionConfirmations);
+  const requesterAvailability = stringOrNull(data.requesterAvailability);
+  const watchers = data.watchers;
   if (
     !requesterTickets ||
     !assets ||
     !assetHistory ||
-    !resolutionConfirmations
+    !resolutionConfirmations ||
+    (requesterAvailability !== null &&
+      (requesterAvailability.trim().length === 0 ||
+        Array.from(requesterAvailability).length > 300)) ||
+    !Array.isArray(watchers) ||
+    watchers.length > 200 ||
+    !watchers.every(
+      (watcher) =>
+        typeof watcher === "string" &&
+        watcher.trim().length > 0 &&
+        Array.from(watcher.trim()).length <= 160,
+    )
   ) {
     return null;
   }
@@ -362,7 +383,9 @@ function parseAgentContext(value: unknown): AgentContext | null {
     assets,
     assetHistory,
     resolutionConfirmations,
+    requesterAvailability: requesterAvailability?.trim() ?? null,
     sla,
+    watchers: [...new Set(watchers.map((watcher) => watcher.trim()))],
   };
 }
 
@@ -457,6 +480,44 @@ function parseReopenRequests(value: unknown): ReopenRequest[] | null {
   return requests.every((request): request is ReopenRequest => request !== null)
     ? requests
     : null;
+}
+
+function parseTicketWatchers(value: unknown): TicketWatcher[] | null {
+  const data = asRecord(asRecord(value)?.data);
+  if (!data || !Array.isArray(data.watchers) || data.watchers.length > 200)
+    return null;
+  const watchers = data.watchers.map((value) => {
+    const watcher = asRecord(value);
+    const createdAt = stringOrNull(watcher?.createdAt);
+    const displayName = stringOrNull(watcher?.displayName);
+    if (
+      !watcher ||
+      !isUuid(watcher.userId) ||
+      (createdAt !== null && !isTimestamp(createdAt)) ||
+      (displayName !== null &&
+        (displayName.trim().length === 0 ||
+          Array.from(displayName).length > 160))
+    ) {
+      return null;
+    }
+    return {
+      createdAt,
+      displayName: displayName?.trim() ?? null,
+      userId: watcher.userId,
+    };
+  });
+  if (
+    !watchers.every((watcher): watcher is TicketWatcher => watcher !== null) ||
+    new Set(watchers.map((watcher) => watcher.userId)).size !== watchers.length
+  ) {
+    return null;
+  }
+  return watchers;
+}
+
+function parseRemovedWatcherId(value: unknown): string | null {
+  const data = asRecord(asRecord(value)?.data);
+  return data && isUuid(data.removedWatcherId) ? data.removedWatcherId : null;
 }
 
 function contextLabel(
@@ -1132,6 +1193,28 @@ function ContextPanel({
       ) : (
         <div className="ticket-workbench__context-groups">
           <section>
+            <h4>Erreichbarkeit der anfragenden Person</h4>
+            <p>
+              {context.requesterAvailability ??
+                "Keine Erreichbarkeit hinterlegt."}
+            </p>
+          </section>
+          <section>
+            <h4>Beobachtende</h4>
+            {context.watchers.length === 0 ? (
+              <p>Keine Personen in Kopie.</p>
+            ) : (
+              <ul>
+                {context.watchers.map((watcher) => (
+                  <li key={watcher}>
+                    <strong>{watcher}</strong>
+                    <span>Erhält Informationen zum Ticket.</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+          <section>
             <h4>Weitere Tickets der anfragenden Person</h4>
             {context.requesterTickets.length === 0 ? (
               <p>Keine weiteren sichtbaren Tickets.</p>
@@ -1342,6 +1425,136 @@ function KnowledgeDraftButton({
   );
 }
 
+function TicketWatchers({
+  tenantId,
+  ticketId,
+  enabled,
+}: {
+  tenantId: string;
+  ticketId: string;
+  enabled: boolean;
+}) {
+  const [availability, setAvailability] = useState<Availability>("checking");
+  const [watchers, setWatchers] = useState<TicketWatcher[]>([]);
+  const [pendingUserId, setPendingUserId] = useState<string | null>(null);
+  const requestSequence = useRef(0);
+
+  const load = useCallback(async () => {
+    if (!enabled) return;
+    const requestId = ++requestSequence.current;
+    try {
+      const result = parseTicketWatchers(
+        await invokeWorkbench("requester-portal", {
+          type: "listTicketWatchers",
+          tenantId,
+          ticketId,
+        }),
+      );
+      if (!result) throw new Error("invalid_ticket_watchers");
+      if (requestSequence.current !== requestId) return;
+      setWatchers(result);
+      setAvailability("available");
+    } catch {
+      if (requestSequence.current !== requestId) return;
+      setWatchers([]);
+      setAvailability("unavailable");
+    }
+  }, [enabled, tenantId, ticketId]);
+
+  useEffect(() => {
+    setAvailability(enabled ? "checking" : "unavailable");
+    setWatchers([]);
+    setPendingUserId(null);
+    if (enabled) void load();
+    return () => {
+      requestSequence.current += 1;
+    };
+  }, [enabled, load]);
+
+  async function removeWatcher(watcherId: string) {
+    if (pendingUserId) return;
+    setPendingUserId(watcherId);
+    try {
+      const removedWatcherId = parseRemovedWatcherId(
+        await invokeWorkbench("requester-portal", {
+          type: "removeTicketWatcher",
+          tenantId,
+          ticketId,
+          watcherId,
+        }),
+      );
+      if (removedWatcherId !== watcherId) {
+        throw new Error("invalid_watcher_removal");
+      }
+      setWatchers((current) =>
+        current.filter((watcher) => watcher.userId !== removedWatcherId),
+      );
+    } catch {
+      // Inaccessible or unavailable portal areas are deliberately omitted.
+      setAvailability("unavailable");
+      setWatchers([]);
+    } finally {
+      setPendingUserId(null);
+    }
+  }
+
+  if (!enabled || availability === "unavailable") return null;
+
+  return (
+    <section
+      aria-labelledby="ticket-watchers-heading"
+      className="ticket-workbench__watchers"
+    >
+      <div className="ticket-workbench__panel-heading">
+        <div>
+          <p className="eyebrow">KOPIE</p>
+          <h3 id="ticket-watchers-heading">Beobachtende</h3>
+        </div>
+        <button
+          aria-label="Beobachtende aktualisieren"
+          className="more-button"
+          disabled={availability === "checking" || pendingUserId !== null}
+          onClick={() => void load()}
+          type="button"
+        >
+          <RefreshCw aria-hidden="true" size={16} />
+        </button>
+      </div>
+      {availability === "checking" ? (
+        <p className="data-caption" role="status">
+          Beobachtende werden geladen …
+        </p>
+      ) : watchers.length === 0 ? (
+        <p className="data-caption">Für dieses Ticket ist niemand in Kopie.</p>
+      ) : (
+        <ul className="ticket-workbench__watcher-list">
+          {watchers.map((watcher) => (
+            <li key={watcher.userId}>
+              <UsersRound aria-hidden="true" size={16} />
+              <div>
+                <strong>{watcher.displayName ?? "Aktive Person"}</strong>
+                {watcher.createdAt && (
+                  <span>Hinzugefügt: {formatDateTime(watcher.createdAt)}</span>
+                )}
+              </div>
+              <button
+                className="text-button"
+                disabled={pendingUserId !== null}
+                onClick={() => void removeWatcher(watcher.userId)}
+                type="button"
+              >
+                {pendingUserId === watcher.userId
+                  ? "Wird entfernt …"
+                  : "Entfernen"}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
 function RequesterPortal({
   tenantId,
   ticket,
@@ -1487,6 +1700,11 @@ function RequesterPortal({
           ))}
         </ol>
       )}
+      <TicketWatchers
+        enabled={enabled}
+        tenantId={tenantId}
+        ticketId={ticket.id}
+      />
       {(ticket.isClosed || ticket.isResolved) && (
         <div className="ticket-workbench__reopen">
           {!showReopen ? (

@@ -28,6 +28,53 @@ export interface DashboardMetrics {
   unassignedDetail: string;
 }
 
+export type DashboardMetricKey = "closed" | "mine" | "open" | "unassigned";
+
+export type DashboardMetricTrend = {
+  direction: "down" | "same" | "up";
+  percentage: number;
+  previous: number;
+};
+
+export type DashboardMetricTrends = Partial<
+  Record<DashboardMetricKey, DashboardMetricTrend>
+>;
+
+export function dashboardComparisonWindow(
+  period: Period,
+  referenceDate = new Date(),
+): { currentStart: string; previousStart: string } {
+  const days = period === "Heute" ? 1 : period === "7 Tage" ? 7 : 30;
+  const currentStart = new Date(referenceDate);
+  currentStart.setDate(currentStart.getDate() - days);
+  const previousStart = new Date(currentStart);
+  previousStart.setDate(previousStart.getDate() - days);
+  return {
+    currentStart: currentStart.toISOString(),
+    previousStart: previousStart.toISOString(),
+  };
+}
+
+export function dashboardTrendFromComparison(
+  current: number,
+  previous: number,
+): DashboardMetricTrend | null {
+  if (
+    !Number.isFinite(current) ||
+    !Number.isFinite(previous) ||
+    current < 0 ||
+    previous <= 0
+  ) {
+    return null;
+  }
+  const change = current - previous;
+  return {
+    direction: change > 0 ? "up" : change < 0 ? "down" : "same",
+    percentage: Math.round((Math.abs(change) / previous) * 100),
+    previous,
+  };
+}
+
 export interface ServiceHealth {
   availability: string;
   detail: string;

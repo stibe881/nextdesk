@@ -181,6 +181,97 @@
   padding-top: 12px;
 }
 
+.requester-portal__availability-field {
+  display: grid;
+  gap: 6px;
+  margin-top: 16px;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.requester-portal__availability-field textarea {
+  width: 100%;
+  min-width: 0;
+  resize: vertical;
+}
+
+.requester-portal__availability-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-top: 12px;
+}
+
+.requester-portal__availability-actions .secondary-button {
+  min-height: 38px;
+}
+
+.requester-portal__availability-actions p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.requester-portal__department-list {
+  display: grid;
+  gap: 8px;
+  margin: 16px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.requester-portal__department-list li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 12px;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 11px 13px;
+  background: var(--surface-subtle);
+}
+
+.requester-portal__department-list div {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.requester-portal__department-list code {
+  color: var(--primary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.requester-portal__department-list strong {
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.requester-portal__department-list span {
+  align-self: start;
+  border: 1px solid var(--control-border);
+  border-radius: 999px;
+  padding: 3px 8px;
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.requester-portal__department-list time {
+  grid-column: 1 / -1;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
 @media (max-width: 720px) {
   .requester-portal__grid {
     grid-template-columns: minmax(0, 1fr);
@@ -203,5 +294,13 @@
 
   .requester-portal__state button {
     width: 100%;
+  }
+
+  .requester-portal__department-list li {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .requester-portal__department-list span {
+    justify-self: start;
   }
 }

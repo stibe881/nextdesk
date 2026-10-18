@@ -3,6 +3,7 @@ import { resolveTenantFeatureStates } from "../_shared/tenant-features.ts";
 
 const ALLOWED_ORIGIN = "https://app.nextdesk.ch";
 const FEATURE = "requester.portal";
+const DEPARTMENT_VIEW_FEATURE = "requester.department-view";
 const MAX_BYTES = 64 * 1024;
 const ACTIONS = [
   "activeIncidentNotices",
@@ -12,6 +13,13 @@ const ACTIONS = [
   "myApprovals",
   "requestReopen",
   "exportMyData",
+  "listTicketWatchers",
+  "addTicketWatcher",
+  "removeTicketWatcher",
+  "getMyAvailability",
+  "setMyAvailability",
+  "departmentTickets",
+  "searchColleagues",
 ] as const;
 type ActionName = (typeof ACTIONS)[number];
 type Row = Record<string, unknown>;
@@ -154,6 +162,26 @@ async function base(
       "Das Anfragendenportal ist für diesen Mandanten deaktiviert.",
     );
 }
+async function requireDepartmentView(
+  admin: Admin,
+  tenantId: string,
+): Promise<void> {
+  const flags = await resolveTenantFeatureStates(admin, tenantId, [
+    DEPARTMENT_VIEW_FEATURE,
+  ]);
+  if (!flags)
+    throw new HttpError(
+      503,
+      "tenant_feature_lookup_failed",
+      "Die Funktionsfreigabe konnte nicht geprüft werden.",
+    );
+  if (flags[DEPARTMENT_VIEW_FEATURE] !== true)
+    throw new HttpError(
+      403,
+      "requester_department_view_feature_disabled",
+      "Die Abteilungsansicht ist für diesen Mandanten deaktiviert.",
+    );
+}
 async function ownTicket(
   admin: Admin,
   tenantId: string,
@@ -187,22 +215,404 @@ async function ownTicket(
     );
   return result.data as Row;
 }
+async function activeMember(
+  admin: Admin,
+  tenantId: string,
+  userId: unknown,
+): Promise<string> {
+  if (!isUuid(userId))
+    throw new HttpError(
+      400,
+      "invalid_request",
+      "Eine gültige Personen-ID ist erforderlich.",
+    );
+  const result = await admin
+    .from("tenant_memberships")
+    .select("user_id")
+    .eq("tenant_id", tenantId)
+    .eq("user_id", userId)
+    .eq("status", "active")
+    .maybeSingle();
+  if (result.error) db(result.error);
+  if (!result.data)
+    throw new HttpError(
+      422,
+      "inactive_tenant_member",
+      "Die Person ist kein aktives Mandantenmitglied.",
+    );
+  return userId.toLowerCase();
+}
 async function audit(
   admin: Admin,
   tenantId: string,
   actorId: string,
   actionName: string,
+  entityType: string,
   entityId: string,
+  metadata: Row = {},
 ): Promise<void> {
   const result = await admin.from("audit_logs").insert({
     tenant_id: tenantId,
     actor_id: actorId,
     action: actionName,
-    entity_type: "ticket_reopen_request",
+    entity_type: entityType,
     entity_id: entityId,
-    metadata: {},
+    metadata,
   });
   if (result.error) db(result.error);
+}
+function availabilityFromPreferences(preferences: unknown): string | null {
+  if (!isRecord(preferences))
+    throw new HttpError(
+      500,
+      "invalid_stored_data",
+      "Die Erreichbarkeit konnte nicht sicher gelesen werden.",
+    );
+  if (preferences.availability === undefined) return null;
+  const availability = clean(preferences.availability, 1, 300);
+  if (!availability)
+    throw new HttpError(
+      500,
+      "invalid_stored_data",
+      "Die Erreichbarkeit konnte nicht sicher gelesen werden.",
+    );
+  return availability;
+}
+async function activeWatcherRows(
+  admin: Admin,
+  tenantId: string,
+  ticketId: string,
+): Promise<Row[]> {
+  const watchers = await admin
+    .from("ticket_watchers")
+    .select("user_id, created_at")
+    .eq("ticket_id", ticketId)
+    .order("created_at")
+    .limit(200);
+  if (watchers.error) db(watchers.error);
+  const watcherIds = [
+    ...new Set(
+      (watchers.data ?? []).map((entry) => entry.user_id).filter(isUuid),
+    ),
+  ];
+  if (watcherIds.length === 0) return [];
+  const memberships = await admin
+    .from("tenant_memberships")
+    .select("user_id")
+    .eq("tenant_id", tenantId)
+    .eq("status", "active")
+    .in("user_id", watcherIds);
+  if (memberships.error) db(memberships.error);
+  const activeIds = new Set(
+    (memberships.data ?? []).map((entry) => entry.user_id).filter(isUuid),
+  );
+  const profiles = await admin
+    .from("user_profiles")
+    .select("id, display_name")
+    .in("id", [...activeIds]);
+  if (profiles.error) db(profiles.error);
+  const displayNames = new Map(
+    (profiles.data ?? [])
+      .filter((entry) => isUuid(entry.id))
+      .map((entry) => [
+        entry.id.toLowerCase(),
+        typeof entry.display_name === "string" ? entry.display_name : null,
+      ]),
+  );
+  return (watchers.data ?? [])
+    .filter((entry) => isUuid(entry.user_id) && activeIds.has(entry.user_id))
+    .map((entry) => ({
+      userId: entry.user_id.toLowerCase(),
+      displayName: displayNames.get(entry.user_id.toLowerCase()) ?? null,
+      createdAt: typeof entry.created_at === "string" ? entry.created_at : null,
+    }));
+}
+// Returns only display names of active people in the same tenant. No e-mail
+// addresses, roles or departments are exposed. Used to choose people in copy.
+async function searchColleagues(
+  request: Request,
+  admin: Admin,
+  item: Action,
+  actorId: string,
+): Promise<Response> {
+  const query = clean(item.query, 2, 80);
+  if (!query)
+    throw new HttpError(
+      400,
+      "invalid_request",
+      "Bitte geben Sie mindestens zwei gültige Zeichen ein.",
+    );
+  const pattern = `%${query.replace(/[\\%_]/g, (char) => `\\${char}`)}%`;
+  const memberships = await admin
+    .from("tenant_memberships")
+    .select("user_id")
+    .eq("tenant_id", item.tenantId)
+    .eq("status", "active")
+    .limit(5000);
+  if (memberships.error) db(memberships.error);
+  const memberIds = [
+    ...new Set(
+      (memberships.data ?? [])
+        .map((entry) => entry.user_id)
+        .filter(isUuid)
+        .map((id) => id.toLowerCase())
+        .filter((id) => id !== actorId.toLowerCase()),
+    ),
+  ];
+  const people = new Map<string, string>();
+  for (
+    let index = 0;
+    index < memberIds.length && people.size < 20;
+    index += 150
+  ) {
+    const profiles = await admin
+      .from("user_profiles")
+      .select("id, display_name")
+      .in("id", memberIds.slice(index, index + 150))
+      .ilike("display_name", pattern)
+      .limit(20);
+    if (profiles.error) db(profiles.error);
+    for (const profile of profiles.data ?? []) {
+      const name =
+        typeof profile.display_name === "string"
+          ? profile.display_name.trim()
+          : "";
+      if (
+        isUuid(profile.id) &&
+        Array.from(name).length >= 2 &&
+        Array.from(name).length <= 160 &&
+        !name.includes("@")
+      )
+        people.set(profile.id.toLowerCase(), name);
+    }
+  }
+  const result = [...people.entries()]
+    .map(([userId, displayName]) => ({ userId, displayName }))
+    .sort((left, right) =>
+      left.displayName.localeCompare(right.displayName, "de-CH", {
+        sensitivity: "base",
+      }),
+    )
+    .slice(0, 20);
+  return reply(request, { data: { people: result } });
+}
+async function listTicketWatchers(
+  request: Request,
+  admin: Admin,
+  item: Action,
+  actorId: string,
+): Promise<Response> {
+  const current = await ownTicket(admin, item.tenantId, item.ticketId, actorId);
+  const watchers = await activeWatcherRows(
+    admin,
+    item.tenantId,
+    current.id as string,
+  );
+  return reply(request, { data: { watchers } });
+}
+async function addTicketWatcher(
+  request: Request,
+  admin: Admin,
+  item: Action,
+  actorId: string,
+): Promise<Response> {
+  const current = await ownTicket(admin, item.tenantId, item.ticketId, actorId);
+  const watcherId = await activeMember(admin, item.tenantId, item.watcherId);
+  const result = await admin
+    .from("ticket_watchers")
+    .insert({ ticket_id: current.id, user_id: watcherId })
+    .select("user_id, created_at")
+    .single();
+  if (result.error) db(result.error);
+  await audit(
+    admin,
+    item.tenantId,
+    actorId,
+    "ticket.watcher.added",
+    "ticket",
+    current.id as string,
+    { watcherId },
+  );
+  return reply(
+    request,
+    {
+      data: {
+        watcher: {
+          userId: result.data.user_id,
+          createdAt: result.data.created_at,
+        },
+      },
+    },
+    201,
+  );
+}
+async function removeTicketWatcher(
+  request: Request,
+  admin: Admin,
+  item: Action,
+  actorId: string,
+): Promise<Response> {
+  const current = await ownTicket(admin, item.tenantId, item.ticketId, actorId);
+  if (!isUuid(item.watcherId))
+    throw new HttpError(
+      400,
+      "invalid_request",
+      "Eine gültige Personen-ID ist erforderlich.",
+    );
+  const watcherId = item.watcherId.toLowerCase();
+  const result = await admin
+    .from("ticket_watchers")
+    .delete()
+    .eq("ticket_id", current.id as string)
+    .eq("user_id", watcherId)
+    .select("user_id")
+    .maybeSingle();
+  if (result.error) db(result.error);
+  if (!result.data)
+    throw new HttpError(
+      404,
+      "watcher_not_found",
+      "Die beobachtende Person ist für dieses Ticket nicht hinterlegt.",
+    );
+  await audit(
+    admin,
+    item.tenantId,
+    actorId,
+    "ticket.watcher.removed",
+    "ticket",
+    current.id as string,
+    { watcherId },
+  );
+  return reply(request, { data: { removedWatcherId: watcherId } });
+}
+async function getMyAvailability(
+  request: Request,
+  admin: Admin,
+  item: Action,
+  actorId: string,
+): Promise<Response> {
+  const result = await admin
+    .from("workspace_preferences")
+    .select("preferences")
+    .eq("tenant_id", item.tenantId)
+    .eq("user_id", actorId)
+    .maybeSingle();
+  if (result.error) db(result.error);
+  return reply(request, {
+    data: {
+      availability: result.data
+        ? availabilityFromPreferences(result.data.preferences)
+        : null,
+    },
+  });
+}
+async function setMyAvailability(
+  request: Request,
+  admin: Admin,
+  item: Action,
+  actorId: string,
+): Promise<Response> {
+  const availability =
+    item.availability === null ? null : clean(item.availability, 1, 300);
+  if (availability === null && item.availability !== null)
+    throw new HttpError(
+      400,
+      "invalid_request",
+      "Die Erreichbarkeit ist ungültig.",
+    );
+  const current = await admin
+    .from("workspace_preferences")
+    .select("preferences")
+    .eq("tenant_id", item.tenantId)
+    .eq("user_id", actorId)
+    .maybeSingle();
+  if (current.error) db(current.error);
+  const preferences = current.data?.preferences ?? {};
+  if (!isRecord(preferences))
+    throw new HttpError(
+      500,
+      "invalid_stored_data",
+      "Die bestehenden Einstellungen konnten nicht sicher gelesen werden.",
+    );
+  const merged = { ...preferences };
+  if (availability === null) delete merged.availability;
+  else merged.availability = availability;
+  if (new TextEncoder().encode(JSON.stringify(merged)).byteLength > 4096)
+    throw new HttpError(
+      422,
+      "invalid_data",
+      "Die Einstellungen sind zu umfangreich.",
+    );
+  const result = await admin
+    .from("workspace_preferences")
+    .upsert(
+      {
+        tenant_id: item.tenantId,
+        user_id: actorId,
+        preferences: merged,
+      },
+      { onConflict: "tenant_id,user_id" },
+    )
+    .select("preferences")
+    .single();
+  if (result.error) db(result.error);
+  return reply(request, {
+    data: {
+      availability: availabilityFromPreferences(result.data.preferences),
+    },
+  });
+}
+async function departmentTickets(
+  request: Request,
+  admin: Admin,
+  item: Action,
+  actorId: string,
+): Promise<Response> {
+  await requireDepartmentView(admin, item.tenantId);
+  const directory = await admin
+    .from("tenant_member_directory")
+    .select("department_id")
+    .eq("tenant_id", item.tenantId)
+    .eq("user_id", actorId)
+    .maybeSingle();
+  if (directory.error) db(directory.error);
+  if (!directory.data || !isUuid(directory.data.department_id))
+    return reply(request, { data: { tickets: [] } });
+  const result = await admin
+    .from("tickets")
+    .select(
+      "ticket_number, subject, created_at, updated_at, ticket_statuses!inner(label)",
+    )
+    .eq("tenant_id", item.tenantId)
+    .eq("department_id", directory.data.department_id)
+    .order("updated_at", { ascending: false })
+    .limit(500);
+  if (result.error) db(result.error);
+  const tickets = (result.data ?? []).map((entry) => {
+    const row = entry as Row;
+    const status = row.ticket_statuses;
+    if (
+      typeof row.ticket_number !== "string" ||
+      typeof row.subject !== "string" ||
+      typeof row.created_at !== "string" ||
+      typeof row.updated_at !== "string" ||
+      !isRecord(status) ||
+      typeof status.label !== "string"
+    )
+      throw new HttpError(
+        500,
+        "invalid_stored_data",
+        "Die Abteilungstickets konnten nicht sicher gelesen werden.",
+      );
+    return {
+      ticketNumber: row.ticket_number,
+      title: row.subject,
+      statusLabel: status.label,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    };
+  });
+  return reply(request, { data: { tickets } });
 }
 async function activeIncidentNotices(
   request: Request,
@@ -422,6 +832,7 @@ async function requestReopen(
     item.tenantId,
     actorId,
     "ticket.reopen_request.created",
+    "ticket_reopen_request",
     result.data.id,
   );
   return reply(
@@ -548,6 +959,55 @@ const handler = withSupabase(
         return await myApprovals(request, context.supabaseAdmin, item, actorId);
       if (item.type === "requestReopen")
         return await requestReopen(
+          request,
+          context.supabaseAdmin,
+          item,
+          actorId,
+        );
+      if (item.type === "listTicketWatchers")
+        return await listTicketWatchers(
+          request,
+          context.supabaseAdmin,
+          item,
+          actorId,
+        );
+      if (item.type === "addTicketWatcher")
+        return await addTicketWatcher(
+          request,
+          context.supabaseAdmin,
+          item,
+          actorId,
+        );
+      if (item.type === "removeTicketWatcher")
+        return await removeTicketWatcher(
+          request,
+          context.supabaseAdmin,
+          item,
+          actorId,
+        );
+      if (item.type === "getMyAvailability")
+        return await getMyAvailability(
+          request,
+          context.supabaseAdmin,
+          item,
+          actorId,
+        );
+      if (item.type === "setMyAvailability")
+        return await setMyAvailability(
+          request,
+          context.supabaseAdmin,
+          item,
+          actorId,
+        );
+      if (item.type === "searchColleagues")
+        return await searchColleagues(
+          request,
+          context.supabaseAdmin,
+          item,
+          actorId,
+        );
+      if (item.type === "departmentTickets")
+        return await departmentTickets(
           request,
           context.supabaseAdmin,
           item,

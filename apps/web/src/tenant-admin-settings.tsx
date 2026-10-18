@@ -4,6 +4,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type FormEvent,
 } from "react";
 import {
@@ -630,6 +631,117 @@ function hasSufficientWhiteTextContrast(value: string): boolean {
   return 1.05 / (luminance + 0.05) >= 4.5;
 }
 
+function contrastRatio(foreground: string, background: string): number | null {
+  if (!isHexColor(foreground) || !isHexColor(background)) return null;
+  const luminance = (color: string) => {
+    const linearChannel = (offset: number) => {
+      const channel =
+        Number.parseInt(color.slice(offset, offset + 2), 16) / 255;
+      return channel <= 0.04045
+        ? channel / 12.92
+        : ((channel + 0.055) / 1.055) ** 2.4;
+    };
+    return (
+      0.2126 * linearChannel(1) +
+      0.7152 * linearChannel(3) +
+      0.0722 * linearChannel(5)
+    );
+  };
+  const foregroundLuminance = luminance(foreground);
+  const backgroundLuminance = luminance(background);
+  const lighter = Math.max(foregroundLuminance, backgroundLuminance);
+  const darker = Math.min(foregroundLuminance, backgroundLuminance);
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+function CorporateDesignPreview({
+  form,
+  logoUrl,
+}: {
+  form: BrandingForm;
+  logoUrl: string | null;
+}) {
+  const primaryColor = isHexColor(form.primaryColor)
+    ? form.primaryColor.toUpperCase()
+    : "#4338CA";
+  const secondaryColor = isHexColor(form.secondaryColor)
+    ? form.secondaryColor.toUpperCase()
+    : "#3730A3";
+  const accentColor = isHexColor(form.accentColor)
+    ? form.accentColor.toUpperCase()
+    : "#075985";
+  const whiteTextContrast = contrastRatio("#FFFFFF", primaryColor);
+  const contrastPasses = whiteTextContrast !== null && whiteTextContrast >= 4.5;
+  const previewStyle = {
+    "--design-preview-accent": accentColor,
+    "--design-preview-primary": primaryColor,
+    "--design-preview-secondary": secondaryColor,
+  } as CSSProperties;
+  const portalName = form.portalName.trim() || "Ihr Portal";
+
+  return (
+    <section
+      aria-labelledby="tenant-branding-preview-heading"
+      className="tenant-branding-preview"
+      style={previewStyle}
+    >
+      <div className="tenant-branding-preview__heading">
+        <div>
+          <p className="tenant-admin-settings__eyebrow">LIVE-VORSCHAU</p>
+          <h3 id="tenant-branding-preview-heading">Portalansicht</h3>
+        </div>
+        <span>Änderungen sind noch nicht gespeichert.</span>
+      </div>
+      <div className="tenant-branding-preview__frame">
+        <header className="tenant-branding-preview__header">
+          {logoUrl ? (
+            <img alt={`${portalName} Logo`} src={logoUrl} />
+          ) : (
+            <span
+              aria-label="Noch kein Portal-Logo ausgewählt"
+              className="tenant-branding-preview__logo-fallback"
+            >
+              ND
+            </span>
+          )}
+          <strong>{portalName}</strong>
+          <span>Übersicht</span>
+        </header>
+        <div className="tenant-branding-preview__body">
+          <nav aria-label="Vorschau der Portalnavigation">
+            <span className="is-active">Tickets</span>
+            <span>Services</span>
+            <span>Wissen</span>
+          </nav>
+          <div className="tenant-branding-preview__content">
+            <div>
+              <strong>Willkommen zurück</strong>
+              <span>Ihre offenen Anliegen auf einen Blick.</span>
+            </div>
+            <span className="tenant-branding-preview__button">
+              Ticket erfassen
+            </span>
+            <span className="tenant-branding-preview__status">
+              Stabil · SLA im Ziel
+            </span>
+          </div>
+        </div>
+      </div>
+      <p
+        className={
+          contrastPasses
+            ? "tenant-branding-preview__contrast"
+            : "tenant-branding-preview__contrast tenant-branding-preview__contrast--warning"
+        }
+      >
+        {contrastPasses
+          ? `Textfarbe Weiss auf Primärfarbe: Kontrast ${whiteTextContrast.toFixed(1)}:1 · WCAG AA erfüllt.`
+          : `Warnung: Textfarbe Weiss auf Primärfarbe: Kontrast ${whiteTextContrast?.toFixed(1) ?? "nicht prüfbar"}:1 · WCAG AA (4,5:1) nicht erfüllt.`}
+      </p>
+    </section>
+  );
+}
+
 const BRAND_COLOR_PALETTE = [
   "#4338CA",
   "#2563EB",
@@ -770,6 +882,12 @@ const FEATURE_PRESENTATION: Readonly<
     description:
       "Makros, Erwähnungen, Stellvertretungen und erklärbare Arbeitsvorschläge für Agenten.",
     Icon: LayoutPanelTop,
+  },
+  "requester.department-view": {
+    name: "Abteilungsansicht für Anfragende",
+    description:
+      "Anfragende sehen Titel, Status und Nummer der Tickets ihrer eigenen Abteilung, keine Inhalte.",
+    Icon: MessageSquareText,
   },
   "portal.self-service": {
     name: "Self-Service",
@@ -2052,6 +2170,13 @@ export function TenantAdminSettings({
                       value={brandingForm.accentColor}
                     />
                   </div>
+                  <CorporateDesignPreview
+                    form={brandingForm}
+                    logoUrl={
+                      pendingLogo?.previewUrl ??
+                      (removeLogo ? null : brandingLogoUrl)
+                    }
+                  />
                   <button type="submit" disabled={saving !== null}>
                     {saving === "branding"
                       ? "Wird gespeichert …"

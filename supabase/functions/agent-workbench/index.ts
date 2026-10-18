@@ -930,6 +930,23 @@ async function myMetrics(
     },
   });
 }
+function requesterAvailability(preferences: unknown): string | null {
+  if (!isRecord(preferences))
+    throw new HttpError(
+      500,
+      "invalid_stored_data",
+      "Die Erreichbarkeit der anfragenden Person konnte nicht sicher gelesen werden.",
+    );
+  if (preferences.availability === undefined) return null;
+  const availability = text(preferences.availability, 1, 300);
+  if (!availability)
+    throw new HttpError(
+      500,
+      "invalid_stored_data",
+      "Die Erreichbarkeit der anfragenden Person konnte nicht sicher gelesen werden.",
+    );
+  return availability;
+}
 async function ticketContext(
   request: Request,
   client: Client,
@@ -980,9 +997,66 @@ async function ticketContext(
     .eq("ticket_id", info.id as string)
     .order("confirmed_at", { ascending: false })
     .limit(20);
+  const availability = isUuid(info.requester_id)
+    ? await admin
+        .from("workspace_preferences")
+        .select("preferences")
+        .eq("tenant_id", action.tenantId)
+        .eq("user_id", info.requester_id)
+        .maybeSingle()
+    : { data: null, error: null };
+  const watcherRows = await admin
+    .from("ticket_watchers")
+    .select("user_id, created_at")
+    .eq("ticket_id", info.id as string)
+    .order("created_at")
+    .limit(200);
   if (assets.error) db(assets.error);
   if (history.error) db(history.error);
   if (confirmations.error) db(confirmations.error);
+  if (availability.error) db(availability.error);
+  if (watcherRows.error) db(watcherRows.error);
+  const watcherIds = [
+    ...new Set(
+      (watcherRows.data ?? []).map((entry) => entry.user_id).filter(isUuid),
+    ),
+  ];
+  const memberships = watcherIds.length
+    ? await admin
+        .from("tenant_memberships")
+        .select("user_id")
+        .eq("tenant_id", action.tenantId)
+        .eq("status", "active")
+        .in("user_id", watcherIds)
+    : { data: [], error: null };
+  if (memberships.error) db(memberships.error);
+  const activeWatcherIds = new Set(
+    (memberships.data ?? []).map((entry) => entry.user_id).filter(isUuid),
+  );
+  const profiles = activeWatcherIds.size
+    ? await admin
+        .from("user_profiles")
+        .select("id, display_name")
+        .in("id", [...activeWatcherIds])
+    : { data: [], error: null };
+  if (profiles.error) db(profiles.error);
+  const displayNames = new Map(
+    (profiles.data ?? [])
+      .filter((entry) => isUuid(entry.id))
+      .map((entry) => [
+        entry.id.toLowerCase(),
+        typeof entry.display_name === "string" ? entry.display_name : null,
+      ]),
+  );
+  const watchers = watcherIds
+    .filter((id) => activeWatcherIds.has(id))
+    .map((id) => displayNames.get(id.toLowerCase()))
+    .filter(
+      (name): name is string =>
+        typeof name === "string" &&
+        name.trim().length > 0 &&
+        Array.from(name.trim()).length <= 160,
+    );
   return reply(request, {
     data: {
       ticket: info,
@@ -990,6 +1064,10 @@ async function ticketContext(
       assets: assets.data ?? [],
       assetHistory: history.data ?? [],
       resolutionConfirmations: confirmations.data ?? [],
+      requesterAvailability: availability.data
+        ? requesterAvailability(availability.data.preferences)
+        : null,
+      watchers,
     },
   });
 }
