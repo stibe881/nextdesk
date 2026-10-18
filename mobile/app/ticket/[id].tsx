@@ -3,6 +3,7 @@ import { router, useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -12,6 +13,7 @@ import {
 } from "react-native";
 
 import { ScreenContainer } from "@/components/screen-container";
+import { RequesterPicker } from "@/components/requester-picker";
 import { TicketConversation } from "@/components/ticket-conversation";
 import { loadCurrentTenant, type MobileTenant } from "@/lib/nextdesk-client";
 import {
@@ -19,6 +21,7 @@ import {
   loadMobileTicketDetail,
   updateMobileTicket,
   type MobileTicketDetail,
+  type TicketRequester,
   type TicketCommentVisibility,
 } from "@/lib/nextdesk-tickets";
 
@@ -30,10 +33,14 @@ export default function TicketDetailScreen() {
   const [description, setDescription] = useState("");
   const [statusKey, setStatusKey] = useState("");
   const [priorityKey, setPriorityKey] = useState("");
+  const [requester, setRequester] = useState<TicketRequester | null>(null);
   const [comment, setComment] = useState("");
   const [commentVisibility, setCommentVisibility] =
     useState<TicketCommentVisibility>("internal");
   const [editing, setEditing] = useState(false);
+  const [selection, setSelection] = useState<"status" | "priority" | null>(
+    null,
+  );
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [sendingComment, setSendingComment] = useState(false);
@@ -49,6 +56,7 @@ export default function TicketDetailScreen() {
         setTenant(currentTenant);
         setTicket(detail);
         if (syncEditor) {
+          setRequester(detail.requesterContact);
           setSubject(detail.subject);
           setDescription(detail.description);
           setStatusKey(
@@ -124,11 +132,13 @@ export default function TicketDetailScreen() {
       ticket.priorityOptions.find((option) => option.id === ticket.priorityId)
         ?.key ?? "",
     );
+    setRequester(ticket.requesterContact);
   }
 
   function toggleEditing() {
     if (editing) resetEditor();
     setError("");
+    setSelection(null);
     setEditing((current) => !current);
   }
 
@@ -163,6 +173,7 @@ export default function TicketDetailScreen() {
         description: description.trim(),
         statusKey,
         priorityKey,
+        ...(requester ? { requesterContactId: requester.id } : {}),
       });
       setTicket({
         ...ticket,
@@ -170,6 +181,8 @@ export default function TicketDetailScreen() {
         description: description.trim(),
         statusId: nextStatus.id,
         priorityId: nextPriority.id,
+        requesterContact: requester,
+        requesterName: requester?.displayName ?? null,
       });
       setEditing(false);
     } catch (nextError) {
@@ -363,54 +376,75 @@ export default function TicketDetailScreen() {
         </View>
 
         {editing ? (
-          <View style={styles.editCard}>
-            <Text style={styles.editTitle}>Ticket bearbeiten</Text>
-            <Text style={styles.fieldLabel}>STATUS</Text>
-            <View style={styles.optionWrap}>
-              {editableStatuses.map((option) => (
-                <Pressable
-                  accessibilityRole="button"
-                  key={option.id}
-                  onPress={() => setStatusKey(option.key)}
-                  style={[
-                    styles.option,
-                    statusKey === option.key && styles.optionActive,
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.optionText,
-                      statusKey === option.key && styles.optionTextActive,
-                    ]}
-                  >
-                    {option.label}
-                  </Text>
-                </Pressable>
-              ))}
+          <View style={styles.editorCard}>
+            <View style={styles.editorHeader}>
+              <View>
+                <Text style={styles.editTitle}>Ticket bearbeiten</Text>
+                <Text style={styles.editorCopy}>
+                  Passe die Angaben an und speichere sie gemeinsam.
+                </Text>
+              </View>
+              <View style={styles.editorIcon}>
+                <Ionicons color="#4438CA" name="create-outline" size={20} />
+              </View>
             </View>
-            <Text style={styles.fieldLabel}>PRIORITÄT</Text>
-            <View style={styles.optionWrap}>
-              {ticket.priorityOptions.map((option) => (
-                <Pressable
-                  accessibilityRole="button"
-                  key={option.id}
-                  onPress={() => setPriorityKey(option.key)}
-                  style={[
-                    styles.option,
-                    priorityKey === option.key && styles.optionActive,
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.optionText,
-                      priorityKey === option.key && styles.optionTextActive,
-                    ]}
-                  >
-                    {option.label}
-                  </Text>
-                </Pressable>
-              ))}
+
+            <View style={styles.editorField}>
+              <Text style={styles.fieldLabel}>ANFRAGENDE PERSON</Text>
+              {requester ? (
+                <RequesterPicker
+                  contextLabel="TICKET BEARBEITEN"
+                  defaultRequester={ticket.requesterContact ?? requester}
+                  onChange={setRequester}
+                  tenantId={tenant?.id ?? ""}
+                  value={requester}
+                />
+              ) : (
+                <Text style={styles.missingRequester}>
+                  Für dieses Ticket ist keine anfragende Person hinterlegt.
+                </Text>
+              )}
             </View>
+
+            <View style={styles.editorField}>
+              <Text style={styles.fieldLabel}>STATUS</Text>
+              <Pressable
+                accessibilityLabel="Status auswählen"
+                accessibilityRole="button"
+                onPress={() => setSelection("status")}
+                style={styles.selector}
+              >
+                <View>
+                  <Text style={styles.selectorValue}>
+                    {editableStatuses.find((option) => option.key === statusKey)
+                      ?.label ?? "Status wählen"}
+                  </Text>
+                  <Text style={styles.selectorHint}>Antippen zum Ändern</Text>
+                </View>
+                <Ionicons color="#4438CA" name="chevron-down" size={19} />
+              </Pressable>
+            </View>
+
+            <View style={styles.editorField}>
+              <Text style={styles.fieldLabel}>PRIORITÄT</Text>
+              <Pressable
+                accessibilityLabel="Priorität auswählen"
+                accessibilityRole="button"
+                onPress={() => setSelection("priority")}
+                style={styles.selector}
+              >
+                <View>
+                  <Text style={styles.selectorValue}>
+                    {ticket.priorityOptions.find(
+                      (option) => option.key === priorityKey,
+                    )?.label ?? "Priorität wählen"}
+                  </Text>
+                  <Text style={styles.selectorHint}>Antippen zum Ändern</Text>
+                </View>
+                <Ionicons color="#4438CA" name="chevron-down" size={19} />
+              </Pressable>
+            </View>
+
             <Pressable
               accessibilityRole="button"
               disabled={saving}
@@ -450,6 +484,89 @@ export default function TicketDetailScreen() {
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
       </ScrollView>
+
+      <Modal
+        animationType="slide"
+        onRequestClose={() => setSelection(null)}
+        transparent
+        visible={selection !== null}
+      >
+        <View style={styles.selectionModalRoot}>
+          <Pressable
+            accessibilityLabel="Auswahl schliessen"
+            accessibilityRole="button"
+            onPress={() => setSelection(null)}
+            style={StyleSheet.absoluteFill}
+          />
+          <View style={styles.selectionSheet}>
+            <View style={styles.selectionHeader}>
+              <View>
+                <Text style={styles.selectionEyebrow}>TICKET BEARBEITEN</Text>
+                <Text style={styles.selectionTitle}>
+                  {selection === "status"
+                    ? "Status wählen"
+                    : "Priorität wählen"}
+                </Text>
+              </View>
+              <Pressable
+                accessibilityLabel="Auswahl schliessen"
+                accessibilityRole="button"
+                onPress={() => setSelection(null)}
+                style={styles.selectionClose}
+              >
+                <Ionicons color="#4438CA" name="close" size={22} />
+              </Pressable>
+            </View>
+            <ScrollView
+              contentContainerStyle={styles.selectionOptions}
+              showsVerticalScrollIndicator={false}
+            >
+              {(selection === "status"
+                ? editableStatuses
+                : ticket.priorityOptions
+              ).map((option) => {
+                const selected =
+                  selection === "status"
+                    ? statusKey === option.key
+                    : priorityKey === option.key;
+                return (
+                  <Pressable
+                    accessibilityRole="button"
+                    key={option.id}
+                    onPress={() => {
+                      if (selection === "status") setStatusKey(option.key);
+                      else setPriorityKey(option.key);
+                      setSelection(null);
+                    }}
+                    style={[
+                      styles.selectionOption,
+                      selected && styles.selectionOptionActive,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.selectionOptionText,
+                        selected && styles.selectionOptionTextActive,
+                      ]}
+                    >
+                      {option.label}
+                    </Text>
+                    {selected ? (
+                      <Ionicons color="#4438CA" name="checkmark" size={21} />
+                    ) : (
+                      <Ionicons
+                        color="#858398"
+                        name="chevron-forward"
+                        size={19}
+                      />
+                    )}
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </ScreenContainer>
   );
 }
@@ -568,14 +685,43 @@ const styles = StyleSheet.create({
     minHeight: 145,
     padding: 12,
   },
-  editCard: {
+  editorCard: {
     backgroundColor: "#FFFFFF",
-    borderColor: "#DAD8EE",
-    borderRadius: 20,
+    borderColor: "#DCD9F0",
+    borderRadius: 22,
     borderWidth: 1,
-    gap: 11,
-    padding: 17,
+    gap: 16,
+    padding: 18,
   },
+  editorHeader: {
+    alignItems: "flex-start",
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
+  editorCopy: { color: "#77758C", fontSize: 12, lineHeight: 18, marginTop: 3 },
+  editorIcon: {
+    alignItems: "center",
+    backgroundColor: "#EEECFF",
+    borderRadius: 15,
+    height: 36,
+    justifyContent: "center",
+    width: 36,
+  },
+  editorField: { gap: 7 },
+  missingRequester: { color: "#77758C", fontSize: 13, lineHeight: 19 },
+  selector: {
+    alignItems: "center",
+    backgroundColor: "#F7F7FB",
+    borderColor: "#E1E0EC",
+    borderRadius: 14,
+    borderWidth: 1,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    minHeight: 58,
+    paddingHorizontal: 14,
+  },
+  selectorValue: { color: "#292A3E", fontSize: 15, fontWeight: "800" },
+  selectorHint: { color: "#77758C", fontSize: 11, marginTop: 2 },
   editTitle: { color: "#202136", fontSize: 18, fontWeight: "800" },
   fieldLabel: {
     color: "#77758C",
@@ -626,4 +772,58 @@ const styles = StyleSheet.create({
   },
   error: { color: "#A02820", fontSize: 13, lineHeight: 19 },
   disabled: { opacity: 0.55 },
+  selectionModalRoot: {
+    backgroundColor: "rgba(25, 25, 42, 0.42)",
+    flex: 1,
+    justifyContent: "flex-end",
+  },
+  selectionSheet: {
+    backgroundColor: "#FFFFFF",
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    gap: 15,
+    maxHeight: "72%",
+    padding: 20,
+    paddingBottom: 30,
+  },
+  selectionHeader: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
+  selectionEyebrow: {
+    color: "#77758C",
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 0.9,
+  },
+  selectionTitle: {
+    color: "#202136",
+    fontSize: 21,
+    fontWeight: "800",
+    marginTop: 3,
+  },
+  selectionClose: {
+    alignItems: "center",
+    backgroundColor: "#EEECFF",
+    borderRadius: 16,
+    height: 36,
+    justifyContent: "center",
+    width: 36,
+  },
+  selectionOptions: { gap: 8, paddingBottom: 4 },
+  selectionOption: {
+    alignItems: "center",
+    backgroundColor: "#FFFFFF",
+    borderColor: "#E5E5EF",
+    borderRadius: 14,
+    borderWidth: 1,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    minHeight: 54,
+    paddingHorizontal: 14,
+  },
+  selectionOptionActive: { backgroundColor: "#F0EFFB", borderColor: "#4438CA" },
+  selectionOptionText: { color: "#363653", fontSize: 15, fontWeight: "800" },
+  selectionOptionTextActive: { color: "#4438CA" },
 });

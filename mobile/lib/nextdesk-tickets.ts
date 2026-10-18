@@ -43,6 +43,7 @@ export type MobileTicketDetail = {
   subject: string;
   description: string;
   requesterName: string | null;
+  requesterContact: TicketRequester | null;
   statusId: string;
   priorityId: string;
   statusOptions: {
@@ -263,10 +264,7 @@ export async function loadMobileTicketDetail(
     throw new Error("Das Ticket ist nicht mehr verfügbar.");
   }
   const record = ticket as Record<string, unknown>;
-  const requester = data.requesterContact as
-    | { displayName?: unknown }
-    | null
-    | undefined;
+  const requesterContact = ticketRequester(data.requesterContact);
   if (
     typeof record.id !== "string" ||
     typeof record.ticket_number !== "string" ||
@@ -293,8 +291,8 @@ export async function loadMobileTicketDetail(
     ticketNumber: record.ticket_number,
     subject: record.subject,
     description: record.description,
-    requesterName:
-      typeof requester?.displayName === "string" ? requester.displayName : null,
+    requesterName: requesterContact?.displayName ?? null,
+    requesterContact,
     statusId: record.status_id,
     priorityId: record.priority_id,
     statusOptions: data.statuses as MobileTicketDetail["statusOptions"],
@@ -314,6 +312,7 @@ export async function updateMobileTicket(input: {
   description: string;
   statusKey?: string;
   priorityKey?: string;
+  requesterContactId?: string;
 }): Promise<void> {
   await invokeNextDesk<unknown>("ticket-operations", {
     type: "updateTicket",
@@ -323,6 +322,9 @@ export async function updateMobileTicket(input: {
     description: input.description,
     ...(input.statusKey ? { statusKey: input.statusKey } : {}),
     ...(input.priorityKey ? { priorityKey: input.priorityKey } : {}),
+    ...(input.requesterContactId
+      ? { requesterContactId: input.requesterContactId }
+      : {}),
   });
 }
 

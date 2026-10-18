@@ -17,6 +17,7 @@ import {
 } from "@/lib/nextdesk-tickets";
 
 type RequesterPickerProps = {
+  contextLabel?: string;
   defaultRequester: TicketRequester;
   onChange: (requester: TicketRequester) => void;
   tenantId: string;
@@ -24,6 +25,7 @@ type RequesterPickerProps = {
 };
 
 export function RequesterPicker({
+  contextLabel = "TICKET ERFASSEN",
   defaultRequester,
   onChange,
   tenantId,
@@ -126,7 +128,7 @@ export function RequesterPicker({
           <View style={styles.sheet}>
             <View style={styles.sheetHeader}>
               <View>
-                <Text style={styles.sheetEyebrow}>TICKET ERFASSEN</Text>
+                <Text style={styles.sheetEyebrow}>{contextLabel}</Text>
                 <Text style={styles.sheetTitle}>Anfragende Person wählen</Text>
               </View>
               <Pressable
