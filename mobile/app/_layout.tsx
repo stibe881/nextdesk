@@ -19,6 +19,7 @@ import type { EdgeInsets, Metrics, Rect } from "react-native-safe-area-context";
 
 import { trpc, createTRPCClient } from "@/lib/trpc";
 import { DeviceProtection } from "@/components/device-protection";
+import { OfflineStatus } from "@/components/offline-status";
 import {
   initManusRuntime,
   subscribeSafeAreaInsets,
@@ -182,6 +183,7 @@ export default function RootLayout() {
           </Stack>
           <NextDeskAuthDeepLinkHandler />
           <NextDeskSessionNavigator />
+          <OfflineStatus />
           <DeviceProtection />
           <StatusBar style="auto" />
         </QueryClientProvider>
