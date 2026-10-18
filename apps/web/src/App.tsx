@@ -2708,6 +2708,8 @@ function BulkTicketStatusActions({
   const [loading, setLoading] = useState(true);
   const [pending, setPending] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  const [closeConfirmationPending, setCloseConfirmationPending] =
+    useState(false);
 
   useEffect(() => {
     if (!supabase) return;
@@ -2715,6 +2717,7 @@ function BulkTicketStatusActions({
     setLoading(true);
     setStatusKey("");
     setErrorMessage("");
+    setCloseConfirmationPending(false);
     void supabase.functions
       .invoke("ticket-bulk-status", {
         body: { type: "listStatusOptions", tenantId },
@@ -2746,9 +2749,12 @@ function BulkTicketStatusActions({
   if (selectedTicketIds.size === 0) return null;
 
   const selectedStatus = statuses.find((status) => status.key === statusKey);
-  async function applyStatus(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function updateStatus(confirmClose = false) {
     if (!supabase || !selectedStatus) return;
+    if (selectedStatus.isClosed && !confirmClose) {
+      setCloseConfirmationPending(true);
+      return;
+    }
     setPending(true);
     setErrorMessage("");
     try {
@@ -2760,6 +2766,7 @@ function BulkTicketStatusActions({
             tenantId,
             ticketIds: [...selectedTicketIds],
             statusKey: selectedStatus.key,
+            confirmClose,
           },
         },
       );
@@ -2787,7 +2794,10 @@ function BulkTicketStatusActions({
   return (
     <form
       className="ticket-bulk-actions"
-      onSubmit={(event) => void applyStatus(event)}
+      onSubmit={(event) => {
+        event.preventDefault();
+        void updateStatus(false);
+      }}
     >
       <div>
         <strong>{selectedTicketIds.size} Tickets ausgewählt</strong>
@@ -2800,7 +2810,10 @@ function BulkTicketStatusActions({
         <span>Neuer Status</span>
         <select
           disabled={loading || pending || statuses.length === 0}
-          onChange={(event) => setStatusKey(event.target.value)}
+          onChange={(event) => {
+            setStatusKey(event.target.value);
+            setCloseConfirmationPending(false);
+          }}
           value={statusKey}
         >
           <option value="">
@@ -2818,7 +2831,10 @@ function BulkTicketStatusActions({
         <button
           className="secondary-button"
           disabled={pending}
-          onClick={onClearSelection}
+          onClick={() => {
+            setCloseConfirmationPending(false);
+            onClearSelection();
+          }}
           type="button"
         >
           Auswahl aufheben
@@ -2828,9 +2844,49 @@ function BulkTicketStatusActions({
           disabled={!selectedStatus || pending}
           type="submit"
         >
-          {pending ? "Status wird gesetzt …" : "Status für Auswahl setzen"}
+          {pending
+            ? "Status wird gesetzt …"
+            : selectedStatus?.isClosed
+              ? "Abschluss vorbereiten"
+              : "Status für Auswahl setzen"}
         </button>
       </div>
+      {closeConfirmationPending && selectedStatus?.isClosed && (
+        <div
+          aria-labelledby="bulk-close-confirmation-title"
+          className="ticket-bulk-actions__confirmation"
+          role="group"
+        >
+          <div>
+            <strong id="bulk-close-confirmation-title">
+              {selectedTicketIds.size} Tickets verbindlich schliessen?
+            </strong>
+            <p>
+              Der Status «{selectedStatus.label}» wird für alle ausgewählten
+              Tickets gesetzt. Die Berechtigung wird für jedes Ticket nochmals
+              auf dem Server geprüft und der Abschluss im Verlauf protokolliert.
+            </p>
+          </div>
+          <div className="ticket-bulk-actions__confirmation-buttons">
+            <button
+              className="primary-button"
+              disabled={pending}
+              onClick={() => void updateStatus(true)}
+              type="button"
+            >
+              {selectedTicketIds.size} Tickets schliessen
+            </button>
+            <button
+              className="secondary-button"
+              disabled={pending}
+              onClick={() => setCloseConfirmationPending(false)}
+              type="button"
+            >
+              Abbrechen
+            </button>
+          </div>
+        </div>
+      )}
       {errorMessage && (
         <p
           aria-live="polite"

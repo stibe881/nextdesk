@@ -103,6 +103,8 @@ export async function functionErrorMessage(
       return "Mindestens eines der ausgewählten Tickets ist nicht mehr verfügbar. Bitte laden Sie die Ticketliste neu.";
     case "bulk_status_invalid":
       return "Die ausgewählten Tickets oder der gewünschte Status sind ungültig. Bitte laden Sie die Ticketliste neu.";
+    case "bulk_status_close_confirmation_required":
+      return "Bitte bestätigen Sie den Abschluss der ausgewählten Tickets ausdrücklich.";
     case "ticket_close_confirmation_required":
       return "Bitte bestätigen Sie den Ticketabschluss ausdrücklich, bevor der geschlossene Status gespeichert wird.";
     case "ticket_feature_disabled":

@@ -12,6 +12,7 @@ type Action =
       tenantId: string;
       ticketIds: string[];
       statusKey: string;
+      confirmClose: boolean;
     };
 
 function headers(request: Request): HeadersInit {
@@ -60,20 +61,29 @@ function parseAction(value: unknown): Action | null {
   }
   if (
     value.type === "applyStatus" &&
-    hasOnlyKeys(value, ["type", "tenantId", "ticketIds", "statusKey"]) &&
+    hasOnlyKeys(value, [
+      "type",
+      "tenantId",
+      "ticketIds",
+      "statusKey",
+      "confirmClose",
+    ]) &&
     Array.isArray(value.ticketIds) &&
     value.ticketIds.length >= 1 &&
     value.ticketIds.length <= 50 &&
     value.ticketIds.every(isUuid) &&
     new Set(value.ticketIds).size === value.ticketIds.length &&
     typeof value.statusKey === "string" &&
-    STATUS_KEY_PATTERN.test(value.statusKey)
+    STATUS_KEY_PATTERN.test(value.statusKey) &&
+    (typeof value.confirmClose === "undefined" ||
+      typeof value.confirmClose === "boolean")
   ) {
     return {
       type: value.type,
       tenantId: value.tenantId,
       ticketIds: value.ticketIds,
       statusKey: value.statusKey,
+      confirmClose: value.confirmClose === true,
     };
   }
   return null;
@@ -91,6 +101,13 @@ async function isActiveMember(admin: any, userId: string, tenantId: string) {
 }
 
 function rpcError(request: Request, error: any): Response {
+  if (error?.message === "Bulk ticket close confirmation required") {
+    return response(
+      request,
+      { error: { code: "bulk_status_close_confirmation_required" } },
+      409,
+    );
+  }
   if (error?.code === "42501") {
     return response(
       request,
@@ -165,6 +182,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       p_tenant_id: action.tenantId,
       p_ticket_ids: action.ticketIds,
       p_status_key: action.statusKey,
+      p_confirm_close: action.confirmClose,
     },
   );
   if (error) return rpcError(request, error);

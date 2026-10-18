@@ -364,18 +364,37 @@ do $$
 declare
   result jsonb;
 begin
-  if has_function_privilege('authenticated', 'public.bulk_update_ticket_statuses(uuid, uuid, uuid[], text)', 'execute') then
+  if to_regprocedure('public.bulk_update_ticket_statuses(uuid, uuid, uuid[], text)') is not null then
+    raise exception 'The obsolete unconfirmed bulk status signature still exists';
+  end if;
+  if has_function_privilege('authenticated', 'public.bulk_update_ticket_statuses(uuid, uuid, uuid[], text, boolean)', 'execute') then
     raise exception 'authenticated may execute bulk_update_ticket_statuses';
   end if;
-  if not has_function_privilege('service_role', 'public.bulk_update_ticket_statuses(uuid, uuid, uuid[], text)', 'execute') then
+  if not has_function_privilege('service_role', 'public.bulk_update_ticket_statuses(uuid, uuid, uuid[], text, boolean)', 'execute') then
     raise exception 'service_role may not execute bulk_update_ticket_statuses';
   end if;
+
+  begin
+    perform public.bulk_update_ticket_statuses(
+      '00000000-0000-4000-8000-000000000002',
+      '10000000-0000-4000-8000-000000000001',
+      array['17000000-0000-4000-8000-000000000001']::uuid[],
+      'closed',
+      false
+    );
+    raise exception 'Unconfirmed bulk close was accepted';
+  exception when raise_exception then
+    if sqlerrm <> 'Bulk ticket close confirmation required' then
+      raise;
+    end if;
+  end;
 
   result := public.bulk_update_ticket_statuses(
     '00000000-0000-4000-8000-000000000002',
     '10000000-0000-4000-8000-000000000001',
     array['17000000-0000-4000-8000-000000000001']::uuid[],
-    'closed'
+    'closed',
+    true
   );
   if (result->>'requested')::integer <> 1
     or (result->>'updated')::integer <> 1
@@ -407,7 +426,8 @@ begin
       '00000000-0000-4000-8000-000000000002',
       '10000000-0000-4000-8000-000000000001',
       array['18000000-0000-4000-8000-000000000002']::uuid[],
-      'closed'
+      'closed',
+      true
     );
     raise exception 'ICT agent updated an unauthorized Infrastructure ticket';
   exception when insufficient_privilege then

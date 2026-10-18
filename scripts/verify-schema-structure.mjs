@@ -58,6 +58,7 @@ const expectedFiles = [
   "0053_tenant_feature_pilot_windows.sql",
   "0054_manual_automation_runs.sql",
   "0055_security_hardening_sso_roles_and_knowledge.sql",
+  "0056_confirmed_bulk_ticket_closures.sql",
 ];
 
 const availableFiles = await readdir(migrationDirectory);
@@ -457,6 +458,10 @@ const requiredFragments = [
   [
     "0055_security_hardening_sso_roles_and_knowledge.sql",
     "prevent_last_tenant_administrator_revocation",
+  ],
+  [
+    "0056_confirmed_bulk_ticket_closures.sql",
+    "Bulk ticket close confirmation required",
   ],
 ];
 
