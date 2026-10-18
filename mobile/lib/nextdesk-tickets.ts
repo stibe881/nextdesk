@@ -4,6 +4,11 @@ import {
   requireNextDesk,
   type MobileTenant,
 } from "@/lib/nextdesk-client";
+import {
+  getSelectedTenantId,
+  loadOfflineTicketListCache,
+  saveOfflineTicketListCache,
+} from "@/lib/mobile-private-state";
 
 export type MobileTicket = {
   id: string;
@@ -159,58 +164,133 @@ function ticketDraft(value: unknown): MobileTicketDraft | null {
 }
 
 export async function loadMobileDashboard(): Promise<{
+  cachedAt: string | null;
+  isOfflineCache: boolean;
   tenant: MobileTenant;
   tickets: MobileTicket[];
+  userId: string;
 }> {
   const client = requireNextDesk();
-  const tenant = await loadCurrentTenant();
   const {
-    data: { user },
-    error: userError,
-  } = await client.auth.getUser();
-  if (userError || !user) throw new Error("Die Anmeldung ist abgelaufen.");
-
-  const [ticketsResult, statusesResult, prioritiesResult] = await Promise.all([
-    client
-      .from("tickets")
-      .select(
-        "id, ticket_number, subject, description, status_id, priority_id, requester_id, assigned_agent_id, created_at",
-      )
-      .eq("tenant_id", tenant.id)
-      .order("updated_at", { ascending: false })
-      .limit(50),
-    client
-      .from("ticket_statuses")
-      .select("id, label, is_closed")
-      .eq("tenant_id", tenant.id),
-    client
-      .from("ticket_priorities")
-      .select("id, label")
-      .eq("tenant_id", tenant.id),
-  ]);
-  if (ticketsResult.error || statusesResult.error || prioritiesResult.error) {
-    throw new Error("Die Tickets konnten nicht geladen werden.");
+    data: { session },
+  } = await client.auth.getSession();
+  const user = session?.user;
+  if (
+    !user ||
+    (typeof session.expires_at === "number" &&
+      session.expires_at * 1_000 <= Date.now())
+  ) {
+    throw new Error("Die Anmeldung ist abgelaufen.");
   }
 
-  const statusById = new Map(
-    (statusesResult.data ?? []).map((status) => [status.id, status]),
-  );
-  const priorityById = new Map(
-    (prioritiesResult.data ?? []).map((priority) => [priority.id, priority]),
-  );
-  const tickets = (ticketsResult.data ?? []).map((ticket) => ({
-    id: ticket.id,
-    ticketNumber: ticket.ticket_number,
-    subject: ticket.subject,
-    description: ticket.description,
-    status: statusById.get(ticket.status_id)?.label ?? "Unbekannt",
-    priority: priorityById.get(ticket.priority_id)?.label ?? "Ohne Priorität",
-    assignedToCurrentUser:
-      ticket.assigned_agent_id === user.id || ticket.requester_id === user.id,
-    resolved: Boolean(statusById.get(ticket.status_id)?.is_closed),
-    requesterId: ticket.requester_id,
-  }));
-  return { tenant, tickets };
+  const {
+    data: { user: verifiedUser },
+    error: userError,
+  } = await client.auth.getUser();
+  const activeUser = !userError && verifiedUser ? verifiedUser : user;
+
+  try {
+    const tenant = await loadCurrentTenant();
+    const [ticketsResult, statusesResult, prioritiesResult] = await Promise.all(
+      [
+        client
+          .from("tickets")
+          .select(
+            "id, ticket_number, subject, description, status_id, priority_id, requester_id, assigned_agent_id, created_at",
+          )
+          .eq("tenant_id", tenant.id)
+          .order("updated_at", { ascending: false })
+          .limit(50),
+        client
+          .from("ticket_statuses")
+          .select("id, label, is_closed")
+          .eq("tenant_id", tenant.id),
+        client
+          .from("ticket_priorities")
+          .select("id, label")
+          .eq("tenant_id", tenant.id),
+      ],
+    );
+    if (ticketsResult.error || statusesResult.error || prioritiesResult.error) {
+      throw new Error("Die Tickets konnten nicht geladen werden.");
+    }
+
+    const statusById = new Map(
+      (statusesResult.data ?? []).map((status) => [status.id, status]),
+    );
+    const priorityById = new Map(
+      (prioritiesResult.data ?? []).map((priority) => [priority.id, priority]),
+    );
+    const tickets = (ticketsResult.data ?? []).map((ticket) => ({
+      id: ticket.id,
+      ticketNumber: ticket.ticket_number,
+      subject: ticket.subject,
+      description: ticket.description,
+      status: statusById.get(ticket.status_id)?.label ?? "Unbekannt",
+      priority: priorityById.get(ticket.priority_id)?.label ?? "Ohne Priorität",
+      assignedToCurrentUser:
+        ticket.assigned_agent_id === activeUser.id ||
+        ticket.requester_id === activeUser.id,
+      resolved: Boolean(statusById.get(ticket.status_id)?.is_closed),
+      requesterId: ticket.requester_id,
+    }));
+    try {
+      await saveOfflineTicketListCache({
+        userId: activeUser.id,
+        tenant,
+        tickets: tickets.map(
+          ({
+            assignedToCurrentUser,
+            id,
+            priority,
+            resolved,
+            status,
+            subject,
+            ticketNumber,
+          }) => ({
+            assignedToCurrentUser,
+            id,
+            priority,
+            resolved,
+            status,
+            subject,
+            ticketNumber,
+          }),
+        ),
+      });
+    } catch {
+      // A device cache is optional; a current RLS-authorized server result wins.
+    }
+    return {
+      cachedAt: null,
+      isOfflineCache: false,
+      tenant,
+      tickets,
+      userId: activeUser.id,
+    };
+  } catch (networkError) {
+    const tenantId = await getSelectedTenantId(activeUser.id);
+    if (tenantId) {
+      const cache = await loadOfflineTicketListCache({
+        tenantId,
+        userId: activeUser.id,
+      });
+      if (cache) {
+        return {
+          cachedAt: cache.cachedAt,
+          isOfflineCache: true,
+          tenant: cache.tenant,
+          tickets: cache.tickets.map((ticket) => ({
+            ...ticket,
+            description: "",
+            requesterId: "",
+          })),
+          userId: activeUser.id,
+        };
+      }
+    }
+    throw networkError;
+  }
 }
 
 export async function loadTicketFormOptions(

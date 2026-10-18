@@ -14,13 +14,12 @@ import {
 
 import { ScreenContainer } from "@/components/screen-container";
 import { useMobileNetworkStatus } from "@/components/offline-status";
-import {
-  getMobileUserId,
-  isNextDeskConfigured,
-  nextDesk,
-} from "@/lib/nextdesk-client";
+import { isNextDeskConfigured, nextDesk } from "@/lib/nextdesk-client";
 import { loadMobileDashboard, type MobileTicket } from "@/lib/nextdesk-tickets";
-import { reconcileFavoriteTicketIds } from "@/lib/mobile-private-state";
+import {
+  listFavoriteTicketIds,
+  reconcileFavoriteTicketIds,
+} from "@/lib/mobile-private-state";
 
 type TicketScope = "all" | "mine" | "favorites" | "open" | "resolved";
 
@@ -31,6 +30,17 @@ const scopes: { key: TicketScope; label: string }[] = [
   { key: "open", label: "Offen" },
   { key: "resolved", label: "Gelöst" },
 ];
+
+function offlineCacheTimestamp(value: string): string {
+  const timestamp = new Date(value);
+  if (Number.isNaN(timestamp.getTime())) return "vor Kurzem";
+  return new Intl.DateTimeFormat("de-CH", {
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    month: "short",
+  }).format(timestamp);
+}
 
 export default function TicketsScreen() {
   const router = useRouter();
@@ -43,6 +53,7 @@ export default function TicketsScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
+  const [offlineCacheAt, setOfflineCacheAt] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!isNextDeskConfigured || !nextDesk) {
@@ -61,16 +72,22 @@ export default function TicketsScreen() {
     try {
       setError("");
       const result = await loadMobileDashboard();
-      const userId = await getMobileUserId();
-      const favorites = await reconcileFavoriteTicketIds({
-        userId,
-        tenantId: result.tenant.id,
-        authorizedTicketIds: result.tickets.map((ticket) => ticket.id),
-      });
+      const favorites = result.isOfflineCache
+        ? await listFavoriteTicketIds({
+            userId: result.userId,
+            tenantId: result.tenant.id,
+          })
+        : await reconcileFavoriteTicketIds({
+            userId: result.userId,
+            tenantId: result.tenant.id,
+            authorizedTicketIds: result.tickets.map((ticket) => ticket.id),
+          });
       setTickets(result.tickets);
       setTenantName(result.tenant.name);
       setFavoriteIds(favorites);
+      setOfflineCacheAt(result.isOfflineCache ? result.cachedAt : null);
     } catch (nextError) {
+      setOfflineCacheAt(null);
       setError(
         nextError instanceof Error
           ? nextError.message
@@ -223,6 +240,20 @@ export default function TicketsScreen() {
           </View>
         ) : null}
 
+        {offlineCacheAt ? (
+          <View style={styles.cacheNotice}>
+            <Ionicons color="#9A5B12" name="cloud-offline-outline" size={19} />
+            <View style={styles.cacheNoticeCopy}>
+              <Text style={styles.cacheNoticeTitle}>Offline verfügbar</Text>
+              <Text style={styles.cacheNoticeText}>
+                Verschlüsselte Ticketlisten-Metadaten vom{" "}
+                {offlineCacheTimestamp(offlineCacheAt)}. Öffnen und Bearbeiten
+                sind erst nach einer Serververbindung wieder möglich.
+              </Text>
+            </View>
+          </View>
+        ) : null}
+
         <View style={styles.listHeading}>
           <Text style={styles.listTitle}>
             {scope === "all"
@@ -247,12 +278,14 @@ export default function TicketsScreen() {
             {visibleTickets.map((ticket) => (
               <TicketRow
                 key={ticket.id}
-                onPress={() =>
+                disabled={Boolean(offlineCacheAt)}
+                onPress={() => {
+                  if (offlineCacheAt) return;
                   router.push({
                     pathname: "/ticket/[id]",
                     params: { id: ticket.id },
-                  })
-                }
+                  });
+                }}
                 ticket={ticket}
               />
             ))}
@@ -264,9 +297,11 @@ export default function TicketsScreen() {
 }
 
 function TicketRow({
+  disabled = false,
   onPress,
   ticket,
 }: {
+  disabled?: boolean;
   onPress: () => void;
   ticket: MobileTicket;
 }) {
@@ -284,8 +319,10 @@ function TicketRow({
   return (
     <Pressable
       accessibilityRole="button"
+      accessibilityState={{ disabled }}
+      disabled={disabled}
       onPress={onPress}
-      style={styles.ticket}
+      style={[styles.ticket, disabled && styles.ticketOffline]}
     >
       <View style={[styles.mark, tone]} />
       <View style={styles.ticketCopy}>
@@ -373,6 +410,19 @@ const styles = StyleSheet.create({
   },
   errorText: { color: "#A02820", fontSize: 13, lineHeight: 19 },
   retryText: { color: "#4438CA", fontSize: 13, fontWeight: "800" },
+  cacheNotice: {
+    alignItems: "flex-start",
+    backgroundColor: "#FFF8E7",
+    borderColor: "#F3D79A",
+    borderRadius: 15,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 10,
+    padding: 14,
+  },
+  cacheNoticeCopy: { flex: 1, gap: 3 },
+  cacheNoticeTitle: { color: "#7B4B0D", fontSize: 13, fontWeight: "900" },
+  cacheNoticeText: { color: "#7A5B2E", fontSize: 12, lineHeight: 18 },
   listHeading: {
     alignItems: "center",
     flexDirection: "row",
@@ -403,6 +453,7 @@ const styles = StyleSheet.create({
     gap: 11,
     padding: 14,
   },
+  ticketOffline: { opacity: 0.7 },
   mark: { borderRadius: 2, height: 46, width: 4 },
   markNew: { backgroundColor: "#0EA5C6" },
   markActive: { backgroundColor: "#7C3AED" },
