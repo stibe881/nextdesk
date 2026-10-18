@@ -2212,12 +2212,13 @@ export function TenantAdminSettings({
               <TicketCustomFieldsAdmin tenantId={tenantId} />
             )}
 
-            {(activeArea === "templates" || activeArea === "features") &&
-            settings.tenant_feature_flags.some(
-              (feature) =>
-                feature.feature_key === "ticketing.templates" &&
-                feature.enabled,
-            ) ? (
+            {activeArea === "features" ||
+            (activeArea === "templates" &&
+              settings.tenant_feature_flags.some(
+                (feature) =>
+                  feature.feature_key === "ticketing.templates" &&
+                  feature.enabled,
+              )) ? (
               <TicketTemplates tenantId={tenantId} />
             ) : null}
 
@@ -2229,11 +2230,13 @@ export function TenantAdminSettings({
               <TenantDataRetention tenantId={tenantId} />
             )}
 
-            {(activeArea === "assets" || activeArea === "features") &&
-            settings.tenant_feature_flags.some(
-              (feature) =>
-                feature.feature_key === "assets.management" && feature.enabled,
-            ) ? (
+            {activeArea === "features" ||
+            (activeArea === "assets" &&
+              settings.tenant_feature_flags.some(
+                (feature) =>
+                  feature.feature_key === "assets.management" &&
+                  feature.enabled,
+              )) ? (
               <AssetIntuneSettings tenantId={tenantId} />
             ) : null}
 
