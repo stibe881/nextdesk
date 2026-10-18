@@ -20,6 +20,7 @@ export type TenantAdminSettingsProps = {
   tenantId: string;
   onClose: () => void;
   onBrandingUpdated?: () => void;
+  onFeaturesUpdated?: () => void;
 };
 
 type SsoProvider = "oidc" | "saml" | "azure_ad";
@@ -755,6 +756,7 @@ export function TenantAdminSettings({
   tenantId,
   onClose,
   onBrandingUpdated,
+  onFeaturesUpdated,
 }: TenantAdminSettingsProps) {
   const [settings, setSettings] = useState<SettingsData | null>(null);
   const [userDirectory, setUserDirectory] = useState<TenantUserDirectory>({
@@ -1231,6 +1233,7 @@ export function TenantAdminSettings({
         enabled: !feature.enabled,
       });
       await loadData();
+      onFeaturesUpdated?.();
       setSuccess(`Die Funktion „${feature.feature_key}“ wurde aktualisiert.`);
     } catch (nextError) {
       setError(
@@ -1255,6 +1258,7 @@ export function TenantAdminSettings({
         pilotEndDate: value || null,
       });
       await loadData();
+      onFeaturesUpdated?.();
       setSuccess(
         value
           ? `Der Pilot für „${feature.feature_key}“ endet am ${new Intl.DateTimeFormat(

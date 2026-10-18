@@ -111,6 +111,12 @@ export async function functionErrorMessage(
       return "Diese Ticketfunktion ist für Ihren Mandanten derzeit deaktiviert.";
     case "asset_feature_disabled":
       return "Asset-Management ist für Ihren Mandanten derzeit deaktiviert.";
+    case "knowledge_feature_disabled":
+      return "Die Wissensdatenbank ist für Ihren Mandanten derzeit deaktiviert.";
+    case "reporting_feature_disabled":
+      return "Service-Reporting ist für Ihren Mandanten derzeit deaktiviert.";
+    case "sla_feature_disabled":
+      return "Die SLA-Automatisierung ist für Ihren Mandanten derzeit deaktiviert.";
     case "tenant_feature_lookup_failed":
       return "Die Funktionsberechtigung konnte nicht geprüft werden. Bitte versuchen Sie es erneut.";
     case "ticket_category_change_denied":

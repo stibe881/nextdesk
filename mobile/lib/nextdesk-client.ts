@@ -1,4 +1,5 @@
 import Constants from "expo-constants";
+import * as Crypto from "expo-crypto";
 import { Platform } from "react-native";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
@@ -32,6 +33,13 @@ export const isNextDeskConfigured = Boolean(url && publishableKey);
 
 const AUTH_TRANSACTION_KEY = "nextdesk:mobile:auth-transaction:v1";
 const AUTH_TRANSACTION_TTL_MS = 10 * 60 * 1_000;
+const SUPABASE_AUTH_STORAGE_KEY = (() => {
+  try {
+    return `sb-${new URL(url).hostname.split(".")[0]}-auth-token`;
+  } catch {
+    return "nextdesk-auth-token";
+  }
+})();
 
 export const nextDesk: SupabaseClient | null = isNextDeskConfigured
   ? createClient(url, publishableKey, {
@@ -40,6 +48,7 @@ export const nextDesk: SupabaseClient | null = isNextDeskConfigured
         detectSessionInUrl: false,
         flowType: "pkce",
         persistSession: true,
+        storageKey: SUPABASE_AUTH_STORAGE_KEY,
         // Expo SecureStore maps to the encrypted iOS Keychain. Browser Preview
         // deliberately retains its localStorage fallback inside the adapter.
         storage: mobileSecureStorage,
@@ -141,7 +150,6 @@ export function getNextDeskAuthRedirectUrl(): string {
 type AuthTransaction = {
   expiresAt: number;
   kind: "magic" | "oauth";
-  state?: string;
 };
 
 function isTrustedWebCallback(url: URL): boolean {
@@ -182,8 +190,6 @@ function parseAuthTransaction(value: string | null): AuthTransaction | null {
     ) {
       return null;
     }
-    if (parsed.kind === "oauth" && typeof parsed.state !== "string")
-      return null;
     return parsed as AuthTransaction;
   } catch {
     return null;
@@ -199,18 +205,71 @@ async function readAuthTransaction(): Promise<AuthTransaction | null> {
   return transaction;
 }
 
-export async function beginNextDeskOAuth(providerUrl: string): Promise<void> {
-  const state = new URL(providerUrl).searchParams.get("state");
-  if (!state) throw new NextDeskAuthFailure("callback_invalid");
+export async function beginNextDeskOAuth(): Promise<void> {
   const transaction: AuthTransaction = {
     expiresAt: Date.now() + AUTH_TRANSACTION_TTL_MS,
     kind: "oauth",
-    state,
   };
   await mobileSecureStorage.setItem(
     AUTH_TRANSACTION_KEY,
     JSON.stringify(transaction),
   );
+}
+
+function base64Url(bytes: Uint8Array): string {
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary)
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/g, "");
+}
+
+/**
+ * React Native 0.86 can expose a WebCrypto `subtle` object whose digest promise
+ * never resolves. The Supabase SDK then stays in its PKCE preparation phase.
+ * Expo Crypto gives the native build an S256 verifier and challenge while the
+ * verifier remains only in the encrypted iOS Keychain.
+ */
+export async function createNativeNextDeskOAuthUrl(
+  redirectTo: string,
+): Promise<string> {
+  if (Platform.OS === "web") {
+    throw new Error(
+      "Der native SSO-Start ist nur in der mobilen App verfügbar.",
+    );
+  }
+  if (!url)
+    throw new Error("Die mobile nextDesk-Verbindung ist nicht konfiguriert.");
+
+  const verifier = base64Url(await Crypto.getRandomBytesAsync(32));
+  const codeChallenge = (
+    await Crypto.digestStringAsync(
+      Crypto.CryptoDigestAlgorithm.SHA256,
+      verifier,
+      { encoding: Crypto.CryptoEncoding.BASE64 },
+    )
+  )
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/g, "");
+  await mobileSecureStorage.setItem(
+    `${SUPABASE_AUTH_STORAGE_KEY}-code-verifier`,
+    verifier,
+  );
+
+  const authorizationUrl = new URL(
+    "auth/v1/authorize",
+    `${url.replace(/\/$/, "")}/`,
+  );
+  authorizationUrl.search = new URLSearchParams({
+    provider: "azure",
+    redirect_to: redirectTo,
+    scopes: "email",
+    code_challenge: codeChallenge,
+    code_challenge_method: "S256",
+  }).toString();
+  return authorizationUrl.toString();
 }
 
 export async function beginNextDeskMagicLink(): Promise<void> {
@@ -262,12 +321,6 @@ export async function completeNextDeskAuth(callbackUrl: string): Promise<void> {
 
     const transaction = await readAuthTransaction();
     if (!transaction) {
-      throw new NextDeskAuthFailure("callback_unexpected");
-    }
-    if (
-      transaction.kind === "oauth" &&
-      callback.searchParams.get("state") !== transaction.state
-    ) {
       throw new NextDeskAuthFailure("callback_unexpected");
     }
 

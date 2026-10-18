@@ -1,4 +1,5 @@
 import { withSupabase } from "@supabase/server";
+import { resolveTenantFeatureStates } from "../_shared/tenant-features.ts";
 
 const ALLOWED_ORIGIN = "https://app.nextdesk.ch";
 const UUID_PATTERN =
@@ -849,6 +850,22 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       { error: { code: "tenant_membership_required" } },
       403,
     );
+  }
+
+  const featureStates = await resolveTenantFeatureStates(
+    admin,
+    action.tenantId,
+    ["automation.sla"],
+  );
+  if (featureStates === null) {
+    return json(
+      request,
+      { error: { code: "tenant_feature_lookup_failed" } },
+      503,
+    );
+  }
+  if (featureStates["automation.sla"] !== true) {
+    return json(request, { error: { code: "sla_feature_disabled" } }, 403);
   }
 
   const permission =

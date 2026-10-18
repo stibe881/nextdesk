@@ -1,4 +1,5 @@
 import { withSupabase } from "@supabase/server";
+import { resolveTenantFeatureStates } from "../_shared/tenant-features.ts";
 
 type Period = "7d" | "30d" | "90d";
 type Action = { type: "getReport"; tenantId: string; period: Period };
@@ -257,6 +258,26 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     return response(
       request,
       { error: { code: "active_tenant_membership_required" } },
+      403,
+    );
+  }
+
+  const featureStates = await resolveTenantFeatureStates(
+    context.supabaseAdmin,
+    action.tenantId,
+    ["reporting.service"],
+  );
+  if (featureStates === null) {
+    return response(
+      request,
+      { error: { code: "tenant_feature_lookup_failed" } },
+      503,
+    );
+  }
+  if (featureStates["reporting.service"] !== true) {
+    return response(
+      request,
+      { error: { code: "reporting_feature_disabled" } },
       403,
     );
   }

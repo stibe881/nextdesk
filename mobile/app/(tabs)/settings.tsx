@@ -15,6 +15,7 @@ import {
 } from "react-native";
 
 import { ScreenContainer } from "@/components/screen-container";
+import { useMobileFeatures } from "@/components/mobile-feature-gate";
 import {
   clearMobileWorkspace,
   getMobileUserId,
@@ -68,6 +69,7 @@ function profileFromUser(
 
 export default function SettingsScreen() {
   const router = useRouter();
+  const { refresh: refreshFeatures } = useMobileFeatures();
   const [profile, setProfile] = useState<AccountProfile | null>(null);
   const [tenants, setTenants] = useState<MobileTenant[]>([]);
   const [currentTenant, setCurrentTenant] = useState<MobileTenant | null>(null);
@@ -230,6 +232,7 @@ export default function SettingsScreen() {
       const selectedTenant = await selectMobileTenant(tenantId);
       setCurrentTenant(selectedTenant);
       setTenantPickerOpen(false);
+      await refreshFeatures();
       setMessage(`Arbeitsbereich «${selectedTenant.name}» ist aktiv.`);
       router.replace("/");
     } catch (nextError) {

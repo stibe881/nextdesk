@@ -1,4 +1,5 @@
 import { withSupabase, type SupabaseContext } from "@supabase/server";
+import { resolveTenantFeatureStates } from "../_shared/tenant-features.ts";
 
 const ALLOWED_ORIGIN = "https://app.nextdesk.ch";
 const MAX_REQUEST_BYTES = 32 * 1024;
@@ -600,6 +601,23 @@ const securedHandler = withSupabase(
           "Die Anfrage enthält ungültige oder unbekannte Felder.",
         );
       await requireTenantMember(context.supabase, action.tenantId);
+      const featureStates = await resolveTenantFeatureStates(
+        context.supabaseAdmin,
+        action.tenantId,
+        ["assets.management"],
+      );
+      if (featureStates === null)
+        throw new HttpError(
+          503,
+          "tenant_feature_lookup_failed",
+          "Die Funktionsfreigabe konnte nicht geprüft werden.",
+        );
+      if (featureStates["assets.management"] !== true)
+        throw new HttpError(
+          403,
+          "asset_feature_disabled",
+          "Asset-Management ist für diesen Mandanten derzeit deaktiviert.",
+        );
       if (action.type === "listAssets")
         return await listAssets(request, context.supabase, action);
       if (action.type === "getAsset")

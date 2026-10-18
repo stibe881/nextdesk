@@ -11,6 +11,7 @@ import {
 } from "react";
 import {
   ActivityIndicator,
+  AppState,
   Pressable,
   StyleSheet,
   Text,
@@ -117,10 +118,19 @@ export function MobileFeatureProvider({ children }: PropsWithChildren) {
         void refresh().catch(() => undefined);
       }
     });
+    const appStateSubscription = AppState.addEventListener(
+      "change",
+      (state) => {
+        if (active && state === "active") {
+          void refresh().catch(() => undefined);
+        }
+      },
+    );
     return () => {
       active = false;
       clearTimeout(refreshTimer);
       subscription.unsubscribe();
+      appStateSubscription.remove();
     };
   }, [refresh]);
 

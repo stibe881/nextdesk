@@ -17,6 +17,7 @@ import {
   beginNextDeskOAuth,
   clearNextDeskAuthTransaction,
   completeNextDeskAuth,
+  createNativeNextDeskOAuthUrl,
   getNextDeskAuthRedirectUrl,
   nextDeskAuthFailureCode,
   nextDeskAuthFailureMessage,
@@ -116,26 +117,30 @@ export default function AuthScreen() {
 
     let waitingForWebCallback = false;
     try {
-      const client = requireNextDesk();
-      const { data, error } = await client.auth.signInWithOAuth({
-        provider: "azure",
-        options: {
-          redirectTo,
-          // Supabase Azure Auth requires this scope to receive an address that
-          // can safely identify and link the signed-in person.
-          scopes: "email",
-          // Browser preview must redirect back to its HTTPS callback route.
-          // Native iOS still hands the browser result to the app's deep link.
-          skipBrowserRedirect: true,
-        },
-      });
-      if (error) throw error;
-      if (!data.url)
+      const providerUrl =
+        Platform.OS === "web"
+          ? await (async () => {
+              const { data, error } =
+                await requireNextDesk().auth.signInWithOAuth({
+                  provider: "azure",
+                  options: {
+                    redirectTo,
+                    // Browser preview must redirect back to its HTTPS callback
+                    // route instead of taking over the embedded frame.
+                    scopes: "email",
+                    skipBrowserRedirect: true,
+                  },
+                });
+              if (error) throw error;
+              return data.url;
+            })()
+          : await createNativeNextDeskOAuthUrl(redirectTo);
+      if (!providerUrl)
         throw new Error("Die SSO-Anmeldung konnte nicht vorbereitet werden.");
-      await beginNextDeskOAuth(data.url);
+      await beginNextDeskOAuth();
       if (Platform.OS === "web") {
         popupRef.current = webPopup;
-        webPopup?.location.replace(data.url);
+        webPopup?.location.replace(providerUrl);
         waitingForWebCallback = true;
         popupMonitorRef.current = setInterval(() => {
           if (popupRef.current !== webPopup || !webPopup || !webPopup.closed) {
@@ -157,7 +162,7 @@ export default function AuthScreen() {
         );
       });
       const result = await Promise.race([
-        WebBrowser.openAuthSessionAsync(data.url, redirectTo),
+        WebBrowser.openAuthSessionAsync(providerUrl, redirectTo),
         timeoutResult,
       ]);
       if (timeout) clearTimeout(timeout);
@@ -175,7 +180,7 @@ export default function AuthScreen() {
         // the return journey safely.
         if (Date.now() - startedAt < 1_500) {
           setMessage("Die Anmeldung wird in Safari geöffnet …");
-          await openNativeSsoInSafari(data.url);
+          await openNativeSsoInSafari(providerUrl);
           setMessage(
             "Melden Sie sich in Safari an. nextDesk öffnet sich danach automatisch.",
           );
@@ -185,7 +190,7 @@ export default function AuthScreen() {
       } else if (result.type === "timeout") {
         WebBrowser.dismissAuthSession();
         setMessage("Die Anmeldung wird in Safari geöffnet …");
-        await openNativeSsoInSafari(data.url);
+        await openNativeSsoInSafari(providerUrl);
         setMessage(
           "Melden Sie sich in Safari an. nextDesk öffnet sich danach automatisch.",
         );

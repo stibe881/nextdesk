@@ -1,4 +1,5 @@
 import { withSupabase } from "@supabase/server";
+import { resolveTenantFeatureStates } from "../_shared/tenant-features.ts";
 
 const ALLOWED_ORIGIN = "https://app.nextdesk.ch";
 const KNOWLEDGE_MANAGE_PERMISSION = "knowledge.manage";
@@ -490,6 +491,24 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       request,
       { error: { code: authorization.code } },
       authorization.status,
+    );
+
+  const featureStates = await resolveTenantFeatureStates(
+    admin,
+    action.tenantId,
+    ["knowledge.base"],
+  );
+  if (featureStates === null)
+    return json(
+      request,
+      { error: { code: "tenant_feature_lookup_failed" } },
+      503,
+    );
+  if (featureStates["knowledge.base"] !== true)
+    return json(
+      request,
+      { error: { code: "knowledge_feature_disabled" } },
+      403,
     );
 
   if (action.type === "listCollections") {

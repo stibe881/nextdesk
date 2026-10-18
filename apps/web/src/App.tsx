@@ -863,6 +863,7 @@ export function App() {
   const [tenantFeatures, setTenantFeatures] = useState<Record<string, boolean>>(
     {},
   );
+  const [tenantFeatureRevision, setTenantFeatureRevision] = useState(0);
   const [tenantWorkspaceBranding, setTenantWorkspaceBranding] =
     useState<TenantWorkspaceBranding | null>(null);
   const [tenantBrandingRevision, setTenantBrandingRevision] = useState(0);
@@ -1253,7 +1254,7 @@ export function App() {
     return () => {
       mounted = false;
     };
-  }, [activeTenant, session]);
+  }, [activeTenant, session, tenantFeatureRevision]);
 
   useEffect(() => {
     if (canWorkTickets) return;
@@ -1531,6 +1532,13 @@ export function App() {
       setSection("Übersicht");
     }
   }, [section, tenantFeatures]);
+
+  useEffect(() => {
+    if (isSupabaseConfigured && tenantFeatures["ticketing.detail"] !== true) {
+      setSelectedTicketId(null);
+    }
+  }, [tenantFeatures]);
+
   const commandActions = [
     {
       id: "create-ticket",
@@ -1555,14 +1563,16 @@ export function App() {
           .includes(normalizedCommandQuery)
       : true,
   );
-  const matchingCommandTickets = view.tickets
-    .filter((ticket) => {
-      if (!normalizedCommandQuery) return false;
-      return `${ticket.id} ${ticket.subject} ${ticket.queueLabel}`
-        .toLocaleLowerCase("de-CH")
-        .includes(normalizedCommandQuery);
-    })
-    .slice(0, 6);
+  const matchingCommandTickets = isFeatureEnabled("ticketing.detail")
+    ? view.tickets
+        .filter((ticket) => {
+          if (!normalizedCommandQuery) return false;
+          return `${ticket.id} ${ticket.subject} ${ticket.queueLabel}`
+            .toLocaleLowerCase("de-CH")
+            .includes(normalizedCommandQuery);
+        })
+        .slice(0, 6)
+    : [];
 
   function closeCommandMenu() {
     setCommandMenuOpen(false);
@@ -2042,6 +2052,9 @@ export function App() {
             <TenantAdminSettings
               onBrandingUpdated={() =>
                 setTenantBrandingRevision((revision) => revision + 1)
+              }
+              onFeaturesUpdated={() =>
+                setTenantFeatureRevision((revision) => revision + 1)
               }
               onClose={() => setSection("Übersicht")}
               tenantId={activeTenant.id}
@@ -2679,15 +2692,18 @@ export function App() {
           </div>
         </div>
       )}
-      {activeTenant && selectedTicketId && isSupabaseConfigured && (
-        <TicketDetail
-          currentUserId={session?.user.id ?? null}
-          onChanged={() => setDashboardRevision((value) => value + 1)}
-          onClose={() => setSelectedTicketId(null)}
-          tenantId={activeTenant.id}
-          ticketId={selectedTicketId}
-        />
-      )}
+      {activeTenant &&
+        selectedTicketId &&
+        isSupabaseConfigured &&
+        isFeatureEnabled("ticketing.detail") && (
+          <TicketDetail
+            currentUserId={session?.user.id ?? null}
+            onChanged={() => setDashboardRevision((value) => value + 1)}
+            onClose={() => setSelectedTicketId(null)}
+            tenantId={activeTenant.id}
+            ticketId={selectedTicketId}
+          />
+        )}
     </div>
   );
 }
