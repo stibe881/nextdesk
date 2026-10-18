@@ -61,6 +61,7 @@ type MacroPreview = Pick<
 
 type AssigneeSuggestion = {
   userId: string;
+  displayName: string | null;
   score: number;
   reasons: string[];
 };
@@ -309,6 +310,10 @@ function parseSuggestions(value: unknown): {
     }
     return {
       userId: item.userId,
+      displayName:
+        typeof item.displayName === "string" && item.displayName.trim()
+          ? item.displayName.trim().slice(0, 160)
+          : null,
       score: item.score,
       reasons: item.reasons,
     };
@@ -1082,7 +1087,11 @@ function AssigneePanel({
             return (
               <li key={suggestion.userId}>
                 <div>
-                  <strong>{person?.displayName ?? "Verfügbare Person"}</strong>
+                  <strong>
+                    {person?.displayName ??
+                      suggestion.displayName ??
+                      "Verfügbare Person"}
+                  </strong>
                   <span>Bewertung: {Math.round(suggestion.score)} von 100</span>
                   <ul>
                     {suggestion.reasons.map((reason) => (
