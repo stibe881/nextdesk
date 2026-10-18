@@ -11,6 +11,7 @@ import {
   Bell,
   Bot,
   LayoutPanelTop,
+  Mail,
   MessageSquareText,
   Webhook,
   type LucideIcon,
@@ -30,6 +31,7 @@ import { TenantAutomation } from "./tenant-automation";
 import { TenantDataRetention } from "./tenant-data-retention";
 import { TenantOnboarding } from "./tenant-onboarding";
 import { AiGovernancePanel } from "./ai-governance-panel";
+import { ExchangeMailSettings } from "./exchange-mail-settings";
 
 export type TenantAdminSettingsProps = {
   tenantId: string;
@@ -925,6 +927,12 @@ const FEATURE_PRESENTATION: Readonly<
     description:
       "Direkte Hinweise zu Tickets in der nextDesk-iOS-App über Apple Push Notification service.",
     Icon: Bell,
+  },
+  "integrations.email": {
+    name: "E-Mail-Kanal (Exchange Online)",
+    description:
+      "Eingehende E-Mails werden zu Tickets, Agentenantworten gehen per E-Mail an Anfragende.",
+    Icon: Mail,
   },
 };
 
@@ -2688,6 +2696,9 @@ export function TenantAdminSettings({
                                   </p>
                                 ) : null}
                               </section>
+                            ) : null}
+                            {feature.feature_key === "integrations.email" ? (
+                              <ExchangeMailSettings tenantId={tenantId} />
                             ) : null}
                           </div>
                           <label>

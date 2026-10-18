@@ -641,7 +641,9 @@ async function myTicketTimeline(
   const current = await ownTicket(admin, item.tenantId, item.ticketId, actorId);
   const comments = await client
     .from("ticket_comments")
-    .select("id, body, created_at, author_id, visibility")
+    .select(
+      "id, body, created_at, author_id, visibility, channel, requester_contact_id",
+    )
     .eq("ticket_id", current.id as string)
     .eq("visibility", "external")
     .order("created_at")

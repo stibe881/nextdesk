@@ -63,6 +63,7 @@ const expectedFiles = [
   "0058_agent_workbench_and_requester_portal.sql",
   "0059_requester_collaboration_and_ops_foundation.sql",
   "0060_push_notifications.sql",
+  "0061_exchange_online_mail.sql",
 ];
 
 const availableFiles = await readdir(migrationDirectory);
@@ -563,6 +564,34 @@ const requiredFragments = [
   [
     "0060_push_notifications.sql",
     "grant execute on function public.push_claim_outbox(integer) to service_role",
+  ],
+  [
+    "0061_exchange_online_mail.sql",
+    "create table if not exists public.exchange_mail_channels",
+  ],
+  [
+    "0061_exchange_online_mail.sql",
+    "create table if not exists public.exchange_mail_subscriptions",
+  ],
+  [
+    "0061_exchange_online_mail.sql",
+    "create table if not exists public.mail_messages",
+  ],
+  [
+    "0061_exchange_online_mail.sql",
+    "alter table public.exchange_mail_channels force row level security",
+  ],
+  [
+    "0061_exchange_online_mail.sql",
+    "create or replace function public.exchange_mail_verify_dispatch_secret",
+  ],
+  [
+    "0061_exchange_online_mail.sql",
+    "create trigger exchange_mail_enqueue_agent_reply",
+  ],
+  [
+    "0061_exchange_online_mail.sql",
+    "create or replace function public.exchange_mail_kick_maintenance()",
   ],
 ];
 

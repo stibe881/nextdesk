@@ -10271,3 +10271,501 @@ body:has(.ticket-detail) {
   flex-wrap: wrap;
   gap: 8px;
 }
+
+/* Exchange Online: mandantenbezogene Kanal-Konfiguration. */
+.exchange-mail-settings {
+  display: grid;
+  gap: 16px;
+  margin-top: 20px;
+  border-top: 1px solid var(--border);
+  padding-top: 20px;
+}
+
+.exchange-mail-settings__heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.exchange-mail-settings__heading h3 {
+  margin: 3px 0 6px;
+  color: var(--ink);
+  font-size: 17px;
+}
+
+.exchange-mail-settings__heading p {
+  max-width: 68ch;
+  margin: 0;
+  color: var(--muted);
+}
+
+.exchange-mail-settings__heading > svg {
+  flex: 0 0 auto;
+  color: var(--primary);
+}
+
+.exchange-mail-settings__state,
+.exchange-mail-settings__notice,
+.exchange-mail-settings__feedback,
+.exchange-mail-settings__last-error,
+.exchange-mail-settings__checks li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.exchange-mail-settings__state {
+  align-items: center;
+  color: var(--muted);
+  background: var(--surface-subtle);
+}
+
+.exchange-mail-settings__spinner {
+  animation: exchange-mail-settings-spin 0.8s linear infinite;
+}
+
+@keyframes exchange-mail-settings-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.exchange-mail-settings__status-card {
+  display: grid;
+  gap: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  padding: 15px;
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.exchange-mail-settings__status-heading,
+.exchange-mail-settings__stats,
+.exchange-mail-settings__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 9px;
+}
+
+.exchange-mail-settings__status-heading > span:last-child {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.exchange-mail-settings__status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 999px;
+  padding: 5px 9px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.exchange-mail-settings__status-badge--neutral {
+  background: var(--surface-subtle);
+  color: var(--muted);
+}
+
+.exchange-mail-settings__status-badge--info {
+  background: var(--info-soft);
+  color: var(--info);
+}
+
+.exchange-mail-settings__status-badge--success {
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.exchange-mail-settings__status-badge--warning {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
+.exchange-mail-settings__status-badge--danger {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.exchange-mail-settings__status-details {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+  margin: 0;
+}
+
+.exchange-mail-settings__status-details div {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px;
+  background: var(--surface-subtle);
+}
+
+.exchange-mail-settings__status-details dt {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.exchange-mail-settings__status-details dd {
+  margin: 4px 0 0;
+  color: var(--ink);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.exchange-mail-settings__last-error {
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.exchange-mail-settings__last-error svg,
+.exchange-mail-settings__notice svg,
+.exchange-mail-settings__feedback svg,
+.exchange-mail-settings__checks svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+
+.exchange-mail-settings__stats {
+  gap: 7px;
+}
+
+.exchange-mail-settings__stats span {
+  border-radius: 999px;
+  padding: 4px 8px;
+  color: var(--text);
+  background: var(--surface-subtle);
+  font-size: 12px;
+}
+
+.exchange-mail-settings__stats strong {
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.exchange-mail-settings__stats span.is-warning {
+  color: var(--warning);
+  background: var(--warning-soft);
+}
+
+.exchange-mail-settings__stats span.is-warning strong {
+  color: inherit;
+}
+
+.exchange-mail-settings__notice--info {
+  color: var(--info);
+  background: var(--info-soft);
+}
+
+.exchange-mail-settings__notice--warning,
+.exchange-mail-settings__feedback--warning {
+  color: var(--warning);
+  background: var(--warning-soft);
+}
+
+.exchange-mail-settings__feedback--success {
+  color: var(--success);
+  background: var(--success-soft);
+}
+
+.exchange-mail-settings__feedback--error {
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.exchange-mail-settings__form {
+  display: grid;
+  gap: 14px;
+}
+
+.exchange-mail-settings__form fieldset {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  margin: 0;
+  border: 0;
+  padding: 0;
+}
+
+.exchange-mail-settings__form legend {
+  margin-bottom: 10px;
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.exchange-mail-settings__form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.exchange-mail-settings__form-grid > label {
+  display: grid !important;
+  gap: 6px;
+  min-width: 0;
+  color: var(--text) !important;
+  font-size: 13px !important;
+  font-weight: 650;
+}
+
+.exchange-mail-settings__form-grid label > span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.exchange-mail-settings__suggestion {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  color: var(--muted) !important;
+  font-size: 11px !important;
+  font-weight: 500 !important;
+}
+
+.exchange-mail-settings__suggestion code {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.exchange-mail-settings__suggestion .text-button {
+  min-height: 28px;
+  padding: 3px 7px;
+  font-size: 11px;
+}
+
+.exchange-mail-settings__switches {
+  display: grid;
+  gap: 8px;
+}
+
+.exchange-mail-settings__switches > label {
+  display: flex !important;
+  align-items: flex-start;
+  gap: 9px;
+  min-height: 0;
+  color: var(--text) !important;
+  font-size: 13px !important;
+  font-weight: 400;
+}
+
+.exchange-mail-settings__switches input {
+  flex: 0 0 auto;
+  margin-top: 3px;
+}
+
+.exchange-mail-settings__switches span {
+  display: grid;
+  gap: 1px;
+}
+
+.exchange-mail-settings__switches strong {
+  color: var(--ink) !important;
+  font-size: 13px !important;
+  font-weight: 650 !important;
+}
+
+.exchange-mail-settings__switches small {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.exchange-mail-settings__actions {
+  align-items: stretch;
+}
+
+.exchange-mail-settings__actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+}
+
+.exchange-mail-settings__actions button:first-child {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: var(--on-primary);
+}
+
+.exchange-mail-settings__actions button:first-child:hover:not(:disabled) {
+  border-color: var(--primary-hover);
+  background: var(--primary-hover);
+}
+
+.exchange-mail-settings__checks {
+  display: grid;
+  gap: 8px;
+}
+
+.exchange-mail-settings__checks h4 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.exchange-mail-settings__checks ul {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.exchange-mail-settings__checks li {
+  border: 1px solid var(--border);
+}
+
+.exchange-mail-settings__checks li.is-ok {
+  color: var(--success);
+  background: var(--success-soft);
+}
+
+.exchange-mail-settings__checks li.is-failed {
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.exchange-mail-settings__guide {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-subtle);
+}
+
+.exchange-mail-settings__guide > summary {
+  padding: 12px 14px;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.exchange-mail-settings__guide > div {
+  display: grid;
+  gap: 12px;
+  border-top: 1px solid var(--border);
+  padding: 14px;
+}
+
+.exchange-mail-settings__guide p,
+.exchange-mail-settings__guide ol {
+  margin: 0;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.exchange-mail-settings__guide ol {
+  display: grid;
+  gap: 4px;
+  padding-left: 20px;
+}
+
+.exchange-mail-settings__guide a {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--primary);
+  font-weight: 650;
+}
+
+.exchange-mail-settings__commands {
+  display: grid;
+  gap: 8px;
+}
+
+.exchange-mail-settings__command {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: start;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px;
+  background: var(--surface);
+}
+
+.exchange-mail-settings__command pre {
+  min-width: 0;
+  margin: 0;
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.exchange-mail-settings__command .text-button {
+  min-height: 31px;
+  padding: 4px 7px;
+  font-size: 11px;
+}
+
+.exchange-mail-settings__guide-hint {
+  color: var(--muted) !important;
+}
+
+.exchange-mail-settings__guide-warning {
+  border-left: 3px solid var(--warning);
+  padding-left: 9px;
+  color: var(--warning) !important;
+  font-weight: 600;
+}
+
+.ticket-comment-channel-badge,
+.ticket-comment-delivery {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: 999px;
+  padding: 3px 7px;
+  color: var(--info);
+  background: var(--info-soft);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.ticket-comment-delivery {
+  color: var(--success);
+  background: var(--success-soft);
+}
+
+.ticket-comment-delivery--warning {
+  color: var(--warning);
+  background: var(--warning-soft);
+}
+
+@media (max-width: 620px) {
+  .exchange-mail-settings__status-details,
+  .exchange-mail-settings__form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .exchange-mail-settings__actions button {
+    width: 100%;
+  }
+
+  .exchange-mail-settings__command {
+    grid-template-columns: 1fr;
+  }
+
+  .exchange-mail-settings__command .text-button {
+    justify-self: start;
+  }
+}

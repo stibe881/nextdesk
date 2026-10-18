@@ -1605,6 +1605,139 @@ end;
 $$;
 reset role;
 rollback;
+
+-- Exchange Online mail: all new tables are private, RLS is forced and direct
+-- browser roles have neither access nor a dispatch-secret RPC.
+do $$
+declare
+  relation_name text;
+begin
+  foreach relation_name in array array[
+    'exchange_mail_channels', 'exchange_mail_subscriptions', 'mail_messages'
+  ]
+  loop
+    if not (
+      select relrowsecurity and relforcerowsecurity
+      from pg_class
+      where oid = format('public.%I', relation_name)::regclass
+    ) then
+      raise exception 'Exchange mail RLS is not enabled and forced for %', relation_name;
+    end if;
+    if has_table_privilege('anon', format('public.%I', relation_name), 'select')
+      or has_table_privilege('authenticated', format('public.%I', relation_name), 'select') then
+      raise exception 'Browser role retained Exchange mail table access for %', relation_name;
+    end if;
+  end loop;
+  foreach relation_name in array array['dispatch_config', 'service_identity']
+  loop
+    if not (
+      select relrowsecurity and relforcerowsecurity
+      from pg_class
+      where oid = format('mail_private.%I', relation_name)::regclass
+    ) then
+      raise exception 'Private Exchange mail RLS is not enabled and forced for %', relation_name;
+    end if;
+    if has_table_privilege('anon', format('mail_private.%I', relation_name), 'select')
+      or has_table_privilege('authenticated', format('mail_private.%I', relation_name), 'select') then
+      raise exception 'Browser role retained private Exchange mail table access for %', relation_name;
+    end if;
+  end loop;
+  if has_schema_privilege('anon', 'mail_private', 'usage')
+    or has_schema_privilege('authenticated', 'mail_private', 'usage')
+    or has_function_privilege('authenticated', 'public.exchange_mail_verify_dispatch_secret(text)', 'execute')
+    or not has_function_privilege('service_role', 'public.exchange_mail_verify_dispatch_secret(text)', 'execute') then
+    raise exception 'Exchange mail dispatch privileges are not service-role-only';
+  end if;
+end;
+$$;
+
+-- Before any active channel or due mail exists, maintenance has no work and its
+-- optional pg_net wakeup must be a no-op in the local cluster.
+do $$
+begin
+  if exists (select 1 from public.exchange_mail_channels where status = 'active')
+    or exists (
+      select 1 from public.mail_messages
+      where processing_status in ('pending', 'failed') and next_attempt_at <= now()
+    ) then
+    raise exception 'Exchange mail no-op maintenance fixture is not clean';
+  end if;
+  perform public.exchange_mail_kick_maintenance();
+end;
+$$;
+
+insert into public.ticket_requesters (id, tenant_id, email, display_name, source) values
+  ('1b000000-0000-4000-8000-000000000003', '10000000-0000-4000-8000-000000000001', 'requester@tenant-a.example', 'Requester A', 'email');
+update public.tickets
+set requester_contact_id = '1b000000-0000-4000-8000-000000000003'
+where id = '17000000-0000-4000-8000-000000000001';
+insert into public.ticket_statuses (id, tenant_id, key, label, is_closed, sort_order)
+values ('13100000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000001', 'resolved', 'Gelöst', true, 99)
+on conflict (tenant_id, key) do nothing;
+update public.tenant_feature_flags
+set enabled = true
+where tenant_id = '10000000-0000-4000-8000-000000000001'
+  and feature_key = 'integrations.email';
+insert into public.exchange_mail_channels (
+  id, tenant_id, entra_tenant_id, mailbox_address, default_department_id,
+  send_agent_replies, send_resolution, status, created_by, updated_by, activated_at
+) values (
+  '1c000000-0000-4000-8000-000000000003',
+  '10000000-0000-4000-8000-000000000001',
+  '1d000000-0000-4000-8000-000000000003',
+  'support@tenant-a.example',
+  '11000000-0000-4000-8000-000000000001',
+  true, true, 'active',
+  '00000000-0000-4000-8000-000000000002',
+  '00000000-0000-4000-8000-000000000002', now()
+);
+
+-- Exactly one external portal response from a tenant agent queues exactly one
+-- agent reply. Internal notes, customer responses and a paused channel queue none.
+insert into public.ticket_comments (ticket_id, author_id, visibility, body)
+values ('17000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000002', 'external', 'Externe Agentenantwort');
+do $$
+begin
+  if (select count(*) from public.mail_messages where kind = 'agent_reply' and ticket_id = '17000000-0000-4000-8000-000000000001') <> 1 then
+    raise exception 'External agent reply did not create exactly one Exchange outbound entry';
+  end if;
+end;
+$$;
+insert into public.ticket_comments (ticket_id, author_id, visibility, body)
+values ('17000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000002', 'internal', 'Interne Notiz');
+insert into public.ticket_comments (ticket_id, author_id, visibility, body)
+values ('17000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000001', 'external', 'Kundenantwort');
+update public.exchange_mail_channels set status = 'paused'
+where id = '1c000000-0000-4000-8000-000000000003';
+insert into public.ticket_comments (ticket_id, author_id, visibility, body)
+values ('17000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000002', 'external', 'Antwort bei pausiertem Kanal');
+do $$
+begin
+  if (select count(*) from public.mail_messages where kind = 'agent_reply' and ticket_id = '17000000-0000-4000-8000-000000000001') <> 1 then
+    raise exception 'Internal note, customer reply or paused channel queued Exchange mail';
+  end if;
+end;
+$$;
+
+-- The established tenant-local resolved status is the resolution category and
+-- queues the optional resolution notice only when the channel is active.
+update public.exchange_mail_channels set status = 'active'
+where id = '1c000000-0000-4000-8000-000000000003';
+update public.tickets
+set status_id = (
+  select id
+  from public.ticket_statuses
+  where tenant_id = '10000000-0000-4000-8000-000000000001'
+    and key = 'resolved'
+)
+where id = '17000000-0000-4000-8000-000000000001';
+do $$
+begin
+  if (select count(*) from public.mail_messages where kind = 'resolution' and ticket_id = '17000000-0000-4000-8000-000000000001') <> 1 then
+    raise exception 'Resolved ticket did not queue exactly one Exchange resolution notice';
+  end if;
+end;
+$$;
 SQL
 
 echo "PostgreSQL 16 migration and RLS integration checks passed."

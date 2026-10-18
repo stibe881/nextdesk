@@ -1018,7 +1018,9 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     ] = await Promise.all([
       context.supabaseAdmin
         .from("ticket_comments")
-        .select("id, author_id, visibility, body, created_at, updated_at")
+        .select(
+          "id, author_id, visibility, body, channel, requester_contact_id, created_at, updated_at",
+        )
         .eq("ticket_id", ticket.id)
         .order("created_at"),
       context.supabaseAdmin
@@ -1124,7 +1126,22 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
           .filter((authorId: unknown) => isUuid(authorId)),
       ),
     ];
-    const [profileResult, customerMembershipResult] = await Promise.all([
+    const requesterContactIds = [
+      ...new Set(
+        filteredComments
+          .map((comment: any) => comment.requester_contact_id)
+          .filter((contactId: unknown) => isUuid(contactId)),
+      ),
+    ];
+    const commentIds = filteredComments
+      .map((comment: any) => comment.id)
+      .filter((commentId: unknown) => isUuid(commentId));
+    const [
+      profileResult,
+      customerMembershipResult,
+      commentContactResult,
+      emailDeliveryResult,
+    ] = await Promise.all([
       authorIds.length
         ? context.supabaseAdmin
             .from("user_profiles")
@@ -1137,6 +1154,21 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
             .select("user_id")
             .eq("customer_organization_id", ticket.customer_organization_id)
             .in("user_id", authorIds)
+        : Promise.resolve({ data: [] }),
+      requesterContactIds.length
+        ? context.supabaseAdmin
+            .from("ticket_requesters")
+            .select("id, display_name")
+            .eq("tenant_id", ticket.tenant_id)
+            .in("id", requesterContactIds)
+        : Promise.resolve({ data: [] }),
+      commentIds.length
+        ? context.supabaseAdmin
+            .from("mail_messages")
+            .select("comment_id, processing_status")
+            .eq("tenant_id", ticket.tenant_id)
+            .eq("kind", "agent_reply")
+            .in("comment_id", commentIds)
         : Promise.resolve({ data: [] }),
     ]);
     const profiles = profileResult.data;
@@ -1151,6 +1183,31 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     for (const membership of customerMembershipResult.data ?? []) {
       if (isUuid(membership.user_id)) customerAuthorIds.add(membership.user_id);
     }
+    const requesterContactNames = Object.fromEntries(
+      (commentContactResult.data ?? [])
+        .filter(
+          (contact: any) =>
+            isUuid(contact.id) && typeof contact.display_name === "string",
+        )
+        .map((contact: any) => [contact.id, contact.display_name]),
+    );
+    const emailDeliveryByCommentId = Object.fromEntries(
+      (emailDeliveryResult.data ?? []).flatMap((delivery: any) => {
+        if (!isUuid(delivery.comment_id)) return [];
+        const emailDelivery =
+          delivery.processing_status === "processed"
+            ? "sent"
+            : delivery.processing_status === "failed"
+              ? "failed"
+              : delivery.processing_status === "pending" ||
+                  delivery.processing_status === "processing"
+                ? "pending"
+                : null;
+        return emailDelivery === null
+          ? []
+          : [[delivery.comment_id, emailDelivery]];
+      }),
+    );
     const requesterContact =
       isRecord(requesterContactRow) &&
       isUuid(requesterContactRow.id) &&
@@ -1343,16 +1400,28 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         },
         requesterContact,
         ...(assignedAgent ? { assignedAgent } : {}),
-        comments: filteredComments.map((comment: any) => ({
-          ...comment,
-          authorName: profileNames[comment.author_id] ?? "nextDesk Benutzer",
-          authorKind:
-            comment.visibility === "internal"
-              ? "internal"
-              : customerAuthorIds.has(comment.author_id)
-                ? "customer"
-                : "agent",
-        })),
+        comments: filteredComments.map((comment: any) => {
+          const requesterContactName = isUuid(comment.requester_contact_id)
+            ? requesterContactNames[comment.requester_contact_id]
+            : null;
+          const emailDelivery = emailDeliveryByCommentId[comment.id] ?? null;
+          return {
+            ...comment,
+            authorName:
+              requesterContactName ??
+              profileNames[comment.author_id] ??
+              "nextDesk Benutzer",
+            authorKind:
+              comment.visibility === "internal"
+                ? "internal"
+                : requesterContactName
+                  ? "customer"
+                  : customerAuthorIds.has(comment.author_id)
+                    ? "customer"
+                    : "agent",
+            emailDelivery,
+          };
+        }),
         events: events ?? [],
         escalations: escalations ?? [],
         statuses: statuses ?? [],

@@ -16,6 +16,7 @@ import {
   EyeOff,
   Focus,
   LoaderCircle,
+  Mail,
   MessageSquare,
   RefreshCw,
   Save,
@@ -319,10 +320,12 @@ type TicketRecord = {
 type TicketComment = {
   id: string;
   authorName: string;
-  authorKind?: "agent" | "requester";
+  authorKind?: "agent" | "requester" | "customer";
   body: string;
   created_at: string;
   visibility: CommentVisibility;
+  channel?: "portal" | "email";
+  emailDelivery?: "pending" | "sent" | "failed" | null;
 };
 
 type TicketEvent = {
@@ -772,9 +775,6 @@ function isTicketComment(value: unknown): value is TicketComment {
     typeof comment.id === "string" &&
     typeof comment.body === "string" &&
     typeof comment.created_at === "string" &&
-    (comment.authorKind === undefined ||
-      comment.authorKind === "agent" ||
-      comment.authorKind === "requester") &&
     (comment.visibility === "external" || comment.visibility === "internal"),
   );
 }
@@ -786,7 +786,34 @@ function toTicketComment(value: unknown): TicketComment | null {
     typeof comment?.authorName === "string" && comment.authorName.trim()
       ? comment.authorName
       : "Benutzerkonto";
-  return { ...value, authorName };
+  const authorKind =
+    comment?.authorKind === "agent" ||
+    comment?.authorKind === "requester" ||
+    comment?.authorKind === "customer"
+      ? comment.authorKind
+      : undefined;
+  const channel =
+    comment?.channel === "portal" || comment?.channel === "email"
+      ? comment.channel
+      : undefined;
+  const emailDelivery =
+    comment?.emailDelivery === "pending" ||
+    comment?.emailDelivery === "sent" ||
+    comment?.emailDelivery === "failed" ||
+    comment?.emailDelivery === null
+      ? comment.emailDelivery
+      : undefined;
+
+  return {
+    id: comment?.id as string,
+    authorName,
+    body: comment?.body as string,
+    created_at: comment?.created_at as string,
+    visibility: comment?.visibility as CommentVisibility,
+    ...(authorKind ? { authorKind } : {}),
+    ...(channel ? { channel } : {}),
+    ...(emailDelivery !== undefined ? { emailDelivery } : {}),
+  };
 }
 
 function isTicketEvent(value: unknown): value is TicketEvent {
@@ -5783,6 +5810,7 @@ export function TicketDetail({
                 .toLocaleLowerCase("de-CH");
               const authorIsRequester =
                 item.authorKind === "requester" ||
+                item.authorKind === "customer" ||
                 (item.authorKind === undefined &&
                   Boolean(requesterName) &&
                   item.authorName.trim().toLocaleLowerCase("de-CH") ===
@@ -5799,6 +5827,18 @@ export function TicketDetail({
                   : direction === "outgoing"
                     ? "Antwort an Kunden"
                     : "Interne Notiz";
+              const inboundEmail =
+                direction === "incoming" && item.channel === "email";
+              const emailDelivery =
+                direction === "outgoing" ? item.emailDelivery : null;
+              const deliveryLabel =
+                emailDelivery === "pending"
+                  ? "E-Mail wird gesendet …"
+                  : emailDelivery === "sent"
+                    ? "per E-Mail gesendet"
+                    : emailDelivery === "failed"
+                      ? "E-Mail-Versand fehlgeschlagen"
+                      : null;
               return (
                 <li
                   className={`ticket-comment ticket-conversation__message ticket-conversation__message--${direction}`}
@@ -5815,6 +5855,24 @@ export function TicketDetail({
                     >
                       {visibilityLabel}
                     </span>
+                    {inboundEmail ? (
+                      <span className="ticket-comment-channel-badge">
+                        <Mail aria-hidden="true" size={13} />
+                        per E-Mail
+                      </span>
+                    ) : null}
+                    {deliveryLabel ? (
+                      <span
+                        className={
+                          emailDelivery === "failed"
+                            ? "ticket-comment-delivery ticket-comment-delivery--warning"
+                            : "ticket-comment-delivery"
+                        }
+                      >
+                        <Mail aria-hidden="true" size={13} />
+                        {deliveryLabel}
+                      </span>
+                    ) : null}
                     <time dateTime={item.created_at}>
                       {formatDateTime(item.created_at)}
                     </time>

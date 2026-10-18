@@ -1,0 +1,80 @@
+# nextDesk – E-Mail-Kanal über Exchange Online (Vertrag)
+
+Stand: 18.10.2026. Verbindlich für Migration `0061_exchange_online_mail.sql`, die Edge Functions `exchange-mail-admin`, `exchange-mail-webhook`, `exchange-mail-worker`, die Anpassung in `ticket-operations` sowie Web und iOS. Die bestehende generische Function `email-ingress` bleibt unverändert bestehen.
+
+## Zielbild
+
+Jeder nextDesk-Mandant kann genau ein Support-Postfach seines eigenen Microsoft-365-Mandanten anbinden (v1: höchstens ein aktiver Kanal pro Mandant). Eingehende E-Mails in den Posteingang dieses Postfachs werden zu Tickets oder, wenn sie zu einem bestehenden Ticket gehören, zu Kundennachrichten im Ticket-Chat. Externe Agentenantworten im Ticket werden aus demselben Postfach per E-Mail an die anfragende Person gesendet. Optional gibt es eine Eingangsbestätigung und eine Lösungsmitteilung.
+
+Gross ICT betreibt eine zentrale, mehrmandantenfähige Entra-App „nextDesk – Exchange Online“. Diese App erhält in Entra **keine** mandantenweiten Postfachrechte. Jeder Kundenmandant gibt die App frei (Service Principal) und erlaubt ihr über **Exchange Online RBAC für Anwendungen** nur das eine Support-Postfach (Rollen `Application Mail.Read` und `Application Mail.Send`, Management Scope auf das Postfach). Microsoft: Berechtigungen aus Entra und RBAC addieren sich; eine Entra-Freigabe von Mail.* hebt die Einschränkung auf.
+
+## Externe Konfiguration (nicht im Code, nicht im Chat)
+
+Supabase Edge Function Secrets: `EXCHANGE_MAIL_CLIENT_ID` (App-ID, nicht geheim, wird der Mandantenadministration angezeigt) und `EXCHANGE_MAIL_CLIENT_SECRET` (geheim). Fehlen sie, melden alle Aktionen `exchange_platform_not_configured`, und nichts wird versendet oder abonniert.
+
+Webhook-URL (öffentlich, ohne JWT): `https://ewizsylzrwogsztsthbl.supabase.co/functions/v1/exchange-mail-webhook`. Lebenszyklus-URL: dieselbe mit `?lifecycle=1`.
+
+Token: `POST https://login.microsoftonline.com/{entraTenantId}/oauth2/v2.0/token`, `grant_type=client_credentials`, `scope=https://graph.microsoft.com/.default`. Token pro Entra-Mandant im Speicher der Function bis 5 Minuten vor Ablauf wiederverwenden. Enthält das Token im `roles`-Claim `Mail.Read`, `Mail.ReadWrite`, `Mail.Send` oder `Mail.ReadBasic`, wird `overBroadPermissions: true` gemeldet (Warnung, keine Blockade).
+
+## Datenbank (Migration 0061, additiv)
+
+Alle neuen Tabellen: RLS aktiviert und erzwungen, `revoke all` von `public, anon, authenticated`, Zugriff nur `service_role`. Mandantenadministration greift ausschliesslich über `exchange-mail-admin` zu.
+
+`public.exchange_mail_channels`: `id uuid pk`, `tenant_id uuid not null unique → tenants on delete cascade`, `entra_tenant_id uuid not null`, `mailbox_address text not null` (kleingeschrieben, E-Mail-Format, ≤ 254), `mailbox_object_id uuid null`, `default_department_id uuid null` (gleicher Mandant, Fremdschlüssel analog zu bestehenden Mandantentabellen), `send_acknowledgement boolean not null default true`, `send_agent_replies boolean not null default true`, `send_resolution boolean not null default false`, `status text not null default 'draft' check in ('draft','verified','active','paused','error')`, `last_verified_at`, `last_error_code text null`, `last_error_message text null (≤ 500)`, `last_inbound_at`, `last_outbound_at`, `poll_watermark timestamptz null`, `activated_at`, `activated_by uuid null → user_profiles on delete set null`, `created_by`, `created_at`, `updated_by`, `updated_at`. Eindeutig: `mailbox_address` global (ein Postfach darf nicht zwei Mandanten gehören).
+
+`public.exchange_mail_subscriptions`: `id uuid pk`, `channel_id → exchange_mail_channels on delete cascade`, `tenant_id`, `graph_subscription_id text not null unique`, `client_state_hash text not null` (SHA-256 hex des zufälligen clientState mit 64 Zeichen; Klartext nie speichern), `resource text not null`, `expires_at timestamptz not null`, `status text check in ('active','removed','expired')`, `last_notification_at`, `last_renewed_at`, `created_at`.
+
+`public.mail_messages`: `id uuid pk`, `tenant_id`, `channel_id → on delete cascade`, `direction text check in ('inbound','outbound')`, `kind text check in ('new_ticket','reply','acknowledgement','agent_reply','resolution','test')` (inbound: `new_ticket` oder `reply` nach Verarbeitung, vorher null), `graph_message_id text null`, `internet_message_id text null`, `conversation_id text null`, `ticket_id uuid null → tickets on delete set null`, `comment_id uuid null → ticket_comments on delete set null`, `from_address text null`, `to_addresses text[] not null default '{}'`, `cc_addresses text[] not null default '{}'`, `subject text null (≤ 500)`, `occurred_at timestamptz null` (receivedDateTime bzw. Versandzeit), `processing_status text not null default 'pending' check in ('pending','processing','processed','ignored','failed')`, `ignore_reason text null`, `attempt_count int not null default 0`, `next_attempt_at timestamptz not null default now()`, `last_error_code text null`, `created_at`, `updated_at`. Eindeutig: `(channel_id, graph_message_id) where direction='inbound'`; `(comment_id) where kind='agent_reply'`; `(ticket_id, kind) where kind in ('acknowledgement','resolution')`. Keine E-Mail-Körper speichern; Inhalte landen nur im Ticket bzw. Kommentar.
+
+`public.ticket_comments` erhält: `channel text not null default 'portal' check in ('portal','email')`, `requester_contact_id uuid null → ticket_requesters(id) on delete set null`. Kommentare mit `requester_contact_id` gelten als Nachricht der anfragenden Person.
+
+`mail_private` (Schema ohne Rechte für `anon`/`authenticated`): `dispatch_config` (Singleton, zufälliges 64-Zeichen-Secret, Function-URL des Workers) analog `push_private.dispatch_config`, und `service_identity` (Singleton, `user_id uuid`), die globale Dienstidentität „nextDesk E-Mail-Dienst“ ohne Mandantenmitgliedschaft. `public.exchange_mail_verify_dispatch_secret(text) returns boolean` nur für `service_role`.
+
+Auslöser (alle `security definer`, `set search_path`, fehlertolerant: Fehler dürfen das auslösende Schreiben nie verhindern):
+
+1. Nach Insert in `ticket_comments` mit `visibility='external'`, `channel='portal'`, `requester_contact_id is null`, Autor nicht die Dienstidentität, Autor nicht `tickets.requester_id`, Autor ist Agent des Mandanten (nicht reine Anfragenden-/Kundenrolle), Mandant hat aktiven Kanal mit `send_agent_replies`, anfragende Person hat E-Mail → `mail_messages` (outbound, `agent_reply`).
+2. Nach Insert in `tickets` mit `source='email'`, wenn das Ticket über den Exchange-Kanal entstand (Kennzeichen: zugehöriger inbound-`mail_messages`-Eintrag; daher erzeugt der Worker die Bestätigung selbst, kein Trigger nötig) → `acknowledgement`, falls aktiviert.
+3. Nach Update von `tickets.status_id` auf einen Status der Kategorie „gelöst“ (bestehende Statuskategorie verwenden) → `resolution`, falls aktiviert.
+   Jeder neue outbound-Eintrag stösst den Worker per `pg_net` mit dem Dispatch-Secret an (`{"action":"dispatchOutbound","ids":[...]}`), Zeitlimit kurz.
+
+Wartung: `pg_cron` aktivieren und genau einen Job `nextdesk-exchange-mail-maintenance` alle 5 Minuten anlegen. Er ruft `public.exchange_mail_kick_maintenance()` auf, das **nur dann** den Worker (`{"action":"maintenance"}`) anstösst, wenn mindestens ein Kanal `active` ist oder fällige outbound-/inbound-Einträge existieren. Ohne aktivierten Kanal passiert nichts.
+
+Funktionsschalter: bestehender Schlüssel `integrations.email`, fail-closed über `_shared/tenant-features.ts`. Name/Beschreibung im Katalog auf „E-Mail-Kanal (Exchange Online)“ / „Eingehende E-Mails werden zu Tickets, Agentenantworten gehen per E-Mail an Anfragende.“ aktualisieren.
+
+## exchange-mail-admin (JWT, nur Mandantenadministration des eigenen Mandanten)
+
+`POST` mit `{ "action": ..., "tenantId": uuid, ... }`. Berechtigung und Mandantenprüfung wie in `push-notifications` (gleiche Admin-Berechtigung). Antworten `{ "data": ... }` oder `{ "error": { "code", "message" } }` mit deutscher `message`.
+
+`getStatus` → `{ platformConfigured: boolean, appId: string|null, webhookUrl, featureEnabled: boolean, suggestedEntraTenantId: string|null (aus der Mandanten-SSO-Konfiguration ableitbar), channel: null | { entraTenantId, mailboxAddress, mailboxObjectId, defaultDepartmentId, sendAcknowledgement, sendAgentReplies, sendResolution, status, lastVerifiedAt, lastErrorCode, lastErrorMessage, lastInboundAt, lastOutboundAt, activatedAt, subscriptionExpiresAt, overBroadPermissions }, departments: [{id,name}], stats: { inbound24h, outbound24h, failed24h } }`.
+
+`saveSettings` `{ entraTenantId, mailboxAddress, mailboxObjectId?, defaultDepartmentId?, sendAcknowledgement, sendAgentReplies, sendResolution }` → Kanal anlegen/ändern. Änderung von Mandant oder Postfach setzt einen aktiven Kanal auf `draft` zurück und löscht bestehende Abos.
+
+`verifyConnection` → Token holen; `GET /users/{mailbox}/mailFolders/inbox?$select=id,totalItemCount`; `GET .../mailFolders/inbox/messages?$top=1&$select=id`. Ergebnis `{ checks: [{ key: 'token'|'mailbox'|'read', ok, message }], overBroadPermissions }`; bei Erfolg Status `verified`.
+
+`activate` → setzt `poll_watermark = now()` (alte Posteingangsnachrichten werden nie importiert), legt das Graph-Abo an (`changeType: created`, Ressource `/users/{oidOderAdresse}/mailFolders('inbox')/messages`, Ablauf jetzt + 4'200 Minuten, `clientState` zufällig, `lifecycleNotificationUrl`), Status `active`. Schlägt das Abo fehl, bleibt der Kanal aktiv mit Abfrage alle 5 Minuten und `last_error_*` erklärt den Grund.
+
+`pause` → Abos löschen (`DELETE /subscriptions/{id}`), Status `paused`.
+
+`sendTestMail` → sendet eine kurze Testmail aus dem Postfach an die E-Mail-Adresse der handelnden Person (`kind='test'`).
+
+Fehlercodes (Auszug, jeweils mit deutscher Meldung): `exchange_platform_not_configured`, `feature_disabled`, `forbidden`, `invalid_settings`, `mailbox_in_use`, `exchange_app_not_consented` (AADSTS700016/AADSTS7000229), `exchange_mailbox_not_found`, `exchange_access_denied` (fehlende RBAC-Zuweisung; Hinweis auf 30 Min. bis 2 Std. Wartezeit), `exchange_throttled`, `exchange_unavailable`.
+
+## exchange-mail-webhook (ohne JWT, öffentlich)
+
+Validierung: Enthält die URL `validationToken`, sofort `200 text/plain` mit dem dekodierten Token (keine weitere Verarbeitung, Länge begrenzen). Benachrichtigungen: Body ≤ 256 KiB; für jedes Element Abo über `subscriptionId` laden, `clientState` per SHA-256 und zeitkonstantem Vergleich prüfen, `tenantId` gegen `entra_tenant_id` prüfen; ungültige Elemente verwerfen und auditieren (ohne Inhalte). Gültige `created`-Benachrichtigungen: Nachrichten-ID aus `resourceData.id` als inbound `pending` einfügen (`on conflict do nothing`), `mailbox_object_id` aus `Users('{oid}')` übernehmen, falls leer. Dann innerhalb von 3 Sekunden `202` antworten und die Verarbeitung per `EdgeRuntime.waitUntil` bzw. Worker-Anstoss fortsetzen. Lebenszyklus (`?lifecycle=1`): `reauthorizationRequired` → Abo per `PATCH` verlängern; `subscriptionRemoved` → neues Abo anlegen und Abfrage auslösen; `missed` → Abfrage auslösen. Nie Inhalte loggen.
+
+## exchange-mail-worker (ohne JWT, nur mit Dispatch-Secret im Header `x-nextdesk-dispatch-secret`)
+
+`processInbound { ids? }`, `dispatchOutbound { ids }`, `maintenance` (Abos mit Ablauf < 24 h verlängern oder neu anlegen; je aktivem Kanal Posteingang ab `poll_watermark − 10 Min.` abfragen, `$orderby=receivedDateTime asc`, max. 50 pro Lauf, unbekannte IDs als `pending` einfügen, Wasserzeichen nachführen; fällige `pending`/`failed` mit `next_attempt_at ≤ now()` verarbeiten; höchstens 6 Versuche mit exponentiellem Abstand).
+
+Eingang: Nachricht laden (`$select=id,internetMessageId,conversationId,subject,from,sender,replyTo,toRecipients,ccRecipients,receivedDateTime,uniqueBody,body,hasAttachments,isDraft,internetMessageHeaders`, `Prefer: outlook.body-content-type="text"`). Ignorieren (mit `ignore_reason`): Entwürfe, Absender ist das Postfach selbst oder ein anderes nextDesk-Kanalpostfach, `Auto-Submitted` ≠ `no`, `X-Autoreply`/`X-Autorespond`, `Precedence: bulk|junk|list|auto_reply`, Absender `mailer-daemon`/`postmaster`, Empfang vor `activated_at`, mehr als 20 neue Tickets desselben Absenders pro Stunde. Zuordnung zu bestehendem Ticket desselben Mandanten über (1) `In-Reply-To`/`References` gegen bekannte `internet_message_id`, (2) Ticketnummer im Betreff (`[ICT-2026-000001]`, Muster wie `email-ingress`), (3) `conversation_id` eines bekannten Eintrags. Als Antwort akzeptiert, wenn der Absender die anfragende Person ist, bereits an diesem Ticket per E-Mail beteiligt war oder seine Domain in den erlaubten SSO-Domänen des Mandanten liegt; sonst neues Ticket mit Hinweis „Bezug auf Ticket …“. Antwort → `ticket_comments` (`visibility='external'`, `channel='email'`, `author_id` = Dienstidentität, `requester_contact_id` = Kontakt des Absenders, Text aus `uniqueBody`, bereinigt, ≤ 48'000 Zeichen); ein gelöstes Ticket wird dabei nicht automatisch wieder geöffnet, sondern ein Ticketereignis protokolliert. Neues Ticket → wie `email-ingress` (Kontakt per E-Mail finden oder anlegen, `source='email'`, `requester_id` = Dienstidentität, Abteilung = `default_department_id` oder erste aktive Abteilung, Standardstatus/-priorität, Ticketnummer per `reserve_ticket_number`). Anhänge: Dateianhänge inkl. eingebetteter Bilder, höchstens 10 Stück, je ≤ 10 MiB, zusammen ≤ 25 MiB, nur Typen, die die bestehende Ticketanhang-Logik zulässt; Ablage im bestehenden Ticketanhang-Speicher und `ticket_attachments` (mit `comment_id` bei Antworten). Ticketereignis und Audit ohne Inhalte.
+
+Ausgang: Empfänger = E-Mail der anfragenden Person (bei `test` die handelnde Person). Betreff neu `[{Ticketnummer}] {Betreff}`, Antworten `AW: [{Ticketnummer}] {Betreff}`. Gibt es eine zuletzt eingegangene E-Mail zum Ticket, `POST /users/{mb}/messages/{id}/reply` mit `message.subject`, `message.body` (HTML) und `message.toRecipients` (nur die anfragende Person), sonst `POST /users/{mb}/sendMail` mit `saveToSentItems: true`. Kopfzeilen `X-nextDesk-Ticket: {Ticketnummer}` und `X-Auto-Response-Suppress: All`. HTML-Vorlage: Agententext HTML-escaped mit Zeilenumbrüchen, darunter dezent Ticketnummer, Betreff, Mandanten-Portalname und der Hinweis „Antworten Sie direkt auf diese E-Mail. Bitte lassen Sie die Ticketnummer im Betreff stehen.“ Anhänge des Kommentars nur, wenn zusammen ≤ 3 MB, sonst Hinweis auf das Portal. Erfolg → `processed`, `occurred_at`, Kanal `last_outbound_at`; Fehler → Wiederholung wie oben; dauerhafte Fehler → `failed` mit Code.
+
+## ticket-operations (Ticketdetail)
+
+Für Kommentare mit `requester_contact_id`: `authorKind: 'customer'`, `authorName` = Anzeigename des Kontakts. Jeder Kommentar erhält `channel: 'portal'|'email'` und für Agentenantworten optional `emailDelivery: 'pending'|'sent'|'failed'|null` aus `mail_messages`.
+
+## Web und iOS
+
+Web, Mandanteneinstellungen → Funktion „E-Mail-Kanal (Exchange Online)“: Statuskarte, Formular, Schritt-für-Schritt-Anleitung mit kopierbaren, vorausgefüllten PowerShell-Befehlen (App-ID, Postfach), Freigabelink `https://login.microsoftonline.com/{entraTenantId}/adminconsent?client_id={appId}`, Schaltflächen „Verbindung prüfen“, „Aktivieren“, „Pausieren“, „Testmail senden“, verständliche Fehlertexte, Warnung bei `overBroadPermissions`. Ticket-Chat: Kennzeichen „per E-Mail“ bei eingegangenen Nachrichten und Zustellstatus bei Agentenantworten. iOS: Kennzeichen „per E-Mail“ im Chat (kein neuer Build ohne Auftrag).

@@ -119,3 +119,12 @@ verify_jwt = true
 
 [functions.push-dispatch]
 verify_jwt = false
+
+[functions.exchange-mail-admin]
+verify_jwt = true
+
+[functions.exchange-mail-webhook]
+verify_jwt = false
+
+[functions.exchange-mail-worker]
+verify_jwt = false
