@@ -1557,7 +1557,8 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       ...new Set(
         (recipientMemberships ?? [])
           .map((membership: any) => membership.user_id)
-          .filter(isUuid),
+          .filter(isUuid)
+          .filter((userId: string) => userId !== actorId),
       ),
     ];
 
@@ -2572,7 +2573,12 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
   const { error } = await context.supabaseAdmin
     .from("tickets")
     .update(update)
-    .eq("id", ticket.id);
+    .eq("id", ticket.id)
+    // Lets the push trigger recognise the acting person behind service writes.
+    .setHeader(
+      "x-nextdesk-actor-id",
+      typeof actorId === "string" ? actorId : "",
+    );
   if (error)
     return response(request, { error: { code: "ticket_update_failed" } }, 422);
   await context.supabaseAdmin.from("ticket_events").insert({

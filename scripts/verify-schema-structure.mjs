@@ -62,6 +62,7 @@ const expectedFiles = [
   "0057_experience_value_and_ai_foundation.sql",
   "0058_agent_workbench_and_requester_portal.sql",
   "0059_requester_collaboration_and_ops_foundation.sql",
+  "0060_push_notifications.sql",
 ];
 
 const availableFiles = await readdir(migrationDirectory);
@@ -550,6 +551,18 @@ const requiredFragments = [
   [
     "0059_requester_collaboration_and_ops_foundation.sql",
     "grant select, insert, update, delete on table public.outbound_events to service_role",
+  ],
+  ["0060_push_notifications.sql", "create table public.push_devices"],
+  ["0060_push_notifications.sql", "create table public.push_preferences"],
+  ["0060_push_notifications.sql", "create table public.push_outbox"],
+  ["0060_push_notifications.sql", "create schema if not exists push_private"],
+  [
+    "0060_push_notifications.sql",
+    "create trigger push_enqueue_ticket_notification",
+  ],
+  [
+    "0060_push_notifications.sql",
+    "grant execute on function public.push_claim_outbox(integer) to service_role",
   ],
 ];
 

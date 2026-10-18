@@ -14,15 +14,18 @@ import {
   ArrowLeft,
   ArrowRight,
   ArrowUp,
+  BadgeCheck,
   Bell,
   BookOpen,
   BriefcaseBusiness,
   ChartNoAxesCombined,
+  CircleCheck,
   CircleEllipsis,
   Command,
   LayoutDashboard,
   ListTodo,
   LogOut,
+  MessageSquareText,
   Minus,
   MonitorCog,
   Plus,
@@ -132,8 +135,8 @@ type DashboardView = {
 
 type NotificationTicketReference = {
   id: string;
-  subject: string;
   ticketNumber: string;
+  subject?: string;
 };
 
 type NotificationItem = {
@@ -575,12 +578,17 @@ function notificationFromValue(value: unknown): NotificationItem | null {
     if (
       !isRecord(value.ticket) ||
       typeof value.ticket.id !== "string" ||
-      typeof value.ticket.subject !== "string" ||
       typeof value.ticket.ticketNumber !== "string"
     ) {
       return null;
     }
-    ticket = value.ticket as NotificationTicketReference;
+    ticket = {
+      id: value.ticket.id,
+      ticketNumber: value.ticket.ticketNumber,
+      ...(typeof value.ticket.subject === "string"
+        ? { subject: value.ticket.subject }
+        : {}),
+    };
   }
 
   return {
@@ -610,15 +618,87 @@ function notificationsFromResponse(value: unknown): NotificationItem[] | null {
     : null;
 }
 
-function notificationSubject(notification: NotificationItem): string {
-  if (notification.ticket?.subject.trim()) return notification.ticket.subject;
+type NotificationPresentation = {
+  description: string;
+  Icon: LucideIcon;
+  title: string;
+};
+
+function notificationTicketNumber(
+  notification: NotificationItem,
+): string | null {
   if (isRecord(notification.payload)) {
-    for (const key of ["subject", "title", "message"]) {
-      const value = notification.payload[key];
-      if (typeof value === "string" && value.trim()) return value;
-    }
+    const value = notification.payload.ticketNumber;
+    if (typeof value === "string" && value.trim()) return value.trim();
   }
-  return "Benachrichtigung";
+  return notification.ticket?.ticketNumber ?? null;
+}
+
+function notificationPresentation(
+  notification: NotificationItem,
+): NotificationPresentation {
+  const ticketNumber = notificationTicketNumber(notification);
+  const ticketLabel = ticketNumber ? `Ticket ${ticketNumber}` : "Dieses Ticket";
+
+  switch (notification.kind) {
+    case "ticket.assigned":
+      return {
+        description: `${ticketLabel} wurde dir zugewiesen.`,
+        Icon: UserRound,
+        title: "Ticket zugewiesen",
+      };
+    case "ticket.requester_reply":
+      return {
+        description: `Die anfragende Person hat auf ${ticketLabel} geantwortet.`,
+        Icon: MessageSquareText,
+        title: "Neue Antwort der anfragenden Person",
+      };
+    case "ticket.support_reply":
+      return {
+        description: `Der Support hat auf ${ticketLabel} geantwortet.`,
+        Icon: MessageSquareText,
+        title: "Antwort vom Support",
+      };
+    case "ticket.mention":
+      return {
+        description: `Du wurdest in ${ticketLabel} erwähnt.`,
+        Icon: AtSign,
+        title: "Du wurdest erwähnt",
+      };
+    case "ticket.resolved":
+      return {
+        description: `${ticketLabel} wurde gelöst.`,
+        Icon: CircleCheck,
+        title: "Ticket gelöst",
+      };
+    case "ticket.approval.requested":
+      return {
+        description: `Für ${ticketLabel} wird deine Freigabe benötigt.`,
+        Icon: BadgeCheck,
+        title: "Freigabe benötigt",
+      };
+    case "ticket.escalation_opened":
+      return {
+        description: `${ticketLabel} wurde eskaliert.`,
+        Icon: ArrowUp,
+        title: "Ticket eskaliert",
+      };
+    default:
+      if (notification.kind.startsWith("ticket.sla.")) {
+        return {
+          description: `Für ${ticketLabel} ist eine SLA-Frist betroffen.`,
+          Icon: Bell,
+          title: "SLA-Hinweis",
+        };
+      }
+      return {
+        description: ticketNumber
+          ? `Neue Benachrichtigung zu ${ticketLabel}.`
+          : "Neue Benachrichtigung in deinem Mandanten.",
+        Icon: Bell,
+        title: "Benachrichtigung",
+      };
+  }
 }
 
 function notificationTime(value: string): string {
@@ -2779,17 +2859,16 @@ export function App() {
                       className="notification-center-panel__list"
                     >
                       {notifications.map((notification) => {
-                        const subject = notificationSubject(notification);
+                        const presentation =
+                          notificationPresentation(notification);
                         const time = notificationTime(notification.createdAt);
-                        const ticketLabel = notification.ticket
-                          ? `Ticket ${notification.ticket.ticketNumber}`
-                          : "";
+                        const { Icon, description, title } = presentation;
                         return (
                           <li key={notification.id}>
                             <button
-                              aria-label={`${subject}. Art: ${notification.kind}. ${time}${
-                                ticketLabel ? `. ${ticketLabel}` : ""
-                              }${notification.readAt ? "" : ". Ungelesen"}`}
+                              aria-label={`${title}. ${description}. ${time}${
+                                notification.readAt ? "" : ". Ungelesen"
+                              }`}
                               className={
                                 notification.readAt
                                   ? "notification-center-panel__item"
@@ -2801,13 +2880,23 @@ export function App() {
                               }
                               type="button"
                             >
-                              <strong>{subject}</strong>
-                              <small>
-                                Art: {notification.kind} · {time}
+                              <span className="notification-center-panel__item-heading">
+                                <Icon
+                                  aria-hidden="true"
+                                  size={18}
+                                  strokeWidth={1.9}
+                                />
+                                <strong>{title}</strong>
+                              </span>
+                              <small>{description}</small>
+                              {notification.ticket?.subject?.trim() ? (
+                                <small className="notification-center-panel__subject">
+                                  {notification.ticket.subject.trim()}
+                                </small>
+                              ) : null}
+                              <small className="notification-center-panel__time">
+                                {time}
                               </small>
-                              {notification.ticket && (
-                                <small>{ticketLabel}</small>
-                              )}
                             </button>
                           </li>
                         );

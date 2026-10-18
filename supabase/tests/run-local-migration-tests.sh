@@ -1267,6 +1267,344 @@ end;
 $$;
 reset role;
 rollback;
+
+-- Push notifications are fail-closed: fixtures explicitly enable the feature
+-- and register only the devices required for the positive-path checks below.
+update public.tenant_feature_flags
+set enabled = true,
+    configuration = '{"contentLevel":"minimal"}'::jsonb
+where tenant_id = '10000000-0000-4000-8000-000000000001'
+  and feature_key = 'notifications.push';
+
+insert into public.push_devices (id, tenant_id, user_id, apns_token, apns_environment, device_name)
+values
+  ('a1000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000001', repeat('a', 64), 'production', 'iPhone A'),
+  ('a2000000-0000-4000-8000-000000000002', '10000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000002', repeat('b', 64), 'production', 'iPhone Agent');
+
+insert into public.tickets (
+  id, tenant_id, department_id, ticket_number, subject, description, status_id, priority_id, requester_id
+) values (
+  '19000000-0000-4000-8000-000000000003',
+  '10000000-0000-4000-8000-000000000001',
+  '11000000-0000-4000-8000-000000000001',
+  'ICT-2026-009001',
+  'Push Trigger Test',
+  'Testticket fuer Push-Benachrichtigungen.',
+  '13000000-0000-4000-8000-000000000001',
+  '14000000-0000-4000-8000-000000000001',
+  '00000000-0000-4000-8000-000000000001'
+);
+
+begin;
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-000000000001', true);
+update public.tickets
+set assigned_agent_id = '00000000-0000-4000-8000-000000000002'
+where id = '19000000-0000-4000-8000-000000000003';
+commit;
+
+-- Edge functions write with the service role and pass the authenticated actor
+-- as a header. A self-assignment must not notify the actor, and the header must
+-- be ignored for anything but service-role requests. Rolled back afterwards.
+begin;
+select set_config('request.jwt.claim.sub', '', true);
+select set_config('request.jwt.claims', '{"role":"service_role"}', true);
+select set_config('request.headers', '{"x-nextdesk-actor-id":"00000000-0000-4000-8000-000000000002"}', true);
+update public.tickets set assigned_agent_id = null
+where id = '19000000-0000-4000-8000-000000000003';
+update public.tickets set assigned_agent_id = '00000000-0000-4000-8000-000000000002'
+where id = '19000000-0000-4000-8000-000000000003';
+do $$
+begin
+  if (
+    select count(*) from public.ticket_notifications
+    where ticket_id = '19000000-0000-4000-8000-000000000003'
+      and user_id = '00000000-0000-4000-8000-000000000002'
+      and kind = 'ticket.assigned'
+  ) <> 1 then
+    raise exception 'Service-role self-assignment with actor header must not notify the actor';
+  end if;
+end;
+$$;
+select set_config('request.jwt.claims', '{"role":"authenticated"}', true);
+update public.tickets set assigned_agent_id = null
+where id = '19000000-0000-4000-8000-000000000003';
+update public.tickets set assigned_agent_id = '00000000-0000-4000-8000-000000000002'
+where id = '19000000-0000-4000-8000-000000000003';
+do $$
+begin
+  if (
+    select count(*) from public.ticket_notifications
+    where ticket_id = '19000000-0000-4000-8000-000000000003'
+      and user_id = '00000000-0000-4000-8000-000000000002'
+      and kind = 'ticket.assigned'
+  ) <> 2 then
+    raise exception 'Actor header must only be trusted for service-role requests';
+  end if;
+end;
+$$;
+rollback;
+
+insert into public.ticket_comments (id, ticket_id, author_id, visibility, body)
+values
+  ('19100000-0000-4000-8000-000000000003', '19000000-0000-4000-8000-000000000003', '00000000-0000-4000-8000-000000000001', 'external', 'Antwort von der anfragenden Person.'),
+  ('19200000-0000-4000-8000-000000000003', '19000000-0000-4000-8000-000000000003', '00000000-0000-4000-8000-000000000002', 'external', 'Antwort durch den Support.'),
+  ('19300000-0000-4000-8000-000000000003', '19000000-0000-4000-8000-000000000003', '00000000-0000-4000-8000-000000000002', 'internal', 'Interne Notiz fuer die Erwaehnung.');
+
+insert into public.ticket_mentions (id, tenant_id, ticket_id, comment_id, mentioned_user_id, author_id)
+values (
+  '19400000-0000-4000-8000-000000000003',
+  '10000000-0000-4000-8000-000000000001',
+  '19000000-0000-4000-8000-000000000003',
+  '19300000-0000-4000-8000-000000000003',
+  '00000000-0000-4000-8000-000000000001',
+  '00000000-0000-4000-8000-000000000002'
+);
+
+begin;
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-000000000002', true);
+update public.tickets
+set resolved_at = timezone('utc', now())
+where id = '19000000-0000-4000-8000-000000000003';
+commit;
+
+insert into public.role_permissions (role_id, permission_code)
+values ('16000000-0000-4000-8000-000000000002', 'ticket.approval.decide')
+on conflict do nothing;
+insert into public.ticket_approval_requests (
+  id, tenant_id, ticket_id, approval_kind, requested_by, reason
+) values (
+  '19500000-0000-4000-8000-000000000003',
+  '10000000-0000-4000-8000-000000000001',
+  '19000000-0000-4000-8000-000000000003',
+  'change',
+  '00000000-0000-4000-8000-000000000001',
+  'Freigabe fuer den Push-Test erforderlich.'
+);
+
+do $$
+begin
+  if not exists (
+    select 1 from public.ticket_notifications
+    where ticket_id = '19000000-0000-4000-8000-000000000003'
+      and user_id = '00000000-0000-4000-8000-000000000002'
+      and kind = 'ticket.assigned'
+      and payload = '{"ticketNumber":"ICT-2026-009001"}'::jsonb
+  ) then
+    raise exception 'Assignment did not create the contracted in-app notification';
+  end if;
+  if not exists (
+    select 1 from public.ticket_notifications
+    where ticket_id = '19000000-0000-4000-8000-000000000003'
+      and user_id = '00000000-0000-4000-8000-000000000002'
+      and kind = 'ticket.requester_reply'
+      and payload ? 'commentId'
+  ) then
+    raise exception 'Requester external comment did not notify the assigned agent';
+  end if;
+  if not exists (
+    select 1 from public.ticket_notifications
+    where ticket_id = '19000000-0000-4000-8000-000000000003'
+      and user_id = '00000000-0000-4000-8000-000000000001'
+      and kind = 'ticket.support_reply'
+      and payload ? 'commentId'
+  ) then
+    raise exception 'Support external comment did not notify the requester';
+  end if;
+  if not exists (
+    select 1 from public.ticket_notifications
+    where ticket_id = '19000000-0000-4000-8000-000000000003'
+      and user_id = '00000000-0000-4000-8000-000000000001'
+      and kind = 'ticket.mention'
+      and payload ? 'mentionId'
+  ) then
+    raise exception 'Mention did not create the contracted in-app notification';
+  end if;
+  if not exists (
+    select 1 from public.ticket_notifications
+    where ticket_id = '19000000-0000-4000-8000-000000000003'
+      and user_id = '00000000-0000-4000-8000-000000000001'
+      and kind = 'ticket.resolved'
+  ) then
+    raise exception 'Resolution did not notify the requester';
+  end if;
+  if not exists (
+    select 1 from public.ticket_notifications
+    where ticket_id = '19000000-0000-4000-8000-000000000003'
+      and user_id = '00000000-0000-4000-8000-000000000002'
+      and kind = 'ticket.approval.requested'
+      and payload ? 'approvalId'
+  ) then
+    raise exception 'Pending approval did not notify a qualified approver';
+  end if;
+  if not exists (
+    select 1
+    from public.push_outbox outbox
+    join public.ticket_notifications notification on notification.id = outbox.notification_id
+    where notification.ticket_id = '19000000-0000-4000-8000-000000000003'
+  ) then
+    raise exception 'Enabled feature with devices and categories did not enqueue push work';
+  end if;
+end;
+$$;
+
+begin;
+set local role service_role;
+do $$
+declare
+  v_claim record;
+  v_claimed integer := 0;
+begin
+  if not has_function_privilege('service_role', 'public.push_claim_outbox(integer)', 'execute')
+    or has_function_privilege('authenticated', 'public.push_claim_outbox(integer)', 'execute')
+    or has_function_privilege('authenticated', 'public.push_verify_dispatch_secret(text)', 'execute') then
+    raise exception 'Push dispatch RPC privileges are not service-role-only';
+  end if;
+  for v_claim in select * from public.push_claim_outbox(50)
+  loop
+    v_claimed := v_claimed + 1;
+    if v_claim.subject is not null
+      or v_claim.quiet_hours is null
+      or jsonb_typeof(v_claim.devices) <> 'array'
+      or jsonb_array_length(v_claim.devices) < 1 then
+      raise exception 'Push claim did not return contracted minimal delivery data';
+    end if;
+  end loop;
+  if v_claimed < 1 then
+    raise exception 'Push claim did not reserve the enabled outbox rows';
+  end if;
+end;
+$$;
+reset role;
+commit;
+
+-- Actor and recipient being identical must not generate a self-notification.
+insert into public.tickets (
+  id, tenant_id, department_id, ticket_number, subject, description, status_id, priority_id, requester_id
+) values (
+  '19600000-0000-4000-8000-000000000003',
+  '10000000-0000-4000-8000-000000000001',
+  '11000000-0000-4000-8000-000000000001',
+  'ICT-2026-009002',
+  'Push Selbsttest',
+  'Ticket fuer die Selbstbenachrichtigungspruefung.',
+  '13000000-0000-4000-8000-000000000001',
+  '14000000-0000-4000-8000-000000000001',
+  '00000000-0000-4000-8000-000000000001'
+);
+begin;
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-000000000002', true);
+update public.tickets
+set assigned_agent_id = '00000000-0000-4000-8000-000000000002'
+where id = '19600000-0000-4000-8000-000000000003';
+commit;
+do $$
+begin
+  if exists (
+    select 1 from public.ticket_notifications
+    where ticket_id = '19600000-0000-4000-8000-000000000003'
+      and kind = 'ticket.assigned'
+  ) then
+    raise exception 'Self-assignment created a push notification';
+  end if;
+end;
+$$;
+
+-- Enqueue preconditions are independently fail-closed for feature, device and category.
+update public.tenant_feature_flags
+set enabled = false
+where tenant_id = '10000000-0000-4000-8000-000000000001'
+  and feature_key = 'notifications.push';
+insert into public.ticket_notifications (id, tenant_id, user_id, ticket_id, kind, payload)
+values ('19700000-0000-4000-8000-000000000003', '10000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000001', '19000000-0000-4000-8000-000000000003', 'ticket.assigned', '{"ticketNumber":"ICT-2026-009001"}');
+
+update public.tenant_feature_flags
+set enabled = true
+where tenant_id = '10000000-0000-4000-8000-000000000001'
+  and feature_key = 'notifications.push';
+insert into public.ticket_notifications (id, tenant_id, user_id, ticket_id, kind, payload)
+values ('19800000-0000-4000-8000-000000000003', '10000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000003', '19000000-0000-4000-8000-000000000003', 'ticket.assigned', '{"ticketNumber":"ICT-2026-009001"}');
+
+insert into public.push_preferences (tenant_id, user_id, enabled_categories)
+values ('10000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000002', array['mention']::text[])
+on conflict (tenant_id, user_id) do update set enabled_categories = excluded.enabled_categories;
+insert into public.ticket_notifications (id, tenant_id, user_id, ticket_id, kind, payload)
+values ('19900000-0000-4000-8000-000000000003', '10000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000002', '19000000-0000-4000-8000-000000000003', 'ticket.assigned', '{"ticketNumber":"ICT-2026-009001"}');
+do $$
+begin
+  if exists (
+    select 1 from public.push_outbox
+    where notification_id in (
+      '19700000-0000-4000-8000-000000000003',
+      '19800000-0000-4000-8000-000000000003',
+      '19900000-0000-4000-8000-000000000003'
+    )
+  ) then
+    raise exception 'Push outbox ignored a disabled feature, missing device or disabled category';
+  end if;
+end;
+$$;
+
+-- A provider-side notification failure must never prevent the ticket operation.
+alter table public.ticket_notifications
+  add constraint push_test_assignment_rejected check (kind <> 'ticket.assigned') not valid;
+insert into public.tickets (
+  id, tenant_id, department_id, ticket_number, subject, description, status_id, priority_id, requester_id
+) values (
+  '1a000000-0000-4000-8000-000000000003',
+  '10000000-0000-4000-8000-000000000001',
+  '11000000-0000-4000-8000-000000000001',
+  'ICT-2026-009003',
+  'Push Fehlerisolation',
+  'Ticket fuer die Fehlerisolation im Trigger.',
+  '13000000-0000-4000-8000-000000000001',
+  '14000000-0000-4000-8000-000000000001',
+  '00000000-0000-4000-8000-000000000001'
+);
+begin;
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-000000000001', true);
+update public.tickets
+set assigned_agent_id = '00000000-0000-4000-8000-000000000002'
+where id = '1a000000-0000-4000-8000-000000000003';
+commit;
+do $$
+begin
+  if not exists (
+    select 1 from public.tickets
+    where id = '1a000000-0000-4000-8000-000000000003'
+      and assigned_agent_id = '00000000-0000-4000-8000-000000000002'
+  ) then
+    raise exception 'Ticket operation failed when notification generation raised an error';
+  end if;
+end;
+$$;
+alter table public.ticket_notifications drop constraint push_test_assignment_rejected;
+
+begin;
+set local "request.jwt.claim.sub" = '00000000-0000-4000-8000-000000000001';
+set local role authenticated;
+do $$
+begin
+  if (select count(*) from public.push_devices) <> 1 then
+    raise exception 'Authenticated user may read push devices other than their own';
+  end if;
+  if has_table_privilege('authenticated', 'public.push_devices', 'insert')
+    or has_table_privilege('authenticated', 'public.push_preferences', 'update') then
+    raise exception 'Authenticated users retained direct push write privileges';
+  end if;
+  if has_schema_privilege('authenticated', 'push_private', 'usage') then
+    raise exception 'Authenticated users retained push_private schema access';
+  end if;
+  begin
+    insert into public.push_devices (tenant_id, user_id, apns_token, apns_environment)
+    values ('10000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000001', repeat('c', 64), 'production');
+    raise exception 'Authenticated user directly inserted a push device';
+  exception when insufficient_privilege then
+    null;
+  end;
+end;
+$$;
+reset role;
+rollback;
 SQL
 
 echo "PostgreSQL 16 migration and RLS integration checks passed."

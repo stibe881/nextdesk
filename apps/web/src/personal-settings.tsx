@@ -8,11 +8,18 @@ import {
   Mail,
   ShieldCheck,
   SlidersHorizontal,
+  Smartphone,
+  Trash2,
 } from "lucide-react";
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import type { User } from "@supabase/supabase-js";
 
 import { supabase } from "./lib/supabase";
+import {
+  pushNotificationsRequest,
+  type PushDevice,
+  type PushStatus,
+} from "./lib/push-notifications";
 
 type PersonalSettingsProps = {
   onBack: () => void;
@@ -92,6 +99,33 @@ function providerSummary(user: User, ssoEnforced: boolean): ProviderSummary {
   };
 }
 
+function pushDisabledReasonLabel(reason: string | null | undefined): string {
+  switch (reason?.trim()) {
+    case "apns_unregistered":
+      return "Von Apple abgemeldet, zum Beispiel nach dem Löschen der App.";
+    case "device_registration_failed":
+      return "Die Registrierung ist fehlgeschlagen.";
+    case "apns_not_configured":
+      return "Der Apple-Zugang ist noch nicht eingerichtet.";
+    case undefined:
+    case "":
+      return "Grund nicht bekannt";
+    default:
+      return "Vom System deaktiviert.";
+  }
+}
+
+function pushDateLabel(value: string | null): string {
+  if (!value || Number.isNaN(new Date(value).getTime())) {
+    return "nicht bekannt";
+  }
+  return new Intl.DateTimeFormat("de-CH", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: "Europe/Zurich",
+  }).format(new Date(value));
+}
+
 export function PersonalSettings({
   onBack,
   onOpenAppearance,
@@ -114,8 +148,98 @@ export function PersonalSettings({
     "idle" | "confirming" | "signing-out" | "success" | "error"
   >("idle");
   const [otherSessionsMessage, setOtherSessionsMessage] = useState("");
+  const [pushStatus, setPushStatus] = useState<PushStatus | null>(null);
+  const [pushStatusState, setPushStatusState] = useState<
+    "idle" | "loading" | "loaded" | "error"
+  >("idle");
+  const [pushMessage, setPushMessage] = useState("");
+  const [pushMessageKind, setPushMessageKind] = useState<"success" | "error">(
+    "success",
+  );
+  const [pendingDeviceRemoval, setPendingDeviceRemoval] =
+    useState<PushDevice | null>(null);
+  const [removingDeviceId, setRemovingDeviceId] = useState<string | null>(null);
   const provider = providerSummary(user, ssoEnforced);
   const email = user.email?.trim() || "Keine E-Mail-Adresse hinterlegt";
+
+  useEffect(() => {
+    if (!tenantId) {
+      setPushStatus(null);
+      setPushStatusState("idle");
+      setPushMessage("");
+      setPendingDeviceRemoval(null);
+      return;
+    }
+
+    let mounted = true;
+    setPushStatusState("loading");
+    setPushMessage("");
+    void pushNotificationsRequest<PushStatus>({
+      tenantId,
+      type: "getStatus",
+    })
+      .then((nextStatus) => {
+        if (!mounted) return;
+        setPushStatus(nextStatus);
+        setPushStatusState("loaded");
+      })
+      .catch((error: unknown) => {
+        if (!mounted) return;
+        setPushStatus(null);
+        setPushStatusState("error");
+        setPushMessageKind("error");
+        setPushMessage(
+          error instanceof Error && error.message
+            ? error.message
+            : "Push-Benachrichtigungen sind derzeit nicht verfügbar. Bitte versuche es später erneut.",
+        );
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [tenantId]);
+
+  async function removePushDevice() {
+    if (!tenantId || !pendingDeviceRemoval || removingDeviceId) return;
+
+    const device = pendingDeviceRemoval;
+    setRemovingDeviceId(device.id);
+    setPushMessage("");
+    try {
+      const result = await pushNotificationsRequest<{ removed: boolean }>({
+        deviceId: device.id,
+        tenantId,
+        type: "unregisterDevice",
+      });
+      setPushStatus((current) =>
+        current
+          ? {
+              ...current,
+              devices: current.devices.filter(
+                (currentDevice) => currentDevice.id !== device.id,
+              ),
+            }
+          : current,
+      );
+      setPendingDeviceRemoval(null);
+      setPushMessageKind("success");
+      setPushMessage(
+        result.removed
+          ? "Das Gerät wurde für Push-Benachrichtigungen entfernt."
+          : "Das Gerät war bereits entfernt.",
+      );
+    } catch (error) {
+      setPushMessageKind("error");
+      setPushMessage(
+        error instanceof Error && error.message
+          ? error.message
+          : "Das Gerät konnte nicht entfernt werden. Bitte versuche es später erneut.",
+      );
+    } finally {
+      setRemovingDeviceId(null);
+    }
+  }
 
   async function submitPassword(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -367,6 +491,146 @@ export function PersonalSettings({
           </article>
         )}
       </div>
+
+      {tenantId &&
+      (pushStatusState !== "loaded" ||
+        pushStatus?.featureEnabled ||
+        (pushStatus?.devices.length ?? 0) > 0) ? (
+        <section
+          aria-labelledby="personal-push-heading"
+          className="personal-settings__card personal-settings__push"
+        >
+          <div className="personal-settings__card-heading">
+            <span
+              className="personal-settings__icon personal-settings__icon--push"
+              aria-hidden="true"
+            >
+              <Smartphone size={19} strokeWidth={1.9} />
+            </span>
+            <div>
+              <h3 id="personal-push-heading">Push-Benachrichtigungen</h3>
+              <p>
+                Verwalte die iOS-Geräte, die mit deinem nextDesk-Konto
+                registriert sind.
+              </p>
+            </div>
+          </div>
+
+          {pushStatusState === "loading" ? (
+            <p aria-live="polite" className="personal-settings__hint">
+              Registrierte Geräte werden geladen …
+            </p>
+          ) : null}
+          {pushStatusState === "loaded" && pushStatus?.devices.length === 0 ? (
+            <p className="personal-settings__hint">
+              Für dein Konto sind noch keine iOS-Geräte registriert.
+            </p>
+          ) : null}
+          {pushStatus?.devices.length ? (
+            <ul className="personal-settings__device-list">
+              {pushStatus.devices.map((device) => {
+                const deviceName = device.deviceName?.trim() || "iOS-Gerät";
+                const appVersion =
+                  device.appVersion?.trim() || "nicht gemeldet";
+                const appBuild = device.appBuild?.trim();
+                const removalOpen = pendingDeviceRemoval?.id === device.id;
+                return (
+                  <li key={device.id}>
+                    <div className="personal-settings__device-details">
+                      <strong>{deviceName}</strong>
+                      <span>
+                        App-Version: {appVersion}
+                        {appBuild ? ` (Build ${appBuild})` : ""}
+                      </span>
+                      <span>
+                        Letzte Registrierung:{" "}
+                        {pushDateLabel(device.lastRegisteredAt)}
+                      </span>
+                      <span
+                        className={
+                          device.enabled
+                            ? "personal-settings__device-status personal-settings__device-status--enabled"
+                            : "personal-settings__device-status personal-settings__device-status--disabled"
+                        }
+                      >
+                        {device.enabled
+                          ? "Aktiv"
+                          : `Deaktiviert: ${pushDisabledReasonLabel(device.disabledReason)}`}
+                      </span>
+                    </div>
+                    {removalOpen ? (
+                      <div
+                        className="personal-settings__device-confirmation"
+                        role="alert"
+                      >
+                        <p>
+                          Möchtest du {deviceName} wirklich für
+                          Push-Benachrichtigungen entfernen?
+                        </p>
+                        <div>
+                          <button
+                            className="personal-settings__signout-button"
+                            disabled={removingDeviceId !== null}
+                            onClick={() => void removePushDevice()}
+                            type="button"
+                          >
+                            <Trash2
+                              aria-hidden="true"
+                              size={16}
+                              strokeWidth={1.9}
+                            />
+                            {removingDeviceId === device.id
+                              ? "Wird entfernt …"
+                              : "Entfernen bestätigen"}
+                          </button>
+                          <button
+                            disabled={removingDeviceId !== null}
+                            onClick={() => setPendingDeviceRemoval(null)}
+                            type="button"
+                          >
+                            Abbrechen
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <button
+                        className="secondary-button"
+                        disabled={removingDeviceId !== null}
+                        onClick={() => setPendingDeviceRemoval(device)}
+                        type="button"
+                      >
+                        <Trash2
+                          aria-hidden="true"
+                          size={16}
+                          strokeWidth={1.9}
+                        />
+                        Entfernen
+                      </button>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          ) : null}
+          <p className="personal-settings__hint">
+            Push-Benachrichtigungen richtest du in der nextDesk-iOS-App unter
+            Profil → Benachrichtigungen ein.
+          </p>
+          {pushMessage ? (
+            <p
+              aria-live="polite"
+              className={
+                pushMessageKind === "success"
+                  ? "personal-settings__notice personal-settings__notice--success"
+                  : "personal-settings__notice personal-settings__notice--error"
+              }
+              role="status"
+            >
+              {pushMessage}
+            </p>
+          ) : null}
+        </section>
+      ) : null}
 
       <section
         aria-labelledby="personal-privacy-heading"

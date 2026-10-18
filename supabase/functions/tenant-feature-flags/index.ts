@@ -3,6 +3,25 @@ import { withSupabase } from "@supabase/server";
 const APP_ORIGIN = "https://app.nextdesk.ch";
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const KNOWN_FEATURE_KEYS = new Set([
+  "ticketing.detail",
+  "ticketing.checklists",
+  "ticketing.time-tracking",
+  "ticketing.templates",
+  "knowledge.base",
+  "automation.sla",
+  "reporting.service",
+  "integrations.email",
+  "assets.management",
+  "experience.workspace",
+  "portal.self-service",
+  "ai.assist",
+  "webhooks.outbound",
+  "agent.workbench",
+  "requester.portal",
+  "requester.department-view",
+  "notifications.push",
+]);
 
 type RequestBody = {
   type: "list";
@@ -140,6 +159,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     .filter(
       (row) =>
         typeof row.feature_key === "string" &&
+        KNOWN_FEATURE_KEYS.has(row.feature_key) &&
         typeof row.enabled === "boolean" &&
         (row.pilot_ends_at === null || typeof row.pilot_ends_at === "string"),
     )

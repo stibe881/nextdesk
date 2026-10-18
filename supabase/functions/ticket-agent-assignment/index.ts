@@ -433,7 +433,12 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     .from("tickets")
     .update({ assigned_agent_id: action.assignedAgentId })
     .eq("id", ticket.id)
-    .eq("tenant_id", ticket.tenant_id);
+    .eq("tenant_id", ticket.tenant_id)
+    // Lets the push trigger recognise the acting person behind service writes.
+    .setHeader(
+      "x-nextdesk-actor-id",
+      typeof actorId === "string" ? actorId : "",
+    );
   if (updateError) {
     return response(request, { error: { code: "ticket_update_failed" } }, 422);
   }

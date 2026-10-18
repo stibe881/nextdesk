@@ -10033,3 +10033,241 @@ body:has(.ticket-detail) {
   gap: 0.75rem;
   align-items: center;
 }
+
+/* Push-Benachrichtigungen: Benachrichtigungszentrale */
+.notification-center-panel__item-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink);
+}
+.notification-center-panel__item-heading svg {
+  flex: none;
+  color: var(--primary);
+}
+.notification-center-panel__subject {
+  overflow: hidden;
+  color: var(--text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.notification-center-panel__time {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Push-Benachrichtigungen: Mandanteneinstellungen */
+.tenant-admin-settings__push-settings {
+  display: grid;
+  gap: 14px;
+  margin-top: 14px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 18px;
+  background: var(--surface-subtle);
+}
+.tenant-admin-settings__push-settings h3 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 15px;
+}
+.tenant-admin-settings__push-state,
+.tenant-admin-settings__push-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.55;
+}
+.tenant-admin-settings__push-note {
+  border-left: 3px solid var(--primary);
+  padding-left: 12px;
+}
+.tenant-admin-settings__push-status {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+  margin: 0;
+}
+.tenant-admin-settings__push-status > div {
+  display: grid;
+  gap: 6px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px 14px;
+  background: var(--surface);
+}
+.tenant-admin-settings__push-status dt {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.tenant-admin-settings__push-status dd {
+  margin: 0;
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 700;
+}
+.tenant-admin-settings__push-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 3px 10px;
+  color: var(--warning);
+  background: var(--warning-soft);
+  font-size: 12px;
+  font-weight: 700;
+}
+.tenant-admin-settings__push-badge--ready {
+  color: var(--success);
+  background: var(--success-soft);
+}
+.tenant-admin-settings__push-content-level {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  border: 0;
+  padding: 0;
+}
+.tenant-admin-settings__push-content-level legend {
+  margin-bottom: 8px;
+  padding: 0;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 700;
+}
+.tenant-admin-settings__push-content-level > div {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+}
+.tenant-admin-settings__push-option {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+  border: 1px solid var(--control-border);
+  border-radius: 12px;
+  padding: 12px 14px;
+  background: var(--surface);
+  cursor: pointer;
+  transition:
+    border-color 0.16s ease,
+    box-shadow 0.16s ease;
+}
+.tenant-admin-settings__push-option:hover {
+  border-color: var(--primary);
+}
+.tenant-admin-settings__push-option.is-selected {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+  box-shadow: 0 0 0 1px var(--primary);
+}
+.tenant-admin-settings__push-option input {
+  margin: 2px 0 0;
+  accent-color: var(--primary);
+}
+.tenant-admin-settings__push-option span {
+  display: grid;
+  gap: 3px;
+}
+.tenant-admin-settings__push-option strong {
+  color: var(--ink);
+  font-size: 13px;
+}
+.tenant-admin-settings__push-option small {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+.tenant-admin-settings__push-content-level:disabled
+  .tenant-admin-settings__push-option {
+  cursor: progress;
+  opacity: 0.7;
+}
+.tenant-admin-settings__push-feedback {
+  margin: 0;
+  border-radius: 10px;
+  padding: 9px 12px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.tenant-admin-settings__push-feedback--success {
+  color: var(--success);
+  background: var(--success-soft);
+}
+.tenant-admin-settings__push-feedback--error {
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+
+/* Push-Benachrichtigungen: persönliche Einstellungen */
+.personal-settings__icon--push {
+  color: var(--info);
+  background: var(--info-soft);
+}
+.personal-settings__device-list {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.personal-settings__device-list > li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 12px 14px;
+  background: var(--surface-subtle);
+}
+.personal-settings__device-details {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+.personal-settings__device-details strong {
+  color: var(--ink);
+  font-size: 14px;
+}
+.personal-settings__device-details span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+.personal-settings__device-details .personal-settings__device-status {
+  justify-self: start;
+  margin-top: 4px;
+  border-radius: 999px;
+  padding: 2px 9px;
+  font-weight: 700;
+}
+.personal-settings__device-details .personal-settings__device-status--enabled {
+  color: var(--success);
+  background: var(--success-soft);
+}
+.personal-settings__device-details .personal-settings__device-status--disabled {
+  color: var(--warning);
+  background: var(--warning-soft);
+}
+.personal-settings__device-confirmation {
+  display: grid;
+  flex-basis: 100%;
+  gap: 10px;
+  border-radius: 12px;
+  padding: 12px;
+  background: var(--danger-soft);
+}
+.personal-settings__device-confirmation p {
+  margin: 0;
+  color: var(--ink);
+  font-size: 13px;
+}
+.personal-settings__device-confirmation > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}

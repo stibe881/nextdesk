@@ -8,6 +8,7 @@ import {
   type FormEvent,
 } from "react";
 import {
+  Bell,
   Bot,
   LayoutPanelTop,
   MessageSquareText,
@@ -16,6 +17,11 @@ import {
 } from "lucide-react";
 import { supabase } from "./lib/supabase";
 import { functionErrorMessage } from "./lib/function-error";
+import {
+  pushNotificationsRequest,
+  type PushContentLevel,
+  type PushTenantSettings,
+} from "./lib/push-notifications";
 import { TicketCustomFieldsAdmin } from "./ticket-custom-fields-admin";
 import { AssetIntuneSettings } from "./asset-intune-settings";
 import { DepartmentManagement } from "./department-management";
@@ -45,7 +51,8 @@ type SaveTarget =
   | `revoke-invitation:${string}`
   | `role:${string}`
   | "assign-role"
-  | `revoke-role:${string}`;
+  | `revoke-role:${string}`
+  | "push-settings";
 
 type SettingsArea =
   | "overview"
@@ -913,6 +920,12 @@ const FEATURE_PRESENTATION: Readonly<
       "Kontrollierte Auslieferung mandantenbezogener Ereignisse an externe Endpunkte.",
     Icon: Webhook,
   },
+  "notifications.push": {
+    name: "Push-Benachrichtigungen",
+    description:
+      "Direkte Hinweise zu Tickets in der nextDesk-iOS-App über Apple Push Notification service.",
+    Icon: Bell,
+  },
 };
 
 function featurePresentation(
@@ -983,6 +996,11 @@ export function TenantAdminSettings({
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [activeArea, setActiveArea] = useState<SettingsArea>("overview");
+  const [pushTenantSettings, setPushTenantSettings] =
+    useState<PushTenantSettings | null>(null);
+  const [pushSettingsLoading, setPushSettingsLoading] = useState(false);
+  const [pushSettingsError, setPushSettingsError] = useState("");
+  const [pushSettingsSuccess, setPushSettingsSuccess] = useState("");
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -1060,6 +1078,48 @@ export function TenantAdminSettings({
   useEffect(() => {
     void loadData();
   }, [loadData]);
+
+  useEffect(() => {
+    const hasPushFeature =
+      settings?.tenant_feature_flags.some(
+        (feature) => feature.feature_key === "notifications.push",
+      ) ?? false;
+    if (!hasPushFeature) {
+      setPushTenantSettings(null);
+      setPushSettingsError("");
+      setPushSettingsSuccess("");
+      setPushSettingsLoading(false);
+      return;
+    }
+
+    let mounted = true;
+    setPushSettingsLoading(true);
+    setPushSettingsError("");
+    void pushNotificationsRequest<PushTenantSettings>({
+      tenantId,
+      type: "getTenantSettings",
+    })
+      .then((nextSettings) => {
+        if (mounted) setPushTenantSettings(nextSettings);
+      })
+      .catch((nextError: unknown) => {
+        if (!mounted) return;
+        setPushTenantSettings(null);
+        setPushSettingsError(
+          messageFromError(
+            nextError,
+            "Die Push-Einstellungen konnten nicht geladen werden. Bitte versuche es später erneut.",
+          ),
+        );
+      })
+      .finally(() => {
+        if (mounted) setPushSettingsLoading(false);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [settings?.tenant_feature_flags, tenantId]);
 
   const syncEntraDirectory = async () => {
     if (!supabase) {
@@ -1419,6 +1479,48 @@ export function TenantAdminSettings({
         messageFromError(
           nextError,
           "Die Funktion konnte nicht aktualisiert werden.",
+        ),
+      );
+    } finally {
+      setSaving(null);
+    }
+  }
+
+  async function savePushContentLevel(contentLevel: PushContentLevel) {
+    if (
+      !pushTenantSettings ||
+      pushTenantSettings.contentLevel === contentLevel
+    ) {
+      return;
+    }
+
+    const previousContentLevel = pushTenantSettings.contentLevel;
+    beginSave("push-settings");
+    setPushSettingsError("");
+    setPushSettingsSuccess("");
+    setPushTenantSettings((current) =>
+      current ? { ...current, contentLevel } : current,
+    );
+    try {
+      const updated = await pushNotificationsRequest<{
+        contentLevel: PushContentLevel;
+      }>({
+        contentLevel,
+        tenantId,
+        type: "updateTenantSettings",
+      });
+      setPushTenantSettings((current) =>
+        current ? { ...current, contentLevel: updated.contentLevel } : current,
+      );
+      setPushSettingsSuccess("Die Inhaltsstufe wurde gespeichert.");
+    } catch (nextError) {
+      setPushTenantSettings((current) =>
+        current ? { ...current, contentLevel: previousContentLevel } : current,
+      );
+      setPushSettingsError(
+        messageFromError(
+          nextError,
+          "Die Inhaltsstufe konnte nicht gespeichert werden. Bitte versuche es später erneut.",
         ),
       );
     } finally {
@@ -2448,6 +2550,145 @@ export function TenantAdminSettings({
                               dem Enddatum wird das Modul automatisch
                               ausgeblendet.
                             </span>
+                            {feature.feature_key === "notifications.push" ? (
+                              <section
+                                aria-labelledby="push-settings-heading"
+                                className="tenant-admin-settings__push-settings"
+                              >
+                                <h3 id="push-settings-heading">
+                                  Push-Einstellungen
+                                </h3>
+                                {pushSettingsLoading ? (
+                                  <p className="tenant-admin-settings__push-state">
+                                    Push-Status wird geladen …
+                                  </p>
+                                ) : null}
+                                {pushSettingsError ? (
+                                  <p
+                                    aria-live="polite"
+                                    className="tenant-admin-settings__push-feedback tenant-admin-settings__push-feedback--error"
+                                    role="status"
+                                  >
+                                    {pushSettingsError}
+                                  </p>
+                                ) : null}
+                                {pushTenantSettings ? (
+                                  <>
+                                    <dl className="tenant-admin-settings__push-status">
+                                      <div>
+                                        <dt>Apple-Zugang (APNs)</dt>
+                                        <dd>
+                                          <span
+                                            className={
+                                              pushTenantSettings.apnsConfigured
+                                                ? "tenant-admin-settings__push-badge tenant-admin-settings__push-badge--ready"
+                                                : "tenant-admin-settings__push-badge"
+                                            }
+                                          >
+                                            {pushTenantSettings.apnsConfigured
+                                              ? "eingerichtet"
+                                              : "noch nicht eingerichtet"}
+                                          </span>
+                                        </dd>
+                                      </div>
+                                      <div>
+                                        <dt>Registrierte Geräte</dt>
+                                        <dd>
+                                          {pushTenantSettings.registeredDevices}
+                                        </dd>
+                                      </div>
+                                    </dl>
+                                    <fieldset
+                                      className="tenant-admin-settings__push-content-level"
+                                      disabled={saving !== null}
+                                    >
+                                      <legend>Inhaltsstufe</legend>
+                                      <div>
+                                        <label
+                                          className={
+                                            pushTenantSettings.contentLevel ===
+                                            "minimal"
+                                              ? "tenant-admin-settings__push-option is-selected"
+                                              : "tenant-admin-settings__push-option"
+                                          }
+                                        >
+                                          <input
+                                            checked={
+                                              pushTenantSettings.contentLevel ===
+                                              "minimal"
+                                            }
+                                            name="push-content-level"
+                                            onChange={() =>
+                                              void savePushContentLevel(
+                                                "minimal",
+                                              )
+                                            }
+                                            type="radio"
+                                            value="minimal"
+                                          />
+                                          <span>
+                                            <strong>
+                                              Nur Ticketnummer (empfohlen)
+                                            </strong>
+                                            <small>
+                                              Der Push enthält nur Ereignisart
+                                              und Ticketnummer.
+                                            </small>
+                                          </span>
+                                        </label>
+                                        <label
+                                          className={
+                                            pushTenantSettings.contentLevel ===
+                                            "subject"
+                                              ? "tenant-admin-settings__push-option is-selected"
+                                              : "tenant-admin-settings__push-option"
+                                          }
+                                        >
+                                          <input
+                                            checked={
+                                              pushTenantSettings.contentLevel ===
+                                              "subject"
+                                            }
+                                            name="push-content-level"
+                                            onChange={() =>
+                                              void savePushContentLevel(
+                                                "subject",
+                                              )
+                                            }
+                                            type="radio"
+                                            value="subject"
+                                          />
+                                          <span>
+                                            <strong>
+                                              Ticketnummer und Betreff
+                                            </strong>
+                                            <small>
+                                              Der Betreff erscheint zusätzlich
+                                              im Push.
+                                            </small>
+                                          </span>
+                                        </label>
+                                      </div>
+                                    </fieldset>
+                                    <p className="tenant-admin-settings__push-note">
+                                      Mitteilungen werden direkt über Apple
+                                      (APNs) an die nextDesk-iOS-App zugestellt.
+                                      Nachrichtentexte, Beschreibungen und Namen
+                                      werden nie übertragen.
+                                    </p>
+                                  </>
+                                ) : null}
+                                {pushSettingsSuccess ? (
+                                  <p
+                                    aria-live="polite"
+                                    className="tenant-admin-settings__push-feedback tenant-admin-settings__push-feedback--success"
+                                    role="status"
+                                  >
+                                    {pushSettingsSuccess}
+                                  </p>
+                                ) : null}
+                              </section>
+                            ) : null}
                           </div>
                           <label>
                             <span className="tenant-admin-settings__visually-hidden">

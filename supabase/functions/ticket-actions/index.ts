@@ -1768,7 +1768,12 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       assigned_agent_id: action.assignedAgentId ?? null,
     })
     .select("id, ticket_number")
-    .single();
+    .single()
+    // Lets the push trigger recognise the acting person behind service writes.
+    .setHeader(
+      "x-nextdesk-actor-id",
+      typeof actorId === "string" ? actorId : "",
+    );
   if (ticketError || !ticket) {
     return json(request, { error: { code: "ticket_create_failed" } }, 422);
   }
