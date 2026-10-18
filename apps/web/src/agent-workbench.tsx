@@ -1367,7 +1367,7 @@ export function AgentMetricsCard({ tenantId }: { tenantId: string }) {
       ) : (
         <dl>
           <div>
-            <dt>Offen</dt>
+            <dt>Mir zugewiesen</dt>
             <dd>{metrics.open}</dd>
           </div>
           <div>

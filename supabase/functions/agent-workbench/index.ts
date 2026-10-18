@@ -889,22 +889,46 @@ async function myMetrics(
   action: Action,
   actorId: string,
 ): Promise<Response> {
-  const rows = await admin
-    .from("tickets")
-    .select("id, created_at, first_responded_at, resolved_at")
-    .eq("tenant_id", action.tenantId)
-    .eq("assigned_agent_id", actorId)
-    .limit(5000);
+  const [rows, statuses] = await Promise.all([
+    admin
+      .from("tickets")
+      .select("id, status_id, created_at, first_responded_at, resolved_at")
+      .eq("tenant_id", action.tenantId)
+      .eq("assigned_agent_id", actorId)
+      .limit(5000),
+    admin
+      .from("ticket_statuses")
+      .select("id, is_closed")
+      .eq("tenant_id", action.tenantId)
+      .limit(500),
+  ]);
   if (rows.error) db(rows.error);
-  const today = new Date().toISOString().slice(0, 10);
+  if (statuses.error) db(statuses.error);
+  // Dieselbe Regel wie die Ticketlisten in Web und App: Ein Ticket ist offen,
+  // solange sein Status nicht als abgeschlossen markiert ist.
+  const closedStatusIds = new Set(
+    (statuses.data ?? [])
+      .filter((status) => status.is_closed === true)
+      .map((status) => status.id),
+  );
+  const zurichDate = (value: Date) =>
+    new Intl.DateTimeFormat("sv-SE", {
+      timeZone: "Europe/Zurich",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(value);
+  const today = zurichDate(new Date());
   const responseMinutes: number[] = [];
   let open = 0;
   let solvedToday = 0;
   for (const entry of rows.data ?? []) {
-    if (entry.resolved_at === null) open += 1;
+    const closed = closedStatusIds.has(entry.status_id);
+    if (!closed) open += 1;
     if (
+      closed &&
       typeof entry.resolved_at === "string" &&
-      entry.resolved_at.slice(0, 10) === today
+      zurichDate(new Date(entry.resolved_at)) === today
     )
       solvedToday += 1;
     if (

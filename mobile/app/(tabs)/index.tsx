@@ -387,7 +387,10 @@ export default function HomeScreen() {
           </Text>
           {metricsAvailable && agentMetrics ? (
             <View style={styles.heroKpis}>
-              <HeroKpi label="Offen" value={String(agentMetrics.open)} />
+              <HeroKpi
+                label="Mir zugewiesen"
+                value={String(agentMetrics.open)}
+              />
               <View
                 style={[
                   styles.heroKpiDivider,
