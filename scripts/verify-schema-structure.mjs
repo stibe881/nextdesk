@@ -60,6 +60,7 @@ const expectedFiles = [
   "0055_security_hardening_sso_roles_and_knowledge.sql",
   "0056_confirmed_bulk_ticket_closures.sql",
   "0057_experience_value_and_ai_foundation.sql",
+  "0058_agent_workbench_and_requester_portal.sql",
 ];
 
 const availableFiles = await readdir(migrationDirectory);
@@ -495,6 +496,38 @@ const requiredFragments = [
   [
     "0057_experience_value_and_ai_foundation.sql",
     "alter table public.ai_draft_requests force row level security",
+  ],
+  [
+    "0058_agent_workbench_and_requester_portal.sql",
+    "('agent.workbench', 'Agentenwerkbank'",
+  ],
+  [
+    "0058_agent_workbench_and_requester_portal.sql",
+    "('requester.portal', 'Anfragendenportal'",
+  ],
+  [
+    "0058_agent_workbench_and_requester_portal.sql",
+    "create table public.tenant_macros",
+  ],
+  [
+    "0058_agent_workbench_and_requester_portal.sql",
+    "create table public.ticket_mentions",
+  ],
+  [
+    "0058_agent_workbench_and_requester_portal.sql",
+    "create table public.agent_delegations",
+  ],
+  [
+    "0058_agent_workbench_and_requester_portal.sql",
+    "create table public.service_incident_notices",
+  ],
+  [
+    "0058_agent_workbench_and_requester_portal.sql",
+    "create table public.ticket_reopen_requests",
+  ],
+  [
+    "0058_agent_workbench_and_requester_portal.sql",
+    "alter table public.ticket_reopen_requests force row level security",
   ],
 ];
 

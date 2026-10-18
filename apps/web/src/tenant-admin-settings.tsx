@@ -765,10 +765,22 @@ const FEATURE_PRESENTATION: Readonly<
       "Persönliche Arbeitsbereichseinstellungen, Wiedervorlagen und Mein Tag.",
     Icon: LayoutPanelTop,
   },
+  "agent.workbench": {
+    name: "Agentenwerkbank",
+    description:
+      "Makros, Erwähnungen, Stellvertretungen und erklärbare Arbeitsvorschläge für Agenten.",
+    Icon: LayoutPanelTop,
+  },
   "portal.self-service": {
     name: "Self-Service",
     description:
       "Servicekatalog bei der Erfassung und Lösungsbestätigung durch Anfragende.",
+    Icon: MessageSquareText,
+  },
+  "requester.portal": {
+    name: "Anfragendenportal",
+    description:
+      "Eigene Tickets, Geräte, Freigaben, Störungsmeldungen und Datenauszug für Anfragende.",
     Icon: MessageSquareText,
   },
   "ai.assist": {

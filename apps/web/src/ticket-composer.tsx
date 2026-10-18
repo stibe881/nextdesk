@@ -1,5 +1,11 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { ArrowRight, CheckCircle2, X } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowRight,
+  CheckCircle2,
+  Clock3,
+  X,
+} from "lucide-react";
 import { supabase } from "./lib/supabase";
 import {
   SelfServiceCatalog,
@@ -39,6 +45,22 @@ type AvailableTicketTemplate = {
   descriptionTemplate: string;
   priorityKey: string | null;
   checklistItems: Array<{ description: string; position: number }>;
+};
+type PortalIncidentNotice = {
+  categoryId: string | null;
+  departmentId: string | null;
+  description: string;
+  id: string;
+  title: string;
+};
+type SlaExpectation = {
+  message: string;
+  resolutionDueAt: string | null;
+  responseDueAt: string | null;
+};
+type FieldErrors = {
+  description?: string;
+  subject?: string;
 };
 type TemplateLookup = {
   tenantId: string;
@@ -443,6 +465,67 @@ function parseCreatedTicket(value: unknown): {
   };
 }
 
+function parsePortalIncidentNotices(value: unknown): PortalIncidentNotice[] {
+  if (
+    !isRecord(value) ||
+    !isRecord(value.data) ||
+    !Array.isArray(value.data.notices)
+  ) {
+    throw new Error("Störungsmeldungen fehlen.");
+  }
+  const notices: PortalIncidentNotice[] = [];
+  for (const notice of value.data.notices) {
+    if (
+      !isRecord(notice) ||
+      !isUuid(notice.id) ||
+      !isNonemptyString(notice.title) ||
+      !isNonemptyString(notice.description) ||
+      (notice.category_id !== null && !isUuid(notice.category_id)) ||
+      (notice.department_id !== null && !isUuid(notice.department_id))
+    ) {
+      throw new Error("Störungsmeldungen enthalten ungültige Daten.");
+    }
+    notices.push({
+      categoryId: notice.category_id,
+      departmentId: notice.department_id,
+      description: notice.description.trim(),
+      id: notice.id,
+      title: notice.title.trim(),
+    });
+  }
+  return notices;
+}
+
+function parseSlaExpectation(value: unknown): SlaExpectation {
+  if (
+    !isRecord(value) ||
+    !isRecord(value.data) ||
+    !isRecord(value.data.expectation) ||
+    !isNonemptyString(value.data.expectation.message) ||
+    (value.data.expectation.responseDueAt !== null &&
+      typeof value.data.expectation.responseDueAt !== "string") ||
+    (value.data.expectation.resolutionDueAt !== null &&
+      typeof value.data.expectation.resolutionDueAt !== "string")
+  ) {
+    throw new Error("Die SLA-Erwartung ist ungültig.");
+  }
+  return {
+    message: value.data.expectation.message.trim(),
+    resolutionDueAt: value.data.expectation.resolutionDueAt,
+    responseDueAt: value.data.expectation.responseDueAt,
+  };
+}
+
+function localSlaDate(value: string | null): string | null {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return new Intl.DateTimeFormat("de-CH", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(date);
+}
+
 export function TicketComposer({
   currentUserId,
   tenantId,
@@ -501,13 +584,19 @@ export function TicketComposer({
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [confirmation, setConfirmation] = useState<{
+    expectation: SlaExpectation | null;
     ticketId: string;
     ticketNumber: string;
   } | null>(null);
   const [error, setError] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
+  const [incidentNotices, setIncidentNotices] = useState<
+    PortalIncidentNotice[] | null
+  >(null);
   const departmentSelectRef = useRef<HTMLSelectElement>(null);
   const categoryRequestRef = useRef(0);
   const templateRequestRef = useRef(0);
+  const incidentRequestRef = useRef(0);
   const requesterScopeRef = useRef(0);
   const requesterSearchRef = useRef(0);
   const requesterCreationRef = useRef<number | null>(null);
@@ -531,6 +620,7 @@ export function TicketComposer({
     let mounted = true;
     setLoading(true);
     setError("");
+    setFieldErrors({});
     setSaving(false);
     setConfirmation(null);
     setOptions(EMPTY_OPTIONS);
@@ -589,6 +679,31 @@ export function TicketComposer({
       });
     return () => {
       mounted = false;
+    };
+  }, [tenantId]);
+
+  useEffect(() => {
+    const requestId = ++incidentRequestRef.current;
+    setIncidentNotices(null);
+    if (!supabase) return;
+
+    void supabase.functions
+      .invoke("requester-portal", {
+        body: { tenantId, type: "activeIncidentNotices" },
+      })
+      .then(({ data, error: requestError }) => {
+        if (requestError) throw requestError;
+        const notices = parsePortalIncidentNotices(data);
+        if (incidentRequestRef.current === requestId)
+          setIncidentNotices(notices);
+      })
+      .catch(() => {
+        // A disabled requester portal or a transient error must not block ticket creation.
+        if (incidentRequestRef.current === requestId) setIncidentNotices(null);
+      });
+
+    return () => {
+      ++incidentRequestRef.current;
     };
   }, [tenantId]);
 
@@ -1074,8 +1189,45 @@ export function TicketComposer({
     }
   }
 
+  function validateTicketDraft(): boolean {
+    const nextErrors: FieldErrors = {};
+    const draftSubject = (selectedTemplatePreview?.subject ?? subject).trim();
+    const draftDescription = (
+      selectedTemplatePreview?.description ?? description
+    ).trim();
+    if (Array.from(draftSubject).length < 3) {
+      nextErrors.subject =
+        "Bitte beschreiben Sie Ihr Anliegen im Betreff mit mindestens 3 Zeichen.";
+    }
+    if (!draftDescription) {
+      nextErrors.description =
+        "Bitte schildern Sie kurz, was passiert ist oder was Sie benötigen.";
+    }
+    setFieldErrors(nextErrors);
+    return Object.keys(nextErrors).length === 0;
+  }
+
+  async function loadSlaExpectation(
+    ticketId: string,
+  ): Promise<SlaExpectation | null> {
+    if (!supabase) return null;
+    try {
+      const { data, error: requestError } = await supabase.functions.invoke(
+        "requester-portal",
+        {
+          body: { tenantId, ticketId, type: "slaExpectation" },
+        },
+      );
+      if (requestError) throw requestError;
+      return parseSlaExpectation(data);
+    } catch {
+      return null;
+    }
+  }
+
   async function createTicket(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!validateTicketDraft()) return;
     if (!currentSelectedRequester) {
       setError(
         "Bitte wählen Sie eine anfragende Person aus. Ohne ausgewählte Person kann kein Ticket erstellt werden.",
@@ -1119,6 +1271,7 @@ export function TicketComposer({
       );
       if (requestError) throw requestError;
       const created = parseCreatedTicket(data);
+      const expectationPromise = loadSlaExpectation(created.ticketId);
       if (assignedAgentId) {
         const { error: agentAssignmentError } = await supabase.functions.invoke(
           "ticket-agent-assignment",
@@ -1132,7 +1285,8 @@ export function TicketComposer({
           },
         );
         if (agentAssignmentError) {
-          setConfirmation(created);
+          const expectation = await expectationPromise;
+          setConfirmation({ ...created, expectation });
           setSubject("");
           setDescription("");
           setTemplateId("");
@@ -1156,11 +1310,11 @@ export function TicketComposer({
         if (requesterAssignmentError) throw requesterAssignmentError;
       }
       if (requesterScopeRef.current !== requestId) return;
+      const expectation = await expectationPromise;
       setSubject("");
       setDescription("");
       setTemplateId("");
-      setConfirmation(created);
-      onCreated(created.ticketId);
+      setConfirmation({ ...created, expectation });
     } catch (requestError: unknown) {
       const message = await requesterErrorMessage(
         requestError,
@@ -1231,6 +1385,12 @@ export function TicketComposer({
   const contextDepartmentName = requesterDepartmentIsValid
     ? options.requesterContext.departmentName
     : undefined;
+  const matchingIncidentNotices = (incidentNotices ?? []).filter(
+    (notice) =>
+      (notice.departmentId === null || notice.departmentId === departmentId) &&
+      (notice.categoryId === null ||
+        notice.categoryId === selectedCategory?.id),
+  );
 
   return (
     <section className="ticket-compose panel" aria-label="Ticket erfassen">
@@ -1244,7 +1404,11 @@ export function TicketComposer({
       {loading || optionsTenantId !== tenantId ? (
         <p className="empty-state">Erfassungsoptionen werden geladen …</p>
       ) : (
-        <form className="ticket-compose-form" onSubmit={createTicket}>
+        <form
+          className="ticket-compose-form"
+          noValidate
+          onSubmit={createTicket}
+        >
           {showServiceCatalog ? (
             <SelfServiceCatalog
               disabled={saving}
@@ -1257,6 +1421,16 @@ export function TicketComposer({
               tenantId={tenantId}
             />
           ) : null}
+          <section
+            aria-label="Schritte für die Ticketerfassung"
+            className="ticket-compose-description"
+          >
+            <p className="data-caption">
+              <strong>In drei Schritten:</strong> Anliegen beschreiben,
+              einordnen und anschliessend erstellen. Pflichtfelder sind mit
+              einem Stern markiert.
+            </p>
+          </section>
           <div className="ticket-compose-description ticket-compose-requester">
             <label>
               Anfragende Person <span aria-hidden="true">*</span>
@@ -1484,16 +1658,32 @@ export function TicketComposer({
             Betreff
             <input
               aria-describedby={
-                selectedTemplate ? "ticket-template-preview" : undefined
+                selectedTemplate
+                  ? "ticket-template-preview"
+                  : fieldErrors.subject
+                    ? "ticket-subject-error"
+                    : undefined
               }
+              aria-invalid={Boolean(fieldErrors.subject)}
               disabled={saving || options.departments.length === 0}
               minLength={3}
-              onChange={(event) => setSubject(event.target.value)}
+              onChange={(event) => {
+                setSubject(event.target.value);
+                setFieldErrors((current) => {
+                  const { subject: _subject, ...next } = current;
+                  return next;
+                });
+              }}
               placeholder="Worum geht es?"
               readOnly={selectedTemplate !== null}
               required
               value={selectedTemplatePreview?.subject ?? subject}
             />
+            {fieldErrors.subject && (
+              <span className="error" id="ticket-subject-error" role="alert">
+                {fieldErrors.subject}
+              </span>
+            )}
           </label>
           <section
             aria-labelledby="ticket-routing-heading"
@@ -1561,7 +1751,10 @@ export function TicketComposer({
                     options.departments.length === 0 ||
                     currentTemplateLookup?.status === "loading"
                   }
-                  onChange={(event) => setTemplateId(event.target.value)}
+                  onChange={(event) => {
+                    setTemplateId(event.target.value);
+                    setFieldErrors({});
+                  }}
                   value={selectedTemplate?.id ?? ""}
                 >
                   <option value="">
@@ -1767,6 +1960,23 @@ export function TicketComposer({
                 )}
               </div>
             )}
+            {matchingIncidentNotices.length > 0 && (
+              <aside className="ticket-compose-description" role="note">
+                <p className="data-caption">
+                  <AlertTriangle aria-hidden="true" size={16} strokeWidth={2} />{" "}
+                  <strong>Passende aktive Störung:</strong> Prüfen Sie vor dem
+                  Erstellen, ob Ihr Anliegen bereits betroffen ist. Ein Ticket
+                  kann bei Bedarf trotzdem erfasst werden.
+                </p>
+                <ul className="data-caption">
+                  {matchingIncidentNotices.map((notice) => (
+                    <li key={notice.id}>
+                      <strong>{notice.title}:</strong> {notice.description}
+                    </li>
+                  ))}
+                </ul>
+              </aside>
+            )}
             <label className="ticket-compose-priority">
               Priorität
               <select
@@ -1787,22 +1997,47 @@ export function TicketComposer({
                 ))}
               </select>
             </label>
+            <p className="ticket-compose-description data-caption" role="note">
+              <Clock3 aria-hidden="true" size={16} strokeWidth={2} /> Die
+              erwartete Reaktions- und Lösungszeit wird nach dem Erstellen für
+              die gewählte Priorität und Kategorie angezeigt.
+            </p>
           </section>
           <label className="ticket-compose-description">
             Beschreibung
             <textarea
               aria-describedby={
-                selectedTemplate ? "ticket-template-preview" : undefined
+                selectedTemplate
+                  ? "ticket-template-preview"
+                  : fieldErrors.description
+                    ? "ticket-description-error"
+                    : undefined
               }
+              aria-invalid={Boolean(fieldErrors.description)}
               disabled={saving || options.departments.length === 0}
               minLength={1}
-              onChange={(event) => setDescription(event.target.value)}
+              onChange={(event) => {
+                setDescription(event.target.value);
+                setFieldErrors((current) => {
+                  const { description: _description, ...next } = current;
+                  return next;
+                });
+              }}
               placeholder="Beschreiben Sie das Anliegen so konkret wie möglich."
               readOnly={selectedTemplate !== null}
               required
               rows={4}
               value={selectedTemplatePreview?.description ?? description}
             />
+            {fieldErrors.description && (
+              <span
+                className="error"
+                id="ticket-description-error"
+                role="alert"
+              >
+                {fieldErrors.description}
+              </span>
+            )}
           </label>
           <button
             className="primary-button"
@@ -1829,6 +2064,15 @@ export function TicketComposer({
           <div>
             <strong>Ticket erstellt</strong>
             <span>{confirmation.ticketNumber}</span>
+            {confirmation.expectation && (
+              <span>
+                {confirmation.expectation.message}
+                {localSlaDate(confirmation.expectation.responseDueAt) &&
+                  ` Reaktion bis ${localSlaDate(confirmation.expectation.responseDueAt)}.`}
+                {localSlaDate(confirmation.expectation.resolutionDueAt) &&
+                  ` Lösung bis ${localSlaDate(confirmation.expectation.resolutionDueAt)}.`}
+              </span>
+            )}
           </div>
           <button
             className="ticket-toast-open"

@@ -35,6 +35,11 @@ import {
 } from "./ticket-experience";
 import "./ticket-experience.css";
 import { TicketPdfRecord } from "./ticket-pdf-record";
+import {
+  TicketMentionPicker,
+  TicketWorkbench,
+  useTicketReplyDraft,
+} from "./ticket-workbench";
 
 type CommentVisibility = "external" | "internal";
 type BillingKind = "internal" | "billable" | "goodwill";
@@ -66,6 +71,16 @@ type PendingCloseConfirmation = {
   statusKey: string;
   statusLabel: string;
   source: "overview" | "editor";
+};
+
+type UndoChange = {
+  change: {
+    assignedAgentId?: string | null;
+    assignedTeamId?: string | null;
+    priorityKey?: string;
+    statusKey?: string;
+  };
+  label: string;
 };
 
 type GetTicketAction = {
@@ -1869,6 +1884,17 @@ async function invokeTicketOperation(
   return data;
 }
 
+async function invokeAgentWorkbench(
+  body: Record<string, unknown>,
+): Promise<unknown> {
+  if (!supabase) throw new Error("Supabase ist nicht konfiguriert.");
+  const { data, error } = await supabase.functions.invoke("agent-workbench", {
+    body,
+  });
+  if (error) throw error;
+  return data;
+}
+
 function parseTicketCategories(value: unknown): TicketCategory[] {
   const envelope = asRecord(value);
   const data = asRecord(envelope?.data);
@@ -3242,6 +3268,7 @@ export function TicketDetail({
   const [editDescription, setEditDescription] = useState("");
   const [selectedTeamId, setSelectedTeamId] = useState("");
   const [selectedAgentId, setSelectedAgentId] = useState("");
+  const [assignmentPrefilled, setAssignmentPrefilled] = useState(false);
   const [selectedDepartmentId, setSelectedDepartmentId] = useState("");
   const [requesterProfile, setRequesterProfile] =
     useState<TicketRequesterProfile | null>(null);
@@ -3254,6 +3281,9 @@ export function TicketDetail({
   const [comment, setComment] = useState("");
   const [commentVisibility, setCommentVisibility] =
     useState<CommentVisibility>("internal");
+  const [mentionedUserIds, setMentionedUserIds] = useState<string[]>([]);
+  const [commentNotice, setCommentNotice] = useState("");
+  const [undoChange, setUndoChange] = useState<UndoChange | null>(null);
   const [isWorkToolsOpen, setIsWorkToolsOpen] = useState(false);
   const [ticketCategories, setTicketCategories] = useState<TicketCategory[]>(
     [],
@@ -3347,6 +3377,7 @@ export function TicketDetail({
   const mergeSearchRequestSequence = useRef(0);
   const assignableAgentsRequestSequence = useRef(0);
   const ticketCategoriesRequestSequence = useRef(0);
+  const undoTimerRef = useRef<number | null>(null);
   const attachmentInputRef = useRef<HTMLInputElement>(null);
   const ticketIsClosed = Boolean(
     detail?.statuses.some(
@@ -3368,6 +3399,36 @@ export function TicketDetail({
       detail.canUseInternalNotes ||
       detail.canEscalate === true),
   );
+  const restoreReplyDraft = useCallback((body: string) => {
+    setComment(body);
+  }, []);
+  const replyDraft = useTicketReplyDraft({
+    body: comment,
+    onRestore: restoreReplyDraft,
+    tenantId,
+    ticketId,
+    userId: currentUserId,
+    visibility: commentVisibility,
+  });
+
+  const offerUndo = useCallback((change: UndoChange) => {
+    if (undoTimerRef.current !== null) {
+      window.clearTimeout(undoTimerRef.current);
+    }
+    setUndoChange(change);
+    undoTimerRef.current = window.setTimeout(() => {
+      setUndoChange(null);
+      undoTimerRef.current = null;
+    }, 8_000);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (undoTimerRef.current !== null) {
+        window.clearTimeout(undoTimerRef.current);
+      }
+    };
+  }, []);
 
   const loadFeedback = useCallback(async () => {
     const requestId = ++feedbackRequestSequence.current;
@@ -3614,7 +3675,7 @@ export function TicketDetail({
     [tenantId],
   );
 
-  const loadTicket = useCallback(async () => {
+  const loadTicket = useCallback(async (): Promise<TicketDetailData | null> => {
     const requestId = ++requestSequence.current;
     setLoading(true);
     setError("");
@@ -3632,10 +3693,10 @@ export function TicketDetail({
       if (nextDetail === null) {
         throw new Error("Dieses Ticket ist nicht mehr verfügbar.");
       }
-      if (requestId !== requestSequence.current) return false;
+      if (requestId !== requestSequence.current) return null;
 
       await loadAssignableAgents(nextDetail?.canAssign === true);
-      if (requestId !== requestSequence.current) return false;
+      if (requestId !== requestSequence.current) return null;
 
       setDetail(nextDetail);
       setStatusKey(
@@ -3652,6 +3713,7 @@ export function TicketDetail({
       setEditDescription(nextDetail?.ticket.description ?? "");
       setSelectedTeamId(nextDetail?.ticket.assigned_team_id ?? "");
       setSelectedAgentId(nextDetail?.ticket.assigned_agent_id ?? "");
+      setAssignmentPrefilled(false);
       setSelectedDepartmentId(nextDetail?.ticket.department_id ?? "");
       setTicketCategories([]);
       setTicketCategoryDraft(null);
@@ -3666,13 +3728,13 @@ export function TicketDetail({
         nextDetail.requesterContact,
         nextDetail.canUpdate,
       );
-      return true;
+      return nextDetail;
     } catch (nextError) {
       if (requestId === requestSequence.current) {
         setDetail(null);
         setError(errorMessage(nextError));
       }
-      return false;
+      return null;
     } finally {
       if (requestId === requestSequence.current) {
         setLoaded(true);
@@ -4597,6 +4659,7 @@ export function TicketDetail({
     );
     setSelectedTeamId(detail.ticket.assigned_team_id ?? "");
     setSelectedAgentId(detail.ticket.assigned_agent_id ?? "");
+    setAssignmentPrefilled(false);
     setSelectedDepartmentId(detail.ticket.department_id);
     setIsEditingTicket(false);
     setPendingCloseConfirmation(null);
@@ -4611,6 +4674,7 @@ export function TicketDetail({
       assignedAgentId?: string | null;
     },
     confirmedClose = false,
+    shouldOfferUndo = true,
   ) {
     if (!detail || busy) return;
 
@@ -4628,6 +4692,20 @@ export function TicketDetail({
         source: "overview",
       });
       return;
+    }
+
+    const previousChange: UndoChange["change"] = {};
+    if (change.statusKey !== undefined && !closingStatus && selectedStatus) {
+      previousChange.statusKey = selectedStatus.key;
+    }
+    if (change.priorityKey !== undefined && selectedPriority) {
+      previousChange.priorityKey = selectedPriority.key;
+    }
+    if (change.assignedTeamId !== undefined) {
+      previousChange.assignedTeamId = assignedTeamId || null;
+    }
+    if (change.assignedAgentId !== undefined) {
+      previousChange.assignedAgentId = assignedAgentId || null;
     }
 
     setPendingAction("update");
@@ -4662,6 +4740,16 @@ export function TicketDetail({
       }
       onChanged();
       await Promise.all([loadTicket(), loadFeedback(), loadQuality()]);
+      if (shouldOfferUndo && Object.keys(previousChange).length > 0) {
+        const label = change.priorityKey
+          ? "Priorität"
+          : change.assignedAgentId !== undefined
+            ? "Zuweisung"
+            : change.assignedTeamId !== undefined
+              ? "Team"
+              : "Status";
+        offerUndo({ change: previousChange, label });
+      }
     } catch (nextError) {
       setError(errorMessage(nextError));
     } finally {
@@ -4845,6 +4933,10 @@ export function TicketDetail({
   async function saveComment(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const body = comment.trim();
+    const mentionRecipients =
+      commentVisibility === "internal"
+        ? mentionedUserIds.filter((userId) => userId !== currentUserId)
+        : [];
     if (!body) {
       setError("Bitte geben Sie einen Kommentar ein.");
       return;
@@ -4856,6 +4948,8 @@ export function TicketDetail({
 
     setPendingAction("comment");
     setError("");
+    setCommentNotice("");
+    const submittedAt = Date.now();
     try {
       await invokeTicketOperation({
         type: "addComment",
@@ -4866,7 +4960,44 @@ export function TicketDetail({
       });
       setComment("");
       onChanged();
-      await loadTicket();
+      const updatedDetail = await loadTicket();
+      if (mentionRecipients.length > 0 && updatedDetail) {
+        const savedComment = [...updatedDetail.comments]
+          .filter(
+            (item) =>
+              item.visibility === "internal" &&
+              item.body === body &&
+              Date.parse(item.created_at) >= submittedAt - 15_000,
+          )
+          .sort(
+            (left, right) =>
+              Date.parse(right.created_at) - Date.parse(left.created_at),
+          )[0];
+        if (!savedComment) {
+          setCommentNotice(
+            "Die interne Notiz wurde gespeichert. Erwähnungen konnten nicht sicher zugeordnet werden.",
+          );
+        } else {
+          const mentionResponse = asRecord(
+            await invokeAgentWorkbench({
+              type: "createMentions",
+              tenantId,
+              ticketId,
+              commentId: savedComment.id,
+              mentionedUserIds: mentionRecipients,
+            }),
+          );
+          const mentionData = asRecord(mentionResponse?.data);
+          if (!mentionData || !Array.isArray(mentionData.mentions)) {
+            throw new Error("Die Erwähnungen konnten nicht bestätigt werden.");
+          }
+          setMentionedUserIds([]);
+          setCommentNotice("Interne Notiz und Erwähnungen wurden gespeichert.");
+        }
+      } else if (commentVisibility === "internal") {
+        setMentionedUserIds([]);
+        setCommentNotice("Interne Notiz wurde gespeichert.");
+      }
     } catch (nextError) {
       setError(errorMessage(nextError));
     } finally {
@@ -5094,6 +5225,43 @@ export function TicketDetail({
       return false;
     } finally {
       if (manageBusy) setTicketCategorySaving(false);
+    }
+  }
+
+  async function applyMacroPreview(preview: {
+    responseText: string | null;
+    categoryId: string | null;
+    subcategoryId: string | null;
+    priorityId: string | null;
+  }) {
+    if (!detail || !detail.canUpdate || busy) {
+      throw new Error("Die Ticketfelder können derzeit nicht geändert werden.");
+    }
+
+    if (preview.responseText !== null) {
+      setComment(preview.responseText);
+      setCommentVisibility("external");
+      setMentionedUserIds([]);
+    }
+    if (preview.categoryId !== null || preview.subcategoryId !== null) {
+      const saved = await saveTicketCategory(
+        preview.categoryId,
+        preview.subcategoryId,
+      );
+      if (!saved)
+        throw new Error("Die Kategorie konnte nicht übernommen werden.");
+    }
+    if (preview.priorityId !== null) {
+      const priority = detail.priorities.find(
+        (item) => item.id === preview.priorityId,
+      );
+      if (!priority) {
+        throw new Error(
+          "Die Makropriorität ist in diesem Ticket nicht verfügbar.",
+        );
+      }
+      setPriorityKey(priority.key);
+      await saveOverviewChange({ priorityKey: priority.key });
     }
   }
 
@@ -5499,11 +5667,85 @@ export function TicketDetail({
         </div>
       </header>
 
+      <TicketWorkbench
+        canAssign={detail.canAssign}
+        canUpdate={detail.canUpdate}
+        canUseInternalNotes={detail.canUseInternalNotes}
+        categories={ticketCategories}
+        currentUserId={currentUserId}
+        hasAgentAccess={hasAgentExperienceAccess}
+        isRequester={isResolutionParticipant}
+        onApplyMacro={applyMacroPreview}
+        onPrefillAssignee={(agentId) => {
+          setSelectedAgentId(agentId);
+          setAssignmentPrefilled(true);
+          setError("");
+        }}
+        people={visibleAssignableAgents.map((agent) => ({
+          id: agent.id,
+          displayName: agent.displayName,
+        }))}
+        priorities={detail.priorities.map((priority) => ({
+          id: priority.id,
+          label: priority.label,
+        }))}
+        tenantId={tenantId}
+        ticket={{
+          id: detail.ticket.id,
+          ticketNumber: detail.ticket.ticket_number,
+          subject: detail.ticket.subject,
+          statusLabel: selectedStatus?.label ?? "Status nicht verfügbar",
+          priorityLabel: selectedPriority?.label ?? "Priorität nicht verfügbar",
+          requesterName:
+            detail.requesterContact?.displayName ??
+            "Anfragende Person nicht verfügbar",
+          isClosed: ticketIsClosed,
+          isResolved: ticketIsResolved,
+        }}
+      />
+
       {error && (
         <p className="ticket-detail-message error" role="alert">
           <AlertCircle aria-hidden="true" size={17} />
           {error}
         </p>
+      )}
+
+      {undoChange && (
+        <div className="ticket-workbench__undo" role="status">
+          <span>{undoChange.label} wurde geändert.</span>
+          <button
+            className="secondary-button"
+            disabled={busy}
+            onClick={() => {
+              const change = undoChange.change;
+              setUndoChange(null);
+              if (undoTimerRef.current !== null) {
+                window.clearTimeout(undoTimerRef.current);
+                undoTimerRef.current = null;
+              }
+              void saveOverviewChange(change, false, false);
+            }}
+            type="button"
+          >
+            Rückgängig
+          </button>
+          <button
+            aria-label="Rückgängig-Hinweis schliessen"
+            className="more-button"
+            disabled={busy}
+            onClick={() => {
+              setUndoChange(null);
+              if (undoTimerRef.current !== null) {
+                window.clearTimeout(undoTimerRef.current);
+                undoTimerRef.current = null;
+              }
+            }}
+            type="button"
+          >
+            <X aria-hidden="true" size={15} />
+          </button>
+        </div>
       )}
 
       <section
@@ -5598,6 +5840,40 @@ export function TicketDetail({
               value={comment}
             />
           </label>
+          {replyDraft.restored && (
+            <p className="ticket-workbench__notice" role="status">
+              Entwurf wiederhergestellt.
+              <button
+                className="text-button"
+                onClick={replyDraft.clearRestoredNotice}
+                type="button"
+              >
+                Hinweis ausblenden
+              </button>
+            </p>
+          )}
+          <TicketMentionPicker
+            disabled={busy}
+            enabled={
+              commentVisibility === "internal" && detail.canUseInternalNotes
+            }
+            onChange={setMentionedUserIds}
+            onInsertMention={(displayName) =>
+              setComment((current) => {
+                const mention = `@${displayName}`;
+                return current.includes(mention)
+                  ? current
+                  : `${current}${current.trim() ? " " : ""}${mention} `;
+              })
+            }
+            people={visibleAssignableAgents
+              .filter((agent) => agent.id !== currentUserId)
+              .map((agent) => ({
+                id: agent.id,
+                displayName: agent.displayName,
+              }))}
+            selectedIds={mentionedUserIds}
+          />
           <fieldset className="ticket-comment-visibility" disabled={busy}>
             <legend>Kommentar-Sichtbarkeit</legend>
             {detail.canUseInternalNotes && (
@@ -5616,7 +5892,10 @@ export function TicketDetail({
               <input
                 checked={commentVisibility === "external"}
                 name="comment-visibility"
-                onChange={() => setCommentVisibility("external")}
+                onChange={() => {
+                  setCommentVisibility("external");
+                  setMentionedUserIds([]);
+                }}
                 type="radio"
                 value="external"
               />
@@ -5632,6 +5911,11 @@ export function TicketDetail({
               ? "Interne Notiz: Nur berechtigte Mitarbeitende sehen diesen Kommentar."
               : "Externe Antwort: Diese Nachricht ist für die anfragende Person sichtbar."}
           </p>
+          {commentNotice && (
+            <p className="ticket-workbench__notice" role="status">
+              {commentNotice}
+            </p>
+          )}
           <button className="primary-button" disabled={busy} type="submit">
             {pendingAction === "comment" ? (
               <LoaderCircle
@@ -5780,25 +6064,44 @@ export function TicketDetail({
             <dt>Zugewiesen an</dt>
             <dd>
               {detail.canAssign ? (
-                <select
-                  aria-label="Zugewiesene Person direkt ändern"
-                  disabled={busy || assignableAgentsLoading}
-                  onChange={(event) => {
-                    setSelectedAgentId(event.target.value);
-                    void saveOverviewChange({
-                      assignedAgentId: event.target.value || null,
-                    });
-                  }}
-                  value={detail.ticket.assigned_agent_id ?? ""}
-                >
-                  <option value="">Nicht zugewiesen</option>
-                  {visibleAssignableAgents.map((agent) => (
-                    <option key={agent.id} value={agent.id}>
-                      {agent.displayName}
-                      {agent.id === currentUserId ? " (ich)" : ""}
-                    </option>
-                  ))}
-                </select>
+                <>
+                  <select
+                    aria-label="Zugewiesene Person direkt ändern"
+                    disabled={busy || assignableAgentsLoading}
+                    onChange={(event) => {
+                      setSelectedAgentId(event.target.value);
+                      setAssignmentPrefilled(false);
+                      void saveOverviewChange({
+                        assignedAgentId: event.target.value || null,
+                      });
+                    }}
+                    value={selectedAgentId}
+                  >
+                    <option value="">Nicht zugewiesen</option>
+                    {visibleAssignableAgents.map((agent) => (
+                      <option key={agent.id} value={agent.id}>
+                        {agent.displayName}
+                        {agent.id === currentUserId ? " (ich)" : ""}
+                      </option>
+                    ))}
+                  </select>
+                  {assignmentPrefilled &&
+                    selectedAgentId !== assignedAgentId && (
+                      <button
+                        className="text-button"
+                        disabled={busy}
+                        onClick={() => {
+                          void saveOverviewChange({
+                            assignedAgentId: selectedAgentId || null,
+                          });
+                          setAssignmentPrefilled(false);
+                        }}
+                        type="button"
+                      >
+                        Zuweisung bestätigen
+                      </button>
+                    )}
+                </>
               ) : (
                 (detail.assignedAgent?.displayName ?? "Nicht zugewiesen")
               )}
@@ -6140,7 +6443,7 @@ export function TicketDetail({
             canUseInternalNotes={detail.canUseInternalNotes}
             refreshToken={detail}
             onChanged={onChanged}
-            onSent={loadTicket}
+            onSent={async () => (await loadTicket()) !== null}
           />
 
           <section

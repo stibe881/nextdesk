@@ -1076,6 +1076,90 @@ begin
   end if;
 end;
 $$;
+
+-- 0058 Agentenwerkbank/Anfragendenportal: Fremdmandanten erhalten auch bei
+-- vorhandener SELECT-Berechtigung keine Zeilen; anon hat keinerlei Zugriff.
+insert into public.tenant_macros (tenant_id, name, response_text, created_by)
+values (
+  '10000000-0000-4000-8000-000000000001', 'Rückmeldung', 'Wir prüfen das.',
+  '00000000-0000-4000-8000-000000000002'
+);
+insert into public.ticket_mentions (tenant_id, ticket_id, mentioned_user_id, author_id)
+values (
+  '10000000-0000-4000-8000-000000000001',
+  '17000000-0000-4000-8000-000000000001',
+  '00000000-0000-4000-8000-000000000001',
+  '00000000-0000-4000-8000-000000000002'
+);
+insert into public.agent_delegations (tenant_id, agent_id, delegate_id, starts_at, ends_at, created_by)
+values (
+  '10000000-0000-4000-8000-000000000001',
+  '00000000-0000-4000-8000-000000000002',
+  '00000000-0000-4000-8000-000000000001', timezone('utc', now()),
+  timezone('utc', now()) + interval '1 day', '00000000-0000-4000-8000-000000000002'
+);
+insert into public.service_incident_notices (tenant_id, title, description, created_by)
+values (
+  '10000000-0000-4000-8000-000000000001', 'Störung', 'Untersuchung läuft.',
+  '00000000-0000-4000-8000-000000000002'
+);
+insert into public.ticket_reopen_requests (tenant_id, ticket_id, requested_by, reason)
+values (
+  '10000000-0000-4000-8000-000000000001',
+  '17000000-0000-4000-8000-000000000001',
+  '00000000-0000-4000-8000-000000000001', 'Bitte erneut prüfen.'
+);
+
+begin;
+set local "request.jwt.claim.sub" = '00000000-0000-4000-8000-000000000004';
+set local role authenticated;
+do $$
+begin
+  if (select count(*) from public.tenant_macros) <> 0
+    or (select count(*) from public.ticket_mentions) <> 0
+    or (select count(*) from public.agent_delegations) <> 0
+    or (select count(*) from public.service_incident_notices) <> 0
+    or (select count(*) from public.ticket_reopen_requests) <> 0 then
+    raise exception 'Tenant B member could read Welle-3 records from Tenant A';
+  end if;
+  if has_table_privilege('authenticated', 'public.tenant_macros', 'insert')
+    or has_table_privilege('authenticated', 'public.ticket_mentions', 'insert')
+    or has_table_privilege('authenticated', 'public.agent_delegations', 'insert')
+    or has_table_privilege('authenticated', 'public.service_incident_notices', 'insert')
+    or has_table_privilege('authenticated', 'public.ticket_reopen_requests', 'insert') then
+    raise exception 'Authenticated users retained direct Welle-3 write privileges';
+  end if;
+  begin
+    insert into public.service_incident_notices (tenant_id, title, description, created_by)
+    values (
+      '10000000-0000-4000-8000-000000000001', 'Unzulässig', 'Fremdmandant.',
+      '00000000-0000-4000-8000-000000000004'
+    );
+    raise exception 'Authenticated foreign tenant could write Welle-3 data';
+  exception when insufficient_privilege then
+    null;
+  end;
+end;
+$$;
+reset role;
+rollback;
+
+do $$
+begin
+  if has_table_privilege('anon', 'public.tenant_macros', 'select')
+    or has_table_privilege('anon', 'public.ticket_mentions', 'select')
+    or has_table_privilege('anon', 'public.agent_delegations', 'select')
+    or has_table_privilege('anon', 'public.service_incident_notices', 'select')
+    or has_table_privilege('anon', 'public.ticket_reopen_requests', 'select')
+    or has_table_privilege('anon', 'public.tenant_macros', 'insert')
+    or has_table_privilege('anon', 'public.ticket_mentions', 'insert')
+    or has_table_privilege('anon', 'public.agent_delegations', 'insert')
+    or has_table_privilege('anon', 'public.service_incident_notices', 'insert')
+    or has_table_privilege('anon', 'public.ticket_reopen_requests', 'insert') then
+    raise exception 'anon retained access to Welle-3 data';
+  end if;
+end;
+$$;
 SQL
 
 echo "PostgreSQL 16 migration and RLS integration checks passed."

@@ -9,10 +9,12 @@ import {
 } from "react";
 import type { Session } from "@supabase/supabase-js";
 import {
+  AtSign,
   ArrowLeft,
   ArrowRight,
   Bell,
   BookOpen,
+  BriefcaseBusiness,
   ChartNoAxesCombined,
   CircleEllipsis,
   Command,
@@ -25,6 +27,7 @@ import {
   Settings,
   SlidersHorizontal,
   Ticket,
+  UserRound,
   Boxes,
   X,
   type LucideIcon,
@@ -61,6 +64,16 @@ import { ServiceAssets } from "./service-assets";
 import { PersonalSettings } from "./personal-settings";
 import { ExperienceWorkspace, MyDayCard } from "./experience-workspace";
 import {
+  activeIncidentNoticesFromResponse,
+  AgentMetricsCard,
+  AgentWorkbenchPanel,
+  IncidentBanner,
+  type ActiveIncidentNotice,
+  type TeamQueue,
+} from "./agent-workbench";
+import { OpsCenterPanel } from "./ops-center";
+import { RequesterPortalPanel } from "./requester-portal";
+import {
   OwnerConsoleScreen,
   resolveOwnerAccess,
   type OwnerAccess,
@@ -77,6 +90,9 @@ import { appRedirectUrl, isSupabaseConfigured, supabase } from "./lib/supabase";
 type Section =
   | "Übersicht"
   | "Tickets"
+  | "Arbeitsplatz"
+  | "Erwähnungen"
+  | "Mein Portal"
   | "Services"
   | "Assets"
   | "Wissen"
@@ -91,6 +107,7 @@ type WorkspacePreferences = {
   highContrast: boolean;
   reduceMotion: boolean;
   startSection: Section;
+  ticketSplitView: boolean;
   theme: WorkspaceTheme;
 };
 
@@ -164,6 +181,9 @@ type TenantWorkspaceBranding = {
 const sections: readonly { label: Section; Icon: LucideIcon }[] = [
   { label: "Übersicht", Icon: LayoutDashboard },
   { label: "Tickets", Icon: Ticket },
+  { label: "Arbeitsplatz", Icon: BriefcaseBusiness },
+  { label: "Erwähnungen", Icon: AtSign },
+  { label: "Mein Portal", Icon: UserRound },
   { label: "Services", Icon: MonitorCog },
   { label: "Assets", Icon: Boxes },
   { label: "Wissen", Icon: BookOpen },
@@ -176,6 +196,7 @@ const DEFAULT_WORKSPACE_PREFERENCES: WorkspacePreferences = {
   highContrast: false,
   reduceMotion: false,
   startSection: "Übersicht",
+  ticketSplitView: false,
   theme: "system",
 };
 
@@ -269,6 +290,46 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function unreadMentionCountFromResponse(value: unknown): number | null {
+  if (
+    !isRecord(value) ||
+    !isRecord(value.data) ||
+    !Array.isArray(value.data.mentions)
+  ) {
+    return null;
+  }
+
+  let unread = 0;
+  for (const mention of value.data.mentions) {
+    if (!isRecord(mention) || !("read_at" in mention)) return null;
+    if (mention.read_at === null) unread += 1;
+    else if (typeof mention.read_at !== "string") return null;
+  }
+  return unread;
+}
+
+function departmentQueueKeysFromRows(
+  value: unknown,
+): Record<string, { key: string; label: string }> | null {
+  if (!Array.isArray(value)) return null;
+  const queues: Record<string, { key: string; label: string }> = {};
+  for (const department of value) {
+    if (
+      !isRecord(department) ||
+      typeof department.id !== "string" ||
+      typeof department.key !== "string" ||
+      typeof department.name !== "string"
+    ) {
+      return null;
+    }
+    queues[department.id] = {
+      key: department.key,
+      label: department.name,
+    };
+  }
+  return queues;
+}
+
 function usableTenantLogoUrl(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const normalized = value.trim();
@@ -334,6 +395,10 @@ function workspacePreferencesFromValue(
     highContrast: value.highContrast,
     reduceMotion: value.reduceMotion,
     startSection: value.startSection,
+    ticketSplitView:
+      typeof value.ticketSplitView === "boolean"
+        ? value.ticketSplitView
+        : DEFAULT_WORKSPACE_PREFERENCES.ticketSplitView,
     theme:
       value.theme === "light" ||
       value.theme === "dark" ||
@@ -904,6 +969,76 @@ function TicketList({
   );
 }
 
+function TicketListDetailPreview({
+  onOpenFull,
+  ticket,
+}: {
+  onOpenFull: () => void;
+  ticket: DashboardTicket | null;
+}) {
+  if (!ticket) {
+    return (
+      <aside aria-label="Ticketdetail" className="ticket-list-detail__preview">
+        <p className="eyebrow">DETAIL</p>
+        <h3>Ticket auswählen</h3>
+        <p>
+          Wählen Sie ein Ticket aus der Liste, um die Zusammenfassung hier zu
+          sehen.
+        </p>
+      </aside>
+    );
+  }
+
+  const slaLabel =
+    ticket.sla.includes("SLA") || ticket.sla === "kein SLA-Ziel"
+      ? ticket.sla
+      : `SLA ${ticket.sla}`;
+  return (
+    <aside
+      aria-labelledby="ticket-list-detail-heading"
+      className="ticket-list-detail__preview"
+    >
+      <p className="eyebrow">DETAIL</p>
+      <div className="ticket-list-detail__title">
+        <span className="ticket-number">{ticket.id}</span>
+        <span
+          aria-label={`Status: ${ticket.state}`}
+          className={`state-badge ${statusClass(ticket.state)}`}
+        >
+          <span aria-hidden="true" className="state-badge__indicator" />
+          {ticket.state}
+        </span>
+      </div>
+      <h3 id="ticket-list-detail-heading">{ticket.subject}</h3>
+      <dl>
+        <div>
+          <dt>Queue</dt>
+          <dd>{ticket.queueLabel}</dd>
+        </div>
+        <div>
+          <dt>Priorität</dt>
+          <dd>{ticket.priority ?? "Ohne Priorität"}</dd>
+        </div>
+        <div>
+          <dt>SLA</dt>
+          <dd className={`sla ${ticket.risk}`}>{slaLabel}</dd>
+        </div>
+        <div>
+          <dt>Erfasst</dt>
+          <dd>vor {ticket.age}</dd>
+        </div>
+      </dl>
+      <p className="ticket-list-detail__hint">
+        Diese Übersicht ändert nichts am Ticket. Öffnen Sie die vollständige
+        Detailansicht für bestätigte Bearbeitungsschritte.
+      </p>
+      <button className="primary-button" onClick={onOpenFull} type="button">
+        Vollständige Details öffnen
+      </button>
+    </aside>
+  );
+}
+
 export function App() {
   const [section, setSection] = useState<Section>("Übersicht");
   const [period, setPeriod] = useState<Period>("Heute");
@@ -942,6 +1077,9 @@ export function App() {
   const [ownerAccessError, setOwnerAccessError] = useState("");
   const [ownerView, setOwnerView] = useState<"console" | "tenant">("console");
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
+  const [splitSelectedTicketId, setSplitSelectedTicketId] = useState<
+    string | null
+  >(null);
   const [ticketComposerOpen, setTicketComposerOpen] = useState(false);
   const [canWorkTickets, setCanWorkTickets] = useState(false);
   const [isTenantAdmin, setIsTenantAdmin] = useState(false);
@@ -974,6 +1112,13 @@ export function App() {
   const [tenantFeatures, setTenantFeatures] = useState<Record<string, boolean>>(
     {},
   );
+  const [departmentQueueKeys, setDepartmentQueueKeys] = useState<
+    Record<string, { key: string; label: string }>
+  >({});
+  const [unreadMentionCount, setUnreadMentionCount] = useState(0);
+  const [activeIncidentNotices, setActiveIncidentNotices] = useState<
+    ActiveIncidentNotice[]
+  >([]);
   const [tenantFeatureRevision, setTenantFeatureRevision] = useState(0);
   const [tenantWorkspaceBranding, setTenantWorkspaceBranding] =
     useState<TenantWorkspaceBranding | null>(null);
@@ -1047,6 +1192,9 @@ export function App() {
       setPersonalSettingsOpen(false);
       setSsoEnforced(false);
       setTenantFeatures({});
+      setDepartmentQueueKeys({});
+      setUnreadMentionCount(0);
+      setActiveIncidentNotices([]);
       setTenantWorkspaceBranding(null);
       setExperienceNotice(null);
       setExperienceFollowUpsRevision(0);
@@ -1156,6 +1304,12 @@ export function App() {
   );
   const experienceWorkspaceEnabled =
     isSupabaseConfigured && tenantFeatures["experience.workspace"] === true;
+  const requesterPortalEnabled =
+    isSupabaseConfigured && tenantFeatures["requester.portal"] === true;
+  const agentWorkbenchEnabled =
+    isSupabaseConfigured &&
+    canWorkTickets &&
+    tenantFeatures["agent.workbench"] === true;
 
   useEffect(() => {
     if (!supabase || !session || !activeTenant) {
@@ -1372,6 +1526,91 @@ export function App() {
   }, [activeTenant, session, tenantFeatureRevision]);
 
   useEffect(() => {
+    if (!supabase || !session || !activeTenant) {
+      setDepartmentQueueKeys({});
+      return;
+    }
+
+    let mounted = true;
+    void supabase
+      .from("departments")
+      .select("id, key, name")
+      .eq("tenant_id", activeTenant.id)
+      .eq("active", true)
+      .then(({ data, error }) => {
+        if (error) throw error;
+        const nextQueues = departmentQueueKeysFromRows(data);
+        if (!nextQueues) throw new Error("invalid_departments_response");
+        if (mounted) setDepartmentQueueKeys(nextQueues);
+      })
+      .then(undefined, () => {
+        if (mounted) setDepartmentQueueKeys({});
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [activeTenant, session]);
+
+  useEffect(() => {
+    if (!supabase || !session || !activeTenant || !requesterPortalEnabled) {
+      setActiveIncidentNotices([]);
+      return;
+    }
+
+    let mounted = true;
+    void supabase.functions
+      .invoke("requester-portal", {
+        body: { tenantId: activeTenant.id, type: "activeIncidentNotices" },
+      })
+      .then(({ data, error }) => {
+        if (error) throw error;
+        const notices = activeIncidentNoticesFromResponse(data);
+        if (!notices) throw new Error("invalid_incident_notices_response");
+        if (mounted) setActiveIncidentNotices(notices);
+      })
+      .catch(() => {
+        // Feature, membership and network failures are intentionally quiet.
+        if (mounted) setActiveIncidentNotices([]);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [activeTenant, requesterPortalEnabled, session]);
+
+  useEffect(() => {
+    if (!supabase || !session || !activeTenant || !agentWorkbenchEnabled) {
+      setUnreadMentionCount(0);
+      return;
+    }
+
+    let mounted = true;
+    void supabase.functions
+      .invoke("agent-workbench", {
+        body: {
+          onlyMine: true,
+          tenantId: activeTenant.id,
+          type: "listMentions",
+        },
+      })
+      .then(({ data, error }) => {
+        if (error) throw error;
+        const unread = unreadMentionCountFromResponse(data);
+        if (unread === null) throw new Error("invalid_mentions_response");
+        if (mounted) setUnreadMentionCount(unread);
+      })
+      .catch(() => {
+        // The navigation never advertises a gated or unavailable inbox.
+        if (mounted) setUnreadMentionCount(0);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [activeTenant, agentWorkbenchEnabled, session]);
+
+  useEffect(() => {
     if (
       !supabase ||
       !session ||
@@ -1478,6 +1717,8 @@ export function App() {
       section === "Assets" ||
       section === "Wissen" ||
       section === "Berichte" ||
+      section === "Arbeitsplatz" ||
+      section === "Erwähnungen" ||
       section === "Einstellungen"
     ) {
       setSection("Übersicht");
@@ -1491,6 +1732,7 @@ export function App() {
   useEffect(() => {
     setSelectedTicketIds(new Set());
     setTicketActionStatus("");
+    setSplitSelectedTicketId(null);
   }, [activeTenant?.id]);
 
   useEffect(() => {
@@ -1682,6 +1924,29 @@ export function App() {
       }),
     [effectiveTicketScope, parsedTicketSearch, queue, view.tickets],
   );
+  const splitSelectedTicket = useMemo(
+    () =>
+      filteredTickets.find(
+        (ticket) => (ticket.recordId ?? ticket.id) === splitSelectedTicketId,
+      ) ?? null,
+    [filteredTickets, splitSelectedTicketId],
+  );
+
+  useEffect(() => {
+    if (!workspacePreferences.ticketSplitView) {
+      setSplitSelectedTicketId(null);
+      return;
+    }
+    if (splitSelectedTicket) return;
+    const firstTicket = filteredTickets[0];
+    setSplitSelectedTicketId(
+      firstTicket ? (firstTicket.recordId ?? firstTicket.id) : null,
+    );
+  }, [
+    filteredTickets,
+    splitSelectedTicket,
+    workspacePreferences.ticketSplitView,
+  ]);
 
   const greetingName = operatorName.split(" ")[0] || operatorName;
   const queueCount = (queueKey: string) =>
@@ -1690,6 +1955,27 @@ export function App() {
     setTicketScope(canWorkTickets ? scope : "mine");
     setQueue("alle");
     setSection("Tickets");
+  };
+  const openTicketFromList = (ticketId: string) => {
+    if (workspacePreferences.ticketSplitView && canWorkTickets) {
+      setSplitSelectedTicketId(ticketId);
+      return;
+    }
+    setSelectedTicketId(ticketId);
+  };
+  const openTeamQueue = (teamQueue: TeamQueue) => {
+    const department = departmentQueueKeys[teamQueue.departmentId];
+    if (!department) {
+      setErrorMessage(
+        "Die Abteilungszuordnung für diese Warteschlange ist derzeit nicht verfügbar.",
+      );
+      return;
+    }
+    setQuery("");
+    setQueue(department.key);
+    setTicketScope("open");
+    setSection("Tickets");
+    setSplitSelectedTicketId(null);
   };
   const updateTicketSelection = (ticketId: string, selected: boolean) => {
     setTicketActionStatus("");
@@ -1718,6 +2004,10 @@ export function App() {
   const isFeatureEnabled = (featureKey: string) =>
     !isSupabaseConfigured || tenantFeatures[featureKey] === true;
   const featureSections = sections.filter((item) => {
+    if (item.label === "Arbeitsplatz" || item.label === "Erwähnungen") {
+      return agentWorkbenchEnabled;
+    }
+    if (item.label === "Mein Portal") return requesterPortalEnabled;
     if (item.label === "Assets") return isFeatureEnabled("assets.management");
     if (item.label === "Wissen") return isFeatureEnabled("knowledge.base");
     if (item.label === "Berichte") return isFeatureEnabled("reporting.service");
@@ -1730,13 +2020,17 @@ export function App() {
         (item) =>
           item.label === "Übersicht" ||
           item.label === "Tickets" ||
+          item.label === "Mein Portal" ||
           item.label === "Wiedervorlagen",
       );
 
   useEffect(() => {
     const sectionFeature: Partial<Record<Section, string>> = {
+      Arbeitsplatz: "agent.workbench",
       Assets: "assets.management",
       Berichte: "reporting.service",
+      Erwähnungen: "agent.workbench",
+      "Mein Portal": "requester.portal",
       Wissen: "knowledge.base",
       Wiedervorlagen: "experience.workspace",
     };
@@ -2127,6 +2421,14 @@ export function App() {
               >
                 <item.Icon aria-hidden="true" size={18} strokeWidth={1.8} />
                 {item.label}
+                {item.label === "Erwähnungen" && unreadMentionCount > 0 && (
+                  <span
+                    aria-label={`${unreadMentionCount} ungelesene Erwähnungen`}
+                    className="nav-item__badge"
+                  >
+                    {unreadMentionCount > 99 ? "99+" : unreadMentionCount}
+                  </span>
+                )}
               </button>
             ))}
           </nav>
@@ -2390,12 +2692,16 @@ export function App() {
             <span className="notice-code">PHASE 3</span>
           </section>
         )}
+        {activeTenant && requesterPortalEnabled && (
+          <IncidentBanner notices={activeIncidentNotices} />
+        )}
         {personalSettingsOpen && session ? (
           <PersonalSettings
             onBack={() => setPersonalSettingsOpen(false)}
             onSignOut={() => void signOut()}
             ssoEnforced={ssoEnforced}
             user={session.user}
+            {...(activeTenant ? { tenantId: activeTenant.id } : {})}
           />
         ) : section === "Einstellungen" && activeTenant && isTenantAdmin ? (
           <>
@@ -2407,6 +2713,10 @@ export function App() {
                 setTenantFeatureRevision((revision) => revision + 1)
               }
               onClose={() => setSection("Übersicht")}
+              tenantId={activeTenant.id}
+            />
+            <OpsCenterPanel
+              canManage={isTenantAdmin}
               tenantId={activeTenant.id}
             />
           </>
@@ -2447,6 +2757,37 @@ export function App() {
             tenantId={activeTenant.id}
             tickets={view.tickets}
           />
+        ) : section === "Arbeitsplatz" &&
+          activeTenant &&
+          agentWorkbenchEnabled ? (
+          <AgentWorkbenchPanel
+            canManageIncidents={isTenantAdmin}
+            onOpenQueue={openTeamQueue}
+            onOpenTicket={(ticketId) => {
+              setSection("Tickets");
+              setSelectedTicketId(ticketId);
+            }}
+            onUnreadMentionsChange={setUnreadMentionCount}
+            tenantId={activeTenant.id}
+          />
+        ) : section === "Erwähnungen" &&
+          activeTenant &&
+          agentWorkbenchEnabled ? (
+          <AgentWorkbenchPanel
+            canManageIncidents={isTenantAdmin}
+            initialView="mentions"
+            onOpenQueue={openTeamQueue}
+            onOpenTicket={(ticketId) => {
+              setSection("Tickets");
+              setSelectedTicketId(ticketId);
+            }}
+            onUnreadMentionsChange={setUnreadMentionCount}
+            tenantId={activeTenant.id}
+          />
+        ) : section === "Mein Portal" &&
+          activeTenant &&
+          requesterPortalEnabled ? (
+          <RequesterPortalPanel tenantId={activeTenant.id} />
         ) : section === "Tickets" ? (
           <>
             <section className="ticket-panel panel ticket-module">
@@ -2461,6 +2802,23 @@ export function App() {
                       ? `${filteredTickets.length} geladen`
                       : `${filteredTickets.length} Treffer`}
                   </span>
+                  {isSupabaseConfigured && canWorkTickets && (
+                    <button
+                      aria-pressed={workspacePreferences.ticketSplitView}
+                      className="text-button ticket-split-toggle"
+                      onClick={() =>
+                        updateWorkspacePreferences({
+                          ticketSplitView:
+                            !workspacePreferences.ticketSplitView,
+                        })
+                      }
+                      type="button"
+                    >
+                      {workspacePreferences.ticketSplitView
+                        ? "Listenansicht"
+                        : "Listen-Detail-Ansicht"}
+                    </button>
+                  )}
                   {activeTenant && (
                     <TicketCsvExport tenantId={activeTenant.id} />
                   )}
@@ -2571,31 +2929,57 @@ export function App() {
               {view.ticketListNote && (
                 <p className="list-note">{view.ticketListNote}</p>
               )}
-              <TicketList
-                {...(isSupabaseConfigured && canWorkTickets
-                  ? {
-                      onOpen: setSelectedTicketId,
-                      onSelectionChange: updateTicketSelection,
-                      selectedTicketIds,
-                    }
-                  : {})}
-                {...(query.trim() ||
-                queue !== "alle" ||
-                (canWorkTickets && ticketScope !== "all")
-                  ? { onClearFilters: clearTicketFilters }
-                  : {})}
-                hasActiveFilters={Boolean(
-                  query.trim() ||
-                  queue !== "alle" ||
-                  (canWorkTickets && ticketScope !== "all"),
-                )}
-                keyboardActiveTicketId={keyboardActiveTicketId}
-                loading={dashboardLoading && snapshot === null}
-                {...(activeTenant
-                  ? { onCreateTicket: () => setTicketComposerOpen(true) }
-                  : {})}
-                tickets={filteredTickets}
-              />
+              <div
+                className={
+                  workspacePreferences.ticketSplitView &&
+                  isSupabaseConfigured &&
+                  canWorkTickets
+                    ? "ticket-list-detail ticket-list-detail--enabled"
+                    : "ticket-list-detail"
+                }
+              >
+                <div className="ticket-list-detail__list">
+                  <TicketList
+                    {...(isSupabaseConfigured && canWorkTickets
+                      ? {
+                          onOpen: openTicketFromList,
+                          onSelectionChange: updateTicketSelection,
+                          selectedTicketIds,
+                        }
+                      : {})}
+                    {...(query.trim() ||
+                    queue !== "alle" ||
+                    (canWorkTickets && ticketScope !== "all")
+                      ? { onClearFilters: clearTicketFilters }
+                      : {})}
+                    hasActiveFilters={Boolean(
+                      query.trim() ||
+                      queue !== "alle" ||
+                      (canWorkTickets && ticketScope !== "all"),
+                    )}
+                    keyboardActiveTicketId={keyboardActiveTicketId}
+                    loading={dashboardLoading && snapshot === null}
+                    {...(activeTenant
+                      ? { onCreateTicket: () => setTicketComposerOpen(true) }
+                      : {})}
+                    tickets={filteredTickets}
+                  />
+                </div>
+                {workspacePreferences.ticketSplitView &&
+                  isSupabaseConfigured &&
+                  canWorkTickets && (
+                    <TicketListDetailPreview
+                      onOpenFull={() =>
+                        splitSelectedTicket &&
+                        setSelectedTicketId(
+                          splitSelectedTicket.recordId ??
+                            splitSelectedTicket.id,
+                        )
+                      }
+                      ticket={splitSelectedTicket}
+                    />
+                  )}
+              </div>
               {isSupabaseConfigured && view.hasMoreTickets && (
                 <div className="ticket-load-more">
                   <button
@@ -2755,6 +3139,9 @@ export function App() {
               </article>
 
               <aside className="side-stack">
+                {activeTenant && agentWorkbenchEnabled && (
+                  <AgentMetricsCard tenantId={activeTenant.id} />
+                )}
                 {activeTenant && experienceWorkspaceEnabled && (
                   <MyDayCard
                     onOpenFollowUps={() => setSection("Wiedervorlagen")}
@@ -3001,6 +3388,24 @@ export function App() {
                 </select>
                 <span>
                   Passt Abstand und Informationsdichte der Ticketliste an.
+                </span>
+              </label>
+              <label className="workspace-preferences__toggle">
+                <input
+                  checked={workspacePreferences.ticketSplitView}
+                  onChange={(event) =>
+                    updateWorkspacePreferences({
+                      ticketSplitView: event.target.checked,
+                    })
+                  }
+                  type="checkbox"
+                />
+                <span>
+                  <strong>Listen-Detail-Ansicht</strong>
+                  <small>
+                    Zeigt auf breiten Bildschirmen Ticketliste und
+                    Ticketzusammenfassung nebeneinander an.
+                  </small>
                 </span>
               </label>
               <label className="workspace-preferences__toggle">
