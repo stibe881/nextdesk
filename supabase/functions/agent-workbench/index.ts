@@ -892,7 +892,9 @@ async function myMetrics(
   const [rows, statuses] = await Promise.all([
     admin
       .from("tickets")
-      .select("id, status_id, created_at, first_responded_at, resolved_at")
+      .select(
+        "id, status_id, created_at, first_responded_at, resolved_at, response_due_at, resolution_due_at",
+      )
       .eq("tenant_id", action.tenantId)
       .eq("assigned_agent_id", actorId)
       .order("updated_at", { ascending: false })
@@ -927,6 +929,16 @@ async function myMetrics(
   const assignedIds: string[] = [];
   const solvedTodayIds: string[] = [];
   const firstResponseIds: string[] = [];
+  // Fällig: offene Tickets, deren Frist für die erste Antwort (ohne erste
+  // Antwort) oder deren Lösungsfrist (ohne Lösung) erreicht ist. Gleiche Regel
+  // wie apply_sla_breach in der SLA-Automation.
+  const nowMs = Date.now();
+  const dueAtMs = (value: unknown): number | null => {
+    if (typeof value !== "string") return null;
+    const parsed = Date.parse(value);
+    return Number.isFinite(parsed) && parsed <= nowMs ? parsed : null;
+  };
+  const slaDueEntries: { id: string; dueAt: number }[] = [];
   let open = 0;
   let solvedToday = 0;
   for (const entry of rows.data ?? []) {
@@ -934,6 +946,19 @@ async function myMetrics(
     if (!closed) {
       open += 1;
       if (assignedIds.length < maxIds) assignedIds.push(entry.id);
+      const responseDue =
+        typeof entry.first_responded_at !== "string"
+          ? dueAtMs(entry.response_due_at)
+          : null;
+      const resolutionDue =
+        typeof entry.resolved_at !== "string"
+          ? dueAtMs(entry.resolution_due_at)
+          : null;
+      const dues = [responseDue, resolutionDue].filter(
+        (value): value is number => value !== null,
+      );
+      if (dues.length > 0)
+        slaDueEntries.push({ id: entry.id, dueAt: Math.min(...dues) });
     }
     if (
       closed &&
@@ -958,6 +983,9 @@ async function myMetrics(
   const median = responseMinutes.length
     ? responseMinutes[Math.floor(responseMinutes.length / 2)]
     : null;
+  // Am längsten überfällige Tickets zuerst.
+  slaDueEntries.sort((a, b) => a.dueAt - b.dueAt);
+  const slaDueIds = slaDueEntries.slice(0, maxIds).map((entry) => entry.id);
   const due = await admin
     .from("experience_follow_ups")
     .select("ticket_id", { count: "exact" })
@@ -983,12 +1011,15 @@ async function myMetrics(
         open,
         solvedToday,
         medianFirstResponseMinutes: median,
+        // Bleibt für ältere App-Versionen erhalten (fällige Wiedervorlagen).
         dueFollowUps: due.count ?? 0,
+        slaDue: slaDueEntries.length,
         ticketIds: {
           assigned: assignedIds,
           solvedToday: solvedTodayIds,
           firstResponse: firstResponseIds,
           dueFollowUps: dueTicketIds,
+          slaDue: slaDueIds,
         },
       },
     },

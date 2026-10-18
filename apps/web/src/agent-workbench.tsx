@@ -81,6 +81,8 @@ type Metrics = {
   medianFirstResponseMinutes: number | null;
   open: number;
   solvedToday: number;
+  /** Fehlt bei älteren Serverständen. */
+  slaDue?: number;
   ticketIds?: MetricTicketIds;
 };
 
@@ -88,6 +90,7 @@ type MetricTicketIds = {
   assigned: string[];
   dueFollowUps: string[];
   firstResponse: string[];
+  slaDue?: string[];
   solvedToday: string[];
 };
 
@@ -154,6 +157,8 @@ function metricTicketIdsFromValue(value: unknown): MetricTicketIds | null {
     if (!Array.isArray(ids) || !ids.every(isUuid)) return null;
     ticketIds[key] = ids;
   }
+  const slaDue = value.slaDue;
+  if (Array.isArray(slaDue) && slaDue.every(isUuid)) ticketIds.slaDue = slaDue;
 
   return ticketIds as MetricTicketIds;
 }
@@ -1356,6 +1361,7 @@ export function AgentMetricsCard({
           medianFirstResponseMinutes: raw.medianFirstResponseMinutes,
           open: raw.open,
           solvedToday: raw.solvedToday,
+          ...(typeof raw.slaDue === "number" ? { slaDue: raw.slaDue } : {}),
           ...(ticketIds ? { ticketIds } : {}),
         });
         setState("ready");
@@ -1468,24 +1474,28 @@ export function AgentMetricsCard({
             </dd>
           </div>
           <div>
-            <dt>Fällige Wiedervorlagen</dt>
+            <dt title="Offene Tickets, bei denen die Frist für die erste Antwort oder für die Lösung erreicht ist">
+              Antwort/Lösung fällig
+            </dt>
             <dd>
-              {onOpenTickets && metrics.ticketIds ? (
+              {metrics.slaDue === undefined ? (
+                "–"
+              ) : onOpenTickets && metrics.ticketIds?.slaDue ? (
                 <button
-                  aria-label={`Fällige Wiedervorlagen: ${metrics.dueFollowUps} – passende Tickets anzeigen`}
+                  aria-label={`Antwort oder Lösung fällig: ${metrics.slaDue} – passende Tickets anzeigen`}
                   className="workbench-metrics__value-button"
                   onClick={() =>
                     onOpenTickets({
-                      label: "Fällige Wiedervorlagen",
-                      ticketIds: metrics.ticketIds?.dueFollowUps ?? [],
+                      label: "Antwort oder Lösung fällig",
+                      ticketIds: metrics.ticketIds?.slaDue ?? [],
                     })
                   }
                   type="button"
                 >
-                  {metrics.dueFollowUps}
+                  {metrics.slaDue}
                 </button>
               ) : (
-                metrics.dueFollowUps
+                metrics.slaDue
               )}
             </dd>
           </div>
