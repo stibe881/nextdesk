@@ -25,6 +25,8 @@ import {
 } from "@/lib/mobile-haptics";
 import { getMobileUserId } from "@/lib/nextdesk-client";
 import {
+  checkInForPush,
+  checkOutForPush,
   deviceTimezone,
   disablePushNotifications,
   enablePushNotifications,
@@ -137,6 +139,7 @@ export default function NotificationsScreen() {
   const [masterSaving, setMasterSaving] = useState(false);
   const [preferenceSaving, setPreferenceSaving] = useState(false);
   const [testing, setTesting] = useState(false);
+  const [workHoursSaving, setWorkHoursSaving] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
 
@@ -196,6 +199,24 @@ export default function NotificationsScreen() {
         !status.apnsConfigured ||
         permission === "unsupported"));
   const canSavePreferences = Boolean(tenantId && status?.featureEnabled);
+  const workHours = status?.workHours;
+  const workHoursDescription = (() => {
+    if (!workHours) return "Arbeitszeit wird geprüft";
+    if (!workHours.required) return "Kein Check-in erforderlich";
+    if (!workHours.withinWindow) {
+      return `Ausserhalb der Arbeitszeit (${hourLabel(workHours.startHour)}–${hourLabel(workHours.endHour)} Uhr)`;
+    }
+    if (workHours.checkedIn) {
+      return `Eingecheckt – Push aktiv bis ${hourLabel(workHours.endHour)} Uhr`;
+    }
+    return "Nicht eingecheckt";
+  })();
+  const canCheckInForWorkHours = Boolean(
+    workHours?.required && workHours.withinWindow && !workHours.checkedIn,
+  );
+  const canCheckOutForWorkHours = Boolean(
+    workHours?.required && workHours.checkedIn,
+  );
 
   const statusDescription = (() => {
     if (!status) return "Status wird geprüft";
@@ -340,6 +361,38 @@ export default function NotificationsScreen() {
       );
     } finally {
       setTesting(false);
+    }
+  }
+
+  async function updateWorkHours(action: "checkIn" | "checkOut") {
+    if (!tenantId || !workHours || workHoursSaving) return;
+    setWorkHoursSaving(true);
+    setError("");
+    setMessage("");
+    hapticSelection();
+    try {
+      const response =
+        action === "checkIn"
+          ? await checkInForPush(tenantId)
+          : await checkOutForPush(tenantId);
+      setStatus((current) =>
+        current ? { ...current, workHours: response.workHours } : current,
+      );
+      setMessage(
+        action === "checkIn"
+          ? "Du bist für Push-Benachrichtigungen eingecheckt."
+          : "Du bist für Push-Benachrichtigungen ausgecheckt.",
+      );
+      hapticSuccess();
+    } catch (nextError) {
+      hapticError();
+      setError(
+        nextError instanceof Error
+          ? nextError.message
+          : "Der Check-in konnte nicht geändert werden. Bitte versuche es erneut.",
+      );
+    } finally {
+      setWorkHoursSaving(false);
     }
   }
 
@@ -533,6 +586,90 @@ export default function NotificationsScreen() {
 
           {status?.featureEnabled && status.apnsConfigured ? (
             <>
+              {workHours ? (
+                <View
+                  style={[
+                    styles.card,
+                    densityStyles.card,
+                    {
+                      backgroundColor: colors.surface,
+                      borderColor: colors.border,
+                    },
+                  ]}
+                >
+                  <View style={styles.cardHeading}>
+                    <View
+                      style={[
+                        styles.cardIcon,
+                        { backgroundColor: colors.infoSoft },
+                      ]}
+                    >
+                      <Ionicons
+                        color={colors.info}
+                        name="time-outline"
+                        size={20}
+                      />
+                    </View>
+                    <View style={styles.cardHeadingCopy}>
+                      <Text
+                        style={[styles.cardTitle, { color: colors.foreground }]}
+                      >
+                        Arbeitszeit
+                      </Text>
+                      <Text
+                        style={[
+                          styles.workHoursStatus,
+                          { color: colors.muted },
+                        ]}
+                      >
+                        {workHoursDescription}
+                      </Text>
+                    </View>
+                  </View>
+                  {canCheckInForWorkHours || canCheckOutForWorkHours ? (
+                    <Pressable
+                      accessibilityLabel={
+                        canCheckInForWorkHours
+                          ? "Für Push-Benachrichtigungen einchecken"
+                          : "Für Push-Benachrichtigungen auschecken"
+                      }
+                      accessibilityRole="button"
+                      accessibilityState={{
+                        busy: workHoursSaving,
+                        disabled: workHoursSaving,
+                      }}
+                      disabled={workHoursSaving}
+                      onPress={() =>
+                        void updateWorkHours(
+                          canCheckInForWorkHours ? "checkIn" : "checkOut",
+                        )
+                      }
+                      style={[
+                        styles.workHoursButton,
+                        { backgroundColor: colors.primary },
+                        workHoursSaving && styles.disabled,
+                      ]}
+                    >
+                      {workHoursSaving ? (
+                        <ActivityIndicator
+                          color={colors.onPrimary}
+                          size="small"
+                        />
+                      ) : (
+                        <Text
+                          style={[
+                            styles.workHoursButtonText,
+                            { color: colors.onPrimary },
+                          ]}
+                        >
+                          {canCheckInForWorkHours ? "Einchecken" : "Auschecken"}
+                        </Text>
+                      )}
+                    </Pressable>
+                  ) : null}
+                </View>
+              ) : null}
+
               <View
                 style={[
                   styles.card,
@@ -992,4 +1129,12 @@ const useStyles = makeThemedStyles((c) => ({
   },
   unavailableCopy: { fontSize: 14, lineHeight: 21, textAlign: "center" },
   unavailableTitle: { fontSize: 20, fontWeight: "900", textAlign: "center" },
+  workHoursButton: {
+    alignItems: "center",
+    borderRadius: 13,
+    justifyContent: "center",
+    minHeight: 46,
+  },
+  workHoursButtonText: { fontSize: 14, fontWeight: "900" },
+  workHoursStatus: { fontSize: 13, fontWeight: "700", lineHeight: 18 },
 }));

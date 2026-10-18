@@ -19,9 +19,10 @@ import {
 import { supabase } from "./lib/supabase";
 import { functionErrorMessage } from "./lib/function-error";
 import {
-  pushNotificationsRequest,
+  getTenantSettings,
   type PushContentLevel,
   type PushTenantSettings,
+  updateTenantSettings,
 } from "./lib/push-notifications";
 import { TicketCustomFieldsAdmin } from "./ticket-custom-fields-admin";
 import { AssetIntuneSettings } from "./asset-intune-settings";
@@ -390,6 +391,13 @@ const emptyPersonForm: PersonForm = {
   departmentId: "",
   isAgent: false,
 };
+
+const WORK_START_HOURS = Array.from({ length: 24 }, (_, hour) => hour);
+const WORK_END_HOURS = Array.from({ length: 24 }, (_, index) => index + 1);
+
+function workHourLabel(hour: number): string {
+  return `${hour.toString().padStart(2, "0")}:00 Uhr`;
+}
 
 function messageFromError(error: unknown, fallback: string): string {
   return error instanceof Error && error.message ? error.message : fallback;
@@ -1103,10 +1111,7 @@ export function TenantAdminSettings({
     let mounted = true;
     setPushSettingsLoading(true);
     setPushSettingsError("");
-    void pushNotificationsRequest<PushTenantSettings>({
-      tenantId,
-      type: "getTenantSettings",
-    })
+    void getTenantSettings(tenantId)
       .then((nextSettings) => {
         if (mounted) setPushTenantSettings(nextSettings);
       })
@@ -1494,41 +1499,62 @@ export function TenantAdminSettings({
     }
   }
 
-  async function savePushContentLevel(contentLevel: PushContentLevel) {
-    if (
-      !pushTenantSettings ||
-      pushTenantSettings.contentLevel === contentLevel
-    ) {
+  async function savePushSettings(nextValues: {
+    checkInRequired?: boolean;
+    contentLevel?: PushContentLevel;
+    workEndHour?: number;
+    workStartHour?: number;
+  }) {
+    if (!pushTenantSettings || saving !== null) return;
+
+    const previousSettings = pushTenantSettings;
+    const nextWorkHours = {
+      ...previousSettings.workHours,
+      checkInRequired:
+        nextValues.checkInRequired ??
+        previousSettings.workHours.checkInRequired,
+      workEndHour:
+        nextValues.workEndHour ?? previousSettings.workHours.workEndHour,
+      workStartHour:
+        nextValues.workStartHour ?? previousSettings.workHours.workStartHour,
+    };
+    const nextSettings = {
+      ...previousSettings,
+      contentLevel: nextValues.contentLevel ?? previousSettings.contentLevel,
+      workHours: nextWorkHours,
+    };
+
+    setPushSettingsError("");
+    setPushSettingsSuccess("");
+    setPushTenantSettings(nextSettings);
+    if (nextWorkHours.workEndHour <= nextWorkHours.workStartHour) {
       return;
     }
 
-    const previousContentLevel = pushTenantSettings.contentLevel;
     beginSave("push-settings");
-    setPushSettingsError("");
-    setPushSettingsSuccess("");
-    setPushTenantSettings((current) =>
-      current ? { ...current, contentLevel } : current,
-    );
     try {
-      const updated = await pushNotificationsRequest<{
-        contentLevel: PushContentLevel;
-      }>({
-        contentLevel,
-        tenantId,
-        type: "updateTenantSettings",
+      const updated = await updateTenantSettings(tenantId, {
+        contentLevel: nextSettings.contentLevel,
+        checkInRequired: nextSettings.workHours.checkInRequired,
+        workEndHour: nextSettings.workHours.workEndHour,
+        workStartHour: nextSettings.workHours.workStartHour,
       });
       setPushTenantSettings((current) =>
-        current ? { ...current, contentLevel: updated.contentLevel } : current,
+        current
+          ? {
+              ...current,
+              contentLevel: updated.contentLevel,
+              workHours: updated.workHours,
+            }
+          : current,
       );
-      setPushSettingsSuccess("Die Inhaltsstufe wurde gespeichert.");
+      setPushSettingsSuccess("Die Push-Einstellungen wurden gespeichert.");
     } catch (nextError) {
-      setPushTenantSettings((current) =>
-        current ? { ...current, contentLevel: previousContentLevel } : current,
-      );
+      setPushTenantSettings(previousSettings);
       setPushSettingsError(
         messageFromError(
           nextError,
-          "Die Inhaltsstufe konnte nicht gespeichert werden. Bitte versuche es später erneut.",
+          "Die Push-Einstellungen konnten nicht gespeichert werden. Bitte versuche es später erneut.",
         ),
       );
     } finally {
@@ -2627,9 +2653,9 @@ export function TenantAdminSettings({
                                             }
                                             name="push-content-level"
                                             onChange={() =>
-                                              void savePushContentLevel(
-                                                "minimal",
-                                              )
+                                              void savePushSettings({
+                                                contentLevel: "minimal",
+                                              })
                                             }
                                             type="radio"
                                             value="minimal"
@@ -2659,9 +2685,9 @@ export function TenantAdminSettings({
                                             }
                                             name="push-content-level"
                                             onChange={() =>
-                                              void savePushContentLevel(
-                                                "subject",
-                                              )
+                                              void savePushSettings({
+                                                contentLevel: "subject",
+                                              })
                                             }
                                             type="radio"
                                             value="subject"
@@ -2677,6 +2703,122 @@ export function TenantAdminSettings({
                                           </span>
                                         </label>
                                       </div>
+                                    </fieldset>
+                                    <fieldset
+                                      className="tenant-admin-settings__push-work-hours"
+                                      disabled={saving !== null}
+                                    >
+                                      <legend>Arbeitszeit-Check-in</legend>
+                                      <label className="tenant-admin-settings__push-checkin-toggle">
+                                        <input
+                                          checked={
+                                            pushTenantSettings.workHours
+                                              .checkInRequired
+                                          }
+                                          onChange={(event) =>
+                                            void savePushSettings({
+                                              checkInRequired:
+                                                event.target.checked,
+                                            })
+                                          }
+                                          type="checkbox"
+                                        />
+                                        <span>
+                                          <strong>
+                                            Check-in für Push erforderlich
+                                          </strong>
+                                          <small>
+                                            Ausserhalb dieser Zeit und ohne
+                                            Check-in werden keine
+                                            Push-Benachrichtigungen versendet.
+                                            Standard: 06:00–17:00 Uhr.
+                                          </small>
+                                        </span>
+                                      </label>
+                                      <div className="tenant-admin-settings__push-work-hours-grid">
+                                        <label>
+                                          Beginn
+                                          <select
+                                            disabled={
+                                              saving !== null ||
+                                              !pushTenantSettings.workHours
+                                                .checkInRequired
+                                            }
+                                            onChange={(event) =>
+                                              void savePushSettings({
+                                                workStartHour: Number(
+                                                  event.target.value,
+                                                ),
+                                              })
+                                            }
+                                            value={
+                                              pushTenantSettings.workHours
+                                                .workStartHour
+                                            }
+                                          >
+                                            {WORK_START_HOURS.map((hour) => (
+                                              <option key={hour} value={hour}>
+                                                {workHourLabel(hour)}
+                                              </option>
+                                            ))}
+                                          </select>
+                                        </label>
+                                        <label>
+                                          Ende
+                                          <select
+                                            aria-describedby={
+                                              pushTenantSettings.workHours
+                                                .workEndHour <=
+                                              pushTenantSettings.workHours
+                                                .workStartHour
+                                                ? "push-work-hours-error"
+                                                : undefined
+                                            }
+                                            aria-invalid={
+                                              pushTenantSettings.workHours
+                                                .workEndHour <=
+                                              pushTenantSettings.workHours
+                                                .workStartHour
+                                                ? true
+                                                : undefined
+                                            }
+                                            disabled={
+                                              saving !== null ||
+                                              !pushTenantSettings.workHours
+                                                .checkInRequired
+                                            }
+                                            onChange={(event) =>
+                                              void savePushSettings({
+                                                workEndHour: Number(
+                                                  event.target.value,
+                                                ),
+                                              })
+                                            }
+                                            value={
+                                              pushTenantSettings.workHours
+                                                .workEndHour
+                                            }
+                                          >
+                                            {WORK_END_HOURS.map((hour) => (
+                                              <option key={hour} value={hour}>
+                                                {workHourLabel(hour)}
+                                              </option>
+                                            ))}
+                                          </select>
+                                        </label>
+                                      </div>
+                                      {pushTenantSettings.workHours
+                                        .workEndHour <=
+                                      pushTenantSettings.workHours
+                                        .workStartHour ? (
+                                        <p
+                                          className="tenant-admin-settings__push-work-hours-error"
+                                          id="push-work-hours-error"
+                                          role="alert"
+                                        >
+                                          Das Ende muss nach dem Beginn liegen.
+                                        </p>
+                                      ) : null}
                                     </fieldset>
                                     <p className="tenant-admin-settings__push-note">
                                       Mitteilungen werden direkt über Apple

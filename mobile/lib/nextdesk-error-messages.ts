@@ -45,6 +45,8 @@ const messagesByCode: Readonly<Record<string, string>> = {
   rate_limited:
     "Bitte warte einen Moment, bevor du eine weitere Testmitteilung sendest.",
   device_not_found: "Dieses iPhone ist nicht mehr als Push-Gerät registriert.",
+  outside_work_hours: "Einchecken ist nur während der Arbeitszeit möglich.",
+  check_in_not_required: "Für deinen Mandanten ist kein Check-in nötig.",
 };
 
 function messageForStatus(status: number | undefined): string {

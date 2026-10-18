@@ -127,6 +127,10 @@ export async function functionErrorMessage(
       return "Tags werden in nextDesk nicht mehr verwendet. Bitte nutzen Sie Kategorien und Unterkategorien.";
     case "rate_limited":
       return "Zu viele Anfragen in kurzer Zeit. Bitte warten Sie einen Moment und versuchen Sie es erneut.";
+    case "outside_work_hours":
+      return "Einchecken ist nur während der Arbeitszeit möglich.";
+    case "check_in_not_required":
+      return "Für diesen Mandanten ist kein Check-in erforderlich.";
     case "authorization_check_failed":
     case "audit_log_read_failed":
     case "audit_log_actor_read_failed":

@@ -16,9 +16,13 @@ import type { User } from "@supabase/supabase-js";
 
 import { supabase } from "./lib/supabase";
 import {
+  checkIn,
+  checkOut,
+  getStatus,
   pushNotificationsRequest,
   type PushDevice,
   type PushStatus,
+  type WorkHours,
 } from "./lib/push-notifications";
 
 type PersonalSettingsProps = {
@@ -126,6 +130,21 @@ function pushDateLabel(value: string | null): string {
   }).format(new Date(value));
 }
 
+function workHourLabel(hour: number): string {
+  return `${hour.toString().padStart(2, "0")}:00`;
+}
+
+function workHoursStatusLabel(workHours: WorkHours): string {
+  if (!workHours.required) return "Kein Check-in erforderlich";
+  if (!workHours.withinWindow) {
+    return `Ausserhalb der Arbeitszeit (${workHourLabel(workHours.startHour)}–${workHourLabel(workHours.endHour)} Uhr)`;
+  }
+  if (workHours.checkedIn) {
+    return `Eingecheckt – Push aktiv bis ${workHourLabel(workHours.endHour)} Uhr`;
+  }
+  return "Nicht eingecheckt";
+}
+
 export function PersonalSettings({
   onBack,
   onOpenAppearance,
@@ -159,6 +178,9 @@ export function PersonalSettings({
   const [pendingDeviceRemoval, setPendingDeviceRemoval] =
     useState<PushDevice | null>(null);
   const [removingDeviceId, setRemovingDeviceId] = useState<string | null>(null);
+  const [pushAction, setPushAction] = useState<"check-in" | "check-out" | null>(
+    null,
+  );
   const provider = providerSummary(user, ssoEnforced);
   const email = user.email?.trim() || "Keine E-Mail-Adresse hinterlegt";
 
@@ -168,16 +190,14 @@ export function PersonalSettings({
       setPushStatusState("idle");
       setPushMessage("");
       setPendingDeviceRemoval(null);
+      setPushAction(null);
       return;
     }
 
     let mounted = true;
     setPushStatusState("loading");
     setPushMessage("");
-    void pushNotificationsRequest<PushStatus>({
-      tenantId,
-      type: "getStatus",
-    })
+    void getStatus(tenantId)
       .then((nextStatus) => {
         if (!mounted) return;
         setPushStatus(nextStatus);
@@ -238,6 +258,37 @@ export function PersonalSettings({
       );
     } finally {
       setRemovingDeviceId(null);
+    }
+  }
+
+  async function updateCheckIn(action: "check-in" | "check-out") {
+    if (!tenantId || pushAction) return;
+
+    setPushAction(action);
+    setPushMessage("");
+    try {
+      const workHours =
+        action === "check-in"
+          ? await checkIn(tenantId)
+          : await checkOut(tenantId);
+      setPushStatus((current) =>
+        current ? { ...current, workHours } : current,
+      );
+      setPushMessageKind("success");
+      setPushMessage(
+        action === "check-in"
+          ? "Du bist für heute eingecheckt."
+          : "Du bist für heute ausgecheckt.",
+      );
+    } catch (error) {
+      setPushMessageKind("error");
+      setPushMessage(
+        error instanceof Error && error.message
+          ? error.message
+          : "Der Check-in-Status konnte nicht aktualisiert werden. Bitte versuche es später erneut.",
+      );
+    } finally {
+      setPushAction(null);
     }
   }
 
@@ -520,6 +571,54 @@ export function PersonalSettings({
             <p aria-live="polite" className="personal-settings__hint">
               Registrierte Geräte werden geladen …
             </p>
+          ) : null}
+          {pushStatusState === "loaded" && pushStatus ? (
+            <section
+              aria-labelledby="personal-push-work-hours-heading"
+              className="personal-settings__work-hours"
+            >
+              <div>
+                <h4 id="personal-push-work-hours-heading">Heutiger Status</h4>
+                <p
+                  className={
+                    pushStatus.workHours.active
+                      ? "personal-settings__work-hours-status personal-settings__work-hours-status--active"
+                      : pushStatus.workHours.withinWindow
+                        ? "personal-settings__work-hours-status"
+                        : "personal-settings__work-hours-status personal-settings__work-hours-status--outside"
+                  }
+                >
+                  {workHoursStatusLabel(pushStatus.workHours)}
+                </p>
+              </div>
+              {pushStatus.workHours.required ? (
+                <div className="personal-settings__work-hours-actions">
+                  {pushStatus.workHours.checkedIn ? (
+                    <button
+                      className="secondary-button"
+                      disabled={pushAction !== null}
+                      onClick={() => void updateCheckIn("check-out")}
+                      type="button"
+                    >
+                      {pushAction === "check-out"
+                        ? "Wird ausgecheckt …"
+                        : "Auschecken"}
+                    </button>
+                  ) : (
+                    <button
+                      className="primary-button"
+                      disabled={pushAction !== null}
+                      onClick={() => void updateCheckIn("check-in")}
+                      type="button"
+                    >
+                      {pushAction === "check-in"
+                        ? "Wird eingecheckt …"
+                        : "Einchecken"}
+                    </button>
+                  )}
+                </div>
+              ) : null}
+            </section>
           ) : null}
           {pushStatusState === "loaded" && pushStatus?.devices.length === 0 ? (
             <p className="personal-settings__hint">

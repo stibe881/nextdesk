@@ -61,11 +61,17 @@ type Action =
       timezone: string;
     }
   | { type: "sendTest"; tenantId: string }
+  | { type: "checkIn"; tenantId: string }
+  | { type: "checkOut"; tenantId: string }
+  | { type: "declineCheckIn"; tenantId: string }
   | { type: "getTenantSettings"; tenantId: string }
   | {
       type: "updateTenantSettings";
       tenantId: string;
       contentLevel: "minimal" | "subject";
+      checkInRequired?: boolean;
+      workStartHour?: number;
+      workEndHour?: number;
     };
 
 type PreferenceRow = {
@@ -88,6 +94,29 @@ type DeviceRow = {
   disabled_reason: string | null;
   last_registered_at: string;
   last_sent_at: string | null;
+};
+
+type WorkHours = {
+  required: boolean;
+  startHour: number;
+  endHour: number;
+  timezone: string;
+  localDate: string;
+  withinWindow: boolean;
+  checkedIn: boolean;
+  checkedInAt: string | null;
+  checkedOutAt: string | null;
+  declinedAt: string | null;
+  active: boolean;
+  promptDue: boolean;
+};
+
+type WorkHoursState = Omit<WorkHours, "promptDue">;
+type WorkHoursSettings = Pick<WorkHours, "required" | "startHour" | "endHour">;
+type FeatureConfiguration = {
+  featureEnabled: boolean;
+  contentLevel: "minimal" | "subject";
+  configuration: Row;
 };
 
 class HttpError extends Error {
@@ -156,6 +185,19 @@ function isHour(value: unknown): value is number {
   );
 }
 
+function isWorkStartHour(value: unknown): value is number {
+  return isHour(value);
+}
+
+function isWorkEndHour(value: unknown): value is number {
+  return (
+    typeof value === "number" &&
+    Number.isInteger(value) &&
+    value >= 1 &&
+    value <= 24
+  );
+}
+
 function isTimezone(value: unknown): value is string {
   if (typeof value !== "string" || value.length < 1 || value.length > 80) {
     return false;
@@ -217,8 +259,9 @@ function parseAction(value: unknown): Action | null {
     const appVersion = parseOptionalText(value, "appVersion");
     const appBuild = parseOptionalText(value, "appBuild");
     const deviceName = parseOptionalText(value, "deviceName");
-    if (appVersion === null || appBuild === null || deviceName === null)
+    if (appVersion === null || appBuild === null || deviceName === null) {
       return null;
+    }
     return {
       type: "registerDevice",
       tenantId,
@@ -271,14 +314,43 @@ function parseAction(value: unknown): Action | null {
     };
   }
   if (
+    ["checkIn", "checkOut", "declineCheckIn"].includes(value.type) &&
+    hasOnlyKeys(value, ["type", "tenantId"])
+  ) {
+    return {
+      type: value.type as "checkIn" | "checkOut" | "declineCheckIn",
+      tenantId,
+    };
+  }
+  if (
     value.type === "updateTenantSettings" &&
-    hasOnlyKeys(value, ["type", "tenantId", "contentLevel"]) &&
-    (value.contentLevel === "minimal" || value.contentLevel === "subject")
+    hasOnlyKeys(value, [
+      "type",
+      "tenantId",
+      "contentLevel",
+      "checkInRequired",
+      "workStartHour",
+      "workEndHour",
+    ]) &&
+    (value.contentLevel === "minimal" || value.contentLevel === "subject") &&
+    (!hasOwn(value, "checkInRequired") ||
+      typeof value.checkInRequired === "boolean") &&
+    (!hasOwn(value, "workStartHour") || isWorkStartHour(value.workStartHour)) &&
+    (!hasOwn(value, "workEndHour") || isWorkEndHour(value.workEndHour))
   ) {
     return {
       type: "updateTenantSettings",
       tenantId,
       contentLevel: value.contentLevel,
+      ...(hasOwn(value, "checkInRequired")
+        ? { checkInRequired: value.checkInRequired as boolean }
+        : {}),
+      ...(hasOwn(value, "workStartHour")
+        ? { workStartHour: value.workStartHour as number }
+        : {}),
+      ...(hasOwn(value, "workEndHour")
+        ? { workEndHour: value.workEndHour as number }
+        : {}),
     };
   }
   return null;
@@ -473,10 +545,98 @@ async function applicableCategories(
   return data ? [...AGENT_CATEGORIES] : [...REQUESTER_CATEGORIES];
 }
 
+function workHoursSettings(configuration: Row): WorkHoursSettings {
+  let startHour = isWorkStartHour(configuration.workStartHour)
+    ? configuration.workStartHour
+    : 6;
+  let endHour = isWorkEndHour(configuration.workEndHour)
+    ? configuration.workEndHour
+    : 17;
+  if (endHour <= startHour) {
+    startHour = 6;
+    endHour = 17;
+  }
+  return {
+    required:
+      typeof configuration.checkInRequired === "boolean"
+        ? configuration.checkInRequired
+        : true,
+    startHour,
+    endHour,
+  };
+}
+
+function workHoursStateForResponse(value: unknown): WorkHoursState {
+  if (
+    !isRecord(value) ||
+    typeof value.required !== "boolean" ||
+    !isWorkStartHour(value.startHour) ||
+    !isWorkEndHour(value.endHour) ||
+    typeof value.timezone !== "string" ||
+    typeof value.localDate !== "string" ||
+    !isHour(value.localHour) ||
+    typeof value.withinWindow !== "boolean" ||
+    typeof value.checkedIn !== "boolean" ||
+    (value.checkedInAt !== null && typeof value.checkedInAt !== "string") ||
+    (value.checkedOutAt !== null && typeof value.checkedOutAt !== "string") ||
+    (value.declinedAt !== null && typeof value.declinedAt !== "string") ||
+    typeof value.active !== "boolean"
+  ) {
+    throw new HttpError(500, "work_hours_read_failed");
+  }
+  return {
+    required: value.required,
+    startHour: value.startHour,
+    endHour: value.endHour,
+    timezone: value.timezone,
+    localDate: value.localDate,
+    withinWindow: value.withinWindow,
+    checkedIn: value.checkedIn,
+    checkedInAt: value.checkedInAt,
+    checkedOutAt: value.checkedOutAt,
+    declinedAt: value.declinedAt,
+    active: value.active,
+  };
+}
+
+async function readWorkHours(
+  admin: Admin,
+  tenantId: string,
+  actorId: string,
+  featureEnabled: boolean,
+): Promise<WorkHours> {
+  const [stateResult, deviceCountResult] = await Promise.all([
+    admin.rpc("push_work_state", {
+      p_tenant_id: tenantId,
+      p_user_id: actorId,
+    }),
+    admin
+      .from("push_devices")
+      .select("id", { count: "exact", head: true })
+      .eq("tenant_id", tenantId)
+      .eq("user_id", actorId)
+      .eq("enabled", true),
+  ]);
+  if (stateResult.error || deviceCountResult.error) {
+    throw new HttpError(500, "work_hours_read_failed");
+  }
+  const state = workHoursStateForResponse(stateResult.data);
+  return {
+    ...state,
+    promptDue:
+      featureEnabled &&
+      state.required &&
+      state.withinWindow &&
+      state.checkedInAt === null &&
+      state.declinedAt === null &&
+      (deviceCountResult.count ?? 0) > 0,
+  };
+}
+
 async function featureConfiguration(
   admin: Admin,
   tenantId: string,
-): Promise<{ featureEnabled: boolean; contentLevel: "minimal" | "subject" }> {
+): Promise<FeatureConfiguration> {
   const flags = await resolveTenantFeatureStates(admin, tenantId, [FEATURE]);
   if (!flags) throw new HttpError(500, "tenant_feature_lookup_failed");
   const { data, error } = await admin
@@ -491,6 +651,7 @@ async function featureConfiguration(
     featureEnabled: flags[FEATURE] === true,
     contentLevel:
       configuration.contentLevel === "subject" ? "subject" : "minimal",
+    configuration,
   };
 }
 
@@ -507,6 +668,12 @@ async function getStatus(
     readDevices(admin, action.tenantId, actorId),
     applicableCategories(client, action.tenantId),
   ]);
+  const workHours = await readWorkHours(
+    admin,
+    action.tenantId,
+    actorId,
+    feature.featureEnabled,
+  );
   return reply(request, {
     data: {
       featureEnabled: feature.featureEnabled,
@@ -515,6 +682,7 @@ async function getStatus(
       applicableCategories: categories,
       preferences: preferencesForResponse(preferences),
       devices: devices.map(deviceForResponse),
+      workHours,
     },
   });
 }
@@ -765,6 +933,90 @@ async function sendTest(
   return reply(request, { data: { results } });
 }
 
+async function checkIn(
+  request: Request,
+  admin: Admin,
+  action: Extract<Action, { type: "checkIn" }>,
+  actorId: string,
+): Promise<Response> {
+  await requireFeature(admin, action.tenantId);
+  const workHours = await readWorkHours(admin, action.tenantId, actorId, true);
+  if (!workHours.required) {
+    throw new HttpError(409, "check_in_not_required");
+  }
+  if (!workHours.withinWindow) {
+    throw new HttpError(409, "outside_work_hours");
+  }
+  const { error } = await admin.from("push_work_checkins").upsert(
+    {
+      tenant_id: action.tenantId,
+      user_id: actorId,
+      work_date: workHours.localDate,
+      checked_in_at: new Date().toISOString(),
+      checked_out_at: null,
+      declined_at: null,
+    },
+    { onConflict: "tenant_id,user_id,work_date" },
+  );
+  if (error) throw new HttpError(422, "work_hours_update_failed");
+  return reply(request, {
+    data: {
+      workHours: await readWorkHours(admin, action.tenantId, actorId, true),
+    },
+  });
+}
+
+async function checkOut(
+  request: Request,
+  admin: Admin,
+  action: Extract<Action, { type: "checkOut" }>,
+  actorId: string,
+): Promise<Response> {
+  await requireFeature(admin, action.tenantId);
+  const workHours = await readWorkHours(admin, action.tenantId, actorId, true);
+  if (workHours.checkedIn) {
+    const { error } = await admin
+      .from("push_work_checkins")
+      .update({ checked_out_at: new Date().toISOString() })
+      .eq("tenant_id", action.tenantId)
+      .eq("user_id", actorId)
+      .eq("work_date", workHours.localDate);
+    if (error) throw new HttpError(422, "work_hours_update_failed");
+  }
+  return reply(request, {
+    data: {
+      workHours: await readWorkHours(admin, action.tenantId, actorId, true),
+    },
+  });
+}
+
+async function declineCheckIn(
+  request: Request,
+  admin: Admin,
+  action: Extract<Action, { type: "declineCheckIn" }>,
+  actorId: string,
+): Promise<Response> {
+  await requireFeature(admin, action.tenantId);
+  const workHours = await readWorkHours(admin, action.tenantId, actorId, true);
+  if (!workHours.checkedIn) {
+    const { error } = await admin.from("push_work_checkins").upsert(
+      {
+        tenant_id: action.tenantId,
+        user_id: actorId,
+        work_date: workHours.localDate,
+        declined_at: new Date().toISOString(),
+      },
+      { onConflict: "tenant_id,user_id,work_date" },
+    );
+    if (error) throw new HttpError(422, "work_hours_update_failed");
+  }
+  return reply(request, {
+    data: {
+      workHours: await readWorkHours(admin, action.tenantId, actorId, true),
+    },
+  });
+}
+
 async function getTenantSettings(
   request: Request,
   admin: Admin,
@@ -778,13 +1030,19 @@ async function getTenantSettings(
       .eq("tenant_id", action.tenantId)
       .eq("enabled", true),
   ]);
-  if (countResult.error)
+  if (countResult.error) {
     throw new HttpError(500, "tenant_settings_read_failed");
+  }
   return reply(request, {
     data: {
       featureEnabled: feature.featureEnabled,
       apnsConfigured: isApnsConfigured(),
       contentLevel: feature.contentLevel,
+      workHours: {
+        checkInRequired: workHoursSettings(feature.configuration).required,
+        workStartHour: workHoursSettings(feature.configuration).startHour,
+        workEndHour: workHoursSettings(feature.configuration).endHour,
+      },
       registeredDevices: countResult.count ?? 0,
     },
   });
@@ -796,11 +1054,36 @@ async function updateTenantSettings(
   action: Extract<Action, { type: "updateTenantSettings" }>,
   actorId: string,
 ): Promise<Response> {
+  const { data: existing, error: existingError } = await admin
+    .from("tenant_feature_flags")
+    .select("configuration")
+    .eq("tenant_id", action.tenantId)
+    .eq("feature_key", FEATURE)
+    .maybeSingle();
+  if (existingError) throw new HttpError(500, "tenant_settings_read_failed");
+  const configuration = isRecord(existing?.configuration)
+    ? existing.configuration
+    : {};
+  const currentWorkHours = workHoursSettings(configuration);
+  const workHours = {
+    checkInRequired: action.checkInRequired ?? currentWorkHours.required,
+    workStartHour: action.workStartHour ?? currentWorkHours.startHour,
+    workEndHour: action.workEndHour ?? currentWorkHours.endHour,
+  };
+  if (workHours.workStartHour >= workHours.workEndHour) {
+    throw new HttpError(400, "invalid_request");
+  }
   const { error } = await admin.from("tenant_feature_flags").upsert(
     {
       tenant_id: action.tenantId,
       feature_key: FEATURE,
-      configuration: { contentLevel: action.contentLevel },
+      configuration: {
+        ...configuration,
+        contentLevel: action.contentLevel,
+        checkInRequired: workHours.checkInRequired,
+        workStartHour: workHours.workStartHour,
+        workEndHour: workHours.workEndHour,
+      },
       updated_by: actorId,
       updated_at: new Date().toISOString(),
     },
@@ -814,9 +1097,16 @@ async function updateTenantSettings(
     "push.tenant_settings.updated",
     "tenant_feature_flag",
     action.tenantId,
-    { contentLevel: action.contentLevel },
+    {
+      contentLevel: action.contentLevel,
+      checkInRequired: workHours.checkInRequired,
+      workStartHour: workHours.workStartHour,
+      workEndHour: workHours.workEndHour,
+    },
   );
-  return reply(request, { data: { contentLevel: action.contentLevel } });
+  return reply(request, {
+    data: { contentLevel: action.contentLevel, workHours },
+  });
 }
 
 const handler = withSupabase(
@@ -863,6 +1153,20 @@ const handler = withSupabase(
     }
     if (action.type === "sendTest") {
       return await sendTest(request, context.supabaseAdmin, action, actorId);
+    }
+    if (action.type === "checkIn") {
+      return await checkIn(request, context.supabaseAdmin, action, actorId);
+    }
+    if (action.type === "checkOut") {
+      return await checkOut(request, context.supabaseAdmin, action, actorId);
+    }
+    if (action.type === "declineCheckIn") {
+      return await declineCheckIn(
+        request,
+        context.supabaseAdmin,
+        action,
+        actorId,
+      );
     }
     await requireTenantAdministrator(
       context.supabaseAdmin,

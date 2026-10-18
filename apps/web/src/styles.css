@@ -10185,6 +10185,70 @@ body:has(.ticket-detail) {
   cursor: progress;
   opacity: 0.7;
 }
+.tenant-admin-settings__push-work-hours {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  margin: 0;
+  border: 0;
+  padding: 0;
+}
+.tenant-admin-settings__push-work-hours legend {
+  margin-bottom: 2px;
+  padding: 0;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 700;
+}
+.tenant-admin-settings__push-checkin-toggle {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px 14px;
+  background: var(--surface);
+  cursor: pointer;
+}
+.tenant-admin-settings__push-checkin-toggle input {
+  margin-top: 2px;
+}
+.tenant-admin-settings__push-checkin-toggle > span {
+  display: grid;
+  gap: 3px;
+}
+.tenant-admin-settings__push-checkin-toggle strong {
+  color: var(--ink);
+  font-size: 13px;
+}
+.tenant-admin-settings__push-checkin-toggle small {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+.tenant-admin-settings__push-work-hours-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.tenant-admin-settings__push-work-hours-grid > label {
+  display: grid;
+  gap: 6px;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 650;
+}
+.tenant-admin-settings__push-work-hours-error {
+  margin: -2px 0 0;
+  color: var(--danger);
+  font-size: 12px;
+  font-weight: 600;
+}
+.tenant-admin-settings__push-work-hours:disabled
+  .tenant-admin-settings__push-checkin-toggle {
+  cursor: progress;
+}
 .tenant-admin-settings__push-feedback {
   margin: 0;
   border-radius: 10px;
@@ -10205,6 +10269,44 @@ body:has(.ticket-detail) {
 .personal-settings__icon--push {
   color: var(--info);
   background: var(--info-soft);
+}
+.personal-settings__work-hours {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 13px 14px;
+  background: var(--surface-subtle);
+}
+.personal-settings__work-hours > div:first-child {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+.personal-settings__work-hours h4 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 14px;
+}
+.personal-settings__work-hours-status {
+  margin: 0;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 650;
+}
+.personal-settings__work-hours-status--active {
+  color: var(--success);
+}
+.personal-settings__work-hours-status--outside {
+  color: var(--warning);
+}
+.personal-settings__work-hours-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 .personal-settings__device-list {
   display: grid;
@@ -10752,6 +10854,15 @@ body:has(.ticket-detail) {
 }
 
 @media (max-width: 620px) {
+  .tenant-admin-settings__push-work-hours-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .personal-settings__work-hours-actions,
+  .personal-settings__work-hours-actions button {
+    width: 100%;
+  }
+
   .exchange-mail-settings__status-details,
   .exchange-mail-settings__form-grid {
     grid-template-columns: 1fr;

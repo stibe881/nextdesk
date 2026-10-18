@@ -64,6 +64,7 @@ const expectedFiles = [
   "0059_requester_collaboration_and_ops_foundation.sql",
   "0060_push_notifications.sql",
   "0061_exchange_online_mail.sql",
+  "0062_push_work_checkins.sql",
 ];
 
 const availableFiles = await readdir(migrationDirectory);
@@ -593,6 +594,16 @@ const requiredFragments = [
     "0061_exchange_online_mail.sql",
     "create or replace function public.exchange_mail_kick_maintenance()",
   ],
+  ["0062_push_work_checkins.sql", "create table public.push_work_checkins"],
+  [
+    "0062_push_work_checkins.sql",
+    "alter table public.push_work_checkins force row level security",
+  ],
+  [
+    "0062_push_work_checkins.sql",
+    "create or replace function public.push_work_state",
+  ],
+  ["0062_push_work_checkins.sql", "last_error = 'off_shift'"],
 ];
 
 for (const [migration, fragment] of requiredFragments) {

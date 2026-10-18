@@ -1268,11 +1268,40 @@ $$;
 reset role;
 rollback;
 
+-- Push-Arbeitszeit: Die Tabelle ist mit erzwungener RLS geschützt und der
+-- Vertragsstandard gilt, wenn die Mandantenkonfiguration keine Arbeitszeitwerte enthält.
+do $$
+declare
+  v_state jsonb;
+begin
+  if not (
+    select relrowsecurity and relforcerowsecurity
+    from pg_class
+    where oid = 'public.push_work_checkins'::regclass
+  ) then
+    raise exception 'Push work check-ins must have forced RLS';
+  end if;
+  if has_function_privilege('authenticated', 'public.push_work_state(uuid, uuid)', 'execute')
+    or not has_function_privilege('service_role', 'public.push_work_state(uuid, uuid)', 'execute') then
+    raise exception 'Push work state RPC privileges are not service-role-only';
+  end if;
+  select public.push_work_state(
+    '10000000-0000-4000-8000-000000000001',
+    '00000000-0000-4000-8000-000000000001'
+  ) into v_state;
+  if coalesce((v_state ->> 'required')::boolean, false) is not true
+    or (v_state ->> 'startHour')::integer <> 6
+    or (v_state ->> 'endHour')::integer <> 17 then
+    raise exception 'Push work state did not apply contractual defaults';
+  end if;
+end;
+$$;
+
 -- Push notifications are fail-closed: fixtures explicitly enable the feature
 -- and register only the devices required for the positive-path checks below.
 update public.tenant_feature_flags
 set enabled = true,
-    configuration = '{"contentLevel":"minimal"}'::jsonb
+    configuration = '{"contentLevel":"minimal","checkInRequired":false}'::jsonb
 where tenant_id = '10000000-0000-4000-8000-000000000001'
   and feature_key = 'notifications.push';
 
@@ -1477,6 +1506,95 @@ $$;
 reset role;
 commit;
 
+-- Ohne Check-in wird ein Eintrag ausserhalb des aktiven Push-Zustands übersprungen.
+-- Das Fenster 00:00–24:00 hält den positiven Pfad unabhängig von der Testuhr offen.
+update public.tenant_feature_flags
+set configuration = '{"contentLevel":"minimal","checkInRequired":true,"workStartHour":0,"workEndHour":24}'::jsonb
+where tenant_id = '10000000-0000-4000-8000-000000000001'
+  and feature_key = 'notifications.push';
+insert into public.ticket_notifications (id, tenant_id, user_id, ticket_id, kind, payload)
+values (
+  '1e100000-0000-4000-8000-000000000003',
+  '10000000-0000-4000-8000-000000000001',
+  '00000000-0000-4000-8000-000000000001',
+  '19000000-0000-4000-8000-000000000003',
+  'ticket.assigned',
+  '{"ticketNumber":"ICT-2026-009001"}'
+);
+begin;
+set local role service_role;
+do $$
+begin
+  if exists (
+    select 1
+    from public.push_claim_outbox(50) claim
+    where claim.notification_id = '1e100000-0000-4000-8000-000000000003'
+  ) then
+    raise exception 'Push claim returned a row without today''s check-in';
+  end if;
+  if not exists (
+    select 1 from public.push_outbox
+    where notification_id = '1e100000-0000-4000-8000-000000000003'
+      and status = 'skipped'
+      and last_error = 'off_shift'
+  ) then
+    raise exception 'Push claim did not skip an unchecked-in user as off_shift';
+  end if;
+end;
+$$;
+reset role;
+commit;
+
+begin;
+set local role service_role;
+do $$
+declare
+  v_state jsonb;
+begin
+  select public.push_work_state(
+    '10000000-0000-4000-8000-000000000001',
+    '00000000-0000-4000-8000-000000000001'
+  ) into v_state;
+  if coalesce((v_state ->> 'withinWindow')::boolean, false) is not true then
+    raise exception 'All-day push work test window was not active';
+  end if;
+  insert into public.push_work_checkins (tenant_id, user_id, work_date, checked_in_at)
+  values (
+    '10000000-0000-4000-8000-000000000001',
+    '00000000-0000-4000-8000-000000000001',
+    (v_state ->> 'localDate')::date,
+    timezone('utc', now())
+  );
+end;
+$$;
+reset role;
+commit;
+
+insert into public.ticket_notifications (id, tenant_id, user_id, ticket_id, kind, payload)
+values (
+  '1e200000-0000-4000-8000-000000000003',
+  '10000000-0000-4000-8000-000000000001',
+  '00000000-0000-4000-8000-000000000001',
+  '19000000-0000-4000-8000-000000000003',
+  'ticket.assigned',
+  '{"ticketNumber":"ICT-2026-009001"}'
+);
+begin;
+set local role service_role;
+do $$
+begin
+  if not exists (
+    select 1
+    from public.push_claim_outbox(50) claim
+    where claim.notification_id = '1e200000-0000-4000-8000-000000000003'
+  ) then
+    raise exception 'Push claim did not return an in-window checked-in user';
+  end if;
+end;
+$$;
+reset role;
+commit;
+
 -- Actor and recipient being identical must not generate a self-notification.
 insert into public.tickets (
   id, tenant_id, department_id, ticket_number, subject, description, status_id, priority_id, requester_id
@@ -1588,9 +1706,21 @@ begin
     raise exception 'Authenticated user may read push devices other than their own';
   end if;
   if has_table_privilege('authenticated', 'public.push_devices', 'insert')
-    or has_table_privilege('authenticated', 'public.push_preferences', 'update') then
+    or has_table_privilege('authenticated', 'public.push_preferences', 'update')
+    or has_table_privilege('authenticated', 'public.push_work_checkins', 'insert') then
     raise exception 'Authenticated users retained direct push write privileges';
   end if;
+  begin
+    insert into public.push_work_checkins (tenant_id, user_id, work_date)
+    values (
+      '10000000-0000-4000-8000-000000000001',
+      '00000000-0000-4000-8000-000000000001',
+      current_date + 1
+    );
+    raise exception 'Authenticated user directly inserted a push work check-in';
+  exception when insufficient_privilege then
+    null;
+  end;
   if has_schema_privilege('authenticated', 'push_private', 'usage') then
     raise exception 'Authenticated users retained push_private schema access';
   end if;

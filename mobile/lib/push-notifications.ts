@@ -29,6 +29,21 @@ export type PushCategory = (typeof PUSH_CATEGORIES)[number];
 export type PushEnvironment = "development" | "production";
 export type PushContentLevel = "minimal" | "subject";
 
+export type WorkHours = {
+  required: boolean;
+  startHour: number;
+  endHour: number;
+  timezone: string;
+  localDate: string;
+  withinWindow: boolean;
+  checkedIn: boolean;
+  checkedInAt: string | null;
+  checkedOutAt: string | null;
+  declinedAt: string | null;
+  active: boolean;
+  promptDue: boolean;
+};
+
 export type PushPreferences = {
   enabledCategories: PushCategory[];
   quietHoursEnabled: boolean;
@@ -55,6 +70,7 @@ export type PushNotificationStatus = {
   applicableCategories: PushCategory[];
   preferences: PushPreferences;
   devices: PushDevice[];
+  workHours: WorkHours;
 };
 
 export type PushTenantSettings = {
@@ -97,6 +113,9 @@ type PushAction =
       timezone: string;
     }
   | { type: "sendTest"; tenantId: string }
+  | { type: "checkIn"; tenantId: string }
+  | { type: "checkOut"; tenantId: string }
+  | { type: "declineCheckIn"; tenantId: string }
   | { type: "getTenantSettings"; tenantId: string }
   | {
       type: "updateTenantSettings";
@@ -303,6 +322,33 @@ export async function sendPushTest(
 ): Promise<{ results: PushTestResult[] }> {
   return invokePushNotifications<{ results: PushTestResult[] }>({
     type: "sendTest",
+    tenantId,
+  });
+}
+
+export async function checkInForPush(
+  tenantId: string,
+): Promise<{ workHours: WorkHours }> {
+  return invokePushNotifications<{ workHours: WorkHours }>({
+    type: "checkIn",
+    tenantId,
+  });
+}
+
+export async function checkOutForPush(
+  tenantId: string,
+): Promise<{ workHours: WorkHours }> {
+  return invokePushNotifications<{ workHours: WorkHours }>({
+    type: "checkOut",
+    tenantId,
+  });
+}
+
+export async function declinePushCheckIn(
+  tenantId: string,
+): Promise<{ workHours: WorkHours }> {
+  return invokePushNotifications<{ workHours: WorkHours }>({
+    type: "declineCheckIn",
     tenantId,
   });
 }
