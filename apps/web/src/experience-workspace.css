@@ -1,0 +1,494 @@
+.experience-workspace {
+  display: grid;
+  gap: 20px;
+  max-width: 1160px;
+}
+
+.experience-workspace__header,
+.experience-toolbar,
+.experience-follow-up,
+.experience-dialog header,
+.experience-dialog footer,
+.my-day-card__section-heading,
+.my-day-card__list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.experience-workspace__header {
+  align-items: flex-start;
+}
+
+.experience-workspace__header h2,
+.experience-dialog h2 {
+  margin: 2px 0 6px;
+  color: var(--ink);
+  font-size: clamp(1.35rem, 1.7vw, 1.75rem);
+  line-height: 1.2;
+}
+
+.experience-workspace__header p:not(.eyebrow) {
+  max-width: 620px;
+  margin: 0;
+  color: var(--muted);
+}
+
+.experience-create-button {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.experience-toolbar {
+  min-height: 44px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 16px;
+}
+
+.experience-segmented {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) + 2px);
+  background: var(--surface-subtle);
+}
+
+.experience-segmented button {
+  min-height: 34px;
+  border-color: transparent;
+  padding: 5px 12px;
+  background: transparent;
+  color: var(--muted);
+}
+
+.experience-segmented button.is-active {
+  border-color: var(--border);
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--shadow-sm);
+}
+
+.experience-groups {
+  display: grid;
+  gap: 24px;
+}
+
+.experience-group-heading {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.experience-group-heading h2 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 1rem;
+}
+
+.experience-group-heading span,
+.my-day-card__section-heading > span {
+  display: inline-grid;
+  min-width: 22px;
+  min-height: 22px;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--surface-subtle);
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.experience-follow-up-list {
+  display: grid;
+  gap: 10px;
+}
+
+.experience-follow-up {
+  align-items: flex-start;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  padding: 16px;
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.experience-follow-up.is-resolved {
+  background: var(--surface-subtle);
+}
+
+.experience-follow-up__main {
+  min-width: 0;
+}
+
+.experience-follow-up__meta,
+.experience-priority,
+.experience-due,
+.experience-ticket-link,
+.experience-complete-button,
+.experience-icon-button,
+.my-day-card h3,
+.my-day-card__ticket-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.experience-follow-up__meta {
+  flex-wrap: wrap;
+  margin-bottom: 7px;
+}
+
+.experience-priority {
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.experience-priority--high {
+  color: var(--danger);
+}
+
+.experience-priority--normal {
+  color: var(--info);
+}
+
+.experience-priority--low {
+  color: var(--muted);
+}
+
+.experience-due {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.experience-follow-up h3 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 1rem;
+  line-height: 1.35;
+}
+
+.experience-follow-up p {
+  margin: 7px 0 0;
+  color: var(--text);
+  font-size: 0.9rem;
+}
+
+.experience-ticket-link {
+  min-height: 30px;
+  margin: 10px 0 0;
+  border: 0;
+  padding: 2px 0;
+  background: transparent;
+  color: var(--primary);
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-align: left;
+}
+
+.experience-ticket-link:hover:not(:disabled) {
+  border: 0;
+  background: transparent;
+  color: var(--primary-hover);
+  text-decoration: underline;
+}
+
+.experience-follow-up__actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.experience-complete-button,
+.experience-icon-button {
+  min-height: 36px;
+  padding: 7px 10px;
+  font-size: 0.82rem;
+}
+
+.experience-complete-button {
+  border-color: color-mix(in srgb, var(--success) 45%, var(--border));
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.experience-complete-button:hover:not(:disabled) {
+  border-color: var(--success);
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.experience-icon-button {
+  min-width: 36px;
+}
+
+.experience-empty-state {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-card);
+  padding: 22px;
+  background: var(--surface-subtle);
+  color: var(--muted);
+}
+
+.experience-empty-state svg {
+  flex: 0 0 auto;
+  color: var(--primary);
+}
+
+.experience-empty-state strong,
+.experience-empty-state span {
+  display: block;
+}
+
+.experience-empty-state strong {
+  color: var(--ink);
+}
+
+.experience-empty-state span {
+  margin-top: 2px;
+  font-size: 0.9rem;
+}
+
+.experience-empty-state--notice button {
+  margin-left: auto;
+}
+
+.experience-dialog-backdrop {
+  position: fixed;
+  z-index: 60;
+  inset: 0;
+  display: grid;
+  overflow-y: auto;
+  place-items: center;
+  padding: 24px;
+  background: var(--overlay);
+}
+
+.experience-dialog {
+  width: min(100%, 640px);
+  max-height: min(800px, calc(100dvh - 48px));
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  padding: 22px;
+  background: var(--surface);
+  box-shadow: var(--shadow-lg);
+}
+
+.experience-dialog header {
+  align-items: flex-start;
+  margin-bottom: 20px;
+}
+
+.experience-dialog__close {
+  display: grid;
+  min-width: 38px;
+  min-height: 38px;
+  place-items: center;
+  padding: 0;
+}
+
+.experience-dialog form {
+  display: grid;
+  gap: 15px;
+}
+
+.experience-dialog label {
+  display: grid;
+  gap: 7px;
+  color: var(--ink);
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.experience-optional,
+.experience-field-note {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.experience-field-note {
+  font-size: 0.78rem;
+}
+
+.experience-quick-dates {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: -7px;
+}
+
+.experience-quick-dates button {
+  min-height: 32px;
+  padding: 5px 9px;
+  color: var(--primary);
+  font-size: 0.8rem;
+}
+
+.experience-form-error {
+  margin: 0;
+  border-left: 3px solid var(--danger);
+  padding: 8px 10px;
+  background: var(--danger-soft);
+  color: var(--danger);
+  font-size: 0.86rem;
+}
+
+.experience-dialog footer {
+  justify-content: flex-end;
+  margin-top: 5px;
+}
+
+.my-day-card {
+  display: grid;
+  gap: 18px;
+}
+
+.my-day-card__body {
+  display: grid;
+  gap: 18px;
+}
+
+.my-day-card__body section + section {
+  border-top: 1px solid var(--border);
+  padding-top: 17px;
+}
+
+.my-day-card__section-heading {
+  margin-bottom: 8px;
+}
+
+.my-day-card h3 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 0.88rem;
+}
+
+.my-day-card h3 svg {
+  color: var(--primary);
+}
+
+.my-day-card__empty,
+.my-day-card__more {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+.my-day-card__list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.my-day-card__list li {
+  gap: 10px;
+  min-width: 0;
+  border-radius: var(--radius);
+  padding: 7px 0;
+}
+
+.my-day-card__list li > div,
+.my-day-card__ticket-copy {
+  min-width: 0;
+}
+
+.my-day-card__list strong,
+.my-day-card__list span {
+  display: block;
+}
+
+.my-day-card__list strong {
+  color: var(--ink);
+  font-size: 0.85rem;
+}
+
+.my-day-card__list span {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 0.77rem;
+}
+
+.my-day-card__list .experience-priority {
+  display: inline-flex;
+  margin: 0;
+  font-size: inherit;
+}
+
+.my-day-card__ticket,
+.my-day-card__ticket-copy {
+  min-height: 32px;
+  border: 0;
+  padding: 2px 0;
+  background: transparent;
+  text-align: left;
+}
+
+.my-day-card__ticket {
+  display: grid;
+  min-width: 32px;
+  place-items: center;
+  color: var(--primary);
+}
+
+.my-day-card__ticket:hover:not(:disabled),
+.my-day-card__ticket-copy:hover:not(:disabled) {
+  border-color: transparent;
+  background: transparent;
+  color: var(--primary);
+}
+
+.my-day-card__ticket-copy {
+  display: block;
+  width: 100%;
+}
+
+.my-day-card__more {
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+
+@media (max-width: 720px) {
+  .experience-workspace__header,
+  .experience-toolbar,
+  .experience-follow-up {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .experience-create-button {
+    justify-content: center;
+  }
+
+  .experience-toolbar {
+    gap: 10px;
+  }
+
+  .experience-follow-up__actions {
+    justify-content: flex-end;
+  }
+
+  .experience-empty-state--notice button {
+    margin: 2px 0 0;
+  }
+
+  .experience-dialog-backdrop {
+    align-items: end;
+    padding: 12px;
+  }
+
+  .experience-dialog {
+    max-height: calc(100dvh - 24px);
+    padding: 18px;
+  }
+}

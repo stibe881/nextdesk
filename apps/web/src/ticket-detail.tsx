@@ -29,6 +29,11 @@ import { supabase } from "./lib/supabase";
 import { TicketApprovals } from "./ticket-approvals";
 import { TicketComparison } from "./ticket-comparison";
 import { TicketCustomFields } from "./ticket-custom-fields";
+import {
+  TicketFollowUps,
+  TicketResolutionExperience,
+} from "./ticket-experience";
+import "./ticket-experience.css";
 import { TicketPdfRecord } from "./ticket-pdf-record";
 
 type CommentVisibility = "external" | "internal";
@@ -290,6 +295,10 @@ type TicketRecord = {
   assigned_agent_id: string | null;
   assigned_team_id: string | null;
   created_at: string;
+  /** These optional fields keep older ticket-operation deployments compatible. */
+  requester_id?: string;
+  affected_user_id?: string | null;
+  resolved_at?: string | null;
 };
 
 type TicketComment = {
@@ -729,7 +738,15 @@ function isTicketRecord(value: unknown): value is TicketRecord {
       ticket.assigned_agent_id === null) &&
     (typeof ticket.assigned_team_id === "string" ||
       ticket.assigned_team_id === null) &&
-    typeof ticket.created_at === "string",
+    typeof ticket.created_at === "string" &&
+    (ticket.requester_id === undefined ||
+      typeof ticket.requester_id === "string") &&
+    (ticket.affected_user_id === undefined ||
+      typeof ticket.affected_user_id === "string" ||
+      ticket.affected_user_id === null) &&
+    (ticket.resolved_at === undefined ||
+      typeof ticket.resolved_at === "string" ||
+      ticket.resolved_at === null),
   );
 }
 
@@ -3336,6 +3353,21 @@ export function TicketDetail({
       (status) => status.id === detail.ticket.status_id && status.is_closed,
     ),
   );
+  const ticketIsResolved = Boolean(detail?.ticket.resolved_at);
+  const isResolutionParticipant = Boolean(
+    currentUserId &&
+    detail &&
+    (detail.ticket.requester_id === currentUserId ||
+      detail.ticket.affected_user_id === currentUserId),
+  );
+  const hasAgentExperienceAccess = Boolean(
+    detail &&
+    (detail.canUpdate ||
+      detail.canAssign ||
+      detail.canTrackTime ||
+      detail.canUseInternalNotes ||
+      detail.canEscalate === true),
+  );
 
   const loadFeedback = useCallback(async () => {
     const requestId = ++feedbackRequestSequence.current;
@@ -5390,6 +5422,13 @@ export function TicketDetail({
             tenantId={tenantId}
             ticketId={ticketId}
           />
+          <TicketFollowUps
+            enabled={hasAgentExperienceAccess}
+            subject={detail.ticket.subject}
+            tenantId={tenantId}
+            ticketId={ticketId}
+            ticketNumber={detail.ticket.ticket_number}
+          />
           <button
             aria-label={
               detail.watching
@@ -6588,6 +6627,16 @@ export function TicketDetail({
               </p>
             ) : null}
           </section>
+
+          {ticketIsResolved &&
+            (isResolutionParticipant || hasAgentExperienceAccess) && (
+              <TicketResolutionExperience
+                canConfirm={isResolutionParticipant}
+                canReadHistory={hasAgentExperienceAccess}
+                tenantId={tenantId}
+                ticketId={ticketId}
+              />
+            )}
 
           <section
             aria-busy={feedbackLoading}

@@ -1,6 +1,10 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { ArrowRight, CheckCircle2, X } from "lucide-react";
 import { supabase } from "./lib/supabase";
+import {
+  SelfServiceCatalog,
+  type ServiceCatalogItem,
+} from "./self-service-catalog";
 
 type Department = { id: string; key: string; name: string; kind: string };
 type Priority = { key: string; label: string; sort_order: number };
@@ -490,6 +494,10 @@ export function TicketComposer({
   const [priorityKey, setPriorityKey] = useState("normal");
   const [subject, setSubject] = useState("");
   const [description, setDescription] = useState("");
+  const [selectedServiceId, setSelectedServiceId] = useState<string | null>(
+    null,
+  );
+  const [showServiceCatalog, setShowServiceCatalog] = useState(true);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [confirmation, setConfirmation] = useState<{
@@ -532,6 +540,8 @@ export function TicketComposer({
     setCategoryDraft(null);
     setTemplateLookup(null);
     setTemplateId("");
+    setSelectedServiceId(null);
+    setShowServiceCatalog(true);
     setAssignableAgents([]);
     setAssignedAgentId("");
     setAgentLookupAllowed(false);
@@ -862,6 +872,22 @@ export function TicketComposer({
     setCategoryDraft(null);
     setCategorySaving(false);
     setCategoryError("");
+  }
+
+  function selectCatalogService(service: ServiceCatalogItem) {
+    if (saving) return;
+    setSelectedServiceId(service.id);
+    setSubject((current) => current.trim() || service.name);
+    const matchingCategory = rootCategories.find(
+      (category) =>
+        category.name.trim().localeCompare(service.name.trim(), "de-CH", {
+          sensitivity: "base",
+        }) === 0,
+    );
+    if (matchingCategory) {
+      setCategoryId(matchingCategory.id);
+      setSubcategoryId("");
+    }
   }
 
   function selectRequester(requester: RequesterContact) {
@@ -1219,6 +1245,18 @@ export function TicketComposer({
         <p className="empty-state">Erfassungsoptionen werden geladen …</p>
       ) : (
         <form className="ticket-compose-form" onSubmit={createTicket}>
+          {showServiceCatalog ? (
+            <SelfServiceCatalog
+              disabled={saving}
+              onSelect={selectCatalogService}
+              onSkip={() => {
+                setSelectedServiceId(null);
+                setShowServiceCatalog(false);
+              }}
+              selectedServiceId={selectedServiceId}
+              tenantId={tenantId}
+            />
+          ) : null}
           <div className="ticket-compose-description ticket-compose-requester">
             <label>
               Anfragende Person <span aria-hidden="true">*</span>

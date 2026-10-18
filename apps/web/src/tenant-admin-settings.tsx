@@ -6,6 +6,13 @@ import {
   useState,
   type FormEvent,
 } from "react";
+import {
+  Bot,
+  LayoutPanelTop,
+  MessageSquareText,
+  Webhook,
+  type LucideIcon,
+} from "lucide-react";
 import { supabase } from "./lib/supabase";
 import { functionErrorMessage } from "./lib/function-error";
 import { TicketCustomFieldsAdmin } from "./ticket-custom-fields-admin";
@@ -15,6 +22,7 @@ import { TicketTemplates } from "./ticket-templates";
 import { TenantAutomation } from "./tenant-automation";
 import { TenantDataRetention } from "./tenant-data-retention";
 import { TenantOnboarding } from "./tenant-onboarding";
+import { AiGovernancePanel } from "./ai-governance-panel";
 
 export type TenantAdminSettingsProps = {
   tenantId: string;
@@ -746,6 +754,47 @@ function isTenantFeatureActive(feature: TenantFeature): boolean {
   if (!feature.pilot_ends_at) return true;
   const endsAt = Date.parse(feature.pilot_ends_at);
   return Number.isFinite(endsAt) && endsAt > Date.now();
+}
+
+const FEATURE_PRESENTATION: Readonly<
+  Record<string, { name: string; description: string; Icon: LucideIcon }>
+> = {
+  "experience.workspace": {
+    name: "Arbeitsbereich",
+    description:
+      "Persönliche Arbeitsbereichseinstellungen, Wiedervorlagen und Mein Tag.",
+    Icon: LayoutPanelTop,
+  },
+  "portal.self-service": {
+    name: "Self-Service",
+    description:
+      "Servicekatalog bei der Erfassung und Lösungsbestätigung durch Anfragende.",
+    Icon: MessageSquareText,
+  },
+  "ai.assist": {
+    name: "KI-Assistenz",
+    description:
+      "Vorbereitete KI-Entwürfe unter expliziter Mandantenfreigabe ohne Provideraufruf.",
+    Icon: Bot,
+  },
+  "webhooks.outbound": {
+    name: "Ausgehende Webhooks",
+    description:
+      "Kontrollierte Auslieferung mandantenbezogener Ereignisse an externe Endpunkte.",
+    Icon: Webhook,
+  },
+};
+
+function featurePresentation(
+  feature: TenantFeature,
+  catalog: FeatureCatalogEntry | null,
+): { name: string; description: string | null; Icon: LucideIcon | null } {
+  const knownFeature = FEATURE_PRESENTATION[feature.feature_key];
+  return {
+    name: knownFeature?.name ?? catalog?.name ?? feature.feature_key,
+    description: knownFeature?.description ?? catalog?.description ?? null,
+    Icon: knownFeature?.Icon ?? null,
+  };
 }
 
 function realValue(value: string | null | undefined): string {
@@ -2212,6 +2261,10 @@ export function TenantAdminSettings({
                       const catalog = asFeatureCatalogEntry(
                         feature.feature_catalog,
                       );
+                      const presentation = featurePresentation(
+                        feature,
+                        catalog,
+                      );
                       const target: SaveTarget = `feature:${feature.feature_key}`;
                       return (
                         <li
@@ -2219,11 +2272,18 @@ export function TenantAdminSettings({
                           className="tenant-admin-settings__feature"
                         >
                           <div>
-                            <strong>
-                              {catalog?.name || feature.feature_key}
-                            </strong>
-                            {catalog?.description ? (
-                              <p>{catalog.description}</p>
+                            <div className="tenant-admin-settings__feature-title">
+                              {presentation.Icon ? (
+                                <presentation.Icon
+                                  aria-hidden="true"
+                                  size={17}
+                                  strokeWidth={1.8}
+                                />
+                              ) : null}
+                              <strong>{presentation.name}</strong>
+                            </div>
+                            {presentation.description ? (
+                              <p>{presentation.description}</p>
                             ) : null}
                             <span className="tenant-admin-settings__feature-key">
                               {feature.feature_key}
@@ -2255,7 +2315,7 @@ export function TenantAdminSettings({
                           <label>
                             <span className="tenant-admin-settings__visually-hidden">
                               {feature.enabled ? "Deaktivieren" : "Aktivieren"}:{" "}
-                              {catalog?.name || feature.feature_key}
+                              {presentation.name}
                             </span>
                             <input
                               type="checkbox"
@@ -2283,6 +2343,13 @@ export function TenantAdminSettings({
                     zurückgegeben.
                   </p>
                 )}
+                {settings.tenant_feature_flags.some(
+                  (feature) =>
+                    feature.feature_key === "ai.assist" &&
+                    isTenantFeatureActive(feature),
+                ) ? (
+                  <AiGovernancePanel tenantId={tenantId} />
+                ) : null}
               </section>
             )}
 

@@ -59,6 +59,7 @@ const expectedFiles = [
   "0054_manual_automation_runs.sql",
   "0055_security_hardening_sso_roles_and_knowledge.sql",
   "0056_confirmed_bulk_ticket_closures.sql",
+  "0057_experience_value_and_ai_foundation.sql",
 ];
 
 const availableFiles = await readdir(migrationDirectory);
@@ -462,6 +463,38 @@ const requiredFragments = [
   [
     "0056_confirmed_bulk_ticket_closures.sql",
     "Bulk ticket close confirmation required",
+  ],
+  [
+    "0057_experience_value_and_ai_foundation.sql",
+    "('experience.workspace', 'Arbeitsbereich'",
+  ],
+  [
+    "0057_experience_value_and_ai_foundation.sql",
+    "('portal.self-service', 'Self-Service'",
+  ],
+  [
+    "0057_experience_value_and_ai_foundation.sql",
+    "('ai.assist', 'KI-Assistenz'",
+  ],
+  [
+    "0057_experience_value_and_ai_foundation.sql",
+    "create table public.experience_follow_ups",
+  ],
+  [
+    "0057_experience_value_and_ai_foundation.sql",
+    "create table public.ticket_resolution_confirmations",
+  ],
+  [
+    "0057_experience_value_and_ai_foundation.sql",
+    "create table public.tenant_ai_provider_approvals",
+  ],
+  [
+    "0057_experience_value_and_ai_foundation.sql",
+    "create or replace function public.queue_ai_draft_request",
+  ],
+  [
+    "0057_experience_value_and_ai_foundation.sql",
+    "alter table public.ai_draft_requests force row level security",
   ],
 ];
 

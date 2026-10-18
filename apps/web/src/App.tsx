@@ -17,6 +17,7 @@ import {
   CircleEllipsis,
   Command,
   LayoutDashboard,
+  ListTodo,
   LogOut,
   MonitorCog,
   Plus,
@@ -58,6 +59,7 @@ import { SlaManagement } from "./sla-management";
 import { ServiceReporting } from "./service-reporting";
 import { ServiceAssets } from "./service-assets";
 import { PersonalSettings } from "./personal-settings";
+import { ExperienceWorkspace, MyDayCard } from "./experience-workspace";
 import {
   OwnerConsoleScreen,
   resolveOwnerAccess,
@@ -79,6 +81,7 @@ type Section =
   | "Assets"
   | "Wissen"
   | "Berichte"
+  | "Wiedervorlagen"
   | "Einstellungen";
 type TicketScope = "all" | "mine" | "unassigned" | "open" | "closed";
 type TicketListDensity = "compact" | "standard" | "comfortable";
@@ -165,6 +168,7 @@ const sections: readonly { label: Section; Icon: LucideIcon }[] = [
   { label: "Assets", Icon: Boxes },
   { label: "Wissen", Icon: BookOpen },
   { label: "Berichte", Icon: ChartNoAxesCombined },
+  { label: "Wiedervorlagen", Icon: ListTodo },
 ];
 
 const DEFAULT_WORKSPACE_PREFERENCES: WorkspacePreferences = {
@@ -337,6 +341,42 @@ function workspacePreferencesFromValue(
         ? value.theme
         : DEFAULT_WORKSPACE_PREFERENCES.theme,
   };
+}
+
+function experienceWorkspacePreferencesFromResponse(
+  value: unknown,
+): Partial<Pick<WorkspacePreferences, "density" | "theme">> | undefined {
+  if (!isRecord(value) || !isRecord(value.data)) return undefined;
+  const workspacePreferences = value.data.workspacePreferences;
+  if (workspacePreferences === null) return {};
+  if (
+    !isRecord(workspacePreferences) ||
+    !isRecord(workspacePreferences.preferences)
+  ) {
+    return undefined;
+  }
+
+  const preferences = workspacePreferences.preferences;
+  return {
+    ...(preferences.theme === "light" ||
+    preferences.theme === "dark" ||
+    preferences.theme === "system"
+      ? { theme: preferences.theme }
+      : {}),
+    ...(preferences.density === "compact" ||
+    preferences.density === "comfortable"
+      ? { density: preferences.density }
+      : {}),
+  };
+}
+
+function workspacePreferenceSyncValue(
+  preferences: WorkspacePreferences,
+): string {
+  return JSON.stringify({
+    density: preferences.density === "compact" ? "compact" : "comfortable",
+    theme: preferences.theme,
+  });
 }
 
 function savedTicketViewFromValue(value: unknown): SavedTicketView | null {
@@ -891,6 +931,12 @@ export function App() {
     () => new Set(),
   );
   const [ticketActionStatus, setTicketActionStatus] = useState("");
+  const [experienceNotice, setExperienceNotice] = useState<{
+    message: string;
+    tone: "error" | "success";
+  } | null>(null);
+  const [experienceFollowUpsRevision, setExperienceFollowUpsRevision] =
+    useState(0);
   const [errorMessage, setErrorMessage] = useState("");
   const [ownerAccess, setOwnerAccess] = useState<OwnerAccess>("idle");
   const [ownerAccessError, setOwnerAccessError] = useState("");
@@ -936,6 +982,8 @@ export function App() {
   const notificationPanelRef = useRef<HTMLElement>(null);
   const commandInputRef = useRef<HTMLInputElement>(null);
   const keyboardHelpCloseRef = useRef<HTMLButtonElement>(null);
+  const workspacePreferencesSyncTenantRef = useRef<string | null>(null);
+  const workspacePreferencesLastSavedRef = useRef<string | null>(null);
   const workspacePreferencesStorageKey = `nextdesk:workspace-preferences:${session?.user.id ?? "preview"}`;
 
   useEffect(() => {
@@ -1000,6 +1048,8 @@ export function App() {
       setSsoEnforced(false);
       setTenantFeatures({});
       setTenantWorkspaceBranding(null);
+      setExperienceNotice(null);
+      setExperienceFollowUpsRevision(0);
     });
 
     return () => {
@@ -1104,6 +1154,8 @@ export function App() {
     () => tenants.find((tenant) => tenant.id === activeTenantId) ?? null,
     [activeTenantId, tenants],
   );
+  const experienceWorkspaceEnabled =
+    isSupabaseConfigured && tenantFeatures["experience.workspace"] === true;
 
   useEffect(() => {
     if (!supabase || !session || !activeTenant) {
@@ -1318,6 +1370,103 @@ export function App() {
       mounted = false;
     };
   }, [activeTenant, session, tenantFeatureRevision]);
+
+  useEffect(() => {
+    if (
+      !supabase ||
+      !session ||
+      !activeTenant ||
+      !experienceWorkspaceEnabled ||
+      !workspacePreferencesHydrated
+    ) {
+      workspacePreferencesSyncTenantRef.current = null;
+      workspacePreferencesLastSavedRef.current = null;
+      return;
+    }
+
+    let mounted = true;
+    workspacePreferencesSyncTenantRef.current = null;
+    void supabase.functions
+      .invoke("experience-hub", {
+        body: { tenantId: activeTenant.id, type: "getWorkspacePreferences" },
+      })
+      .then(({ data, error }) => {
+        if (error) throw error;
+        const remotePreferences =
+          experienceWorkspacePreferencesFromResponse(data);
+        if (remotePreferences === undefined) {
+          throw new Error("invalid_workspace_preferences_response");
+        }
+        if (!mounted) return;
+        setWorkspacePreferences((current) => {
+          const next = { ...current, ...remotePreferences };
+          workspacePreferencesLastSavedRef.current =
+            workspacePreferenceSyncValue(next);
+          workspacePreferencesSyncTenantRef.current = activeTenant.id;
+          return next;
+        });
+      })
+      .catch(() => {
+        // The locally stored preference remains the deliberate fallback when
+        // Experience Hub is unavailable or the server fails closed.
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [
+    activeTenant,
+    experienceWorkspaceEnabled,
+    session,
+    workspacePreferencesHydrated,
+  ]);
+
+  useEffect(() => {
+    if (
+      !supabase ||
+      !session ||
+      !activeTenant ||
+      !experienceWorkspaceEnabled ||
+      !workspacePreferencesHydrated ||
+      workspacePreferencesSyncTenantRef.current !== activeTenant.id
+    ) {
+      return;
+    }
+
+    const experienceSupabase = supabase;
+    const preferences = {
+      density:
+        workspacePreferences.density === "compact" ? "compact" : "comfortable",
+      theme: workspacePreferences.theme,
+    } as const;
+    const nextSavedValue = workspacePreferenceSyncValue(workspacePreferences);
+    if (workspacePreferencesLastSavedRef.current === nextSavedValue) return;
+
+    const timeout = window.setTimeout(() => {
+      void experienceSupabase.functions
+        .invoke("experience-hub", {
+          body: {
+            preferences,
+            tenantId: activeTenant.id,
+            type: "saveWorkspacePreferences",
+          },
+        })
+        .then(({ error }) => {
+          if (!error) workspacePreferencesLastSavedRef.current = nextSavedValue;
+        })
+        .catch(() => {
+          // Saving is best effort. The current local preference remains active.
+        });
+    }, 700);
+
+    return () => window.clearTimeout(timeout);
+  }, [
+    activeTenant,
+    experienceWorkspaceEnabled,
+    session,
+    workspacePreferences,
+    workspacePreferencesHydrated,
+  ]);
 
   useEffect(() => {
     if (canWorkTickets) return;
@@ -1572,12 +1721,16 @@ export function App() {
     if (item.label === "Assets") return isFeatureEnabled("assets.management");
     if (item.label === "Wissen") return isFeatureEnabled("knowledge.base");
     if (item.label === "Berichte") return isFeatureEnabled("reporting.service");
+    if (item.label === "Wiedervorlagen") return experienceWorkspaceEnabled;
     return true;
   });
   const workSections = canWorkTickets
     ? featureSections
     : featureSections.filter(
-        (item) => item.label === "Übersicht" || item.label === "Tickets",
+        (item) =>
+          item.label === "Übersicht" ||
+          item.label === "Tickets" ||
+          item.label === "Wiedervorlagen",
       );
 
   useEffect(() => {
@@ -1585,6 +1738,7 @@ export function App() {
       Assets: "assets.management",
       Berichte: "reporting.service",
       Wissen: "knowledge.base",
+      Wiedervorlagen: "experience.workspace",
     };
     const featureKey = sectionFeature[section];
     if (
@@ -1833,7 +1987,14 @@ export function App() {
               title: "Benachrichtigungen aktualisiert",
               tone: "success" as const,
             }
-          : null;
+          : experienceNotice
+            ? {
+                id: `experience:${experienceNotice.tone}:${experienceNotice.message}`,
+                message: experienceNotice.message,
+                title: "Wiedervorlagen",
+                tone: experienceNotice.tone,
+              }
+            : null;
 
   useEffect(() => {
     if (!workspaceLiveMessage) setDismissedLiveMessage(null);
@@ -2271,6 +2432,21 @@ export function App() {
           activeTenant &&
           isFeatureEnabled("reporting.service") ? (
           <ServiceReporting tenantId={activeTenant.id} />
+        ) : section === "Wiedervorlagen" &&
+          activeTenant &&
+          experienceWorkspaceEnabled ? (
+          <ExperienceWorkspace
+            onChanged={() =>
+              setExperienceFollowUpsRevision((revision) => revision + 1)
+            }
+            onNotice={(message, tone) => setExperienceNotice({ message, tone })}
+            onOpenTicket={(ticketId) => {
+              setSection("Tickets");
+              setSelectedTicketId(ticketId);
+            }}
+            tenantId={activeTenant.id}
+            tickets={view.tickets}
+          />
         ) : section === "Tickets" ? (
           <>
             <section className="ticket-panel panel ticket-module">
@@ -2579,6 +2755,18 @@ export function App() {
               </article>
 
               <aside className="side-stack">
+                {activeTenant && experienceWorkspaceEnabled && (
+                  <MyDayCard
+                    onOpenFollowUps={() => setSection("Wiedervorlagen")}
+                    onOpenTicket={(ticketId) => {
+                      setSection("Tickets");
+                      setSelectedTicketId(ticketId);
+                    }}
+                    refreshKey={experienceFollowUpsRevision}
+                    tenantId={activeTenant.id}
+                    tickets={view.tickets}
+                  />
+                )}
                 <article className="panel activity-panel">
                   <div className="panel-heading">
                     <div>

@@ -982,6 +982,100 @@ begin
   end;
 end;
 $$;
+
+-- 0057 Experience/KI foundation: a Tenant A record must not be observable by
+-- a Tenant B member, and anon retains no table privilege.  The AI queue is
+-- metadata-only and has no browser table grant at all.
+insert into public.workspace_preferences (tenant_id, user_id, preferences)
+values (
+  '10000000-0000-4000-8000-000000000001',
+  '00000000-0000-4000-8000-000000000001',
+  '{"theme":"dark","density":"compact"}'::jsonb
+);
+insert into public.experience_follow_ups (
+  tenant_id, owner_id, ticket_id, title, description, due_at, priority
+) values (
+  '10000000-0000-4000-8000-000000000001',
+  '00000000-0000-4000-8000-000000000001',
+  '17000000-0000-4000-8000-000000000001',
+  'Rückfrage', 'Rückfrage nach Abschluss', timezone('utc', now()), 'normal'
+);
+insert into public.ticket_resolution_confirmations (
+  tenant_id, ticket_id, confirmed_by, confirmed, comment
+) values (
+  '10000000-0000-4000-8000-000000000001',
+  '17000000-0000-4000-8000-000000000001',
+  '00000000-0000-4000-8000-000000000001', true, 'Bestätigt'
+);
+insert into public.tenant_ai_provider_approvals (
+  tenant_id, provider_key, enabled, allowed_purposes, approved_by, approved_at
+) values (
+  '10000000-0000-4000-8000-000000000001',
+  'nextdesk-managed', true, array['general_draft']::text[],
+  '00000000-0000-4000-8000-000000000001', timezone('utc', now())
+);
+
+begin;
+set local role service_role;
+do $$
+declare
+  queued uuid;
+begin
+  select request_id into queued
+  from public.queue_ai_draft_request(
+    '10000000-0000-4000-8000-000000000001',
+    '00000000-0000-4000-8000-000000000001',
+    'nextdesk-managed', 'general_draft', 'none', null, 12, 16, 1
+  );
+  if queued is null then
+    raise exception 'AI metadata queue did not return a request id';
+  end if;
+end;
+$$;
+reset role;
+commit;
+
+begin;
+set local "request.jwt.claim.sub" = '00000000-0000-4000-8000-000000000004';
+set local role authenticated;
+do $$
+begin
+  if (select count(*) from public.workspace_preferences) <> 0
+    or (select count(*) from public.experience_follow_ups) <> 0
+    or (select count(*) from public.ticket_resolution_confirmations) <> 0
+    or (select count(*) from public.tenant_ai_provider_approvals) <> 0 then
+    raise exception 'Tenant B member could see 0057 data from Tenant A';
+  end if;
+  if has_table_privilege('authenticated', 'public.ai_draft_requests', 'select')
+    or has_table_privilege('authenticated', 'public.ai_draft_requests', 'insert')
+    or has_function_privilege(
+      'authenticated',
+      'public.queue_ai_draft_request(uuid, uuid, text, text, text, uuid, integer, integer, integer)',
+      'execute'
+    ) then
+    raise exception 'Authenticated users must not access AI queue metadata or RPC directly';
+  end if;
+end;
+$$;
+reset role;
+rollback;
+
+do $$
+begin
+  if has_table_privilege('anon', 'public.workspace_preferences', 'select')
+    or has_table_privilege('anon', 'public.experience_follow_ups', 'select')
+    or has_table_privilege('anon', 'public.ticket_resolution_confirmations', 'select')
+    or has_table_privilege('anon', 'public.tenant_ai_provider_approvals', 'select')
+    or has_table_privilege('anon', 'public.ai_draft_requests', 'select')
+    or has_function_privilege(
+      'anon',
+      'public.queue_ai_draft_request(uuid, uuid, text, text, text, uuid, integer, integer, integer)',
+      'execute'
+    ) then
+    raise exception 'anon retained access to 0057 Experience or AI data';
+  end if;
+end;
+$$;
 SQL
 
 echo "PostgreSQL 16 migration and RLS integration checks passed."
