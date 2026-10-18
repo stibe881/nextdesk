@@ -16,6 +16,7 @@ import { TicketTemplates } from "./ticket-templates";
 export type TenantAdminSettingsProps = {
   tenantId: string;
   onClose: () => void;
+  onBrandingUpdated?: () => void;
 };
 
 type SsoProvider = "oidc" | "saml" | "azure_ad";
@@ -623,6 +624,7 @@ function realValue(value: string | null | undefined): string {
 export function TenantAdminSettings({
   tenantId,
   onClose,
+  onBrandingUpdated,
 }: TenantAdminSettingsProps) {
   const [settings, setSettings] = useState<SettingsData | null>(null);
   const [userDirectory, setUserDirectory] = useState<TenantUserDirectory>({
@@ -991,6 +993,7 @@ export function TenantAdminSettings({
         branding: nextBranding,
       });
       await loadData();
+      onBrandingUpdated?.();
       setSuccess("Corporate Design und Portalname wurden gespeichert.");
     } catch (nextError) {
       setError(

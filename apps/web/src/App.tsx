@@ -145,6 +145,11 @@ type TenantFeatureFlag = {
   key: string;
 };
 
+type TenantWorkspaceBranding = {
+  logoUrl: string | null;
+  portalName: string;
+};
+
 const sections: readonly { label: Section; Icon: LucideIcon }[] = [
   { label: "Übersicht", Icon: LayoutDashboard },
   { label: "Tickets", Icon: Ticket },
@@ -249,6 +254,17 @@ function displayAuthError(message: string): string {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function usableTenantLogoUrl(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim();
+  try {
+    const url = new URL(normalized);
+    return url.protocol === "https:" ? url.toString() : null;
+  } catch {
+    return null;
+  }
 }
 
 function isTicketScope(value: unknown): value is TicketScope {
@@ -835,6 +851,9 @@ export function App() {
   const [tenantFeatures, setTenantFeatures] = useState<Record<string, boolean>>(
     {},
   );
+  const [tenantWorkspaceBranding, setTenantWorkspaceBranding] =
+    useState<TenantWorkspaceBranding | null>(null);
+  const [tenantBrandingRevision, setTenantBrandingRevision] = useState(0);
   const notificationButtonRef = useRef<HTMLButtonElement>(null);
   const notificationPanelRef = useRef<HTMLElement>(null);
   const commandInputRef = useRef<HTMLInputElement>(null);
@@ -901,6 +920,7 @@ export function App() {
       setPersonalSettingsOpen(false);
       setSsoEnforced(false);
       setTenantFeatures({});
+      setTenantWorkspaceBranding(null);
     });
 
     return () => {
@@ -1005,6 +1025,48 @@ export function App() {
     () => tenants.find((tenant) => tenant.id === activeTenantId) ?? null,
     [activeTenantId, tenants],
   );
+
+  useEffect(() => {
+    if (!supabase || !session || !activeTenant) {
+      setTenantWorkspaceBranding(null);
+      return;
+    }
+
+    let mounted = true;
+    void Promise.all([
+      supabase
+        .from("tenant_settings")
+        .select("portal_name")
+        .eq("tenant_id", activeTenant.id)
+        .maybeSingle(),
+      supabase
+        .from("tenant_branding")
+        .select("logo_path")
+        .eq("tenant_id", activeTenant.id)
+        .maybeSingle(),
+    ])
+      .then(([settingsResult, brandingResult]) => {
+        if (settingsResult.error) throw settingsResult.error;
+        if (brandingResult.error) throw brandingResult.error;
+        if (!mounted) return;
+        const portalName = settingsResult.data?.portal_name?.trim();
+        setTenantWorkspaceBranding({
+          logoUrl: usableTenantLogoUrl(brandingResult.data?.logo_path),
+          portalName: portalName || activeTenant.name,
+        });
+      })
+      .catch(() => {
+        if (!mounted) return;
+        setTenantWorkspaceBranding({
+          logoUrl: null,
+          portalName: activeTenant.name,
+        });
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [activeTenant, session, tenantBrandingRevision]);
 
   useEffect(() => {
     if (!supabase || !session || !activeTenant || !canWorkTickets) {
@@ -1512,6 +1574,12 @@ export function App() {
   ]
     .filter(Boolean)
     .join(" ");
+  const workspaceBrandName =
+    tenantWorkspaceBranding?.portalName ??
+    activeTenant?.name ??
+    productDefaults.productName;
+  const workspaceBrandLogo =
+    tenantWorkspaceBranding?.logoUrl ?? "/assets/nextdesk-logo-product.png";
 
   const visibleSections = isTenantAdmin
     ? [...workSections, { label: "Einstellungen" as const, Icon: Settings }]
@@ -1583,14 +1651,23 @@ export function App() {
   return (
     <div className={workspaceClassName}>
       <aside className="command-rail" aria-label="Hauptnavigation">
-        <div className="brand-lockup">
+        <div
+          className={
+            tenantWorkspaceBranding?.logoUrl
+              ? "brand-lockup brand-lockup--tenant"
+              : "brand-lockup"
+          }
+        >
           <img
-            alt=""
-            aria-hidden="true"
-            className="brand-logo-mark"
-            src="/assets/nextdesk-logo-product.png"
+            alt={`${workspaceBrandName} Logo`}
+            className={
+              tenantWorkspaceBranding?.logoUrl
+                ? "brand-logo-mark brand-logo-mark--tenant"
+                : "brand-logo-mark"
+            }
+            src={workspaceBrandLogo}
           />
-          <span>{productDefaults.productName}</span>
+          <span>{workspaceBrandName}</span>
         </div>
         <div className="navigation-cluster">
           <p className="navigation-label">ARBEITSBEREICH</p>
@@ -1932,6 +2009,9 @@ export function App() {
         ) : section === "Einstellungen" && activeTenant && isTenantAdmin ? (
           <>
             <TenantAdminSettings
+              onBrandingUpdated={() =>
+                setTenantBrandingRevision((revision) => revision + 1)
+              }
               onClose={() => setSection("Übersicht")}
               tenantId={activeTenant.id}
             />

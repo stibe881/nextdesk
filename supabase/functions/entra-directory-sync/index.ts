@@ -85,6 +85,11 @@ function optionalText(value: unknown, maximum = 160): string | null {
     : normalized.slice(0, maximum);
 }
 
+function optionalDirectoryLabel(value: unknown): string | null {
+  const normalized = optionalText(value);
+  return normalized && Array.from(normalized).length >= 2 ? normalized : null;
+}
+
 function asDirectoryPerson(
   value: GraphUser,
   tenantId: string,
@@ -93,7 +98,7 @@ function asDirectoryPerson(
   if (!isUuid(value.id) || value.userType !== "Member") return null;
   const email =
     optionalText(value.mail) ?? optionalText(value.userPrincipalName);
-  const displayName = optionalText(value.displayName);
+  const displayName = optionalDirectoryLabel(value.displayName);
   if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email) || !displayName) {
     return null;
   }
@@ -103,8 +108,8 @@ function asDirectoryPerson(
     entra_object_id: value.id,
     email: email.toLowerCase(),
     display_name: displayName,
-    job_title: optionalText(value.jobTitle),
-    source_department_name: optionalText(value.department),
+    job_title: optionalDirectoryLabel(value.jobTitle),
+    source_department_name: optionalDirectoryLabel(value.department),
     account_enabled: accountEnabled,
     inactive_at: accountEnabled ? null : syncedAt,
     last_synced_at: syncedAt,
@@ -262,9 +267,22 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
   try {
     const token = await graphAccessToken(configuration.entra_tenant_id);
     const graphPeople = await graphUsers(token);
-    const people = graphPeople
-      .map((person) => asDirectoryPerson(person, action.tenantId, startedAt))
-      .filter((person): person is DirectoryPerson => person !== null);
+    const objectIds = new Set<string>();
+    const emails = new Set<string>();
+    const people: DirectoryPerson[] = [];
+    for (const graphPerson of graphPeople) {
+      const person = asDirectoryPerson(graphPerson, action.tenantId, startedAt);
+      if (
+        !person ||
+        objectIds.has(person.entra_object_id) ||
+        emails.has(person.email)
+      ) {
+        continue;
+      }
+      objectIds.add(person.entra_object_id);
+      emails.add(person.email);
+      people.push(person);
+    }
 
     for (let offset = 0; offset < people.length; offset += 250) {
       const { error } = await context.supabaseAdmin
@@ -272,7 +290,13 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         .upsert(people.slice(offset, offset + 250), {
           onConflict: "tenant_id,entra_object_id",
         });
-      if (error) throw new Error("directory_upsert_failed");
+      if (error) {
+        console.error("directory_upsert_failed", {
+          code: error.code,
+          message: error.message,
+        });
+        throw new Error("directory_upsert_failed");
+      }
     }
 
     const { error: staleError } = await context.supabaseAdmin

@@ -319,6 +319,21 @@ pre {
     hue-rotate(239deg) brightness(84%) contrast(94%);
 }
 
+.brand-lockup--tenant {
+  align-items: center;
+}
+
+.brand-logo-mark--tenant {
+  width: 54px;
+  height: 36px;
+  filter: none;
+}
+
+.brand-lockup--tenant span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .brand-mark {
   display: flex;
   align-items: flex-end;
