@@ -13,7 +13,21 @@ type Action =
       ticketIds: string[];
       statusKey: string;
       confirmClose: boolean;
+    }
+  | {
+      type: "deleteTickets";
+      tenantId: string;
+      ticketIds: string[];
+      confirmDelete: boolean;
     };
+
+type AttachmentCleanupJob = {
+  cleanupId: string;
+  bucket: string;
+  path: string;
+};
+
+const TICKET_ATTACHMENT_BUCKET = "ticket-attachments";
 
 function headers(request: Request): HeadersInit {
   const origin = request.headers.get("origin");
@@ -86,6 +100,23 @@ function parseAction(value: unknown): Action | null {
       confirmClose: value.confirmClose === true,
     };
   }
+  if (
+    value.type === "deleteTickets" &&
+    hasOnlyKeys(value, ["type", "tenantId", "ticketIds", "confirmDelete"]) &&
+    Array.isArray(value.ticketIds) &&
+    value.ticketIds.length >= 1 &&
+    value.ticketIds.length <= 50 &&
+    value.ticketIds.every(isUuid) &&
+    new Set(value.ticketIds).size === value.ticketIds.length &&
+    typeof value.confirmDelete === "boolean"
+  ) {
+    return {
+      type: value.type,
+      tenantId: value.tenantId,
+      ticketIds: value.ticketIds,
+      confirmDelete: value.confirmDelete,
+    };
+  }
   return null;
 }
 
@@ -100,7 +131,11 @@ async function isActiveMember(admin: any, userId: string, tenantId: string) {
   return !error && Boolean(data);
 }
 
-function rpcError(request: Request, error: any): Response {
+function rpcError(
+  request: Request,
+  error: any,
+  operation: "status" | "delete",
+): Response {
   if (error?.message === "Bulk ticket close confirmation required") {
     return response(
       request,
@@ -108,24 +143,103 @@ function rpcError(request: Request, error: any): Response {
       409,
     );
   }
+  if (error?.message === "Bulk ticket delete confirmation required") {
+    return response(
+      request,
+      { error: { code: "bulk_ticket_delete_confirmation_required" } },
+      409,
+    );
+  }
+  if (error?.message === "Ticket deletion blocked by legal hold") {
+    return response(
+      request,
+      { error: { code: "bulk_ticket_delete_legal_hold" } },
+      409,
+    );
+  }
+  const prefix = operation === "delete" ? "bulk_ticket_delete" : "bulk_status";
   if (error?.code === "42501") {
     return response(
       request,
-      { error: { code: "bulk_status_permission_denied" } },
+      { error: { code: `${prefix}_permission_denied` } },
       403,
     );
   }
   if (error?.code === "P0002") {
     return response(
       request,
-      { error: { code: "bulk_status_target_missing" } },
+      { error: { code: `${prefix}_target_missing` } },
       404,
     );
   }
   if (error?.code === "22023") {
-    return response(request, { error: { code: "bulk_status_invalid" } }, 422);
+    return response(request, { error: { code: `${prefix}_invalid` } }, 422);
   }
-  return response(request, { error: { code: "bulk_status_failed" } }, 500);
+  return response(request, { error: { code: `${prefix}_failed` } }, 500);
+}
+
+function parseAttachmentCleanupJobs(
+  value: unknown,
+  tenantId: string,
+): AttachmentCleanupJob[] | null {
+  if (!Array.isArray(value)) return null;
+  const prefix = `${tenantId}/`;
+  const jobs: AttachmentCleanupJob[] = [];
+  for (const entry of value) {
+    if (
+      !isRecord(entry) ||
+      !isUuid(entry.cleanup_id) ||
+      entry.storage_bucket !== TICKET_ATTACHMENT_BUCKET ||
+      typeof entry.storage_object_path !== "string" ||
+      entry.storage_object_path.length < prefix.length + 38 ||
+      entry.storage_object_path.length > 256 ||
+      !entry.storage_object_path.startsWith(prefix)
+    )
+      return null;
+    jobs.push({
+      cleanupId: entry.cleanup_id,
+      bucket: entry.storage_bucket,
+      path: entry.storage_object_path,
+    });
+  }
+  return jobs;
+}
+
+async function processAttachmentCleanupQueue(
+  admin: any,
+  tenantId: string,
+): Promise<number | null> {
+  const { data, error } = await admin.rpc(
+    "claim_ticket_deletion_attachment_cleanup",
+    { p_tenant_id: tenantId, p_limit: 100 },
+  );
+  const jobs = error ? null : parseAttachmentCleanupJobs(data, tenantId);
+  if (!jobs) return null;
+
+  let pending = 0;
+  for (let index = 0; index < jobs.length; index += 100) {
+    const batch = jobs.slice(index, index + 100);
+    const { error } = await admin.storage
+      .from(TICKET_ATTACHMENT_BUCKET)
+      .remove(batch.map((job) => job.path));
+    const cleanupIds = batch.map((job) => job.cleanupId);
+    const rpcName = error
+      ? "release_ticket_deletion_attachment_cleanup"
+      : "complete_ticket_deletion_attachment_cleanup";
+    const { data: completed, error: completionError } = await admin.rpc(
+      rpcName,
+      { p_cleanup_ids: cleanupIds },
+    );
+    if (error || completionError || completed !== batch.length) {
+      pending += batch.length;
+      if (!error && !completionError) {
+        await admin.rpc("release_ticket_deletion_attachment_cleanup", {
+          p_cleanup_ids: cleanupIds,
+        });
+      }
+    }
+  }
+  return pending;
 }
 
 const handler = withSupabase({ auth: "user" }, async (request, context) => {
@@ -147,6 +261,11 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       403,
     );
   }
+
+  // Storage cleanup is best-effort here: all paths were already persisted in
+  // the server-only queue inside the deletion transaction and failures remain
+  // eligible for a later, tenant-scoped retry.
+  await processAttachmentCleanupQueue(context.supabaseAdmin, action.tenantId);
 
   if (action.type === "listStatusOptions") {
     const { data, error } = await context.supabaseAdmin
@@ -175,6 +294,42 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     });
   }
 
+  if (action.type === "deleteTickets") {
+    const { data, error } = await context.supabaseAdmin.rpc(
+      "bulk_delete_tickets",
+      {
+        p_actor_id: actorId,
+        p_tenant_id: action.tenantId,
+        p_ticket_ids: action.ticketIds,
+        p_confirm_delete: action.confirmDelete,
+      },
+    );
+    if (error) return rpcError(request, error, "delete");
+    if (!isRecord(data) || typeof data.deleted !== "number") {
+      return response(
+        request,
+        { error: { code: "bulk_ticket_delete_failed" } },
+        500,
+      );
+    }
+    const cleanupPending = await processAttachmentCleanupQueue(
+      context.supabaseAdmin,
+      action.tenantId,
+    );
+    return response(request, {
+      data: {
+        requested: typeof data.requested === "number" ? data.requested : 0,
+        deleted: data.deleted,
+        cleanupPending:
+          cleanupPending === null
+            ? typeof data.cleanupQueued === "number"
+              ? data.cleanupQueued
+              : 0
+            : cleanupPending,
+      },
+    });
+  }
+
   const { data, error } = await context.supabaseAdmin.rpc(
     "bulk_update_ticket_statuses",
     {
@@ -185,7 +340,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       p_confirm_close: action.confirmClose,
     },
   );
-  if (error) return rpcError(request, error);
+  if (error) return rpcError(request, error, "status");
   if (!isRecord(data) || typeof data.updated !== "number") {
     return response(request, { error: { code: "bulk_status_failed" } }, 500);
   }

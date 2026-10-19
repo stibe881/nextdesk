@@ -96,15 +96,24 @@ export async function functionErrorMessage(
       return "Für diese gespeicherte Ansicht fehlt Ihnen die erforderliche Berechtigung.";
     case "bulk_status_permission_denied":
     case "bulk_status_tenant_access_denied":
+    case "bulk_ticket_delete_permission_denied":
+    case "bulk_ticket_delete_tenant_access_denied":
       return "Für die ausgewählten Tickets fehlt Ihnen mindestens eine erforderliche Berechtigung.";
     case "saved_view_not_found":
       return "Die gespeicherte Ansicht ist nicht mehr verfügbar. Bitte laden Sie die Ticketliste neu.";
     case "bulk_status_target_missing":
+    case "bulk_ticket_delete_target_missing":
       return "Mindestens eines der ausgewählten Tickets ist nicht mehr verfügbar. Bitte laden Sie die Ticketliste neu.";
     case "bulk_status_invalid":
       return "Die ausgewählten Tickets oder der gewünschte Status sind ungültig. Bitte laden Sie die Ticketliste neu.";
+    case "bulk_ticket_delete_invalid":
+      return "Die ausgewählten Tickets sind ungültig. Bitte laden Sie die Ticketliste neu.";
     case "bulk_status_close_confirmation_required":
       return "Bitte bestätigen Sie den Abschluss der ausgewählten Tickets ausdrücklich.";
+    case "bulk_ticket_delete_confirmation_required":
+      return "Bitte bestätigen Sie die endgültige Löschung der ausgewählten Tickets ausdrücklich.";
+    case "bulk_ticket_delete_legal_hold":
+      return "Die endgültige Löschung ist für diesen Mandanten wegen eines aktiven Legal Hold gesperrt.";
     case "ticket_close_confirmation_required":
       return "Bitte bestätigen Sie den Ticketabschluss ausdrücklich, bevor der geschlossene Status gespeichert wird.";
     case "ticket_feature_disabled":

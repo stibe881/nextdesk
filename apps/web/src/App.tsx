@@ -2244,6 +2244,16 @@ export function App() {
   };
   const updateTicketSelection = (ticketId: string, selected: boolean) => {
     setTicketActionStatus("");
+    if (
+      selected &&
+      !selectedTicketIds.has(ticketId) &&
+      selectedTicketIds.size >= 50
+    ) {
+      setTicketActionStatus(
+        "Für eine Mehrfachaktion können höchstens 50 Tickets ausgewählt werden.",
+      );
+      return;
+    }
     setSelectedTicketIds((current) => {
       const next = new Set(current);
       if (selected) next.add(ticketId);
@@ -3064,6 +3074,16 @@ export function App() {
                       `${updated} Tickets wurden auf „${statusLabel}“ gesetzt.`,
                     );
                   }}
+                  onDeleted={(deleted, cleanupPending) => {
+                    clearTicketSelection();
+                    setTicketPage(0);
+                    setDashboardRevision((current) => current + 1);
+                    setTicketActionStatus(
+                      cleanupPending > 0
+                        ? `${deleted} Tickets wurden gelöscht. Die Bereinigung von ${cleanupPending} Dateianhängen ist protokolliert.`
+                        : `${deleted} Tickets wurden endgültig gelöscht.`,
+                    );
+                  }}
                   onClearSelection={clearTicketSelection}
                   selectedTicketIds={selectedTicketIds}
                   tenantId={activeTenant.id}
@@ -3728,11 +3748,13 @@ export function App() {
 
 function BulkTicketStatusActions({
   onApplied,
+  onDeleted,
   onClearSelection,
   selectedTicketIds,
   tenantId,
 }: {
   onApplied: (updated: number, statusLabel: string) => void;
+  onDeleted: (deleted: number, cleanupPending: number) => void;
   onClearSelection: () => void;
   selectedTicketIds: ReadonlySet<string>;
   tenantId: string;
@@ -3744,6 +3766,9 @@ function BulkTicketStatusActions({
   const [errorMessage, setErrorMessage] = useState("");
   const [closeConfirmationPending, setCloseConfirmationPending] =
     useState(false);
+  const [deleteConfirmationPending, setDeleteConfirmationPending] =
+    useState(false);
+  const [deleteTicketIds, setDeleteTicketIds] = useState<string[] | null>(null);
 
   useEffect(() => {
     if (!supabase) return;
@@ -3752,6 +3777,8 @@ function BulkTicketStatusActions({
     setStatusKey("");
     setErrorMessage("");
     setCloseConfirmationPending(false);
+    setDeleteConfirmationPending(false);
+    setDeleteTicketIds(null);
     void supabase.functions
       .invoke("ticket-bulk-status", {
         body: { type: "listStatusOptions", tenantId },
@@ -3780,12 +3807,18 @@ function BulkTicketStatusActions({
     };
   }, [tenantId]);
 
+  useEffect(() => {
+    setDeleteConfirmationPending(false);
+    setDeleteTicketIds(null);
+  }, [selectedTicketIds]);
+
   if (selectedTicketIds.size === 0) return null;
 
   const selectedStatus = statuses.find((status) => status.key === statusKey);
   async function updateStatus(confirmClose = false) {
     if (!supabase || !selectedStatus) return;
     if (selectedStatus.isClosed && !confirmClose) {
+      setDeleteConfirmationPending(false);
       setCloseConfirmationPending(true);
       return;
     }
@@ -3825,6 +3858,61 @@ function BulkTicketStatusActions({
     }
   }
 
+  function prepareTicketDeletion() {
+    if (selectedTicketIds.size > 50) {
+      setErrorMessage(
+        "Für eine Mehrfachlöschung können höchstens 50 Tickets ausgewählt werden.",
+      );
+      return;
+    }
+    setCloseConfirmationPending(false);
+    setDeleteTicketIds([...selectedTicketIds]);
+    setDeleteConfirmationPending(true);
+  }
+
+  async function deleteTickets() {
+    if (!supabase) return;
+    if (!deleteTicketIds || deleteTicketIds.length < 1) return;
+    setPending(true);
+    setErrorMessage("");
+    try {
+      const { data, error } = await supabase.functions.invoke(
+        "ticket-bulk-status",
+        {
+          body: {
+            type: "deleteTickets",
+            tenantId,
+            ticketIds: deleteTicketIds,
+            confirmDelete: true,
+          },
+        },
+      );
+      if (error) throw error;
+      if (
+        !isRecord(data) ||
+        !isRecord(data.data) ||
+        typeof data.data.deleted !== "number"
+      ) {
+        throw new Error("invalid_bulk_ticket_delete_response");
+      }
+      onDeleted(
+        data.data.deleted,
+        typeof data.data.cleanupPending === "number"
+          ? data.data.cleanupPending
+          : 0,
+      );
+    } catch (error: unknown) {
+      setErrorMessage(
+        await functionErrorMessage(
+          error,
+          "Die ausgewählten Tickets konnten nicht gelöscht werden.",
+        ),
+      );
+    } finally {
+      setPending(false);
+    }
+  }
+
   return (
     <form
       className="ticket-bulk-actions"
@@ -3847,6 +3935,7 @@ function BulkTicketStatusActions({
           onChange={(event) => {
             setStatusKey(event.target.value);
             setCloseConfirmationPending(false);
+            setDeleteConfirmationPending(false);
           }}
           value={statusKey}
         >
@@ -3867,6 +3956,8 @@ function BulkTicketStatusActions({
           disabled={pending}
           onClick={() => {
             setCloseConfirmationPending(false);
+            setDeleteConfirmationPending(false);
+            setDeleteTicketIds(null);
             onClearSelection();
           }}
           type="button"
@@ -3883,6 +3974,14 @@ function BulkTicketStatusActions({
             : selectedStatus?.isClosed
               ? "Abschluss vorbereiten"
               : "Status für Auswahl setzen"}
+        </button>
+        <button
+          className="ticket-bulk-actions__delete-button"
+          disabled={pending}
+          onClick={prepareTicketDeletion}
+          type="button"
+        >
+          Tickets löschen
         </button>
       </div>
       {closeConfirmationPending && selectedStatus?.isClosed && (
@@ -3914,6 +4013,46 @@ function BulkTicketStatusActions({
               className="secondary-button"
               disabled={pending}
               onClick={() => setCloseConfirmationPending(false)}
+              type="button"
+            >
+              Abbrechen
+            </button>
+          </div>
+        </div>
+      )}
+      {deleteConfirmationPending && deleteTicketIds && (
+        <div
+          aria-labelledby="bulk-delete-confirmation-title"
+          className="ticket-bulk-actions__confirmation ticket-bulk-actions__confirmation--danger"
+          role="group"
+        >
+          <div>
+            <strong id="bulk-delete-confirmation-title">
+              {deleteTicketIds.length} Tickets endgültig löschen?
+            </strong>
+            <p>
+              Tickets, Kommentare und zugehörige Einträge werden unwiderruflich
+              entfernt. Die Berechtigung <code>ticket.delete</code> wird für
+              jedes Ticket serverseitig erneut geprüft. Ein aktiver Legal Hold
+              sperrt die Löschung.
+            </p>
+          </div>
+          <div className="ticket-bulk-actions__confirmation-buttons">
+            <button
+              className="ticket-bulk-actions__delete-button"
+              disabled={pending}
+              onClick={() => void deleteTickets()}
+              type="button"
+            >
+              {deleteTicketIds.length} Tickets endgültig löschen
+            </button>
+            <button
+              className="secondary-button"
+              disabled={pending}
+              onClick={() => {
+                setDeleteConfirmationPending(false);
+                setDeleteTicketIds(null);
+              }}
               type="button"
             >
               Abbrechen

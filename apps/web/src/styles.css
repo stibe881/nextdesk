@@ -7548,6 +7548,28 @@ body:has(.ticket-detail) {
   gap: 8px;
 }
 
+.ticket-bulk-actions__delete-button {
+  border: 1px solid color-mix(in srgb, var(--danger) 58%, var(--border));
+  border-radius: 9px;
+  padding: 10px 14px;
+  background: var(--surface);
+  color: var(--danger);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.ticket-bulk-actions__delete-button:not(:disabled):hover {
+  border-color: var(--danger);
+  background: var(--danger);
+  color: white;
+}
+
+.ticket-bulk-actions__delete-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
 .ticket-bulk-actions__confirmation {
   grid-column: 1 / -1;
   display: flex;
@@ -7558,6 +7580,11 @@ body:has(.ticket-detail) {
   border-radius: 10px;
   padding: 12px 14px;
   background: color-mix(in srgb, var(--warning-soft) 72%, white);
+}
+
+.ticket-bulk-actions__confirmation--danger {
+  border-color: color-mix(in srgb, var(--danger) 48%, var(--border));
+  background: color-mix(in srgb, var(--danger-soft) 76%, var(--surface));
 }
 
 .ticket-bulk-actions__confirmation > div:first-child {

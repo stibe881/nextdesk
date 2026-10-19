@@ -2199,5 +2199,212 @@ begin
 end;
 $$;
 rollback;
+
+-- Permanent bulk deletion requires an explicit confirmation and the dedicated
+-- ticket.delete permission for every selected ticket. Legal holds block the
+-- mutation, department boundaries keep it atomic and the durable audit record
+-- survives the cascaded ticket history.
+do $$
+declare
+  result jsonb;
+  cleanup_job_id uuid;
+begin
+  if has_function_privilege('authenticated', 'public.bulk_delete_tickets(uuid, uuid, uuid[], boolean)', 'execute') then
+    raise exception 'authenticated may execute bulk_delete_tickets';
+  end if;
+  if not has_function_privilege('service_role', 'public.bulk_delete_tickets(uuid, uuid, uuid[], boolean)', 'execute') then
+    raise exception 'service_role may not execute bulk_delete_tickets';
+  end if;
+  if has_table_privilege('authenticated', 'public.ticket_deletion_attachment_cleanup', 'select')
+    or has_function_privilege('authenticated', 'public.claim_ticket_deletion_attachment_cleanup(uuid, integer)', 'execute')
+    or has_function_privilege('authenticated', 'public.complete_ticket_deletion_attachment_cleanup(uuid[])', 'execute')
+    or has_function_privilege('authenticated', 'public.release_ticket_deletion_attachment_cleanup(uuid[])', 'execute') then
+    raise exception 'authenticated retained ticket attachment cleanup access';
+  end if;
+  if not has_function_privilege('service_role', 'public.claim_ticket_deletion_attachment_cleanup(uuid, integer)', 'execute')
+    or not has_function_privilege('service_role', 'public.complete_ticket_deletion_attachment_cleanup(uuid[])', 'execute')
+    or not has_function_privilege('service_role', 'public.release_ticket_deletion_attachment_cleanup(uuid[])', 'execute') then
+    raise exception 'service_role may not maintain ticket attachment cleanup';
+  end if;
+
+  insert into public.tickets (
+    id, tenant_id, department_id, ticket_number, subject, description,
+    status_id, priority_id, requester_id
+  ) values
+    (
+      '1f000000-0000-4000-8000-000000000001',
+      '10000000-0000-4000-8000-000000000001',
+      '11000000-0000-4000-8000-000000000001',
+      'ICT-2026-DELETE01',
+      'Delete test ICT',
+      'Must be removed only with ticket.delete',
+      '13000000-0000-4000-8000-000000000001',
+      '14000000-0000-4000-8000-000000000001',
+      '00000000-0000-4000-8000-000000000001'
+    ),
+    (
+      '1f000000-0000-4000-8000-000000000002',
+      '10000000-0000-4000-8000-000000000001',
+      '12000000-0000-4000-8000-000000000002',
+      'INF-2026-DELETE01',
+      'Delete test Infrastructure',
+      'Must remain outside the ICT scope',
+      '13000000-0000-4000-8000-000000000001',
+      '14000000-0000-4000-8000-000000000001',
+      '00000000-0000-4000-8000-000000000003'
+    );
+  insert into public.ticket_comments (ticket_id, author_id, visibility, body)
+  values (
+    '1f000000-0000-4000-8000-000000000001',
+    '00000000-0000-4000-8000-000000000002',
+    'internal',
+    'Comment that must cascade with the deletion'
+  );
+  insert into public.ticket_attachments (
+    id, ticket_id, uploaded_by, storage_bucket, storage_object_path,
+    original_filename, content_type, byte_size, malware_status
+  ) values (
+    '1f000000-0000-4000-8000-000000000003',
+    '1f000000-0000-4000-8000-000000000001',
+    '00000000-0000-4000-8000-000000000002',
+    'ticket-attachments',
+    '10000000-0000-4000-8000-000000000001/1f000000-0000-4000-8000-000000000001/1f000000-0000-4000-8000-000000000004',
+    'delete-test.txt',
+    'text/plain',
+    12,
+    'clean'
+  );
+
+  begin
+    perform public.bulk_delete_tickets(
+      '00000000-0000-4000-8000-000000000002',
+      '10000000-0000-4000-8000-000000000001',
+      array['1f000000-0000-4000-8000-000000000001']::uuid[],
+      false
+    );
+    raise exception 'Unconfirmed bulk delete was accepted';
+  exception when raise_exception then
+    if sqlerrm <> 'Bulk ticket delete confirmation required' then
+      raise;
+    end if;
+  end;
+
+  update public.tenant_data_retention_policies
+  set legal_hold = true
+  where tenant_id = '10000000-0000-4000-8000-000000000001';
+  begin
+    perform public.bulk_delete_tickets(
+      '00000000-0000-4000-8000-000000000002',
+      '10000000-0000-4000-8000-000000000001',
+      array['1f000000-0000-4000-8000-000000000001']::uuid[],
+      true
+    );
+    raise exception 'Legal hold did not block bulk delete';
+  exception when raise_exception then
+    if sqlerrm <> 'Ticket deletion blocked by legal hold' then
+      raise;
+    end if;
+  end;
+  update public.tenant_data_retention_policies
+  set legal_hold = false
+  where tenant_id = '10000000-0000-4000-8000-000000000001';
+
+  begin
+    perform public.bulk_delete_tickets(
+      '00000000-0000-4000-8000-000000000002',
+      '10000000-0000-4000-8000-000000000001',
+      array['1f000000-0000-4000-8000-000000000001']::uuid[],
+      true
+    );
+    raise exception 'Ticket deletion without ticket.delete was accepted';
+  exception when insufficient_privilege then
+    null;
+  end;
+
+  insert into public.role_permissions (role_id, permission_code)
+  values ('16000000-0000-4000-8000-000000000002', 'ticket.delete');
+
+  begin
+    perform public.bulk_delete_tickets(
+      '00000000-0000-4000-8000-000000000002',
+      '10000000-0000-4000-8000-000000000001',
+      array[
+        '1f000000-0000-4000-8000-000000000001',
+        '1f000000-0000-4000-8000-000000000002'
+      ]::uuid[],
+      true
+    );
+    raise exception 'ICT agent deleted an Infrastructure ticket';
+  exception when insufficient_privilege then
+    null;
+  end;
+  if (select count(*) from public.tickets where id in (
+    '1f000000-0000-4000-8000-000000000001',
+    '1f000000-0000-4000-8000-000000000002'
+  )) <> 2 then
+    raise exception 'Denied bulk deletion partially changed tickets';
+  end if;
+
+  result := public.bulk_delete_tickets(
+    '00000000-0000-4000-8000-000000000002',
+    '10000000-0000-4000-8000-000000000001',
+    array['1f000000-0000-4000-8000-000000000001']::uuid[],
+    true
+  );
+  if (result->>'requested')::integer <> 1
+    or (result->>'deleted')::integer <> 1
+    or (result->>'cleanupQueued')::integer <> 1 then
+    raise exception 'Authorized bulk deletion returned an incomplete result';
+  end if;
+  if exists (
+    select 1 from public.tickets
+    where id = '1f000000-0000-4000-8000-000000000001'
+  ) or exists (
+    select 1 from public.ticket_comments
+    where ticket_id = '1f000000-0000-4000-8000-000000000001'
+  ) then
+    raise exception 'Authorized bulk deletion did not cascade ticket records';
+  end if;
+  if not exists (
+    select 1 from public.audit_logs
+    where tenant_id = '10000000-0000-4000-8000-000000000001'
+      and actor_id = '00000000-0000-4000-8000-000000000002'
+      and action = 'ticket.deleted'
+      and entity_type = 'ticket'
+      and entity_id = '1f000000-0000-4000-8000-000000000001'
+      and severity = 'warning'
+  ) then
+    raise exception 'Authorized bulk deletion did not write a durable audit record';
+  end if;
+  if not exists (
+    select 1 from public.ticket_deletion_attachment_cleanup
+    where tenant_id = '10000000-0000-4000-8000-000000000001'
+      and ticket_id = '1f000000-0000-4000-8000-000000000001'
+      and status = 'pending'
+  ) then
+    raise exception 'Ticket deletion did not persist attachment cleanup before cascade';
+  end if;
+
+  perform set_config('request.jwt.claim.role', 'service_role', true);
+  select cleanup_id
+  into cleanup_job_id
+  from public.claim_ticket_deletion_attachment_cleanup(
+    '10000000-0000-4000-8000-000000000001',
+    1
+  );
+  if cleanup_job_id is null then
+    raise exception 'Ticket attachment cleanup was not claimable';
+  end if;
+  if public.complete_ticket_deletion_attachment_cleanup(array[cleanup_job_id]) <> 1 then
+    raise exception 'Ticket attachment cleanup was not completable';
+  end if;
+  if exists (
+    select 1 from public.ticket_deletion_attachment_cleanup
+    where id = cleanup_job_id
+  ) then
+    raise exception 'Completed ticket attachment cleanup remained queued';
+  end if;
+end;
+$$;
 SQL
 echo "PostgreSQL 16 migration and RLS integration checks passed."
