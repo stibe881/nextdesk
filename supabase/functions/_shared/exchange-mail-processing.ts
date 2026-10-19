@@ -436,7 +436,7 @@ export async function ensureExchangeMailServiceIdentity(
     const created = await (admin.auth.admin as any).createUser({
       email: SERVICE_EMAIL,
       email_confirm: true,
-      password: `N!d${crypto.randomUUID()}A${crypto.randomUUID()}`,
+      password: `N!d${crypto.randomUUID()}A`,
       app_metadata: { nextdesk_service_identity: "exchange_mail" },
       user_metadata: { display_name: SERVICE_NAME },
     });
