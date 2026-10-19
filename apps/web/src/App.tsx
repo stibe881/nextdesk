@@ -81,7 +81,6 @@ import {
   type ActiveIncidentNotice,
   type TeamQueue,
 } from "./agent-workbench";
-import { OpsCenterPanel } from "./ops-center";
 import { RequesterPortalPanel } from "./requester-portal";
 import { IntroTip } from "./intro-tips";
 import {
@@ -2874,10 +2873,6 @@ export function App() {
                 setTenantFeatureRevision((revision) => revision + 1)
               }
               onClose={() => setSection("Übersicht")}
-              tenantId={activeTenant.id}
-            />
-            <OpsCenterPanel
-              canManage={isTenantAdmin}
               tenantId={activeTenant.id}
             />
           </>
