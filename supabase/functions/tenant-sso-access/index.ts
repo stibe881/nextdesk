@@ -144,20 +144,60 @@ function azureTenantClaimStatus(
   return foundClaim ? "mismatch" : "missing";
 }
 
-function displayNameFromUser(user: any): string | null {
+function cleanDisplayName(value: unknown): string | null {
+  if (typeof value !== "string" || !value.trim()) return null;
+  return value.trim().replace(/\s+/g, " ").slice(0, 160);
+}
+
+function ssoDisplayNameFromUser(user: any): string | null {
+  const identities = Array.isArray(user?.identities) ? user.identities : [];
+  for (const identity of identities as AzureIdentity[]) {
+    if (identity?.provider !== "azure" || !isRecord(identity.identity_data)) {
+      continue;
+    }
+    const identityData = identity.identity_data;
+    const directCandidates = [
+      identityData.name,
+      identityData.display_name,
+      identityData.full_name,
+    ];
+    for (const candidate of directCandidates) {
+      const displayName = cleanDisplayName(candidate);
+      if (displayName) return displayName;
+    }
+    const givenName = cleanDisplayName(identityData.given_name);
+    const familyName = cleanDisplayName(identityData.family_name);
+    const combinedName = cleanDisplayName(
+      [givenName, familyName].filter(Boolean).join(" "),
+    );
+    if (combinedName) return combinedName;
+  }
+
   const metadata = isRecord(user?.user_metadata) ? user.user_metadata : {};
   const candidates = [metadata.full_name, metadata.name, metadata.display_name];
   for (const candidate of candidates) {
-    if (typeof candidate === "string" && candidate.trim()) {
-      return candidate.trim().replace(/\s+/g, " ").slice(0, 160);
-    }
+    const displayName = cleanDisplayName(candidate);
+    if (displayName) return displayName;
   }
-  const email = typeof user?.email === "string" ? user.email : "";
+  return null;
+}
+
+function displayNameFromEmail(email: unknown): string | null {
+  if (typeof email !== "string") return null;
   const localPart = email
     .split("@", 1)[0]
     ?.replace(/[._-]+/g, " ")
     .trim();
-  return localPart && localPart.length >= 2 ? localPart.slice(0, 160) : null;
+  if (!localPart || localPart.length < 2) return null;
+  return localPart
+    .split(/\s+/)
+    .filter(Boolean)
+    .map(
+      (part) =>
+        `${part.slice(0, 1).toLocaleUpperCase("de-CH")}${part.slice(1)}`,
+    )
+    .join(" ")
+    .slice(0, 160);
 }
 
 async function ensureTenantRole(
@@ -268,10 +308,18 @@ async function provisionSsoPerson(
     .maybeSingle();
   if (membershipError) return "failed";
   if (existing?.status === "removed") return "removed";
-  // A verified SSO person can sign in repeatedly. Once their membership exists,
-  // do not repeat optional directory/profile writes; a transient write failure
-  // must never lock an already authorized employee out of the tenant.
-  if (existing?.status === "active") return "existing";
+  const ssoDisplayName = ssoDisplayNameFromUser(user);
+  // An existing authorised person must never be blocked by an optional profile
+  // write. A later Entra login nevertheless refreshes a previously missing or
+  // stale display name when the provider supplies a trusted profile claim.
+  if (existing?.status === "active") {
+    if (ssoDisplayName) {
+      await admin
+        .from("user_profiles")
+        .upsert({ id: userId, display_name: ssoDisplayName });
+    }
+    return "existing";
+  }
 
   const { data: invitationData, error: invitationError } = await admin
     .from("tenant_user_invitations")
@@ -306,7 +354,9 @@ async function provisionSsoPerson(
   if (membershipWriteError) return "failed";
 
   const displayName =
-    invitation?.display_name?.trim() || displayNameFromUser(user);
+    ssoDisplayName ??
+    invitation?.display_name?.trim() ??
+    displayNameFromEmail(user?.email);
   if (displayName) {
     const { error: profileError } = await admin
       .from("user_profiles")

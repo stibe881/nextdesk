@@ -231,7 +231,18 @@ function statusClass(value: string): string {
 
 function displayNameFromEmail(email: string | undefined): string {
   if (!email) return "Support-Team";
-  return (email.split("@")[0] ?? email).replaceAll(/[._-]/g, " ");
+  const localPart = (email.split("@")[0] ?? email)
+    .replaceAll(/[._-]/g, " ")
+    .trim();
+  const readableName = localPart
+    .split(/\s+/)
+    .filter(Boolean)
+    .map(
+      (part) =>
+        `${part.slice(0, 1).toLocaleUpperCase("de-CH")}${part.slice(1)}`,
+    )
+    .join(" ");
+  return readableName || "Support-Team";
 }
 
 function initials(name: string): string {
@@ -805,7 +816,12 @@ function SignInScreen() {
     setMessage("");
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "azure",
-      options: { redirectTo: appRedirectUrl(), scopes: "email" },
+      options: {
+        redirectTo: appRedirectUrl(),
+        // Profile claims are the authoritative source for the visible Entra
+        // name. E-Mail remains necessary for tenant-domain routing.
+        scopes: "openid profile email",
+      },
     });
     if (error) {
       setStatus("error");

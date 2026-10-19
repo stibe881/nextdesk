@@ -152,9 +152,11 @@ export default function AuthScreen() {
                   provider: "azure",
                   options: {
                     redirectTo,
+                    // Profile claims keep the visible Entra name intact; email
+                    // remains required for serverseitige Mandantenrouting.
                     // Browser preview must redirect back to its HTTPS callback
                     // route instead of taking over the embedded frame.
-                    scopes: "email",
+                    scopes: "openid profile email",
                     skipBrowserRedirect: true,
                   },
                 });

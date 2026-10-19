@@ -348,7 +348,9 @@ export async function createNativeNextDeskOAuthUrl(
   authorizationUrl.search = new URLSearchParams({
     provider: "azure",
     redirect_to: redirectTo,
-    scopes: "email",
+    // Entra liefert mit dem Profil-Scope den Anzeigenamen in korrekter
+    // Schreibweise; E-Mail bleibt für die Mandantenzuordnung erforderlich.
+    scopes: "openid profile email",
     code_challenge: codeChallenge,
     code_challenge_method: "S256",
   }).toString();
