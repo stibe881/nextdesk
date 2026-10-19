@@ -751,8 +751,7 @@ export function ExchangeMailSettings({ tenantId }: { tenantId: string }) {
           ) : null}
           {consentUrl &&
           status.channel &&
-          status.channel.status !== "verified" &&
-          status.channel.status !== "active" ? (
+          status.channel.lastErrorCode === "exchange_app_not_consented" ? (
             <p
               className="exchange-mail-settings__notice exchange-mail-settings__notice--warning"
               role="status"
@@ -767,6 +766,20 @@ export function ExchangeMailSettings({ tenantId }: { tenantId: string }) {
                   Microsoft-365-Freigabe öffnen{" "}
                   <ExternalLink aria-hidden="true" size={14} />
                 </a>
+              </span>
+            </p>
+          ) : null}
+          {status.channel?.lastErrorCode === "exchange_access_denied" ? (
+            <p
+              className="exchange-mail-settings__notice exchange-mail-settings__notice--warning"
+              role="status"
+            >
+              <TriangleAlert aria-hidden="true" size={17} />
+              <span>
+                Die Microsoft-365-Freigabe wurde erkannt. Für dieses
+                Support-Postfach fehlt noch die restriktive Exchange-Online-
+                RBAC-Zuweisung oder sie wird noch übernommen. Erst danach kann
+                die Verbindung geprüft und aktiviert werden.
               </span>
             </p>
           ) : null}
