@@ -7463,6 +7463,17 @@ body:has(.ticket-detail) {
   padding: 4px 18px 18px;
 }
 
+.ticket-panel .ticket-scope-metrics {
+  margin: 4px 22px 18px;
+}
+
+.metric-card--active {
+  border-color: var(--primary);
+  box-shadow:
+    0 0 0 3px var(--primary-soft),
+    var(--shadow-sm);
+}
+
 .ticket-list {
   display: grid;
   gap: 10px;
@@ -7499,6 +7510,68 @@ body:has(.ticket-detail) {
   to {
     background-position: -140% 0;
   }
+}
+
+.ticket-list-filters {
+  margin: 12px 22px 16px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 14px 16px 16px;
+  background: var(--surface-subtle);
+}
+
+.ticket-list-filters__heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ticket-list-filters__heading .eyebrow {
+  margin: 0 0 2px;
+}
+
+.ticket-list-filters__heading h3 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 15px;
+}
+
+.ticket-list-filters__controls {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(160px, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.ticket-list-filters__controls label {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.ticket-list-filters__controls label > span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.ticket-list-filters__controls select {
+  width: 100%;
+  min-width: 0;
+  min-height: 38px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 0 9px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+}
+
+.ticket-list-filters__controls select:focus-visible {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 1px;
 }
 
 .ticket-load-more {
@@ -7772,6 +7845,24 @@ body:has(.ticket-detail) {
 }
 
 @media (max-width: 720px) {
+  .ticket-panel .ticket-scope-metrics {
+    margin-inline: 12px;
+  }
+
+  .ticket-list-filters {
+    margin-inline: 12px;
+    padding: 14px;
+  }
+
+  .ticket-list-filters__heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .ticket-list-filters__controls {
+    grid-template-columns: 1fr 1fr;
+  }
+
   .ticket-bulk-actions {
     grid-template-columns: 1fr;
   }

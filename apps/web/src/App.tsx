@@ -59,6 +59,8 @@ import {
   loadLiveDashboard,
   loadProfileName,
   type LiveDashboardSnapshot,
+  type TicketAgentOption,
+  type TicketFilterCatalog,
   type TenantOption,
 } from "./lib/live-dashboard";
 import { acceptTenantInvitations } from "./lib/tenant-invitations";
@@ -91,7 +93,6 @@ import {
 import { functionErrorMessage } from "./lib/function-error";
 import { resolveTenantSsoAccess } from "./lib/tenant-sso-access";
 import {
-  matchesTicketSearch,
   parseTicketSearch,
   removeTicketSearchClause,
 } from "./lib/ticket-search";
@@ -131,6 +132,8 @@ type DashboardView = {
   metrics: DashboardMetrics;
   serviceHealth: readonly ServiceHealth[];
   ticketCount: number;
+  ticketAgents?: readonly TicketAgentOption[];
+  ticketFilterCatalog?: TicketFilterCatalog;
   ticketListNote?: string;
   tickets: readonly DashboardTicket[];
   updatedAt: string;
@@ -151,11 +154,23 @@ type NotificationItem = {
   ticket: NotificationTicketReference | null;
 };
 
+type TicketSortBy = "updated" | "agent" | "status" | "department" | "priority";
+type TicketSortDirection = "asc" | "desc";
 type SavedTicketViewFilters = {
+  agent: string;
+  department: string;
+  priority: string;
   query: string;
   queue: string;
+  sortBy: TicketSortBy;
+  sortDirection: TicketSortDirection;
+  status: string;
   ticketScope: TicketScope;
 };
+type TicketListRefinement = Pick<
+  SavedTicketViewFilters,
+  "agent" | "department" | "priority" | "sortBy" | "sortDirection" | "status"
+>;
 
 type SavedTicketView = {
   createdAt: string;
@@ -212,6 +227,14 @@ const DEFAULT_WORKSPACE_PREFERENCES: WorkspacePreferences = {
   startSection: "Übersicht",
   ticketSplitView: false,
   theme: "system",
+};
+const DEFAULT_TICKET_LIST_REFINEMENT: TicketListRefinement = {
+  agent: "all",
+  department: "all",
+  priority: "all",
+  sortBy: "updated",
+  sortDirection: "desc",
+  status: "all",
 };
 
 const ignoreUnreadMentions = () => undefined;
@@ -279,6 +302,89 @@ function MetricTrend({ trend }: { trend: DashboardMetricTrend | undefined }) {
       <Icon aria-hidden="true" size={14} strokeWidth={2} />
       {text}
     </span>
+  );
+}
+
+function TicketScopeMetricTiles({
+  canWorkTickets,
+  metrics,
+  onOpenScope,
+  selectedScope,
+  trends,
+}: {
+  canWorkTickets: boolean;
+  metrics: DashboardMetrics;
+  onOpenScope: (scope: TicketScope) => void;
+  selectedScope: TicketScope | null;
+  trends: DashboardMetricTrends;
+}) {
+  const className = (scope: TicketScope, emphasis = false) =>
+    `metric-card metric-button${emphasis ? " emphasis" : ""}${
+      selectedScope === scope ? " metric-card--active" : ""
+    }`;
+
+  return (
+    <section
+      className="metric-strip ticket-scope-metrics"
+      aria-label="Ticket-Schnellfilter"
+    >
+      <button
+        aria-pressed={selectedScope === "mine"}
+        className={className("mine", true)}
+        onClick={() => onOpenScope("mine")}
+        type="button"
+      >
+        <p>Meine Tickets</p>
+        <div>
+          <strong>{metricDisplay(metrics.mine)}</strong>
+        </div>
+        <MetricTrend trend={trends.mine} />
+        <small>{metrics.mineDetail}</small>
+      </button>
+      {canWorkTickets && (
+        <>
+          <button
+            aria-pressed={selectedScope === "unassigned"}
+            className={className("unassigned")}
+            onClick={() => onOpenScope("unassigned")}
+            type="button"
+          >
+            <p>Nicht zugewiesene Tickets</p>
+            <div>
+              <strong>{metricDisplay(metrics.unassigned)}</strong>
+            </div>
+            <MetricTrend trend={trends.unassigned} />
+            <small>{metrics.unassignedDetail}</small>
+          </button>
+          <button
+            aria-pressed={selectedScope === "open"}
+            className={className("open")}
+            onClick={() => onOpenScope("open")}
+            type="button"
+          >
+            <p>Offene Tickets</p>
+            <div>
+              <strong>{metricDisplay(metrics.open)}</strong>
+            </div>
+            <MetricTrend trend={trends.open} />
+            <small>{metrics.openDetail}</small>
+          </button>
+          <button
+            aria-pressed={selectedScope === "closed"}
+            className={className("closed")}
+            onClick={() => onOpenScope("closed")}
+            type="button"
+          >
+            <p>Gelöste Tickets</p>
+            <div>
+              <strong>{metricDisplay(metrics.closed)}</strong>
+            </div>
+            <MetricTrend trend={trends.closed} />
+            <small>{metrics.closedDetail}</small>
+          </button>
+        </>
+      )}
+    </section>
   );
 }
 
@@ -385,6 +491,48 @@ function isTicketScope(value: unknown): value is TicketScope {
     value === "open" ||
     value === "closed"
   );
+}
+
+function isTicketSortBy(value: unknown): value is TicketSortBy {
+  return (
+    value === "updated" ||
+    value === "agent" ||
+    value === "status" ||
+    value === "department" ||
+    value === "priority"
+  );
+}
+
+function ticketListRefinementFromValue(
+  value: Record<string, unknown>,
+): TicketListRefinement | null {
+  const textFilter = (key: string) => {
+    const raw = value[key];
+    if (raw === undefined) return "all";
+    if (typeof raw !== "string") return null;
+    const normalized = raw.trim();
+    return normalized && !/[\u0000-\u001f\u007f-\u009f]/u.test(normalized)
+      ? normalized
+      : "all";
+  };
+  const agent = textFilter("agent");
+  const status = textFilter("status");
+  const department = textFilter("department");
+  const priority = textFilter("priority");
+  const sortBy = value.sortBy === undefined ? "updated" : value.sortBy;
+  const sortDirection =
+    value.sortDirection === undefined ? "desc" : value.sortDirection;
+  if (
+    !agent ||
+    !status ||
+    !department ||
+    !priority ||
+    !isTicketSortBy(sortBy) ||
+    (sortDirection !== "asc" && sortDirection !== "desc")
+  ) {
+    return null;
+  }
+  return { agent, department, priority, sortBy, sortDirection, status };
 }
 
 function isSection(value: unknown): value is Section {
@@ -497,9 +645,12 @@ function savedTicketViewFromValue(value: unknown): SavedTicketView | null {
     !isTicketScope(value.filters.ticketScope)
   )
     return null;
+  const refinement = ticketListRefinementFromValue(value.filters);
+  if (!refinement) return null;
   return {
     createdAt: value.createdAt,
     filters: {
+      ...refinement,
       query: value.filters.query,
       queue: value.filters.queue,
       ticketScope: value.filters.ticketScope,
@@ -1202,6 +1353,8 @@ export function App() {
   const [period, setPeriod] = useState<Period>("Heute");
   const [queue, setQueue] = useState("alle");
   const [ticketScope, setTicketScope] = useState<TicketScope>("all");
+  const [ticketListRefinement, setTicketListRefinement] =
+    useState<TicketListRefinement>(DEFAULT_TICKET_LIST_REFINEMENT);
   const [metricTicketFilter, setMetricTicketFilter] =
     useState<MetricTicketFilter | null>(null);
   const [query, setQuery] = useState("");
@@ -1878,7 +2031,17 @@ export function App() {
 
   useEffect(() => {
     setTicketPage(0);
-  }, [activeTenant?.id, dashboardRevision, period]);
+  }, [
+    activeTenant?.id,
+    canWorkTickets,
+    dashboardRevision,
+    metricTicketFilter,
+    period,
+    query,
+    queue,
+    ticketListRefinement,
+    ticketScope,
+  ]);
 
   useEffect(() => {
     setSelectedTicketIds(new Set());
@@ -1887,13 +2050,29 @@ export function App() {
   }, [activeTenant?.id]);
 
   useEffect(() => {
+    setSelectedTicketIds(new Set());
+    setTicketActionStatus("");
+  }, [ticketListRefinement]);
+
+  useEffect(() => {
     if (!session || !activeTenant) return;
 
     let mounted = true;
     setDashboardLoading(true);
     if (ticketPage === 0) setSnapshot(null);
     setErrorMessage("");
-    void loadLiveDashboard(activeTenant, period, ticketPage)
+    void loadLiveDashboard(
+      activeTenant,
+      period,
+      ticketPage,
+      ticketListRefinement,
+      {
+        metricTicketIds: metricTicketFilter?.ticketIds ?? null,
+        query,
+        queue,
+        scope: canWorkTickets ? ticketScope : "mine",
+      },
+    )
       .then((nextSnapshot) => {
         if (!mounted) return;
         setSnapshot((current) => {
@@ -1922,7 +2101,7 @@ export function App() {
           if (tickets.length < nextSnapshot.ticketCount) {
             return {
               ...mergedSnapshot,
-              ticketListNote: `Die Liste zeigt ${tickets.length} von ${nextSnapshot.ticketCount} autorisierten Tickets.`,
+              ticketListNote: `Die Liste zeigt ${tickets.length} von ${nextSnapshot.ticketCount} passenden Tickets.`,
             };
           }
           const { ticketListNote: _ticketListNote, ...completeSnapshot } =
@@ -1946,7 +2125,19 @@ export function App() {
     return () => {
       mounted = false;
     };
-  }, [activeTenant, dashboardRevision, period, session, ticketPage]);
+  }, [
+    activeTenant,
+    dashboardRevision,
+    canWorkTickets,
+    metricTicketFilter,
+    period,
+    query,
+    queue,
+    session,
+    ticketListRefinement,
+    ticketPage,
+    ticketScope,
+  ]);
 
   async function signOut() {
     if (!supabase) return;
@@ -2142,15 +2333,58 @@ export function App() {
         updatedAt: "wird geladen",
       })
     : previewView;
-  const queueOptions = useMemo(
-    () =>
+  const queueOptions = useMemo<readonly [string, string][]>(() => {
+    const configuredQueues = view.ticketFilterCatalog?.departments ?? [];
+    if (configuredQueues.length > 0) {
+      return configuredQueues.map((department): [string, string] => [
+        department.key,
+        department.label,
+      ]);
+    }
+    return Array.from(
+      new Map(
+        view.tickets.map((ticket) => [ticket.queue, ticket.queueLabel]),
+      ).entries(),
+    ) as [string, string][];
+  }, [view.ticketFilterCatalog?.departments, view.tickets]);
+  const ticketFilterOptions = useMemo(() => {
+    const collator = new Intl.Collator("de-CH", { sensitivity: "base" });
+    const statuses =
+      view.ticketFilterCatalog?.statuses ??
+      Array.from(new Set(view.tickets.map((ticket) => ticket.state)))
+        .filter(Boolean)
+        .sort(collator.compare);
+    const priorities =
+      view.ticketFilterCatalog?.priorities ??
       Array.from(
-        new Map(
-          view.tickets.map((ticket) => [ticket.queue, ticket.queueLabel]),
-        ).entries(),
-      ),
-    [view.tickets],
-  );
+        new Set(
+          view.tickets.map((ticket) => ticket.priority ?? "Ohne Priorität"),
+        ),
+      )
+        .filter(Boolean)
+        .sort(collator.compare);
+    const departments =
+      view.ticketFilterCatalog?.departments ??
+      queueOptions
+        .map(([key, label]) => ({ key, label }))
+        .sort((left, right) => collator.compare(left.label, right.label));
+    const agentsById = new Map(
+      (view.ticketAgents ?? []).map((agent) => [agent.id, agent]),
+    );
+    for (const ticket of view.tickets) {
+      if (!ticket.assignedAgentId || !ticket.assignedAgentName) continue;
+      agentsById.set(ticket.assignedAgentId, {
+        displayName: ticket.assignedAgentName,
+        id: ticket.assignedAgentId,
+      });
+    }
+    const agents = [...agentsById.values()].sort(
+      (left, right) =>
+        collator.compare(left.displayName, right.displayName) ||
+        left.id.localeCompare(right.id),
+    );
+    return { agents, departments, priorities, statuses };
+  }, [queueOptions, view.ticketAgents, view.ticketFilterCatalog, view.tickets]);
   const parsedTicketSearch = useMemo(() => parseTicketSearch(query), [query]);
   const effectiveTicketScope = canWorkTickets ? ticketScope : "mine";
   const metricTicketIds = useMemo(
@@ -2164,29 +2398,12 @@ export function App() {
     ).length;
     return loadedMetricTicketCount < metricTicketIds.size;
   }, [metricTicketIds, view.tickets]);
-  const filteredTickets = useMemo(
-    () =>
-      view.tickets.filter((ticket) => {
-        const inQueue = queue === "alle" || ticket.queue === queue;
-        const inScope =
-          effectiveTicketScope === "all" ||
-          (effectiveTicketScope === "mine" && ticket.assignedToCurrentUser) ||
-          (effectiveTicketScope === "unassigned" && ticket.isUnassigned) ||
-          (effectiveTicketScope === "open" && !ticket.isClosed) ||
-          (effectiveTicketScope === "closed" && ticket.isClosed);
-        const matchesMetricTickets =
-          !metricTicketIds || metricTicketIds.has(ticket.recordId ?? ticket.id);
-        const match = matchesTicketSearch(ticket, parsedTicketSearch);
-        return inQueue && inScope && matchesMetricTickets && match;
-      }),
-    [
-      effectiveTicketScope,
-      metricTicketIds,
-      parsedTicketSearch,
-      queue,
-      view.tickets,
-    ],
-  );
+  const filteredTickets = useMemo(() => {
+    // Die Datenbank wendet sämtliche Filter und die globale Sortierung vor der
+    // Pagination an. Eine lokale Filter- oder Sortierlogik würde diese Ordnung
+    // bei weiteren Seiten wieder verfälschen.
+    return view.tickets;
+  }, [view.tickets]);
   const splitSelectedTicket = useMemo(
     () =>
       filteredTickets.find(
@@ -2216,6 +2433,7 @@ export function App() {
     view.tickets.filter((ticket) => ticket.queue === queueKey).length;
   const openTicketScope = (scope: TicketScope) => {
     setMetricTicketFilter(null);
+    setTicketListRefinement(DEFAULT_TICKET_LIST_REFINEMENT);
     setTicketScope(canWorkTickets ? scope : "mine");
     setQueue("alle");
     setSection("Tickets");
@@ -2237,6 +2455,7 @@ export function App() {
     }
     setMetricTicketFilter(null);
     setQuery("");
+    setTicketListRefinement(DEFAULT_TICKET_LIST_REFINEMENT);
     setQueue(department.key);
     setTicketScope("open");
     setSection("Tickets");
@@ -2266,6 +2485,7 @@ export function App() {
     clearTicketSelection();
     setMetricTicketFilter(null);
     setQuery("");
+    setTicketListRefinement(DEFAULT_TICKET_LIST_REFINEMENT);
     setQueue("alle");
     setTicketScope(canWorkTickets ? "all" : "mine");
   };
@@ -2276,6 +2496,7 @@ export function App() {
   const openMetricTickets = (filter: MetricTicketFilter) => {
     clearTicketSelection();
     setQuery("");
+    setTicketListRefinement(DEFAULT_TICKET_LIST_REFINEMENT);
     setQueue("alle");
     setTicketScope(canWorkTickets ? "all" : "mine");
     setMetricTicketFilter(filter);
@@ -2289,6 +2510,13 @@ export function App() {
     open: "Offene Tickets",
     unassigned: "Nicht zugewiesene Tickets",
   };
+  const hasTicketListRefinement =
+    ticketListRefinement.agent !== "all" ||
+    ticketListRefinement.status !== "all" ||
+    ticketListRefinement.department !== "all" ||
+    ticketListRefinement.priority !== "all" ||
+    ticketListRefinement.sortBy !== "updated" ||
+    ticketListRefinement.sortDirection !== "desc";
   const isFeatureEnabled = (featureKey: string) =>
     !isSupabaseConfigured || tenantFeatures[featureKey] === true;
   const featureSections = sections.filter((item) => {
@@ -3047,17 +3275,52 @@ export function App() {
                   )}
                 </div>
               </div>
+              <TicketScopeMetricTiles
+                canWorkTickets={canWorkTickets}
+                metrics={view.metrics}
+                onOpenScope={openTicketScope}
+                selectedScope={metricTicketFilter ? null : effectiveTicketScope}
+                trends={dashboardTrends}
+              />
+              {activeTenant && isSupabaseConfigured && canWorkTickets && (
+                <TicketListFilters
+                  agents={ticketFilterOptions.agents}
+                  departments={ticketFilterOptions.departments}
+                  filters={ticketListRefinement}
+                  hasActiveFilters={hasTicketListRefinement}
+                  onChange={setTicketListRefinement}
+                  onClear={() =>
+                    setTicketListRefinement(DEFAULT_TICKET_LIST_REFINEMENT)
+                  }
+                  priorities={ticketFilterOptions.priorities}
+                  statuses={ticketFilterOptions.statuses}
+                />
+              )}
               {activeTenant && isSupabaseConfigured && canWorkTickets && (
                 <SavedTicketViews
                   canManageTenantViews={canManageTenantViews}
                   currentUserId={session?.user.id}
-                  filters={{ query, queue, ticketScope }}
+                  filters={{
+                    ...ticketListRefinement,
+                    query,
+                    queue,
+                    ticketScope,
+                  }}
                   loading={savedTicketViewsLoading}
                   onApply={(filters) => {
+                    clearTicketSelection();
                     setMetricTicketFilter(null);
                     setQuery(filters.query);
                     setQueue(filters.queue);
                     setTicketScope(filters.ticketScope);
+                    setTicketListRefinement({
+                      agent: filters.agent,
+                      department: filters.department,
+                      priority: filters.priority,
+                      sortBy: filters.sortBy,
+                      sortDirection: filters.sortDirection,
+                      status: filters.status,
+                    });
                   }}
                   onSavedViewsChange={setSavedTicketViews}
                   savedViews={savedTicketViews}
@@ -3179,14 +3442,16 @@ export function App() {
                     {...(query.trim() ||
                     queue !== "alle" ||
                     (canWorkTickets && ticketScope !== "all") ||
-                    metricTicketFilter
+                    metricTicketFilter ||
+                    hasTicketListRefinement
                       ? { onClearFilters: clearTicketFilters }
                       : {})}
                     hasActiveFilters={Boolean(
                       query.trim() ||
                       queue !== "alle" ||
                       (canWorkTickets && ticketScope !== "all") ||
-                      metricTicketFilter,
+                      metricTicketFilter ||
+                      hasTicketListRefinement,
                     )}
                     keyboardActiveTicketId={keyboardActiveTicketId}
                     loading={dashboardLoading && snapshot === null}
@@ -3277,60 +3542,13 @@ export function App() {
               </div>
             </section>
 
-            <section className="metric-strip" aria-label="Ticket-Schnellfilter">
-              <button
-                className="metric-card metric-button emphasis"
-                onClick={() => openTicketScope("mine")}
-                type="button"
-              >
-                <p>Meine Tickets</p>
-                <div>
-                  <strong>{metricDisplay(view.metrics.mine)}</strong>
-                </div>
-                <MetricTrend trend={dashboardTrends.mine} />
-                <small>{view.metrics.mineDetail}</small>
-              </button>
-              {canWorkTickets && (
-                <>
-                  <button
-                    className="metric-card metric-button"
-                    onClick={() => openTicketScope("unassigned")}
-                    type="button"
-                  >
-                    <p>Nicht zugewiesene Tickets</p>
-                    <div>
-                      <strong>{metricDisplay(view.metrics.unassigned)}</strong>
-                    </div>
-                    <MetricTrend trend={dashboardTrends.unassigned} />
-                    <small>{view.metrics.unassignedDetail}</small>
-                  </button>
-                  <button
-                    className="metric-card metric-button"
-                    onClick={() => openTicketScope("open")}
-                    type="button"
-                  >
-                    <p>Offene Tickets</p>
-                    <div>
-                      <strong>{metricDisplay(view.metrics.open)}</strong>
-                    </div>
-                    <MetricTrend trend={dashboardTrends.open} />
-                    <small>{view.metrics.openDetail}</small>
-                  </button>
-                  <button
-                    className="metric-card metric-button"
-                    onClick={() => openTicketScope("closed")}
-                    type="button"
-                  >
-                    <p>Gelöste Tickets</p>
-                    <div>
-                      <strong>{metricDisplay(view.metrics.closed)}</strong>
-                    </div>
-                    <MetricTrend trend={dashboardTrends.closed} />
-                    <small>{view.metrics.closedDetail}</small>
-                  </button>
-                </>
-              )}
-            </section>
+            <TicketScopeMetricTiles
+              canWorkTickets={canWorkTickets}
+              metrics={view.metrics}
+              onOpenScope={openTicketScope}
+              selectedScope={null}
+              trends={dashboardTrends}
+            />
 
             <section className="content-grid">
               <article className="ticket-panel panel">
@@ -4369,6 +4587,137 @@ function SavedTicketViews({
           {errorMessage || status}
         </p>
       )}
+    </section>
+  );
+}
+
+function TicketListFilters({
+  agents,
+  departments,
+  filters,
+  hasActiveFilters,
+  onChange,
+  onClear,
+  priorities,
+  statuses,
+}: {
+  agents: readonly TicketAgentOption[];
+  departments: readonly { key: string; label: string }[];
+  filters: TicketListRefinement;
+  hasActiveFilters: boolean;
+  onChange: (next: TicketListRefinement) => void;
+  onClear: () => void;
+  priorities: readonly string[];
+  statuses: readonly string[];
+}) {
+  const update = <Key extends keyof TicketListRefinement>(
+    key: Key,
+    value: TicketListRefinement[Key],
+  ) => onChange({ ...filters, [key]: value });
+
+  return (
+    <section
+      aria-labelledby="ticket-filter-heading"
+      className="ticket-list-filters"
+    >
+      <div className="ticket-list-filters__heading">
+        <div>
+          <p className="eyebrow">Liste verfeinern</p>
+          <h3 id="ticket-filter-heading">Filter &amp; Sortierung</h3>
+        </div>
+        {hasActiveFilters && (
+          <button className="text-button" onClick={onClear} type="button">
+            Filter zurücksetzen
+          </button>
+        )}
+      </div>
+      <div className="ticket-list-filters__controls">
+        <label>
+          <span>Agent</span>
+          <select
+            onChange={(event) => update("agent", event.target.value)}
+            value={filters.agent}
+          >
+            <option value="all">Alle Agenten</option>
+            <option value="mine">Mir zugewiesen</option>
+            <option value="unassigned">Nicht zugewiesen</option>
+            {agents.map((agent) => (
+              <option key={agent.id} value={agent.id}>
+                {agent.displayName}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <span>Status</span>
+          <select
+            onChange={(event) => update("status", event.target.value)}
+            value={filters.status}
+          >
+            <option value="all">Alle Status</option>
+            {statuses.map((status) => (
+              <option key={status} value={status}>
+                {status}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <span>Abteilung</span>
+          <select
+            onChange={(event) => update("department", event.target.value)}
+            value={filters.department}
+          >
+            <option value="all">Alle Abteilungen</option>
+            {departments.map((department) => (
+              <option key={department.key} value={department.key}>
+                {department.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <span>Priorität</span>
+          <select
+            onChange={(event) => update("priority", event.target.value)}
+            value={filters.priority}
+          >
+            <option value="all">Alle Prioritäten</option>
+            {priorities.map((priority) => (
+              <option key={priority} value={priority}>
+                {priority}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <span>Sortieren nach</span>
+          <select
+            onChange={(event) =>
+              update("sortBy", event.target.value as TicketSortBy)
+            }
+            value={filters.sortBy}
+          >
+            <option value="updated">Letzte Änderung</option>
+            <option value="agent">Agent</option>
+            <option value="status">Status</option>
+            <option value="department">Abteilung</option>
+            <option value="priority">Priorität</option>
+          </select>
+        </label>
+        <label>
+          <span>Reihenfolge</span>
+          <select
+            onChange={(event) =>
+              update("sortDirection", event.target.value as TicketSortDirection)
+            }
+            value={filters.sortDirection}
+          >
+            <option value="desc">Absteigend</option>
+            <option value="asc">Aufsteigend</option>
+          </select>
+        </label>
+      </div>
     </section>
   );
 }

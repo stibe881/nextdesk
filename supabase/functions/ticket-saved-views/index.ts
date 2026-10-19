@@ -5,7 +5,19 @@ const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 type TicketScope = "all" | "mine" | "unassigned" | "open" | "closed";
-type Filters = { query: string; queue: string; ticketScope: TicketScope };
+type TicketSortBy = "updated" | "agent" | "status" | "department" | "priority";
+type TicketSortDirection = "asc" | "desc";
+type Filters = {
+  agent: "all" | "mine" | "unassigned" | string;
+  department: string;
+  priority: string;
+  query: string;
+  queue: string;
+  sortBy: TicketSortBy;
+  sortDirection: TicketSortDirection;
+  status: string;
+  ticketScope: TicketScope;
+};
 type Action =
   | { type: "listSavedViews"; tenantId: string }
   | {
@@ -60,7 +72,17 @@ function hasOnlyKeys(value: Record<string, unknown>, keys: string[]): boolean {
 function parseFilters(value: unknown): Filters | null {
   if (
     !isRecord(value) ||
-    !hasOnlyKeys(value, ["query", "queue", "ticketScope"]) ||
+    !hasOnlyKeys(value, [
+      "query",
+      "queue",
+      "ticketScope",
+      "agent",
+      "status",
+      "department",
+      "priority",
+      "sortBy",
+      "sortDirection",
+    ]) ||
     typeof value.query !== "string" ||
     typeof value.queue !== "string" ||
     !["all", "mine", "unassigned", "open", "closed"].includes(
@@ -72,17 +94,47 @@ function parseFilters(value: unknown): Filters | null {
 
   const query = value.query.trim();
   const queue = value.queue.trim();
+  const agent = typeof value.agent === "string" ? value.agent.trim() : "all";
+  const status = typeof value.status === "string" ? value.status.trim() : "all";
+  const department =
+    typeof value.department === "string" ? value.department.trim() : "all";
+  const priority =
+    typeof value.priority === "string" ? value.priority.trim() : "all";
+  const sortBy = value.sortBy ?? "updated";
+  const sortDirection = value.sortDirection ?? "desc";
   if (
     [...query].length > 240 ||
     [...queue].length < 1 ||
     [...queue].length > 120 ||
+    (!["all", "mine", "unassigned"].includes(agent) && !isUuid(agent)) ||
+    [...status].length > 120 ||
+    [...department].length > 120 ||
+    [...priority].length > 120 ||
+    !["updated", "agent", "status", "department", "priority"].includes(
+      String(sortBy),
+    ) ||
+    !["asc", "desc"].includes(String(sortDirection)) ||
     /[\u0000-\u001f\u007f-\u009f]/u.test(query) ||
-    /[\u0000-\u001f\u007f-\u009f]/u.test(queue)
+    /[\u0000-\u001f\u007f-\u009f]/u.test(queue) ||
+    /[\u0000-\u001f\u007f-\u009f]/u.test(agent) ||
+    /[\u0000-\u001f\u007f-\u009f]/u.test(status) ||
+    /[\u0000-\u001f\u007f-\u009f]/u.test(department) ||
+    /[\u0000-\u001f\u007f-\u009f]/u.test(priority)
   ) {
     return null;
   }
 
-  return { query, queue, ticketScope: value.ticketScope as TicketScope };
+  return {
+    agent,
+    department,
+    priority,
+    query,
+    queue,
+    sortBy: sortBy as TicketSortBy,
+    sortDirection: sortDirection as TicketSortDirection,
+    status,
+    ticketScope: value.ticketScope as TicketScope,
+  };
 }
 
 function parseAction(value: unknown): Action | null {

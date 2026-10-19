@@ -2406,5 +2406,136 @@ begin
   end if;
 end;
 $$;
+-- Die Listen-RPC muss vor Pagination global sortieren und exakt dieselben
+-- Ticketrechte wie die RLS anwenden. Ein ICT-Agent darf keine Daten der
+-- Infrastrukturabteilung lesen oder über Agentennamen erschliessen.
+insert into public.ticket_priorities (id, tenant_id, key, label, sort_order)
+values (
+  '14100000-0000-4000-8000-000000000001',
+  '10000000-0000-4000-8000-000000000001',
+  'filter_sort_urgent',
+  'Filter Sort Dringend',
+  1
+)
+on conflict do nothing;
+insert into public.tickets (
+  id, tenant_id, department_id, ticket_number, subject, description,
+  status_id, priority_id, requester_id, assigned_agent_id, updated_at
+)
+values
+  (
+    '1a000000-0000-4000-8000-000000000001',
+    '10000000-0000-4000-8000-000000000001',
+    '11000000-0000-4000-8000-000000000001',
+    'ICT-2099-000001',
+    'Filter sort dringend',
+    'Sichtbar und prioritär sortiert',
+    '13000000-0000-4000-8000-000000000001',
+    '14100000-0000-4000-8000-000000000001',
+    '00000000-0000-4000-8000-000000000001',
+    '00000000-0000-4000-8000-000000000002',
+    '2099-01-01T00:00:00Z'
+  ),
+  (
+    '1a000000-0000-4000-8000-000000000002',
+    '10000000-0000-4000-8000-000000000001',
+    '11000000-0000-4000-8000-000000000001',
+    'ICT-2099-000002',
+    'Filter sort normal',
+    'Sichtbar und nachrangig sortiert',
+    '13000000-0000-4000-8000-000000000001',
+    '14000000-0000-4000-8000-000000000001',
+    '00000000-0000-4000-8000-000000000001',
+    '00000000-0000-4000-8000-000000000001',
+    '2099-01-02T00:00:00Z'
+  );
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-000000000002', true);
+do $$
+declare
+  v_expected_count bigint;
+  v_reported_count bigint;
+  v_first_subject text;
+begin
+  select count(*)
+  into v_expected_count
+  from public.tickets ticket
+  where ticket.tenant_id = '10000000-0000-4000-8000-000000000001'
+    and public.can_read_ticket(ticket.id);
+
+  select page.matching_ticket_count, page.subject
+  into v_reported_count, v_first_subject
+  from public.list_authorized_ticket_list_page(
+    '10000000-0000-4000-8000-000000000001',
+    null, null, null, null, false, 'priority', 'asc', 1, 0
+  ) page;
+  if v_reported_count <> v_expected_count
+    or v_first_subject <> 'Filter sort dringend' then
+    raise exception 'Authorized ticket list did not count or globally sort before pagination';
+  end if;
+
+  if exists (
+    select 1
+    from public.list_authorized_ticket_list_page(
+      '10000000-0000-4000-8000-000000000001',
+      null, null, null, null, false, 'updated', 'desc', 1, 0
+    ) page
+    where to_jsonb(page) ? 'assigned_agent_name'
+  ) then
+    raise exception 'Authorized ticket list exposed a user profile display name';
+  end if;
+
+  select page.subject
+  into v_first_subject
+  from public.list_authorized_ticket_list_page(
+    p_tenant_id => '10000000-0000-4000-8000-000000000001',
+    p_sort_by => 'agent',
+    p_sort_direction => 'asc',
+    p_limit => 1,
+    p_agent_sort_order => array[
+      '00000000-0000-4000-8000-000000000001',
+      '00000000-0000-4000-8000-000000000002'
+    ]::uuid[]
+  ) page;
+  if v_first_subject <> 'Filter sort normal' then
+    raise exception 'Authorized ticket list did not globally apply agent sort order';
+  end if;
+
+  if exists (
+    select 1
+    from public.list_authorized_ticket_list_page(
+      '10000000-0000-4000-8000-000000000001',
+      null, null,
+      array['12000000-0000-4000-8000-000000000002']::uuid[],
+      null, false, 'updated', 'desc', 51, 0
+    )
+  ) then
+    raise exception 'Authorized ticket list exposed an unreadable department';
+  end if;
+
+  if exists (
+    select 1
+    from public.list_authorized_ticket_list_page(
+      p_tenant_id => '10000000-0000-4000-8000-000000000001',
+      p_queue_key => 'infrastructure'
+    )
+  ) then
+    raise exception 'Queue filter exposed an unreadable department after pagination';
+  end if;
+
+  begin
+    perform public.list_authorized_ticket_list_page(
+      '10000000-0000-4000-8000-000000000001',
+      null, null, null, null, false, 'invalid', 'desc', 51, 0
+    );
+    raise exception 'Invalid ticket sort was accepted';
+  exception when invalid_parameter_value then
+    null;
+  end;
+end;
+$$;
+reset role;
+commit;
 SQL
 echo "PostgreSQL 16 migration and RLS integration checks passed."

@@ -77,6 +77,7 @@ const expectedFiles = [
   "0073_exchange_mail_worker_dispatch_body.sql",
   "0074_ticket_requester_email_upsert_constraint.sql",
   "0075_confirmed_bulk_ticket_deletion.sql",
+  "0076_authorized_ticket_list_sorting.sql",
 ];
 
 const availableFiles = await readdir(migrationDirectory);
@@ -649,6 +650,14 @@ const requiredFragments = [
   [
     "0071_exchange_mail_private_storage_rpc.sql",
     "create or replace function public.exchange_mail_create_oauth_state",
+  ],
+  [
+    "0076_authorized_ticket_list_sorting.sql",
+    "create or replace function public.list_authorized_ticket_list_page",
+  ],
+  [
+    "0076_authorized_ticket_list_sorting.sql",
+    "and public.can_read_ticket(ticket.id)",
   ],
 ];
 

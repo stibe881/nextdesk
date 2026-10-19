@@ -6,6 +6,12 @@ type Action =
   | { type: "list"; tenantId: string; ticketId: string }
   | { type: "listForDepartment"; tenantId: string; departmentId: string }
   | {
+      type: "listForTenant";
+      includeAgents: boolean;
+      tenantId: string;
+      ticketIds: string[];
+    }
+  | {
       type: "assign";
       tenantId: string;
       ticketId: string;
@@ -13,7 +19,10 @@ type Action =
     };
 
 type PermissionCode =
-  "ticket.assign" | "ticket.read.assigned" | "ticket.update";
+  | "ticket.assign"
+  | "ticket.read.assigned"
+  | "ticket.read.department"
+  | "ticket.update";
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -23,6 +32,11 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 
 const isUuid = (value: unknown): value is string =>
   typeof value === "string" && UUID_PATTERN.test(value);
+
+function hasOnlyKeys(value: Record<string, unknown>, keys: string[]): boolean {
+  const allowed = new Set(keys);
+  return Object.keys(value).every((key) => allowed.has(key));
+}
 
 function response(
   request: Request,
@@ -63,6 +77,22 @@ function parseAction(value: unknown): Action | null {
     };
   }
   if (
+    value.type === "listForTenant" &&
+    hasOnlyKeys(value, ["type", "tenantId", "ticketIds", "includeAgents"]) &&
+    Array.isArray(value.ticketIds) &&
+    value.ticketIds.length <= 50 &&
+    value.ticketIds.every(isUuid) &&
+    new Set(value.ticketIds).size === value.ticketIds.length &&
+    typeof value.includeAgents === "boolean"
+  ) {
+    return {
+      includeAgents: value.includeAgents,
+      type: value.type,
+      tenantId: value.tenantId,
+      ticketIds: value.ticketIds,
+    };
+  }
+  if (
     value.type === "assign" &&
     isUuid(value.ticketId) &&
     (value.assignedAgentId === null || isUuid(value.assignedAgentId))
@@ -82,14 +112,27 @@ async function isActiveTenantMember(
   userId: string,
   tenantId: string,
 ): Promise<boolean> {
-  const { data, error } = await admin
-    .from("tenant_memberships")
-    .select("user_id")
-    .eq("tenant_id", tenantId)
-    .eq("user_id", userId)
-    .eq("status", "active")
-    .maybeSingle();
-  return !error && Boolean(data);
+  const [
+    { data: membership, error: membershipError },
+    { data: tenant, error: tenantError },
+  ] = await Promise.all([
+    admin
+      .from("tenant_memberships")
+      .select("user_id")
+      .eq("tenant_id", tenantId)
+      .eq("user_id", userId)
+      .eq("status", "active")
+      .maybeSingle(),
+    admin
+      .from("tenants")
+      .select("id")
+      .eq("id", tenantId)
+      .eq("status", "active")
+      .maybeSingle(),
+  ]);
+  return (
+    !membershipError && !tenantError && Boolean(membership) && Boolean(tenant)
+  );
 }
 
 async function hasTicketPermission(
@@ -131,10 +174,10 @@ async function hasTicketPermission(
       ? assignment.roles[0]
       : assignment.roles;
     const roleApplies =
-      role?.scope === "tenant" ||
-      (role?.scope === "department" &&
-        assignment.department_id === departmentId &&
-        Boolean(departmentMembership));
+      Boolean(departmentMembership) &&
+      (role?.scope === "tenant" ||
+        (role?.scope === "department" &&
+          assignment.department_id === departmentId));
     return (
       role?.tenant_id === tenantId &&
       role.active === true &&
@@ -249,6 +292,135 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       );
     }
     return response(request, { data: { agents: candidates.agents } });
+  }
+
+  if (action.type === "listForTenant") {
+    const departmentIds: string[] = [];
+    const departmentPageSize = 250;
+    for (let offset = 0; ; offset += departmentPageSize) {
+      const { data: departments, error: departmentsError } =
+        await context.supabaseAdmin
+          .from("departments")
+          .select("id")
+          .eq("tenant_id", action.tenantId)
+          .eq("active", true)
+          .order("id", { ascending: true })
+          .range(offset, offset + departmentPageSize - 1);
+      if (departmentsError) {
+        return response(
+          request,
+          { error: { code: "ticket_agents_lookup_failed" } },
+          500,
+        );
+      }
+      for (const department of departments ?? []) {
+        if (isUuid(department.id)) departmentIds.push(department.id);
+      }
+      if ((departments ?? []).length < departmentPageSize) break;
+    }
+    const departmentAccess = new Map<string, boolean>();
+    for (const departmentId of departmentIds) {
+      const canRead = await hasTicketPermission(
+        context.supabaseAdmin,
+        actorId,
+        action.tenantId,
+        departmentId,
+        "ticket.read.department",
+      );
+      if (canRead.error) {
+        return response(
+          request,
+          { error: { code: "ticket_agents_lookup_failed" } },
+          500,
+        );
+      }
+      departmentAccess.set(departmentId, canRead.allowed);
+    }
+
+    const readableDepartmentIds = departmentIds.filter(
+      (departmentId) => departmentAccess.get(departmentId) === true,
+    );
+    const agentsById = new Map<string, { id: string; displayName: string }>();
+    if (action.includeAgents) {
+      const candidateResults = await Promise.all(
+        readableDepartmentIds.map((departmentId) =>
+          listAssignableAgents(
+            context.supabaseAdmin,
+            action.tenantId,
+            departmentId,
+          ),
+        ),
+      );
+      if (candidateResults.some((result) => result.error)) {
+        return response(
+          request,
+          { error: { code: "ticket_agents_lookup_failed" } },
+          500,
+        );
+      }
+      for (const result of candidateResults) {
+        for (const agent of result.agents) agentsById.set(agent.id, agent);
+      }
+    }
+
+    const { data: tickets, error: ticketsError } =
+      action.ticketIds.length > 0
+        ? await context.supabaseAdmin
+            .from("tickets")
+            .select("id, tenant_id, department_id, assigned_agent_id")
+            .eq("tenant_id", action.tenantId)
+            .in("id", action.ticketIds)
+        : { data: [], error: null };
+    if (ticketsError) {
+      return response(
+        request,
+        { error: { code: "ticket_agents_lookup_failed" } },
+        500,
+      );
+    }
+    const assignedAgentIds = [
+      ...new Set(
+        (tickets ?? []).flatMap((ticket: any) =>
+          ticket.tenant_id === action.tenantId &&
+          departmentAccess.get(ticket.department_id) === true &&
+          isUuid(ticket.assigned_agent_id)
+            ? [ticket.assigned_agent_id]
+            : [],
+        ),
+      ),
+    ];
+    const assignedAgentNames: Record<string, string> = {};
+    if (assignedAgentIds.length > 0) {
+      const { data: profiles, error: profilesError } =
+        await context.supabaseAdmin
+          .from("user_profiles")
+          .select("id, display_name")
+          .in("id", assignedAgentIds);
+      if (profilesError) {
+        return response(
+          request,
+          { error: { code: "ticket_agents_lookup_failed" } },
+          500,
+        );
+      }
+      for (const profile of profiles ?? []) {
+        if (
+          isUuid(profile.id) &&
+          typeof profile.display_name === "string" &&
+          profile.display_name.trim()
+        ) {
+          assignedAgentNames[profile.id] = profile.display_name.trim();
+        }
+      }
+    }
+
+    const agents = [...agentsById.values()].sort(
+      (left, right) =>
+        left.displayName.localeCompare(right.displayName, "de-CH", {
+          sensitivity: "base",
+        }) || left.id.localeCompare(right.id),
+    );
+    return response(request, { data: { agents, assignedAgentNames } });
   }
 
   const { data: ticket, error: ticketError } = await context.supabaseAdmin

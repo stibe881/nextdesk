@@ -1,4 +1,5 @@
 import { supabase } from "./supabase";
+import { parseTicketSearch } from "./ticket-search";
 import type {
   DashboardMetrics,
   DashboardTicket,
@@ -15,6 +16,35 @@ export interface TenantOption {
   slug: string;
 }
 
+export type TicketAgentOption = {
+  displayName: string;
+  id: string;
+};
+
+export type TicketFilterCatalog = {
+  departments: { key: string; label: string }[];
+  priorities: string[];
+  statuses: string[];
+};
+
+export type LiveTicketListRefinement = {
+  agent: string;
+  department: string;
+  priority: string;
+  sortBy: "updated" | "agent" | "status" | "department" | "priority";
+  sortDirection: "asc" | "desc";
+  status: string;
+};
+
+export type LiveTicketScope = "all" | "mine" | "unassigned" | "open" | "closed";
+
+export type LiveTicketListControls = {
+  metricTicketIds: string[] | null;
+  query: string;
+  queue: string;
+  scope: LiveTicketScope;
+};
+
 export interface LiveDashboardSnapshot {
   activity: TimelineItem[];
   hasMoreTickets: boolean;
@@ -22,6 +52,8 @@ export interface LiveDashboardSnapshot {
   period: Period;
   serviceHealth: ServiceHealth[];
   ticketCount: number;
+  ticketAgents: TicketAgentOption[];
+  ticketFilterCatalog: TicketFilterCatalog;
   ticketListNote?: string;
   tenantId: string;
   tickets: DashboardTicket[];
@@ -32,11 +64,13 @@ interface TicketStatusRecord {
   id: string;
   is_closed: boolean;
   label: string;
+  sort_order: number;
 }
 
 interface TicketPriorityRecord {
   id: string;
   label: string;
+  sort_order: number;
 }
 
 interface DepartmentRecord {
@@ -45,17 +79,163 @@ interface DepartmentRecord {
   name: string;
 }
 
-interface TicketRecord {
+interface TicketListRecord {
   assigned_agent_id: string | null;
   created_at: string;
   department_id: string;
+  department_key: string;
+  department_name: string;
   id: string;
   priority_id: string;
+  priority_label: string;
+  priority_sort_order: number;
   requester_id: string;
   resolution_due_at: string | null;
   status_id: string;
+  status_is_closed: boolean;
+  status_label: string;
+  status_sort_order: number;
   subject: string;
   ticket_number: string;
+  updated_at: string;
+  matching_ticket_count: number;
+}
+
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function ticketListRpcArguments(
+  tenantId: string,
+  refinement: LiveTicketListRefinement | undefined,
+  userId: string | undefined,
+  statuses: TicketStatusRecord[],
+  priorities: TicketPriorityRecord[],
+  departments: DepartmentRecord[],
+  ticketPage: number,
+  controls: LiveTicketListControls | undefined,
+  agentSortOrder: string[],
+) {
+  const emptyId = "00000000-0000-0000-0000-000000000000";
+  const activeRefinement: LiveTicketListRefinement = refinement ?? {
+    agent: "all",
+    department: "all",
+    priority: "all",
+    sortBy: "updated",
+    sortDirection: "desc",
+    status: "all",
+  };
+  const activeControls: LiveTicketListControls = controls ?? {
+    metricTicketIds: null,
+    query: "",
+    queue: "alle",
+    scope: "all",
+  };
+  const search = parseTicketSearch(activeControls.query);
+  const safeTerms = (values: string[]) =>
+    values
+      .map((value) => value.trim())
+      .filter((value) => value.length > 0 && value.length <= 120)
+      .slice(0, 12);
+  const idsForLabel = <Record extends { id: string; label: string }>(
+    records: Record[],
+    selectedLabel: string,
+  ) =>
+    selectedLabel === "all"
+      ? null
+      : records
+          .filter((record) => record.label === selectedLabel)
+          .map((record) => record.id);
+  const statusIds = idsForLabel(statuses, activeRefinement.status);
+  const priorityIds = idsForLabel(priorities, activeRefinement.priority);
+  const departmentIds =
+    activeRefinement.department === "all"
+      ? null
+      : departments
+          .filter(
+            (department) => department.key === activeRefinement.department,
+          )
+          .map((department) => department.id);
+  const selectedAgentId =
+    activeRefinement.agent === "mine"
+      ? (userId ?? emptyId)
+      : UUID_PATTERN.test(activeRefinement.agent)
+        ? activeRefinement.agent
+        : null;
+
+  return {
+    p_assigned_agent_id: selectedAgentId,
+    p_agent_sort_order: agentSortOrder
+      .filter((agentId) => UUID_PATTERN.test(agentId))
+      .slice(0, 1000),
+    p_department_ids: departmentIds,
+    p_limit: TICKET_PAGE_SIZE + 1,
+    p_metric_ticket_ids: activeControls.metricTicketIds
+      ? activeControls.metricTicketIds
+          .filter((ticketId) => UUID_PATTERN.test(ticketId))
+          .slice(0, 500)
+      : null,
+    p_offset: ticketPage * TICKET_PAGE_SIZE,
+    p_only_unassigned: activeRefinement.agent === "unassigned",
+    p_priority_ids: priorityIds,
+    p_queue_key: activeControls.queue === "alle" ? null : activeControls.queue,
+    p_scope: activeControls.scope,
+    p_search_assignment: search.filters.assignment,
+    p_search_free_text: safeTerms(search.freeText),
+    p_search_priorities: safeTerms(search.filters.priority),
+    p_search_queues: safeTerms(search.filters.queue),
+    p_search_risks: search.filters.risk,
+    p_search_statuses: safeTerms(search.filters.status),
+    p_search_ticket_numbers: safeTerms(search.filters.ticketNumber),
+    p_sort_by: activeRefinement.sortBy,
+    p_sort_direction: activeRefinement.sortDirection,
+    p_status_ids: statusIds,
+    p_tenant_id: tenantId,
+  };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function ticketAgentsFromResponse(value: unknown): {
+  agents: TicketAgentOption[];
+  assignedAgentNames: Map<string, string>;
+} | null {
+  if (!isRecord(value) || !isRecord(value.data)) return null;
+  if (
+    !Array.isArray(value.data.agents) ||
+    !isRecord(value.data.assignedAgentNames)
+  ) {
+    return null;
+  }
+
+  const agents: TicketAgentOption[] = [];
+  for (const entry of value.data.agents) {
+    if (
+      !isRecord(entry) ||
+      typeof entry.id !== "string" ||
+      typeof entry.displayName !== "string" ||
+      !UUID_PATTERN.test(entry.id) ||
+      !entry.displayName.trim()
+    ) {
+      return null;
+    }
+    agents.push({ id: entry.id, displayName: entry.displayName.trim() });
+  }
+
+  const assignedAgentNames = new Map<string, string>();
+  for (const [id, displayName] of Object.entries(
+    value.data.assignedAgentNames,
+  )) {
+    if (
+      UUID_PATTERN.test(id) &&
+      typeof displayName === "string" &&
+      displayName.trim()
+    ) {
+      assignedAgentNames.set(id, displayName.trim());
+    }
+  }
+  return { agents, assignedAgentNames };
 }
 
 function requireSupabase() {
@@ -143,35 +323,25 @@ export async function loadLiveDashboard(
   tenant: TenantOption,
   period: Period,
   ticketPage = 0,
+  ticketListRefinement?: LiveTicketListRefinement,
+  ticketListControls?: LiveTicketListControls,
 ): Promise<LiveDashboardSnapshot> {
   const client = requireSupabase();
   const since = startDate(period);
-  const ticketRangeStart = ticketPage * TICKET_PAGE_SIZE;
   const {
     data: { user },
     error: userError,
   } = await client.auth.getUser();
   if (userError) throw userError;
-  const [ticketsResult, statusesResult, prioritiesResult, departmentsResult] =
+  const [statusesResult, prioritiesResult, departmentsResult] =
     await Promise.all([
       client
-        .from("tickets")
-        .select(
-          "id, ticket_number, subject, department_id, status_id, priority_id, resolution_due_at, created_at, updated_at, assigned_agent_id, requester_id",
-        )
-        .eq("tenant_id", tenant.id)
-        // The active-work list is intentionally independent of the KPI period.
-        // It mirrors the mobile app and always shows the current authorised
-        // ticket backlog; the period below only governs metrics and activity.
-        .order("updated_at", { ascending: false })
-        .range(ticketRangeStart, ticketRangeStart + TICKET_PAGE_SIZE),
-      client
         .from("ticket_statuses")
-        .select("id, label, is_closed")
+        .select("id, label, is_closed, sort_order")
         .eq("tenant_id", tenant.id),
       client
         .from("ticket_priorities")
-        .select("id, label")
+        .select("id, label, sort_order")
         .eq("tenant_id", tenant.id),
       client
         .from("departments")
@@ -180,43 +350,90 @@ export async function loadLiveDashboard(
         .eq("active", true),
     ]);
 
-  if (ticketsResult.error) throw ticketsResult.error;
   if (statusesResult.error) throw statusesResult.error;
   if (prioritiesResult.error) throw prioritiesResult.error;
   if (departmentsResult.error) throw departmentsResult.error;
 
-  const tickets = (ticketsResult.data ?? []) as TicketRecord[];
   const statuses = (statusesResult.data ?? []) as TicketStatusRecord[];
   const priorities = (prioritiesResult.data ?? []) as TicketPriorityRecord[];
   const departments = (departmentsResult.data ?? []) as DepartmentRecord[];
-  const statusById = new Map(statuses.map((status) => [status.id, status]));
-  const priorityById = new Map(
-    priorities.map((priority) => [priority.id, priority]),
+  let ticketAgents: TicketAgentOption[] = [];
+  const { data: agentDirectoryData, error: agentDirectoryError } =
+    await client.functions.invoke("ticket-agent-assignment", {
+      body: {
+        includeAgents: true,
+        ticketIds: [],
+        tenantId: tenant.id,
+        type: "listForTenant",
+      },
+    });
+  if (!agentDirectoryError) {
+    const directory = ticketAgentsFromResponse(agentDirectoryData);
+    if (directory) ticketAgents = directory.agents;
+  }
+  const ticketsResult = await client.rpc(
+    "list_authorized_ticket_list_page",
+    ticketListRpcArguments(
+      tenant.id,
+      ticketListRefinement,
+      user?.id,
+      statuses,
+      priorities,
+      departments,
+      ticketPage,
+      ticketListControls,
+      ticketAgents.map((agent) => agent.id),
+    ),
   );
-  const departmentById = new Map(
-    departments.map((department) => [department.id, department]),
-  );
+  if (ticketsResult.error) throw ticketsResult.error;
+
+  const tickets = (ticketsResult.data ?? []) as TicketListRecord[];
+
+  let assignedAgentNames = new Map<string, string>();
+  const { data: agentNamesData, error: agentNamesError } =
+    await client.functions.invoke("ticket-agent-assignment", {
+      body: {
+        includeAgents: false,
+        ticketIds: tickets
+          .slice(0, TICKET_PAGE_SIZE)
+          .map((ticket) => ticket.id),
+        tenantId: tenant.id,
+        type: "listForTenant",
+      },
+    });
+  if (!agentNamesError) {
+    const directory = ticketAgentsFromResponse(agentNamesData);
+    if (directory) assignedAgentNames = directory.assignedAgentNames;
+  }
 
   const ticketRows = tickets.slice(0, TICKET_PAGE_SIZE).map((ticket) => {
-    const department = departmentById.get(ticket.department_id);
     const due = formatDueAt(ticket.resolution_due_at);
     return {
       age: formatAge(ticket.created_at),
+      assignedAgentId: ticket.assigned_agent_id,
+      assignedAgentName:
+        ticket.assigned_agent_id === null
+          ? null
+          : (assignedAgentNames.get(ticket.assigned_agent_id) ?? null),
       assignedToCurrentUser:
         Boolean(user) &&
         (ticket.assigned_agent_id === user?.id ||
           ticket.requester_id === user?.id),
+      createdAt: ticket.created_at,
       id: ticket.ticket_number,
       recordId: ticket.id,
-      isClosed: Boolean(statusById.get(ticket.status_id)?.is_closed),
+      isClosed: ticket.status_is_closed,
       isUnassigned: ticket.assigned_agent_id === null,
-      priority: priorityById.get(ticket.priority_id)?.label ?? "Ohne Priorität",
-      queue: department?.key ?? "unbekannt",
-      queueLabel: department?.name ?? "Nicht zugeordnet",
+      priority: ticket.priority_label,
+      priorityOrder: ticket.priority_sort_order,
+      queue: ticket.department_key,
+      queueLabel: ticket.department_name,
       risk: due.risk,
       sla: due.label,
-      state: statusById.get(ticket.status_id)?.label ?? "Status unbekannt",
+      state: ticket.status_label,
+      statusOrder: ticket.status_sort_order,
       subject: ticket.subject,
+      updatedAt: ticket.updated_at,
     } satisfies DashboardTicket;
   });
 
@@ -228,7 +445,6 @@ export async function loadLiveDashboard(
     closedCountResult,
     mineCountResult,
     unassignedCountResult,
-    ticketListCountResult,
     eventsResult,
   ] = await Promise.all([
     client
@@ -255,10 +471,6 @@ export async function loadLiveDashboard(
       .eq("tenant_id", tenant.id)
       .is("assigned_agent_id", null),
     client
-      .from("tickets")
-      .select("id", { count: "exact", head: true })
-      .eq("tenant_id", tenant.id),
-    client
       .from("ticket_events")
       .select("event_type, created_at")
       .gte("created_at", since)
@@ -270,14 +482,17 @@ export async function loadLiveDashboard(
   if (closedCountResult.error) throw closedCountResult.error;
   if (mineCountResult.error) throw mineCountResult.error;
   if (unassignedCountResult.error) throw unassignedCountResult.error;
-  if (ticketListCountResult.error) throw ticketListCountResult.error;
   if (eventsResult.error) throw eventsResult.error;
 
   const totalTicketCount = totalCountResult.count ?? 0;
   const closedCount = closedCountResult.count ?? 0;
   const mineCount = mineCountResult.count ?? 0;
   const unassignedCount = unassignedCountResult.count ?? 0;
-  const ticketListCount = ticketListCountResult.count ?? 0;
+  const matchingTicketCount = Number(tickets[0]?.matching_ticket_count ?? 0);
+  const ticketListCount =
+    Number.isSafeInteger(matchingTicketCount) && matchingTicketCount >= 0
+      ? matchingTicketCount
+      : 0;
   const openCount = Math.max(0, totalTicketCount - closedCount);
   const now = new Intl.DateTimeFormat("de-CH", {
     dateStyle: "short",
@@ -287,7 +502,7 @@ export async function loadLiveDashboard(
   const hasMoreTickets = tickets.length > TICKET_PAGE_SIZE;
   const ticketListNote =
     ticketListCount > ticketRows.length
-      ? `Die Liste zeigt ${ticketRows.length} von ${ticketListCount} autorisierten Tickets.`
+      ? `Die Liste zeigt ${ticketRows.length} von ${ticketListCount} passenden Tickets.`
       : null;
 
   return {
@@ -335,6 +550,20 @@ export async function loadLiveDashboard(
     ...(ticketListNote ? { ticketListNote } : {}),
     tenantId: tenant.id,
     ticketCount: ticketListCount,
+    ticketAgents,
+    ticketFilterCatalog: {
+      departments: departments
+        .map((department) => ({ key: department.key, label: department.name }))
+        .sort((left, right) => left.label.localeCompare(right.label, "de-CH")),
+      priorities: priorities
+        .slice()
+        .sort((left, right) => left.sort_order - right.sort_order)
+        .map((priority) => priority.label),
+      statuses: statuses
+        .slice()
+        .sort((left, right) => left.sort_order - right.sort_order)
+        .map((status) => status.label),
+    },
     tickets: ticketRows,
     updatedAt: now,
   };

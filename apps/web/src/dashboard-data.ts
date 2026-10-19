@@ -3,18 +3,24 @@ export type QueueKey = string;
 
 export interface DashboardTicket {
   age: string;
+  assignedAgentId?: string | null;
+  assignedAgentName?: string | null;
   assignedToCurrentUser: boolean;
+  createdAt?: string;
   isClosed: boolean;
   isUnassigned: boolean;
   id: string;
   recordId?: string;
   priority?: string;
+  priorityOrder?: number;
   queue: QueueKey;
   queueLabel: string;
   risk: "ok" | "warnung" | "kritisch";
   sla: string;
   state: string;
+  statusOrder?: number;
   subject: string;
+  updatedAt?: string;
 }
 
 export interface DashboardMetrics {
