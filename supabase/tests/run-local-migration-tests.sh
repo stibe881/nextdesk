@@ -1995,6 +1995,48 @@ begin
 end;
 $$;
 
+create schema if not exists net;
+create table net.http_post_calls (
+  id bigint generated always as identity primary key,
+  body jsonb not null,
+  params jsonb not null
+);
+create function net.http_post(
+  url text,
+  body jsonb,
+  params jsonb,
+  headers jsonb,
+  timeout_milliseconds integer
+)
+returns bigint
+language plpgsql
+as $$
+declare
+  v_id bigint;
+begin
+  insert into net.http_post_calls (body, params)
+  values (body, params)
+  returning id into v_id;
+  return v_id;
+end;
+$$;
+
+select public.exchange_mail_wake_worker(
+  jsonb_build_object('action', 'maintenance')
+);
+do $$
+begin
+  if not exists (
+    select 1
+    from net.http_post_calls
+    where body = jsonb_build_object('action', 'maintenance')
+      and params = '{}'::jsonb
+  ) then
+    raise exception 'Exchange worker dispatch did not send the action in the JSON body';
+  end if;
+end;
+$$;
+
 -- Exactly one external portal response from a tenant agent queues exactly one
 -- agent reply. Internal notes, customer responses and a paused channel queue none.
 insert into public.ticket_comments (ticket_id, author_id, visibility, body)
