@@ -983,12 +983,22 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     action.tenantId,
     action.ticketId,
   );
-  if (!ticket || !(await canRead(context.supabaseAdmin, actorId, ticket)))
+  if (!ticket)
     return response(request, { error: { code: "ticket_access_denied" } }, 403);
-  const ticketModules = await getTicketModules(
-    context.supabaseAdmin,
-    ticket.tenant_id,
-  );
+
+  const [canReadTicket, ticketModules, internal] = await Promise.all([
+    canRead(context.supabaseAdmin, actorId, ticket),
+    getTicketModules(context.supabaseAdmin, ticket.tenant_id),
+    hasPermission(
+      context.supabaseAdmin,
+      actorId,
+      ticket.tenant_id,
+      ticket.department_id,
+      "ticket.internal_notes.read",
+    ),
+  ]);
+  if (!canReadTicket)
+    return response(request, { error: { code: "ticket_access_denied" } }, 403);
   if (!ticketModules)
     return response(
       request,
@@ -1001,13 +1011,6 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       { error: { code: "ticket_feature_disabled" } },
       403,
     );
-  const internal = await hasPermission(
-    context.supabaseAdmin,
-    actorId,
-    ticket.tenant_id,
-    ticket.department_id,
-    "ticket.internal_notes.read",
-  );
 
   if (action.type === "getTicket") {
     const subjectTokens = relevantSubjectTokens(ticket.subject);
@@ -1272,6 +1275,75 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
               : {}),
           }
         : null;
+    const canAssignPromise = hasPermission(
+      context.supabaseAdmin,
+      actorId,
+      ticket.tenant_id,
+      ticket.department_id,
+      "ticket.assign",
+    );
+    const ticketAgentsPromise = canAssignPromise.then((canAssign) =>
+      canAssign
+        ? getTicketAgents(context.supabaseAdmin, ticket)
+        : { agents: [], error: false },
+    );
+    const assignedTicketAgentPromise = getAssignedTicketAgent(
+      context.supabaseAdmin,
+      ticket,
+    );
+    const ticketPermissionsPromise = Promise.all([
+      hasPermission(
+        context.supabaseAdmin,
+        actorId,
+        ticket.tenant_id,
+        ticket.department_id,
+        "ticket.update",
+      ),
+      hasPermission(
+        context.supabaseAdmin,
+        actorId,
+        ticket.tenant_id,
+        ticket.department_id,
+        "ticket.merge",
+      ),
+      canAssignPromise,
+      hasPermission(
+        context.supabaseAdmin,
+        actorId,
+        ticket.tenant_id,
+        ticket.department_id,
+        "ticket.time.track",
+      ),
+      hasPermission(
+        context.supabaseAdmin,
+        actorId,
+        ticket.tenant_id,
+        ticket.department_id,
+        "ticket.escalate",
+      ),
+      hasPermission(
+        context.supabaseAdmin,
+        actorId,
+        ticket.tenant_id,
+        ticket.department_id,
+        "ticket.close",
+      ),
+      hasPermission(
+        context.supabaseAdmin,
+        actorId,
+        ticket.tenant_id,
+        ticket.department_id,
+        "ticket.internal_notes.write",
+      ),
+      canPostExternalComment(context.supabaseAdmin, actorId, ticket),
+      hasPermission(
+        context.supabaseAdmin,
+        actorId,
+        ticket.tenant_id,
+        ticket.department_id,
+        "ticket.export",
+      ),
+    ]);
     const relationDescriptors = new Map<
       string,
       { relatedTicketId: string; relationType: DisplayRelationType }
@@ -1362,18 +1434,24 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       .filter((similarTicket: any) => similarTicket !== null)
       .slice(0, 10)
       .map((similarTicket: any) => ticketReference(similarTicket));
-    const canAssign = await hasPermission(
-      context.supabaseAdmin,
-      actorId,
-      ticket.tenant_id,
-      ticket.department_id,
-      "ticket.assign",
-    );
-    const [ticketAgents, assignedTicketAgent] = await Promise.all([
-      canAssign
-        ? getTicketAgents(context.supabaseAdmin, ticket)
-        : Promise.resolve({ agents: [], error: false }),
-      getAssignedTicketAgent(context.supabaseAdmin, ticket),
+    const [
+      ticketAgents,
+      assignedTicketAgent,
+      [
+        canUpdate,
+        canMerge,
+        canAssign,
+        canTrackTime,
+        canEscalate,
+        canClose,
+        canWriteInternalNotes,
+        canCommentExternal,
+        canExport,
+      ],
+    ] = await Promise.all([
+      ticketAgentsPromise,
+      assignedTicketAgentPromise,
+      ticketPermissionsPromise,
     ]);
     if (ticketAgents.error || assignedTicketAgent.error)
       return response(
@@ -1382,67 +1460,6 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         500,
       );
     const assignedAgent = assignedTicketAgent.agent;
-    const [
-      canUpdate,
-      canMerge,
-      canTrackTime,
-      canEscalate,
-      canClose,
-      canWriteInternalNotes,
-      canCommentExternal,
-      canExport,
-    ] = await Promise.all([
-      hasPermission(
-        context.supabaseAdmin,
-        actorId,
-        ticket.tenant_id,
-        ticket.department_id,
-        "ticket.update",
-      ),
-      hasPermission(
-        context.supabaseAdmin,
-        actorId,
-        ticket.tenant_id,
-        ticket.department_id,
-        "ticket.merge",
-      ),
-      hasPermission(
-        context.supabaseAdmin,
-        actorId,
-        ticket.tenant_id,
-        ticket.department_id,
-        "ticket.time.track",
-      ),
-      hasPermission(
-        context.supabaseAdmin,
-        actorId,
-        ticket.tenant_id,
-        ticket.department_id,
-        "ticket.escalate",
-      ),
-      hasPermission(
-        context.supabaseAdmin,
-        actorId,
-        ticket.tenant_id,
-        ticket.department_id,
-        "ticket.close",
-      ),
-      hasPermission(
-        context.supabaseAdmin,
-        actorId,
-        ticket.tenant_id,
-        ticket.department_id,
-        "ticket.internal_notes.write",
-      ),
-      canPostExternalComment(context.supabaseAdmin, actorId, ticket),
-      hasPermission(
-        context.supabaseAdmin,
-        actorId,
-        ticket.tenant_id,
-        ticket.department_id,
-        "ticket.export",
-      ),
-    ]);
     return response(request, {
       data: {
         ticket: {
