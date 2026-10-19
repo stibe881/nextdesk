@@ -1414,6 +1414,7 @@ const useStyles = makeThemedStyles(() => ({
   cardHeadingRow: {
     alignItems: "flex-start",
     flexDirection: "row",
+    gap: 10,
     justifyContent: "space-between",
   },
   cardSubtitle: { fontSize: 11, lineHeight: 16, marginTop: 2 },
@@ -1451,7 +1452,9 @@ const useStyles = makeThemedStyles(() => ({
   },
   contentWide: { maxWidth: 1_120 },
   countBadge: {
+    alignSelf: "flex-start",
     borderRadius: 10,
+    flexShrink: 0,
     fontSize: 12,
     fontWeight: "900",
     minWidth: 28,
@@ -1559,7 +1562,13 @@ const useStyles = makeThemedStyles(() => ({
   sectionSub: { fontSize: 12, marginTop: 3 },
   sectionTitle: { fontSize: 19, fontWeight: "800" },
   sectionTitleCopy: { flex: 1, minWidth: 0 },
-  sectionTitleRow: { alignItems: "center", flexDirection: "row", gap: 9 },
+  sectionTitleRow: {
+    alignItems: "center",
+    flex: 1,
+    flexDirection: "row",
+    gap: 9,
+    minWidth: 0,
+  },
   showAllTickets: {
     alignItems: "center",
     alignSelf: "center",
