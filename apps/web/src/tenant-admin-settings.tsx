@@ -1310,6 +1310,18 @@ export function TenantAdminSettings({
       ].some((value) => value?.toLocaleLowerCase("de-CH").includes(term)),
     );
   }, [activeUsers, personSearch]);
+  const filteredDirectoryPeople = useMemo(() => {
+    const term = personSearch.trim().toLocaleLowerCase("de-CH");
+    if (!term) return userDirectory.directoryPeople;
+    return userDirectory.directoryPeople.filter((person) =>
+      [
+        person.displayName,
+        person.email,
+        person.sourceDepartmentName,
+        person.jobTitle,
+      ].some((value) => value?.toLocaleLowerCase("de-CH").includes(term)),
+    );
+  }, [personSearch, userDirectory.directoryPeople]);
   const branding = settings?.tenant_branding ?? null;
   const brandingLogoUrl = branding?.logo_url ?? branding?.logo_path ?? null;
   const ssoConfiguration = settings?.tenant_sso_configurations[0] ?? null;
@@ -3338,14 +3350,27 @@ export function TenantAdminSettings({
                       );
                     })}
                   </ul>
+                ) : personSearch.trim() ? (
+                  <p>
+                    Für diese Suche wurden keine aktiven nextDesk-Personen
+                    gefunden.
+                  </p>
                 ) : (
-                  <p>Für diese Suche wurden keine aktiven Personen gefunden.</p>
+                  <p>
+                    Für diesen Mandanten sind noch keine aktiven Personen
+                    vorhanden.
+                  </p>
                 )}
 
-                <h3>Synchronisierte Entra-Personen</h3>
-                {userDirectory.directoryPeople.length > 0 ? (
+                <h3>
+                  Synchronisierte Entra-Personen
+                  {personSearch.trim()
+                    ? ` (${filteredDirectoryPeople.length} Treffer)`
+                    : ""}
+                </h3>
+                {filteredDirectoryPeople.length > 0 ? (
                   <ul className="tenant-admin-settings__person-list">
-                    {userDirectory.directoryPeople.map((person) => (
+                    {filteredDirectoryPeople.map((person) => (
                       <li key={person.id}>
                         <div className="tenant-admin-settings__person-summary">
                           <div>
@@ -3374,6 +3399,11 @@ export function TenantAdminSettings({
                       </li>
                     ))}
                   </ul>
+                ) : personSearch.trim() ? (
+                  <p>
+                    Für diese Suche wurden keine synchronisierten Entra-Personen
+                    gefunden.
+                  </p>
                 ) : (
                   <p>
                     Nach dem Abgleich erscheinen hier die Personen aus Microsoft
