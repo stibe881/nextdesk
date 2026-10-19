@@ -13,6 +13,7 @@ _Stand: 18. Oktober 2026_
 - **Automationen und Betrieb:** Tenant-Automationsrichtlinien liefern Vorschauen für Nachfassaufgaben, Schliesskandidaten, Duplikate, Datenhygiene, Qualität, Compliance und Betriebsberichte. Automatische Schliessungen bleiben manuell bestätigt, serverseitig erneut geprüft und auditiert. Retention-Richtlinien, Onboarding, Performancebudgets, Recovery-Runbook und Release Notes sind vorhanden; automatische Löschung und unbeaufsichtigte Scheduler sind bewusst nicht aktiv.
 - **Sicherheits- und Feature-Gates:** SSO-Mitgliedschaften, Rollenverwaltung, Wissensfreigaben, letzter Mandantenadministrator, Ticketmodule, Wissen, Assets, SLA-Verwaltung, Reporting und Pilotabläufe sind serverseitig fail-closed abgesichert. Ein Umschalten oder Ändern eines Piloten aktualisiert die Webfreigabe unverzüglich; die iOS-Quellbasis aktualisiert sie bei Mandantenwechsel und Rückkehr in den Vordergrund.
 - **Ticketdetail-Webansicht:** Commit `be8c49f` ist auf Hetzner ausgerollt. Steuerbare Ticketfakten stehen vor Beschreibung und Kommunikation; der Antworteditor steht vor der Historie. Zuweisung, 360°-Kontext, Wissen und weitere Arbeitswerkzeuge liegen in einem standardmässig geschlossenen Kontextbereich, der intern einspaltig bleibt. Zusätzliche Abschlussbereiche öffnen nicht mehr automatisch. Auf schmalen Ansichten nutzen Chatnachrichten die volle Breite; Kategorie und Unterkategorie sowie Formularfelder bleiben lesbar und bedienbar.
+- **Schnelle Ticketöffnung im Web:** Commit `f578412` ist auf Hetzner ausgerollt; `ticket-operations` v25 ist aktiv. Die Detailansicht verwendet die vom Ticketendpunkt bereits autorisiert gelieferten Agenten statt einer zweiten Agentenabfrage. Eingeklappte Bereiche für Arbeitskontext, Abschluss, Anhänge, Übergaben, Qualität und verknüpfte Werkzeuge werden erst beim Öffnen gemountet. Unabhängige Zugriffs-, Modul-, Rechte- und Agentenabfragen laufen serverseitig parallel. Produktions-Smoke-Test und geschützter API-Smoke-Test sind erfolgreich.
 
 ## Mobile iOS
 
@@ -37,6 +38,7 @@ _Stand: 18. Oktober 2026_
 - **Weitere Integrationen:** E-Mail, Kalender, Teams/Slack, Monitoring, Webhooks/API-Schlüssel, KI und externe Provider benötigen jeweils deren Zugänge, Datenschutzfreigaben und Konfiguration.
 - **Unbeaufsichtigte Abläufe:** SLA-Scheduler, automatische Löschung oder produktive Hintergrundjobs werden erst nach expliziter Betriebsfreigabe samt erforderlichen Secrets beziehungsweise Hosting-Konfiguration aktiviert.
 - **GitHub-Workflow-Publish:** Die gehärteten Workflow-Dateien benötigen weiterhin eine wirksame GitHub-`workflow`-Berechtigung, bevor sie nach `main` veröffentlicht werden können.
+- **Manus-Live-Vorschau:** Der Entra-Login von `stefan.gross@sonnenberg-baar.ch` wurde erfolgreich begonnen, aber eine Conditional-Access-Regel blockiert anschliessend den Manus-Cloud-Browser (Gerät, Standort oder Browseranforderung). Für eine authentisierte Live-Vorschau ist eine eng begrenzte Entra-Ausnahme für eine Testgruppe oder die Nutzung eines bereits verwalteten lokalen Browsers erforderlich; nextDesk und iOS sind davon nicht betroffen.
 
 ## Push-Benachrichtigungen (18.10.2026)
 

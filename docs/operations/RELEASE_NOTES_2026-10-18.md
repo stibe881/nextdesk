@@ -132,3 +132,9 @@ Im Ticketdetail (iOS und Web) setzt man eine Erinnerung mit Datum und Uhrzeit, S
 - Web-Commit `be8c49f` ist auf Hetzner ausgerollt und per Produktions-Smoke-Test geprüft. Das Ticketdetail folgt jetzt der Arbeitsreihenfolge: kompakte steuerbare Fakten, Beschreibung, Antwort und Kommunikation, danach Kategorien und Zusatzangaben.
 - Der Antworteditor ist vor der bisherigen Unterhaltung sichtbar. Zuweisungsvorschläge, 360°-Kontext, Wissensentwurf und weitere Werkzeuge stehen in einem standardmässig geschlossenen Bereich «Arbeitskontext & Werkzeuge» und werden dort ohne enge Zweispaltenansicht gezeigt. Abschluss- und Kontextbereiche öffnen nicht mehr automatisch.
 - Die schmale Darstellung macht Chatnachrichten vollbreit, ordnet Kategorie und Unterkategorie untereinander an und verwendet für auswählbare Werte mindestens 16 Pixel Schriftgrösse. Kopfaktionen werden im begrenzten Detailpanel zu gut erreichbaren Icons verdichtet; «Bearbeiten» und Schliessen bleiben klar erkennbar.
+
+## Web: schnellere Ticketöffnung (19.10)
+
+- Web-Commit `f578412` ist auf Hetzner ausgerollt; `ticket-operations` v25 ist aktiv. Die erste sichtbare Ticketansicht wartet nicht mehr auf eine zweite Abfrage der Agentenliste, sondern nutzt die bereits im autorisierten Ticketpayload enthaltenen Agenten.
+- Die standardmässig geschlossenen Bereiche «Arbeitskontext & Werkzeuge», «Abschluss & Kontext» und «Arbeitswerkzeuge» bauen ihre umfangreichen Komponenten und Nachladungen erst beim Öffnen auf. Das betrifft insbesondere Wissen, Anhänge, Übergaben, Qualität, Kundenfeedback, betroffene Objekte und verknüpfte Werkzeuge.
+- Serverseitig laufen die unabhängigen Leserechte, Funktionsschalter, Agenten- und übrigen Berechtigungsprüfungen parallel. Typecheck, Schema- und Formatprüfungen, Deno-Prüfung, Produktionsbuild, Diff-Prüfung sowie Web- und API-Smoke-Tests sind erfolgreich.
