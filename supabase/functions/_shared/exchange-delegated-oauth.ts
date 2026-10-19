@@ -16,6 +16,13 @@ const REQUIRED_SCOPES = [
   "Mail.Send.Shared",
 ] as const;
 
+const REQUIRED_DELEGATED_MAIL_SCOPES = [
+  "mail.read",
+  "mail.send",
+  "mail.read.shared",
+  "mail.send.shared",
+] as const;
+
 type Row = Record<string, unknown>;
 type CachedToken = { accessToken: string; expiresAt: number };
 type SigningKey = JsonWebKey & { kid?: string };
@@ -137,6 +144,13 @@ export function delegatedExchangeCallbackUrl(): string {
 
 export function delegatedExchangeScopes(): readonly string[] {
   return REQUIRED_SCOPES;
+}
+
+export function hasRequiredDelegatedMailScopes(
+  scopes: readonly string[],
+): boolean {
+  const granted = new Set(scopes.map((scope) => scope.trim().toLowerCase()));
+  return REQUIRED_DELEGATED_MAIL_SCOPES.every((scope) => granted.has(scope));
 }
 
 export function randomUrlSafe(bytes = 32): string {
@@ -572,16 +586,10 @@ export async function exchangeAuthorizationCode(
     throw new ExchangeMailError("exchange_unavailable", 503);
   }
   const scopes = payload.scope.split(/\s+/).filter(Boolean);
-  const granted = new Set(scopes.map((scope) => scope.toLowerCase()));
-  if (
-    ![
-      "mail.read",
-      "mail.send",
-      "mail.read.shared",
-      "mail.send.shared",
-      "offline_access",
-    ].every((scope) => granted.has(scope))
-  ) {
+  // Microsoft can grant offline access without echoing offline_access here.
+  // A returned refresh_token is the authoritative proof that offline access
+  // was granted; the four delegated Mail scopes must remain explicit.
+  if (!hasRequiredDelegatedMailScopes(scopes)) {
     throw new ExchangeMailError("exchange_access_denied", 403);
   }
   return {
