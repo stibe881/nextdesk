@@ -462,24 +462,10 @@ async function provisionSsoPerson(
   user: any,
   tenantId: string,
   email: string,
-  entraObjectId: string,
+  entraObjectId: string | null,
 ): Promise<"automatic" | "invited" | "existing" | "removed" | "failed"> {
   const userId = user?.id;
   if (typeof userId !== "string") return "failed";
-
-  const directoryLink = await linkEntraDirectoryPerson(
-    admin,
-    tenantId,
-    userId,
-    email,
-    entraObjectId,
-  );
-  if (
-    directoryLink.status === "failed" ||
-    directoryLink.status === "conflict"
-  ) {
-    return "failed";
-  }
 
   const { data: existing, error: membershipError } = await admin
     .from("tenant_memberships")
@@ -489,6 +475,31 @@ async function provisionSsoPerson(
     .maybeSingle();
   if (membershipError) return "failed";
   if (existing?.status === "removed") return "removed";
+
+  let directoryLink: EntraDirectoryLink = {
+    status: "not_found",
+    department: null,
+  };
+  if (entraObjectId) {
+    directoryLink = await linkEntraDirectoryPerson(
+      admin,
+      tenantId,
+      userId,
+      email,
+      entraObjectId,
+    );
+  }
+  if (directoryLink.status === "conflict") return "failed";
+  if (directoryLink.status === "failed" && existing?.status !== "active") {
+    return "failed";
+  }
+  if (directoryLink.status === "failed") {
+    // Directory enrichment must not lock out a person who is already an active,
+    // verified member of this tenant. The SSO tenant and domain checks above
+    // remain mandatory; the next successful sign-in can retry the enrichment.
+    directoryLink = { status: "not_found", department: null };
+  }
+
   const ssoDisplayName = ssoDisplayNameFromUser(user);
   // An existing authorised person must never be blocked by an optional profile
   // write. A later Entra login nevertheless refreshes a previously missing or
@@ -695,9 +706,6 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
   }
 
   const entraObjectId = azureObjectId(userData.user.identities);
-  if (!entraObjectId) {
-    return error(request, "sso_object_claim_required", 403);
-  }
 
   const provision = await provisionSsoPerson(
     context.supabaseAdmin,
