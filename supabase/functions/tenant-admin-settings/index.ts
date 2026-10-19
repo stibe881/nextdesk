@@ -32,7 +32,7 @@ const SSO_KEYS = new Set([
 ]);
 
 type BrandingInput = {
-  portalName?: string;
+  portalName?: string | null;
   logoUrl?: string | null;
   primaryColor?: string;
   secondaryColor?: string;
@@ -188,9 +188,13 @@ function parseBranding(value: unknown): BrandingInput | null {
 
   const branding: BrandingInput = {};
   if (hasOwn(value, "portalName")) {
-    const portalName = textInRange(value.portalName, 2, 160);
-    if (!portalName) return null;
-    branding.portalName = portalName;
+    if (value.portalName === null) {
+      branding.portalName = null;
+    } else {
+      const portalName = textInRange(value.portalName, 2, 160);
+      if (!portalName) return null;
+      branding.portalName = portalName;
+    }
   }
   if (hasOwn(value, "logoUrl")) {
     if (value.logoUrl === null) branding.logoUrl = null;

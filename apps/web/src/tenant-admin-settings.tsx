@@ -248,7 +248,7 @@ type FunctionEnvelope<T> = {
 };
 
 type BrandingUpdate = {
-  portalName: string;
+  portalName: string | null;
   logoUrl?: string | null;
   primaryColor?: string;
   secondaryColor?: string;
@@ -1410,12 +1410,12 @@ export function TenantAdminSettings({
   async function saveBranding(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const portalName = brandingForm.portalName.trim();
-    if (portalName.length < 2 || portalName.length > 160) {
+    if (portalName && (portalName.length < 2 || portalName.length > 160)) {
       setError("Der Portalname muss zwischen 2 und 160 Zeichen lang sein.");
       return;
     }
 
-    const nextBranding: BrandingUpdate = { portalName };
+    const nextBranding: BrandingUpdate = { portalName: portalName || null };
 
     const colors: ReadonlyArray<
       readonly [
@@ -2281,13 +2281,12 @@ export function TenantAdminSettings({
                 >
                   <h3>Corporate Design bearbeiten</h3>
                   <label>
-                    Portalname
+                    Portalname <span className="form-optional">(optional)</span>
                     <input
                       type="text"
                       value={brandingForm.portalName}
-                      minLength={2}
                       maxLength={160}
-                      required
+                      placeholder="Automatisch: Mandantenname oder nextDesk"
                       disabled={saving !== null}
                       onChange={(event) =>
                         setBrandingForm((current) => ({

@@ -93,10 +93,8 @@ export function TenantOnboarding({
         label: "Portalname",
         description: settings?.tenant_settings?.portal_name
           ? "Das Mandantenportal ist benannt."
-          : "Lege unter Design einen Portalnamen fest.",
-        complete:
-          typeof settings?.tenant_settings?.portal_name === "string" &&
-          settings.tenant_settings.portal_name.trim().length > 1,
+          : "Automatische Mandantenbezeichnung wird verwendet.",
+        complete: true,
         target: "branding",
       },
       {
