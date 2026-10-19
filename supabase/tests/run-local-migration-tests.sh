@@ -2734,6 +2734,15 @@ begin
     '11000000-0000-4000-8000-000000000001',
     '00000000-0000-4000-8000-000000000002'
   );
+  if not exists (
+    select 1
+    from public.tenant_member_directory directory
+    where directory.tenant_id = '10000000-0000-4000-8000-000000000001'
+      and directory.user_id = '00000000-0000-4000-8000-000000000005'
+      and directory.department_id = '11000000-0000-4000-8000-000000000001'
+  ) then
+    raise exception 'Immediate Entra agent assignment did not update the member directory';
+  end if;
   select assignment.id, assignment.starts_at
   into v_assignment_id, v_assignment_starts_at
   from public.tenant_entra_directory_people person

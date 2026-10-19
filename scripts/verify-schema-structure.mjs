@@ -79,6 +79,7 @@ const expectedFiles = [
   "0075_confirmed_bulk_ticket_deletion.sql",
   "0076_authorized_ticket_list_sorting.sql",
   "0077_entra_agent_assignment_provenance.sql",
+  "0078_fix_entra_agent_directory_assignment.sql",
 ];
 
 const availableFiles = await readdir(migrationDirectory);
@@ -679,6 +680,10 @@ const requiredFragments = [
   [
     "0077_entra_agent_assignment_provenance.sql",
     "entra_agent_assignment_managed_separately",
+  ],
+  [
+    "0078_fix_entra_agent_directory_assignment.sql",
+    "values (p_tenant_id, v_person.local_user_id, p_department_id)",
   ],
 ];
 
