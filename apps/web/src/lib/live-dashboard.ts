@@ -234,14 +234,12 @@ export async function loadLiveDashboard(
     client
       .from("tickets")
       .select("id", { count: "exact", head: true })
-      .eq("tenant_id", tenant.id)
-      .gte("created_at", since),
+      .eq("tenant_id", tenant.id),
     closedStatusIds.length > 0
       ? client
           .from("tickets")
           .select("id", { count: "exact", head: true })
           .eq("tenant_id", tenant.id)
-          .gte("created_at", since)
           .in("status_id", closedStatusIds)
       : Promise.resolve({ count: 0, error: null }),
     user
@@ -249,14 +247,12 @@ export async function loadLiveDashboard(
           .from("tickets")
           .select("id", { count: "exact", head: true })
           .eq("tenant_id", tenant.id)
-          .gte("created_at", since)
           .or(`assigned_agent_id.eq.${user.id},requester_id.eq.${user.id}`)
       : Promise.resolve({ count: 0, error: null }),
     client
       .from("tickets")
       .select("id", { count: "exact", head: true })
       .eq("tenant_id", tenant.id)
-      .gte("created_at", since)
       .is("assigned_agent_id", null),
     client
       .from("tickets")
@@ -307,11 +303,11 @@ export async function loadLiveDashboard(
     hasMoreTickets,
     metrics: {
       closed: String(closedCount),
-      closedDetail: "im gewählten Zeitraum",
+      closedDetail: "im aktuellen Bestand",
       mine: String(mineCount),
       mineDetail: "mir zugewiesen oder erstellt",
       open: String(openCount),
-      openDetail: "Für Sie sichtbare Tickets",
+      openDetail: "aktuell offen",
       unassigned: String(unassignedCount),
       unassignedDetail: "ohne Bearbeiter",
     },
