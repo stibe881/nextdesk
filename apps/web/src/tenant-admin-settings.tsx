@@ -38,7 +38,7 @@ import { DepartmentManagement } from "./department-management";
 import { TicketTemplates } from "./ticket-templates";
 import { TenantAutomation } from "./tenant-automation";
 import { TenantDataRetention } from "./tenant-data-retention";
-import { TenantOnboarding } from "./tenant-onboarding";
+import { TenantOnboarding, type OnboardingTarget } from "./tenant-onboarding";
 import { AiGovernancePanel } from "./ai-governance-panel";
 import { ExchangeMailSettings } from "./exchange-mail-settings";
 
@@ -1073,11 +1073,36 @@ export function TenantAdminSettings({
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [activeArea, setActiveArea] = useState<SettingsArea>("overview");
+  const [onboardingTarget, setOnboardingTarget] =
+    useState<OnboardingTarget | null>(null);
   const [pushTenantSettings, setPushTenantSettings] =
     useState<PushTenantSettings | null>(null);
   const [pushSettingsLoading, setPushSettingsLoading] = useState(false);
   const [pushSettingsError, setPushSettingsError] = useState("");
   const [pushSettingsSuccess, setPushSettingsSuccess] = useState("");
+
+  const navigateFromOnboarding = useCallback((target: OnboardingTarget) => {
+    setOnboardingTarget(target);
+    setActiveArea(target === "sso" ? "features" : target);
+  }, []);
+
+  useEffect(() => {
+    if (!onboardingTarget) return;
+    const targetId = {
+      branding: "tenant-branding-heading",
+      departments: "tenant-departments-heading",
+      features: "tenant-features-heading",
+      sso: "tenant-sso-heading",
+      users: "tenant-users-heading",
+    }[onboardingTarget];
+    const frame = window.requestAnimationFrame(() => {
+      const target = document.getElementById(targetId);
+      target?.scrollIntoView({ behavior: "smooth", block: "start" });
+      target?.focus({ preventScroll: true });
+      setOnboardingTarget(null);
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [activeArea, onboardingTarget]);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -2107,7 +2132,10 @@ export function TenantAdminSettings({
                     </div>
                   </dl>
                 </section>
-                <TenantOnboarding tenantId={tenantId} />
+                <TenantOnboarding
+                  tenantId={tenantId}
+                  onNavigate={navigateFromOnboarding}
+                />
               </>
             )}
 
@@ -2187,7 +2215,9 @@ export function TenantAdminSettings({
               >
                 <div className="tenant-admin-settings__section-heading">
                   <div>
-                    <h2 id="tenant-branding-heading">Corporate Design</h2>
+                    <h2 id="tenant-branding-heading" tabIndex={-1}>
+                      Corporate Design
+                    </h2>
                     <p>
                       Die folgenden Werte stammen aus der aktuellen
                       Mandantenkonfiguration.
@@ -2388,7 +2418,9 @@ export function TenantAdminSettings({
                 className="tenant-admin-settings__section"
                 aria-labelledby="tenant-sso-heading"
               >
-                <h2 id="tenant-sso-heading">SSO-Konfiguration</h2>
+                <h2 id="tenant-sso-heading" tabIndex={-1}>
+                  SSO-Konfiguration
+                </h2>
                 {ssoConfiguration ? (
                   <dl className="tenant-admin-settings__details">
                     <div>
@@ -2588,7 +2620,9 @@ export function TenantAdminSettings({
                 className="tenant-admin-settings__section"
                 aria-labelledby="tenant-features-heading"
               >
-                <h2 id="tenant-features-heading">Feature-Schalter</h2>
+                <h2 id="tenant-features-heading" tabIndex={-1}>
+                  Feature-Schalter
+                </h2>
                 {settings.tenant_feature_flags.length > 0 ? (
                   <ul className="tenant-admin-settings__feature-list">
                     {settings.tenant_feature_flags.map((feature) => {
@@ -2964,7 +2998,13 @@ export function TenantAdminSettings({
             ) : null}
 
             {activeArea === "departments" && (
-              <DepartmentManagement tenantId={tenantId} />
+              <section
+                aria-label="Abteilungen"
+                id="tenant-departments-heading"
+                tabIndex={-1}
+              >
+                <DepartmentManagement tenantId={tenantId} />
+              </section>
             )}
 
             {activeArea === "privacy" && (
@@ -2986,7 +3026,9 @@ export function TenantAdminSettings({
                 className="tenant-admin-settings__section"
                 aria-labelledby="tenant-users-heading"
               >
-                <h2 id="tenant-users-heading">Personen & Agenten</h2>
+                <h2 id="tenant-users-heading" tabIndex={-1}>
+                  Personen & Agenten
+                </h2>
                 <p>
                   Ordnen Sie Mitarbeitende einer Abteilung zu, hinterlegen Sie
                   Angebot und Funktion und bestimmen Sie, wer als Support-Agent

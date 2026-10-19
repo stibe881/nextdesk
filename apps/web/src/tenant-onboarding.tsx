@@ -4,13 +4,20 @@ import { supabase } from "./lib/supabase";
 import { functionErrorMessage } from "./lib/function-error";
 
 type Settings = {
-  portal_name?: unknown;
+  tenant_settings?: { portal_name?: unknown } | null;
   tenant_sso_configurations?: unknown;
   tenant_feature_flags?: unknown;
 };
 type Person = { status?: unknown };
 type Department = { active?: unknown };
-type Readiness = { label: string; description: string; complete: boolean };
+export type OnboardingTarget =
+  "branding" | "departments" | "features" | "sso" | "users";
+type Readiness = {
+  label: string;
+  description: string;
+  complete: boolean;
+  target: OnboardingTarget;
+};
 const records = (value: unknown): Record<string, unknown>[] =>
   Array.isArray(value)
     ? value.filter((item): item is Record<string, unknown> =>
@@ -18,7 +25,13 @@ const records = (value: unknown): Record<string, unknown>[] =>
       )
     : [];
 
-export function TenantOnboarding({ tenantId }: { tenantId: string }) {
+export function TenantOnboarding({
+  tenantId,
+  onNavigate,
+}: {
+  tenantId: string;
+  onNavigate: (target: OnboardingTarget) => void;
+}) {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [people, setPeople] = useState<Person[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
@@ -78,12 +91,13 @@ export function TenantOnboarding({ tenantId }: { tenantId: string }) {
     return [
       {
         label: "Portalname",
-        description: settings?.portal_name
+        description: settings?.tenant_settings?.portal_name
           ? "Das Mandantenportal ist benannt."
           : "Lege unter Design einen Portalnamen fest.",
         complete:
-          typeof settings?.portal_name === "string" &&
-          settings.portal_name.trim().length > 1,
+          typeof settings?.tenant_settings?.portal_name === "string" &&
+          settings.tenant_settings.portal_name.trim().length > 1,
+        target: "branding",
       },
       {
         label: "Personen",
@@ -91,6 +105,7 @@ export function TenantOnboarding({ tenantId }: { tenantId: string }) {
           ? `${activePeople} aktive Person${activePeople === 1 ? "" : "en"} im Mandanten.`
           : "Lade mindestens eine Person ein oder prüfe die SSO-Anmeldung.",
         complete: activePeople > 0,
+        target: "users",
       },
       {
         label: "Abteilungen",
@@ -98,6 +113,7 @@ export function TenantOnboarding({ tenantId }: { tenantId: string }) {
           ? `${activeDepartments} aktive Abteilung${activeDepartments === 1 ? "" : "en"} verfügbar.`
           : "Lege mindestens eine Abteilung für Tickets an.",
         complete: activeDepartments > 0,
+        target: "departments",
       },
       {
         label: "Anmeldung",
@@ -105,6 +121,7 @@ export function TenantOnboarding({ tenantId }: { tenantId: string }) {
           ? "SSO ist eingerichtet."
           : "SSO ist optional; die aktuelle Anmeldung kann weiterverwendet werden.",
         complete: true,
+        target: "sso",
       },
       {
         label: "Module",
@@ -112,6 +129,7 @@ export function TenantOnboarding({ tenantId }: { tenantId: string }) {
           ? `${enabledFeatures} Funktionsmodul${enabledFeatures === 1 ? "" : "e"} aktiviert.`
           : "Aktiviere bei Bedarf Funktionen wie Assets oder Wissensdatenbank.",
         complete: enabledFeatures > 0,
+        target: "features",
       },
     ];
   }, [departments, people, settings]);
@@ -155,23 +173,26 @@ export function TenantOnboarding({ tenantId }: { tenantId: string }) {
       </div>
       <ul className="tenant-onboarding__list">
         {checks.map((check) => (
-          <li
-            className={
-              check.complete
-                ? "tenant-onboarding__item tenant-onboarding__item--complete"
-                : "tenant-onboarding__item"
-            }
-            key={check.label}
-          >
-            {check.complete ? (
-              <CheckCircle2 aria-hidden="true" size={20} />
-            ) : (
-              <CircleAlert aria-hidden="true" size={20} />
-            )}
-            <span>
-              <strong>{check.label}</strong>
-              <small>{check.description}</small>
-            </span>
+          <li key={check.label}>
+            <button
+              type="button"
+              onClick={() => onNavigate(check.target)}
+              className={
+                check.complete
+                  ? "tenant-onboarding__item tenant-onboarding__item--complete"
+                  : "tenant-onboarding__item"
+              }
+            >
+              {check.complete ? (
+                <CheckCircle2 aria-hidden="true" size={20} />
+              ) : (
+                <CircleAlert aria-hidden="true" size={20} />
+              )}
+              <span>
+                <strong>{check.label}</strong>
+                <small>{check.description}</small>
+              </span>
+            </button>
           </li>
         ))}
       </ul>
