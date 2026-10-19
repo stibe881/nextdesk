@@ -39,6 +39,7 @@ import {
 import {
   loadMobileDashboard,
   loadMobileTicketsByIds,
+  type MobileDashboardMetrics,
   type MobileTicket,
 } from "@/lib/nextdesk-tickets";
 import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
@@ -123,6 +124,8 @@ export default function HomeScreen() {
   const styles = useStyles();
   const [tenant, setTenant] = useState<MobileTenant | null>(null);
   const [tickets, setTickets] = useState<MobileTicket[]>([]);
+  const [ticketMetrics, setTicketMetrics] =
+    useState<MobileDashboardMetrics | null>(null);
   const [ticketScope, setTicketScope] = useState<TicketScope>("all");
   // Tickets, die eine Kennzahl enthält, aber nicht unter den zuletzt
   // geänderten Tickets der Startseite sind.
@@ -238,6 +241,7 @@ export default function HomeScreen() {
       }
       setTenant(result.tenant);
       setTickets(result.tickets);
+      setTicketMetrics(result.metrics);
       setExtraTickets([]);
       setAttemptedFocusIds(new Set());
     } catch (nextError) {
@@ -542,12 +546,19 @@ export default function HomeScreen() {
       y: Math.max(0, ticketListOffset.current - 12),
     });
   };
-  const scopeCount = (scope: Exclude<TicketScope, "all">) =>
-    tickets.filter((ticket) => {
+  const scopeCount = (scope: Exclude<TicketScope, "all">) => {
+    if (
+      ticketMetrics &&
+      (scope === "mine" || scope === "open" || scope === "unassigned")
+    ) {
+      return ticketMetrics[scope];
+    }
+    return tickets.filter((ticket) => {
       if (scope === "mine") return ticket.assignedToCurrentUser;
       if (scope === "open") return !ticket.resolved;
       return ticket.unassigned;
     }).length;
+  };
   const unreadMentions = visibleMentions.filter(
     (mention) => !mention.read_at,
   ).length;

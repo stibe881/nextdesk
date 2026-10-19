@@ -24,6 +24,12 @@ export type MobileTicket = {
   requesterId: string;
 };
 
+export type MobileDashboardMetrics = {
+  mine: number;
+  open: number;
+  unassigned: number;
+};
+
 type Department = { id: string; key: string; name: string; kind: string };
 type Priority = { key: string; label: string; sort_order: number };
 export type MobileTicketCategory = {
@@ -243,6 +249,7 @@ export async function loadMobileDashboard(input: {
 }): Promise<{
   cachedAt: string | null;
   isOfflineCache: boolean;
+  metrics: MobileDashboardMetrics | null;
   tenant: MobileTenant;
   tickets: MobileTicket[];
   userId: string;
@@ -315,6 +322,43 @@ export async function loadMobileDashboard(input: {
       unassigned: !ticket.assigned_agent_id,
       requesterId: ticket.requester_id,
     }));
+    const closedStatusIds = (statusesResult.data ?? [])
+      .filter((status) => status.is_closed)
+      .map((status) => status.id);
+    const [totalResult, closedResult, mineResult, unassignedResult] =
+      await Promise.all([
+        client
+          .from("tickets")
+          .select("id", { count: "exact", head: true })
+          .eq("tenant_id", tenant.id),
+        closedStatusIds.length > 0
+          ? client
+              .from("tickets")
+              .select("id", { count: "exact", head: true })
+              .eq("tenant_id", tenant.id)
+              .in("status_id", closedStatusIds)
+          : Promise.resolve({ count: 0, error: null }),
+        client
+          .from("tickets")
+          .select("id", { count: "exact", head: true })
+          .eq("tenant_id", tenant.id)
+          .or(
+            `assigned_agent_id.eq.${activeUser.id},requester_id.eq.${activeUser.id}`,
+          ),
+        client
+          .from("tickets")
+          .select("id", { count: "exact", head: true })
+          .eq("tenant_id", tenant.id)
+          .is("assigned_agent_id", null),
+      ]);
+    if (
+      totalResult.error ||
+      closedResult.error ||
+      mineResult.error ||
+      unassignedResult.error
+    ) {
+      throw new Error("Die Dashboardzahlen konnten nicht geladen werden.");
+    }
     try {
       await saveOfflineTicketListCache({
         userId: activeUser.id,
@@ -347,6 +391,11 @@ export async function loadMobileDashboard(input: {
     return {
       cachedAt: null,
       isOfflineCache: false,
+      metrics: {
+        mine: mineResult.count ?? 0,
+        open: Math.max(0, (totalResult.count ?? 0) - (closedResult.count ?? 0)),
+        unassigned: unassignedResult.count ?? 0,
+      },
       tenant,
       tickets,
       userId: activeUser.id,
@@ -363,6 +412,7 @@ export async function loadMobileDashboard(input: {
         return {
           cachedAt: cache.cachedAt,
           isOfflineCache: true,
+          metrics: null,
           tenant: cache.tenant,
           tickets: cache.tickets.map((ticket) => ({
             ...ticket,
