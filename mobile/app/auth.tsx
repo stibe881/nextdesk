@@ -2,7 +2,7 @@ import Constants from "expo-constants";
 import * as WebBrowser from "expo-web-browser";
 import * as Linking from "expo-linking";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { Platform, Pressable, Text, TextInput, View } from "react-native";
 
 import { ScreenContainer } from "@/components/screen-container";
@@ -22,7 +22,6 @@ import { withTimeout } from "@/lib/pkce";
 
 WebBrowser.maybeCompleteAuthSession();
 
-const WEB_SSO_CALLBACK_MESSAGE = "nextdesk.sso.callback";
 const NATIVE_SSO_OPEN_TIMEOUT_MS = 8_000;
 const NATIVE_SSO_PREPARE_TIMEOUT_MS = 10_000;
 // iOS can report a stale on-screen position for a freshly shown screen. A
@@ -66,8 +65,6 @@ export default function AuthScreen() {
   const [email, setEmail] = useState("");
   const [message, setMessage] = useState("");
   const [pending, setPending] = useState<"magic" | "sso" | null>(null);
-  const popupRef = useRef<Window | null>(null);
-  const popupMonitorRef = useRef<ReturnType<typeof setInterval> | null>(null);
   // Synchronous guard: a single tap may report both onPressOut and onPress.
   const ssoStartingRef = useRef(false);
   const magicStartingRef = useRef(false);
@@ -78,70 +75,9 @@ export default function AuthScreen() {
       ? nextDeskAuthFailureMessage(authError)
       : "");
 
-  function stopPopupMonitor() {
-    if (popupMonitorRef.current !== null) {
-      clearInterval(popupMonitorRef.current);
-      popupMonitorRef.current = null;
-    }
-  }
-
-  useEffect(() => {
-    if (Platform.OS !== "web" || typeof window === "undefined") return;
-
-    const handleCallback = (event: MessageEvent<unknown>) => {
-      if (event.origin !== window.location.origin) return;
-      const payload = event.data;
-      if (
-        typeof payload !== "object" ||
-        payload === null ||
-        !(
-          "type" in payload &&
-          (payload as { type?: unknown }).type === WEB_SSO_CALLBACK_MESSAGE
-        ) ||
-        !("callbackUrl" in payload) ||
-        typeof (payload as { callbackUrl?: unknown }).callbackUrl !== "string"
-      ) {
-        return;
-      }
-
-      stopPopupMonitor();
-      popupRef.current = null;
-      setPending("sso");
-      void completeNextDeskAuth(
-        (payload as { callbackUrl: string }).callbackUrl,
-      )
-        .then(() => router.replace("/"))
-        .catch((error) =>
-          setMessage(
-            nextDeskAuthFailureMessage(nextDeskAuthFailureCode(error)),
-          ),
-        )
-        .finally(() => setPending(null));
-    };
-
-    window.addEventListener("message", handleCallback);
-    return () => {
-      window.removeEventListener("message", handleCallback);
-      stopPopupMonitor();
-    };
-  }, [router]);
-
   async function continueWithSso() {
     setPending("sso");
     setMessage("Sichere SSO-Anmeldung wird vorbereitet …");
-    const webPopup =
-      Platform.OS === "web" && typeof window !== "undefined"
-        ? window.open("about:blank", "nextdesk-sso")
-        : null;
-    if (Platform.OS === "web" && !webPopup) {
-      setPending(null);
-      setMessage(
-        "Das Anmeldefenster wurde blockiert. Bitte erlauben Sie Pop-ups für die Manus-Vorschau und versuchen Sie es erneut.",
-      );
-      return;
-    }
-
-    let waitingForWebCallback = false;
     let stage: "prepare" | "browser" = "prepare";
     try {
       const providerUrl =
@@ -172,19 +108,11 @@ export default function AuthScreen() {
         throw new Error("Die SSO-Anmeldung konnte nicht vorbereitet werden.");
       await beginNextDeskOAuth();
       stage = "browser";
-      if (Platform.OS === "web") {
-        popupRef.current = webPopup;
-        webPopup?.location.replace(providerUrl);
-        waitingForWebCallback = true;
-        popupMonitorRef.current = setInterval(() => {
-          if (popupRef.current !== webPopup || !webPopup || !webPopup.closed) {
-            return;
-          }
-          stopPopupMonitor();
-          popupRef.current = null;
-          setPending(null);
-          setMessage("Die SSO-Anmeldung wurde abgebrochen.");
-        }, 500);
+      if (Platform.OS === "web" && typeof window !== "undefined") {
+        // Manus kann Pop-ups aus einer eingebetteten Vorschau unsichtbar
+        // behandeln. Die Callback-Seite unterstützt die Rückkehr ohne opener,
+        // deshalb bleibt der OAuth-Fluss im selben sicheren Browser-Tab.
+        window.location.assign(providerUrl);
         return;
       }
       setMessage("Microsoft-Anmeldung wird geöffnet …");
@@ -240,14 +168,13 @@ export default function AuthScreen() {
         3_000,
         "Auth-Transaktion konnte nicht entfernt werden.",
       ).catch(() => undefined);
-      webPopup?.close();
       setMessage(
         stage === "prepare" && Platform.OS !== "web"
           ? preparationFailureMessage(error)
           : nextDeskAuthFailureMessage(nextDeskAuthFailureCode(error)),
       );
     } finally {
-      if (!waitingForWebCallback) setPending(null);
+      setPending(null);
     }
   }
 

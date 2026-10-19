@@ -79,15 +79,17 @@ export function TenantBoundRouteStack() {
   const segments = useSegments();
   const isAuthRoute = segments[0] === "auth";
   const workspaceReady = !loading && Boolean(tenantId);
-
-  if (isAuthRoute) return <RouteStack routeKey="auth" />;
-
   const routeTenantId = tenantId ?? lastConfirmedTenantId;
-  if (!routeTenantId) {
-    return <WorkspaceGate error={error} onRetry={() => void refresh()} />;
-  }
-
-  const blocked = !workspaceReady;
+  // Expo Router must retain a mounted navigator while the session navigator
+  // redirects an unauthenticated launch to /auth. Returning only the gate
+  // here removed that navigator and could make native navigation re-render
+  // recursively. The workspace stays fail-closed through the overlay instead.
+  const blocked = !isAuthRoute && (!workspaceReady || !routeTenantId);
+  const routeKey = isAuthRoute
+    ? "auth"
+    : routeTenantId
+      ? `tenant-${routeTenantId}`
+      : "workspace-pending";
   return (
     <View style={styles.root}>
       <View
@@ -96,7 +98,7 @@ export function TenantBoundRouteStack() {
         pointerEvents={blocked ? "none" : "auto"}
         style={styles.workspace}
       >
-        <RouteStack routeKey={`tenant-${routeTenantId}`} />
+        <RouteStack routeKey={routeKey} />
       </View>
       {blocked ? (
         <View style={styles.overlay}>
