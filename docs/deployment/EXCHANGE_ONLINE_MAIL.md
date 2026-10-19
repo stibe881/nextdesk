@@ -1,135 +1,116 @@
-# nextDesk E-Mail-Kanal über Exchange Online
+# nextDesk E-Mail-Kanäle mit Microsoft 365
 
-Diese Anleitung beschreibt die Inbetriebnahme des mandantenfähigen **nextDesk E-Mail-Kanals über Exchange Online**. Der Kanal verarbeitet ausschliesslich den Posteingang eines ausdrücklich konfigurierten Support-Postfachs. Er verwendet eine zentrale Multi-Tenant-App, deren Zugriff je Kundenmandant mit Exchange Online RBAC auf dieses eine Postfach begrenzt wird.
+nextDesk verbindet **mehrere Support-Postfächer pro Mandant** mit Microsoft 365. Die Verbindung erfolgt über eine einmalig angemeldete Microsoft-365-Connectoridentität und eine **pro Postfach** vergebene Exchange-Delegation. Sie ist deshalb für Kundinnen und Kunden in der nextDesk-Oberfläche bedienbar und benötigt für die normale Einrichtung keine PowerShell.
 
-> **Wichtig:** Werte für Secrets gehören weder in Chat-Nachrichten noch in Git, Tickets oder Screenshots. Verwenden Sie ausschliesslich den Secret Store von Supabase.
+> **Sicherheitsgrundsatz:** Client-Secret, Refresh-Token und Verschlüsselungsschlüssel gehören nie in Chat, Git, Tickets oder Screenshots. Sie werden ausschliesslich im Supabase Secret Store verarbeitet. Tokens werden verschlüsselt gespeichert und nicht in nextDesk angezeigt.
 
-## 1. Einmalig bei Gross ICT: Entra-App registrieren
+## Architektur und Grenzen
 
-1. Öffnen Sie im Gross-ICT-Entra-Mandanten **App registrations** und erstellen Sie eine neue Registrierung:
-   - **Name:** `nextDesk – Exchange Online`
-   - **Unterstützte Kontotypen:** **Konten in einem beliebigen Organisationsverzeichnis** (Multi-Tenant)
-   - **Web-Redirect-URI:** `https://app.nextdesk.ch/`
-2. **Fügen Sie keine Microsoft-Graph-Anwendungsberechtigungen `Mail.*` hinzu.** Insbesondere dürfen `Mail.Read`, `Mail.ReadWrite`, `Mail.Send` und `Mail.ReadBasic` nicht im Entra-Consent stehen. Entra-Rechte und Exchange-RBAC addieren sich; eine solche Entra-Freigabe würde die Beschränkung auf das Support-Postfach aufheben.
-3. Erstellen Sie unter **Certificates & secrets** ein neues Client-Secret. Kopieren Sie den Secret-Wert sofort in den sicheren Secret Store.
-4. Setzen Sie in Supabase Edge Function Secrets:
+- Die zentrale App **`nextDesk – Exchange Online`** bleibt mehrmandantenfähig.
+- Es werden **keine Microsoft-Graph-Anwendungsberechtigungen `Mail.*`** verwendet. Solche Rechte würden eine Beschränkung auf einzelne Support-Postfächer umgehen.
+- Der verbundene Microsoft-365-Benutzer erhält nur delegierte Berechtigungen. Exchange bestimmt zusätzlich, auf welche freigegebenen Postfächer dieses Konto tatsächlich zugreifen und aus welchen es senden darf.
+- Die Kundin oder der Kunde kann in nextDesk mehrere eigene Support-Postfächer hinzufügen. Ein Postfach kann aus Sicherheitsgründen nie gleichzeitig zwei nextDesk-Mandanten gehören.
+- Ein per E-Mail erstelltes Ticket speichert sein Ursprungs-Postfach. Agentenantworten, Lösungsmitteilungen und Abteilungsrückfragen verwenden anschliessend genau diesen Kanal.
+- Eingänge werden mindestens im vorhandenen fünfminütigen Wartungszyklus abgefragt. Für delegierte Shared Mailboxes verwendet nextDesk bewusst kein Graph-Webhook-Abo, da dieses für delegierte Postfachzugriffe nicht zuverlässig mandantenübergreifend bereitstellbar ist.
+
+## 1. Einmalig bei Gross ICT: zentrale Entra-App aktualisieren
+
+Öffnen Sie im Gross-ICT-Entra-Mandanten die App-Registrierung **`nextDesk – Exchange Online`**.
+
+1. Prüfen Sie unter **Authentication**, dass diese Web-Redirect-URI vorhanden ist:
+
+   ```text
+   https://ewizsylzrwogsztsthbl.supabase.co/functions/v1/exchange-mail-connect
+   ```
+
+2. Unter **API permissions → Microsoft Graph → Delegated permissions** ergänzen Sie nur:
+
+   ```text
+   User.Read
+   Mail.Read
+   Mail.Send
+   Mail.Read.Shared
+   Mail.Send.Shared
+   ```
+
+   `User.Read` prüft die Identität des angemeldeten Connector-Kontos und löst die eingegebene Support-Adresse einmal in eine stabile Entra-Objekt-ID auf, damit dasselbe Postfach nicht über Aliasadressen mehrfach angebunden werden kann. Die Mailrechte gelten nur delegiert für die Connectoridentität und die ihr in Exchange explizit freigegebenen Postfächer. `offline_access`, `openid` und `profile` fordert nextDesk beim OAuth-Rücksprung als Protokoll-Scopes an; sie müssen nicht als zusätzliche Graph-Berechtigungen im Portal ergänzt werden.
+
+3. **Keine Application permissions `Mail.*` hinzufügen.** Die obigen Rechte müssen ausdrücklich als **Delegated permissions** erscheinen.
+
+4. Unter **Certificates & secrets** muss ein gültiges Client-Secret vorhanden sein.
+
+5. Im Supabase Secret Store müssen diese drei Secrets gesetzt sein:
 
    ```text
    EXCHANGE_MAIL_CLIENT_ID=<Application (client) ID>
    EXCHANGE_MAIL_CLIENT_SECRET=<Client-Secret-Wert>
+   EXCHANGE_MAIL_TOKEN_ENCRYPTION_KEY=<zufälliger Base64-Schlüssel mit genau 32 Bytes>
    ```
 
-   Die App-ID darf der Mandantenadministration angezeigt werden. Der Client-Secret-Wert ist geheim und darf nie in Git, Chat oder Konfigurationsdateien landen.
+   Der dritte Wert verschlüsselt ausschliesslich die gespeicherten OAuth-Refresh-Tokens. Einen bestehenden Schlüssel niemals nachträglich ersetzen, solange noch aktive Verbindungen bestehen; andernfalls müssten diese sicher erneut angemeldet werden.
 
-5. Die öffentlichen Microsoft-Graph-Webhook-URLs sind:
+6. Falls die Entra-Richtlinien dies verlangen, erteilt eine Gross-ICT-Administration die Zustimmung für die delegierten Berechtigungen. Für Kundenmandanten erfolgt die Zustimmung beim jeweiligen Microsoft-365-Connect.
 
-   ```text
-   https://ewizsylzrwogsztsthbl.supabase.co/functions/v1/exchange-mail-webhook
-   https://ewizsylzrwogsztsthbl.supabase.co/functions/v1/exchange-mail-webhook?lifecycle=1
-   ```
+## 2. Pro Kundin oder Kunde: ohne PowerShell einrichten
 
-## 2. Pro Kunde: App bereitstellen und Exchange-RBAC begrenzen
+### 2.1 Connector-Konto und Postfachdelegation in Exchange Admin Center
 
-### 2.1 Service Principal im Kundenmandanten bereitstellen
+Die Kundin oder der Kunde bestimmt ein vorhandenes Microsoft-365-Konto als Connector. Dieses Konto muss nicht das Support-Postfach selbst sein. Es braucht aber pro zu verbindendem Postfach:
 
-Der Kunde muss die Multi-Tenant-App in seinem Entra-Mandanten bereitstellen. Dies ist möglich über den Admin-Consent-Link:
+1. Exchange Admin Center öffnen: **Recipients → Mailboxes**.
+2. Das gewünschte Support-Postfach öffnen.
+3. Im Bereich **Mailbox delegation** beim Connector-Konto hinzufügen:
+   - **Full Access / Vollzugriff**
+   - **Send As / Senden als**
+4. Speichern und für jedes zusätzliche Support-Postfach wiederholen.
 
-```text
-https://login.microsoftonline.com/<EntraTenantId>/adminconsent?client_id=<EXCHANGE_MAIL_CLIENT_ID>
-```
+Die Delegationen gelten nur für die ausgewählten Postfächer. Ohne **Vollzugriff** kann nextDesk Eingänge nicht lesen; ohne **Senden als** kann nextDesk aus diesem Postfach keine Antworten oder Lösungsmitteilungen senden.
 
-Alternativ kann eine berechtigte Person den Service Principal mit Microsoft Graph PowerShell anlegen:
+### 2.2 Microsoft 365 direkt in nextDesk verbinden
 
-```powershell
-New-MgServicePrincipal -AppId <EXCHANGE_MAIL_CLIENT_ID>
-```
+1. Als Mandantenadministratorin oder -administrator zu **Einstellungen → Funktionen → E-Mail-Kanäle** wechseln.
+2. Den Funktionsschalter `integrations.email` aktivieren, falls er noch deaktiviert ist.
+3. **Microsoft 365 verbinden** wählen und sich mit dem Connector-Konto anmelden.
+4. Den angezeigten Microsoft-Dialog abschliessen. Bei eingeschränkten Consent-Richtlinien kann die Kundin oder der Kunde die Freigabe durch eine Microsoft-365-Administration bestätigen lassen.
+5. Nach dem sicheren Rücksprung zeigt nextDesk die Verbindung mit dem angemeldeten Connector-Konto an.
 
-Verwenden Sie anschliessend den **Object ID des Enterprise Application Service Principals** (nicht den Object ID der App Registration) für Exchange Online.
+### 2.3 Support-Postfach hinzufügen und aktivieren
 
-### 2.2 Exchange Online PowerShell verbinden
+1. **Postfach hinzufügen** wählen.
+2. Die vorhandene Microsoft-365-Verbindung auswählen.
+3. Support-Postfach und Ziel-Abteilung erfassen; Eingangsbestätigung, Agentenantworten und Lösungsmitteilung nach Bedarf einstellen. nextDesk löst die Adresse selbst in die sichere Microsoft-365-Postfachidentität auf.
+4. **Postfach speichern**.
+5. **Prüfen** wählen. nextDesk prüft das Postfach, eine Leseabfrage des Eingangskorbs und versendet eine kurze Berechtigungs-Bestätigung an das verbundene Microsoft-365-Konto. Damit wird auch **Senden als** vor der Aktivierung nachgewiesen.
+6. Erst nach erfolgreicher Prüfung **Aktivieren** wählen.
+7. **Testmail** wählen. Sie wird an die E-Mail-Adresse der aktuell angemeldeten nextDesk-Person in die Versandwarteschlange gestellt.
+8. Einen echten kontrollierten Test durchführen: neue E-Mail an das Support-Postfach, Ticketentstehung, Agentenantwort, Zustellstatus und bei Bedarf Anhang.
 
-Melden Sie sich mit einer Rolle wie **Organization Management** oder **Exchange Administrator** an und führen Sie für das gewünschte Support-Postfach aus:
+## 3. Fehlerbilder
 
-```powershell
-Connect-ExchangeOnline
+| Fehlercode                          | Bedeutung                                                                                              | Massnahme                                                                                                             |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------- |
+| `exchange_platform_not_configured`  | Zentrale App-, Secret- oder Verschlüsselungsschlüsselkonfiguration fehlt.                              | Gross ICT setzt bzw. prüft die drei Supabase Secrets und die Redirect-URI.                                            |
+| `feature_disabled`                  | Der E-Mail-Funktionsschalter ist für den Mandanten nicht aktiv.                                        | In **Einstellungen → Funktionen** aktivieren.                                                                         |
+| `connection_not_found`              | Die gewählte Microsoft-365-Verbindung gehört nicht zum Mandanten oder ist nicht verfügbar.             | Eine vorhandene Verbindung wählen oder Microsoft 365 erneut verbinden.                                                |
+| `exchange_reauthorization_required` | Die Microsoft-Anmeldung wurde widerrufen, ist nicht mehr verwendbar oder der Schlüssel wurde geändert. | Mit **Microsoft 365 verbinden** erneut anmelden.                                                                      |
+| `exchange_mailbox_not_found`        | Die Support-Postfachadresse ist nicht erreichbar.                                                      | Adresse im Exchange Admin Center prüfen.                                                                              |
+| `exchange_access_denied`            | Das Connector-Konto darf das ausgewählte Postfach nicht lesen oder daraus senden.                      | In Exchange Admin Center für genau dieses Postfach **Vollzugriff** und **Senden als** vergeben; danach erneut prüfen. |
+| `exchange_verification_required`    | Das Postfach wurde seit dem Speichern noch nicht erfolgreich geprüft.                                  | Erst **Prüfen**, danach **Aktivieren**.                                                                               |
+| `mailbox_in_use`                    | Das Postfach ist bereits einem anderen nextDesk-Mandanten zugeordnet.                                  | Nur den korrekten Mandanten verwenden oder die bestehende Zuordnung prüfen.                                           |
+| `exchange_throttled`                | Microsoft Graph drosselt Anfragen.                                                                     | Nicht mehrfach klicken; nextDesk berücksichtigt Wiederholungszeiten.                                                  |
 
-New-ServicePrincipal `
-  -AppId <EXCHANGE_MAIL_CLIENT_ID> `
-  -ObjectId <Enterprise-App-ObjectId> `
-  -DisplayName "nextDesk – Exchange Online"
+## 4. Datenschutz und Betrieb
 
-New-ManagementScope `
-  -Name "nextDesk Support-Postfach" `
-  -RecipientRestrictionFilter "PrimarySmtpAddress -eq 'support@kunde.ch'"
+- nextDesk speichert in `mail_messages` keine vollständigen E-Mail-Körper. Ticketbeschreibungen und externe Ticketkommentare enthalten die für die Bearbeitung benötigten Inhalte.
+- Refresh-Tokens werden nur verschlüsselt in einer service-role-geschützten Tabelle verarbeitet; sie sind weder über RLS für Mandantenmitglieder lesbar noch in der Benutzeroberfläche sichtbar.
+- Anhänge bleiben im bestehenden mandantenisolierten nextDesk-Ticketanhang-Speicher und unterliegen dessen Dateityp- und Grössenlimits.
+- Pausieren eines Kanals beendet die weitere Verarbeitung dieses Postfachs; bereits offene Queue-Einträge des Kanals werden fail-closed verworfen.
+- Wird ein Postfach geändert, muss es erneut geprüft werden. Dadurch kann keine alte Queue-Nachricht versehentlich über eine neue Postfachkonfiguration versandt werden.
+- Beim Wechsel auf den delegierten Microsoft-365-Connect werden ältere Application-RBAC-Kanäle automatisch pausiert, ihre alten Warteschlangeneinträge verworfen und vorhandene Graph-Abos lokal stillgelegt. Sie können erst nach dem sicheren Microsoft-365-Connect wieder aktiviert werden.
 
-New-ManagementRoleAssignment `
-  -App <EXCHANGE_MAIL_CLIENT_ID> `
-  -Role "Application Mail.Read" `
-  -CustomResourceScope "nextDesk Support-Postfach"
+## Offizielle Microsoft-Referenzen
 
-New-ManagementRoleAssignment `
-  -App <EXCHANGE_MAIL_CLIENT_ID> `
-  -Role "Application Mail.Send" `
-  -CustomResourceScope "nextDesk Support-Postfach"
-```
-
-Prüfen Sie die effektive Berechtigung:
-
-```powershell
-Test-ServicePrincipalAuthorization `
-  -Identity <EXCHANGE-Mail-Service-Principal-Identität> `
-  -Resource support@kunde.ch
-```
-
-Die Exchange-RBAC-Caches benötigen nach Änderungen typischerweise **30 Minuten bis 2 Stunden**. Ein unmittelbarer `ErrorAccessDenied` nach einer korrekten Zuweisung kann daher vorübergehend sein.
-
-Für eine möglichst robuste Graph-Anbindung wird die Postfach-Objekt-ID verwendet. Lesen Sie die `ExternalDirectoryObjectId` aus:
-
-```powershell
-Get-Mailbox support@kunde.ch | Format-List ExternalDirectoryObjectId,PrimarySmtpAddress
-```
-
-> Der Management Scope muss auf genau das konfigurierte Support-Postfach zeigen. Keine Entra-Graph-`Mail.*`-Berechtigung hinzufügen.
-
-## 3. In nextDesk konfigurieren und aktivieren
-
-1. Melden Sie sich als Mandantenadministrator an und öffnen Sie die Mandanteneinstellungen für **E-Mail-Kanal (Exchange Online)**.
-2. Prüfen Sie, ob die Funktion `integrations.email` für den Mandanten aktiviert ist.
-3. Erfassen Sie:
-   - Entra-Mandanten-ID des Kunden
-   - Support-Postfach, beispielsweise `support@kunde.ch`
-   - optional die `ExternalDirectoryObjectId` des Postfachs
-   - optional die Standardabteilung für neue E-Mail-Tickets
-   - Optionen für Eingangsbestätigung, Agentenantworten und Lösungsmitteilung
-4. Klicken Sie auf **Verbindung prüfen**. Der Test prüft Token, Postfach und Leseberechtigung.
-5. Klicken Sie erst nach erfolgreicher Prüfung auf **Aktivieren**. nextDesk weist die Aktivierung ohne Status `verified` oder bei erkannten Microsoft-Graph-`Mail.*`-Rollen serverseitig ab. Bei Erfolg setzt nextDesk die Abfrage-Wasserlinie auf den Aktivierungszeitpunkt; ältere Nachrichten werden nicht importiert. Ein Graph-Abo wird angelegt. Falls das Abo vorübergehend nicht möglich ist, bleibt der Kanal aktiv und wird mindestens alle fünf Minuten abgefragt.
-6. Klicken Sie auf **Testmail senden**. Die Testmail geht an die E-Mail-Adresse der handelnden Person.
-7. Senden Sie eine Testmail an das Support-Postfach und prüfen Sie Ticket, Chat, Anhänge und gegebenenfalls die automatische Eingangsbestätigung.
-
-Eine Warnung zu `overBroadPermissions` bedeutet, dass das erhaltene Token eine zu breite `Mail.*`-Rolle enthält. Das ist keine normale Zielkonfiguration: prüfen Sie Entra-Consent und entfernen Sie unbeabsichtigte Graph-Anwendungsberechtigungen.
-
-## 4. Häufige Fehlerbilder
-
-| Fehlercode                         | Bedeutung                                                                                               | Massnahme                                                                                                                                                |
-| ---------------------------------- | ------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `exchange_platform_not_configured` | App-ID oder Client-Secret fehlt in den Supabase Edge Function Secrets.                                  | Beide Secrets im sicheren Secret Store setzen, niemals in Git oder Chat.                                                                                 |
-| `feature_disabled`                 | Der Funktionsschalter `integrations.email` ist nicht aktiv.                                             | Funktion für den betroffenen Mandanten aktivieren.                                                                                                       |
-| `forbidden`                        | Die handelnde Person ist keine berechtigte Mandantenadministration.                                     | Aktive Mandantenmitgliedschaft und Berechtigung `tenant.settings.manage` prüfen.                                                                         |
-| `invalid_settings`                 | Postfach, Entra-ID, Abteilung oder Aktivierungszustand ist ungültig.                                    | E-Mail-Adresse, UUIDs, aktive Abteilung und gespeicherte Kanaleinstellungen prüfen.                                                                      |
-| `exchange_verification_required`   | Die Verbindung wurde seit dem Speichern noch nicht vollständig geprüft.                                 | Zuerst «Verbindung prüfen» erfolgreich abschliessen.                                                                                                     |
-| `exchange_overbroad_permissions`   | Das Token enthält unzulässige Microsoft-Graph-Anwendungsrollen `Mail.*`.                                | Die Entra-`Mail.*`-Berechtigungen entfernen und die Verbindung erneut prüfen.                                                                            |
-| `mailbox_in_use`                   | Das Postfach ist bereits einem anderen nextDesk-Mandanten zugeordnet.                                   | Nur einen Mandanten pro Support-Postfach konfigurieren.                                                                                                  |
-| `exchange_app_not_consented`       | Die App ist im Kundenmandanten nicht vorhanden oder nicht freigegeben (`AADSTS700016`/`AADSTS7000229`). | Admin-Consent ausführen oder Service Principal im Kundenmandanten bereitstellen.                                                                         |
-| `exchange_mailbox_not_found`       | Das konfigurierte Postfach oder dessen Objekt-ID wurde nicht gefunden.                                  | `PrimarySmtpAddress` und `ExternalDirectoryObjectId` mit `Get-Mailbox` prüfen.                                                                           |
-| `exchange_access_denied`           | Exchange Online RBAC erlaubt den Zugriff nicht.                                                         | `New-ServicePrincipal`, Management Scope, beide Rollen und `Test-ServicePrincipalAuthorization` prüfen. Nach Änderungen 30 Minuten bis 2 Stunden warten. |
-| `exchange_throttled`               | Microsoft Graph drosselt Anfragen.                                                                      | Nicht manuell wiederholen; nextDesk verwendet Retry-After und Wiederholungen.                                                                            |
-| `exchange_unavailable`             | Microsoft Graph oder Exchange Online ist vorübergehend nicht verfügbar.                                 | Später erneut prüfen; ausstehende Nachrichten werden wiederholt verarbeitet.                                                                             |
-
-## 5. Datenschutz und Betrieb
-
-- nextDesk speichert in `mail_messages` **keine E-Mail-Körper**. Es werden nur für die Verarbeitung notwendige Metadaten, Zustände und Message-Referenzen gespeichert.
-- E-Mail-Inhalte werden als Ticketbeschreibung oder externer Ticketkommentar gespeichert, damit sie im Ticket bearbeitet werden können.
-- Der Kanal liest nur den **Posteingang des einen konfigurierten Support-Postfachs**. Die Exchange-RBAC-Zuweisung muss genau auf dieses Postfach begrenzt bleiben.
-- Anhänge werden ausschliesslich im bestehenden nextDesk-Ticketanhang-Speicher abgelegt. Es gelten die Ticketanhang-Typen und -Grössenlimiten.
-- Das Laufzeitkonto **nextDesk E-Mail-Dienst** ist eine globale, gesperrte Dienstidentität ohne Mandantenmitgliedschaft. Es wird einmalig bei Bedarf erstellt und dient nur als technischer Autor für importierte Tickets und E-Mail-Kommentare.
-- Webhooks validieren `clientState` gehasht und zeitkonstant. Mailinhalte, Tokens und Secrets dürfen weder geloggt noch in Audit-Metadaten abgelegt werden.
+- [OAuth 2.0 Authorization Code Flow mit PKCE](https://learn.microsoft.com/en-us/entra/identity-platform/v2-oauth2-auth-code-flow)
+- [Zugriff auf freigegebene Outlook-Postfächer](https://learn.microsoft.com/en-us/graph/outlook-share-messages-folders)
+- [Senden aus einem anderen Postfach](https://learn.microsoft.com/en-us/graph/outlook-send-mail-from-other-user)
+- [Exchange-Mailboxdelegation](https://learn.microsoft.com/en-us/exchange/recipients/mailbox-permissions)

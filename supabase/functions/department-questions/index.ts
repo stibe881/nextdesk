@@ -298,7 +298,7 @@ async function ticket(
   const result = await admin
     .from("tickets")
     .select(
-      "id, tenant_id, department_id, assigned_agent_id, ticket_number, subject",
+      "id, tenant_id, department_id, assigned_agent_id, ticket_number, subject, exchange_mail_channel_id",
     )
     .eq("tenant_id", tenantId)
     .eq("id", ticketId)
@@ -441,11 +441,14 @@ async function queueInternalMail(input: {
     "integrations.email",
   ]);
   if (!flags?.["integrations.email"]) return false;
+  if (!isUuid(input.ticket.exchange_mail_channel_id)) return false;
   const channel = await input.admin
     .from("exchange_mail_channels")
     .select("id, configuration_version")
     .eq("tenant_id", input.tenantId)
+    .eq("id", input.ticket.exchange_mail_channel_id)
     .eq("status", "active")
+    .eq("access_mode", "delegated")
     .maybeSingle();
   if (channel.error || !channel.data) return false;
   const user = await input.admin.auth.admin.getUserById(input.recipientUserId);

@@ -128,3 +128,6 @@ verify_jwt = false
 
 [functions.exchange-mail-worker]
 verify_jwt = false
+
+[functions.exchange-mail-connect]
+verify_jwt = false

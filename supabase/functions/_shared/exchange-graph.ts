@@ -18,6 +18,7 @@ export class ExchangeMailError extends Error {
       | "exchange_app_not_consented"
       | "exchange_mailbox_not_found"
       | "exchange_access_denied"
+      | "exchange_reauthorization_required"
       | "exchange_throttled"
       | "exchange_unavailable",
     readonly status: number,

@@ -10745,6 +10745,67 @@ body:has(.ticket-detail) {
   gap: 9px;
 }
 
+.exchange-mail-settings__status-heading {
+  justify-content: space-between;
+}
+
+.exchange-mail-settings__connection-list,
+.exchange-mail-settings__channel-list {
+  display: grid;
+  gap: 9px;
+}
+
+.exchange-mail-settings__connection,
+.exchange-mail-settings__channel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px;
+  background: var(--surface-subtle);
+}
+
+.exchange-mail-settings__connection > span:first-child,
+.exchange-mail-settings__channel > div:first-child {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.exchange-mail-settings__connection strong,
+.exchange-mail-settings__channel strong {
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.exchange-mail-settings__connection small,
+.exchange-mail-settings__channel p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.exchange-mail-settings__channel-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.exchange-mail-settings__channel .exchange-mail-settings__actions {
+  justify-content: flex-end;
+}
+
+.exchange-mail-settings__empty {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
 .exchange-mail-settings__status-heading > span:last-child {
   color: var(--muted);
   font-size: 12px;
@@ -11009,6 +11070,24 @@ body:has(.ticket-detail) {
   font-size: 14px;
 }
 
+.exchange-mail-settings__checks p {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 9px 10px;
+  color: var(--success);
+  background: var(--success-soft);
+  font-size: 13px;
+}
+
+.exchange-mail-settings__checks p span {
+  color: var(--text);
+}
+
 .exchange-mail-settings__checks ul {
   display: grid;
   gap: 7px;
@@ -11158,6 +11237,17 @@ body:has(.ticket-detail) {
 
   .exchange-mail-settings__actions button {
     width: 100%;
+  }
+
+  .exchange-mail-settings__connection,
+  .exchange-mail-settings__channel {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .exchange-mail-settings__channel .exchange-mail-settings__actions {
+    width: 100%;
+    justify-content: stretch;
   }
 
   .exchange-mail-settings__command {

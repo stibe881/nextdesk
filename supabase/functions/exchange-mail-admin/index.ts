@@ -1,28 +1,31 @@
 import { withSupabase } from "@supabase/server";
 import {
-  ExchangeMailError,
-  exchangeMailClientId,
-  getExchangeAccessToken,
-  graphMailboxIdentifier,
-  graphRequest,
-  isExchangeMailPlatformConfigured,
-} from "../_shared/exchange-graph.ts";
-import {
-  createSubscriptionForChannel,
-  removeSubscriptionsForChannel,
-} from "../_shared/exchange-mail-processing.ts";
+  delegatedExchangeCallbackUrl,
+  delegatedExchangeClientId,
+  delegatedExchangeScopes,
+  delegatedGraphRequest,
+  graphMailboxIdentity,
+  isDelegatedExchangeMailConfigured,
+  pkceChallenge,
+  randomUrlSafe,
+  sha256Hex,
+  type DelegatedConnection,
+} from "../_shared/exchange-delegated-oauth.ts";
+import { ExchangeMailError } from "../_shared/exchange-graph.ts";
+import { removeSubscriptionsForChannel } from "../_shared/exchange-mail-processing.ts";
 import { resolveTenantFeatureStates } from "../_shared/tenant-features.ts";
 
 const ALLOWED_ORIGIN = "https://app.nextdesk.ch";
 const FEATURE = "integrations.email";
-const WEBHOOK_URL =
-  "https://ewizsylzrwogsztsthbl.supabase.co/functions/v1/exchange-mail-webhook";
+const OAUTH_STATE_TTL_MS = 10 * 60_000;
 
 type Row = Record<string, unknown>;
 type Admin = any;
 type Channel = Row & {
   id: string;
   tenant_id: string;
+  connection_id: string | null;
+  access_mode: "delegated" | "legacy_rbac";
   entra_tenant_id: string;
   mailbox_address: string;
   mailbox_object_id: string | null;
@@ -31,7 +34,7 @@ type Channel = Row & {
   send_agent_replies: boolean;
   send_resolution: boolean;
   configuration_version: number;
-  status: string;
+  status: "draft" | "verified" | "active" | "paused" | "error";
   last_verified_at: string | null;
   last_error_code: string | null;
   last_error_message: string | null;
@@ -42,10 +45,12 @@ type Channel = Row & {
 };
 type Action =
   | { action: "getStatus"; tenantId: string }
+  | { action: "startMicrosoftConnect"; tenantId: string }
   | {
-      action: "saveSettings";
+      action: "saveMailbox";
       tenantId: string;
-      entraTenantId: string;
+      channelId: string | null;
+      connectionId: string;
       mailboxAddress: string;
       mailboxObjectId: string | null;
       defaultDepartmentId: string | null;
@@ -53,10 +58,10 @@ type Action =
       sendAgentReplies: boolean;
       sendResolution: boolean;
     }
-  | { action: "verifyConnection"; tenantId: string }
-  | { action: "activate"; tenantId: string }
-  | { action: "pause"; tenantId: string }
-  | { action: "sendTestMail"; tenantId: string };
+  | { action: "verifyConnection"; tenantId: string; channelId: string }
+  | { action: "activate"; tenantId: string; channelId: string }
+  | { action: "pause"; tenantId: string; channelId: string }
+  | { action: "sendTestMail"; tenantId: string; channelId: string };
 
 class HttpError extends Error {
   constructor(
@@ -101,31 +106,38 @@ function onlyKeys(value: Row, keys: string[]): boolean {
   return Object.keys(value).every((key) => keys.includes(key));
 }
 
+function tenantAction(value: Row): { tenantId: string; action: string } | null {
+  return typeof value.action === "string" && isUuid(value.tenantId)
+    ? { action: value.action, tenantId: value.tenantId.toLowerCase() }
+    : null;
+}
+
 function parseAction(value: unknown): Action | null {
+  if (!isRecord(value)) return null;
+  const base = tenantAction(value);
+  if (!base) return null;
   if (
-    !isRecord(value) ||
-    typeof value.action !== "string" ||
-    !isUuid(value.tenantId)
-  )
-    return null;
-  const tenantId = value.tenantId.toLowerCase();
-  if (
-    [
-      "getStatus",
-      "verifyConnection",
-      "activate",
-      "pause",
-      "sendTestMail",
-    ].includes(value.action) &&
+    ["getStatus", "startMicrosoftConnect"].includes(base.action) &&
     onlyKeys(value, ["action", "tenantId"])
-  )
-    return { action: value.action as Action["action"], tenantId } as Action;
+  ) {
+    return base as Action;
+  }
   if (
-    value.action !== "saveSettings" ||
+    ["verifyConnection", "activate", "pause", "sendTestMail"].includes(
+      base.action,
+    ) &&
+    onlyKeys(value, ["action", "tenantId", "channelId"]) &&
+    isUuid(value.channelId)
+  ) {
+    return { ...base, channelId: value.channelId.toLowerCase() } as Action;
+  }
+  if (
+    base.action !== "saveMailbox" ||
     !onlyKeys(value, [
       "action",
       "tenantId",
-      "entraTenantId",
+      "channelId",
+      "connectionId",
       "mailboxAddress",
       "mailboxObjectId",
       "defaultDepartmentId",
@@ -133,21 +145,24 @@ function parseAction(value: unknown): Action | null {
       "sendAgentReplies",
       "sendResolution",
     ]) ||
-    !isUuid(value.entraTenantId) ||
+    !(value.channelId === null || isUuid(value.channelId)) ||
+    !isUuid(value.connectionId) ||
     !mailbox(value.mailboxAddress) ||
     typeof value.sendAcknowledgement !== "boolean" ||
     typeof value.sendAgentReplies !== "boolean" ||
     typeof value.sendResolution !== "boolean"
-  )
+  ) {
     return null;
+  }
   const mailboxObjectId = nullableUuid(value.mailboxObjectId);
   const defaultDepartmentId = nullableUuid(value.defaultDepartmentId);
   if (mailboxObjectId === undefined || defaultDepartmentId === undefined)
     return null;
   return {
-    action: "saveSettings",
-    tenantId,
-    entraTenantId: value.entraTenantId.toLowerCase(),
+    action: "saveMailbox",
+    tenantId: base.tenantId,
+    channelId: value.channelId ? value.channelId.toLowerCase() : null,
+    connectionId: value.connectionId.toLowerCase(),
     mailboxAddress: mailbox(value.mailboxAddress) as string,
     mailboxObjectId,
     defaultDepartmentId,
@@ -160,29 +175,32 @@ function parseAction(value: unknown): Action | null {
 function message(code: string): string {
   const messages: Record<string, string> = {
     exchange_platform_not_configured:
-      "Die Exchange-Online-Plattform ist noch nicht konfiguriert.",
+      "Die zentrale Microsoft-365-Verbindung von nextDesk ist noch nicht vollständig eingerichtet.",
     feature_disabled:
       "Der E-Mail-Kanal ist für diesen Mandanten nicht aktiviert.",
     forbidden: "Sie dürfen diese Mandanteneinstellung nicht verwalten.",
     tenant_access_denied: "Sie haben keinen Zugriff auf diesen Mandanten.",
-    invalid_settings: "Die Einstellungen für den E-Mail-Kanal sind ungültig.",
+    invalid_settings:
+      "Die Einstellungen für dieses Support-Postfach sind ungültig.",
     exchange_verification_required:
-      "Bitte prüfen Sie die Verbindung erfolgreich, bevor Sie den E-Mail-Kanal aktivieren.",
-    exchange_overbroad_permissions:
-      "Die nextDesk-App besitzt zu weitreichende Microsoft-Graph-Mailberechtigungen. Entfernen Sie Mail.*-Berechtigungen und prüfen Sie die Verbindung erneut.",
+      "Bitte prüfen Sie dieses Support-Postfach erfolgreich, bevor Sie es aktivieren.",
     exchange_configuration_changed:
-      "Die E-Mail-Konfiguration wurde zwischenzeitlich geändert. Laden Sie die Einstellungen neu und prüfen Sie die Verbindung erneut.",
+      "Die Postfachkonfiguration wurde zwischenzeitlich geändert. Laden Sie die Einstellungen neu und prüfen Sie erneut.",
     mailbox_in_use:
-      "Dieses Postfach wird bereits von einem anderen Mandanten verwendet.",
-    exchange_app_not_consented:
-      "Die nextDesk-App ist im Microsoft-Mandanten nicht freigegeben.",
+      "Dieses Support-Postfach ist bereits mit einem anderen Mandanten verbunden.",
     exchange_mailbox_not_found: "Das Support-Postfach wurde nicht gefunden.",
     exchange_access_denied:
-      "Exchange Online verweigert den Zugriff. Prüfen Sie die RBAC-Zuweisung; Änderungen können 30 Minuten bis 2 Stunden benötigen.",
+      "Microsoft 365 verweigert den Zugriff auf dieses Postfach. Geben Sie dem verbundenen Konto in Exchange Admin Center mindestens Vollzugriff und Senden als für dieses Postfach.",
+    exchange_reauthorization_required:
+      "Die Microsoft-365-Verbindung muss erneut angemeldet werden.",
+    legacy_migration_required:
+      "Dieser bisherige E-Mail-Kanal muss zuerst über Microsoft 365 migriert werden.",
     exchange_throttled:
       "Microsoft Graph drosselt die Anfrage. Bitte versuchen Sie es später erneut.",
     exchange_unavailable:
-      "Exchange Online ist vorübergehend nicht erreichbar. Bitte versuchen Sie es später erneut.",
+      "Microsoft 365 ist vorübergehend nicht erreichbar. Bitte versuchen Sie es später erneut.",
+    connection_not_found:
+      "Die gewählte Microsoft-365-Verbindung ist nicht verfügbar.",
     not_authenticated: "Sie sind nicht angemeldet.",
     invalid_request: "Die Anfrage ist ungültig.",
     operation_failed: "Die E-Mail-Kanal-Aktion konnte nicht ausgeführt werden.",
@@ -190,32 +208,6 @@ function message(code: string): string {
   return (
     messages[code] ?? "Die E-Mail-Kanal-Aktion konnte nicht ausgeführt werden."
   );
-}
-
-type VerificationStage = "token" | "inbox-folder" | "inbox-messages";
-
-function verificationFailureMessage(
-  code: string,
-  stage: VerificationStage,
-  error: unknown,
-): string {
-  const stageLabel: Record<VerificationStage, string> = {
-    token: "Tokenabruf",
-    "inbox-folder": "Zugriff auf den Eingangordner",
-    "inbox-messages": "Lesen einer Nachricht im Eingangordner",
-  };
-  const graphCode =
-    error instanceof ExchangeMailError ? error.graphErrorCode : undefined;
-  const reference =
-    error instanceof ExchangeMailError ? error.graphRequestId : undefined;
-  return [
-    message(code),
-    `Prüfphase: ${stageLabel[stage]}.`,
-    graphCode ? `Microsoft-Code: ${graphCode}.` : null,
-    reference ? `Microsoft-Referenz: ${reference}.` : null,
-  ]
-    .filter(Boolean)
-    .join(" ");
 }
 
 function headers(request: Request): Headers {
@@ -277,30 +269,8 @@ async function requireTenantAdmin(
     p_tenant_id: tenantId,
     p_permission_code: "tenant.settings.manage",
   });
-  if (allowed.error) {
-    // Older local schemas use only the caller-scoped helper; direct role check
-    // remains equivalent to push-notifications' Tenant administrator policy.
-    const role = await admin
-      .from("roles")
-      .select("id")
-      .eq("tenant_id", tenantId)
-      .eq("name", "Tenant administrator")
-      .eq("scope", "tenant")
-      .eq("active", true)
-      .maybeSingle();
-    const assignment = role.data?.id
-      ? await admin
-          .from("user_role_assignments")
-          .select("id")
-          .eq("tenant_id", tenantId)
-          .eq("user_id", actorId)
-          .eq("role_id", role.data.id)
-          .lte("starts_at", new Date().toISOString())
-          .or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`)
-          .maybeSingle()
-      : { data: null };
-    if (!assignment.data) throw new HttpError(403, "forbidden");
-  } else if (allowed.data !== true) throw new HttpError(403, "forbidden");
+  if (allowed.error || allowed.data !== true)
+    throw new HttpError(403, "forbidden");
 }
 
 async function requireFeature(admin: Admin, tenantId: string): Promise<void> {
@@ -309,37 +279,77 @@ async function requireFeature(admin: Admin, tenantId: string): Promise<void> {
     throw new HttpError(403, "feature_disabled");
 }
 
-async function channel(
+async function getChannel(
   admin: Admin,
   tenantId: string,
-): Promise<Channel | null> {
+  channelId: string,
+): Promise<Channel> {
   const result = await admin
     .from("exchange_mail_channels")
     .select("*")
+    .eq("id", channelId)
     .eq("tenant_id", tenantId)
     .maybeSingle();
   if (result.error) throw new HttpError(500, "operation_failed");
-  return result.data as Channel | null;
+  if (!result.data) throw new HttpError(422, "invalid_settings");
+  return result.data as Channel;
 }
 
-function matchChannelTarget(query: any, value: Channel): any {
+async function getDelegatedConnection(
+  admin: Admin,
+  tenantId: string,
+  connectionId: string,
+): Promise<DelegatedConnection> {
+  const result = await admin
+    .from("exchange_mail_connections")
+    .select(
+      "id, tenant_id, entra_tenant_id, connector_object_id, connector_principal, status",
+    )
+    .eq("id", connectionId)
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+  if (result.error) throw new HttpError(500, "operation_failed");
+  if (!result.data) throw new HttpError(422, "connection_not_found");
+  return result.data as DelegatedConnection;
+}
+
+function matchChannelTarget(query: any, channel: Channel): any {
   const matched = query
-    .eq("id", value.id)
-    .eq("tenant_id", value.tenant_id)
-    .eq("configuration_version", value.configuration_version)
-    .eq("entra_tenant_id", value.entra_tenant_id)
-    .eq("mailbox_address", value.mailbox_address);
-  return value.mailbox_object_id
-    ? matched.eq("mailbox_object_id", value.mailbox_object_id)
+    .eq("id", channel.id)
+    .eq("tenant_id", channel.tenant_id)
+    .eq("configuration_version", channel.configuration_version)
+    .eq("mailbox_address", channel.mailbox_address);
+  return channel.mailbox_object_id
+    ? matched.eq("mailbox_object_id", channel.mailbox_object_id)
     : matched.is("mailbox_object_id", null);
 }
 
-function suggestedEntraTenantId(issuer: unknown): string | null {
-  if (typeof issuer !== "string") return null;
-  const found = issuer.match(
-    /login\.microsoftonline\.com\/([0-9a-f-]{36})(?:\/|$)/iu,
+function graphMailboxIdentifier(channel: Channel): string {
+  return encodeURIComponent(
+    channel.mailbox_object_id ?? channel.mailbox_address,
   );
-  return found?.[1]?.toLowerCase() ?? null;
+}
+
+function channelPayload(channel: Channel) {
+  return {
+    id: channel.id,
+    connectionId: channel.connection_id,
+    accessMode: channel.access_mode,
+    entraTenantId: channel.entra_tenant_id,
+    mailboxAddress: channel.mailbox_address,
+    mailboxObjectId: channel.mailbox_object_id,
+    defaultDepartmentId: channel.default_department_id,
+    sendAcknowledgement: channel.send_acknowledgement,
+    sendAgentReplies: channel.send_agent_replies,
+    sendResolution: channel.send_resolution,
+    status: channel.status,
+    lastVerifiedAt: channel.last_verified_at,
+    lastErrorCode: channel.last_error_code,
+    lastErrorMessage: channel.last_error_message,
+    lastInboundAt: channel.last_inbound_at,
+    lastOutboundAt: channel.last_outbound_at,
+    activatedAt: channel.activated_at,
+  };
 }
 
 async function getStatus(
@@ -347,10 +357,21 @@ async function getStatus(
   admin: Admin,
   tenantId: string,
 ): Promise<Response> {
-  const [feature, foundChannel, departments, stats, sso, directory] =
+  const [feature, connections, channels, departments, stats] =
     await Promise.all([
       resolveTenantFeatureStates(admin, tenantId, [FEATURE]),
-      channel(admin, tenantId),
+      admin
+        .from("exchange_mail_connections")
+        .select(
+          "id, entra_tenant_id, connector_principal, status, last_connected_at, last_error_code, last_error_message, created_at",
+        )
+        .eq("tenant_id", tenantId)
+        .order("created_at"),
+      admin
+        .from("exchange_mail_channels")
+        .select("*")
+        .eq("tenant_id", tenantId)
+        .order("created_at"),
       admin
         .from("departments")
         .select("id, name")
@@ -365,79 +386,33 @@ async function getStatus(
           "created_at",
           new Date(Date.now() - 24 * 60 * 60_000).toISOString(),
         ),
-      admin
-        .from("tenant_sso_configurations")
-        .select("issuer_url")
-        .eq("tenant_id", tenantId)
-        .maybeSingle(),
-      admin
-        .from("tenant_entra_directory_sync_configurations")
-        .select("entra_tenant_id")
-        .eq("tenant_id", tenantId)
-        .eq("enabled", true)
-        .maybeSingle(),
     ]);
   if (
     !feature ||
+    connections.error ||
+    channels.error ||
     departments.error ||
-    stats.error ||
-    sso.error ||
-    directory.error
+    stats.error
   )
     throw new HttpError(500, "operation_failed");
-  let overBroadPermissions = false;
-  if (foundChannel && isExchangeMailPlatformConfigured()) {
-    try {
-      overBroadPermissions = (
-        await getExchangeAccessToken(foundChannel.entra_tenant_id)
-      ).overBroadPermissions;
-    } catch {
-      // Status remains readable even while the Microsoft side is unavailable.
-    }
-  }
-  const subscription = foundChannel
-    ? await admin
-        .from("exchange_mail_subscriptions")
-        .select("expires_at")
-        .eq("channel_id", foundChannel.id)
-        .eq("tenant_id", tenantId)
-        .eq("status", "active")
-        .order("expires_at", { ascending: false })
-        .limit(1)
-        .maybeSingle()
-    : { data: null, error: null };
-  if (subscription.error) throw new HttpError(500, "operation_failed");
   const rows = stats.data ?? [];
   return reply(request, {
     data: {
-      platformConfigured: isExchangeMailPlatformConfigured(),
-      appId: exchangeMailClientId(),
-      webhookUrl: WEBHOOK_URL,
+      platformConfigured: isDelegatedExchangeMailConfigured(),
       featureEnabled: feature[FEATURE] === true,
-      suggestedEntraTenantId:
-        (typeof directory.data?.entra_tenant_id === "string"
-          ? directory.data.entra_tenant_id
-          : null) ?? suggestedEntraTenantId(sso.data?.issuer_url),
-      channel: foundChannel
-        ? {
-            entraTenantId: foundChannel.entra_tenant_id,
-            mailboxAddress: foundChannel.mailbox_address,
-            mailboxObjectId: foundChannel.mailbox_object_id,
-            defaultDepartmentId: foundChannel.default_department_id,
-            sendAcknowledgement: foundChannel.send_acknowledgement,
-            sendAgentReplies: foundChannel.send_agent_replies,
-            sendResolution: foundChannel.send_resolution,
-            status: foundChannel.status,
-            lastVerifiedAt: foundChannel.last_verified_at,
-            lastErrorCode: foundChannel.last_error_code,
-            lastErrorMessage: foundChannel.last_error_message,
-            lastInboundAt: foundChannel.last_inbound_at,
-            lastOutboundAt: foundChannel.last_outbound_at,
-            activatedAt: foundChannel.activated_at,
-            subscriptionExpiresAt: subscription.data?.expires_at ?? null,
-            overBroadPermissions,
-          }
-        : null,
+      callbackUrl: delegatedExchangeCallbackUrl(),
+      connections: (connections.data ?? []).map((connection: any) => ({
+        id: connection.id,
+        entraTenantId: connection.entra_tenant_id,
+        connectorPrincipal: connection.connector_principal,
+        status: connection.status,
+        lastConnectedAt: connection.last_connected_at,
+        lastErrorCode: connection.last_error_code,
+        lastErrorMessage: connection.last_error_message,
+      })),
+      channels: (channels.data ?? []).map((item: any) =>
+        channelPayload(item as Channel),
+      ),
       departments: departments.data ?? [],
       stats: {
         inbound24h: rows.filter((row: any) => row.direction === "inbound")
@@ -451,73 +426,145 @@ async function getStatus(
   });
 }
 
-async function saveSettings(
+async function startMicrosoftConnect(
   request: Request,
   admin: Admin,
-  action: Extract<Action, { action: "saveSettings" }>,
+  tenantId: string,
+  actorId: string,
+): Promise<Response> {
+  await requireFeature(admin, tenantId);
+  const clientId = delegatedExchangeClientId();
+  if (!isDelegatedExchangeMailConfigured() || !clientId)
+    throw new HttpError(503, "exchange_platform_not_configured");
+  const state = randomUrlSafe(32);
+  const nonce = randomUrlSafe(32);
+  const verifier = randomUrlSafe(64);
+  const stored = await admin
+    .schema("mail_private")
+    .from("exchange_mail_oauth_states")
+    .insert({
+      state_hash: await sha256Hex(state),
+      tenant_id: tenantId,
+      actor_id: actorId,
+      code_verifier: verifier,
+      nonce_hash: await sha256Hex(nonce),
+      expires_at: new Date(Date.now() + OAUTH_STATE_TTL_MS).toISOString(),
+    });
+  if (stored.error) throw new HttpError(500, "operation_failed");
+  const authorizationUrl = new URL(
+    "https://login.microsoftonline.com/organizations/oauth2/v2.0/authorize",
+  );
+  authorizationUrl.search = new URLSearchParams({
+    client_id: clientId,
+    response_type: "code",
+    redirect_uri: delegatedExchangeCallbackUrl(),
+    response_mode: "query",
+    scope: delegatedExchangeScopes().join(" "),
+    state,
+    nonce,
+    code_challenge: await pkceChallenge(verifier),
+    code_challenge_method: "S256",
+    prompt: "select_account",
+  }).toString();
+  await admin.from("audit_logs").insert({
+    tenant_id: tenantId,
+    actor_id: actorId,
+    action: "exchange_mail.connection.started",
+    entity_type: "exchange_mail_connection",
+    entity_id: null,
+    severity: "security",
+    metadata: { access_mode: "delegated" },
+  });
+  return reply(request, {
+    data: { authorizationUrl: authorizationUrl.toString() },
+  });
+}
+
+async function saveMailbox(
+  request: Request,
+  admin: Admin,
+  action: Extract<Action, { action: "saveMailbox" }>,
   actorId: string,
 ): Promise<Response> {
   await requireFeature(admin, action.tenantId);
-  const existing = await channel(admin, action.tenantId);
+  const connection = await getDelegatedConnection(
+    admin,
+    action.tenantId,
+    action.connectionId,
+  );
+  if (connection.status !== "connected")
+    throw new HttpError(422, "exchange_reauthorization_required");
+  const graphMailbox = await graphMailboxIdentity(
+    admin,
+    connection,
+    action.mailboxObjectId ?? action.mailboxAddress,
+  );
   if (action.defaultDepartmentId) {
     const department = await admin
       .from("departments")
       .select("id")
       .eq("id", action.defaultDepartmentId)
       .eq("tenant_id", action.tenantId)
+      .eq("active", true)
       .maybeSingle();
     if (department.error || !department.data)
       throw new HttpError(422, "invalid_settings");
   }
-  const changedMailbox = Boolean(
+  const existing = action.channelId
+    ? await getChannel(admin, action.tenantId, action.channelId)
+    : null;
+  const changedTarget = Boolean(
     existing &&
-    (existing.entra_tenant_id !== action.entraTenantId ||
-      existing.mailbox_address !== action.mailboxAddress ||
-      existing.mailbox_object_id !== action.mailboxObjectId),
+    (existing.connection_id !== action.connectionId ||
+      existing.mailbox_address !== graphMailbox.address ||
+      existing.mailbox_object_id !== graphMailbox.id),
   );
-  const nextChannel = {
+  const payload = {
     tenant_id: action.tenantId,
-    entra_tenant_id: action.entraTenantId,
-    mailbox_address: action.mailboxAddress,
-    mailbox_object_id: action.mailboxObjectId,
+    connection_id: action.connectionId,
+    access_mode: "delegated",
+    entra_tenant_id: connection.entra_tenant_id,
+    mailbox_address: graphMailbox.address,
+    mailbox_object_id: graphMailbox.id,
     default_department_id: action.defaultDepartmentId,
     send_acknowledgement: action.sendAcknowledgement,
     send_agent_replies: action.sendAgentReplies,
     send_resolution: action.sendResolution,
-    ...(changedMailbox
-      ? {
-          status: "draft",
-          last_verified_at: null,
-          activated_at: null,
-          activated_by: null,
-          poll_watermark: null,
-          last_error_code: null,
-          last_error_message: null,
-        }
-      : {}),
     ...(existing
       ? {
           updated_by: actorId,
           configuration_version: existing.configuration_version + 1,
+          ...(changedTarget
+            ? {
+                status: "draft",
+                last_verified_at: null,
+                activated_at: null,
+                activated_by: null,
+                poll_watermark: null,
+                last_error_code: null,
+                last_error_message: null,
+              }
+            : {}),
         }
       : {
           created_by: actorId,
           updated_by: actorId,
           configuration_version: 1,
+          status: "draft",
         }),
   };
   const stored = existing
     ? await admin
         .from("exchange_mail_channels")
-        .update(nextChannel)
+        .update(payload)
         .eq("id", existing.id)
-        .eq("tenant_id", existing.tenant_id)
+        .eq("tenant_id", action.tenantId)
         .eq("configuration_version", existing.configuration_version)
         .select("*")
         .maybeSingle()
     : await admin
         .from("exchange_mail_channels")
-        .insert(nextChannel)
+        .insert(payload)
         .select("*")
         .maybeSingle();
   if (stored.error) {
@@ -526,8 +573,11 @@ async function saveSettings(
     throw new HttpError(422, "invalid_settings");
   }
   if (!stored.data) throw new HttpError(409, "exchange_configuration_changed");
-  if (existing && changedMailbox) {
-    await removeSubscriptionsForChannel(admin, existing);
+  if (existing) {
+    if (changedTarget)
+      await removeSubscriptionsForChannel(admin, existing).catch(
+        () => undefined,
+      );
     await admin
       .from("mail_messages")
       .update({
@@ -536,88 +586,120 @@ async function saveSettings(
       })
       .eq("channel_id", existing.id)
       .eq("direction", "outbound")
+      .eq("exchange_configuration_version", existing.configuration_version)
       .in("processing_status", ["pending", "failed"]);
   }
-  return reply(request, { data: { channel: stored.data } });
+  await admin.from("audit_logs").insert({
+    tenant_id: action.tenantId,
+    actor_id: actorId,
+    action: existing
+      ? "exchange_mail.channel.updated"
+      : "exchange_mail.channel.created",
+    entity_type: "exchange_mail_channel",
+    entity_id: stored.data.id,
+    severity: "security",
+    metadata: { access_mode: "delegated" },
+  });
+  return reply(request, {
+    data: { channel: channelPayload(stored.data as Channel) },
+  });
 }
+
+type VerificationStage = "mailbox" | "read" | "send";
 
 async function verifyConnection(
   request: Request,
   admin: Admin,
   tenantId: string,
+  channelId: string,
 ): Promise<Response> {
   await requireFeature(admin, tenantId);
-  if (!isExchangeMailPlatformConfigured())
-    throw new HttpError(503, "exchange_platform_not_configured");
-  const found = await channel(admin, tenantId);
-  if (!found) throw new HttpError(422, "invalid_settings");
-  if (found.status === "active")
+  const channel = await getChannel(admin, tenantId, channelId);
+  if (channel.access_mode !== "delegated" || !channel.connection_id)
+    throw new HttpError(422, "legacy_migration_required");
+  if (channel.status === "active")
     throw new HttpError(409, "exchange_verification_required");
+  const connection = await getDelegatedConnection(
+    admin,
+    tenantId,
+    channel.connection_id,
+  );
   const checks: Array<{
-    key: "token" | "mailbox" | "read";
+    key: "mailbox" | "read" | "send";
     ok: boolean;
     message: string;
   }> = [];
-  let overBroadPermissions = false;
-  let verificationStage: VerificationStage = "token";
+  let stage: VerificationStage = "mailbox";
   try {
-    const token = await getExchangeAccessToken(found.entra_tenant_id);
-    overBroadPermissions = token.overBroadPermissions;
-    if (overBroadPermissions)
-      throw new HttpError(422, "exchange_overbroad_permissions");
-    checks.push({
-      key: "token",
-      ok: true,
-      message: "Token wurde erfolgreich abgerufen.",
-    });
-    const mailbox = graphMailboxIdentifier(
-      found.mailbox_object_id,
-      found.mailbox_address,
-    );
-    verificationStage = "inbox-folder";
-    await graphRequest(
-      found.entra_tenant_id,
-      `/users/${mailbox}/mailFolders/inbox?$select=id,totalItemCount`,
+    const mailboxId = graphMailboxIdentifier(channel);
+    await delegatedGraphRequest(
+      admin,
+      connection,
+      `/users/${mailboxId}/mailFolders/inbox?$select=id,totalItemCount`,
     );
     checks.push({
       key: "mailbox",
       ok: true,
       message: "Postfach wurde gefunden.",
     });
-    verificationStage = "inbox-messages";
-    await graphRequest(
-      found.entra_tenant_id,
-      `/users/${mailbox}/mailFolders/inbox/messages?$top=1&$select=id`,
+    stage = "read";
+    await delegatedGraphRequest(
+      admin,
+      connection,
+      `/users/${mailboxId}/mailFolders/inbox/messages?$top=1&$select=id`,
     );
     checks.push({
       key: "read",
       ok: true,
       message: "Leseberechtigung wurde geprüft.",
     });
+    stage = "send";
+    await delegatedGraphRequest(
+      admin,
+      connection,
+      `/users/${mailboxId}/sendMail`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          message: {
+            subject: "nextDesk: Microsoft-365-Berechtigungsprüfung",
+            body: {
+              contentType: "Text",
+              content:
+                "Diese E-Mail bestätigt, dass nextDesk aus dem gewählten Support-Postfach senden darf.",
+            },
+            toRecipients: [
+              { emailAddress: { address: connection.connector_principal } },
+            ],
+          },
+          saveToSentItems: false,
+        }),
+      },
+    );
+    checks.push({
+      key: "send",
+      ok: true,
+      message:
+        "Senden als wurde geprüft; die Bestätigungs-E-Mail ging an das verbundene Microsoft-365-Konto.",
+    });
   } catch (error) {
     const code =
-      error instanceof ExchangeMailError || error instanceof HttpError
-        ? error.code
-        : "exchange_unavailable";
-    const recordedFailure = await matchChannelTarget(
+      error instanceof ExchangeMailError ? error.code : "exchange_unavailable";
+    const updated = await matchChannelTarget(
       admin
         .from("exchange_mail_channels")
         .update({
           status: "error",
           last_error_code: code,
-          last_error_message: verificationFailureMessage(
-            code,
-            verificationStage,
-            error,
-          ),
+          last_error_message: `${message(code)} Prüfphase: ${stage === "mailbox" ? "Postfach finden" : stage === "read" ? "Eingang lesen" : "Senden als"}.`,
         })
-        .eq("status", found.status),
-      found,
+        .eq("status", channel.status),
+      channel,
     )
       .select("id")
       .maybeSingle();
-    if (recordedFailure.error) throw new HttpError(500, "operation_failed");
-    if (!recordedFailure.data)
+    if (updated.error) throw new HttpError(500, "operation_failed");
+    if (!updated.data)
       throw new HttpError(409, "exchange_configuration_changed");
     throw error;
   }
@@ -630,50 +712,39 @@ async function verifyConnection(
         last_error_code: null,
         last_error_message: null,
       })
-      .eq("status", found.status),
-    found,
+      .eq("status", channel.status),
+    channel,
   )
-    .select("id")
+    .select("*")
     .maybeSingle();
   if (verified.error) throw new HttpError(500, "operation_failed");
   if (!verified.data)
-    throw new HttpError(409, "exchange_verification_required");
+    throw new HttpError(409, "exchange_configuration_changed");
   return reply(request, {
-    data: { checks, overBroadPermissions },
+    data: { checks, channel: channelPayload(verified.data as Channel) },
   });
-}
-
-function randomHex(bytes = 32): string {
-  return Array.from(crypto.getRandomValues(new Uint8Array(bytes)), (byte) =>
-    byte.toString(16).padStart(2, "0"),
-  ).join("");
-}
-
-async function sha256(value: string): Promise<string> {
-  const bytes = new Uint8Array(
-    await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value)),
-  );
-  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join(
-    "",
-  );
 }
 
 async function activate(
   request: Request,
   admin: Admin,
   tenantId: string,
+  channelId: string,
   actorId: string,
 ): Promise<Response> {
   await requireFeature(admin, tenantId);
-  if (!isExchangeMailPlatformConfigured())
-    throw new HttpError(503, "exchange_platform_not_configured");
-  const found = await channel(admin, tenantId);
-  if (!found) throw new HttpError(422, "invalid_settings");
-  if (found.status !== "verified")
+  const channel = await getChannel(admin, tenantId, channelId);
+  if (channel.access_mode !== "delegated" || !channel.connection_id)
+    throw new HttpError(422, "legacy_migration_required");
+  if (channel.status !== "verified")
     throw new HttpError(409, "exchange_verification_required");
-  const token = await getExchangeAccessToken(found.entra_tenant_id);
-  if (token.overBroadPermissions)
-    throw new HttpError(422, "exchange_overbroad_permissions");
+  const connection = await getDelegatedConnection(
+    admin,
+    tenantId,
+    channel.connection_id,
+  );
+  if (connection.status !== "connected")
+    throw new HttpError(422, "exchange_reauthorization_required");
   const now = new Date().toISOString();
   const activated = await matchChannelTarget(
     admin
@@ -687,96 +758,96 @@ async function activate(
         last_error_message: null,
       })
       .eq("status", "verified"),
-    found,
+    channel,
   )
     .select("*")
     .maybeSingle();
   if (activated.error) throw new HttpError(500, "operation_failed");
   if (!activated.data)
     throw new HttpError(409, "exchange_verification_required");
-  const clientState = randomHex();
-  try {
-    const subscriptionExpiresAt = await createSubscriptionForChannel(
-      admin,
-      activated.data as Channel,
-      {
-        webhookUrl: WEBHOOK_URL,
-        lifecycleUrl: `${WEBHOOK_URL}?lifecycle=1`,
-        clientState,
-        clientStateHash: await sha256(clientState),
-      },
-    );
-    if (!subscriptionExpiresAt)
-      throw new HttpError(409, "exchange_verification_required");
-    return reply(request, {
-      data: { status: "active", subscriptionExpiresAt },
-    });
-  } catch (error) {
-    if (error instanceof HttpError) throw error;
-    const code =
-      error instanceof ExchangeMailError ? error.code : "exchange_unavailable";
-    await matchChannelTarget(
-      admin
-        .from("exchange_mail_channels")
-        .update({ last_error_code: code, last_error_message: message(code) })
-        .eq("status", "active"),
-      activated.data as Channel,
-    );
-    // Polling remains active, exactly as required when a Graph subscription fails.
-    return reply(request, {
-      data: { status: "active", subscriptionExpiresAt: null },
-    });
-  }
+  await admin.from("audit_logs").insert({
+    tenant_id: tenantId,
+    actor_id: actorId,
+    action: "exchange_mail.channel.activated",
+    entity_type: "exchange_mail_channel",
+    entity_id: channel.id,
+    severity: "security",
+    metadata: { access_mode: "delegated", inbound: "polling" },
+  });
+  return reply(request, {
+    data: { channel: channelPayload(activated.data as Channel) },
+  });
 }
 
 async function pause(
   request: Request,
   admin: Admin,
   tenantId: string,
+  channelId: string,
+  actorId: string,
 ): Promise<Response> {
   await requireFeature(admin, tenantId);
-  const found = await channel(admin, tenantId);
-  if (!found) throw new HttpError(422, "invalid_settings");
+  const channel = await getChannel(admin, tenantId, channelId);
   const paused = await matchChannelTarget(
     admin
       .from("exchange_mail_channels")
       .update({
         status: "paused",
-        configuration_version: found.configuration_version + 1,
+        configuration_version: channel.configuration_version + 1,
+        updated_by: actorId,
       })
-      .eq("status", found.status),
-    found,
+      .eq("status", channel.status),
+    channel,
   )
     .select("*")
     .maybeSingle();
   if (paused.error) throw new HttpError(500, "operation_failed");
   if (!paused.data) throw new HttpError(409, "exchange_configuration_changed");
-  await removeSubscriptionsForChannel(admin, paused.data as Channel);
-  return reply(request, { data: { status: "paused" } });
+  await removeSubscriptionsForChannel(admin, paused.data as Channel).catch(
+    () => undefined,
+  );
+  await admin
+    .from("mail_messages")
+    .update({
+      processing_status: "ignored",
+      ignore_reason: "channel_reconfigured",
+    })
+    .eq("channel_id", channel.id)
+    .in("processing_status", ["pending", "failed"]);
+  await admin.from("audit_logs").insert({
+    tenant_id: tenantId,
+    actor_id: actorId,
+    action: "exchange_mail.channel.paused",
+    entity_type: "exchange_mail_channel",
+    entity_id: channel.id,
+    severity: "security",
+    metadata: { access_mode: channel.access_mode },
+  });
+  return reply(request, {
+    data: { channel: channelPayload(paused.data as Channel) },
+  });
 }
 
 async function sendTestMail(
   request: Request,
   admin: Admin,
   tenantId: string,
+  channelId: string,
   actorId: string,
 ): Promise<Response> {
   await requireFeature(admin, tenantId);
-  if (!isExchangeMailPlatformConfigured())
-    throw new HttpError(503, "exchange_platform_not_configured");
-  const found = await channel(admin, tenantId);
-  if (!found || found.status !== "active")
-    throw new HttpError(422, "invalid_settings");
+  const channel = await getChannel(admin, tenantId, channelId);
+  if (channel.status !== "active") throw new HttpError(422, "invalid_settings");
   const user = await (admin.auth.admin as any).getUserById(actorId);
   const recipient = mailbox(user?.data?.user?.email);
   if (!recipient) throw new HttpError(422, "invalid_settings");
   const queued = await admin.from("mail_messages").insert({
     tenant_id: tenantId,
-    channel_id: found.id,
-    exchange_configuration_version: found.configuration_version,
+    channel_id: channel.id,
+    exchange_configuration_version: channel.configuration_version,
     direction: "outbound",
     kind: "test",
-    from_address: found.mailbox_address,
+    from_address: channel.mailbox_address,
     to_addresses: [recipient],
     subject: "nextDesk E-Mail-Kanal Test",
   });
@@ -794,32 +865,43 @@ const handler = withSupabase(
     await requireTenantAdmin(context.supabaseAdmin, action.tenantId, actorId);
     if (action.action === "getStatus")
       return await getStatus(request, context.supabaseAdmin, action.tenantId);
-    if (action.action === "saveSettings")
-      return await saveSettings(
+    if (action.action === "startMicrosoftConnect")
+      return await startMicrosoftConnect(
         request,
         context.supabaseAdmin,
-        action,
+        action.tenantId,
         actorId,
       );
+    if (action.action === "saveMailbox")
+      return await saveMailbox(request, context.supabaseAdmin, action, actorId);
     if (action.action === "verifyConnection")
       return await verifyConnection(
         request,
         context.supabaseAdmin,
         action.tenantId,
+        action.channelId,
       );
     if (action.action === "activate")
       return await activate(
         request,
         context.supabaseAdmin,
         action.tenantId,
+        action.channelId,
         actorId,
       );
     if (action.action === "pause")
-      return await pause(request, context.supabaseAdmin, action.tenantId);
+      return await pause(
+        request,
+        context.supabaseAdmin,
+        action.tenantId,
+        action.channelId,
+        actorId,
+      );
     return await sendTestMail(
       request,
       context.supabaseAdmin,
       action.tenantId,
+      action.channelId,
       actorId,
     );
   },
