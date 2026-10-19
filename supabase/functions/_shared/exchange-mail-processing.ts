@@ -43,6 +43,7 @@ type Channel = {
   send_acknowledgement: boolean;
   send_agent_replies: boolean;
   send_resolution: boolean;
+  configuration_version: number;
   status: string;
   activated_at: string | null;
   poll_watermark: string | null;
@@ -51,6 +52,7 @@ type Message = {
   id: string;
   tenant_id: string;
   channel_id: string;
+  exchange_configuration_version: number | null;
   direction: "inbound" | "outbound";
   kind: string | null;
   graph_message_id: string | null;
@@ -61,6 +63,30 @@ type Message = {
   to_addresses: string[];
   attempt_count: number;
 };
+
+function matchChannelTarget(query: any, channel: Channel): any {
+  const matched = query
+    .eq("id", channel.id)
+    .eq("tenant_id", channel.tenant_id)
+    .eq("configuration_version", channel.configuration_version)
+    .eq("entra_tenant_id", channel.entra_tenant_id)
+    .eq("mailbox_address", channel.mailbox_address);
+  return channel.mailbox_object_id
+    ? matched.eq("mailbox_object_id", channel.mailbox_object_id)
+    : matched.is("mailbox_object_id", null);
+}
+
+async function activeChannel(
+  admin: Admin,
+  expected: Channel,
+): Promise<Channel | null> {
+  const result = await matchChannelTarget(
+    admin.from("exchange_mail_channels").select("*").eq("status", "active"),
+    expected,
+  ).maybeSingle();
+  if (result.error) throw new Error("channel_load_failed");
+  return result.data as Channel | null;
+}
 
 function record(value: unknown): value is Row {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -233,7 +259,7 @@ export async function processDueInbound(
   const due = await admin
     .from("mail_messages")
     .select(
-      "id, tenant_id, channel_id, direction, kind, graph_message_id, ticket_id, comment_id, to_addresses, attempt_count",
+      "id, tenant_id, channel_id, exchange_configuration_version, direction, kind, graph_message_id, ticket_id, comment_id, to_addresses, attempt_count",
     )
     .eq("channel_id", channelId)
     .eq("direction", "inbound")
@@ -257,16 +283,20 @@ async function retryOrFail(
   const retryAfter =
     error instanceof ExchangeMailError ? error.retryAfterSeconds : undefined;
   const terminal = isPermanent(error) || nextAttempt >= 6;
-  await updateMessage(admin, message.id, {
-    processing_status: "failed",
-    attempt_count: nextAttempt,
-    next_attempt_at: terminal
-      ? new Date(253402300799000).toISOString()
-      : new Date(
-          Date.now() + retryDelaySeconds(nextAttempt, retryAfter) * 1000,
-        ).toISOString(),
-    last_error_code: code,
-  });
+  await admin
+    .from("mail_messages")
+    .update({
+      processing_status: "failed",
+      attempt_count: nextAttempt,
+      next_attempt_at: terminal
+        ? new Date(253402300799000).toISOString()
+        : new Date(
+            Date.now() + retryDelaySeconds(nextAttempt, retryAfter) * 1000,
+          ).toISOString(),
+      last_error_code: code,
+    })
+    .eq("id", message.id)
+    .eq("processing_status", "processing");
 }
 
 async function markProcessed(
@@ -626,6 +656,8 @@ async function createNewTicket(
   sender: string,
   serviceIdentityId: string,
 ): Promise<{ id: string; ticket_number: string; contactId: string }> {
+  if (!(await activeChannel(admin, channel)))
+    throw new Error("channel_reconfigured");
   const contact = await requesterContact(admin, channel.tenant_id, sender);
   const department = channel.default_department_id
     ? await admin
@@ -671,6 +703,8 @@ async function createNewTicket(
   });
   if (number.error || !asString(number.data))
     throw new Error("ticket_number_failed");
+  if (!(await activeChannel(admin, channel)))
+    throw new Error("channel_reconfigured");
   const created = await admin
     .from("tickets")
     .insert({
@@ -721,6 +755,7 @@ async function enqueueAcknowledgement(
   await admin.from("mail_messages").insert({
     tenant_id: channel.tenant_id,
     channel_id: channel.id,
+    exchange_configuration_version: channel.configuration_version,
     direction: "outbound",
     kind: "acknowledgement",
     ticket_id: ticket.id,
@@ -735,11 +770,23 @@ export async function processInboundMessage(
   rawMessage: Message,
 ): Promise<void> {
   const message = rawMessage as Message;
+  if (
+    !Number.isSafeInteger(message.exchange_configuration_version) ||
+    !message.exchange_configuration_version ||
+    message.exchange_configuration_version < 1
+  ) {
+    await updateMessage(admin, message.id, {
+      processing_status: "ignored",
+      ignore_reason: "channel_reconfigured",
+    });
+    return;
+  }
   const channelResult = await admin
     .from("exchange_mail_channels")
     .select("*")
     .eq("id", message.channel_id)
     .eq("tenant_id", message.tenant_id)
+    .eq("configuration_version", message.exchange_configuration_version)
     .maybeSingle();
   const channel = channelResult.data as Channel | null;
   if (channelResult.error || !channel || channel.status !== "active") {
@@ -775,6 +822,13 @@ export async function processInboundMessage(
       { headers: { Prefer: 'outlook.body-content-type="text"' } },
     );
     const graph = graphResponse.data;
+    if (!(await activeChannel(admin, channel))) {
+      await updateMessage(admin, message.id, {
+        processing_status: "ignored",
+        ignore_reason: "channel_reconfigured",
+      });
+      return;
+    }
     const sender = emailFromPerson(graph.from) ?? emailFromPerson(graph.sender);
     let reason = ignoredReason(channel, graph, sender);
     if (!reason && sender && (await isOtherChannelMailbox(admin, sender)))
@@ -812,12 +866,21 @@ export async function processInboundMessage(
       });
       return;
     }
-    const serviceIdentityId = await ensureExchangeMailServiceIdentity(admin);
     const linkedTicket = await findInboundTicket(
       admin,
       channel.tenant_id,
       graph,
     );
+    const replyAuthorized =
+      Boolean(linkedTicket) &&
+      (await senderMayReply(
+        admin,
+        channel.tenant_id,
+        linkedTicket!.id,
+        sender,
+      ));
+    const contact = await requesterContact(admin, channel.tenant_id, sender);
+    const serviceIdentityId = await ensureExchangeMailServiceIdentity(admin);
     const body = cleanText(
       record(graph.uniqueBody)
         ? graph.uniqueBody.content
@@ -825,72 +888,43 @@ export async function processInboundMessage(
           ? graph.body.content
           : null,
     );
-    let ticketId: string;
-    let commentId: string | null = null;
-    let kind: "new_ticket" | "reply";
-    if (
-      linkedTicket &&
-      (await senderMayReply(admin, channel.tenant_id, linkedTicket.id, sender))
-    ) {
-      const contact = await requesterContact(admin, channel.tenant_id, sender);
-      const comment = await admin
-        .from("ticket_comments")
-        .insert({
-          ticket_id: linkedTicket.id,
-          author_id: serviceIdentityId,
-          visibility: "external",
-          channel: "email",
-          requester_contact_id: contact.id,
-          body,
-        })
-        .select("id")
-        .single();
-      if (comment.error || !asString(comment.data?.id))
-        throw new Error("comment_create_failed");
-      ticketId = linkedTicket.id;
-      commentId = comment.data.id;
-      kind = "reply";
-      await admin.from("ticket_events").insert({
-        ticket_id: ticketId,
-        actor_id: serviceIdentityId,
-        event_type: "comment.external_added",
-        payload: { source: "exchange_online", channel: "email" },
-      });
-    } else {
-      const created = await createNewTicket(
-        admin,
-        channel,
-        graph,
-        sender,
-        serviceIdentityId,
-      );
-      ticketId = created.id;
-      kind = "new_ticket";
-      await enqueueAcknowledgement(admin, channel, created);
-      if (linkedTicket) {
-        await admin.from("ticket_events").insert({
-          ticket_id: ticketId,
-          actor_id: serviceIdentityId,
-          event_type: "email.reply_reference_not_authorized",
-          payload: { source: "exchange_online" },
-        });
-      }
-    }
-    await markProcessed(admin, message, {
-      kind,
-      ticket_id: ticketId,
-      comment_id: commentId,
-      internet_message_id: asString(graph.internetMessageId),
-      conversation_id: asString(graph.conversationId),
-      from_address: sender,
-      to_addresses: array(graph.toRecipients)
+    const committed = await admin.rpc("exchange_mail_commit_inbound", {
+      p_tenant_id: channel.tenant_id,
+      p_channel_id: channel.id,
+      p_configuration_version: message.exchange_configuration_version,
+      p_message_id: message.id,
+      p_candidate_ticket_id: linkedTicket?.id ?? null,
+      p_reply_authorized: replyAuthorized,
+      p_requester_contact_id: contact.id,
+      p_sender: sender,
+      p_subject: subject(graph.subject),
+      p_body: replyAuthorized
+        ? body
+        : `Eingegangene E-Mail von ${displayNameFromAddress(sender)}\n\n${body}`,
+      p_internet_message_id: asString(graph.internetMessageId),
+      p_conversation_id: asString(graph.conversationId),
+      p_to_addresses: array(graph.toRecipients)
         .map(emailFromPerson)
         .filter((value): value is string => value !== null),
-      cc_addresses: array(graph.ccRecipients)
+      p_cc_addresses: array(graph.ccRecipients)
         .map(emailFromPerson)
         .filter((value): value is string => value !== null),
-      subject: subject(graph.subject),
     });
+    const result = Array.isArray(committed.data) ? committed.data[0] : null;
+    const ticketId = asString(result?.ticket_id);
+    const ticketNumber = asString(result?.ticket_number);
+    const commentId = asString(result?.comment_id);
+    const kind = asString(result?.kind);
+    if (committed.error || !result) throw new Error("inbound_commit_failed");
+    if (result.outcome === "ignored" || result.outcome === "already_processed")
+      return;
+    if (
+      result.outcome !== "processed" ||
+      !ticketId ||
+      !ticketNumber ||
+      (kind !== "new_ticket" && kind !== "reply")
+    )
+      throw new Error("inbound_commit_invalid");
     if (graph.hasAttachments === true) {
       await createInboundAttachments(
         admin,
@@ -901,10 +935,6 @@ export async function processInboundMessage(
         serviceIdentityId,
       ).catch(() => undefined);
     }
-    await admin
-      .from("exchange_mail_channels")
-      .update({ last_inbound_at: new Date().toISOString() })
-      .eq("id", channel.id);
     await audit(
       admin,
       channel.tenant_id,
@@ -984,11 +1014,23 @@ export async function dispatchOutboundMessage(
   rawMessage: Message,
 ): Promise<void> {
   const message = rawMessage as Message;
+  if (
+    !Number.isSafeInteger(message.exchange_configuration_version) ||
+    !message.exchange_configuration_version ||
+    message.exchange_configuration_version < 1
+  ) {
+    await updateMessage(admin, message.id, {
+      processing_status: "ignored",
+      ignore_reason: "channel_reconfigured",
+    });
+    return;
+  }
   const channelResult = await admin
     .from("exchange_mail_channels")
     .select("*")
     .eq("id", message.channel_id)
     .eq("tenant_id", message.tenant_id)
+    .eq("configuration_version", message.exchange_configuration_version)
     .maybeSingle();
   const channel = channelResult.data as Channel | null;
   if (channelResult.error || !channel || channel.status !== "active") {
@@ -1136,6 +1178,13 @@ export async function dispatchOutboundMessage(
         ? { attachments: attachments.attachments }
         : {}),
     };
+    if (!(await activeChannel(admin, channel))) {
+      await updateMessage(admin, message.id, {
+        processing_status: "ignored",
+        ignore_reason: "channel_reconfigured",
+      });
+      return;
+    }
     const mailbox = graphMailboxIdentifier(
       channel.mailbox_object_id,
       channel.mailbox_address,
@@ -1200,19 +1249,42 @@ export async function dispatchOutboundMessage(
 
 export async function enqueueGraphInbound(
   admin: Admin,
-  channel: Pick<Channel, "id" | "tenant_id">,
+  channel: Pick<Channel, "id" | "tenant_id" | "configuration_version">,
   graphMessageId: string,
 ): Promise<void> {
   if (!graphMessageId || graphMessageId.length > 1024) return;
   await admin.rpc("exchange_mail_enqueue_inbound", {
     p_tenant_id: channel.tenant_id,
     p_channel_id: channel.id,
+    p_configuration_version: channel.configuration_version,
     p_graph_message_id: graphMessageId,
   });
 }
 
 export async function maintenance(admin: Admin): Promise<void> {
   await recoverStaleProcessing(admin).catch(() => undefined);
+  const pendingRemovals = await admin
+    .from("exchange_mail_subscriptions")
+    .select("id, graph_subscription_id, source_entra_tenant_id")
+    .eq("status", "removal_pending")
+    .limit(100);
+  for (const subscription of pendingRemovals.data ?? []) {
+    if (typeof subscription.source_entra_tenant_id !== "string") continue;
+    try {
+      await graphDeleteSubscription(
+        subscription.source_entra_tenant_id,
+        subscription.graph_subscription_id,
+      );
+      await admin
+        .from("exchange_mail_subscriptions")
+        .update({ status: "removed" })
+        .eq("id", subscription.id)
+        .eq("status", "removal_pending");
+    } catch {
+      // Keep the subscription pending so the next maintenance cycle retries
+      // the Graph deletion without ever reactivating local processing.
+    }
+  }
   const channelsResult = await admin
     .from("exchange_mail_channels")
     .select("*")
@@ -1221,6 +1293,7 @@ export async function maintenance(admin: Admin): Promise<void> {
   const channels = (channelsResult.data ?? []) as Channel[];
   for (const channel of channels) {
     if (!(await exchangeMailFeatureEnabled(admin, channel.tenant_id))) continue;
+    if (!(await activeChannel(admin, channel))) continue;
     try {
       const subscriptions = await admin
         .from("exchange_mail_subscriptions")
@@ -1228,26 +1301,41 @@ export async function maintenance(admin: Admin): Promise<void> {
         .eq("channel_id", channel.id)
         .eq("tenant_id", channel.tenant_id)
         .eq("status", "active");
+      if (subscriptions.error) throw new Error("subscription_load_failed");
       for (const subscription of subscriptions.data ?? []) {
         if (
           Date.parse(subscription.expires_at) <
           Date.now() + 24 * 60 * 60_000
         ) {
+          if (!(await activeChannel(admin, channel))) break;
           const renewed = await graphRenewSubscription(
             channel.entra_tenant_id,
             subscription.graph_subscription_id,
             addMinutes(new Date(), 4200),
           );
+          if (!(await activeChannel(admin, channel))) {
+            await graphDeleteSubscription(
+              channel.entra_tenant_id,
+              subscription.graph_subscription_id,
+            ).catch(() => undefined);
+            await admin
+              .from("exchange_mail_subscriptions")
+              .update({ status: "removal_pending" })
+              .eq("id", subscription.id)
+              .eq("status", "active");
+            continue;
+          }
           await admin
             .from("exchange_mail_subscriptions")
             .update({
               expires_at: renewed.expirationDateTime,
               last_renewed_at: new Date().toISOString(),
-              status: "active",
             })
-            .eq("id", subscription.id);
+            .eq("id", subscription.id)
+            .eq("status", "active");
         }
       }
+      if (!(await activeChannel(admin, channel))) continue;
       const mailbox = graphMailboxIdentifier(
         channel.mailbox_object_id,
         channel.mailbox_address,
@@ -1268,7 +1356,7 @@ export async function maintenance(admin: Admin): Promise<void> {
       let watermark = channel.poll_watermark;
       for (const entry of array(response.data.value)) {
         const graphMessageId = asString(entry.id);
-        if (graphMessageId)
+        if (graphMessageId && (await activeChannel(admin, channel)))
           await enqueueGraphInbound(admin, channel, graphMessageId);
         const received = asString(entry.receivedDateTime);
         if (
@@ -1278,29 +1366,35 @@ export async function maintenance(admin: Admin): Promise<void> {
           watermark = received;
       }
       if (watermark)
-        await admin
+        await matchChannelTarget(
+          admin
+            .from("exchange_mail_channels")
+            .update({
+              poll_watermark: watermark,
+              last_error_code: null,
+              last_error_message: null,
+            })
+            .eq("status", "active"),
+          channel,
+        );
+    } catch (error) {
+      await matchChannelTarget(
+        admin
           .from("exchange_mail_channels")
           .update({
-            poll_watermark: watermark,
-            last_error_code: null,
-            last_error_message: null,
+            last_error_code: errorCode(error),
+            last_error_message:
+              "Postfachabfrage oder Abo-Erneuerung fehlgeschlagen.",
           })
-          .eq("id", channel.id);
-    } catch (error) {
-      await admin
-        .from("exchange_mail_channels")
-        .update({
-          last_error_code: errorCode(error),
-          last_error_message:
-            "Postfachabfrage oder Abo-Erneuerung fehlgeschlagen.",
-        })
-        .eq("id", channel.id);
+          .eq("status", "active"),
+        channel,
+      );
     }
   }
   const due = await admin
     .from("mail_messages")
     .select(
-      "id, tenant_id, channel_id, direction, kind, graph_message_id, ticket_id, comment_id, department_question_id, recipient_user_id, to_addresses, attempt_count",
+      "id, tenant_id, channel_id, exchange_configuration_version, direction, kind, graph_message_id, ticket_id, comment_id, department_question_id, recipient_user_id, to_addresses, attempt_count",
     )
     .in("processing_status", ["pending", "failed"])
     .lte("next_attempt_at", new Date().toISOString())
@@ -1320,22 +1414,32 @@ export async function removeSubscriptionsForChannel(
 ): Promise<void> {
   const subscriptions = await admin
     .from("exchange_mail_subscriptions")
-    .select("id, graph_subscription_id")
+    .select("id, graph_subscription_id, source_entra_tenant_id")
+    .eq("channel_id", channel.id)
+    .eq("tenant_id", channel.tenant_id)
+    .in("status", ["active", "removal_pending"]);
+  if (subscriptions.error) throw new Error("subscription_load_failed");
+  await admin
+    .from("exchange_mail_subscriptions")
+    .update({ status: "removal_pending" })
     .eq("channel_id", channel.id)
     .eq("tenant_id", channel.tenant_id)
     .eq("status", "active");
   for (const subscription of subscriptions.data ?? []) {
-    await graphDeleteSubscription(
-      channel.entra_tenant_id,
-      subscription.graph_subscription_id,
-    ).catch(() => undefined);
+    try {
+      await graphDeleteSubscription(
+        subscription.source_entra_tenant_id,
+        subscription.graph_subscription_id,
+      );
+    } catch {
+      continue;
+    }
+    await admin
+      .from("exchange_mail_subscriptions")
+      .update({ status: "removed" })
+      .eq("id", subscription.id)
+      .eq("status", "removal_pending");
   }
-  await admin
-    .from("exchange_mail_subscriptions")
-    .update({ status: "removed" })
-    .eq("channel_id", channel.id)
-    .eq("tenant_id", channel.tenant_id)
-    .eq("status", "active");
 }
 
 export async function createSubscriptionForChannel(
@@ -1347,21 +1451,74 @@ export async function createSubscriptionForChannel(
     clientState: string;
     clientStateHash: string;
   },
-): Promise<string> {
+): Promise<string | null> {
+  async function scheduleRemoval(
+    current: Channel,
+    created: { id: string; resource: string; expirationDateTime: string },
+  ): Promise<void> {
+    const stored = await admin.from("exchange_mail_subscriptions").upsert(
+      {
+        channel_id: current.id,
+        tenant_id: current.tenant_id,
+        configuration_version: current.configuration_version,
+        source_entra_tenant_id: current.entra_tenant_id,
+        graph_subscription_id: created.id,
+        client_state_hash: input.clientStateHash,
+        resource: created.resource,
+        expires_at: created.expirationDateTime,
+        status: "removal_pending",
+        last_renewed_at: new Date().toISOString(),
+      },
+      { onConflict: "graph_subscription_id" },
+    );
+    try {
+      await graphDeleteSubscription(current.entra_tenant_id, created.id);
+    } catch {
+      if (stored.error) throw new Error("subscription_cleanup_store_failed");
+      return;
+    }
+    // A successful Graph deletion is safe even if a temporary database failure
+    // prevented us from storing a retry marker.
+    if (stored.error) return;
+    await admin
+      .from("exchange_mail_subscriptions")
+      .update({ status: "removed" })
+      .eq("graph_subscription_id", created.id)
+      .eq("status", "removal_pending");
+  }
+
+  const current = await activeChannel(admin, channel);
+  if (!current) return null;
+  const active = current;
   const mailbox = graphMailboxIdentifier(
-    channel.mailbox_object_id,
-    channel.mailbox_address,
+    active.mailbox_object_id,
+    active.mailbox_address,
   );
-  const created = await graphCreateSubscription(channel.entra_tenant_id, {
+  const created = await graphCreateSubscription(active.entra_tenant_id, {
     mailboxIdentifier: mailbox,
     notificationUrl: input.webhookUrl,
     lifecycleNotificationUrl: input.lifecycleUrl,
     clientState: input.clientState,
     expirationDateTime: addMinutes(new Date(), 4200),
   });
+  async function remainsActive(): Promise<boolean> {
+    try {
+      return Boolean(await activeChannel(admin, active));
+    } catch {
+      await scheduleRemoval(active, created).catch(() => undefined);
+      throw new Error("subscription_state_check_failed");
+    }
+  }
+
+  if (!(await remainsActive())) {
+    await scheduleRemoval(active, created);
+    return null;
+  }
   const inserted = await admin.from("exchange_mail_subscriptions").insert({
-    channel_id: channel.id,
-    tenant_id: channel.tenant_id,
+    channel_id: active.id,
+    tenant_id: active.tenant_id,
+    configuration_version: active.configuration_version,
+    source_entra_tenant_id: active.entra_tenant_id,
     graph_subscription_id: created.id,
     client_state_hash: input.clientStateHash,
     resource: created.resource,
@@ -1369,6 +1526,13 @@ export async function createSubscriptionForChannel(
     status: "active",
     last_renewed_at: new Date().toISOString(),
   });
-  if (inserted.error) throw new Error("subscription_store_failed");
+  if (inserted.error) {
+    await scheduleRemoval(active, created);
+    throw new Error("subscription_store_failed");
+  }
+  if (!(await remainsActive())) {
+    await scheduleRemoval(active, created);
+    return null;
+  }
   return created.expirationDateTime;
 }

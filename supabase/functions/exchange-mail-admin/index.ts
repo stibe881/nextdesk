@@ -30,6 +30,7 @@ type Channel = Row & {
   send_acknowledgement: boolean;
   send_agent_replies: boolean;
   send_resolution: boolean;
+  configuration_version: number;
   status: string;
   last_verified_at: string | null;
   last_error_code: string | null;
@@ -46,8 +47,8 @@ type Action =
       tenantId: string;
       entraTenantId: string;
       mailboxAddress: string;
-      mailboxObjectId?: string | null;
-      defaultDepartmentId?: string | null;
+      mailboxObjectId: string | null;
+      defaultDepartmentId: string | null;
       sendAcknowledgement: boolean;
       sendAgentReplies: boolean;
       sendResolution: boolean;
@@ -148,8 +149,8 @@ function parseAction(value: unknown): Action | null {
     tenantId,
     entraTenantId: value.entraTenantId.toLowerCase(),
     mailboxAddress: mailbox(value.mailboxAddress) as string,
-    ...(mailboxObjectId === undefined ? {} : { mailboxObjectId }),
-    ...(defaultDepartmentId === undefined ? {} : { defaultDepartmentId }),
+    mailboxObjectId,
+    defaultDepartmentId,
     sendAcknowledgement: value.sendAcknowledgement,
     sendAgentReplies: value.sendAgentReplies,
     sendResolution: value.sendResolution,
@@ -165,6 +166,12 @@ function message(code: string): string {
     forbidden: "Sie dürfen diese Mandanteneinstellung nicht verwalten.",
     tenant_access_denied: "Sie haben keinen Zugriff auf diesen Mandanten.",
     invalid_settings: "Die Einstellungen für den E-Mail-Kanal sind ungültig.",
+    exchange_verification_required:
+      "Bitte prüfen Sie die Verbindung erfolgreich, bevor Sie den E-Mail-Kanal aktivieren.",
+    exchange_overbroad_permissions:
+      "Die nextDesk-App besitzt zu weitreichende Microsoft-Graph-Mailberechtigungen. Entfernen Sie Mail.*-Berechtigungen und prüfen Sie die Verbindung erneut.",
+    exchange_configuration_changed:
+      "Die E-Mail-Konfiguration wurde zwischenzeitlich geändert. Laden Sie die Einstellungen neu und prüfen Sie die Verbindung erneut.",
     mailbox_in_use:
       "Dieses Postfach wird bereits von einem anderen Mandanten verwendet.",
     exchange_app_not_consented:
@@ -287,6 +294,18 @@ async function channel(
     .maybeSingle();
   if (result.error) throw new HttpError(500, "operation_failed");
   return result.data as Channel | null;
+}
+
+function matchChannelTarget(query: any, value: Channel): any {
+  const matched = query
+    .eq("id", value.id)
+    .eq("tenant_id", value.tenant_id)
+    .eq("configuration_version", value.configuration_version)
+    .eq("entra_tenant_id", value.entra_tenant_id)
+    .eq("mailbox_address", value.mailbox_address);
+  return value.mailbox_object_id
+    ? matched.eq("mailbox_object_id", value.mailbox_object_id)
+    : matched.is("mailbox_object_id", null);
 }
 
 function suggestedEntraTenantId(issuer: unknown): string | null {
@@ -424,40 +443,74 @@ async function saveSettings(
     if (department.error || !department.data)
       throw new HttpError(422, "invalid_settings");
   }
-  const changedMailbox =
+  const changedMailbox = Boolean(
     existing &&
     (existing.entra_tenant_id !== action.entraTenantId ||
-      existing.mailbox_address !== action.mailboxAddress);
-  if (existing && changedMailbox)
-    await removeSubscriptionsForChannel(admin, existing);
-  const stored = await admin
-    .from("exchange_mail_channels")
-    .upsert(
-      {
-        ...(existing ? { id: existing.id } : {}),
-        tenant_id: action.tenantId,
-        entra_tenant_id: action.entraTenantId,
-        mailbox_address: action.mailboxAddress,
-        mailbox_object_id: action.mailboxObjectId ?? null,
-        default_department_id: action.defaultDepartmentId ?? null,
-        send_acknowledgement: action.sendAcknowledgement,
-        send_agent_replies: action.sendAgentReplies,
-        send_resolution: action.sendResolution,
-        ...(changedMailbox
-          ? { status: "draft", activated_at: null, activated_by: null }
-          : {}),
-        ...(existing
-          ? { updated_by: actorId }
-          : { created_by: actorId, updated_by: actorId }),
-      },
-      { onConflict: "tenant_id" },
-    )
-    .select("*")
-    .single();
-  if (stored.error || !stored.data) {
-    if (stored.error?.code === "23505")
+      existing.mailbox_address !== action.mailboxAddress ||
+      existing.mailbox_object_id !== action.mailboxObjectId),
+  );
+  const nextChannel = {
+    tenant_id: action.tenantId,
+    entra_tenant_id: action.entraTenantId,
+    mailbox_address: action.mailboxAddress,
+    mailbox_object_id: action.mailboxObjectId,
+    default_department_id: action.defaultDepartmentId,
+    send_acknowledgement: action.sendAcknowledgement,
+    send_agent_replies: action.sendAgentReplies,
+    send_resolution: action.sendResolution,
+    ...(changedMailbox
+      ? {
+          status: "draft",
+          last_verified_at: null,
+          activated_at: null,
+          activated_by: null,
+          poll_watermark: null,
+          last_error_code: null,
+          last_error_message: null,
+        }
+      : {}),
+    ...(existing
+      ? {
+          updated_by: actorId,
+          configuration_version: existing.configuration_version + 1,
+        }
+      : {
+          created_by: actorId,
+          updated_by: actorId,
+          configuration_version: 1,
+        }),
+  };
+  const stored = existing
+    ? await admin
+        .from("exchange_mail_channels")
+        .update(nextChannel)
+        .eq("id", existing.id)
+        .eq("tenant_id", existing.tenant_id)
+        .eq("configuration_version", existing.configuration_version)
+        .select("*")
+        .maybeSingle()
+    : await admin
+        .from("exchange_mail_channels")
+        .insert(nextChannel)
+        .select("*")
+        .maybeSingle();
+  if (stored.error) {
+    if (stored.error.code === "23505")
       throw new HttpError(409, "mailbox_in_use");
     throw new HttpError(422, "invalid_settings");
+  }
+  if (!stored.data) throw new HttpError(409, "exchange_configuration_changed");
+  if (existing && changedMailbox) {
+    await removeSubscriptionsForChannel(admin, existing);
+    await admin
+      .from("mail_messages")
+      .update({
+        processing_status: "ignored",
+        ignore_reason: "channel_reconfigured",
+      })
+      .eq("channel_id", existing.id)
+      .eq("direction", "outbound")
+      .in("processing_status", ["pending", "failed"]);
   }
   return reply(request, { data: { channel: stored.data } });
 }
@@ -472,13 +525,19 @@ async function verifyConnection(
     throw new HttpError(503, "exchange_platform_not_configured");
   const found = await channel(admin, tenantId);
   if (!found) throw new HttpError(422, "invalid_settings");
+  if (found.status === "active")
+    throw new HttpError(409, "exchange_verification_required");
   const checks: Array<{
     key: "token" | "mailbox" | "read";
     ok: boolean;
     message: string;
   }> = [];
+  let overBroadPermissions = false;
   try {
     const token = await getExchangeAccessToken(found.entra_tenant_id);
+    overBroadPermissions = token.overBroadPermissions;
+    if (overBroadPermissions)
+      throw new HttpError(422, "exchange_overbroad_permissions");
     checks.push({
       key: "token",
       ok: true,
@@ -506,7 +565,26 @@ async function verifyConnection(
       ok: true,
       message: "Leseberechtigung wurde geprüft.",
     });
-    await admin
+  } catch (error) {
+    const code =
+      error instanceof ExchangeMailError || error instanceof HttpError
+        ? error.code
+        : "exchange_unavailable";
+    await matchChannelTarget(
+      admin
+        .from("exchange_mail_channels")
+        .update({
+          status: "error",
+          last_error_code: code,
+          last_error_message: message(code),
+        })
+        .eq("status", found.status),
+      found,
+    );
+    throw error;
+  }
+  const verified = await matchChannelTarget(
+    admin
       .from("exchange_mail_channels")
       .update({
         status: "verified",
@@ -514,23 +592,17 @@ async function verifyConnection(
         last_error_code: null,
         last_error_message: null,
       })
-      .eq("id", found.id);
-    return reply(request, {
-      data: { checks, overBroadPermissions: token.overBroadPermissions },
-    });
-  } catch (error) {
-    const code =
-      error instanceof ExchangeMailError ? error.code : "exchange_unavailable";
-    await admin
-      .from("exchange_mail_channels")
-      .update({
-        status: "error",
-        last_error_code: code,
-        last_error_message: message(code),
-      })
-      .eq("id", found.id);
-    throw error;
-  }
+      .eq("status", found.status),
+    found,
+  )
+    .select("id")
+    .maybeSingle();
+  if (verified.error) throw new HttpError(500, "operation_failed");
+  if (!verified.data)
+    throw new HttpError(409, "exchange_verification_required");
+  return reply(request, {
+    data: { checks, overBroadPermissions },
+  });
 }
 
 function randomHex(bytes = 32): string {
@@ -559,22 +631,31 @@ async function activate(
     throw new HttpError(503, "exchange_platform_not_configured");
   const found = await channel(admin, tenantId);
   if (!found) throw new HttpError(422, "invalid_settings");
+  if (found.status !== "verified")
+    throw new HttpError(409, "exchange_verification_required");
+  const token = await getExchangeAccessToken(found.entra_tenant_id);
+  if (token.overBroadPermissions)
+    throw new HttpError(422, "exchange_overbroad_permissions");
   const now = new Date().toISOString();
-  const activated = await admin
-    .from("exchange_mail_channels")
-    .update({
-      status: "active",
-      poll_watermark: now,
-      activated_at: now,
-      activated_by: actorId,
-      last_error_code: null,
-      last_error_message: null,
-    })
-    .eq("id", found.id)
+  const activated = await matchChannelTarget(
+    admin
+      .from("exchange_mail_channels")
+      .update({
+        status: "active",
+        poll_watermark: now,
+        activated_at: now,
+        activated_by: actorId,
+        last_error_code: null,
+        last_error_message: null,
+      })
+      .eq("status", "verified"),
+    found,
+  )
     .select("*")
-    .single();
-  if (activated.error || !activated.data)
-    throw new HttpError(500, "operation_failed");
+    .maybeSingle();
+  if (activated.error) throw new HttpError(500, "operation_failed");
+  if (!activated.data)
+    throw new HttpError(409, "exchange_verification_required");
   const clientState = randomHex();
   try {
     const subscriptionExpiresAt = await createSubscriptionForChannel(
@@ -587,16 +668,22 @@ async function activate(
         clientStateHash: await sha256(clientState),
       },
     );
+    if (!subscriptionExpiresAt)
+      throw new HttpError(409, "exchange_verification_required");
     return reply(request, {
       data: { status: "active", subscriptionExpiresAt },
     });
   } catch (error) {
+    if (error instanceof HttpError) throw error;
     const code =
       error instanceof ExchangeMailError ? error.code : "exchange_unavailable";
-    await admin
-      .from("exchange_mail_channels")
-      .update({ last_error_code: code, last_error_message: message(code) })
-      .eq("id", found.id);
+    await matchChannelTarget(
+      admin
+        .from("exchange_mail_channels")
+        .update({ last_error_code: code, last_error_message: message(code) })
+        .eq("status", "active"),
+      activated.data as Channel,
+    );
     // Polling remains active, exactly as required when a Graph subscription fails.
     return reply(request, {
       data: { status: "active", subscriptionExpiresAt: null },
@@ -612,12 +699,21 @@ async function pause(
   await requireFeature(admin, tenantId);
   const found = await channel(admin, tenantId);
   if (!found) throw new HttpError(422, "invalid_settings");
-  await removeSubscriptionsForChannel(admin, found);
-  const result = await admin
-    .from("exchange_mail_channels")
-    .update({ status: "paused" })
-    .eq("id", found.id);
-  if (result.error) throw new HttpError(500, "operation_failed");
+  const paused = await matchChannelTarget(
+    admin
+      .from("exchange_mail_channels")
+      .update({
+        status: "paused",
+        configuration_version: found.configuration_version + 1,
+      })
+      .eq("status", found.status),
+    found,
+  )
+    .select("*")
+    .maybeSingle();
+  if (paused.error) throw new HttpError(500, "operation_failed");
+  if (!paused.data) throw new HttpError(409, "exchange_configuration_changed");
+  await removeSubscriptionsForChannel(admin, paused.data as Channel);
   return reply(request, { data: { status: "paused" } });
 }
 
@@ -639,6 +735,7 @@ async function sendTestMail(
   const queued = await admin.from("mail_messages").insert({
     tenant_id: tenantId,
     channel_id: found.id,
+    exchange_configuration_version: found.configuration_version,
     direction: "outbound",
     kind: "test",
     from_address: found.mailbox_address,

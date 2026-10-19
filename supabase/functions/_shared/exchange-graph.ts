@@ -68,16 +68,17 @@ function base64UrlJson(value: string): JsonRecord | null {
 
 export function tokenHasOverBroadMailRoles(accessToken: string): boolean {
   const payload = accessToken.split(".")[1];
-  if (!payload) return false;
+  if (!payload) return true;
   const parsed = base64UrlJson(payload);
+  if (!parsed) return true;
   const roles = parsed?.roles;
-  if (!Array.isArray(roles)) return false;
+  // Exchange Application RBAC can issue a valid app-only Graph token without
+  // a roles claim. Any declared Graph role, however, must be a well-formed
+  // string and none may grant the broad Mail.* application surface.
+  if (roles === undefined) return false;
+  if (!Array.isArray(roles)) return true;
   return roles.some(
-    (role) =>
-      typeof role === "string" &&
-      ["Mail.Read", "Mail.ReadWrite", "Mail.Send", "Mail.ReadBasic"].includes(
-        role,
-      ),
+    (role) => typeof role !== "string" || role.startsWith("Mail."),
   );
 }
 

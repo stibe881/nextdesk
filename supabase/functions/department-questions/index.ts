@@ -443,7 +443,7 @@ async function queueInternalMail(input: {
   if (!flags?.["integrations.email"]) return false;
   const channel = await input.admin
     .from("exchange_mail_channels")
-    .select("id")
+    .select("id, configuration_version")
     .eq("tenant_id", input.tenantId)
     .eq("status", "active")
     .maybeSingle();
@@ -454,6 +454,7 @@ async function queueInternalMail(input: {
   const inserted = await input.admin.from("mail_messages").insert({
     tenant_id: input.tenantId,
     channel_id: channel.data.id,
+    exchange_configuration_version: channel.data.configuration_version,
     direction: "outbound",
     kind: input.kind,
     ticket_id: input.ticket.id,

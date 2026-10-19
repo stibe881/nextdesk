@@ -5,7 +5,10 @@ import {
   maintenance,
   processDueInbound,
 } from "../_shared/exchange-mail-processing.ts";
-import { graphRenewSubscription } from "../_shared/exchange-graph.ts";
+import {
+  graphDeleteSubscription,
+  graphRenewSubscription,
+} from "../_shared/exchange-graph.ts";
 
 const MAX_BODY_BYTES = 256 * 1024;
 const MAX_VALIDATION_TOKEN_LENGTH = 4096;
@@ -21,6 +24,7 @@ type Channel = {
   send_acknowledgement: boolean;
   send_agent_replies: boolean;
   send_resolution: boolean;
+  configuration_version: number;
   status: string;
   activated_at: string | null;
   poll_watermark: string | null;
@@ -65,18 +69,30 @@ async function timingSafeHashEqual(
   return different === 0;
 }
 
-function resourceMailboxObjectId(resource: unknown): string | null {
-  if (typeof resource !== "string") return null;
-  const found = resource.match(
-    /\/users(?:\(|\/)(?:'|%27)?([0-9a-f-]{36})(?:'|%27)?\)?(?:\/|$)/iu,
-  );
-  return found?.[1]?.toLowerCase() ?? null;
-}
-
 function randomHex(bytes = 32): string {
   return Array.from(crypto.getRandomValues(new Uint8Array(bytes)), (byte) =>
     byte.toString(16).padStart(2, "0"),
   ).join("");
+}
+
+function matchChannelTarget(query: any, channel: Channel): any {
+  const matched = query
+    .eq("id", channel.id)
+    .eq("tenant_id", channel.tenant_id)
+    .eq("configuration_version", channel.configuration_version)
+    .eq("entra_tenant_id", channel.entra_tenant_id)
+    .eq("mailbox_address", channel.mailbox_address);
+  return channel.mailbox_object_id
+    ? matched.eq("mailbox_object_id", channel.mailbox_object_id)
+    : matched.is("mailbox_object_id", null);
+}
+
+async function channelIsActive(admin: any, channel: Channel): Promise<boolean> {
+  const result = await matchChannelTarget(
+    admin.from("exchange_mail_channels").select("id").eq("status", "active"),
+    channel,
+  ).maybeSingle();
+  return !result.error && Boolean(result.data);
 }
 
 async function auditInvalid(
@@ -117,9 +133,15 @@ async function subscriptionForNotification(
     !record(result.data.exchange_mail_channels)
   )
     return null;
+  const channel = result.data.exchange_mail_channels as Channel;
+  if (
+    result.data.configuration_version !== channel.configuration_version ||
+    result.data.source_entra_tenant_id !== channel.entra_tenant_id
+  )
+    return null;
   return {
     subscription: result.data,
-    channel: result.data.exchange_mail_channels as Channel,
+    channel,
   };
 }
 
@@ -130,6 +152,7 @@ async function handleChangeNotification(
   const resolved = await subscriptionForNotification(admin, item);
   if (!resolved) return null;
   const { subscription, channel } = resolved;
+  if (channel.status !== "active") return null;
   const validClientState =
     typeof item.clientState === "string" &&
     (await timingSafeHashEqual(
@@ -143,6 +166,7 @@ async function handleChangeNotification(
     await auditInvalid(admin, channel.tenant_id);
     return null;
   }
+  if (!(await channelIsActive(admin, channel))) return null;
   await admin
     .from("exchange_mail_subscriptions")
     .update({ last_notification_at: new Date().toISOString() })
@@ -152,13 +176,6 @@ async function handleChangeNotification(
     typeof item.resourceData.id === "string" ? item.resourceData.id : null;
   if (!messageId || messageId.length > 1024) return null;
   await enqueueGraphInbound(admin, channel, messageId);
-  const objectId = resourceMailboxObjectId(item.resource);
-  if (objectId && !channel.mailbox_object_id)
-    await admin
-      .from("exchange_mail_channels")
-      .update({ mailbox_object_id: objectId })
-      .eq("id", channel.id)
-      .is("mailbox_object_id", null);
   return channel.id;
 }
 
@@ -169,6 +186,7 @@ async function handleLifecycleNotification(
   const resolved = await subscriptionForNotification(admin, item);
   if (!resolved) return;
   const { subscription, channel } = resolved;
+  if (channel.status !== "active") return;
   const validClientState =
     typeof item.clientState === "string" &&
     (await timingSafeHashEqual(
@@ -182,6 +200,7 @@ async function handleLifecycleNotification(
     await auditInvalid(admin, channel.tenant_id);
     return;
   }
+  if (!(await channelIsActive(admin, channel))) return;
   const lifecycleEvent = item.lifecycleEvent;
   if (lifecycleEvent === "reauthorizationRequired") {
     const renewed = await graphRenewSubscription(
@@ -189,13 +208,26 @@ async function handleLifecycleNotification(
       subscription.graph_subscription_id,
       new Date(Date.now() + 4200 * 60_000).toISOString(),
     );
+    if (!(await channelIsActive(admin, channel))) {
+      await graphDeleteSubscription(
+        channel.entra_tenant_id,
+        subscription.graph_subscription_id,
+      ).catch(() => undefined);
+      await admin
+        .from("exchange_mail_subscriptions")
+        .update({ status: "removal_pending" })
+        .eq("id", subscription.id)
+        .eq("status", "active");
+      return;
+    }
     await admin
       .from("exchange_mail_subscriptions")
       .update({
         expires_at: renewed.expirationDateTime,
         last_renewed_at: new Date().toISOString(),
       })
-      .eq("id", subscription.id);
+      .eq("id", subscription.id)
+      .eq("status", "active");
     return;
   }
   if (lifecycleEvent === "subscriptionRemoved") {

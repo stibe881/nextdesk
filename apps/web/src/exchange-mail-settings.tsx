@@ -1,16 +1,8 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-  type FormEvent,
-} from "react";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
 import {
   AlertCircle,
-  Check,
   Circle,
   CircleCheck,
-  Copy,
   ExternalLink,
   FileText,
   LoaderCircle,
@@ -86,8 +78,8 @@ type ExchangeMailRequest =
       tenantId: string;
       entraTenantId: string;
       mailboxAddress: string;
-      mailboxObjectId?: string;
-      defaultDepartmentId?: string;
+      mailboxObjectId: string | null;
+      defaultDepartmentId: string | null;
       sendAcknowledgement: boolean;
       sendAgentReplies: boolean;
       sendResolution: boolean;
@@ -115,6 +107,12 @@ const ERROR_FALLBACKS: Record<string, string> = {
   forbidden: "Für diese Aktion fehlt Ihnen die erforderliche Berechtigung.",
   invalid_settings:
     "Bitte prüfen Sie die Microsoft-365-Mandanten-ID, das Support-Postfach und die optionalen Angaben.",
+  exchange_verification_required:
+    "Prüfen Sie die Verbindung zu Exchange Online erfolgreich, bevor Sie den E-Mail-Kanal aktivieren.",
+  exchange_configuration_changed:
+    "Die E-Mail-Konfiguration wurde zwischenzeitlich geändert. Laden Sie die Einstellungen neu und prüfen Sie die Verbindung erneut.",
+  exchange_overbroad_permissions:
+    "Die nextDesk-App besitzt zu weitreichende Microsoft-Graph-Mailberechtigungen. Entfernen Sie Mail.*-Berechtigungen und prüfen Sie die Verbindung erneut.",
   mailbox_in_use:
     "Dieses Support-Postfach wird bereits von einem anderen Mandanten verwendet.",
   exchange_app_not_consented:
@@ -394,39 +392,6 @@ function actionLabel(action: ExchangeAction): string {
   }
 }
 
-function PowerShellBlock({
-  command,
-  copied,
-  id,
-  onCopy,
-}: {
-  command: string;
-  copied: boolean;
-  id: string;
-  onCopy: (id: string, command: string) => void;
-}) {
-  return (
-    <div className="exchange-mail-settings__command">
-      <pre>
-        <code>{command}</code>
-      </pre>
-      <button
-        aria-label="PowerShell-Befehl kopieren"
-        className="text-button"
-        onClick={() => onCopy(id, command)}
-        type="button"
-      >
-        {copied ? (
-          <Check aria-hidden="true" size={15} />
-        ) : (
-          <Copy aria-hidden="true" size={15} />
-        )}
-        {copied ? "Kopiert" : "Kopieren"}
-      </button>
-    </div>
-  );
-}
-
 export function ExchangeMailSettings({ tenantId }: { tenantId: string }) {
   const [status, setStatus] = useState<ExchangeMailStatus | null>(null);
   const [form, setForm] = useState<ExchangeSettingsForm>(emptyForm);
@@ -438,7 +403,6 @@ export function ExchangeMailSettings({ tenantId }: { tenantId: string }) {
   const [confirmationAction, setConfirmationAction] =
     useState<ConfirmationAction>(null);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
-  const [copiedCommand, setCopiedCommand] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -473,38 +437,6 @@ export function ExchangeMailSettings({ tenantId }: { tenantId: string }) {
     void load();
   }, [load]);
 
-  const commands = useMemo(() => {
-    const appId = status?.appId?.trim() || "<App-ID von nextDesk>";
-    const mailbox = form.mailboxAddress.trim() || "<support@unternehmen.ch>";
-    return [
-      { id: "connect", command: "Connect-ExchangeOnline" },
-      {
-        id: "service-principal",
-        command: `New-ServicePrincipal -AppId ${appId} -ObjectId <Objekt-ID der Unternehmensanwendung> -DisplayName "nextDesk – Exchange Online"`,
-      },
-      {
-        id: "scope",
-        command: `New-ManagementScope -Name "nextDesk Support-Postfach" -RecipientRestrictionFilter "PrimarySmtpAddress -eq '${mailbox}'"`,
-      },
-      {
-        id: "read",
-        command: `New-ManagementRoleAssignment -App ${appId} -Role "Application Mail.Read" -CustomResourceScope "nextDesk Support-Postfach"`,
-      },
-      {
-        id: "send",
-        command: `New-ManagementRoleAssignment -App ${appId} -Role "Application Mail.Send" -CustomResourceScope "nextDesk Support-Postfach"`,
-      },
-      {
-        id: "authorization",
-        command: `Test-ServicePrincipalAuthorization -Identity ${appId} -Resource ${mailbox}`,
-      },
-      {
-        id: "object-id",
-        command: `Get-Mailbox ${mailbox} | Select-Object ExternalDirectoryObjectId`,
-      },
-    ];
-  }, [form.mailboxAddress, status?.appId]);
-
   const formDisabled =
     loading ||
     pendingAction !== null ||
@@ -512,6 +444,10 @@ export function ExchangeMailSettings({ tenantId }: { tenantId: string }) {
     !status.featureEnabled;
   const hasChannel = Boolean(status?.channel);
   const operationDisabled = formDisabled || !hasChannel;
+  const canVerify = status?.channel?.status !== "active";
+  const canActivate =
+    status?.channel?.status === "verified" &&
+    !status.channel.overBroadPermissions;
   const statusKey = status?.channel?.status ?? "not-connected";
   const statusPresentation = STATUS_PRESENTATION[statusKey];
   const StatusIcon = statusPresentation.Icon;
@@ -560,12 +496,8 @@ export function ExchangeMailSettings({ tenantId }: { tenantId: string }) {
           tenantId,
           entraTenantId,
           mailboxAddress,
-          ...(form.mailboxObjectId.trim()
-            ? { mailboxObjectId: form.mailboxObjectId.trim() }
-            : {}),
-          ...(form.defaultDepartmentId
-            ? { defaultDepartmentId: form.defaultDepartmentId }
-            : {}),
+          mailboxObjectId: form.mailboxObjectId.trim() || null,
+          defaultDepartmentId: form.defaultDepartmentId || null,
           sendAcknowledgement: form.sendAcknowledgement,
           sendAgentReplies: form.sendAgentReplies,
           sendResolution: form.sendResolution,
@@ -676,22 +608,6 @@ export function ExchangeMailSettings({ tenantId }: { tenantId: string }) {
       });
     } finally {
       setPendingAction(null);
-    }
-  }
-
-  async function copyCommand(id: string, command: string) {
-    try {
-      await navigator.clipboard.writeText(command);
-      setCopiedCommand(id);
-      window.setTimeout(() => {
-        setCopiedCommand((current) => (current === id ? null : current));
-      }, 2_000);
-    } catch {
-      setFeedback({
-        kind: "error",
-        message:
-          "Der Befehl konnte nicht in die Zwischenablage kopiert werden.",
-      });
     }
   }
 
@@ -819,6 +735,18 @@ export function ExchangeMailSettings({ tenantId }: { tenantId: string }) {
               <TriangleAlert aria-hidden="true" size={17} />
               Aktivieren Sie zuerst den Funktionsschalter für den E-Mail-Kanal,
               bevor Sie die Verbindung konfigurieren.
+            </p>
+          ) : null}
+          {status.channel &&
+          status.channel.status !== "verified" &&
+          status.channel.status !== "active" ? (
+            <p
+              className="exchange-mail-settings__notice exchange-mail-settings__notice--warning"
+              role="status"
+            >
+              <TriangleAlert aria-hidden="true" size={17} />
+              Prüfen Sie die Verbindung erfolgreich, bevor Sie den E-Mail-Kanal
+              aktivieren.
             </p>
           ) : null}
           {status.channel?.overBroadPermissions ? (
@@ -972,7 +900,7 @@ export function ExchangeMailSettings({ tenantId }: { tenantId: string }) {
                 {pendingAction === "save" ? actionLabel("save") : "Speichern"}
               </button>
               <button
-                disabled={operationDisabled}
+                disabled={operationDisabled || !canVerify}
                 onClick={() => void verifyConnection()}
                 type="button"
               >
@@ -990,9 +918,7 @@ export function ExchangeMailSettings({ tenantId }: { tenantId: string }) {
                   : "Verbindung prüfen"}
               </button>
               <button
-                disabled={
-                  operationDisabled || status.channel?.status === "active"
-                }
+                disabled={operationDisabled || !canActivate}
                 onClick={() => setConfirmationAction("activate")}
                 type="button"
               >
@@ -1028,7 +954,9 @@ export function ExchangeMailSettings({ tenantId }: { tenantId: string }) {
                 {pendingAction === "pause" ? actionLabel("pause") : "Pausieren"}
               </button>
               <button
-                disabled={operationDisabled}
+                disabled={
+                  operationDisabled || status.channel?.status !== "active"
+                }
                 onClick={() => void sendTestMail()}
                 type="button"
               >
@@ -1091,60 +1019,73 @@ export function ExchangeMailSettings({ tenantId }: { tenantId: string }) {
           ) : null}
 
           <details className="exchange-mail-settings__guide">
-            <summary>So richtest du das Postfach ein</summary>
+            <summary>So richtest du den E-Mail-Kanal ein</summary>
             <div>
               <p>
-                Die zentrale nextDesk-App wird nur für dieses Support-Postfach
-                über Exchange Online RBAC berechtigt.
+                Dieser Bereich führt dich durch die Konfiguration für genau ein
+                Support-Postfach. Dein Mandant sieht und ändert nur seine eigene
+                E-Mail-Konfiguration.
               </p>
+              <p className="exchange-mail-settings__guide-hint">
+                Das Client-Secret der zentralen nextDesk-App bleibt
+                ausschliesslich im sicheren nextDesk-Secret-Store von Gross ICT.
+                Es wird weder angezeigt noch von dir oder deinen Mitarbeitenden
+                benötigt.
+              </p>
+              <ol>
+                <li>
+                  Trage Microsoft-365-Mandanten-ID und Support-Postfach ein und
+                  wähle <strong>Speichern</strong>.
+                </li>
+                <li>
+                  Öffne danach die Microsoft-365-Freigabe und bestätige sie mit
+                  einer berechtigten Microsoft-365-Administration.
+                </li>
+                <li>
+                  Lasse den Exchange-Zugriff auf genau dieses Support-Postfach
+                  beschränken. Der Zugriff darf nicht für alle Postfächer deines
+                  Unternehmens gelten.
+                </li>
+                <li>
+                  Warte nach der Microsoft-Freigabe kurz und wähle hier
+                  <strong>Verbindung prüfen</strong>. Erst bei erfolgreicher
+                  Prüfung wird <strong>Aktivieren</strong> freigeschaltet.
+                </li>
+              </ol>
               {consentUrl ? (
                 <p>
                   <a href={consentUrl} rel="noreferrer" target="_blank">
-                    Freigabe für diesen Microsoft-365-Mandanten öffnen{" "}
+                    Microsoft-365-Freigabe für diesen Mandanten öffnen{" "}
                     <ExternalLink aria-hidden="true" size={14} />
                   </a>
                 </p>
               ) : (
                 <p className="exchange-mail-settings__guide-hint">
-                  Der Freigabelink erscheint, sobald Microsoft-365-Mandanten-ID
-                  und App-ID bekannt sind.
+                  Der Freigabelink erscheint, sobald die
+                  Microsoft-365-Mandanten-ID eingetragen ist.
                 </p>
               )}
-              <ol>
-                <li>
-                  Mit Exchange Online verbinden und den Service Principal der
-                  Unternehmensanwendung registrieren.
-                </li>
-                <li>
-                  Den Management Scope auf genau dieses Support-Postfach
-                  beschränken.
-                </li>
-                <li>
-                  Die Lese- und Sendeberechtigung innerhalb dieses Scopes
-                  zuweisen und anschliessend prüfen.
-                </li>
-              </ol>
-              <div className="exchange-mail-settings__commands">
-                {commands.map(({ id, command }) => (
-                  <PowerShellBlock
-                    command={command}
-                    copied={copiedCommand === id}
-                    id={id}
-                    key={id}
-                    onCopy={copyCommand}
-                  />
-                ))}
-              </div>
               <p className="exchange-mail-settings__guide-hint">
-                Rechte können 30 Minuten bis 2 Stunden brauchen, bis sie wirken.
+                Microsoft kann neue Exchange-Berechtigungen erst nach 30 Minuten
+                bis 2 Stunden bereitstellen.
               </p>
               <p className="exchange-mail-settings__guide-warning">
-                Bitte in Entra keine Mail-Berechtigungen für diese App erteilen
-                – die Einschränkung erfolgt nur über Exchange.
+                Bitte erteile der nextDesk-App in Entra keine allgemeinen
+                Mail-Berechtigungen. Der Zugriff muss auf dieses eine
+                Support-Postfach beschränkt bleiben.
               </p>
             </div>
           </details>
         </>
+      ) : null}
+      {!status && feedback ? (
+        <p
+          className={`exchange-mail-settings__feedback exchange-mail-settings__feedback--${feedback.kind}`}
+          role={feedback.kind === "error" ? "alert" : "status"}
+        >
+          <AlertCircle aria-hidden="true" size={17} />
+          {feedback.message}
+        </p>
       ) : null}
 
       {confirmationAction ? (
