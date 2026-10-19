@@ -223,6 +223,25 @@ function errorCode(error: unknown): string {
     : "exchange_unavailable";
 }
 
+function internalProcessingErrorCode(error: unknown): string | null {
+  const message = error instanceof Error ? error.message : "";
+  return [
+    "requester_contact_upsert_failed",
+    "service_identity_lookup_failed",
+    "service_identity_create_failed",
+    "service_identity_profile_failed",
+    "service_identity_store_failed",
+    "service_identity_membership_invalid",
+    "ticket_defaults_unavailable",
+    "ticket_number_failed",
+    "ticket_create_failed",
+    "inbound_commit_failed",
+    "inbound_commit_invalid",
+  ].includes(message)
+    ? message
+    : null;
+}
+
 function isPermanent(error: unknown): boolean {
   return (
     error instanceof ExchangeMailError &&
@@ -346,6 +365,7 @@ async function retryOrFail(
       direction: message.direction,
       code,
       graphErrorCode,
+      internalErrorCode: internalProcessingErrorCode(error),
       stage,
     },
   );
