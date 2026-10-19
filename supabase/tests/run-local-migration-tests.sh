@@ -1916,6 +1916,32 @@ $$;
 
 insert into public.ticket_requesters (id, tenant_id, email, display_name, source) values
   ('1b000000-0000-4000-8000-000000000003', '10000000-0000-4000-8000-000000000001', 'requester@tenant-a.example', 'Requester A', 'email');
+insert into public.ticket_requesters (tenant_id, email, display_name, source)
+values (
+  '10000000-0000-4000-8000-000000000001',
+  'upsert-requester@tenant-a.example',
+  'Initial requester',
+  'email'
+)
+on conflict (tenant_id, email) do update
+set display_name = excluded.display_name;
+insert into public.ticket_requesters (tenant_id, email, display_name, source)
+values (
+  '10000000-0000-4000-8000-000000000001',
+  'upsert-requester@tenant-a.example',
+  'Updated requester',
+  'email'
+)
+on conflict (tenant_id, email) do update
+set display_name = excluded.display_name;
+do $$
+begin
+  if (select count(*) from public.ticket_requesters where tenant_id = '10000000-0000-4000-8000-000000000001' and email = 'upsert-requester@tenant-a.example') <> 1
+     or (select display_name from public.ticket_requesters where tenant_id = '10000000-0000-4000-8000-000000000001' and email = 'upsert-requester@tenant-a.example') <> 'Updated requester' then
+    raise exception 'Email requester upsert conflict target is not usable';
+  end if;
+end;
+$$;
 update public.tickets
 set requester_contact_id = '1b000000-0000-4000-8000-000000000003'
 where id = '17000000-0000-4000-8000-000000000001';
