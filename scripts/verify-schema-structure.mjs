@@ -80,6 +80,8 @@ const expectedFiles = [
   "0076_authorized_ticket_list_sorting.sql",
   "0077_entra_agent_assignment_provenance.sql",
   "0078_fix_entra_agent_directory_assignment.sql",
+  "0079_list_pending_sla_breaches.sql",
+  "0080_harden_sla_breach_feature_gate.sql",
 ];
 
 const availableFiles = await readdir(migrationDirectory);
@@ -684,6 +686,27 @@ const requiredFragments = [
   [
     "0078_fix_entra_agent_directory_assignment.sql",
     "values (p_tenant_id, v_person.local_user_id, p_department_id)",
+  ],
+  [
+    "0079_list_pending_sla_breaches.sql",
+    "create or replace function public.list_pending_sla_breaches",
+  ],
+  [
+    "0079_list_pending_sla_breaches.sql",
+    "revoke all on function public.list_pending_sla_breaches(text, integer)",
+  ],
+  [
+    "0079_list_pending_sla_breaches.sql",
+    "grant execute on function public.list_pending_sla_breaches(text, integer)\n  to service_role",
+  ],
+  ["0080_harden_sla_breach_feature_gate.sql", "for share"],
+  [
+    "0080_harden_sla_breach_feature_gate.sql",
+    "feature.feature_key = 'automation.sla'",
+  ],
+  [
+    "0080_harden_sla_breach_feature_gate.sql",
+    "revoke all on function public.apply_sla_breach(uuid, text, uuid) from public, anon, authenticated",
   ],
 ];
 

@@ -11,7 +11,7 @@ Die vier Funktionen verwenden die aktuelle `@supabase/server`-Hülle im Modus `a
 
 ## SLA-Automation
 
-`sla-automation` ist ein **nicht öffentlicher, scheduler-geschützter** Hintergrundendpunkt. Er prüft bis zu 100 offene Tickets pro Lauf auf überschrittene Erstreaktions- und Lösungsziele. Für jeden neu erkannten Verstoß schreibt die atomare Datenbankfunktion `apply_sla_breach` genau ein SLA-Ereignis, Timeline-Ereignis, Audit-Ereignis, bei Lösungszielen eine Eskalation sowie eine Benachrichtigung an die zugewiesene Person.
+`sla-automation` ist ein **nicht öffentlicher, scheduler-geschützter** Hintergrundendpunkt. Er wählt je Breach-Art bis zu 100 offene, fällige Tickets ohne bereits protokollierten Breach und nur aus Mandanten mit aktivem `automation.sla`-Schalter aus. Die Auswahlzeit stammt aus der Datenbank; historische Breaches oder deaktivierte Mandanten belegen keinen Batchplatz. Vor jeder Mutation sperrt `apply_sla_breach` zusätzlich den zugehörigen Funktionsschalter und prüft ihn mit der aktuellen Datenbankzeit erneut. Dadurch kann eine Deaktivierung weder über die direkte service-role-RPC noch im Zwischenraum zwischen Auswahl und Mutation umgangen werden. Für jeden neu erkannten Verstoß schreibt die atomare Datenbankfunktion genau ein SLA-Ereignis, Timeline-Ereignis, Audit-Ereignis, bei Lösungszielen eine Eskalation sowie eine Benachrichtigung an die zugewiesene Person.
 
 - **Aufruf:** `POST https://<project-ref>.supabase.co/functions/v1/sla-automation`
 - **Header:** `X-NextDesk-Automation-Secret: <SLA_AUTOMATION_SECRET>`

@@ -99,61 +99,21 @@ function eventType(
   return kind === "response" ? "response_breached" : "resolution_breached";
 }
 
-function dueAt(ticket: Ticket, kind: BreachKind): string {
-  return kind === "response"
-    ? (ticket.response_due_at ?? "")
-    : (ticket.resolution_due_at ?? "");
-}
-
-async function listOverdueTickets(
+/**
+ * The database function excludes earlier breaches in the query itself. Loading
+ * the first due rows and filtering event records afterwards can permanently
+ * starve later tickets when a historical backlog is larger than one batch.
+ */
+async function listPendingBreachTickets(
   admin: any,
   kind: BreachKind,
-  now: string,
   limit: number,
 ): Promise<{ data: Ticket[]; error: boolean }> {
-  let query = admin
-    .from("tickets")
-    .select(
-      "id, tenant_id, department_id, ticket_number, response_due_at, resolution_due_at, first_responded_at, assigned_agent_id, escalation_level",
-    )
-    .is("closed_at", null)
-    .limit(limit);
-
-  query =
-    kind === "response"
-      ? query
-          .is("first_responded_at", null)
-          .not("response_due_at", "is", null)
-          .lte("response_due_at", now)
-          .order("response_due_at", { ascending: true })
-      : query
-          .not("resolution_due_at", "is", null)
-          .lte("resolution_due_at", now)
-          .order("resolution_due_at", { ascending: true });
-
-  const { data, error } = await query;
+  const { data, error } = await admin.rpc("list_pending_sla_breaches", {
+    p_kind: kind,
+    p_limit: limit,
+  });
   return { data: (data ?? []) as Ticket[], error: Boolean(error) };
-}
-
-async function existingBreachKeys(
-  admin: any,
-  ticketIds: string[],
-): Promise<{ keys: Set<string>; error: boolean }> {
-  if (ticketIds.length === 0) return { keys: new Set(), error: false };
-  const { data, error } = await admin
-    .from("ticket_sla_events")
-    .select("ticket_id, event_type")
-    .in("ticket_id", ticketIds)
-    .in("event_type", ["response_breached", "resolution_breached"]);
-  return {
-    keys: new Set(
-      (data ?? []).map(
-        (event: { ticket_id: string; event_type: string }) =>
-          `${event.ticket_id}:${event.event_type}`,
-      ),
-    ),
-    error: Boolean(error),
-  };
 }
 
 async function recordBreach(
@@ -204,18 +164,15 @@ const handler = withSupabase(
       return json({ error: { code: "invalid_request" } }, 422, requestId);
     }
 
-    const now = new Date().toISOString();
     const [responseTickets, resolutionTickets] = await Promise.all([
-      listOverdueTickets(
+      listPendingBreachTickets(
         context.supabaseAdmin,
         "response",
-        now,
         invocation.limit,
       ),
-      listOverdueTickets(
+      listPendingBreachTickets(
         context.supabaseAdmin,
         "resolution",
-        now,
         invocation.limit,
       ),
     ]);
@@ -248,21 +205,7 @@ const handler = withSupabase(
         return states?.["automation.sla"] === true;
       },
     );
-    const existing = await existingBreachKeys(context.supabaseAdmin, [
-      ...new Set(featureFiltered.candidates.map(({ ticket }) => ticket.id)),
-    ]);
-    if (existing.error) {
-      return json(
-        { error: { code: "sla_automation_event_check_failed" } },
-        500,
-        requestId,
-      );
-    }
-
-    const pending = featureFiltered.candidates.filter(
-      ({ ticket, kind }) =>
-        !existing.keys.has(`${ticket.id}:${eventType(kind)}`),
-    );
+    const pending = featureFiltered.candidates;
     if (invocation.dryRun) {
       return json(
         {

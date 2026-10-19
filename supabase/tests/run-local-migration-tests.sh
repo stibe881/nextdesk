@@ -2789,6 +2789,291 @@ begin
   end if;
 end;
 $$;
+
+-- The scheduler must receive only new breaches. Existing events, closed or
+-- answered tickets and disabled tenant features must not consume a small batch
+-- before later valid tickets.
+update public.tenant_feature_flags
+set enabled = true
+where tenant_id = '10000000-0000-4000-8000-000000000001'
+  and feature_key = 'automation.sla';
+
+insert into public.tickets (
+  id, tenant_id, department_id, ticket_number, subject, description,
+  status_id, priority_id, requester_id
+) values
+  ('51000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000001', '11000000-0000-4000-8000-000000000001', 'ICT-2026-SLA-001', 'Bereits verarbeitet', 'SLA-Regressionsfall mit bestehendem Breach.', '13000000-0000-4000-8000-000000000001', '14000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000001'),
+  ('51000000-0000-4000-8000-000000000002', '10000000-0000-4000-8000-000000000001', '11000000-0000-4000-8000-000000000001', 'ICT-2026-SLA-002', 'Noch ausstehend', 'SLA-Regressionsfall ohne Breach.', '13000000-0000-4000-8000-000000000001', '14000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000001'),
+  ('52000000-0000-4000-8000-000000000003', '20000000-0000-4000-8000-000000000002', '21000000-0000-4000-8000-000000000003', 'ICTB-2026-SLA-003', 'Deaktivierter Mandant', 'SLA-Regressionsfall ohne aktivierte Automatisierung.', '23000000-0000-4000-8000-000000000002', '24000000-0000-4000-8000-000000000002', '00000000-0000-4000-8000-000000000003'),
+  ('51000000-0000-4000-8000-000000000004', '10000000-0000-4000-8000-000000000001', '11000000-0000-4000-8000-000000000001', 'ICT-2026-SLA-004', 'Geschlossen', 'SLA-Regressionsfall mit geschlossenem Ticket.', '13000000-0000-4000-8000-000000000001', '14000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000001'),
+  ('51000000-0000-4000-8000-000000000005', '10000000-0000-4000-8000-000000000001', '11000000-0000-4000-8000-000000000001', 'ICT-2026-SLA-005', 'Bereits beantwortet', 'SLA-Regressionsfall mit bereits erfolgter Antwort.', '13000000-0000-4000-8000-000000000001', '14000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000001');
+
+update public.tickets
+set response_due_at = case id
+      when '51000000-0000-4000-8000-000000000001' then clock_timestamp() - interval '3 hours'
+      when '51000000-0000-4000-8000-000000000002' then clock_timestamp() - interval '2 hours'
+      when '52000000-0000-4000-8000-000000000003' then clock_timestamp() - interval '4 hours'
+      when '51000000-0000-4000-8000-000000000004' then clock_timestamp() - interval '5 hours'
+      else clock_timestamp() - interval '6 hours'
+    end,
+    resolution_due_at = case id
+      when '51000000-0000-4000-8000-000000000001' then clock_timestamp() - interval '3 hours'
+      when '51000000-0000-4000-8000-000000000002' then clock_timestamp() - interval '2 hours'
+      else null
+    end,
+    first_responded_at = case
+      when id = '51000000-0000-4000-8000-000000000005' then clock_timestamp()
+      else first_responded_at
+    end,
+    closed_at = case
+      when id = '51000000-0000-4000-8000-000000000004' then clock_timestamp()
+      else closed_at
+    end
+where id in (
+  '51000000-0000-4000-8000-000000000001',
+  '51000000-0000-4000-8000-000000000002',
+  '52000000-0000-4000-8000-000000000003',
+  '51000000-0000-4000-8000-000000000004',
+  '51000000-0000-4000-8000-000000000005'
+);
+
+insert into public.ticket_sla_events (ticket_id, event_type, occurred_at, metadata)
+values (
+  '51000000-0000-4000-8000-000000000001',
+  'response_breached',
+  timezone('utc', now()),
+  '{"source":"test"}'::jsonb
+);
+
+begin;
+set local role service_role;
+do $$
+declare
+  v_ticket_ids uuid[];
+begin
+  select array_agg(candidate.id order by candidate.id)
+  into v_ticket_ids
+  from public.list_pending_sla_breaches('response', 1) as candidate;
+
+  if v_ticket_ids is distinct from array['51000000-0000-4000-8000-000000000002'::uuid] then
+    raise exception 'Pending SLA selection was blocked by an earlier event or disabled tenant';
+  end if;
+
+  select array_agg(candidate.id order by candidate.id)
+  into v_ticket_ids
+  from public.list_pending_sla_breaches('resolution', 1) as candidate;
+
+  if v_ticket_ids is distinct from array['51000000-0000-4000-8000-000000000001'::uuid] then
+    raise exception 'A response breach incorrectly suppressed a pending resolution breach';
+  end if;
+
+  if exists (
+    select 1
+    from public.list_pending_sla_breaches('response', 100) as candidate
+    where candidate.id in (
+      '51000000-0000-4000-8000-000000000004'::uuid,
+      '51000000-0000-4000-8000-000000000005'::uuid
+    )
+  ) then
+    raise exception 'Closed or answered ticket was selected for a response breach';
+  end if;
+
+  begin
+    perform public.list_pending_sla_breaches('unsupported', 1);
+    raise exception 'Unsupported SLA kind was accepted';
+  exception when invalid_parameter_value then
+    null;
+  end;
+
+  begin
+    perform public.list_pending_sla_breaches(null, 1);
+    raise exception 'Null SLA kind was accepted';
+  exception when invalid_parameter_value then
+    null;
+  end;
+
+  begin
+    perform public.list_pending_sla_breaches('response', 0);
+    raise exception 'Zero SLA limit was accepted';
+  exception when invalid_parameter_value then
+    null;
+  end;
+
+  begin
+    perform public.list_pending_sla_breaches('response', 101);
+    raise exception 'Oversized SLA limit was accepted';
+  exception when invalid_parameter_value then
+    null;
+  end;
+end;
+$$;
 commit;
+
+update public.tenant_feature_flags
+set pilot_ends_at = clock_timestamp() - interval '1 minute'
+where tenant_id = '10000000-0000-4000-8000-000000000001'
+  and feature_key = 'automation.sla';
+
+begin;
+set local role service_role;
+do $$
+begin
+  if exists (
+    select 1 from public.list_pending_sla_breaches('response', 100)
+  ) then
+    raise exception 'Expired SLA pilot still selected candidates';
+  end if;
+end;
+$$;
+commit;
+
+update public.tenant_feature_flags
+set pilot_ends_at = null,
+    enabled = false
+where tenant_id = '10000000-0000-4000-8000-000000000001'
+  and feature_key = 'automation.sla';
+
+begin;
+set local role service_role;
+do $$
+declare
+  v_applied boolean;
+begin
+  select public.apply_sla_breach(
+    '51000000-0000-4000-8000-000000000002',
+    'response_breached',
+    '51000000-0000-4000-8000-000000000099'
+  ) into v_applied;
+
+  if v_applied then
+    raise exception 'Disabled SLA feature allowed a direct breach mutation';
+  end if;
+end;
+$$;
+commit;
+
+do $$
+begin
+  if exists (
+    select 1
+    from public.ticket_sla_events
+    where ticket_id = '51000000-0000-4000-8000-000000000002'
+      and event_type = 'response_breached'
+  ) then
+    raise exception 'Disabled SLA feature created a breach event';
+  end if;
+end;
+$$;
+
+update public.tenant_feature_flags
+set enabled = true
+where tenant_id = '10000000-0000-4000-8000-000000000001'
+  and feature_key = 'automation.sla';
+
+begin;
+set local role service_role;
+do $$
+declare
+  v_response_applied boolean;
+  v_response_repeat boolean;
+  v_resolution_applied boolean;
+  v_resolution_repeat boolean;
+begin
+  select public.apply_sla_breach(
+    '51000000-0000-4000-8000-000000000002',
+    'response_breached',
+    '51000000-0000-4000-8000-000000000100'
+  ) into v_response_applied;
+  select public.apply_sla_breach(
+    '51000000-0000-4000-8000-000000000002',
+    'response_breached',
+    '51000000-0000-4000-8000-000000000101'
+  ) into v_response_repeat;
+  select public.apply_sla_breach(
+    '51000000-0000-4000-8000-000000000001',
+    'resolution_breached',
+    '51000000-0000-4000-8000-000000000102'
+  ) into v_resolution_applied;
+  select public.apply_sla_breach(
+    '51000000-0000-4000-8000-000000000001',
+    'resolution_breached',
+    '51000000-0000-4000-8000-000000000103'
+  ) into v_resolution_repeat;
+
+  if v_response_applied is not true
+    or v_resolution_applied is not true
+    or v_response_repeat is not false
+    or v_resolution_repeat is not false then
+    raise exception 'SLA breach mutation did not remain idempotent per breach type';
+  end if;
+end;
+$$;
+commit;
+
+do $$
+begin
+  if (select count(*) from public.ticket_sla_events
+      where ticket_id = '51000000-0000-4000-8000-000000000002'
+        and event_type = 'response_breached') <> 1
+    or (select count(*) from public.ticket_sla_events
+        where ticket_id = '51000000-0000-4000-8000-000000000001'
+          and event_type = 'resolution_breached') <> 1
+    or (select count(*) from public.ticket_escalations
+        where ticket_id = '51000000-0000-4000-8000-000000000001'
+          and kind = 'sla') <> 1
+    or (select escalation_level from public.tickets
+        where id = '51000000-0000-4000-8000-000000000001') <> 1 then
+    raise exception 'SLA breach mutation did not write exactly one expected event and escalation';
+  end if;
+end;
+$$;
+
+begin;
+set local role authenticated;
+do $$
+begin
+  begin
+    perform public.list_pending_sla_breaches('response', 1);
+    raise exception 'Authenticated role executed private SLA candidate selection';
+  exception when insufficient_privilege then
+    null;
+  end;
+  begin
+    perform public.apply_sla_breach(
+      '51000000-0000-4000-8000-000000000002',
+      'response_breached',
+      '51000000-0000-4000-8000-000000000104'
+    );
+    raise exception 'Authenticated role executed private SLA breach mutation';
+  exception when insufficient_privilege then
+    null;
+  end;
+end;
+$$;
+rollback;
+
+begin;
+set local role anon;
+do $$
+begin
+  begin
+    perform public.list_pending_sla_breaches('response', 1);
+    raise exception 'Anonymous role executed private SLA candidate selection';
+  exception when insufficient_privilege then
+    null;
+  end;
+  begin
+    perform public.apply_sla_breach(
+      '51000000-0000-4000-8000-000000000002',
+      'response_breached',
+      '51000000-0000-4000-8000-000000000105'
+    );
+    raise exception 'Anonymous role executed private SLA breach mutation';
+  exception when insufficient_privilege then
+    null;
+  end;
+end;
+$$;
+rollback;
 SQL
 echo "PostgreSQL 16 migration and RLS integration checks passed."
