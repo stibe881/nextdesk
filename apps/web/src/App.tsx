@@ -197,14 +197,14 @@ type TenantWorkspaceBranding = {
 const sections: readonly { label: Section; Icon: LucideIcon }[] = [
   { label: "Übersicht", Icon: LayoutDashboard },
   { label: "Tickets", Icon: Ticket },
-  { label: "Arbeitsplatz", Icon: BriefcaseBusiness },
+  { label: "Wiedervorlagen", Icon: ListTodo },
   { label: "Erwähnungen", Icon: AtSign },
-  { label: "Mein Portal", Icon: UserRound },
+  { label: "Arbeitsplatz", Icon: BriefcaseBusiness },
   { label: "Services", Icon: MonitorCog },
   { label: "Assets", Icon: Boxes },
   { label: "Wissen", Icon: BookOpen },
+  { label: "Mein Portal", Icon: UserRound },
   { label: "Berichte", Icon: ChartNoAxesCombined },
-  { label: "Wiedervorlagen", Icon: ListTodo },
 ];
 
 const DEFAULT_WORKSPACE_PREFERENCES: WorkspacePreferences = {
