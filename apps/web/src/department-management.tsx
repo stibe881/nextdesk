@@ -6,7 +6,14 @@ import {
   type FormEvent,
 } from "react";
 
-import { Archive, Pencil, Plus, RefreshCw, UsersRound } from "lucide-react";
+import {
+  Archive,
+  Pencil,
+  Plus,
+  RefreshCw,
+  UserRoundCheck,
+  UsersRound,
+} from "lucide-react";
 
 import { functionErrorMessage } from "./lib/function-error";
 import { supabase } from "./lib/supabase";
@@ -27,6 +34,14 @@ type Department = {
 type DepartmentForm = {
   id: string | null;
   name: string;
+};
+
+type DepartmentQuestionRoute = {
+  department: Pick<Department, "id" | "key" | "name">;
+  primaryUserId: string | null;
+  backupUserId: string | null;
+  updatedAt: string | null;
+  candidates: { userId: string; displayName: string | null }[];
 };
 
 type DepartmentRequest =
@@ -111,6 +126,314 @@ function parseDepartmentSave(value: unknown): Department {
     throw new Error("Die gespeicherte Abteilung ist unvollständig.");
   }
   return department;
+}
+
+async function requestDepartmentQuestions(
+  body: Record<string, unknown>,
+): Promise<unknown> {
+  if (!supabase) {
+    throw new Error("Die Verbindung zu nextDesk ist nicht konfiguriert.");
+  }
+  const { data, error } = await supabase.functions.invoke<unknown>(
+    "department-questions",
+    { body },
+  );
+  if (error) {
+    throw new Error(
+      await functionErrorMessage(
+        error,
+        "Die Abteilungsrückfragen sind derzeit nicht erreichbar.",
+      ),
+    );
+  }
+  if (!isRecord(data) || !isRecord(data.data)) {
+    throw new Error(
+      "Die Abteilungsrückfragen haben keine verwertbaren Daten geliefert.",
+    );
+  }
+  return data.data;
+}
+
+function parseDepartmentQuestionRoutes(
+  value: unknown,
+): DepartmentQuestionRoute[] {
+  if (!isRecord(value) || !Array.isArray(value.routes)) {
+    throw new Error("Die Zuordnung der Abteilungsleitungen ist unvollständig.");
+  }
+  return value.routes.map((route) => {
+    if (
+      !isRecord(route) ||
+      !isRecord(route.department) ||
+      !Array.isArray(route.candidates)
+    ) {
+      throw new Error(
+        "Die Zuordnung der Abteilungsleitungen enthält ungültige Daten.",
+      );
+    }
+    const id = route.department.id;
+    const key = route.department.key;
+    const name = route.department.name;
+    if (
+      typeof id !== "string" ||
+      typeof key !== "string" ||
+      typeof name !== "string"
+    ) {
+      throw new Error(
+        "Die Zuordnung der Abteilungsleitungen enthält ungültige Daten.",
+      );
+    }
+    if (
+      (route.primaryUserId !== null &&
+        typeof route.primaryUserId !== "string") ||
+      (route.backupUserId !== null && typeof route.backupUserId !== "string")
+    ) {
+      throw new Error(
+        "Die Zuordnung der Abteilungsleitungen enthält ungültige Daten.",
+      );
+    }
+    return {
+      department: { id, key, name },
+      primaryUserId: route.primaryUserId,
+      backupUserId: route.backupUserId,
+      updatedAt: typeof route.updatedAt === "string" ? route.updatedAt : null,
+      candidates: route.candidates.map((candidate) => {
+        if (
+          !isRecord(candidate) ||
+          typeof candidate.userId !== "string" ||
+          (candidate.displayName !== null &&
+            typeof candidate.displayName !== "string")
+        ) {
+          throw new Error(
+            "Die Auswahlliste der Abteilungsleitungen ist ungültig.",
+          );
+        }
+        return {
+          userId: candidate.userId,
+          displayName: candidate.displayName,
+        };
+      }),
+    };
+  });
+}
+
+function DepartmentQuestionRouting({ tenantId }: { tenantId: string }) {
+  const [routes, setRoutes] = useState<DepartmentQuestionRoute[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [savingDepartmentId, setSavingDepartmentId] = useState<string | null>(
+    null,
+  );
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const data = await requestDepartmentQuestions({
+        type: "listRoutes",
+        tenantId,
+      });
+      setRoutes(parseDepartmentQuestionRoutes(data));
+    } catch (nextError) {
+      setRoutes([]);
+      setError(
+        nextError instanceof Error
+          ? nextError.message
+          : "Die Abteilungsleitungen konnten nicht geladen werden.",
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, [tenantId]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  async function save(route: DepartmentQuestionRoute) {
+    if (!route.primaryUserId) {
+      setError("Bitte wählen Sie zuerst eine Abteilungsleitung.");
+      return;
+    }
+    setSavingDepartmentId(route.department.id);
+    setError("");
+    setMessage("");
+    try {
+      await requestDepartmentQuestions({
+        type: "saveRoute",
+        tenantId,
+        departmentId: route.department.id,
+        primaryUserId: route.primaryUserId,
+        backupUserId: route.backupUserId,
+      });
+      setMessage(
+        `Die Abteilungsleitung für „${route.department.name}“ wurde gespeichert.`,
+      );
+      await load();
+    } catch (nextError) {
+      setError(
+        nextError instanceof Error
+          ? nextError.message
+          : "Die Abteilungsleitung konnte nicht gespeichert werden.",
+      );
+    } finally {
+      setSavingDepartmentId(null);
+    }
+  }
+
+  return (
+    <section className="department-management__question-routing">
+      <div className="department-management__group-heading">
+        <div>
+          <p className="eyebrow">RÜCKFRAGEN</p>
+          <h3>Abteilungsleitungen</h3>
+          <p>
+            Die zugewiesene Agentin oder der zugewiesene Agent kann eine
+            Rückfrage an diese Person richten. Antworten werden dem aktuell
+            zugewiesenen Agenten zugestellt.
+          </p>
+        </div>
+        <button
+          disabled={loading || savingDepartmentId !== null}
+          onClick={() => void load()}
+          type="button"
+        >
+          <RefreshCw aria-hidden="true" size={16} /> Aktualisieren
+        </button>
+      </div>
+      {error ? (
+        <p
+          className="tenant-admin-settings__notice tenant-admin-settings__notice--error"
+          role="alert"
+        >
+          {error}
+        </p>
+      ) : null}
+      {message ? (
+        <p
+          className="tenant-admin-settings__notice tenant-admin-settings__notice--success"
+          role="status"
+        >
+          {message}
+        </p>
+      ) : null}
+      {loading ? (
+        <p className="tenant-admin-settings__loading" role="status">
+          Abteilungsleitungen werden geladen …
+        </p>
+      ) : null}
+      {!loading ? (
+        <ul className="department-management__list">
+          {routes.map((route) => (
+            <li key={route.department.id}>
+              <div className="department-management__item-main">
+                <span className="department-management__icon">
+                  <UserRoundCheck aria-hidden="true" size={18} />
+                </span>
+                <div>
+                  <strong>{route.department.name}</strong>
+                  <span>
+                    Für interne Rückfragen zu Tickets dieser Abteilung
+                  </span>
+                </div>
+              </div>
+              <div className="department-management__item-actions">
+                {route.candidates.length ? (
+                  <>
+                    <label>
+                      Leitung
+                      <select
+                        disabled={savingDepartmentId === route.department.id}
+                        onChange={(event) =>
+                          setRoutes((current) =>
+                            current.map((item) =>
+                              item.department.id === route.department.id
+                                ? {
+                                    ...item,
+                                    primaryUserId: event.target.value || null,
+                                    backupUserId:
+                                      event.target.value === item.backupUserId
+                                        ? null
+                                        : item.backupUserId,
+                                  }
+                                : item,
+                            ),
+                          )
+                        }
+                        value={route.primaryUserId ?? ""}
+                      >
+                        <option value="">Bitte wählen</option>
+                        {route.candidates.map((candidate) => (
+                          <option
+                            key={candidate.userId}
+                            value={candidate.userId}
+                          >
+                            {candidate.displayName ?? "Person ohne Anzeigename"}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label>
+                      Stellvertretung
+                      <select
+                        disabled={savingDepartmentId === route.department.id}
+                        onChange={(event) =>
+                          setRoutes((current) =>
+                            current.map((item) =>
+                              item.department.id === route.department.id
+                                ? {
+                                    ...item,
+                                    backupUserId: event.target.value || null,
+                                  }
+                                : item,
+                            ),
+                          )
+                        }
+                        value={route.backupUserId ?? ""}
+                      >
+                        <option value="">Keine</option>
+                        {route.candidates
+                          .filter(
+                            (candidate) =>
+                              candidate.userId !== route.primaryUserId,
+                          )
+                          .map((candidate) => (
+                            <option
+                              key={candidate.userId}
+                              value={candidate.userId}
+                            >
+                              {candidate.displayName ??
+                                "Person ohne Anzeigename"}
+                            </option>
+                          ))}
+                      </select>
+                    </label>
+                    <button
+                      className="primary-button"
+                      disabled={
+                        savingDepartmentId === route.department.id ||
+                        !route.primaryUserId
+                      }
+                      onClick={() => void save(route)}
+                      type="button"
+                    >
+                      {savingDepartmentId === route.department.id
+                        ? "Speichert …"
+                        : "Speichern"}
+                    </button>
+                  </>
+                ) : (
+                  <span>
+                    Keine berechtigte Person in dieser Abteilung verfügbar.
+                  </span>
+                )}
+              </div>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </section>
+  );
 }
 
 export function DepartmentManagement({ tenantId }: DepartmentManagementProps) {
@@ -435,6 +758,7 @@ export function DepartmentManagement({ tenantId }: DepartmentManagementProps) {
           ) : null}
         </div>
       )}
+      <DepartmentQuestionRouting tenantId={tenantId} />
     </section>
   );
 }

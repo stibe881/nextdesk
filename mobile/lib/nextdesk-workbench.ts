@@ -96,6 +96,39 @@ export type TicketReopenRequest = {
   created_at: string;
 };
 
+export type DepartmentQuestion = {
+  id: string;
+  ticket_id: string;
+  department_id: string;
+  asked_by: string;
+  askedByName: string | null;
+  recipient_user_id: string;
+  recipientName: string | null;
+  question: string;
+  status: "open" | "answered";
+  answer: string | null;
+  answered_by: string | null;
+  answeredByName: string | null;
+  answered_at: string | null;
+  created_at: string;
+  canAnswer: boolean;
+};
+
+export type DepartmentQuestionContext = {
+  department: { id: string; name: string };
+  route: {
+    primaryUserId: string | null;
+    primaryDisplayName: string | null;
+    backupUserId: string | null;
+    backupDisplayName: string | null;
+    activeRecipientUserId: string | null;
+    activeRecipientDisplayName: string | null;
+  };
+  permissions: { canView: true; canAsk: boolean; canAnswer: boolean };
+  counts: { open: number; answered: number };
+  questions: DepartmentQuestion[];
+};
+
 export type TicketWorkbenchContext = {
   ticket: Record<string, unknown>;
   requesterTickets: Record<string, unknown>[];
@@ -174,7 +207,8 @@ async function invokeWithBody<Result>(
   functionName:
     | "agent-workbench"
     | "requester-portal"
-    | "ticket-agent-assignment",
+    | "ticket-agent-assignment"
+    | "department-questions",
   body: Record<string, unknown>,
 ): Promise<Result> {
   const { data, error } = await requireNextDesk().functions.invoke(
@@ -226,6 +260,16 @@ function invokeRequesterPortal<Result>(
     "requester-portal",
     action,
   );
+}
+
+async function invokeDepartmentQuestions<Result>(
+  action: Record<string, unknown>,
+): Promise<Result> {
+  const tenant = await loadCurrentTenant();
+  return invokeWithBody<Result>("department-questions", {
+    ...action,
+    tenantId: tenant.id,
+  });
 }
 
 export function loadMyTicketTimeline(ticketId: string): Promise<{
@@ -298,4 +342,27 @@ export function decideTicketReopenRequest(input: {
   notice: string;
 }> {
   return invokeAgentWorkbench({ type: "decideReopenRequest", ...input });
+}
+
+export function loadTicketDepartmentQuestions(
+  ticketId: string,
+): Promise<DepartmentQuestionContext> {
+  return invokeDepartmentQuestions({ type: "ticketContext", ticketId });
+}
+
+export function askTicketDepartmentQuestion(input: {
+  ticketId: string;
+  question: string;
+}): Promise<{
+  question: Pick<DepartmentQuestion, "id">;
+  emailQueued: boolean;
+}> {
+  return invokeDepartmentQuestions({ type: "ask", ...input });
+}
+
+export function answerTicketDepartmentQuestion(input: {
+  questionId: string;
+  answer: string;
+}): Promise<{ agentNotified: boolean; emailQueued: boolean }> {
+  return invokeDepartmentQuestions({ type: "answer", ...input });
 }

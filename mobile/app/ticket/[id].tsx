@@ -24,6 +24,7 @@ import {
 } from "@/components/mobile-feature-gate";
 import { useMobileNetworkStatus } from "@/components/offline-status";
 import { RequesterPicker } from "@/components/requester-picker";
+import { DepartmentQuestions } from "@/components/department-questions";
 import { TicketConversation } from "@/components/ticket-conversation";
 import { TicketPhotoAttachments } from "@/components/ticket-photo-attachments";
 import {
@@ -2264,9 +2265,10 @@ export default function TicketDetailScreen() {
 
             {canUseAgentWorkbench ? (
               <>
+                <DepartmentQuestions key={ticket.id} ticketId={ticket.id} />
                 <View style={styles.detailsDivider} />
                 <Pressable
-                  accessibilityLabel="Offene Entscheide"
+                  accessibilityLabel="Wiedereröffnungsanträge"
                   accessibilityRole="button"
                   accessibilityState={{ expanded: reopenRequestsOpen }}
                   onPress={() => {
@@ -2282,7 +2284,7 @@ export default function TicketDetailScreen() {
                       size={19}
                     />
                     <Text style={styles.detailsActionLabel}>
-                      Offene Entscheide
+                      Wiedereröffnungsanträge
                     </Text>
                   </View>
                   <View style={styles.detailsActionLead}>

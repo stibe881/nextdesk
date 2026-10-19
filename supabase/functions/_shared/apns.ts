@@ -7,6 +7,8 @@ export type ApnsPayloadKind =
   | "mention"
   | "resolved"
   | "approval"
+  | "department_question_asked"
+  | "department_question_answered"
   | "escalation"
   | "sla"
   | "follow_up"
@@ -172,6 +174,20 @@ function alertFor(input: ApnsPayloadInput): { title: string; body: string } {
         body: subject
           ? `Für ${ticketNumber} wird deine Freigabe benötigt: ${subject}`
           : `Für ${ticketNumber} wird deine Freigabe benötigt.`,
+      };
+    case "department_question_asked":
+      return {
+        title: "Abteilungsrückfrage",
+        body: subject
+          ? `Für ${ticketNumber} wird Ihre Antwort benötigt: ${subject}`
+          : `Für ${ticketNumber} wird Ihre Antwort benötigt.`,
+      };
+    case "department_question_answered":
+      return {
+        title: "Antwort der Abteilungsleitung",
+        body: subject
+          ? `Es gibt eine Antwort zu Ihrer Rückfrage in ${ticketNumber}: ${subject}`
+          : `Es gibt eine Antwort zu Ihrer Rückfrage in ${ticketNumber}.`,
       };
     case "escalation":
       return {

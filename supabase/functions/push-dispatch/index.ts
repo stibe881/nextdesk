@@ -71,9 +71,28 @@ function category(
   if (kind === "ticket.mention") return "mention";
   if (kind === "ticket.resolved") return "resolved";
   if (kind === "ticket.approval.requested") return "approval";
+  if (
+    kind === "ticket.department_question.asked" ||
+    kind === "ticket.department_question.answered"
+  )
+    return "approval";
   if (kind === "ticket.escalation_opened") return "escalation";
   if (kind === "ticket.follow_up_due") return "follow_up";
   return kind.startsWith("ticket.sla.") ? "sla" : null;
+}
+
+function payloadKind(
+  kind: string,
+  fallback: NonNullable<ReturnType<typeof category>>,
+):
+  | NonNullable<ReturnType<typeof category>>
+  | "department_question_asked"
+  | "department_question_answered" {
+  if (kind === "ticket.department_question.asked")
+    return "department_question_asked";
+  if (kind === "ticket.department_question.answered")
+    return "department_question_answered";
+  return fallback;
 }
 
 function invalidDevice(result: Delivery): boolean {
@@ -187,8 +206,8 @@ async function skip(
 }
 
 async function deliverSingle(admin: any, row: ClaimRow): Promise<void> {
-  const kind = category(row.kind);
-  if (!kind) {
+  const preferenceCategory = category(row.kind);
+  if (!preferenceCategory) {
     await admin
       .from("push_outbox")
       .update({ status: "skipped", last_error: "unsupported_kind" })
@@ -202,7 +221,7 @@ async function deliverSingle(admin: any, row: ClaimRow): Promise<void> {
     return;
   }
   const payload = buildApnsPayload({
-    kind,
+    kind: payloadKind(row.kind, preferenceCategory),
     tenantId: row.tenant_id,
     notificationId: row.notification_id,
     ticketId: row.ticket_id,
@@ -265,6 +284,15 @@ const handler = withSupabase(
     );
     if (error || verified !== true) {
       return response({ error: { code: "unauthorized" } }, 401);
+    }
+
+    const { error: authorizationSweepError } = await context.supabaseAdmin.rpc(
+      "push_skip_unauthorized_department_question_outbox",
+    );
+    // Fail closed: when the re-authorization check cannot run, no sensitive
+    // department-question notification is claimed for APNs delivery.
+    if (authorizationSweepError) {
+      return response({ error: { code: "authorization_check_failed" } }, 500);
     }
 
     const { data, error: claimError } = await context.supabaseAdmin.rpc(

@@ -5,6 +5,7 @@ import {
   ActivityIndicator,
   AppState,
   type AppStateStatus,
+  Image,
   Platform,
   Pressable,
   StyleSheet,
@@ -16,8 +17,10 @@ import {
   getDeviceProtectionPreference,
   setDeviceProtectionPreference,
 } from "@/lib/mobile-private-state";
+import { useMobileFeatures } from "@/components/mobile-feature-gate";
 import { clearMobileWorkspace, nextDesk } from "@/lib/nextdesk-client";
 import { unregisterPushDeviceBeforeSignOut } from "@/lib/push-notifications";
+import { loadTenantBranding, type TenantBranding } from "@/lib/tenant-branding";
 import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
 
 /**
@@ -58,6 +61,7 @@ export function DeviceProtection() {
   const styles = useStyles();
   const colors = useAppColors();
   const router = useRouter();
+  const { tenantId: confirmedTenantId } = useMobileFeatures();
   const appState = useRef<AppStateStatus>(AppState.currentState);
   const checkingRef = useRef(false);
   /** Zuletzt bekannter Schutzstatus, um beim Verlassen sofort abzudecken. */
@@ -69,6 +73,38 @@ export function DeviceProtection() {
   >("checking-session");
   const [checking, setChecking] = useState(false);
   const [message, setMessage] = useState("");
+  const [branding, setBranding] = useState<{
+    tenantId: string;
+    value: TenantBranding;
+  } | null>(null);
+  const [failedLogoUrl, setFailedLogoUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    const tenantId = confirmedTenantId;
+    let active = true;
+    if (!tenantId)
+      return () => {
+        active = false;
+      };
+    void loadTenantBranding(tenantId)
+      .then((value) => {
+        if (active) setBranding({ tenantId, value });
+      })
+      .catch(() => {
+        if (active) setBranding(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, [confirmedTenantId]);
+
+  const activeBranding =
+    branding?.tenantId === confirmedTenantId ? branding.value : null;
+  const logoUrl =
+    activeBranding?.logoUrl && activeBranding.logoUrl !== failedLogoUrl
+      ? activeBranding.logoUrl
+      : null;
+  const platformName = activeBranding?.portalName ?? "nextDesk";
 
   const verify = useCallback(async () => {
     if (Platform.OS === "web" || checkingRef.current) return;
@@ -173,13 +209,21 @@ export function DeviceProtection() {
     >
       <View style={styles.overlay}>
         <View style={styles.card}>
-          <View style={styles.iconWrap}>
-            <Text style={styles.icon}>⌁</Text>
+          <View style={styles.logoWrap}>
+            <Image
+              accessibilityLabel={`${platformName} Logo`}
+              onError={() => logoUrl && setFailedLogoUrl(logoUrl)}
+              resizeMode="contain"
+              source={
+                logoUrl ? { uri: logoUrl } : require("@/assets/images/icon.png")
+              }
+              style={logoUrl ? styles.customLogo : styles.defaultLogo}
+            />
           </View>
           <Text style={styles.title}>
             {lockState === "checking-session"
               ? "Sitzung wird geprüft"
-              : "nextDesk ist geschützt"}
+              : `${platformName} ist geschützt`}
           </Text>
           <Text style={styles.copy}>
             {lockState === "checking-session"
@@ -236,20 +280,18 @@ const useStyles = makeThemedStyles((c) => ({
     padding: 26,
     width: "100%",
   },
-  iconWrap: {
+  logoWrap: {
     alignItems: "center",
     backgroundColor: c.primarySoft,
     borderRadius: 22,
-    height: 56,
+    height: 64,
     justifyContent: "center",
-    width: 56,
+    maxWidth: 136,
+    minWidth: 64,
+    paddingHorizontal: 8,
   },
-  icon: {
-    color: c.primaryText,
-    fontSize: 34,
-    fontWeight: "900",
-    lineHeight: 38,
-  },
+  defaultLogo: { height: 46, width: 46 },
+  customLogo: { height: 50, maxWidth: 120, width: 120 },
   title: { color: c.foreground, fontSize: 21, fontWeight: "900" },
   copy: { color: c.muted, fontSize: 14, lineHeight: 21, textAlign: "center" },
   message: {

@@ -96,7 +96,7 @@ const handler = withSupabase(
     let query = context.supabaseAdmin
       .from("mail_messages")
       .select(
-        "id, tenant_id, channel_id, direction, kind, graph_message_id, ticket_id, comment_id, to_addresses, attempt_count",
+        "id, tenant_id, channel_id, direction, kind, graph_message_id, ticket_id, comment_id, department_question_id, recipient_user_id, to_addresses, attempt_count",
       )
       .in("processing_status", ["pending", "failed"])
       .lte("next_attempt_at", new Date().toISOString())

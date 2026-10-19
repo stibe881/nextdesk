@@ -56,6 +56,8 @@ type Message = {
   graph_message_id: string | null;
   ticket_id: string | null;
   comment_id: string | null;
+  department_question_id: string | null;
+  recipient_user_id: string | null;
   to_addresses: string[];
   attempt_count: number;
 };
@@ -1009,6 +1011,48 @@ export async function dispatchOutboundMessage(
     let bodyText = "";
     let recipient = emailAddress(message.to_addresses?.[0]);
     let portalName = "nextDesk Portal";
+    const internalDepartmentNotice =
+      message.kind === "department_question" ||
+      message.kind === "department_answer";
+    if (internalDepartmentNotice) {
+      if (!message.department_question_id || !message.recipient_user_id) {
+        await updateMessage(admin, message.id, {
+          processing_status: "ignored",
+          ignore_reason: "recipient_not_authorized",
+        });
+        return;
+      }
+      const authorization = await admin.rpc(
+        "department_question_delivery_authorized",
+        {
+          p_delivery_kind: message.kind,
+          p_question_id: message.department_question_id,
+          p_recipient_user_id: message.recipient_user_id,
+          p_tenant_id: message.tenant_id,
+        },
+      );
+      // Fehler werden absichtlich fail-closed behandelt: Ohne aktuelle
+      // Berechtigungsbestätigung darf eine Warteschlangenmail keine Ticketdaten
+      // preisgeben und wird auch nicht erneut versucht.
+      if (authorization.error || authorization.data !== true) {
+        await updateMessage(admin, message.id, {
+          processing_status: "ignored",
+          ignore_reason: "recipient_not_authorized",
+        });
+        return;
+      }
+      const user = await admin.auth.admin.getUserById(
+        message.recipient_user_id,
+      );
+      recipient = emailAddress(user.data.user?.email);
+      if (!recipient) {
+        await updateMessage(admin, message.id, {
+          processing_status: "ignored",
+          ignore_reason: "recipient_email_unavailable",
+        });
+        return;
+      }
+    }
     if (message.ticket_id) {
       const ticketResult = await admin
         .from("tickets")
@@ -1040,6 +1084,21 @@ export async function dispatchOutboundMessage(
           .maybeSingle();
         bodyText = cleanText(comment.data?.body);
       }
+      if (internalDepartmentNotice) {
+        const question = await admin
+          .from("ticket_department_questions")
+          .select("question, answer")
+          .eq("tenant_id", message.tenant_id)
+          .eq("id", message.department_question_id)
+          .eq("ticket_id", ticket.id)
+          .maybeSingle();
+        if (question.error || !question.data)
+          throw new Error("department_question_unavailable");
+        bodyText =
+          message.kind === "department_question"
+            ? `Eine Abteilungsrückfrage benötigt Ihre Antwort:\n\n${cleanText(question.data.question)}`
+            : `Die Abteilungsleitung hat auf Ihre Rückfrage geantwortet:\n\n${cleanText(question.data.answer)}`;
+      }
     }
     if (!recipient) throw new Error("recipient_unavailable");
     if (message.kind === "acknowledgement")
@@ -1051,9 +1110,10 @@ export async function dispatchOutboundMessage(
       bodyText = "Dies ist eine Testmail des nextDesk E-Mail-Kanals.";
     const ticketNumber = asString(ticket?.ticket_number) ?? "nextDesk-Test";
     const ticketSubject = asString(ticket?.subject) ?? "E-Mail-Kanal Test";
-    const attachments = ticket
-      ? await outboundAttachments(admin, ticket.id, message.comment_id)
-      : { attachments: [], omitted: false };
+    const attachments =
+      ticket && !internalDepartmentNotice
+        ? await outboundAttachments(admin, ticket.id, message.comment_id)
+        : { attachments: [], omitted: false };
     const html = htmlTemplate({
       text: bodyText,
       ticketNumber,
@@ -1093,7 +1153,10 @@ export async function dispatchOutboundMessage(
           .limit(1)
           .maybeSingle()
       : { data: null };
-    if (asString(previous.data?.graph_message_id)) {
+    if (
+      message.kind === "agent_reply" &&
+      asString(previous.data?.graph_message_id)
+    ) {
       await graphRequest(
         channel.entra_tenant_id,
         `/users/${mailbox}/messages/${encodeURIComponent(previous.data.graph_message_id)}/reply`,
@@ -1237,7 +1300,7 @@ export async function maintenance(admin: Admin): Promise<void> {
   const due = await admin
     .from("mail_messages")
     .select(
-      "id, tenant_id, channel_id, direction, kind, graph_message_id, ticket_id, comment_id, to_addresses, attempt_count",
+      "id, tenant_id, channel_id, direction, kind, graph_message_id, ticket_id, comment_id, department_question_id, recipient_user_id, to_addresses, attempt_count",
     )
     .in("processing_status", ["pending", "failed"])
     .lte("next_attempt_at", new Date().toISOString())
