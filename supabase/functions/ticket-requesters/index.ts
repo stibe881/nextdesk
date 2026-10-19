@@ -32,6 +32,11 @@ type Action =
     };
 
 type Contact = { id: string; displayName: string; userId: string | null };
+type EntraDirectoryPerson = {
+  email: string;
+  display_name: string;
+  local_user_id: string | null;
+};
 const CONTACT_CHANNELS = ["email", "phone", "portal", "chat", "sms"] as const;
 type ContactChannel = (typeof CONTACT_CHANNELS)[number];
 type ProfileInput = {
@@ -213,6 +218,65 @@ function escapeLike(value: string) {
   return value.replace(/[\\%_(),]/g, "\\$&");
 }
 
+async function listMatchingActiveMemberProfiles(
+  admin: any,
+  tenantId: string,
+  needle: string,
+): Promise<{
+  profiles: Array<{ id: string; display_name: string }>;
+  error: boolean;
+}> {
+  const profiles: Array<{ id: string; display_name: string }> = [];
+  let afterUserId: string | null = null;
+  const pageSize = 500;
+
+  while (true) {
+    let membershipsQuery = admin
+      .from("tenant_memberships")
+      .select("user_id")
+      .eq("tenant_id", tenantId)
+      .eq("status", "active")
+      .order("user_id", { ascending: true })
+      .limit(pageSize);
+    if (afterUserId)
+      membershipsQuery = membershipsQuery.gt("user_id", afterUserId);
+    const { data: memberships, error: membershipsError } =
+      await membershipsQuery;
+    if (membershipsError) return { profiles: [], error: true };
+
+    const memberIds = (memberships ?? [])
+      .map((membership: any) => membership.user_id)
+      .filter(uuid);
+    if (memberIds.length > 0) {
+      const { data, error } = await admin
+        .from("user_profiles")
+        .select("id,display_name")
+        .in("id", memberIds)
+        .ilike("display_name", `%${needle}%`)
+        .order("display_name")
+        .limit(30);
+      if (error) return { profiles: [], error: true };
+      for (const profile of data ?? []) {
+        if (
+          uuid(profile?.id) &&
+          typeof profile.display_name === "string" &&
+          Boolean(profile.display_name.trim())
+        ) {
+          profiles.push({ id: profile.id, display_name: profile.display_name });
+        }
+      }
+    }
+
+    const page = memberships ?? [];
+    if (page.length < pageSize) break;
+    const lastUserId = page[page.length - 1]?.user_id;
+    if (!uuid(lastUserId)) return { profiles: [], error: true };
+    afterUserId = lastUserId;
+  }
+
+  return { profiles: profiles.slice(0, 30), error: false };
+}
+
 async function member(admin: any, tenantId: string, actorId: string) {
   const { data, error } = await admin
     .from("tenant_memberships")
@@ -244,61 +308,47 @@ async function requesterExists(
 }
 
 /**
- * Liefert Suchtreffer aus bestehenden Kontakten sowie aktive Mitglieder des
- * aktuellen Mandanten. Für ein internes Mitglied wird erst bei einem echten
- * Suchtreffer ein gebundener Anfragendenkontakt erstellt. Das macht die Person
- * für die Ticketerfassung auswählbar, ohne irgendeine Agentenrolle zu vergeben.
+ * Liefert Suchtreffer aus bestehenden Kontakten sowie aktiven Mitgliedern und
+ * Entra-Verzeichnispersonen des aktuellen Mandanten. Für einen echten Treffer
+ * wird bei Bedarf ein gebundener Anfragendenkontakt erstellt. Das macht die
+ * Person für die Ticketerfassung auswählbar, ohne irgendeine Agentenrolle zu
+ * vergeben.
  */
 async function searchRequestersIncludingActiveMembers(
   admin: any,
-  client: any,
   tenantId: string,
   query: string,
 ): Promise<{ contacts: Contact[]; error: boolean }> {
   const needle = escapeLike(query);
-  const [contactResult, membershipResult] = await Promise.all([
-    client
-      .from("ticket_requesters")
-      .select("id,display_name,user_id")
-      .eq("tenant_id", tenantId)
-      .or(`display_name.ilike.%${needle}%,email.ilike.%${needle}%`)
-      .order("display_name")
-      .limit(30),
-    admin
-      .from("tenant_memberships")
-      .select("user_id")
-      .eq("tenant_id", tenantId)
-      .eq("status", "active")
-      .limit(1_000),
-  ]);
-  if (contactResult.error || membershipResult.error) {
+  const [contactResult, directoryResult, memberProfilesResult] =
+    await Promise.all([
+      admin
+        .from("ticket_requesters")
+        .select("id,display_name,email,user_id")
+        .eq("tenant_id", tenantId)
+        .or(`display_name.ilike.%${needle}%,email.ilike.%${needle}%`)
+        .order("display_name")
+        .limit(30),
+      admin
+        .from("tenant_entra_directory_people")
+        .select("email,display_name,local_user_id")
+        .eq("tenant_id", tenantId)
+        .eq("account_enabled", true)
+        .is("inactive_at", null)
+        .or(`display_name.ilike.%${needle}%,email.ilike.%${needle}%`)
+        .order("display_name")
+        .limit(30),
+      listMatchingActiveMemberProfiles(admin, tenantId, needle),
+    ]);
+  if (
+    contactResult.error ||
+    directoryResult.error ||
+    memberProfilesResult.error
+  ) {
     return { contacts: [], error: true };
   }
 
-  const memberIds = [
-    ...new Set(
-      (membershipResult.data ?? [])
-        .map((membership: any) => membership.user_id)
-        .filter(uuid),
-    ),
-  ];
-  const profileResult = memberIds.length
-    ? await admin
-        .from("user_profiles")
-        .select("id,display_name")
-        .in("id", memberIds)
-        .ilike("display_name", `%${needle}%`)
-        .order("display_name")
-        .limit(30)
-    : { data: [], error: null };
-  if (profileResult.error) return { contacts: [], error: true };
-
-  const matchedProfiles = (profileResult.data ?? []).filter(
-    (profile: any) =>
-      uuid(profile?.id) &&
-      typeof profile.display_name === "string" &&
-      Boolean(profile.display_name.trim()),
-  );
+  const matchedProfiles = memberProfilesResult.profiles;
   const profileIds = matchedProfiles.map((profile: any) => profile.id);
   const profileContactResult = profileIds.length
     ? await admin
@@ -335,13 +385,100 @@ async function searchRequestersIncludingActiveMembers(
     });
   }
 
+  const contactsByDirectoryKey = new Map<string, Contact>();
+  for (const row of contactResult.data ?? []) {
+    const value = contact(row);
+    if (!value) continue;
+    if (value.userId) contactsByDirectoryKey.set(`user:${value.userId}`, value);
+    if (typeof row.email === "string") {
+      contactsByDirectoryKey.set(`email:${row.email.toLowerCase()}`, value);
+    }
+  }
+  for (const [userId, requester] of contactsByUserId) {
+    contactsByDirectoryKey.set(`user:${userId}`, requester);
+  }
+  const discardedContactIds = new Set<string>();
+  for (const person of (directoryResult.data ?? []) as EntraDirectoryPerson[]) {
+    const displayName = cleanName(person.display_name);
+    const normalizedEmail = email(person.email);
+    if (
+      displayName === "Anfragende Person" ||
+      typeof normalizedEmail !== "string"
+    ) {
+      continue;
+    }
+    const userKey = uuid(person.local_user_id)
+      ? `user:${person.local_user_id}`
+      : null;
+    const emailKey = `email:${normalizedEmail}`;
+    const emailRequester = contactsByDirectoryKey.get(emailKey) ?? null;
+    const userRequester = userKey
+      ? (contactsByDirectoryKey.get(userKey) ?? null)
+      : null;
+    let requester = emailRequester ?? userRequester;
+
+    // A materialised Entra contact keeps its e-mail identity while a historic
+    // portal contact keeps its immutable user binding. Prefer the Entra contact
+    // for the picker and never present both as separate people.
+    if (
+      emailRequester &&
+      userRequester &&
+      emailRequester.id !== userRequester.id
+    ) {
+      discardedContactIds.add(userRequester.id);
+    }
+
+    if (!requester) {
+      const { data: created, error } = await admin
+        .from("ticket_requesters")
+        .insert({
+          tenant_id: tenantId,
+          display_name: displayName,
+          email: normalizedEmail,
+          user_id: uuid(person.local_user_id) ? person.local_user_id : null,
+          source: "entra",
+        })
+        .select("id,display_name,user_id")
+        .single();
+      requester = !error ? contact(created) : null;
+      if (error?.code === "23505") {
+        const byEmail = await admin
+          .from("ticket_requesters")
+          .select("id,display_name,user_id")
+          .eq("tenant_id", tenantId)
+          .eq("email", normalizedEmail)
+          .maybeSingle();
+        if (byEmail.error) return { contacts: [], error: true };
+        requester = contact(byEmail.data);
+        if (!requester && uuid(person.local_user_id)) {
+          const byUser = await admin
+            .from("ticket_requesters")
+            .select("id,display_name,user_id")
+            .eq("tenant_id", tenantId)
+            .eq("user_id", person.local_user_id)
+            .maybeSingle();
+          if (byUser.error) return { contacts: [], error: true };
+          requester = contact(byUser.data);
+        }
+      }
+    }
+    if (!requester) return { contacts: [], error: true };
+    contactsByDirectoryKey.set(emailKey, requester);
+    if (userKey) contactsByDirectoryKey.set(userKey, requester);
+  }
+
   const contactsById = new Map<string, Contact>();
   for (const row of contactResult.data ?? []) {
     const value = contact(row);
-    if (value) contactsById.set(value.id, value);
+    if (value && !discardedContactIds.has(value.id)) {
+      contactsById.set(value.id, value);
+    }
   }
   for (const value of contactsByUserId.values()) {
-    contactsById.set(value.id, value);
+    if (!discardedContactIds.has(value.id)) contactsById.set(value.id, value);
+  }
+  for (const value of contactsByDirectoryKey.values()) {
+    if (!discardedContactIds.has(value.id)) contactsById.set(value.id, value);
   }
   const contacts = [...contactsById.values()]
     .sort(
@@ -502,7 +639,6 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
   if (action.type === "search") {
     const result = await searchRequestersIncludingActiveMembers(
       context.supabaseAdmin,
-      context.supabase,
       action.tenantId,
       action.query,
     );

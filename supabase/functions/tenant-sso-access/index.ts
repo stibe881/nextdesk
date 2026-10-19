@@ -28,6 +28,7 @@ type PendingInvitation = {
 
 const APP_ORIGIN = "https://app.nextdesk.ch";
 const REQUESTER_ROLE = "Requester";
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -142,6 +143,25 @@ function azureTenantClaimStatus(
   }
 
   return foundClaim ? "mismatch" : "missing";
+}
+
+function azureObjectId(identities: unknown): string | null {
+  if (!Array.isArray(identities)) return null;
+  const objectIds = new Set<string>();
+  for (const identity of identities as AzureIdentity[]) {
+    if (identity?.provider !== "azure" || !isRecord(identity.identity_data)) {
+      continue;
+    }
+    for (const candidate of [
+      identity.identity_data.oid,
+      identity.identity_data.object_id,
+    ]) {
+      if (typeof candidate === "string" && UUID.test(candidate.trim())) {
+        objectIds.add(candidate.trim().toLowerCase());
+      }
+    }
+  }
+  return objectIds.size === 1 ? [...objectIds][0] : null;
 }
 
 function cleanDisplayName(value: unknown): string | null {
@@ -304,33 +324,105 @@ function requesterProfileDepartment(value: unknown): string | null {
   return normalized;
 }
 
-async function initialiseEntraRequesterProfile(
+type EntraDirectoryLink = {
+  status: "linked" | "not_found" | "conflict" | "failed";
+  department: string | null;
+};
+
+async function linkEntraDirectoryPerson(
   admin: any,
   tenantId: string,
   userId: string,
   email: string,
-): Promise<void> {
+  entraObjectId: string,
+): Promise<EntraDirectoryLink> {
   const { data: directoryPerson, error: directoryError } = await admin
     .from("tenant_entra_directory_people")
-    .select("source_department_name")
+    .select("entra_object_id,source_department_name,local_user_id")
     .eq("tenant_id", tenantId)
+    .eq("entra_object_id", entraObjectId)
     .eq("email", email)
     .eq("account_enabled", true)
     .is("inactive_at", null)
     .maybeSingle();
-  if (directoryError || !directoryPerson) {
-    if (directoryError) {
-      console.error("entra_requester_directory_lookup_failed", {
-        code: directoryError.code,
-        message: directoryError.message,
-      });
-    }
-    return;
+  if (directoryError) {
+    console.error("entra_directory_identity_lookup_failed", {
+      code: directoryError.code,
+      message: directoryError.message,
+    });
+    return { status: "failed", department: null };
+  }
+  if (!directoryPerson) return { status: "not_found", department: null };
+
+  const existingLocalUserId = directoryPerson.local_user_id;
+  if (existingLocalUserId && existingLocalUserId !== userId) {
+    await admin.from("audit_logs").insert({
+      tenant_id: tenantId,
+      actor_id: userId,
+      action: "tenant.sso_entra_identity_conflict",
+      entity_type: "tenant_entra_directory_person",
+      entity_id: entraObjectId,
+      severity: "security",
+      metadata: { source: "tenant_sso_access" },
+    });
+    return { status: "conflict", department: null };
   }
 
-  const department = requesterProfileDepartment(
-    directoryPerson.source_department_name,
-  );
+  if (!existingLocalUserId) {
+    const { data: linked, error: linkError } = await admin
+      .from("tenant_entra_directory_people")
+      .update({ local_user_id: userId })
+      .eq("tenant_id", tenantId)
+      .eq("entra_object_id", entraObjectId)
+      .eq("email", email)
+      .is("local_user_id", null)
+      .select("local_user_id")
+      .maybeSingle();
+    if (linkError) {
+      console.error("entra_directory_local_user_link_failed", {
+        code: linkError.code,
+        message: linkError.message,
+      });
+      return { status: "failed", department: null };
+    }
+    if (linked?.local_user_id !== userId) {
+      const { data: raced, error: raceError } = await admin
+        .from("tenant_entra_directory_people")
+        .select("local_user_id")
+        .eq("tenant_id", tenantId)
+        .eq("entra_object_id", entraObjectId)
+        .eq("email", email)
+        .maybeSingle();
+      if (raceError) return { status: "failed", department: null };
+      if (raced?.local_user_id !== userId) {
+        await admin.from("audit_logs").insert({
+          tenant_id: tenantId,
+          actor_id: userId,
+          action: "tenant.sso_entra_identity_conflict",
+          entity_type: "tenant_entra_directory_person",
+          entity_id: entraObjectId,
+          severity: "security",
+          metadata: { source: "tenant_sso_access", raced: true },
+        });
+        return { status: "conflict", department: null };
+      }
+    }
+  }
+
+  return {
+    status: "linked",
+    department: requesterProfileDepartment(
+      directoryPerson.source_department_name,
+    ),
+  };
+}
+
+async function initialiseEntraRequesterProfile(
+  admin: any,
+  tenantId: string,
+  userId: string,
+  department: string | null,
+): Promise<void> {
   if (!department) return;
 
   const { data: requesterId, error: requesterError } = await admin.rpc(
@@ -370,9 +462,24 @@ async function provisionSsoPerson(
   user: any,
   tenantId: string,
   email: string,
+  entraObjectId: string,
 ): Promise<"automatic" | "invited" | "existing" | "removed" | "failed"> {
   const userId = user?.id;
   if (typeof userId !== "string") return "failed";
+
+  const directoryLink = await linkEntraDirectoryPerson(
+    admin,
+    tenantId,
+    userId,
+    email,
+    entraObjectId,
+  );
+  if (
+    directoryLink.status === "failed" ||
+    directoryLink.status === "conflict"
+  ) {
+    return "failed";
+  }
 
   const { data: existing, error: membershipError } = await admin
     .from("tenant_memberships")
@@ -392,7 +499,12 @@ async function provisionSsoPerson(
         .from("user_profiles")
         .upsert({ id: userId, display_name: ssoDisplayName });
     }
-    await initialiseEntraRequesterProfile(admin, tenantId, userId, email);
+    await initialiseEntraRequesterProfile(
+      admin,
+      tenantId,
+      userId,
+      directoryLink.department,
+    );
     return "existing";
   }
 
@@ -474,7 +586,12 @@ async function provisionSsoPerson(
     return "failed";
   }
 
-  await initialiseEntraRequesterProfile(admin, tenantId, userId, email);
+  await initialiseEntraRequesterProfile(
+    admin,
+    tenantId,
+    userId,
+    directoryLink.department,
+  );
 
   if (invitation) {
     const { error: invitationUpdateError } = await admin
@@ -577,11 +694,17 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     return error(request, "sso_tenant_claim_mismatch", 403);
   }
 
+  const entraObjectId = azureObjectId(userData.user.identities);
+  if (!entraObjectId) {
+    return error(request, "sso_object_claim_required", 403);
+  }
+
   const provision = await provisionSsoPerson(
     context.supabaseAdmin,
     userData.user,
     sso.tenant_id,
     email,
+    entraObjectId,
   );
   if (provision === "removed") {
     return error(request, "tenant_person_removed", 403);
