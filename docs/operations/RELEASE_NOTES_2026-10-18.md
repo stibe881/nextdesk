@@ -143,3 +143,9 @@ Im Ticketdetail (iOS und Web) setzt man eine Erinnerung mit Datum und Uhrzeit, S
 
 - Web-Commit `c6fc63b` ist auf Hetzner ausgerollt. Die bisherige Drei-Punkte-Mock-up-Vorschau wurde ersetzt: Der Designbereich zeigt neu dieselbe grundlegende Desktop-Anordnung wie das Portal mit Seitenleiste, Markenposition, vollständiger Navigation, Kopfzeile, Ticketaktion und Übersichtskarten.
 - Portalname, hochgeladenes Logo sowie Primär-, Sekundär- und Akzentfarbe aktualisieren die Vorschau weiterhin unmittelbar vor dem Speichern. Nach dem Speichern verwenden Vorschau und echtes Mandantenportal dieselben Brandingwerte. Typecheck, Schema-/Formatprüfung, Produktionsbuild und Smoke-Test sind erfolgreich.
+
+## Entra-Anzeigenamen und Manus-Preview (19.10)
+
+- Web-Commit `533fc6b` ist auf Hetzner ausgerollt; `tenant-sso-access` v10 ist aktiv. Web und iOS verlangen beim Microsoft-Entra-Login nun die Scopes `openid profile email`. Der bestätigte Azure-Anzeigename wird bei jeder SSO-Anmeldung nachgeführt; eine nicht erfolgreiche optionale Profilsynchronisation sperrt niemals eine bestehende aktive Mandantenmitgliedschaft.
+- Der bereits gespeicherte Profilname «Stefan Gross» wurde einmalig auf die Entra-Schreibweise korrigiert. Der iOS-Quellstand `8838772` enthält den nativen und den Web-Preview-Scope-Fix, ist jedoch in keinem zusätzlichen TestFlight-Build enthalten.
+- Für die aktuelle Manus-Preview ist ausschliesslich ihre exakte Callback-Adresse als zusätzliche Supabase-Redirect-URL hinterlegt. Es wurde keine Wildcard und keine Änderung an der Produktions-URL freigegeben. Die temporäre URL wird nach der Vorschau-Abnahme wieder entfernt; der echte Test muss mit dem vorgesehenen Entra-Konto erfolgen.
