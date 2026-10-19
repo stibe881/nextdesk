@@ -1,16 +1,9 @@
-import {
-  Command,
-  LayoutPanelTop,
-  UserRound,
-  X,
-  type LucideIcon,
-} from "lucide-react";
+import { LayoutPanelTop, UserRound, X, type LucideIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
-export type IntroTipId = "arbeitsplatz" | "befehle" | "mein-portal";
+export type IntroTipId = "arbeitsplatz" | "mein-portal";
 
 type IntroTipDefinition = {
-  actionLabel?: string;
   Icon: LucideIcon;
   text: string;
   title: string;
@@ -23,12 +16,6 @@ const INTRO_TIPS: Record<IntroTipId, IntroTipDefinition> = {
     Icon: LayoutPanelTop,
     text: "Nutzen Sie den Arbeitsplatz für Makros, Erwähnungen und nachvollziehbare Arbeitsvorschläge. Vorschläge ändern kein Ticket automatisch.",
     title: "Neu: Arbeitsplatz",
-  },
-  befehle: {
-    actionLabel: "Befehlspalette öffnen",
-    Icon: Command,
-    text: "Öffnen Sie die Befehlspalette mit Ctrl oder ⌘ K, um Bereiche, Tickets und häufige Aktionen schnell zu finden.",
-    title: "Schneller mit Befehlen",
   },
   "mein-portal": {
     Icon: UserRound,
@@ -47,10 +34,7 @@ function readStoredTips(storageKey: string): StoredIntroTips {
     return Object.fromEntries(
       Object.entries(parsed).filter(
         ([key, value]) =>
-          (key === "arbeitsplatz" ||
-            key === "befehle" ||
-            key === "mein-portal") &&
-          value === true,
+          (key === "arbeitsplatz" || key === "mein-portal") && value === true,
       ),
     ) as StoredIntroTips;
   } catch {
@@ -59,12 +43,10 @@ function readStoredTips(storageKey: string): StoredIntroTips {
 }
 
 export function IntroTip({
-  onAction,
   tenantId,
   tip,
   userId,
 }: {
-  onAction?: () => void;
   tenantId: string;
   tip: IntroTipId;
   userId: string;
@@ -107,15 +89,6 @@ export function IntroTip({
       <div className="intro-tip__copy">
         <h2 id={`intro-tip-${tip}-heading`}>{definition.title}</h2>
         <p>{definition.text}</p>
-        {definition.actionLabel && onAction ? (
-          <button
-            className="intro-tip__action"
-            onClick={onAction}
-            type="button"
-          >
-            {definition.actionLabel}
-          </button>
-        ) : null}
       </div>
       <button
         aria-label={`${definition.title} ausblenden`}

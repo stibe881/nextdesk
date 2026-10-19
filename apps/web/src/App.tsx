@@ -22,7 +22,6 @@ import {
   ChartNoAxesCombined,
   CircleCheck,
   CircleEllipsis,
-  Command,
   LayoutDashboard,
   ListTodo,
   LogOut,
@@ -1248,9 +1247,6 @@ export function App() {
   const [notificationActionPending, setNotificationActionPending] = useState<
     string | null
   >(null);
-  const [commandMenuOpen, setCommandMenuOpen] = useState(false);
-  const [commandQuery, setCommandQuery] = useState("");
-  const [commandActiveIndex, setCommandActiveIndex] = useState(0);
   const [keyboardHelpOpen, setKeyboardHelpOpen] = useState(false);
   const [keyboardActiveTicketId, setKeyboardActiveTicketId] = useState<
     string | null
@@ -1282,7 +1278,6 @@ export function App() {
   const [tenantBrandingRevision, setTenantBrandingRevision] = useState(0);
   const notificationButtonRef = useRef<HTMLButtonElement>(null);
   const notificationPanelRef = useRef<HTMLElement>(null);
-  const commandInputRef = useRef<HTMLInputElement>(null);
   const keyboardHelpCloseRef = useRef<HTMLButtonElement>(null);
   const workspacePreferencesSyncTenantRef = useRef<string | null>(null);
   const workspacePreferencesLastSavedRef = useRef<string | null>(null);
@@ -1634,14 +1629,6 @@ export function App() {
   useEffect(() => {
     if (notificationPanelOpen) notificationPanelRef.current?.focus();
   }, [notificationPanelOpen]);
-
-  useEffect(() => {
-    if (!commandMenuOpen) return;
-    const frame = window.requestAnimationFrame(() =>
-      commandInputRef.current?.focus(),
-    );
-    return () => window.cancelAnimationFrame(frame);
-  }, [commandMenuOpen]);
 
   useEffect(() => {
     if (!keyboardHelpOpen) return;
@@ -2313,7 +2300,6 @@ export function App() {
     open: "Offene Tickets",
     unassigned: "Nicht zugewiesene Tickets",
   };
-  const normalizedCommandQuery = commandQuery.trim().toLocaleLowerCase("de-CH");
   const isFeatureEnabled = (featureKey: string) =>
     !isSupabaseConfigured || tenantFeatures[featureKey] === true;
   const featureSections = sections.filter((item) => {
@@ -2363,55 +2349,6 @@ export function App() {
     }
   }, [tenantFeatures]);
 
-  const commandActions = [
-    {
-      id: "create-ticket",
-      label: "Ticket erfassen",
-      description: "Neuen Vorgang anlegen",
-      keywords: "neu erstellen anlegen",
-    },
-    ...workSections.map((item) => ({
-      id: `section:${item.label}`,
-      label: item.label,
-      description: "Arbeitsbereich öffnen",
-      keywords: item.label.toLocaleLowerCase("de-CH"),
-    })),
-  ].filter((action) => {
-    if (action.id !== "create-ticket" || activeTenant) return true;
-    return false;
-  });
-  const matchingCommandActions = commandActions.filter((action) =>
-    normalizedCommandQuery
-      ? `${action.label} ${action.description} ${action.keywords}`
-          .toLocaleLowerCase("de-CH")
-          .includes(normalizedCommandQuery)
-      : true,
-  );
-  const matchingCommandTickets = isFeatureEnabled("ticketing.detail")
-    ? view.tickets
-        .filter((ticket) => {
-          if (!normalizedCommandQuery) return false;
-          return `${ticket.id} ${ticket.subject} ${ticket.queueLabel}`
-            .toLocaleLowerCase("de-CH")
-            .includes(normalizedCommandQuery);
-        })
-        .slice(0, 6)
-    : [];
-  const commandResults = [
-    ...matchingCommandActions.map((action) => ({
-      actionId: action.id,
-      id: `action:${action.id}`,
-      kind: "action" as const,
-      label: action.label,
-    })),
-    ...matchingCommandTickets.map((ticket) => ({
-      id: `ticket:${ticket.recordId ?? ticket.id}`,
-      kind: "ticket" as const,
-      label: ticket.id,
-      ticketId: ticket.recordId ?? ticket.id,
-    })),
-  ];
-  const activeCommandResult = commandResults[commandActiveIndex];
   const keyboardNavigableTickets =
     (section === "Tickets" || section === "Übersicht") &&
     isSupabaseConfigured &&
@@ -2444,31 +2381,14 @@ export function App() {
   }, [keyboardActiveTicketId, section]);
 
   useEffect(() => {
-    if (!commandMenuOpen) return;
-    setCommandActiveIndex(0);
-  }, [commandMenuOpen, commandQuery]);
-
-  useEffect(() => {
-    if (commandActiveIndex < commandResults.length) return;
-    setCommandActiveIndex(Math.max(commandResults.length - 1, 0));
-  }, [commandActiveIndex, commandResults.length]);
-
-  useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.defaultPrevented || isInputLikeTarget(event.target)) return;
-
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
-        event.preventDefault();
-        setCommandMenuOpen(true);
-        return;
-      }
 
       if (
         !event.ctrlKey &&
         !event.metaKey &&
         !event.altKey &&
         event.key === "?" &&
-        !commandMenuOpen &&
         !workspacePreferencesOpen &&
         !ticketComposerOpen &&
         !selectedTicketId &&
@@ -2480,7 +2400,6 @@ export function App() {
       }
 
       if (
-        commandMenuOpen ||
         workspacePreferencesOpen ||
         keyboardHelpOpen ||
         ticketComposerOpen ||
@@ -2524,7 +2443,6 @@ export function App() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [
     activeKeyboardTicketIndex,
-    commandMenuOpen,
     keyboardHelpOpen,
     keyboardNavigableTickets,
     notificationPanelOpen,
@@ -2532,35 +2450,6 @@ export function App() {
     ticketComposerOpen,
     workspacePreferencesOpen,
   ]);
-
-  function closeCommandMenu() {
-    setCommandMenuOpen(false);
-    setCommandQuery("");
-    setCommandActiveIndex(0);
-  }
-
-  function runCommand(actionId: string) {
-    if (actionId === "create-ticket") {
-      closeCommandMenu();
-      setTicketComposerOpen(true);
-      return;
-    }
-    if (actionId.startsWith("section:")) {
-      const target = actionId.slice("section:".length) as Section;
-      closeCommandMenu();
-      setSection(target);
-    }
-  }
-
-  function runCommandResult(result: (typeof commandResults)[number]) {
-    if (result.kind === "action") {
-      runCommand(result.actionId);
-      return;
-    }
-    closeCommandMenu();
-    setSection("Tickets");
-    setSelectedTicketId(result.ticketId);
-  }
 
   function updateWorkspacePreferences(updates: Partial<WorkspacePreferences>) {
     setWorkspacePreferences((current) => ({ ...current, ...updates }));
@@ -2855,18 +2744,6 @@ export function App() {
               />
               <span>Ansicht</span>
             </button>
-            <button
-              aria-controls="workspace-command-menu"
-              aria-expanded={commandMenuOpen}
-              aria-label="Befehlsmenü öffnen"
-              className="command-menu-trigger"
-              onClick={() => setCommandMenuOpen(true)}
-              type="button"
-            >
-              <Command aria-hidden="true" size={16} strokeWidth={1.9} />
-              <span>Befehle</span>
-              <kbd>⌘ K</kbd>
-            </button>
             <label className="search-field">
               <Search aria-hidden="true" size={17} strokeWidth={1.8} />
               <input
@@ -3023,14 +2900,6 @@ export function App() {
         {activeTenant && requesterPortalEnabled && (
           <IncidentBanner notices={activeIncidentNotices} />
         )}
-        {section === "Übersicht" && activeTenant && session ? (
-          <IntroTip
-            onAction={() => setCommandMenuOpen(true)}
-            tenantId={activeTenant.id}
-            tip="befehle"
-            userId={session.user.id}
-          />
-        ) : null}
         {personalSettingsOpen && session ? (
           <PersonalSettings
             onBack={() => setPersonalSettingsOpen(false)}
@@ -3664,15 +3533,9 @@ export function App() {
               </div>
               <div>
                 <dt>
-                  <kbd>Ctrl</kbd>/<kbd>⌘</kbd> <kbd>K</kbd>
-                </dt>
-                <dd>Befehlspalette öffnen</dd>
-              </div>
-              <div>
-                <dt>
                   <kbd>Esc</kbd>
                 </dt>
-                <dd>Dialog oder Befehlspalette schliessen</dd>
+                <dd>Dialog schliessen</dd>
               </div>
             </dl>
             <div className="keyboard-help__actions">
@@ -3853,163 +3716,6 @@ export function App() {
                 Fertig
               </button>
             </div>
-          </section>
-        </div>
-      )}
-      {commandMenuOpen && (
-        <div
-          aria-label="Befehlsmenü"
-          aria-modal="true"
-          className="command-menu-backdrop"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) closeCommandMenu();
-          }}
-          role="dialog"
-        >
-          <section
-            aria-labelledby="workspace-command-menu-heading"
-            className="command-menu"
-            id="workspace-command-menu"
-            onKeyDown={(event) => {
-              if (event.key === "Escape") {
-                event.preventDefault();
-                closeCommandMenu();
-                return;
-              }
-              if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-                if (commandResults.length === 0) return;
-                event.preventDefault();
-                setCommandActiveIndex((current) =>
-                  event.key === "ArrowDown"
-                    ? (current + 1) % commandResults.length
-                    : (current - 1 + commandResults.length) %
-                      commandResults.length,
-                );
-                return;
-              }
-              if (
-                event.key === "Enter" &&
-                event.target === commandInputRef.current &&
-                activeCommandResult
-              ) {
-                event.preventDefault();
-                runCommandResult(activeCommandResult);
-              }
-            }}
-          >
-            <div className="command-menu__search">
-              <Search aria-hidden="true" size={18} strokeWidth={1.9} />
-              <input
-                aria-describedby="workspace-command-menu-hint workspace-command-menu-selection"
-                aria-label="Befehle oder Tickets suchen"
-                onChange={(event) => setCommandQuery(event.target.value)}
-                placeholder="Befehl oder Ticket suchen …"
-                ref={commandInputRef}
-                value={commandQuery}
-              />
-              <button
-                aria-label="Befehlsmenü schliessen"
-                className="command-menu__close"
-                onClick={closeCommandMenu}
-                type="button"
-              >
-                <X aria-hidden="true" size={18} strokeWidth={1.8} />
-              </button>
-            </div>
-            <p className="data-caption" id="workspace-command-menu-hint">
-              Schnellnavigation und aktuell geladene Tickets · Mit Pfeil
-              hoch/runter auswählen, mit Enter öffnen · Esc zum Schliessen
-            </p>
-            <p
-              aria-live="polite"
-              className="sr-only"
-              id="workspace-command-menu-selection"
-            >
-              {activeCommandResult
-                ? `${activeCommandResult.label} ausgewählt, Enter zum Öffnen.`
-                : "Keine Auswahl verfügbar."}
-            </p>
-            {matchingCommandActions.length > 0 && (
-              <div className="command-menu__group">
-                <p className="command-menu__label">AKTIONEN</p>
-                {matchingCommandActions.map((action, index) => (
-                  <button
-                    aria-current={
-                      commandActiveIndex === index ? "true" : undefined
-                    }
-                    className={`command-menu__item${
-                      commandActiveIndex === index
-                        ? " command-menu__item--active"
-                        : ""
-                    }`}
-                    key={action.id}
-                    onClick={() => {
-                      const result = commandResults[index];
-                      if (result) runCommandResult(result);
-                    }}
-                    onFocus={() => setCommandActiveIndex(index)}
-                    onMouseMove={() => setCommandActiveIndex(index)}
-                    type="button"
-                  >
-                    <Command aria-hidden="true" size={16} strokeWidth={1.8} />
-                    <span>
-                      <strong>{action.label}</strong>
-                      <small>{action.description}</small>
-                    </span>
-                    <ArrowRight
-                      aria-hidden="true"
-                      size={16}
-                      strokeWidth={1.8}
-                    />
-                  </button>
-                ))}
-              </div>
-            )}
-            {matchingCommandTickets.length > 0 && (
-              <div className="command-menu__group">
-                <p className="command-menu__label">TICKETS</p>
-                {matchingCommandTickets.map((ticket, index) => {
-                  const resultIndex = matchingCommandActions.length + index;
-                  return (
-                    <button
-                      aria-current={
-                        commandActiveIndex === resultIndex ? "true" : undefined
-                      }
-                      className={`command-menu__item${
-                        commandActiveIndex === resultIndex
-                          ? " command-menu__item--active"
-                          : ""
-                      }`}
-                      key={ticket.recordId ?? ticket.id}
-                      onClick={() => {
-                        const result = commandResults[resultIndex];
-                        if (result) runCommandResult(result);
-                      }}
-                      onFocus={() => setCommandActiveIndex(resultIndex)}
-                      onMouseMove={() => setCommandActiveIndex(resultIndex)}
-                      type="button"
-                    >
-                      <Ticket aria-hidden="true" size={16} strokeWidth={1.8} />
-                      <span>
-                        <strong>{ticket.id}</strong>
-                        <small>{ticket.subject}</small>
-                      </span>
-                      <ArrowRight
-                        aria-hidden="true"
-                        size={16}
-                        strokeWidth={1.8}
-                      />
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-            {matchingCommandActions.length === 0 &&
-              matchingCommandTickets.length === 0 && (
-                <p className="command-menu__empty">
-                  Keine passende Aktion oder kein passendes geladenes Ticket.
-                </p>
-              )}
           </section>
         </div>
       )}
