@@ -4,7 +4,6 @@ import {
   delegatedExchangeClientId,
   delegatedExchangeScopes,
   delegatedGraphRequest,
-  graphMailboxIdentity,
   isDelegatedExchangeMailConfigured,
   pkceChallenge,
   randomUrlSafe,
@@ -491,11 +490,6 @@ async function saveMailbox(
   );
   if (connection.status !== "connected")
     throw new HttpError(422, "exchange_reauthorization_required");
-  const graphMailbox = await graphMailboxIdentity(
-    admin,
-    connection,
-    action.mailboxObjectId ?? action.mailboxAddress,
-  );
   if (action.defaultDepartmentId) {
     const department = await admin
       .from("departments")
@@ -513,16 +507,19 @@ async function saveMailbox(
   const changedTarget = Boolean(
     existing &&
     (existing.connection_id !== action.connectionId ||
-      existing.mailbox_address !== graphMailbox.address ||
-      existing.mailbox_object_id !== graphMailbox.id),
+      existing.mailbox_address !== action.mailboxAddress ||
+      existing.mailbox_object_id !== action.mailboxObjectId),
   );
   const payload = {
     tenant_id: action.tenantId,
     connection_id: action.connectionId,
     access_mode: "delegated",
     entra_tenant_id: connection.entra_tenant_id,
-    mailbox_address: graphMailbox.address,
-    mailbox_object_id: graphMailbox.id,
+    // A delegated connector may access a shared mailbox without permission to
+    // read its Entra directory profile. Keep the validated address here and
+    // verify the actual mailbox/read/send access explicitly on the next step.
+    mailbox_address: action.mailboxAddress,
+    mailbox_object_id: action.mailboxObjectId,
     default_department_id: action.defaultDepartmentId,
     send_acknowledgement: action.sendAcknowledgement,
     send_agent_replies: action.sendAgentReplies,

@@ -33,7 +33,7 @@ nextDesk verbindet **mehrere Support-Postfächer pro Mandant** mit Microsoft 365
    Mail.Send.Shared
    ```
 
-   `User.Read` prüft die Identität des angemeldeten Connector-Kontos und löst die eingegebene Support-Adresse einmal in eine stabile Entra-Objekt-ID auf, damit dasselbe Postfach nicht über Aliasadressen mehrfach angebunden werden kann. Die Mailrechte gelten nur delegiert für die Connectoridentität und die ihr in Exchange explizit freigegebenen Postfächer. `offline_access`, `openid` und `profile` fordert nextDesk beim OAuth-Rücksprung als Protokoll-Scopes an; sie müssen nicht als zusätzliche Graph-Berechtigungen im Portal ergänzt werden.
+   `User.Read` prüft die Identität des angemeldeten Connector-Kontos. Die Mailrechte gelten nur delegiert für die Connectoridentität und die ihr in Exchange explizit freigegebenen Postfächer. `offline_access`, `openid` und `profile` fordert nextDesk beim OAuth-Rücksprung als Protokoll-Scopes an; sie müssen nicht als zusätzliche Graph-Berechtigungen im Portal ergänzt werden.
 
 3. **Keine Application permissions `Mail.*` hinzufügen.** Die obigen Rechte müssen ausdrücklich als **Delegated permissions** erscheinen.
 
@@ -78,9 +78,9 @@ Die Delegationen gelten nur für die ausgewählten Postfächer. Ohne **Vollzugri
 
 1. **Postfach hinzufügen** wählen.
 2. Die vorhandene Microsoft-365-Verbindung auswählen.
-3. Support-Postfach und Ziel-Abteilung erfassen; Eingangsbestätigung, Agentenantworten und Lösungsmitteilung nach Bedarf einstellen. nextDesk löst die Adresse selbst in die sichere Microsoft-365-Postfachidentität auf.
+3. Support-Postfach und Ziel-Abteilung erfassen; Eingangsbestätigung, Agentenantworten und Lösungsmitteilung nach Bedarf einstellen. nextDesk speichert die Adresse zunächst als Entwurf; dafür braucht das Connector-Konto keinen zusätzlichen Zugriff auf das Entra-Verzeichnis.
 4. **Postfach speichern**.
-5. **Prüfen** wählen. nextDesk prüft das Postfach, eine Leseabfrage des Eingangskorbs und versendet eine kurze Berechtigungs-Bestätigung an das verbundene Microsoft-365-Konto. Damit wird auch **Senden als** vor der Aktivierung nachgewiesen.
+5. **Prüfen** wählen. nextDesk prüft das Postfach über die eingegebene Adresse, führt eine Leseabfrage des Eingangskorbs aus und versendet eine kurze Berechtigungs-Bestätigung an das verbundene Microsoft-365-Konto. Damit wird auch **Senden als** vor der Aktivierung nachgewiesen.
 6. Erst nach erfolgreicher Prüfung **Aktivieren** wählen.
 7. **Testmail** wählen. Sie wird an die E-Mail-Adresse der aktuell angemeldeten nextDesk-Person in die Versandwarteschlange gestellt.
 8. Einen echten kontrollierten Test durchführen: neue E-Mail an das Support-Postfach, Ticketentstehung, Agentenantwort, Zustellstatus und bei Bedarf Anhang.
