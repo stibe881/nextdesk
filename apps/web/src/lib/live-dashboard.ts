@@ -157,11 +157,13 @@ export async function loadLiveDashboard(
       client
         .from("tickets")
         .select(
-          "id, ticket_number, subject, department_id, status_id, priority_id, resolution_due_at, created_at, assigned_agent_id, requester_id",
+          "id, ticket_number, subject, department_id, status_id, priority_id, resolution_due_at, created_at, updated_at, assigned_agent_id, requester_id",
         )
         .eq("tenant_id", tenant.id)
-        .gte("created_at", since)
-        .order("created_at", { ascending: false })
+        // The active-work list is intentionally independent of the KPI period.
+        // It mirrors the mobile app and always shows the current authorised
+        // ticket backlog; the period below only governs metrics and activity.
+        .order("updated_at", { ascending: false })
         .range(ticketRangeStart, ticketRangeStart + TICKET_PAGE_SIZE),
       client
         .from("ticket_statuses")
@@ -226,6 +228,7 @@ export async function loadLiveDashboard(
     closedCountResult,
     mineCountResult,
     unassignedCountResult,
+    ticketListCountResult,
     eventsResult,
   ] = await Promise.all([
     client
@@ -256,6 +259,10 @@ export async function loadLiveDashboard(
       .gte("created_at", since)
       .is("assigned_agent_id", null),
     client
+      .from("tickets")
+      .select("id", { count: "exact", head: true })
+      .eq("tenant_id", tenant.id),
+    client
       .from("ticket_events")
       .select("event_type, created_at")
       .gte("created_at", since)
@@ -267,12 +274,14 @@ export async function loadLiveDashboard(
   if (closedCountResult.error) throw closedCountResult.error;
   if (mineCountResult.error) throw mineCountResult.error;
   if (unassignedCountResult.error) throw unassignedCountResult.error;
+  if (ticketListCountResult.error) throw ticketListCountResult.error;
   if (eventsResult.error) throw eventsResult.error;
 
   const totalTicketCount = totalCountResult.count ?? 0;
   const closedCount = closedCountResult.count ?? 0;
   const mineCount = mineCountResult.count ?? 0;
   const unassignedCount = unassignedCountResult.count ?? 0;
+  const ticketListCount = ticketListCountResult.count ?? 0;
   const openCount = Math.max(0, totalTicketCount - closedCount);
   const now = new Intl.DateTimeFormat("de-CH", {
     dateStyle: "short",
@@ -281,8 +290,8 @@ export async function loadLiveDashboard(
   }).format(new Date());
   const hasMoreTickets = tickets.length > TICKET_PAGE_SIZE;
   const ticketListNote =
-    totalTicketCount > ticketRows.length
-      ? `Die Liste zeigt ${ticketRows.length} von ${totalTicketCount} autorisierten Tickets.`
+    ticketListCount > ticketRows.length
+      ? `Die Liste zeigt ${ticketRows.length} von ${ticketListCount} autorisierten Tickets.`
       : null;
 
   return {
@@ -314,8 +323,8 @@ export async function loadLiveDashboard(
         state: "stabil",
       },
       {
-        availability: String(totalTicketCount),
-        detail: "Für Sie sichtbare Tickets",
+        availability: String(ticketListCount),
+        detail: "Autorisierte Tickets",
         name: "Datenzugriff",
         state: "stabil",
       },
@@ -329,7 +338,7 @@ export async function loadLiveDashboard(
     period,
     ...(ticketListNote ? { ticketListNote } : {}),
     tenantId: tenant.id,
-    ticketCount: totalTicketCount,
+    ticketCount: ticketListCount,
     tickets: ticketRows,
     updatedAt: now,
   };
