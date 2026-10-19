@@ -15,6 +15,7 @@ const ACTIONS = [
   "listDelegations",
   "saveDelegation",
   "endDelegation",
+  "listAssignableAgents",
   "suggestAssignees",
   "teamQueues",
   "myMetrics",
@@ -847,6 +848,39 @@ async function suggestAssignees(
     },
   });
 }
+
+async function listTicketAssignableAgents(
+  request: Request,
+  client: Client,
+  admin: Admin,
+  action: Action,
+): Promise<Response> {
+  const info = await ticket(admin, action.tenantId, action.ticketId);
+  await ticketPermission(client, info, "ticket.update");
+  const assignable = await listAssignableAgents(
+    admin,
+    action.tenantId,
+    info.department_id as string,
+  );
+  if (assignable.error) {
+    return reply(
+      request,
+      { error: { code: "ticket_agents_lookup_failed" } },
+      500,
+    );
+  }
+  const currentAssigneeId =
+    typeof info.assigned_agent_id === "string" ? info.assigned_agent_id : null;
+  return reply(request, {
+    data: {
+      agents: assignable.agents.map((agent) => ({
+        displayName: agent.displayName,
+        isCurrentAssignee: agent.id === currentAssigneeId,
+        userId: agent.id,
+      })),
+    },
+  });
+}
 async function teamQueues(
   request: Request,
   client: Client,
@@ -1478,6 +1512,8 @@ const handler = withSupabase(
         return await saveDelegation(request, client, admin, action, actorId);
       if (action.type === "endDelegation")
         return await endDelegation(request, client, admin, action, actorId);
+      if (action.type === "listAssignableAgents")
+        return await listTicketAssignableAgents(request, client, admin, action);
       if (action.type === "suggestAssignees")
         return await suggestAssignees(request, client, admin, action);
       if (action.type === "teamQueues")

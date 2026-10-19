@@ -38,6 +38,7 @@ import {
 import {
   assignTicketAgent,
   decideTicketReopenRequest,
+  loadAssignableAgents,
   isWorkbenchUnavailableError,
   loadAssigneeSuggestions,
   loadMyTicketTimeline,
@@ -45,6 +46,7 @@ import {
   loadTicketWorkbenchContext,
   requestTicketReopen,
   type AssigneeSuggestion,
+  type AssignableAgent,
   type PublicTicketTimelineItem,
   type TicketReopenRequest,
   type TicketWorkbenchContext,
@@ -361,8 +363,19 @@ export default function TicketDetailScreen() {
     AssigneeSuggestion[] | null
   >(null);
   const [suggestionsLoading, setSuggestionsLoading] = useState(false);
+  const [agentPickerOpen, setAgentPickerOpen] = useState(false);
+  const [agentPickerQuery, setAgentPickerQuery] = useState("");
+  const [assignableAgents, setAssignableAgents] = useState<
+    AssignableAgent[] | null
+  >(null);
+  const [assignableAgentsLoading, setAssignableAgentsLoading] = useState(false);
+  const [assignableAgentsError, setAssignableAgentsError] = useState("");
   const [pendingAgentAssignment, setPendingAgentAssignment] =
     useState<AssigneeSuggestion | null>(null);
+  const [manualAgentAssignment, setManualAgentAssignment] =
+    useState<AssignableAgent | null>(null);
+  const [manualAgentAssignmentError, setManualAgentAssignmentError] =
+    useState("");
   const [assigningAgent, setAssigningAgent] = useState(false);
   const [reopenRequestsOpen, setReopenRequestsOpen] = useState(false);
   const [reopenRequests, setReopenRequests] = useState<TicketReopenRequest[]>(
@@ -374,6 +387,14 @@ export default function TicketDetailScreen() {
     request: TicketReopenRequest;
   } | null>(null);
   const [decidingReopen, setDecidingReopen] = useState(false);
+
+  const filteredAssignableAgents = useMemo(() => {
+    const query = agentPickerQuery.trim().toLocaleLowerCase("de-CH");
+    if (!query) return assignableAgents ?? [];
+    return (assignableAgents ?? []).filter((agent) =>
+      (agent.displayName ?? "Agent").toLocaleLowerCase("de-CH").includes(query),
+    );
+  }, [agentPickerQuery, assignableAgents]);
 
   const load = useCallback(
     async (syncEditor = true) => {
@@ -677,33 +698,61 @@ export default function TicketDetailScreen() {
     }
   }
 
+  async function loadAllAssignableAgents() {
+    if (!ticket) return;
+    setAssignableAgentsLoading(true);
+    setAssignableAgentsError("");
+    try {
+      const result = await loadAssignableAgents(ticket.id);
+      setAssignableAgents(result.agents);
+    } catch (nextError) {
+      setAssignableAgents([]);
+      setAssignableAgentsError(
+        nextError instanceof Error
+          ? nextError.message
+          : "Die berechtigten Agenten konnten nicht geladen werden.",
+      );
+    } finally {
+      setAssignableAgentsLoading(false);
+    }
+  }
+
+  async function openAgentPicker() {
+    setPendingAgentAssignment(null);
+    setManualAgentAssignment(null);
+    setManualAgentAssignmentError("");
+    setAgentPickerQuery("");
+    setAgentPickerOpen(true);
+    await loadAllAssignableAgents();
+  }
+
   async function confirmAgentAssignment() {
-    if (!tenant || !ticket || !pendingAgentAssignment) return;
-    const displayName = pendingAgentAssignment.displayName?.trim() || "Agent";
+    const assignment = manualAgentAssignment ?? pendingAgentAssignment;
+    if (!tenant || !ticket || !assignment) return;
+    const displayName = assignment.displayName?.trim() || "Agent";
     setAssigningAgent(true);
     setError("");
+    setManualAgentAssignmentError("");
     try {
-      await assignTicketAgent(
-        tenant.id,
-        ticket.id,
-        pendingAgentAssignment.userId,
-      );
+      await assignTicketAgent(tenant.id, ticket.id, assignment.userId);
       setPendingAgentAssignment(null);
-      await Promise.all([load(false), loadSuggestions()]);
+      setManualAgentAssignment(null);
+      setAgentPickerOpen(false);
+      await Promise.all([
+        load(false),
+        loadSuggestions(),
+        loadAllAssignableAgents(),
+      ]);
       setMessage(`${displayName} wurde zugewiesen.`);
       hapticSuccess();
     } catch (nextError) {
-      if (isWorkbenchUnavailableError(nextError)) {
-        setAgentWorkbenchAvailable(false);
-        setPendingAgentAssignment(null);
-        return;
-      }
-      hapticError();
-      setError(
+      const assignmentError =
         nextError instanceof Error
           ? nextError.message
-          : "Der Agent konnte nicht zugewiesen werden.",
-      );
+          : "Der Agent konnte nicht zugewiesen werden.";
+      hapticError();
+      setError(assignmentError);
+      if (manualAgentAssignment) setManualAgentAssignmentError(assignmentError);
     } finally {
       setAssigningAgent(false);
     }
@@ -1943,6 +1992,8 @@ export default function TicketDetailScreen() {
                                     accessibilityRole="button"
                                     disabled={assigningAgent}
                                     onPress={() => {
+                                      setManualAgentAssignment(null);
+                                      setManualAgentAssignmentError("");
                                       setPendingAgentAssignment(suggestion);
                                       hapticSelection();
                                     }}
@@ -2011,6 +2062,52 @@ export default function TicketDetailScreen() {
                         Derzeit liegen keine Zuweisungsvorschläge vor.
                       </Text>
                     )}
+                    {!suggestionsLoading ? (
+                      <Pressable
+                        accessibilityHint="Öffnet alle für dieses Ticket berechtigten Agenten."
+                        accessibilityLabel="Anderen Agenten auswählen"
+                        accessibilityRole="button"
+                        disabled={assignableAgentsLoading || assigningAgent}
+                        onPress={() => {
+                          hapticSelection();
+                          void openAgentPicker();
+                        }}
+                        style={({ pressed }) => [
+                          styles.manualAssigneeButton,
+                          (assignableAgentsLoading || assigningAgent) &&
+                            styles.disabled,
+                          pressed && styles.pressed,
+                        ]}
+                      >
+                        <View style={styles.manualAssigneeCopy}>
+                          <Ionicons
+                            color={colors.primaryText}
+                            name="people-outline"
+                            size={18}
+                          />
+                          <View style={styles.suggestionCopy}>
+                            <Text style={styles.manualAssigneeTitle}>
+                              Anderen Agenten auswählen
+                            </Text>
+                            <Text style={styles.manualAssigneeText}>
+                              Alle berechtigten Agenten anzeigen
+                            </Text>
+                          </View>
+                        </View>
+                        {assignableAgentsLoading ? (
+                          <ActivityIndicator
+                            color={colors.primaryText}
+                            size="small"
+                          />
+                        ) : (
+                          <Ionicons
+                            color={colors.primaryText}
+                            name="chevron-forward"
+                            size={18}
+                          />
+                        )}
+                      </Pressable>
+                    ) : null}
                   </View>
                 ) : null}
               </>
@@ -3225,6 +3322,248 @@ export default function TicketDetailScreen() {
         </Modal>
 
         <Modal
+          animationType="slide"
+          onRequestClose={() => setAgentPickerOpen(false)}
+          transparent
+          visible={
+            agentPickerOpen && !checkingFeatures && Boolean(confirmedTenantId)
+          }
+        >
+          <KeyboardAvoidingView
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
+            style={styles.selectionModalRoot}
+          >
+            <Pressable
+              accessibilityLabel="Agentenauswahl schliessen"
+              accessibilityRole="button"
+              onPress={() => setAgentPickerOpen(false)}
+              style={StyleSheet.absoluteFill}
+            />
+            <View style={styles.selectionSheet}>
+              <View style={styles.selectionHeader}>
+                <View>
+                  <Text style={styles.selectionEyebrow}>ZUSTÄNDIGKEIT</Text>
+                  <Text style={styles.selectionTitle}>Agenten auswählen</Text>
+                </View>
+                <Pressable
+                  accessibilityLabel="Agentenauswahl schliessen"
+                  accessibilityRole="button"
+                  onPress={() => setAgentPickerOpen(false)}
+                  style={styles.selectionClose}
+                >
+                  <Ionicons color={colors.primaryText} name="close" size={22} />
+                </Pressable>
+              </View>
+              <View style={styles.agentPickerSearch}>
+                <Ionicons
+                  color={colors.muted}
+                  name="search-outline"
+                  size={18}
+                />
+                <TextInput
+                  accessibilityLabel="Agenten durchsuchen"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  onChangeText={setAgentPickerQuery}
+                  placeholder="Agenten durchsuchen"
+                  placeholderTextColor={colors.subtle}
+                  style={styles.agentPickerSearchInput}
+                  value={agentPickerQuery}
+                />
+              </View>
+              {assignableAgentsError ? (
+                <View style={[styles.agentPickerError, tokenStyles.error]}>
+                  <Ionicons
+                    color={colors.error}
+                    name="alert-circle-outline"
+                    size={18}
+                  />
+                  <View style={styles.suggestionCopy}>
+                    <Text style={styles.agentPickerErrorText}>
+                      {assignableAgentsError}
+                    </Text>
+                    <Pressable
+                      accessibilityLabel="Agentenliste erneut laden"
+                      accessibilityRole="button"
+                      onPress={() => void loadAllAssignableAgents()}
+                    >
+                      <Text style={styles.agentPickerRetry}>Erneut laden</Text>
+                    </Pressable>
+                  </View>
+                </View>
+              ) : assignableAgentsLoading ? (
+                <View style={styles.inlineLoading}>
+                  <ActivityIndicator color={colors.primaryText} size="small" />
+                  <Text style={[styles.timelineText, tokenStyles.muted]}>
+                    Berechtigte Agenten werden geladen …
+                  </Text>
+                </View>
+              ) : (
+                <ScrollView
+                  contentContainerStyle={styles.selectionOptions}
+                  keyboardShouldPersistTaps="handled"
+                  showsVerticalScrollIndicator={false}
+                >
+                  {filteredAssignableAgents.length ? (
+                    filteredAssignableAgents.map((agent) => {
+                      const displayName = agent.displayName?.trim() || "Agent";
+                      return (
+                        <Pressable
+                          accessibilityLabel={
+                            agent.isCurrentAssignee
+                              ? `${displayName} ist bereits zugewiesen`
+                              : `${displayName} auswählen`
+                          }
+                          accessibilityRole="button"
+                          accessibilityState={{
+                            disabled: agent.isCurrentAssignee || assigningAgent,
+                          }}
+                          disabled={agent.isCurrentAssignee || assigningAgent}
+                          key={agent.userId}
+                          onPress={() => {
+                            setPendingAgentAssignment(null);
+                            setManualAgentAssignmentError("");
+                            setAgentPickerOpen(false);
+                            setManualAgentAssignment(agent);
+                            hapticSelection();
+                          }}
+                          style={({ pressed }) => [
+                            styles.selectionOption,
+                            (agent.isCurrentAssignee || assigningAgent) &&
+                              styles.disabled,
+                            pressed && styles.pressed,
+                          ]}
+                        >
+                          <View style={styles.agentPickerOptionCopy}>
+                            <Text style={styles.selectionOptionText}>
+                              {displayName}
+                            </Text>
+                            <Text style={styles.agentPickerOptionText}>
+                              {agent.isCurrentAssignee
+                                ? "Bereits diesem Ticket zugewiesen"
+                                : "Berechtigter Agent"}
+                            </Text>
+                          </View>
+                          {agent.isCurrentAssignee ? (
+                            <View style={styles.assignedBadge}>
+                              <Text style={styles.assignedBadgeText}>
+                                Zugewiesen
+                              </Text>
+                            </View>
+                          ) : (
+                            <Ionicons
+                              color={colors.primaryText}
+                              name="chevron-forward"
+                              size={19}
+                            />
+                          )}
+                        </Pressable>
+                      );
+                    })
+                  ) : (
+                    <Text style={[styles.timelineText, tokenStyles.muted]}>
+                      Keine passenden berechtigten Agenten gefunden.
+                    </Text>
+                  )}
+                </ScrollView>
+              )}
+            </View>
+          </KeyboardAvoidingView>
+        </Modal>
+
+        <Modal
+          animationType="fade"
+          onRequestClose={() => {
+            setManualAgentAssignment(null);
+            setManualAgentAssignmentError("");
+          }}
+          transparent
+          visible={
+            manualAgentAssignment !== null &&
+            !checkingFeatures &&
+            Boolean(confirmedTenantId)
+          }
+        >
+          <View style={styles.closeConfirmationRoot}>
+            <Pressable
+              accessibilityLabel="Zuweisung abbrechen"
+              accessibilityRole="button"
+              disabled={assigningAgent}
+              onPress={() => {
+                setManualAgentAssignment(null);
+                setManualAgentAssignmentError("");
+              }}
+              style={StyleSheet.absoluteFill}
+            />
+            <View accessibilityViewIsModal style={styles.closeConfirmationCard}>
+              <View style={styles.closeConfirmationIcon}>
+                <Ionicons
+                  color={colors.primaryText}
+                  name="people-outline"
+                  size={22}
+                />
+              </View>
+              <Text style={styles.closeConfirmationTitle}>
+                Agenten zuweisen?
+              </Text>
+              <Text style={styles.closeConfirmationText}>
+                {manualAgentAssignment?.displayName?.trim() || "Dieser Agent"}{" "}
+                wird diesem Ticket zugewiesen. Die Berechtigung wird beim
+                Speichern erneut auf dem Server geprüft.
+              </Text>
+              {manualAgentAssignmentError ? (
+                <View style={[styles.manualAssignmentError, tokenStyles.error]}>
+                  <Ionicons
+                    color={colors.error}
+                    name="alert-circle-outline"
+                    size={18}
+                  />
+                  <Text style={styles.agentPickerErrorText}>
+                    {manualAgentAssignmentError}
+                  </Text>
+                </View>
+              ) : null}
+              <Pressable
+                accessibilityLabel="Agentenzuweisung bestätigen"
+                accessibilityRole="button"
+                disabled={assigningAgent}
+                onPress={() => void confirmAgentAssignment()}
+                style={[
+                  styles.closeConfirmationButton,
+                  assigningAgent && styles.disabled,
+                ]}
+              >
+                {assigningAgent ? (
+                  <ActivityIndicator color={colors.onPrimary} size="small" />
+                ) : null}
+                <Text style={styles.closeConfirmationButtonText}>
+                  {assigningAgent ? "Zuweisung wird gespeichert …" : "Zuweisen"}
+                </Text>
+              </Pressable>
+              <Pressable
+                accessibilityLabel="Zuweisung abbrechen"
+                accessibilityRole="button"
+                disabled={assigningAgent}
+                onPress={() => {
+                  setManualAgentAssignment(null);
+                  setManualAgentAssignmentError("");
+                }}
+                style={styles.closeConfirmationCancel}
+              >
+                <Text
+                  style={[
+                    styles.closeConfirmationCancelText,
+                    { color: colors.primaryText },
+                  ]}
+                >
+                  Abbrechen
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        </Modal>
+
+        <Modal
           animationType="fade"
           onRequestClose={() => setPendingCloseStatus(null)}
           transparent
@@ -3670,6 +4009,30 @@ const useStyles = makeThemedStyles((c) => ({
     fontWeight: "800",
   },
   assignmentFootnote: { color: c.muted, fontSize: 11, lineHeight: 16 },
+  manualAssigneeButton: {
+    alignItems: "center",
+    backgroundColor: c.primarySoft,
+    borderColor: c.primarySoftBorder,
+    borderRadius: 13,
+    borderWidth: 1,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    minHeight: 54,
+    paddingHorizontal: 12,
+  },
+  manualAssigneeCopy: {
+    alignItems: "center",
+    flex: 1,
+    flexDirection: "row",
+    gap: 9,
+  },
+  manualAssigneeTitle: {
+    color: c.primaryText,
+    fontSize: 13,
+    fontWeight: "800",
+  },
+  manualAssigneeText: { color: c.muted, fontSize: 11, lineHeight: 16 },
+  pressed: { opacity: 0.76 },
   reopenRequestList: { gap: 9 },
   reopenRequest: { borderRadius: 13, borderWidth: 1, gap: 8, padding: 11 },
   decisionActions: { flexDirection: "row", gap: 8 },
@@ -3946,6 +4309,33 @@ const useStyles = makeThemedStyles((c) => ({
     width: 36,
   },
   selectionOptions: { gap: 8, paddingBottom: 4 },
+  agentPickerSearch: {
+    alignItems: "center",
+    backgroundColor: c.surfaceSubtle,
+    borderColor: c.border,
+    borderRadius: 13,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 8,
+    minHeight: 46,
+    paddingHorizontal: 12,
+  },
+  agentPickerSearchInput: {
+    color: c.foreground,
+    flex: 1,
+    fontSize: 15,
+    paddingVertical: 10,
+  },
+  agentPickerError: {
+    alignItems: "flex-start",
+    borderRadius: 13,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 9,
+    padding: 12,
+  },
+  agentPickerErrorText: { color: c.error, fontSize: 12, lineHeight: 17 },
+  agentPickerRetry: { color: c.primaryText, fontSize: 12, fontWeight: "800" },
   selectionOption: {
     alignItems: "center",
     backgroundColor: c.surface,
@@ -3956,6 +4346,16 @@ const useStyles = makeThemedStyles((c) => ({
     justifyContent: "space-between",
     minHeight: 54,
     paddingHorizontal: 14,
+  },
+  agentPickerOptionCopy: { flex: 1, gap: 2, paddingRight: 8 },
+  agentPickerOptionText: { color: c.muted, fontSize: 11, lineHeight: 16 },
+  manualAssignmentError: {
+    alignItems: "flex-start",
+    borderRadius: 12,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 9,
+    padding: 11,
   },
   selectionOptionActive: {
     backgroundColor: c.primarySoft,

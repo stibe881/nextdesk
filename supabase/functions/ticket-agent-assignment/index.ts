@@ -282,6 +282,24 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     return response(request, { error: { code: "ticket_assign_denied" } }, 403);
   }
 
+  const canUpdate = await hasTicketPermission(
+    context.supabaseAdmin,
+    actorId,
+    ticket.tenant_id,
+    ticket.department_id,
+    "ticket.update",
+  );
+  if (canUpdate.error) {
+    return response(
+      request,
+      { error: { code: "ticket_agents_lookup_failed" } },
+      500,
+    );
+  }
+  if (!canUpdate.allowed) {
+    return response(request, { error: { code: "ticket_update_denied" } }, 403);
+  }
+
   const candidates = await listAssignableAgents(
     context.supabaseAdmin,
     ticket.tenant_id,

@@ -79,6 +79,12 @@ export type AssigneeSuggestion = {
   automaticAssignment: false;
 };
 
+export type AssignableAgent = {
+  userId: string;
+  displayName?: string;
+  isCurrentAssignee: boolean;
+};
+
 export type TicketReopenRequest = {
   id: string;
   ticket_id: string;
@@ -103,6 +109,7 @@ type ApiErrorEnvelope = { error: { code?: unknown; message?: unknown } };
 
 type AgentWorkbenchAction =
   | { type: "ticketContext"; tenantId: string; ticketId: string }
+  | { type: "listAssignableAgents"; tenantId: string; ticketId: string }
   | { type: "suggestAssignees"; tenantId: string; ticketId: string }
   | { type: "listReopenRequests"; tenantId: string }
   | {
@@ -255,6 +262,12 @@ export function loadAssigneeSuggestions(ticketId: string): Promise<{
   notice: string;
 }> {
   return invokeAgentWorkbench({ type: "suggestAssignees", ticketId });
+}
+
+export function loadAssignableAgents(ticketId: string): Promise<{
+  agents: AssignableAgent[];
+}> {
+  return invokeAgentWorkbench({ type: "listAssignableAgents", ticketId });
 }
 
 export function assignTicketAgent(
