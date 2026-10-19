@@ -138,3 +138,8 @@ Im Ticketdetail (iOS und Web) setzt man eine Erinnerung mit Datum und Uhrzeit, S
 - Web-Commit `f578412` ist auf Hetzner ausgerollt; `ticket-operations` v25 ist aktiv. Die erste sichtbare Ticketansicht wartet nicht mehr auf eine zweite Abfrage der Agentenliste, sondern nutzt die bereits im autorisierten Ticketpayload enthaltenen Agenten.
 - Die standardmässig geschlossenen Bereiche «Arbeitskontext & Werkzeuge», «Abschluss & Kontext» und «Arbeitswerkzeuge» bauen ihre umfangreichen Komponenten und Nachladungen erst beim Öffnen auf. Das betrifft insbesondere Wissen, Anhänge, Übergaben, Qualität, Kundenfeedback, betroffene Objekte und verknüpfte Werkzeuge.
 - Serverseitig laufen die unabhängigen Leserechte, Funktionsschalter, Agenten- und übrigen Berechtigungsprüfungen parallel. Typecheck, Schema- und Formatprüfungen, Deno-Prüfung, Produktionsbuild, Diff-Prüfung sowie Web- und API-Smoke-Tests sind erfolgreich.
+
+## Web: realitätsnahe Corporate-Design-Vorschau (19.10)
+
+- Web-Commit `c6fc63b` ist auf Hetzner ausgerollt. Die bisherige Drei-Punkte-Mock-up-Vorschau wurde ersetzt: Der Designbereich zeigt neu dieselbe grundlegende Desktop-Anordnung wie das Portal mit Seitenleiste, Markenposition, vollständiger Navigation, Kopfzeile, Ticketaktion und Übersichtskarten.
+- Portalname, hochgeladenes Logo sowie Primär-, Sekundär- und Akzentfarbe aktualisieren die Vorschau weiterhin unmittelbar vor dem Speichern. Nach dem Speichern verwenden Vorschau und echtes Mandantenportal dieselben Brandingwerte. Typecheck, Schema-/Formatprüfung, Produktionsbuild und Smoke-Test sind erfolgreich.
