@@ -5698,42 +5698,62 @@ export function TicketDetail({
         </div>
       </header>
 
-      <TicketWorkbench
-        canAssign={detail.canAssign}
-        canUpdate={detail.canUpdate}
-        canUseInternalNotes={detail.canUseInternalNotes}
-        categories={ticketCategories}
-        currentUserId={currentUserId}
-        hasAgentAccess={hasAgentExperienceAccess}
-        isRequester={isResolutionParticipant}
-        onApplyMacro={applyMacroPreview}
-        onPrefillAssignee={(agentId) => {
-          setSelectedAgentId(agentId);
-          setAssignmentPrefilled(true);
-          setError("");
-        }}
-        people={visibleAssignableAgents.map((agent) => ({
-          id: agent.id,
-          displayName: agent.displayName,
-        }))}
-        priorities={detail.priorities.map((priority) => ({
-          id: priority.id,
-          label: priority.label,
-        }))}
-        tenantId={tenantId}
-        ticket={{
-          id: detail.ticket.id,
-          ticketNumber: detail.ticket.ticket_number,
-          subject: detail.ticket.subject,
-          statusLabel: selectedStatus?.label ?? "Status nicht verfügbar",
-          priorityLabel: selectedPriority?.label ?? "Priorität nicht verfügbar",
-          requesterName:
-            detail.requesterContact?.displayName ??
-            "Anfragende Person nicht verfügbar",
-          isClosed: ticketIsClosed,
-          isResolved: ticketIsResolved,
-        }}
-      />
+      <details className="ticket-detail-disclosure ticket-detail-workspace">
+        <summary>
+          <span className="ticket-detail-disclosure-label">
+            <UsersRound aria-hidden="true" size={17} strokeWidth={1.8} />
+            Arbeitskontext &amp; Werkzeuge
+          </span>
+          <span className="ticket-detail-disclosure-meta">
+            Zuweisung, 360°-Kontext, Wissen
+            <ChevronDown
+              aria-hidden="true"
+              className="ticket-detail-disclosure-icon"
+              size={18}
+              strokeWidth={1.8}
+            />
+          </span>
+        </summary>
+        <div className="ticket-detail-disclosure-content">
+          <TicketWorkbench
+            canAssign={detail.canAssign}
+            canUpdate={detail.canUpdate}
+            canUseInternalNotes={detail.canUseInternalNotes}
+            categories={ticketCategories}
+            currentUserId={currentUserId}
+            hasAgentAccess={hasAgentExperienceAccess}
+            isRequester={isResolutionParticipant}
+            onApplyMacro={applyMacroPreview}
+            onPrefillAssignee={(agentId) => {
+              setSelectedAgentId(agentId);
+              setAssignmentPrefilled(true);
+              setError("");
+            }}
+            people={visibleAssignableAgents.map((agent) => ({
+              id: agent.id,
+              displayName: agent.displayName,
+            }))}
+            priorities={detail.priorities.map((priority) => ({
+              id: priority.id,
+              label: priority.label,
+            }))}
+            tenantId={tenantId}
+            ticket={{
+              id: detail.ticket.id,
+              ticketNumber: detail.ticket.ticket_number,
+              subject: detail.ticket.subject,
+              statusLabel: selectedStatus?.label ?? "Status nicht verfügbar",
+              priorityLabel:
+                selectedPriority?.label ?? "Priorität nicht verfügbar",
+              requesterName:
+                detail.requesterContact?.displayName ??
+                "Anfragende Person nicht verfügbar",
+              isClosed: ticketIsClosed,
+              isResolved: ticketIsResolved,
+            }}
+          />
+        </div>
+      </details>
 
       {error && (
         <p className="ticket-detail-message error" role="alert">
@@ -6480,7 +6500,7 @@ export function TicketDetail({
         </p>
       )}
 
-      <details className="ticket-detail-disclosure" open={ticketIsClosed}>
+      <details className="ticket-detail-disclosure">
         <summary>
           <span className="ticket-detail-disclosure-label">
             <CircleCheck aria-hidden="true" size={17} strokeWidth={1.8} />

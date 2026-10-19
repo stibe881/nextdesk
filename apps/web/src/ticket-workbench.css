@@ -78,7 +78,7 @@
 
 .ticket-workbench__grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(210px, 0.46fr);
+  grid-template-columns: minmax(0, 1fr);
   align-items: start;
   gap: 14px;
 }
@@ -288,8 +288,7 @@
 }
 
 .ticket-workbench__context-panel {
-  position: sticky;
-  top: 74px;
+  position: static;
 }
 
 .ticket-workbench__context-groups {

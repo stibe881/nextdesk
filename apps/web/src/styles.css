@@ -7598,6 +7598,8 @@ body:has(.ticket-detail) {
 
 /* Focused ticket workspace: the comment action stays visible while operational detail is progressive. */
 .ticket-detail {
+  container-name: ticket-detail;
+  container-type: inline-size;
   top: 16px;
   right: 16px;
   bottom: 16px;
@@ -7610,6 +7612,47 @@ body:has(.ticket-detail) {
   padding: 0 16px 20px;
   background: var(--surface);
   box-shadow: 0 28px 72px var(--shadow-tint-rgb-23-35-63-22);
+}
+
+/* Ein Ticket wird in der Arbeitsreihenfolge gelesen: steuern, verstehen,
+   kommunizieren, danach ergänzende Werkzeuge. */
+.ticket-detail > * {
+  order: 8;
+}
+
+.ticket-detail > .ticket-detail-header {
+  order: 0;
+}
+
+.ticket-detail > .ticket-detail-message,
+.ticket-detail > .ticket-workbench__undo {
+  order: 1;
+}
+
+.ticket-detail > .ticket-detail-facts {
+  order: 2;
+}
+
+.ticket-detail > .ticket-detail-summary {
+  order: 3;
+}
+
+.ticket-detail > .ticket-detail-comments.ticket-detail-primary {
+  order: 4;
+}
+
+.ticket-detail > .ticket-categorization {
+  order: 5;
+}
+
+.ticket-detail > .ticket-custom-fields,
+.ticket-detail > .ticket-presence {
+  order: 6;
+}
+
+.ticket-detail > .ticket-focus-notice,
+.ticket-detail > .ticket-detail-workspace {
+  order: 7;
 }
 
 .ticket-detail-header {
@@ -7675,6 +7718,44 @@ body:has(.ticket-detail) {
   width: 38px;
   height: 38px;
   min-height: 38px;
+}
+
+@container ticket-detail (max-width: 860px) {
+  .ticket-detail-header {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .ticket-detail-header-actions {
+    width: 100%;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+
+  .ticket-detail-header-actions .ticket-watch-button,
+  .ticket-detail-header-actions .ticket-focus-button,
+  .ticket-detail-header-actions .ticket-experience__header-action,
+  .ticket-detail-header-actions .ticket-pdf-record .secondary-button {
+    width: 40px;
+    min-width: 40px;
+    min-height: 40px;
+    padding: 0;
+    justify-content: center;
+  }
+
+  .ticket-detail-header-actions .ticket-detail-action-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+
+  .ticket-detail-header-actions .ticket-pdf-record .secondary-button {
+    font-size: 0;
+  }
 }
 
 .ticket-detail-summary {
@@ -8061,6 +8142,24 @@ body:has(.ticket-detail) {
   margin: 0;
 }
 
+.ticket-detail-comments.ticket-detail-primary {
+  display: flex;
+  flex-direction: column;
+}
+
+.ticket-detail-comments.ticket-detail-primary > .ticket-detail-section-heading {
+  order: 0;
+}
+
+.ticket-detail-comments.ticket-detail-primary > .ticket-comment-form {
+  order: 1;
+}
+
+.ticket-detail-comments.ticket-detail-primary > .ticket-conversation,
+.ticket-detail-comments.ticket-detail-primary > .empty-state {
+  order: 2;
+}
+
 .ticket-detail-primary .ticket-comment-form > button {
   justify-self: stretch;
   width: 100%;
@@ -8168,9 +8267,10 @@ body:has(.ticket-detail) {
 }
 
 .ticket-detail-primary .ticket-conversation + .ticket-comment-form {
-  margin-top: 20px;
-  border-top: 1px solid var(--border);
-  padding-top: 20px;
+  margin-top: 0;
+  border-top: 0;
+  padding-top: 0;
+  padding-bottom: 20px;
 }
 
 .ticket-detail-primary > .ticket-comment-list {
@@ -8255,6 +8355,14 @@ body:has(.ticket-detail) {
 
 .ticket-detail-disclosure-content {
   padding: 0 14px 14px;
+}
+
+.ticket-detail-workspace .ticket-detail-disclosure-content {
+  padding-top: 2px;
+}
+
+.ticket-detail-workspace .ticket-workbench__context-header {
+  position: static;
 }
 
 .ticket-detail-disclosure .ticket-detail-comments,
@@ -8365,7 +8473,34 @@ body:has(.ticket-detail) {
     grid-template-columns: minmax(0, 1fr);
   }
 
+  .ticket-detail-primary .ticket-conversation__message {
+    width: 100%;
+  }
+
   .ticket-detail-facts-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .ticket-detail-facts-grid dt {
+    font-size: 12px;
+  }
+
+  .ticket-detail-facts-grid dd {
+    overflow: visible;
+    font-size: 14px;
+    overflow-wrap: anywhere;
+    text-overflow: clip;
+    white-space: normal;
+  }
+
+  .ticket-detail-fact--editable select,
+  .ticket-requester-context-fields input,
+  .ticket-category-editor select,
+  .ticket-category-create input {
+    font-size: 16px;
+  }
+
+  .ticket-category-editor {
     grid-template-columns: minmax(0, 1fr);
   }
 
