@@ -407,9 +407,7 @@ async function isTenantAdministrator(
   const now = new Date().toISOString();
   const { data: assignments, error: assignmentError } = await admin
     .from("user_role_assignments")
-    .select(
-      "roles!user_role_assignments_role_tenant_fk!inner(name, scope, active)",
-    )
+    .select("role_id")
     .eq("tenant_id", tenantId)
     .eq("user_id", actorId)
     .lte("starts_at", now)
@@ -417,18 +415,32 @@ async function isTenantAdministrator(
     .limit(50);
   if (assignmentError) return "error";
 
-  const allowed = (assignments ?? []).some((assignment: any) => {
-    const role = assignment.roles as
-      | { name?: string; scope?: string; active?: boolean }
-      | Array<{ name?: string; scope?: string; active?: boolean }>
-      | null;
-    const candidate = Array.isArray(role) ? role[0] : role;
-    return (
-      candidate?.name === "Tenant administrator" &&
-      candidate.scope === "tenant" &&
-      candidate.active === true
-    );
-  });
+  const roleIds = [
+    ...new Set(
+      (assignments ?? [])
+        .map((assignment: any) => assignment.role_id)
+        .filter((roleId: unknown): roleId is string => isUuid(roleId)),
+    ),
+  ];
+  if (roleIds.length === 0) return "forbidden";
+
+  // Resolve roles in a second, explicitly tenant-scoped query. This avoids
+  // relying on an embedded composite-FK relationship in the access-critical
+  // request path and keeps the result unambiguous for all PostgREST versions.
+  const { data: roles, error: roleError } = await admin
+    .from("roles")
+    .select("name, scope, active")
+    .eq("tenant_id", tenantId)
+    .in("id", roleIds)
+    .limit(roleIds.length);
+  if (roleError) return "error";
+
+  const allowed = (roles ?? []).some(
+    (role: any) =>
+      role?.name === "Tenant administrator" &&
+      role.scope === "tenant" &&
+      role.active === true,
+  );
   return allowed ? "allowed" : "forbidden";
 }
 
