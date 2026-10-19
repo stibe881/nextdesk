@@ -725,6 +725,17 @@ begin
     raise exception 'Tenant settings update was not persisted';
   end if;
 
+  update public.tenant_settings
+  set portal_name = null
+  where tenant_id = tenant_c_id;
+  if exists (
+    select 1 from public.tenant_settings
+    where tenant_id = tenant_c_id
+      and portal_name is not null
+  ) then
+    raise exception 'An explicitly removed portal name was not persisted as null';
+  end if;
+
   team_id := public.create_tenant_team(
     '00000000-0000-4000-8000-000000000004',
     tenant_c_id,

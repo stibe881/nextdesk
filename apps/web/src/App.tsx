@@ -187,9 +187,10 @@ type TenantFeatureFlag = {
 type TenantWorkspaceBranding = {
   accentColor: string | null;
   logoUrl: string | null;
-  portalName: string;
+  portalName: string | null;
   primaryColor: string | null;
   secondaryColor: string | null;
+  tenantId: string;
 };
 
 const sections: readonly { label: Section; Icon: LucideIcon }[] = [
@@ -1524,11 +1525,12 @@ export function App() {
         setTenantWorkspaceBranding({
           accentColor: usableBrandColor(brandingResult.data?.accent_color),
           logoUrl: usableTenantLogoUrl(brandingResult.data?.logo_path),
-          portalName: portalName || activeTenant.name,
+          portalName: portalName || null,
           primaryColor: usableBrandColor(brandingResult.data?.primary_color),
           secondaryColor: usableBrandColor(
             brandingResult.data?.secondary_color,
           ),
+          tenantId: activeTenant.id,
         });
       })
       .catch(() => {
@@ -1536,9 +1538,10 @@ export function App() {
         setTenantWorkspaceBranding({
           accentColor: null,
           logoUrl: null,
-          portalName: activeTenant.name,
+          portalName: null,
           primaryColor: null,
           secondaryColor: null,
+          tenantId: activeTenant.id,
         });
       });
 
@@ -2480,17 +2483,23 @@ export function App() {
   ]
     .filter(Boolean)
     .join(" ");
-  const workspaceBrandName =
-    tenantWorkspaceBranding?.portalName ??
-    activeTenant?.name ??
-    productDefaults.productName;
+  const activeWorkspaceBranding =
+    tenantWorkspaceBranding?.tenantId === activeTenant?.id
+      ? tenantWorkspaceBranding
+      : null;
+  const workspaceBrandName = activeWorkspaceBranding
+    ? activeWorkspaceBranding.portalName
+    : productDefaults.productName;
+  const workspaceBrandLogoAlt = workspaceBrandName
+    ? `${workspaceBrandName} Logo`
+    : "Portal-Logo";
   const workspaceBrandLogo =
-    tenantWorkspaceBranding?.logoUrl ?? "/assets/nextdesk-logo-product.png";
+    activeWorkspaceBranding?.logoUrl ?? "/assets/nextdesk-logo-product.png";
   const workspaceBrandStyle = {
-    "--brand-accent": tenantWorkspaceBranding?.accentColor ?? "#075985",
-    "--brand-primary": tenantWorkspaceBranding?.primaryColor ?? "#4338CA",
+    "--brand-accent": activeWorkspaceBranding?.accentColor ?? "#075985",
+    "--brand-primary": activeWorkspaceBranding?.primaryColor ?? "#4338CA",
     "--brand-primary-hover":
-      tenantWorkspaceBranding?.secondaryColor ?? "#3730A3",
+      activeWorkspaceBranding?.secondaryColor ?? "#3730A3",
   } as CSSProperties;
 
   const visibleSections = isTenantAdmin
@@ -2566,21 +2575,21 @@ export function App() {
       <aside className="command-rail" aria-label="Hauptnavigation">
         <div
           className={
-            tenantWorkspaceBranding?.logoUrl
+            activeWorkspaceBranding?.logoUrl
               ? "brand-lockup brand-lockup--tenant"
               : "brand-lockup"
           }
         >
           <img
-            alt={`${workspaceBrandName} Logo`}
+            alt={workspaceBrandLogoAlt}
             className={
-              tenantWorkspaceBranding?.logoUrl
+              activeWorkspaceBranding?.logoUrl
                 ? "brand-logo-mark brand-logo-mark--tenant"
                 : "brand-logo-mark"
             }
             src={workspaceBrandLogo}
           />
-          <span>{workspaceBrandName}</span>
+          {workspaceBrandName ? <span>{workspaceBrandName}</span> : null}
         </div>
         <div className="navigation-cluster">
           <p className="navigation-label">ARBEITSBEREICH</p>

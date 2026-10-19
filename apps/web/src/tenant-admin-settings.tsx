@@ -702,7 +702,7 @@ function CorporateDesignPreview({
     "--design-preview-primary": primaryColor,
     "--design-preview-secondary": secondaryColor,
   } as CSSProperties;
-  const portalName = form.portalName.trim() || "Ihr Portal";
+  const portalName = form.portalName.trim() || null;
   const previewNavigation = [
     { Icon: LayoutDashboard, label: "Übersicht" },
     { Icon: Ticket, label: "Tickets" },
@@ -735,7 +735,7 @@ function CorporateDesignPreview({
         <aside className="tenant-branding-preview__rail">
           <div className="tenant-branding-preview__brand">
             {logoUrl ? (
-              <img alt={`${portalName} Logo`} src={logoUrl} />
+              <img alt={`${portalName ?? "Portal"} Logo`} src={logoUrl} />
             ) : (
               <span
                 aria-label="Noch kein Portal-Logo ausgewählt"
@@ -744,7 +744,7 @@ function CorporateDesignPreview({
                 ND
               </span>
             )}
-            <strong>{portalName}</strong>
+            {portalName ? <strong>{portalName}</strong> : null}
           </div>
           <p>ARBEITSBEREICH</p>
           <nav aria-label="Vorschau der Portalnavigation">
@@ -1484,12 +1484,12 @@ export function TenantAdminSettings({
       });
       await loadData();
       onBrandingUpdated?.();
-      setSuccess("Corporate Design und Portalname wurden gespeichert.");
+      setSuccess("Corporate Design wurde gespeichert.");
     } catch (nextError) {
       setError(
         messageFromError(
           nextError,
-          "Corporate Design und Portalname konnten nicht gespeichert werden.",
+          "Corporate Design konnte nicht gespeichert werden.",
         ),
       );
     } finally {
@@ -2298,7 +2298,7 @@ export function TenantAdminSettings({
                       type="text"
                       value={brandingForm.portalName}
                       maxLength={160}
-                      placeholder="Automatisch: Mandantenname oder nextDesk"
+                      placeholder="Leer lassen: keine Portalbezeichnung"
                       disabled={saving !== null}
                       onChange={(event) =>
                         setBrandingForm((current) => ({
@@ -2307,6 +2307,10 @@ export function TenantAdminSettings({
                         }))
                       }
                     />
+                    <span className="tenant-admin-settings__hint">
+                      Wird das Feld leer gespeichert, bleibt im Arbeitsbereich
+                      nur das Logo sichtbar.
+                    </span>
                   </label>
                   <div className="tenant-logo-upload">
                     <div>
