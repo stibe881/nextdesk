@@ -1,5 +1,7 @@
 # Liefer-Backlog
 
+- [x] **Pilot-Steuerung aus der Funktionenverwaltung entfernen.** Unter Einstellungen → Funktionen werden weder «Pilot bis»-Datumsfelder noch Hinweise zum automatischen Ausblenden oder der Status «Pilot abgelaufen» angezeigt. Funktionsschalter und bestehende, dauerhaft aktive Konfigurationen bleiben unverändert bedienbar; sichtbare Status lauten nur noch «Aktiviert», «Wird gespeichert …» oder «Deaktiviert».
+
 - [x] **Optionale Portalbezeichnung korrekt ausblenden.** Löscht eine Mandantenadministration den optionalen Portalnamen und speichert, darf im Arbeitsbereich, in der Corporate-Design-Vorschau oder im Einrichtungsstatus keine Ersatzbezeichnung aus Mandantenname oder `nextDesk` erscheinen. Das Portal-Logo bleibt sichtbar, die Alternativbeschreibung bleibt zugänglich und ein leerer Portalname bleibt serverseitig als bewusster leerer Wert gespeichert.
 
 - [x] **Ticketakte als hochwertige PDF neu gestalten.** Die PDF-Ticketakte soll modern, übersichtlich und druckoptimiert sein: klare Kopfzeile mit Ticketnummer, Titel und Status; lesbarer Faktenblock für Status, Priorität, Abteilung, anfragende Person, Bearbeitung und Erstellzeitpunkt; eigenständige, gut gegliederte Bereiche für Beschreibung und Checkliste; eine semantisch markierte Kommunikationschronik, welche interne Notizen und externe Antworten visuell klar unterscheidet; zurückhaltende, statusbezogene Farbakzente und stabile A4-Seitenumbrüche. Die bestehende Berechtigungsprüfung, der Audit-Eintrag und die serverseitig gefilterte Inhaltssichtbarkeit bleiben unverändert.

@@ -1660,38 +1660,6 @@ export function TenantAdminSettings({
     }
   }
 
-  async function setFeaturePilot(feature: TenantFeature, value: string) {
-    const target: SaveTarget = `feature:${feature.feature_key}`;
-    beginSave(target);
-    try {
-      await tenantAdminRequest<{ updated: boolean }>({
-        type: "setFeaturePilot",
-        tenantId,
-        featureKey: feature.feature_key,
-        pilotEndDate: value || null,
-      });
-      await loadData();
-      onFeaturesUpdated?.();
-      setSuccess(
-        value
-          ? `Der Pilot für „${feature.feature_key}“ endet am ${new Intl.DateTimeFormat(
-              "de-CH",
-              { dateStyle: "medium" },
-            ).format(new Date(`${value}T12:00:00`))}.`
-          : `Der Pilotzeitraum für „${feature.feature_key}“ wurde entfernt.`,
-      );
-    } catch (nextError) {
-      setError(
-        messageFromError(
-          nextError,
-          "Der Pilotzeitraum konnte nicht gespeichert werden.",
-        ),
-      );
-    } finally {
-      setSaving(null);
-    }
-  }
-
   async function inviteUser(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const email = invitationEmail.trim().toLowerCase();
@@ -2671,29 +2639,6 @@ export function TenantAdminSettings({
                             <span className="tenant-admin-settings__feature-key">
                               {feature.feature_key}
                             </span>
-                            <label className="tenant-admin-settings__pilot-date">
-                              <span>Pilot bis</span>
-                              <input
-                                aria-label={`Pilotende für ${catalog?.name || feature.feature_key}`}
-                                disabled={saving !== null}
-                                min={new Date().toISOString().slice(0, 10)}
-                                onChange={(event) =>
-                                  void setFeaturePilot(
-                                    feature,
-                                    event.target.value,
-                                  )
-                                }
-                                type="date"
-                                value={
-                                  feature.pilot_ends_at?.slice(0, 10) ?? ""
-                                }
-                              />
-                            </label>
-                            <span className="tenant-admin-settings__pilot-hint">
-                              Leer lassen für einen unbefristeten Einsatz. Nach
-                              dem Enddatum wird das Modul automatisch
-                              ausgeblendet.
-                            </span>
                             {feature.feature_key === "notifications.push" ? (
                               <section
                                 aria-labelledby="push-settings-heading"
@@ -2969,9 +2914,7 @@ export function TenantAdminSettings({
                                 ? "Wird gespeichert …"
                                 : isTenantFeatureActive(feature)
                                   ? "Aktiviert"
-                                  : feature.enabled
-                                    ? "Pilot abgelaufen"
-                                    : "Deaktiviert"}
+                                  : "Deaktiviert"}
                             </span>
                           </label>
                         </li>
