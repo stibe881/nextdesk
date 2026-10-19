@@ -73,6 +73,7 @@ const expectedFiles = [
   "0068_delegated_exchange_mail_connections.sql",
   "0069_optional_portal_name.sql",
   "0071_exchange_mail_private_storage_rpc.sql",
+  "0072_delegated_mailbox_address_drafts.sql",
 ];
 
 const availableFiles = await readdir(migrationDirectory);

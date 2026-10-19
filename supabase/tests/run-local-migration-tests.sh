@@ -1959,6 +1959,42 @@ update public.tickets
 set exchange_mail_channel_id = '1c000000-0000-4000-8000-000000000003'
 where id = '17000000-0000-4000-8000-000000000001';
 
+-- Saving a delegated mailbox draft must not require Entra directory-profile
+-- access for that mailbox. The explicit verification step later proves actual
+-- mailbox, read and send access through the connector's Exchange delegation.
+insert into public.exchange_mail_channels (
+  id, tenant_id, entra_tenant_id, connection_id, access_mode, mailbox_address,
+  mailbox_object_id, default_department_id, send_agent_replies, send_resolution,
+  status, created_by, updated_by
+) values (
+  '1c000000-0000-4000-8000-000000000004',
+  '10000000-0000-4000-8000-000000000001',
+  '1d000000-0000-4000-8000-000000000003',
+  '1e000000-0000-4000-8000-000000000003',
+  'delegated',
+  'draft-support@tenant-a.example',
+  null,
+  '11000000-0000-4000-8000-000000000001',
+  false, false, 'draft',
+  '00000000-0000-4000-8000-000000000002',
+  '00000000-0000-4000-8000-000000000002'
+);
+do $$
+begin
+  if not exists (
+    select 1
+    from public.exchange_mail_channels
+    where id = '1c000000-0000-4000-8000-000000000004'
+      and access_mode = 'delegated'
+      and connection_id is not null
+      and mailbox_object_id is null
+      and status = 'draft'
+  ) then
+    raise exception 'Delegated address-only mailbox draft was not accepted';
+  end if;
+end;
+$$;
+
 -- Exactly one external portal response from a tenant agent queues exactly one
 -- agent reply. Internal notes, customer responses and a paused channel queue none.
 insert into public.ticket_comments (ticket_id, author_id, visibility, body)
