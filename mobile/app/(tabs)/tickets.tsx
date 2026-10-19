@@ -683,11 +683,13 @@ function SwipeableTicketRow({
           ]}
         >
           <Ionicons
-            color={colors.onPrimary}
+            color={colors.onWarningStrong}
             name={favorite ? "star-outline" : "star"}
             size={20}
           />
-          <Text style={[styles.swipeActionText, { color: colors.onPrimary }]}>
+          <Text
+            style={[styles.swipeActionText, { color: colors.onWarningStrong }]}
+          >
             {favorite ? "Entfernen" : "Favorit"}
           </Text>
         </Pressable>

@@ -15,7 +15,7 @@
  *   primarySoftBorder: chips, icon wells and selected rows.
  * - info / success / warning / error: status text and icons on surfaces;
  *   *Soft: status backgrounds; *Border: status outlines; warningStrong: filled
- *   internal-note buttons with onPrimary content.
+ *   internal-note buttons with onWarningStrong content.
  */
 /** @type {const} */
 const themeColors = {
@@ -42,6 +42,7 @@ const themeColors = {
   warningSoft: { light: "#FFF4DB", dark: "#33260C" },
   warningBorder: { light: "#F0D59E", dark: "#5E4618" },
   warningStrong: { light: "#9A6812", dark: "#8F6114" },
+  onWarningStrong: { light: "#FFFFFF", dark: "#FFFFFF" },
   error: { light: "#B42318", dark: "#FF9B91" },
   errorSoft: { light: "#FFF1F0", dark: "#3A1716" },
   errorBorder: { light: "#F1CCC7", dark: "#6A2A27" },

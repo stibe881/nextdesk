@@ -1000,6 +1000,25 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
           .eq("id", ticket.requester_contact_id)
           .maybeSingle()
       : Promise.resolve({ data: null });
+    const storedTicketCategoryIds = [
+      ticket.category_id,
+      ticket.subcategory_id,
+    ].filter(isUuid);
+    const ticketCategoriesPromise = context.supabaseAdmin
+      .from("ticket_categories")
+      .select("id, name, parent_id, active")
+      .eq("tenant_id", ticket.tenant_id)
+      .eq("department_id", ticket.department_id)
+      .eq("active", true)
+      .order("name");
+    const storedTicketCategoriesPromise = storedTicketCategoryIds.length
+      ? context.supabaseAdmin
+          .from("ticket_categories")
+          .select("id, name, parent_id, active")
+          .eq("tenant_id", ticket.tenant_id)
+          .eq("department_id", ticket.department_id)
+          .in("id", storedTicketCategoryIds)
+      : Promise.resolve({ data: [] });
     const [
       { data: comments },
       { data: events },
@@ -1015,6 +1034,8 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       { data: columnRelatedTickets },
       { data: similarCandidates },
       { data: requesterContactRow },
+      { data: categories },
+      { data: storedTicketCategories },
     ] = await Promise.all([
       context.supabaseAdmin
         .from("ticket_comments")
@@ -1113,12 +1134,21 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
             .limit(50)
         : Promise.resolve({ data: [] }),
       requesterContactPromise,
+      ticketCategoriesPromise,
+      storedTicketCategoriesPromise,
     ]);
     const filteredComments = internal
       ? (comments ?? [])
       : (comments ?? []).filter(
           (comment: any) => comment.visibility === "external",
         );
+    const ticketCategoryOptions = [
+      ...new Map(
+        [...(categories ?? []), ...(storedTicketCategories ?? [])]
+          .filter((category: any) => isUuid(category?.id))
+          .map((category: any) => [category.id, category]),
+      ).values(),
+    ];
     const authorIds = [
       ...new Set(
         filteredComments
@@ -1426,6 +1456,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         escalations: escalations ?? [],
         statuses: statuses ?? [],
         priorities: priorities ?? [],
+        categories: ticketCategoryOptions,
         teams: teams ?? [],
         watching: Boolean(watchers),
         checklistItems: checklistItems ?? [],

@@ -26,6 +26,12 @@ export type MobileTicket = {
 
 type Department = { id: string; key: string; name: string; kind: string };
 type Priority = { key: string; label: string; sort_order: number };
+export type MobileTicketCategory = {
+  active: boolean;
+  id: string;
+  name: string;
+  parentId: string | null;
+};
 export type TicketRequester = {
   id: string;
   displayName: string;
@@ -60,6 +66,9 @@ export type TicketFormOptions = {
 };
 
 export type MobileTicketDetail = {
+  categoryId: string | null;
+  categoryOptions: MobileTicketCategory[];
+  departmentId: string;
   id: string;
   ticketNumber: string;
   subject: string;
@@ -68,6 +77,7 @@ export type MobileTicketDetail = {
   requesterName: string | null;
   requesterContact: TicketRequester | null;
   resolvedAt: string | null;
+  subcategoryId: string | null;
   statusId: string;
   priorityId: string;
   statusOptions: {
@@ -200,6 +210,31 @@ function ticketDraft(value: unknown): MobileTicketDraft | null {
     body: record.body,
     updatedAt: record.updated_at,
     visibility: record.visibility,
+  };
+}
+
+function ticketCategory(value: unknown): MobileTicketCategory | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return null;
+  }
+  const record = value as Record<string, unknown>;
+  if (
+    typeof record.id !== "string" ||
+    !record.id ||
+    typeof record.name !== "string" ||
+    !record.name.trim() ||
+    (record.parent_id !== null && typeof record.parent_id !== "string")
+  ) {
+    return null;
+  }
+  return {
+    // Older server revisions omitted this property. Treat that response as an
+    // active category so an already installed app remains compatible during a
+    // rolling Edge-Function deployment.
+    active: record.active !== false,
+    id: record.id,
+    name: record.name.trim(),
+    parentId: typeof record.parent_id === "string" ? record.parent_id : null,
   };
 }
 
@@ -520,10 +555,15 @@ export async function loadMobileTicketDetail(
     typeof record.ticket_number !== "string" ||
     typeof record.subject !== "string" ||
     typeof record.description !== "string" ||
+    typeof record.department_id !== "string" ||
     typeof record.status_id !== "string" ||
     typeof record.priority_id !== "string" ||
+    (record.category_id !== null && typeof record.category_id !== "string") ||
+    (record.subcategory_id !== null &&
+      typeof record.subcategory_id !== "string") ||
     !Array.isArray(data.statuses) ||
     !Array.isArray(data.priorities) ||
+    !Array.isArray(data.categories) ||
     !Array.isArray(data.comments) ||
     !Array.isArray(data.drafts)
   ) {
@@ -531,17 +571,25 @@ export async function loadMobileTicketDetail(
   }
   const comments = data.comments.map(ticketComment);
   const drafts = data.drafts.map(ticketDraft);
+  const categoryOptions = data.categories.map(ticketCategory);
   if (
     !comments.every(
       (comment): comment is MobileTicketComment => comment !== null,
     ) ||
-    !drafts.every((draft): draft is MobileTicketDraft => draft !== null)
+    !drafts.every((draft): draft is MobileTicketDraft => draft !== null) ||
+    !categoryOptions.every(
+      (category): category is MobileTicketCategory => category !== null,
+    )
   ) {
     throw new Error(
       "Die Ticketkommunikation oder Entwürfe sind unvollständig.",
     );
   }
   return {
+    categoryId:
+      typeof record.category_id === "string" ? record.category_id : null,
+    categoryOptions,
+    departmentId: record.department_id,
     id: record.id,
     ticketNumber: record.ticket_number,
     subject: record.subject,
@@ -552,6 +600,8 @@ export async function loadMobileTicketDetail(
     requesterContact,
     resolvedAt:
       typeof record.resolved_at === "string" ? record.resolved_at : null,
+    subcategoryId:
+      typeof record.subcategory_id === "string" ? record.subcategory_id : null,
     statusId: record.status_id,
     priorityId: record.priority_id,
     statusOptions: data.statuses as MobileTicketDetail["statusOptions"],
@@ -587,6 +637,20 @@ export async function updateMobileTicket(input: {
     ...(input.requesterContactId
       ? { requesterContactId: input.requesterContactId }
       : {}),
+  });
+}
+
+export async function updateMobileTicketCategory(input: {
+  categoryId: string | null;
+  subcategoryId: string | null;
+  tenantId: string;
+  ticketId: string;
+}): Promise<void> {
+  await invokeNextDesk<unknown>("ticket-category-selection", {
+    categoryId: input.categoryId,
+    subcategoryId: input.subcategoryId,
+    tenantId: input.tenantId,
+    ticketId: input.ticketId,
   });
 }
 

@@ -24,6 +24,7 @@ import type { EdgeInsets, Metrics, Rect } from "react-native-safe-area-context";
 import { trpc, createTRPCClient } from "@/lib/trpc";
 import { DeviceProtection } from "@/components/device-protection";
 import { MobileFeatureProvider } from "@/components/mobile-feature-gate";
+import { TenantBrandingBridge } from "@/components/tenant-branding-bridge";
 import { TenantBoundRouteStack } from "@/components/tenant-bound-route-stack";
 import {
   MobileNetworkStatusProvider,
@@ -209,13 +210,15 @@ export default function RootLayout() {
         <QueryClientProvider client={queryClient}>
           <MobileNetworkStatusProvider>
             <MobileFeatureProvider>
-              <TenantBoundRouteStack />
-              <NextDeskAuthDeepLinkHandler />
-              <NextDeskSessionNavigator />
-              <PushNotificationBridge />
-              <OfflineStatus />
-              <DeviceProtection />
-              <ThemedStatusBar />
+              <TenantBrandingBridge>
+                <TenantBoundRouteStack />
+                <NextDeskAuthDeepLinkHandler />
+                <NextDeskSessionNavigator />
+                <PushNotificationBridge />
+                <OfflineStatus />
+                <DeviceProtection />
+                <ThemedStatusBar />
+              </TenantBrandingBridge>
             </MobileFeatureProvider>
           </MobileNetworkStatusProvider>
         </QueryClientProvider>

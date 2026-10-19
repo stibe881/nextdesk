@@ -22,6 +22,7 @@ export const themeColors: {
   warningSoft: { light: string; dark: string };
   warningBorder: { light: string; dark: string };
   warningStrong: { light: string; dark: string };
+  onWarningStrong: { light: string; dark: string };
   error: { light: string; dark: string };
   errorSoft: { light: string; dark: string };
   errorBorder: { light: string; dark: string };

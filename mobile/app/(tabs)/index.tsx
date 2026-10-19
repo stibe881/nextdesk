@@ -360,7 +360,16 @@ export default function HomeScreen() {
     brandingTenant.current = id;
     // Web-Einstellungen sind massgebend: Bis sie neu bestätigt sind, wird
     // kein möglicherweise veraltetes eigenes Branding angezeigt.
-    setBranding({ tenantId: id, value: { logoUrl: null, portalName: null } });
+    setBranding({
+      tenantId: id,
+      value: {
+        accentColor: null,
+        logoUrl: null,
+        portalName: null,
+        primaryColor: null,
+        secondaryColor: null,
+      },
+    });
     try {
       const value = await loadTenantBranding(id);
       if (stillCurrent()) setBranding({ tenantId: id, value });
@@ -370,20 +379,27 @@ export default function HomeScreen() {
       if (stillCurrent())
         setBranding({
           tenantId: id,
-          value: { logoUrl: null, portalName: null },
+          value: {
+            accentColor: null,
+            logoUrl: null,
+            portalName: null,
+            primaryColor: null,
+            secondaryColor: null,
+          },
         });
     }
   }, []);
 
   useFocusEffect(
     useCallback(() => {
+      void recoveryEpoch;
       if (!brandingTenantId) {
         brandingRequest.current += 1;
         brandingTenant.current = null;
         return;
       }
       void loadBranding(brandingTenantId);
-    }, [brandingTenantId, loadBranding]),
+    }, [brandingTenantId, loadBranding, recoveryEpoch]),
   );
 
   const activeBranding =

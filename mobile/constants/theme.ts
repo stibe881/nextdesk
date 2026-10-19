@@ -8,5 +8,6 @@ export {
   SchemeColors,
   ThemeColors,
   type ColorScheme,
+  type SchemeColorPalette,
   type ThemeColorPalette,
 } from "@/lib/_core/theme";

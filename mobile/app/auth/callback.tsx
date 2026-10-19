@@ -1,14 +1,9 @@
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
-import {
-  ActivityIndicator,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { ActivityIndicator, Pressable, Text, View } from "react-native";
 
 import { ScreenContainer } from "@/components/screen-container";
+import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
 import {
   completeNextDeskAuth,
   nextDeskAuthFailureCode,
@@ -19,6 +14,8 @@ const WEB_SSO_CALLBACK_MESSAGE = "nextdesk.sso.callback";
 
 export default function AuthCallbackScreen() {
   const router = useRouter();
+  const colors = useAppColors();
+  const styles = useStyles();
   const [failed, setFailed] = useState(false);
   const [message, setMessage] = useState("Anmeldung wird abgeschlossen …");
 
@@ -54,7 +51,7 @@ export default function AuthCallbackScreen() {
   }, [router]);
 
   return (
-    <ScreenContainer containerClassName="bg-[#F6F7FB]" className="px-5">
+    <ScreenContainer className="px-5">
       <View style={styles.content}>
         {failed ? (
           <Pressable
@@ -65,7 +62,7 @@ export default function AuthCallbackScreen() {
             <Text style={styles.backButtonText}>Zur Anmeldung</Text>
           </Pressable>
         ) : (
-          <ActivityIndicator color="#4438CA" size="large" />
+          <ActivityIndicator color={colors.primary} size="large" />
         )}
         <Text style={styles.message}>{message}</Text>
       </View>
@@ -73,19 +70,19 @@ export default function AuthCallbackScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeThemedStyles((c) => ({
   content: { alignItems: "center", flex: 1, gap: 16, justifyContent: "center" },
   message: {
-    color: "#4B4C60",
+    color: c.text,
     fontSize: 15,
     lineHeight: 23,
     textAlign: "center",
   },
   backButton: {
-    backgroundColor: "#EEECFF",
+    backgroundColor: c.primarySoft,
     borderRadius: 14,
     paddingHorizontal: 16,
     paddingVertical: 12,
   },
-  backButtonText: { color: "#4438CA", fontSize: 14, fontWeight: "800" },
-});
+  backButtonText: { color: c.primaryText, fontSize: 14, fontWeight: "800" },
+}));

@@ -318,9 +318,20 @@ export function TicketConversation({
               ]}
             >
               {isSending ? (
-                <ActivityIndicator color={colors.onPrimary} size="small" />
+                <ActivityIndicator
+                  color={
+                    isInternalDraft ? colors.onWarningStrong : colors.onPrimary
+                  }
+                  size="small"
+                />
               ) : (
-                <Ionicons color={colors.onPrimary} name="send" size={18} />
+                <Ionicons
+                  color={
+                    isInternalDraft ? colors.onWarningStrong : colors.onPrimary
+                  }
+                  name="send"
+                  size={18}
+                />
               )}
             </Pressable>
           </View>

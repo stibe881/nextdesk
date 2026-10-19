@@ -39,7 +39,7 @@ const textPairs: [string, string][] = [
   ["primaryText", "background"],
   ["primaryText", "primarySoft"],
   ["onPrimary", "primary"],
-  ["onPrimary", "warningStrong"],
+  ["onWarningStrong", "warningStrong"],
   ["info", "infoSoft"],
   ["info", "surface"],
   ["success", "successSoft"],

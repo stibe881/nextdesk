@@ -6,17 +6,19 @@ import {
 } from "react-native";
 import {
   createContext,
+  type PropsWithChildren,
   useCallback,
   useContext,
   useEffect,
   useMemo,
-  useRef,
   useState,
 } from "react";
 import { colorScheme as nativewindColorScheme, vars } from "nativewind";
 
-import { SchemeColors, type ColorScheme } from "@/constants/theme";
+import { type ColorScheme, type SchemeColorPalette } from "@/constants/theme";
 import { mobileSecureStorage } from "@/lib/mobile-secure-storage";
+import type { TenantBrandColors } from "@/lib/tenant-branding";
+import { resolveTenantPalette } from "@/lib/tenant-theme";
 
 export type ThemePreference = "system" | ColorScheme;
 export type MotionPreference = "system" | "reduced";
@@ -28,17 +30,30 @@ type StoredPreferences = {
   theme: ThemePreference;
 };
 
+type TenantBrandingBinding = {
+  colors: TenantBrandColors;
+  tenantId: string;
+};
+
+type TenantBrandingScopeValue = {
+  checkingWorkspace: boolean;
+  tenantId: string | null;
+};
+
 type ThemeContextValue = {
   colorScheme: ColorScheme;
-  colors: (typeof SchemeColors)[ColorScheme];
+  colors: SchemeColorPalette;
   density: DensityPreference;
+  getColorsForScheme: (scheme: ColorScheme) => SchemeColorPalette;
   motionPreference: MotionPreference;
   preferencesReady: boolean;
   reducedMotion: boolean;
   setColorScheme: (scheme: ColorScheme) => void;
   setDensity: (density: DensityPreference) => void;
   setMotionPreference: (preference: MotionPreference) => void;
+  setTenantBrandColors: (binding: TenantBrandingBinding | null) => void;
   setThemePreference: (preference: ThemePreference) => void;
+  tenantBrandTenantId: string | null;
   themePreference: ThemePreference;
 };
 
@@ -53,6 +68,8 @@ const DEFAULT_PREFERENCES: StoredPreferences = {
   theme: "light",
 };
 const ThemeContext = createContext<ThemeContextValue | null>(null);
+const TenantBrandingScopeContext =
+  createContext<TenantBrandingScopeValue | null>(null);
 
 function parsePreferences(
   value: string | null,
@@ -82,34 +99,34 @@ function parsePreferences(
  */
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const systemScheme = useSystemColorScheme() === "dark" ? "dark" : "light";
-  const [themePreference, setThemePreferenceState] =
-    useState<ThemePreference>("light");
-  const [motionPreference, setMotionPreferenceState] =
-    useState<MotionPreference>("system");
-  const [density, setDensityState] = useState<DensityPreference>("comfortable");
+  const [preferences, setPreferences] =
+    useState<StoredPreferences>(DEFAULT_PREFERENCES);
   const [systemReducedMotion, setSystemReducedMotion] = useState(false);
   const [preferencesReady, setPreferencesReady] = useState(false);
-  const preferencesRef = useRef<StoredPreferences>(DEFAULT_PREFERENCES);
+  const [tenantBranding, setTenantBranding] =
+    useState<TenantBrandingBinding | null>(null);
+  const {
+    density,
+    motion: motionPreference,
+    theme: themePreference,
+  } = preferences;
 
   const colorScheme: ColorScheme =
     themePreference === "system" ? systemScheme : themePreference;
   const reducedMotion = motionPreference === "reduced" || systemReducedMotion;
-
-  const persist = useCallback((next: StoredPreferences) => {
-    preferencesRef.current = next;
-    void mobileSecureStorage
-      .setItem(THEME_PREFERENCES_KEY, JSON.stringify(next))
-      // A presentation preference must never interrupt an authenticated session.
-      .catch(() => undefined);
-  }, []);
-
-  const setThemePreference = useCallback(
-    (theme: ThemePreference) => {
-      setThemePreferenceState(theme);
-      persist({ ...preferencesRef.current, theme });
-    },
-    [persist],
+  const tenantBrandColors = tenantBranding?.colors ?? null;
+  const getColorsForScheme = useCallback(
+    (scheme: ColorScheme) => resolveTenantPalette(scheme, tenantBrandColors),
+    [tenantBrandColors],
   );
+  const colors = useMemo(
+    () => getColorsForScheme(colorScheme),
+    [colorScheme, getColorsForScheme],
+  );
+
+  const setThemePreference = useCallback((theme: ThemePreference) => {
+    setPreferences((current) => ({ ...current, theme }));
+  }, []);
 
   // Kept for existing consumers that intentionally choose an explicit scheme.
   const setColorScheme = useCallback(
@@ -117,35 +134,45 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     [setThemePreference],
   );
 
-  const setMotionPreference = useCallback(
-    (motion: MotionPreference) => {
-      setMotionPreferenceState(motion);
-      persist({ ...preferencesRef.current, motion });
-    },
-    [persist],
-  );
-
-  const setDensity = useCallback(
-    (nextDensity: DensityPreference) => {
-      setDensityState(nextDensity);
-      persist({ ...preferencesRef.current, density: nextDensity });
-    },
-    [persist],
-  );
-
-  const applyScheme = useCallback((scheme: ColorScheme) => {
-    nativewindColorScheme.set(scheme);
-    Appearance.setColorScheme?.(scheme);
-    if (typeof document !== "undefined") {
-      const root = document.documentElement;
-      root.dataset.theme = scheme;
-      root.classList.toggle("dark", scheme === "dark");
-      const palette = SchemeColors[scheme];
-      Object.entries(palette).forEach(([token, value]) => {
-        root.style.setProperty(`--color-${token}`, value);
-      });
-    }
+  const setMotionPreference = useCallback((motion: MotionPreference) => {
+    setPreferences((current) => ({ ...current, motion }));
   }, []);
+
+  const setDensity = useCallback((nextDensity: DensityPreference) => {
+    setPreferences((current) => ({ ...current, density: nextDensity }));
+  }, []);
+
+  const setTenantBrandColors = useCallback(
+    (nextBranding: TenantBrandingBinding | null) => {
+      setTenantBranding(nextBranding);
+    },
+    [],
+  );
+
+  const applyScheme = useCallback(
+    (
+      preference: ThemePreference,
+      scheme: ColorScheme,
+      palette: SchemeColorPalette,
+    ) => {
+      nativewindColorScheme.set(scheme);
+      // `unspecified` removes iOS' explicit UI override. Keeping an override
+      // here would make useColorScheme read the app's own setting instead of
+      // the device setting after a person selects «Wie iPhone».
+      Appearance.setColorScheme?.(
+        preference === "system" ? "unspecified" : scheme,
+      );
+      if (typeof document !== "undefined") {
+        const root = document.documentElement;
+        root.dataset.theme = scheme;
+        root.classList.toggle("dark", scheme === "dark");
+        Object.entries(palette).forEach(([token, value]) => {
+          root.style.setProperty(`--color-${token}`, value);
+        });
+      }
+    },
+    [],
+  );
 
   useEffect(() => {
     let active = true;
@@ -162,10 +189,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
         stored !== null
           ? parsePreferences(stored)
           : parsePreferences(legacy, true);
-      preferencesRef.current = preferences;
-      setThemePreferenceState(preferences.theme);
-      setMotionPreferenceState(preferences.motion);
-      setDensityState(preferences.density);
+      setPreferences(preferences);
       setSystemReducedMotion(reduced);
       setPreferencesReady(true);
     })();
@@ -181,46 +205,61 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    applyScheme(colorScheme);
-  }, [applyScheme, colorScheme]);
+    if (!preferencesReady) return;
+    void mobileSecureStorage
+      .setItem(THEME_PREFERENCES_KEY, JSON.stringify(preferences))
+      // A presentation preference must never interrupt an authenticated session.
+      .catch(() => undefined);
+  }, [preferences, preferencesReady]);
+
+  useEffect(() => {
+    applyScheme(themePreference, colorScheme, colors);
+  }, [applyScheme, colorScheme, colors, themePreference]);
 
   const themeVariables = useMemo(
     () =>
       vars(
         Object.fromEntries(
-          Object.entries(SchemeColors[colorScheme]).map(([token, value]) => [
+          Object.entries(colors).map(([token, value]) => [
             `color-${token}`,
             value,
           ]),
         ),
       ),
-    [colorScheme],
+    [colors],
   );
 
   const value = useMemo(
     () => ({
       colorScheme,
-      colors: SchemeColors[colorScheme],
+      colors,
       density,
+      getColorsForScheme,
       motionPreference,
       preferencesReady,
       reducedMotion,
       setColorScheme,
       setDensity,
       setMotionPreference,
+      setTenantBrandColors,
       setThemePreference,
+      tenantBrandTenantId: tenantBranding?.tenantId ?? null,
       themePreference,
     }),
     [
       colorScheme,
+      colors,
       density,
+      getColorsForScheme,
       motionPreference,
       preferencesReady,
       reducedMotion,
       setColorScheme,
       setDensity,
       setMotionPreference,
+      setTenantBrandColors,
       setThemePreference,
+      tenantBranding?.tenantId,
       themePreference,
     ],
   );
@@ -232,10 +271,49 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   );
 }
 
+/**
+ * Declares the workspace currently being validated. Descendants receive the
+ * default palette immediately until their colour binding has the same tenant.
+ */
+export function TenantBrandingScope({
+  checkingWorkspace,
+  children,
+  tenantId,
+}: PropsWithChildren<TenantBrandingScopeValue>) {
+  const value = useMemo(
+    () => ({ checkingWorkspace, tenantId }),
+    [checkingWorkspace, tenantId],
+  );
+  return (
+    <TenantBrandingScopeContext.Provider value={value}>
+      {children}
+    </TenantBrandingScopeContext.Provider>
+  );
+}
+
 export function useThemeContext(): ThemeContextValue {
   const ctx = useContext(ThemeContext);
+  const scope = useContext(TenantBrandingScopeContext);
+  const defaultGetColorsForScheme = useCallback(
+    (scheme: ColorScheme) => resolveTenantPalette(scheme, null),
+    [],
+  );
+  const defaultColors = useMemo(
+    () => defaultGetColorsForScheme(ctx?.colorScheme ?? "light"),
+    [ctx?.colorScheme, defaultGetColorsForScheme],
+  );
   if (!ctx) {
     throw new Error("useThemeContext must be used within ThemeProvider");
   }
-  return ctx;
+  const currentTenantBranding =
+    scope !== null &&
+    !scope.checkingWorkspace &&
+    Boolean(scope.tenantId) &&
+    scope.tenantId === ctx.tenantBrandTenantId;
+  if (!scope || currentTenantBranding) return ctx;
+  return {
+    ...ctx,
+    colors: defaultColors,
+    getColorsForScheme: defaultGetColorsForScheme,
+  };
 }

@@ -75,6 +75,7 @@ import {
   loadMobileTicketDetail,
   saveMobileTicketDraft,
   updateMobileTicket,
+  updateMobileTicketCategory,
   type MobileTicketDetail,
   type TicketRequester,
   type TicketCommentVisibility,
@@ -296,6 +297,13 @@ export default function TicketDetailScreen() {
   const [selection, setSelection] = useState<"status" | "priority" | null>(
     null,
   );
+  const [categorySheetOpen, setCategorySheetOpen] = useState(false);
+  const [categorySelectionStep, setCategorySelectionStep] = useState<
+    "category" | "subcategory"
+  >("category");
+  const [categoryDraftId, setCategoryDraftId] = useState<string | null>(null);
+  const [categoryError, setCategoryError] = useState("");
+  const [savingCategory, setSavingCategory] = useState(false);
   const [pendingCloseStatus, setPendingCloseStatus] = useState<{
     key: string;
     label: string;
@@ -495,6 +503,49 @@ export default function TicketDetailScreen() {
       ) ?? null,
     [ticket],
   );
+  const rootCategories = useMemo(
+    () =>
+      (ticket?.categoryOptions ?? []).filter(
+        (category) => category.active && category.parentId === null,
+      ),
+    [ticket?.categoryOptions],
+  );
+  const selectedCategory = useMemo(
+    () =>
+      (ticket?.categoryOptions ?? []).find(
+        (category) => category.id === ticket?.categoryId,
+      ) ?? null,
+    [ticket?.categoryId, ticket?.categoryOptions],
+  );
+  const selectedSubcategory = useMemo(
+    () =>
+      (ticket?.categoryOptions ?? []).find(
+        (category) => category.id === ticket?.subcategoryId,
+      ) ?? null,
+    [ticket?.subcategoryId, ticket?.categoryOptions],
+  );
+  const draftCategory = useMemo(
+    () =>
+      (ticket?.categoryOptions ?? []).find(
+        (category) => category.id === categoryDraftId,
+      ) ?? null,
+    [categoryDraftId, ticket?.categoryOptions],
+  );
+  const draftSubcategories = useMemo(
+    () =>
+      draftCategory
+        ? (ticket?.categoryOptions ?? []).filter(
+            (category) =>
+              category.active && category.parentId === draftCategory.id,
+          )
+        : [],
+    [draftCategory, ticket?.categoryOptions],
+  );
+  const categorySummary = selectedCategory
+    ? [selectedCategory.name, selectedSubcategory?.name]
+        .filter((value): value is string => Boolean(value))
+        .join(" · ")
+    : "Nicht zugewiesen";
   const canSetFollowUp = workspaceEnabled && workspaceAvailable;
   const canConfirmResolution =
     selfServiceEnabled &&
@@ -886,6 +937,72 @@ export default function TicketDetailScreen() {
       );
     } finally {
       setSaving(false);
+    }
+  }
+
+  function openCategorySelection() {
+    if (!ticket?.canUpdate || savingCategory) return;
+    setCategoryDraftId(ticket.categoryId);
+    setCategorySelectionStep("category");
+    setCategoryError("");
+    setCategorySheetOpen(true);
+    hapticSelection();
+  }
+
+  async function saveCategorySelection(
+    categoryId: string | null,
+    subcategoryId: string | null,
+  ) {
+    if (!ticket || !tenant) return;
+    const category = categoryId
+      ? (rootCategories.find((option) => option.id === categoryId) ?? null)
+      : null;
+    const subcategory = subcategoryId
+      ? (ticket.categoryOptions.find(
+          (option) =>
+            option.active &&
+            option.id === subcategoryId &&
+            option.parentId === categoryId,
+        ) ?? null)
+      : null;
+    if (
+      (categoryId !== null && !category) ||
+      (subcategoryId !== null && !subcategory)
+    ) {
+      setCategoryError("Bitte wählen Sie eine gültige Kategorie aus.");
+      return;
+    }
+
+    setSavingCategory(true);
+    setCategoryError("");
+    setError("");
+    setMessage("");
+    try {
+      await updateMobileTicketCategory({
+        categoryId,
+        subcategoryId,
+        tenantId: tenant.id,
+        ticketId: ticket.id,
+      });
+      setTicket((current) =>
+        current && current.id === ticket.id
+          ? { ...current, categoryId, subcategoryId }
+          : current,
+      );
+      setCategorySheetOpen(false);
+      setCategorySelectionStep("category");
+      setCategoryDraftId(categoryId);
+      setMessage("Kategorie wurde erfolgreich gespeichert.");
+      hapticSuccess();
+    } catch (nextError) {
+      hapticError();
+      setCategoryError(
+        nextError instanceof Error
+          ? nextError.message
+          : "Die Kategorie konnte nicht gespeichert werden.",
+      );
+    } finally {
+      setSavingCategory(false);
     }
   }
 
@@ -1566,6 +1683,38 @@ export default function TicketDetailScreen() {
                 </Text>
               </View>
               {ticket.canUpdate ? (
+                <Ionicons
+                  color={colors.primaryText}
+                  name="chevron-forward"
+                  size={18}
+                />
+              ) : null}
+            </Pressable>
+
+            <View style={styles.detailsDivider} />
+            <Pressable
+              accessibilityHint={
+                ticket.canUpdate
+                  ? "Antippen, um Kategorie und Unterkategorie zu ändern."
+                  : undefined
+              }
+              accessibilityLabel="Kategorie und Unterkategorie"
+              accessibilityRole={ticket.canUpdate ? "button" : undefined}
+              disabled={!ticket.canUpdate || savingCategory}
+              onPress={openCategorySelection}
+              style={styles.detailsValueRow}
+            >
+              <View style={styles.detailsValueCopy}>
+                <Text style={[styles.cardLabel, tokenStyles.muted]}>
+                  KATEGORIE
+                </Text>
+                <Text numberOfLines={2} style={styles.detailsValue}>
+                  {categorySummary}
+                </Text>
+              </View>
+              {savingCategory ? (
+                <ActivityIndicator color={colors.primaryText} size="small" />
+              ) : ticket.canUpdate ? (
                 <Ionicons
                   color={colors.primaryText}
                   name="chevron-forward"
@@ -3323,6 +3472,276 @@ export default function TicketDetailScreen() {
 
         <Modal
           animationType="slide"
+          onRequestClose={() => setCategorySheetOpen(false)}
+          transparent
+          visible={
+            categorySheetOpen && !checkingFeatures && Boolean(confirmedTenantId)
+          }
+        >
+          <View style={styles.selectionModalRoot}>
+            <Pressable
+              accessibilityLabel="Kategorieauswahl schliessen"
+              accessibilityRole="button"
+              disabled={savingCategory}
+              onPress={() => setCategorySheetOpen(false)}
+              style={StyleSheet.absoluteFill}
+            />
+            <View style={styles.selectionSheet}>
+              <View style={styles.selectionHeader}>
+                <View style={styles.categorySelectionHeading}>
+                  {categorySelectionStep === "subcategory" ? (
+                    <Pressable
+                      accessibilityLabel="Zurück zur Kategorieauswahl"
+                      accessibilityRole="button"
+                      disabled={savingCategory}
+                      hitSlop={8}
+                      onPress={() => {
+                        setCategorySelectionStep("category");
+                        setCategoryError("");
+                        hapticSelection();
+                      }}
+                      style={styles.categorySelectionBack}
+                    >
+                      <Ionicons
+                        color={colors.primaryText}
+                        name="arrow-back"
+                        size={18}
+                      />
+                    </Pressable>
+                  ) : null}
+                  <View>
+                    <Text style={styles.selectionEyebrow}>
+                      TICKET BEARBEITEN
+                    </Text>
+                    <Text style={styles.selectionTitle}>
+                      {categorySelectionStep === "category"
+                        ? "Kategorie wählen"
+                        : "Unterkategorie wählen"}
+                    </Text>
+                  </View>
+                </View>
+                <Pressable
+                  accessibilityLabel="Kategorieauswahl schliessen"
+                  accessibilityRole="button"
+                  disabled={savingCategory}
+                  onPress={() => setCategorySheetOpen(false)}
+                  style={styles.selectionClose}
+                >
+                  <Ionicons color={colors.primaryText} name="close" size={22} />
+                </Pressable>
+              </View>
+              <ScrollView
+                contentContainerStyle={styles.selectionOptions}
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+              >
+                {categorySelectionStep === "category" ? (
+                  <>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityState={{
+                        selected: ticket.categoryId === null,
+                      }}
+                      disabled={savingCategory}
+                      onPress={() => {
+                        hapticSelection();
+                        void saveCategorySelection(null, null);
+                      }}
+                      style={[
+                        styles.selectionOption,
+                        ticket.categoryId === null &&
+                          styles.selectionOptionActive,
+                      ]}
+                    >
+                      <View style={styles.categoryOptionCopy}>
+                        <Text
+                          style={[
+                            styles.selectionOptionText,
+                            ticket.categoryId === null &&
+                              styles.selectionOptionTextActive,
+                          ]}
+                        >
+                          Keine Kategorie
+                        </Text>
+                        <Text style={styles.categoryOptionHint}>
+                          Kategorie und Unterkategorie entfernen
+                        </Text>
+                      </View>
+                      <Ionicons
+                        color={
+                          ticket.categoryId === null
+                            ? colors.primaryText
+                            : colors.subtle
+                        }
+                        name={
+                          ticket.categoryId === null ? "checkmark" : "close"
+                        }
+                        size={ticket.categoryId === null ? 21 : 19}
+                      />
+                    </Pressable>
+                    {rootCategories.map((category) => {
+                      const hasSubcategories = ticket.categoryOptions.some(
+                        (option) => option.parentId === category.id,
+                      );
+                      const selected = ticket.categoryId === category.id;
+                      return (
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityState={{ selected }}
+                          disabled={savingCategory}
+                          key={category.id}
+                          onPress={() => {
+                            hapticSelection();
+                            if (hasSubcategories) {
+                              setCategoryDraftId(category.id);
+                              setCategorySelectionStep("subcategory");
+                              setCategoryError("");
+                              return;
+                            }
+                            void saveCategorySelection(category.id, null);
+                          }}
+                          style={[
+                            styles.selectionOption,
+                            selected && styles.selectionOptionActive,
+                          ]}
+                        >
+                          <View style={styles.categoryOptionCopy}>
+                            <Text
+                              style={[
+                                styles.selectionOptionText,
+                                selected && styles.selectionOptionTextActive,
+                              ]}
+                            >
+                              {category.name}
+                            </Text>
+                            <Text style={styles.categoryOptionHint}>
+                              {hasSubcategories
+                                ? "Unterkategorie auswählen"
+                                : "Direkt übernehmen"}
+                            </Text>
+                          </View>
+                          <Ionicons
+                            color={
+                              selected ? colors.primaryText : colors.subtle
+                            }
+                            name={
+                              hasSubcategories
+                                ? "chevron-forward"
+                                : selected
+                                  ? "checkmark"
+                                  : "chevron-forward"
+                            }
+                            size={selected && !hasSubcategories ? 21 : 19}
+                          />
+                        </Pressable>
+                      );
+                    })}
+                    {rootCategories.length === 0 ? (
+                      <Text style={styles.categoryEmptyText}>
+                        Für diese Ticketabteilung sind noch keine Kategorien
+                        hinterlegt.
+                      </Text>
+                    ) : null}
+                  </>
+                ) : (
+                  <>
+                    <Text style={styles.categoryPickerContext}>
+                      {draftCategory?.name ?? "Kategorie"}
+                    </Text>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityState={{
+                        selected:
+                          ticket.categoryId === draftCategory?.id &&
+                          ticket.subcategoryId === null,
+                      }}
+                      disabled={savingCategory || !draftCategory}
+                      onPress={() => {
+                        hapticSelection();
+                        if (draftCategory) {
+                          void saveCategorySelection(draftCategory.id, null);
+                        }
+                      }}
+                      style={[
+                        styles.selectionOption,
+                        ticket.categoryId === draftCategory?.id &&
+                          ticket.subcategoryId === null &&
+                          styles.selectionOptionActive,
+                      ]}
+                    >
+                      <View style={styles.categoryOptionCopy}>
+                        <Text style={styles.selectionOptionText}>
+                          Nur {draftCategory?.name ?? "diese Kategorie"}
+                        </Text>
+                        <Text style={styles.categoryOptionHint}>
+                          Ohne Unterkategorie übernehmen
+                        </Text>
+                      </View>
+                      <Ionicons
+                        color={colors.subtle}
+                        name="chevron-forward"
+                        size={19}
+                      />
+                    </Pressable>
+                    {draftSubcategories.map((subcategory) => {
+                      const selected = ticket.subcategoryId === subcategory.id;
+                      return (
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityState={{ selected }}
+                          disabled={savingCategory || !draftCategory}
+                          key={subcategory.id}
+                          onPress={() => {
+                            hapticSelection();
+                            if (draftCategory) {
+                              void saveCategorySelection(
+                                draftCategory.id,
+                                subcategory.id,
+                              );
+                            }
+                          }}
+                          style={[
+                            styles.selectionOption,
+                            selected && styles.selectionOptionActive,
+                          ]}
+                        >
+                          <View style={styles.categoryOptionCopy}>
+                            <Text
+                              style={[
+                                styles.selectionOptionText,
+                                selected && styles.selectionOptionTextActive,
+                              ]}
+                            >
+                              {subcategory.name}
+                            </Text>
+                            <Text style={styles.categoryOptionHint}>
+                              {draftCategory?.name}
+                            </Text>
+                          </View>
+                          <Ionicons
+                            color={
+                              selected ? colors.primaryText : colors.subtle
+                            }
+                            name={selected ? "checkmark" : "chevron-forward"}
+                            size={selected ? 21 : 19}
+                          />
+                        </Pressable>
+                      );
+                    })}
+                  </>
+                )}
+                {categoryError ? (
+                  <Text accessibilityRole="alert" style={styles.categoryError}>
+                    {categoryError}
+                  </Text>
+                ) : null}
+              </ScrollView>
+            </View>
+          </View>
+        </Modal>
+
+        <Modal
+          animationType="slide"
           onRequestClose={() => setAgentPickerOpen(false)}
           transparent
           visible={
@@ -3759,6 +4178,7 @@ const useStyles = makeThemedStyles((c) => ({
     justifyContent: "space-between",
     minHeight: 44,
   },
+  detailsValueCopy: { flex: 1, paddingRight: 12 },
   detailsValue: { color: c.foreground, fontSize: 14, fontWeight: "700" },
   detailsActionRow: {
     alignItems: "center",
@@ -4288,6 +4708,21 @@ const useStyles = makeThemedStyles((c) => ({
     flexDirection: "row",
     justifyContent: "space-between",
   },
+  categorySelectionHeading: {
+    alignItems: "center",
+    flex: 1,
+    flexDirection: "row",
+    gap: 10,
+    paddingRight: 12,
+  },
+  categorySelectionBack: {
+    alignItems: "center",
+    backgroundColor: c.primarySoft,
+    borderRadius: 14,
+    height: 32,
+    justifyContent: "center",
+    width: 32,
+  },
   selectionEyebrow: {
     color: c.muted,
     fontSize: 10,
@@ -4309,6 +4744,29 @@ const useStyles = makeThemedStyles((c) => ({
     width: 36,
   },
   selectionOptions: { gap: 8, paddingBottom: 4 },
+  categoryOptionCopy: { flex: 1, gap: 2, paddingRight: 8 },
+  categoryOptionHint: { color: c.muted, fontSize: 11, lineHeight: 16 },
+  categoryPickerContext: {
+    color: c.primaryText,
+    fontSize: 13,
+    fontWeight: "800",
+    paddingBottom: 3,
+  },
+  categoryEmptyText: {
+    color: c.muted,
+    fontSize: 13,
+    lineHeight: 19,
+    paddingHorizontal: 4,
+    paddingVertical: 12,
+    textAlign: "center",
+  },
+  categoryError: {
+    color: c.error,
+    fontSize: 13,
+    lineHeight: 19,
+    paddingHorizontal: 4,
+    paddingTop: 4,
+  },
   agentPickerSearch: {
     alignItems: "center",
     backgroundColor: c.surfaceSubtle,
@@ -4403,7 +4861,7 @@ const useStyles = makeThemedStyles((c) => ({
     paddingHorizontal: 16,
   },
   closeConfirmationButtonText: {
-    color: c.onPrimary,
+    color: c.onWarningStrong,
     fontSize: 14,
     fontWeight: "900",
   },

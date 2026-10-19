@@ -3,16 +3,10 @@ import * as WebBrowser from "expo-web-browser";
 import * as Linking from "expo-linking";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
-import {
-  Platform,
-  Pressable,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { Platform, Pressable, Text, TextInput, View } from "react-native";
 
 import { ScreenContainer } from "@/components/screen-container";
+import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
 import {
   beginNextDeskMagicLink,
   beginNextDeskOAuth,
@@ -66,6 +60,8 @@ async function openNativeSsoInSafari(providerUrl: string): Promise<void> {
 
 export default function AuthScreen() {
   const router = useRouter();
+  const colors = useAppColors();
+  const styles = useStyles();
   const { authError } = useLocalSearchParams<{ authError?: string }>();
   const [email, setEmail] = useState("");
   const [message, setMessage] = useState("");
@@ -298,7 +294,7 @@ export default function AuthScreen() {
   }
 
   return (
-    <ScreenContainer containerClassName="bg-[#F6F7FB]" className="px-5">
+    <ScreenContainer className="px-5">
       <View style={styles.content}>
         <View style={styles.logoMark}>
           <Text style={styles.logoLetter}>n</Text>
@@ -345,7 +341,7 @@ export default function AuthScreen() {
           keyboardType="email-address"
           onChangeText={setEmail}
           placeholder="name@unternehmen.ch"
-          placeholderTextColor="#9A99AA"
+          placeholderTextColor={colors.subtle}
           style={styles.input}
           textContentType="emailAddress"
           value={email}
@@ -385,34 +381,34 @@ export default function AuthScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeThemedStyles((c) => ({
   content: { flex: 1, gap: 15, justifyContent: "center", paddingBottom: 36 },
   logoMark: {
     alignItems: "center",
-    backgroundColor: "#4438CA",
+    backgroundColor: c.primary,
     borderRadius: 18,
     height: 52,
     justifyContent: "center",
     width: 52,
   },
-  logoLetter: { color: "#FFFFFF", fontSize: 28, fontWeight: "900" },
+  logoLetter: { color: c.onPrimary, fontSize: 28, fontWeight: "900" },
   brand: {
-    color: "#202136",
+    color: c.foreground,
     fontSize: 30,
     fontWeight: "900",
     letterSpacing: -0.9,
   },
-  title: { color: "#626376", fontSize: 16, lineHeight: 24, marginBottom: 16 },
+  title: { color: c.muted, fontSize: 16, lineHeight: 24, marginBottom: 16 },
   ssoButton: {
     alignItems: "center",
-    backgroundColor: "#4438CA",
+    backgroundColor: c.primary,
     borderRadius: 15,
     justifyContent: "center",
     minHeight: 52,
     paddingHorizontal: 18,
   },
   ssoButtonText: {
-    color: "#FFFFFF",
+    color: c.onPrimary,
     fontSize: 14,
     fontWeight: "800",
     letterSpacing: 0.25,
@@ -423,30 +419,30 @@ const styles = StyleSheet.create({
     gap: 10,
     marginTop: 4,
   },
-  line: { backgroundColor: "#DFDFE9", flex: 1, height: 1 },
-  dividerText: { color: "#77758C", fontSize: 12 },
+  line: { backgroundColor: c.border, flex: 1, height: 1 },
+  dividerText: { color: c.muted, fontSize: 12 },
   input: {
-    backgroundColor: "#FFFFFF",
-    borderColor: "#E5E5EF",
+    backgroundColor: c.surface,
+    borderColor: c.border,
     borderRadius: 14,
     borderWidth: 1,
-    color: "#202136",
+    color: c.foreground,
     fontSize: 15,
     minHeight: 52,
     paddingHorizontal: 14,
   },
   magicButton: {
     alignItems: "center",
-    backgroundColor: "#EEECFF",
+    backgroundColor: c.primarySoft,
     borderRadius: 15,
     justifyContent: "center",
     minHeight: 52,
     paddingHorizontal: 18,
   },
-  magicButtonText: { color: "#4438CA", fontSize: 14, fontWeight: "800" },
+  magicButtonText: { color: c.primaryText, fontSize: 14, fontWeight: "800" },
   messageSlot: { marginTop: 2, minHeight: 58 },
-  message: { color: "#4B4C60", fontSize: 13, lineHeight: 19 },
-  version: { color: "#9A99AA", fontSize: 11, textAlign: "center" },
+  message: { color: c.text, fontSize: 13, lineHeight: 19 },
+  version: { color: c.subtle, fontSize: 11, textAlign: "center" },
   pressed: { opacity: 0.82 },
   disabled: { opacity: 0.55 },
-});
+}));
