@@ -381,14 +381,9 @@ async function exchangeMailFeatureEnabled(
 export async function ensureExchangeMailServiceIdentity(
   admin: Admin,
 ): Promise<string> {
-  const existing = await admin
-    .schema("mail_private")
-    .from("service_identity")
-    .select("user_id")
-    .eq("singleton", true)
-    .maybeSingle();
+  const existing = await admin.rpc("exchange_mail_get_service_identity");
   if (existing.error) throw new Error("service_identity_lookup_failed");
-  let userId = asString(existing.data?.user_id);
+  let userId = asString(existing.data);
 
   if (!userId) {
     const created = await (admin.auth.admin as any).createUser({
@@ -415,14 +410,16 @@ export async function ensureExchangeMailServiceIdentity(
       userId = asString(found?.id);
     }
     if (!userId) throw new Error("service_identity_create_failed");
-    const saved = await admin
-      .schema("mail_private")
-      .from("service_identity")
-      .upsert(
-        { singleton: true, user_id: userId },
-        { onConflict: "singleton" },
-      );
+    const profile = await admin
+      .from("user_profiles")
+      .upsert({ id: userId, display_name: SERVICE_NAME }, { onConflict: "id" });
+    if (profile.error) throw new Error("service_identity_profile_failed");
+    const saved = await admin.rpc("exchange_mail_claim_service_identity", {
+      p_user_id: userId,
+    });
     if (saved.error) throw new Error("service_identity_store_failed");
+    userId = asString(saved.data);
+    if (!userId) throw new Error("service_identity_store_failed");
   }
 
   const profile = await admin

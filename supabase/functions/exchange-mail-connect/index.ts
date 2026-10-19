@@ -40,16 +40,11 @@ function validOpaque(
 }
 
 async function consumeState(admin: any, rawState: string) {
-  const result = await admin
-    .schema("mail_private")
-    .from("exchange_mail_oauth_states")
-    .update({ consumed_at: new Date().toISOString() })
-    .eq("state_hash", await sha256Hex(rawState))
-    .is("consumed_at", null)
-    .gt("expires_at", new Date().toISOString())
-    .select("tenant_id, actor_id, code_verifier, nonce_hash")
-    .maybeSingle();
-  return result.error ? null : result.data;
+  const result = await admin.rpc("exchange_mail_consume_oauth_state", {
+    p_state_hash: await sha256Hex(rawState),
+  });
+  const row = Array.isArray(result.data) ? result.data[0] : null;
+  return result.error || !row ? null : row;
 }
 
 async function remainsTenantAdministrator(
@@ -166,21 +161,17 @@ const handler = withSupabase(
         .single();
       if (connection.error || !connection.data)
         throw new ExchangeMailError("exchange_unavailable", 503);
-      const credentials = await context.supabaseAdmin
-        .schema("mail_private")
-        .from("exchange_mail_connection_credentials")
-        .upsert(
-          {
-            connection_id: connection.data.id,
-            tenant_id: connection.data.tenant_id,
-            refresh_token_ciphertext: await encryptRefreshToken(
-              token.refreshToken,
-            ),
-            key_version: 1,
-            updated_at: now,
-          },
-          { onConflict: "connection_id" },
-        );
+      const credentials = await context.supabaseAdmin.rpc(
+        "exchange_mail_store_connection_credential",
+        {
+          p_connection_id: connection.data.id,
+          p_tenant_id: connection.data.tenant_id,
+          p_refresh_token_ciphertext: await encryptRefreshToken(
+            token.refreshToken,
+          ),
+          p_key_version: 1,
+        },
+      );
       if (credentials.error) {
         await context.supabaseAdmin
           .from("exchange_mail_connections")

@@ -324,22 +324,25 @@ async function refreshConnectionToken(
   const configuration = platformConfiguration();
   if (!configuration)
     throw new ExchangeMailError("exchange_platform_not_configured", 503);
-  const credentials = await admin
-    .schema("mail_private")
-    .from("exchange_mail_connection_credentials")
-    .select("refresh_token_ciphertext")
-    .eq("connection_id", connection.id)
-    .eq("tenant_id", connection.tenant_id)
-    .maybeSingle();
+  const credentials = await admin.rpc(
+    "exchange_mail_read_connection_credential",
+    {
+      p_connection_id: connection.id,
+      p_tenant_id: connection.tenant_id,
+    },
+  );
+  const credential = Array.isArray(credentials.data)
+    ? credentials.data[0]
+    : null;
   if (
     credentials.error ||
-    typeof credentials.data?.refresh_token_ciphertext !== "string"
+    typeof credential?.refresh_token_ciphertext !== "string"
   ) {
     await updateReauthorizationRequired(admin, connection);
     throw new ExchangeMailError("exchange_reauthorization_required", 422);
   }
   const refreshToken = await decryptRefreshToken(
-    credentials.data.refresh_token_ciphertext,
+    credential.refresh_token_ciphertext,
   );
   const response = await timedFetch(
     `https://login.microsoftonline.com/${encodeURIComponent(connection.entra_tenant_id)}/oauth2/v2.0/token`,
@@ -379,15 +382,15 @@ async function refreshConnectionToken(
   }
   if (typeof payload.refresh_token === "string") {
     const ciphertext = await encryptRefreshToken(payload.refresh_token);
-    const stored = await admin
-      .schema("mail_private")
-      .from("exchange_mail_connection_credentials")
-      .update({
-        refresh_token_ciphertext: ciphertext,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("connection_id", connection.id)
-      .eq("tenant_id", connection.tenant_id);
+    const stored = await admin.rpc(
+      "exchange_mail_store_connection_credential",
+      {
+        p_connection_id: connection.id,
+        p_tenant_id: connection.tenant_id,
+        p_refresh_token_ciphertext: ciphertext,
+        p_key_version: 1,
+      },
+    );
     if (stored.error) throw new ExchangeMailError("exchange_unavailable", 503);
   }
   const token = {

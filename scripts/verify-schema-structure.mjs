@@ -66,6 +66,13 @@ const expectedFiles = [
   "0061_exchange_online_mail.sql",
   "0062_push_work_checkins.sql",
   "0063_follow_up_reminders.sql",
+  "0064_department_questions.sql",
+  "0065_department_question_delivery_authorization.sql",
+  "0066_entra_requester_department_profiles.sql",
+  "0067_exchange_mail_channel_configuration_revision.sql",
+  "0068_delegated_exchange_mail_connections.sql",
+  "0069_optional_portal_name.sql",
+  "0071_exchange_mail_private_storage_rpc.sql",
 ];
 
 const availableFiles = await readdir(migrationDirectory);
@@ -614,6 +621,31 @@ const requiredFragments = [
     "create or replace function public.follow_up_send_due_reminders()",
   ],
   ["0063_follow_up_reminders.sql", "'nextdesk-follow-up-reminders'"],
+  [
+    "0064_department_questions.sql",
+    "create table public.ticket_department_questions",
+  ],
+  [
+    "0065_department_question_delivery_authorization.sql",
+    "create or replace function public.department_question_delivery_authorized",
+  ],
+  [
+    "0066_entra_requester_department_profiles.sql",
+    "create or replace function public.sync_entra_directory_requesters",
+  ],
+  [
+    "0067_exchange_mail_channel_configuration_revision.sql",
+    "add column if not exists configuration_version bigint not null default 1",
+  ],
+  [
+    "0068_delegated_exchange_mail_connections.sql",
+    "create table if not exists public.exchange_mail_connections",
+  ],
+  ["0069_optional_portal_name.sql", "alter column portal_name drop not null"],
+  [
+    "0071_exchange_mail_private_storage_rpc.sql",
+    "create or replace function public.exchange_mail_create_oauth_state",
+  ],
 ];
 
 for (const [migration, fragment] of requiredFragments) {

@@ -1863,7 +1863,12 @@ begin
       raise exception 'Browser role retained Exchange mail table access for %', relation_name;
     end if;
   end loop;
-  foreach relation_name in array array['dispatch_config', 'service_identity']
+  foreach relation_name in array array[
+    'dispatch_config',
+    'service_identity',
+    'exchange_mail_connection_credentials',
+    'exchange_mail_oauth_states'
+  ]
   loop
     if not (
       select relrowsecurity and relforcerowsecurity
@@ -1880,7 +1885,15 @@ begin
   if has_schema_privilege('anon', 'mail_private', 'usage')
     or has_schema_privilege('authenticated', 'mail_private', 'usage')
     or has_function_privilege('authenticated', 'public.exchange_mail_verify_dispatch_secret(text)', 'execute')
-    or not has_function_privilege('service_role', 'public.exchange_mail_verify_dispatch_secret(text)', 'execute') then
+    or has_function_privilege('authenticated', 'public.exchange_mail_create_oauth_state(text, uuid, uuid, text, text, timestamptz)', 'execute')
+    or has_function_privilege('authenticated', 'public.exchange_mail_consume_oauth_state(text)', 'execute')
+    or has_function_privilege('authenticated', 'public.exchange_mail_store_connection_credential(uuid, uuid, text, smallint)', 'execute')
+    or has_function_privilege('authenticated', 'public.exchange_mail_read_connection_credential(uuid, uuid)', 'execute')
+    or not has_function_privilege('service_role', 'public.exchange_mail_verify_dispatch_secret(text)', 'execute')
+    or not has_function_privilege('service_role', 'public.exchange_mail_create_oauth_state(text, uuid, uuid, text, text, timestamptz)', 'execute')
+    or not has_function_privilege('service_role', 'public.exchange_mail_consume_oauth_state(text)', 'execute')
+    or not has_function_privilege('service_role', 'public.exchange_mail_store_connection_credential(uuid, uuid, text, smallint)', 'execute')
+    or not has_function_privilege('service_role', 'public.exchange_mail_read_connection_credential(uuid, uuid)', 'execute') then
     raise exception 'Exchange mail dispatch privileges are not service-role-only';
   end if;
 end;
@@ -1992,6 +2005,95 @@ begin
   end if;
 end;
 $$;
+-- OAuth states and encrypted credentials remain private, but Edge Functions with
+-- a service-role context can use only the narrow, atomic RPC surface.
+begin;
+select set_config('request.jwt.claim.role', 'service_role', true);
+select public.exchange_mail_create_oauth_state(
+  repeat('a', 64),
+  '10000000-0000-4000-8000-000000000001',
+  '00000000-0000-4000-8000-000000000002',
+  repeat('A', 43),
+  repeat('b', 64),
+  timezone('utc', now()) + interval '10 minutes'
+);
+do $$
+begin
+  if not exists (
+    select 1 from mail_private.exchange_mail_oauth_states
+    where state_hash = repeat('a', 64)
+      and consumed_at is null
+  ) then
+    raise exception 'Service-role OAuth-state RPC did not store the state';
+  end if;
+  if (select count(*) from public.exchange_mail_consume_oauth_state(repeat('a', 64))) <> 1
+     or (select count(*) from public.exchange_mail_consume_oauth_state(repeat('a', 64))) <> 0 then
+    raise exception 'OAuth-state consumption is not atomic and single-use';
+  end if;
+end;
+$$;
+select set_config('request.jwt.claim.role', '', true);
+select set_config('request.jwt.claims', '{"role":"service_role"}', true);
+select public.exchange_mail_create_oauth_state(
+  repeat('f', 64),
+  '10000000-0000-4000-8000-000000000001',
+  '00000000-0000-4000-8000-000000000002',
+  repeat('A', 43),
+  repeat('e', 64),
+  timezone('utc', now()) + interval '10 minutes'
+);
+do $$
+begin
+  if (select count(*) from public.exchange_mail_consume_oauth_state(repeat('f', 64))) <> 1 then
+    raise exception 'Current Supabase JWT claims did not authorize the OAuth-state RPC';
+  end if;
+end;
+$$;
+select public.exchange_mail_store_connection_credential(
+  '1e000000-0000-4000-8000-000000000003',
+  '10000000-0000-4000-8000-000000000001',
+  repeat('c', 64),
+  1::smallint
+);
+do $$
+begin
+  if (select refresh_token_ciphertext from public.exchange_mail_read_connection_credential(
+    '1e000000-0000-4000-8000-000000000003',
+    '10000000-0000-4000-8000-000000000001'
+  )) <> repeat('c', 64) then
+    raise exception 'Service-role credential RPC did not return the stored ciphertext';
+  end if;
+end;
+$$;
+commit;
+begin;
+select set_config('request.jwt.claim.role', 'authenticated', true);
+do $$
+begin
+  begin
+    perform public.exchange_mail_create_oauth_state(
+      repeat('d', 64),
+      '10000000-0000-4000-8000-000000000001',
+      '00000000-0000-4000-8000-000000000002',
+      repeat('A', 43),
+      repeat('e', 64),
+      timezone('utc', now()) + interval '10 minutes'
+    );
+    raise exception 'Authenticated callers created a private OAuth state';
+  exception when insufficient_privilege then
+    null;
+  end;
+  begin
+    perform public.exchange_mail_read_connection_credential(
+      '1e000000-0000-4000-8000-000000000003',
+      '10000000-0000-4000-8000-000000000001'
+    );
+    raise exception 'Authenticated callers read a private Exchange credential';
+  exception when insufficient_privilege then
+    null;
+  end;
+end;
+$$;
+rollback;
 SQL
-
 echo "PostgreSQL 16 migration and RLS integration checks passed."

@@ -439,17 +439,14 @@ async function startMicrosoftConnect(
   const state = randomUrlSafe(32);
   const nonce = randomUrlSafe(32);
   const verifier = randomUrlSafe(64);
-  const stored = await admin
-    .schema("mail_private")
-    .from("exchange_mail_oauth_states")
-    .insert({
-      state_hash: await sha256Hex(state),
-      tenant_id: tenantId,
-      actor_id: actorId,
-      code_verifier: verifier,
-      nonce_hash: await sha256Hex(nonce),
-      expires_at: new Date(Date.now() + OAUTH_STATE_TTL_MS).toISOString(),
-    });
+  const stored = await admin.rpc("exchange_mail_create_oauth_state", {
+    p_state_hash: await sha256Hex(state),
+    p_tenant_id: tenantId,
+    p_actor_id: actorId,
+    p_code_verifier: verifier,
+    p_nonce_hash: await sha256Hex(nonce),
+    p_expires_at: new Date(Date.now() + OAUTH_STATE_TTL_MS).toISOString(),
+  });
   if (stored.error) throw new HttpError(500, "operation_failed");
   const authorizationUrl = new URL(
     "https://login.microsoftonline.com/organizations/oauth2/v2.0/authorize",

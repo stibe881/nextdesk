@@ -1,5 +1,7 @@
 # Liefer-Backlog
 
+- [x] **Sicherer Microsoft-365-OAuth-Speicher.** «Mit Microsoft 365 verbinden» muss den kurzlebigen PKCE-Zustand und spätere verschlüsselte Refresh-Token serverseitig speichern und rotieren können, ohne das private Schema `mail_private` für Browser, `anon`, `authenticated` oder PostgREST freizugeben. Die dafür notwendigen atomaren Datenbankoperationen sind ausschließlich für `service_role` ausführbar; fehlende oder bereits verwendete Zustände und fehlende Credentials führen weiterhin fail-closed zu keiner Verbindung.
+
 - [x] **Pilot-Steuerung aus der Funktionenverwaltung entfernen.** Unter Einstellungen → Funktionen werden weder «Pilot bis»-Datumsfelder noch Hinweise zum automatischen Ausblenden oder der Status «Pilot abgelaufen» angezeigt. Funktionsschalter und bestehende, dauerhaft aktive Konfigurationen bleiben unverändert bedienbar; sichtbare Status lauten nur noch «Aktiviert», «Wird gespeichert …» oder «Deaktiviert».
 
 - [x] **Optionale Portalbezeichnung korrekt ausblenden.** Löscht eine Mandantenadministration den optionalen Portalnamen und speichert, darf im Arbeitsbereich, in der Corporate-Design-Vorschau oder im Einrichtungsstatus keine Ersatzbezeichnung aus Mandantenname oder `nextDesk` erscheinen. Das Portal-Logo bleibt sichtbar, die Alternativbeschreibung bleibt zugänglich und ein leerer Portalname bleibt serverseitig als bewusster leerer Wert gespeichert.
