@@ -9,10 +9,18 @@ import {
 } from "react";
 import {
   Bell,
+  BookOpen,
   Bot,
+  Box,
+  BriefcaseBusiness,
+  CalendarClock,
+  LayoutDashboard,
   LayoutPanelTop,
   Mail,
   MessageSquareText,
+  Settings,
+  Ticket,
+  UserRound,
   Webhook,
   type LucideIcon,
 } from "lucide-react";
@@ -695,6 +703,17 @@ function CorporateDesignPreview({
     "--design-preview-secondary": secondaryColor,
   } as CSSProperties;
   const portalName = form.portalName.trim() || "Ihr Portal";
+  const previewNavigation = [
+    { Icon: LayoutDashboard, label: "Übersicht" },
+    { Icon: Ticket, label: "Tickets" },
+    { Icon: CalendarClock, label: "Wiedervorlagen" },
+    { Icon: BriefcaseBusiness, label: "Arbeitsplatz" },
+    { Icon: Box, label: "Services" },
+    { Icon: Box, label: "Assets" },
+    { Icon: BookOpen, label: "Wissen" },
+    { Icon: UserRound, label: "Mein Portal" },
+    { Icon: Settings, label: "Einstellungen" },
+  ];
 
   return (
     <section
@@ -709,40 +728,82 @@ function CorporateDesignPreview({
         </div>
         <span>Änderungen sind noch nicht gespeichert.</span>
       </div>
-      <div className="tenant-branding-preview__frame">
-        <header className="tenant-branding-preview__header">
-          {logoUrl ? (
-            <img alt={`${portalName} Logo`} src={logoUrl} />
-          ) : (
-            <span
-              aria-label="Noch kein Portal-Logo ausgewählt"
-              className="tenant-branding-preview__logo-fallback"
-            >
-              ND
-            </span>
-          )}
-          <strong>{portalName}</strong>
-          <span>Übersicht</span>
-        </header>
-        <div className="tenant-branding-preview__body">
+      <div
+        aria-label="Vorschau von Navigation, Kopfbereich und Übersicht des Portals"
+        className="tenant-branding-preview__frame"
+      >
+        <aside className="tenant-branding-preview__rail">
+          <div className="tenant-branding-preview__brand">
+            {logoUrl ? (
+              <img alt={`${portalName} Logo`} src={logoUrl} />
+            ) : (
+              <span
+                aria-label="Noch kein Portal-Logo ausgewählt"
+                className="tenant-branding-preview__logo-fallback"
+              >
+                ND
+              </span>
+            )}
+            <strong>{portalName}</strong>
+          </div>
+          <p>ARBEITSBEREICH</p>
           <nav aria-label="Vorschau der Portalnavigation">
-            <span className="is-active">Tickets</span>
-            <span>Services</span>
-            <span>Wissen</span>
+            {previewNavigation.map(({ Icon, label }, index) => (
+              <span
+                className={index === 0 ? "is-active" : undefined}
+                key={label}
+              >
+                <Icon aria-hidden="true" size={14} strokeWidth={1.8} />
+                {label}
+              </span>
+            ))}
           </nav>
-          <div className="tenant-branding-preview__content">
+        </aside>
+        <main className="tenant-branding-preview__workspace">
+          <header className="tenant-branding-preview__topbar">
             <div>
-              <strong>Willkommen zurück</strong>
-              <span>Ihre offenen Anliegen auf einen Blick.</span>
+              <p>Operations / Übersicht</p>
+              <strong>Guten Morgen</strong>
             </div>
             <span className="tenant-branding-preview__button">
-              Ticket erfassen
+              + Ticket erfassen
             </span>
-            <span className="tenant-branding-preview__status">
-              Stabil · SLA im Ziel
-            </span>
+          </header>
+          <div className="tenant-branding-preview__content">
+            <div className="tenant-branding-preview__intro">
+              <div>
+                <p>HEUTE IM BLICK</p>
+                <strong>Ihr Arbeitstag</strong>
+                <span>Tickets, Prioritäten und nächste Schritte.</span>
+              </div>
+              <span className="tenant-branding-preview__status">
+                Alles im Blick
+              </span>
+            </div>
+            <div className="tenant-branding-preview__metrics">
+              <span>
+                <b>3</b>
+                Meine Tickets
+              </span>
+              <span>
+                <b>2</b>
+                Offen
+              </span>
+              <span>
+                <b>1</b>
+                Nicht zugewiesen
+              </span>
+            </div>
+            <div className="tenant-branding-preview__ticket-row">
+              <span className="tenant-branding-preview__ticket-mark" />
+              <div>
+                <small>ICT-2026-000001</small>
+                <strong>Priorisiertes Ticket</strong>
+              </div>
+              <span>Neu</span>
+            </div>
           </div>
-        </div>
+        </main>
       </div>
       <p
         className={
