@@ -223,8 +223,18 @@ function errorCode(error: unknown): string {
     : "exchange_unavailable";
 }
 
+function safeDiagnosticCode(value: unknown): string | null {
+  return typeof value === "string" && /^[A-Za-z0-9._-]{1,120}$/.test(value)
+    ? value
+    : null;
+}
+
 function internalProcessingErrorCode(error: unknown): string | null {
   const message = error instanceof Error ? error.message : "";
+  if (
+    /^service_identity_create_failed(?::[A-Za-z0-9._-]{1,120})?$/.test(message)
+  )
+    return message;
   return [
     "requester_contact_upsert_failed",
     "service_identity_lookup_failed",
@@ -446,7 +456,14 @@ export async function ensureExchangeMailServiceIdentity(
         : null;
       userId = asString(found?.id);
     }
-    if (!userId) throw new Error("service_identity_create_failed");
+    if (!userId) {
+      const createError = safeDiagnosticCode(created?.error?.code);
+      throw new Error(
+        createError
+          ? `service_identity_create_failed:${createError}`
+          : "service_identity_create_failed",
+      );
+    }
     const profile = await admin
       .from("user_profiles")
       .upsert({ id: userId, display_name: SERVICE_NAME }, { onConflict: "id" });
