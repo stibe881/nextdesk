@@ -242,6 +242,116 @@ async function requesterExists(
     .maybeSingle();
   return error ? null : Boolean(data);
 }
+
+/**
+ * Liefert Suchtreffer aus bestehenden Kontakten sowie aktive Mitglieder des
+ * aktuellen Mandanten. Für ein internes Mitglied wird erst bei einem echten
+ * Suchtreffer ein gebundener Anfragendenkontakt erstellt. Das macht die Person
+ * für die Ticketerfassung auswählbar, ohne irgendeine Agentenrolle zu vergeben.
+ */
+async function searchRequestersIncludingActiveMembers(
+  admin: any,
+  client: any,
+  tenantId: string,
+  query: string,
+): Promise<{ contacts: Contact[]; error: boolean }> {
+  const needle = escapeLike(query);
+  const [contactResult, membershipResult] = await Promise.all([
+    client
+      .from("ticket_requesters")
+      .select("id,display_name,user_id")
+      .eq("tenant_id", tenantId)
+      .or(`display_name.ilike.%${needle}%,email.ilike.%${needle}%`)
+      .order("display_name")
+      .limit(30),
+    admin
+      .from("tenant_memberships")
+      .select("user_id")
+      .eq("tenant_id", tenantId)
+      .eq("status", "active")
+      .limit(1_000),
+  ]);
+  if (contactResult.error || membershipResult.error) {
+    return { contacts: [], error: true };
+  }
+
+  const memberIds = [
+    ...new Set(
+      (membershipResult.data ?? [])
+        .map((membership: any) => membership.user_id)
+        .filter(uuid),
+    ),
+  ];
+  const profileResult = memberIds.length
+    ? await admin
+        .from("user_profiles")
+        .select("id,display_name")
+        .in("id", memberIds)
+        .ilike("display_name", `%${needle}%`)
+        .order("display_name")
+        .limit(30)
+    : { data: [], error: null };
+  if (profileResult.error) return { contacts: [], error: true };
+
+  const matchedProfiles = (profileResult.data ?? []).filter(
+    (profile: any) =>
+      uuid(profile?.id) &&
+      typeof profile.display_name === "string" &&
+      Boolean(profile.display_name.trim()),
+  );
+  const profileIds = matchedProfiles.map((profile: any) => profile.id);
+  const profileContactResult = profileIds.length
+    ? await admin
+        .from("ticket_requesters")
+        .select("id,display_name,user_id")
+        .eq("tenant_id", tenantId)
+        .in("user_id", profileIds)
+    : { data: [], error: null };
+  if (profileContactResult.error) return { contacts: [], error: true };
+
+  const contactsByUserId = new Map<string, Contact>();
+  for (const row of profileContactResult.data ?? []) {
+    const value = contact(row);
+    if (value?.userId) contactsByUserId.set(value.userId, value);
+  }
+
+  for (const profile of matchedProfiles) {
+    if (contactsByUserId.has(profile.id)) continue;
+    const { data: requesterContactId, error } = await admin.rpc(
+      "ensure_ticket_user_requester",
+      {
+        p_tenant_id: tenantId,
+        p_user_id: profile.id,
+        p_source: "manual",
+      },
+    );
+    if (error || !uuid(requesterContactId)) {
+      return { contacts: [], error: true };
+    }
+    contactsByUserId.set(profile.id, {
+      id: requesterContactId,
+      displayName: cleanName(profile.display_name),
+      userId: profile.id,
+    });
+  }
+
+  const contactsById = new Map<string, Contact>();
+  for (const row of contactResult.data ?? []) {
+    const value = contact(row);
+    if (value) contactsById.set(value.id, value);
+  }
+  for (const value of contactsByUserId.values()) {
+    contactsById.set(value.id, value);
+  }
+  const contacts = [...contactsById.values()]
+    .sort(
+      (left, right) =>
+        left.displayName.localeCompare(right.displayName, "de-CH") ||
+        left.id.localeCompare(right.id),
+    )
+    .slice(0, 30);
+  return { contacts, error: false };
+}
 async function ensureOwn(
   client: any,
   admin: any,
@@ -390,19 +500,17 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
   }
 
   if (action.type === "search") {
-    const needle = escapeLike(action.query);
-    const { data, error } = await context.supabase
-      .from("ticket_requesters")
-      .select("id,display_name,user_id")
-      .eq("tenant_id", action.tenantId)
-      .or(`display_name.ilike.%${needle}%,email.ilike.%${needle}%`)
-      .order("display_name")
-      .limit(30);
-    if (error) return fail(request, "requester_search_failed", 500);
-    const requesters = (data ?? [])
-      .map(contact)
-      .filter((entry): entry is Contact => entry !== null)
-      .map(({ id, displayName }) => ({ id, displayName }));
+    const result = await searchRequestersIncludingActiveMembers(
+      context.supabaseAdmin,
+      context.supabase,
+      action.tenantId,
+      action.query,
+    );
+    if (result.error) return fail(request, "requester_search_failed", 500);
+    const requesters = result.contacts.map(({ id, displayName }) => ({
+      id,
+      displayName,
+    }));
     return json(request, { data: { requesters } });
   }
 

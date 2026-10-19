@@ -648,7 +648,15 @@ async function getAssignedTicketAgent(
     .eq("status", "active")
     .maybeSingle();
   if (membershipError) return { agent: null, error: true };
-  if (!membership) return { agent: null, error: false };
+  if (!membership) {
+    return {
+      agent: {
+        id: ticket.assigned_agent_id,
+        displayName: "Nicht mehr aktiver Agent",
+      },
+      error: false,
+    };
+  }
 
   const { data: profile, error: profileError } = await admin
     .from("user_profiles")
@@ -656,12 +664,22 @@ async function getAssignedTicketAgent(
     .eq("id", ticket.assigned_agent_id)
     .maybeSingle();
   if (profileError) return { agent: null, error: true };
-  if (!profile || !isUuid(profile.id)) return { agent: null, error: false };
+  if (!profile || !isUuid(profile.id)) {
+    return {
+      agent: {
+        id: ticket.assigned_agent_id,
+        displayName: "Nicht mehr aktiver Agent",
+      },
+      error: false,
+    };
+  }
   return {
     agent: {
       id: profile.id,
       displayName:
-        typeof profile.display_name === "string" ? profile.display_name : null,
+        typeof profile.display_name === "string" && profile.display_name.trim()
+          ? profile.display_name.trim()
+          : "Aktiver Agent",
     },
     error: false,
   };
@@ -940,7 +958,10 @@ function ticketReference(ticket: any) {
     id: ticket.id,
     ticketNumber: ticket.ticket_number,
     subject: ticket.subject,
-    status,
+    statusLabel:
+      typeof status?.label === "string" && status.label.trim()
+        ? status.label.trim()
+        : "Status nicht verfügbar",
   };
 }
 
@@ -1330,9 +1351,9 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
             {
               relationType: relation.relationType,
               relatedTicketId: relatedTicket.id,
-              relatedTicketNumber: relatedTicket.ticketNumber,
-              relatedTicketSubject: relatedTicket.subject,
-              relatedTicketStatus: relatedTicket.status,
+              ticketNumber: relatedTicket.ticketNumber,
+              subject: relatedTicket.subject,
+              statusLabel: relatedTicket.statusLabel,
             },
           ]
         : [];

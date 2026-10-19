@@ -969,12 +969,16 @@ function toTicketRequesterContact(
   const contact = asRecord(value);
   if (
     !contact ||
-    !hasOnlyKeys(contact, ["id", "displayName"]) ||
+    !hasOnlyKeys(contact, ["id", "displayName", "email"]) ||
     typeof contact.id !== "string" ||
     contact.id.length === 0 ||
     typeof contact.displayName !== "string" ||
     contact.displayName.trim().length === 0 ||
-    contact.displayName.includes("\u0000")
+    contact.displayName.includes("\u0000") ||
+    (contact.email !== undefined &&
+      (typeof contact.email !== "string" ||
+        !contact.email.trim() ||
+        contact.email.includes("\u0000")))
   ) {
     return undefined;
   }

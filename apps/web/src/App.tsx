@@ -197,7 +197,6 @@ const sections: readonly { label: Section; Icon: LucideIcon }[] = [
   { label: "Übersicht", Icon: LayoutDashboard },
   { label: "Tickets", Icon: Ticket },
   { label: "Wiedervorlagen", Icon: ListTodo },
-  { label: "Erwähnungen", Icon: AtSign },
   { label: "Arbeitsplatz", Icon: BriefcaseBusiness },
   { label: "Services", Icon: MonitorCog },
   { label: "Assets", Icon: Boxes },
@@ -212,8 +211,10 @@ const DEFAULT_WORKSPACE_PREFERENCES: WorkspacePreferences = {
   reduceMotion: false,
   startSection: "Übersicht",
   ticketSplitView: false,
-  theme: "light",
+  theme: "system",
 };
+
+const ignoreUnreadMentions = () => undefined;
 
 const previewView: DashboardView = {
   activity: activityItems,
@@ -326,24 +327,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function unreadMentionCountFromResponse(value: unknown): number | null {
-  if (
-    !isRecord(value) ||
-    !isRecord(value.data) ||
-    !Array.isArray(value.data.mentions)
-  ) {
-    return null;
-  }
-
-  let unread = 0;
-  for (const mention of value.data.mentions) {
-    if (!isRecord(mention) || !("read_at" in mention)) return null;
-    if (mention.read_at === null) unread += 1;
-    else if (typeof mention.read_at !== "string") return null;
-  }
-  return unread;
-}
-
 function departmentQueueKeysFromRows(
   value: unknown,
 ): Record<string, { key: string; label: string }> | null {
@@ -394,7 +377,10 @@ function isTicketScope(value: unknown): value is TicketScope {
 }
 
 function isSection(value: unknown): value is Section {
-  return sections.some((section) => section.label === value);
+  return (
+    value === "Erwähnungen" ||
+    sections.some((section) => section.label === value)
+  );
 }
 
 function isInputLikeTarget(target: EventTarget | null): boolean {
@@ -430,7 +416,12 @@ function workspacePreferencesFromValue(
     density: value.density,
     highContrast: value.highContrast,
     reduceMotion: value.reduceMotion,
-    startSection: value.startSection,
+    // Frühere persönliche Einstellungen konnten den inzwischen im
+    // Arbeitsplatz integrierten Erwähnungseingang direkt öffnen.
+    startSection:
+      value.startSection === "Erwähnungen"
+        ? "Arbeitsplatz"
+        : value.startSection,
     ticketSplitView:
       typeof value.ticketSplitView === "boolean"
         ? value.ticketSplitView
@@ -1268,7 +1259,6 @@ export function App() {
   const [departmentQueueKeys, setDepartmentQueueKeys] = useState<
     Record<string, { key: string; label: string }>
   >({});
-  const [unreadMentionCount, setUnreadMentionCount] = useState(0);
   const [activeIncidentNotices, setActiveIncidentNotices] = useState<
     ActiveIncidentNotice[]
   >([]);
@@ -1341,6 +1331,10 @@ export function App() {
   }, [workspacePreferencesHydrated, workspacePreferencesStorageKey]);
 
   useEffect(() => {
+    if (section === "Erwähnungen") setSection("Arbeitsplatz");
+  }, [section]);
+
+  useEffect(() => {
     setMetricTicketFilter(null);
   }, [activeTenantId]);
 
@@ -1371,7 +1365,6 @@ export function App() {
       setSsoEnforced(false);
       setTenantFeatures({});
       setDepartmentQueueKeys({});
-      setUnreadMentionCount(0);
       setActiveIncidentNotices([]);
       setTenantWorkspaceBranding(null);
       setExperienceNotice(null);
@@ -1750,37 +1743,6 @@ export function App() {
   }, [activeTenant, requesterPortalEnabled, session]);
 
   useEffect(() => {
-    if (!supabase || !session || !activeTenant || !agentWorkbenchEnabled) {
-      setUnreadMentionCount(0);
-      return;
-    }
-
-    let mounted = true;
-    void supabase.functions
-      .invoke("agent-workbench", {
-        body: {
-          onlyMine: true,
-          tenantId: activeTenant.id,
-          type: "listMentions",
-        },
-      })
-      .then(({ data, error }) => {
-        if (error) throw error;
-        const unread = unreadMentionCountFromResponse(data);
-        if (unread === null) throw new Error("invalid_mentions_response");
-        if (mounted) setUnreadMentionCount(unread);
-      })
-      .catch(() => {
-        // The navigation never advertises a gated or unavailable inbox.
-        if (mounted) setUnreadMentionCount(0);
-      });
-
-    return () => {
-      mounted = false;
-    };
-  }, [activeTenant, agentWorkbenchEnabled, session]);
-
-  useEffect(() => {
     if (
       !supabase ||
       !session ||
@@ -1890,7 +1852,6 @@ export function App() {
       section === "Wissen" ||
       section === "Berichte" ||
       section === "Arbeitsplatz" ||
-      section === "Erwähnungen" ||
       section === "Einstellungen"
     ) {
       setSection("Übersicht");
@@ -2303,7 +2264,7 @@ export function App() {
   const isFeatureEnabled = (featureKey: string) =>
     !isSupabaseConfigured || tenantFeatures[featureKey] === true;
   const featureSections = sections.filter((item) => {
-    if (item.label === "Arbeitsplatz" || item.label === "Erwähnungen") {
+    if (item.label === "Arbeitsplatz") {
       return agentWorkbenchEnabled;
     }
     if (item.label === "Mein Portal") return requesterPortalEnabled;
@@ -2328,7 +2289,6 @@ export function App() {
       Arbeitsplatz: "agent.workbench",
       Assets: "assets.management",
       Berichte: "reporting.service",
-      Erwähnungen: "agent.workbench",
       "Mein Portal": "requester.portal",
       Wissen: "knowledge.base",
       Wiedervorlagen: "experience.workspace",
@@ -2624,14 +2584,6 @@ export function App() {
               >
                 <item.Icon aria-hidden="true" size={18} strokeWidth={1.8} />
                 {item.label}
-                {item.label === "Erwähnungen" && unreadMentionCount > 0 && (
-                  <span
-                    aria-label={`${unreadMentionCount} ungelesene Erwähnungen`}
-                    className="nav-item__badge"
-                  >
-                    {unreadMentionCount > 99 ? "99+" : unreadMentionCount}
-                  </span>
-                )}
               </button>
             ))}
           </nav>
@@ -2983,24 +2935,10 @@ export function App() {
                 setSection("Tickets");
                 setSelectedTicketId(ticketId);
               }}
-              onUnreadMentionsChange={setUnreadMentionCount}
+              onUnreadMentionsChange={ignoreUnreadMentions}
               tenantId={activeTenant.id}
             />
           </>
-        ) : section === "Erwähnungen" &&
-          activeTenant &&
-          agentWorkbenchEnabled ? (
-          <AgentWorkbenchPanel
-            canManageIncidents={isTenantAdmin}
-            initialView="mentions"
-            onOpenQueue={openTeamQueue}
-            onOpenTicket={(ticketId) => {
-              setSection("Tickets");
-              setSelectedTicketId(ticketId);
-            }}
-            onUnreadMentionsChange={setUnreadMentionCount}
-            tenantId={activeTenant.id}
-          />
         ) : section === "Mein Portal" &&
           activeTenant &&
           session &&
