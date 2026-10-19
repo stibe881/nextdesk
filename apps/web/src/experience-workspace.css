@@ -355,6 +355,7 @@
 .my-day-card__body {
   display: grid;
   gap: 18px;
+  padding: 0 24px 24px;
 }
 
 .my-day-card__body section + section {
@@ -459,6 +460,10 @@
 }
 
 @media (max-width: 720px) {
+  .my-day-card__body {
+    padding: 0 20px 20px;
+  }
+
   .experience-workspace__header,
   .experience-toolbar,
   .experience-follow-up {
