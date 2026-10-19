@@ -4872,6 +4872,40 @@ body:has(.ticket-detail) {
   grid-column: 1 / -1;
 }
 
+.tenant-admin-settings__entra-agent-editor {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(190px, 0.8fr);
+  align-items: end;
+  gap: 14px;
+  margin-top: 12px;
+  padding: 16px;
+  border: 1px solid color-mix(in srgb, var(--primary) 25%, var(--border));
+  border-radius: var(--radius);
+  background: var(--primary-soft);
+}
+
+.tenant-admin-settings__entra-agent-editor > div:first-child {
+  align-self: start;
+}
+
+.tenant-admin-settings__entra-agent-editor strong,
+.tenant-admin-settings__entra-agent-editor p {
+  margin: 0;
+}
+
+.tenant-admin-settings__entra-agent-editor p {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.tenant-admin-settings__entra-agent-editor .tenant-admin-settings__agent-toggle,
+.tenant-admin-settings__entra-agent-editor
+  .tenant-admin-settings__form-actions {
+  grid-column: 1 / -1;
+}
+
 .tenant-admin-settings__checkboxes {
   display: grid;
   gap: 8px;
@@ -6586,6 +6620,7 @@ body:has(.ticket-detail) {
   .tenant-admin-settings__form-grid,
   .tenant-admin-settings__person-form-grid,
   .tenant-admin-settings__person-editor,
+  .tenant-admin-settings__entra-agent-editor,
   .knowledge-base .knowledge-base__form,
   .ticket-templates .ticket-templates__form,
   .sla-management .sla-management__form,

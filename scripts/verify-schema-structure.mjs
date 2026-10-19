@@ -78,6 +78,7 @@ const expectedFiles = [
   "0074_ticket_requester_email_upsert_constraint.sql",
   "0075_confirmed_bulk_ticket_deletion.sql",
   "0076_authorized_ticket_list_sorting.sql",
+  "0077_entra_agent_assignment_provenance.sql",
 ];
 
 const availableFiles = await readdir(migrationDirectory);
@@ -657,7 +658,27 @@ const requiredFragments = [
   ],
   [
     "0076_authorized_ticket_list_sorting.sql",
-    "and public.can_read_ticket(ticket.id)",
+    "revoke all on function public.list_authorized_ticket_list_page",
+  ],
+  [
+    "0077_entra_agent_assignment_provenance.sql",
+    "create or replace function public.set_entra_agent_request",
+  ],
+  [
+    "0077_entra_agent_assignment_provenance.sql",
+    "create or replace function public.apply_entra_agent_request",
+  ],
+  [
+    "0077_entra_agent_assignment_provenance.sql",
+    "grant execute on function public.set_entra_agent_request(uuid, uuid, boolean, uuid, uuid) to service_role",
+  ],
+  [
+    "0077_entra_agent_assignment_provenance.sql",
+    "create trigger user_role_assignments_protect_entra_agent_assignment",
+  ],
+  [
+    "0077_entra_agent_assignment_provenance.sql",
+    "entra_agent_assignment_managed_separately",
   ],
 ];
 

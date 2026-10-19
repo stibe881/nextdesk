@@ -19,6 +19,13 @@ type Action =
   | ({ type: "inviteUser"; tenantId: string; email: string } & PersonPayload)
   | { type: "acceptMyInvitations" }
   | { type: "listUsers"; tenantId: string }
+  | {
+      type: "setEntraAgentAccess";
+      tenantId: string;
+      entraObjectId: string;
+      departmentId: string | null;
+      enabled: boolean;
+    }
   | ({ type: "updatePerson"; tenantId: string; userId: string } & PersonPayload)
   | { type: "getMyTicketAccess"; tenantId: string }
   | { type: "removeUser"; tenantId: string; userId: string }
@@ -45,6 +52,9 @@ type EntraDirectoryPerson = {
   source_department_name: string | null;
   account_enabled: boolean;
   local_user_id: string | null;
+  agent_requested: boolean;
+  agent_department_id: string | null;
+  agent_role_assignment_id: string | null;
   last_synced_at: string;
 };
 
@@ -56,7 +66,9 @@ type AssignmentRole = {
 };
 
 type Assignment = {
+  id: string;
   user_id: string;
+  department_id: string | null;
   starts_at: string;
   expires_at: string | null;
   roles: AssignmentRole | AssignmentRole[] | null;
@@ -141,6 +153,31 @@ function parseAction(value: unknown): Action | null {
   }
   if (value.type === "listUsers" && isUuid(value.tenantId)) {
     return { type: value.type, tenantId: value.tenantId };
+  }
+  if (
+    value.type === "setEntraAgentAccess" &&
+    isUuid(value.tenantId) &&
+    isUuid(value.entraObjectId) &&
+    typeof value.enabled === "boolean"
+  ) {
+    const departmentId = value.departmentId;
+    if (
+      departmentId !== null &&
+      departmentId !== undefined &&
+      !isUuid(departmentId)
+    ) {
+      return null;
+    }
+    const normalizedDepartmentId =
+      typeof departmentId === "string" ? departmentId : null;
+    if (value.enabled && !normalizedDepartmentId) return null;
+    return {
+      type: value.type,
+      tenantId: value.tenantId,
+      entraObjectId: value.entraObjectId,
+      departmentId: normalizedDepartmentId,
+      enabled: value.enabled,
+    };
   }
   if (
     value.type === "removeUser" &&
@@ -386,12 +423,13 @@ async function writeAudit(
   action: string,
   entityId: string,
   metadata: Record<string, unknown>,
+  entityType = "tenant_member",
 ) {
   const { error } = await admin.from("audit_logs").insert({
     tenant_id: tenantId,
     actor_id: actorId,
     action,
-    entity_type: "tenant_member",
+    entity_type: entityType,
     entity_id: entityId,
     severity: "security",
     metadata,
@@ -501,7 +539,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       context.supabaseAdmin
         .from("tenant_entra_directory_people")
         .select(
-          "entra_object_id, email, display_name, job_title, source_department_name, account_enabled, local_user_id, last_synced_at",
+          "entra_object_id, email, display_name, job_title, source_department_name, account_enabled, local_user_id, agent_requested, agent_department_id, agent_role_assignment_id, last_synced_at",
         )
         .eq("tenant_id", action.tenantId)
         .order("display_name", { ascending: true })
@@ -515,7 +553,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       context.supabaseAdmin
         .from("user_role_assignments")
         .select(
-          "user_id, starts_at, expires_at, roles!user_role_assignments_role_tenant_fk!inner(name, scope, active, role_permissions(permission_code))",
+          "id, user_id, department_id, starts_at, expires_at, roles!user_role_assignments_role_tenant_fk!inner(name, scope, active, role_permissions(permission_code))",
         )
         .eq("tenant_id", action.tenantId)
         .limit(1000),
@@ -546,7 +584,11 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     const now = new Date().toISOString();
     const rolesByUser = new Map<
       string,
-      { isAgent: boolean; isTenantAdmin: boolean }
+      {
+        isAgent: boolean;
+        isTenantAdmin: boolean;
+        supportAgentDepartmentId: string | null;
+      }
     >();
     for (const assignment of (assignmentsResult.data ?? []) as Assignment[]) {
       if (!isEffectiveAssignment(assignment, now)) continue;
@@ -555,14 +597,43 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       const current = rolesByUser.get(assignment.user_id) ?? {
         isAgent: false,
         isTenantAdmin: false,
+        supportAgentDepartmentId: null,
       };
-      current.isAgent ||= roleCanWorkTickets(role);
+      if (role.name === SUPPORT_AGENT_ROLE && role.scope === "department") {
+        current.isAgent = true;
+        current.supportAgentDepartmentId ??= assignment.department_id;
+      }
       current.isTenantAdmin ||=
         role.name === TENANT_ADMINISTRATOR_ROLE && role.scope === "tenant";
       rolesByUser.set(assignment.user_id, current);
     }
 
+    const effectiveSupportAgentAssignmentsByUser = new Map<
+      string,
+      Assignment[]
+    >();
+    for (const assignment of (assignmentsResult.data ?? []) as Assignment[]) {
+      if (!isEffectiveAssignment(assignment, now)) continue;
+      const role = relatedRole(assignment.roles);
+      if (
+        role?.active !== true ||
+        role.name !== SUPPORT_AGENT_ROLE ||
+        role.scope !== "department"
+      ) {
+        continue;
+      }
+      const current =
+        effectiveSupportAgentAssignmentsByUser.get(assignment.user_id) ?? [];
+      current.push(assignment);
+      effectiveSupportAgentAssignmentsByUser.set(assignment.user_id, current);
+    }
+
     const memberships = (membershipsResult.data ?? []) as Membership[];
+    const activeMemberUserIds = new Set(
+      memberships
+        .filter((membership) => membership.status === "active")
+        .map((membership) => membership.user_id),
+    );
     const members = await Promise.all(
       memberships.map(async (membership) => {
         const [authResult, profileResult] = await Promise.all([
@@ -578,6 +649,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         const access = rolesByUser.get(membership.user_id) ?? {
           isAgent: false,
           isTenantAdmin: false,
+          supportAgentDepartmentId: null,
         };
         const metadataName = user?.user_metadata?.full_name;
         return {
@@ -625,16 +697,49 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     );
     const directoryPeople = (
       (entraDirectoryResult.data ?? []) as EntraDirectoryPerson[]
-    ).map((person) => ({
-      id: person.entra_object_id,
-      email: person.email,
-      displayName: person.display_name,
-      jobTitle: person.job_title,
-      sourceDepartmentName: person.source_department_name,
-      accountEnabled: person.account_enabled,
-      linkedToNextDesk: person.local_user_id !== null,
-      lastSyncedAt: person.last_synced_at,
-    }));
+    ).map((person) => {
+      const access = person.local_user_id
+        ? rolesByUser.get(person.local_user_id)
+        : null;
+      const effectiveSupportAssignments = person.local_user_id
+        ? (effectiveSupportAgentAssignmentsByUser.get(person.local_user_id) ??
+          [])
+        : [];
+      const entraAgentAssignment = person.agent_role_assignment_id
+        ? (effectiveSupportAssignments.find(
+            (assignment) => assignment.id === person.agent_role_assignment_id,
+          ) ?? null)
+        : null;
+      const hasIndependentAgentAccess = effectiveSupportAssignments.some(
+        (assignment) => assignment.id !== person.agent_role_assignment_id,
+      );
+      const agentDepartmentId = entraAgentAssignment
+        ? entraAgentAssignment.department_id
+        : hasIndependentAgentAccess
+          ? (access?.supportAgentDepartmentId ?? null)
+          : person.agent_department_id;
+      return {
+        id: person.entra_object_id,
+        email: person.email,
+        displayName: person.display_name,
+        jobTitle: person.job_title,
+        sourceDepartmentName: person.source_department_name,
+        accountEnabled: person.account_enabled,
+        linkedToNextDesk: person.local_user_id !== null,
+        activeNextDeskMember:
+          person.local_user_id !== null &&
+          activeMemberUserIds.has(person.local_user_id),
+        agentRequested: person.agent_requested === true,
+        entraAgentAccessEffective: entraAgentAssignment !== null,
+        hasIndependentAgentAccess,
+        agentDepartmentId,
+        agentDepartmentName: agentDepartmentId
+          ? (departmentNames.get(agentDepartmentId) ?? null)
+          : null,
+        isAgent: access?.isAgent ?? false,
+        lastSyncedAt: person.last_synced_at,
+      };
+    });
     return json(request, {
       data: { members, invitations, departments, directoryPeople },
     });
@@ -775,21 +880,94 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
   );
   if (denied) return denied;
 
+  if (action.type === "setEntraAgentAccess") {
+    const { data, error: requestError } = await context.supabaseAdmin.rpc(
+      "set_entra_agent_request",
+      {
+        p_tenant_id: action.tenantId,
+        p_entra_object_id: action.entraObjectId,
+        p_enabled: action.enabled,
+        p_department_id: action.enabled ? action.departmentId : null,
+        p_actor_id: actorId,
+      },
+    );
+    if (requestError) {
+      const code =
+        typeof requestError.message === "string" &&
+        [
+          "tenant_admin_required",
+          "entra_person_not_active",
+          "entra_person_removed",
+          "entra_agent_request_not_configured",
+          "entra_person_already_support_agent",
+          "department_not_in_tenant",
+          "agent_role_not_found",
+        ].includes(requestError.message)
+          ? requestError.message
+          : "entra_agent_request_update_failed";
+      return json(
+        request,
+        { error: { code } },
+        code === "tenant_admin_required" ? 403 : 422,
+      );
+    }
+    const result = isRecord(data) ? data : {};
+    return json(request, {
+      data: {
+        updated: result.updated === true,
+        effectiveImmediately: result.effectiveImmediately === true,
+        agentRequested: result.agentRequested === true,
+        alreadyEffective: result.alreadyEffective === true,
+      },
+    });
+  }
+
   if (action.type === "removeUser") {
     if (action.userId === actorId) {
       return json(request, { error: { code: "self_removal_forbidden" } }, 422);
     }
-    const now = new Date().toISOString();
-    const { error: membershipError } = await context.supabaseAdmin
-      .from("tenant_memberships")
-      .update({ status: "removed" })
-      .eq("tenant_id", action.tenantId)
-      .eq("user_id", action.userId)
-      .eq("status", "active");
-    if (membershipError) {
-      return json(request, { error: { code: "user_remove_failed" } }, 422);
+
+    const { data: managedEntraRequests, error: managedEntraRequestsError } =
+      await context.supabaseAdmin
+        .from("tenant_entra_directory_people")
+        .select("entra_object_id")
+        .eq("tenant_id", action.tenantId)
+        .eq("local_user_id", action.userId)
+        .eq("agent_requested", true)
+        .limit(10);
+    if (managedEntraRequestsError) {
+      return json(
+        request,
+        { error: { code: "entra_agent_assignment_lookup_failed" } },
+        500,
+      );
     }
-    await Promise.all([
+    for (const managedRequest of managedEntraRequests ?? []) {
+      const { error: revokeManagedRequestError } =
+        await context.supabaseAdmin.rpc("set_entra_agent_request", {
+          p_tenant_id: action.tenantId,
+          p_entra_object_id: managedRequest.entra_object_id,
+          p_enabled: false,
+          p_department_id: null,
+          p_actor_id: actorId,
+        });
+      if (revokeManagedRequestError) {
+        return json(
+          request,
+          { error: { code: "entra_agent_request_update_failed" } },
+          422,
+        );
+      }
+    }
+
+    const now = new Date().toISOString();
+    const [membershipResult, roleResult, audited] = await Promise.all([
+      context.supabaseAdmin
+        .from("tenant_memberships")
+        .update({ status: "removed" })
+        .eq("tenant_id", action.tenantId)
+        .eq("user_id", action.userId)
+        .eq("status", "active"),
       context.supabaseAdmin
         .from("user_role_assignments")
         .update({ expires_at: now })
@@ -805,6 +983,13 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         { userId: action.userId },
       ),
     ]);
+    const { error: membershipError } = membershipResult;
+    if (membershipError) {
+      return json(request, { error: { code: "user_remove_failed" } }, 422);
+    }
+    if (roleResult.error || !audited) {
+      return json(request, { error: { code: "user_remove_failed" } }, 422);
+    }
     return json(request, { data: { removed: true } });
   }
 
@@ -945,6 +1130,31 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       );
     }
 
+    const { data: managedEntraAssignment, error: managedEntraAssignmentError } =
+      await context.supabaseAdmin
+        .from("tenant_entra_directory_people")
+        .select("agent_role_assignment_id")
+        .eq("tenant_id", action.tenantId)
+        .eq("local_user_id", action.userId)
+        .eq("agent_requested", true)
+        .not("agent_role_assignment_id", "is", null)
+        .limit(1)
+        .maybeSingle();
+    if (managedEntraAssignmentError) {
+      return json(
+        request,
+        { error: { code: "entra_agent_assignment_lookup_failed" } },
+        500,
+      );
+    }
+    if (managedEntraAssignment && !action.isAgent) {
+      return json(
+        request,
+        { error: { code: "entra_agent_assignment_managed_separately" } },
+        422,
+      );
+    }
+
     if (action.displayName) {
       const { error } = await context.supabaseAdmin
         .from("user_profiles")
@@ -992,14 +1202,16 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         500,
       );
     }
-    const agentResult = await setSupportAgentAccess(
-      context.supabaseAdmin,
-      action.tenantId,
-      action.userId,
-      action.departmentId,
-      action.isAgent,
-      actorId,
-    );
+    const agentResult = managedEntraAssignment
+      ? { ok: true as const }
+      : await setSupportAgentAccess(
+          context.supabaseAdmin,
+          action.tenantId,
+          action.userId,
+          action.departmentId,
+          action.isAgent,
+          actorId,
+        );
     if (!agentResult.ok) {
       return json(
         request,

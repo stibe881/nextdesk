@@ -302,7 +302,7 @@ insert into public.tenant_entra_directory_sync_configurations (tenant_id, entra_
   ('10000000-0000-4000-8000-000000000001', 'b47990ca-e841-4d86-9517-82f60623ed26', true);
 insert into public.tenant_entra_directory_people (
   tenant_id, entra_object_id, email, display_name, job_title, source_department_name,
-  local_user_id, agent_requested, agent_department_id
+  local_user_id
 ) values (
   '10000000-0000-4000-8000-000000000001',
   '30000000-0000-4000-8000-000000000001',
@@ -310,9 +310,7 @@ insert into public.tenant_entra_directory_people (
   'Neue Person',
   'Mitarbeiterin',
   'ICT',
-  '00000000-0000-4000-8000-000000000001',
-  true,
-  '11000000-0000-4000-8000-000000000001'
+  '00000000-0000-4000-8000-000000000001'
 );
 
 do $$
@@ -351,7 +349,7 @@ begin
       '21000000-0000-4000-8000-000000000003'
     );
     raise exception 'Cross-tenant Entra agent department assignment was accepted';
-  exception when foreign_key_violation then
+  exception when foreign_key_violation or check_violation then
     null;
   end;
 end;
@@ -2536,6 +2534,252 @@ begin
 end;
 $$;
 reset role;
+
+-- Die Entra-Agentenzuordnung ist immer eine bewusste Mandantenadmin-Aktion.
+-- Sie wird bei noch nicht angemeldeten Personen nur vorgemerkt, erst beim
+-- objektgebundenen Login angewendet und beim Entra-Offboarding zuverlässig
+-- beendet. Browserrollen erhalten nie direkten Zugriff auf die RPCs.
+do $$
+declare
+  v_result jsonb;
+  v_assignment_id uuid;
+  v_assignment_starts_at timestamptz;
+  v_assignment_expires_at timestamptz;
+begin
+  if has_function_privilege(
+    'authenticated',
+    'public.set_entra_agent_request(uuid, uuid, boolean, uuid, uuid)',
+    'execute'
+  ) or has_function_privilege(
+    'authenticated',
+    'public.apply_entra_agent_request(uuid, uuid, uuid)',
+    'execute'
+  ) or has_function_privilege(
+    'authenticated',
+    'public.deactivate_stale_entra_directory_people(uuid, timestamptz, uuid)',
+    'execute'
+  ) then
+    raise exception 'authenticated may execute Entra agent assignment RPCs';
+  end if;
+  if not has_function_privilege(
+    'service_role',
+    'public.set_entra_agent_request(uuid, uuid, boolean, uuid, uuid)',
+    'execute'
+  ) then
+    raise exception 'service_role may not execute Entra agent assignment RPCs';
+  end if;
+
+  if not exists (
+    select 1 from public.roles
+    where tenant_id = '10000000-0000-4000-8000-000000000001'
+      and name = 'Support agent'
+      and scope = 'department'
+  ) then
+    insert into public.roles (tenant_id, name, scope)
+    values (
+      '10000000-0000-4000-8000-000000000001',
+      'Support agent',
+      'department'
+    );
+  end if;
+
+  insert into public.user_profiles (id, display_name)
+  values ('00000000-0000-4000-8000-000000000005', 'Vorher nicht angemeldet')
+  on conflict (id) do nothing;
+  insert into public.tenant_memberships (tenant_id, user_id, status, joined_at)
+  values (
+    '10000000-0000-4000-8000-000000000001',
+    '00000000-0000-4000-8000-000000000005',
+    'active',
+    timezone('utc', now())
+  ) on conflict (tenant_id, user_id) do update set status = 'active';
+
+  insert into public.tenant_entra_directory_people (
+    tenant_id, entra_object_id, email, display_name
+  ) values (
+    '10000000-0000-4000-8000-000000000001',
+    '30000000-0000-4000-8000-000000000003',
+    'vormerkung@beispiel-a.ch',
+    'Vorgemerkte Person'
+  );
+
+  begin
+    perform public.set_entra_agent_request(
+      '10000000-0000-4000-8000-000000000001',
+      '30000000-0000-4000-8000-000000000003',
+      true,
+      '11000000-0000-4000-8000-000000000001',
+      '00000000-0000-4000-8000-000000000001'
+    );
+    raise exception 'Non-admin set an Entra agent request';
+  exception when raise_exception then
+    if sqlerrm <> 'tenant_admin_required' then
+      raise;
+    end if;
+  end;
+
+  select public.set_entra_agent_request(
+    '10000000-0000-4000-8000-000000000001',
+    '30000000-0000-4000-8000-000000000003',
+    true,
+    '11000000-0000-4000-8000-000000000001',
+    '00000000-0000-4000-8000-000000000002'
+  ) into v_result;
+  if not coalesce((v_result->>'updated')::boolean, false)
+    or coalesce((v_result->>'effectiveImmediately')::boolean, true)
+    or not exists (
+      select 1 from public.tenant_entra_directory_people
+      where tenant_id = '10000000-0000-4000-8000-000000000001'
+        and entra_object_id = '30000000-0000-4000-8000-000000000003'
+        and agent_requested
+        and agent_requested_by = '00000000-0000-4000-8000-000000000002'
+        and agent_requested_at is not null
+        and agent_role_assignment_id is null
+    ) then
+    raise exception 'Pre-login Entra agent request was not only recorded';
+  end if;
+
+  update public.tenant_entra_directory_people
+  set local_user_id = '00000000-0000-4000-8000-000000000003'
+  where tenant_id = '10000000-0000-4000-8000-000000000001'
+    and entra_object_id = '30000000-0000-4000-8000-000000000003';
+  select public.apply_entra_agent_request(
+    '10000000-0000-4000-8000-000000000001',
+    '30000000-0000-4000-8000-000000000003',
+    '00000000-0000-4000-8000-000000000003'
+  ) into v_result;
+  if not coalesce((v_result->>'applied')::boolean, false)
+    or not exists (
+      select 1
+      from public.tenant_entra_directory_people person
+      join public.user_role_assignments assignment
+        on assignment.id = person.agent_role_assignment_id
+      join public.roles role on role.id = assignment.role_id
+      where person.tenant_id = '10000000-0000-4000-8000-000000000001'
+        and person.entra_object_id = '30000000-0000-4000-8000-000000000003'
+        and assignment.user_id = '00000000-0000-4000-8000-000000000003'
+        and assignment.department_id = '11000000-0000-4000-8000-000000000001'
+        and role.name = 'Support agent'
+        and role.scope = 'department'
+        and assignment.starts_at <= timezone('utc', now())
+        and (assignment.expires_at is null or assignment.expires_at > timezone('utc', now()))
+  ) then
+    raise exception 'Verified Entra login did not apply the requested agent role';
+  end if;
+
+  select agent_role_assignment_id
+  into v_assignment_id
+  from public.tenant_entra_directory_people
+  where tenant_id = '10000000-0000-4000-8000-000000000001'
+    and entra_object_id = '30000000-0000-4000-8000-000000000003';
+  perform set_config('nextdesk.entra_agent_assignment_operation', 'off', true);
+  begin
+    update public.user_role_assignments
+    set expires_at = timezone('utc', now())
+    where id = v_assignment_id;
+    raise exception 'Generic role revocation changed a tracked Entra agent role';
+  exception when raise_exception then
+    if sqlerrm <> 'entra_agent_assignment_managed_separately' then
+      raise;
+    end if;
+  end;
+  select public.apply_entra_agent_request(
+    '10000000-0000-4000-8000-000000000001',
+    '30000000-0000-4000-8000-000000000003',
+    '00000000-0000-4000-8000-000000000003'
+  ) into v_result;
+  if not coalesce((v_result->>'applied')::boolean, false)
+    or not coalesce((v_result->>'alreadyApplied')::boolean, false) then
+    raise exception 'Repeated Entra SSO did not preserve the protected tracked role';
+  end if;
+
+  perform public.set_entra_agent_request(
+    '10000000-0000-4000-8000-000000000001',
+    '30000000-0000-4000-8000-000000000003',
+    false,
+    null,
+    '00000000-0000-4000-8000-000000000002'
+  );
+  if exists (
+    select 1
+    from public.tenant_entra_directory_people person
+    join public.user_role_assignments assignment
+      on assignment.id = person.agent_role_assignment_id
+    where person.tenant_id = '10000000-0000-4000-8000-000000000001'
+      and person.entra_object_id = '30000000-0000-4000-8000-000000000003'
+  ) or not exists (
+    select 1
+    from public.user_role_assignments assignment
+    where assignment.tenant_id = '10000000-0000-4000-8000-000000000001'
+      and assignment.user_id = '00000000-0000-4000-8000-000000000003'
+      and assignment.expires_at is not null
+      and assignment.expires_at > assignment.starts_at
+  ) then
+    raise exception 'Revoking an Entra agent request did not safely end its role';
+  end if;
+
+  insert into public.tenant_entra_directory_people (
+    tenant_id, entra_object_id, email, display_name, local_user_id
+  ) values (
+    '10000000-0000-4000-8000-000000000001',
+    '30000000-0000-4000-8000-000000000005',
+    'offboarding@beispiel-a.ch',
+    'Offboarding Person',
+    '00000000-0000-4000-8000-000000000005'
+  );
+  perform public.set_entra_agent_request(
+    '10000000-0000-4000-8000-000000000001',
+    '30000000-0000-4000-8000-000000000005',
+    true,
+    '11000000-0000-4000-8000-000000000001',
+    '00000000-0000-4000-8000-000000000002'
+  );
+  select assignment.id, assignment.starts_at
+  into v_assignment_id, v_assignment_starts_at
+  from public.tenant_entra_directory_people person
+  join public.user_role_assignments assignment
+    on assignment.id = person.agent_role_assignment_id
+  where person.tenant_id = '10000000-0000-4000-8000-000000000001'
+    and person.entra_object_id = '30000000-0000-4000-8000-000000000005';
+  perform set_config('nextdesk.entra_agent_assignment_operation', 'on', true);
+  update public.user_role_assignments
+  set starts_at = timezone('utc', now()) + interval '1 hour'
+  where id = v_assignment_id;
+  perform set_config('nextdesk.entra_agent_assignment_operation', 'off', true);
+  update public.tenant_entra_directory_people
+  set account_enabled = false,
+      inactive_at = timezone('utc', now()),
+      last_synced_at = timezone('utc', now()) + interval '1 hour'
+  where tenant_id = '10000000-0000-4000-8000-000000000001'
+    and entra_object_id = '30000000-0000-4000-8000-000000000005';
+  perform public.deactivate_stale_entra_directory_people(
+    '10000000-0000-4000-8000-000000000001',
+    timezone('utc', now()),
+    '00000000-0000-4000-8000-000000000002'
+  );
+  select starts_at, expires_at
+  into v_assignment_starts_at, v_assignment_expires_at
+  from public.user_role_assignments
+  where id = v_assignment_id;
+  if v_assignment_expires_at is null
+    or v_assignment_expires_at > timezone('utc', now())
+    or v_assignment_starts_at >= v_assignment_expires_at
+    or exists (
+      select 1 from public.user_role_assignments assignment
+      where assignment.id = v_assignment_id
+        and assignment.starts_at <= timezone('utc', now())
+        and (assignment.expires_at is null or assignment.expires_at > timezone('utc', now()))
+    )
+    or exists (
+      select 1 from public.tenant_entra_directory_people
+      where tenant_id = '10000000-0000-4000-8000-000000000001'
+        and entra_object_id = '30000000-0000-4000-8000-000000000005'
+        and agent_requested
+    ) then
+    raise exception 'Direct Entra account disable did not revoke the tracked agent role';
+  end if;
+end;
+$$;
 commit;
 SQL
 echo "PostgreSQL 16 migration and RLS integration checks passed."

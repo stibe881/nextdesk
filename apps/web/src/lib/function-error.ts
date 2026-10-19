@@ -128,6 +128,24 @@ export async function functionErrorMessage(
       return "Die SLA-Automatisierung ist für Ihren Mandanten derzeit deaktiviert.";
     case "tenant_feature_lookup_failed":
       return "Die Funktionsberechtigung konnte nicht geprüft werden. Bitte versuchen Sie es erneut.";
+    case "entra_person_not_active":
+      return "Diese Entra-Person ist nicht mehr aktiv und kann deshalb nicht als Support-Agent zugeordnet werden.";
+    case "entra_person_removed":
+      return "Diese Person wurde aus dem Mandanten entfernt. Reaktivieren Sie sie zuerst über die Personenverwaltung.";
+    case "entra_person_already_support_agent":
+      return "Diese Person hat bereits einen Support-Agentenzugang aus einer anderen administrativen Zuweisung.";
+    case "entra_agent_request_not_configured":
+      return "Diese Agentenrolle wurde nicht über die Entra-Zuordnung gesetzt und kann hier nicht aufgehoben werden.";
+    case "entra_agent_assignment_managed_separately":
+      return "Diese Agentenzuordnung wird über die synchronisierte Entra-Person verwaltet. Ändern Sie sie dort gezielt.";
+    case "entra_agent_assignment_lookup_failed":
+      return "Die Herkunft der Agentenzuordnung konnte nicht geprüft werden. Bitte versuchen Sie es erneut.";
+    case "agent_department_required":
+      return "Für eine Agentenzuordnung ist eine aktive Abteilung erforderlich.";
+    case "department_not_in_tenant":
+      return "Die ausgewählte Abteilung gehört nicht zu diesem Mandanten oder ist nicht mehr aktiv.";
+    case "agent_role_not_found":
+      return "Die Support-Agentenrolle ist für diesen Mandanten nicht verfügbar. Bitte wenden Sie sich an die Mandantenadministration.";
     case "ticket_category_change_denied":
       return "Sie dürfen die Kategorie dieses Tickets nicht ändern.";
     case "invalid_ticket_category":

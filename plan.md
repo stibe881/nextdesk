@@ -43,6 +43,12 @@ Nach dem Code-Rollout führt eine Kundin oder ein Kunde die erste Verbindung als
 - `apps/web/src/exchange-mail-settings.tsx`: Connect-Assistent und Mehrpostfachliste.
 - `docs/deployment/`: kundenverständliche, PowerShell-freie Einrichtung und Einschränkungen.
 
+## Manuelle Entra-Agentenzuordnung
+
+Synchronisierte Personen bleiben immer normale Personen. In «Personen & Agenten» kann eine Mandantenadministration eine aktive Entra-Person bewusst einer aktiven Ziel-Abteilung als Support-Agent zuordnen oder diese Vormerkung wieder aufheben. Die Datenbank hält die auslösende Mandantenadministration, den Zeitpunkt und ausschliesslich die daraus erzeugte Rollen-Zuweisung fest. Bei bereits aktiver nextDesk-Mitgliedschaft wird diese Rollen-Zuweisung sofort eingerichtet; bei einer Person ohne bisherigen Login nur vorgemerkt und ausschliesslich beim späteren, objektgebundenen Entra-Login angewendet.
+
+Die drei service-role-only Datenbankfunktionen prüfen Mandant, aktive Adminrolle, aktive Entra-Person, Ziel-Abteilung und Rollenbesitz atomar. Sie übernehmen keine vorbestehende fremde Agentenrolle. Bei Entra-Deaktivierung oder Entfernung beendet der nächste Directory-Sync nur die nachweislich über diese Vormerkung geschaffene Rollen-Zuweisung und löscht die Vormerkung. Browserrollen können weder die privaten Verzeichnisdaten noch die Verwaltungsfunktionen direkt aufrufen.
+
 ## Ticketakte als PDF – Redesign
 
 Die Ticketakte bleibt eine druckoptimierte, clientseitig erzeugte HTML-PDF mit derselben autorisierten Datenquelle. Die Überarbeitung betrifft ausschliesslich Informationshierarchie und Druck-CSS; Berechtigungsprüfung, Audit-Ereignis und Inhaltssichtbarkeit bleiben unverändert.

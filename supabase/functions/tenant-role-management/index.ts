@@ -1152,6 +1152,28 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     );
   }
 
+  const { data: managedEntraAssignment, error: managedEntraAssignmentError } =
+    await context.supabaseAdmin
+      .from("tenant_entra_directory_people")
+      .select("entra_object_id")
+      .eq("tenant_id", action.tenantId)
+      .eq("agent_role_assignment_id", action.assignmentId)
+      .maybeSingle();
+  if (managedEntraAssignmentError) {
+    return json(
+      request,
+      { error: { code: "entra_agent_assignment_lookup_failed" } },
+      500,
+    );
+  }
+  if (managedEntraAssignment) {
+    return json(
+      request,
+      { error: { code: "entra_agent_assignment_managed_separately" } },
+      422,
+    );
+  }
+
   if (
     assignmentRole &&
     isProtectedTenantAdministrator(assignmentRole) &&

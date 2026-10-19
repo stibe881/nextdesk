@@ -258,18 +258,20 @@ async function ensureTenantRole(
   return !createError;
 }
 
-async function ensureInvitedAgentRole(
+async function ensureSupportAgentRole(
   admin: any,
-  invitation: PendingInvitation,
+  tenantId: string,
   userId: string,
+  departmentId: string | null,
+  assignedBy: string,
 ): Promise<boolean> {
-  if (!invitation.wants_agent || !invitation.department_id) return true;
+  if (!departmentId) return false;
   const { data: departmentMembership, error: departmentError } = await admin
     .from("department_memberships")
     .upsert(
       {
-        tenant_id: invitation.tenant_id,
-        department_id: invitation.department_id,
+        tenant_id: tenantId,
+        department_id: departmentId,
         user_id: userId,
         status: "active",
       },
@@ -280,7 +282,7 @@ async function ensureInvitedAgentRole(
   const { data: role, error: roleError } = await admin
     .from("roles")
     .select("id")
-    .eq("tenant_id", invitation.tenant_id)
+    .eq("tenant_id", tenantId)
     .eq("name", "Support agent")
     .eq("scope", "department")
     .eq("active", true)
@@ -290,10 +292,10 @@ async function ensureInvitedAgentRole(
   const { data: assignment, error: assignmentError } = await admin
     .from("user_role_assignments")
     .select("id")
-    .eq("tenant_id", invitation.tenant_id)
+    .eq("tenant_id", tenantId)
     .eq("user_id", userId)
     .eq("role_id", role.id)
-    .eq("department_id", invitation.department_id)
+    .eq("department_id", departmentId)
     .is("team_id", null)
     .is("expires_at", null)
     .maybeSingle();
@@ -302,11 +304,11 @@ async function ensureInvitedAgentRole(
   const { error: createError } = await admin
     .from("user_role_assignments")
     .insert({
-      tenant_id: invitation.tenant_id,
+      tenant_id: tenantId,
       user_id: userId,
       role_id: role.id,
-      department_id: invitation.department_id,
-      assigned_by: invitation.invited_by,
+      department_id: departmentId,
+      assigned_by: assignedBy,
     });
   return !createError;
 }
@@ -352,7 +354,9 @@ async function linkEntraDirectoryPerson(
     });
     return { status: "failed", department: null };
   }
-  if (!directoryPerson) return { status: "not_found", department: null };
+  if (!directoryPerson) {
+    return { status: "not_found", department: null };
+  }
 
   const existingLocalUserId = directoryPerson.local_user_id;
   if (existingLocalUserId && existingLocalUserId !== userId) {
@@ -457,6 +461,30 @@ async function initialiseEntraRequesterProfile(
   }
 }
 
+async function applyRequestedEntraAgentAccess(
+  admin: any,
+  tenantId: string,
+  userId: string,
+  entraObjectId: string | null,
+): Promise<boolean> {
+  if (!entraObjectId) return false;
+  const { data, error } = await admin.rpc("apply_entra_agent_request", {
+    p_tenant_id: tenantId,
+    p_entra_object_id: entraObjectId,
+    p_user_id: userId,
+  });
+  if (error) {
+    console.error("entra_requested_agent_access_apply_failed", {
+      code: error.code,
+      message: error.message,
+      tenantId,
+      userId,
+    });
+    return false;
+  }
+  return (data as { applied?: unknown } | null)?.applied === true;
+}
+
 async function provisionSsoPerson(
   admin: any,
   user: any,
@@ -497,7 +525,10 @@ async function provisionSsoPerson(
     // Directory enrichment must not lock out a person who is already an active,
     // verified member of this tenant. The SSO tenant and domain checks above
     // remain mandatory; the next successful sign-in can retry the enrichment.
-    directoryLink = { status: "not_found", department: null };
+    directoryLink = {
+      status: "not_found",
+      department: null,
+    };
   }
 
   const ssoDisplayName = ssoDisplayNameFromUser(user);
@@ -515,6 +546,12 @@ async function provisionSsoPerson(
       tenantId,
       userId,
       directoryLink.department,
+    );
+    await applyRequestedEntraAgentAccess(
+      admin,
+      tenantId,
+      userId,
+      entraObjectId,
     );
     return "existing";
   }
@@ -534,7 +571,8 @@ async function provisionSsoPerson(
   // been verified before this point. A matching employee may therefore enter
   // their own tenant as a normal requester without an invitation. An explicit
   // invitation remains the only way to assign a non-requester role or agent
-  // department at first sign-in.
+  // department at first sign-in. A manually and explicitly requested Entra
+  // agent assignment is the only additional, tenant-admin-controlled path.
   const invitation = invitationData as PendingInvitation | null;
 
   const joinedAt = new Date().toISOString();
@@ -567,6 +605,9 @@ async function provisionSsoPerson(
     if (profileError) return "failed";
   }
 
+  const invitationAgentDepartmentId = invitation?.wants_agent
+    ? (invitation.department_id ?? null)
+    : null;
   const { error: directoryError } = await admin
     .from("tenant_member_directory")
     .upsert(
@@ -591,8 +632,14 @@ async function provisionSsoPerson(
       invitedRole,
       invitation?.invited_by ?? userId,
     )) ||
-    (invitation !== null &&
-      !(await ensureInvitedAgentRole(admin, invitation, userId)))
+    (invitationAgentDepartmentId !== null &&
+      !(await ensureSupportAgentRole(
+        admin,
+        tenantId,
+        userId,
+        invitationAgentDepartmentId,
+        invitation?.invited_by ?? userId,
+      )))
   ) {
     return "failed";
   }
@@ -603,6 +650,7 @@ async function provisionSsoPerson(
     userId,
     directoryLink.department,
   );
+  await applyRequestedEntraAgentAccess(admin, tenantId, userId, entraObjectId);
 
   if (invitation) {
     const { error: invitationUpdateError } = await admin

@@ -325,11 +325,14 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       }
     }
 
-    const { error: staleError } = await context.supabaseAdmin
-      .from("tenant_entra_directory_people")
-      .update({ account_enabled: false, inactive_at: startedAt })
-      .eq("tenant_id", action.tenantId)
-      .lt("last_synced_at", startedAt);
+    const { error: staleError } = await context.supabaseAdmin.rpc(
+      "deactivate_stale_entra_directory_people",
+      {
+        p_tenant_id: action.tenantId,
+        p_started_at: startedAt,
+        p_actor_id: actorId,
+      },
+    );
     if (staleError) throw new Error("directory_deactivate_failed");
 
     const { data: requesterProfileSyncData, error: requesterProfileSyncError } =
