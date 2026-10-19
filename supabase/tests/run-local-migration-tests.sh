@@ -1902,19 +1902,38 @@ update public.tenant_feature_flags
 set enabled = true
 where tenant_id = '10000000-0000-4000-8000-000000000001'
   and feature_key = 'integrations.email';
+insert into public.exchange_mail_connections (
+  id, tenant_id, entra_tenant_id, connector_object_id, connector_principal,
+  granted_scopes, created_by, updated_by
+) values (
+  '1e000000-0000-4000-8000-000000000003',
+  '10000000-0000-4000-8000-000000000001',
+  '1d000000-0000-4000-8000-000000000003',
+  '1f000000-0000-4000-8000-000000000003',
+  'connector@tenant-a.example',
+  array['user.read', 'mail.read', 'mail.send', 'mail.read.shared', 'mail.send.shared'],
+  '00000000-0000-4000-8000-000000000002',
+  '00000000-0000-4000-8000-000000000002'
+);
 insert into public.exchange_mail_channels (
-  id, tenant_id, entra_tenant_id, mailbox_address, default_department_id,
+  id, tenant_id, entra_tenant_id, connection_id, access_mode, mailbox_address, mailbox_object_id, default_department_id,
   send_agent_replies, send_resolution, status, created_by, updated_by, activated_at
 ) values (
   '1c000000-0000-4000-8000-000000000003',
   '10000000-0000-4000-8000-000000000001',
   '1d000000-0000-4000-8000-000000000003',
+  '1e000000-0000-4000-8000-000000000003',
+  'delegated',
   'support@tenant-a.example',
+  '1a000000-0000-4000-8000-000000000003',
   '11000000-0000-4000-8000-000000000001',
   true, true, 'active',
   '00000000-0000-4000-8000-000000000002',
   '00000000-0000-4000-8000-000000000002', now()
 );
+update public.tickets
+set exchange_mail_channel_id = '1c000000-0000-4000-8000-000000000003'
+where id = '17000000-0000-4000-8000-000000000001';
 
 -- Exactly one external portal response from a tenant agent queues exactly one
 -- agent reply. Internal notes, customer responses and a paused channel queue none.

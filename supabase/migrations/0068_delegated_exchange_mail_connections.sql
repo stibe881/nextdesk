@@ -229,15 +229,10 @@ begin
   from public.exchange_mail_channels channel
   where channel.tenant_id = v_ticket.tenant_id
     and channel.status = 'active'
+    and channel.access_mode = 'delegated'
     and channel.send_agent_replies
-    and (
-      channel.id = v_ticket.exchange_mail_channel_id
-      or (
-        v_ticket.exchange_mail_channel_id is null
-        and channel.access_mode = 'legacy_rbac'
-      )
-    )
-  order by (channel.id = v_ticket.exchange_mail_channel_id) desc, channel.created_at
+    and channel.id = v_ticket.exchange_mail_channel_id
+  order by channel.created_at
   limit 1;
   if not found then
     return new;
@@ -295,15 +290,10 @@ begin
   from public.exchange_mail_channels channel
   where channel.tenant_id = new.tenant_id
     and channel.status = 'active'
+    and channel.access_mode = 'delegated'
     and channel.send_resolution
-    and (
-      channel.id = new.exchange_mail_channel_id
-      or (
-        new.exchange_mail_channel_id is null
-        and channel.access_mode = 'legacy_rbac'
-      )
-    )
-  order by (channel.id = new.exchange_mail_channel_id) desc, channel.created_at
+    and channel.id = new.exchange_mail_channel_id
+  order by channel.created_at
   limit 1;
   if not found then
     return new;
@@ -403,6 +393,7 @@ begin
   if v_message.processing_status <> 'processing'
      or v_message.exchange_configuration_version is distinct from p_configuration_version
      or v_channel.status <> 'active'
+     or v_channel.access_mode <> 'delegated'
      or v_channel.configuration_version <> p_configuration_version then
     update public.mail_messages
     set processing_status = 'ignored', ignore_reason = 'channel_reconfigured'
