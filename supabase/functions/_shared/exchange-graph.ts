@@ -22,6 +22,8 @@ export class ExchangeMailError extends Error {
       | "exchange_unavailable",
     readonly status: number,
     readonly retryAfterSeconds?: number,
+    readonly graphErrorCode?: string,
+    readonly graphRequestId?: string,
   ) {
     super(code);
   }
@@ -98,33 +100,89 @@ async function responseText(response: Response): Promise<string> {
   return await response.text().catch(() => "");
 }
 
+function safeGraphCode(value: unknown): string | undefined {
+  return typeof value === "string" && /^[A-Za-z0-9._-]{1,120}$/.test(value)
+    ? value
+    : undefined;
+}
+
+function safeRequestId(value: unknown): string | undefined {
+  return typeof value === "string" &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(
+      value,
+    )
+    ? value.toLowerCase()
+    : undefined;
+}
+
+function graphErrorDetails(
+  response: Response,
+  payloadText: string,
+): { code?: string; requestId?: string } {
+  try {
+    const payload: unknown = JSON.parse(payloadText);
+    const error =
+      record(payload) && record(payload.error) ? payload.error : null;
+    const inner = error && record(error.innerError) ? error.innerError : null;
+    return {
+      code: safeGraphCode(error?.code),
+      requestId:
+        safeRequestId(response.headers.get("request-id")) ??
+        safeRequestId(inner?.["request-id"]),
+    };
+  } catch {
+    return { requestId: safeRequestId(response.headers.get("request-id")) };
+  }
+}
+
 function graphErrorFromResponse(
   response: Response,
   payloadText: string,
 ): ExchangeMailError {
   const lowered = payloadText.toLowerCase();
+  const details = graphErrorDetails(response, payloadText);
   if (
     lowered.includes("aadsts700016") ||
     lowered.includes("aadsts7000229") ||
     lowered.includes("application with identifier")
   ) {
-    return new ExchangeMailError("exchange_app_not_consented", 422);
+    return new ExchangeMailError(
+      "exchange_app_not_consented",
+      422,
+      undefined,
+      details.code,
+      details.requestId,
+    );
   }
   if (
     response.status === 404 ||
     lowered.includes("errorinvaliduser") ||
     lowered.includes("resourcenotfound")
   ) {
-    return new ExchangeMailError("exchange_mailbox_not_found", 422);
+    return new ExchangeMailError(
+      "exchange_mailbox_not_found",
+      422,
+      undefined,
+      details.code,
+      details.requestId,
+    );
   }
   if (response.status === 403 || lowered.includes("erroraccessdenied")) {
-    return new ExchangeMailError("exchange_access_denied", 403);
+    return new ExchangeMailError(
+      "exchange_access_denied",
+      403,
+      undefined,
+      details.code,
+      details.requestId,
+    );
   }
   if (response.status === 429) {
     return new ExchangeMailError(
       "exchange_throttled",
       429,
       retryAfter(response),
+      details.code,
+      details.requestId,
     );
   }
   if (response.status === 503 || response.status >= 500) {
@@ -132,9 +190,17 @@ function graphErrorFromResponse(
       "exchange_unavailable",
       503,
       retryAfter(response),
+      details.code,
+      details.requestId,
     );
   }
-  return new ExchangeMailError("exchange_unavailable", 503);
+  return new ExchangeMailError(
+    "exchange_unavailable",
+    503,
+    undefined,
+    details.code,
+    details.requestId,
+  );
 }
 
 async function timedFetch(

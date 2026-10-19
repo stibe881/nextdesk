@@ -192,6 +192,32 @@ function message(code: string): string {
   );
 }
 
+type VerificationStage = "token" | "inbox-folder" | "inbox-messages";
+
+function verificationFailureMessage(
+  code: string,
+  stage: VerificationStage,
+  error: unknown,
+): string {
+  const stageLabel: Record<VerificationStage, string> = {
+    token: "Tokenabruf",
+    "inbox-folder": "Zugriff auf den Eingangordner",
+    "inbox-messages": "Lesen einer Nachricht im Eingangordner",
+  };
+  const graphCode =
+    error instanceof ExchangeMailError ? error.graphErrorCode : undefined;
+  const reference =
+    error instanceof ExchangeMailError ? error.graphRequestId : undefined;
+  return [
+    message(code),
+    `Prüfphase: ${stageLabel[stage]}.`,
+    graphCode ? `Microsoft-Code: ${graphCode}.` : null,
+    reference ? `Microsoft-Referenz: ${reference}.` : null,
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
 function headers(request: Request): Headers {
   const origin = request.headers.get("origin");
   const result = new Headers({
@@ -533,6 +559,7 @@ async function verifyConnection(
     message: string;
   }> = [];
   let overBroadPermissions = false;
+  let verificationStage: VerificationStage = "token";
   try {
     const token = await getExchangeAccessToken(found.entra_tenant_id);
     overBroadPermissions = token.overBroadPermissions;
@@ -547,6 +574,7 @@ async function verifyConnection(
       found.mailbox_object_id,
       found.mailbox_address,
     );
+    verificationStage = "inbox-folder";
     await graphRequest(
       found.entra_tenant_id,
       `/users/${mailbox}/mailFolders/inbox?$select=id,totalItemCount`,
@@ -556,6 +584,7 @@ async function verifyConnection(
       ok: true,
       message: "Postfach wurde gefunden.",
     });
+    verificationStage = "inbox-messages";
     await graphRequest(
       found.entra_tenant_id,
       `/users/${mailbox}/mailFolders/inbox/messages?$top=1&$select=id`,
@@ -570,17 +599,26 @@ async function verifyConnection(
       error instanceof ExchangeMailError || error instanceof HttpError
         ? error.code
         : "exchange_unavailable";
-    await matchChannelTarget(
+    const recordedFailure = await matchChannelTarget(
       admin
         .from("exchange_mail_channels")
         .update({
           status: "error",
           last_error_code: code,
-          last_error_message: message(code),
+          last_error_message: verificationFailureMessage(
+            code,
+            verificationStage,
+            error,
+          ),
         })
         .eq("status", found.status),
       found,
-    );
+    )
+      .select("id")
+      .maybeSingle();
+    if (recordedFailure.error) throw new HttpError(500, "operation_failed");
+    if (!recordedFailure.data)
+      throw new HttpError(409, "exchange_configuration_changed");
     throw error;
   }
   const verified = await matchChannelTarget(
