@@ -312,6 +312,7 @@ async function retryOrFail(
   admin: Admin,
   message: Message,
   error: unknown,
+  stage = "unknown",
 ): Promise<void> {
   const nextAttempt = Number(message.attempt_count ?? 0) + 1;
   const code = errorCode(error);
@@ -345,6 +346,7 @@ async function retryOrFail(
       direction: message.direction,
       code,
       graphErrorCode,
+      stage,
     },
   );
 }
@@ -870,8 +872,10 @@ export async function processInboundMessage(
     });
     return;
   }
+  let stage = "claim";
   try {
     if (!(await claimMessage(admin, message.id))) return;
+    stage = "graph_message_read";
     const mailbox = graphMailboxIdentifier(
       channel.mailbox_object_id,
       channel.mailbox_address,
@@ -912,6 +916,7 @@ export async function processInboundMessage(
       });
       return;
     }
+    stage = "ticket_matching";
     const recentCount = await admin
       .from("mail_messages")
       .select("id", { count: "exact", head: true })
@@ -937,7 +942,9 @@ export async function processInboundMessage(
         linkedTicket!.id,
         sender,
       ));
+    stage = "requester_contact";
     const contact = await requesterContact(admin, channel.tenant_id, sender);
+    stage = "service_identity";
     const serviceIdentityId = await ensureExchangeMailServiceIdentity(admin);
     const body = cleanText(
       record(graph.uniqueBody)
@@ -946,6 +953,7 @@ export async function processInboundMessage(
           ? graph.body.content
           : null,
     );
+    stage = "commit_inbound";
     const committed = await admin.rpc("exchange_mail_commit_inbound", {
       p_tenant_id: channel.tenant_id,
       p_channel_id: channel.id,
@@ -1006,7 +1014,7 @@ export async function processInboundMessage(
       },
     );
   } catch (error) {
-    await retryOrFail(admin, message, error);
+    await retryOrFail(admin, message, error, stage);
   }
 }
 
