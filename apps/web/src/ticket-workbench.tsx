@@ -1183,7 +1183,7 @@ function ContextPanel({
       <div className="ticket-workbench__panel-heading">
         <div>
           <p className="eyebrow">360°-KONTEXT</p>
-          <h3 id="ticket-context-heading">Zusammenhang</h3>
+          <h3 id="ticket-context-heading">Kontext zum Ticket</h3>
         </div>
         <button
           aria-label="Kontext aktualisieren"
@@ -1999,33 +1999,59 @@ export function TicketWorkbench({
   return (
     <section className="ticket-workbench" aria-label="Ticketwerkbank">
       <TicketContextHeader expectation={slaExpectation} ticket={ticket} />
+      {hasAgentAccess && (
+        <div className="ticket-workbench__section-intro">
+          <p className="eyebrow">ARBEITSKONTEXT</p>
+          <p>
+            Zuerst den Ticketzusammenhang prüfen, danach zuweisen und die
+            nächste Antwort vorbereiten.
+          </p>
+        </div>
+      )}
       <div className="ticket-workbench__grid">
-        <div className="ticket-workbench__main">
-          {hasAgentAccess && (
-            <MacroPanel
-              categories={categories}
-              onApplyMacro={onApplyMacro}
-              priorities={priorities}
-              tenantId={tenantId}
-              ticket={ticket}
-            />
-          )}
-          {hasAgentAccess && (
-            <AssigneePanel
-              canAssign={canAssign}
-              onPrefillAssignee={onPrefillAssignee}
-              people={availablePeople}
-              tenantId={tenantId}
-              ticketId={ticket.id}
-            />
-          )}
-          {hasAgentAccess && (
-            <KnowledgeDraftButton
-              canUpdate={canUpdate}
-              tenantId={tenantId}
-              ticket={ticket}
-            />
-          )}
+        {hasAgentAccess && (
+          <ContextPanel
+            enabled={hasAgentAccess}
+            onSla={updateSla}
+            tenantId={tenantId}
+            ticketId={ticket.id}
+          />
+        )}
+        {hasAgentAccess && (
+          <section
+            className="ticket-workbench__action-group"
+            aria-labelledby="ticket-workbench-preparation-heading"
+          >
+            <div className="ticket-workbench__group-heading">
+              <p className="eyebrow">VORBEREITUNG</p>
+              <h3 id="ticket-workbench-preparation-heading">
+                Zuweisung und Antwort vorbereiten
+              </h3>
+            </div>
+            <div className="ticket-workbench__main">
+              <AssigneePanel
+                canAssign={canAssign}
+                onPrefillAssignee={onPrefillAssignee}
+                people={availablePeople}
+                tenantId={tenantId}
+                ticketId={ticket.id}
+              />
+              <MacroPanel
+                categories={categories}
+                onApplyMacro={onApplyMacro}
+                priorities={priorities}
+                tenantId={tenantId}
+                ticket={ticket}
+              />
+              <KnowledgeDraftButton
+                canUpdate={canUpdate}
+                tenantId={tenantId}
+                ticket={ticket}
+              />
+            </div>
+          </section>
+        )}
+        <div className="ticket-workbench__requester-stack">
           <RequesterPortal
             enabled={isRequester}
             onSla={updateSla}
@@ -2038,12 +2064,6 @@ export function TicketWorkbench({
             ticketId={ticket.id}
           />
         </div>
-        <ContextPanel
-          enabled={hasAgentAccess}
-          onSla={updateSla}
-          tenantId={tenantId}
-          ticketId={ticket.id}
-        />
       </div>
     </section>
   );

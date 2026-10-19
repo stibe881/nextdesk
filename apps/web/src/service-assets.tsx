@@ -13,9 +13,10 @@ export type ServiceAssetsProps = {
   tenantId: string;
   initialTab?: CatalogTab;
   allowAssets?: boolean;
+  fixedTab?: CatalogTab;
 };
 
-type CatalogTab = "services" | "assets" | "problems";
+export type CatalogTab = "services" | "assets" | "problems";
 type Criticality = "low" | "medium" | "high" | "critical";
 type ProblemStatus = "open" | "investigating" | "known_error" | "resolved";
 type EditableProblemStatus = Exclude<ProblemStatus, "resolved">;
@@ -232,6 +233,29 @@ const EDITABLE_PROBLEM_STATUSES: EditableProblemStatus[] = [
   "investigating",
   "known_error",
 ];
+
+const CATALOG_PAGE_COPY: Readonly<
+  Record<CatalogTab, { eyebrow: string; title: string; description: string }>
+> = {
+  services: {
+    eyebrow: "Servicekatalog",
+    title: "Services",
+    description:
+      "Verwalten Sie die aktiven Services dieses Mandanten und ihre Kritikalität.",
+  },
+  assets: {
+    eyebrow: "Asset Management",
+    title: "Assets",
+    description:
+      "Verwalten Sie die aktiven Assets dieses Mandanten und ihre Zuordnung zu Services.",
+  },
+  problems: {
+    eyebrow: "Fallmanagement",
+    title: "Fälle",
+    description:
+      "Verfolgen Sie offene Fälle, dokumentieren Sie Ursachen und verknüpfen Sie betroffene Tickets.",
+  },
+};
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -612,9 +636,11 @@ export function ServiceAssets({
   tenantId,
   initialTab = "services",
   allowAssets = true,
+  fixedTab,
 }: ServiceAssetsProps) {
   const [activeTab, setActiveTab] = useState<CatalogTab>(
-    allowAssets || initialTab !== "assets" ? initialTab : "services",
+    fixedTab ??
+      (allowAssets || initialTab !== "assets" ? initialTab : "services"),
   );
   const [services, setServices] = useState<Service[]>([]);
   const [assets, setAssets] = useState<Asset[]>([]);
@@ -725,12 +751,19 @@ export function ServiceAssets({
       ticketSearchResults.filter((ticket) => !attachedTicketIds.has(ticket.id)),
     [attachedTicketIds, ticketSearchResults],
   );
+  const availableTabs: readonly CatalogTab[] = fixedTab
+    ? [fixedTab]
+    : allowAssets
+      ? ["services", "assets", "problems"]
+      : ["services", "problems"];
+  const pageCopy = fixedTab ? CATALOG_PAGE_COPY[fixedTab] : null;
 
   useEffect(() => {
-    if (!allowAssets && activeTab === "assets") {
-      setActiveTab("services");
-    }
-  }, [activeTab, allowAssets]);
+    setActiveTab(
+      fixedTab ??
+        (allowAssets || initialTab !== "assets" ? initialTab : "services"),
+    );
+  }, [allowAssets, fixedTab, initialTab]);
 
   const loadCatalog = useCallback(async () => {
     const version = requestVersion.current + 1;
@@ -756,7 +789,7 @@ export function ServiceAssets({
       setError(
         await apiErrorMessage(
           nextError,
-          "Services, Assets und Fälle konnten nicht geladen werden.",
+          "Die Katalogdaten konnten nicht geladen werden.",
         ),
       );
     } finally {
@@ -770,10 +803,6 @@ export function ServiceAssets({
       requestVersion.current += 1;
     };
   }, [loadCatalog]);
-
-  useEffect(() => {
-    setActiveTab(initialTab);
-  }, [initialTab]);
 
   useEffect(() => {
     setServiceForm(EMPTY_SERVICE_FORM);
@@ -917,22 +946,20 @@ export function ServiceAssets({
   }
 
   function moveTab(event: KeyboardEvent<HTMLButtonElement>, tab: CatalogTab) {
-    const tabs: CatalogTab[] = allowAssets
-      ? ["services", "assets", "problems"]
-      : ["services", "problems"];
-    const currentIndex = tabs.indexOf(tab);
+    const currentIndex = availableTabs.indexOf(tab);
     let nextIndex = currentIndex;
     if (event.key === "ArrowRight")
-      nextIndex = (currentIndex + 1) % tabs.length;
+      nextIndex = (currentIndex + 1) % availableTabs.length;
     if (event.key === "ArrowLeft") {
-      nextIndex = (currentIndex - 1 + tabs.length) % tabs.length;
+      nextIndex =
+        (currentIndex - 1 + availableTabs.length) % availableTabs.length;
     }
     if (event.key === "Home") nextIndex = 0;
-    if (event.key === "End") nextIndex = tabs.length - 1;
+    if (event.key === "End") nextIndex = availableTabs.length - 1;
     if (nextIndex === currentIndex) return;
 
     event.preventDefault();
-    const nextTab = tabs[nextIndex];
+    const nextTab = availableTabs[nextIndex];
     if (!nextTab) return;
     selectTab(nextTab);
     window.requestAnimationFrame(() => {
@@ -1286,12 +1313,13 @@ export function ServiceAssets({
     >
       <div className="panel-heading">
         <div>
-          <p className="eyebrow">Servicekatalog</p>
-          <h2 id="service-assets-title">Services, Assets und Fälle</h2>
+          <p className="eyebrow">{pageCopy?.eyebrow ?? "Servicekatalog"}</p>
+          <h2 id="service-assets-title">
+            {pageCopy?.title ?? "Services, Assets und Fälle"}
+          </h2>
           <p>
-            Verwalten Sie den aktuellen Katalog dieses Mandanten. Archivierte
-            und gelöste Einträge werden von der API nicht mehr im Katalog
-            angezeigt.
+            {pageCopy?.description ??
+              "Verwalten Sie den aktuellen Katalog dieses Mandanten. Archivierte und gelöste Einträge werden von der API nicht mehr im Katalog angezeigt."}
           </p>
         </div>
         <button
@@ -1316,46 +1344,48 @@ export function ServiceAssets({
         </p>
       ) : null}
 
-      <div aria-label="Katalogbereiche" role="tablist">
-        <button
-          aria-controls="service-assets-services-panel"
-          aria-selected={activeTab === "services"}
-          id="service-assets-services-tab"
-          onClick={() => selectTab("services")}
-          onKeyDown={(event) => moveTab(event, "services")}
-          role="tab"
-          tabIndex={activeTab === "services" ? 0 : -1}
-          type="button"
-        >
-          Services ({services.length})
-        </button>
-        {allowAssets ? (
+      {!fixedTab ? (
+        <div aria-label="Katalogbereiche" role="tablist">
           <button
-            aria-controls="service-assets-assets-panel"
-            aria-selected={activeTab === "assets"}
-            id="service-assets-assets-tab"
-            onClick={() => selectTab("assets")}
-            onKeyDown={(event) => moveTab(event, "assets")}
+            aria-controls="service-assets-services-panel"
+            aria-selected={activeTab === "services"}
+            id="service-assets-services-tab"
+            onClick={() => selectTab("services")}
+            onKeyDown={(event) => moveTab(event, "services")}
             role="tab"
-            tabIndex={activeTab === "assets" ? 0 : -1}
+            tabIndex={activeTab === "services" ? 0 : -1}
             type="button"
           >
-            Assets ({assets.length})
+            Services ({services.length})
           </button>
-        ) : null}
-        <button
-          aria-controls="service-assets-problems-panel"
-          aria-selected={activeTab === "problems"}
-          id="service-assets-problems-tab"
-          onClick={() => selectTab("problems")}
-          onKeyDown={(event) => moveTab(event, "problems")}
-          role="tab"
-          tabIndex={activeTab === "problems" ? 0 : -1}
-          type="button"
-        >
-          Fälle ({problems.length})
-        </button>
-      </div>
+          {allowAssets ? (
+            <button
+              aria-controls="service-assets-assets-panel"
+              aria-selected={activeTab === "assets"}
+              id="service-assets-assets-tab"
+              onClick={() => selectTab("assets")}
+              onKeyDown={(event) => moveTab(event, "assets")}
+              role="tab"
+              tabIndex={activeTab === "assets" ? 0 : -1}
+              type="button"
+            >
+              Assets ({assets.length})
+            </button>
+          ) : null}
+          <button
+            aria-controls="service-assets-problems-panel"
+            aria-selected={activeTab === "problems"}
+            id="service-assets-problems-tab"
+            onClick={() => selectTab("problems")}
+            onKeyDown={(event) => moveTab(event, "problems")}
+            role="tab"
+            tabIndex={activeTab === "problems" ? 0 : -1}
+            type="button"
+          >
+            Fälle ({problems.length})
+          </button>
+        </div>
+      ) : null}
 
       {loading ? (
         <p aria-live="polite" className="empty-state">
@@ -1365,10 +1395,16 @@ export function ServiceAssets({
 
       {!loading && !forbidden && activeTab === "services" ? (
         <section
-          aria-labelledby="service-assets-services-tab"
-          id="service-assets-services-panel"
-          role="tabpanel"
-          tabIndex={0}
+          aria-labelledby={
+            fixedTab ? "service-assets-title" : "service-assets-services-tab"
+          }
+          {...(!fixedTab
+            ? {
+                id: "service-assets-services-panel",
+                role: "tabpanel" as const,
+                tabIndex: 0,
+              }
+            : {})}
         >
           <div className="panel-heading">
             <div>
@@ -1550,10 +1586,16 @@ export function ServiceAssets({
 
       {!loading && !forbidden && allowAssets && activeTab === "assets" ? (
         <section
-          aria-labelledby="service-assets-assets-tab"
-          id="service-assets-assets-panel"
-          role="tabpanel"
-          tabIndex={0}
+          aria-labelledby={
+            fixedTab ? "service-assets-title" : "service-assets-assets-tab"
+          }
+          {...(!fixedTab
+            ? {
+                id: "service-assets-assets-panel",
+                role: "tabpanel" as const,
+                tabIndex: 0,
+              }
+            : {})}
         >
           <div className="panel-heading">
             <div>
@@ -1813,10 +1855,16 @@ export function ServiceAssets({
 
       {!loading && !forbidden && activeTab === "problems" ? (
         <section
-          aria-labelledby="service-assets-problems-tab"
-          id="service-assets-problems-panel"
-          role="tabpanel"
-          tabIndex={0}
+          aria-labelledby={
+            fixedTab ? "service-assets-title" : "service-assets-problems-tab"
+          }
+          {...(!fixedTab
+            ? {
+                id: "service-assets-problems-panel",
+                role: "tabpanel" as const,
+                tabIndex: 0,
+              }
+            : {})}
         >
           <div className="panel-heading">
             <div>

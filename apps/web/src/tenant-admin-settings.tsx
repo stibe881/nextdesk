@@ -41,6 +41,7 @@ import { TenantDataRetention } from "./tenant-data-retention";
 import { TenantOnboarding, type OnboardingTarget } from "./tenant-onboarding";
 import { AiGovernancePanel } from "./ai-governance-panel";
 import { ExchangeMailSettings } from "./exchange-mail-settings";
+import { SlaManagement } from "./sla-management";
 
 export type TenantAdminSettingsProps = {
   tenantId: string;
@@ -70,6 +71,7 @@ type SettingsArea =
   | "overview"
   | "branding"
   | "features"
+  | "sla"
   | "ticket-fields"
   | "departments"
   | "privacy"
@@ -2255,6 +2257,30 @@ export function TenantAdminSettings({
     (count, group) => count + group.features.length,
     operationalFunctions.length,
   );
+  const slaManagementEnabled =
+    settings?.tenant_feature_flags.some(
+      (feature) =>
+        feature.feature_key === "automation.sla" &&
+        isTenantFeatureActive(feature),
+    ) ?? false;
+  const settingsAreas: ReadonlyArray<readonly [SettingsArea, string]> = [
+    ["overview", "Übersicht"],
+    ["branding", "Design"],
+    ["features", "Funktionen"],
+    ...(slaManagementEnabled ? ([["sla", "SLA"]] as const) : []),
+    ["ticket-fields", "Ticketfelder"],
+    ["departments", "Abteilungen"],
+    ["privacy", "Datenschutz"],
+    ["users", "Personen"],
+    ["roles", "Rollen"],
+    ["audit", "Protokoll"],
+  ];
+
+  useEffect(() => {
+    if (activeArea === "sla" && !slaManagementEnabled) {
+      setActiveArea("features");
+    }
+  }, [activeArea, slaManagementEnabled]);
 
   return (
     <section
@@ -2309,19 +2335,7 @@ export function TenantAdminSettings({
             aria-label="Einstellungsbereiche"
             role="tablist"
           >
-            {(
-              [
-                ["overview", "Übersicht"],
-                ["branding", "Design"],
-                ["features", "Funktionen"],
-                ["ticket-fields", "Ticketfelder"],
-                ["departments", "Abteilungen"],
-                ["privacy", "Datenschutz"],
-                ["users", "Personen"],
-                ["roles", "Rollen"],
-                ["audit", "Protokoll"],
-              ] as const
-            ).map(([area, label]) => (
+            {settingsAreas.map(([area, label]) => (
               <button
                 key={area}
                 type="button"
@@ -2671,6 +2685,10 @@ export function TenantAdminSettings({
                 </form>
               </section>
             )}
+
+            {activeArea === "sla" && slaManagementEnabled ? (
+              <SlaManagement headingLevel="h2" tenantId={tenantId} />
+            ) : null}
 
             {activeArea === "features" && (
               <section

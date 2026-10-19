@@ -11,6 +11,7 @@ import { supabase } from "./lib/supabase";
 
 export type SlaManagementProps = {
   tenantId: string;
+  headingLevel?: "h1" | "h2";
 };
 
 type SlaRule = {
@@ -556,6 +557,11 @@ const slaManagementStyles = `
     justify-content: space-between;
     gap: 14px;
   }
+  .sla-management__toolbar h1,
+  .sla-management__toolbar h2 {
+    margin: 0;
+    font-size: 18px;
+  }
   .sla-management__intro {
     margin: 4px 0 0;
     color: #627780;
@@ -700,7 +706,10 @@ const slaManagementStyles = `
   }
 `;
 
-export function SlaManagement({ tenantId }: SlaManagementProps) {
+export function SlaManagement({
+  tenantId,
+  headingLevel = "h1",
+}: SlaManagementProps) {
   const [rules, setRules] = useState<SlaRule[]>([]);
   const [escalations, setEscalations] = useState<Escalation[]>([]);
   const [options, setOptions] = useState<FormOptions>(EMPTY_OPTIONS);
@@ -906,6 +915,7 @@ export function SlaManagement({ tenantId }: SlaManagementProps) {
   const missingSelectedPriority =
     Boolean(draft.priorityKey) &&
     !options.priorities.some((priority) => priority.key === draft.priorityKey);
+  const Heading = headingLevel;
 
   return (
     <section
@@ -915,7 +925,7 @@ export function SlaManagement({ tenantId }: SlaManagementProps) {
       <style>{slaManagementStyles}</style>
       <div className="sla-management__toolbar">
         <div>
-          <h1 id="sla-management-heading">SLA-Verwaltung</h1>
+          <Heading id="sla-management-heading">SLA-Verwaltung</Heading>
           <p className="sla-management__intro">
             Reale SLA-Regeln und die jüngsten Eskalationen dieses Mandanten.
           </p>

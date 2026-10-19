@@ -5656,10 +5656,10 @@ export function TicketDetail({
         <summary>
           <span className="ticket-detail-disclosure-label">
             <UsersRound aria-hidden="true" size={17} strokeWidth={1.8} />
-            Arbeitskontext &amp; Werkzeuge
+            Arbeitskontext
           </span>
           <span className="ticket-detail-disclosure-meta">
-            Zuweisung, 360°-Kontext, Wissen
+            Zuweisung, Überblick, Makros
             <ChevronDown
               aria-hidden="true"
               className="ticket-detail-disclosure-icon"
@@ -6464,10 +6464,10 @@ export function TicketDetail({
         <summary>
           <span className="ticket-detail-disclosure-label">
             <CircleCheck aria-hidden="true" size={17} strokeWidth={1.8} />
-            Abschluss & Kontext
+            Abschluss &amp; Nachbereitung
           </span>
           <span className="ticket-detail-disclosure-meta">
-            Bewertungen, Wissen, Übergaben, Dateien
+            Lösung, Übergaben, Anhänge
             <ChevronDown
               aria-hidden="true"
               className="ticket-detail-disclosure-icon"
@@ -6477,7 +6477,11 @@ export function TicketDetail({
           </span>
         </summary>
         {isClosureContextOpen && (
-          <div className="ticket-detail-disclosure-content">
+          <div className="ticket-detail-disclosure-content ticket-detail-disclosure-content--closure">
+            <div className="ticket-detail-disclosure-intro">
+              <p className="eyebrow">NACHBEREITUNG</p>
+              <p>Lösung dokumentieren, Übergaben und Unterlagen prüfen.</p>
+            </div>
             <KnowledgeSection
               key={`${tenantId}:${ticketId}`}
               tenantId={tenantId}
@@ -7329,16 +7333,10 @@ export function TicketDetail({
         <summary>
           <span className="ticket-detail-disclosure-label">
             <CircleCheck aria-hidden="true" size={17} strokeWidth={1.8} />
-            Arbeitswerkzeuge
+            Ticket steuern
           </span>
           <span className="ticket-detail-disclosure-meta">
-            {[
-              detail.ticketModules.checklists ? "Checkliste" : null,
-              "Status",
-              "Eskalationen",
-            ]
-              .filter(Boolean)
-              .join(", ")}
+            Steuerung, Verknüpfungen, weitere Schritte
             <ChevronDown
               aria-hidden="true"
               className="ticket-detail-disclosure-icon"
@@ -7348,7 +7346,14 @@ export function TicketDetail({
           </span>
         </summary>
         {isWorkToolsOpen && (
-          <div className="ticket-detail-disclosure-content">
+          <div className="ticket-detail-disclosure-content ticket-detail-disclosure-content--tools">
+            <div className="ticket-detail-disclosure-intro">
+              <p className="eyebrow">TICKET STEUERN</p>
+              <p>
+                Verfügbare Werkzeuge erscheinen hier als getrennte
+                Arbeitskarten. Nicht aktive Funktionen werden ausgeblendet.
+              </p>
+            </div>
             <section
               className="ticket-detail-comments"
               aria-labelledby="ticket-escalations-heading"
@@ -8209,11 +8214,11 @@ export function TicketDetail({
         )}
       </details>
 
-      <details className="ticket-detail-disclosure">
+      <details className="ticket-detail-disclosure ticket-detail-disclosure--timeline">
         <summary>
           <span className="ticket-detail-disclosure-label">
             <Clock3 aria-hidden="true" size={17} strokeWidth={1.8} />
-            Verlauf
+            Änderungsverlauf
           </span>
           <span className="ticket-detail-disclosure-meta">
             {detail.events.length} Ereignisse
@@ -8225,15 +8230,17 @@ export function TicketDetail({
             />
           </span>
         </summary>
-        <div className="ticket-detail-disclosure-content">
+        <div className="ticket-detail-disclosure-content ticket-detail-disclosure-content--timeline">
+          <div className="ticket-detail-disclosure-intro">
+            <p>Systemereignisse und Statusänderungen zu diesem Ticket.</p>
+          </div>
           <section
             className="ticket-detail-timeline"
             aria-labelledby="ticket-timeline-heading"
           >
             <div className="ticket-detail-section-heading">
               <div>
-                <p className="eyebrow">VERLAUF</p>
-                <h3 id="ticket-timeline-heading">Timeline</h3>
+                <h3 id="ticket-timeline-heading">Ereignisse</h3>
               </div>
               <Clock3 aria-hidden="true" size={18} strokeWidth={1.8} />
             </div>

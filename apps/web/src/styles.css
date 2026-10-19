@@ -7950,7 +7950,7 @@ body:has(.ticket-detail) {
   display: flex;
   flex-direction: column;
   gap: 16px;
-  width: min(820px, calc(100% - 32px));
+  width: min(720px, calc(100% - 32px));
   max-height: calc(100dvh - 32px);
   border-radius: 16px;
   padding: 0 16px 20px;
@@ -8698,11 +8698,59 @@ body:has(.ticket-detail) {
 }
 
 .ticket-detail-disclosure-content {
+  display: grid;
+  gap: 12px;
   padding: 0 14px 14px;
 }
 
 .ticket-detail-workspace .ticket-detail-disclosure-content {
   padding-top: 2px;
+}
+
+.ticket-detail-disclosure-intro {
+  margin: 0;
+  border-left: 3px solid var(--primary);
+  padding: 4px 0 4px 10px;
+}
+
+.ticket-detail-disclosure-intro .eyebrow {
+  margin: 0 0 3px;
+  color: var(--primary);
+}
+
+.ticket-detail-disclosure-intro > p:last-child {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.ticket-detail-disclosure-content--closure
+  > :not(.ticket-detail-disclosure-intro),
+.ticket-detail-disclosure-content--tools
+  > :not(.ticket-detail-disclosure-intro),
+.ticket-detail-disclosure-content--timeline
+  > :not(.ticket-detail-disclosure-intro) {
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 15px;
+  background: var(--surface-subtle);
+  box-shadow: 0 8px 22px var(--shadow-tint-rgb-15-23-42-5);
+}
+
+.ticket-detail-disclosure-content--closure
+  > :not(.ticket-detail-disclosure-intro).ticket-detail-comments,
+.ticket-detail-disclosure-content--tools
+  > :not(.ticket-detail-disclosure-intro).ticket-detail-comments,
+.ticket-detail-disclosure-content--tools
+  > :not(.ticket-detail-disclosure-intro).ticket-detail-editor,
+.ticket-detail-disclosure-content--tools
+  > :not(.ticket-detail-disclosure-intro).ticket-detail-checklist,
+.ticket-detail-disclosure-content--timeline
+  > :not(.ticket-detail-disclosure-intro).ticket-detail-timeline {
+  border-top: 1px solid var(--border);
+  padding-top: 15px;
 }
 
 .ticket-detail-workspace .ticket-workbench__context-header {

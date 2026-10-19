@@ -22,6 +22,7 @@ import {
   ChartNoAxesCombined,
   CircleCheck,
   CircleEllipsis,
+  FileWarning,
   LayoutDashboard,
   ListTodo,
   LogOut,
@@ -70,7 +71,6 @@ import { TicketCsvImport } from "./ticket-csv-import";
 import { TicketDetail } from "./ticket-detail";
 import { TenantAdminSettings } from "./tenant-admin-settings";
 import { KnowledgeBase } from "./knowledge-base";
-import { SlaManagement } from "./sla-management";
 import { ServiceReporting } from "./service-reporting";
 import { ServiceAssets } from "./service-assets";
 import { PersonalSettings } from "./personal-settings";
@@ -106,6 +106,7 @@ type Section =
   | "Mein Portal"
   | "Services"
   | "Assets"
+  | "Fälle"
   | "Wissen"
   | "Berichte"
   | "Wiedervorlagen"
@@ -211,6 +212,7 @@ type TenantWorkspaceBranding = {
 const sections: readonly { label: Section; Icon: LucideIcon }[] = [
   { label: "Übersicht", Icon: LayoutDashboard },
   { label: "Tickets", Icon: Ticket },
+  { label: "Fälle", Icon: FileWarning },
   { label: "Wiedervorlagen", Icon: ListTodo },
   { label: "Arbeitsplatz", Icon: BriefcaseBusiness },
   { label: "Services", Icon: MonitorCog },
@@ -2020,6 +2022,7 @@ export function App() {
     if (
       section === "Services" ||
       section === "Assets" ||
+      section === "Fälle" ||
       section === "Wissen" ||
       section === "Berichte" ||
       section === "Arbeitsplatz" ||
@@ -2524,7 +2527,13 @@ export function App() {
       return agentWorkbenchEnabled;
     }
     if (item.label === "Mein Portal") return requesterPortalEnabled;
-    if (item.label === "Assets") return isFeatureEnabled("assets.management");
+    if (
+      item.label === "Services" ||
+      item.label === "Assets" ||
+      item.label === "Fälle"
+    ) {
+      return isFeatureEnabled("assets.management");
+    }
     if (item.label === "Wissen") return isFeatureEnabled("knowledge.base");
     if (item.label === "Berichte") return isFeatureEnabled("reporting.service");
     if (item.label === "Wiedervorlagen") return experienceWorkspaceEnabled;
@@ -2543,8 +2552,10 @@ export function App() {
   useEffect(() => {
     const sectionFeature: Partial<Record<Section, string>> = {
       Arbeitsplatz: "agent.workbench",
+      Fälle: "assets.management",
       Assets: "assets.management",
       Berichte: "reporting.service",
+      Services: "assets.management",
       "Mein Portal": "requester.portal",
       Wissen: "knowledge.base",
       Wiedervorlagen: "experience.workspace",
@@ -3146,17 +3157,15 @@ export function App() {
         ) : section === "Assets" &&
           activeTenant &&
           isFeatureEnabled("assets.management") ? (
-          <ServiceAssets initialTab="assets" tenantId={activeTenant.id} />
-        ) : section === "Services" && activeTenant ? (
-          <>
-            <ServiceAssets
-              allowAssets={isFeatureEnabled("assets.management")}
-              tenantId={activeTenant.id}
-            />
-            {isFeatureEnabled("automation.sla") ? (
-              <SlaManagement tenantId={activeTenant.id} />
-            ) : null}
-          </>
+          <ServiceAssets fixedTab="assets" tenantId={activeTenant.id} />
+        ) : section === "Services" &&
+          activeTenant &&
+          isFeatureEnabled("assets.management") ? (
+          <ServiceAssets fixedTab="services" tenantId={activeTenant.id} />
+        ) : section === "Fälle" &&
+          activeTenant &&
+          isFeatureEnabled("assets.management") ? (
+          <ServiceAssets fixedTab="problems" tenantId={activeTenant.id} />
         ) : section === "Berichte" &&
           activeTenant &&
           isFeatureEnabled("reporting.service") ? (
