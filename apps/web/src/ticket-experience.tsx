@@ -15,6 +15,7 @@ import {
   useState,
   type FormEvent,
 } from "react";
+import { createPortal } from "react-dom";
 import { supabase } from "./lib/supabase";
 
 type FollowUp = {
@@ -346,6 +347,8 @@ export function TicketFollowUps({
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const requestSequence = useRef(0);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const dialogRef = useRef<HTMLElement>(null);
 
   const loadFollowUps = useCallback(async () => {
     const requestId = ++requestSequence.current;
@@ -399,6 +402,21 @@ export function TicketFollowUps({
       requestSequence.current += 1;
     };
   }, [enabled, loadFollowUps, subject, ticketNumber]);
+
+  useEffect(() => {
+    if (!expanded) return;
+    const animationFrame = window.requestAnimationFrame(() => {
+      dialogRef.current?.focus();
+    });
+    return () => window.cancelAnimationFrame(animationFrame);
+  }, [expanded]);
+
+  function closeDialog() {
+    if (pending !== null) return;
+    setExpanded(false);
+    setEditingFollowUp(null);
+    window.requestAnimationFrame(() => triggerRef.current?.focus());
+  }
 
   function editFollowUp(followUp: FollowUp) {
     setEditingFollowUp(followUp);
@@ -517,189 +535,246 @@ export function TicketFollowUps({
         className="secondary-button ticket-experience__header-action"
         disabled={pending !== null}
         onClick={() => {
-          setExpanded((current) => !current);
-          if (expanded) setEditingFollowUp(null);
+          if (expanded) {
+            closeDialog();
+            return;
+          }
+          setExpanded(true);
           setError("");
           setNotice("");
         }}
+        ref={triggerRef}
         type="button"
       >
         <CalendarClock aria-hidden="true" size={16} strokeWidth={1.8} />
         <span className="ticket-detail-action-label">Wiedervorlage setzen</span>
       </button>
-      {expanded && (
-        <section
-          aria-busy={pending !== null}
-          aria-labelledby={`${formId}-heading`}
-          className="ticket-experience__popover"
-          id={formId}
-        >
-          <div className="ticket-experience__popover-heading">
-            <div>
-              <p className="eyebrow">MEINE ARBEIT</p>
-              <h3 id={`${formId}-heading`}>
-                {editingFollowUp
-                  ? "Wiedervorlage ändern"
-                  : "Wiedervorlage setzen"}
-              </h3>
-            </div>
-            <button
-              aria-label="Wiedervorlage schliessen"
-              className="more-button ticket-experience__close"
-              disabled={pending !== null}
-              onClick={() => setExpanded(false)}
-              type="button"
+      {expanded &&
+        createPortal(
+          <div
+            className="ticket-experience__dialog-backdrop"
+            onMouseDown={(event) => {
+              if (event.currentTarget === event.target) closeDialog();
+            }}
+          >
+            <section
+              aria-busy={pending !== null}
+              aria-labelledby={`${formId}-heading`}
+              aria-modal="true"
+              className="ticket-experience__dialog"
+              id={formId}
+              onKeyDown={(event) => {
+                if (event.key === "Escape") {
+                  closeDialog();
+                  return;
+                }
+                if (event.key !== "Tab") return;
+
+                const focusable = Array.from(
+                  event.currentTarget.querySelectorAll<HTMLElement>(
+                    'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+                  ),
+                ).filter((element) => element.offsetParent !== null);
+                const firstFocusable = focusable.at(0);
+                const lastFocusable = focusable.at(-1);
+                if (!firstFocusable || !lastFocusable) {
+                  event.preventDefault();
+                  event.currentTarget.focus();
+                  return;
+                }
+
+                const activeElement = document.activeElement;
+                if (
+                  event.shiftKey &&
+                  (activeElement === firstFocusable ||
+                    activeElement === event.currentTarget)
+                ) {
+                  event.preventDefault();
+                  lastFocusable.focus();
+                } else if (
+                  !event.shiftKey &&
+                  (activeElement === lastFocusable ||
+                    activeElement === event.currentTarget)
+                ) {
+                  event.preventDefault();
+                  firstFocusable.focus();
+                }
+              }}
+              ref={dialogRef}
+              role="dialog"
+              tabIndex={-1}
             >
-              <X aria-hidden="true" size={16} strokeWidth={1.8} />
-            </button>
-          </div>
-          <p className="data-caption">
-            Die Wiedervorlage gehört nur Ihnen und ändert dieses Ticket nicht.
-          </p>
-          {error && (
-            <p className="ticket-detail-message error" role="alert">
-              {error}
-            </p>
-          )}
-          {notice && (
-            <p className="ticket-detail-message success" role="status">
-              <CircleCheck aria-hidden="true" size={16} />
-              {notice}
-            </p>
-          )}
-          <form className="ticket-experience__form" onSubmit={saveFollowUp}>
-            <div className="ticket-experience__quick-dates" role="group">
-              <span>Termin schnell wählen</span>
-              <button
-                disabled={pending !== null}
-                onClick={() => setDueAt(quickDueAt("one-hour"))}
-                type="button"
-              >
-                In 1 Stunde
-              </button>
-              <button
-                disabled={pending !== null}
-                onClick={() => setDueAt(quickDueAt("tomorrow"))}
-                type="button"
-              >
-                Morgen 08:00
-              </button>
-              <button
-                disabled={pending !== null}
-                onClick={() => setDueAt(quickDueAt("monday"))}
-                type="button"
-              >
-                Montag 08:00
-              </button>
-            </div>
-            <label>
-              Titel
-              <input
-                disabled={pending !== null}
-                maxLength={240}
-                onChange={(event) => setTitle(event.target.value)}
-                required
-                value={title}
-              />
-            </label>
-            <label>
-              Termin (optional)
-              <input
-                disabled={pending !== null}
-                min={minimumDueAt()}
-                onChange={(event) => setDueAt(event.target.value)}
-                type="datetime-local"
-                value={dueAt}
-              />
-            </label>
-            <label>
-              Notiz (optional)
-              <textarea
-                disabled={pending !== null}
-                maxLength={5000}
-                onChange={(event) => setDescription(event.target.value)}
-                placeholder="Woran möchten Sie erinnert werden?"
-                rows={2}
-                value={description}
-              />
-            </label>
-            <button
-              className="primary-button"
-              disabled={pending !== null || !title.trim()}
-              type="submit"
-            >
-              {pending === "save" ? (
-                <LoaderCircle
-                  aria-hidden="true"
-                  className="ticket-detail-spinner"
-                  size={16}
-                />
-              ) : (
-                <CalendarClock aria-hidden="true" size={16} />
-              )}
-              Wiedervorlage speichern
-            </button>
-          </form>
-          <div className="ticket-experience__follow-up-list">
-            <div className="ticket-experience__list-heading">
-              <strong>Eigene offene Wiedervorlagen</strong>
-              <span className="data-caption">{followUps.length}</span>
-            </div>
-            {followUps.length === 0 ? (
+              <div className="ticket-experience__popover-heading">
+                <div>
+                  <p className="eyebrow">MEINE ARBEIT</p>
+                  <h3 id={`${formId}-heading`}>
+                    {editingFollowUp
+                      ? "Wiedervorlage ändern"
+                      : "Wiedervorlage setzen"}
+                  </h3>
+                </div>
+                <button
+                  aria-label="Wiedervorlage schliessen"
+                  className="more-button ticket-experience__close"
+                  disabled={pending !== null}
+                  onClick={closeDialog}
+                  type="button"
+                >
+                  <X aria-hidden="true" size={16} strokeWidth={1.8} />
+                </button>
+              </div>
               <p className="data-caption">
-                Für dieses Ticket ist keine Wiedervorlage offen.
+                Die Wiedervorlage gehört nur Ihnen und ändert dieses Ticket
+                nicht.
               </p>
-            ) : (
-              <ol>
-                {followUps.map((followUp) => {
-                  const resolving = pending === followUp.id;
-                  return (
-                    <li key={followUp.id}>
-                      <div>
-                        <strong>{followUp.title}</strong>
-                        <span>
-                          {followUp.dueAt
-                            ? `Fällig: ${formatDateTime(followUp.dueAt)}`
-                            : "Ohne Termin"}
-                        </span>
-                        {followUp.description && <p>{followUp.description}</p>}
-                      </div>
-                      <div className="ticket-experience__follow-up-actions">
-                        <button
-                          className="secondary-button"
-                          disabled={pending !== null}
-                          onClick={() => editFollowUp(followUp)}
-                          type="button"
-                        >
-                          <Pencil aria-hidden="true" size={16} />
-                          Ändern
-                        </button>
-                        <button
-                          className="secondary-button"
-                          disabled={pending !== null}
-                          onClick={() => void resolveFollowUp(followUp)}
-                          type="button"
-                        >
-                          {resolving ? (
-                            <LoaderCircle
-                              aria-hidden="true"
-                              className="ticket-detail-spinner"
-                              size={16}
-                            />
-                          ) : (
-                            <Check aria-hidden="true" size={16} />
-                          )}
-                          Erledigt
-                        </button>
-                      </div>
-                    </li>
-                  );
-                })}
-              </ol>
-            )}
-          </div>
-        </section>
-      )}
+              {error && (
+                <p className="ticket-detail-message error" role="alert">
+                  {error}
+                </p>
+              )}
+              {notice && (
+                <p className="ticket-detail-message success" role="status">
+                  <CircleCheck aria-hidden="true" size={16} />
+                  {notice}
+                </p>
+              )}
+              <form className="ticket-experience__form" onSubmit={saveFollowUp}>
+                <div className="ticket-experience__quick-dates" role="group">
+                  <span>Termin schnell wählen</span>
+                  <button
+                    disabled={pending !== null}
+                    onClick={() => setDueAt(quickDueAt("one-hour"))}
+                    type="button"
+                  >
+                    In 1 Stunde
+                  </button>
+                  <button
+                    disabled={pending !== null}
+                    onClick={() => setDueAt(quickDueAt("tomorrow"))}
+                    type="button"
+                  >
+                    Morgen 08:00
+                  </button>
+                  <button
+                    disabled={pending !== null}
+                    onClick={() => setDueAt(quickDueAt("monday"))}
+                    type="button"
+                  >
+                    Montag 08:00
+                  </button>
+                </div>
+                <label>
+                  Titel
+                  <input
+                    disabled={pending !== null}
+                    maxLength={240}
+                    onChange={(event) => setTitle(event.target.value)}
+                    required
+                    value={title}
+                  />
+                </label>
+                <label>
+                  Termin (optional)
+                  <input
+                    disabled={pending !== null}
+                    min={minimumDueAt()}
+                    onChange={(event) => setDueAt(event.target.value)}
+                    type="datetime-local"
+                    value={dueAt}
+                  />
+                </label>
+                <label>
+                  Notiz (optional)
+                  <textarea
+                    disabled={pending !== null}
+                    maxLength={5000}
+                    onChange={(event) => setDescription(event.target.value)}
+                    placeholder="Woran möchten Sie erinnert werden?"
+                    rows={2}
+                    value={description}
+                  />
+                </label>
+                <button
+                  className="primary-button"
+                  disabled={pending !== null || !title.trim()}
+                  type="submit"
+                >
+                  {pending === "save" ? (
+                    <LoaderCircle
+                      aria-hidden="true"
+                      className="ticket-detail-spinner"
+                      size={16}
+                    />
+                  ) : (
+                    <CalendarClock aria-hidden="true" size={16} />
+                  )}
+                  Wiedervorlage speichern
+                </button>
+              </form>
+              <div className="ticket-experience__follow-up-list">
+                <div className="ticket-experience__list-heading">
+                  <strong>Eigene offene Wiedervorlagen</strong>
+                  <span className="data-caption">{followUps.length}</span>
+                </div>
+                {followUps.length === 0 ? (
+                  <p className="data-caption">
+                    Für dieses Ticket ist keine Wiedervorlage offen.
+                  </p>
+                ) : (
+                  <ol>
+                    {followUps.map((followUp) => {
+                      const resolving = pending === followUp.id;
+                      return (
+                        <li key={followUp.id}>
+                          <div>
+                            <strong>{followUp.title}</strong>
+                            <span>
+                              {followUp.dueAt
+                                ? `Fällig: ${formatDateTime(followUp.dueAt)}`
+                                : "Ohne Termin"}
+                            </span>
+                            {followUp.description && (
+                              <p>{followUp.description}</p>
+                            )}
+                          </div>
+                          <div className="ticket-experience__follow-up-actions">
+                            <button
+                              className="secondary-button"
+                              disabled={pending !== null}
+                              onClick={() => editFollowUp(followUp)}
+                              type="button"
+                            >
+                              <Pencil aria-hidden="true" size={16} />
+                              Ändern
+                            </button>
+                            <button
+                              className="secondary-button"
+                              disabled={pending !== null}
+                              onClick={() => void resolveFollowUp(followUp)}
+                              type="button"
+                            >
+                              {resolving ? (
+                                <LoaderCircle
+                                  aria-hidden="true"
+                                  className="ticket-detail-spinner"
+                                  size={16}
+                                />
+                              ) : (
+                                <Check aria-hidden="true" size={16} />
+                              )}
+                              Erledigt
+                            </button>
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ol>
+                )}
+              </div>
+            </section>
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }

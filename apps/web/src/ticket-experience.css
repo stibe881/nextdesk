@@ -11,15 +11,22 @@
   white-space: nowrap;
 }
 
-.ticket-experience__popover {
-  position: absolute;
-  z-index: 8;
-  top: calc(100% + 9px);
-  right: 0;
+.ticket-experience__dialog-backdrop {
+  position: fixed;
+  z-index: 90;
+  inset: 0;
+  display: grid;
+  overflow-y: auto;
+  place-items: center;
+  padding: 24px;
+  background: var(--overlay);
+}
+
+.ticket-experience__dialog {
   display: grid;
   gap: 12px;
-  width: min(390px, calc(100vw - 32px));
-  max-height: min(680px, calc(100dvh - 112px));
+  width: min(100%, 430px);
+  max-height: min(680px, calc(100dvh - 48px));
   overflow: auto;
   border: 1px solid var(--border);
   border-radius: var(--radius-card);
@@ -57,7 +64,7 @@
   min-height: 34px;
 }
 
-.ticket-experience__popover > .data-caption,
+.ticket-experience__dialog > .data-caption,
 .ticket-experience__follow-up-list > .data-caption,
 .ticket-experience__resolution-form > .data-caption {
   margin: 0;
@@ -358,15 +365,14 @@
 }
 
 @media (max-width: 560px) {
-  .ticket-experience__popover {
-    position: fixed;
-    z-index: 30;
-    top: auto;
-    right: 12px;
-    bottom: max(12px, env(safe-area-inset-bottom));
-    left: 12px;
-    width: auto;
-    max-height: min(74dvh, 680px);
+  .ticket-experience__dialog-backdrop {
+    align-items: end;
+    padding: 12px;
+  }
+
+  .ticket-experience__dialog {
+    width: 100%;
+    max-height: calc(100dvh - 24px);
   }
 
   .ticket-experience__header-action {
