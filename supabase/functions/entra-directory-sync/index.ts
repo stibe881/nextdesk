@@ -40,6 +40,11 @@ type DirectoryPerson = {
   last_synced_at: string;
 };
 
+type RequesterProfileSyncResult = {
+  requester_contacts_created?: unknown;
+  requester_profiles_initialized?: unknown;
+};
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -88,6 +93,27 @@ function optionalText(value: unknown, maximum = 160): string | null {
 function optionalDirectoryLabel(value: unknown): string | null {
   const normalized = optionalText(value);
   return normalized && Array.from(normalized).length >= 2 ? normalized : null;
+}
+
+function nonNegativeInteger(value: unknown): number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0
+    ? value
+    : 0;
+}
+
+function requesterProfileSyncResult(value: unknown): {
+  contactsCreated: number;
+  profilesInitialized: number;
+} {
+  const row = Array.isArray(value) ? value[0] : value;
+  if (!isRecord(row)) return { contactsCreated: 0, profilesInitialized: 0 };
+  const result = row as RequesterProfileSyncResult;
+  return {
+    contactsCreated: nonNegativeInteger(result.requester_contacts_created),
+    profilesInitialized: nonNegativeInteger(
+      result.requester_profiles_initialized,
+    ),
+  };
 }
 
 function asDirectoryPerson(
@@ -306,6 +332,21 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       .lt("last_synced_at", startedAt);
     if (staleError) throw new Error("directory_deactivate_failed");
 
+    const { data: requesterProfileSyncData, error: requesterProfileSyncError } =
+      await context.supabaseAdmin.rpc("sync_entra_directory_requesters", {
+        p_tenant_id: action.tenantId,
+      });
+    if (requesterProfileSyncError) {
+      console.error("directory_requester_profile_sync_failed", {
+        code: requesterProfileSyncError.code,
+        message: requesterProfileSyncError.message,
+      });
+      throw new Error("directory_requester_profile_sync_failed");
+    }
+    const requesterProfileSync = requesterProfileSyncResult(
+      requesterProfileSyncData,
+    );
+
     const completedAt = new Date().toISOString();
     await context.supabaseAdmin
       .from("tenant_entra_directory_sync_configurations")
@@ -321,6 +362,8 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         active: people.filter((person) => person.account_enabled).length,
         imported: people.length,
         skipped: graphPeople.length - people.length,
+        requesterContactsCreated: requesterProfileSync.contactsCreated,
+        requesterProfilesInitialized: requesterProfileSync.profilesInitialized,
       },
     });
   } catch (error) {

@@ -291,6 +291,80 @@ async function ensureInvitedAgentRole(
   return !createError;
 }
 
+function requesterProfileDepartment(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().replace(/\s+/g, " ");
+  if (
+    !normalized ||
+    Array.from(normalized).length > 120 ||
+    /[\u0000-\u001F\u007F]/.test(normalized)
+  ) {
+    return null;
+  }
+  return normalized;
+}
+
+async function initialiseEntraRequesterProfile(
+  admin: any,
+  tenantId: string,
+  userId: string,
+  email: string,
+): Promise<void> {
+  const { data: directoryPerson, error: directoryError } = await admin
+    .from("tenant_entra_directory_people")
+    .select("source_department_name")
+    .eq("tenant_id", tenantId)
+    .eq("email", email)
+    .eq("account_enabled", true)
+    .is("inactive_at", null)
+    .maybeSingle();
+  if (directoryError || !directoryPerson) {
+    if (directoryError) {
+      console.error("entra_requester_directory_lookup_failed", {
+        code: directoryError.code,
+        message: directoryError.message,
+      });
+    }
+    return;
+  }
+
+  const department = requesterProfileDepartment(
+    directoryPerson.source_department_name,
+  );
+  if (!department) return;
+
+  const { data: requesterId, error: requesterError } = await admin.rpc(
+    "ensure_ticket_user_requester",
+    {
+      p_tenant_id: tenantId,
+      p_user_id: userId,
+      p_source: "portal",
+    },
+  );
+  if (requesterError || typeof requesterId !== "string") {
+    console.error("entra_requester_contact_initialization_failed", {
+      code: requesterError?.code ?? "invalid_requester_id",
+      message: requesterError?.message ?? "invalid_requester_id",
+    });
+    return;
+  }
+
+  const { error: profileError } = await admin.rpc(
+    "initialise_entra_requester_profile",
+    {
+      p_tenant_id: tenantId,
+      p_requester_id: requesterId,
+      p_department: department,
+    },
+  );
+  if (profileError) {
+    console.error("entra_requester_profile_initialization_failed", {
+      code: profileError.code,
+      message: profileError.message,
+    });
+  }
+}
+
 async function provisionSsoPerson(
   admin: any,
   user: any,
@@ -318,6 +392,7 @@ async function provisionSsoPerson(
         .from("user_profiles")
         .upsert({ id: userId, display_name: ssoDisplayName });
     }
+    await initialiseEntraRequesterProfile(admin, tenantId, userId, email);
     return "existing";
   }
 
@@ -398,6 +473,8 @@ async function provisionSsoPerson(
   ) {
     return "failed";
   }
+
+  await initialiseEntraRequesterProfile(admin, tenantId, userId, email);
 
   if (invitation) {
     const { error: invitationUpdateError } = await admin
