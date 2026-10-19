@@ -42,3 +42,9 @@ Nach dem Code-Rollout führt eine Kundin oder ein Kunde die erste Verbindung als
 - `supabase/functions/exchange-mail-admin/`, `exchange-mail-worker/`, `exchange-mail-webhook/`: kanal- und verbindungsgebundene Verwaltung, Verarbeitung und Zustellung.
 - `apps/web/src/exchange-mail-settings.tsx`: Connect-Assistent und Mehrpostfachliste.
 - `docs/deployment/`: kundenverständliche, PowerShell-freie Einrichtung und Einschränkungen.
+
+## Ticketakte als PDF – Redesign
+
+Die Ticketakte bleibt eine druckoptimierte, clientseitig erzeugte HTML-PDF mit derselben autorisierten Datenquelle. Die Überarbeitung betrifft ausschliesslich Informationshierarchie und Druck-CSS; Berechtigungsprüfung, Audit-Ereignis und Inhaltssichtbarkeit bleiben unverändert.
+
+Die Gestaltung wird eine ruhige, sachliche Serviceakte statt einer Webansicht im Druck: Ein Kopf priorisiert Ticketnummer, Titel und Status, danach folgen ein luftiger Faktenblock, klar getrennte Inhaltsabschnitte, eine kompakte Checkliste sowie eine zeitlich lesbare Kommunikationschronik. Status, Priorität sowie interne und externe Beiträge erhalten zurückhaltende, semantische Farbakzente. Wiederkehrende Kopfzeilen, Karten und einzelne Kommunikationsbeiträge vermeiden Seitenumbrüche, damit die PDF auf A4 stabil und hochwertig druckt. Es werden keine externen Bilder oder Daten eingebunden.
