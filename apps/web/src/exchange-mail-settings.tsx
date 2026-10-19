@@ -749,6 +749,27 @@ export function ExchangeMailSettings({ tenantId }: { tenantId: string }) {
               aktivieren.
             </p>
           ) : null}
+          {consentUrl &&
+          status.channel &&
+          status.channel.status !== "verified" &&
+          status.channel.status !== "active" ? (
+            <p
+              className="exchange-mail-settings__notice exchange-mail-settings__notice--warning"
+              role="status"
+            >
+              <TriangleAlert aria-hidden="true" size={17} />
+              <span>
+                Die nextDesk-App ist in diesem Microsoft-365-Mandanten noch
+                nicht freigegeben. Öffnen Sie die Freigabe mit einer
+                berechtigten Microsoft-365-Administration und prüfen Sie die
+                Verbindung anschliessend erneut.{" "}
+                <a href={consentUrl} rel="noreferrer" target="_blank">
+                  Microsoft-365-Freigabe öffnen{" "}
+                  <ExternalLink aria-hidden="true" size={14} />
+                </a>
+              </span>
+            </p>
+          ) : null}
           {status.channel?.overBroadPermissions ? (
             <p
               className="exchange-mail-settings__notice exchange-mail-settings__notice--warning"
