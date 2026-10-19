@@ -125,6 +125,7 @@ export async function functionErrorMessage(
     case "reporting_feature_disabled":
       return "Service-Reporting ist für Ihren Mandanten derzeit deaktiviert.";
     case "sla_feature_disabled":
+    case "automation_feature_inactive":
       return "Die SLA-Automatisierung ist für Ihren Mandanten derzeit deaktiviert.";
     case "tenant_feature_lookup_failed":
       return "Die Funktionsberechtigung konnte nicht geprüft werden. Bitte versuchen Sie es erneut.";

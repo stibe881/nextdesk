@@ -1,4 +1,5 @@
 import { withSupabase, type SupabaseContext } from "@supabase/server";
+import { resolveTenantFeatureStates } from "../_shared/tenant-features.ts";
 
 type Admin = SupabaseContext["supabaseAdmin"];
 type Invocation = { tenantId: string | null; dryRun: boolean };
@@ -367,8 +368,29 @@ const handler = withSupabase(
         500,
         requestId,
       );
-    const results = [];
+    const enabledConnections = [];
+    let skippedInactive = 0;
     for (const connection of connections ?? []) {
+      const states = await resolveTenantFeatureStates(
+        context.supabaseAdmin,
+        connection.tenant_id,
+        ["assets.management"],
+      );
+      if (states === null)
+        return json(
+          { error: { code: "tenant_feature_lookup_failed" } },
+          503,
+          requestId,
+        );
+      if (states["assets.management"] !== true) {
+        skippedInactive += 1;
+        continue;
+      }
+      enabledConnections.push(connection);
+    }
+
+    const results = [];
+    for (const connection of enabledConnections) {
       if (!connection.directory_tenant_id) continue;
       results.push(
         await syncTenant(
@@ -388,7 +410,13 @@ const handler = withSupabase(
       }),
     );
     return json(
-      { data: { dryRun: invocation.dryRun, tenants: results } },
+      {
+        data: {
+          dryRun: invocation.dryRun,
+          tenants: results,
+          skippedInactive,
+        },
+      },
       200,
       requestId,
     );

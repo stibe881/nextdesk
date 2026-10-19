@@ -1,4 +1,6 @@
 import { withSupabase } from "@supabase/server";
+import { filterSlaAutomationCandidates } from "../_shared/sla-automation-feature-gate.ts";
+import { resolveTenantFeatureStates } from "../_shared/tenant-features.ts";
 
 /**
  * Deployment requirements:
@@ -235,8 +237,19 @@ const handler = withSupabase(
         kind: "resolution" as const,
       })),
     ];
+    const featureFiltered = await filterSlaAutomationCandidates(
+      candidates,
+      async (tenantId) => {
+        const states = await resolveTenantFeatureStates(
+          context.supabaseAdmin,
+          tenantId,
+          ["automation.sla"],
+        );
+        return states?.["automation.sla"] === true;
+      },
+    );
     const existing = await existingBreachKeys(context.supabaseAdmin, [
-      ...new Set(candidates.map(({ ticket }) => ticket.id)),
+      ...new Set(featureFiltered.candidates.map(({ ticket }) => ticket.id)),
     ]);
     if (existing.error) {
       return json(
@@ -246,7 +259,7 @@ const handler = withSupabase(
       );
     }
 
-    const pending = candidates.filter(
+    const pending = featureFiltered.candidates.filter(
       ({ ticket, kind }) =>
         !existing.keys.has(`${ticket.id}:${eventType(kind)}`),
     );
@@ -260,6 +273,7 @@ const handler = withSupabase(
             resolutionBreaches: pending.filter(
               (item) => item.kind === "resolution",
             ).length,
+            skippedInactiveTenants: featureFiltered.skippedInactiveTenants,
           },
         },
         200,
@@ -291,9 +305,23 @@ const handler = withSupabase(
     }
 
     console.info(
-      JSON.stringify({ event: "sla_automation.run", requestId, ...result }),
+      JSON.stringify({
+        event: "sla_automation.run",
+        requestId,
+        skippedInactiveTenants: featureFiltered.skippedInactiveTenants,
+        ...result,
+      }),
     );
-    return json({ data: result }, result.failed > 0 ? 207 : 200, requestId);
+    return json(
+      {
+        data: {
+          ...result,
+          skippedInactiveTenants: featureFiltered.skippedInactiveTenants,
+        },
+      },
+      result.failed > 0 ? 207 : 200,
+      requestId,
+    );
   },
 );
 

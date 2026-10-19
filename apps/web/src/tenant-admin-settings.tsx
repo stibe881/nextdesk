@@ -69,12 +69,9 @@ type SaveTarget =
 type SettingsArea =
   | "overview"
   | "branding"
-  | "sso"
   | "features"
   | "ticket-fields"
-  | "templates"
   | "departments"
-  | "assets"
   | "privacy"
   | "users"
   | "roles"
@@ -290,12 +287,6 @@ type TenantAdminRequest =
       tenantId: string;
       featureKey: string;
       enabled: boolean;
-    }
-  | {
-      type: "setFeaturePilot";
-      tenantId: string;
-      featureKey: string;
-      pilotEndDate: string | null;
     };
 
 type TenantUsersRequest =
@@ -966,6 +957,93 @@ function isTenantFeatureActive(feature: TenantFeature): boolean {
   return Number.isFinite(endsAt) && endsAt > Date.now();
 }
 
+type FeatureFilter = "all" | "active" | "inactive";
+type FeatureGroupKey =
+  "workflow" | "portals" | "communication" | "integrations" | "ai";
+
+type FeatureGroup = {
+  key: FeatureGroupKey;
+  title: string;
+  description: string;
+};
+
+type OperationalFunctionKey = "sso";
+type OperationalFunction = {
+  key: OperationalFunctionKey;
+  name: string;
+  description: string;
+  statusLabel: string;
+  tone: "active" | "inactive";
+  Icon: typeof CalendarClock;
+};
+
+const FEATURE_GROUPS: readonly FeatureGroup[] = [
+  {
+    key: "workflow",
+    title: "Arbeitsablauf & Ticketing",
+    description: "Werkzeuge für den täglichen Support und Ticketprozesse.",
+  },
+  {
+    key: "portals",
+    title: "Portale & Self-Service",
+    description: "Funktionen für anfragende Personen und ihre Abteilungen.",
+  },
+  {
+    key: "communication",
+    title: "Kommunikation & Benachrichtigungen",
+    description: "E-Mail-Kanäle und Hinweise für die nextDesk-App.",
+  },
+  {
+    key: "integrations",
+    title: "Integrationen & Geräte",
+    description:
+      "Externe Systeme, Gerätebestand und kontrollierte Auslieferungen.",
+  },
+  {
+    key: "ai",
+    title: "KI & Governance",
+    description: "KI-Assistenz und die dazugehörige Mandantenfreigabe.",
+  },
+];
+
+function featureGroupFor(
+  feature: TenantFeature,
+  catalog: FeatureCatalogEntry | null,
+): FeatureGroupKey {
+  if (feature.feature_key === "ai.assist") return "ai";
+  if (
+    ["integrations.email", "notifications.push"].includes(feature.feature_key)
+  ) {
+    return "communication";
+  }
+  if (
+    feature.feature_key === "assets.management" ||
+    feature.feature_key.startsWith("integrations.") ||
+    catalog?.category === "assets" ||
+    catalog?.category === "integrations"
+  ) {
+    return "integrations";
+  }
+  if (
+    feature.feature_key.startsWith("requester.") ||
+    feature.feature_key === "portal.self-service" ||
+    catalog?.category === "portal"
+  ) {
+    return "portals";
+  }
+  return "workflow";
+}
+
+function featureStatus(feature: TenantFeature): {
+  label: string;
+  tone: "active" | "inactive";
+} {
+  if (isTenantFeatureActive(feature)) {
+    return { label: "Aktiv", tone: "active" };
+  }
+  return { label: "Deaktiviert", tone: "inactive" };
+}
+
 const FEATURE_PRESENTATION: Readonly<
   Record<string, { name: string; description: string; Icon: LucideIcon }>
 > = {
@@ -1107,10 +1185,20 @@ export function TenantAdminSettings({
   const [pushSettingsLoading, setPushSettingsLoading] = useState(false);
   const [pushSettingsError, setPushSettingsError] = useState("");
   const [pushSettingsSuccess, setPushSettingsSuccess] = useState("");
+  const [featureQuery, setFeatureQuery] = useState("");
+  const [featureFilter, setFeatureFilter] = useState<FeatureFilter>("all");
+  const [selectedFeatureKey, setSelectedFeatureKey] = useState<string | null>(
+    null,
+  );
 
   const navigateFromOnboarding = useCallback((target: OnboardingTarget) => {
     setOnboardingTarget(target);
-    setActiveArea(target === "sso" ? "features" : target);
+    if (target === "sso") {
+      setSelectedFeatureKey("sso");
+      setActiveArea("features");
+      return;
+    }
+    setActiveArea(target);
   }, []);
 
   useEffect(() => {
@@ -1209,10 +1297,12 @@ export function TenantAdminSettings({
   }, [loadData]);
 
   useEffect(() => {
-    const hasPushFeature =
-      settings?.tenant_feature_flags.some(
-        (feature) => feature.feature_key === "notifications.push",
-      ) ?? false;
+    const pushFeature = settings?.tenant_feature_flags.find(
+      (feature) => feature.feature_key === "notifications.push",
+    );
+    const hasPushFeature = Boolean(
+      pushFeature && isTenantFeatureActive(pushFeature),
+    );
     if (!hasPushFeature) {
       setPushTenantSettings(null);
       setPushSettingsError("");
@@ -1311,6 +1401,12 @@ export function TenantAdminSettings({
     setRoleAssignmentForm(emptyRoleAssignmentForm);
     setRoleAssignments([]);
     setAssignmentPendingRevocation(null);
+  }, [tenantId]);
+
+  useEffect(() => {
+    setFeatureQuery("");
+    setFeatureFilter("all");
+    setSelectedFeatureKey(null);
   }, [tenantId]);
 
   const activeUsers = useMemo(
@@ -1607,7 +1703,7 @@ export function TenantAdminSettings({
         type: "toggleFeature",
         tenantId,
         featureKey: feature.feature_key,
-        enabled: !feature.enabled,
+        enabled: !isTenantFeatureActive(feature),
       });
       await loadData();
       onFeaturesUpdated?.();
@@ -2070,6 +2166,96 @@ export function TenantAdminSettings({
     }
   }
 
+  const featureGroups = useMemo(() => {
+    const query = featureQuery.trim().toLocaleLowerCase("de-CH");
+    const visibleFeatures = (settings?.tenant_feature_flags ?? []).filter(
+      (feature) => {
+        if (feature.feature_key === "webhooks.outbound") return false;
+        const catalog = asFeatureCatalogEntry(feature.feature_catalog);
+        const presentation = featurePresentation(feature, catalog);
+        const matchesQuery =
+          !query ||
+          [
+            presentation.name,
+            presentation.description ?? "",
+            catalog?.category ?? "",
+            feature.feature_key,
+          ].some((value) => value.toLocaleLowerCase("de-CH").includes(query));
+        const matchesFilter =
+          featureFilter === "all" ||
+          (featureFilter === "active" && isTenantFeatureActive(feature)) ||
+          (featureFilter === "inactive" && !isTenantFeatureActive(feature));
+        return matchesQuery && matchesFilter;
+      },
+    );
+
+    return FEATURE_GROUPS.map((group) => ({
+      ...group,
+      features: visibleFeatures.filter(
+        (feature) =>
+          featureGroupFor(
+            feature,
+            asFeatureCatalogEntry(feature.feature_catalog),
+          ) === group.key,
+      ),
+    })).filter((group) => group.features.length > 0);
+  }, [featureFilter, featureQuery, settings?.tenant_feature_flags]);
+
+  const operationalFunctions = useMemo(() => {
+    const query = featureQuery.trim().toLocaleLowerCase("de-CH");
+    const functions: OperationalFunction[] = [
+      {
+        key: "sso",
+        name: "Single Sign-On",
+        description: ssoForm.enforceSso
+          ? "SSO ist für die Anmeldung dieses Mandanten erzwungen."
+          : "Microsoft Entra ID und die zugelassenen Unternehmensdomains konfigurieren.",
+        statusLabel: ssoForm.enabled ? "Aktiv" : "Deaktiviert",
+        tone: ssoForm.enabled ? "active" : "inactive",
+        Icon: UserRound,
+      },
+    ];
+    return functions.filter((item) => {
+      const matchesQuery =
+        !query ||
+        [item.name, item.description, item.key].some((value) =>
+          value.toLocaleLowerCase("de-CH").includes(query),
+        );
+      const matchesFilter =
+        featureFilter === "all" ||
+        (featureFilter === "active" && item.tone === "active") ||
+        (featureFilter === "inactive" && item.tone === "inactive");
+      return matchesQuery && matchesFilter;
+    });
+  }, [featureFilter, featureQuery, ssoForm.enabled, ssoForm.enforceSso]);
+
+  const featureStatusCounts = useMemo(() => {
+    const features = settings?.tenant_feature_flags ?? [];
+    return {
+      all:
+        features.filter(
+          (feature) => feature.feature_key !== "webhooks.outbound",
+        ).length + 1,
+      active:
+        features.filter(
+          (feature) =>
+            feature.feature_key !== "webhooks.outbound" &&
+            isTenantFeatureActive(feature),
+        ).length + (ssoForm.enabled ? 1 : 0),
+      inactive:
+        features.filter(
+          (feature) =>
+            feature.feature_key !== "webhooks.outbound" &&
+            !isTenantFeatureActive(feature),
+        ).length + (ssoForm.enabled ? 0 : 1),
+    };
+  }, [settings?.tenant_feature_flags, ssoForm.enabled]);
+
+  const visibleFeatureCount = featureGroups.reduce(
+    (count, group) => count + group.features.length,
+    operationalFunctions.length,
+  );
+
   return (
     <section
       className="tenant-admin-settings"
@@ -2486,564 +2672,920 @@ export function TenantAdminSettings({
               </section>
             )}
 
-            {(activeArea === "sso" || activeArea === "features") && (
-              <section
-                className="tenant-admin-settings__section"
-                aria-labelledby="tenant-sso-heading"
-              >
-                <h2 id="tenant-sso-heading" tabIndex={-1}>
-                  SSO-Konfiguration
-                </h2>
-                {ssoConfiguration ? (
-                  <dl className="tenant-admin-settings__details">
-                    <div>
-                      <dt>Anbieter</dt>
-                      <dd>{ssoConfiguration.provider}</dd>
-                    </div>
-                    <div>
-                      <dt>Status</dt>
-                      <dd>
-                        {ssoConfiguration.enabled ? "Aktiviert" : "Deaktiviert"}
-                      </dd>
-                    </div>
-                    {ssoConfiguration.issuer_url ? (
-                      <div>
-                        <dt>Issuer-URL</dt>
-                        <dd>{ssoConfiguration.issuer_url}</dd>
-                      </div>
-                    ) : null}
-                    {ssoConfiguration.discovery_url ? (
-                      <div>
-                        <dt>Discovery-URL</dt>
-                        <dd>{ssoConfiguration.discovery_url}</dd>
-                      </div>
-                    ) : null}
-                    {ssoConfiguration.provider === "azure_ad" ? (
-                      <div>
-                        <dt>Client-App</dt>
-                        <dd>Zentrale mehrmandantenfähige nextDesk-Entra-App</dd>
-                      </div>
-                    ) : ssoConfiguration.client_id ? (
-                      <div>
-                        <dt>Client-ID</dt>
-                        <dd>{ssoConfiguration.client_id}</dd>
-                      </div>
-                    ) : null}
-                    <div>
-                      <dt>SSO erzwingen</dt>
-                      <dd>{ssoConfiguration.enforce_sso ? "Ja" : "Nein"}</dd>
-                    </div>
-                  </dl>
-                ) : (
-                  <p>
-                    Für diesen Mandanten wurde noch keine SSO-Konfiguration
-                    zurückgegeben.
-                  </p>
-                )}
-                <p className="tenant-admin-settings__security-note">
-                  Microsoft Entra ID verwendet die zentral verwaltete,
-                  mehrmandantenfähige nextDesk-App. Pro Kundenmandant werden nur
-                  der eigene Entra-Tenant und die Unternehmensdomains
-                  hinterlegt. Geheime Client-Schlüssel werden hier nie angezeigt
-                  oder gespeichert.
-                </p>
-
-                <form
-                  className="tenant-admin-settings__form"
-                  onSubmit={saveSsoConfiguration}
-                >
-                  <h3>SSO-Konfiguration bearbeiten</h3>
-                  <p className="tenant-admin-settings__hint">
-                    nextDesk unterstützt hier den zentral verwalteten
-                    Microsoft-Entra-ID-Anmeldeweg. Andere Anbieter lassen sich
-                    erst auswählen, wenn ihr Anmeldeweg serverseitig vollständig
-                    bereitsteht. Eine Person mit passender
-                    Entra-Mandantenkennung und zugelassener Unternehmensdomain
-                    wird beim ersten Login ausschliesslich als anfragende Person
-                    angelegt; Agentenrechte werden nur über die Rollenverwaltung
-                    oder eine Einladung vergeben.
-                  </p>
-                  <div className="tenant-admin-settings__form-grid">
-                    <label>
-                      Anbieter
-                      <select
-                        value={ssoForm.provider}
-                        disabled={saving !== null}
-                        onChange={(event) =>
-                          setSsoForm((current) => ({
-                            ...current,
-                            provider: event.target
-                              .value as SsoProviderSelection,
-                          }))
-                        }
-                      >
-                        <option value="">Bitte auswählen</option>
-                        <option value="azure_ad">Microsoft Entra ID</option>
-                      </select>
-                    </label>
-                    {ssoForm.provider !== "azure_ad" && (
-                      <label>
-                        Client-ID
-                        <input
-                          type="text"
-                          value={ssoForm.clientId}
-                          maxLength={512}
-                          disabled={saving !== null}
-                          onChange={(event) =>
-                            setSsoForm((current) => ({
-                              ...current,
-                              clientId: event.target.value,
-                            }))
-                          }
-                        />
-                      </label>
-                    )}
-                    <label>
-                      Issuer-URL
-                      <input
-                        type="url"
-                        inputMode="url"
-                        placeholder="https://…"
-                        value={ssoForm.issuerUrl}
-                        disabled={saving !== null}
-                        onChange={(event) =>
-                          setSsoForm((current) => ({
-                            ...current,
-                            issuerUrl: event.target.value,
-                          }))
-                        }
-                      />
-                    </label>
-                    <label>
-                      Discovery-URL
-                      <input
-                        type="url"
-                        inputMode="url"
-                        placeholder="https://…"
-                        value={ssoForm.discoveryUrl}
-                        disabled={saving !== null}
-                        onChange={(event) =>
-                          setSsoForm((current) => ({
-                            ...current,
-                            discoveryUrl: event.target.value,
-                          }))
-                        }
-                      />
-                    </label>
-                  </div>
-                  <label>
-                    Zugelassene E-Mail-Domains
-                    <textarea
-                      value={ssoForm.allowedEmailDomains}
-                      rows={3}
-                      placeholder="beispiel.ch&#10;beispiel.org"
-                      disabled={saving !== null}
-                      onChange={(event) =>
-                        setSsoForm((current) => ({
-                          ...current,
-                          allowedEmailDomains: event.target.value,
-                        }))
-                      }
-                    />
-                    <span className="tenant-admin-settings__hint">
-                      Eine Domain pro Zeile oder durch Kommas getrennt.
-                    </span>
-                  </label>
-                  <div className="tenant-admin-settings__checkboxes">
-                    <label>
-                      <input
-                        type="checkbox"
-                        checked={ssoForm.enabled}
-                        disabled={saving !== null}
-                        onChange={(event) =>
-                          setSsoForm((current) => ({
-                            ...current,
-                            enabled: event.target.checked,
-                          }))
-                        }
-                      />
-                      SSO aktivieren
-                    </label>
-                    <label>
-                      <input
-                        type="checkbox"
-                        checked={ssoForm.enforceSso}
-                        disabled={saving !== null || !ssoForm.enabled}
-                        onChange={(event) =>
-                          setSsoForm((current) => ({
-                            ...current,
-                            enforceSso: event.target.checked,
-                          }))
-                        }
-                      />
-                      SSO für die Anmeldung erzwingen
-                    </label>
-                  </div>
-                  <button type="submit" disabled={saving !== null}>
-                    {saving === "sso"
-                      ? "Wird gespeichert …"
-                      : "SSO-Konfiguration speichern"}
-                  </button>
-                </form>
-              </section>
-            )}
-
             {activeArea === "features" && (
               <section
-                className="tenant-admin-settings__section"
+                className="tenant-admin-settings__section tenant-admin-settings__functions"
                 aria-labelledby="tenant-features-heading"
               >
-                <h2 id="tenant-features-heading" tabIndex={-1}>
-                  Feature-Schalter
-                </h2>
+                <div className="tenant-admin-settings__section-heading tenant-admin-settings__functions-heading">
+                  <div>
+                    <h2 id="tenant-features-heading" tabIndex={-1}>
+                      Funktionen & Integrationen
+                    </h2>
+                    <p>
+                      Aktivieren Sie nur die Funktionen, die dieser Mandant
+                      wirklich nutzt. Die jeweilige Konfiguration öffnen Sie
+                      gezielt direkt bei der passenden Funktion.
+                    </p>
+                  </div>
+                  <p className="tenant-admin-settings__functions-summary">
+                    <strong>{featureStatusCounts.active}</strong> aktiv ·{" "}
+                    {featureStatusCounts.inactive} deaktiviert
+                  </p>
+                </div>
+
                 {settings.tenant_feature_flags.length > 0 ? (
-                  <ul className="tenant-admin-settings__feature-list">
-                    {settings.tenant_feature_flags.map((feature) => {
-                      const catalog = asFeatureCatalogEntry(
-                        feature.feature_catalog,
-                      );
-                      const presentation = featurePresentation(
-                        feature,
-                        catalog,
-                      );
-                      const target: SaveTarget = `feature:${feature.feature_key}`;
-                      return (
-                        <li
-                          key={feature.feature_key}
-                          className="tenant-admin-settings__feature"
-                        >
-                          <div>
-                            <div className="tenant-admin-settings__feature-title">
-                              {presentation.Icon ? (
-                                <presentation.Icon
-                                  aria-hidden="true"
-                                  size={17}
-                                  strokeWidth={1.8}
-                                />
-                              ) : null}
-                              <strong>{presentation.name}</strong>
-                            </div>
-                            {presentation.description ? (
-                              <p>{presentation.description}</p>
-                            ) : null}
-                            <span className="tenant-admin-settings__feature-key">
-                              {feature.feature_key}
-                            </span>
-                            {feature.feature_key === "notifications.push" ? (
-                              <section
-                                aria-labelledby="push-settings-heading"
-                                className="tenant-admin-settings__push-settings"
-                              >
-                                <h3 id="push-settings-heading">
-                                  Push-Einstellungen
+                  <>
+                    <div className="tenant-admin-settings__feature-toolbar">
+                      <label className="tenant-admin-settings__feature-search">
+                        <span>Funktionen durchsuchen</span>
+                        <input
+                          type="search"
+                          value={featureQuery}
+                          onChange={(event) =>
+                            setFeatureQuery(event.target.value)
+                          }
+                          placeholder="Name, Bereich oder Kennung"
+                        />
+                      </label>
+                      <div
+                        aria-label="Funktionsstatus filtern"
+                        className="tenant-admin-settings__feature-filters"
+                        role="toolbar"
+                      >
+                        {(
+                          [
+                            ["all", "Alle", featureStatusCounts.all],
+                            ["active", "Aktiv", featureStatusCounts.active],
+                            [
+                              "inactive",
+                              "Deaktiviert",
+                              featureStatusCounts.inactive,
+                            ],
+                          ] as const
+                        ).map(([filter, label, count]) => (
+                          <button
+                            key={filter}
+                            type="button"
+                            aria-pressed={featureFilter === filter}
+                            className={
+                              featureFilter === filter
+                                ? "tenant-admin-settings__feature-filter is-active"
+                                : "tenant-admin-settings__feature-filter"
+                            }
+                            onClick={() => setFeatureFilter(filter)}
+                          >
+                            {label} <span>{count}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <p
+                      className="tenant-admin-settings__feature-results"
+                      aria-live="polite"
+                    >
+                      {visibleFeatureCount} von {featureStatusCounts.all}{" "}
+                      Funktionen angezeigt
+                    </p>
+
+                    {featureGroups.length > 0 ? (
+                      <div className="tenant-admin-settings__feature-groups">
+                        {featureGroups.map((group) => (
+                          <section
+                            key={group.key}
+                            className="tenant-admin-settings__feature-group"
+                            aria-labelledby={`feature-group-${group.key}`}
+                          >
+                            <header>
+                              <div>
+                                <h3 id={`feature-group-${group.key}`}>
+                                  {group.title}
                                 </h3>
-                                {pushSettingsLoading ? (
-                                  <p className="tenant-admin-settings__push-state">
-                                    Push-Status wird geladen …
-                                  </p>
-                                ) : null}
-                                {pushSettingsError ? (
-                                  <p
-                                    aria-live="polite"
-                                    className="tenant-admin-settings__push-feedback tenant-admin-settings__push-feedback--error"
-                                    role="status"
+                                <p>{group.description}</p>
+                              </div>
+                              <span>{group.features.length}</span>
+                            </header>
+                            <ul className="tenant-admin-settings__feature-list tenant-admin-settings__feature-grid">
+                              {group.features.map((feature) => {
+                                const catalog = asFeatureCatalogEntry(
+                                  feature.feature_catalog,
+                                );
+                                const presentation = featurePresentation(
+                                  feature,
+                                  catalog,
+                                );
+                                const target: SaveTarget = `feature:${feature.feature_key}`;
+                                const status = featureStatus(feature);
+                                const detailsId = `feature-details-${feature.feature_key}`;
+                                const isDetailsOpen =
+                                  selectedFeatureKey === feature.feature_key;
+                                const hasDedicatedConfiguration = [
+                                  "notifications.push",
+                                  "integrations.email",
+                                  "ai.assist",
+                                  "ticketing.templates",
+                                  "assets.management",
+                                  "automation.sla",
+                                ].includes(feature.feature_key);
+                                return (
+                                  <li
+                                    key={feature.feature_key}
+                                    className={
+                                      isDetailsOpen
+                                        ? "tenant-admin-settings__feature is-open"
+                                        : "tenant-admin-settings__feature"
+                                    }
                                   >
-                                    {pushSettingsError}
-                                  </p>
-                                ) : null}
-                                {pushTenantSettings ? (
-                                  <>
-                                    <dl className="tenant-admin-settings__push-status">
-                                      <div>
-                                        <dt>Apple-Zugang (APNs)</dt>
-                                        <dd>
-                                          <span
-                                            className={
-                                              pushTenantSettings.apnsConfigured
-                                                ? "tenant-admin-settings__push-badge tenant-admin-settings__push-badge--ready"
-                                                : "tenant-admin-settings__push-badge"
-                                            }
-                                          >
-                                            {pushTenantSettings.apnsConfigured
-                                              ? "eingerichtet"
-                                              : "noch nicht eingerichtet"}
-                                          </span>
-                                        </dd>
-                                      </div>
-                                      <div>
-                                        <dt>Registrierte Geräte</dt>
-                                        <dd>
-                                          {pushTenantSettings.registeredDevices}
-                                        </dd>
-                                      </div>
-                                    </dl>
-                                    <fieldset
-                                      className="tenant-admin-settings__push-content-level"
-                                      disabled={saving !== null}
-                                    >
-                                      <legend>Inhaltsstufe</legend>
-                                      <div>
-                                        <label
-                                          className={
-                                            pushTenantSettings.contentLevel ===
-                                            "minimal"
-                                              ? "tenant-admin-settings__push-option is-selected"
-                                              : "tenant-admin-settings__push-option"
+                                    <div className="tenant-admin-settings__feature-card">
+                                      <div className="tenant-admin-settings__feature-card-head">
+                                        <div className="tenant-admin-settings__feature-title">
+                                          {presentation.Icon ? (
+                                            <presentation.Icon
+                                              aria-hidden="true"
+                                              size={18}
+                                              strokeWidth={1.8}
+                                            />
+                                          ) : null}
+                                          <div>
+                                            <strong>{presentation.name}</strong>
+                                            <span
+                                              className={`tenant-admin-settings__feature-status tenant-admin-settings__feature-status--${status.tone}`}
+                                            >
+                                              {saving === target
+                                                ? "Wird gespeichert …"
+                                                : status.label}
+                                            </span>
+                                          </div>
+                                        </div>
+                                        <button
+                                          type="button"
+                                          className="tenant-admin-settings__feature-toggle"
+                                          disabled={saving !== null}
+                                          onClick={() =>
+                                            void toggleFeature(feature)
                                           }
                                         >
-                                          <input
-                                            checked={
-                                              pushTenantSettings.contentLevel ===
-                                              "minimal"
-                                            }
-                                            name="push-content-level"
-                                            onChange={() =>
-                                              void savePushSettings({
-                                                contentLevel: "minimal",
-                                              })
-                                            }
-                                            type="radio"
-                                            value="minimal"
-                                          />
-                                          <span>
-                                            <strong>
-                                              Nur Ticketnummer (empfohlen)
-                                            </strong>
-                                            <small>
-                                              Der Push enthält nur Ereignisart
-                                              und Ticketnummer.
-                                            </small>
-                                          </span>
-                                        </label>
-                                        <label
-                                          className={
-                                            pushTenantSettings.contentLevel ===
-                                            "subject"
-                                              ? "tenant-admin-settings__push-option is-selected"
-                                              : "tenant-admin-settings__push-option"
-                                          }
-                                        >
-                                          <input
-                                            checked={
-                                              pushTenantSettings.contentLevel ===
-                                              "subject"
-                                            }
-                                            name="push-content-level"
-                                            onChange={() =>
-                                              void savePushSettings({
-                                                contentLevel: "subject",
-                                              })
-                                            }
-                                            type="radio"
-                                            value="subject"
-                                          />
-                                          <span>
-                                            <strong>
-                                              Ticketnummer und Betreff
-                                            </strong>
-                                            <small>
-                                              Der Betreff erscheint zusätzlich
-                                              im Push.
-                                            </small>
-                                          </span>
-                                        </label>
+                                          {isTenantFeatureActive(feature)
+                                            ? "Deaktivieren"
+                                            : "Aktivieren"}
+                                        </button>
                                       </div>
-                                    </fieldset>
-                                    <fieldset
-                                      className="tenant-admin-settings__push-work-hours"
-                                      disabled={saving !== null}
-                                    >
-                                      <legend>Arbeitszeit-Check-in</legend>
-                                      <label className="tenant-admin-settings__push-checkin-toggle">
-                                        <input
-                                          checked={
-                                            pushTenantSettings.workHours
-                                              .checkInRequired
-                                          }
-                                          onChange={(event) =>
-                                            void savePushSettings({
-                                              checkInRequired:
-                                                event.target.checked,
-                                            })
-                                          }
-                                          type="checkbox"
-                                        />
-                                        <span>
-                                          <strong>
-                                            Check-in für Push erforderlich
-                                          </strong>
-                                          <small>
-                                            Ausserhalb dieser Zeit und ohne
-                                            Check-in werden keine
-                                            Push-Benachrichtigungen versendet.
-                                            Standard: 06:00–17:00 Uhr.
-                                          </small>
-                                        </span>
-                                      </label>
-                                      <div className="tenant-admin-settings__push-work-hours-grid">
-                                        <label>
-                                          Beginn
-                                          <select
-                                            disabled={
-                                              saving !== null ||
-                                              !pushTenantSettings.workHours
-                                                .checkInRequired
-                                            }
-                                            onChange={(event) =>
-                                              void savePushSettings({
-                                                workStartHour: Number(
-                                                  event.target.value,
-                                                ),
-                                              })
-                                            }
-                                            value={
-                                              pushTenantSettings.workHours
-                                                .workStartHour
-                                            }
-                                          >
-                                            {WORK_START_HOURS.map((hour) => (
-                                              <option key={hour} value={hour}>
-                                                {workHourLabel(hour)}
-                                              </option>
-                                            ))}
-                                          </select>
-                                        </label>
-                                        <label>
-                                          Ende
-                                          <select
-                                            aria-describedby={
-                                              pushTenantSettings.workHours
-                                                .workEndHour <=
-                                              pushTenantSettings.workHours
-                                                .workStartHour
-                                                ? "push-work-hours-error"
-                                                : undefined
-                                            }
-                                            aria-invalid={
-                                              pushTenantSettings.workHours
-                                                .workEndHour <=
-                                              pushTenantSettings.workHours
-                                                .workStartHour
-                                                ? true
-                                                : undefined
-                                            }
-                                            disabled={
-                                              saving !== null ||
-                                              !pushTenantSettings.workHours
-                                                .checkInRequired
-                                            }
-                                            onChange={(event) =>
-                                              void savePushSettings({
-                                                workEndHour: Number(
-                                                  event.target.value,
-                                                ),
-                                              })
-                                            }
-                                            value={
-                                              pushTenantSettings.workHours
-                                                .workEndHour
-                                            }
-                                          >
-                                            {WORK_END_HOURS.map((hour) => (
-                                              <option key={hour} value={hour}>
-                                                {workHourLabel(hour)}
-                                              </option>
-                                            ))}
-                                          </select>
-                                        </label>
-                                      </div>
-                                      {pushTenantSettings.workHours
-                                        .workEndHour <=
-                                      pushTenantSettings.workHours
-                                        .workStartHour ? (
-                                        <p
-                                          className="tenant-admin-settings__push-work-hours-error"
-                                          id="push-work-hours-error"
-                                          role="alert"
-                                        >
-                                          Das Ende muss nach dem Beginn liegen.
-                                        </p>
+                                      {presentation.description ? (
+                                        <p>{presentation.description}</p>
                                       ) : null}
-                                    </fieldset>
-                                    <p className="tenant-admin-settings__push-note">
-                                      Mitteilungen werden direkt über Apple
-                                      (APNs) an die nextDesk-iOS-App zugestellt.
-                                      Nachrichtentexte, Beschreibungen und Namen
-                                      werden nie übertragen.
-                                    </p>
-                                  </>
-                                ) : null}
-                                {pushSettingsSuccess ? (
-                                  <p
-                                    aria-live="polite"
-                                    className="tenant-admin-settings__push-feedback tenant-admin-settings__push-feedback--success"
-                                    role="status"
-                                  >
-                                    {pushSettingsSuccess}
-                                  </p>
-                                ) : null}
-                              </section>
-                            ) : null}
-                            {feature.feature_key === "integrations.email" ? (
-                              <ExchangeMailSettings tenantId={tenantId} />
-                            ) : null}
-                          </div>
-                          <label>
-                            <span className="tenant-admin-settings__visually-hidden">
-                              {feature.enabled ? "Deaktivieren" : "Aktivieren"}:{" "}
-                              {presentation.name}
-                            </span>
-                            <input
-                              type="checkbox"
-                              checked={feature.enabled}
-                              disabled={saving !== null}
-                              onChange={() => void toggleFeature(feature)}
-                            />
-                            <span aria-hidden="true">
-                              {saving === target
-                                ? "Wird gespeichert …"
-                                : isTenantFeatureActive(feature)
-                                  ? "Aktiviert"
-                                  : "Deaktiviert"}
-                            </span>
-                          </label>
-                        </li>
-                      );
-                    })}
-                  </ul>
+                                      <div className="tenant-admin-settings__feature-actions">
+                                        <button
+                                          type="button"
+                                          aria-controls={detailsId}
+                                          aria-expanded={isDetailsOpen}
+                                          onClick={() =>
+                                            setSelectedFeatureKey((current) =>
+                                              current === feature.feature_key
+                                                ? null
+                                                : feature.feature_key,
+                                            )
+                                          }
+                                        >
+                                          {isDetailsOpen
+                                            ? "Details schliessen"
+                                            : hasDedicatedConfiguration
+                                              ? "Konfigurieren"
+                                              : "Details"}
+                                        </button>
+                                      </div>
+                                    </div>
+
+                                    {isDetailsOpen ? (
+                                      <div
+                                        className="tenant-admin-settings__feature-details"
+                                        id={detailsId}
+                                      >
+                                        <div className="tenant-admin-settings__feature-details-heading">
+                                          <div>
+                                            <h4>
+                                              {presentation.name} konfigurieren
+                                            </h4>
+                                            <p>
+                                              Die Konfiguration ändert den
+                                              Funktionsstatus nicht automatisch.
+                                            </p>
+                                          </div>
+                                        </div>
+
+                                        {isDetailsOpen &&
+                                        feature.feature_key ===
+                                          "notifications.push" ? (
+                                          <section
+                                            aria-labelledby="push-settings-heading"
+                                            className="tenant-admin-settings__push-settings"
+                                          >
+                                            <h3 id="push-settings-heading">
+                                              Push-Einstellungen
+                                            </h3>
+                                            {pushSettingsLoading ? (
+                                              <p className="tenant-admin-settings__push-state">
+                                                Push-Status wird geladen …
+                                              </p>
+                                            ) : null}
+                                            {pushSettingsError ? (
+                                              <p
+                                                aria-live="polite"
+                                                className="tenant-admin-settings__push-feedback tenant-admin-settings__push-feedback--error"
+                                                role="status"
+                                              >
+                                                {pushSettingsError}
+                                              </p>
+                                            ) : null}
+                                            {pushTenantSettings ? (
+                                              <>
+                                                <dl className="tenant-admin-settings__push-status">
+                                                  <div>
+                                                    <dt>Apple-Zugang (APNs)</dt>
+                                                    <dd>
+                                                      <span
+                                                        className={
+                                                          pushTenantSettings.apnsConfigured
+                                                            ? "tenant-admin-settings__push-badge tenant-admin-settings__push-badge--ready"
+                                                            : "tenant-admin-settings__push-badge"
+                                                        }
+                                                      >
+                                                        {pushTenantSettings.apnsConfigured
+                                                          ? "eingerichtet"
+                                                          : "noch nicht eingerichtet"}
+                                                      </span>
+                                                    </dd>
+                                                  </div>
+                                                  <div>
+                                                    <dt>Registrierte Geräte</dt>
+                                                    <dd>
+                                                      {
+                                                        pushTenantSettings.registeredDevices
+                                                      }
+                                                    </dd>
+                                                  </div>
+                                                </dl>
+                                                <fieldset
+                                                  className="tenant-admin-settings__push-content-level"
+                                                  disabled={saving !== null}
+                                                >
+                                                  <legend>Inhaltsstufe</legend>
+                                                  <div>
+                                                    <label
+                                                      className={
+                                                        pushTenantSettings.contentLevel ===
+                                                        "minimal"
+                                                          ? "tenant-admin-settings__push-option is-selected"
+                                                          : "tenant-admin-settings__push-option"
+                                                      }
+                                                    >
+                                                      <input
+                                                        checked={
+                                                          pushTenantSettings.contentLevel ===
+                                                          "minimal"
+                                                        }
+                                                        name="push-content-level"
+                                                        onChange={() =>
+                                                          void savePushSettings(
+                                                            {
+                                                              contentLevel:
+                                                                "minimal",
+                                                            },
+                                                          )
+                                                        }
+                                                        type="radio"
+                                                        value="minimal"
+                                                      />
+                                                      <span>
+                                                        <strong>
+                                                          Nur Ticketnummer
+                                                          (empfohlen)
+                                                        </strong>
+                                                        <small>
+                                                          Der Push enthält nur
+                                                          Ereignisart und
+                                                          Ticketnummer.
+                                                        </small>
+                                                      </span>
+                                                    </label>
+                                                    <label
+                                                      className={
+                                                        pushTenantSettings.contentLevel ===
+                                                        "subject"
+                                                          ? "tenant-admin-settings__push-option is-selected"
+                                                          : "tenant-admin-settings__push-option"
+                                                      }
+                                                    >
+                                                      <input
+                                                        checked={
+                                                          pushTenantSettings.contentLevel ===
+                                                          "subject"
+                                                        }
+                                                        name="push-content-level"
+                                                        onChange={() =>
+                                                          void savePushSettings(
+                                                            {
+                                                              contentLevel:
+                                                                "subject",
+                                                            },
+                                                          )
+                                                        }
+                                                        type="radio"
+                                                        value="subject"
+                                                      />
+                                                      <span>
+                                                        <strong>
+                                                          Ticketnummer und
+                                                          Betreff
+                                                        </strong>
+                                                        <small>
+                                                          Der Betreff erscheint
+                                                          zusätzlich im Push.
+                                                        </small>
+                                                      </span>
+                                                    </label>
+                                                  </div>
+                                                </fieldset>
+                                                <fieldset
+                                                  className="tenant-admin-settings__push-work-hours"
+                                                  disabled={saving !== null}
+                                                >
+                                                  <legend>
+                                                    Arbeitszeit-Check-in
+                                                  </legend>
+                                                  <label className="tenant-admin-settings__push-checkin-toggle">
+                                                    <input
+                                                      checked={
+                                                        pushTenantSettings
+                                                          .workHours
+                                                          .checkInRequired
+                                                      }
+                                                      onChange={(event) =>
+                                                        void savePushSettings({
+                                                          checkInRequired:
+                                                            event.target
+                                                              .checked,
+                                                        })
+                                                      }
+                                                      type="checkbox"
+                                                    />
+                                                    <span>
+                                                      <strong>
+                                                        Check-in für Push
+                                                        erforderlich
+                                                      </strong>
+                                                      <small>
+                                                        Ausserhalb dieser Zeit
+                                                        und ohne Check-in werden
+                                                        keine
+                                                        Push-Benachrichtigungen
+                                                        versendet. Standard:
+                                                        06:00–17:00 Uhr.
+                                                      </small>
+                                                    </span>
+                                                  </label>
+                                                  <div className="tenant-admin-settings__push-work-hours-grid">
+                                                    <label>
+                                                      Beginn
+                                                      <select
+                                                        disabled={
+                                                          saving !== null ||
+                                                          !pushTenantSettings
+                                                            .workHours
+                                                            .checkInRequired
+                                                        }
+                                                        onChange={(event) =>
+                                                          void savePushSettings(
+                                                            {
+                                                              workStartHour:
+                                                                Number(
+                                                                  event.target
+                                                                    .value,
+                                                                ),
+                                                            },
+                                                          )
+                                                        }
+                                                        value={
+                                                          pushTenantSettings
+                                                            .workHours
+                                                            .workStartHour
+                                                        }
+                                                      >
+                                                        {WORK_START_HOURS.map(
+                                                          (hour) => (
+                                                            <option
+                                                              key={hour}
+                                                              value={hour}
+                                                            >
+                                                              {workHourLabel(
+                                                                hour,
+                                                              )}
+                                                            </option>
+                                                          ),
+                                                        )}
+                                                      </select>
+                                                    </label>
+                                                    <label>
+                                                      Ende
+                                                      <select
+                                                        aria-describedby={
+                                                          pushTenantSettings
+                                                            .workHours
+                                                            .workEndHour <=
+                                                          pushTenantSettings
+                                                            .workHours
+                                                            .workStartHour
+                                                            ? "push-work-hours-error"
+                                                            : undefined
+                                                        }
+                                                        aria-invalid={
+                                                          pushTenantSettings
+                                                            .workHours
+                                                            .workEndHour <=
+                                                          pushTenantSettings
+                                                            .workHours
+                                                            .workStartHour
+                                                            ? true
+                                                            : undefined
+                                                        }
+                                                        disabled={
+                                                          saving !== null ||
+                                                          !pushTenantSettings
+                                                            .workHours
+                                                            .checkInRequired
+                                                        }
+                                                        onChange={(event) =>
+                                                          void savePushSettings(
+                                                            {
+                                                              workEndHour:
+                                                                Number(
+                                                                  event.target
+                                                                    .value,
+                                                                ),
+                                                            },
+                                                          )
+                                                        }
+                                                        value={
+                                                          pushTenantSettings
+                                                            .workHours
+                                                            .workEndHour
+                                                        }
+                                                      >
+                                                        {WORK_END_HOURS.map(
+                                                          (hour) => (
+                                                            <option
+                                                              key={hour}
+                                                              value={hour}
+                                                            >
+                                                              {workHourLabel(
+                                                                hour,
+                                                              )}
+                                                            </option>
+                                                          ),
+                                                        )}
+                                                      </select>
+                                                    </label>
+                                                  </div>
+                                                  {pushTenantSettings.workHours
+                                                    .workEndHour <=
+                                                  pushTenantSettings.workHours
+                                                    .workStartHour ? (
+                                                    <p
+                                                      className="tenant-admin-settings__push-work-hours-error"
+                                                      id="push-work-hours-error"
+                                                      role="alert"
+                                                    >
+                                                      Das Ende muss nach dem
+                                                      Beginn liegen.
+                                                    </p>
+                                                  ) : null}
+                                                </fieldset>
+                                                <p className="tenant-admin-settings__push-note">
+                                                  Mitteilungen werden direkt
+                                                  über Apple (APNs) an die
+                                                  nextDesk-iOS-App zugestellt.
+                                                  Nachrichtentexte,
+                                                  Beschreibungen und Namen
+                                                  werden nie übertragen.
+                                                </p>
+                                              </>
+                                            ) : null}
+                                            {pushSettingsSuccess ? (
+                                              <p
+                                                aria-live="polite"
+                                                className="tenant-admin-settings__push-feedback tenant-admin-settings__push-feedback--success"
+                                                role="status"
+                                              >
+                                                {pushSettingsSuccess}
+                                              </p>
+                                            ) : null}
+                                          </section>
+                                        ) : null}
+
+                                        {!isTenantFeatureActive(feature) ? (
+                                          <p className="tenant-admin-settings__feature-detail-note">
+                                            Aktivieren Sie diese Funktion
+                                            zuerst. Ihre bestehende
+                                            Konfiguration wird nicht verändert,
+                                            aber bis zur Aktivierung nicht
+                                            verwendet.
+                                          </p>
+                                        ) : (
+                                          <>
+                                            {feature.feature_key ===
+                                            "integrations.email" ? (
+                                              <ExchangeMailSettings
+                                                tenantId={tenantId}
+                                              />
+                                            ) : null}
+                                            {feature.feature_key ===
+                                            "ai.assist" ? (
+                                              <AiGovernancePanel
+                                                tenantId={tenantId}
+                                              />
+                                            ) : null}
+                                            {feature.feature_key ===
+                                            "ticketing.templates" ? (
+                                              <TicketTemplates
+                                                tenantId={tenantId}
+                                              />
+                                            ) : null}
+                                            {feature.feature_key ===
+                                            "assets.management" ? (
+                                              <AssetIntuneSettings
+                                                tenantId={tenantId}
+                                              />
+                                            ) : null}
+                                            {feature.feature_key ===
+                                            "automation.sla" ? (
+                                              <TenantAutomation
+                                                tenantId={tenantId}
+                                              />
+                                            ) : null}
+                                            {!hasDedicatedConfiguration ? (
+                                              <p className="tenant-admin-settings__feature-detail-note">
+                                                Diese Funktion benötigt keine
+                                                weitere Mandantenkonfiguration.
+                                              </p>
+                                            ) : null}
+                                          </>
+                                        )}
+                                        <details className="tenant-admin-settings__feature-technical">
+                                          <summary>Technische Details</summary>
+                                          <code>{feature.feature_key}</code>
+                                        </details>
+                                      </div>
+                                    ) : null}
+                                  </li>
+                                );
+                              })}
+                            </ul>
+                          </section>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="tenant-admin-settings__feature-empty">
+                        Keine Funktion entspricht der aktuellen Suche oder dem
+                        gewählten Statusfilter.
+                      </p>
+                    )}
+                  </>
                 ) : (
                   <p>
                     Für diesen Mandanten wurden keine Feature-Schalter
                     zurückgegeben.
                   </p>
                 )}
-                {settings.tenant_feature_flags.some(
-                  (feature) =>
-                    feature.feature_key === "ai.assist" &&
-                    isTenantFeatureActive(feature),
-                ) ? (
-                  <AiGovernancePanel tenantId={tenantId} />
+
+                {operationalFunctions.length > 0 ? (
+                  <section
+                    className="tenant-admin-settings__feature-group tenant-admin-settings__feature-group--operational"
+                    aria-labelledby="feature-group-operational"
+                  >
+                    <header>
+                      <div>
+                        <h3 id="feature-group-operational">
+                          Identität & Betriebsablauf
+                        </h3>
+                        <p>
+                          Weitere Mandantenkonfigurationen, die mit der Suche
+                          und dem Statusfilter mitgefiltert werden.
+                        </p>
+                      </div>
+                      <span>{operationalFunctions.length}</span>
+                    </header>
+                    <ul className="tenant-admin-settings__feature-list">
+                      {operationalFunctions.map((item) => {
+                        const detailsId = `feature-details-${item.key}`;
+                        const isDetailsOpen = selectedFeatureKey === item.key;
+                        return (
+                          <li
+                            className={
+                              isDetailsOpen
+                                ? "tenant-admin-settings__feature tenant-admin-settings__feature--operational is-open"
+                                : "tenant-admin-settings__feature tenant-admin-settings__feature--operational"
+                            }
+                            key={item.key}
+                          >
+                            <div className="tenant-admin-settings__feature-card">
+                              <div className="tenant-admin-settings__feature-card-head">
+                                <div className="tenant-admin-settings__feature-title">
+                                  <item.Icon
+                                    aria-hidden="true"
+                                    size={18}
+                                    strokeWidth={1.8}
+                                  />
+                                  <div>
+                                    <strong>{item.name}</strong>
+                                    <span
+                                      className={`tenant-admin-settings__feature-status tenant-admin-settings__feature-status--${item.tone}`}
+                                    >
+                                      {item.statusLabel}
+                                    </span>
+                                  </div>
+                                </div>
+                                <button
+                                  type="button"
+                                  aria-controls={detailsId}
+                                  aria-expanded={isDetailsOpen}
+                                  onClick={() =>
+                                    setSelectedFeatureKey((current) =>
+                                      current === item.key ? null : item.key,
+                                    )
+                                  }
+                                >
+                                  {isDetailsOpen
+                                    ? "Details schliessen"
+                                    : "Konfigurieren"}
+                                </button>
+                              </div>
+                              <p>{item.description}</p>
+                            </div>
+                            {isDetailsOpen ? (
+                              <div
+                                className="tenant-admin-settings__feature-details"
+                                id={detailsId}
+                              >
+                                {item.key === "sso" ? (
+                                  <>
+                                    <div className="tenant-admin-settings__feature-details-heading">
+                                      <div>
+                                        <h4
+                                          id="tenant-sso-heading"
+                                          tabIndex={-1}
+                                        >
+                                          SSO-Konfiguration
+                                        </h4>
+                                        <p>
+                                          Die zentrale Entra-App bleibt bei
+                                          Gross ICT; hier verwalten Sie nur die
+                                          mandantenspezifische Freigabe.
+                                        </p>
+                                      </div>
+                                    </div>
+                                    {ssoConfiguration ? (
+                                      <dl className="tenant-admin-settings__details">
+                                        <div>
+                                          <dt>Anbieter</dt>
+                                          <dd>{ssoConfiguration.provider}</dd>
+                                        </div>
+                                        <div>
+                                          <dt>Status</dt>
+                                          <dd>
+                                            {ssoConfiguration.enabled
+                                              ? "Aktiviert"
+                                              : "Deaktiviert"}
+                                          </dd>
+                                        </div>
+                                        {ssoConfiguration.issuer_url ? (
+                                          <div>
+                                            <dt>Issuer-URL</dt>
+                                            <dd>
+                                              {ssoConfiguration.issuer_url}
+                                            </dd>
+                                          </div>
+                                        ) : null}
+                                        {ssoConfiguration.discovery_url ? (
+                                          <div>
+                                            <dt>Discovery-URL</dt>
+                                            <dd>
+                                              {ssoConfiguration.discovery_url}
+                                            </dd>
+                                          </div>
+                                        ) : null}
+                                        {ssoConfiguration.provider ===
+                                        "azure_ad" ? (
+                                          <div>
+                                            <dt>Client-App</dt>
+                                            <dd>
+                                              Zentrale mehrmandantenfähige
+                                              nextDesk-Entra-App
+                                            </dd>
+                                          </div>
+                                        ) : ssoConfiguration.client_id ? (
+                                          <div>
+                                            <dt>Client-ID</dt>
+                                            <dd>
+                                              {ssoConfiguration.client_id}
+                                            </dd>
+                                          </div>
+                                        ) : null}
+                                        <div>
+                                          <dt>SSO erzwingen</dt>
+                                          <dd>
+                                            {ssoConfiguration.enforce_sso
+                                              ? "Ja"
+                                              : "Nein"}
+                                          </dd>
+                                        </div>
+                                      </dl>
+                                    ) : (
+                                      <p>
+                                        Für diesen Mandanten wurde noch keine
+                                        SSO-Konfiguration zurückgegeben.
+                                      </p>
+                                    )}
+                                    <p className="tenant-admin-settings__security-note">
+                                      Microsoft Entra ID verwendet die zentral
+                                      verwaltete, mehrmandantenfähige
+                                      nextDesk-App. Pro Kundenmandant werden nur
+                                      der eigene Entra-Tenant und die
+                                      Unternehmensdomains hinterlegt. Geheime
+                                      Client-Schlüssel werden hier nie angezeigt
+                                      oder gespeichert.
+                                    </p>
+
+                                    <form
+                                      className="tenant-admin-settings__form"
+                                      onSubmit={saveSsoConfiguration}
+                                    >
+                                      <h5>SSO-Konfiguration bearbeiten</h5>
+                                      <p className="tenant-admin-settings__hint">
+                                        nextDesk unterstützt hier den zentral
+                                        verwalteten
+                                        Microsoft-Entra-ID-Anmeldeweg. Andere
+                                        Anbieter lassen sich erst auswählen,
+                                        wenn ihr Anmeldeweg serverseitig
+                                        vollständig bereitsteht. Eine Person mit
+                                        passender Entra-Mandantenkennung und
+                                        zugelassener Unternehmensdomain wird
+                                        beim ersten Login ausschliesslich als
+                                        anfragende Person angelegt;
+                                        Agentenrechte werden nur über die
+                                        Rollenverwaltung oder eine Einladung
+                                        vergeben.
+                                      </p>
+                                      <div className="tenant-admin-settings__form-grid">
+                                        <label>
+                                          Anbieter
+                                          <select
+                                            value={ssoForm.provider}
+                                            disabled={saving !== null}
+                                            onChange={(event) =>
+                                              setSsoForm((current) => ({
+                                                ...current,
+                                                provider: event.target
+                                                  .value as SsoProviderSelection,
+                                              }))
+                                            }
+                                          >
+                                            <option value="">
+                                              Bitte auswählen
+                                            </option>
+                                            <option value="azure_ad">
+                                              Microsoft Entra ID
+                                            </option>
+                                          </select>
+                                        </label>
+                                        {ssoForm.provider !== "azure_ad" && (
+                                          <label>
+                                            Client-ID
+                                            <input
+                                              type="text"
+                                              value={ssoForm.clientId}
+                                              maxLength={512}
+                                              disabled={saving !== null}
+                                              onChange={(event) =>
+                                                setSsoForm((current) => ({
+                                                  ...current,
+                                                  clientId: event.target.value,
+                                                }))
+                                              }
+                                            />
+                                          </label>
+                                        )}
+                                        <label>
+                                          Issuer-URL
+                                          <input
+                                            type="url"
+                                            inputMode="url"
+                                            placeholder="https://…"
+                                            value={ssoForm.issuerUrl}
+                                            disabled={saving !== null}
+                                            onChange={(event) =>
+                                              setSsoForm((current) => ({
+                                                ...current,
+                                                issuerUrl: event.target.value,
+                                              }))
+                                            }
+                                          />
+                                        </label>
+                                        <label>
+                                          Discovery-URL
+                                          <input
+                                            type="url"
+                                            inputMode="url"
+                                            placeholder="https://…"
+                                            value={ssoForm.discoveryUrl}
+                                            disabled={saving !== null}
+                                            onChange={(event) =>
+                                              setSsoForm((current) => ({
+                                                ...current,
+                                                discoveryUrl:
+                                                  event.target.value,
+                                              }))
+                                            }
+                                          />
+                                        </label>
+                                      </div>
+                                      <label>
+                                        Zugelassene E-Mail-Domains
+                                        <textarea
+                                          value={ssoForm.allowedEmailDomains}
+                                          rows={3}
+                                          placeholder="beispiel.ch&#10;beispiel.org"
+                                          disabled={saving !== null}
+                                          onChange={(event) =>
+                                            setSsoForm((current) => ({
+                                              ...current,
+                                              allowedEmailDomains:
+                                                event.target.value,
+                                            }))
+                                          }
+                                        />
+                                        <span className="tenant-admin-settings__hint">
+                                          Eine Domain pro Zeile oder durch
+                                          Kommas getrennt.
+                                        </span>
+                                      </label>
+                                      <div className="tenant-admin-settings__checkboxes">
+                                        <label>
+                                          <input
+                                            type="checkbox"
+                                            checked={ssoForm.enabled}
+                                            disabled={saving !== null}
+                                            onChange={(event) =>
+                                              setSsoForm((current) => ({
+                                                ...current,
+                                                enabled: event.target.checked,
+                                              }))
+                                            }
+                                          />
+                                          SSO aktivieren
+                                        </label>
+                                        <label>
+                                          <input
+                                            type="checkbox"
+                                            checked={ssoForm.enforceSso}
+                                            disabled={
+                                              saving !== null ||
+                                              !ssoForm.enabled
+                                            }
+                                            onChange={(event) =>
+                                              setSsoForm((current) => ({
+                                                ...current,
+                                                enforceSso:
+                                                  event.target.checked,
+                                              }))
+                                            }
+                                          />
+                                          SSO für die Anmeldung erzwingen
+                                        </label>
+                                      </div>
+                                      <button
+                                        type="submit"
+                                        disabled={saving !== null}
+                                      >
+                                        {saving === "sso"
+                                          ? "Wird gespeichert …"
+                                          : "SSO-Konfiguration speichern"}
+                                      </button>
+                                    </form>
+                                  </>
+                                ) : null}
+                              </div>
+                            ) : null}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </section>
                 ) : null}
               </section>
-            )}
-
-            {activeArea === "features" && (
-              <TenantAutomation tenantId={tenantId} />
             )}
 
             {activeArea === "ticket-fields" && (
               <TicketCustomFieldsAdmin tenantId={tenantId} />
             )}
-
-            {activeArea === "features" ||
-            (activeArea === "templates" &&
-              settings.tenant_feature_flags.some(
-                (feature) =>
-                  feature.feature_key === "ticketing.templates" &&
-                  isTenantFeatureActive(feature),
-              )) ? (
-              <TicketTemplates tenantId={tenantId} />
-            ) : null}
 
             {activeArea === "departments" && (
               <section
@@ -3058,16 +3600,6 @@ export function TenantAdminSettings({
             {activeArea === "privacy" && (
               <TenantDataRetention tenantId={tenantId} />
             )}
-
-            {activeArea === "features" ||
-            (activeArea === "assets" &&
-              settings.tenant_feature_flags.some(
-                (feature) =>
-                  feature.feature_key === "assets.management" &&
-                  isTenantFeatureActive(feature),
-              )) ? (
-              <AssetIntuneSettings tenantId={tenantId} />
-            ) : null}
 
             {activeArea === "users" && (
               <section
