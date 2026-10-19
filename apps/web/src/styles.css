@@ -2450,6 +2450,16 @@ time,
   background: currentColor;
 }
 
+.state-badge.neu {
+  background: var(--info-soft);
+  color: var(--info);
+}
+
+.state-badge.in-bearbeitung {
+  background: var(--primary-soft);
+  color: var(--primary);
+}
+
 .state-badge.eskaliert,
 .ticket-comment-visibility-badge.internal {
   background: var(--danger-soft);
@@ -2457,6 +2467,9 @@ time,
 }
 
 .state-badge.wartet,
+.state-badge.wartend,
+.state-badge.wartend-auf-kunde,
+.state-badge.wartend-auf-drittanbieter,
 .ticket-detail-priority,
 .customer-status.suspended {
   background: var(--warning-soft);
@@ -2464,11 +2477,15 @@ time,
 }
 
 .state-badge.gelöst,
-.state-badge.geschlossen,
 .ticket-comment-visibility-badge.external,
 .customer-status.active {
   background: var(--success-soft);
   color: var(--success);
+}
+
+.state-badge.geschlossen {
+  background: var(--disabled-surface);
+  color: var(--muted);
 }
 
 .customer-status.archived {
