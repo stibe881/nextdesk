@@ -317,6 +317,8 @@ async function retryOrFail(
   const code = errorCode(error);
   const retryAfter =
     error instanceof ExchangeMailError ? error.retryAfterSeconds : undefined;
+  const graphErrorCode =
+    error instanceof ExchangeMailError ? (error.graphErrorCode ?? null) : null;
   const terminal = isPermanent(error) || nextAttempt >= 6;
   await admin
     .from("mail_messages")
@@ -332,6 +334,19 @@ async function retryOrFail(
     })
     .eq("id", message.id)
     .eq("processing_status", "processing");
+  await audit(
+    admin,
+    message.tenant_id,
+    null,
+    "exchange_mail.message.failed",
+    "mail_message",
+    message.id,
+    {
+      direction: message.direction,
+      code,
+      graphErrorCode,
+    },
+  );
 }
 
 async function markProcessed(
