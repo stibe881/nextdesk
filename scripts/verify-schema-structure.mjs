@@ -1067,6 +1067,10 @@ const functionConfiguration = await readFile(
   new URL("../supabase/config.toml", import.meta.url),
   "utf8",
 );
+const onboardingFunctionSource = await readFile(
+  new URL("../supabase/functions/onboarding/index.ts", import.meta.url),
+  "utf8",
+);
 if (
   !functionConfiguration.includes(
     "[functions.entra-directory-sync]\nverify_jwt = true",
@@ -1121,9 +1125,21 @@ if (
   throw new Error("event-spaces must explicitly require verified user JWTs.");
 }
 if (
-  !functionConfiguration.includes("[functions.onboarding]\nverify_jwt = true")
+  !functionConfiguration.includes(
+    "[functions.onboarding]\nverify_jwt = false",
+  ) ||
+  !onboardingFunctionSource.includes('{ auth: "user", cors: "disabled"') ||
+  !onboardingFunctionSource.includes(
+    'if (request.method === "OPTIONS") return json(request, {}, 204);',
+  ) ||
+  !onboardingFunctionSource.includes(
+    '!request.headers.get("authorization")?.trim()',
+  ) ||
+  !onboardingFunctionSource.includes("return handler(request);")
 ) {
-  throw new Error("onboarding must explicitly require verified user JWTs.");
+  throw new Error(
+    "onboarding may bypass the gateway only for its CORS preflight before handler-level user authentication.",
+  );
 }
 if (
   !functionConfiguration.includes(

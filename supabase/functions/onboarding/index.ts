@@ -741,7 +741,6 @@ const handler = withSupabase(
   { auth: "user", cors: "disabled", errors: { detailed: false } },
   async (request, context) => {
     try {
-      if (request.method === "OPTIONS") return json(request, {}, 204);
       if (request.method !== "POST")
         return json(request, { error: { code: "method_not_allowed" } }, 405);
       const actorId = context.userClaims?.id;
@@ -813,6 +812,20 @@ const handler = withSupabase(
 );
 export default {
   fetch(request: Request): Response | Promise<Response> {
+    // withSupabase authenticates before its callback. Browser preflight requests
+    // have no Bearer token, so they must be answered before entering that layer.
+    if (request.method === "OPTIONS") return json(request, {}, 204);
+    if (request.method !== "POST")
+      return json(request, { error: { code: "method_not_allowed" } }, 405);
+    if (!request.headers.get("authorization")?.trim())
+      return failure(
+        request,
+        new HttpError(
+          401,
+          "authentication_required",
+          "Eine gültige Benutzeranmeldung ist erforderlich.",
+        ),
+      );
     return handler(request);
   },
 };

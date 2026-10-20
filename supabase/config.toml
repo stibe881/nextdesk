@@ -118,7 +118,7 @@ verify_jwt = true
 verify_jwt = true
 
 [functions.onboarding]
-verify_jwt = true
+verify_jwt = false
 
 [functions.asset-registry]
 verify_jwt = true
