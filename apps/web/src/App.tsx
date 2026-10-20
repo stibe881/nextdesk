@@ -123,6 +123,7 @@ import {
   requestedWorkplaceViewForFollowUps,
   type WorkplaceRequestedView,
 } from "./lib/workplace-navigation";
+import { workplaceFirstNavigation } from "./lib/workplace-first-navigation";
 import { appRedirectUrl, isSupabaseConfigured, supabase } from "./lib/supabase";
 
 type Section =
@@ -253,19 +254,20 @@ type TenantWorkspaceBranding = {
   tenantId: string;
 };
 
-const sections: readonly { label: Section; Icon: LucideIcon }[] = [
-  { label: "Übersicht", Icon: LayoutDashboard },
-  { label: "Tickets", Icon: Ticket },
-  { label: "Fälle", Icon: FileWarning },
-  { label: "Arbeitsplatz", Icon: BriefcaseBusiness },
-  { label: "Services", Icon: MonitorCog },
-  { label: "Assets", Icon: Boxes },
-  { label: "Veranstaltungsräume", Icon: CalendarDays },
-  { label: "Eintritte", Icon: ClipboardList },
-  { label: "Wissen", Icon: BookOpen },
-  { label: "Mein Portal", Icon: UserRound },
-  { label: "Berichte", Icon: ChartNoAxesCombined },
-];
+const sections: readonly { label: Section; Icon: LucideIcon }[] =
+  workplaceFirstNavigation([
+    { label: "Übersicht", Icon: LayoutDashboard },
+    { label: "Tickets", Icon: Ticket },
+    { label: "Fälle", Icon: FileWarning },
+    { label: "Arbeitsplatz", Icon: BriefcaseBusiness },
+    { label: "Services", Icon: MonitorCog },
+    { label: "Assets", Icon: Boxes },
+    { label: "Veranstaltungsräume", Icon: CalendarDays },
+    { label: "Eintritte", Icon: ClipboardList },
+    { label: "Wissen", Icon: BookOpen },
+    { label: "Mein Portal", Icon: UserRound },
+    { label: "Berichte", Icon: ChartNoAxesCombined },
+  ]);
 
 const DEFAULT_WORKSPACE_PREFERENCES: WorkspacePreferences = {
   density: "standard",

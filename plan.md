@@ -158,3 +158,7 @@ Wiedervorlagen bleiben persönliche Agentenarbeit: Die gemeinsame Datenbankfunkt
 ## CORS-korrigierter Eintritte-Zugriff
 
 Die Onboarding-Function verarbeitet Browser-CORS bewusst vor der `withSupabase`-Hülle und behält für jede Nicht-OPTIONS-Anfrage die vorhandene Benutzerprüfung, aktive Mandantenmitgliedschaft und rollenbasierte Onboarding-Prüfung. Damit ein Browser die geschützte POST-Anfrage erst zustellen kann, wird nur die vorgeschaltete Gateway-JWT-Prüfung für diese Function deaktiviert. Der äussere Function-Einstieg beantwortet ausschliesslich `OPTIONS` anonym mit dem auf `https://app.nextdesk.ch` beschränkten CORS-Vertrag; er weist andere Methoden sowie POST ohne `Authorization` ab. Jede verbleibende POST-Anfrage durchläuft anschliessend zwingend die kryptografische Benutzer- und Mandantenprüfung in `withSupabase`.
+
+## Arbeitsplatz vor Übersicht
+
+«Arbeitsplatz» wird für berechtigte Agent:innen als erster verfügbarer Arbeitsbereich oberhalb von «Übersicht» angezeigt. Die bestehende Feature- und Rechtefilterung bleibt danach unverändert wirksam: Ist der Arbeitsplatz nicht freigegeben, beginnt die Navigation weiterhin bei «Übersicht»; reine Anfragende behalten ausschliesslich ihre zugelassenen Bereiche.
