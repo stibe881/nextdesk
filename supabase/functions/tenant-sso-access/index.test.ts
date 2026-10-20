@@ -35,6 +35,19 @@ Deno.test(
       "SSO provisioning must not directly upsert a membership",
     );
     assert(
+      source.includes('.from("tenants")') &&
+        source.includes('.select("id, name, slug")'),
+      "The SSO response must source the initial tenant only from the trusted server",
+    );
+    assert(
+      source.includes('.eq("status", "active")'),
+      "The SSO response must never expose a non-active tenant as a workspace",
+    );
+    assert(
+      source.includes("tenant,\n    },"),
+      "The verified minimal tenant summary must be returned with tenant-scoped SSO access",
+    );
+    assert(
       source.includes('.eq("accepted_by", userId)'),
       "Invitation acceptance must be bound to the person recorded by the claim",
     );

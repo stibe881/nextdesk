@@ -1568,24 +1568,26 @@ export function App() {
       .catch(() => 0)
       .then(async () => {
         // The SSO guard can create a normal tenant membership for a verified
-        // Entra employee. Load memberships only after that guarded step so the
-        // first SSO login lands in the tenant without a timing race.
+        // Entra employee. For an enforced tenant the small tenant summary is
+        // already verified by that guard, so the initial workspace does not
+        // depend on a second nested PostgREST membership query.
         const ssoAccess = await resolveTenantSsoAccess();
         const [activeTenants, profileName] = await Promise.all([
-          loadActiveTenants(),
+          ssoAccess.scope === "tenant"
+            ? Promise.resolve([ssoAccess.tenant])
+            : loadActiveTenants(),
           loadProfileName(),
         ]);
-        const scopedTenants =
-          ssoAccess.scope === "tenant"
-            ? activeTenants.filter((tenant) => tenant.id === ssoAccess.tenantId)
-            : activeTenants;
-        if (ssoAccess.scope === "tenant" && scopedTenants.length !== 1) {
+        if (
+          ssoAccess.scope === "tenant" &&
+          activeTenants[0]?.id !== ssoAccess.tenantId
+        ) {
           throw new Error(
             "Die Mandantenmitgliedschaft konnte nach der SSO-Anmeldung nicht bestätigt werden.",
           );
         }
         return {
-          activeTenants: scopedTenants,
+          activeTenants,
           profileName,
           ssoEnforced: ssoAccess.scope === "tenant" && ssoAccess.ssoEnforced,
         };

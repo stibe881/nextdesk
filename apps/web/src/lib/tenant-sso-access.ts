@@ -2,7 +2,12 @@ import { supabase } from "./supabase";
 
 export type TenantSsoAccess =
   | { scope: "unmanaged" }
-  | { scope: "tenant"; tenantId: string; ssoEnforced: boolean };
+  | {
+      scope: "tenant";
+      tenantId: string;
+      ssoEnforced: boolean;
+      tenant: { id: string; name: string; slug: string };
+    };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -15,12 +20,21 @@ function tenantSsoAccessFromResponse(value: unknown): TenantSsoAccess | null {
   if (
     data.scope === "tenant" &&
     typeof data.tenantId === "string" &&
-    typeof data.ssoEnforced === "boolean"
+    typeof data.ssoEnforced === "boolean" &&
+    isRecord(data.tenant) &&
+    typeof data.tenant.id === "string" &&
+    typeof data.tenant.name === "string" &&
+    typeof data.tenant.slug === "string"
   ) {
     return {
       scope: "tenant",
       tenantId: data.tenantId,
       ssoEnforced: data.ssoEnforced,
+      tenant: {
+        id: data.tenant.id,
+        name: data.tenant.name,
+        slug: data.tenant.slug,
+      },
     };
   }
   return null;

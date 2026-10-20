@@ -9,6 +9,12 @@ type SsoConfiguration = {
   allowed_email_domains: string[];
 };
 
+type TenantSummary = {
+  id: string;
+  name: string;
+  slug: string;
+};
+
 type AzureIdentity = {
   provider?: unknown;
   identity_data?: unknown;
@@ -766,6 +772,27 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     return error(request, "sso_configuration_not_active", 403);
   }
 
+  // The tenant is loaded by the trusted server after its domain binding has
+  // been resolved. Returning only this small, already-authorised summary keeps
+  // the first browser/mobile workspace selection independent from a second
+  // nested PostgREST membership query immediately after SSO.
+  const { data: tenantData, error: tenantError } = await context.supabaseAdmin
+    .from("tenants")
+    .select("id, name, slug")
+    .eq("id", sso.tenant_id)
+    .eq("status", "active")
+    .maybeSingle();
+  const tenant = tenantData as TenantSummary | null;
+  if (
+    tenantError ||
+    !tenant ||
+    typeof tenant.id !== "string" ||
+    typeof tenant.name !== "string" ||
+    typeof tenant.slug !== "string"
+  ) {
+    return error(request, "sso_configuration_not_active", 403);
+  }
+
   const { data: userData, error: userError } =
     await context.supabaseAdmin.auth.admin.getUserById(actorId);
   if (userError || !userData.user) {
@@ -813,6 +840,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       tenantId: sso.tenant_id,
       ssoEnforced: sso.enforce_sso,
       provisioned: provision === "invited" || provision === "automatic",
+      tenant,
     },
   });
 });
