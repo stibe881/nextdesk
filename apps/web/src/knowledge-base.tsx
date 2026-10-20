@@ -5,6 +5,7 @@ import {
   useRef,
   useState,
   type FormEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 import ReactMarkdown from "react-markdown";
 import { functionErrorMessage } from "./lib/function-error";
@@ -12,6 +13,10 @@ import {
   buildKnowledgeArticleSaveRequest,
   type KnowledgeArticleSaveRequest,
 } from "./lib/knowledge-article-save";
+import {
+  knowledgeEditorDialogTabIndex,
+  shouldCloseKnowledgeEditor,
+} from "./lib/knowledge-editor-dialog";
 import { supabase } from "./lib/supabase";
 
 export type KnowledgeBaseProps = {
@@ -630,6 +635,8 @@ export function KnowledgeBase({
   const selectedArticleId = selected?.article.id ?? null;
   const editorPanelRef = useRef<HTMLElement | null>(null);
   const editorTitleInputRef = useRef<HTMLInputElement | null>(null);
+  const editorReturnFocusRef = useRef<HTMLElement | null>(null);
+  const editorWasBusyRef = useRef(false);
 
   const visibleArticles = useMemo(
     () => articles.filter(({ article }) => article.status !== "archived"),
@@ -689,16 +696,20 @@ export function KnowledgeBase({
   }, [loadArticles]);
 
   useEffect(() => {
-    if (!editorOpen) return;
+    if (!editorOpen) {
+      editorWasBusyRef.current = false;
+      return;
+    }
     const frame = window.requestAnimationFrame(() => {
-      editorPanelRef.current?.scrollIntoView({
-        behavior: "smooth",
-        block: "start",
-      });
-      editorTitleInputRef.current?.focus({ preventScroll: true });
+      if (isBusy) {
+        editorPanelRef.current?.focus({ preventScroll: true });
+      } else if (!editorWasBusyRef.current) {
+        editorTitleInputRef.current?.focus({ preventScroll: true });
+      }
+      editorWasBusyRef.current = isBusy;
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [editorOpen]);
+  }, [editorOpen, isBusy]);
 
   const openArticle = useCallback(
     async (articleId: string) => {
@@ -737,6 +748,10 @@ export function KnowledgeBase({
   }, [focusArticleId, openArticle]);
 
   function beginNewArticle() {
+    editorReturnFocusRef.current =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
     setEditingArticleId(null);
     setDraft(EMPTY_DRAFT);
     setError("");
@@ -758,6 +773,10 @@ export function KnowledgeBase({
 
   function beginEditArticle() {
     if (!selected) return;
+    editorReturnFocusRef.current =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
     setEditingArticleId(selected.article.id);
     setDraft(draftFromDetail(selected));
     setError("");
@@ -765,10 +784,54 @@ export function KnowledgeBase({
     setEditorOpen(true);
   }
 
-  function cancelEdit() {
+  function closeEditor() {
+    if (isBusy) return;
+    editorWasBusyRef.current = false;
     setEditingArticleId(null);
     setDraft(EMPTY_DRAFT);
     setEditorOpen(false);
+    window.requestAnimationFrame(() => {
+      editorReturnFocusRef.current?.focus({ preventScroll: true });
+      editorReturnFocusRef.current = null;
+    });
+  }
+
+  function handleEditorDialogKeyDown(event: ReactKeyboardEvent<HTMLElement>) {
+    if (shouldCloseKnowledgeEditor(event.key, isBusy)) {
+      event.preventDefault();
+      closeEditor();
+      return;
+    }
+    if (event.key !== "Tab") return;
+
+    const focusable = Array.from(
+      event.currentTarget.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ),
+    ).filter((element) => element.offsetParent !== null);
+    const firstFocusable = focusable[0];
+    const lastFocusable = focusable[focusable.length - 1];
+    if (!firstFocusable || !lastFocusable) {
+      event.preventDefault();
+      event.currentTarget.focus();
+      return;
+    }
+
+    const activeElement = document.activeElement;
+    if (
+      event.shiftKey &&
+      (activeElement === firstFocusable ||
+        activeElement === event.currentTarget)
+    ) {
+      event.preventDefault();
+      lastFocusable.focus();
+    } else if (
+      !event.shiftKey &&
+      (activeElement === lastFocusable || activeElement === event.currentTarget)
+    ) {
+      event.preventDefault();
+      firstFocusable.focus();
+    }
   }
 
   async function submitSearch(event: FormEvent<HTMLFormElement>) {
@@ -863,7 +926,11 @@ export function KnowledgeBase({
         current.filter(({ article }) => article.id !== articleId),
       );
       setSelected(null);
-      if (editingArticleId === articleId) cancelEdit();
+      if (editingArticleId === articleId) {
+        setEditingArticleId(null);
+        setDraft(EMPTY_DRAFT);
+        setEditorOpen(false);
+      }
       setSuccess("Der Wissensartikel wurde archiviert.");
     } catch (nextError) {
       setError(writeErrorMessage(nextError, "archive"));
@@ -1216,137 +1283,161 @@ export function KnowledgeBase({
       </section>
 
       {editorOpen && (
-        <section
-          className="panel knowledge-base__editor-panel"
-          aria-labelledby="knowledge-article-form-heading"
-          ref={editorPanelRef}
-        >
-          <div className="knowledge-base__editor-heading">
-            <div>
-              <p className="eyebrow">
-                {editingArticleId ? "Artikel bearbeiten" : "Neuer Artikel"}
-              </p>
-              <h2 id="knowledge-article-form-heading">{editorTitle}</h2>
-              <p className="knowledge-base__intro">
-                Schreiben Sie klar, strukturieren Sie mit Markdown und prüfen
-                Sie die Darstellung direkt in der Vorschau.
-              </p>
-            </div>
-            <span
-              className={`knowledge-base__badge knowledge-base__badge--${draft.status}`}
-            >
-              {statusLabels[draft.status]}
-            </span>
-          </div>
-
-          <form
-            className="knowledge-base__form knowledge-base__form-panel"
-            onSubmit={(event) => void saveArticle(event)}
+        <div className="knowledge-base__editor-backdrop">
+          <section
+            aria-busy={isBusy}
+            aria-labelledby="knowledge-article-form-heading"
+            aria-modal="true"
+            className="panel knowledge-base__editor-panel"
+            onKeyDown={handleEditorDialogKeyDown}
+            ref={editorPanelRef}
+            role="dialog"
+            tabIndex={knowledgeEditorDialogTabIndex(isBusy)}
           >
-            <label>
-              Titel
-              <input
-                disabled={isBusy}
-                maxLength={240}
-                minLength={3}
-                onChange={(event) =>
-                  setDraft((current) => ({
-                    ...current,
-                    title: event.target.value,
-                  }))
-                }
-                placeholder="Zum Beispiel: VPN-Verbindung einrichten"
-                ref={editorTitleInputRef}
-                required
-                value={draft.title}
-              />
-            </label>
-
-            <label>
-              Sichtbarkeit
-              <select
-                disabled={isBusy}
-                onChange={(event) =>
-                  setDraft((current) => ({
-                    ...current,
-                    visibility: event.target.value as ArticleVisibility,
-                  }))
-                }
-                value={draft.visibility}
-              >
-                <option value="internal">Intern</option>
-                <option value="external">Extern</option>
-              </select>
-            </label>
-
-            <p className="knowledge-base__hint">
-              Speichern erstellt immer einen Entwurf; für externe Artikel bleibt
-              die letzte freigegebene Revision sichtbar, bis die neue Revision
-              erneut freigegeben wird.
-            </p>
-
-            <label className="knowledge-base__full-width">
-              Markdown-Inhalt
-              <textarea
-                disabled={isBusy}
-                maxLength={100000}
-                onChange={(event) =>
-                  setDraft((current) => ({
-                    ...current,
-                    bodyMarkdown: event.target.value,
-                  }))
-                }
-                placeholder={
-                  "# Überschrift\n\nBeschreiben Sie hier die Lösung oder den Ablauf in Markdown."
-                }
-                rows={12}
-                value={draft.bodyMarkdown}
-              />
-            </label>
-
-            <aside className="knowledge-base__preview knowledge-base__full-width">
-              <div className="knowledge-base__preview-heading">
-                <p className="eyebrow">Live-Vorschau</p>
-                <span>{visibilityLabels[draft.visibility]}</span>
+            <div className="knowledge-base__editor-heading">
+              <div>
+                <p className="eyebrow">
+                  {editingArticleId ? "Artikel bearbeiten" : "Neuer Artikel"}
+                </p>
+                <h2 id="knowledge-article-form-heading">{editorTitle}</h2>
+                <p className="knowledge-base__intro">
+                  Schreiben Sie klar, strukturieren Sie mit Markdown und prüfen
+                  Sie die Darstellung direkt in der Vorschau.
+                </p>
               </div>
-              <h3>{previewTitle}</h3>
-              <article className="knowledge-base__markdown knowledge-base__markdown--preview">
-                {draft.bodyMarkdown ? (
-                  <ReactMarkdown>{draft.bodyMarkdown}</ReactMarkdown>
-                ) : (
-                  <p>
-                    Beginnen Sie mit einer kurzen Einleitung. Die Vorschau zeigt
-                    die spätere Artikelansicht direkt an.
-                  </p>
-                )}
-              </article>
-            </aside>
+              <div className="knowledge-base__editor-heading-actions">
+                <span
+                  className={`knowledge-base__badge knowledge-base__badge--${draft.status}`}
+                >
+                  {statusLabels[draft.status]}
+                </span>
+                <button
+                  className="knowledge-base__button knowledge-base__editor-close"
+                  disabled={isBusy}
+                  onClick={closeEditor}
+                  type="button"
+                >
+                  Schliessen
+                </button>
+              </div>
+            </div>
 
-            <div className="knowledge-base__form-actions knowledge-base__full-width">
-              <button
-                className="primary-button knowledge-base__save"
-                disabled={isBusy}
-                type="submit"
+            {error ? (
+              <p
+                className="knowledge-base__message knowledge-base__message--error"
+                role="alert"
               >
-                {saving === "save"
-                  ? "Wird gespeichert …"
-                  : editingArticleId
-                    ? "Änderungen speichern"
-                    : "Artikel anlegen"}
-              </button>
-              {editingArticleId ? (
+                {error}
+              </p>
+            ) : null}
+
+            <form
+              className="knowledge-base__form knowledge-base__form-panel"
+              onSubmit={(event) => void saveArticle(event)}
+            >
+              <label>
+                Titel
+                <input
+                  disabled={isBusy}
+                  maxLength={240}
+                  minLength={3}
+                  onChange={(event) =>
+                    setDraft((current) => ({
+                      ...current,
+                      title: event.target.value,
+                    }))
+                  }
+                  placeholder="Zum Beispiel: VPN-Verbindung einrichten"
+                  ref={editorTitleInputRef}
+                  required
+                  value={draft.title}
+                />
+              </label>
+
+              <label>
+                Sichtbarkeit
+                <select
+                  disabled={isBusy}
+                  onChange={(event) =>
+                    setDraft((current) => ({
+                      ...current,
+                      visibility: event.target.value as ArticleVisibility,
+                    }))
+                  }
+                  value={draft.visibility}
+                >
+                  <option value="internal">Intern</option>
+                  <option value="external">Extern</option>
+                </select>
+              </label>
+
+              <p className="knowledge-base__hint">
+                Speichern erstellt immer einen Entwurf; für externe Artikel
+                bleibt die letzte freigegebene Revision sichtbar, bis die neue
+                Revision erneut freigegeben wird.
+              </p>
+
+              <label className="knowledge-base__full-width">
+                Markdown-Inhalt
+                <textarea
+                  disabled={isBusy}
+                  maxLength={100000}
+                  onChange={(event) =>
+                    setDraft((current) => ({
+                      ...current,
+                      bodyMarkdown: event.target.value,
+                    }))
+                  }
+                  placeholder={
+                    "# Überschrift\n\nBeschreiben Sie hier die Lösung oder den Ablauf in Markdown."
+                  }
+                  rows={12}
+                  value={draft.bodyMarkdown}
+                />
+              </label>
+
+              <aside className="knowledge-base__preview knowledge-base__full-width">
+                <div className="knowledge-base__preview-heading">
+                  <p className="eyebrow">Live-Vorschau</p>
+                  <span>{visibilityLabels[draft.visibility]}</span>
+                </div>
+                <h3>{previewTitle}</h3>
+                <article className="knowledge-base__markdown knowledge-base__markdown--preview">
+                  {draft.bodyMarkdown ? (
+                    <ReactMarkdown>{draft.bodyMarkdown}</ReactMarkdown>
+                  ) : (
+                    <p>
+                      Beginnen Sie mit einer kurzen Einleitung. Die Vorschau
+                      zeigt die spätere Artikelansicht direkt an.
+                    </p>
+                  )}
+                </article>
+              </aside>
+
+              <div className="knowledge-base__form-actions knowledge-base__full-width">
+                <button
+                  className="primary-button knowledge-base__save"
+                  disabled={isBusy}
+                  type="submit"
+                >
+                  {saving === "save"
+                    ? "Wird gespeichert …"
+                    : editingArticleId
+                      ? "Änderungen speichern"
+                      : "Artikel anlegen"}
+                </button>
                 <button
                   className="knowledge-base__button"
                   disabled={isBusy}
-                  onClick={cancelEdit}
+                  onClick={closeEditor}
                   type="button"
                 >
-                  Bearbeitung abbrechen
+                  Abbrechen
                 </button>
-              ) : null}
-            </div>
-          </form>
-        </section>
+              </div>
+            </form>
+          </section>
+        </div>
       )}
 
       {error ? (

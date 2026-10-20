@@ -12228,6 +12228,32 @@ body:has(.ticket-detail) {
     var(--surface);
 }
 
+.knowledge-base .knowledge-base__editor-backdrop {
+  position: fixed;
+  z-index: 100;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: clamp(16px, 4vw, 40px);
+  background: color-mix(in srgb, var(--ink) 38%, transparent);
+  backdrop-filter: blur(6px);
+}
+
+.knowledge-base.knowledge-base .knowledge-base__editor-panel {
+  position: relative;
+  width: min(1120px, 100%);
+  max-height: calc(100dvh - clamp(32px, 8vw, 80px));
+  overflow: auto;
+  overscroll-behavior: contain;
+  box-shadow: 0 28px 80px color-mix(in srgb, var(--ink) 30%, transparent);
+}
+
+body:has(.knowledge-base__editor-backdrop) {
+  overflow: hidden;
+}
+
 .knowledge-base .knowledge-base__library-heading,
 .knowledge-base .knowledge-base__editor-heading {
   display: flex;
@@ -12235,6 +12261,18 @@ body:has(.ticket-detail) {
   justify-content: space-between;
   gap: 24px;
   padding: 28px 28px 22px;
+}
+
+.knowledge-base .knowledge-base__editor-heading-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.knowledge-base .knowledge-base__editor-panel > .knowledge-base__message {
+  margin: 0 28px 16px;
 }
 
 .knowledge-base .knowledge-base__library-heading h2,
@@ -12552,6 +12590,26 @@ body:has(.ticket-detail) {
   .knowledge-base .knowledge-base__toolbar {
     margin: 0 16px;
     padding: 14px 4px;
+  }
+
+  .knowledge-base .knowledge-base__editor-backdrop {
+    align-items: end;
+    padding: 12px 0 0;
+  }
+
+  .knowledge-base.knowledge-base .knowledge-base__editor-panel {
+    width: 100%;
+    max-height: calc(100dvh - 12px);
+    border-radius: 20px 20px 0 0;
+  }
+
+  .knowledge-base .knowledge-base__editor-heading-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .knowledge-base .knowledge-base__editor-panel > .knowledge-base__message {
+    margin: 0 20px 16px;
   }
 
   .knowledge-base .knowledge-base__detail {

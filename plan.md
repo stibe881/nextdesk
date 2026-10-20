@@ -138,3 +138,7 @@ Für Personen ohne Ticketarbeitsberechtigung wird die sichtbare und clientseitig
 ## Kategoriefreie Wissensoberfläche
 
 Die Wissensdatenbank zeigt keine Kategorien oder Unterkategorien mehr: weder auf Artikelkarten, in der Detailansicht und Vorschau noch im Artikel-Editor. Die Schaltfläche und das Formular zur Kategorienverwaltung entfallen ebenfalls. Bestehende Zuordnungen und Kategorien bleiben unverändert in der Datenbank erhalten, werden bei künftigen Artikelbearbeitungen weiterhin ohne Änderung mitgeführt und werden nicht gelöscht. Diese reine Weboberflächenbereinigung benötigt keine Datenbankmigration, keine Function-Änderung und keine neue Funktionsaktivierung.
+
+## Dialogbasierter Wissenseditor
+
+Das Anlegen und Bearbeiten eines Wissensartikels öffnet den bestehenden Editor nicht mehr unterhalb der Artikelliste. Stattdessen erscheint er als fokussierter, viewport-fester Dialog über der Wissensdatenbank. Titel, Sichtbarkeit, Markdown-Eingabe, Live-Vorschau und Speichern bleiben unverändert verfügbar; nur innerhalb des Dialogs wird bei langem Inhalt gescrollt. Der Dialog fokussiert beim Öffnen den Titel, lässt sich kontrolliert über eine sichtbare Schaltfläche oder Escape schliessen und hält die Tastaturnavigation innerhalb des Dialogs. Es werden keine Datenmodelle, Berechtigungen oder Speicherabläufe verändert.
