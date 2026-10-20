@@ -18,3 +18,24 @@ export function workplaceFirstNavigation<T extends NavigationSection>(
     ...sections.filter((section) => section.label !== "Arbeitsplatz"),
   ];
 }
+
+/**
+ * Der Arbeitsplatz ist eine primäre Aktion direkt unter der Marke. Die
+ * restlichen Arbeitsbereiche beginnen erst unter ihrer Überschrift.
+ */
+export function splitWorkplaceNavigation<T extends NavigationSection>(
+  sections: readonly T[],
+): {
+  workplaceNavigationItem: T | null;
+  remainingNavigationSections: T[];
+} {
+  const workplaceNavigationItem =
+    sections.find((section) => section.label === "Arbeitsplatz") ?? null;
+
+  return {
+    workplaceNavigationItem,
+    remainingNavigationSections: sections.filter(
+      (section) => section.label !== "Arbeitsplatz",
+    ),
+  };
+}

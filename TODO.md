@@ -119,3 +119,5 @@
   - Der Drag-and-Drop-Konfigurator und die vorhandenen Paletteneinfügungen behalten ihre versionierten Layoutverträge.
   - Die KI-Einstellungen zeigen ohne Schlüssel- oder Inhaltsdetails, ob die serverseitige Anthropic-Anbindung bereit ist; eine fehlende Konfiguration wird beim Wissensentwurf klar und ohne Providerdetails gemeldet.
 - [x] **Fokus-stabile Auth-Sitzung.** Wenn nextDesk beim Wechsel zurück ins Browserfenster für dieselbe angemeldete Person ein erneutes `SIGNED_IN`, `TOKEN_REFRESHED` oder `USER_UPDATED` erhält, bleiben Mandantenkontext, Navigation und geladener Arbeitsbereich erhalten. Die erstmalige Sitzung, eine Abmeldung sowie ein Wechsel der Benutzer-ID bauen den Kontext weiterhin sicher neu auf. Die Regel wird als fokussierte Regression abgesichert.
+
+- [x] **Arbeitsplatz vor «Arbeitsbereich».** Der Navigationspunkt «Arbeitsplatz» steht für berechtigte Personen direkt unter dem Logo und vor der Überschrift «Arbeitsbereich». Er darf nicht zusätzlich in der Liste unter dieser Überschrift erscheinen. Ohne verfügbare Arbeitsplatzfreigabe bleibt kein leerer oder wirkungsloser Platzhalter sichtbar.

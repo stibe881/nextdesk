@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { workplaceFirstNavigation } from "./workplace-first-navigation";
+import {
+  splitWorkplaceNavigation,
+  workplaceFirstNavigation,
+} from "./workplace-first-navigation";
 
 describe("workplaceFirstNavigation", () => {
   it("platziert Arbeitsplatz direkt vor Übersicht und erhält die restliche Reihenfolge", () => {
@@ -19,5 +22,35 @@ describe("workplaceFirstNavigation", () => {
     const sections = [{ label: "Übersicht" }, { label: "Tickets" }];
     expect(workplaceFirstNavigation(sections)).toEqual(sections);
     expect(workplaceFirstNavigation(sections)).not.toBe(sections);
+  });
+});
+
+describe("splitWorkplaceNavigation", () => {
+  it("trennt Arbeitsplatz vor der Überschrift von den übrigen Arbeitsbereichen", () => {
+    const workplace = { label: "Arbeitsplatz" };
+    const sections = [
+      workplace,
+      { label: "Übersicht" },
+      { label: "Tickets" },
+      { label: "Fälle" },
+    ];
+
+    expect(splitWorkplaceNavigation(sections)).toEqual({
+      workplaceNavigationItem: workplace,
+      remainingNavigationSections: [
+        { label: "Übersicht" },
+        { label: "Tickets" },
+        { label: "Fälle" },
+      ],
+    });
+  });
+
+  it("liefert keinen primären Arbeitsplatz aus einer eingeschränkten Navigation", () => {
+    const sections = [{ label: "Übersicht" }, { label: "Tickets" }];
+
+    expect(splitWorkplaceNavigation(sections)).toEqual({
+      workplaceNavigationItem: null,
+      remainingNavigationSections: sections,
+    });
   });
 });

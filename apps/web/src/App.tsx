@@ -124,7 +124,10 @@ import {
   requestedWorkplaceViewForFollowUps,
   type WorkplaceRequestedView,
 } from "./lib/workplace-navigation";
-import { workplaceFirstNavigation } from "./lib/workplace-first-navigation";
+import {
+  splitWorkplaceNavigation,
+  workplaceFirstNavigation,
+} from "./lib/workplace-first-navigation";
 import { appRedirectUrl, isSupabaseConfigured, supabase } from "./lib/supabase";
 
 type Section =
@@ -3268,6 +3271,8 @@ export function App() {
   const primaryNavigationSections = visibleSections.filter(
     (item) => item.label !== "Mein Portal",
   );
+  const { workplaceNavigationItem, remainingNavigationSections } =
+    splitWorkplaceNavigation(primaryNavigationSections);
   const portalNavigationItem = visibleSections.find(
     (item) => item.label === "Mein Portal",
   );
@@ -3357,10 +3362,36 @@ export function App() {
           />
           {workspaceBrandName ? <span>{workspaceBrandName}</span> : null}
         </div>
+        {workplaceNavigationItem && (
+          <nav
+            aria-label="Arbeitsplatz"
+            className="workplace-primary-navigation"
+          >
+            <button
+              className={
+                section === workplaceNavigationItem.label
+                  ? "nav-item active"
+                  : "nav-item"
+              }
+              onClick={() => {
+                setPersonalSettingsOpen(false);
+                setSection(workplaceNavigationItem.label);
+              }}
+              type="button"
+            >
+              <workplaceNavigationItem.Icon
+                aria-hidden="true"
+                size={18}
+                strokeWidth={1.8}
+              />
+              {sectionDisplayLabel(workplaceNavigationItem.label)}
+            </button>
+          </nav>
+        )}
         <div className="navigation-cluster">
           <p className="navigation-label">ARBEITSBEREICH</p>
           <nav className="nav-list">
-            {primaryNavigationSections.map((item) => (
+            {remainingNavigationSections.map((item) => (
               <button
                 className={
                   section === item.label ? "nav-item active" : "nav-item"

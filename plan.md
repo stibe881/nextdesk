@@ -256,3 +256,7 @@ Die KI-Governance zeigt zusätzlich zur fachlichen Freigabe einen nicht sensitiv
 ## Fokus-stabile Sitzung
 
 Ein Fensterfokus darf den nextDesk-Arbeitsbereich nicht erneut aufbauen. Supabase kann für dieselbe angemeldete Person beim Zurückkehren in ein Browserfenster ein `SIGNED_IN`- oder `TOKEN_REFRESHED`-Ereignis auslösen. Diese gleichbleibenden Ereignisse aktualisieren nur die interne Sitzungsreferenz und behalten Mandant, Navigationszustand sowie geladene Daten bei. Ein vollständiger Kontextreset bleibt auf die erstmalige Sitzung, eine echte Abmeldung und einen Wechsel der Benutzer-ID beschränkt.
+
+## Arbeitsplatz oberhalb von Arbeitsbereich
+
+Der verfügbare Arbeitsplatz steht als eigener primärer Navigationspunkt direkt unter der Mandantenmarke. Die Überschrift «Arbeitsbereich» und alle weiteren berechtigten Bereiche folgen erst darunter. Für Personen oder Mandanten ohne Arbeitsplatzfreigabe bleibt dieser zusätzliche Punkt vollständig verborgen; «Arbeitsplatz» wird nicht doppelt gerendert.

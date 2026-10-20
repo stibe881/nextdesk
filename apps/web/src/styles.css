@@ -7439,6 +7439,10 @@ body:has(.ticket-detail) {
   line-height: 1.28;
 }
 
+.workplace-primary-navigation {
+  padding: 0 0 2px;
+}
+
 .brand-color-picker {
   display: grid;
   min-width: 0;
@@ -7551,6 +7555,10 @@ body:has(.ticket-detail) {
 
   .brand-lockup {
     padding: 0 20px 6px;
+  }
+
+  .workplace-primary-navigation {
+    padding: 4px 20px 2px;
   }
 
   .navigation-cluster {
