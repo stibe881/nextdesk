@@ -6037,6 +6037,49 @@ export function TicketDetail({
           </div>
         )}
         <dl className="ticket-detail-facts-grid">
+          {detail.requesterContact && (
+            <div>
+              <dt>Anfragende Person</dt>
+              <dd>{detail.requesterContact.displayName}</dd>
+            </div>
+          )}
+          <div
+            className={
+              detail.canUpdate && requesterProfile
+                ? "ticket-detail-fact--editable ticket-requester-context"
+                : undefined
+            }
+          >
+            <dt>Abteilung / Angebot</dt>
+            <dd>
+              {detail.canUpdate && requesterProfile ? (
+                <span className="ticket-requester-context-fields">
+                  <input
+                    aria-label="Abteilung der anfragenden Person"
+                    disabled={busy || requesterProfileBusy}
+                    onBlur={() => void saveRequesterContext()}
+                    onChange={(event) =>
+                      setRequesterDepartment(event.target.value)
+                    }
+                    placeholder="Abteilung"
+                    value={requesterDepartment}
+                  />
+                  <input
+                    aria-label="Angebot der anfragenden Person"
+                    disabled={busy || requesterProfileBusy}
+                    onBlur={() => void saveRequesterContext()}
+                    onChange={(event) => setRequesterOffer(event.target.value)}
+                    placeholder="Angebot"
+                    value={requesterOffer}
+                  />
+                </span>
+              ) : requesterContext.length > 0 ? (
+                requesterContext.join(" · ")
+              ) : (
+                "Nicht hinterlegt"
+              )}
+            </dd>
+          </div>
           <div
             className={
               detail.canUpdate ? "ticket-detail-fact--editable" : undefined
@@ -6173,49 +6216,6 @@ export function TicketDetail({
                 </select>
               ) : (
                 (selectedTeam?.name ?? "Kein Team")
-              )}
-            </dd>
-          </div>
-          {detail.requesterContact && (
-            <div>
-              <dt>Anfragende Person</dt>
-              <dd>{detail.requesterContact.displayName}</dd>
-            </div>
-          )}
-          <div
-            className={
-              detail.canUpdate && requesterProfile
-                ? "ticket-detail-fact--editable ticket-requester-context"
-                : undefined
-            }
-          >
-            <dt>Abteilung / Angebot</dt>
-            <dd>
-              {detail.canUpdate && requesterProfile ? (
-                <span className="ticket-requester-context-fields">
-                  <input
-                    aria-label="Abteilung der anfragenden Person"
-                    disabled={busy || requesterProfileBusy}
-                    onBlur={() => void saveRequesterContext()}
-                    onChange={(event) =>
-                      setRequesterDepartment(event.target.value)
-                    }
-                    placeholder="Abteilung"
-                    value={requesterDepartment}
-                  />
-                  <input
-                    aria-label="Angebot der anfragenden Person"
-                    disabled={busy || requesterProfileBusy}
-                    onBlur={() => void saveRequesterContext()}
-                    onChange={(event) => setRequesterOffer(event.target.value)}
-                    placeholder="Angebot"
-                    value={requesterOffer}
-                  />
-                </span>
-              ) : requesterContext.length > 0 ? (
-                requesterContext.join(" · ")
-              ) : (
-                "Nicht hinterlegt"
               )}
             </dd>
           </div>
