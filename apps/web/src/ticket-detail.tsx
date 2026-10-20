@@ -4135,13 +4135,11 @@ export function TicketDetail({
       ) ?? null,
     [detail],
   );
-  const requesterContext = useMemo(
-    () =>
-      [requesterProfile?.department, requesterProfile?.offer].filter(
-        (value): value is string => Boolean(value?.trim()),
-      ),
-    [requesterProfile?.department, requesterProfile?.offer],
-  );
+  const requesterContext = useMemo(() => {
+    const department = requesterProfile?.department?.trim();
+    const offer = requesterProfile?.offer?.trim();
+    return department ? [department] : offer ? [offer] : [];
+  }, [requesterProfile?.department, requesterProfile?.offer]);
   const selectedTicketCategory = useMemo(
     () =>
       ticketCategories.find(
@@ -6054,24 +6052,52 @@ export function TicketDetail({
             <dd>
               {detail.canUpdate && requesterProfile ? (
                 <span className="ticket-requester-context-fields">
-                  <input
-                    aria-label="Abteilung der anfragenden Person"
-                    disabled={busy || requesterProfileBusy}
-                    onBlur={() => void saveRequesterContext()}
-                    onChange={(event) =>
-                      setRequesterDepartment(event.target.value)
-                    }
-                    placeholder="Abteilung"
-                    value={requesterDepartment}
-                  />
-                  <input
-                    aria-label="Angebot der anfragenden Person"
-                    disabled={busy || requesterProfileBusy}
-                    onBlur={() => void saveRequesterContext()}
-                    onChange={(event) => setRequesterOffer(event.target.value)}
-                    placeholder="Angebot"
-                    value={requesterOffer}
-                  />
+                  {requesterDepartment.trim() ? (
+                    <input
+                      aria-label="Abteilung der anfragenden Person"
+                      disabled={busy || requesterProfileBusy}
+                      onBlur={() => void saveRequesterContext()}
+                      onChange={(event) =>
+                        setRequesterDepartment(event.target.value)
+                      }
+                      placeholder="Abteilung"
+                      value={requesterDepartment}
+                    />
+                  ) : requesterOffer.trim() ? (
+                    <input
+                      aria-label="Angebot der anfragenden Person"
+                      disabled={busy || requesterProfileBusy}
+                      onBlur={() => void saveRequesterContext()}
+                      onChange={(event) =>
+                        setRequesterOffer(event.target.value)
+                      }
+                      placeholder="Angebot"
+                      value={requesterOffer}
+                    />
+                  ) : (
+                    <>
+                      <input
+                        aria-label="Abteilung der anfragenden Person"
+                        disabled={busy || requesterProfileBusy}
+                        onBlur={() => void saveRequesterContext()}
+                        onChange={(event) =>
+                          setRequesterDepartment(event.target.value)
+                        }
+                        placeholder="Abteilung"
+                        value={requesterDepartment}
+                      />
+                      <input
+                        aria-label="Angebot der anfragenden Person"
+                        disabled={busy || requesterProfileBusy}
+                        onBlur={() => void saveRequesterContext()}
+                        onChange={(event) =>
+                          setRequesterOffer(event.target.value)
+                        }
+                        placeholder="Angebot"
+                        value={requesterOffer}
+                      />
+                    </>
+                  )}
                 </span>
               ) : requesterContext.length > 0 ? (
                 requesterContext.join(" · ")
