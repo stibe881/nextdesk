@@ -271,6 +271,27 @@ function displayNameFromEmail(email: unknown): string | null {
     .slice(0, 160);
 }
 
+async function ensureSsoUserProfileBeforeMembershipClaim(
+  admin: any,
+  userId: string,
+  displayName: string | null,
+): Promise<void> {
+  const { error: profileError } = await admin
+    .from("user_profiles")
+    .upsert(
+      displayName ? { id: userId, display_name: displayName } : { id: userId },
+      { onConflict: "id", ignoreDuplicates: true },
+    );
+  if (profileError) {
+    // The subsequent locked membership claim is deliberately still the
+    // authority: for a new person its profile foreign key fails closed; for an
+    // existing member a transient profile refresh error must not remove access.
+    console.error("sso_profile_bootstrap_failed", {
+      code: profileError.code,
+    });
+  }
+}
+
 async function ensureTenantRole(
   admin: any,
   tenantId: string,
@@ -546,6 +567,17 @@ async function provisionSsoPerson(
   const userId = user?.id;
   if (typeof userId !== "string") return "failed";
 
+  const ssoDisplayName = ssoDisplayNameFromUser(user);
+  // tenant_memberships.user_id deliberately references user_profiles.id.
+  // Create or refresh the minimal profile after Azure/domain/tenant validation
+  // but before the locked claim, so first-time Requesters satisfy that FK.
+  // The claim remains the sole authority for tenant membership transitions.
+  await ensureSsoUserProfileBeforeMembershipClaim(
+    admin,
+    userId,
+    ssoDisplayName ?? displayNameFromEmail(email),
+  );
+
   // The database claim locks the membership row and permits exactly the
   // invitation-to-active transition. A cancelled or suspended account can
   // therefore never be reactivated by a delayed SSO request.
@@ -594,10 +626,9 @@ async function provisionSsoPerson(
     };
   }
 
-  const ssoDisplayName = ssoDisplayNameFromUser(user);
-  // An existing authorised person must never be blocked by an optional profile
-  // write. A later Entra login nevertheless refreshes a previously missing or
-  // stale display name when the provider supplies a trusted profile claim.
+  // An existing authorised person has passed the locked membership claim. The
+  // bootstrap above does not overwrite an existing profile; preserve the
+  // established behaviour of refreshing it only from a trusted Azure name.
   if (wasActive) {
     if (ssoDisplayName) {
       await admin

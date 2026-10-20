@@ -21,6 +21,25 @@ Deno.test(
       "The membership claim must be bound to the authenticated email",
     );
     assert(
+      source.includes("ensureSsoUserProfileBeforeMembershipClaim"),
+      "SSO provisioning must create the profile required by the membership foreign key",
+    );
+    assert(
+      source.indexOf("await ensureSsoUserProfileBeforeMembershipClaim(") <
+        source.indexOf(
+          'await admin.rpc("claim_verified_tenant_sso_membership", {',
+        ),
+      "The profile must be established before the locked membership claim for a first-time requester",
+    );
+    assert(
+      source.includes('.from("user_profiles")\n    .upsert('),
+      "The SSO profile bootstrap must remain server-side",
+    );
+    assert(
+      source.includes("ignoreDuplicates: true"),
+      "The pre-claim profile bootstrap must not overwrite an existing profile",
+    );
+    assert(
       source.includes(
         "const claimedMembership = Array.isArray(membershipClaim)",
       ),
