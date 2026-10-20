@@ -543,9 +543,15 @@ async function provisionSsoPerson(
       p_user_id: userId,
       p_email: email,
     });
-  if (membershipClaimError || !isRecord(membershipClaim)) return "failed";
-  const membershipStatus = membershipClaim.status;
-  const wasActive = membershipClaim.was_active === true;
+  // PostgreSQL `returns table` RPCs are serialised by PostgREST as a one-row
+  // array. Treat every other shape as a failed closed claim, never as a
+  // permission to create a membership.
+  const claimedMembership = Array.isArray(membershipClaim)
+    ? membershipClaim[0]
+    : membershipClaim;
+  if (membershipClaimError || !isRecord(claimedMembership)) return "failed";
+  const membershipStatus = claimedMembership.status;
+  const wasActive = claimedMembership.was_active === true;
   if (membershipStatus === "removed") return "removed";
   if (membershipStatus !== "active") return "failed";
 
@@ -607,7 +613,9 @@ async function provisionSsoPerson(
   // invitation remains the only way to assign a non-requester role or agent
   // department at first sign-in. A manually and explicitly requested Entra
   // agent assignment is the only additional, tenant-admin-controlled path.
-  const invitation = invitationFromMembershipClaim(membershipClaim.invitation);
+  const invitation = invitationFromMembershipClaim(
+    claimedMembership.invitation,
+  );
 
   const joinedAt = new Date().toISOString();
 

@@ -21,6 +21,16 @@ Deno.test(
       "The membership claim must be bound to the authenticated email",
     );
     assert(
+      source.includes(
+        "const claimedMembership = Array.isArray(membershipClaim)",
+      ),
+      "A one-row table RPC result must be read from the PostgREST array",
+    );
+    assert(
+      source.includes("!isRecord(claimedMembership)"),
+      "Malformed membership claim responses must fail closed",
+    );
+    assert(
       !source.includes('.from("tenant_memberships")\n    .upsert('),
       "SSO provisioning must not directly upsert a membership",
     );
@@ -41,6 +51,12 @@ Deno.test(
     assert(
       tenantUsersSource.includes("p_invitation_id: invitation.id"),
       "The current invitation claim must bind the exact initially listed invitation",
+    );
+    assert(
+      tenantUsersSource.includes(
+        "const claimedMembership = Array.isArray(claim)",
+      ),
+      "Invitation acceptance must read the one-row table RPC response correctly",
     );
     assert(
       tenantUsersSource.includes('.eq("accepted_by", actorId)'),

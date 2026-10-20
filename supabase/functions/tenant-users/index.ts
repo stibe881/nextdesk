@@ -782,14 +782,17 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
             p_invitation_id: invitation.id,
           },
         );
-      if (claimError || !isRecord(claim)) {
+      // `returns table` RPC results are represented as a one-row array by
+      // PostgREST. Fail closed for every other response shape.
+      const claimedMembership = Array.isArray(claim) ? claim[0] : claim;
+      if (claimError || !isRecord(claimedMembership)) {
         return json(
           request,
           { error: { code: "invitation_claim_failed" } },
           500,
         );
       }
-      if (claim.status !== "active") {
+      if (claimedMembership.status !== "active") {
         // A concurrent revocation, expiry or removal wins over the initial list.
         continue;
       }
