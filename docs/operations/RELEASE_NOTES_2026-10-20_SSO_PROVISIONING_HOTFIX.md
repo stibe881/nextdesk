@@ -26,9 +26,17 @@
 - Damit kann eine erfolgreich verifizierte Entra-Anmeldung eines erstmals berechtigten Mitarbeitenden wieder den mandantengebundenen Arbeitsbereich erstellen. Es werden weder Agentenrechte noch erhöhte Rollen automatisch vergeben.
 - TypeScript-, Deno-, PostgreSQL-RLS-, Schema- und Formatprüfungen waren vor der Auslieferung erfolgreich. Der Benutzer muss die Anmeldung dennoch einmal erneut ausführen; es wurde kein Benutzerkonto oder Mandantenmitglied manuell verändert.
 
+## SSO-Arbeitsbereichshotfix
+
+- **Codebasis:** `ac88d28` – `fix: stabilise SSO workspace bootstrap`.
+- **`tenant-sso-access` v20** ist aktiv und JWT-geschützt. Nach einer vollständigen serverseitigen Prüfung von Azure-Anmeldung, Entra-Tenant, erlaubter Domain, aktivem Mandanten und Mitgliedschaft liefert der Endpunkt ausschliesslich die minimale Mandantenzusammenfassung `id`, `name` und `slug` zurück.
+- Die Webanwendung verwendet diese bereits bestätigte Zusammenfassung beim ersten SSO-Arbeitsbereichsboot. Eine zweite, timinganfällige verschachtelte PostgREST-Abfrage ist dafür nicht mehr erforderlich; gespeicherte unzulässige Arbeitsbereiche bleiben fail-closed.
+- Das Hetzner-Webbundle wurde am 20. Oktober 2026 um `07:05:13 UTC` kontrolliert ausgerollt. Vorher wurde eine Rückfallkopie erstellt; der anschliessende Release-Smoke-Test war erfolgreich.
+- Der zugehörige native Quellhotfix ist als Mobil-Commit `54f33fe` gespeichert und durch TypeScript sowie Vitest geprüft. Er benötigt für bereits installierte iOS-Apps einen neuen EAS-/TestFlight-Build; ein solcher Build wurde mit diesem Release nicht gestartet.
+
 ## Nicht Bestandteil dieses Releases
 
-- Der iOS-Quellhotfix ist separat auf dem Mobil-Repository gespeichert. Ein autorisierter Remote-TestFlight-Build wurde gestartet; dessen Ergebnis wird erst nach der Rückmeldung von EAS bestätigt.
+- Es wurde kein neuer iOS-Build oder TestFlight-Upload ausgelöst.
 - Kein neuer Provider, keine neue Entra-Berechtigung, kein Scheduler und keine automatische Löschung.
 - Keine Änderung am produktiven Microsoft-365-/Exchange-E-Mail-Kanal.
 
