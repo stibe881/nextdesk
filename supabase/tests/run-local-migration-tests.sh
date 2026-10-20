@@ -448,7 +448,12 @@ do $$
 declare
   v_definition jsonb;
   v_changed integer;
+  v_version bigint;
 begin
+  select (public.list_ticket_custom_field_layout(
+    '00000000-0000-4000-8000-000000000002',
+    '10000000-0000-4000-8000-000000000001'
+  )->>'version')::bigint into v_version;
   select public.upsert_ticket_custom_field_definition(
     '00000000-0000-4000-8000-000000000002',
     '10000000-0000-4000-8000-000000000001',
@@ -457,7 +462,8 @@ begin
     'Gerätestandort',
     'select',
     false,
-    '["Büro", "Homeoffice"]'::jsonb
+    '["Büro", "Homeoffice"]'::jsonb,
+    v_version
   ) into v_definition;
   if v_definition->>'fieldKey' <> 'asset_location' then
     raise exception 'Custom field definition was not created';
@@ -495,6 +501,171 @@ begin
   end if;
 end;
 $$;
+rollback;
+
+-- Every visible canvas mutation is versioned. Active positions remain
+-- contiguous, retired fields follow them, and palette creation is atomic.
+begin;
+set local role service_role;
+do $$
+declare
+  v_actor_id uuid := '00000000-0000-4000-8000-000000000002';
+  v_tenant_id uuid := '10000000-0000-4000-8000-000000000001';
+  v_source_section uuid;
+  v_target_section uuid;
+  v_alpha uuid;
+  v_beta uuid;
+  v_gamma uuid;
+  v_version bigint;
+  v_stale_version bigint;
+  v_result jsonb;
+  v_keys text[];
+  v_active_positions integer[];
+  v_retired_position integer;
+begin
+  select (public.list_ticket_custom_field_layout(v_actor_id, v_tenant_id)->>'version')::bigint
+  into v_version;
+  select public.save_ticket_custom_field_section(
+    v_actor_id, v_tenant_id, null, 'Positionsquelle', v_version
+  ) into v_result;
+  v_source_section := (v_result->>'id')::uuid;
+  v_version := (v_result->>'version')::bigint;
+
+  select public.save_ticket_custom_field_section(
+    v_actor_id, v_tenant_id, null, 'Positionsziel', v_version
+  ) into v_result;
+  v_target_section := (v_result->>'id')::uuid;
+  v_version := (v_result->>'version')::bigint;
+
+  select public.create_ticket_custom_field_definition_at_position(
+    v_actor_id, v_tenant_id, 'dnd_alpha', 'Alpha', 'text', false,
+    '[]'::jsonb, v_source_section, 0, v_version
+  ) into v_result;
+  v_alpha := (v_result->>'id')::uuid;
+  v_version := (v_result->>'layoutVersion')::bigint;
+
+  select public.create_ticket_custom_field_definition_at_position(
+    v_actor_id, v_tenant_id, 'dnd_beta', 'Beta', 'text', false,
+    '[]'::jsonb, v_source_section, 1, v_version
+  ) into v_result;
+  v_beta := (v_result->>'id')::uuid;
+  v_version := (v_result->>'layoutVersion')::bigint;
+
+  select public.create_ticket_custom_field_definition_at_position(
+    v_actor_id, v_tenant_id, 'dnd_gamma', 'Gamma', 'text', false,
+    '[]'::jsonb, v_source_section, 2, v_version
+  ) into v_result;
+  v_gamma := (v_result->>'id')::uuid;
+  v_version := (v_result->>'layoutVersion')::bigint;
+
+  v_stale_version := v_version;
+  select public.retire_ticket_custom_field_definition(
+    v_actor_id, v_tenant_id, v_beta, v_version
+  ) into v_result;
+  v_version := (v_result->>'version')::bigint;
+
+  begin
+    perform public.move_ticket_custom_field_definition(
+      v_actor_id, v_tenant_id, v_gamma, v_source_section, 0, v_stale_version
+    );
+    raise exception 'Retiring a field did not invalidate the stale layout version';
+  exception when raise_exception then
+    if sqlerrm <> 'layout_version_conflict' then raise; end if;
+  end;
+
+  select array_agg(definition->>'fieldKey' order by (definition->>'position')::integer),
+         array_agg((definition->>'position')::integer order by (definition->>'position')::integer)
+  into v_keys, v_active_positions
+  from jsonb_array_elements(
+    public.list_ticket_custom_field_layout(v_actor_id, v_tenant_id)->'definitions'
+  ) as definition
+  where definition->>'sectionId' = v_source_section::text
+    and (definition->>'active')::boolean;
+  if v_keys is distinct from array['dnd_alpha', 'dnd_gamma']
+    or v_active_positions is distinct from array[0, 1] then
+    raise exception 'Retiring a middle field did not repack the active canvas: %, %',
+      v_keys, v_active_positions;
+  end if;
+
+  select (definition->>'position')::integer into v_retired_position
+  from jsonb_array_elements(
+    public.list_ticket_custom_field_layout(v_actor_id, v_tenant_id)->'definitions'
+  ) as definition
+  where definition->>'id' = v_beta::text;
+  if v_retired_position <> 2 then
+    raise exception 'Retired definition did not follow active definitions: %', v_retired_position;
+  end if;
+
+  select public.move_ticket_custom_field_definition(
+    v_actor_id, v_tenant_id, v_gamma, v_source_section, 0, v_version
+  ) into v_version;
+  select array_agg(definition->>'fieldKey' order by (definition->>'position')::integer)
+  into v_keys
+  from jsonb_array_elements(
+    public.list_ticket_custom_field_layout(v_actor_id, v_tenant_id)->'definitions'
+  ) as definition
+  where definition->>'sectionId' = v_source_section::text
+    and (definition->>'active')::boolean;
+  if v_keys is distinct from array['dnd_gamma', 'dnd_alpha'] then
+    raise exception 'Active same-section move did not honour the requested position: %', v_keys;
+  end if;
+
+  select public.move_ticket_custom_field_definition(
+    v_actor_id, v_tenant_id, v_alpha, v_target_section, 0, v_version
+  ) into v_version;
+  select public.move_ticket_custom_field_definition(
+    v_actor_id, v_tenant_id, v_gamma, v_target_section, 1, v_version
+  ) into v_version;
+  select array_agg(definition->>'fieldKey' order by (definition->>'position')::integer)
+  into v_keys
+  from jsonb_array_elements(
+    public.list_ticket_custom_field_layout(v_actor_id, v_tenant_id)->'definitions'
+  ) as definition
+  where definition->>'sectionId' = v_target_section::text
+    and (definition->>'active')::boolean;
+  if v_keys is distinct from array['dnd_alpha', 'dnd_gamma'] then
+    raise exception 'Cross-section move did not honour active positions: %', v_keys;
+  end if;
+
+  begin
+    perform public.move_ticket_custom_field_definition(
+      v_actor_id, v_tenant_id, v_beta, v_target_section, 0, v_version
+    );
+    raise exception 'Retired definition remained movable';
+  exception when object_not_in_prerequisite_state then
+    null;
+  end;
+
+  select public.upsert_ticket_custom_field_definition(
+    v_actor_id, v_tenant_id, v_beta, 'dnd_beta', 'Beta', 'text', false,
+    '[]'::jsonb, v_version
+  ) into v_result;
+  v_version := (v_result->>'layoutVersion')::bigint;
+  if not (v_result->>'active')::boolean then
+    raise exception 'Reactivated definition did not become active';
+  end if;
+
+  if has_function_privilege(
+    'service_role',
+    'public.upsert_ticket_custom_field_definition(uuid, uuid, uuid, text, text, text, boolean, jsonb)',
+    'execute'
+  ) or has_function_privilege(
+    'service_role',
+    'public.retire_ticket_custom_field_definition(uuid, uuid, uuid)',
+    'execute'
+  ) then
+    raise exception 'Legacy unversioned custom field mutations remain executable';
+  end if;
+  if not has_function_privilege(
+    'service_role',
+    'public.create_ticket_custom_field_definition_at_position(uuid, uuid, text, text, text, boolean, jsonb, uuid, integer, bigint)',
+    'execute'
+  ) then
+    raise exception 'Versioned atomic custom field creation is not executable';
+  end if;
+end;
+$$;
+reset role;
 rollback;
 
 insert into public.saved_ticket_views (tenant_id, owner_id, name, visibility, filters) values

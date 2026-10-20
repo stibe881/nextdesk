@@ -201,3 +201,38 @@ Die Rollenübersicht bleibt vollständig funktionsfähig, trennt jedoch geschüt
 ## Vollständige Ticketformularvorschau
 
 Der Formular-Editor zeigt in seiner Vorschau immer zuerst den vollständigen Aufbau der Ticketerfassung: anfragende Person, Betreff, Einordnung mit Abteilung, Priorität und optionaler Kategorie sowie Beschreibung. Felder, die der Composer nur bei passenden Daten oder nach einer Auswahl zeigt, sind als situationsabhängig markiert. Die Zusatzfelder erscheinen anschliessend in ihren konfigurierten Abschnitten und Reihenfolgen. Damit bildet die Ansicht auch ohne angelegte Zusatzfelder das tatsächliche Formular ab. Die Vorschau bleibt rein visuell und löst keine Speicherung, Ticketanlage, Rechteprüfung oder Datenabfrage aus.
+
+## Drag-and-Drop-Konfigurator für Ticketfelder
+
+Der Bereich **Einstellungen → Ticketfelder** wird zu einer dreispaltigen, modernen Arbeitsfläche: Eine linke Feldpalette bietet ausschliesslich ticketrelevante Feldtypen und praxisnahe Voreinstellungen wie Gerät-/Inventarnummer, Standort / Raum, gewünschter Termin, betroffene Personen und Rückrufwunsch. Die zentrale Formularfläche zeigt feste Standardfelder schreibgeschützt und verwaltet frei konfigurierbare Abschnitte mit sichtbaren Ablagezonen. Neue Felder können per Klick in den ersten verfügbaren Abschnitt eingefügt oder aus der Palette gezielt in eine Ablagezone gezogen werden; bestehende Felder bleiben zwischen Abschnitten per Drag-and-Drop oder über die vorhandenen Tastaturalternativen verschiebbar.
+
+Beim Ablegen wird eine sinnvolle, eindeutig technische Ausgangskonfiguration angelegt und direkt im kompakten Feldinspektor geöffnet. Mandantenadministrationen können Bezeichnung, Pflichtstatus, Auswahloptionen und Abschnitt anpassen oder ein Feld entfernen. Die feste Ticketbasis – anfragende Person, Betreff, Zuordnung, Priorität und Beschreibung – bleibt sichtbar, aber nicht veränderbar. Die Live-Vorschau zeigt die Formularreihenfolge einschliesslich der konfigurierten Felder. Die Umsetzung erweitert die bestehende, mandantenautorisierte `ticket-custom-fields`-API um atomare Paletteneinfügungen und versionsgebundene Layoutmutationen. Migration 0096 bereinigt aktive und archivierte Positionen ohne Feldwerte oder Archivdaten zu löschen; Rechte und Mandantentrennung bleiben unverändert.
+
+### Gestaltung
+
+- **Design Movement:** ruhiger Baukasten für professionelle Serviceformulare, angelehnt an moderne Form Builder ohne visuelle Überladung.
+- **Core Principles:** direkte Manipulation, sichtbare Auswirkung, klare Trennung zwischen festen und konfigurierbaren Feldern sowie vollständige Tastaturalternative.
+- **Color Philosophy:** die bestehende nextDesk-Akzentfarbe markiert Einfügeaktionen und aktive Ablagezonen, neutrale Karten schützen die Lesbarkeit der Formularstruktur.
+- **Layout Paradigm:** Feldpalette links, konfigurierbarer Formularfluss in der Mitte und sticky Live-Vorschau rechts; auf schmalen Ansichten folgt alles als klarer vertikaler Ablauf.
+- **Signature Elements:** kompakte Feldkarten mit Typ-Symbol, markierte Drop-Zonen und ein kontextbezogener Feldinspektor.
+- **Interaction Philosophy:** Ziehen ordnet unmittelbar ein; Klick fügt gleichwertig und zugänglich hinzu; Pfeiltasten bleiben für präzise Reihenfolgen verfügbar.
+- **Animation:** kurze, reduzierte Fokus- und Ablagezustände; keine dauerhaften oder rein dekorativen Bewegungen.
+- **Typography System:** bestehende nextDesk-Typografie mit klaren, kleinen Kategorie-Labels und prägnanten Feldbezeichnungen.
+- **Brand Essence:** nextDesk macht Ticketformulare präzise konfigurierbar, ohne die feste Servicebasis zu gefährden.
+- **Brand Voice:** handlungsorientiert und konkret: «Feld in den Abschnitt ziehen» und «Diese Basisfelder sind immer Teil eines Tickets.»
+- **Wordmark & Logo:** unverändert.
+- **Signature Brand Color:** die bestehende nextDesk-Primärfarbe bleibt der Einfüge- und Fokusakzent.
+
+### Projektstruktur
+
+- `apps/web/src/lib/ticket-form-builder-presets.ts`: testbare Palette, ticketrelevante Voreinstellungen und konfliktfreie technische Schlüssel.
+- `apps/web/src/ticket-custom-fields-admin.tsx`: Palette, Ablagepfade, Feldinspektor, bestehende mandantenautorisierte Mutationen und Live-Vorschau.
+- `apps/web/src/styles.css`: responsive dreispaltige Builder-Arbeitsfläche, sichtbare Drop-Zonen und kompakter Inspektor.
+
+## Positionssichere Feldplatzierung
+
+Der Formular-Konfigurator verwendet eine serverseitig atomare Positionsregel: Alle sichtbaren, aktiven Ticketfelder werden innerhalb eines Abschnitts lückenlos geordnet; archivierte Felder folgen danach und verändern keine sichtbare Zielposition. Die mandantenautorisierte Move-RPC prüft weiterhin Layoutversion, Mandant, Abschnitt und Bearbeitungsrecht und lehnt archivierte Felder ab. Bestehende Layouts werden mit Migration 0096 einmalig in dieses Modell überführt.
+
+Die Feldpalette erstellt und platziert ein Feld in einem einzigen serverseitigen Befehl. Wenn Abschnitt, Position oder Layoutversion nicht gültig sind, wird weder eine Definition noch ein Audit- oder Versionsschritt dauerhaft angelegt. Nach einer unterbrochenen Antwort lädt nextDesk das Layout erneut und erkennt das eindeutig angelegte Feld anhand seines eindeutigen Schlüssels; es entsteht keine unplatzierte Zwischenstufe.
+
+Auch Erstellen, Reaktivieren und Archivieren verwenden dieselbe Layoutversion wie Drag-and-Drop. Eine Migration sperrt jeden betroffenen Mandanten beim einmaligen Repack, stellt aktive Positionen vor archivierte Positionen und erhöht danach die Version. Bereits geöffnete Editoransichten müssen damit bewusst neu laden, statt mit alter Positionssemantik zu speichern.

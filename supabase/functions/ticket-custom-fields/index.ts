@@ -18,11 +18,25 @@ type UpsertDefinitionAction = {
   fieldType: FieldType;
   required: boolean;
   options: string[];
+  expectedVersion: number;
+};
+type CreateDefinitionAtPositionAction = {
+  type: "createDefinitionAtPosition";
+  tenantId: string;
+  fieldKey: string;
+  label: string;
+  fieldType: FieldType;
+  required: boolean;
+  options: string[];
+  sectionId: string;
+  position: number;
+  expectedVersion: number;
 };
 type RetireDefinitionAction = {
   type: "retireDefinition";
   tenantId: string;
   definitionId: string;
+  expectedVersion: number;
 };
 type ListValuesAction = {
   type: "listValues";
@@ -54,6 +68,7 @@ type MoveDefinitionAction = {
 type Action =
   | ListDefinitionsAction
   | UpsertDefinitionAction
+  | CreateDefinitionAtPositionAction
   | RetireDefinitionAction
   | ListValuesAction
   | SetValuesAction
@@ -84,6 +99,14 @@ function isText(
 
 function isFieldType(value: unknown): value is FieldType {
   return typeof value === "string" && FIELD_TYPES.includes(value as FieldType);
+}
+
+function isExpectedVersion(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value > 0;
+}
+
+function isPosition(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 }
 
 function parseStringOptions(value: unknown): string[] | null {
@@ -132,7 +155,7 @@ function parseValues(
   return values;
 }
 
-function parseAction(value: unknown): Action | null {
+export function parseTicketCustomFieldsAction(value: unknown): Action | null {
   if (
     !isRecord(value) ||
     typeof value.type !== "string" ||
@@ -191,12 +214,8 @@ function parseAction(value: unknown): Action | null {
     ) &&
     isUuid(value.definitionId) &&
     isUuid(value.sectionId) &&
-    typeof value.position === "number" &&
-    Number.isSafeInteger(value.position) &&
-    value.position >= 0 &&
-    typeof value.expectedVersion === "number" &&
-    Number.isSafeInteger(value.expectedVersion) &&
-    value.expectedVersion > 0
+    isPosition(value.position) &&
+    isExpectedVersion(value.expectedVersion)
   ) {
     return {
       type: value.type,
@@ -220,6 +239,7 @@ function parseAction(value: unknown): Action | null {
         "fieldType",
         "required",
         "options",
+        "expectedVersion",
       ].includes(key),
     ) &&
     (value.definitionId === null || isUuid(value.definitionId)) &&
@@ -227,7 +247,8 @@ function parseAction(value: unknown): Action | null {
     /^[a-z][a-z0-9_]{1,62}$/u.test(value.fieldKey.trim()) &&
     isText(value.label, 2, 120) &&
     isFieldType(value.fieldType) &&
-    typeof value.required === "boolean"
+    typeof value.required === "boolean" &&
+    isExpectedVersion(value.expectedVersion)
   ) {
     const options = parseStringOptions(value.options);
     if (
@@ -245,20 +266,69 @@ function parseAction(value: unknown): Action | null {
       fieldType: value.fieldType,
       required: value.required,
       options,
+      expectedVersion: value.expectedVersion,
+    };
+  }
+
+  if (
+    value.type === "createDefinitionAtPosition" &&
+    Object.keys(value).every((key) =>
+      [
+        "type",
+        "tenantId",
+        "fieldKey",
+        "label",
+        "fieldType",
+        "required",
+        "options",
+        "sectionId",
+        "position",
+        "expectedVersion",
+      ].includes(key),
+    ) &&
+    isText(value.fieldKey, 2, 63) &&
+    /^[a-z][a-z0-9_]{1,62}$/u.test(value.fieldKey.trim()) &&
+    isText(value.label, 2, 120) &&
+    isFieldType(value.fieldType) &&
+    typeof value.required === "boolean" &&
+    isUuid(value.sectionId) &&
+    isPosition(value.position) &&
+    isExpectedVersion(value.expectedVersion)
+  ) {
+    const options = parseStringOptions(value.options);
+    if (
+      options === null ||
+      (value.fieldType === "select") !== options.length > 0
+    ) {
+      return null;
+    }
+    return {
+      type: value.type,
+      tenantId: value.tenantId,
+      fieldKey: value.fieldKey.trim().toLowerCase(),
+      label: value.label.trim(),
+      fieldType: value.fieldType,
+      required: value.required,
+      options,
+      sectionId: value.sectionId,
+      position: value.position,
+      expectedVersion: value.expectedVersion,
     };
   }
 
   if (
     value.type === "retireDefinition" &&
-    Object.keys(value).every(
-      (key) => key === "type" || key === "tenantId" || key === "definitionId",
+    Object.keys(value).every((key) =>
+      ["type", "tenantId", "definitionId", "expectedVersion"].includes(key),
     ) &&
-    isUuid(value.definitionId)
+    isUuid(value.definitionId) &&
+    isExpectedVersion(value.expectedVersion)
   ) {
     return {
       type: value.type,
       tenantId: value.tenantId,
       definitionId: value.definitionId,
+      expectedVersion: value.expectedVersion,
     };
   }
 
@@ -347,6 +417,13 @@ function errorResponse(
       409,
     );
   }
+  if (error.message === "custom_field_definition_inactive") {
+    return response(
+      request,
+      { error: { code: "custom_field_definition_inactive" } },
+      409,
+    );
+  }
   if (error.code === "42501") {
     return response(
       request,
@@ -379,7 +456,9 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     return response(request, { error: { code: "origin_not_allowed" } }, 403);
   }
 
-  const action = parseAction(await request.json().catch(() => null));
+  const action = parseTicketCustomFieldsAction(
+    await request.json().catch(() => null),
+  );
   const actorId = context.userClaims?.id;
   if (!action || !isUuid(actorId)) {
     return response(request, { error: { code: "invalid_request" } }, 400);
@@ -482,6 +561,25 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
           p_field_type: action.fieldType,
           p_required: action.required,
           p_options: action.options,
+          p_expected_version: action.expectedVersion,
+        },
+      ));
+      break;
+    }
+    case "createDefinitionAtPosition": {
+      ({ data: result, error } = await context.supabaseAdmin.rpc(
+        "create_ticket_custom_field_definition_at_position",
+        {
+          p_actor_id: actorId,
+          p_tenant_id: action.tenantId,
+          p_field_key: action.fieldKey,
+          p_label: action.label,
+          p_field_type: action.fieldType,
+          p_required: action.required,
+          p_options: action.options,
+          p_section_id: action.sectionId,
+          p_position: action.position,
+          p_expected_version: action.expectedVersion,
         },
       ));
       break;
@@ -493,9 +591,9 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
           p_actor_id: actorId,
           p_tenant_id: action.tenantId,
           p_definition_id: action.definitionId,
+          p_expected_version: action.expectedVersion,
         },
       ));
-      result = { retired: true };
       break;
     }
     case "listValues": {

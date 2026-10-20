@@ -97,6 +97,7 @@ const expectedFiles = [
   "0093_ticket_fulltext_filter_search.sql",
   "0094_follow_up_agent_authorization.sql",
   "0095_anthropic_knowledge_drafts.sql",
+  "0096_fix_ticket_custom_field_active_positions.sql",
 ];
 
 const availableFiles = await readdir(migrationDirectory);
@@ -1052,6 +1053,30 @@ const requiredFragments = [
   [
     "0095_anthropic_knowledge_drafts.sql",
     "check (provider_key in ('nextdesk-managed', 'anthropic'))",
+  ],
+  [
+    "0096_fix_ticket_custom_field_active_positions.sql",
+    "custom_field_definition_inactive",
+  ],
+  [
+    "0096_fix_ticket_custom_field_active_positions.sql",
+    "order by active desc, position, id",
+  ],
+  [
+    "0096_fix_ticket_custom_field_active_positions.sql",
+    "create_ticket_custom_field_definition_at_position",
+  ],
+  [
+    "0096_fix_ticket_custom_field_active_positions.sql",
+    "p_expected_version bigint",
+  ],
+  [
+    "0096_fix_ticket_custom_field_active_positions.sql",
+    "boolean, jsonb\n) from public, anon, authenticated, service_role",
+  ],
+  [
+    "0096_fix_ticket_custom_field_active_positions.sql",
+    "perform public.bump_ticket_custom_field_layout_version(v_tenant.tenant_id)",
   ],
 ];
 
