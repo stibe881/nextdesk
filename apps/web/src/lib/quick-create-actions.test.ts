@@ -29,7 +29,7 @@ describe("zentrale Erfassungsaktionen", () => {
     ).toEqual(["ticket", "knowledge"]);
   });
 
-  it("bietet ohne Ticketarbeitsberechtigung weder Fall noch Wissensartikel an", () => {
+  it("bietet reinen Anfragenden ausschliesslich die Ticketerfassung an", () => {
     expect(
       quickCreateActionsForContext({
         assetManagementEnabled: true,
@@ -38,7 +38,7 @@ describe("zentrale Erfassungsaktionen", () => {
         hasActiveTenant: true,
         knowledgeBaseEnabled: true,
       }),
-    ).toEqual(["ticket", "followUp"]);
+    ).toEqual(["ticket"]);
   });
 
   it("liefert Erfassungsimpulse nach einem Mandantenwechsel nicht an den neuen Mandanten", () => {

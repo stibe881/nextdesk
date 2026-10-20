@@ -18,10 +18,13 @@ export type GlobalSearchResult = {
   ticketId: string | null;
 };
 
+export type GlobalSearchScope = "all" | "tickets-only";
+
 type GlobalSearchProps = {
   disabled?: boolean;
   tenantId: string;
   onSelect: (result: GlobalSearchResult) => void;
+  scope?: GlobalSearchScope;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -75,6 +78,15 @@ function parseResults(value: unknown): GlobalSearchResult[] | null {
   return results;
 }
 
+export function filterGlobalSearchResults(
+  results: readonly GlobalSearchResult[],
+  scope: GlobalSearchScope,
+): GlobalSearchResult[] {
+  return scope === "tickets-only"
+    ? results.filter((result) => result.resultType === "ticket")
+    : [...results];
+}
+
 const typeLabel: Record<GlobalSearchResult["resultType"], string> = {
   ticket: "Ticket",
   follow_up: "Wiedervorlage",
@@ -87,6 +99,7 @@ export function GlobalSearch({
   disabled = false,
   tenantId,
   onSelect,
+  scope = "all",
 }: GlobalSearchProps) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<GlobalSearchResult[]>([]);
@@ -97,6 +110,7 @@ export function GlobalSearch({
   const inputRef = useRef<HTMLInputElement | null>(null);
   const resultsId = useId();
   const normalizedQuery = query.trim();
+  const visibleResults = filterGlobalSearchResults(results, scope);
 
   useEffect(() => {
     requestVersion.current += 1;
@@ -125,7 +139,7 @@ export function GlobalSearch({
           if (invokeError) throw invokeError;
           const parsed = parseResults(data);
           if (!parsed) throw new Error("invalid_global_search_response");
-          setResults(parsed);
+          setResults(filterGlobalSearchResults(parsed, scope));
         })
         .catch(async (searchError: unknown) => {
           if (requestVersion.current !== version) return;
@@ -142,7 +156,7 @@ export function GlobalSearch({
         });
     }, 240);
     return () => window.clearTimeout(timeout);
-  }, [disabled, normalizedQuery, tenantId]);
+  }, [disabled, normalizedQuery, scope, tenantId]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -214,13 +228,13 @@ export function GlobalSearch({
             <p className="global-search__state" role="status">
               Durchsuche Ihre zugänglichen Inhalte …
             </p>
-          ) : results.length === 0 ? (
+          ) : visibleResults.length === 0 ? (
             <p className="global-search__state">
               Keine zugänglichen Treffer für «{normalizedQuery}».
             </p>
           ) : (
             <ul>
-              {results.map((result) => (
+              {visibleResults.map((result) => (
                 <li key={`${result.resultType}:${result.entityId}`}>
                   <button
                     onClick={() => {

@@ -1127,12 +1127,25 @@ time,
 
 .rail-footer {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 36px;
-  align-items: center;
-  gap: 8px;
+  gap: 12px;
   margin-top: auto;
   border-top: 1px solid var(--border);
   padding: 18px 0 0;
+}
+
+.rail-footer__navigation {
+  display: grid;
+}
+
+.rail-footer__portal {
+  min-height: 42px;
+}
+
+.rail-footer__account {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 36px;
+  align-items: center;
+  gap: 8px;
 }
 
 .operator-profile-trigger {
@@ -1140,6 +1153,7 @@ time,
   grid-template-columns: 36px minmax(0, 1fr);
   align-items: center;
   gap: 8px;
+  width: 100%;
   min-width: 0;
   border: 0;
   border-radius: 10px;
@@ -6471,9 +6485,17 @@ body:has(.ticket-detail) {
   }
 
   .rail-footer {
-    grid-template-columns: 36px minmax(0, 1fr) 44px;
     margin-top: 16px;
     padding-top: 14px;
+  }
+
+  .rail-footer__portal {
+    flex: 0 0 auto;
+    width: 100%;
+  }
+
+  .rail-footer__account {
+    grid-template-columns: minmax(0, 1fr) 44px;
   }
 
   .rail-footer .more-button {

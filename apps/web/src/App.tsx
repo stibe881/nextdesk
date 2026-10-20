@@ -113,6 +113,10 @@ import {
   quickCreateRequestMatchesTenant,
   type QuickCreateAction,
 } from "./lib/quick-create-actions";
+import {
+  canRequesterOpenSection,
+  requesterNavigationSections,
+} from "./lib/requester-navigation";
 import { appRedirectUrl, isSupabaseConfigured, supabase } from "./lib/supabase";
 
 type Section =
@@ -1451,7 +1455,7 @@ function TicketListDetailPreview({
 }
 
 export function App() {
-  const [section, setSection] = useState<Section>("Übersicht");
+  const [section, setRequestedSection] = useState<Section>("Übersicht");
   const [globalSearchTarget, setGlobalSearchTarget] =
     useState<GlobalSearchResult | null>(null);
   const [period, setPeriod] = useState<Period>("Heute");
@@ -2181,18 +2185,10 @@ export function App() {
     setTicketScope("mine");
     setSelectedTicketIds(new Set());
     setTicketActionStatus("");
-    if (
-      section === "Services" ||
-      section === "Assets" ||
-      section === "Fälle" ||
-      section === "Wissen" ||
-      section === "Berichte" ||
-      section === "Arbeitsplatz" ||
-      section === "Einstellungen"
-    ) {
+    if (!canRequesterOpenSection(section, requesterPortalEnabled)) {
       setSection("Übersicht");
     }
-  }, [canWorkTickets, section]);
+  }, [canWorkTickets, requesterPortalEnabled, section]);
 
   useEffect(() => {
     setTicketPage(0);
@@ -2320,6 +2316,18 @@ export function App() {
       return;
     }
     setNotificationPanelOpen(true);
+  }
+
+  function setSection(nextSection: Section) {
+    if (
+      !canWorkTickets &&
+      !canRequesterOpenSection(nextSection, requesterPortalEnabled)
+    ) {
+      setGlobalSearchTarget(null);
+      setRequestedSection("Übersicht");
+      return;
+    }
+    setRequestedSection(nextSection);
   }
 
   async function handleNotificationClick(notification: NotificationItem) {
@@ -2729,15 +2737,7 @@ export function App() {
   });
   const workSections = canWorkTickets
     ? featureSections
-    : featureSections.filter(
-        (item) =>
-          item.label === "Übersicht" ||
-          item.label === "Tickets" ||
-          item.label === "Veranstaltungsräume" ||
-          item.label === "Eintritte" ||
-          item.label === "Mein Portal" ||
-          item.label === "Wiedervorlagen",
-      );
+    : requesterNavigationSections(featureSections);
 
   useEffect(() => {
     const sectionFeature: Partial<Record<Section, string>> = {
@@ -3154,6 +3154,12 @@ export function App() {
   const visibleSections = isTenantAdmin
     ? [...workSections, { label: "Einstellungen" as const, Icon: Settings }]
     : workSections;
+  const primaryNavigationSections = visibleSections.filter(
+    (item) => item.label !== "Mein Portal",
+  );
+  const portalNavigationItem = visibleSections.find(
+    (item) => item.label === "Mein Portal",
+  );
   const unreadNotificationCount = useMemo(
     () =>
       notifications.filter((notification) => notification.readAt === null)
@@ -3243,7 +3249,7 @@ export function App() {
         <div className="navigation-cluster">
           <p className="navigation-label">ARBEITSBEREICH</p>
           <nav className="nav-list">
-            {visibleSections.map((item) => (
+            {primaryNavigationSections.map((item) => (
               <button
                 className={
                   section === item.label ? "nav-item active" : "nav-item"
@@ -3262,40 +3268,72 @@ export function App() {
           </nav>
         </div>
         <div className="rail-footer">
-          <button
-            aria-label="Persönliche Einstellungen öffnen"
-            className="operator-profile-trigger"
-            disabled={!session}
-            onClick={() => setPersonalSettingsOpen(true)}
-            ref={personalSettingsTriggerRef}
-            type="button"
-          >
-            <span className="operator-avatar">{initials(operatorName)}</span>
-            <span className="operator-profile-copy">
-              <strong>{operatorName}</strong>
-              <small>
-                {isSupabaseConfigured ? "Angemeldet" : "Service Operations"}
-              </small>
-            </span>
-          </button>
-          {isSupabaseConfigured ? (
-            <button
-              className="more-button"
-              onClick={() => void signOut()}
-              aria-label="Abmelden"
-              type="button"
+          {portalNavigationItem && (
+            <nav
+              aria-label="Persönlicher Bereich"
+              className="rail-footer__navigation"
             >
-              <LogOut aria-hidden="true" size={17} strokeWidth={1.8} />
-            </button>
-          ) : (
-            <button
-              className="more-button"
-              aria-label="Profiloptionen"
-              type="button"
-            >
-              <CircleEllipsis aria-hidden="true" size={19} strokeWidth={1.8} />
-            </button>
+              <button
+                className={
+                  section === portalNavigationItem.label
+                    ? "nav-item rail-footer__portal active"
+                    : "nav-item rail-footer__portal"
+                }
+                onClick={() => {
+                  setPersonalSettingsOpen(false);
+                  setSection(portalNavigationItem.label);
+                }}
+                type="button"
+              >
+                <portalNavigationItem.Icon
+                  aria-hidden="true"
+                  size={18}
+                  strokeWidth={1.8}
+                />
+                {sectionDisplayLabel(portalNavigationItem.label)}
+              </button>
+            </nav>
           )}
+          <div className="rail-footer__account">
+            <button
+              aria-label="Persönliche Einstellungen öffnen"
+              className="operator-profile-trigger"
+              disabled={!session}
+              onClick={() => setPersonalSettingsOpen(true)}
+              ref={personalSettingsTriggerRef}
+              type="button"
+            >
+              <span className="operator-avatar">{initials(operatorName)}</span>
+              <span className="operator-profile-copy">
+                <strong>{operatorName}</strong>
+                <small>
+                  {isSupabaseConfigured ? "Angemeldet" : "Service Operations"}
+                </small>
+              </span>
+            </button>
+            {isSupabaseConfigured ? (
+              <button
+                className="more-button"
+                onClick={() => void signOut()}
+                aria-label="Abmelden"
+                type="button"
+              >
+                <LogOut aria-hidden="true" size={17} strokeWidth={1.8} />
+              </button>
+            ) : (
+              <button
+                className="more-button"
+                aria-label="Profiloptionen"
+                type="button"
+              >
+                <CircleEllipsis
+                  aria-hidden="true"
+                  size={19}
+                  strokeWidth={1.8}
+                />
+              </button>
+            )}
+          </div>
         </div>
       </aside>
 
@@ -3418,6 +3456,15 @@ export function App() {
               <GlobalSearch
                 disabled={!isSupabaseConfigured}
                 onSelect={(result) => {
+                  if (
+                    !canWorkTickets &&
+                    !canRequesterOpenSection(
+                      sectionFromGlobalSearchResult(result),
+                      requesterPortalEnabled,
+                    )
+                  ) {
+                    return;
+                  }
                   setGlobalSearchTarget(result);
                   if (result.resultType === "ticket" && result.ticketId) {
                     setSection("Tickets");
@@ -3426,6 +3473,7 @@ export function App() {
                   }
                   setSection(sectionFromGlobalSearchResult(result));
                 }}
+                scope={canWorkTickets ? "all" : "tickets-only"}
                 tenantId={activeTenant.id}
               />
             )}
@@ -3753,10 +3801,10 @@ export function App() {
                         : "Listen-Detail-Ansicht"}
                     </button>
                   )}
-                  {activeTenant && (
+                  {activeTenant && canWorkTickets && (
                     <TicketCsvExport tenantId={activeTenant.id} />
                   )}
-                  {activeTenant && (
+                  {activeTenant && canWorkTickets && (
                     <TicketCsvImport
                       onImported={() => {
                         clearTicketSelection();
@@ -4097,18 +4145,20 @@ export function App() {
                     tenantId={activeTenant.id}
                   />
                 )}
-                {activeTenant && experienceWorkspaceEnabled && (
-                  <MyDayCard
-                    onOpenFollowUps={() => setSection("Wiedervorlagen")}
-                    onOpenTicket={(ticketId) => {
-                      setSection("Tickets");
-                      setSelectedTicketId(ticketId);
-                    }}
-                    refreshKey={experienceFollowUpsRevision}
-                    tenantId={activeTenant.id}
-                    tickets={view.tickets}
-                  />
-                )}
+                {activeTenant &&
+                  canWorkTickets &&
+                  experienceWorkspaceEnabled && (
+                    <MyDayCard
+                      onOpenFollowUps={() => setSection("Wiedervorlagen")}
+                      onOpenTicket={(ticketId) => {
+                        setSection("Tickets");
+                        setSelectedTicketId(ticketId);
+                      }}
+                      refreshKey={experienceFollowUpsRevision}
+                      tenantId={activeTenant.id}
+                      tickets={view.tickets}
+                    />
+                  )}
                 <article className="panel activity-panel">
                   <div className="panel-heading">
                     <div>

@@ -20,7 +20,9 @@ export function quickCreateActionsForContext({
   return [
     "ticket",
     ...(canWorkTickets && assetManagementEnabled ? (["problem"] as const) : []),
-    ...(experienceWorkspaceEnabled ? (["followUp"] as const) : []),
+    ...(canWorkTickets && experienceWorkspaceEnabled
+      ? (["followUp"] as const)
+      : []),
     ...(canWorkTickets && knowledgeBaseEnabled ? (["knowledge"] as const) : []),
   ];
 }
