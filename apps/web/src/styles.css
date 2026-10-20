@@ -2100,6 +2100,41 @@ time,
   margin: 10px 0 7px;
 }
 
+.metric-card > .metric-card__loading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 7px;
+  margin: 10px 0 0;
+}
+
+.metric-card__loading span {
+  display: block;
+  border-radius: 5px;
+  background: linear-gradient(
+    90deg,
+    var(--canvas) 20%,
+    var(--surface-subtle) 50%,
+    var(--canvas) 80%
+  );
+  background-size: 240% 100%;
+  animation: ticket-skeleton-loading 1.4s ease-in-out infinite;
+}
+
+.metric-card__loading-value {
+  width: 44px;
+  height: 35px;
+}
+
+.metric-card__loading-comparison {
+  width: min(176px, 76%);
+  height: 12px;
+}
+
+.metric-card__loading-detail {
+  width: min(144px, 62%);
+  height: 12px;
+}
+
 .metric-card strong {
   color: var(--ink);
   font-family: var(--font-sans);

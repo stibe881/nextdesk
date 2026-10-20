@@ -251,6 +251,17 @@ const previewView: DashboardView = {
   updatedAt: "09:45 · Europe/Zurich",
 };
 
+const LOADING_DASHBOARD_METRICS: DashboardMetrics = {
+  closed: "—",
+  closedDetail: "",
+  mine: "—",
+  mineDetail: "",
+  open: "—",
+  openDetail: "",
+  unassigned: "—",
+  unassignedDetail: "",
+};
+
 function statusClass(value: string): string {
   return value.toLocaleLowerCase("de-CH").replaceAll(" ", "-");
 }
@@ -307,14 +318,31 @@ function MetricTrend({ trend }: { trend: DashboardMetricTrend | undefined }) {
   );
 }
 
+function MetricLoadingState() {
+  return (
+    <div
+      aria-label="Kennzahl wird geladen"
+      aria-live="polite"
+      className="metric-card__loading"
+      role="status"
+    >
+      <span aria-hidden="true" className="metric-card__loading-value" />
+      <span aria-hidden="true" className="metric-card__loading-comparison" />
+      <span aria-hidden="true" className="metric-card__loading-detail" />
+    </div>
+  );
+}
+
 function TicketScopeMetricTiles({
   canWorkTickets,
+  loading,
   metrics,
   onOpenScope,
   selectedScope,
   trends,
 }: {
   canWorkTickets: boolean;
+  loading: boolean;
   metrics: DashboardMetrics;
   onOpenScope: (scope: TicketScope) => void;
   selectedScope: TicketScope | null;
@@ -333,56 +361,84 @@ function TicketScopeMetricTiles({
       <button
         aria-pressed={selectedScope === "mine"}
         className={className("mine", true)}
+        disabled={loading}
         onClick={() => onOpenScope("mine")}
         type="button"
       >
         <p>Meine Tickets</p>
-        <div>
-          <strong>{metricDisplay(metrics.mine)}</strong>
-        </div>
-        <MetricTrend trend={trends.mine} />
-        <small>{metrics.mineDetail}</small>
+        {loading ? (
+          <MetricLoadingState />
+        ) : (
+          <>
+            <div>
+              <strong>{metricDisplay(metrics.mine)}</strong>
+            </div>
+            <MetricTrend trend={trends.mine} />
+            <small>{metrics.mineDetail}</small>
+          </>
+        )}
       </button>
       {canWorkTickets && (
         <>
           <button
             aria-pressed={selectedScope === "unassigned"}
             className={className("unassigned")}
+            disabled={loading}
             onClick={() => onOpenScope("unassigned")}
             type="button"
           >
             <p>Nicht zugewiesene Tickets</p>
-            <div>
-              <strong>{metricDisplay(metrics.unassigned)}</strong>
-            </div>
-            <MetricTrend trend={trends.unassigned} />
-            <small>{metrics.unassignedDetail}</small>
+            {loading ? (
+              <MetricLoadingState />
+            ) : (
+              <>
+                <div>
+                  <strong>{metricDisplay(metrics.unassigned)}</strong>
+                </div>
+                <MetricTrend trend={trends.unassigned} />
+                <small>{metrics.unassignedDetail}</small>
+              </>
+            )}
           </button>
           <button
             aria-pressed={selectedScope === "open"}
             className={className("open")}
+            disabled={loading}
             onClick={() => onOpenScope("open")}
             type="button"
           >
             <p>Offene Tickets</p>
-            <div>
-              <strong>{metricDisplay(metrics.open)}</strong>
-            </div>
-            <MetricTrend trend={trends.open} />
-            <small>{metrics.openDetail}</small>
+            {loading ? (
+              <MetricLoadingState />
+            ) : (
+              <>
+                <div>
+                  <strong>{metricDisplay(metrics.open)}</strong>
+                </div>
+                <MetricTrend trend={trends.open} />
+                <small>{metrics.openDetail}</small>
+              </>
+            )}
           </button>
           <button
             aria-pressed={selectedScope === "closed"}
             className={className("closed")}
+            disabled={loading}
             onClick={() => onOpenScope("closed")}
             type="button"
           >
             <p>Gelöste Tickets</p>
-            <div>
-              <strong>{metricDisplay(metrics.closed)}</strong>
-            </div>
-            <MetricTrend trend={trends.closed} />
-            <small>{metrics.closedDetail}</small>
+            {loading ? (
+              <MetricLoadingState />
+            ) : (
+              <>
+                <div>
+                  <strong>{metricDisplay(metrics.closed)}</strong>
+                </div>
+                <MetricTrend trend={trends.closed} />
+                <small>{metrics.closedDetail}</small>
+              </>
+            )}
           </button>
         </>
       )}
@@ -2234,6 +2290,10 @@ export function App() {
     snapshot?.tenantId === activeTenantId && snapshot.period === period
       ? snapshot
       : null;
+  const dashboardMetricsLoading =
+    isSupabaseConfigured &&
+    Boolean(session && activeTenant) &&
+    currentSnapshot === null;
 
   useEffect(() => {
     if (!supabase || !session || !activeTenant || !currentSnapshot) {
@@ -2331,7 +2391,7 @@ export function App() {
     ? (currentSnapshot ?? {
         activity: [],
         hasMoreTickets: false,
-        metrics: previewMetrics,
+        metrics: LOADING_DASHBOARD_METRICS,
         serviceHealth: [],
         ticketCount: 0,
         tickets: [],
@@ -3288,6 +3348,7 @@ export function App() {
               </div>
               <TicketScopeMetricTiles
                 canWorkTickets={canWorkTickets}
+                loading={dashboardMetricsLoading}
                 metrics={view.metrics}
                 onOpenScope={openTicketScope}
                 selectedScope={metricTicketFilter ? null : effectiveTicketScope}
@@ -3555,6 +3616,7 @@ export function App() {
 
             <TicketScopeMetricTiles
               canWorkTickets={canWorkTickets}
+              loading={dashboardMetricsLoading}
               metrics={view.metrics}
               onOpenScope={openTicketScope}
               selectedScope={null}
