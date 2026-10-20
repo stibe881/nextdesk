@@ -29,6 +29,8 @@ Die Supabase-Site-URL bleibt `https://app.nextdesk.ch`. Die Redirect-URLs müsse
 - `https://app.nextdesk.ch/`
 - `ch.grossict.nextdesk://auth/callback` (Mobile App)
 
+Der Webclient verwendet für jede Azure-Anmeldung PKCE. Nach dem Microsoft-Rücksprung wird der einmalige Code ausschliesslich mit dem lokalen Verifier im selben Browser gegen die Supabase-Sitzung ausgetauscht. Keine Sitzung, kein Code-Verifier und kein Token werden in URL, Auditdaten oder Browserfehlern angezeigt.
+
 Die alte einmandantenfähige Gross-ICT-App darf nicht als Azure-Provider für Kundenanmeldungen konfiguriert bleiben. Gross-ICT-Plattformadministratoren melden sich ebenfalls über die zentrale App an; der Zugriff auf die Eigentümerkonsole wird zusätzlich und unabhängig über `platform_administrators` geprüft.
 
 ## 3. Kundenmandanten in nextDesk vorbereiten

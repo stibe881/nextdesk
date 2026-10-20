@@ -11,6 +11,10 @@ export const supabase: SupabaseClient | null = isSupabaseConfigured
         persistSession: true,
         autoRefreshToken: true,
         detectSessionInUrl: true,
+        // Azure returns via a cross-origin callback. PKCE keeps the one-time
+        // verifier in this browser and exchanges the callback code explicitly
+        // instead of depending on an implicit URL fragment session.
+        flowType: "pkce",
       },
     })
   : null;
