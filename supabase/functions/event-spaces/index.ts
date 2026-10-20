@@ -626,6 +626,13 @@ async function listWorkspace(
     hasPermission(client, tenantId, "event.spaces.request"),
     hasPermission(client, tenantId, "event.spaces.manage"),
   ]);
+  if (!canRequest && !canManage) {
+    throw new HttpError(
+      403,
+      "event_space_permission_denied",
+      "Für Veranstaltungsräume fehlt Ihnen die erforderliche Berechtigung.",
+    );
+  }
   const from = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
   // A bounded weekly series may contain up to 52 occurrences. Keep the
   // complete planned year visible instead of silently hiding its later dates.

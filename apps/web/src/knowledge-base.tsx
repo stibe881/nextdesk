@@ -11,6 +11,7 @@ import { functionErrorMessage } from "./lib/function-error";
 import { supabase } from "./lib/supabase";
 
 export type KnowledgeBaseProps = {
+  focusArticleId?: string | undefined;
   tenantId: string;
 };
 
@@ -724,7 +725,10 @@ function writeErrorMessage(error: unknown, action: "save" | "archive"): string {
  * aber bei `saveArticle` nicht entgegengenommen; deshalb ist er im Formular
  * transparent als schreibgeschützte Workflow-Information dargestellt.
  */
-export function KnowledgeBase({ tenantId }: KnowledgeBaseProps) {
+export function KnowledgeBase({
+  focusArticleId,
+  tenantId,
+}: KnowledgeBaseProps) {
   const [articles, setArticles] = useState<ArticleListItem[]>([]);
   const [collections, setCollections] = useState<KnowledgeCollection[]>([]);
   const [searchInput, setSearchInput] = useState("");
@@ -874,6 +878,11 @@ export function KnowledgeBase({ tenantId }: KnowledgeBaseProps) {
     },
     [tenantId],
   );
+
+  useEffect(() => {
+    if (!focusArticleId) return;
+    void openArticle(focusArticleId);
+  }, [focusArticleId, openArticle]);
 
   function beginNewArticle() {
     setEditingArticleId(null);

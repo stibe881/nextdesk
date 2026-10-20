@@ -78,6 +78,9 @@ verify_jwt = true
 [functions.knowledge-base]
 verify_jwt = true
 
+[functions.global-search]
+verify_jwt = true
+
 [functions.sla-management]
 verify_jwt = true
 

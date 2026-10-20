@@ -85,7 +85,13 @@ function progress(tasks: Task[]) {
   };
 }
 
-export function Onboarding({ tenantId }: { tenantId: string }) {
+export function Onboarding({
+  focusEntryId,
+  tenantId,
+}: {
+  focusEntryId?: string | undefined;
+  tenantId: string;
+}) {
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [loading, setLoading] = useState(true);
   const [pending, setPending] = useState(false);
@@ -106,7 +112,11 @@ export function Onboarding({ tenantId }: { tenantId: string }) {
     if (!preserve) setErrorMessage("");
     try {
       const { data, error } = await supabase.functions.invoke("onboarding", {
-        body: { type: "listWorkspace", tenantId },
+        body: {
+          type: "listWorkspace",
+          tenantId,
+          ...(focusEntryId ? { focusEntryId } : {}),
+        },
       });
       if (error) throw error;
       const value =
@@ -128,7 +138,21 @@ export function Onboarding({ tenantId }: { tenantId: string }) {
   };
   useEffect(() => {
     void load();
-  }, [tenantId]);
+  }, [focusEntryId, tenantId]);
+  useEffect(() => {
+    if (
+      !focusEntryId ||
+      !workspace?.entries.some((entry) => entry.id === focusEntryId)
+    ) {
+      return;
+    }
+    const frame = window.requestAnimationFrame(() => {
+      document
+        .getElementById(`onboarding-entry-${focusEntryId}`)
+        ?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [focusEntryId, workspace?.entries]);
   useEffect(() => {
     if (!workspace) return;
     setDraft((current) => ({
@@ -537,7 +561,11 @@ export function Onboarding({ tenantId }: { tenantId: string }) {
             {entries.map((entry) => {
               const state = progress(entry.tasks);
               return (
-                <article className="onboarding__entry" key={entry.id}>
+                <article
+                  className={`onboarding__entry${focusEntryId === entry.id ? " global-search-target" : ""}`}
+                  id={`onboarding-entry-${entry.id}`}
+                  key={entry.id}
+                >
                   <header>
                     <div>
                       <h4>{entry.employeeName}</h4>

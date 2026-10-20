@@ -145,6 +145,9 @@ export async function functionErrorMessage(
       return "Die Wissensdatenbank ist für Ihren Mandanten derzeit deaktiviert.";
     case "article_search_failed":
       return "Die Volltextsuche konnte nicht ausgeführt werden. Bitte versuchen Sie es erneut.";
+    case "global_search_failed":
+    case "global_search_response_invalid":
+      return "Die globale Suche konnte nicht ausgeführt werden. Bitte versuchen Sie es erneut.";
     case "event_space_permission_denied":
       return "Für die Raumplanung fehlt Ihnen die erforderliche Berechtigung.";
     case "event_space_reference_invalid":

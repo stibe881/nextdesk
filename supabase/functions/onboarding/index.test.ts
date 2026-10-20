@@ -9,6 +9,8 @@ Deno.test(
     assert(source.includes('type: "linkExceptionTicket"'));
     assert(source.includes("ticketNumber"));
     assert(source.includes('from("tickets")'));
+    assert(source.includes("await client"));
+    assert(source.includes("ticketNumbers.has(exception.ticket_id)"));
     assert(source.includes("onboarding.exception_ticket.linked"));
     assert(!source.includes("insert({ tenant_id: action.tenantId, subject"));
   },
@@ -22,4 +24,11 @@ Deno.test("onboarding only accepts the defined finite task status set", () => {
   );
   assert(source.includes("MAX_REQUEST_BYTES"));
   assert(source.includes("has_onboarding_permission"));
+  assert(source.includes("focusEntryId"));
+  assert(source.includes("focusedEntry.created_by === actorId"));
+  assert(source.includes("ticketNumbers.has(exception.ticket_id)"));
+  assert(
+    source.includes('await client\n    .from("tickets")') ||
+      source.includes('await client\n      .from("tickets")'),
+  );
 });

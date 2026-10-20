@@ -23,6 +23,11 @@ Deno.test(
       "Workspace reads must require active tenant membership.",
     );
     assert(
+      source.includes("event_space_permission_denied") &&
+        source.includes("if (!canRequest && !canManage)"),
+      "Workspace reads must fail closed without a room request or management permission.",
+    );
+    assert(
       /await requirePermission\(\s*context\.supabase,\s*action\.tenantId,\s*"event\.spaces\.request"/m.test(
         source,
       ),

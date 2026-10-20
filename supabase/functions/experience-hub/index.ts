@@ -48,6 +48,7 @@ type Action =
       tenantId: string;
       includeResolved: boolean;
       limit: number;
+      focusFollowUpId?: string;
       ticketId?: string;
     }
   | {
@@ -255,6 +256,7 @@ function parseAction(value: unknown): Action | null {
       "tenantId",
       "includeResolved",
       "limit",
+      "focusFollowUpId",
       "ticketId",
     ])
   ) {
@@ -266,7 +268,8 @@ function parseAction(value: unknown): Action | null {
           typeof value.limit !== "number" ||
           value.limit < 1 ||
           value.limit > MAX_FOLLOW_UP_LIMIT)) ||
-      (value.ticketId !== undefined && !isUuid(value.ticketId))
+      (value.ticketId !== undefined && !isUuid(value.ticketId)) ||
+      (value.focusFollowUpId !== undefined && !isUuid(value.focusFollowUpId))
     ) {
       return null;
     }
@@ -278,6 +281,9 @@ function parseAction(value: unknown): Action | null {
         typeof value.limit === "number" ? value.limit : DEFAULT_FOLLOW_UP_LIMIT,
       ...(typeof value.ticketId === "string"
         ? { ticketId: value.ticketId.toLowerCase() }
+        : {}),
+      ...(typeof value.focusFollowUpId === "string"
+        ? { focusFollowUpId: value.focusFollowUpId.toLowerCase() }
         : {}),
     };
   }
@@ -653,6 +659,20 @@ async function listFollowUps(
   const { data, error } = await query;
   if (error) databaseFailure(error);
   const rows = data ?? [];
+  if (
+    action.focusFollowUpId &&
+    !rows.some((row: FollowUpRow) => row.id === action.focusFollowUpId)
+  ) {
+    const { data: focusedData, error: focusedError } = await client
+      .from("experience_follow_ups")
+      .select(FOLLOW_UP_SELECT)
+      .eq("tenant_id", action.tenantId)
+      .eq("id", action.focusFollowUpId)
+      .eq("owner_id", actorId)
+      .maybeSingle();
+    if (focusedError) databaseFailure(focusedError);
+    if (focusedData) rows.push(focusedData as FollowUpRow);
+  }
   return json(request, {
     data: {
       followUps: rows.slice(0, action.limit).map(publicFollowUp),

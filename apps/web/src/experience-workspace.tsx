@@ -57,6 +57,7 @@ type ExperienceErrorCode =
   | "tenant_feature_lookup_failed";
 
 type ExperienceWorkspaceProps = {
+  focusFollowUpId?: string | undefined;
   onChanged: () => void;
   onNotice: (message: string, tone: NoticeTone) => void;
   onOpenTicket: (ticketId: string) => void;
@@ -269,6 +270,7 @@ function FollowUpPriorityLabel({ priority }: { priority: FollowUpPriority }) {
 }
 
 function FollowUpItem({
+  focused = false,
   followUp,
   onEdit,
   onOpenTicket,
@@ -276,6 +278,7 @@ function FollowUpItem({
   resolving,
   tickets,
 }: {
+  focused?: boolean;
   followUp: FollowUp;
   onEdit: () => void;
   onOpenTicket: (ticketId: string) => void;
@@ -286,7 +289,8 @@ function FollowUpItem({
   const isResolved = Boolean(followUp.resolvedAt);
   return (
     <article
-      className={`experience-follow-up${isResolved ? " is-resolved" : ""}`}
+      className={`experience-follow-up${isResolved ? " is-resolved" : ""}${focused ? " global-search-target" : ""}`}
+      id={`follow-up-${followUp.id}`}
     >
       <div className="experience-follow-up__main">
         <div className="experience-follow-up__meta">
@@ -341,6 +345,7 @@ function FollowUpItem({
 }
 
 function FollowUpGroups({
+  focusFollowUpId,
   followUps,
   onEdit,
   onOpenTicket,
@@ -348,6 +353,7 @@ function FollowUpGroups({
   resolvingId,
   tickets,
 }: {
+  focusFollowUpId?: string | undefined;
   followUps: readonly FollowUp[];
   onEdit: (followUp: FollowUp) => void;
   onOpenTicket: (ticketId: string) => void;
@@ -413,6 +419,7 @@ function FollowUpGroups({
               <div className="experience-follow-up-list">
                 {group.entries.map((followUp) => (
                   <FollowUpItem
+                    focused={followUp.id === focusFollowUpId}
                     followUp={followUp}
                     key={followUp.id}
                     onEdit={() => onEdit(followUp)}
@@ -734,6 +741,7 @@ function FollowUpFormDialog({
 }
 
 export function ExperienceWorkspace({
+  focusFollowUpId,
   onChanged,
   onNotice,
   onOpenTicket,
@@ -770,6 +778,7 @@ export function ExperienceWorkspace({
           limit: 100,
           tenantId,
           type: "listFollowUps",
+          ...(focusFollowUpId ? { focusFollowUpId } : {}),
         },
       })
       .then(({ data, error }) => {
@@ -798,7 +807,7 @@ export function ExperienceWorkspace({
     return () => {
       mounted = false;
     };
-  }, [reloadVersion, showResolved, tenantId]);
+  }, [focusFollowUpId, reloadVersion, showResolved, tenantId]);
 
   const openFollowUps = useMemo(
     () => followUps.filter((followUp) => followUp.resolvedAt === null),
@@ -859,6 +868,26 @@ export function ExperienceWorkspace({
   };
 
   const displayedFollowUps = showResolved ? resolvedFollowUps : openFollowUps;
+
+  useEffect(() => {
+    if (!focusFollowUpId || loading) return;
+    const targetFollowUp = followUps.find(
+      (followUp) => followUp.id === focusFollowUpId,
+    );
+    if (
+      !targetFollowUp ||
+      (!showResolved && targetFollowUp.resolvedAt !== null)
+    ) {
+      if (!showResolved) setShowResolved(true);
+      return;
+    }
+    const frame = window.requestAnimationFrame(() => {
+      document
+        .getElementById(`follow-up-${focusFollowUpId}`)
+        ?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [focusFollowUpId, followUps, loading, showResolved]);
 
   return (
     <section
@@ -952,6 +981,7 @@ export function ExperienceWorkspace({
         <div className="experience-follow-up-list">
           {sortByDue(displayedFollowUps).map((followUp) => (
             <FollowUpItem
+              focused={followUp.id === focusFollowUpId}
               followUp={followUp}
               key={followUp.id}
               onEdit={() => undefined}
@@ -964,6 +994,7 @@ export function ExperienceWorkspace({
         </div>
       ) : (
         <FollowUpGroups
+          focusFollowUpId={focusFollowUpId}
           followUps={displayedFollowUps}
           onEdit={(followUp) => setEditorFollowUp(followUp)}
           onOpenTicket={onOpenTicket}

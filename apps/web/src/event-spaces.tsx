@@ -234,7 +234,13 @@ function nextTaskStatus(status: TaskStatus): TaskStatus {
   return "open";
 }
 
-export function EventSpaces({ tenantId }: { tenantId: string }) {
+export function EventSpaces({
+  focusRequestId,
+  tenantId,
+}: {
+  focusRequestId?: string | undefined;
+  tenantId: string;
+}) {
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
@@ -319,6 +325,24 @@ export function EventSpaces({ tenantId }: { tenantId: string }) {
     // tenantId is the complete, server-scoped workspace identity.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tenantId]);
+
+  useEffect(() => {
+    if (!focusRequestId || !workspace) return;
+    if (!workspace.requests.some((request) => request.id === focusRequestId)) {
+      if (workspace.pagination.nextOffset !== null && !loadingMore) {
+        void loadWorkspace(workspace.pagination.nextOffset, true, true);
+      }
+      return;
+    }
+    setView("list");
+    setExpandedRequestId(focusRequestId);
+    const frame = window.requestAnimationFrame(() => {
+      document
+        .getElementById(`event-space-request-${focusRequestId}`)
+        ?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [focusRequestId, loadingMore, workspace]);
 
   useEffect(() => {
     if (!requestDraft.responsibleUserId && workspace?.people.length === 1) {
@@ -1169,6 +1193,7 @@ export function EventSpaces({ tenantId }: { tenantId: string }) {
                 <RequestCard
                   canManage={canManage}
                   expanded={expandedRequestId === request.id}
+                  focused={focusRequestId === request.id}
                   key={request.id}
                   onChangeRequestStatus={changeRequestStatus}
                   onChangeTaskStatus={changeTaskStatus}
@@ -1223,6 +1248,7 @@ export function EventSpaces({ tenantId }: { tenantId: string }) {
 function RequestCard({
   canManage,
   expanded,
+  focused,
   onChangeRequestStatus,
   onChangeTaskStatus,
   onToggle,
@@ -1231,6 +1257,7 @@ function RequestCard({
 }: {
   canManage: boolean;
   expanded: boolean;
+  focused: boolean;
   onChangeRequestStatus: (
     requestId: string,
     status: RequestStatus,
@@ -1243,7 +1270,8 @@ function RequestCard({
   const progress = taskProgress(request.tasks);
   return (
     <article
-      className={`event-spaces__request event-spaces__status--${request.status}`}
+      className={`event-spaces__request event-spaces__status--${request.status}${focused ? " global-search-target" : ""}`}
+      id={`event-space-request-${request.id}`}
     >
       <button
         aria-expanded={expanded}

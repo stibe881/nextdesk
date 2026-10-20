@@ -5188,5 +5188,110 @@ begin
 end;
 $$;
 rollback;
+begin;
+insert into public.experience_follow_ups (
+  id, tenant_id, owner_id, title, priority
+) values (
+  '94000000-0000-4000-8000-000000000001',
+  '10000000-0000-4000-8000-000000000001',
+  '00000000-0000-4000-8000-000000000002',
+  'Kometenfeder',
+  'normal'
+);
+insert into public.role_permissions (role_id, permission_code)
+select distinct assignment.role_id, 'knowledge.read'
+from public.user_role_assignments assignment
+where assignment.tenant_id = '10000000-0000-4000-8000-000000000001'
+  and assignment.user_id = '00000000-0000-4000-8000-000000000002'
+on conflict do nothing;
+update public.tenant_feature_flags
+set enabled = true, pilot_ends_at = null
+where tenant_id = '10000000-0000-4000-8000-000000000001'
+  and feature_key in ('knowledge.base', 'experience.workspace');
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-000000000002', true);
+do $$
+begin
+  if not has_function_privilege(
+    'authenticated',
+    'public.search_global_workspace(uuid, text, integer)',
+    'execute'
+  ) then
+    raise exception 'Authenticated users may not execute the global search RPC';
+  end if;
+  if not exists (
+    select 1
+    from public.search_global_workspace(
+      '10000000-0000-4000-8000-000000000001',
+      'Wolkenfeder',
+      40
+    ) result
+    where result.result_type = 'knowledge'
+      and result.entity_id = '91000000-0000-4000-8000-000000000001'
+  ) then
+    raise exception 'Global search missed an accessible full-text knowledge match';
+  end if;
+  if exists (
+    select 1
+    from public.search_global_workspace(
+      '10000000-0000-4000-8000-000000000001',
+      'Wolkenfeder',
+      40
+    ) result
+    where result.entity_id = '92000000-0000-4000-8000-000000000003'
+  ) then
+    raise exception 'Global search crossed a tenant boundary';
+  end if;
+  if not exists (
+    select 1
+    from public.search_global_workspace(
+      '10000000-0000-4000-8000-000000000001',
+      'Kometenfeder',
+      40
+    ) result
+    where result.result_type = 'follow_up'
+      and result.entity_id = '94000000-0000-4000-8000-000000000001'
+  ) then
+    raise exception 'Global search missed an accessible own follow-up';
+  end if;
+end;
+$$;
+reset role;
+update public.tenant_feature_flags
+set enabled = false
+where tenant_id = '10000000-0000-4000-8000-000000000001'
+  and feature_key = 'knowledge.base';
+update public.tenant_feature_flags
+set enabled = true, pilot_ends_at = timezone('utc', now()) - interval '1 hour'
+where tenant_id = '10000000-0000-4000-8000-000000000001'
+  and feature_key = 'experience.workspace';
+set local role authenticated;
+do $$
+begin
+  if exists (
+    select 1
+    from public.search_global_workspace(
+      '10000000-0000-4000-8000-000000000001',
+      'Wolkenfeder',
+      40
+    ) result
+    where result.result_type = 'knowledge'
+  ) then
+    raise exception 'Global search exposed knowledge while the feature was disabled';
+  end if;
+  if exists (
+    select 1
+    from public.search_global_workspace(
+      '10000000-0000-4000-8000-000000000001',
+      'Kometenfeder',
+      40
+    ) result
+    where result.result_type = 'follow_up'
+  ) then
+    raise exception 'Global search exposed follow-ups while the feature pilot expired';
+  end if;
+end;
+$$;
+rollback;
 SQL
 echo "PostgreSQL 16 migration and RLS integration checks passed."

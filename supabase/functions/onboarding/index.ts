@@ -8,7 +8,7 @@ type Admin = SupabaseContext["supabaseAdmin"];
 type Row = Record<string, unknown>;
 type TaskStatus = "open" | "in_progress" | "blocked" | "completed";
 type Action =
-  | { type: "listWorkspace"; tenantId: string }
+  | { type: "listWorkspace"; tenantId: string; focusEntryId?: string }
   | {
       type: "createEntry";
       tenantId: string;
@@ -94,8 +94,16 @@ function onlyKeys(value: Row, keys: string[]) {
 function parseAction(value: unknown): Action | null {
   if (!isRecord(value) || typeof value.type !== "string") return null;
   if (value.type === "listWorkspace") {
-    return isUuid(value.tenantId) && onlyKeys(value, ["type", "tenantId"])
-      ? { type: value.type, tenantId: value.tenantId.toLowerCase() }
+    return isUuid(value.tenantId) &&
+      (value.focusEntryId === undefined || isUuid(value.focusEntryId)) &&
+      onlyKeys(value, ["type", "tenantId", "focusEntryId"])
+      ? {
+          type: value.type,
+          tenantId: value.tenantId.toLowerCase(),
+          ...(typeof value.focusEntryId === "string"
+            ? { focusEntryId: value.focusEntryId.toLowerCase() }
+            : {}),
+        }
       : null;
   }
   if (value.type === "createEntry") {
@@ -398,6 +406,7 @@ async function listWorkspace(
   admin: Admin,
   tenantId: string,
   actorId: string,
+  focusEntryId?: string,
 ) {
   await requireMembership(client, tenantId);
   const [canRequest, canManage] = await Promise.all([
@@ -433,6 +442,26 @@ async function listWorkspace(
   const entries = (entryRows ?? []).filter(
     (row: Row) => typeof row.id === "string",
   ) as Row[];
+  if (focusEntryId && !entries.some((entry) => entry.id === focusEntryId)) {
+    const { data: focusedEntry, error: focusedEntryError } = await admin
+      .from("onboarding_entries")
+      .select(
+        "id, employee_name, starts_on, organisation_unit, location, manager_user_id, ict_responsible_user_id, created_by, template_id",
+      )
+      .eq("tenant_id", tenantId)
+      .eq("id", focusEntryId)
+      .maybeSingle();
+    if (focusedEntryError) databaseFailure(focusedEntryError);
+    if (
+      focusedEntry &&
+      (canManage ||
+        focusedEntry.created_by === actorId ||
+        focusedEntry.manager_user_id === actorId ||
+        focusedEntry.ict_responsible_user_id === actorId)
+    ) {
+      entries.push(focusedEntry as Row);
+    }
+  }
   const entryIds = entries.map((row) => String(row.id));
   const [tasksResult, exceptionsResult] = entryIds.length
     ? await Promise.all([
@@ -466,7 +495,7 @@ async function listWorkspace(
     ),
   ];
   const { data: ticketRows, error: ticketError } = ticketIds.length
-    ? await admin
+    ? await client
         .from("tickets")
         .select("id, ticket_number")
         .eq("tenant_id", tenantId)
@@ -497,10 +526,11 @@ async function listWorkspace(
   for (const exception of exceptionsResult.data ?? [])
     if (
       typeof exception.task_id === "string" &&
-      typeof exception.ticket_id === "string"
+      typeof exception.ticket_id === "string" &&
+      ticketNumbers.has(exception.ticket_id)
     )
       exceptionsByTask.set(exception.task_id, {
-        ticketNumber: ticketNumbers.get(exception.ticket_id) ?? "Ticket",
+        ticketNumber: ticketNumbers.get(exception.ticket_id) as string,
         reason:
           typeof exception.reason === "string" ? exception.reason : "Ausnahme",
       });
@@ -674,7 +704,7 @@ async function linkExceptionTicket(
         "Die Aufgabe gehört nicht zu diesem Eintritt.",
       );
   }
-  const { data: ticket, error: ticketError } = await admin
+  const { data: ticket, error: ticketError } = await client
     .from("tickets")
     .select("id")
     .eq("tenant_id", action.tenantId)
@@ -735,6 +765,7 @@ const handler = withSupabase(
             context.supabaseAdmin,
             action.tenantId,
             actorId,
+            action.focusEntryId,
           ),
         });
       if (action.type === "createEntry")

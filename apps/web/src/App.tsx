@@ -32,7 +32,6 @@ import {
   Minus,
   MonitorCog,
   Plus,
-  Search,
   Settings,
   SlidersHorizontal,
   Ticket,
@@ -73,6 +72,7 @@ import { TicketCsvImport } from "./ticket-csv-import";
 import { TicketDetail } from "./ticket-detail";
 import { TenantAdminSettings } from "./tenant-admin-settings";
 import { KnowledgeBase } from "./knowledge-base";
+import { GlobalSearch, type GlobalSearchResult } from "./global-search";
 import { ServiceReporting } from "./service-reporting";
 import { ServiceAssets } from "./service-assets";
 import { EventSpaces } from "./event-spaces";
@@ -616,6 +616,10 @@ function isSection(value: unknown): value is Section {
 
 function sectionDisplayLabel(section: Section): string {
   return section === "Wissen" ? "Wissensdatenbank" : section;
+}
+
+function sectionFromGlobalSearchResult(result: GlobalSearchResult): Section {
+  return result.section;
 }
 
 function isInputLikeTarget(target: EventTarget | null): boolean {
@@ -1426,6 +1430,8 @@ function TicketListDetailPreview({
 
 export function App() {
   const [section, setSection] = useState<Section>("Übersicht");
+  const [globalSearchTarget, setGlobalSearchTarget] =
+    useState<GlobalSearchResult | null>(null);
   const [period, setPeriod] = useState<Period>("Heute");
   const [queue, setQueue] = useState("alle");
   const [ticketScope, setTicketScope] = useState<TicketScope>("all");
@@ -3108,17 +3114,21 @@ export function App() {
               />
               <span>Ansicht</span>
             </button>
-            <label className="search-field">
-              <Search aria-hidden="true" size={17} strokeWidth={1.8} />
-              <input
-                aria-label="Tickets durchsuchen"
-                onChange={(event) =>
-                  updateTicketSearchQuery(event.target.value)
-                }
-                placeholder="Suche oder status:offen"
-                value={query}
+            {activeTenant && (
+              <GlobalSearch
+                disabled={!isSupabaseConfigured}
+                onSelect={(result) => {
+                  setGlobalSearchTarget(result);
+                  if (result.resultType === "ticket" && result.ticketId) {
+                    setSection("Tickets");
+                    setSelectedTicketId(result.ticketId);
+                    return;
+                  }
+                  setSection(sectionFromGlobalSearchResult(result));
+                }}
+                tenantId={activeTenant.id}
               />
-            </label>
+            )}
             <div className="notification-center-anchor">
               <button
                 aria-controls="notification-center-panel"
@@ -3292,15 +3302,36 @@ export function App() {
         ) : section === "Wissen" &&
           activeTenant &&
           isFeatureEnabled("knowledge.base") ? (
-          <KnowledgeBase tenantId={activeTenant.id} />
+          <KnowledgeBase
+            focusArticleId={
+              globalSearchTarget?.resultType === "knowledge"
+                ? globalSearchTarget.entityId
+                : undefined
+            }
+            tenantId={activeTenant.id}
+          />
         ) : section === "Assets" &&
           activeTenant &&
           isFeatureEnabled("assets.management") ? (
           <ServiceAssets fixedTab="assets" tenantId={activeTenant.id} />
         ) : section === "Veranstaltungsräume" && activeTenant ? (
-          <EventSpaces tenantId={activeTenant.id} />
+          <EventSpaces
+            focusRequestId={
+              globalSearchTarget?.resultType === "event_space"
+                ? globalSearchTarget.entityId
+                : undefined
+            }
+            tenantId={activeTenant.id}
+          />
         ) : section === "Eintritte" && activeTenant ? (
-          <Onboarding tenantId={activeTenant.id} />
+          <Onboarding
+            focusEntryId={
+              globalSearchTarget?.resultType === "onboarding"
+                ? globalSearchTarget.entityId
+                : undefined
+            }
+            tenantId={activeTenant.id}
+          />
         ) : section === "Services" &&
           activeTenant &&
           isFeatureEnabled("assets.management") ? (
@@ -3317,6 +3348,11 @@ export function App() {
           activeTenant &&
           experienceWorkspaceEnabled ? (
           <ExperienceWorkspace
+            focusFollowUpId={
+              globalSearchTarget?.resultType === "follow_up"
+                ? globalSearchTarget.entityId
+                : undefined
+            }
             onChanged={() =>
               setExperienceFollowUpsRevision((revision) => revision + 1)
             }

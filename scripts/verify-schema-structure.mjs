@@ -93,6 +93,7 @@ const expectedFiles = [
   "0089_event_space_requests.sql",
   "0090_employee_onboarding.sql",
   "0091_knowledge_fulltext_search.sql",
+  "0092_global_workspace_fulltext_search.sql",
 ];
 
 const availableFiles = await readdir(migrationDirectory);
@@ -1001,6 +1002,33 @@ const requiredFragments = [
     "0091_knowledge_fulltext_search.sql",
     "grant execute on function public.search_knowledge_article_ids(uuid, text, boolean, uuid[]) to service_role",
   ],
+  [
+    "0092_global_workspace_fulltext_search.sql",
+    "create or replace function public.search_global_workspace",
+  ],
+  [
+    "0092_global_workspace_fulltext_search.sql",
+    "public.can_read_ticket(ticket.id)",
+  ],
+  [
+    "0092_global_workspace_fulltext_search.sql",
+    "follow_up.owner_id = auth.uid()",
+  ],
+  ["0092_global_workspace_fulltext_search.sql", "v_knowledge_feature_enabled"],
+  ["0092_global_workspace_fulltext_search.sql", "v_experience_feature_enabled"],
+  ["0092_global_workspace_fulltext_search.sql", "v_can_manage_onboarding"],
+  [
+    "0092_global_workspace_fulltext_search.sql",
+    "entry.manager_user_id = auth.uid()",
+  ],
+  [
+    "0092_global_workspace_fulltext_search.sql",
+    "entry.ict_responsible_user_id = auth.uid()",
+  ],
+  [
+    "0092_global_workspace_fulltext_search.sql",
+    "grant execute on function public.search_global_workspace(uuid, text, integer)\n  to authenticated, service_role",
+  ],
 ];
 
 for (const [migration, fragment] of requiredFragments) {
@@ -1082,6 +1110,13 @@ if (
   !functionConfiguration.includes("[functions.onboarding]\nverify_jwt = true")
 ) {
   throw new Error("onboarding must explicitly require verified user JWTs.");
+}
+if (
+  !functionConfiguration.includes(
+    "[functions.global-search]\nverify_jwt = true",
+  )
+) {
+  throw new Error("global-search must explicitly require verified user JWTs.");
 }
 
 console.log(
