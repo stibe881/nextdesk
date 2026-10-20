@@ -2764,6 +2764,7 @@ declare
   v_expected_count bigint;
   v_reported_count bigint;
   v_first_subject text;
+  v_fulltext_count bigint;
 begin
   select count(*)
   into v_expected_count
@@ -2829,6 +2830,36 @@ begin
     )
   ) then
     raise exception 'Queue filter exposed an unreadable department after pagination';
+  end if;
+
+  select count(*)
+  into v_fulltext_count
+  from public.list_authorized_ticket_list_page(
+    p_tenant_id => '10000000-0000-4000-8000-000000000001',
+    p_search_free_text => array['prioritär']::text[]
+  ) page;
+  if v_fulltext_count <> 1 then
+    raise exception 'Ticket description full-text search did not return the authorized match';
+  end if;
+
+  select count(*)
+  into v_fulltext_count
+  from public.list_authorized_ticket_list_page(
+    p_tenant_id => '10000000-0000-4000-8000-000000000001',
+    p_search_free_text => array['x']::text[]
+  ) page;
+  if v_fulltext_count <> v_expected_count then
+    raise exception 'Ticket full-text search did not ignore a one-character term';
+  end if;
+
+  if exists (
+    select 1
+    from public.list_authorized_ticket_list_page(
+      p_tenant_id => '10000000-0000-4000-8000-000000000001',
+      p_search_free_text => array['hidden']::text[]
+    ) page
+  ) then
+    raise exception 'Ticket full-text search exposed an unreadable ticket description';
   end if;
 
   begin

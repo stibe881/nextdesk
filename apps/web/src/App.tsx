@@ -2645,6 +2645,7 @@ export function App() {
     unassigned: "Nicht zugewiesene Tickets",
   };
   const hasTicketListRefinement =
+    query.trim().length > 0 ||
     ticketListRefinement.agent !== "all" ||
     ticketListRefinement.status !== "all" ||
     ticketListRefinement.department !== "all" ||
@@ -3478,10 +3479,10 @@ export function App() {
                   filters={ticketListRefinement}
                   hasActiveFilters={hasTicketListRefinement}
                   onChange={setTicketListRefinement}
-                  onClear={() =>
-                    setTicketListRefinement(DEFAULT_TICKET_LIST_REFINEMENT)
-                  }
+                  onClear={clearTicketFilters}
+                  onQueryChange={updateTicketSearchQuery}
                   priorities={ticketFilterOptions.priorities}
+                  query={query}
                   statuses={ticketFilterOptions.statuses}
                 />
               )}
@@ -4773,7 +4774,9 @@ function TicketListFilters({
   hasActiveFilters,
   onChange,
   onClear,
+  onQueryChange,
   priorities,
+  query,
   statuses,
 }: {
   agents: readonly TicketAgentOption[];
@@ -4782,7 +4785,9 @@ function TicketListFilters({
   hasActiveFilters: boolean;
   onChange: (next: TicketListRefinement) => void;
   onClear: () => void;
+  onQueryChange: (value: string) => void;
   priorities: readonly string[];
+  query: string;
   statuses: readonly string[];
 }) {
   const update = <Key extends keyof TicketListRefinement>(
@@ -4806,6 +4811,20 @@ function TicketListFilters({
           </button>
         )}
       </div>
+      <label className="ticket-list-filters__search">
+        <span>Ticket-Volltextsuche</span>
+        <input
+          autoComplete="off"
+          onChange={(event) => onQueryChange(event.target.value)}
+          placeholder="Ticketnummer, Betreff oder Beschreibung durchsuchen"
+          spellCheck={false}
+          type="search"
+          value={query}
+        />
+        <small>
+          Mindestens 2 Zeichen. Filter und Sortierung bleiben aktiv.
+        </small>
+      </label>
       <div className="ticket-list-filters__controls">
         <label>
           <span>Agent</span>

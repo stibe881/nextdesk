@@ -7600,6 +7600,45 @@ body:has(.ticket-detail) {
   font-size: 15px;
 }
 
+.ticket-list-filters__search {
+  display: grid;
+  gap: 5px;
+  margin-top: 14px;
+}
+
+.ticket-list-filters__search > span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.ticket-list-filters__search input {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid var(--border-tint-d8dcff);
+  border-radius: 10px;
+  padding: 0 12px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+}
+
+.ticket-list-filters__search input::placeholder {
+  color: var(--muted);
+}
+
+.ticket-list-filters__search input:focus-visible {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+
+.ticket-list-filters__search small {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
 .ticket-list-filters__controls {
   display: grid;
   grid-template-columns: repeat(3, minmax(160px, 1fr));

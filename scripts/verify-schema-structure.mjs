@@ -94,6 +94,7 @@ const expectedFiles = [
   "0090_employee_onboarding.sql",
   "0091_knowledge_fulltext_search.sql",
   "0092_global_workspace_fulltext_search.sql",
+  "0093_ticket_fulltext_filter_search.sql",
 ];
 
 const availableFiles = await readdir(migrationDirectory);
@@ -1028,6 +1029,19 @@ const requiredFragments = [
   [
     "0092_global_workspace_fulltext_search.sql",
     "grant execute on function public.search_global_workspace(uuid, text, integer)\n  to authenticated, service_role",
+  ],
+  ["0093_ticket_fulltext_filter_search.sql", "websearch_to_tsquery("],
+  [
+    "0093_ticket_fulltext_filter_search.sql",
+    "where char_length(btrim(term.value)) >= 2",
+  ],
+  [
+    "0093_ticket_fulltext_filter_search.sql",
+    "public.can_read_ticket(ticket.id)",
+  ],
+  [
+    "0093_ticket_fulltext_filter_search.sql",
+    "grant execute on function public.list_authorized_ticket_list_page",
   ],
 ];
 

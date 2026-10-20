@@ -104,7 +104,7 @@ interface TicketListRecord {
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-function ticketListRpcArguments(
+export function ticketListRpcArguments(
   tenantId: string,
   refinement: LiveTicketListRefinement | undefined,
   userId: string | undefined,
@@ -131,10 +131,10 @@ function ticketListRpcArguments(
     scope: "all",
   };
   const search = parseTicketSearch(activeControls.query);
-  const safeTerms = (values: string[]) =>
+  const safeTerms = (values: string[], minimumLength = 1) =>
     values
       .map((value) => value.trim())
-      .filter((value) => value.length > 0 && value.length <= 120)
+      .filter((value) => value.length >= minimumLength && value.length <= 120)
       .slice(0, 12);
   const idsForLabel = <Record extends { id: string; label: string }>(
     records: Record[],
@@ -180,7 +180,7 @@ function ticketListRpcArguments(
     p_queue_key: activeControls.queue === "alle" ? null : activeControls.queue,
     p_scope: activeControls.scope,
     p_search_assignment: search.filters.assignment,
-    p_search_free_text: safeTerms(search.freeText),
+    p_search_free_text: safeTerms(search.freeText, 2),
     p_search_priorities: safeTerms(search.filters.priority),
     p_search_queues: safeTerms(search.filters.queue),
     p_search_risks: search.filters.risk,
