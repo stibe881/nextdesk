@@ -15,6 +15,10 @@ import {
   UsersRound,
 } from "lucide-react";
 
+import {
+  shouldShowDepartmentQuestionRouting,
+  type DepartmentQuestionRoutingState,
+} from "./lib/department-question-routing-visibility";
 import { functionErrorMessage } from "./lib/function-error";
 import { supabase } from "./lib/supabase";
 
@@ -218,7 +222,7 @@ function parseDepartmentQuestionRoutes(
 
 function DepartmentQuestionRouting({ tenantId }: { tenantId: string }) {
   const [routes, setRoutes] = useState<DepartmentQuestionRoute[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [state, setState] = useState<DepartmentQuestionRoutingState>("loading");
   const [savingDepartmentId, setSavingDepartmentId] = useState<string | null>(
     null,
   );
@@ -226,7 +230,7 @@ function DepartmentQuestionRouting({ tenantId }: { tenantId: string }) {
   const [error, setError] = useState("");
 
   const load = useCallback(async () => {
-    setLoading(true);
+    setState("loading");
     setError("");
     try {
       const data = await requestDepartmentQuestions({
@@ -234,6 +238,7 @@ function DepartmentQuestionRouting({ tenantId }: { tenantId: string }) {
         tenantId,
       });
       setRoutes(parseDepartmentQuestionRoutes(data));
+      setState("ready");
     } catch (nextError) {
       setRoutes([]);
       setError(
@@ -241,14 +246,15 @@ function DepartmentQuestionRouting({ tenantId }: { tenantId: string }) {
           ? nextError.message
           : "Die Abteilungsleitungen konnten nicht geladen werden.",
       );
-    } finally {
-      setLoading(false);
+      setState("unavailable");
     }
   }, [tenantId]);
 
   useEffect(() => {
     void load();
   }, [load]);
+
+  if (!shouldShowDepartmentQuestionRouting(state)) return null;
 
   async function save(route: DepartmentQuestionRoute) {
     if (!route.primaryUserId) {
@@ -294,7 +300,7 @@ function DepartmentQuestionRouting({ tenantId }: { tenantId: string }) {
           </p>
         </div>
         <button
-          disabled={loading || savingDepartmentId !== null}
+          disabled={state === "loading" || savingDepartmentId !== null}
           onClick={() => void load()}
           type="button"
         >
@@ -317,12 +323,12 @@ function DepartmentQuestionRouting({ tenantId }: { tenantId: string }) {
           {message}
         </p>
       ) : null}
-      {loading ? (
+      {state === "loading" ? (
         <p className="tenant-admin-settings__loading" role="status">
           Abteilungsleitungen werden geladen …
         </p>
       ) : null}
-      {!loading ? (
+      {state === "ready" ? (
         <ul className="department-management__list">
           {routes.map((route) => (
             <li key={route.department.id}>

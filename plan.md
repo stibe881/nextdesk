@@ -172,3 +172,7 @@ Die serverseitige `ai-assist`-Function bleibt JWT-geschützt und verlangt aktive
 ## Unaufdringliche Team-Warteschlangen
 
 Der Arbeitsplatz blendet den vollständigen Bereich «Team-Warteschlangen» aus, wenn der aktive Mandant keine solchen Warteschlangen anbietet. Während des Ladens und bei verfügbaren Daten bleibt die bestehende Rückmeldung erhalten. Dadurch wird kein nicht bedienbarer Leerzustand als Arbeitsinhalt angezeigt; Datenzugriff, Mandantentrennung und Fehlerbehandlung des bestehenden API-Aufrufs bleiben unverändert.
+
+## Unaufdringliche Abteilungsrückfragen
+
+Die Einstellungen blenden die vollständige Konfiguration «Abteilungsleitungen» aus, wenn Abteilungsrückfragen für den aktiven Mandanten nicht erreichbar sind. Während des Ladens und bei verfügbaren Routen bleibt die bestehende Bedienoberfläche einschliesslich Aktualisieren erhalten. Damit bleibt die Abteilungsverwaltung ohne nicht bedienbare Fehlerfläche übersichtlich; Datenzugriff, Mandantentrennung und der bestehende serverseitige Berechtigungspfad bleiben unverändert.

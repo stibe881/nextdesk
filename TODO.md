@@ -97,3 +97,5 @@
   - Die serverseitige Function bleibt JWT-geschützt, prüft aktive Mandantenmitgliedschaft und `knowledge.manage`, begrenzt Anfrage und Ausgabe, speichert weder Rohinhalt noch Prompt oder Ergebnis und verweigert Aufrufe ohne gültige Freigabe, Modell oder Secret.
 
 - [x] **Arbeitsplatz: Team-Warteschlangen nur bei Verfügbarkeit.** Wenn der aktive Mandant keine Team-Warteschlangen anbietet, wird der vollständige nicht bedienbare Warteschlangenbereich im Arbeitsplatz ausgeblendet. Während des Ladens und bei vorhandenen Daten bleiben die bestehenden Rückmeldungen erhalten; Rechte, Mandantentrennung und API-Aufruf bleiben unverändert.
+
+- [x] **Einstellungen: Abteilungsrückfragen nur bei Verfügbarkeit.** Wenn die Konfiguration der Abteilungsleitungen im aktiven Mandanten nicht erreichbar ist, wird der vollständige nicht bedienbare Bereich ausgeblendet. Während des Ladens und bei verfügbaren Routen bleiben Bedienung und Aktualisieren unverändert; Datenzugriff, Mandantentrennung und Rechteprüfung bleiben erhalten.
