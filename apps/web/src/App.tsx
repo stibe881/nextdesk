@@ -2781,9 +2781,21 @@ export function App() {
               }
             : null;
 
+  const workspaceLiveMessageId = workspaceLiveMessage?.id ?? null;
+
   useEffect(() => {
-    if (!workspaceLiveMessage) setDismissedLiveMessage(null);
-  }, [workspaceLiveMessage]);
+    if (!workspaceLiveMessageId) {
+      setDismissedLiveMessage(null);
+      return;
+    }
+
+    setDismissedLiveMessage(null);
+    const timeout = window.setTimeout(() => {
+      setDismissedLiveMessage(workspaceLiveMessageId);
+    }, 5_000);
+
+    return () => window.clearTimeout(timeout);
+  }, [workspaceLiveMessageId]);
 
   const workspaceClassName = [
     "app-shell",
