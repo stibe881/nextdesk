@@ -109,3 +109,4 @@
   - Für bestehende Mandantenlayouts wird die aktive Reihenfolge einmalig bereinigt, ohne Feldwerte oder Archivdaten zu löschen.
   - Ein Palettenfeld wird nur zusammen mit seiner Zielplatzierung gespeichert. Bei einer ungültigen Zielposition oder Layoutversion bleibt keine unplatzierte Zwischenstufe zurück; nach einer unterbrochenen Antwort wird ein eindeutig vorhandenes Feld sicher wieder geladen.
   - Auch Erstellen, Reaktivieren und Archivieren prüfen und erhöhen die Layoutversion; eine alte Editoransicht kann keine aktuellere Feldreihenfolge überschreiben.
+- [x] **KI-Governance lädt die gültige Function-Antwort.** Die Einstellungen für Anthropic erkennen die von `ai-assist` gelieferte `{ data: { approval } }`-Hülle als gültige Freigabe. Eine erfolgreiche Antwort darf nicht fälschlich als nicht verfügbare Governance erscheinen. Die Korrektur verändert weder Funktionsstatus noch Mandantenfreigabe, externe Artikelfreigabe oder Provideraufrufe.

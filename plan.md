@@ -236,3 +236,7 @@ Der Formular-Konfigurator verwendet eine serverseitig atomare Positionsregel: Al
 Die Feldpalette erstellt und platziert ein Feld in einem einzigen serverseitigen Befehl. Wenn Abschnitt, Position oder Layoutversion nicht gültig sind, wird weder eine Definition noch ein Audit- oder Versionsschritt dauerhaft angelegt. Nach einer unterbrochenen Antwort lädt nextDesk das Layout erneut und erkennt das eindeutig angelegte Feld anhand seines eindeutigen Schlüssels; es entsteht keine unplatzierte Zwischenstufe.
 
 Auch Erstellen, Reaktivieren und Archivieren verwenden dieselbe Layoutversion wie Drag-and-Drop. Eine Migration sperrt jeden betroffenen Mandanten beim einmaligen Repack, stellt aktive Positionen vor archivierte Positionen und erhöht danach die Version. Bereits geöffnete Editoransichten müssen damit bewusst neu laden, statt mit alter Positionssemantik zu speichern.
+
+## KI-Governance-Antworthülle
+
+Die KI-Governance-Oberfläche liest die erfolgreiche Antwort von `ai-assist` ausschliesslich über deren validierte `{ data: { approval } }`-Hülle. Dadurch wird eine gültige, JWT-geschützte Antwort nicht mehr als nicht verfügbare Governance fehlinterpretiert. Die Änderung betrifft nur die clientseitige Antwortvalidierung; keine Freigabe, Funktion, Sichtbarkeit oder Anbieterübermittlung wird dabei automatisch geändert.
