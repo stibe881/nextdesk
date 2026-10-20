@@ -5,6 +5,7 @@ import {
   useState,
   type CSSProperties,
   type FormEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
 } from "react";
 import type { Session } from "@supabase/supabase-js";
@@ -106,6 +107,7 @@ import {
   parseTicketSearch,
   removeTicketSearchClause,
 } from "./lib/ticket-search";
+import { pageViewOptionsForSection } from "./lib/page-view-options";
 import { appRedirectUrl, isSupabaseConfigured, supabase } from "./lib/supabase";
 
 type Section =
@@ -1502,6 +1504,8 @@ export function App() {
     useState(false);
   const [workspacePreferencesOpen, setWorkspacePreferencesOpen] =
     useState(false);
+  const [workspacePreferencesContext, setWorkspacePreferencesContext] =
+    useState<"page" | "personal">("page");
   const [personalSettingsOpen, setPersonalSettingsOpen] = useState(false);
   const [ssoEnforced, setSsoEnforced] = useState(false);
   const [tenantFeatures, setTenantFeatures] = useState<Record<string, boolean>>(
@@ -1520,6 +1524,9 @@ export function App() {
   const notificationButtonRef = useRef<HTMLButtonElement>(null);
   const notificationPanelRef = useRef<HTMLElement>(null);
   const keyboardHelpCloseRef = useRef<HTMLButtonElement>(null);
+  const personalSettingsTriggerRef = useRef<HTMLButtonElement>(null);
+  const workspacePreferencesCloseRef = useRef<HTMLButtonElement>(null);
+  const workspacePreferencesTriggerRef = useRef<HTMLButtonElement>(null);
   const workspacePreferencesSyncTenantRef = useRef<string | null>(null);
   const workspacePreferencesLastSavedRef = useRef<string | null>(null);
   const workspacePreferencesStorageKey = `nextdesk:workspace-preferences:v2:${session?.user.id ?? "preview"}`;
@@ -1613,6 +1620,8 @@ export function App() {
       setOwnerView("console");
       setCanWorkTickets(false);
       setIsTenantAdmin(false);
+      setWorkspacePreferencesOpen(false);
+      setWorkspacePreferencesContext("page");
       setPersonalSettingsOpen(false);
       setSsoEnforced(false);
       setTenantFeatures({});
@@ -2654,6 +2663,12 @@ export function App() {
     ticketListRefinement.sortDirection !== "desc";
   const isFeatureEnabled = (featureKey: string) =>
     !isSupabaseConfigured || tenantFeatures[featureKey] === true;
+  const pageViewOptions = pageViewOptionsForSection(
+    section,
+    isSupabaseConfigured && canWorkTickets,
+  );
+  const hasPageViewOptions = pageViewOptions.length > 0;
+  const isPersonalAppearanceDialog = workspacePreferencesContext === "personal";
   const featureSections = sections.filter((item) => {
     if (item.label === "Arbeitsplatz") {
       return agentWorkbenchEnabled;
@@ -2709,6 +2724,28 @@ export function App() {
       setSelectedTicketId(null);
     }
   }, [tenantFeatures]);
+
+  useEffect(() => {
+    if (
+      workspacePreferencesOpen &&
+      !isPersonalAppearanceDialog &&
+      !hasPageViewOptions
+    ) {
+      setWorkspacePreferencesOpen(false);
+    }
+  }, [
+    hasPageViewOptions,
+    isPersonalAppearanceDialog,
+    workspacePreferencesOpen,
+  ]);
+
+  useEffect(() => {
+    if (!workspacePreferencesOpen) return;
+    const frame = window.requestAnimationFrame(() =>
+      workspacePreferencesCloseRef.current?.focus(),
+    );
+    return () => window.cancelAnimationFrame(frame);
+  }, [workspacePreferencesOpen]);
 
   const keyboardNavigableTickets =
     (section === "Tickets" || section === "Übersicht") &&
@@ -2814,6 +2851,45 @@ export function App() {
 
   function updateWorkspacePreferences(updates: Partial<WorkspacePreferences>) {
     setWorkspacePreferences((current) => ({ ...current, ...updates }));
+  }
+
+  function closeWorkspacePreferences() {
+    setWorkspacePreferencesOpen(false);
+    const focusTarget = isPersonalAppearanceDialog
+      ? personalSettingsTriggerRef.current
+      : workspacePreferencesTriggerRef.current;
+    window.requestAnimationFrame(() => focusTarget?.focus());
+  }
+
+  function handleWorkspacePreferencesKeyDown(
+    event: ReactKeyboardEvent<HTMLElement>,
+  ) {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeWorkspacePreferences();
+      return;
+    }
+    if (event.key !== "Tab") return;
+
+    const focusableElements = Array.from(
+      event.currentTarget.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ),
+    );
+    const firstFocusableElement = focusableElements[0];
+    const lastFocusableElement =
+      focusableElements[focusableElements.length - 1];
+    if (!firstFocusableElement || !lastFocusableElement) return;
+
+    if (event.shiftKey && document.activeElement === firstFocusableElement) {
+      event.preventDefault();
+      lastFocusableElement.focus();
+      return;
+    }
+    if (!event.shiftKey && document.activeElement === lastFocusableElement) {
+      event.preventDefault();
+      firstFocusableElement.focus();
+    }
   }
 
   const workspaceLiveMessage = errorMessage
@@ -3013,6 +3089,7 @@ export function App() {
             className="operator-profile-trigger"
             disabled={!session}
             onClick={() => setPersonalSettingsOpen(true)}
+            ref={personalSettingsTriggerRef}
             type="button"
           >
             <span className="operator-avatar">{initials(operatorName)}</span>
@@ -3100,21 +3177,27 @@ export function App() {
                 Ticket erfassen
               </button>
             )}
-            <button
-              aria-controls="workspace-preferences"
-              aria-expanded={workspacePreferencesOpen}
-              aria-label="Arbeitsbereichseinstellungen öffnen"
-              className="workspace-preferences-trigger"
-              onClick={() => setWorkspacePreferencesOpen(true)}
-              type="button"
-            >
-              <SlidersHorizontal
-                aria-hidden="true"
-                size={17}
-                strokeWidth={1.9}
-              />
-              <span>Ansicht</span>
-            </button>
+            {hasPageViewOptions && !personalSettingsOpen && (
+              <button
+                aria-controls="workspace-preferences"
+                aria-expanded={workspacePreferencesOpen}
+                aria-label={`Ansichtsoptionen für ${sectionDisplayLabel(section)} öffnen`}
+                className="workspace-preferences-trigger"
+                onClick={() => {
+                  setWorkspacePreferencesContext("page");
+                  setWorkspacePreferencesOpen(true);
+                }}
+                ref={workspacePreferencesTriggerRef}
+                type="button"
+              >
+                <SlidersHorizontal
+                  aria-hidden="true"
+                  size={17}
+                  strokeWidth={1.9}
+                />
+                <span>Ansicht</span>
+              </button>
+            )}
             {activeTenant && (
               <GlobalSearch
                 disabled={!isSupabaseConfigured}
@@ -3280,6 +3363,7 @@ export function App() {
             onBack={() => setPersonalSettingsOpen(false)}
             onOpenAppearance={() => {
               setPersonalSettingsOpen(false);
+              setWorkspacePreferencesContext("personal");
               setWorkspacePreferencesOpen(true);
             }}
             onSignOut={() => void signOut()}
@@ -3931,7 +4015,7 @@ export function App() {
           className="workspace-preferences-backdrop"
           onMouseDown={(event) => {
             if (event.target === event.currentTarget) {
-              setWorkspacePreferencesOpen(false);
+              closeWorkspacePreferences();
             }
           }}
           role="dialog"
@@ -3940,151 +4024,173 @@ export function App() {
             aria-labelledby="workspace-preferences-heading"
             className="workspace-preferences"
             id="workspace-preferences"
-            onKeyDown={(event) => {
-              if (event.key === "Escape") setWorkspacePreferencesOpen(false);
-            }}
+            onKeyDown={handleWorkspacePreferencesKeyDown}
           >
             <header>
               <div>
-                <p className="eyebrow">PERSÖNLICHE ANSICHT</p>
+                <p className="eyebrow">
+                  {isPersonalAppearanceDialog
+                    ? "PERSÖNLICHE DARSTELLUNG"
+                    : "TICKETS / ANSICHT"}
+                </p>
                 <h2 id="workspace-preferences-heading">
-                  Arbeitsbereich anpassen
+                  {isPersonalAppearanceDialog
+                    ? "Darstellung anpassen"
+                    : "Ticketansicht anpassen"}
                 </h2>
               </div>
               <button
                 aria-label="Arbeitsbereichseinstellungen schliessen"
                 className="workspace-preferences__close"
-                onClick={() => setWorkspacePreferencesOpen(false)}
+                onClick={closeWorkspacePreferences}
+                ref={workspacePreferencesCloseRef}
                 type="button"
               >
                 <X aria-hidden="true" size={18} strokeWidth={1.8} />
               </button>
             </header>
             <div className="workspace-preferences__fields">
-              <label>
-                Startansicht
-                <select
-                  onChange={(event) =>
-                    updateWorkspacePreferences({
-                      startSection: event.target.value as Section,
-                    })
-                  }
-                  value={workspacePreferences.startSection}
-                >
-                  {workSections.map((item) => (
-                    <option key={item.label} value={item.label}>
-                      {sectionDisplayLabel(item.label)}
-                    </option>
-                  ))}
-                </select>
-                <span>
-                  Wird bei der nächsten Anmeldung als erste Ansicht geöffnet.
-                </span>
-              </label>
-              <label>
-                Farbschema
-                <select
-                  onChange={(event) =>
-                    updateWorkspacePreferences({
-                      theme: event.target.value as WorkspaceTheme,
-                    })
-                  }
-                  value={workspacePreferences.theme}
-                >
-                  <option value="light">Hell</option>
-                  <option value="dark">Dunkel</option>
-                  <option value="system">Systemeinstellung</option>
-                </select>
-                <span>
-                  Standard ist Hell. Systemeinstellung folgt dem Farbschema des
-                  Geräts.
-                </span>
-              </label>
-              <label>
-                Listendichte
-                <select
-                  onChange={(event) =>
-                    updateWorkspacePreferences({
-                      density: event.target.value as TicketListDensity,
-                    })
-                  }
-                  value={workspacePreferences.density}
-                >
-                  <option value="compact">Kompakt</option>
-                  <option value="standard">Standard</option>
-                  <option value="comfortable">Komfortabel</option>
-                </select>
-                <span>
-                  Passt Abstand und Informationsdichte der Ticketliste an.
-                </span>
-              </label>
-              <label className="workspace-preferences__toggle">
-                <input
-                  checked={workspacePreferences.ticketSplitView}
-                  onChange={(event) =>
-                    updateWorkspacePreferences({
-                      ticketSplitView: event.target.checked,
-                    })
-                  }
-                  type="checkbox"
-                />
-                <span>
-                  <strong>Listen-Detail-Ansicht</strong>
-                  <small>
-                    Zeigt auf breiten Bildschirmen Ticketliste und
-                    Ticketzusammenfassung nebeneinander an.
-                  </small>
-                </span>
-              </label>
-              <label className="workspace-preferences__toggle">
-                <input
-                  checked={workspacePreferences.highContrast}
-                  onChange={(event) =>
-                    updateWorkspacePreferences({
-                      highContrast: event.target.checked,
-                    })
-                  }
-                  type="checkbox"
-                />
-                <span>
-                  <strong>Hoher Kontrast</strong>
-                  <small>
-                    Erhöht die Abgrenzung von Texten, Flächen und
-                    Steuerelementen.
-                  </small>
-                </span>
-              </label>
-              <label className="workspace-preferences__toggle">
-                <input
-                  checked={workspacePreferences.reduceMotion}
-                  onChange={(event) =>
-                    updateWorkspacePreferences({
-                      reduceMotion: event.target.checked,
-                    })
-                  }
-                  type="checkbox"
-                />
-                <span>
-                  <strong>Bewegung reduzieren</strong>
-                  <small>
-                    Blendet Übergänge und Animationen weitgehend aus.
-                  </small>
-                </span>
-              </label>
+              {isPersonalAppearanceDialog && (
+                <>
+                  <label>
+                    Startansicht
+                    <select
+                      onChange={(event) =>
+                        updateWorkspacePreferences({
+                          startSection: event.target.value as Section,
+                        })
+                      }
+                      value={workspacePreferences.startSection}
+                    >
+                      {workSections.map((item) => (
+                        <option key={item.label} value={item.label}>
+                          {sectionDisplayLabel(item.label)}
+                        </option>
+                      ))}
+                    </select>
+                    <span>
+                      Wird bei der nächsten Anmeldung als erste Ansicht
+                      geöffnet.
+                    </span>
+                  </label>
+                  <label>
+                    Farbschema
+                    <select
+                      onChange={(event) =>
+                        updateWorkspacePreferences({
+                          theme: event.target.value as WorkspaceTheme,
+                        })
+                      }
+                      value={workspacePreferences.theme}
+                    >
+                      <option value="light">Hell</option>
+                      <option value="dark">Dunkel</option>
+                      <option value="system">Systemeinstellung</option>
+                    </select>
+                    <span>
+                      Standard ist Hell. Systemeinstellung folgt dem Farbschema
+                      des Geräts.
+                    </span>
+                  </label>
+                </>
+              )}
+              {!isPersonalAppearanceDialog &&
+                pageViewOptions.includes("ticketDensity") && (
+                  <label>
+                    Listendichte
+                    <select
+                      onChange={(event) =>
+                        updateWorkspacePreferences({
+                          density: event.target.value as TicketListDensity,
+                        })
+                      }
+                      value={workspacePreferences.density}
+                    >
+                      <option value="compact">Kompakt</option>
+                      <option value="standard">Standard</option>
+                      <option value="comfortable">Komfortabel</option>
+                    </select>
+                    <span>
+                      Passt Abstand und Informationsdichte der Ticketliste an.
+                    </span>
+                  </label>
+                )}
+              {!isPersonalAppearanceDialog &&
+                pageViewOptions.includes("ticketSplitView") && (
+                  <label className="workspace-preferences__toggle">
+                    <input
+                      checked={workspacePreferences.ticketSplitView}
+                      onChange={(event) =>
+                        updateWorkspacePreferences({
+                          ticketSplitView: event.target.checked,
+                        })
+                      }
+                      type="checkbox"
+                    />
+                    <span>
+                      <strong>Listen-Detail-Ansicht</strong>
+                      <small>
+                        Zeigt auf breiten Bildschirmen Ticketliste und
+                        Ticketzusammenfassung nebeneinander an.
+                      </small>
+                    </span>
+                  </label>
+                )}
+              {isPersonalAppearanceDialog && (
+                <>
+                  <label className="workspace-preferences__toggle">
+                    <input
+                      checked={workspacePreferences.highContrast}
+                      onChange={(event) =>
+                        updateWorkspacePreferences({
+                          highContrast: event.target.checked,
+                        })
+                      }
+                      type="checkbox"
+                    />
+                    <span>
+                      <strong>Hoher Kontrast</strong>
+                      <small>
+                        Erhöht die Abgrenzung von Texten, Flächen und
+                        Steuerelementen.
+                      </small>
+                    </span>
+                  </label>
+                  <label className="workspace-preferences__toggle">
+                    <input
+                      checked={workspacePreferences.reduceMotion}
+                      onChange={(event) =>
+                        updateWorkspacePreferences({
+                          reduceMotion: event.target.checked,
+                        })
+                      }
+                      type="checkbox"
+                    />
+                    <span>
+                      <strong>Bewegung reduzieren</strong>
+                      <small>
+                        Blendet Übergänge und Animationen weitgehend aus.
+                      </small>
+                    </span>
+                  </label>
+                </>
+              )}
             </div>
             <div className="workspace-preferences__actions">
-              <button
-                className="secondary-button"
-                onClick={() =>
-                  setWorkspacePreferences(DEFAULT_WORKSPACE_PREFERENCES)
-                }
-                type="button"
-              >
-                Standard wiederherstellen
-              </button>
+              {isPersonalAppearanceDialog && (
+                <button
+                  className="secondary-button"
+                  onClick={() =>
+                    setWorkspacePreferences(DEFAULT_WORKSPACE_PREFERENCES)
+                  }
+                  type="button"
+                >
+                  Standard wiederherstellen
+                </button>
+              )}
               <button
                 className="primary-button"
-                onClick={() => setWorkspacePreferencesOpen(false)}
+                onClick={closeWorkspacePreferences}
                 type="button"
               >
                 Fertig

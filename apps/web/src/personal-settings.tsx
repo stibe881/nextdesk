@@ -478,8 +478,8 @@ export function PersonalSettings({
             <div>
               <h3>Profil & Darstellung</h3>
               <p>
-                Lege Farbschema, Startansicht, Listendichte und weitere
-                persönliche Ansichtsoptionen fest.
+                Lege Farbschema, Startansicht, Kontrast und Bewegungsreduktion
+                fest.
               </p>
             </div>
           </div>
