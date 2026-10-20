@@ -739,6 +739,8 @@ export function KnowledgeBase({ tenantId }: KnowledgeBaseProps) {
 
   const isBusy = saving !== null;
   const selectedArticleId = selected?.article.id ?? null;
+  const editorPanelRef = useRef<HTMLElement | null>(null);
+  const editorTitleInputRef = useRef<HTMLInputElement | null>(null);
   const collectionsById = useMemo(
     () => new Map(collections.map((collection) => [collection.id, collection])),
     [collections],
@@ -822,6 +824,18 @@ export function KnowledgeBase({ tenantId }: KnowledgeBaseProps) {
       detailRequestVersion.current += 1;
     };
   }, [loadArticles, loadCollections]);
+
+  useEffect(() => {
+    if (!editorOpen) return;
+    const frame = window.requestAnimationFrame(() => {
+      editorPanelRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+      editorTitleInputRef.current?.focus({ preventScroll: true });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [editorOpen]);
 
   const openArticle = useCallback(
     async (articleId: string) => {
@@ -1505,6 +1519,7 @@ export function KnowledgeBase({ tenantId }: KnowledgeBaseProps) {
         <section
           className="panel knowledge-base__editor-panel"
           aria-labelledby="knowledge-article-form-heading"
+          ref={editorPanelRef}
         >
           <div className="knowledge-base__editor-heading">
             <div>
@@ -1541,6 +1556,7 @@ export function KnowledgeBase({ tenantId }: KnowledgeBaseProps) {
                   }))
                 }
                 placeholder="Zum Beispiel: VPN-Verbindung einrichten"
+                ref={editorTitleInputRef}
                 required
                 value={draft.title}
               />
