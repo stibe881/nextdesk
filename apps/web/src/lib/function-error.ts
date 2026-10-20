@@ -83,6 +83,16 @@ export async function functionErrorMessage(
     case "sso_issuer_and_discovery_required":
     case "sso_email_domain_required":
       return "Die SSO-Konfiguration dieses Mandanten ist noch nicht vollständig aktiv.";
+    case "directory_sso_binding_required":
+      return "Für das Entra-Verzeichnis ist eine aktive, mandantenspezifische Microsoft-Entra-SSO-Konfiguration erforderlich.";
+    case "directory_sync_not_ready":
+      return "Der Entra-Verzeichnisconnector ist noch nicht bereit. Speichern und prüfen Sie zuerst die gebundene Konfiguration.";
+    case "directory_connection_failed":
+      return "Die Entra-Verbindung konnte nicht geprüft werden. Kontrollieren Sie die Freigabe und versuchen Sie es später erneut.";
+    case "directory_sync_in_progress":
+      return "Für diesen Mandanten läuft bereits ein Entra-Abgleich. Bitte warten Sie, bis dieser abgeschlossen ist.";
+    case "directory_sync_failed":
+      return "Der Entra-Abgleich konnte nicht abgeschlossen werden. Es wurden keine technischen Providerdetails angezeigt.";
     case "not_found":
     case "ticket_not_found":
       return "Der angeforderte Eintrag ist nicht mehr verfügbar oder Sie haben keinen Zugriff darauf.";

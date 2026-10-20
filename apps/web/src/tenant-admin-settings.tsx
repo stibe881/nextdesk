@@ -55,6 +55,8 @@ type SsoProviderSelection = SsoProvider | "";
 type SaveTarget =
   | "branding"
   | "sso"
+  | "entra-directory-configuration"
+  | "entra-directory-test"
   | "entra-sync"
   | "invite-user"
   | `person:${string}`
@@ -94,6 +96,17 @@ type TenantBranding = {
   secondary_color: string | null;
   accent_color: string | null;
   updated_at: string | null;
+};
+
+type EntraDirectoryConfiguration = {
+  trusted_entra_tenant_id: string | null;
+  configured_entra_tenant_id: string | null;
+  enabled: boolean;
+  last_connection_tested_at: string | null;
+  last_connection_test_status: "success" | "failed" | null;
+  last_sync_started_at: string | null;
+  last_sync_completed_at: string | null;
+  last_sync_status: "success" | "failed" | "running" | null;
 };
 
 type SsoConfiguration = {
@@ -217,6 +230,7 @@ type SettingsData = {
   tenant_sso_configurations: SsoConfiguration[];
   tenant_feature_flags: TenantFeature[];
   roles: TenantRole[];
+  entra_directory: EntraDirectoryConfiguration;
 };
 
 type TenantUserDirectory = {
@@ -283,6 +297,11 @@ type TenantAdminRequest =
       clientId: string | null;
       allowedEmailDomains: string[];
       enforceSso: boolean;
+    }
+  | {
+      type: "updateEntraDirectoryConfiguration";
+      tenantId: string;
+      enabled: boolean;
     }
   | {
       type: "toggleFeature";
@@ -1169,6 +1188,7 @@ export function TenantAdminSettings({
   const [removeLogo, setRemoveLogo] = useState(false);
   const logoFileInputRef = useRef<HTMLInputElement>(null);
   const [ssoForm, setSsoForm] = useState<SsoForm>(emptySsoForm);
+  const [entraDirectoryEnabled, setEntraDirectoryEnabled] = useState(false);
   const [loading, setLoading] = useState(true);
   const [audit, setAudit] = useState<AuditListData>({
     entries: [],
@@ -1272,6 +1292,7 @@ export function TenantAdminSettings({
             }
           : emptySsoForm,
       );
+      setEntraDirectoryEnabled(nextSettings.entra_directory.enabled);
     } catch (nextError) {
       setSettings(null);
       setUserDirectory({
@@ -1283,6 +1304,7 @@ export function TenantAdminSettings({
       setRoles([]);
       setRoleAssignments([]);
       setPermissions([]);
+      setEntraDirectoryEnabled(false);
       setError(
         messageFromError(
           nextError,
@@ -1339,27 +1361,98 @@ export function TenantAdminSettings({
     };
   }, [settings?.tenant_feature_flags, tenantId]);
 
+  const saveEntraDirectoryConfiguration = async () => {
+    if (!entraDirectory?.trusted_entra_tenant_id) {
+      setError(
+        "Für den Verzeichnisabgleich ist zuerst eine aktive, mandantenspezifische Microsoft-Entra-SSO-Konfiguration erforderlich.",
+      );
+      return;
+    }
+    beginSave("entra-directory-configuration");
+    try {
+      await tenantAdminRequest<{ updated: boolean }>({
+        type: "updateEntraDirectoryConfiguration",
+        tenantId,
+        enabled: entraDirectoryEnabled,
+      });
+      await loadData();
+      setSuccess(
+        entraDirectoryEnabled
+          ? "Der Entra-Verzeichnisconnector wurde aktiviert. Prüfen Sie die Verbindung, bevor Sie einen manuellen Abgleich starten."
+          : "Der Entra-Verzeichnisconnector wurde gespeichert und deaktiviert.",
+      );
+    } catch (nextError) {
+      setError(
+        await functionErrorMessage(
+          nextError,
+          "Die Entra-Verzeichniskonfiguration konnte nicht gespeichert werden.",
+        ),
+      );
+    } finally {
+      setSaving(null);
+    }
+  };
+
+  const testEntraDirectoryConnection = async () => {
+    if (!supabase || !canTestEntraDirectory) {
+      setError(
+        "Speichern Sie zuerst eine gültige, an das mandantenspezifische Entra-SSO gebundene Konfiguration.",
+      );
+      return;
+    }
+    beginSave("entra-directory-test");
+    try {
+      const { error: invokeError } = await supabase.functions.invoke(
+        "entra-directory-sync",
+        { body: { type: "testTenant", tenantId } },
+      );
+      if (invokeError) throw invokeError;
+      await loadData();
+      setSuccess(
+        "Die Entra-Verbindung wurde erfolgreich geprüft. Es wurden keine Personen- oder Profildaten angezeigt.",
+      );
+    } catch (nextError) {
+      setError(
+        await functionErrorMessage(
+          nextError,
+          "Die Entra-Verbindung konnte nicht geprüft werden.",
+        ),
+      );
+    } finally {
+      setSaving(null);
+    }
+  };
+
   const syncEntraDirectory = async () => {
     if (!supabase) {
       setError("Die Entra-Verzeichnissynchronisation ist nicht verfügbar.");
       return;
     }
-    setSaving("entra-sync");
-    setError("");
-    setSuccess("");
+    if (!canSyncEntraDirectory) {
+      setError(
+        "Aktivieren und testen Sie den an das mandantenspezifische Entra-SSO gebundenen Connector, bevor Sie den Abgleich starten.",
+      );
+      return;
+    }
+    beginSave("entra-sync");
     try {
-      const { error: invokeError } = await supabase.functions.invoke(
+      const { data, error: invokeError } = await supabase.functions.invoke(
         "entra-directory-sync",
         { body: { type: "syncTenant", tenantId } },
       );
       if (invokeError) throw invokeError;
       await loadData();
+      const result = isRecord(data) && isRecord(data.data) ? data.data : null;
+      const imported =
+        result && typeof result.imported === "number" ? result.imported : 0;
+      const active =
+        result && typeof result.active === "number" ? result.active : 0;
       setSuccess(
-        "Der Entra-Abgleich ist abgeschlossen. Die synchronisierten Personen erscheinen unten im Verzeichnis.",
+        `Der Entra-Abgleich ist abgeschlossen: ${imported} Personen verarbeitet, ${active} aktiv. Die synchronisierten Personen erscheinen unten im Verzeichnis.`,
       );
     } catch (nextError) {
       setError(
-        messageFromError(
+        await functionErrorMessage(
           nextError,
           "Das Entra-Verzeichnis konnte nicht abgeglichen werden.",
         ),
@@ -1450,6 +1543,20 @@ export function TenantAdminSettings({
   const branding = settings?.tenant_branding ?? null;
   const brandingLogoUrl = branding?.logo_url ?? branding?.logo_path ?? null;
   const ssoConfiguration = settings?.tenant_sso_configurations[0] ?? null;
+  const entraDirectory = settings?.entra_directory ?? null;
+  const isEntraSsoBindingReady = Boolean(
+    entraDirectory?.trusted_entra_tenant_id &&
+    entraDirectory?.configured_entra_tenant_id ===
+      entraDirectory.trusted_entra_tenant_id,
+  );
+  const canTestEntraDirectory = Boolean(
+    entraDirectory?.configured_entra_tenant_id && isEntraSsoBindingReady,
+  );
+  const canSyncEntraDirectory = Boolean(
+    canTestEntraDirectory &&
+    entraDirectory?.enabled &&
+    entraDirectory.last_connection_test_status === "success",
+  );
   const permissionsByCode = useMemo(
     () =>
       new Map(permissions.map((permission) => [permission.code, permission])),
@@ -3632,25 +3739,142 @@ export function TenantAdminSettings({
                   Angebot und Funktion und bestimmen Sie, wer als Support-Agent
                   in der Ticketbearbeitung arbeitet.
                 </p>
-                <div className="tenant-admin-settings__directory-sync">
-                  <div>
-                    <strong>Microsoft Entra-Verzeichnis</strong>
-                    <span>
-                      Der Abgleich lädt nur Personenprofile. Agentenzugänge
-                      werden ausschliesslich über eine bewusste Zuordnung weiter
-                      unten vergeben.
+                <section
+                  className="tenant-admin-settings__directory-config"
+                  aria-labelledby="tenant-entra-directory-heading"
+                >
+                  <div className="tenant-admin-settings__directory-config-heading">
+                    <div>
+                      <h3 id="tenant-entra-directory-heading">
+                        Microsoft Entra-Verzeichnis
+                      </h3>
+                      <p>
+                        Die Verbindung ist ausschliesslich an die aktive,
+                        mandantenspezifische Microsoft-Entra-SSO-Konfiguration
+                        gebunden. Personen werden erst bei einem bewusst
+                        gestarteten Abgleich verarbeitet.
+                      </p>
+                    </div>
+                    <span
+                      className={`tenant-admin-settings__directory-status ${
+                        !entraDirectory?.trusted_entra_tenant_id
+                          ? "tenant-admin-settings__directory-status--blocked"
+                          : !entraDirectory?.configured_entra_tenant_id
+                            ? "tenant-admin-settings__directory-status--idle"
+                            : !isEntraSsoBindingReady
+                              ? "tenant-admin-settings__directory-status--blocked"
+                              : entraDirectory.last_sync_status === "running"
+                                ? "tenant-admin-settings__directory-status--running"
+                                : entraDirectory.last_connection_test_status ===
+                                    "failed"
+                                  ? "tenant-admin-settings__directory-status--failed"
+                                  : entraDirectory.enabled
+                                    ? "tenant-admin-settings__directory-status--ready"
+                                    : "tenant-admin-settings__directory-status--idle"
+                      }`}
+                      role="status"
+                    >
+                      {!entraDirectory?.trusted_entra_tenant_id
+                        ? "SSO-Bindung erforderlich"
+                        : !entraDirectory?.configured_entra_tenant_id
+                          ? "Noch nicht gespeichert"
+                          : !isEntraSsoBindingReady
+                            ? "Neue Speicherung erforderlich"
+                            : entraDirectory.last_sync_status === "running"
+                              ? "Abgleich läuft"
+                              : entraDirectory.last_connection_test_status ===
+                                  "failed"
+                                ? "Verbindung fehlgeschlagen"
+                                : entraDirectory.enabled
+                                  ? "Bereit für manuellen Abgleich"
+                                  : "Deaktiviert"}
                     </span>
                   </div>
-                  <button
-                    type="button"
-                    disabled={saving !== null}
-                    onClick={() => void syncEntraDirectory()}
-                  >
-                    {saving === "entra-sync"
-                      ? "Entra wird abgeglichen …"
-                      : "Entra-Personen abgleichen"}
-                  </button>
-                </div>
+
+                  <dl className="tenant-admin-settings__directory-facts">
+                    <div>
+                      <dt>Verknüpfter Entra-Mandant</dt>
+                      <dd>
+                        {entraDirectory?.trusted_entra_tenant_id ??
+                          "Keine aktive mandantenspezifische Entra-SSO-Konfiguration"}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Letzter Verbindungstest</dt>
+                      <dd>
+                        {entraDirectory?.last_connection_tested_at
+                          ? `${entraDirectory.last_connection_test_status === "success" ? "Erfolgreich" : "Fehlgeschlagen"} · ${formatDate(entraDirectory.last_connection_tested_at)}`
+                          : "Noch nicht durchgeführt"}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Letzter Abgleich</dt>
+                      <dd>
+                        {entraDirectory?.last_sync_completed_at
+                          ? `${entraDirectory.last_sync_status === "success" ? "Erfolgreich" : "Fehlgeschlagen"} · ${formatDate(entraDirectory.last_sync_completed_at)}`
+                          : "Noch nicht durchgeführt"}
+                      </dd>
+                    </div>
+                  </dl>
+
+                  <div className="tenant-admin-settings__directory-actions">
+                    <label className="tenant-admin-settings__directory-toggle">
+                      <input
+                        type="checkbox"
+                        checked={entraDirectoryEnabled}
+                        disabled={
+                          saving !== null ||
+                          !entraDirectory?.trusted_entra_tenant_id
+                        }
+                        onChange={(event) =>
+                          setEntraDirectoryEnabled(event.target.checked)
+                        }
+                      />
+                      <span>Connector für manuelle Abgleiche aktivieren</span>
+                    </label>
+                    <div>
+                      <button
+                        type="button"
+                        className="secondary-button"
+                        disabled={
+                          saving !== null ||
+                          !entraDirectory?.trusted_entra_tenant_id
+                        }
+                        onClick={() => void saveEntraDirectoryConfiguration()}
+                      >
+                        {saving === "entra-directory-configuration"
+                          ? "Wird gespeichert …"
+                          : "Konfiguration speichern"}
+                      </button>
+                      <button
+                        type="button"
+                        className="secondary-button"
+                        disabled={saving !== null || !canTestEntraDirectory}
+                        onClick={() => void testEntraDirectoryConnection()}
+                      >
+                        {saving === "entra-directory-test"
+                          ? "Verbindung wird geprüft …"
+                          : "Verbindung testen"}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={saving !== null || !canSyncEntraDirectory}
+                        onClick={() => void syncEntraDirectory()}
+                      >
+                        {saving === "entra-sync"
+                          ? "Entra wird abgeglichen …"
+                          : "Manuellen Abgleich starten"}
+                      </button>
+                    </div>
+                  </div>
+                  <p className="tenant-admin-settings__directory-note">
+                    Der Verbindungstest überträgt keine Personenliste in den
+                    Browser. Ein deaktivierter Connector kann nach dem Speichern
+                    getestet, aber erst nach einem erfolgreichen Test und einer
+                    bewussten Aktivierung abgeglichen werden. Agentenzugänge
+                    werden weiterhin nur über eine bewusste Vormerkung vergeben.
+                  </p>
+                </section>
                 <form
                   className="tenant-admin-settings__form"
                   onSubmit={inviteUser}

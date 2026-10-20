@@ -9370,7 +9370,138 @@ body:has(.ticket-detail) {
   line-height: 1.45;
 }
 
+.tenant-admin-settings__directory-config {
+  display: grid;
+  gap: 1rem;
+  margin: 1.25rem 0;
+  padding: 1.1rem;
+  border: 1px solid var(--border-tint-d8dcff);
+  border-radius: calc(var(--radius) + 2px);
+  background:
+    linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--primary-soft) 78%, transparent),
+      transparent 58%
+    ),
+    var(--surface);
+}
+.tenant-admin-settings__directory-config-heading,
+.tenant-admin-settings__directory-actions,
+.tenant-admin-settings__directory-actions > div {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+.tenant-admin-settings__directory-config-heading,
+.tenant-admin-settings__directory-actions {
+  justify-content: space-between;
+}
+.tenant-admin-settings__directory-config-heading > div {
+  min-width: 0;
+}
+.tenant-admin-settings__directory-config h3,
+.tenant-admin-settings__directory-config p {
+  margin: 0;
+}
+.tenant-admin-settings__directory-config h3 {
+  color: var(--ink);
+  font-size: 1rem;
+}
+.tenant-admin-settings__directory-config-heading p,
+.tenant-admin-settings__directory-note {
+  color: var(--muted);
+  font-size: 0.84rem;
+  line-height: 1.5;
+}
+.tenant-admin-settings__directory-status {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  font-size: 0.76rem;
+  font-weight: 750;
+  padding: 0.34rem 0.6rem;
+  white-space: nowrap;
+}
+.tenant-admin-settings__directory-status--ready {
+  background: var(--surface-tint-e8f7ee);
+  color: var(--text-tint-11633a);
+}
+.tenant-admin-settings__directory-status--idle {
+  background: var(--surface-tint-eff1f5);
+  color: var(--text-tint-5b6475);
+}
+.tenant-admin-settings__directory-status--running {
+  background: var(--surface-tint-fff5d9);
+  color: var(--text-tint-8a5a00);
+}
+.tenant-admin-settings__directory-status--failed,
+.tenant-admin-settings__directory-status--blocked {
+  background: var(--surface-tint-ffebec);
+  color: var(--text-tint-a11b2d);
+}
+.tenant-admin-settings__directory-facts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.65rem;
+  margin: 0;
+}
+.tenant-admin-settings__directory-facts > div {
+  min-width: 0;
+  padding: 0.72rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface) 92%, var(--primary-soft));
+}
+.tenant-admin-settings__directory-facts dt {
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 680;
+}
+.tenant-admin-settings__directory-facts dd {
+  overflow-wrap: anywhere;
+  margin: 0.3rem 0 0;
+  color: var(--ink);
+  font-size: 0.83rem;
+  font-variant-numeric: tabular-nums;
+}
+.tenant-admin-settings__directory-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  color: var(--ink);
+  font-size: 0.88rem;
+  font-weight: 650;
+}
+.tenant-admin-settings__directory-toggle input {
+  inline-size: 1rem;
+  block-size: 1rem;
+  accent-color: var(--primary);
+}
+.tenant-admin-settings__directory-actions > div {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.tenant-admin-settings__directory-actions button {
+  white-space: nowrap;
+}
+
 @media (max-width: 640px) {
+  .tenant-admin-settings__directory-config-heading,
+  .tenant-admin-settings__directory-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .tenant-admin-settings__directory-status {
+    align-self: flex-start;
+  }
+  .tenant-admin-settings__directory-facts {
+    grid-template-columns: 1fr;
+  }
+  .tenant-admin-settings__directory-actions > div {
+    justify-content: stretch;
+  }
+  .tenant-admin-settings__directory-actions button {
+    flex: 1 1 100%;
+  }
   .tenant-admin-settings__directory-sync {
     align-items: stretch;
     flex-direction: column;

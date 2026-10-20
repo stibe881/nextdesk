@@ -30,6 +30,11 @@ const SSO_KEYS = new Set([
   "allowedEmailDomains",
   "enforceSso",
 ]);
+const ENTRA_DIRECTORY_CONFIGURATION_KEYS = new Set([
+  "type",
+  "tenantId",
+  "enabled",
+]);
 
 type BrandingInput = {
   portalName?: string | null;
@@ -60,6 +65,11 @@ type Action =
       base64: string;
     }
   | ({ type: "updateSsoConfiguration"; tenantId: string } & SsoInput)
+  | {
+      type: "updateEntraDirectoryConfiguration";
+      tenantId: string;
+      enabled: boolean;
+    }
   | {
       type: "toggleFeature";
       tenantId: string;
@@ -336,6 +346,19 @@ function parseAction(value: unknown): Action | null {
   }
 
   if (
+    value.type === "updateEntraDirectoryConfiguration" &&
+    hasOnlyKeys(value, ENTRA_DIRECTORY_CONFIGURATION_KEYS) &&
+    isUuid(value.tenantId) &&
+    typeof value.enabled === "boolean"
+  ) {
+    return {
+      type: "updateEntraDirectoryConfiguration",
+      tenantId: value.tenantId,
+      enabled: value.enabled,
+    };
+  }
+
+  if (
     value.type === "toggleFeature" &&
     hasOnlyKeys(
       value,
@@ -581,6 +604,8 @@ async function handleGetSettings(
     ssoResult,
     featuresResult,
     rolesResult,
+    entraDirectoryResult,
+    trustedEntraTenantResult,
   ] = await Promise.all([
     admin
       .from("tenant_settings")
@@ -612,6 +637,16 @@ async function handleGetSettings(
       .order("feature_key", { ascending: true })
       .limit(200),
     listSafeRoles(admin, tenantId),
+    admin
+      .from("tenant_entra_directory_sync_configurations")
+      .select(
+        "entra_tenant_id, enabled, last_connection_tested_at, last_connection_test_status, last_sync_started_at, last_sync_completed_at, last_sync_status",
+      )
+      .eq("tenant_id", tenantId)
+      .maybeSingle(),
+    admin.rpc("trusted_entra_tenant_id_for_tenant", {
+      p_tenant_id: tenantId,
+    }),
   ]);
 
   if (
@@ -619,12 +654,18 @@ async function handleGetSettings(
     brandingResult.error ||
     ssoResult.error ||
     featuresResult.error ||
-    rolesResult.error
+    rolesResult.error ||
+    entraDirectoryResult.error ||
+    trustedEntraTenantResult.error
   ) {
     return json(request, { error: { code: "settings_read_failed" } }, 500);
   }
 
   const sso = ssoResult.data as SsoConfiguration | null;
+  const entraDirectory = entraDirectoryResult.data as Record<
+    string,
+    unknown
+  > | null;
   return json(request, {
     data: {
       tenant_settings: settingsResult.data ?? null,
@@ -638,6 +679,39 @@ async function handleGetSettings(
       tenant_sso_configurations: sso ? [safeSsoConfiguration(sso)] : [],
       tenant_feature_flags: featuresResult.data ?? [],
       roles: rolesResult.roles ?? [],
+      entra_directory: {
+        trusted_entra_tenant_id: isUuid(trustedEntraTenantResult.data)
+          ? trustedEntraTenantResult.data
+          : null,
+        configured_entra_tenant_id:
+          entraDirectory && isUuid(entraDirectory.entra_tenant_id)
+            ? entraDirectory.entra_tenant_id
+            : null,
+        enabled: entraDirectory?.enabled === true,
+        last_connection_tested_at:
+          typeof entraDirectory?.last_connection_tested_at === "string"
+            ? entraDirectory.last_connection_tested_at
+            : null,
+        last_connection_test_status:
+          entraDirectory?.last_connection_test_status === "success" ||
+          entraDirectory?.last_connection_test_status === "failed"
+            ? entraDirectory.last_connection_test_status
+            : null,
+        last_sync_started_at:
+          typeof entraDirectory?.last_sync_started_at === "string"
+            ? entraDirectory.last_sync_started_at
+            : null,
+        last_sync_completed_at:
+          typeof entraDirectory?.last_sync_completed_at === "string"
+            ? entraDirectory.last_sync_completed_at
+            : null,
+        last_sync_status:
+          entraDirectory?.last_sync_status === "success" ||
+          entraDirectory?.last_sync_status === "failed" ||
+          entraDirectory?.last_sync_status === "running"
+            ? entraDirectory.last_sync_status
+            : null,
+      },
     },
   });
 }
@@ -1060,6 +1134,38 @@ async function handleUpdateSsoConfiguration(
   });
 }
 
+async function handleUpdateEntraDirectoryConfiguration(
+  admin: any,
+  request: Request,
+  action: Extract<Action, { type: "updateEntraDirectoryConfiguration" }>,
+  actorId: string,
+): Promise<Response> {
+  const { error } = await admin.rpc("configure_entra_directory_sync", {
+    p_actor_id: actorId,
+    p_tenant_id: action.tenantId,
+    p_enabled: action.enabled,
+  });
+  if (error) {
+    const code =
+      error.code === "42501"
+        ? "tenant_admin_required"
+        : error.message === "Entra directory sync is in progress"
+          ? "directory_sync_in_progress"
+          : "directory_sso_binding_required";
+    return json(
+      request,
+      { error: { code } },
+      error.code === "42501"
+        ? 403
+        : code === "directory_sync_in_progress"
+          ? 409
+          : 422,
+    );
+  }
+
+  return json(request, { data: { updated: true } });
+}
+
 async function handleToggleFeature(
   admin: any,
   request: Request,
@@ -1269,6 +1375,14 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
   }
   if (action.type === "updateSsoConfiguration") {
     return handleUpdateSsoConfiguration(
+      context.supabaseAdmin,
+      request,
+      action,
+      actorId,
+    );
+  }
+  if (action.type === "updateEntraDirectoryConfiguration") {
+    return handleUpdateEntraDirectoryConfiguration(
       context.supabaseAdmin,
       request,
       action,

@@ -69,6 +69,9 @@ verify_jwt = true
 [functions.tenant-admin-settings]
 verify_jwt = true
 
+[functions.entra-directory-sync]
+verify_jwt = true
+
 [functions.tenant-audit-log]
 verify_jwt = true
 

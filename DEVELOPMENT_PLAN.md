@@ -6,6 +6,8 @@
 
 Die nachfolgenden Lieferpakete werden isoliert und in dieser Reihenfolge umgesetzt: Owner-Schutz und nicht aktiver Deploy-Entwurf, kontrollierte Ticketautomation, strukturierte Assetpflege mit gesperrter Intune-Run-Control, Entra-Verzeichnis/SSO/Agentenreservationen sowie die nachgelagerte iOS-Bedienbarkeit. Externe Provider, Produktiv-Dispatches, Retention-Löschungen, unbeaufsichtigte Scheduler und neue Expo-/EAS-Builds benötigen weiterhin jeweils eine separate Freigabe und werden in diesen Lieferpaketen nicht aktiviert.
 
+**P1.1 Entra-Verzeichniskonfiguration: lokal in Umsetzung.** Die Konfiguration wird ausschliesslich aus einer aktiven, tenant-spezifischen Azure-SSO-URL abgeleitet und ist über service-role-only RPCs, Auditierung, Verbindungstest, pro-Mandant-Lease sowie RLS-Regressionen abgesichert. Die Mandantenadministration kann den Connector speichern, deaktiviert testen und erst danach einen manuellen Abgleich auslösen. Ein regelmässiger Scheduler, ein echter Kundensync und eine Produktionsbereitstellung bleiben bis zur vollständigen Releaseprüfung und separaten Freigabe gesperrt.
+
 ## Phase 1 – Architektur und Fundament
 
 **Status: abgeschlossen.** Monorepo, Architektur, Datenmodell, Berechtigungskatalog, sechs Kernmigrationen, Diagramm und Referenztests sind vorhanden. Die Migrationen und die zentralen RLS-Szenarien wurden in einem isolierten PostgreSQL-16-Cluster mit Auth-Shim ausgeführt. CI und eine Prüfung gegen eine echte Supabase-Instanz gehören zu Phase 2.

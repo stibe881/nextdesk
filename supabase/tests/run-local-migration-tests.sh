@@ -3075,5 +3075,340 @@ begin
 end;
 $$;
 rollback;
+
+-- The Entra directory connector is exclusively operated through service-role
+-- RPCs. Its Entra tenant is derived from the active tenant-specific Azure SSO
+-- URL; browser roles can neither read its private configuration nor call it.
+do $$
+begin
+  if has_table_privilege('anon', 'public.tenant_entra_directory_sync_configurations', 'select')
+    or has_table_privilege('authenticated', 'public.tenant_entra_directory_sync_configurations', 'select') then
+    raise exception 'Browser roles retained Entra directory configuration access';
+  end if;
+  if has_function_privilege('authenticated', 'public.configure_entra_directory_sync(uuid, uuid, boolean)', 'execute')
+    or has_function_privilege('authenticated', 'public.record_entra_directory_connection_test(uuid, uuid, uuid, bigint, boolean)', 'execute')
+    or has_function_privilege('authenticated', 'public.claim_entra_directory_sync_run(uuid, uuid, uuid)', 'execute')
+    or has_function_privilege('authenticated', 'public.renew_entra_directory_sync_run(uuid, uuid, uuid, bigint, uuid)', 'execute')
+    or has_function_privilege('authenticated', 'public.upsert_fenced_entra_directory_people_batch(uuid, uuid, uuid, bigint, uuid, timestamptz, jsonb)', 'execute')
+    or has_function_privilege('authenticated', 'public.finalize_fenced_entra_directory_sync_run(uuid, uuid, uuid, bigint, uuid, timestamptz, integer)', 'execute')
+    or has_function_privilege('authenticated', 'public.fail_entra_directory_sync_run(uuid, uuid, uuid, bigint)', 'execute')
+    or has_function_privilege('authenticated', 'public.trusted_entra_tenant_id_for_tenant(uuid)', 'execute') then
+    raise exception 'Authenticated role executed Entra directory service RPCs';
+  end if;
+  if not has_function_privilege('service_role', 'public.configure_entra_directory_sync(uuid, uuid, boolean)', 'execute')
+    or not has_function_privilege('service_role', 'public.record_entra_directory_connection_test(uuid, uuid, uuid, bigint, boolean)', 'execute')
+    or not has_function_privilege('service_role', 'public.claim_entra_directory_sync_run(uuid, uuid, uuid)', 'execute')
+    or not has_function_privilege('service_role', 'public.renew_entra_directory_sync_run(uuid, uuid, uuid, bigint, uuid)', 'execute')
+    or not has_function_privilege('service_role', 'public.upsert_fenced_entra_directory_people_batch(uuid, uuid, uuid, bigint, uuid, timestamptz, jsonb)', 'execute')
+    or not has_function_privilege('service_role', 'public.finalize_fenced_entra_directory_sync_run(uuid, uuid, uuid, bigint, uuid, timestamptz, integer)', 'execute')
+    or not has_function_privilege('service_role', 'public.fail_entra_directory_sync_run(uuid, uuid, uuid, bigint)', 'execute')
+    or not has_function_privilege('service_role', 'public.trusted_entra_tenant_id_for_tenant(uuid)', 'execute') then
+    raise exception 'Service role lost an Entra directory service RPC';
+  end if;
+end;
+$$;
+
+begin;
+update public.tenant_sso_configurations
+set provider = 'azure_ad',
+    enabled = true,
+    issuer_url = 'https://login.microsoftonline.com/11111111-1111-4111-8111-111111111111/v2.0',
+    discovery_url = null
+where tenant_id = '10000000-0000-4000-8000-000000000001';
+set local role service_role;
+do $$
+declare
+  v_tenant_a constant uuid := '10000000-0000-4000-8000-000000000001';
+  v_admin constant uuid := '00000000-0000-4000-8000-000000000002';
+  v_requester constant uuid := '00000000-0000-4000-8000-000000000001';
+  v_entra_tenant constant uuid := '11111111-1111-4111-8111-111111111111';
+  v_first_run constant uuid := '40000000-0000-4000-8000-000000000001';
+  v_second_run constant uuid := '40000000-0000-4000-8000-000000000002';
+  v_third_run constant uuid := '40000000-0000-4000-8000-000000000003';
+  v_outcome text;
+  v_claimed_tenant uuid;
+  v_started_at timestamptz;
+  v_sync_generation bigint;
+  v_test_generation bigint;
+  v_connection_test_status text;
+  v_completed boolean;
+  v_configured_tenant uuid;
+  v_configured_enabled boolean;
+  v_connection_tested_at timestamptz;
+begin
+  begin
+    perform public.configure_entra_directory_sync(v_requester, v_tenant_a, false);
+    raise exception 'Non-admin configured the Entra directory connector';
+  exception when others then
+    if sqlstate = 'P0001' and sqlerrm = 'Non-admin configured the Entra directory connector' then
+      raise;
+    end if;
+  end;
+
+  if public.trusted_entra_tenant_id_for_tenant(v_tenant_a) is distinct from v_entra_tenant then
+    raise exception 'Tenant-specific active Azure SSO issuer was not trusted';
+  end if;
+
+  select entra_tenant_id, enabled, last_connection_tested_at
+  into v_configured_tenant, v_configured_enabled, v_connection_tested_at
+  from public.configure_entra_directory_sync(v_admin, v_tenant_a, false);
+  if v_configured_tenant is distinct from v_entra_tenant
+    or v_configured_enabled is distinct from false
+    or v_connection_tested_at is not null then
+    raise exception 'Disabled Entra connector was not bound to the trusted SSO tenant';
+  end if;
+
+  -- An active connector without a successful test must stay blocked. A saved
+  -- but disabled connector can then be tested without enabling a sync.
+  perform public.configure_entra_directory_sync(v_admin, v_tenant_a, true);
+  select outcome
+  into v_outcome
+  from public.claim_entra_directory_sync_run(v_admin, v_tenant_a, v_first_run);
+  if v_outcome <> 'not_ready' then
+    raise exception 'Untested Entra connector permitted an actual sync claim';
+  end if;
+  select sync_generation
+  into v_test_generation
+  from public.configure_entra_directory_sync(v_admin, v_tenant_a, false);
+  perform public.record_entra_directory_connection_test(
+    v_admin,
+    v_tenant_a,
+    v_entra_tenant,
+    v_test_generation,
+    true
+  );
+
+  select outcome, entra_tenant_id, started_at
+  into v_outcome, v_claimed_tenant, v_started_at
+  from public.claim_entra_directory_sync_run(v_admin, v_tenant_a, v_first_run);
+  if v_outcome <> 'not_ready' or v_claimed_tenant is not null or v_started_at is not null then
+    raise exception 'Disabled Entra connector permitted an actual sync claim';
+  end if;
+
+  perform public.configure_entra_directory_sync(v_admin, v_tenant_a, true);
+  select outcome, entra_tenant_id, started_at, sync_generation
+  into v_outcome, v_claimed_tenant, v_started_at, v_sync_generation
+  from public.claim_entra_directory_sync_run(v_admin, v_tenant_a, v_first_run);
+  if v_outcome <> 'claimed'
+    or v_claimed_tenant is distinct from v_entra_tenant
+    or v_started_at is null
+    or v_sync_generation < 1 then
+    raise exception 'Enabled Entra connector did not issue a bound sync lease';
+  end if;
+
+  select outcome
+  into v_outcome
+  from public.claim_entra_directory_sync_run(v_admin, v_tenant_a, v_second_run);
+  if v_outcome <> 'in_progress' then
+    raise exception 'Concurrent Entra sync was not prevented by the lease';
+  end if;
+
+  begin
+    perform public.configure_entra_directory_sync(v_admin, v_tenant_a, false);
+    raise exception 'Entra connector changed during an active sync';
+  exception when others then
+    if sqlstate = 'P0001' and sqlerrm = 'Entra connector changed during an active sync' then
+      raise;
+    end if;
+  end;
+
+  select public.fail_entra_directory_sync_run(
+    v_admin, v_tenant_a, v_second_run, v_sync_generation
+  ) into v_completed;
+  if v_completed then
+    raise exception 'A sync run with a mismatched run ID was completed';
+  end if;
+
+  begin
+    perform public.fail_entra_directory_sync_run(
+      v_requester, v_tenant_a, v_first_run, v_sync_generation
+    );
+    raise exception 'Non-admin completed an Entra sync run';
+  exception when others then
+    if sqlstate = 'P0001' and sqlerrm = 'Non-admin completed an Entra sync run' then
+      raise;
+    end if;
+  end;
+
+end;
+$$;
+reset role;
+select set_config(
+  'nextdesk.test_entra_sync_generation',
+  (
+    select sync_generation::text
+    from public.tenant_entra_directory_sync_configurations
+    where tenant_id = '10000000-0000-4000-8000-000000000001'
+  ),
+  true
+);
+update public.tenant_sso_configurations
+set issuer_url = 'https://login.microsoftonline.com/22222222-2222-4222-8222-222222222222/v2.0'
+where tenant_id = '10000000-0000-4000-8000-000000000001';
+set local role service_role;
+do $$
+declare
+  v_generation bigint := current_setting('nextdesk.test_entra_sync_generation', true)::bigint;
+begin
+  begin
+    perform public.upsert_fenced_entra_directory_people_batch(
+      '00000000-0000-4000-8000-000000000002',
+      '10000000-0000-4000-8000-000000000001',
+      '40000000-0000-4000-8000-000000000001',
+      v_generation,
+      '11111111-1111-4111-8111-111111111111',
+      timezone('utc', now()),
+      jsonb_build_array(jsonb_build_object(
+        'entra_object_id', '40000000-0000-4000-8000-000000000099',
+        'email', 'old-directory@example.test',
+        'display_name', 'Old Directory',
+        'job_title', null,
+        'source_department_name', null,
+        'account_enabled', true
+      ))
+    );
+    raise exception 'Rebound SSO permitted an old Entra directory write';
+  exception when others then
+    if sqlstate = 'P0001' and sqlerrm = 'Rebound SSO permitted an old Entra directory write' then
+      raise;
+    end if;
+  end;
+end;
+$$;
+reset role;
+update public.tenant_sso_configurations
+set issuer_url = 'https://login.microsoftonline.com/11111111-1111-4111-8111-111111111111/v2.0'
+where tenant_id = '10000000-0000-4000-8000-000000000001';
+update public.tenant_entra_directory_sync_configurations
+set sync_lease_expires_at = timezone('utc', now()) - interval '1 second'
+where tenant_id = '10000000-0000-4000-8000-000000000001';
+set local role service_role;
+do $$
+declare
+  v_tenant_a constant uuid := '10000000-0000-4000-8000-000000000001';
+  v_admin constant uuid := '00000000-0000-4000-8000-000000000002';
+  v_entra_tenant constant uuid := '11111111-1111-4111-8111-111111111111';
+  v_third_run constant uuid := '40000000-0000-4000-8000-000000000003';
+  v_outcome text;
+  v_claimed_tenant uuid;
+  v_started_at timestamptz;
+  v_sync_generation bigint;
+begin
+  select outcome, entra_tenant_id, started_at, sync_generation
+  into v_outcome, v_claimed_tenant, v_started_at, v_sync_generation
+  from public.claim_entra_directory_sync_run(v_admin, v_tenant_a, v_third_run);
+  if v_outcome <> 'claimed'
+    or v_claimed_tenant is distinct from v_entra_tenant
+    or v_started_at is null
+    or v_sync_generation < 1 then
+    raise exception 'Expired Entra sync lease was not recoverable';
+  end if;
+
+  perform *
+  from public.finalize_fenced_entra_directory_sync_run(
+    v_admin,
+    v_tenant_a,
+    v_third_run,
+    v_sync_generation,
+    v_entra_tenant,
+    v_started_at,
+    12
+  );
+end;
+$$;
+reset role;
+-- A late success for a test started against tenant A must never unlock a
+-- connector that has meanwhile been rebound and saved for tenant B.
+select set_config(
+  'nextdesk.test_entra_connection_generation',
+  (
+    select sync_generation::text
+    from public.tenant_entra_directory_sync_configurations
+    where tenant_id = '10000000-0000-4000-8000-000000000001'
+  ),
+  true
+);
+update public.tenant_sso_configurations
+set issuer_url = 'https://login.microsoftonline.com/22222222-2222-4222-8222-222222222222/v2.0'
+where tenant_id = '10000000-0000-4000-8000-000000000001';
+set local role service_role;
+do $$
+declare
+  v_tenant_a constant uuid := '10000000-0000-4000-8000-000000000001';
+  v_admin constant uuid := '00000000-0000-4000-8000-000000000002';
+  v_tenant_a_entra constant uuid := '11111111-1111-4111-8111-111111111111';
+  v_old_generation bigint := current_setting('nextdesk.test_entra_connection_generation', true)::bigint;
+  v_connection_test_status text;
+begin
+  select last_connection_test_status
+  into v_connection_test_status
+  from public.configure_entra_directory_sync(v_admin, v_tenant_a, false);
+  if v_connection_test_status is not null then
+    raise exception 'Rebound Entra configuration retained a prior test success';
+  end if;
+
+  begin
+    perform public.record_entra_directory_connection_test(
+      v_admin,
+      v_tenant_a,
+      v_tenant_a_entra,
+      v_old_generation,
+      true
+    );
+    raise exception 'Late Entra connection test marked a rebound configuration as successful';
+  exception when others then
+    if sqlstate = 'P0001'
+      and sqlerrm = 'Late Entra connection test marked a rebound configuration as successful' then
+      raise;
+    end if;
+  end;
+
+  select last_connection_test_status
+  into v_connection_test_status
+  from public.configure_entra_directory_sync(v_admin, v_tenant_a, false);
+  if v_connection_test_status is not null then
+    raise exception 'Rebound Entra configuration retained a late test success';
+  end if;
+end;
+$$;
+reset role;
+update public.tenant_sso_configurations
+set issuer_url = 'https://login.microsoftonline.com/11111111-1111-4111-8111-111111111111/v2.0'
+where tenant_id = '10000000-0000-4000-8000-000000000001';
+set local role service_role;
+do $$
+declare
+  v_tenant_a constant uuid := '10000000-0000-4000-8000-000000000001';
+  v_admin constant uuid := '00000000-0000-4000-8000-000000000002';
+  v_tenant_a_entra constant uuid := '11111111-1111-4111-8111-111111111111';
+  v_generation bigint;
+begin
+  select sync_generation
+  into v_generation
+  from public.configure_entra_directory_sync(v_admin, v_tenant_a, true);
+  perform public.record_entra_directory_connection_test(
+    v_admin,
+    v_tenant_a,
+    v_tenant_a_entra,
+    v_generation,
+    true
+  );
+end;
+$$;
+reset role;
+do $$
+begin
+  if exists (
+    select 1
+    from public.audit_logs
+    where tenant_id = '10000000-0000-4000-8000-000000000001'
+      and action like 'tenant.entra_directory.%'
+      and (metadata ? 'email' or metadata ? 'token' or metadata ? 'entra_tenant_id')
+  ) then
+    raise exception 'Entra directory audit metadata retained sensitive values';
+  end if;
+end;
+$$;
+rollback;
 SQL
 echo "PostgreSQL 16 migration and RLS integration checks passed."

@@ -82,6 +82,7 @@ const expectedFiles = [
   "0078_fix_entra_agent_directory_assignment.sql",
   "0079_list_pending_sla_breaches.sql",
   "0080_harden_sla_breach_feature_gate.sql",
+  "0081_entra_directory_configuration_management.sql",
 ];
 
 const availableFiles = await readdir(migrationDirectory);
@@ -708,6 +709,50 @@ const requiredFragments = [
     "0080_harden_sla_breach_feature_gate.sql",
     "revoke all on function public.apply_sla_breach(uuid, text, uuid) from public, anon, authenticated",
   ],
+  [
+    "0081_entra_directory_configuration_management.sql",
+    "create or replace function public.trusted_entra_tenant_id_for_tenant",
+  ],
+  [
+    "0081_entra_directory_configuration_management.sql",
+    "create or replace function public.configure_entra_directory_sync",
+  ],
+  [
+    "0081_entra_directory_configuration_management.sql",
+    "create or replace function public.record_entra_directory_connection_test",
+  ],
+  [
+    "0081_entra_directory_configuration_management.sql",
+    "grant execute on function public.record_entra_directory_connection_test(uuid, uuid, uuid, bigint, boolean) to service_role",
+  ],
+  [
+    "0081_entra_directory_configuration_management.sql",
+    "create or replace function public.claim_entra_directory_sync_run",
+  ],
+  [
+    "0081_entra_directory_configuration_management.sql",
+    "revoke all on function public.claim_entra_directory_sync_run(uuid, uuid, uuid) from public, anon, authenticated",
+  ],
+  [
+    "0081_entra_directory_configuration_management.sql",
+    "create or replace function public.assert_fenced_entra_directory_sync_run",
+  ],
+  [
+    "0081_entra_directory_configuration_management.sql",
+    "create or replace function public.upsert_fenced_entra_directory_people_batch",
+  ],
+  [
+    "0081_entra_directory_configuration_management.sql",
+    "create or replace function public.finalize_fenced_entra_directory_sync_run",
+  ],
+  [
+    "0081_entra_directory_configuration_management.sql",
+    "revoke all on function public.upsert_fenced_entra_directory_people_batch(uuid, uuid, uuid, bigint, uuid, timestamptz, jsonb) from public, anon, authenticated",
+  ],
+  [
+    "0081_entra_directory_configuration_management.sql",
+    "grant execute on function public.finalize_fenced_entra_directory_sync_run(uuid, uuid, uuid, bigint, uuid, timestamptz, integer) to service_role",
+  ],
 ];
 
 for (const [migration, fragment] of requiredFragments) {
@@ -716,6 +761,20 @@ for (const [migration, fragment] of requiredFragments) {
       `${migration} is missing required schema fragment: ${fragment}`,
     );
   }
+}
+
+const functionConfiguration = await readFile(
+  new URL("../supabase/config.toml", import.meta.url),
+  "utf8",
+);
+if (
+  !functionConfiguration.includes(
+    "[functions.entra-directory-sync]\nverify_jwt = true",
+  )
+) {
+  throw new Error(
+    "entra-directory-sync must explicitly require verified user JWTs.",
+  );
 }
 
 console.log(
