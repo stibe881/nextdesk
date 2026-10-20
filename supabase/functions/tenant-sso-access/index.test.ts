@@ -51,6 +51,19 @@ Deno.test(
       source.includes('.eq("accepted_by", userId)'),
       "Invitation acceptance must be bound to the person recorded by the claim",
     );
+    assert(
+      source.includes("const email = canonicalAuthEmail(userData.user.email)"),
+      "SSO domain routing must use the server-loaded canonical auth e-mail",
+    );
+    assert(
+      !source.includes("context.userClaims?.email"),
+      "SSO domain routing must not depend on a potentially stale JWT e-mail mirror",
+    );
+    assert(
+      source.indexOf("auth.admin.getUserById(actorId)") <
+        source.indexOf('.from("tenant_sso_allowed_domains")'),
+      "The canonical auth record must be loaded before domain routing",
+    );
   },
 );
 

@@ -114,6 +114,12 @@ function emailDomain(email: unknown): string | null {
     : null;
 }
 
+function canonicalAuthEmail(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const email = value.trim().toLocaleLowerCase("de-CH");
+  return emailDomain(email) ? email : null;
+}
+
 function hasAzureOAuthSession(
   appMetadata: unknown,
   identities: unknown,
@@ -735,12 +741,21 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     return error(request, "method_not_allowed", 405);
   }
   const actorId = context.userClaims?.id;
-  const email =
-    typeof context.userClaims?.email === "string"
-      ? context.userClaims.email.trim().toLocaleLowerCase("de-CH")
-      : null;
+  if (typeof actorId !== "string") {
+    return error(request, "sso_email_claim_required", 403);
+  }
+
+  // Use the canonical auth record for domain routing. OAuth provider claims in
+  // a freshly exchanged JWT can lag behind the identity persisted by Supabase;
+  // the server-loaded e-mail remains bound to the authenticated actor below.
+  const { data: userData, error: userError } =
+    await context.supabaseAdmin.auth.admin.getUserById(actorId);
+  if (userError || !userData.user) {
+    return error(request, "sso_identity_lookup_failed", 500);
+  }
+  const email = canonicalAuthEmail(userData.user.email);
   const domain = emailDomain(email);
-  if (typeof actorId !== "string" || !email || !domain) {
+  if (!email || !domain) {
     return error(request, "sso_email_claim_required", 403);
   }
 
@@ -793,11 +808,6 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     return error(request, "sso_configuration_not_active", 403);
   }
 
-  const { data: userData, error: userError } =
-    await context.supabaseAdmin.auth.admin.getUserById(actorId);
-  if (userError || !userData.user) {
-    return error(request, "sso_identity_lookup_failed", 500);
-  }
   if (
     !hasAzureOAuthSession(
       userData.user.app_metadata,

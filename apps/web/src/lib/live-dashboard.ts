@@ -245,6 +245,13 @@ function requireSupabase() {
   return supabase;
 }
 
+export function isAssignedToCurrentUser(
+  assignedAgentId: string | null,
+  currentUserId: string | null | undefined,
+): boolean {
+  return typeof currentUserId === "string" && assignedAgentId === currentUserId;
+}
+
 function startDate(period: Period): string {
   const date = new Date();
   const days = period === "Heute" ? 1 : period === "7 Tage" ? 7 : 30;
@@ -415,10 +422,10 @@ export async function loadLiveDashboard(
         ticket.assigned_agent_id === null
           ? null
           : (assignedAgentNames.get(ticket.assigned_agent_id) ?? null),
-      assignedToCurrentUser:
-        Boolean(user) &&
-        (ticket.assigned_agent_id === user?.id ||
-          ticket.requester_id === user?.id),
+      assignedToCurrentUser: isAssignedToCurrentUser(
+        ticket.assigned_agent_id,
+        user?.id,
+      ),
       createdAt: ticket.created_at,
       id: ticket.ticket_number,
       recordId: ticket.id,
@@ -463,7 +470,7 @@ export async function loadLiveDashboard(
           .from("tickets")
           .select("id", { count: "exact", head: true })
           .eq("tenant_id", tenant.id)
-          .or(`assigned_agent_id.eq.${user.id},requester_id.eq.${user.id}`)
+          .eq("assigned_agent_id", user.id)
       : Promise.resolve({ count: 0, error: null }),
     client
       .from("tickets")
@@ -520,7 +527,7 @@ export async function loadLiveDashboard(
       closed: String(closedCount),
       closedDetail: "im aktuellen Bestand",
       mine: String(mineCount),
-      mineDetail: "mir zugewiesen oder erstellt",
+      mineDetail: "mir zugewiesen",
       open: String(openCount),
       openDetail: "aktuell offen",
       unassigned: String(unassignedCount),

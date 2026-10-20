@@ -1958,7 +1958,6 @@ time,
 }
 
 .notice-beacon,
-.signal-dot,
 .owner-access-status span,
 .owner-console-status span {
   flex: 0 0 auto;
@@ -2000,27 +1999,8 @@ time,
   padding: 26px 0 22px;
 }
 
-.signal-copy {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px;
-  font-size: 14px;
-}
-
-.signal-copy strong {
-  color: var(--ink);
-  font-weight: 600;
-}
-
-.signal-copy > span:last-child {
-  color: var(--muted);
-  font-size: 13px;
-}
-
-.signal-dot {
-  background: var(--surface-tint-13846b);
-  box-shadow: 0 0 0 4px var(--shadow-tint-def2e9);
+.signal-row--period {
+  justify-content: flex-end;
 }
 
 .segmented {
@@ -6449,10 +6429,6 @@ body:has(.ticket-detail) {
   .signal-row {
     align-items: flex-start;
     gap: 20px;
-  }
-
-  .signal-copy {
-    line-height: 1.6;
   }
 
   .side-stack {

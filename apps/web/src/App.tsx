@@ -3584,22 +3584,9 @@ export function App() {
         ) : (
           <>
             <section
-              className="signal-row"
-              aria-label="Aktueller Betriebszustand"
+              className="signal-row signal-row--period"
+              aria-label="Zeitraum"
             >
-              <div className="signal-copy">
-                <span className="signal-dot" />
-                <strong>
-                  {isSupabaseConfigured
-                    ? "Mandantenkontext aktiv"
-                    : "Alle Kernservices operativ"}
-                </strong>
-                <span>
-                  {dashboardLoading
-                    ? "Daten werden aktualisiert …"
-                    : `Letzte Aktualisierung ${view.updatedAt}`}
-                </span>
-              </div>
               <div className="segmented" aria-label="Zeitraum">
                 {(["Heute", "7 Tage", "30 Tage"] as const).map((option) => (
                   <button
