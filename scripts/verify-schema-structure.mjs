@@ -86,6 +86,7 @@ const expectedFiles = [
   "0082_tenant_administrator_ticket_delete_permission.sql",
   "0083_asset_intune_local_preflight_control.sql",
   "0084_harden_asset_feature_gate_membership.sql",
+  "0085_harden_sso_provisioning_offboarding.sql",
 ];
 
 const availableFiles = await readdir(migrationDirectory);
@@ -827,6 +828,54 @@ const requiredFragments = [
     "0084_harden_asset_feature_gate_membership.sql",
     "select public.is_active_tenant_member(p_tenant_id)",
   ],
+  [
+    "0085_harden_sso_provisioning_offboarding.sql",
+    "add column if not exists accepted_by uuid references auth.users(id)",
+  ],
+  [
+    "0085_harden_sso_provisioning_offboarding.sql",
+    "create or replace function public.claim_verified_tenant_sso_membership",
+  ],
+  [
+    "0085_harden_sso_provisioning_offboarding.sql",
+    "create or replace function public.claim_current_tenant_user_invitation",
+  ],
+  [
+    "0085_harden_sso_provisioning_offboarding.sql",
+    "and invitation.email = lower(trim(p_email::text))::citext",
+  ],
+  [
+    "0085_harden_sso_provisioning_offboarding.sql",
+    "create trigger tenant_memberships_prevent_removed_reactivation",
+  ],
+  [
+    "0085_harden_sso_provisioning_offboarding.sql",
+    "create or replace function public.revoke_tenant_user_invitation",
+  ],
+  [
+    "0085_harden_sso_provisioning_offboarding.sql",
+    "and user_id = v_invitation.accepted_by",
+  ],
+  [
+    "0085_harden_sso_provisioning_offboarding.sql",
+    "if v_invitation.status not in ('pending', 'sent', 'failed', 'accepted') then",
+  ],
+  [
+    "0085_harden_sso_provisioning_offboarding.sql",
+    "and status in ('sent', 'accepted');",
+  ],
+  [
+    "0085_harden_sso_provisioning_offboarding.sql",
+    "perform set_config('nextdesk.entra_agent_assignment_operation', 'on', true);",
+  ],
+  [
+    "0085_harden_sso_provisioning_offboarding.sql",
+    "revoke all on function public.claim_verified_tenant_sso_membership(uuid, uuid, citext)",
+  ],
+  [
+    "0085_harden_sso_provisioning_offboarding.sql",
+    "grant execute on function public.claim_current_tenant_user_invitation(uuid, citext, uuid)\n  to service_role",
+  ],
 ];
 
 for (const [migration, fragment] of requiredFragments) {
@@ -875,6 +924,20 @@ if (
   throw new Error(
     "intune-asset-sync must explicitly require verified user JWTs while provider sync is disabled.",
   );
+}
+if (
+  !functionConfiguration.includes(
+    "[functions.tenant-sso-access]\nverify_jwt = true",
+  )
+) {
+  throw new Error(
+    "tenant-sso-access must explicitly require verified user JWTs.",
+  );
+}
+if (
+  !functionConfiguration.includes("[functions.tenant-users]\nverify_jwt = true")
+) {
+  throw new Error("tenant-users must explicitly require verified user JWTs.");
 }
 
 console.log(

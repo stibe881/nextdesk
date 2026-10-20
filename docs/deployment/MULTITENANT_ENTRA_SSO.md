@@ -62,6 +62,14 @@ Nach der Zustimmung testet der eingeladene Benutzer die Anmeldung über **MIT SS
 
 Erst nach diesem Test kann die Mandantenadministration **SSO für die Anmeldung erzwingen** aktivieren.
 
+## 5. Sichere Provisionierung und Offboarding
+
+Die mobile App führt nach einer erfolgreichen Azure-Anmeldung genau einmal eine serverseitige SSO-Mandantenprüfung aus, bevor sie den ersten Arbeitsbereich lädt. Die App übergibt dabei keine Rollen, Einladungsdaten oder Mandantenentscheidung; diese werden ausschliesslich serverseitig aus der verifizierten Sitzung, Domainbindung und Azure-Identität bestimmt. Bereits gespeicherte, aber nicht mehr zugelassene Arbeitsbereiche werden nicht stillschweigend wiederhergestellt.
+
+Ein Widerruf darf nie durch eine verspätete SSO- oder E-Mail-Einladungsantwort umgangen werden. nextDesk sperrt deshalb die betroffene Einladung und Mandantenmitgliedschaft innerhalb derselben Datenbanktransaktion. Auch die normale E-Mail-Einladungsannahme beansprucht vor allen nachgelagerten Profil- und Rollenaktionen die exakt gelistete Einladung atomar. Ein Widerruf oder eine Stornierung behandelt sowohl noch gesendete als auch bereits angenommene Einladungen als Offboarding-Ziel, sodass die letzte Annahmeaktualisierung einen administrativen Widerruf nie überholen kann. Bei Widerruf werden die Mitgliedschaft entfernt und alle noch aktiven Rollen beendet, auch eine nachweisbar aus einer Entra-Agentenvormerkung entstandene Support-Agentenrolle. Dafür darf die berechtigungsgeprüfte Widerrufs- oder Re-Invite-RPC transaktionslokal ausschliesslich ein Ablaufdatum für diese getrackte Rolle setzen; sie kann keine Rolle erstellen, verändern oder eine Mitgliedschaft reaktivieren. Ein späterer SSO- oder Einladungsclaim erhält nur den Status «entfernt» und kann weder die Mitgliedschaft noch Rollen reaktivieren. Eine erneute Einladung wird ausschliesslich über den autorisierten Einladungszustellpfad angelegt; dabei werden frühere Berechtigungen nicht übernommen.
+
+Diese Datenbankoperationen sind nur für `service_role` ausführbar. Die Edge Functions `tenant-sso-access` und `tenant-users` verlangen verifizierte Benutzer-JWTs und prüfen vor jeder Mutation die aktuelle Mandantenberechtigung. Weder Browser noch Mobile erhalten Zugriff auf die privaten Einladungs- oder Rollenoperationen.
+
 ## Test- und Rückfallregeln
 
 - Vor dem Erzwingen immer mindestens eine reale Kundenanmeldung prüfen.

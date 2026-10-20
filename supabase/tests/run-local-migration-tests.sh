@@ -3904,6 +3904,318 @@ set local role authenticated;
 	end;
 	$$;
 
-	rollback;
+		-- A verified SSO claim may promote an invitation, but a later cancellation
+		-- must still terminate that membership and expire every active role. A retry
+		-- of the SSO claim then remains removed instead of restoring access.
+		do $$
+		declare
+		  v_tenant uuid;
+		  v_department uuid;
+		  v_invitation uuid;
+		  v_role uuid;
+		  v_claim jsonb;
+		  v_user constant uuid := '00000000-0000-4000-8000-000000000006';
+		  v_current_invitation_user constant uuid := '00000000-0000-4000-8000-000000000007';
+		  v_after_claim_user constant uuid := '00000000-0000-4000-8000-000000000008';
+		  v_admin constant uuid := '00000000-0000-4000-8000-000000000004';
+		begin
+		  select id into v_tenant
+		  from public.tenants
+		  where slug = 'tenant-c';
+		  select id into v_role
+		  from public.roles
+		  where tenant_id = v_tenant
+		    and name = 'Requester'
+		    and scope = 'tenant';
+		  select id into v_department
+		  from public.departments
+		  where tenant_id = v_tenant
+		    and key = 'ict';
+
+		  v_invitation := public.prepare_tenant_invitation(
+		    v_admin,
+		    v_tenant,
+		    'sso-offboarding@example.ch'::citext
+		  );
+		  perform public.record_tenant_invitation_delivery(
+		    v_admin,
+		    v_invitation,
+		    v_user
+		  );
+		  v_claim := public.claim_verified_tenant_sso_membership(
+		    v_tenant,
+		    v_user,
+		    'sso-offboarding@example.ch'::citext
+		  );
+		  if v_claim->>'status' <> 'active'
+		    or coalesce((v_claim->>'was_active')::boolean, true) then
+		    raise exception 'Verified SSO claim did not activate an invited member';
+		  end if;
+
+		  insert into public.user_role_assignments (
+		    tenant_id,
+		    user_id,
+		    role_id,
+		    assigned_by
+		  ) values (v_tenant, v_user, v_role, v_admin);
+		  update public.tenant_invitations
+		  set status = 'accepted',
+		      accepted_at = timezone('utc', now())
+		  where id = v_invitation
+		    and status = 'sent';
+		  perform public.cancel_tenant_invitation(v_admin, v_invitation);
+
+		  if not exists (
+		    select 1
+		    from public.tenant_memberships membership
+		    where membership.tenant_id = v_tenant
+		      and membership.user_id = v_user
+		      and membership.status = 'removed'
+		  ) or exists (
+		    select 1
+		    from public.user_role_assignments assignment
+		    where assignment.tenant_id = v_tenant
+		      and assignment.user_id = v_user
+		      and (
+		        assignment.expires_at is null
+		        or assignment.expires_at > timezone('utc', now()) + interval '1 second'
+		      )
+		  ) then
+		    raise exception 'Cancelling an SSO invitation did not remove access atomically';
+		  end if;
+
+		  v_claim := public.claim_verified_tenant_sso_membership(
+		    v_tenant,
+		    v_user,
+		    'sso-offboarding@example.ch'::citext
+		  );
+		  if v_claim->>'status' <> 'removed' then
+		    raise exception 'Delayed SSO claim reactivated a removed membership';
+		  end if;
+		  begin
+		    update public.tenant_memberships
+		    set status = 'active'
+		    where tenant_id = v_tenant and user_id = v_user;
+		    raise exception 'Removed membership was reactivated outside a re-invitation';
+		  exception when raise_exception then
+		    if sqlerrm <> 'A removed tenant membership cannot be reactivated' then
+		      raise;
+		    end if;
+		  end;
+
+		  -- The current tenant-users invitation flow has no local membership until
+		  -- its locked acceptance claim promotes it. Revocation must therefore both
+		  -- block a future claim and remove a claim that committed immediately before.
+		  insert into auth.users (id)
+		  values (v_current_invitation_user)
+		  on conflict (id) do nothing;
+		  insert into public.user_profiles (id, display_name)
+		  values (v_current_invitation_user, 'Current invitation SSO test')
+		  on conflict (id) do nothing;
+		  insert into public.tenant_user_invitations (
+		    tenant_id,
+		    email,
+		    invited_by,
+		    expires_at,
+		    role_name
+		  ) values (
+		    v_tenant,
+		    'sso-current-revocation@example.ch'::citext,
+		    v_admin,
+		    timezone('utc', now()) + interval '1 day',
+		    'Requester'
+		  ) returning id into v_invitation;
+		  v_claim := public.claim_current_tenant_user_invitation(
+		    v_current_invitation_user,
+		    'sso-current-revocation@example.ch'::citext,
+		    v_invitation
+		  );
+		  if v_claim->>'status' <> 'active' or v_claim->'invitation' is null then
+		    raise exception 'Current invitation claim did not lock and bind the invitation';
+		  end if;
+		  if not exists (
+		    select 1 from public.roles
+		    where tenant_id = v_tenant
+		      and name = 'Support agent'
+		      and scope = 'department'
+		  ) then
+		    insert into public.roles (tenant_id, name, scope)
+		    values (v_tenant, 'Support agent', 'department');
+		  end if;
+		  insert into public.tenant_entra_directory_people (
+		    tenant_id,
+		    entra_object_id,
+		    email,
+		    display_name,
+		    local_user_id
+		  ) values (
+		    v_tenant,
+		    '30000000-0000-4000-8000-000000000009',
+		    'sso-current-revocation@example.ch',
+		    'Tracked current invitation agent',
+		    v_current_invitation_user
+		  );
+		  perform public.set_entra_agent_request(
+		    v_tenant,
+		    '30000000-0000-4000-8000-000000000009',
+		    true,
+		    v_department,
+		    v_admin
+		  );
+		  if not exists (
+		    select 1
+		    from public.tenant_entra_directory_people person
+		    join public.user_role_assignments assignment
+		      on assignment.id = person.agent_role_assignment_id
+		    where person.tenant_id = v_tenant
+		      and person.entra_object_id = '30000000-0000-4000-8000-000000000009'
+		      and assignment.user_id = v_current_invitation_user
+		      and assignment.expires_at is null
+		  ) then
+		    raise exception 'Test fixture did not create a tracked Entra agent role';
+		  end if;
+		  insert into public.user_role_assignments (
+		    tenant_id,
+		    user_id,
+		    role_id,
+		    assigned_by
+		  ) values (
+		    v_tenant,
+		    v_current_invitation_user,
+		    v_role,
+		    v_admin
+		  );
+		  update public.tenant_user_invitations
+		  set status = 'accepted',
+		      accepted_at = timezone('utc', now())
+		  where id = v_invitation
+		    and status = 'sent'
+		    and accepted_by = v_current_invitation_user;
+		  perform public.revoke_tenant_user_invitation(
+		    v_admin,
+		    v_tenant,
+		    v_invitation
+		  );
+		  if not exists (
+		    select 1
+		    from public.tenant_user_invitations invitation
+		    where invitation.id = v_invitation
+		      and invitation.status = 'revoked'
+		      and invitation.accepted_by = v_current_invitation_user
+		  ) or not exists (
+		    select 1
+		    from public.tenant_memberships membership
+		    where membership.tenant_id = v_tenant
+		      and membership.user_id = v_current_invitation_user
+		      and membership.status = 'removed'
+		  ) or exists (
+		    select 1
+		    from public.user_role_assignments assignment
+		    where assignment.tenant_id = v_tenant
+		      and assignment.user_id = v_current_invitation_user
+		      and (
+		        assignment.expires_at is null
+		        or assignment.expires_at > timezone('utc', now()) + interval '1 second'
+		      )
+		  ) then
+		    raise exception 'Revoking a current invitation left SSO access or a role active';
+		  end if;
+		  v_claim := public.claim_current_tenant_user_invitation(
+		    v_current_invitation_user,
+		    'sso-current-revocation@example.ch'::citext,
+		    v_invitation
+		  );
+		  if v_claim->>'status' <> 'removed' then
+		    raise exception 'Revoked current invitation allowed a later SSO claim';
+		  end if;
+
+		  -- If a revocation happens after the claim but before the browser can
+		  -- write downstream profile/role data, the locked role trigger must make
+		  -- the late role grant fail. This models the TOCTOU window in the former
+		  -- acceptMyInvitations browser path.
+		  insert into auth.users (id)
+		  values (v_after_claim_user)
+		  on conflict (id) do nothing;
+		  insert into public.user_profiles (id, display_name)
+		  values (v_after_claim_user, 'Post claim revocation SSO test')
+		  on conflict (id) do nothing;
+		  insert into public.tenant_user_invitations (
+		    tenant_id,
+		    email,
+		    invited_by,
+		    expires_at,
+		    role_name
+		  ) values (
+		    v_tenant,
+		    'sso-after-claim-revocation@example.ch'::citext,
+		    v_admin,
+		    timezone('utc', now()) + interval '1 day',
+		    'Requester'
+		  ) returning id into v_invitation;
+		  v_claim := public.claim_current_tenant_user_invitation(
+		    v_after_claim_user,
+		    'sso-after-claim-revocation@example.ch'::citext,
+		    v_invitation
+		  );
+		  if v_claim->>'status' <> 'active' then
+		    raise exception 'Current invitation claim was not active before revocation race test';
+		  end if;
+		  perform public.revoke_tenant_user_invitation(v_admin, v_tenant, v_invitation);
+		  begin
+		    insert into public.user_role_assignments (
+		      tenant_id,
+		      user_id,
+		      role_id,
+		      assigned_by
+		    ) values (v_tenant, v_after_claim_user, v_role, v_admin);
+		    raise exception 'Role write after current invitation revocation was accepted';
+		  exception when raise_exception then
+		    if sqlerrm <> 'A role can only be assigned to an active tenant member' then
+		      raise;
+		    end if;
+		  end;
+		  if public.claim_current_tenant_user_invitation(
+		    v_after_claim_user,
+		    'sso-after-claim-revocation@example.ch'::citext,
+		    v_invitation
+		  )->>'status' <> 'removed' then
+		    raise exception 'Current invitation claim reactivated access after post-claim revocation';
+		  end if;
+		end;
+		$$;
+
+		do $$
+		begin
+		  if has_function_privilege(
+		    'authenticated',
+		    'public.claim_verified_tenant_sso_membership(uuid, uuid, citext)',
+		    'execute'
+		  ) or has_function_privilege(
+		    'anon',
+		    'public.claim_verified_tenant_sso_membership(uuid, uuid, citext)',
+		    'execute'
+		  ) or not has_function_privilege(
+		    'service_role',
+		    'public.claim_verified_tenant_sso_membership(uuid, uuid, citext)',
+		    'execute'
+		  ) or has_function_privilege(
+		    'authenticated',
+		    'public.claim_current_tenant_user_invitation(uuid, citext, uuid)',
+		    'execute'
+		  ) or has_function_privilege(
+		    'anon',
+		    'public.claim_current_tenant_user_invitation(uuid, citext, uuid)',
+		    'execute'
+		  ) or not has_function_privilege(
+		    'service_role',
+		    'public.claim_current_tenant_user_invitation(uuid, citext, uuid)',
+		    'execute'
+		  ) then
+		    raise exception 'SSO invitation claims did not remain service-role-only';
+		  end if;
+		end;
+		$$;
+
+		rollback;
 SQL
 echo "PostgreSQL 16 migration and RLS integration checks passed."

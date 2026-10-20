@@ -34,6 +34,45 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function invitationFromMembershipClaim(
+  value: unknown,
+): PendingInvitation | null {
+  if (!isRecord(value)) return null;
+  if (
+    typeof value.id !== "string" ||
+    typeof value.tenant_id !== "string" ||
+    typeof value.invited_by !== "string" ||
+    typeof value.wants_agent !== "boolean"
+  ) {
+    return null;
+  }
+  const optionalText = [
+    value.role_name,
+    value.display_name,
+    value.job_title,
+    value.offer,
+    value.department_id,
+  ];
+  if (
+    optionalText.some(
+      (candidate) => candidate !== null && typeof candidate !== "string",
+    )
+  ) {
+    return null;
+  }
+  return {
+    id: value.id,
+    tenant_id: value.tenant_id,
+    invited_by: value.invited_by,
+    role_name: value.role_name as string | null,
+    display_name: value.display_name as string | null,
+    job_title: value.job_title as string | null,
+    offer: value.offer as string | null,
+    department_id: value.department_id as string | null,
+    wants_agent: value.wants_agent,
+  };
+}
+
 function response(
   request: Request,
   body: Record<string, unknown>,
@@ -495,14 +534,20 @@ async function provisionSsoPerson(
   const userId = user?.id;
   if (typeof userId !== "string") return "failed";
 
-  const { data: existing, error: membershipError } = await admin
-    .from("tenant_memberships")
-    .select("status")
-    .eq("tenant_id", tenantId)
-    .eq("user_id", userId)
-    .maybeSingle();
-  if (membershipError) return "failed";
-  if (existing?.status === "removed") return "removed";
+  // The database claim locks the membership row and permits exactly the
+  // invitation-to-active transition. A cancelled or suspended account can
+  // therefore never be reactivated by a delayed SSO request.
+  const { data: membershipClaim, error: membershipClaimError } =
+    await admin.rpc("claim_verified_tenant_sso_membership", {
+      p_tenant_id: tenantId,
+      p_user_id: userId,
+      p_email: email,
+    });
+  if (membershipClaimError || !isRecord(membershipClaim)) return "failed";
+  const membershipStatus = membershipClaim.status;
+  const wasActive = membershipClaim.was_active === true;
+  if (membershipStatus === "removed") return "removed";
+  if (membershipStatus !== "active") return "failed";
 
   let directoryLink: EntraDirectoryLink = {
     status: "not_found",
@@ -518,7 +563,7 @@ async function provisionSsoPerson(
     );
   }
   if (directoryLink.status === "conflict") return "failed";
-  if (directoryLink.status === "failed" && existing?.status !== "active") {
+  if (directoryLink.status === "failed" && !wasActive) {
     return "failed";
   }
   if (directoryLink.status === "failed") {
@@ -535,7 +580,7 @@ async function provisionSsoPerson(
   // An existing authorised person must never be blocked by an optional profile
   // write. A later Entra login nevertheless refreshes a previously missing or
   // stale display name when the provider supplies a trusted profile claim.
-  if (existing?.status === "active") {
+  if (wasActive) {
     if (ssoDisplayName) {
       await admin
         .from("user_profiles")
@@ -556,38 +601,15 @@ async function provisionSsoPerson(
     return "existing";
   }
 
-  const { data: invitationData, error: invitationError } = await admin
-    .from("tenant_user_invitations")
-    .select(
-      "id, tenant_id, invited_by, role_name, display_name, job_title, offer, department_id, wants_agent",
-    )
-    .eq("tenant_id", tenantId)
-    .eq("email", email)
-    .eq("status", "sent")
-    .gt("expires_at", new Date().toISOString())
-    .maybeSingle();
-  if (invitationError) return "failed";
   // The Entra tenant claim and the unique allowed-domain binding have already
   // been verified before this point. A matching employee may therefore enter
   // their own tenant as a normal requester without an invitation. An explicit
   // invitation remains the only way to assign a non-requester role or agent
   // department at first sign-in. A manually and explicitly requested Entra
   // agent assignment is the only additional, tenant-admin-controlled path.
-  const invitation = invitationData as PendingInvitation | null;
+  const invitation = invitationFromMembershipClaim(membershipClaim.invitation);
 
   const joinedAt = new Date().toISOString();
-  const { error: membershipWriteError } = await admin
-    .from("tenant_memberships")
-    .upsert(
-      {
-        tenant_id: tenantId,
-        user_id: userId,
-        status: "active",
-        joined_at: joinedAt,
-      },
-      { onConflict: "tenant_id,user_id" },
-    );
-  if (membershipWriteError) return "failed";
 
   const displayName =
     ssoDisplayName ??
@@ -653,13 +675,22 @@ async function provisionSsoPerson(
   await applyRequestedEntraAgentAccess(admin, tenantId, userId, entraObjectId);
 
   if (invitation) {
-    const { error: invitationUpdateError } = await admin
-      .from("tenant_user_invitations")
-      .update({ status: "accepted", accepted_at: joinedAt })
-      .eq("id", invitation.id)
-      .eq("tenant_id", tenantId)
-      .eq("status", "sent");
-    if (invitationUpdateError) return "failed";
+    const { data: acceptedInvitation, error: invitationUpdateError } =
+      await admin
+        .from("tenant_user_invitations")
+        .update({ status: "accepted", accepted_at: joinedAt })
+        .eq("id", invitation.id)
+        .eq("tenant_id", tenantId)
+        .eq("status", "sent")
+        .eq("accepted_by", userId)
+        .select("id");
+    if (
+      invitationUpdateError ||
+      !Array.isArray(acceptedInvitation) ||
+      acceptedInvitation.length !== 1
+    ) {
+      return "failed";
+    }
 
     await admin.from("audit_logs").insert({
       tenant_id: tenantId,

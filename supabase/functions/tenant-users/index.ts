@@ -771,40 +771,75 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       );
     }
 
+    let accepted = 0;
     for (const invitation of invitations ?? []) {
+      const { data: claim, error: claimError } =
+        await context.supabaseAdmin.rpc(
+          "claim_current_tenant_user_invitation",
+          {
+            p_user_id: actorId,
+            p_email: email,
+            p_invitation_id: invitation.id,
+          },
+        );
+      if (claimError || !isRecord(claim)) {
+        return json(
+          request,
+          { error: { code: "invitation_claim_failed" } },
+          500,
+        );
+      }
+      if (claim.status !== "active") {
+        // A concurrent revocation, expiry or removal wins over the initial list.
+        continue;
+      }
+
+      // The initial list can be stale. Continue only with the invitation that
+      // the atomically locked claim bound to this authenticated person.
+      const { data: claimedInvitation, error: claimedInvitationError } =
+        await context.supabaseAdmin
+          .from("tenant_user_invitations")
+          .select(
+            "id, tenant_id, invited_by, role_name, display_name, job_title, offer, department_id, wants_agent",
+          )
+          .eq("id", invitation.id)
+          .eq("email", email)
+          .eq("status", "sent")
+          .eq("accepted_by", actorId)
+          .maybeSingle();
+      if (claimedInvitationError) {
+        return json(
+          request,
+          { error: { code: "invitation_lookup_failed" } },
+          500,
+        );
+      }
+      if (!claimedInvitation) continue;
+
       const profilePayload: Record<string, unknown> = { id: actorId };
       if (
-        typeof invitation.display_name === "string" &&
-        invitation.display_name.trim()
+        typeof claimedInvitation.display_name === "string" &&
+        claimedInvitation.display_name.trim()
       ) {
-        profilePayload.display_name = invitation.display_name.trim();
+        profilePayload.display_name = claimedInvitation.display_name.trim();
       }
       await context.supabaseAdmin.from("user_profiles").upsert(profilePayload);
-      await context.supabaseAdmin.from("tenant_memberships").upsert(
-        {
-          tenant_id: invitation.tenant_id,
-          user_id: actorId,
-          status: "active",
-          joined_at: new Date().toISOString(),
-        },
-        { onConflict: "tenant_id,user_id" },
-      );
       await context.supabaseAdmin.from("tenant_member_directory").upsert(
         {
-          tenant_id: invitation.tenant_id,
+          tenant_id: claimedInvitation.tenant_id,
           user_id: actorId,
-          department_id: invitation.department_id ?? null,
-          job_title: invitation.job_title ?? null,
-          offer: invitation.offer ?? null,
+          department_id: claimedInvitation.department_id ?? null,
+          job_title: claimedInvitation.job_title ?? null,
+          offer: claimedInvitation.offer ?? null,
         },
         { onConflict: "tenant_id,user_id" },
       );
       if (
         !(await ensureDepartmentMembership(
           context.supabaseAdmin,
-          invitation.tenant_id,
+          claimedInvitation.tenant_id,
           actorId,
-          invitation.department_id ?? null,
+          claimedInvitation.department_id ?? null,
         ))
       ) {
         return json(
@@ -817,13 +852,13 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       }
 
       const roleName =
-        typeof invitation.role_name === "string"
-          ? invitation.role_name
+        typeof claimedInvitation.role_name === "string"
+          ? claimedInvitation.role_name
           : REQUESTER_ROLE;
       const { data: requestedRole } = await context.supabaseAdmin
         .from("roles")
         .select("id")
-        .eq("tenant_id", invitation.tenant_id)
+        .eq("tenant_id", claimedInvitation.tenant_id)
         .eq("name", roleName)
         .eq("scope", "tenant")
         .eq("active", true)
@@ -832,28 +867,28 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         const { data: assignment } = await context.supabaseAdmin
           .from("user_role_assignments")
           .select("id")
-          .eq("tenant_id", invitation.tenant_id)
+          .eq("tenant_id", claimedInvitation.tenant_id)
           .eq("user_id", actorId)
           .eq("role_id", requestedRole.id)
           .is("expires_at", null)
           .maybeSingle();
         if (!assignment) {
           await context.supabaseAdmin.from("user_role_assignments").insert({
-            tenant_id: invitation.tenant_id,
+            tenant_id: claimedInvitation.tenant_id,
             user_id: actorId,
             role_id: requestedRole.id,
-            assigned_by: invitation.invited_by,
+            assigned_by: claimedInvitation.invited_by,
           });
         }
       }
-      if (invitation.wants_agent === true) {
+      if (claimedInvitation.wants_agent === true) {
         const agentResult = await setSupportAgentAccess(
           context.supabaseAdmin,
-          invitation.tenant_id,
+          claimedInvitation.tenant_id,
           actorId,
-          invitation.department_id ?? null,
+          claimedInvitation.department_id ?? null,
           true,
-          invitation.invited_by,
+          claimedInvitation.invited_by,
         );
         if (!agentResult.ok) {
           return json(
@@ -863,12 +898,33 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
           );
         }
       }
-      await context.supabaseAdmin
-        .from("tenant_user_invitations")
-        .update({ status: "accepted", accepted_at: new Date().toISOString() })
-        .eq("id", invitation.id);
+      const { data: acceptedInvitation, error: invitationUpdateError } =
+        await context.supabaseAdmin
+          .from("tenant_user_invitations")
+          .update({ status: "accepted", accepted_at: new Date().toISOString() })
+          .eq("id", claimedInvitation.id)
+          .eq("tenant_id", claimedInvitation.tenant_id)
+          .eq("status", "sent")
+          .eq("accepted_by", actorId)
+          .select("id");
+      if (invitationUpdateError) {
+        return json(
+          request,
+          { error: { code: "invitation_accept_failed" } },
+          422,
+        );
+      }
+      if (
+        !Array.isArray(acceptedInvitation) ||
+        acceptedInvitation.length !== 1
+      ) {
+        // The administrator revoked the invitation after its initial claim.
+        // The revocation transaction already removed the membership and roles.
+        continue;
+      }
+      accepted += 1;
     }
-    return json(request, { data: { accepted: invitations?.length ?? 0 } });
+    return json(request, { data: { accepted } });
   }
 
   const targetTenantId = action.tenantId;
@@ -994,17 +1050,19 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
   }
 
   if (action.type === "revokeInvitation") {
-    const { error } = await context.supabaseAdmin
-      .from("tenant_user_invitations")
-      .update({ status: "revoked" })
-      .eq("id", action.invitationId)
-      .eq("tenant_id", action.tenantId)
-      .eq("status", "sent");
+    const { error } = await context.supabaseAdmin.rpc(
+      "revoke_tenant_user_invitation",
+      {
+        p_actor_id: actorId,
+        p_tenant_id: action.tenantId,
+        p_invitation_id: action.invitationId,
+      },
+    );
     if (error) {
       return json(
         request,
         { error: { code: "invitation_revoke_failed" } },
-        422,
+        error.code === "P0002" ? 404 : error.code === "42501" ? 403 : 422,
       );
     }
     return json(request, { data: { revoked: true } });
