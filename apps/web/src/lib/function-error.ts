@@ -146,6 +146,17 @@ export async function functionErrorMessage(
     case "sla_feature_disabled":
     case "automation_feature_inactive":
       return "Die SLA-Automatisierung ist für Ihren Mandanten derzeit deaktiviert.";
+    case "automation_manage_denied":
+      return "Für die Steuerung von Automatisierungen fehlt Ihnen die erforderliche Berechtigung.";
+    case "automation_auto_close_inactive":
+      return "Die kontrollierte Ticket-Schliessung ist für diesen Mandanten nicht aktiviert.";
+    case "automation_auto_close_candidates_changed":
+      return "Die geprüften Tickets oder die Regel wurden inzwischen geändert. Erstellen Sie eine neue Vorschau.";
+    case "automation_auto_close_confirmation_expired":
+    case "automation_auto_close_confirmation_unavailable":
+      return "Die Bestätigungsfreigabe ist nicht mehr verfügbar. Erstellen Sie eine neue Vorschau.";
+    case "automation_history_query_failed":
+      return "Die Automationshistorie konnte nicht geladen werden. Bitte laden Sie die Ansicht neu.";
     case "tenant_feature_lookup_failed":
       return "Die Funktionsberechtigung konnte nicht geprüft werden. Bitte versuchen Sie es erneut.";
     case "entra_person_not_active":

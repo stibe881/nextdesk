@@ -4213,9 +4213,282 @@ set local role authenticated;
 		  ) then
 		    raise exception 'SSO invitation claims did not remain service-role-only';
 		  end if;
-		end;
-		$$;
+			end;
+			$$;
 
-		rollback;
+			-- P1.6: Only a fresh, actor-bound and server-revalidated confirmation
+			-- may close the reviewed resolved tickets. Browser roles see neither the
+			-- private confirmation rows nor the service-only procedures.
+			select set_config('request.jwt.claim.role', 'service_role', true);
+			do $$
+			declare
+			  v_tenant constant uuid := '10000000-0000-4000-8000-000000000001';
+			  v_admin constant uuid := '00000000-0000-4000-8000-000000000002';
+			  v_department_operator constant uuid := '00000000-0000-4000-8000-000000000009';
+			  v_resolved_status uuid;
+			  v_closed_status uuid;
+			  v_priority uuid;
+			  v_prepared record;
+			  v_second_prepared record;
+			  v_expiring_prepared record;
+			  v_execution record;
+			begin
+			  insert into public.role_permissions (role_id, permission_code)
+			  values
+			    ('16500000-0000-4000-8000-000000000002', 'automation.manage'),
+			    ('16500000-0000-4000-8000-000000000002', 'ticket.update'),
+			    ('16500000-0000-4000-8000-000000000002', 'ticket.close'),
+			    ('16000000-0000-4000-8000-000000000002', 'automation.manage')
+			  on conflict do nothing;
+			  insert into auth.users (id) values (v_department_operator)
+			  on conflict (id) do nothing;
+			  insert into public.user_profiles (id, display_name)
+			  values (v_department_operator, 'P1.6 Department automation test')
+			  on conflict (id) do nothing;
+			  insert into public.tenant_memberships (tenant_id, user_id, status, joined_at)
+			  values (v_tenant, v_department_operator, 'active', timezone('utc', now()))
+			  on conflict (tenant_id, user_id) do update set status = 'active';
+			  insert into public.department_memberships (department_id, tenant_id, user_id, status)
+			  values (
+			    '11000000-0000-4000-8000-000000000001', v_tenant,
+			    v_department_operator, 'active'
+			  ) on conflict (department_id, user_id) do update set status = 'active';
+			  insert into public.user_role_assignments (
+			    tenant_id, user_id, role_id, department_id, assigned_by
+			  ) values (
+			    v_tenant, v_department_operator,
+			    '16000000-0000-4000-8000-000000000002',
+			    '11000000-0000-4000-8000-000000000001', v_admin
+			  );
+
+			  update public.tenant_feature_flags
+			  set enabled = true,
+			      pilot_ends_at = null
+			  where tenant_id = v_tenant
+			    and feature_key = 'automation.sla';
+			  update public.tenant_automation_policies
+			  set enabled = true,
+			      configuration = jsonb_build_object('afterDays', 1, 'requirePreview', true),
+			      updated_by = v_admin,
+			      updated_at = timezone('utc', now())
+			  where tenant_id = v_tenant
+			    and policy_key = 'auto_close';
+
+			  insert into public.ticket_statuses (tenant_id, key, label, sort_order)
+			  select v_tenant, 'resolved', 'Gelöst', coalesce(max(status.sort_order), 0) + 1
+			  from public.ticket_statuses status
+			  where status.tenant_id = v_tenant
+			  on conflict (tenant_id, key) do update
+			  set is_closed = false;
+			  insert into public.ticket_statuses (tenant_id, key, label, is_closed, sort_order)
+			  select v_tenant, 'closed', 'Geschlossen', true, coalesce(max(status.sort_order), 0) + 1
+			  from public.ticket_statuses status
+			  where status.tenant_id = v_tenant
+			  on conflict (tenant_id, key) do update
+			  set is_closed = true;
+			  select id into v_resolved_status
+			  from public.ticket_statuses
+			  where tenant_id = v_tenant and key = 'resolved';
+			  select id into v_closed_status
+			  from public.ticket_statuses
+			  where tenant_id = v_tenant and key = 'closed';
+			  select id into v_priority
+			  from public.ticket_priorities
+			  where tenant_id = v_tenant
+			  limit 1;
+			  if v_resolved_status is null or v_closed_status is null or v_priority is null then
+			    raise exception 'P1.6 fixture could not establish resolved and closed ticket states';
+			  end if;
+			  begin
+			    perform public.prepare_ticket_automation_auto_close(
+			      v_department_operator,
+			      v_tenant,
+			      array['17000000-0000-4000-8000-000000000001'::uuid]
+			    );
+			    raise exception 'A department-scoped automation permission prepared a tenant-wide confirmation';
+			  exception when insufficient_privilege then
+			    null;
+			  end;
+
+			  insert into public.tickets (
+			    id, tenant_id, department_id, ticket_number, subject, description,
+			    status_id, priority_id, requester_id, resolved_at
+			  ) values (
+			    '76000000-0000-4000-8000-000000000001', v_tenant,
+			    '11000000-0000-4000-8000-000000000001', 'ICT-2026-AUTO-001',
+			    'Kontrollierter Automationsabschluss', 'P1.6-Revalidierungsfixtur',
+			    v_resolved_status, v_priority, '00000000-0000-4000-8000-000000000001',
+			    timezone('utc', now()) - interval '2 days'
+			  );
+			  select * into v_prepared
+			  from public.prepare_ticket_automation_auto_close(
+			    v_admin, v_tenant, array['76000000-0000-4000-8000-000000000001'::uuid]
+			  );
+			  if v_prepared.candidate_count <> 1 or v_prepared.expires_at <= timezone('utc', now()) then
+			    raise exception 'P1.6 did not issue a bounded auto-close confirmation';
+			  end if;
+			  select * into v_execution
+			  from public.execute_ticket_automation_auto_close(v_admin, v_tenant);
+			  if v_execution.outcome <> 'executed' or v_execution.requested <> 1 or v_execution.updated <> 1 then
+			    raise exception 'P1.6 confirmation did not execute the reviewed close';
+			  end if;
+			  select * into v_execution
+			  from public.execute_ticket_automation_auto_close(v_admin, v_tenant);
+			  if v_execution.outcome <> 'unavailable' or v_execution.requested <> 0 or v_execution.updated <> 0 then
+			    raise exception 'P1.6 allowed a confirmation to be executed more than once';
+			  end if;
+			  if not exists (
+			    select 1 from public.tickets ticket
+			    where ticket.id = '76000000-0000-4000-8000-000000000001'
+			      and ticket.status_id = v_closed_status
+			      and ticket.closed_at is not null
+			  ) then
+			    raise exception 'P1.6 executed confirmation did not close the reviewed ticket';
+			  end if;
+
+			  insert into public.tickets (
+			    id, tenant_id, department_id, ticket_number, subject, description,
+			    status_id, priority_id, requester_id, resolved_at
+			  ) values (
+			    '76000000-0000-4000-8000-000000000002', v_tenant,
+			    '11000000-0000-4000-8000-000000000001', 'ICT-2026-AUTO-002',
+			    'Ungültige Automationsfreigabe', 'P1.6-Kandidatenänderungsfixtur',
+			    v_resolved_status, v_priority, '00000000-0000-4000-8000-000000000001',
+			    timezone('utc', now()) - interval '2 days'
+			  );
+			  select * into v_second_prepared
+			  from public.prepare_ticket_automation_auto_close(
+			    v_admin, v_tenant, array['76000000-0000-4000-8000-000000000002'::uuid]
+			  );
+			  update public.tickets
+			  set resolved_at = timezone('utc', now())
+			  where id = '76000000-0000-4000-8000-000000000002';
+			  select * into v_execution
+			  from public.execute_ticket_automation_auto_close(v_admin, v_tenant);
+			  if v_execution.outcome <> 'invalidated' or exists (
+			    select 1 from public.tickets
+			    where id = '76000000-0000-4000-8000-000000000002' and closed_at is not null
+			  ) then
+			    raise exception 'P1.6 executed a changed auto-close candidate';
+			  end if;
+
+			  update public.tickets
+			  set resolved_at = timezone('utc', now()) - interval '2 days'
+			  where id = '76000000-0000-4000-8000-000000000002';
+			  select * into v_expiring_prepared
+			  from public.prepare_ticket_automation_auto_close(
+			    v_admin, v_tenant, array['76000000-0000-4000-8000-000000000002'::uuid]
+			  );
+			  update public.tenant_automation_confirmation_requests
+			  set created_at = timezone('utc', now()) - interval '2 minutes',
+			      expires_at = timezone('utc', now()) - interval '1 second'
+			  where id = v_expiring_prepared.confirmation_id;
+			  select * into v_execution
+			  from public.execute_ticket_automation_auto_close(v_admin, v_tenant);
+			  if v_execution.outcome <> 'expired' then
+			    raise exception 'P1.6 executed an expired auto-close confirmation';
+			  end if;
+
+			  insert into public.tickets (
+			    id, tenant_id, department_id, ticket_number, subject, description,
+			    status_id, priority_id, requester_id, resolved_at
+			  ) values (
+			    '76000000-0000-4000-8000-000000000003', v_tenant,
+			    '11000000-0000-4000-8000-000000000001', 'ICT-2026-AUTO-003',
+			    'Ersetzte Automationsfreigabe', 'P1.6-Bestaetigungsersetzungsfixtur',
+			    v_resolved_status, v_priority, '00000000-0000-4000-8000-000000000001',
+			    timezone('utc', now()) - interval '2 days'
+			  );
+			  select * into v_prepared
+			  from public.prepare_ticket_automation_auto_close(
+			    v_admin, v_tenant, array['76000000-0000-4000-8000-000000000003'::uuid]
+			  );
+			  select * into v_second_prepared
+			  from public.prepare_ticket_automation_auto_close(
+			    v_admin, v_tenant, array['76000000-0000-4000-8000-000000000003'::uuid]
+			  );
+			  if not exists (
+			    select 1
+			    from public.tenant_automation_confirmation_requests request
+			    where request.id = v_prepared.confirmation_id
+			      and request.state = 'invalidated'
+			      and request.result ->> 'reason' = 'superseded'
+			  ) then
+			    raise exception 'P1.6 did not supersede the former pending confirmation';
+			  end if;
+			  select * into v_execution
+			  from public.execute_ticket_automation_auto_close(v_admin, v_tenant);
+			  if v_execution.outcome <> 'executed' or v_execution.updated <> 1 then
+			    raise exception 'P1.6 did not execute the sole current confirmation';
+			  end if;
+
+			  insert into public.tickets (
+			    id, tenant_id, department_id, ticket_number, subject, description,
+			    status_id, priority_id, requester_id, resolved_at
+			  ) values (
+			    '76000000-0000-4000-8000-000000000004', v_tenant,
+			    '11000000-0000-4000-8000-000000000001', 'ICT-2026-AUTO-004',
+			    'Geaenderte Automationsregel', 'P1.6-Policy-Revalidierungsfixtur',
+			    v_resolved_status, v_priority, '00000000-0000-4000-8000-000000000001',
+			    timezone('utc', now()) - interval '2 days'
+			  );
+			  select * into v_prepared
+			  from public.prepare_ticket_automation_auto_close(
+			    v_admin, v_tenant, array['76000000-0000-4000-8000-000000000004'::uuid]
+			  );
+			  update public.tenant_automation_policies
+			  set configuration = jsonb_build_object('afterDays', 2, 'requirePreview', true),
+			      updated_at = timezone('utc', now())
+			  where tenant_id = v_tenant and policy_key = 'auto_close';
+			  select * into v_execution
+			  from public.execute_ticket_automation_auto_close(v_admin, v_tenant);
+			  if v_execution.outcome <> 'invalidated' or exists (
+			    select 1 from public.tickets
+			    where id = '76000000-0000-4000-8000-000000000004' and closed_at is not null
+			  ) then
+			    raise exception 'P1.6 executed after the auto-close policy changed';
+			  end if;
+			  update public.tenant_automation_policies
+			  set configuration = jsonb_build_object('afterDays', 1, 'requirePreview', true),
+			      updated_at = timezone('utc', now())
+			  where tenant_id = v_tenant and policy_key = 'auto_close';
+
+			  if exists (
+			    select 1 from public.audit_logs audit
+			    where audit.tenant_id = v_tenant
+			      and audit.action like 'automation.auto_close.%'
+			      and (
+			        audit.entity_id is not null
+			        or audit.metadata ?| array['ticketIds', 'subject', 'description']
+			      )
+			  ) then
+			    raise exception 'P1.6 automation audit retained ticket details or an internal confirmation ID';
+			  end if;
+			end;
+			$$;
+
+			set local role authenticated;
+			select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-000000000002', true);
+			do $$
+			begin
+			  begin
+			    perform public.prepare_ticket_automation_auto_close(
+			      '00000000-0000-4000-8000-000000000002',
+			      '10000000-0000-4000-8000-000000000001',
+			      array['76000000-0000-4000-8000-000000000001'::uuid]
+			    );
+			    raise exception 'Authenticated browser role prepared an automation confirmation';
+			  exception when insufficient_privilege then
+			    null;
+			  end;
+			  begin
+			    perform 1 from public.tenant_automation_confirmation_requests limit 1;
+			    raise exception 'Authenticated browser role read automation confirmations';
+			  exception when insufficient_privilege then
+			    null;
+			  end;
+			end;
+			$$;
+			rollback;
 SQL
 echo "PostgreSQL 16 migration and RLS integration checks passed."

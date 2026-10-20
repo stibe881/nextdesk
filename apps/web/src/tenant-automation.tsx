@@ -27,6 +27,18 @@ type Preview = {
   count: number;
   examples: Array<{ id: string; ticketNumber: string; subject: string }>;
 };
+type AutoCloseConfirmation = {
+  candidateCount: number;
+  expiresAt: string;
+};
+type RunHistory = {
+  id: string;
+  policyKey: PolicyKey;
+  mode: "preview" | "manual" | "scheduled";
+  createdAt: string;
+  requested: number | null;
+  updated: number | null;
+};
 
 const LABELS: Record<PolicyKey, { title: string; text: string }> = {
   follow_up: {
@@ -35,7 +47,7 @@ const LABELS: Record<PolicyKey, { title: string; text: string }> = {
   },
   auto_close: {
     title: "Kontrollierte automatische Schliessung",
-    text: "Ermittelt gelöste Tickets nach einer Wartezeit. Die Ausführung bleibt vorerst bewusst nur eine prüfbare Vorschau.",
+    text: "Schliesst nur einzeln geprüfte, gelöste Tickets nach einer Wartezeit und einer ausdrücklichen Bestätigung.",
   },
   duplicate_warning: {
     title: "Duplikatwarnungen",
@@ -101,6 +113,46 @@ function asPreview(value: unknown): Preview | null {
     );
   return { ...policy, summary: value.summary, count: value.count, examples };
 }
+function asConfirmation(value: unknown): AutoCloseConfirmation | null {
+  if (
+    !isRecord(value) ||
+    typeof value.candidateCount !== "number" ||
+    !Number.isInteger(value.candidateCount) ||
+    value.candidateCount < 1 ||
+    value.candidateCount > 8 ||
+    typeof value.expiresAt !== "string"
+  )
+    return null;
+  return value as AutoCloseConfirmation;
+}
+function asHistory(value: unknown): RunHistory | null {
+  if (
+    !isRecord(value) ||
+    typeof value.id !== "string" ||
+    typeof value.policyKey !== "string" ||
+    !(value.policyKey in LABELS) ||
+    (value.mode !== "preview" &&
+      value.mode !== "manual" &&
+      value.mode !== "scheduled") ||
+    typeof value.createdAt !== "string"
+  )
+    return null;
+  const count = (candidate: unknown) =>
+    typeof candidate === "number" &&
+    Number.isInteger(candidate) &&
+    candidate >= 0 &&
+    candidate <= 50
+      ? candidate
+      : null;
+  return {
+    id: value.id,
+    policyKey: value.policyKey as PolicyKey,
+    mode: value.mode,
+    createdAt: value.createdAt,
+    requested: count(value.requested),
+    updated: count(value.updated),
+  };
+}
 async function request<T>(body: Record<string, unknown>): Promise<T> {
   if (!supabase)
     throw new Error("Die Automatisierungssteuerung ist nicht verfügbar.");
@@ -116,6 +168,9 @@ async function request<T>(body: Record<string, unknown>): Promise<T> {
 export function TenantAutomation({ tenantId }: { tenantId: string }) {
   const [policies, setPolicies] = useState<Policy[]>([]);
   const [previews, setPreviews] = useState<Preview[]>([]);
+  const [history, setHistory] = useState<RunHistory[]>([]);
+  const [autoCloseConfirmation, setAutoCloseConfirmation] =
+    useState<AutoCloseConfirmation | null>(null);
   const [loading, setLoading] = useState(true);
   const [pendingKey, setPendingKey] = useState<PolicyKey | "preview" | null>(
     null,
@@ -126,7 +181,7 @@ export function TenantAutomation({ tenantId }: { tenantId: string }) {
     setLoading(true);
     setMessage("");
     try {
-      const result = await request<{ policies?: unknown }>({
+      const result = await request<{ policies?: unknown; history?: unknown }>({
         type: "get",
         tenantId,
       });
@@ -136,6 +191,13 @@ export function TenantAutomation({ tenantId }: { tenantId: string }) {
             .filter((policy): policy is Policy => policy !== null)
         : [];
       setPolicies(next);
+      setHistory(
+        Array.isArray(result.history)
+          ? result.history
+              .map(asHistory)
+              .filter((run): run is RunHistory => run !== null)
+          : [],
+      );
     } catch (error) {
       setMessage(
         await functionErrorMessage(
@@ -173,6 +235,7 @@ export function TenantAutomation({ tenantId }: { tenantId: string }) {
         current.map((entry) => (entry.key === saved.key ? saved : entry)),
       );
       setPreviews([]);
+      setAutoCloseConfirmation(null);
     } catch (error) {
       setMessage(
         await functionErrorMessage(
@@ -189,7 +252,10 @@ export function TenantAutomation({ tenantId }: { tenantId: string }) {
     setPendingKey("preview");
     setMessage("");
     try {
-      const result = await request<{ previews?: unknown }>({
+      const result = await request<{
+        previews?: unknown;
+        autoCloseConfirmation?: unknown;
+      }>({
         type: "preview",
         tenantId,
       });
@@ -199,6 +265,7 @@ export function TenantAutomation({ tenantId }: { tenantId: string }) {
             .filter((entry): entry is Preview => entry !== null)
         : [];
       setPreviews(next);
+      setAutoCloseConfirmation(asConfirmation(result.autoCloseConfirmation));
       setMessage(
         "Die Vorschau wurde erstellt. Es wurden keine Tickets verändert.",
       );
@@ -214,34 +281,33 @@ export function TenantAutomation({ tenantId }: { tenantId: string }) {
     }
   }
 
-  async function executeAutoClose(preview: Preview) {
+  async function executeAutoClose(confirmation: AutoCloseConfirmation) {
     if (
       !window.confirm(
-        `${preview.count} geprüfte Ticket(s) werden jetzt geschlossen. Diese Aktion ist im Protokoll nachvollziehbar. Fortfahren?`,
+        `${confirmation.candidateCount} in dieser Vorschau angezeigte Tickets werden jetzt geschlossen. Die Freigabe läuft in wenigen Minuten ab; alle Tickets werden unmittelbar davor erneut geprüft und der Lauf wird protokolliert. Fortfahren?`,
       )
     )
       return;
-    const ticketIds = preview.examples.map((ticket) => ticket.id);
-    if (ticketIds.length === 0) return;
     setPendingKey("preview");
     setMessage("");
     try {
       const result = await request<{ updated?: unknown; requested?: unknown }>({
         type: "executeAutoClose",
         tenantId,
-        ticketIds,
-        confirmed: true,
       });
       if (
         typeof result.updated !== "number" ||
         typeof result.requested !== "number"
       )
         throw new Error("Die Rückmeldung der Schliessung ist unvollständig.");
+      await load();
       setPreviews([]);
+      setAutoCloseConfirmation(null);
       setMessage(
-        `${result.updated} von ${result.requested} vorgemerkten Ticket(s) wurden geschlossen.`,
+        `${result.updated} von ${result.requested} geprüften Tickets wurden geschlossen.`,
       );
     } catch (error) {
+      setAutoCloseConfirmation(null);
       setMessage(
         await functionErrorMessage(
           error,
@@ -264,8 +330,10 @@ export function TenantAutomation({ tenantId }: { tenantId: string }) {
           <h2 id="tenant-automation-heading">Automatisierungen</h2>
           <p>
             Aktiviere Regeln pro Mandant und prüfe ihre Wirkung zuerst als
-            Vorschau. Keine Regel verändert Tickets ohne einen später
-            einzurichtenden, separat gesicherten Ausführungsdienst.
+            Vorschau. Nur die kontrollierte Schliessung kann nach einer kurzen,
+            personen- und mandantengebundenen Freigabe ausgeführt werden. Alle
+            übrigen Regeln bleiben bewusst Hinweise; kein Scheduler oder
+            externer Provider wird dadurch aktiviert.
           </p>
         </div>
         <button
@@ -344,19 +412,10 @@ export function TenantAutomation({ tenantId }: { tenantId: string }) {
                   />
                 </label>
                 {policy.key === "auto_close" && (
-                  <label className="tenant-automation__preview-check">
-                    <input
-                      checked={policy.requirePreview}
-                      disabled={pendingKey === policy.key}
-                      onChange={(event) =>
-                        void save(policy, {
-                          requirePreview: event.target.checked,
-                        })
-                      }
-                      type="checkbox"
-                    />{" "}
-                    Manuelle Vorschau vor Schliessung verlangen
-                  </label>
+                  <p className="tenant-automation__preview-required">
+                    Vorschau und ausdrückliche Bestätigung sind immer
+                    erforderlich.
+                  </p>
                 )}
               </div>
               {previews.find((preview) => preview.key === policy.key) &&
@@ -379,15 +438,31 @@ export function TenantAutomation({ tenantId }: { tenantId: string }) {
                       )}
                       {current.key === "auto_close" &&
                         current.enabled &&
-                        current.count > 0 && (
-                          <button
-                            className="secondary-button tenant-automation__execute"
-                            disabled={pendingKey !== null}
-                            onClick={() => void executeAutoClose(current)}
-                            type="button"
-                          >
-                            Vorgemerkte Tickets schliessen
-                          </button>
+                        current.count > 0 &&
+                        autoCloseConfirmation && (
+                          <>
+                            <p className="tenant-automation__confirmation-note">
+                              Nur die {autoCloseConfirmation.candidateCount}{" "}
+                              oben aufgeführten Tickets sind bis{" "}
+                              {new Date(
+                                autoCloseConfirmation.expiresAt,
+                              ).toLocaleTimeString("de-CH", {
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })}{" "}
+                              für eine erneute Prüfung vorgemerkt.
+                            </p>
+                            <button
+                              className="secondary-button tenant-automation__execute"
+                              disabled={pendingKey !== null}
+                              onClick={() =>
+                                void executeAutoClose(autoCloseConfirmation)
+                              }
+                              type="button"
+                            >
+                              Prüfung bestätigen und schliessen
+                            </button>
+                          </>
                         )}
                     </div>
                   );
@@ -396,6 +471,42 @@ export function TenantAutomation({ tenantId }: { tenantId: string }) {
           ))}
         </ul>
       )}
+      <section
+        className="tenant-automation__history"
+        aria-labelledby="tenant-automation-history-heading"
+      >
+        <h3 id="tenant-automation-history-heading">
+          Letzte kontrollierte Läufe
+        </h3>
+        {history.length === 0 ? (
+          <p>Es liegen noch keine Vorschau- oder Ausführungsläufe vor.</p>
+        ) : (
+          <ul>
+            {history.map((run) => (
+              <li key={run.id}>
+                <div>
+                  <strong>{LABELS[run.policyKey].title}</strong>
+                  <span>
+                    {run.mode === "manual"
+                      ? "Manuell bestätigt"
+                      : run.mode === "preview"
+                        ? "Vorschau"
+                        : "Geplant"}
+                  </span>
+                </div>
+                <small>
+                  {new Date(run.createdAt).toLocaleString("de-CH", {
+                    dateStyle: "short",
+                    timeStyle: "short",
+                  })}
+                  {run.requested !== null &&
+                    ` · ${run.updated ?? 0} von ${run.requested} umgesetzt`}
+                </small>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
       <button
         className="text-button"
         disabled={loading}

@@ -19,6 +19,18 @@ type Policy = {
   requirePreview: boolean;
   updatedAt: string | null;
 };
+type Confirmation = {
+  candidateCount: number;
+  expiresAt: string;
+};
+type RunHistory = {
+  id: string;
+  policyKey: PolicyKey;
+  mode: "preview" | "manual" | "scheduled";
+  createdAt: string;
+  requested: number | null;
+  updated: number | null;
+};
 type Action =
   | { type: "get"; tenantId: string }
   | {
@@ -30,12 +42,9 @@ type Action =
       requirePreview: boolean;
     }
   | { type: "preview"; tenantId: string }
-  | {
-      type: "executeAutoClose";
-      tenantId: string;
-      ticketIds: string[];
-      confirmed: true;
-    };
+  | { type: "executeAutoClose"; tenantId: string };
+
+type TicketStatus = { key: string; isClosed: boolean };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -60,6 +69,14 @@ function validDays(value: unknown): value is number {
     Number.isInteger(value) &&
     value >= 1 &&
     value <= 365
+  );
+}
+function validCount(value: unknown, maximum = 50): value is number {
+  return (
+    typeof value === "number" &&
+    Number.isInteger(value) &&
+    value >= 0 &&
+    value <= maximum
   );
 }
 function headers(request: Request): HeadersInit {
@@ -94,25 +111,11 @@ function parseAction(value: unknown): Action | null {
     return { type: "preview", tenantId: value.tenantId };
   if (
     value.type === "executeAutoClose" &&
-    Object.keys(value).every(
-      (key) =>
-        key === "type" ||
-        key === "tenantId" ||
-        key === "ticketIds" ||
-        key === "confirmed",
-    ) &&
-    Array.isArray(value.ticketIds) &&
-    value.ticketIds.length >= 1 &&
-    value.ticketIds.length <= 50 &&
-    value.ticketIds.every(isUuid) &&
-    new Set(value.ticketIds).size === value.ticketIds.length &&
-    value.confirmed === true
+    Object.keys(value).every((key) => key === "type" || key === "tenantId")
   ) {
     return {
       type: "executeAutoClose",
       tenantId: value.tenantId,
-      ticketIds: value.ticketIds,
-      confirmed: true,
     };
   }
   if (
@@ -159,10 +162,64 @@ function asPolicy(row: unknown): Policy | null {
     key: row.policy_key,
     enabled: row.enabled,
     afterDays: validDays(config.afterDays) ? config.afterDays : 7,
-    requirePreview: config.requirePreview !== false,
+    requirePreview:
+      row.policy_key === "auto_close" ? true : config.requirePreview !== false,
     updatedAt: typeof row.updated_at === "string" ? row.updated_at : null,
   };
 }
+function asHistory(row: unknown): RunHistory | null {
+  if (
+    !isRecord(row) ||
+    !isUuid(row.id) ||
+    !isPolicyKey(row.policy_key) ||
+    (row.mode !== "preview" &&
+      row.mode !== "manual" &&
+      row.mode !== "scheduled") ||
+    typeof row.created_at !== "string"
+  )
+    return null;
+  const result = isRecord(row.result) ? row.result : {};
+  return {
+    id: row.id,
+    policyKey: row.policy_key,
+    mode: row.mode,
+    createdAt: row.created_at,
+    requested: validCount(result.requested) ? result.requested : null,
+    updated: validCount(result.updated) ? result.updated : null,
+  };
+}
+function asConfirmation(row: unknown): Confirmation | null {
+  if (
+    !isRecord(row) ||
+    !validCount(row.candidate_count, 8) ||
+    row.candidate_count < 1 ||
+    typeof row.expires_at !== "string"
+  )
+    return null;
+  return {
+    candidateCount: row.candidate_count,
+    expiresAt: row.expires_at,
+  };
+}
+function asExecution(row: unknown): {
+  outcome: string;
+  requested: number;
+  updated: number;
+} | null {
+  if (
+    !isRecord(row) ||
+    typeof row.outcome !== "string" ||
+    !validCount(row.requested, 8) ||
+    !validCount(row.updated, 8)
+  )
+    return null;
+  return {
+    outcome: row.outcome,
+    requested: row.requested,
+    updated: row.updated,
+  };
+}
+
 async function allowed(
   admin: any,
   actorId: string,
@@ -183,7 +240,7 @@ async function allowed(
     admin
       .from("user_role_assignments")
       .select(
-        "roles!user_role_assignments_role_tenant_fk!inner(active, role_permissions!inner(permission_code))",
+        "roles!user_role_assignments_role_tenant_fk!inner(active, scope, role_permissions!inner(permission_code))",
       )
       .eq("tenant_id", tenantId)
       .eq("user_id", actorId)
@@ -197,6 +254,7 @@ async function allowed(
       role && Array.isArray(role.role_permissions) ? role.role_permissions : [];
     return (
       role?.active === true &&
+      role?.scope === "tenant" &&
       permissions.some(
         (permission) =>
           isRecord(permission) &&
@@ -233,15 +291,41 @@ async function previewPolicies(
   tenantId: string,
   policies: Policy[],
 ) {
-  const { data: tickets, error } = await admin
-    .from("tickets")
-    .select(
-      "id, ticket_number, subject, created_at, updated_at, resolved_at, closed_at, requester_contact_id, category_id",
-    )
-    .eq("tenant_id", tenantId)
-    .order("updated_at", { ascending: false })
-    .limit(500);
-  if (error) throw new Error("automation_ticket_query_failed");
+  const [
+    { data: tickets, error: ticketError },
+    { data: statuses, error: statusError },
+  ] = await Promise.all([
+    admin
+      .from("tickets")
+      .select(
+        "id, ticket_number, subject, status_id, created_at, updated_at, resolved_at, closed_at, requester_contact_id, category_id",
+      )
+      .eq("tenant_id", tenantId)
+      .order("updated_at", { ascending: false })
+      .limit(500),
+    admin
+      .from("ticket_statuses")
+      .select("id, key, is_closed")
+      .eq("tenant_id", tenantId),
+  ]);
+  if (ticketError) throw new Error("automation_ticket_query_failed");
+  if (statusError) throw new Error("automation_status_query_failed");
+
+  const statusById = new Map<string, TicketStatus>(
+    (statuses ?? []).flatMap((status: unknown) =>
+      isRecord(status) &&
+      typeof status.id === "string" &&
+      typeof status.key === "string" &&
+      typeof status.is_closed === "boolean"
+        ? [
+            [
+              status.id,
+              { key: status.key, isClosed: status.is_closed },
+            ] as const,
+          ]
+        : [],
+    ),
+  );
   const rows: Record<string, unknown>[] = (tickets ?? []).filter(isRecord);
   const now = Date.now();
   const closedIds = rows
@@ -259,6 +343,7 @@ async function previewPolicies(
       .map((row: Record<string, unknown>) => row.ticket_id)
       .filter((id: unknown): id is string => typeof id === "string"),
   );
+
   const previews = policies.map((policy) => {
     let matches: Record<string, unknown>[] = [];
     let summary = "";
@@ -271,14 +356,19 @@ async function previewPolicies(
       summary = "Offene Tickets ohne aktuelle Aktivität";
     }
     if (policy.key === "auto_close") {
-      matches = rows.filter(
-        (row) =>
+      matches = rows.filter((row) => {
+        const status =
+          typeof row.status_id === "string"
+            ? statusById.get(row.status_id)
+            : undefined;
+        return (
           row.closed_at === null &&
-          olderThan(row.resolved_at, policy.afterDays, now),
-      );
-      summary = policy.requirePreview
-        ? "Vorgemerkte Schliessungen – vor Ausführung prüfen"
-        : "Schliesskandidaten nach Lösungsphase";
+          status?.key === "resolved" &&
+          status.isClosed === false &&
+          olderThan(row.resolved_at, policy.afterDays, now)
+        );
+      });
+      summary = "Gelöste Tickets nach der Wartezeit";
     }
     if (policy.key === "data_hygiene") {
       matches = rows.filter(
@@ -286,7 +376,7 @@ async function previewPolicies(
           row.closed_at === null &&
           (!row.requester_contact_id || !row.category_id),
       );
-      summary = "Offene Tickets ohne Anfragende Person oder Kategorie";
+      summary = "Offene Tickets ohne anfragende Person oder Kategorie";
     }
     if (policy.key === "quality_check") {
       matches = rows.filter(
@@ -374,6 +464,8 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     );
 
   if (action.type === "save") {
+    const requirePreview =
+      action.policyKey === "auto_close" ? true : action.requirePreview;
     const { data, error } = await context.supabaseAdmin
       .from("tenant_automation_policies")
       .upsert(
@@ -383,7 +475,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
           enabled: action.enabled,
           configuration: {
             afterDays: action.afterDays,
-            requirePreview: action.requirePreview,
+            requirePreview,
           },
           updated_by: actorId,
           updated_at: new Date().toISOString(),
@@ -409,7 +501,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         policyKey: action.policyKey,
         enabled: action.enabled,
         afterDays: action.afterDays,
-        requirePreview: action.requirePreview,
+        requirePreview,
       },
     });
     const policy = asPolicy(data);
@@ -422,113 +514,76 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         );
   }
 
-  const { data, error } = await context.supabaseAdmin
-    .from("tenant_automation_policies")
-    .select("policy_key, enabled, configuration, updated_at")
-    .eq("tenant_id", action.tenantId)
-    .order("policy_key");
-  if (error)
+  const [policyResult, historyResult] = await Promise.all([
+    context.supabaseAdmin
+      .from("tenant_automation_policies")
+      .select("policy_key, enabled, configuration, updated_at")
+      .eq("tenant_id", action.tenantId)
+      .order("policy_key"),
+    context.supabaseAdmin
+      .from("tenant_automation_runs")
+      .select("id, policy_key, mode, result, created_at")
+      .eq("tenant_id", action.tenantId)
+      .order("created_at", { ascending: false })
+      .limit(12),
+  ]);
+  if (policyResult.error)
     return json(
       request,
       { error: { code: "automation_policy_query_failed" } },
       500,
     );
-  const policies = (data ?? [])
+  if (historyResult.error)
+    return json(
+      request,
+      { error: { code: "automation_history_query_failed" } },
+      500,
+    );
+  const policies = (policyResult.data ?? [])
     .map(asPolicy)
     .filter((policy): policy is Policy => policy !== null);
-  if (action.type === "get") return json(request, { data: { policies } });
+  const history = (historyResult.data ?? [])
+    .map(asHistory)
+    .filter((run): run is RunHistory => run !== null);
+  if (action.type === "get")
+    return json(request, { data: { policies, history } });
 
   if (action.type === "executeAutoClose") {
-    const policy = policies.find((entry) => entry.key === "auto_close");
-    if (!policy?.enabled)
+    const { data, error } = await context.supabaseAdmin.rpc(
+      "execute_ticket_automation_auto_close",
+      {
+        p_actor_id: actorId,
+        p_tenant_id: action.tenantId,
+      },
+    );
+    const result = asExecution(one(data));
+    if (error || !result)
       return json(
         request,
-        { error: { code: "automation_auto_close_inactive" } },
+        { error: { code: "automation_auto_close_failed" } },
         422,
       );
-
-    try {
-      const previews = await previewPolicies(
-        context.supabaseAdmin,
-        action.tenantId,
-        [policy],
-      );
-      const candidates = new Set(
-        previews[0]?.examples.map((ticket) => ticket.id) ?? [],
-      );
-      if (!action.ticketIds.every((ticketId) => candidates.has(ticketId)))
-        return json(
-          request,
-          { error: { code: "automation_auto_close_candidates_changed" } },
-          409,
-        );
-
-      const { data: result, error: closeError } =
-        await context.supabaseAdmin.rpc("bulk_update_ticket_statuses", {
-          p_actor_id: actorId,
-          p_tenant_id: action.tenantId,
-          p_ticket_ids: action.ticketIds,
-          p_status_key: "closed",
-          p_confirm_close: action.confirmed,
-        });
-      if (closeError || !isRecord(result))
-        return json(
-          request,
-          { error: { code: "automation_auto_close_failed" } },
-          422,
-        );
-      const updated =
-        typeof result.updated === "number" && Number.isInteger(result.updated)
-          ? result.updated
-          : null;
-      if (updated === null)
-        return json(
-          request,
-          { error: { code: "automation_auto_close_failed" } },
-          422,
-        );
-      const { error: runError } = await context.supabaseAdmin
-        .from("tenant_automation_runs")
-        .insert({
-          tenant_id: action.tenantId,
-          policy_key: "auto_close",
-          initiated_by: actorId,
-          mode: "manual",
-          result: {
-            requested: action.ticketIds.length,
-            updated,
-            confirmed: action.confirmed,
-          },
-        });
-      if (runError)
-        return json(
-          request,
-          { error: { code: "automation_auto_close_audit_failed" } },
-          500,
-        );
-      await context.supabaseAdmin.from("audit_logs").insert({
-        tenant_id: action.tenantId,
-        actor_id: actorId,
-        action: "automation.auto_close.executed",
-        entity_type: "tenant_automation_policy",
-        entity_id: null,
-        severity: "warning",
-        metadata: {
-          requested: action.ticketIds.length,
-          updated,
-          confirmed: action.confirmed,
-        },
-      });
-      return json(request, {
-        data: { requested: action.ticketIds.length, updated },
-      });
-    } catch {
+    if (result.outcome === "expired")
       return json(
         request,
-        { error: { code: "automation_auto_close_preview_failed" } },
-        500,
+        { error: { code: "automation_auto_close_confirmation_expired" } },
+        409,
       );
-    }
+    if (result.outcome === "invalidated")
+      return json(
+        request,
+        { error: { code: "automation_auto_close_candidates_changed" } },
+        409,
+      );
+    if (result.outcome !== "executed")
+      return json(
+        request,
+        { error: { code: "automation_auto_close_confirmation_unavailable" } },
+        409,
+      );
+    return json(request, {
+      data: { requested: result.requested, updated: result.updated },
+    });
   }
 
   try {
@@ -537,6 +592,36 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       action.tenantId,
       policies,
     );
+    const autoClose = previews.find((preview) => preview.key === "auto_close");
+    let autoCloseConfirmation: Confirmation | null = null;
+    if (
+      autoClose?.enabled &&
+      autoClose.requirePreview &&
+      autoClose.examples.length > 0
+    ) {
+      const { data, error } = await context.supabaseAdmin.rpc(
+        "prepare_ticket_automation_auto_close",
+        {
+          p_actor_id: actorId,
+          p_tenant_id: action.tenantId,
+          p_ticket_ids: autoClose.examples.map((ticket) => ticket.id),
+        },
+      );
+      autoCloseConfirmation = error ? null : asConfirmation(one(data));
+      if (!autoCloseConfirmation)
+        return json(
+          request,
+          { error: { code: "automation_auto_close_candidates_changed" } },
+          409,
+        );
+    }
+
+    const safePreviewSummary = previews.map((preview) => ({
+      key: preview.key,
+      enabled: preview.enabled,
+      count: preview.count,
+      afterDays: preview.afterDays,
+    }));
     const { error: runError } = await context.supabaseAdmin
       .from("tenant_automation_runs")
       .insert({
@@ -544,7 +629,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         policy_key: "operations_report",
         initiated_by: actorId,
         mode: "preview",
-        result: { previews },
+        result: { previews: safePreviewSummary },
       });
     if (runError)
       return json(
@@ -553,7 +638,11 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         500,
       );
     return json(request, {
-      data: { previews, generatedAt: new Date().toISOString() },
+      data: {
+        previews,
+        autoCloseConfirmation,
+        generatedAt: new Date().toISOString(),
+      },
     });
   } catch {
     return json(request, { error: { code: "automation_preview_failed" } }, 500);

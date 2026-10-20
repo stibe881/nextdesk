@@ -87,6 +87,7 @@ const expectedFiles = [
   "0083_asset_intune_local_preflight_control.sql",
   "0084_harden_asset_feature_gate_membership.sql",
   "0085_harden_sso_provisioning_offboarding.sql",
+  "0086_controlled_ticket_automation_execution.sql",
 ];
 
 const availableFiles = await readdir(migrationDirectory);
@@ -876,6 +877,47 @@ const requiredFragments = [
     "0085_harden_sso_provisioning_offboarding.sql",
     "grant execute on function public.claim_current_tenant_user_invitation(uuid, citext, uuid)\n  to service_role",
   ],
+  [
+    "0086_controlled_ticket_automation_execution.sql",
+    "create table if not exists public.tenant_automation_confirmation_requests",
+  ],
+  [
+    "0086_controlled_ticket_automation_execution.sql",
+    "cardinality(ticket_ids) between 1 and 8",
+  ],
+  [
+    "0086_controlled_ticket_automation_execution.sql",
+    "create or replace function public.prepare_ticket_automation_auto_close",
+  ],
+  [
+    "0086_controlled_ticket_automation_execution.sql",
+    "create or replace function public.execute_ticket_automation_auto_close",
+  ],
+  [
+    "0086_controlled_ticket_automation_execution.sql",
+    "nullif(current_setting('request.jwt.claim.role', true), '')",
+  ],
+  [
+    "0086_controlled_ticket_automation_execution.sql",
+    "v_policy.updated_at is distinct from v_request.policy_updated_at",
+  ],
+  [
+    "0086_controlled_ticket_automation_execution.sql",
+    "revoke all on table public.tenant_automation_confirmation_requests from public, anon, authenticated",
+  ],
+  [
+    "0086_controlled_ticket_automation_execution.sql",
+    "tenant_automation_confirmation_one_pending_idx",
+  ],
+  [
+    "0086_controlled_ticket_automation_execution.sql",
+    "'tenant_automation_confirmation_request',\n    null,",
+  ],
+  ["0086_controlled_ticket_automation_execution.sql", "else 'invalidated'"],
+  [
+    "0086_controlled_ticket_automation_execution.sql",
+    "grant execute on function public.execute_ticket_automation_auto_close(uuid, uuid)\n  to service_role",
+  ],
 ];
 
 for (const [migration, fragment] of requiredFragments) {
@@ -938,6 +980,15 @@ if (
   !functionConfiguration.includes("[functions.tenant-users]\nverify_jwt = true")
 ) {
   throw new Error("tenant-users must explicitly require verified user JWTs.");
+}
+if (
+  !functionConfiguration.includes(
+    "[functions.ticket-automation]\nverify_jwt = true",
+  )
+) {
+  throw new Error(
+    "ticket-automation must explicitly require verified user JWTs.",
+  );
 }
 
 console.log(
