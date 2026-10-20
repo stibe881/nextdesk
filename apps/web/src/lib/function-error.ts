@@ -130,6 +130,15 @@ export async function functionErrorMessage(
       return "Diese Ticketfunktion ist für Ihren Mandanten derzeit deaktiviert.";
     case "asset_feature_disabled":
       return "Asset-Management ist für Ihren Mandanten derzeit deaktiviert.";
+    case "asset_integration_manage_required":
+      return "Für die Intune-Konfiguration und lokale Prüfungen fehlt Ihnen die erforderliche Berechtigung.";
+    case "intune_preflight_not_ready":
+      return "Die lokale Intune-Prüfung ist noch nicht bereit. Speichern Sie zuerst die gebundene Konfiguration.";
+    case "intune_preflight_not_found":
+      return "Der angeforderte lokale Intune-Prüflauf ist nicht mehr verfügbar.";
+    case "intune_configuration_read_failed":
+    case "intune_preflight_read_failed":
+      return "Die lokale Intune-Konfiguration konnte nicht sicher verarbeitet werden. Bitte laden Sie die Ansicht neu.";
     case "knowledge_feature_disabled":
       return "Die Wissensdatenbank ist für Ihren Mandanten derzeit deaktiviert.";
     case "reporting_feature_disabled":

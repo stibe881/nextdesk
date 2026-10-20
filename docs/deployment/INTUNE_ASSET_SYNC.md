@@ -1,41 +1,44 @@
-# Intune-Assetabgleich für nextDesk
+# Intune-Assetstatus für nextDesk
 
-## Zweck
+## Aktueller Betriebsstand: lokale Vorbereitung, keine Synchronisation
 
-nextDesk kann pro Mandant die über Microsoft Intune verwalteten Geräte in den mandantenisolierten Assetbestand übernehmen. Der Abgleich ist **lesend**: nextDesk führt keine Remoteaktionen wie Löschen, Sperren oder Zurücksetzen von Geräten aus.
+nextDesk führt derzeit **keinen** Microsoft-Intune- oder Microsoft-Graph-Abgleich aus. Das P1.5-Paket stellt ausschliesslich einen auditierbaren lokalen Preflight und eine Run-Historie bereit. Eine ausgelöste Prüfung bleibt innerhalb von nextDesk und ist kein Test gegen Microsoft.
 
-## Minimale Microsoft-Berechtigung
+Der lokale Preflight:
 
-Die zentrale mehrmandantenfähige Entra-Anwendung benötigt ausschließlich die Microsoft-Graph-**Anwendungsberechtigung** `DeviceManagementManagedDevices.Read.All`.
+- fordert kein Graph-Token an;
+- ruft keinen Microsoft-Endpunkt auf;
+- liest, erstellt, aktualisiert oder löscht keine Intune-Geräte und keine Assets;
+- aktiviert weder `sync_enabled` noch einen Worker oder Scheduler;
+- protokolliert nur einen allgemeinen Ergebniscode und aggregierte Nullzähler;
+- zeigt weder Entra-Tenant-ID, Geräte-ID, Token, Providerfehler noch Personendaten im Browser.
 
-- Sie erlaubt das Lesen der Eigenschaften von durch Microsoft Intune verwalteten Geräten ohne angemeldete Benutzerperson.
-- Sie verlangt eine Administratorzustimmung in jedem Kundenmandanten.
-- Der jeweilige Mandant benötigt eine aktive Intune-Lizenz.
-- Die stärkere Berechtigung `DeviceManagementManagedDevices.ReadWrite.All` wird für nextDesk nicht benötigt und darf nicht vergeben werden.
+Der frühere Endpoint `intune-asset-sync` ist JWT-geschützt und bis zu einer separaten fachlichen und sicherheitlichen Freigabe fail-closed. Er kann keine Secrets lesen, keine Graph-Anfrage erzeugen und keine Providersynchronisation starten.
 
-Die Berechtigung ergänzen wir erst gemeinsam, wenn die technische Datenbasis und Datenschutzfreigabe bereitstehen. Geheimwerte gehören ausschließlich in Supabase Edge-Function-Secrets – nie in Git, Browsercode, mobile Bundles oder Chatnachrichten.
+## Mandantenadministration
 
-## Mandantenablauf
+Die Bedienung erfolgt unter **Einstellungen → Funktionen → Asset-Management → Microsoft Intune**:
 
-1. Ein Mandantenadministrator aktiviert die Intune-Integration in **Einstellungen → Assets & Intune** und trägt ausschließlich die Entra-Verzeichnis-ID des eigenen Kundenmandanten ein.
-2. Gross-ICT hinterlegt den zentralen Client-ID-/Client-Secret-Satz als Edge-Function-Secrets.
-3. Eine Kundenadministration erteilt für genau diesen Kundenmandanten die Zustimmnung zu `DeviceManagementManagedDevices.Read.All`.
-4. nextDesk führt zunächst einen lesenden Test- beziehungsweise Dry-Run aus. Erst danach werden Geräte in den Assetbestand übernommen.
-5. Der Abgleich verwendet die eindeutige Graph-Geräte-ID sowie Seitenfortsetzung. Er protokolliert nur technische Laufdaten und keine Zugangsdaten.
+1. Asset-Management muss bewusst aktiviert sein und darf nicht abgelaufen sein.
+2. Die handelnde Person benötigt `asset.integration.manage`.
+3. Für eine aktivierte lokale Vorbereitung muss eine aktive, **tenant-spezifische** Azure-SSO-Konfiguration bestehen. nextDesk leitet die Bindung nur serverseitig aus der bereits gespeicherten Microsoft-URL ab; es gibt kein frei editierbares Entra-Tenant-ID-Feld.
+4. Die lokale Konfiguration kann gespeichert, anschliessend vor Ort geprüft und bei Bedarf mit einer neuen Request-ID wiederholt werden.
 
-## Verarbeitete Felder
+Details zu Audit, Wiederholung und Recovery stehen im [lokalen Preflight-Runbook](../operations/INTUNE_LOCAL_PREFLIGHT_RUNBOOK.md).
 
-Die Graph-Ressource `managedDevice` stellt unter anderem Anzeigename, Betriebssystem, Hersteller, Modell, Seriennummer, Benutzeranzeige/-UPN, Compliance, Verschlüsselungsstatus, Speicherwerte, letzte Synchronisierung und Intune-Geräte-ID bereit. nextDesk normalisiert für Suche und Scanner nur die erforderlichen Identitäten und Betriebsfelder; vollständige Providerdaten bleiben als versionierter, mandantenisolierter Snapshot zugriffsbeschränkt.
+## Datenzugriff und QR-/Barcode-Lookup
 
-Nicht jede Graph-Eigenschaft erscheint in der Listenabfrage. Einzelne optionale Werte, etwa IMEI, UDID oder Ethernet-MAC-Adresse, werden laut Microsoft erst über einen gezielten Einzelabruf mit `$select` zurückgegeben. Diese zusätzlichen Felder werden nur nach expliziter Datenschutzfreigabe aktiviert.
+Assetlisten liefern nur den für die Inventararbeit notwendigen Datenvertrag. Externe Intune-Gerätekennungen, Geräte-Snapshots und zugeordnete Personen liegen in privaten Tabellen und sind weder über die Browser- noch über die Mobile-API direkt lesbar. Migration 0083 entfernt rekursiv bekannte private Providerfelder, einschliesslich der historischen JSON-Metadatenkopie `external_device_id`, aus browserlesbaren Assetzeilen und weist neue solche Metadaten ab. Fallunterschiede in alten Kennungen bleiben als private, mehrdeutige Zuordnungen erhalten und führen beim Scan nicht zu einer beliebigen Auswahl. Der mandantengebundene Lookup verarbeitet Assetkennungen, Inventar- und Seriennummern sowie bereits vorhandene externe Gerätekennungen ausschliesslich im autorisierten Serverpfad und gibt danach nur das berechtigte Assetresultat zurück.
 
-## QR- und Barcode-Scanner
+Die Datenbankpolicies kontrollieren die Assetdomäne zusätzlich mit der Feature- und Pilotprüfung. Damit gibt es bei deaktiviertem oder abgelaufenem Asset-Management keinen direkten PostgREST-Bypass.
 
-Der Scanner verarbeitet QR-Codes und Barcodes ausschließlich lokal, normalisiert den Scanwert und fragt danach einen mandantenautorisierten Lookup-Endpunkt ab. Geeignete Werte sind nextDesk-Assetkennungen, Seriennummern, Intune-Geräte-IDs und Inventarnummern. Der Scanner gibt bei unbekannten oder mehrdeutigen Werten keine Informationen anderer Mandanten preis.
+## Erst nach separater Freigabe
 
-Die native iOS-/Android-Kamera benötigt das Expo-Modul `expo-camera` sowie eine eindeutige Kameraberechtigungsbeschreibung. Ein neuer nativer TestFlight-Build ist erforderlich, sobald der Scanner in die App aufgenommen wird.
+Für einen zukünftigen echten, weiterhin nur lesenden Intune-Abgleich braucht es vor jeder Implementierung eine neue Entscheidung zu Datenschutz, Datenvertrag, Aufbewahrung, Admin-Consent, Secretverwaltung, Retry-Verhalten und einem möglichen Scheduler. Erst dann wäre als minimale Microsoft-Graph-Anwendungsberechtigung `DeviceManagementManagedDevices.Read.All` zu bewerten und pro Kundenmandant ausdrücklich durch eine Administration freizugeben. `DeviceManagementManagedDevices.ReadWrite.All` wird nicht benötigt und darf nicht vergeben werden.
 
-## Quellen
+Secrets gehören ausschliesslich in Supabase Edge-Function-Secrets – nie in Git, Browsercode, mobile Bundles oder Chatnachrichten.
+
+## Quellen für eine spätere, separat freigegebene Integration
 
 - Microsoft Graph `managedDevice`: https://learn.microsoft.com/en-us/graph/api/resources/intune-devices-manageddevice?view=graph-rest-1.0
 - Microsoft Graph Berechtigungsreferenz: https://learn.microsoft.com/en-us/graph/permissions-reference

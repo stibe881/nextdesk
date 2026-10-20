@@ -11,7 +11,7 @@ const MAX_TICKET_SEARCH_RESULTS = 30;
 const SERVICE_SELECT =
   "id, tenant_id, name, description, criticality, active, created_at, updated_at";
 const ASSET_SELECT =
-  "id, tenant_id, service_id, name, asset_tag, kind, status, customer_organization_id, metadata, active, created_at, updated_at";
+  "id, tenant_id, service_id, name, asset_tag, inventory_number, serial_number, manufacturer, model, operating_system, kind, status, customer_organization_id, metadata, active, created_at, updated_at";
 const PROBLEM_SELECT =
   "id, tenant_id, title, description, status, workaround, root_cause, owner_id, created_by, created_at, updated_at";
 const TICKET_SUMMARY_SELECT =
@@ -29,6 +29,7 @@ type ManageType = "manageService" | "manageAsset" | "manageProblem";
 type Operation = "create" | "update" | "archive" | "resolve";
 type Action =
   | { type: "listCatalog"; tenantId: string }
+  | { type: "listProblemOwners"; tenantId: string }
   | { type: "listProblemTickets"; tenantId: string; problemId: string }
   | { type: "searchTickets"; tenantId: string; query: string }
   | {
@@ -46,6 +47,7 @@ type Action =
       targetId: string;
     };
 type CallerClient = SupabaseContext["supabase"];
+type AdminClient = SupabaseContext["supabaseAdmin"];
 type DatabaseError = { code?: string };
 type Row = Record<string, unknown>;
 type TicketSummary = {
@@ -158,6 +160,17 @@ const ASSET_FIELDS: Record<string, Field> = {
   name: { column: "name", validate: text(1, 240) },
   serviceId: { column: "service_id", validate: nullable(uuid) },
   assetTag: { column: "asset_tag", validate: nullable(text(1, 160)) },
+  inventoryNumber: {
+    column: "inventory_number",
+    validate: nullable(text(1, 160)),
+  },
+  serialNumber: { column: "serial_number", validate: nullable(text(1, 160)) },
+  manufacturer: { column: "manufacturer", validate: nullable(text(1, 160)) },
+  model: { column: "model", validate: nullable(text(1, 160)) },
+  operatingSystem: {
+    column: "operating_system",
+    validate: nullable(text(1, 160)),
+  },
   kind: { column: "kind", validate: text(1, 64) },
   status: { column: "status", validate: text(1, 64) },
   customerOrganizationId: {
@@ -230,6 +243,11 @@ function parseAction(value: unknown): Action | null {
   if (!isRecord(value) || !isUuid(value.tenantId)) return null;
   const tenantId = value.tenantId.toLowerCase();
   if (value.type === "listCatalog") {
+    return hasOnlyKeys(value, ["type", "tenantId"])
+      ? { type: value.type, tenantId }
+      : null;
+  }
+  if (value.type === "listProblemOwners") {
     return hasOnlyKeys(value, ["type", "tenantId"])
       ? { type: value.type, tenantId }
       : null;
@@ -556,6 +574,45 @@ async function requireReadableProblem(
   }
 }
 
+async function listProblemOwners(
+  request: Request,
+  client: CallerClient,
+  admin: AdminClient,
+  action: Extract<Action, { type: "listProblemOwners" }>,
+): Promise<Response> {
+  await requirePermission(
+    client,
+    "has_tenant_permission",
+    {
+      p_tenant_id: action.tenantId,
+      p_permission_code: "asset.manage",
+    },
+    "asset_manage_required",
+  );
+  const { data, error } = await admin
+    .from("tenant_memberships")
+    .select("user_id, user_profiles!inner(display_name)")
+    .eq("tenant_id", action.tenantId)
+    .eq("status", "active")
+    .order("user_id")
+    .limit(500)
+    .overrideTypes<Row[], { merge: false }>();
+  if (error) databaseFailure(error);
+  const owners = (data ?? []).flatMap((membership) => {
+    const profile = membership.user_profiles;
+    return typeof membership.user_id === "string" &&
+      isRecord(profile) &&
+      validString(profile.display_name) &&
+      profile.display_name.trim()
+      ? [{ id: membership.user_id, displayName: profile.display_name.trim() }]
+      : [];
+  });
+  owners.sort((left, right) =>
+    left.displayName.localeCompare(right.displayName, "de-CH"),
+  );
+  return json(request, { data: { owners } });
+}
+
 async function listProblemTickets(
   request: Request,
   client: CallerClient,
@@ -842,6 +899,14 @@ const handler = withSupabase(
           readCatalog(client, action.tenantId, RESOURCES.manageProblem),
         ]);
         return json(request, { data: { services, assets, problems } });
+      }
+      if (action.type === "listProblemOwners") {
+        return await listProblemOwners(
+          request,
+          client,
+          context.supabaseAdmin,
+          action,
+        );
       }
       if (action.type === "listProblemTickets") {
         return await listProblemTickets(request, client, action);

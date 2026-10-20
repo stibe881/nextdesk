@@ -45,6 +45,47 @@ create role service_role nologin;
 SQL
 
 for migration in "$ROOT_DIR"/supabase/migrations/*.sql; do
+  if [[ "$(basename "$migration")" == "0083_asset_intune_local_preflight_control.sql" ]]; then
+    # Seed the historical representation immediately before 0083. The old
+    # worker stored external device IDs in browser-readable JSON metadata and
+    # allowed case-different duplicate IDs. The upgrade must stay available,
+    # preserve both private lookup links and remove every public JSON copy.
+    psql -v ON_ERROR_STOP=1 <<'SQL'
+insert into public.tenants (id, slug, name) values
+  ('f0000000-0000-4000-8000-000000000001', 'legacy-intune-upgrade', 'Legacy Intune Upgrade');
+insert into public.assets (
+  id, tenant_id, name, kind, status, metadata
+) values
+  (
+    'f1000000-0000-4000-8000-000000000001',
+    'f0000000-0000-4000-8000-000000000001',
+    'Legacy Intune Asset A',
+    'computer',
+    'active',
+    jsonb_build_object(
+      'source', 'intune',
+      'external_device_id', 'Legacy-Meta-Device',
+      'keep', 'A',
+      'provider', jsonb_build_object(
+        'external_device_id', 'nested-legacy-device',
+        'user_display_name', 'Private Legacy Person',
+        'keep', 'nested-A'
+      ),
+      'array', jsonb_build_array(
+        jsonb_build_object('managed_device_id', 'nested-array-device', 'keep', 'array-A')
+      )
+    )
+  ),
+  (
+    'f1000000-0000-4000-8000-000000000002',
+    'f0000000-0000-4000-8000-000000000001',
+    'Legacy Intune Asset B',
+    'computer',
+    'active',
+    jsonb_build_object('source', 'intune', 'external_device_id', 'legacy-meta-device', 'keep', 'B')
+  );
+SQL
+  fi
   psql -v ON_ERROR_STOP=1 -f "$migration" >/dev/null
 done
 
@@ -53,6 +94,46 @@ psql -v ON_ERROR_STOP=1 <<'SQL'
 grant usage on schema public, auth to authenticated;
 grant execute on function auth.uid() to authenticated;
 grant select on public.tickets, public.ticket_comments, public.ticket_statuses, public.ticket_priorities, public.ticket_categories to authenticated;
+
+-- Migration 0083 must safely migrate old browser-visible metadata identifiers.
+-- A case-different collision represents an ambiguous scan, never a migration
+-- failure and never an arbitrary device-to-asset association.
+do $$
+begin
+  if exists (
+    select 1
+    from public.assets asset
+    where asset.tenant_id = 'f0000000-0000-4000-8000-000000000001'
+      and (
+        asset.metadata ? 'external_device_id'
+        or asset.metadata #> '{provider,external_device_id}' is not null
+        or asset.metadata #> '{provider,user_display_name}' is not null
+        or asset.metadata #> '{array,0,managed_device_id}' is not null
+      )
+  ) then
+    raise exception 'Legacy Intune external device ID remained in public asset metadata';
+  end if;
+  if (
+    select count(*)
+    from public.asset_intune_asset_links link
+    where link.tenant_id = 'f0000000-0000-4000-8000-000000000001'
+      and link.canonical_external_device_id = 'legacy-meta-device'
+  ) <> 2 then
+    raise exception 'Legacy case-different Intune device IDs were not preserved as ambiguous private links';
+  end if;
+  if not exists (
+    select 1
+    from public.assets asset
+    where asset.id = 'f1000000-0000-4000-8000-000000000001'
+      and asset.metadata->>'source' = 'intune'
+      and asset.metadata->>'keep' = 'A'
+      and asset.metadata #>> '{provider,keep}' = 'nested-A'
+      and asset.metadata #>> '{array,0,keep}' = 'array-A'
+  ) then
+    raise exception 'Unrelated legacy asset metadata was not retained during provider metadata cleanup';
+  end if;
+end;
+$$;
 
 insert into auth.users (id) values
   ('00000000-0000-4000-8000-000000000001'),
@@ -3476,14 +3557,343 @@ begin
   if exists (
     select 1
     from public.audit_logs
-    where tenant_id = '10000000-0000-4000-8000-000000000001'
-      and action like 'tenant.entra_directory.%'
-      and (metadata ? 'email' or metadata ? 'token' or metadata ? 'entra_tenant_id')
+	    where tenant_id = '10000000-0000-4000-8000-000000000001'
+	      and action like 'tenant.entra_directory.%'
+	      and (metadata ? 'email' or metadata ? 'token' or metadata ? 'entra_tenant_id')
+	  ) then
+	    raise exception 'Entra directory audit metadata retained sensitive values';
+	  end if;
+	end;
+	$$;
+
+	-- P1.5: the Intune control plane is local-only, auditable and explicitly
+	-- idempotent. It must not become a hidden Graph sync or browser-writable table.
+update public.tenant_feature_flags
+set enabled = true
+where tenant_id = '10000000-0000-4000-8000-000000000001'
+  and feature_key = 'assets.management';
+insert into public.assets (
+  id, tenant_id, name, asset_tag, inventory_number, serial_number, kind, status
+) values (
+  '71000000-0000-4000-8000-000000000001',
+  '10000000-0000-4000-8000-000000000001',
+  'P1.5 Privacy Test Asset',
+  'P15-PRIVACY',
+  'P15-INV-001',
+  'P15-SERIAL-001',
+  'computer',
+  'active'
+);
+insert into public.asset_intune_asset_links (
+  tenant_id, asset_id, canonical_external_device_id
+) values (
+  '10000000-0000-4000-8000-000000000001',
+  '71000000-0000-4000-8000-000000000001',
+  'p15-intune-device-001'
+);
+insert into public.asset_intune_devices (
+  tenant_id, asset_id, external_device_id, device_name, user_display_name,
+  user_principal_name, snapshot
+) values (
+  '10000000-0000-4000-8000-000000000001',
+  '71000000-0000-4000-8000-000000000001',
+  'P15-INTUNE-DEVICE-001',
+  'P1.5 Privacy Test Device',
+  'Private Test Person',
+  'private.test@example.invalid',
+  jsonb_build_object('sensitive_provider_snapshot', true)
+);
+do $$
+begin
+  if has_table_privilege('authenticated', 'public.asset_intune_devices', 'select')
+    or has_table_privilege('authenticated', 'public.asset_identifiers', 'select')
+    or has_table_privilege('authenticated', 'public.asset_intune_asset_links', 'select') then
+    raise exception 'Authenticated browser role retained a private Intune table privilege';
+  end if;
+  if exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'assets'
+      and column_name = 'intune_device_id'
   ) then
-    raise exception 'Entra directory audit metadata retained sensitive values';
+    raise exception 'Browser-readable assets table retained an Intune device ID column';
+  end if;
+  begin
+    update public.assets
+    set metadata = jsonb_build_object('external_device_id', 'must-remain-private')
+    where id = '71000000-0000-4000-8000-000000000001';
+    raise exception 'Asset metadata accepted a private provider device ID';
+  exception when invalid_parameter_value then
+    null;
+  end;
+  if exists (
+    select 1
+    from public.assets
+    where id = '71000000-0000-4000-8000-000000000001'
+      and metadata ? 'external_device_id'
+  ) then
+    raise exception 'Private provider device ID remained in asset metadata';
+  end if;
+  begin
+    update public.assets
+    set metadata = jsonb_build_object(
+      'provider', jsonb_build_object('user_display_name', 'must-remain-private'),
+      'array', jsonb_build_array(
+        jsonb_build_object('managed_device_id', 'must-remain-private')
+      )
+    )
+    where id = '71000000-0000-4000-8000-000000000001';
+    raise exception 'Asset metadata accepted a nested private provider device ID';
+  exception when invalid_parameter_value then
+    null;
+  end;
+  if not exists (
+    select 1
+    from pg_policies policy
+    where policy.schemaname = 'public'
+      and policy.tablename = 'assets'
+      and policy.policyname = 'assets_select_member'
+      and policy.qual like '%is_asset_management_client_enabled%'
+  ) then
+    raise exception 'Asset read policy did not enforce the feature and pilot gate';
+  end if;
+  if (
+    select count(*)
+    from pg_policies policy
+    where policy.schemaname = 'public'
+      and policy.tablename in ('ticket_services', 'ticket_assets', 'problem_tickets')
+      and policy.policyname like '%_select_member'
+      and policy.qual like '%is_asset_management_client_enabled%'
+  ) <> 3 then
+    raise exception 'Ticket asset link policies did not enforce the feature and pilot gate';
   end if;
 end;
 $$;
-rollback;
+insert into public.role_permissions (role_id, permission_code)
+select assignment.role_id, 'asset.integration.manage'
+from public.user_role_assignments assignment
+where assignment.tenant_id = '10000000-0000-4000-8000-000000000001'
+  and assignment.user_id = '00000000-0000-4000-8000-000000000002'
+on conflict do nothing;
+
+set local role authenticated;
+	select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-000000000002', true);
+	do $$
+	begin
+	  if not exists (
+	    select 1
+	    from public.assets
+	    where id = '71000000-0000-4000-8000-000000000001'
+	  ) then
+	    raise exception 'Enabled asset feature unexpectedly hid an authorized asset';
+	  end if;
+	  begin
+	    perform public.configure_asset_intune_preflight(
+	      '00000000-0000-4000-8000-000000000002',
+	      '10000000-0000-4000-8000-000000000001',
+	      true
+	    );
+	    raise exception 'Authenticated browser role configured Intune preflight directly';
+	  exception when insufficient_privilege then
+	    null;
+	  end;
+	  begin
+	    perform 1
+	    from public.asset_intune_connections
+	    limit 1;
+	    raise exception 'Authenticated browser role read private Intune configuration';
+	  exception when insufficient_privilege then
+	    null;
+	  end;
+	  begin
+	    perform 1 from public.asset_intune_devices limit 1;
+	    raise exception 'Authenticated browser role read private Intune device data';
+	  exception when insufficient_privilege then
+	    null;
+	  end;
+	  begin
+	    perform 1 from public.asset_identifiers limit 1;
+	    raise exception 'Authenticated browser role read private asset identifiers';
+	  exception when insufficient_privilege then
+	    null;
+	  end;
+	  begin
+	    perform 1 from public.asset_intune_asset_links limit 1;
+	    raise exception 'Authenticated browser role read private Intune device links';
+	  exception when insufficient_privilege then
+	    null;
+	  end;
+	end;
+	$$;
+	reset role;
+	update public.tenant_feature_flags
+	set enabled = false
+	where tenant_id = '10000000-0000-4000-8000-000000000001'
+	  and feature_key = 'assets.management';
+	set local role authenticated;
+	select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-000000000002', true);
+	do $$
+	begin
+	  if exists (
+	    select 1
+	    from public.assets
+	    where id = '71000000-0000-4000-8000-000000000001'
+	  ) then
+	    raise exception 'Disabled asset feature still exposed direct browser asset reads';
+	  end if;
+	end;
+	$$;
+	reset role;
+	update public.tenant_feature_flags
+	set enabled = true
+	where tenant_id = '10000000-0000-4000-8000-000000000001'
+	  and feature_key = 'assets.management';
+
+	set local role service_role;
+	do $$
+	declare
+	  v_tenant constant uuid := '10000000-0000-4000-8000-000000000001';
+	  v_admin constant uuid := '00000000-0000-4000-8000-000000000002';
+  v_first record;
+  v_duplicate record;
+  v_retry record;
+  v_blocked record;
+	  v_generation bigint;
+	begin
+	  select configuration_generation
+	  into v_generation
+	  from public.configure_asset_intune_preflight(v_admin, v_tenant, true);
+	  if v_generation < 2 then
+	    raise exception 'Intune preflight configuration did not advance its generation';
+	  end if;
+	  if exists (
+	    select 1
+	    from public.asset_intune_connections
+	    where tenant_id = v_tenant and sync_enabled
+	  ) then
+	    raise exception 'Local Intune preflight enabled a provider sync';
+	  end if;
+
+	  select * into v_first
+	  from public.run_asset_intune_local_preflight(
+	    v_admin,
+	    v_tenant,
+	    '60000000-0000-4000-8000-000000000001'
+	  );
+	  if v_first.status <> 'succeeded'
+	    or v_first.result_code <> 'preflight_ready'
+	    or v_first.provider_contacted
+	    or v_first.attempt_no <> 1 then
+	    raise exception 'Local Intune preflight was not provider-free and ready';
+	  end if;
+	  if exists (
+	    select 1
+	    from public.asset_intune_sync_runs
+	    where id = v_first.id
+	      and (devices_seen <> 0 or assets_created <> 0 or assets_updated <> 0)
+	  ) then
+	    raise exception 'Local Intune preflight modified asset counters';
+	  end if;
+
+	  select * into v_duplicate
+	  from public.run_asset_intune_local_preflight(
+	    v_admin,
+	    v_tenant,
+	    '60000000-0000-4000-8000-000000000001'
+	  );
+	  if v_duplicate.id <> v_first.id then
+	    raise exception 'Duplicate local Intune preflight was not idempotent';
+	  end if;
+
+	  select * into v_retry
+	  from public.run_asset_intune_local_preflight(
+	    v_admin,
+	    v_tenant,
+	    '60000000-0000-4000-8000-000000000002',
+	    v_first.id
+	  );
+	  if v_retry.retry_of_run_id <> v_first.id
+	    or v_retry.root_run_id <> v_first.root_run_id
+	    or v_retry.attempt_no <> 2
+	    or v_retry.provider_contacted then
+	    raise exception 'Local Intune preflight retry lost its audited recovery lineage';
+	  end if;
+
+	  perform public.configure_asset_intune_preflight(v_admin, v_tenant, false);
+	  select * into v_blocked
+	  from public.run_asset_intune_local_preflight(
+	    v_admin,
+	    v_tenant,
+	    '60000000-0000-4000-8000-000000000003'
+	  );
+	  if v_blocked.status <> 'blocked'
+	    or v_blocked.result_code <> 'connection_disabled'
+	    or v_blocked.provider_contacted then
+	    raise exception 'Disabled Intune preflight was not safely recorded as local-only';
+	  end if;
+	end;
+	$$;
+	reset role;
+
+	do $$
+	declare
+	  v_tenant constant uuid := '10000000-0000-4000-8000-000000000001';
+	begin
+	  if exists (
+	    select 1
+	    from public.audit_logs audit
+	    where audit.tenant_id = v_tenant
+	      and audit.action like 'asset.intune_preflight.%'
+	      and audit.metadata ?| array['directory_tenant_id', 'device_id', 'token', 'provider_error']
+	  ) then
+	    raise exception 'Local Intune preflight audit leaked provider or tenant details';
+	  end if;
+	end;
+	$$;
+
+	do $$
+	declare
+	  v_tenant constant uuid := '10000000-0000-4000-8000-000000000001';
+	  v_admin constant uuid := '00000000-0000-4000-8000-000000000002';
+	begin
+	  update public.tenant_feature_flags
+	  set pilot_ends_at = timezone('utc', now()) - interval '1 second'
+	  where tenant_id = v_tenant and feature_key = 'assets.management';
+	  begin
+	    perform public.get_asset_intune_preflight_configuration(v_admin, v_tenant);
+	    raise exception 'Expired asset pilot still allowed a local Intune preflight operation';
+	  exception when insufficient_privilege then
+	    null;
+	  end;
+	  update public.tenant_feature_flags
+	  set pilot_ends_at = null
+	  where tenant_id = v_tenant and feature_key = 'assets.management';
+	end;
+	$$;
+
+	do $$
+	declare
+	  v_tenant constant uuid := '10000000-0000-4000-8000-000000000001';
+	  v_admin constant uuid := '00000000-0000-4000-8000-000000000002';
+	  v_problem uuid := '70000000-0000-4000-8000-000000000001';
+	begin
+	  insert into public.problems (
+	    id, tenant_id, title, description, status, owner_id, created_by
+	  ) values (
+	    v_problem, v_tenant, 'Owner integrity test', 'P1.5 test case', 'open', v_admin, v_admin
+	  );
+	  begin
+	    update public.problems
+	    set owner_id = '00000000-0000-4000-8000-000000000099'
+	    where id = v_problem and tenant_id = v_tenant;
+	    raise exception 'An inactive or foreign problem owner was accepted';
+	  exception when foreign_key_violation then
+	    null;
+	  end;
+	end;
+	$$;
+
+	rollback;
 SQL
 echo "PostgreSQL 16 migration and RLS integration checks passed."

@@ -84,6 +84,7 @@ const expectedFiles = [
   "0080_harden_sla_breach_feature_gate.sql",
   "0081_entra_directory_configuration_management.sql",
   "0082_tenant_administrator_ticket_delete_permission.sql",
+  "0083_asset_intune_local_preflight_control.sql",
 ];
 
 const availableFiles = await readdir(migrationDirectory);
@@ -759,6 +760,68 @@ const requiredFragments = [
     "create trigger roles_grant_ticket_delete_to_tenant_administrator",
   ],
   ["0082_tenant_administrator_ticket_delete_permission.sql", "'ticket.delete'"],
+  [
+    "0083_asset_intune_local_preflight_control.sql",
+    "create or replace function public.configure_asset_intune_preflight",
+  ],
+  [
+    "0083_asset_intune_local_preflight_control.sql",
+    "create or replace function public.run_asset_intune_local_preflight",
+  ],
+  [
+    "0083_asset_intune_local_preflight_control.sql",
+    "and provider_contacted = false",
+  ],
+  ["0083_asset_intune_local_preflight_control.sql", "set sync_enabled = false"],
+  [
+    "0083_asset_intune_local_preflight_control.sql",
+    "feature.pilot_ends_at > timezone('utc', now())",
+  ],
+  ["0083_asset_intune_local_preflight_control.sql", "':preflight-retry:'"],
+  [
+    "0083_asset_intune_local_preflight_control.sql",
+    "create trigger problems_validate_active_owner",
+  ],
+  [
+    "0083_asset_intune_local_preflight_control.sql",
+    "create or replace function public.is_asset_management_client_enabled",
+  ],
+  [
+    "0083_asset_intune_local_preflight_control.sql",
+    "and public.is_asset_management_client_enabled(tenant_id)",
+  ],
+  [
+    "0083_asset_intune_local_preflight_control.sql",
+    "create table if not exists public.asset_intune_asset_links",
+  ],
+  [
+    "0083_asset_intune_local_preflight_control.sql",
+    "revoke all on table public.asset_intune_asset_links, public.asset_identifiers,",
+  ],
+  [
+    "0083_asset_intune_local_preflight_control.sql",
+    "set metadata = public.strip_private_asset_provider_metadata(metadata)",
+  ],
+  [
+    "0083_asset_intune_local_preflight_control.sql",
+    "create trigger assets_reject_private_provider_metadata",
+  ],
+  [
+    "0083_asset_intune_local_preflight_control.sql",
+    "create or replace function public.strip_private_asset_provider_metadata",
+  ],
+  [
+    "0083_asset_intune_local_preflight_control.sql",
+    "create index if not exists asset_intune_asset_links_tenant_external_device_idx",
+  ],
+  [
+    "0083_asset_intune_local_preflight_control.sql",
+    "alter table public.assets drop column if exists intune_device_id",
+  ],
+  [
+    "0083_asset_intune_local_preflight_control.sql",
+    "grant execute on function public.run_asset_intune_local_preflight(uuid, uuid, uuid, uuid)\n  to service_role",
+  ],
 ];
 
 for (const [migration, fragment] of requiredFragments) {
@@ -780,6 +843,22 @@ if (
 ) {
   throw new Error(
     "entra-directory-sync must explicitly require verified user JWTs.",
+  );
+}
+if (
+  !functionConfiguration.includes(
+    "[functions.asset-registry]\nverify_jwt = true",
+  )
+) {
+  throw new Error("asset-registry must explicitly require verified user JWTs.");
+}
+if (
+  !functionConfiguration.includes(
+    "[functions.intune-asset-sync]\nverify_jwt = true",
+  )
+) {
+  throw new Error(
+    "intune-asset-sync must explicitly require verified user JWTs while provider sync is disabled.",
   );
 }
 

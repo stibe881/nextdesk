@@ -40,6 +40,11 @@ type Asset = {
   service_id: string | null;
   name: string;
   asset_tag: string | null;
+  inventory_number: string | null;
+  serial_number: string | null;
+  manufacturer: string | null;
+  model: string | null;
+  operating_system: string | null;
   kind: string;
   status: string;
   customer_organization_id: string | null;
@@ -70,6 +75,11 @@ type TicketReference = {
   statusLabel: string;
 };
 
+type ProblemOwner = {
+  id: string;
+  displayName: string;
+};
+
 type ServiceForm = {
   id: string | null;
   name: string;
@@ -82,6 +92,11 @@ type AssetForm = {
   name: string;
   serviceId: string;
   assetTag: string;
+  inventoryNumber: string;
+  serialNumber: string;
+  manufacturer: string;
+  model: string;
+  operatingSystem: string;
   kind: string;
   status: string;
   customerOrganizationId: string;
@@ -101,6 +116,7 @@ type ProblemForm = {
 type ProblemFormMode = "create" | "edit" | "resolve";
 
 type CatalogRequest = { type: "listCatalog"; tenantId: string };
+type ProblemOwnersRequest = { type: "listProblemOwners"; tenantId: string };
 type ServiceSaveRequest = {
   type: "manageService";
   tenantId: string;
@@ -124,6 +140,11 @@ type AssetSaveRequest = {
   name: string;
   serviceId: string | null;
   assetTag: string | null;
+  inventoryNumber: string | null;
+  serialNumber: string | null;
+  manufacturer: string | null;
+  model: string | null;
+  operatingSystem: string | null;
   kind: string;
   status: string;
   customerOrganizationId: string | null;
@@ -176,6 +197,7 @@ type ProblemTicketLinkRequest = {
 };
 type ServiceAssetsRequest =
   | CatalogRequest
+  | ProblemOwnersRequest
   | ServiceSaveRequest
   | ServiceArchiveRequest
   | AssetSaveRequest
@@ -198,6 +220,11 @@ const EMPTY_ASSET_FORM: AssetForm = {
   name: "",
   serviceId: "",
   assetTag: "",
+  inventoryNumber: "",
+  serialNumber: "",
+  manufacturer: "",
+  model: "",
+  operatingSystem: "",
   kind: "other",
   status: "active",
   customerOrganizationId: "",
@@ -317,6 +344,11 @@ function parseAsset(value: unknown): Asset | null {
     !isNullableString(value.service_id) ||
     typeof value.name !== "string" ||
     !isNullableString(value.asset_tag) ||
+    !isNullableString(value.inventory_number) ||
+    !isNullableString(value.serial_number) ||
+    !isNullableString(value.manufacturer) ||
+    !isNullableString(value.model) ||
+    !isNullableString(value.operating_system) ||
     typeof value.kind !== "string" ||
     typeof value.status !== "string" ||
     !isNullableString(value.customer_organization_id) ||
@@ -332,6 +364,11 @@ function parseAsset(value: unknown): Asset | null {
     service_id: value.service_id,
     name: value.name,
     asset_tag: value.asset_tag,
+    inventory_number: value.inventory_number,
+    serial_number: value.serial_number,
+    manufacturer: value.manufacturer,
+    model: value.model,
+    operating_system: value.operating_system,
     kind: value.kind,
     status: value.status,
     customer_organization_id: value.customer_organization_id,
@@ -396,6 +433,19 @@ function parseTicketReference(value: unknown): TicketReference | null {
   };
 }
 
+function parseProblemOwner(value: unknown): ProblemOwner | null {
+  if (
+    !isRecord(value) ||
+    typeof value.id !== "string" ||
+    !value.id.trim() ||
+    typeof value.displayName !== "string" ||
+    !value.displayName.trim()
+  ) {
+    return null;
+  }
+  return { id: value.id, displayName: value.displayName };
+}
+
 function responseData(value: unknown): Record<string, unknown> {
   if (!isRecord(value) || !isRecord(value.data)) {
     throw new Error("Die Serverantwort hat ein unerwartetes Format.");
@@ -419,6 +469,26 @@ function parseTicketReferences(
     throw new Error(fallback);
   }
   return references;
+}
+
+function parseProblemOwners(value: unknown): ProblemOwner[] {
+  const owners = responseData(value).owners;
+  if (!Array.isArray(owners)) {
+    throw new Error(
+      "Die Liste der verantwortlichen Personen ist unvollständig.",
+    );
+  }
+  const parsed = owners.map(parseProblemOwner);
+  if (parsed.some((owner) => owner === null)) {
+    throw new Error(
+      "Die Liste der verantwortlichen Personen ist unvollständig.",
+    );
+  }
+  const options = parsed as ProblemOwner[];
+  if (new Set(options.map((owner) => owner.id)).size !== options.length) {
+    throw new Error("Die Liste der verantwortlichen Personen ist ungültig.");
+  }
+  return options;
 }
 
 function parseProblemTicketLink(
@@ -613,6 +683,11 @@ function assetDraft(asset: Asset): AssetForm {
     name: asset.name,
     serviceId: asset.service_id ?? "",
     assetTag: asset.asset_tag ?? "",
+    inventoryNumber: asset.inventory_number ?? "",
+    serialNumber: asset.serial_number ?? "",
+    manufacturer: asset.manufacturer ?? "",
+    model: asset.model ?? "",
+    operatingSystem: asset.operating_system ?? "",
     kind: asset.kind,
     status: asset.status,
     customerOrganizationId: asset.customer_organization_id ?? "",
@@ -667,6 +742,8 @@ export function ServiceAssets({
   const [error, setError] = useState("");
   const [forbidden, setForbidden] = useState(false);
   const [success, setSuccess] = useState("");
+  const [problemOwners, setProblemOwners] = useState<ProblemOwner[]>([]);
+  const [problemOwnersLoading, setProblemOwnersLoading] = useState(false);
   const [problemTickets, setProblemTickets] = useState<TicketReference[]>([]);
   const [ticketSearchQuery, setTicketSearchQuery] = useState("");
   const [ticketSearchResults, setTicketSearchResults] = useState<
@@ -675,12 +752,17 @@ export function ServiceAssets({
   const [problemTicketsLoading, setProblemTicketsLoading] = useState(false);
   const [ticketSearchLoading, setTicketSearchLoading] = useState(false);
   const requestVersion = useRef(0);
+  const problemOwnersRequestVersion = useRef(0);
   const problemTicketsRequestVersion = useRef(0);
   const ticketSearchRequestVersion = useRef(0);
 
   const serviceNames = useMemo(
     () => new Map(services.map((service) => [service.id, service.name])),
     [services],
+  );
+  const problemOwnerNames = useMemo(
+    () => new Map(problemOwners.map((owner) => [owner.id, owner.displayName])),
+    [problemOwners],
   );
   const assetStatuses = useMemo(
     () =>
@@ -707,6 +789,11 @@ export function ServiceAssets({
             [
               asset.name,
               asset.asset_tag,
+              asset.inventory_number,
+              asset.serial_number,
+              asset.manufacturer,
+              asset.model,
+              asset.operating_system,
               asset.kind,
               asset.status,
               asset.service_id
@@ -733,14 +820,16 @@ export function ServiceAssets({
               problem.description,
               problem.workaround,
               problem.root_cause,
-              problem.owner_id,
+              problem.owner_id
+                ? (problemOwnerNames.get(problem.owner_id) ?? null)
+                : null,
             ],
             problemQuery,
           ) &&
           (problemStatusFilter === "all" ||
             problem.status === problemStatusFilter),
       ),
-    [problemQuery, problemStatusFilter, problems],
+    [problemOwnerNames, problemQuery, problemStatusFilter, problems],
   );
   const attachedTicketIds = useMemo(
     () => new Set(problemTickets.map((ticket) => ticket.id)),
@@ -805,11 +894,40 @@ export function ServiceAssets({
   }, [loadCatalog]);
 
   useEffect(() => {
+    const version = problemOwnersRequestVersion.current + 1;
+    problemOwnersRequestVersion.current = version;
+    setProblemOwners([]);
+    setProblemOwnersLoading(true);
+    void (async () => {
+      try {
+        const owners = parseProblemOwners(
+          await requestServiceAssets({ type: "listProblemOwners", tenantId }),
+        );
+        if (problemOwnersRequestVersion.current !== version) return;
+        setProblemOwners(owners);
+      } catch {
+        if (problemOwnersRequestVersion.current !== version) return;
+        // The server remains authoritative. A user without asset.manage sees
+        // an empty, disabled picker and receives the normal action denial.
+        setProblemOwners([]);
+      } finally {
+        if (problemOwnersRequestVersion.current === version) {
+          setProblemOwnersLoading(false);
+        }
+      }
+    })();
+    return () => {
+      problemOwnersRequestVersion.current += 1;
+    };
+  }, [tenantId]);
+
+  useEffect(() => {
     setServiceForm(EMPTY_SERVICE_FORM);
     setAssetForm(EMPTY_ASSET_FORM);
     setProblemForm(EMPTY_PROBLEM_FORM);
     setProblemMode("create");
     clearProblemTicketState();
+    setProblemOwners([]);
     setSuccess("");
   }, [tenantId]);
 
@@ -1082,6 +1200,11 @@ export function ServiceAssets({
         name,
         serviceId: optionalText(assetForm.serviceId),
         assetTag: optionalText(assetForm.assetTag),
+        inventoryNumber: optionalText(assetForm.inventoryNumber),
+        serialNumber: optionalText(assetForm.serialNumber),
+        manufacturer: optionalText(assetForm.manufacturer),
+        model: optionalText(assetForm.model),
+        operatingSystem: optionalText(assetForm.operatingSystem),
         kind,
         status,
         customerOrganizationId: optionalText(assetForm.customerOrganizationId),
@@ -1663,6 +1786,14 @@ export function ServiceAssets({
                       {asset.asset_tag ? ` · Kennung: ${asset.asset_tag}` : ""}
                     </p>
                     <p>
+                      {[asset.manufacturer, asset.model]
+                        .filter(Boolean)
+                        .join(" · ") || "Keine Gerätedaten hinterlegt"}
+                      {asset.inventory_number
+                        ? ` · Inventar: ${asset.inventory_number}`
+                        : ""}
+                    </p>
+                    <p>
                       Service:{" "}
                       {asset.service_id
                         ? (serviceNames.get(asset.service_id) ??
@@ -1760,6 +1891,76 @@ export function ServiceAssets({
                     }))
                   }
                   value={assetForm.assetTag}
+                />
+              </label>
+              <label>
+                Inventarnummer (optional)
+                <input
+                  disabled={controlsDisabled}
+                  maxLength={160}
+                  onChange={(event) =>
+                    setAssetForm((current) => ({
+                      ...current,
+                      inventoryNumber: event.target.value,
+                    }))
+                  }
+                  value={assetForm.inventoryNumber}
+                />
+              </label>
+              <label>
+                Seriennummer (optional)
+                <input
+                  disabled={controlsDisabled}
+                  maxLength={160}
+                  onChange={(event) =>
+                    setAssetForm((current) => ({
+                      ...current,
+                      serialNumber: event.target.value,
+                    }))
+                  }
+                  value={assetForm.serialNumber}
+                />
+              </label>
+              <label>
+                Hersteller (optional)
+                <input
+                  disabled={controlsDisabled}
+                  maxLength={160}
+                  onChange={(event) =>
+                    setAssetForm((current) => ({
+                      ...current,
+                      manufacturer: event.target.value,
+                    }))
+                  }
+                  value={assetForm.manufacturer}
+                />
+              </label>
+              <label>
+                Modell (optional)
+                <input
+                  disabled={controlsDisabled}
+                  maxLength={160}
+                  onChange={(event) =>
+                    setAssetForm((current) => ({
+                      ...current,
+                      model: event.target.value,
+                    }))
+                  }
+                  value={assetForm.model}
+                />
+              </label>
+              <label>
+                Betriebssystem (optional)
+                <input
+                  disabled={controlsDisabled}
+                  maxLength={160}
+                  onChange={(event) =>
+                    setAssetForm((current) => ({
+                      ...current,
+                      operatingSystem: event.target.value,
+                    }))
+                  }
+                  value={assetForm.operatingSystem}
                 />
               </label>
               <label>
@@ -1926,6 +2127,13 @@ export function ServiceAssets({
                     {problem.root_cause ? (
                       <p>Ursache: {problem.root_cause}</p>
                     ) : null}
+                    {problem.owner_id ? (
+                      <p>
+                        Verantwortlich:{" "}
+                        {problemOwnerNames.get(problem.owner_id) ??
+                          "Nicht mehr aktiv"}
+                      </p>
+                    ) : null}
                     <p>Zuletzt geändert: {formatDate(problem.updated_at)}</p>
                     <button
                       disabled={controlsDisabled}
@@ -2035,19 +2243,40 @@ export function ServiceAssets({
                     />
                   </label>
                   <label>
-                    Verantwortliche Person (UUID, optional)
-                    <input
-                      disabled={controlsDisabled}
+                    Verantwortliche Person (optional)
+                    <select
+                      disabled={controlsDisabled || problemOwnersLoading}
                       onChange={(event) =>
                         setProblemForm((current) => ({
                           ...current,
                           ownerId: event.target.value,
                         }))
                       }
-                      placeholder="UUID eines aktiven Mandantenmitglieds"
                       value={problemForm.ownerId}
-                    />
+                    >
+                      <option value="">
+                        {problemOwnersLoading
+                          ? "Aktive Personen werden geladen …"
+                          : "Nicht zugewiesen"}
+                      </option>
+                      {problemForm.ownerId &&
+                      !problemOwnerNames.has(problemForm.ownerId) ? (
+                        <option value={problemForm.ownerId}>
+                          Nicht mehr aktive Person
+                        </option>
+                      ) : null}
+                      {problemOwners.map((owner) => (
+                        <option key={owner.id} value={owner.id}>
+                          {owner.displayName}
+                        </option>
+                      ))}
+                    </select>
                   </label>
+                  <p>
+                    Es werden ausschliesslich aktive Mandantenmitglieder
+                    angezeigt. Bereits nicht mehr aktive Verantwortliche können
+                    entfernt oder durch eine aktive Person ersetzt werden.
+                  </p>
                 </>
               ) : (
                 <p>

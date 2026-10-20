@@ -36,10 +36,19 @@ type Action =
       type: "updateIntuneConfiguration";
       tenantId: string;
       enabled: boolean;
-      directoryTenantId: string | null;
-      syncEnabled: boolean;
     }
-  | { type: "listIntuneRuns"; tenantId: string };
+  | { type: "listIntuneRuns"; tenantId: string }
+  | {
+      type: "startIntuneLocalPreflight";
+      tenantId: string;
+      clientRequestId: string;
+    }
+  | {
+      type: "retryIntuneLocalPreflight";
+      tenantId: string;
+      clientRequestId: string;
+      retryOfRunId: string;
+    };
 
 class HttpError extends Error {
   constructor(
@@ -134,29 +143,48 @@ function parseAction(value: unknown): Action | null {
   }
   if (value.type === "updateIntuneConfiguration") {
     if (
-      !hasOnlyKeys(value, [
-        "type",
-        "tenantId",
-        "enabled",
-        "directoryTenantId",
-        "syncEnabled",
-      ]) ||
-      typeof value.enabled !== "boolean" ||
-      typeof value.syncEnabled !== "boolean" ||
-      (value.directoryTenantId !== null && !isUuid(value.directoryTenantId))
+      !hasOnlyKeys(value, ["type", "tenantId", "enabled"]) ||
+      typeof value.enabled !== "boolean"
     ) {
       return null;
     }
-    if (value.enabled && value.directoryTenantId === null) return null;
     return {
       type: value.type,
       tenantId,
       enabled: value.enabled,
-      directoryTenantId:
-        typeof value.directoryTenantId === "string"
-          ? value.directoryTenantId.toLowerCase()
-          : null,
-      syncEnabled: value.syncEnabled,
+    };
+  }
+  if (value.type === "startIntuneLocalPreflight") {
+    if (
+      !hasOnlyKeys(value, ["type", "tenantId", "clientRequestId"]) ||
+      !isUuid(value.clientRequestId)
+    ) {
+      return null;
+    }
+    return {
+      type: value.type,
+      tenantId,
+      clientRequestId: value.clientRequestId.toLowerCase(),
+    };
+  }
+  if (value.type === "retryIntuneLocalPreflight") {
+    if (
+      !hasOnlyKeys(value, [
+        "type",
+        "tenantId",
+        "clientRequestId",
+        "retryOfRunId",
+      ]) ||
+      !isUuid(value.clientRequestId) ||
+      !isUuid(value.retryOfRunId)
+    ) {
+      return null;
+    }
+    return {
+      type: value.type,
+      tenantId,
+      clientRequestId: value.clientRequestId.toLowerCase(),
+      retryOfRunId: value.retryOfRunId.toLowerCase(),
     };
   }
   return null;
@@ -197,7 +225,9 @@ function failure(request: Request, error: HttpError): Response {
   );
 }
 
-function databaseFailure(error: { code?: string } | null): never {
+function databaseFailure(
+  error: { code?: string; message?: string } | null,
+): never {
   switch (error?.code) {
     case "42501":
       throw new HttpError(
@@ -217,6 +247,18 @@ function databaseFailure(error: { code?: string } | null): never {
         422,
         "invalid_data",
         "Die Angaben sind nicht zulässig.",
+      );
+    case "P0001":
+      throw new HttpError(
+        409,
+        "intune_preflight_not_ready",
+        "Die lokale Intune-Prüfung ist für diese Konfiguration noch nicht bereit.",
+      );
+    case "P0002":
+      throw new HttpError(
+        404,
+        "intune_preflight_not_found",
+        "Der angeforderte lokale Intune-Prüflauf ist nicht verfügbar.",
       );
     default:
       throw new HttpError(
@@ -285,8 +327,9 @@ function canonicalCode(value: string): string {
   return value.trim().toLocaleLowerCase("de-CH");
 }
 
-const ASSET_SELECT =
-  "id, tenant_id, name, asset_tag, inventory_number, serial_number, manufacturer, model, operating_system, kind, status, lifecycle_state, active, intune_device_id, intune_compliance_state, intune_encrypted, intune_last_sync_at, intune_last_seen_at, location_id, service_id, customer_organization_id, updated_at";
+const ASSET_MEMBER_SELECT =
+  "id, tenant_id, name, asset_tag, inventory_number, serial_number, manufacturer, model, operating_system, kind, status, lifecycle_state, active, location_id, service_id, customer_organization_id, updated_at";
+const ASSET_MANAGER_SELECT = `${ASSET_MEMBER_SELECT}, intune_compliance_state, intune_encrypted, intune_last_sync_at, intune_last_seen_at`;
 
 function asAsset(row: unknown): Row {
   if (
@@ -306,13 +349,14 @@ function asAsset(row: unknown): Row {
 async function listAssets(
   request: Request,
   client: CallerClient,
+  admin: AdminClient,
   action: Extract<Action, { type: "listAssets" }>,
 ): Promise<Response> {
   const query = action.query.trim();
   const base = () =>
     client
       .from("assets")
-      .select(ASSET_SELECT)
+      .select(ASSET_MEMBER_SELECT)
       .eq("tenant_id", action.tenantId)
       .eq("active", true)
       .order("name")
@@ -323,23 +367,31 @@ async function listAssets(
     return response(request, { data: { assets: (data ?? []).map(asAsset) } });
   }
   const pattern = `%${query.replaceAll("%", "\\%").replaceAll("_", "\\_")}%`;
-  const [names, identifiers] = await Promise.all([
+  const [names, identifiers, linkedDevices] = await Promise.all([
     base().ilike("name", pattern),
-    client
+    admin
       .from("asset_identifiers")
       .select("asset_id")
       .eq("tenant_id", action.tenantId)
       .ilike("canonical_value", `%${canonicalCode(query)}%`)
       .limit(MAX_RESULTS),
+    admin
+      .from("asset_intune_asset_links")
+      .select("asset_id")
+      .eq("tenant_id", action.tenantId)
+      .ilike("canonical_external_device_id", `%${canonicalCode(query)}%`)
+      .limit(MAX_RESULTS),
   ]);
   if (names.error) databaseFailure(names.error);
   if (identifiers.error) databaseFailure(identifiers.error);
+  if (linkedDevices.error) databaseFailure(linkedDevices.error);
   const ids = new Set((names.data ?? []).map((asset) => asset.id));
   for (const identifier of identifiers.data ?? []) ids.add(identifier.asset_id);
+  for (const device of linkedDevices.data ?? []) ids.add(device.asset_id);
   if (ids.size === 0) return response(request, { data: { assets: [] } });
   const { data, error } = await client
     .from("assets")
-    .select(ASSET_SELECT)
+    .select(ASSET_MEMBER_SELECT)
     .eq("tenant_id", action.tenantId)
     .eq("active", true)
     .in("id", [...ids].slice(0, MAX_RESULTS))
@@ -355,7 +407,7 @@ async function assetById(
 ): Promise<Row> {
   const { data, error } = await client
     .from("assets")
-    .select(ASSET_SELECT)
+    .select(ASSET_MEMBER_SELECT)
     .eq("tenant_id", tenantId)
     .eq("id", assetId)
     .maybeSingle();
@@ -422,22 +474,27 @@ async function getAsset(
       },
     });
   }
+  const { data: managerAsset, error: managerAssetError } = await admin
+    .from("assets")
+    .select(ASSET_MANAGER_SELECT)
+    .eq("tenant_id", action.tenantId)
+    .eq("id", action.assetId)
+    .maybeSingle();
+  if (managerAssetError) databaseFailure(managerAssetError);
+  if (!managerAsset) {
+    throw new HttpError(
+      404,
+      "asset_not_found",
+      "Das Asset ist nicht verfügbar.",
+    );
+  }
   const [
-    { data: integration, error: integrationError },
     { data: assignments, error: assignmentError },
     { data: lifecycle, error: lifecycleError },
   ] = await Promise.all([
     admin
-      .from("asset_intune_devices")
-      .select(
-        "external_device_id, device_name, managed_device_name, serial_number, manufacturer, model, operating_system, os_version, user_display_name, user_principal_name, compliance_state, is_encrypted, last_sync_at, last_seen_at, synced_at",
-      )
-      .eq("tenant_id", action.tenantId)
-      .eq("asset_id", action.assetId)
-      .maybeSingle(),
-    admin
       .from("asset_assignments")
-      .select("id, requester_id, assigned_at, returned_at")
+      .select("assigned_at, returned_at")
       .eq("tenant_id", action.tenantId)
       .eq("asset_id", action.assetId)
       .order("assigned_at", { ascending: false })
@@ -450,16 +507,28 @@ async function getAsset(
       .order("occurred_at", { ascending: false })
       .limit(30),
   ]);
-  if (integrationError) databaseFailure(integrationError);
   if (assignmentError) databaseFailure(assignmentError);
   if (lifecycleError) databaseFailure(lifecycleError);
+  const assignmentRows = assignments ?? [];
+  const currentAssignment = assignmentRows.find(
+    (assignment) => assignment.returned_at === null,
+  );
   return response(request, {
     data: {
-      asset,
+      asset: asAsset(managerAsset),
       location,
       tickets: tickets ?? [],
-      integration,
-      assignments: assignments ?? [],
+      integration: {
+        compliance_state: managerAsset.intune_compliance_state,
+        is_encrypted: managerAsset.intune_encrypted,
+        last_sync_at: managerAsset.intune_last_sync_at,
+        last_seen_at: managerAsset.intune_last_seen_at,
+      },
+      assignments: {
+        active: Boolean(currentAssignment),
+        history_count: assignmentRows.length,
+        last_assigned_at: assignmentRows[0]?.assigned_at ?? null,
+      },
       lifecycle: lifecycle ?? [],
     },
   });
@@ -472,14 +541,28 @@ async function lookupAsset(
   action: Extract<Action, { type: "lookupAsset" }>,
 ): Promise<Response> {
   const code = canonicalCode(action.code);
-  const { data: identifiers, error } = await client
-    .from("asset_identifiers")
-    .select("asset_id")
-    .eq("tenant_id", action.tenantId)
-    .eq("canonical_value", code)
-    .limit(4);
-  if (error) databaseFailure(error);
-  const ids = [...new Set((identifiers ?? []).map((row) => row.asset_id))];
+  const [identifiers, linkedDevices] = await Promise.all([
+    admin
+      .from("asset_identifiers")
+      .select("asset_id")
+      .eq("tenant_id", action.tenantId)
+      .eq("canonical_value", code)
+      .limit(4),
+    admin
+      .from("asset_intune_asset_links")
+      .select("asset_id")
+      .eq("tenant_id", action.tenantId)
+      .eq("canonical_external_device_id", code)
+      .limit(4),
+  ]);
+  if (identifiers.error) databaseFailure(identifiers.error);
+  if (linkedDevices.error) databaseFailure(linkedDevices.error);
+  const ids = [
+    ...new Set([
+      ...(identifiers.data ?? []).map((row) => row.asset_id),
+      ...(linkedDevices.data ?? []).map((row) => row.asset_id),
+    ]),
+  ];
   if (ids.length === 0) {
     throw new HttpError(
       404,
@@ -522,7 +605,7 @@ async function transitionLifecycle(
     })
     .eq("tenant_id", action.tenantId)
     .eq("id", action.assetId)
-    .select(ASSET_SELECT)
+    .select(ASSET_MANAGER_SELECT)
     .maybeSingle();
   if (error) databaseFailure(error);
   if (!data)
@@ -536,50 +619,84 @@ async function transitionLifecycle(
 
 async function intuneConfiguration(
   request: Request,
-  client: CallerClient,
+  admin: AdminClient,
+  actorId: string,
   action: Extract<
     Action,
     { type: "getIntuneConfiguration" | "updateIntuneConfiguration" }
   >,
 ): Promise<Response> {
-  await requireIntegrationManage(client, action.tenantId);
-  if (action.type === "updateIntuneConfiguration") {
-    const { error } = await client.from("asset_intune_connections").upsert({
-      tenant_id: action.tenantId,
-      enabled: action.enabled,
-      directory_tenant_id: action.directoryTenantId,
-      sync_enabled: action.enabled && action.syncEnabled,
-      last_status: action.enabled ? "ready" : "not_configured",
-    });
-    if (error) databaseFailure(error);
-  }
-  const { data, error } = await client
-    .from("asset_intune_connections")
-    .select(
-      "enabled, directory_tenant_id, sync_enabled, last_success_at, last_attempt_at, last_status, last_error_code, updated_at",
-    )
-    .eq("tenant_id", action.tenantId)
-    .maybeSingle();
+  const result =
+    action.type === "updateIntuneConfiguration"
+      ? await admin.rpc("configure_asset_intune_preflight", {
+          p_actor_id: actorId,
+          p_tenant_id: action.tenantId,
+          p_enabled: action.enabled,
+        })
+      : await admin.rpc("get_asset_intune_preflight_configuration", {
+          p_actor_id: actorId,
+          p_tenant_id: action.tenantId,
+        });
+  const { data, error } = result;
   if (error) databaseFailure(error);
-  return response(request, { data: { configuration: data ?? null } });
+  const configuration = Array.isArray(data) ? data[0] : null;
+  if (!isRecord(configuration)) {
+    throw new HttpError(
+      500,
+      "intune_configuration_read_failed",
+      "Die Intune-Konfiguration konnte nicht sicher gelesen werden.",
+    );
+  }
+  return response(request, { data: { configuration } });
 }
 
 async function listIntuneRuns(
   request: Request,
-  client: CallerClient,
+  admin: AdminClient,
   action: Extract<Action, { type: "listIntuneRuns" }>,
 ): Promise<Response> {
-  await requireIntegrationManage(client, action.tenantId);
-  const { data, error } = await client
+  const { data, error } = await admin
     .from("asset_intune_sync_runs")
     .select(
-      "id, mode, status, started_at, finished_at, devices_seen, assets_created, assets_updated, error_code",
+      "id, trigger_kind, execution_scope, status, result_code, started_at, finished_at, devices_seen, assets_created, assets_updated, retry_of_run_id, root_run_id, attempt_no, provider_contacted",
     )
     .eq("tenant_id", action.tenantId)
+    .eq("execution_scope", "local_preflight")
     .order("started_at", { ascending: false })
-    .limit(20);
+    .order("id", { ascending: false })
+    .limit(30);
   if (error) databaseFailure(error);
   return response(request, { data: { runs: data ?? [] } });
+}
+
+async function runIntuneLocalPreflight(
+  request: Request,
+  admin: AdminClient,
+  actorId: string,
+  action: Extract<
+    Action,
+    {
+      type: "startIntuneLocalPreflight" | "retryIntuneLocalPreflight";
+    }
+  >,
+): Promise<Response> {
+  const { data, error } = await admin.rpc("run_asset_intune_local_preflight", {
+    p_actor_id: actorId,
+    p_tenant_id: action.tenantId,
+    p_client_request_id: action.clientRequestId,
+    p_retry_of_run_id:
+      action.type === "retryIntuneLocalPreflight" ? action.retryOfRunId : null,
+  });
+  if (error) databaseFailure(error);
+  const run = Array.isArray(data) ? data[0] : null;
+  if (!isRecord(run)) {
+    throw new HttpError(
+      500,
+      "intune_preflight_read_failed",
+      "Der lokale Intune-Prüflauf konnte nicht sicher abgeschlossen werden.",
+    );
+  }
+  return response(request, { data: { run } });
 }
 
 const securedHandler = withSupabase(
@@ -619,7 +736,12 @@ const securedHandler = withSupabase(
           "Asset-Management ist für diesen Mandanten derzeit deaktiviert.",
         );
       if (action.type === "listAssets")
-        return await listAssets(request, context.supabase, action);
+        return await listAssets(
+          request,
+          context.supabase,
+          context.supabaseAdmin,
+          action,
+        );
       if (action.type === "getAsset")
         return await getAsset(
           request,
@@ -640,9 +762,25 @@ const securedHandler = withSupabase(
         action.type === "getIntuneConfiguration" ||
         action.type === "updateIntuneConfiguration"
       ) {
-        return await intuneConfiguration(request, context.supabase, action);
+        await requireIntegrationManage(context.supabase, action.tenantId);
+        return await intuneConfiguration(
+          request,
+          context.supabaseAdmin,
+          context.userClaims.id,
+          action,
+        );
       }
-      return await listIntuneRuns(request, context.supabase, action);
+      if (action.type === "listIntuneRuns") {
+        await requireIntegrationManage(context.supabase, action.tenantId);
+        return await listIntuneRuns(request, context.supabaseAdmin, action);
+      }
+      await requireIntegrationManage(context.supabase, action.tenantId);
+      return await runIntuneLocalPreflight(
+        request,
+        context.supabaseAdmin,
+        context.userClaims.id,
+        action,
+      );
     } catch (error) {
       return failure(
         request,

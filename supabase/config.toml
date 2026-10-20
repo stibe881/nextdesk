@@ -108,6 +108,12 @@ verify_jwt = true
 [functions.service-assets]
 verify_jwt = true
 
+[functions.asset-registry]
+verify_jwt = true
+
+[functions.intune-asset-sync]
+verify_jwt = true
+
 [functions.ticket-quality]
 verify_jwt = true
 
