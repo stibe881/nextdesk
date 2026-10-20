@@ -83,6 +83,7 @@ const expectedFiles = [
   "0079_list_pending_sla_breaches.sql",
   "0080_harden_sla_breach_feature_gate.sql",
   "0081_entra_directory_configuration_management.sql",
+  "0082_tenant_administrator_ticket_delete_permission.sql",
 ];
 
 const availableFiles = await readdir(migrationDirectory);
@@ -753,6 +754,11 @@ const requiredFragments = [
     "0081_entra_directory_configuration_management.sql",
     "grant execute on function public.finalize_fenced_entra_directory_sync_run(uuid, uuid, uuid, bigint, uuid, timestamptz, integer) to service_role",
   ],
+  [
+    "0082_tenant_administrator_ticket_delete_permission.sql",
+    "create trigger roles_grant_ticket_delete_to_tenant_administrator",
+  ],
+  ["0082_tenant_administrator_ticket_delete_permission.sql", "'ticket.delete'"],
 ];
 
 for (const [migration, fragment] of requiredFragments) {

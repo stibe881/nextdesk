@@ -2404,6 +2404,81 @@ begin
   end if;
 end;
 $$;
+
+-- The standard tenant-administrator system role must receive the dedicated
+-- sensitive permission so it can execute the already-confirmed, audited and
+-- legal-hold-protected bulk deletion flow for its own tenant.
+do $$
+declare
+  v_result jsonb;
+begin
+  insert into public.roles (id, tenant_id, name, scope, is_system)
+  values (
+    '1f000000-0000-4000-8000-000000000005',
+    '20000000-0000-4000-8000-000000000002',
+    'Tenant administrator',
+    'tenant',
+    true
+  );
+  if not exists (
+    select 1
+    from public.role_permissions
+    where role_id = '1f000000-0000-4000-8000-000000000005'
+      and permission_code = 'ticket.delete'
+  ) then
+    raise exception 'Tenant administrator did not receive ticket.delete';
+  end if;
+  if has_function_privilege(
+    'authenticated',
+    'public.grant_ticket_delete_to_tenant_administrator()',
+    'execute'
+  ) then
+    raise exception 'Authenticated callers may execute the tenant-admin delete permission trigger';
+  end if;
+
+  insert into public.department_memberships (department_id, tenant_id, user_id, status)
+  values (
+    '21000000-0000-4000-8000-000000000003',
+    '20000000-0000-4000-8000-000000000002',
+    '00000000-0000-4000-8000-000000000004',
+    'active'
+  );
+  insert into public.user_role_assignments (tenant_id, user_id, role_id)
+  values (
+    '20000000-0000-4000-8000-000000000002',
+    '00000000-0000-4000-8000-000000000004',
+    '1f000000-0000-4000-8000-000000000005'
+  );
+  insert into public.tickets (
+    id, tenant_id, department_id, ticket_number, subject, description,
+    status_id, priority_id, requester_id
+  ) values (
+    '1f000000-0000-4000-8000-000000000006',
+    '20000000-0000-4000-8000-000000000002',
+    '21000000-0000-4000-8000-000000000003',
+    'ICT-B-2026-DELETE02',
+    'Tenant-administrator deletion',
+    'Must be deletable by the standard tenant administrator role.',
+    '23000000-0000-4000-8000-000000000002',
+    '24000000-0000-4000-8000-000000000002',
+    '00000000-0000-4000-8000-000000000004'
+  );
+  v_result := public.bulk_delete_tickets(
+    '00000000-0000-4000-8000-000000000004',
+    '20000000-0000-4000-8000-000000000002',
+    array['1f000000-0000-4000-8000-000000000006']::uuid[],
+    true
+  );
+  if (v_result->>'deleted')::integer <> 1
+    or exists (
+      select 1 from public.tickets
+      where id = '1f000000-0000-4000-8000-000000000006'
+    ) then
+    raise exception 'Tenant administrator could not delete an authorized tenant ticket';
+  end if;
+end;
+$$;
+
 -- Die Listen-RPC muss vor Pagination global sortieren und exakt dieselben
 -- Ticketrechte wie die RLS anwenden. Ein ICT-Agent darf keine Daten der
 -- Infrastrukturabteilung lesen oder über Agentennamen erschliessen.
