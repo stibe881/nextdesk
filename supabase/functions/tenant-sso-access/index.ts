@@ -401,6 +401,8 @@ function requesterProfileDepartment(value: unknown): string | null {
 type EntraDirectoryLink = {
   status: "linked" | "not_found" | "conflict" | "failed";
   department: string | null;
+  jobTitle: string | null;
+  offer: string | null;
 };
 
 async function linkEntraDirectoryPerson(
@@ -408,26 +410,45 @@ async function linkEntraDirectoryPerson(
   tenantId: string,
   userId: string,
   email: string,
-  entraObjectId: string,
+  entraObjectId: string | null,
 ): Promise<EntraDirectoryLink> {
-  const { data: directoryPerson, error: directoryError } = await admin
+  let directoryLookup = admin
     .from("tenant_entra_directory_people")
-    .select("entra_object_id,source_department_name,local_user_id")
+    .select("entra_object_id,job_title,source_department_name,local_user_id")
     .eq("tenant_id", tenantId)
-    .eq("entra_object_id", entraObjectId)
     .eq("email", email)
     .eq("account_enabled", true)
-    .is("inactive_at", null)
-    .maybeSingle();
+    .is("inactive_at", null);
+  // An object ID remains the preferred identity binding. Some Azure responses
+  // omit it, however, so fall back only after Azure provider and tenant claims
+  // plus the canonical server-side e-mail were already verified above.
+  if (entraObjectId) {
+    directoryLookup = directoryLookup.eq("entra_object_id", entraObjectId);
+  }
+  const { data: directoryPerson, error: directoryError } =
+    await directoryLookup.maybeSingle();
   if (directoryError) {
     console.error("entra_directory_identity_lookup_failed", {
       code: directoryError.code,
       message: directoryError.message,
     });
-    return { status: "failed", department: null };
+    return { status: "failed", department: null, jobTitle: null, offer: null };
   }
   if (!directoryPerson) {
-    return { status: "not_found", department: null };
+    return {
+      status: "not_found",
+      department: null,
+      jobTitle: null,
+      offer: null,
+    };
+  }
+  const linkedDirectoryObjectId =
+    typeof directoryPerson.entra_object_id === "string" &&
+    UUID.test(directoryPerson.entra_object_id)
+      ? directoryPerson.entra_object_id.toLowerCase()
+      : null;
+  if (!linkedDirectoryObjectId) {
+    return { status: "failed", department: null, jobTitle: null, offer: null };
   }
 
   const existingLocalUserId = directoryPerson.local_user_id;
@@ -437,11 +458,16 @@ async function linkEntraDirectoryPerson(
       actor_id: userId,
       action: "tenant.sso_entra_identity_conflict",
       entity_type: "tenant_entra_directory_person",
-      entity_id: entraObjectId,
+      entity_id: linkedDirectoryObjectId,
       severity: "security",
       metadata: { source: "tenant_sso_access" },
     });
-    return { status: "conflict", department: null };
+    return {
+      status: "conflict",
+      department: null,
+      jobTitle: null,
+      offer: null,
+    };
   }
 
   if (!existingLocalUserId) {
@@ -449,7 +475,7 @@ async function linkEntraDirectoryPerson(
       .from("tenant_entra_directory_people")
       .update({ local_user_id: userId })
       .eq("tenant_id", tenantId)
-      .eq("entra_object_id", entraObjectId)
+      .eq("entra_object_id", linkedDirectoryObjectId)
       .eq("email", email)
       .is("local_user_id", null)
       .select("local_user_id")
@@ -459,28 +485,45 @@ async function linkEntraDirectoryPerson(
         code: linkError.code,
         message: linkError.message,
       });
-      return { status: "failed", department: null };
+      return {
+        status: "failed",
+        department: null,
+        jobTitle: null,
+        offer: null,
+      };
     }
     if (linked?.local_user_id !== userId) {
       const { data: raced, error: raceError } = await admin
         .from("tenant_entra_directory_people")
         .select("local_user_id")
         .eq("tenant_id", tenantId)
-        .eq("entra_object_id", entraObjectId)
+        .eq("entra_object_id", linkedDirectoryObjectId)
         .eq("email", email)
         .maybeSingle();
-      if (raceError) return { status: "failed", department: null };
+      if (raceError) {
+        return {
+          status: "failed",
+          department: null,
+          jobTitle: null,
+          offer: null,
+        };
+      }
       if (raced?.local_user_id !== userId) {
         await admin.from("audit_logs").insert({
           tenant_id: tenantId,
           actor_id: userId,
           action: "tenant.sso_entra_identity_conflict",
           entity_type: "tenant_entra_directory_person",
-          entity_id: entraObjectId,
+          entity_id: linkedDirectoryObjectId,
           severity: "security",
           metadata: { source: "tenant_sso_access", raced: true },
         });
-        return { status: "conflict", department: null };
+        return {
+          status: "conflict",
+          department: null,
+          jobTitle: null,
+          offer: null,
+        };
       }
     }
   }
@@ -490,6 +533,8 @@ async function linkEntraDirectoryPerson(
     department: requesterProfileDepartment(
       directoryPerson.source_department_name,
     ),
+    jobTitle: cleanDisplayName(directoryPerson.job_title),
+    offer: cleanDisplayName(directoryPerson.source_department_name),
   };
 }
 
@@ -602,16 +647,16 @@ async function provisionSsoPerson(
   let directoryLink: EntraDirectoryLink = {
     status: "not_found",
     department: null,
+    jobTitle: null,
+    offer: null,
   };
-  if (entraObjectId) {
-    directoryLink = await linkEntraDirectoryPerson(
-      admin,
-      tenantId,
-      userId,
-      email,
-      entraObjectId,
-    );
-  }
+  directoryLink = await linkEntraDirectoryPerson(
+    admin,
+    tenantId,
+    userId,
+    email,
+    entraObjectId,
+  );
   if (directoryLink.status === "conflict") return "failed";
   if (directoryLink.status === "failed" && !wasActive) {
     return "failed";
@@ -623,6 +668,8 @@ async function provisionSsoPerson(
     directoryLink = {
       status: "not_found",
       department: null,
+      jobTitle: null,
+      offer: null,
     };
   }
 
@@ -688,8 +735,8 @@ async function provisionSsoPerson(
         tenant_id: tenantId,
         user_id: userId,
         department_id: invitation?.department_id ?? null,
-        job_title: invitation?.job_title ?? null,
-        offer: invitation?.offer ?? null,
+        job_title: invitation?.job_title ?? directoryLink.jobTitle,
+        offer: invitation?.offer ?? directoryLink.offer,
       },
       {
         onConflict: "tenant_id,user_id",

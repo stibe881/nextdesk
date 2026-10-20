@@ -4888,6 +4888,22 @@ body:has(.ticket-detail) {
   grid-column: 1 / -1;
 }
 
+.tenant-admin-settings__field-hint {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 450;
+  line-height: 1.45;
+}
+
+.tenant-admin-settings__person-editor input[readonly] {
+  border-color: color-mix(in srgb, var(--primary) 24%, var(--control-border));
+  background: var(--primary-soft);
+  color: var(--ink);
+  cursor: default;
+}
+
 .tenant-admin-settings__entra-agent-editor {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(190px, 0.8fr);

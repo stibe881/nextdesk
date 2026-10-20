@@ -181,7 +181,9 @@ type TenantDirectoryMember = {
   departmentId: string | null;
   departmentName: string | null;
   jobTitle: string | null;
+  jobTitleSource: "entra" | "manual";
   offer: string | null;
+  offerSource: "entra" | "manual";
   isAgent: boolean;
   isTenantAdmin: boolean;
 };
@@ -1900,7 +1902,7 @@ export function TenantAdminSettings({
       return;
     }
     if (invitationPersonForm.isAgent && !invitationPersonForm.departmentId) {
-      setError("Wählen Sie für einen Agenten eine Abteilung aus.");
+      setError("Wählen Sie für einen Agenten einen Ticketzugriffsbereich aus.");
       return;
     }
 
@@ -1932,7 +1934,7 @@ export function TenantAdminSettings({
     event.preventDefault();
     if (!editingPerson) return;
     if (personEditForm.isAgent && !personEditForm.departmentId) {
-      setError("Wählen Sie für einen Agenten eine Abteilung aus.");
+      setError("Wählen Sie für einen Agenten einen Ticketzugriffsbereich aus.");
       return;
     }
     const target: SaveTarget = `person:${editingPerson.id}`;
@@ -1947,9 +1949,7 @@ export function TenantAdminSettings({
       setEditingPerson(null);
       setPersonEditForm(emptyPersonForm);
       await loadData();
-      setSuccess(
-        "Person, Organisationsdaten und Agentenzugang wurden gespeichert.",
-      );
+      setSuccess("Person, Ticketzugriff und Agentenzugang wurden gespeichert.");
     } catch (nextError) {
       setError(
         messageFromError(
@@ -3911,7 +3911,7 @@ export function TenantAdminSettings({
                       />
                     </label>
                     <label>
-                      Abteilung
+                      Ticketzugriffsbereich
                       <select
                         value={invitationPersonForm.departmentId}
                         disabled={saving !== null}
@@ -3931,6 +3931,10 @@ export function TenantAdminSettings({
                             </option>
                           ))}
                       </select>
+                      <small className="tenant-admin-settings__field-hint">
+                        Steuert ausschliesslich, auf welche Ticketbereiche diese
+                        Person als Agent zugreifen darf.
+                      </small>
                     </label>
                     <label>
                       Angebot
@@ -3991,7 +3995,7 @@ export function TenantAdminSettings({
                     </span>
                     <input
                       type="search"
-                      placeholder="Name, E-Mail, Abteilung …"
+                      placeholder="Name, E-Mail, Ticketzugriff …"
                       value={personSearch}
                       onChange={(event) => setPersonSearch(event.target.value)}
                     />
@@ -4003,6 +4007,9 @@ export function TenantAdminSettings({
                       const target: SaveTarget = `remove-user:${member.id}`;
                       const editTarget: SaveTarget = `person:${member.id}`;
                       const isEditing = editingPerson?.id === member.id;
+                      const offerFromEntra = member.offerSource === "entra";
+                      const jobTitleFromEntra =
+                        member.jobTitleSource === "entra";
                       return (
                         <li key={member.id}>
                           <div className="tenant-admin-settings__person-summary">
@@ -4014,13 +4021,15 @@ export function TenantAdminSettings({
                             </div>
                             <div className="tenant-admin-settings__person-badges">
                               {member.departmentName ? (
-                                <span>{member.departmentName}</span>
+                                <span>
+                                  Ticketzugriff: {member.departmentName}
+                                </span>
                               ) : null}
                               {member.offer ? (
-                                <span>{member.offer}</span>
+                                <span>Organisation: {member.offer}</span>
                               ) : null}
                               {member.jobTitle ? (
-                                <span>{member.jobTitle}</span>
+                                <span>Funktion: {member.jobTitle}</span>
                               ) : null}
                               {member.isTenantAdmin ? (
                                 <span>Mandantenadmin</span>
@@ -4074,7 +4083,7 @@ export function TenantAdminSettings({
                                 />
                               </label>
                               <label>
-                                Abteilung
+                                Ticketzugriffsbereich
                                 <select
                                   value={personEditForm.departmentId}
                                   disabled={saving !== null}
@@ -4099,32 +4108,63 @@ export function TenantAdminSettings({
                                       </option>
                                     ))}
                                 </select>
+                                <small className="tenant-admin-settings__field-hint">
+                                  Steuert ausschliesslich, auf welche
+                                  Ticketbereiche diese Person als Agent
+                                  zugreifen darf. Entra-Organisationsdaten
+                                  ändern diesen Zugriff nie.
+                                </small>
                               </label>
                               <label>
-                                Angebot
+                                {offerFromEntra
+                                  ? "Organisation / Angebot (Entra)"
+                                  : "Angebot"}
                                 <input
                                   value={personEditForm.offer}
                                   disabled={saving !== null}
-                                  onChange={(event) =>
-                                    setPersonEditForm((current) => ({
-                                      ...current,
-                                      offer: event.target.value,
-                                    }))
+                                  readOnly={offerFromEntra}
+                                  onChange={
+                                    offerFromEntra
+                                      ? undefined
+                                      : (event) =>
+                                          setPersonEditForm((current) => ({
+                                            ...current,
+                                            offer: event.target.value,
+                                          }))
                                   }
                                 />
+                                {offerFromEntra ? (
+                                  <small className="tenant-admin-settings__field-hint">
+                                    Wird aus der Entra-Organisationsabteilung
+                                    übernommen und beim nächsten Abgleich
+                                    aktualisiert.
+                                  </small>
+                                ) : null}
                               </label>
                               <label>
-                                Funktion
+                                {jobTitleFromEntra
+                                  ? "Funktion (Entra)"
+                                  : "Funktion"}
                                 <input
                                   value={personEditForm.jobTitle}
                                   disabled={saving !== null}
-                                  onChange={(event) =>
-                                    setPersonEditForm((current) => ({
-                                      ...current,
-                                      jobTitle: event.target.value,
-                                    }))
+                                  readOnly={jobTitleFromEntra}
+                                  onChange={
+                                    jobTitleFromEntra
+                                      ? undefined
+                                      : (event) =>
+                                          setPersonEditForm((current) => ({
+                                            ...current,
+                                            jobTitle: event.target.value,
+                                          }))
                                   }
                                 />
+                                {jobTitleFromEntra ? (
+                                  <small className="tenant-admin-settings__field-hint">
+                                    Wird aus der Entra-Funktion übernommen und
+                                    beim nächsten Abgleich aktualisiert.
+                                  </small>
+                                ) : null}
                               </label>
                               <label className="tenant-admin-settings__agent-toggle">
                                 <input

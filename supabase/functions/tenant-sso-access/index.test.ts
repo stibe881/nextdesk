@@ -87,6 +87,47 @@ Deno.test(
 );
 
 Deno.test(
+  "SSO links Entra organisational metadata only after verified Azure tenant access",
+  () => {
+    assert(
+      source.includes("entraObjectId: string | null"),
+      "The Entra directory link must allow an absent optional object ID.",
+    );
+    assert(
+      source.includes(
+        'if (entraObjectId) {\n    directoryLookup = directoryLookup.eq("entra_object_id", entraObjectId);',
+      ),
+      "A present Entra object ID must remain the preferred directory binding.",
+    );
+    assert(
+      source.includes('.eq("email", email)') &&
+        source.includes('.eq("account_enabled", true)') &&
+        source.includes('.is("inactive_at", null)'),
+      "E-mail fallback must require an active tenant-scoped directory record.",
+    );
+    assert(
+      source.includes("const linkedDirectoryObjectId =") &&
+        source.includes('.eq("entra_object_id", linkedDirectoryObjectId)') &&
+        !source.includes(
+          '.eq("entra_object_id", entraObjectId)\n      .eq("email", email)\n      .is("local_user_id", null)',
+        ),
+      "The write and race lookup must use the verified source record ID, never a missing OAuth object ID.",
+    );
+    assert(
+      source.includes(
+        "job_title: invitation?.job_title ?? directoryLink.jobTitle",
+      ) && source.includes("offer: invitation?.offer ?? directoryLink.offer"),
+      "A new requester must receive Entra organisation and function data without a role change.",
+    );
+    assert(
+      source.includes("await applyRequestedEntraAgentAccess") &&
+        source.includes("if (!entraObjectId) return false"),
+      "An Entra metadata fallback must never create an agent assignment.",
+    );
+  },
+);
+
+Deno.test(
   "current invitation acceptance and revocation use the atomic offboarding gates",
   () => {
     assert(

@@ -1,4 +1,8 @@
 import { withSupabase } from "@supabase/server";
+import {
+  resolveEntraPersonnelForMember,
+  type EntraPersonnelRecord,
+} from "../_shared/entra-personnel.ts";
 
 const APP_ORIGIN = "https://app.nextdesk.ch";
 const REQUESTER_ROLE = "Requester";
@@ -44,14 +48,9 @@ type DirectoryProfile = {
   offer: string | null;
 };
 
-type EntraDirectoryPerson = {
+type EntraDirectoryPerson = EntraPersonnelRecord & {
   entra_object_id: string;
-  email: string;
   display_name: string;
-  job_title: string | null;
-  source_department_name: string | null;
-  account_enabled: boolean;
-  local_user_id: string | null;
   agent_requested: boolean;
   agent_department_id: string | null;
   agent_role_assignment_id: string | null;
@@ -539,7 +538,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       context.supabaseAdmin
         .from("tenant_entra_directory_people")
         .select(
-          "entra_object_id, email, display_name, job_title, source_department_name, account_enabled, local_user_id, agent_requested, agent_department_id, agent_role_assignment_id, last_synced_at",
+          "entra_object_id, email, display_name, job_title, source_department_name, account_enabled, inactive_at, local_user_id, agent_requested, agent_department_id, agent_role_assignment_id, last_synced_at",
         )
         .eq("tenant_id", action.tenantId)
         .order("display_name", { ascending: true })
@@ -575,6 +574,8 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         profile,
       ]),
     );
+    const entraPeople = (entraDirectoryResult.data ??
+      []) as EntraDirectoryPerson[];
     const departmentNames = new Map(
       (departmentsResult.data ?? []).map((department: any) => [
         department.id,
@@ -646,6 +647,11 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         ]);
         const user = authResult.data.user;
         const directory = directories.get(membership.user_id);
+        const userEmail = typeof user?.email === "string" ? user.email : null;
+        const entraPerson = resolveEntraPersonnelForMember(
+          entraPeople,
+          membership.user_id,
+        );
         const access = rolesByUser.get(membership.user_id) ?? {
           isAgent: false,
           isTenantAdmin: false,
@@ -654,7 +660,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         const metadataName = user?.user_metadata?.full_name;
         return {
           id: membership.user_id,
-          email: user?.email ?? "Unbekannte Adresse",
+          email: userEmail ?? "Unbekannte Adresse",
           displayName:
             profileResult.data?.display_name ??
             (typeof metadataName === "string" ? metadataName : null),
@@ -664,8 +670,11 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
           departmentName: directory?.department_id
             ? (departmentNames.get(directory.department_id) ?? null)
             : null,
-          jobTitle: directory?.job_title ?? null,
-          offer: directory?.offer ?? null,
+          jobTitle: entraPerson?.job_title ?? directory?.job_title ?? null,
+          jobTitleSource: entraPerson?.job_title ? "entra" : "manual",
+          offer:
+            entraPerson?.source_department_name ?? directory?.offer ?? null,
+          offerSource: entraPerson?.source_department_name ? "entra" : "manual",
           isAgent: access.isAgent,
           isTenantAdmin: access.isTenantAdmin,
         };
@@ -695,9 +704,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         active: department.active === true,
       }),
     );
-    const directoryPeople = (
-      (entraDirectoryResult.data ?? []) as EntraDirectoryPerson[]
-    ).map((person) => {
+    const directoryPeople = entraPeople.map((person) => {
       const access = person.local_user_id
         ? rolesByUser.get(person.local_user_id)
         : null;
