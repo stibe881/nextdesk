@@ -606,6 +606,10 @@ function isSection(value: unknown): value is Section {
   );
 }
 
+function sectionDisplayLabel(section: Section): string {
+  return section === "Wissen" ? "1. Hilfe" : section;
+}
+
 function isInputLikeTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
   return (
@@ -2981,7 +2985,7 @@ export function App() {
                 type="button"
               >
                 <item.Icon aria-hidden="true" size={18} strokeWidth={1.8} />
-                {item.label}
+                {sectionDisplayLabel(item.label)}
               </button>
             ))}
           </nav>
@@ -3918,7 +3922,7 @@ export function App() {
                 >
                   {workSections.map((item) => (
                     <option key={item.label} value={item.label}>
-                      {item.label}
+                      {sectionDisplayLabel(item.label)}
                     </option>
                   ))}
                 </select>

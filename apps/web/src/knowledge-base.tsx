@@ -137,6 +137,7 @@ const EMPTY_DRAFT: ArticleDraft = {
   status: "draft",
   collectionIds: [],
 };
+const MAX_ARTICLE_CATEGORIES = 12;
 
 const statusLabels: Record<ArticleStatus, string> = {
   draft: "Entwurf",
@@ -808,6 +809,23 @@ export function KnowledgeBase({ tenantId }: KnowledgeBaseProps) {
     setEditorOpen(false);
   }
 
+  function toggleDraftCollection(collectionId: string) {
+    const isSelected = draft.collectionIds.includes(collectionId);
+    if (!isSelected && draft.collectionIds.length >= MAX_ARTICLE_CATEGORIES) {
+      setError(
+        `Ein Artikel kann höchstens ${MAX_ARTICLE_CATEGORIES} Kategorien haben.`,
+      );
+      setSuccess("");
+      return;
+    }
+    setDraft((current) => ({
+      ...current,
+      collectionIds: current.collectionIds.includes(collectionId)
+        ? current.collectionIds.filter((id) => id !== collectionId)
+        : [...current.collectionIds, collectionId],
+    }));
+  }
+
   async function submitSearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const query = searchInput.trim();
@@ -833,6 +851,13 @@ export function KnowledgeBase({ tenantId }: KnowledgeBaseProps) {
     }
     if (draft.bodyMarkdown.length > 100_000) {
       setError("Der Markdown-Inhalt darf höchstens 100.000 Zeichen umfassen.");
+      setSuccess("");
+      return;
+    }
+    if (draft.collectionIds.length > MAX_ARTICLE_CATEGORIES) {
+      setError(
+        `Ein Artikel kann höchstens ${MAX_ARTICLE_CATEGORIES} Kategorien haben.`,
+      );
       setSuccess("");
       return;
     }
@@ -1026,25 +1051,43 @@ export function KnowledgeBase({ tenantId }: KnowledgeBaseProps) {
     ? "Wissensartikel bearbeiten"
     : "Neuen Wissensartikel anlegen";
   const detailArticle = selected?.article;
+  const articleCountLabel = `${visibleArticles.length} Artikel`;
+  const previewTitle = draft.title.trim() || "Titel des Artikels";
+  const previewCollections = collections.filter((collection) =>
+    draft.collectionIds.includes(collection.id),
+  );
 
   return (
     <div className="knowledge-base">
       <style>{knowledgeBaseStyles}</style>
 
-      <section className="panel" aria-labelledby="knowledge-base-heading">
-        <div className="panel-heading">
+      <section
+        className="panel knowledge-base__library"
+        aria-labelledby="knowledge-base-heading"
+      >
+        <div className="knowledge-base__library-heading">
           <div>
-            <p className="eyebrow">Wissensdatenbank</p>
-            <h2 id="knowledge-base-heading">Artikel finden und lesen</h2>
+            <p className="eyebrow">1. Hilfe</p>
+            <h2 id="knowledge-base-heading">Wissen, das weiterhilft</h2>
+            <p className="knowledge-base__intro">
+              Anleitungen, Abläufe und Lösungen für den Arbeitsalltag.
+            </p>
           </div>
-          <button
-            className="knowledge-base__button"
-            disabled={loadingList || isBusy}
-            onClick={() => void loadArticles(activeQuery)}
-            type="button"
-          >
-            {loadingList ? "Wird aktualisiert …" : "Aktualisieren"}
-          </button>
+          <div className="knowledge-base__library-summary">
+            <span className="knowledge-base__count">
+              {activeQuery
+                ? `${articleCountLabel} gefunden`
+                : articleCountLabel}
+            </span>
+            <button
+              className="knowledge-base__button"
+              disabled={loadingList || isBusy}
+              onClick={() => void loadArticles(activeQuery)}
+              type="button"
+            >
+              {loadingList ? "Wird aktualisiert …" : "Aktualisieren"}
+            </button>
+          </div>
         </div>
 
         <div className="knowledge-base__toolbar">
@@ -1079,28 +1122,38 @@ export function KnowledgeBase({ tenantId }: KnowledgeBaseProps) {
               </button>
             ) : null}
           </form>
-          <button
-            className="knowledge-base__button"
-            disabled={isBusy}
-            onClick={beginNewArticle}
-            type="button"
-          >
-            Neuer Artikel
-          </button>
-          <button
-            className="knowledge-base__button"
-            disabled={isBusy}
-            onClick={() => void createCollection()}
-            type="button"
-          >
-            Kategorie anlegen
-          </button>
+          <div className="knowledge-base__toolbar-actions">
+            <button
+              className="primary-button knowledge-base__button knowledge-base__create-button"
+              disabled={isBusy}
+              onClick={beginNewArticle}
+              type="button"
+            >
+              Neuer Artikel
+            </button>
+            <button
+              className="knowledge-base__button"
+              disabled={isBusy}
+              onClick={() => void createCollection()}
+              type="button"
+            >
+              Kategorie anlegen
+            </button>
+          </div>
         </div>
 
         <div className="knowledge-base__content">
           <div className="knowledge-base__grid">
-            <div>
-              <h3 className="knowledge-base__visually-hidden">Artikelliste</h3>
+            <div className="knowledge-base__list-column">
+              <div className="knowledge-base__list-heading">
+                <div>
+                  <p className="eyebrow">Bibliothek</p>
+                  <h3>Artikel</h3>
+                </div>
+                <span aria-hidden="true" className="knowledge-base__count">
+                  {visibleArticles.length}
+                </span>
+              </div>
               {loadingList ? (
                 <p className="knowledge-base__empty" aria-live="polite">
                   Wissensartikel werden geladen …
@@ -1127,9 +1180,7 @@ export function KnowledgeBase({ tenantId }: KnowledgeBaseProps) {
                         onClick={() => void openArticle(article.id)}
                         type="button"
                       >
-                        <h3>{article.title}</h3>
-                        <p>{shortBody(revision?.body ?? null)}</p>
-                        <p className="knowledge-base__meta">
+                        <span className="knowledge-base__article-card-top">
                           <span
                             className={`knowledge-base__badge knowledge-base__badge--${article.status}`}
                           >
@@ -1140,7 +1191,14 @@ export function KnowledgeBase({ tenantId }: KnowledgeBaseProps) {
                           >
                             {visibilityLabels[article.visibility]}
                           </span>
+                        </span>
+                        <h3>{article.title}</h3>
+                        <p className="knowledge-base__article-excerpt">
+                          {shortBody(revision?.body ?? null)}
                         </p>
+                        <span className="knowledge-base__article-link">
+                          Artikel lesen <span aria-hidden="true">→</span>
+                        </span>
                       </button>
                     </li>
                   ))}
@@ -1159,7 +1217,7 @@ export function KnowledgeBase({ tenantId }: KnowledgeBaseProps) {
                 <>
                   <div className="knowledge-base__detail-header">
                     <div>
-                      <p className="eyebrow">Artikeldetail</p>
+                      <p className="eyebrow">1. Hilfe · Wissensartikel</p>
                       <h3 id="knowledge-article-detail-heading">
                         {detailArticle.title}
                       </h3>
@@ -1187,7 +1245,7 @@ export function KnowledgeBase({ tenantId }: KnowledgeBaseProps) {
                       </p>
                     </div>
                   </div>
-                  <div
+                  <article
                     className="knowledge-base__markdown"
                     aria-label="Artikelinhalt"
                   >
@@ -1196,8 +1254,8 @@ export function KnowledgeBase({ tenantId }: KnowledgeBaseProps) {
                     ) : (
                       "Dieser Artikel enthält noch keinen Inhalt."
                     )}
-                  </div>
-                  <div className="knowledge-base__actions">
+                  </article>
+                  <div className="knowledge-base__actions knowledge-base__article-actions">
                     <button
                       className="knowledge-base__button"
                       disabled={isBusy}
@@ -1253,10 +1311,14 @@ export function KnowledgeBase({ tenantId }: KnowledgeBaseProps) {
                   </div>
                 </>
               ) : (
-                <p className="knowledge-base__empty">
-                  Wählen Sie einen Artikel aus, um Details und Markdown-Inhalt
-                  zu sehen.
-                </p>
+                <div className="knowledge-base__reader-empty">
+                  <p className="eyebrow">Artikelansicht</p>
+                  <h3>Wählen Sie einen Artikel</h3>
+                  <p>
+                    Öffnen Sie einen Eintrag aus der Bibliothek, um ihn ruhig
+                    und gut lesbar anzuzeigen.
+                  </p>
+                </div>
               )}
             </section>
           </div>
@@ -1265,16 +1327,25 @@ export function KnowledgeBase({ tenantId }: KnowledgeBaseProps) {
 
       {editorOpen && (
         <section
-          className="panel"
+          className="panel knowledge-base__editor-panel"
           aria-labelledby="knowledge-article-form-heading"
         >
-          <div className="panel-heading">
+          <div className="knowledge-base__editor-heading">
             <div>
               <p className="eyebrow">
                 {editingArticleId ? "Artikel bearbeiten" : "Neuer Artikel"}
               </p>
               <h2 id="knowledge-article-form-heading">{editorTitle}</h2>
+              <p className="knowledge-base__intro">
+                Schreiben Sie klar, strukturieren Sie mit Markdown und prüfen
+                Sie die Darstellung direkt in der Vorschau.
+              </p>
             </div>
+            <span
+              className={`knowledge-base__badge knowledge-base__badge--${draft.status}`}
+            >
+              {statusLabels[draft.status]}
+            </span>
           </div>
 
           <form
@@ -1316,29 +1387,35 @@ export function KnowledgeBase({ tenantId }: KnowledgeBaseProps) {
               </select>
             </label>
 
-            <label>
-              Kategorien
-              <select
-                disabled={isBusy || collections.length === 0}
-                multiple
-                onChange={(event) =>
-                  setDraft((current) => ({
-                    ...current,
-                    collectionIds: Array.from(
-                      event.currentTarget.selectedOptions,
-                      (option) => option.value,
-                    ),
-                  }))
-                }
-                value={draft.collectionIds}
-              >
-                {collections.map((collection) => (
-                  <option key={collection.id} value={collection.id}>
-                    {collection.name}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <fieldset className="knowledge-base__category-picker">
+              <legend>Kategorien</legend>
+              {collections.length > 0 ? (
+                <>
+                  <p className="knowledge-base__category-limit">
+                    {draft.collectionIds.length} von {MAX_ARTICLE_CATEGORIES}{" "}
+                    Kategorien ausgewählt
+                  </p>
+                  <div className="knowledge-base__category-options">
+                    {collections.map((collection) => (
+                      <label key={collection.id}>
+                        <input
+                          checked={draft.collectionIds.includes(collection.id)}
+                          disabled={isBusy}
+                          onChange={() => toggleDraftCollection(collection.id)}
+                          type="checkbox"
+                        />
+                        <span>{collection.name}</span>
+                      </label>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <p className="knowledge-base__hint">
+                  Legen Sie zuerst eine Kategorie an, um den Artikel später
+                  leichter wiederzufinden.
+                </p>
+              )}
+            </fieldset>
 
             <p className="knowledge-base__hint">
               Kategorien können mehrfach ausgewählt werden. Speichern erstellt
@@ -1365,6 +1442,31 @@ export function KnowledgeBase({ tenantId }: KnowledgeBaseProps) {
                 value={draft.bodyMarkdown}
               />
             </label>
+
+            <aside className="knowledge-base__preview knowledge-base__full-width">
+              <div className="knowledge-base__preview-heading">
+                <p className="eyebrow">Live-Vorschau</p>
+                <span>{visibilityLabels[draft.visibility]}</span>
+              </div>
+              <h3>{previewTitle}</h3>
+              <div className="knowledge-base__preview-categories">
+                {previewCollections.length > 0
+                  ? previewCollections.map((collection) => (
+                      <span key={collection.id}>{collection.name}</span>
+                    ))
+                  : "Noch keiner Kategorie zugeordnet"}
+              </div>
+              <article className="knowledge-base__markdown knowledge-base__markdown--preview">
+                {draft.bodyMarkdown ? (
+                  <ReactMarkdown>{draft.bodyMarkdown}</ReactMarkdown>
+                ) : (
+                  <p>
+                    Beginnen Sie mit einer kurzen Einleitung. Die Vorschau zeigt
+                    die spätere Artikelansicht direkt an.
+                  </p>
+                )}
+              </article>
+            </aside>
 
             <div className="knowledge-base__form-actions knowledge-base__full-width">
               <button
