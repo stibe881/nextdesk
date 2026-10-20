@@ -1067,7 +1067,7 @@ export function KnowledgeBase({ tenantId }: KnowledgeBaseProps) {
       >
         <div className="knowledge-base__library-heading">
           <div>
-            <p className="eyebrow">1. Hilfe</p>
+            <p className="eyebrow">Wissensdatenbank</p>
             <h2 id="knowledge-base-heading">Wissen, das weiterhilft</h2>
             <p className="knowledge-base__intro">
               Anleitungen, Abläufe und Lösungen für den Arbeitsalltag.
@@ -1217,7 +1217,9 @@ export function KnowledgeBase({ tenantId }: KnowledgeBaseProps) {
                 <>
                   <div className="knowledge-base__detail-header">
                     <div>
-                      <p className="eyebrow">1. Hilfe · Wissensartikel</p>
+                      <p className="eyebrow">
+                        Wissensdatenbank · Wissensartikel
+                      </p>
                       <h3 id="knowledge-article-detail-heading">
                         {detailArticle.title}
                       </h3>

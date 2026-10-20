@@ -12071,7 +12071,7 @@ body:has(.ticket-detail) {
   }
 }
 
-/* 1. Hilfe: focused reading surfaces and a practical Markdown authoring flow. */
+/* Wissensdatenbank: focused reading surfaces and a practical Markdown authoring flow. */
 .knowledge-base.knowledge-base .knowledge-base__library,
 .knowledge-base.knowledge-base .knowledge-base__editor-panel {
   overflow: hidden;

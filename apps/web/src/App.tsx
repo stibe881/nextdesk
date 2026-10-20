@@ -607,7 +607,7 @@ function isSection(value: unknown): value is Section {
 }
 
 function sectionDisplayLabel(section: Section): string {
-  return section === "Wissen" ? "1. Hilfe" : section;
+  return section === "Wissen" ? "Wissensdatenbank" : section;
 }
 
 function isInputLikeTarget(target: EventTarget | null): boolean {

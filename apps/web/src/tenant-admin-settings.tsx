@@ -744,7 +744,7 @@ function CorporateDesignPreview({
     { Icon: BriefcaseBusiness, label: "Arbeitsplatz" },
     { Icon: Box, label: "Services" },
     { Icon: Box, label: "Assets" },
-    { Icon: BookOpen, label: "1. Hilfe" },
+    { Icon: BookOpen, label: "Wissensdatenbank" },
     { Icon: UserRound, label: "Mein Portal" },
     { Icon: Settings, label: "Einstellungen" },
   ];
