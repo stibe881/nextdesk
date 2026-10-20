@@ -4323,9 +4323,7 @@ function BulkTicketStatusActions({
             </strong>
             <p>
               Tickets, Kommentare und zugehörige Einträge werden unwiderruflich
-              entfernt. Die Berechtigung <code>ticket.delete</code> wird für
-              jedes Ticket serverseitig erneut geprüft. Ein aktiver Legal Hold
-              sperrt die Löschung.
+              entfernt.
             </p>
           </div>
           <div className="ticket-bulk-actions__confirmation-buttons">

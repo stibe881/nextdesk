@@ -131,7 +131,7 @@ async function isActiveMember(admin: any, userId: string, tenantId: string) {
   return !error && Boolean(data);
 }
 
-function rpcError(
+export function rpcError(
   request: Request,
   error: any,
   operation: "status" | "delete",
@@ -174,6 +174,13 @@ function rpcError(
   }
   if (error?.code === "22023") {
     return response(request, { error: { code: `${prefix}_invalid` } }, 422);
+  }
+  if (operation === "delete" && error?.code === "23503") {
+    return response(
+      request,
+      { error: { code: "bulk_ticket_delete_dependency_blocked" } },
+      409,
+    );
   }
   return response(request, { error: { code: `${prefix}_failed` } }, 500);
 }

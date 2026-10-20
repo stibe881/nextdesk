@@ -124,6 +124,8 @@ export async function functionErrorMessage(
       return "Bitte bestätigen Sie die endgültige Löschung der ausgewählten Tickets ausdrücklich.";
     case "bulk_ticket_delete_legal_hold":
       return "Die endgültige Löschung ist für diesen Mandanten wegen eines aktiven Legal Hold gesperrt.";
+    case "bulk_ticket_delete_dependency_blocked":
+      return "Dieses Ticket enthält noch einen Eintrag, der vor der endgültigen Löschung zuerst bereinigt werden muss.";
     case "ticket_close_confirmation_required":
       return "Bitte bestätigen Sie den Ticketabschluss ausdrücklich, bevor der geschlossene Status gespeichert wird.";
     case "ticket_feature_disabled":

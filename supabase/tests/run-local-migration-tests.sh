@@ -2353,6 +2353,27 @@ begin
     12,
     'clean'
   );
+  insert into public.experience_follow_ups (
+    id, tenant_id, owner_id, ticket_id, title, priority, resolved_at, resolved_by
+  ) values (
+    '1f000000-0000-4000-8000-000000000007',
+    '10000000-0000-4000-8000-000000000001',
+    '00000000-0000-4000-8000-000000000002',
+    '1f000000-0000-4000-8000-000000000001',
+    'Erledigte Wiedervorlage zur Löschregression',
+    'normal',
+    timezone('utc', now()),
+    '00000000-0000-4000-8000-000000000002'
+  );
+  insert into public.ticket_resolution_confirmations (
+    id, tenant_id, ticket_id, confirmed_by, confirmed
+  ) values (
+    '1f000000-0000-4000-8000-000000000008',
+    '10000000-0000-4000-8000-000000000001',
+    '1f000000-0000-4000-8000-000000000001',
+    '00000000-0000-4000-8000-000000000001',
+    true
+  );
 
   begin
     perform public.bulk_delete_tickets(
@@ -2441,8 +2462,14 @@ begin
   ) or exists (
     select 1 from public.ticket_comments
     where ticket_id = '1f000000-0000-4000-8000-000000000001'
+  ) or exists (
+    select 1 from public.experience_follow_ups
+    where ticket_id = '1f000000-0000-4000-8000-000000000001'
+  ) or exists (
+    select 1 from public.ticket_resolution_confirmations
+    where ticket_id = '1f000000-0000-4000-8000-000000000001'
   ) then
-    raise exception 'Authorized bulk deletion did not cascade ticket records';
+    raise exception 'Authorized bulk deletion did not cascade every ticket-scoped record';
   end if;
   if not exists (
     select 1 from public.audit_logs

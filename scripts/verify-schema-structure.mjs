@@ -88,6 +88,7 @@ const expectedFiles = [
   "0084_harden_asset_feature_gate_membership.sql",
   "0085_harden_sso_provisioning_offboarding.sql",
   "0086_controlled_ticket_automation_execution.sql",
+  "0087_cascade_ticket_followups_and_confirmations.sql",
 ];
 
 const availableFiles = await readdir(migrationDirectory);
@@ -917,6 +918,14 @@ const requiredFragments = [
   [
     "0086_controlled_ticket_automation_execution.sql",
     "grant execute on function public.execute_ticket_automation_auto_close(uuid, uuid)\n  to service_role",
+  ],
+  [
+    "0087_cascade_ticket_followups_and_confirmations.sql",
+    "foreign key (ticket_id, tenant_id)\n  references public.tickets (id, tenant_id)\n  on delete cascade",
+  ],
+  [
+    "0087_cascade_ticket_followups_and_confirmations.sql",
+    "drop constraint if exists ticket_resolution_confirmations_ticket_tenant_fk",
   ],
 ];
 
