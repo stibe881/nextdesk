@@ -134,3 +134,7 @@ Der bisherige breite Header-Button «Ticket erfassen» wird auf allen Arbeitssei
 ## Navigation für reine Anfragende
 
 Für Personen ohne Ticketarbeitsberechtigung wird die sichtbare und clientseitig erreichbare Arbeitsnavigation auf «Übersicht», «Tickets» und – bei aktivierter Portal-Funktion – «Mein Portal» begrenzt. Direkte Zustandswechsel in andere Arbeitsbereiche fallen kontrolliert auf die Übersicht zurück; dies ergänzt die bestehenden serverseitigen Zugriffsprüfungen und ersetzt sie nicht. «Mein Portal» verlässt die Hauptnavigation und erscheint im unteren, bereits durch eine Trennlinie abgegrenzten Benutzerbereich unmittelbar oberhalb des Namens. Für berechtigte Agent:innen bleibt das übrige Arbeitsmenü unverändert; ihr gegebenenfalls verfügbares «Mein Portal» folgt derselben konsistenten unteren Platzierung.
+
+## Kategoriefreie Wissensoberfläche
+
+Die Wissensdatenbank zeigt keine Kategorien oder Unterkategorien mehr: weder auf Artikelkarten, in der Detailansicht und Vorschau noch im Artikel-Editor. Die Schaltfläche und das Formular zur Kategorienverwaltung entfallen ebenfalls. Bestehende Zuordnungen und Kategorien bleiben unverändert in der Datenbank erhalten, werden bei künftigen Artikelbearbeitungen weiterhin ohne Änderung mitgeführt und werden nicht gelöscht. Diese reine Weboberflächenbereinigung benötigt keine Datenbankmigration, keine Function-Änderung und keine neue Funktionsaktivierung.
