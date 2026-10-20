@@ -91,6 +91,12 @@ import {
   type OwnerAccess,
 } from "./platform-owner";
 import { functionErrorMessage } from "./lib/function-error";
+import {
+  bootstrapBrowserAuthSession,
+  cleanBrowserAuthCallbackUrl,
+  createBrowserAuthSessionGate,
+  hasBrowserAuthCallback,
+} from "./lib/auth-callback";
 import { resolveTenantSsoAccess } from "./lib/tenant-sso-access";
 import {
   parseTicketSearch,
@@ -1568,14 +1574,15 @@ export function App() {
   useEffect(() => {
     if (!supabase) return;
 
+    const auth = supabase.auth;
     let mounted = true;
-    void supabase.auth.getSession().then(({ data, error }) => {
+    const callbackUrl = window.location.href;
+    const callbackInProgress = hasBrowserAuthCallback(callbackUrl);
+    const callbackSessionGate =
+      createBrowserAuthSessionGate(callbackInProgress);
+    if (callbackInProgress) setTenantLoading(true);
+    const applySession = (nextSession: Session | null) => {
       if (!mounted) return;
-      if (error) setErrorMessage(error.message);
-      setTenantLoading(Boolean(data.session));
-      setSession(data.session);
-    });
-    const { data } = supabase.auth.onAuthStateChange((_event, nextSession) => {
       setTenantLoading(Boolean(nextSession));
       setTenants([]);
       setActiveTenantId("");
@@ -1596,8 +1603,52 @@ export function App() {
       setTenantWorkspaceBranding(null);
       setExperienceNotice(null);
       setExperienceFollowUpsRevision(0);
+    };
+    const { data } = auth.onAuthStateChange((_event, nextSession) => {
+      if (!callbackSessionGate.accepts(nextSession)) return;
+      applySession(nextSession);
     });
-
+    const rejectCallback = async (error: unknown) => {
+      callbackSessionGate.fail();
+      await auth.signOut({ scope: "local" }).catch(() => undefined);
+      if (!mounted) return;
+      applySession(null);
+      setErrorMessage(
+        error instanceof Error
+          ? error.message
+          : "Die Anmeldung konnte nicht abgeschlossen werden.",
+      );
+    };
+    const clearCallbackUrl = () => {
+      if (!callbackInProgress) return;
+      window.history.replaceState(
+        window.history.state,
+        "",
+        cleanBrowserAuthCallbackUrl(callbackUrl),
+      );
+    };
+    void bootstrapBrowserAuthSession(auth, callbackUrl)
+      .then(async ({ cleanUrl, error, session: nextSession }) => {
+        if (!mounted) return;
+        if (cleanUrl) {
+          window.history.replaceState(window.history.state, "", cleanUrl);
+        }
+        if (error || (callbackInProgress && !nextSession)) {
+          await rejectCallback(
+            error ??
+              new Error("Die Anmeldung konnte nicht abgeschlossen werden."),
+          );
+          return;
+        }
+        if (callbackInProgress && nextSession) {
+          callbackSessionGate.complete(nextSession);
+        }
+        applySession(nextSession);
+      })
+      .catch(async (error: unknown) => {
+        clearCallbackUrl();
+        await rejectCallback(error);
+      });
     return () => {
       mounted = false;
       data.subscription.unsubscribe();
