@@ -197,3 +197,7 @@ Die Rollenübersicht bleibt vollständig funktionsfähig, trennt jedoch geschüt
 - **Brand Voice:** klar und handlungsorientiert, etwa «Zugriff vergeben» und «Zeigt, wer welche Rolle im Mandanten hat.»
 - **Wordmark & Logo:** unverändert.
 - **Signature Brand Color:** die bestehende primäre nextDesk-Farbe bleibt der eindeutige Handlungsakzent.
+
+## Vollständige Ticketformularvorschau
+
+Der Formular-Editor zeigt in seiner Vorschau immer zuerst den vollständigen Aufbau der Ticketerfassung: anfragende Person, Betreff, Einordnung mit Abteilung, Priorität und optionaler Kategorie sowie Beschreibung. Felder, die der Composer nur bei passenden Daten oder nach einer Auswahl zeigt, sind als situationsabhängig markiert. Die Zusatzfelder erscheinen anschliessend in ihren konfigurierten Abschnitten und Reihenfolgen. Damit bildet die Ansicht auch ohne angelegte Zusatzfelder das tatsächliche Formular ab. Die Vorschau bleibt rein visuell und löst keine Speicherung, Ticketanlage, Rechteprüfung oder Datenabfrage aus.

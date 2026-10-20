@@ -9973,8 +9973,41 @@ body:has(.ticket-detail) {
   color: var(--primary, var(--text-tint-4f46e5));
 }
 
+.ticket-form-builder__preview-copy,
+.ticket-form-builder__preview-empty-custom-fields {
+  margin: 0.9rem 0 0;
+  color: var(--muted, var(--text-tint-64748b));
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.ticket-form-builder__preview-subheading {
+  margin: 1.1rem 0 0;
+  color: var(--muted, var(--text-tint-64748b));
+  font-size: 0.76rem;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
 .ticket-form-builder__preview-section {
   margin-top: 1rem;
+}
+
+.ticket-form-builder__preview-section--standard {
+  padding: 0.8rem;
+  border: 1px solid
+    color-mix(
+      in srgb,
+      var(--primary, var(--decorative-tint-4f46e5)) 16%,
+      var(--line, var(--border-tint-dbe2ea))
+    );
+  border-radius: 0.8rem;
+  background: color-mix(
+    in srgb,
+    var(--primary, var(--decorative-tint-4f46e5)) 4%,
+    var(--surface, var(--surface))
+  );
 }
 
 .ticket-form-builder__preview-section > div {
@@ -9993,9 +10026,21 @@ body:has(.ticket-detail) {
 }
 
 .ticket-form-builder__preview input,
-.ticket-form-builder__preview select {
+.ticket-form-builder__preview select,
+.ticket-form-builder__preview textarea {
   min-height: 2.55rem;
   opacity: 0.72;
+}
+
+.ticket-form-builder__preview textarea {
+  min-height: 5.5rem;
+  resize: vertical;
+}
+
+.ticket-form-builder__preview label small {
+  color: var(--muted, var(--text-tint-64748b));
+  font-size: 0.75rem;
+  font-weight: 600;
 }
 
 .ticket-form-builder__preview-checkbox {

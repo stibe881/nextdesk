@@ -17,6 +17,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { functionErrorMessage } from "./lib/function-error";
+import { STANDARD_TICKET_FORM_PREVIEW_SECTIONS } from "./lib/ticket-form-preview";
 import { supabase } from "./lib/supabase";
 
 type FieldType = "text" | "number" | "date" | "select" | "checkbox";
@@ -233,11 +234,31 @@ async function request(action: Record<string, unknown>): Promise<unknown> {
   return data;
 }
 
-function FieldPreview({ definition }: { definition: FieldDefinition }) {
+type PreviewField = {
+  contextual?: boolean;
+  fieldType: FieldType | "textarea";
+  label: string;
+  optional?: boolean;
+  options?: readonly string[];
+  placeholder?: string;
+  required?: boolean;
+};
+
+function FieldPreview({ definition }: { definition: PreviewField }) {
+  const qualifiers = [
+    definition.optional ? "optional" : null,
+    definition.contextual ? "situationsabhängig" : null,
+  ].filter((qualifier): qualifier is string => qualifier !== null);
   const label = (
     <span>
       {definition.label}
-      {definition.required && <strong aria-hidden="true"> *</strong>}
+      {definition.required && (
+        <>
+          <strong aria-hidden="true"> *</strong>
+          <span className="sr-only"> (Pflichtfeld)</span>
+        </>
+      )}
+      {qualifiers.length > 0 && <small> {qualifiers.join(" · ")}</small>}
     </span>
   );
   if (definition.fieldType === "checkbox") {
@@ -250,17 +271,23 @@ function FieldPreview({ definition }: { definition: FieldDefinition }) {
   return (
     <label>
       {label}
-      {definition.fieldType === "select" ? (
+      {definition.fieldType === "textarea" ? (
+        <textarea disabled placeholder={definition.placeholder} rows={4} />
+      ) : definition.fieldType === "select" ? (
         <select disabled defaultValue="">
-          <option value="">Bitte auswählen</option>
-          {definition.options.map((option) => (
+          <option value="">
+            {definition.placeholder ?? "Bitte auswählen"}
+          </option>
+          {(definition.options ?? []).map((option) => (
             <option key={option}>{option}</option>
           ))}
         </select>
       ) : (
         <input
           disabled
-          placeholder={fieldTypeLabel(definition.fieldType)}
+          placeholder={
+            definition.placeholder ?? fieldTypeLabel(definition.fieldType)
+          }
           type={definition.fieldType}
         />
       )}
@@ -742,6 +769,29 @@ export function TicketCustomFieldsAdmin({ tenantId }: Props) {
                 <h3 id="ticket-form-builder-preview-heading">Ticketformular</h3>
               </div>
             </div>
+            <p className="ticket-form-builder__preview-copy">
+              Die Vorschau zeigt den vollständigen Aufbau der Ticketerfassung.
+              Situationsabhängige Felder sind markiert; Zusatzfelder folgen in
+              der konfigurierten Reihenfolge.
+            </p>
+            {STANDARD_TICKET_FORM_PREVIEW_SECTIONS.map((section) => (
+              <section
+                className="ticket-form-builder__preview-section ticket-form-builder__preview-section--standard"
+                key={section.label}
+              >
+                <h4>{section.label}</h4>
+                <div>
+                  {section.fields.map((field) => (
+                    <FieldPreview definition={field} key={field.label} />
+                  ))}
+                </div>
+              </section>
+            ))}
+            {activeDefinitions.length > 0 && (
+              <p className="ticket-form-builder__preview-subheading">
+                Zusätzliche Felder
+              </p>
+            )}
             {layout?.sections.map((section) => {
               const fields = activeDefinitions.filter(
                 (definition) => definition.sectionId === section.id,
@@ -765,8 +815,8 @@ export function TicketCustomFieldsAdmin({ tenantId }: Props) {
               );
             })}
             {activeDefinitions.length === 0 && (
-              <p className="tenant-admin-settings__hint">
-                Fügen Sie ein erstes Feld hinzu, um die Vorschau zu sehen.
+              <p className="ticket-form-builder__preview-empty-custom-fields">
+                Noch keine zusätzlichen Felder konfiguriert.
               </p>
             )}
           </aside>
