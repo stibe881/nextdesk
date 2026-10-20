@@ -101,6 +101,7 @@ import {
   createBrowserAuthSessionGate,
   hasBrowserAuthCallback,
 } from "./lib/auth-callback";
+import { requiresWorkspaceContextReset } from "./lib/auth-session-context";
 import { resolveTenantSsoAccess } from "./lib/tenant-sso-access";
 import {
   parseTicketSearch,
@@ -1490,6 +1491,9 @@ export function App() {
   const [session, setSession] = useState<Session | null | undefined>(
     isSupabaseConfigured ? undefined : null,
   );
+  const latestSessionRef = useRef<Session | null | undefined>(
+    isSupabaseConfigured ? undefined : null,
+  );
   const [operatorName, setOperatorName] = useState("Mara Keller");
   const [tenants, setTenants] = useState<TenantOption[]>([]);
   const [activeTenantId, setActiveTenantId] = useState("");
@@ -1655,6 +1659,7 @@ export function App() {
     if (callbackInProgress) setTenantLoading(true);
     const applySession = (nextSession: Session | null) => {
       if (!mounted) return;
+      latestSessionRef.current = nextSession;
       setTenantLoading(Boolean(nextSession));
       setTenants([]);
       setActiveTenantId("");
@@ -1681,9 +1686,29 @@ export function App() {
       setExperienceNotice(null);
       setExperienceFollowUpsRevision(0);
     };
-    const { data } = auth.onAuthStateChange((_event, nextSession) => {
+    const { data } = auth.onAuthStateChange((event, nextSession) => {
+      if (!mounted) return;
       if (!callbackSessionGate.accepts(nextSession)) return;
-      applySession(nextSession);
+
+      const currentSession = latestSessionRef.current;
+      const resetWorkspace = requiresWorkspaceContextReset({
+        event,
+        currentUserId:
+          currentSession === undefined
+            ? undefined
+            : (currentSession?.user.id ?? null),
+        nextUserId: nextSession?.user.id ?? null,
+      });
+
+      if (resetWorkspace) {
+        applySession(nextSession);
+        return;
+      }
+
+      // Supabase can re-emit SIGNED_IN or TOKEN_REFRESHED when this browser
+      // window regains focus. The client already owns the fresh tokens, so a
+      // same-user event must not clear and reload the tenant workspace.
+      latestSessionRef.current = nextSession;
     });
     const rejectCallback = async (error: unknown) => {
       callbackSessionGate.fail();
