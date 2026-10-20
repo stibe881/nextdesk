@@ -43,6 +43,21 @@ describe("parseAiGovernanceApprovalResponse", () => {
     ).toBe(false);
   });
 
+  it("behandelt ältere Function-Antworten ohne Bereitschaftsangabe als nicht konfiguriert", () => {
+    expect(
+      parseAiGovernanceApprovalResponse({
+        data: {
+          provider: "Anthropic",
+          approval: {
+            enabled: true,
+            allowExternalArticleContent: true,
+            allowedPurposes: ["general_draft"],
+          },
+        },
+      }).providerConfigured,
+    ).toBe(false);
+  });
+
   it("lehnt eine Antwort ohne erwartete Function-Hülle ab", () => {
     expect(() =>
       parseAiGovernanceApprovalResponse({

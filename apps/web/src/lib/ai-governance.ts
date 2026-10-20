@@ -26,7 +26,8 @@ export function parseAiGovernanceApprovalResponse(
     !isRecord(value.data) ||
     value.data.provider !== "Anthropic" ||
     !isRecord(value.data.approval) ||
-    typeof value.data.providerConfigured !== "boolean"
+    (value.data.providerConfigured !== undefined &&
+      typeof value.data.providerConfigured !== "boolean")
   ) {
     throw new Error("invalid_ai_configuration");
   }
@@ -50,6 +51,6 @@ export function parseAiGovernanceApprovalResponse(
     enabled: approval.enabled,
     allowExternalArticleContent: approval.allowExternalArticleContent,
     allowedPurposes,
-    providerConfigured: value.data.providerConfigured,
+    providerConfigured: value.data.providerConfigured === true,
   };
 }
