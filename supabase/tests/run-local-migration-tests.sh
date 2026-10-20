@@ -627,6 +627,60 @@ begin
     raise exception 'Cross-section move did not honour active positions: %', v_keys;
   end if;
 
+  v_stale_version := v_version;
+  select public.update_ticket_custom_field_definition_at_position(
+    v_actor_id, v_tenant_id, v_alpha, 'dnd_alpha', 'Alpha aktualisiert',
+    'text', true, '[]'::jsonb, v_source_section, 0, v_version
+  ) into v_result;
+  v_version := (v_result->>'layoutVersion')::bigint;
+  if (v_result->>'id')::uuid <> v_alpha then
+    raise exception 'Atomic field update did not return the edited definition';
+  end if;
+
+  select array_agg(definition->>'fieldKey' order by (definition->>'position')::integer)
+  into v_keys
+  from jsonb_array_elements(
+    public.list_ticket_custom_field_layout(v_actor_id, v_tenant_id)->'definitions'
+  ) as definition
+  where definition->>'sectionId' = v_source_section::text
+    and (definition->>'active')::boolean;
+  if v_keys is distinct from array['dnd_alpha'] then
+    raise exception 'Atomic field update did not move the field into the selected section: %', v_keys;
+  end if;
+  if not exists (
+    select 1
+    from jsonb_array_elements(
+      public.list_ticket_custom_field_layout(v_actor_id, v_tenant_id)->'definitions'
+    ) as definition
+    where definition->>'id' = v_alpha::text
+      and definition->>'label' = 'Alpha aktualisiert'
+      and (definition->>'required')::boolean
+      and definition->>'sectionId' = v_source_section::text
+  ) then
+    raise exception 'Atomic field update did not persist the definition and placement together';
+  end if;
+
+  begin
+    perform public.update_ticket_custom_field_definition_at_position(
+      v_actor_id, v_tenant_id, v_gamma, 'dnd_gamma', 'Gamma veraltet',
+      'text', false, '[]'::jsonb, v_source_section, 1, v_stale_version
+    );
+    raise exception 'Atomic field update accepted a stale layout version';
+  exception when raise_exception then
+    if sqlerrm <> 'layout_version_conflict' then raise; end if;
+  end;
+  if not exists (
+    select 1
+    from jsonb_array_elements(
+      public.list_ticket_custom_field_layout(v_actor_id, v_tenant_id)->'definitions'
+    ) as definition
+    where definition->>'id' = v_gamma::text
+      and definition->>'label' = 'Gamma'
+      and definition->>'sectionId' = v_target_section::text
+  ) then
+    raise exception 'Stale atomic field update left a partial mutation behind';
+  end if;
+
   begin
     perform public.move_ticket_custom_field_definition(
       v_actor_id, v_tenant_id, v_beta, v_target_section, 0, v_version
@@ -662,6 +716,13 @@ begin
     'execute'
   ) then
     raise exception 'Versioned atomic custom field creation is not executable';
+  end if;
+  if not has_function_privilege(
+    'service_role',
+    'public.update_ticket_custom_field_definition_at_position(uuid, uuid, uuid, text, text, text, boolean, jsonb, uuid, integer, bigint)',
+    'execute'
+  ) then
+    raise exception 'Versioned atomic custom field editing is not executable';
   end if;
 end;
 $$;

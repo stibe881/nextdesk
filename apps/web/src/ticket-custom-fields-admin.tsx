@@ -452,32 +452,50 @@ export function TicketCustomFieldsAdmin({ tenantId }: Props) {
 
     const layoutBeforeSave = layout;
     const fieldKey = draft.fieldKey.trim().toLocaleLowerCase("de-CH");
+    const editingDefinition = editingId
+      ? layoutBeforeSave.definitions.find(
+          (definition) => definition.id === editingId,
+        )
+      : null;
     setSaving(true);
     setError("");
     setMessage("");
     try {
-      let savedDefinitionId = editingId;
       if (editingId) {
-        const result = await request({
-          type: "upsertDefinition",
-          tenantId,
-          definitionId: editingId,
-          fieldKey,
-          label: draft.label.trim(),
-          fieldType: draft.fieldType,
-          required: draft.required,
-          options,
-          expectedVersion: layoutBeforeSave.version,
-        });
-        if (
-          isRecord(result) &&
-          isRecord(result.data) &&
-          typeof result.data.id === "string"
-        ) {
-          savedDefinitionId = result.data.id;
+        if (!editingDefinition) {
+          throw new Error("Das Feld ist nicht mehr verfügbar.");
+        }
+        if (editingDefinition.sectionId !== draft.sectionId) {
+          await request({
+            type: "updateDefinitionAtPosition",
+            tenantId,
+            definitionId: editingId,
+            fieldKey,
+            label: draft.label.trim(),
+            fieldType: draft.fieldType,
+            required: draft.required,
+            options,
+            sectionId: draft.sectionId,
+            position: activeDefinitions.filter(
+              (definition) => definition.sectionId === draft.sectionId,
+            ).length,
+            expectedVersion: layoutBeforeSave.version,
+          });
+        } else {
+          await request({
+            type: "upsertDefinition",
+            tenantId,
+            definitionId: editingId,
+            fieldKey,
+            label: draft.label.trim(),
+            fieldType: draft.fieldType,
+            required: draft.required,
+            options,
+            expectedVersion: layoutBeforeSave.version,
+          });
         }
       } else {
-        const result = await request({
+        await request({
           type: "createDefinitionAtPosition",
           tenantId,
           fieldKey,
@@ -491,38 +509,6 @@ export function TicketCustomFieldsAdmin({ tenantId }: Props) {
           ).length,
           expectedVersion: layoutBeforeSave.version,
         });
-        savedDefinitionId =
-          isRecord(result) &&
-          isRecord(result.data) &&
-          typeof result.data.id === "string"
-            ? result.data.id
-            : null;
-      }
-
-      const nextLayout = parseLayout(
-        await request({ type: "getLayout", tenantId }),
-      );
-      const savedDefinition = nextLayout?.definitions.find(
-        (definition) => definition.id === savedDefinitionId,
-      );
-      if (
-        editingId &&
-        nextLayout &&
-        savedDefinitionId &&
-        savedDefinition &&
-        savedDefinition.sectionId !== draft.sectionId
-      ) {
-        await request({
-          type: "moveDefinition",
-          tenantId,
-          definitionId: savedDefinitionId,
-          sectionId: draft.sectionId,
-          position: nextLayout.definitions.filter(
-            (definition) =>
-              definition.sectionId === draft.sectionId && definition.active,
-          ).length,
-          expectedVersion: nextLayout.version,
-        });
       }
       beginCreate();
       setMessage(
@@ -530,31 +516,12 @@ export function TicketCustomFieldsAdmin({ tenantId }: Props) {
       );
       await loadLayout();
     } catch (requestError) {
-      if (!editingId) {
-        try {
-          const recoveredLayout = parseLayout(
-            await request({ type: "getLayout", tenantId }),
-          );
-          const recoveredDefinition = recoveredLayout?.definitions.find(
-            (definition) =>
-              definition.fieldKey === fieldKey && definition.active,
-          );
-          if (recoveredLayout && recoveredDefinition) {
-            setLayout(recoveredLayout);
-            beginEdit(recoveredDefinition);
-            setMessage(`„${recoveredDefinition.label}“ wurde gespeichert.`);
-            return;
-          }
-        } catch {
-          // A failed refresh leaves the atomic server command untouched.
-        }
-      }
-      setError(
-        await functionErrorMessage(
-          requestError,
-          "Das Formularfeld konnte nicht gespeichert werden.",
-        ),
+      const message = await functionErrorMessage(
+        requestError,
+        "Das Formularfeld konnte nicht gespeichert werden.",
       );
+      await loadLayout();
+      setError(message);
     } finally {
       setSaving(false);
     }
@@ -677,29 +644,12 @@ export function TicketCustomFieldsAdmin({ tenantId }: Props) {
         `„${preset.label}“ wurde eingefügt. Prüfen Sie die Einstellungen.`,
       );
     } catch (requestError) {
-      try {
-        const recoveredLayout = parseLayout(
-          await request({ type: "getLayout", tenantId }),
-        );
-        const recoveredDefinition = recoveredLayout?.definitions.find(
-          (definition) =>
-            definition.fieldKey === presetDraft.fieldKey && definition.active,
-        );
-        if (recoveredLayout && recoveredDefinition) {
-          setLayout(recoveredLayout);
-          beginEdit(recoveredDefinition);
-          setMessage(`„${recoveredDefinition.label}“ wurde gespeichert.`);
-          return;
-        }
-      } catch {
-        // The atomic server command leaves no partially placed field behind.
-      }
-      setError(
-        await functionErrorMessage(
-          requestError,
-          "Das Feld konnte nicht zum Formular hinzugefügt werden.",
-        ),
+      const message = await functionErrorMessage(
+        requestError,
+        "Das Feld konnte nicht zum Formular hinzugefügt werden.",
       );
+      await loadLayout();
+      setError(message);
     } finally {
       setSaving(false);
       setDraggedPresetId(null);

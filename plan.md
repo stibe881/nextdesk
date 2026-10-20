@@ -240,3 +240,15 @@ Auch Erstellen, Reaktivieren und Archivieren verwenden dieselbe Layoutversion wi
 ## KI-Governance-Antworthülle
 
 Die KI-Governance-Oberfläche liest die erfolgreiche Antwort von `ai-assist` ausschliesslich über deren validierte `{ data: { approval } }`-Hülle. Dadurch wird eine gültige, JWT-geschützte Antwort nicht mehr als nicht verfügbare Governance fehlinterpretiert. Die Änderung betrifft nur die clientseitige Antwortvalidierung; keine Freigabe, Funktion, Sichtbarkeit oder Anbieterübermittlung wird dabei automatisch geändert.
+
+## Atomare Ticketfeldbearbeitung und KI-Entwurfsdiagnose
+
+Ein bestehendes Ticketzusatzfeld wird bei einer Abschnittsänderung über genau einen versionierten Serverbefehl aktualisiert und umplatziert. Damit sind Bezeichnung, Pflichtstatus, Auswahloptionen und Abschnitt entweder gemeinsam sichtbar oder bei einem Versionskonflikt vollständig unverändert. Mehrdeutige Client-Recovery wird entfernt: Ein bestätigter Konflikt oder Validierungsfehler bleibt sichtbar und wird nie als erfolgreiche, möglicherweise fremde Anlage ausgegeben.
+
+Die KI-Aufbereitung wird anhand ausschliesslich technischer Auditmetadaten untersucht. Rohinhalte, Providerantworten und Zugangsdaten werden weder gelesen noch protokolliert. Eine Korrektur folgt nur für einen nachgewiesenen lokalen Vertrags- oder Konfigurationsfehler; ein Testaufruf an Anthropic erfolgt nicht automatisch.
+
+## Atomare Ticketfeldbearbeitung und KI-Bereitschaft
+
+Ein bestehendes Ticketzusatzfeld wird bei einem Abschnittswechsel nicht mehr zuerst separat gespeichert und danach verschoben. Der serverseitige Befehl aktualisiert Definition und Zielposition innerhalb einer Datenbanktransaktion, jeweils mit derselben mandantenlokalen Layoutversion. Bei einem Versionskonflikt bleibt weder eine veränderte Definition noch eine verschobene Platzierung zurück. Die Weboberfläche verwendet diesen Befehl ausschliesslich bei einem Abschnittswechsel; neue Felder und Reihenfolgen bleiben ebenfalls versioniert und atomar.
+
+Die KI-Governance zeigt zusätzlich zur fachlichen Freigabe einen nicht sensitiven Bereitschaftsstatus der serverseitigen Anthropic-Anbindung. Schlüssel, Modellname und Artikelinhalt bleiben dabei verborgen. Die Wissensdatenbank übernimmt sichere Function-Meldungen unverändert, damit eine unvollständige Serverkonfiguration nicht als allgemeine Störung erscheint. Vor dem Providerkontakt werden weiterhin weder Rohinhalte noch Entwürfe gespeichert oder protokolliert.

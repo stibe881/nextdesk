@@ -38,7 +38,41 @@ Deno.test(
 );
 
 Deno.test(
-  "Ticketfeld-Function verwirft unversionierte Erstellen- und Archivierungsbefehle",
+  "Ticketfeld-Function akzeptiert eine atomare Bearbeitung mit Abschnittswechsel",
+  () => {
+    assertEquals(
+      parseTicketCustomFieldsAction({
+        type: "updateDefinitionAtPosition",
+        tenantId,
+        definitionId,
+        fieldKey: "geraetestandort",
+        label: "Gerätestandort aktualisiert",
+        fieldType: "select",
+        required: true,
+        options: ["Büro", "Homeoffice"],
+        sectionId,
+        position: 0,
+        expectedVersion: 8,
+      }),
+      {
+        type: "updateDefinitionAtPosition",
+        tenantId,
+        definitionId,
+        fieldKey: "geraetestandort",
+        label: "Gerätestandort aktualisiert",
+        fieldType: "select",
+        required: true,
+        options: ["Büro", "Homeoffice"],
+        sectionId,
+        position: 0,
+        expectedVersion: 8,
+      },
+    );
+  },
+);
+
+Deno.test(
+  "Ticketfeld-Function verwirft unversionierte oder unvollständige Mutationen",
   () => {
     assertEquals(
       parseTicketCustomFieldsAction({
@@ -50,6 +84,21 @@ Deno.test(
         fieldType: "text",
         required: false,
         options: [],
+      }),
+      null,
+    );
+    assertEquals(
+      parseTicketCustomFieldsAction({
+        type: "updateDefinitionAtPosition",
+        tenantId,
+        definitionId,
+        fieldKey: "geraetestandort",
+        label: "Gerätestandort",
+        fieldType: "text",
+        required: false,
+        options: [],
+        sectionId,
+        position: 0,
       }),
       null,
     );

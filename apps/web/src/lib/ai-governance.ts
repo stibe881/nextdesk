@@ -4,6 +4,7 @@ export type AiGovernanceApproval = {
   enabled: boolean;
   allowExternalArticleContent: boolean;
   allowedPurposes: AiPurpose[];
+  providerConfigured: boolean;
 };
 
 type RecordValue = Record<string, unknown>;
@@ -24,7 +25,8 @@ export function parseAiGovernanceApprovalResponse(
     !isRecord(value) ||
     !isRecord(value.data) ||
     value.data.provider !== "Anthropic" ||
-    !isRecord(value.data.approval)
+    !isRecord(value.data.approval) ||
+    typeof value.data.providerConfigured !== "boolean"
   ) {
     throw new Error("invalid_ai_configuration");
   }
@@ -48,5 +50,6 @@ export function parseAiGovernanceApprovalResponse(
     enabled: approval.enabled,
     allowExternalArticleContent: approval.allowExternalArticleContent,
     allowedPurposes,
+    providerConfigured: value.data.providerConfigured,
   };
 }

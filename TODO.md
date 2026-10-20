@@ -110,3 +110,11 @@
   - Ein Palettenfeld wird nur zusammen mit seiner Zielplatzierung gespeichert. Bei einer ungültigen Zielposition oder Layoutversion bleibt keine unplatzierte Zwischenstufe zurück; nach einer unterbrochenen Antwort wird ein eindeutig vorhandenes Feld sicher wieder geladen.
   - Auch Erstellen, Reaktivieren und Archivieren prüfen und erhöhen die Layoutversion; eine alte Editoransicht kann keine aktuellere Feldreihenfolge überschreiben.
 - [x] **KI-Governance lädt die gültige Function-Antwort.** Die Einstellungen für Anthropic erkennen die von `ai-assist` gelieferte `{ data: { approval } }`-Hülle als gültige Freigabe. Eine erfolgreiche Antwort darf nicht fälschlich als nicht verfügbare Governance erscheinen. Die Korrektur verändert weder Funktionsstatus noch Mandantenfreigabe, externe Artikelfreigabe oder Provideraufrufe.
+
+- [ ] **Atomare Ticketfeldbearbeitung und konfliktklare Anlage.** Beim Bearbeiten eines bestehenden Zusatzfelds müssen Änderungen und ein möglicher Wechsel des Abschnitts in einem einzigen versionierten, mandantenautorisierten Servervorgang erfolgen. Ein Versionskonflikt oder eine Validierung darf keine Teiländerung hinterlassen. Neuanlagen aus Palette oder Inspektor dürfen bei fehlgeschlagenem Befehl nicht als Erfolg einer bereits vorhandenen oder fremden Definition erscheinen.
+- [ ] **KI-Aufbereitung datensparsam diagnostizieren.** Die sichtbare Mandantenfreigabe bleibt unverändert. Die Ursache der Fehlermeldung beim manuellen «Mit KI aufbereiten» wird ausschliesslich mit technischen Status- und Auditmetadaten eingegrenzt; es werden keine Artikelinhalte oder Providerantworten ausgelesen und keine automatische KI-Anfrage ausgelöst.
+
+- [x] **Atomare Ticketfeldbearbeitung und transparente KI-Bereitschaft**
+  - Ein Feld kann beim Bearbeiten mitsamt Abschnitt und Position nur als eine versionierte, mandantenisolierte Datenbankmutation gespeichert werden; ein Konflikt darf keine Teiländerung hinterlassen.
+  - Der Drag-and-Drop-Konfigurator und die vorhandenen Paletteneinfügungen behalten ihre versionierten Layoutverträge.
+  - Die KI-Einstellungen zeigen ohne Schlüssel- oder Inhaltsdetails, ob die serverseitige Anthropic-Anbindung bereit ist; eine fehlende Konfiguration wird beim Wissensentwurf klar und ohne Providerdetails gemeldet.

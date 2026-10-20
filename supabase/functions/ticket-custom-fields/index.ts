@@ -32,6 +32,19 @@ type CreateDefinitionAtPositionAction = {
   position: number;
   expectedVersion: number;
 };
+type UpdateDefinitionAtPositionAction = {
+  type: "updateDefinitionAtPosition";
+  tenantId: string;
+  definitionId: string;
+  fieldKey: string;
+  label: string;
+  fieldType: FieldType;
+  required: boolean;
+  options: string[];
+  sectionId: string;
+  position: number;
+  expectedVersion: number;
+};
 type RetireDefinitionAction = {
   type: "retireDefinition";
   tenantId: string;
@@ -69,6 +82,7 @@ type Action =
   | ListDefinitionsAction
   | UpsertDefinitionAction
   | CreateDefinitionAtPositionAction
+  | UpdateDefinitionAtPositionAction
   | RetireDefinitionAction
   | ListValuesAction
   | SetValuesAction
@@ -305,6 +319,55 @@ export function parseTicketCustomFieldsAction(value: unknown): Action | null {
     return {
       type: value.type,
       tenantId: value.tenantId,
+      fieldKey: value.fieldKey.trim().toLowerCase(),
+      label: value.label.trim(),
+      fieldType: value.fieldType,
+      required: value.required,
+      options,
+      sectionId: value.sectionId,
+      position: value.position,
+      expectedVersion: value.expectedVersion,
+    };
+  }
+
+  if (
+    value.type === "updateDefinitionAtPosition" &&
+    Object.keys(value).every((key) =>
+      [
+        "type",
+        "tenantId",
+        "definitionId",
+        "fieldKey",
+        "label",
+        "fieldType",
+        "required",
+        "options",
+        "sectionId",
+        "position",
+        "expectedVersion",
+      ].includes(key),
+    ) &&
+    isUuid(value.definitionId) &&
+    isText(value.fieldKey, 2, 63) &&
+    /^[a-z][a-z0-9_]{1,62}$/u.test(value.fieldKey.trim()) &&
+    isText(value.label, 2, 120) &&
+    isFieldType(value.fieldType) &&
+    typeof value.required === "boolean" &&
+    isUuid(value.sectionId) &&
+    isPosition(value.position) &&
+    isExpectedVersion(value.expectedVersion)
+  ) {
+    const options = parseStringOptions(value.options);
+    if (
+      options === null ||
+      (value.fieldType === "select") !== options.length > 0
+    ) {
+      return null;
+    }
+    return {
+      type: value.type,
+      tenantId: value.tenantId,
+      definitionId: value.definitionId,
       fieldKey: value.fieldKey.trim().toLowerCase(),
       label: value.label.trim(),
       fieldType: value.fieldType,
@@ -572,6 +635,25 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         {
           p_actor_id: actorId,
           p_tenant_id: action.tenantId,
+          p_field_key: action.fieldKey,
+          p_label: action.label,
+          p_field_type: action.fieldType,
+          p_required: action.required,
+          p_options: action.options,
+          p_section_id: action.sectionId,
+          p_position: action.position,
+          p_expected_version: action.expectedVersion,
+        },
+      ));
+      break;
+    }
+    case "updateDefinitionAtPosition": {
+      ({ data: result, error } = await context.supabaseAdmin.rpc(
+        "update_ticket_custom_field_definition_at_position",
+        {
+          p_actor_id: actorId,
+          p_tenant_id: action.tenantId,
+          p_definition_id: action.definitionId,
           p_field_key: action.fieldKey,
           p_label: action.label,
           p_field_type: action.fieldType,

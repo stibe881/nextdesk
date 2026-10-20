@@ -215,6 +215,11 @@ export async function functionErrorMessage(
       return "Kategorie und Unterkategorie passen nicht zum Ticketbereich. Bitte wählen Sie die Einordnung erneut.";
     case "ticket_tags_retired":
       return "Tags werden in nextDesk nicht mehr verwendet. Bitte nutzen Sie Kategorien und Unterkategorien.";
+    case "ai_provider_not_configured":
+      return "Die serverseitige Anthropic-Konfiguration ist noch nicht vollständig. Bitte lassen Sie API-Zugang und Modell durch die Administration prüfen.";
+    case "ai_provider_request_failed":
+    case "ai_provider_response_invalid":
+      return "Anthropic konnte den Entwurf nicht verarbeiten. Der Artikelentwurf wurde nicht verändert. Bitte versuchen Sie es später erneut.";
     case "rate_limited":
       return "Zu viele Anfragen in kurzer Zeit. Bitte warten Sie einen Moment und versuchen Sie es erneut.";
     case "outside_work_hours":

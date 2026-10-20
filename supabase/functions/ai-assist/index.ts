@@ -397,7 +397,13 @@ const handler = withSupabase(
             503,
           );
         }
-        return response(request, { data: { provider: "Anthropic", approval } });
+        return response(request, {
+          data: {
+            provider: "Anthropic",
+            approval,
+            providerConfigured: anthropicConfiguration() !== null,
+          },
+        });
       }
       const approvedAt = new Date().toISOString();
       const { error } = await admin.from("tenant_ai_provider_approvals").upsert(

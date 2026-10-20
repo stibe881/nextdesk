@@ -123,13 +123,16 @@ export function AiGovernancePanel({ tenantId }: { tenantId: string }) {
               <strong>
                 {state.status === "loading"
                   ? "Freigabe wird geprüft"
-                  : approval?.enabled
-                    ? "Anthropic ist für Wissensentwürfe freigegeben"
-                    : "Anthropic ist noch nicht freigegeben"}
+                  : !approval?.providerConfigured
+                    ? "Die serverseitige Anthropic-Konfiguration ist unvollständig"
+                    : approval.enabled
+                      ? "Anthropic ist für Wissensentwürfe freigegeben"
+                      : "Anthropic ist noch nicht freigegeben"}
               </strong>
               <p>
-                Zusätzlich muss die Funktion «KI-Assistenz» in den Einstellungen
-                aktiviert sein. Ohne beides übermittelt nextDesk keine Inhalte.
+                {!approval?.providerConfigured
+                  ? "API-Zugang oder Modell sind serverseitig noch nicht verfügbar. nextDesk übermittelt bis zur vollständigen Konfiguration keine Inhalte."
+                  : "Zusätzlich muss die Funktion «KI-Assistenz» in den Einstellungen aktiviert sein. Ohne beides übermittelt nextDesk keine Inhalte."}
               </p>
             </div>
           </div>

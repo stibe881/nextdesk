@@ -2,11 +2,12 @@ import { describe, expect, it } from "vitest";
 import { parseAiGovernanceApprovalResponse } from "./ai-governance";
 
 describe("parseAiGovernanceApprovalResponse", () => {
-  it("liest die freigegebene Governance aus der Function-Antworthülle", () => {
+  it("liest Freigabe und serverseitige Anbieterbereitschaft aus der Function-Antworthülle", () => {
     expect(
       parseAiGovernanceApprovalResponse({
         data: {
           provider: "Anthropic",
+          providerConfigured: true,
           approval: {
             enabled: true,
             allowExternalArticleContent: false,
@@ -22,7 +23,24 @@ describe("parseAiGovernanceApprovalResponse", () => {
       enabled: true,
       allowExternalArticleContent: false,
       allowedPurposes: ["general_draft", "knowledge_article_draft"],
+      providerConfigured: true,
     });
+  });
+
+  it("zeigt eine vorhandene Freigabe nicht als nutzbar, wenn der Provider fehlt", () => {
+    expect(
+      parseAiGovernanceApprovalResponse({
+        data: {
+          provider: "Anthropic",
+          providerConfigured: false,
+          approval: {
+            enabled: true,
+            allowExternalArticleContent: true,
+            allowedPurposes: ["general_draft"],
+          },
+        },
+      }).providerConfigured,
+    ).toBe(false);
   });
 
   it("lehnt eine Antwort ohne erwartete Function-Hülle ab", () => {
@@ -42,6 +60,7 @@ describe("parseAiGovernanceApprovalResponse", () => {
       parseAiGovernanceApprovalResponse({
         data: {
           provider: "Unbekannt",
+          providerConfigured: true,
           approval: {
             enabled: true,
             allowExternalArticleContent: false,

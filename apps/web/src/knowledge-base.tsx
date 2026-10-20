@@ -972,7 +972,9 @@ export function KnowledgeBase({
       setError(
         status === 403
           ? "Die KI-Aufbereitung ist für diesen Mandanten oder diese Sichtbarkeit noch nicht freigegeben."
-          : "Die KI-Aufbereitung ist derzeit nicht verfügbar. Der Artikelentwurf wurde nicht verändert.",
+          : nextError instanceof KnowledgeBaseRequestError
+            ? `${nextError.message} Der Artikelentwurf wurde nicht verändert.`
+            : "Die KI-Aufbereitung ist derzeit nicht verfügbar. Der Artikelentwurf wurde nicht verändert.",
       );
     } finally {
       setAiPreparing(false);

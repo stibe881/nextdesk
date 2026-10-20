@@ -98,6 +98,7 @@ const expectedFiles = [
   "0094_follow_up_agent_authorization.sql",
   "0095_anthropic_knowledge_drafts.sql",
   "0096_fix_ticket_custom_field_active_positions.sql",
+  "0097_atomic_ticket_custom_field_edit.sql",
 ];
 
 const availableFiles = await readdir(migrationDirectory);
@@ -1077,6 +1078,19 @@ const requiredFragments = [
   [
     "0096_fix_ticket_custom_field_active_positions.sql",
     "perform public.bump_ticket_custom_field_layout_version(v_tenant.tenant_id)",
+  ],
+  [
+    "0097_atomic_ticket_custom_field_edit.sql",
+    "update_ticket_custom_field_definition_at_position",
+  ],
+  ["0097_atomic_ticket_custom_field_edit.sql", "p_expected_version bigint"],
+  [
+    "0097_atomic_ticket_custom_field_edit.sql",
+    "public.move_ticket_custom_field_definition",
+  ],
+  [
+    "0097_atomic_ticket_custom_field_edit.sql",
+    "from public, anon, authenticated",
   ],
 ];
 
