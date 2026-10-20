@@ -108,6 +108,11 @@ import {
   removeTicketSearchClause,
 } from "./lib/ticket-search";
 import { pageViewOptionsForSection } from "./lib/page-view-options";
+import {
+  quickCreateActionsForContext,
+  quickCreateRequestMatchesTenant,
+  type QuickCreateAction,
+} from "./lib/quick-create-actions";
 import { appRedirectUrl, isSupabaseConfigured, supabase } from "./lib/supabase";
 
 type Section =
@@ -139,6 +144,21 @@ type WorkspacePreferences = {
   startSection: Section;
   ticketSplitView: boolean;
   theme: WorkspaceTheme;
+};
+type QuickCreateRequest = {
+  action: Exclude<QuickCreateAction, "ticket">;
+  id: number;
+  tenantId: string;
+};
+
+const quickCreateActionPresentation: Record<
+  QuickCreateAction,
+  { Icon: LucideIcon; label: string }
+> = {
+  ticket: { Icon: Ticket, label: "Ticket erfassen" },
+  problem: { Icon: FileWarning, label: "Fall erfassen" },
+  followUp: { Icon: CalendarClock, label: "Wiedervorlage erfassen" },
+  knowledge: { Icon: BookOpen, label: "Wissensartikel erfassen" },
 };
 
 type DashboardView = {
@@ -1481,6 +1501,9 @@ export function App() {
     string | null
   >(null);
   const [ticketComposerOpen, setTicketComposerOpen] = useState(false);
+  const [quickCreateMenuOpen, setQuickCreateMenuOpen] = useState(false);
+  const [quickCreateRequest, setQuickCreateRequest] =
+    useState<QuickCreateRequest | null>(null);
   const [canWorkTickets, setCanWorkTickets] = useState(false);
   const [isTenantAdmin, setIsTenantAdmin] = useState(false);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
@@ -1524,6 +1547,9 @@ export function App() {
   const notificationButtonRef = useRef<HTMLButtonElement>(null);
   const notificationPanelRef = useRef<HTMLElement>(null);
   const keyboardHelpCloseRef = useRef<HTMLButtonElement>(null);
+  const quickCreateMenuRef = useRef<HTMLElement>(null);
+  const quickCreateRequestIdRef = useRef(0);
+  const quickCreateTriggerRef = useRef<HTMLButtonElement>(null);
   const personalSettingsTriggerRef = useRef<HTMLButtonElement>(null);
   const workspacePreferencesCloseRef = useRef<HTMLButtonElement>(null);
   const workspacePreferencesTriggerRef = useRef<HTMLButtonElement>(null);
@@ -2663,6 +2689,21 @@ export function App() {
     ticketListRefinement.sortDirection !== "desc";
   const isFeatureEnabled = (featureKey: string) =>
     !isSupabaseConfigured || tenantFeatures[featureKey] === true;
+  const quickCreateActions = quickCreateActionsForContext({
+    assetManagementEnabled: isFeatureEnabled("assets.management"),
+    canWorkTickets,
+    experienceWorkspaceEnabled,
+    hasActiveTenant: activeTenant !== null,
+    knowledgeBaseEnabled: isFeatureEnabled("knowledge.base"),
+  });
+  const activeQuickCreateRequest =
+    quickCreateRequest &&
+    quickCreateRequestMatchesTenant(
+      quickCreateRequest.tenantId,
+      activeTenant?.id ?? null,
+    )
+      ? quickCreateRequest
+      : null;
   const pageViewOptions = pageViewOptionsForSection(
     section,
     isSupabaseConfigured && canWorkTickets,
@@ -2747,6 +2788,33 @@ export function App() {
     return () => window.cancelAnimationFrame(frame);
   }, [workspacePreferencesOpen]);
 
+  useEffect(() => {
+    if (!quickCreateMenuOpen) return;
+    const frame = window.requestAnimationFrame(() =>
+      quickCreateMenuRef.current
+        ?.querySelector<HTMLButtonElement>('[role="menuitem"]')
+        ?.focus(),
+    );
+    return () => window.cancelAnimationFrame(frame);
+  }, [quickCreateMenuOpen]);
+
+  useEffect(() => {
+    if (!quickCreateMenuOpen) return;
+    const closeFromOutside = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (
+        quickCreateMenuRef.current?.contains(target) ||
+        quickCreateTriggerRef.current?.contains(target)
+      ) {
+        return;
+      }
+      setQuickCreateMenuOpen(false);
+    };
+    document.addEventListener("pointerdown", closeFromOutside);
+    return () => document.removeEventListener("pointerdown", closeFromOutside);
+  }, [quickCreateMenuOpen]);
+
   const keyboardNavigableTickets =
     (section === "Tickets" || section === "Übersicht") &&
     isSupabaseConfigured &&
@@ -2788,6 +2856,7 @@ export function App() {
         !event.altKey &&
         event.key === "?" &&
         !workspacePreferencesOpen &&
+        !quickCreateMenuOpen &&
         !ticketComposerOpen &&
         !selectedTicketId &&
         !notificationPanelOpen
@@ -2799,6 +2868,7 @@ export function App() {
 
       if (
         workspacePreferencesOpen ||
+        quickCreateMenuOpen ||
         keyboardHelpOpen ||
         ticketComposerOpen ||
         selectedTicketId ||
@@ -2844,6 +2914,7 @@ export function App() {
     keyboardHelpOpen,
     keyboardNavigableTickets,
     notificationPanelOpen,
+    quickCreateMenuOpen,
     selectedTicketId,
     ticketComposerOpen,
     workspacePreferencesOpen,
@@ -2851,6 +2922,113 @@ export function App() {
 
   function updateWorkspacePreferences(updates: Partial<WorkspacePreferences>) {
     setWorkspacePreferences((current) => ({ ...current, ...updates }));
+  }
+
+  function closeQuickCreateMenu(returnFocus = true) {
+    setQuickCreateMenuOpen(false);
+    if (returnFocus) {
+      window.requestAnimationFrame(() =>
+        quickCreateTriggerRef.current?.focus(),
+      );
+    }
+  }
+
+  function activateTenant(nextTenantId: string) {
+    if (nextTenantId === activeTenantId) return;
+    setCanWorkTickets(false);
+    setIsTenantAdmin(false);
+    setTenantFeatures({});
+    setQuickCreateMenuOpen(false);
+    setQuickCreateRequest(null);
+    setTicketComposerOpen(false);
+    setActiveTenantId(nextTenantId);
+  }
+
+  function consumeQuickCreateRequest(requestId: number) {
+    setQuickCreateRequest((current) =>
+      current?.id === requestId ? null : current,
+    );
+  }
+
+  function moveFocusFromQuickCreateMenu(direction: -1 | 1) {
+    const focusableElements = Array.from(
+      document.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ),
+    ).filter((element) => !quickCreateMenuRef.current?.contains(element));
+    const triggerIndex = focusableElements.indexOf(
+      quickCreateTriggerRef.current as HTMLButtonElement,
+    );
+    const target = focusableElements[triggerIndex + direction];
+    closeQuickCreateMenu(false);
+    window.requestAnimationFrame(() =>
+      (target ?? quickCreateTriggerRef.current)?.focus(),
+    );
+  }
+
+  function startQuickCreate(action: QuickCreateAction) {
+    setPersonalSettingsOpen(false);
+    closeQuickCreateMenu(false);
+    if (action === "ticket") {
+      setQuickCreateRequest(null);
+      setSection("Tickets");
+      setTicketComposerOpen(true);
+      return;
+    }
+
+    const requestTenantId = activeTenant?.id;
+    if (!requestTenantId) return;
+
+    const request: QuickCreateRequest = {
+      action,
+      id: ++quickCreateRequestIdRef.current,
+      tenantId: requestTenantId,
+    };
+    setQuickCreateRequest(request);
+    setSection(
+      action === "problem"
+        ? "Fälle"
+        : action === "followUp"
+          ? "Wiedervorlagen"
+          : "Wissen",
+    );
+  }
+
+  function handleQuickCreateMenuKeyDown(
+    event: ReactKeyboardEvent<HTMLElement>,
+  ) {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeQuickCreateMenu();
+      return;
+    }
+    if (event.key === "Tab") {
+      event.preventDefault();
+      moveFocusFromQuickCreateMenu(event.shiftKey ? -1 : 1);
+      return;
+    }
+
+    const items = Array.from(
+      event.currentTarget.querySelectorAll<HTMLButtonElement>(
+        '[role="menuitem"]',
+      ),
+    );
+    const currentIndex = items.indexOf(
+      document.activeElement as HTMLButtonElement,
+    );
+    if (items.length === 0) return;
+    const lastIndex = items.length - 1;
+    let nextIndex = currentIndex;
+    if (event.key === "ArrowDown")
+      nextIndex = (currentIndex + 1) % items.length;
+    if (event.key === "ArrowUp") {
+      nextIndex = (currentIndex - 1 + items.length) % items.length;
+    }
+    if (event.key === "Home") nextIndex = 0;
+    if (event.key === "End") nextIndex = lastIndex;
+    if (nextIndex === currentIndex || nextIndex < 0) return;
+    event.preventDefault();
+    items[nextIndex]?.focus();
   }
 
   function closeWorkspacePreferences() {
@@ -3003,7 +3181,7 @@ export function App() {
         <OwnerConsoleScreen
           onOpenTenant={(tenantId) => {
             setMetricTicketFilter(null);
-            setActiveTenantId(tenantId);
+            activateTenant(tenantId);
             setOwnerView("tenant");
           }}
           onSignOut={() => void signOut()}
@@ -3155,7 +3333,7 @@ export function App() {
                   <select
                     onChange={(event) => {
                       setMetricTicketFilter(null);
-                      setActiveTenantId(event.target.value);
+                      activateTenant(event.target.value);
                     }}
                     value={activeTenantId}
                   >
@@ -3167,15 +3345,53 @@ export function App() {
                   </select>
                 </label>
               )}
-            {activeTenant && (
-              <button
-                className="create-ticket-button"
-                onClick={() => setTicketComposerOpen(true)}
-                type="button"
-              >
-                <Plus aria-hidden="true" size={17} strokeWidth={2} />
-                Ticket erfassen
-              </button>
+            {quickCreateActions.length > 0 && (
+              <div className="quick-create-anchor">
+                <button
+                  aria-controls="quick-create-menu"
+                  aria-expanded={quickCreateMenuOpen}
+                  aria-haspopup="menu"
+                  aria-label="Neue Erfassung öffnen"
+                  className="quick-create-trigger"
+                  onClick={() => setQuickCreateMenuOpen((current) => !current)}
+                  ref={quickCreateTriggerRef}
+                  title="Erfassen"
+                  type="button"
+                >
+                  <Plus aria-hidden="true" size={20} strokeWidth={2.2} />
+                </button>
+                {quickCreateMenuOpen && (
+                  <section
+                    aria-label="Neue Erfassung"
+                    className="quick-create-menu"
+                    id="quick-create-menu"
+                    onKeyDown={handleQuickCreateMenuKeyDown}
+                    ref={quickCreateMenuRef}
+                    role="menu"
+                  >
+                    <p className="quick-create-menu__heading">Erfassen</p>
+                    {quickCreateActions.map((action) => {
+                      const { Icon, label } =
+                        quickCreateActionPresentation[action];
+                      return (
+                        <button
+                          key={action}
+                          onClick={() => startQuickCreate(action)}
+                          role="menuitem"
+                          type="button"
+                        >
+                          <Icon
+                            aria-hidden="true"
+                            size={18}
+                            strokeWidth={1.8}
+                          />
+                          <span>{label}</span>
+                        </button>
+                      );
+                    })}
+                  </section>
+                )}
+              </div>
             )}
             {hasPageViewOptions && !personalSettingsOpen && (
               <button
@@ -3388,11 +3604,17 @@ export function App() {
           activeTenant &&
           isFeatureEnabled("knowledge.base") ? (
           <KnowledgeBase
+            createArticleRequestId={
+              activeQuickCreateRequest?.action === "knowledge"
+                ? activeQuickCreateRequest.id
+                : undefined
+            }
             focusArticleId={
               globalSearchTarget?.resultType === "knowledge"
                 ? globalSearchTarget.entityId
                 : undefined
             }
+            onCreateArticleRequestConsumed={consumeQuickCreateRequest}
             tenantId={activeTenant.id}
           />
         ) : section === "Assets" &&
@@ -3424,7 +3646,16 @@ export function App() {
         ) : section === "Fälle" &&
           activeTenant &&
           isFeatureEnabled("assets.management") ? (
-          <ServiceAssets fixedTab="problems" tenantId={activeTenant.id} />
+          <ServiceAssets
+            createProblemRequestId={
+              activeQuickCreateRequest?.action === "problem"
+                ? activeQuickCreateRequest.id
+                : undefined
+            }
+            fixedTab="problems"
+            onCreateProblemRequestConsumed={consumeQuickCreateRequest}
+            tenantId={activeTenant.id}
+          />
         ) : section === "Berichte" &&
           activeTenant &&
           isFeatureEnabled("reporting.service") ? (
@@ -3433,11 +3664,17 @@ export function App() {
           activeTenant &&
           experienceWorkspaceEnabled ? (
           <ExperienceWorkspace
+            createFollowUpRequestId={
+              activeQuickCreateRequest?.action === "followUp"
+                ? activeQuickCreateRequest.id
+                : undefined
+            }
             focusFollowUpId={
               globalSearchTarget?.resultType === "follow_up"
                 ? globalSearchTarget.entityId
                 : undefined
             }
+            onCreateFollowUpRequestConsumed={consumeQuickCreateRequest}
             onChanged={() =>
               setExperienceFollowUpsRevision((revision) => revision + 1)
             }

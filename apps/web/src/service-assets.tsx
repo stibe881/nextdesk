@@ -14,6 +14,8 @@ export type ServiceAssetsProps = {
   initialTab?: CatalogTab;
   allowAssets?: boolean;
   fixedTab?: CatalogTab;
+  createProblemRequestId?: number | undefined;
+  onCreateProblemRequestConsumed?: ((requestId: number) => void) | undefined;
 };
 
 export type CatalogTab = "services" | "assets" | "problems";
@@ -712,6 +714,8 @@ export function ServiceAssets({
   initialTab = "services",
   allowAssets = true,
   fixedTab,
+  createProblemRequestId,
+  onCreateProblemRequestConsumed,
 }: ServiceAssetsProps) {
   const [activeTab, setActiveTab] = useState<CatalogTab>(
     fixedTab ??
@@ -755,6 +759,7 @@ export function ServiceAssets({
   const problemOwnersRequestVersion = useRef(0);
   const problemTicketsRequestVersion = useRef(0);
   const ticketSearchRequestVersion = useRef(0);
+  const lastProblemCreateRequestId = useRef<number | undefined>(undefined);
 
   const serviceNames = useMemo(
     () => new Map(services.map((service) => [service.id, service.name])),
@@ -1046,6 +1051,19 @@ export function ServiceAssets({
     setError("");
     setSuccess("");
   }
+
+  useEffect(() => {
+    if (
+      createProblemRequestId === undefined ||
+      lastProblemCreateRequestId.current === createProblemRequestId
+    ) {
+      return;
+    }
+    lastProblemCreateRequestId.current = createProblemRequestId;
+    setActiveTab("problems");
+    resetProblemForm();
+    onCreateProblemRequestConsumed?.(createProblemRequestId);
+  }, [createProblemRequestId, onCreateProblemRequestConsumed]);
 
   function clearProblemTicketState() {
     problemTicketsRequestVersion.current += 1;

@@ -3524,6 +3524,83 @@ time,
   background: var(--primary-hover);
 }
 
+.quick-create-anchor {
+  position: relative;
+}
+
+.quick-create-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  min-width: 42px;
+  min-height: 42px;
+  border: 1px solid var(--primary);
+  border-radius: 12px;
+  padding: 0;
+  background: var(--primary);
+  color: var(--on-primary);
+  box-shadow: 0 6px 16px var(--shadow-tint-rgb-67-56-202-18);
+}
+
+.quick-create-trigger:hover:not(:disabled),
+.quick-create-trigger[aria-expanded="true"] {
+  border-color: var(--primary-hover);
+  background: var(--primary-hover);
+}
+
+.quick-create-trigger:focus-visible,
+.quick-create-menu button:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--primary) 42%, transparent);
+  outline-offset: 2px;
+}
+
+.quick-create-menu {
+  position: absolute;
+  z-index: 31;
+  top: calc(100% + 8px);
+  right: 0;
+  display: grid;
+  min-width: 232px;
+  overflow: hidden;
+  border: 1px solid var(--control-border);
+  border-radius: 14px;
+  padding: 6px;
+  background: var(--surface);
+  box-shadow: 0 16px 34px rgb(25 35 66 / 18%);
+}
+
+.quick-create-menu__heading {
+  margin: 5px 8px 4px;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.quick-create-menu button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 42px;
+  border: 0;
+  border-radius: 9px;
+  padding: 0 10px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 650;
+  text-align: left;
+}
+
+.quick-create-menu button:hover,
+.quick-create-menu button:focus-visible {
+  background: var(--surface-subtle);
+  color: var(--primary);
+}
+
 .ticket-compose-dialog {
   position: fixed;
   z-index: 40;
@@ -4502,11 +4579,15 @@ body:has(.ticket-detail) {
 }
 
 .tenant-branding-preview__button {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
   border-radius: 7px;
-  padding: 8px 10px;
+  padding: 0;
   background: var(--design-preview-primary);
   color: var(--on-primary);
-  font-size: 10px;
+  font-size: 17px;
   font-weight: 700;
   white-space: nowrap;
 }

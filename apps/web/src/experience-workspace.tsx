@@ -14,6 +14,7 @@ import {
 import {
   useEffect,
   useMemo,
+  useRef,
   useState,
   type FormEvent,
   type ReactNode,
@@ -57,7 +58,9 @@ type ExperienceErrorCode =
   | "tenant_feature_lookup_failed";
 
 type ExperienceWorkspaceProps = {
+  createFollowUpRequestId?: number | undefined;
   focusFollowUpId?: string | undefined;
+  onCreateFollowUpRequestConsumed?: ((requestId: number) => void) | undefined;
   onChanged: () => void;
   onNotice: (message: string, tone: NoticeTone) => void;
   onOpenTicket: (ticketId: string) => void;
@@ -741,7 +744,9 @@ function FollowUpFormDialog({
 }
 
 export function ExperienceWorkspace({
+  createFollowUpRequestId,
   focusFollowUpId,
+  onCreateFollowUpRequestConsumed,
   onChanged,
   onNotice,
   onOpenTicket,
@@ -757,6 +762,7 @@ export function ExperienceWorkspace({
   const [editorFollowUp, setEditorFollowUp] = useState<
     FollowUp | null | undefined
   >(undefined);
+  const lastFollowUpCreateRequestId = useRef<number | undefined>(undefined);
 
   useEffect(() => {
     if (!supabase) {
@@ -888,6 +894,18 @@ export function ExperienceWorkspace({
     });
     return () => window.cancelAnimationFrame(frame);
   }, [focusFollowUpId, followUps, loading, showResolved]);
+
+  useEffect(() => {
+    if (
+      createFollowUpRequestId === undefined ||
+      lastFollowUpCreateRequestId.current === createFollowUpRequestId
+    ) {
+      return;
+    }
+    lastFollowUpCreateRequestId.current = createFollowUpRequestId;
+    setEditorFollowUp(null);
+    onCreateFollowUpRequestConsumed?.(createFollowUpRequestId);
+  }, [createFollowUpRequestId, onCreateFollowUpRequestConsumed]);
 
   return (
     <section

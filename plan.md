@@ -126,3 +126,7 @@ Die Umsetzung ergänzt `supabase/migrations/0093_ticket_fulltext_filter_search.s
 ## Kontextabhängige Ansichtssteuerung
 
 Der Button «Ansicht» ist kein allgemeines Einstellungsmenü. Er erscheint nur in Bereichen, in denen mindestens eine angebotene Option die aktive Seite unmittelbar verändert. Im Ticketbereich zeigt er ausschliesslich die listenbezogenen Optionen für Dichte sowie die nur bei aktivem Ticketdetail wirksame Listen-Detail-Ansicht. Globale persönliche Einstellungen wie Farbschema, Kontrast, Bewegungsreduktion und Startseite bleiben in den persönlichen Einstellungen und erscheinen nicht im seitenbezogenen Ansichtsmenü. Auf Seiten ohne eine wirksame Ansichtseinstellung wird der Button ausgeblendet.
+
+## Zentrales Erfassungsmenü
+
+Der bisherige breite Header-Button «Ticket erfassen» wird auf allen Arbeitsseiten durch einen kompakten Plus-Auslöser ersetzt. Er öffnet ein zugängliches Menü mit Ticket, Fall, Wiedervorlage und Wissensartikel. Jede Auswahl schliesst das Menü, wechselt direkt in den passenden bereits berechtigten Bereich und öffnet dessen bestehendes Erfassungsformular. Die neue Steuerung nutzt keine zusätzlichen Datenendpunkte und umgeht keine Berechtigung oder Funktionsfreigabe: Fall-, Wiedervorlagen- und Wissensartikelaktionen erscheinen nur, wenn der zugehörige Bereich im aktuellen Kontext verfügbar ist.

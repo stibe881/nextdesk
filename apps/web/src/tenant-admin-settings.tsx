@@ -799,9 +799,7 @@ function CorporateDesignPreview({
               <p>Operations / Übersicht</p>
               <strong>Guten Morgen</strong>
             </div>
-            <span className="tenant-branding-preview__button">
-              + Ticket erfassen
-            </span>
+            <span className="tenant-branding-preview__button">+</span>
           </header>
           <div className="tenant-branding-preview__content">
             <div className="tenant-branding-preview__intro">

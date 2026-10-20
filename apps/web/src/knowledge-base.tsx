@@ -11,7 +11,9 @@ import { functionErrorMessage } from "./lib/function-error";
 import { supabase } from "./lib/supabase";
 
 export type KnowledgeBaseProps = {
+  createArticleRequestId?: number | undefined;
   focusArticleId?: string | undefined;
+  onCreateArticleRequestConsumed?: ((requestId: number) => void) | undefined;
   tenantId: string;
 };
 
@@ -726,7 +728,9 @@ function writeErrorMessage(error: unknown, action: "save" | "archive"): string {
  * transparent als schreibgeschützte Workflow-Information dargestellt.
  */
 export function KnowledgeBase({
+  createArticleRequestId,
   focusArticleId,
+  onCreateArticleRequestConsumed,
   tenantId,
 }: KnowledgeBaseProps) {
   const [articles, setArticles] = useState<ArticleListItem[]>([]);
@@ -747,6 +751,7 @@ export function KnowledgeBase({
   const [success, setSuccess] = useState("");
   const listRequestVersion = useRef(0);
   const detailRequestVersion = useRef(0);
+  const lastArticleCreateRequestId = useRef<number | undefined>(undefined);
 
   const isBusy = saving !== null;
   const selectedArticleId = selected?.article.id ?? null;
@@ -891,6 +896,18 @@ export function KnowledgeBase({
     setSuccess("");
     setEditorOpen(true);
   }
+
+  useEffect(() => {
+    if (
+      createArticleRequestId === undefined ||
+      lastArticleCreateRequestId.current === createArticleRequestId
+    ) {
+      return;
+    }
+    lastArticleCreateRequestId.current = createArticleRequestId;
+    beginNewArticle();
+    onCreateArticleRequestConsumed?.(createArticleRequestId);
+  }, [createArticleRequestId, onCreateArticleRequestConsumed]);
 
   function beginEditArticle() {
     if (!selected) return;
