@@ -13,7 +13,6 @@ const SECTIONS_WITHOUT_PAGE_VIEW_OPTIONS = [
   "Eintritte",
   "Wissen",
   "Berichte",
-  "Wiedervorlagen",
   "Einstellungen",
 ];
 

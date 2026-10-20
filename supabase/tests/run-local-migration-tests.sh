@@ -5324,5 +5324,159 @@ begin
 end;
 $$;
 rollback;
+
+-- Reine Anfragende dürfen weder persönliche Wiedervorlagen noch passende
+-- globale Suchtreffer erhalten oder erzeugen. Die Sperre wird über die neue
+-- gemeinsame Ticketarbeitsprüfung direkt unter authentifiziertem RLS geprüft.
+begin;
+insert into public.experience_follow_ups (
+  id, tenant_id, owner_id, title, priority
+) values (
+  '95000000-0000-4000-8000-000000000001',
+  '10000000-0000-4000-8000-000000000001',
+  '00000000-0000-4000-8000-000000000001',
+  'Nur Agent:innen dürfen dies sehen',
+  'normal'
+);
+update public.tenant_feature_flags
+set enabled = true, pilot_ends_at = null
+where tenant_id = '10000000-0000-4000-8000-000000000001'
+  and feature_key = 'experience.workspace';
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-000000000001', true);
+do $$
+begin
+  if public.can_work_tickets_in_tenant('10000000-0000-4000-8000-000000000001') then
+    raise exception 'Requester unexpectedly passed the ticket-work authorization check';
+  end if;
+  if exists (
+    select 1
+    from public.experience_follow_ups follow_up
+    where follow_up.id = '95000000-0000-4000-8000-000000000001'
+  ) then
+    raise exception 'Requester could read an own follow-up without ticket work permission';
+  end if;
+  if exists (
+    select 1
+    from public.search_global_workspace(
+      '10000000-0000-4000-8000-000000000001',
+      'Agent:innen',
+      40
+    ) result
+    where result.result_type = 'follow_up'
+  ) then
+    raise exception 'Requester global search exposed a follow-up without ticket work permission';
+  end if;
+  update public.experience_follow_ups
+  set resolved_at = timezone('utc', now()),
+      resolved_by = '00000000-0000-4000-8000-000000000001'
+  where id = '95000000-0000-4000-8000-000000000001';
+  begin
+    insert into public.experience_follow_ups (
+      tenant_id, owner_id, title, priority
+    ) values (
+      '10000000-0000-4000-8000-000000000001',
+      '00000000-0000-4000-8000-000000000001',
+      'Unzulässige Wiedervorlage',
+      'normal'
+    );
+    raise exception 'Requester could create a follow-up without ticket work permission';
+  exception when insufficient_privilege then
+    null;
+  end;
+end;
+$$;
+reset role;
+do $$
+begin
+  if exists (
+    select 1
+    from public.experience_follow_ups follow_up
+    where follow_up.id = '95000000-0000-4000-8000-000000000001'
+      and follow_up.resolved_at is not null
+  ) then
+    raise exception 'Requester could resolve an own follow-up without ticket work permission';
+  end if;
+end;
+$$;
+rollback;
+
+-- Ticketbearbeitende behalten ihren persönlichen Wiedervorlagenzugriff, dürfen
+-- jedoch weder in einen fremden Mandanten schreiben noch fremde Daten berühren.
+begin;
+insert into public.experience_follow_ups (
+  id, tenant_id, owner_id, title, priority
+) values (
+  '95000000-0000-4000-8000-000000000002',
+  '10000000-0000-4000-8000-000000000001',
+  '00000000-0000-4000-8000-000000000002',
+  'Agenten-Wiedervorlage',
+  'normal'
+);
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-000000000002', true);
+do $$
+begin
+  if not public.can_work_tickets_in_tenant('10000000-0000-4000-8000-000000000001') then
+    raise exception 'Ticket agent did not pass the ticket-work authorization check';
+  end if;
+  if not exists (
+    select 1
+    from public.experience_follow_ups follow_up
+    where follow_up.id = '95000000-0000-4000-8000-000000000002'
+  ) then
+    raise exception 'Ticket agent could not read an own follow-up';
+  end if;
+  insert into public.experience_follow_ups (
+    id, tenant_id, owner_id, title, priority
+  ) values (
+    '95000000-0000-4000-8000-000000000003',
+    '10000000-0000-4000-8000-000000000001',
+    '00000000-0000-4000-8000-000000000002',
+    'Agenten-Wiedervorlage neu',
+    'normal'
+  );
+  update public.experience_follow_ups
+  set resolved_at = timezone('utc', now()),
+      resolved_by = '00000000-0000-4000-8000-000000000002'
+  where id = '95000000-0000-4000-8000-000000000002';
+  begin
+    insert into public.experience_follow_ups (
+      tenant_id, owner_id, title, priority
+    ) values (
+      '20000000-0000-4000-8000-000000000002',
+      '00000000-0000-4000-8000-000000000002',
+      'Fremdmandanten-Wiedervorlage',
+      'normal'
+    );
+    raise exception 'Ticket agent could create a follow-up in a foreign tenant';
+  exception when insufficient_privilege then
+    null;
+  end;
+end;
+$$;
+reset role;
+do $$
+begin
+  if not exists (
+    select 1
+    from public.experience_follow_ups follow_up
+    where follow_up.id = '95000000-0000-4000-8000-000000000002'
+      and follow_up.resolved_at is not null
+      and follow_up.resolved_by = '00000000-0000-4000-8000-000000000002'
+  ) then
+    raise exception 'Ticket agent could not resolve an own follow-up';
+  end if;
+  if not exists (
+    select 1
+    from public.experience_follow_ups follow_up
+    where follow_up.id = '95000000-0000-4000-8000-000000000003'
+  ) then
+    raise exception 'Ticket agent could not create an own follow-up';
+  end if;
+end;
+$$;
+rollback;
+
 SQL
 echo "PostgreSQL 16 migration and RLS integration checks passed."

@@ -491,6 +491,29 @@ async function requireActiveTenantMembership(
   }
 }
 
+export async function requireTicketWorkspaceAccess(
+  client: CallerClient,
+  tenantId: string,
+): Promise<void> {
+  const { data, error } = await client.rpc("can_work_tickets_in_tenant", {
+    p_tenant_id: tenantId,
+  });
+  if (error || typeof data !== "boolean") {
+    throw new HttpError(
+      503,
+      "authorization_check_failed",
+      "Die Arbeitsberechtigung konnte nicht geprüft werden.",
+    );
+  }
+  if (!data) {
+    throw new HttpError(
+      403,
+      "ticket_workspace_access_required",
+      "Wiedervorlagen stehen nur berechtigten Agent:innen zur Verfügung.",
+    );
+  }
+}
+
 async function requireFeature(
   admin: AdminClient,
   tenantId: string,
@@ -1134,6 +1157,13 @@ const handler = withSupabase(
         action.tenantId,
         featureForAction(action),
       );
+      if (
+        action.type === "listFollowUps" ||
+        action.type === "saveFollowUp" ||
+        action.type === "resolveFollowUp"
+      ) {
+        await requireTicketWorkspaceAccess(client, action.tenantId);
+      }
 
       if (action.type === "getWorkspacePreferences") {
         return await getWorkspacePreferences(

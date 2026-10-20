@@ -27,7 +27,6 @@ import {
   CircleEllipsis,
   FileWarning,
   LayoutDashboard,
-  ListTodo,
   LogOut,
   MessageSquareText,
   Minus,
@@ -117,6 +116,13 @@ import {
   canRequesterOpenSection,
   requesterNavigationSections,
 } from "./lib/requester-navigation";
+import {
+  isWorkplaceAvailable,
+  isWorkspaceNavigationReady,
+  migrateWorkplaceStartSection,
+  requestedWorkplaceViewForFollowUps,
+  type WorkplaceRequestedView,
+} from "./lib/workplace-navigation";
 import { appRedirectUrl, isSupabaseConfigured, supabase } from "./lib/supabase";
 
 type Section =
@@ -132,7 +138,6 @@ type Section =
   | "Eintritte"
   | "Wissen"
   | "Berichte"
-  | "Wiedervorlagen"
   | "Einstellungen";
 type TicketScope = "all" | "mine" | "unassigned" | "open" | "closed";
 type MetricTicketFilter = {
@@ -146,6 +151,7 @@ type WorkspacePreferences = {
   highContrast: boolean;
   reduceMotion: boolean;
   startSection: Section;
+  startWorkplaceView: WorkplaceRequestedView | null;
   ticketSplitView: boolean;
   theme: WorkspaceTheme;
 };
@@ -251,7 +257,6 @@ const sections: readonly { label: Section; Icon: LucideIcon }[] = [
   { label: "Übersicht", Icon: LayoutDashboard },
   { label: "Tickets", Icon: Ticket },
   { label: "Fälle", Icon: FileWarning },
-  { label: "Wiedervorlagen", Icon: ListTodo },
   { label: "Arbeitsplatz", Icon: BriefcaseBusiness },
   { label: "Services", Icon: MonitorCog },
   { label: "Assets", Icon: Boxes },
@@ -267,6 +272,7 @@ const DEFAULT_WORKSPACE_PREFERENCES: WorkspacePreferences = {
   highContrast: false,
   reduceMotion: false,
   startSection: "Übersicht",
+  startWorkplaceView: null,
   ticketSplitView: false,
   theme: "system",
 };
@@ -645,6 +651,12 @@ function sectionDisplayLabel(section: Section): string {
 }
 
 function sectionFromGlobalSearchResult(result: GlobalSearchResult): Section {
+  if (
+    result.resultType === "follow_up" ||
+    result.section === "Wiedervorlagen"
+  ) {
+    return "Arbeitsplatz";
+  }
   return result.section;
 }
 
@@ -663,7 +675,9 @@ function isInputLikeTarget(target: EventTarget | null): boolean {
 function workspacePreferencesFromValue(
   value: unknown,
 ): WorkspacePreferences | null {
-  if (!isRecord(value) || !isSection(value.startSection)) return null;
+  if (!isRecord(value)) return null;
+  const migratedStart = migrateWorkplaceStartSection(value.startSection);
+  if (!isSection(migratedStart.section)) return null;
   if (
     value.density !== "compact" &&
     value.density !== "standard" &&
@@ -681,12 +695,10 @@ function workspacePreferencesFromValue(
     density: value.density,
     highContrast: value.highContrast,
     reduceMotion: value.reduceMotion,
-    // Frühere persönliche Einstellungen konnten den inzwischen im
-    // Arbeitsplatz integrierten Erwähnungseingang direkt öffnen.
-    startSection:
-      value.startSection === "Erwähnungen"
-        ? "Arbeitsplatz"
-        : value.startSection,
+    // Frühere persönliche Einstellungen konnten separate, inzwischen im
+    // Arbeitsplatz integrierte Arbeitsbereiche direkt öffnen.
+    startSection: migratedStart.section,
+    startWorkplaceView: migratedStart.requestedView,
     ticketSplitView:
       typeof value.ticketSplitView === "boolean"
         ? value.ticketSplitView
@@ -1458,6 +1470,8 @@ export function App() {
   const [section, setRequestedSection] = useState<Section>("Übersicht");
   const [globalSearchTarget, setGlobalSearchTarget] =
     useState<GlobalSearchResult | null>(null);
+  const [workplaceRequestedView, setWorkplaceRequestedView] =
+    useState<WorkplaceRequestedView | null>(null);
   const [period, setPeriod] = useState<Period>("Heute");
   const [queue, setQueue] = useState("alle");
   const [ticketScope, setTicketScope] = useState<TicketScope>("all");
@@ -1509,6 +1523,10 @@ export function App() {
   const [quickCreateRequest, setQuickCreateRequest] =
     useState<QuickCreateRequest | null>(null);
   const [canWorkTickets, setCanWorkTickets] = useState(false);
+  const [ticketAccessLoading, setTicketAccessLoading] =
+    useState(isSupabaseConfigured);
+  const [tenantFeaturesLoading, setTenantFeaturesLoading] =
+    useState(isSupabaseConfigured);
   const [isTenantAdmin, setIsTenantAdmin] = useState(false);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [notificationsLoading, setNotificationsLoading] = useState(false);
@@ -1559,6 +1577,7 @@ export function App() {
   const workspacePreferencesTriggerRef = useRef<HTMLButtonElement>(null);
   const workspacePreferencesSyncTenantRef = useRef<string | null>(null);
   const workspacePreferencesLastSavedRef = useRef<string | null>(null);
+  const workspaceStartNavigationRef = useRef<string | null>(null);
   const workspacePreferencesStorageKey = `nextdesk:workspace-preferences:v2:${session?.user.id ?? "preview"}`;
   const legacyWorkspacePreferencesStorageKey = `nextdesk:workspace-preferences:${session?.user.id ?? "preview"}`;
 
@@ -1566,6 +1585,7 @@ export function App() {
     if (isSupabaseConfigured && session === undefined) return;
 
     setWorkspacePreferencesHydrated(false);
+    workspaceStartNavigationRef.current = null;
     try {
       const storedV2 = window.localStorage.getItem(
         workspacePreferencesStorageKey,
@@ -1614,11 +1634,6 @@ export function App() {
   ]);
 
   useEffect(() => {
-    if (!workspacePreferencesHydrated) return;
-    setSection(workspacePreferences.startSection);
-  }, [workspacePreferencesHydrated, workspacePreferencesStorageKey]);
-
-  useEffect(() => {
     if (section === "Erwähnungen") setSection("Arbeitsplatz");
   }, [section]);
 
@@ -1649,10 +1664,13 @@ export function App() {
       setOwnerAccessError("");
       setOwnerView("console");
       setCanWorkTickets(false);
+      setTicketAccessLoading(Boolean(nextSession));
+      setTenantFeaturesLoading(Boolean(nextSession));
       setIsTenantAdmin(false);
       setWorkspacePreferencesOpen(false);
       setWorkspacePreferencesContext("page");
       setPersonalSettingsOpen(false);
+      setWorkplaceRequestedView(null);
       setSsoEnforced(false);
       setTenantFeatures({});
       setDepartmentQueueKeys({});
@@ -1763,6 +1781,8 @@ export function App() {
         setOperatorName(
           profileName ?? displayNameFromEmail(session.user.email),
         );
+        setTicketAccessLoading(Boolean(activeTenants[0]?.id));
+        setTenantFeaturesLoading(Boolean(activeTenants[0]?.id));
         setActiveTenantId((current) => current || activeTenants[0]?.id || "");
       })
       .catch(async (error: unknown) => {
@@ -1818,6 +1838,33 @@ export function App() {
     isSupabaseConfigured &&
     canWorkTickets &&
     tenantFeatures["agent.workbench"] === true;
+  const workspaceNavigationReady = isWorkspaceNavigationReady({
+    activeTenantAvailable: activeTenant !== null,
+    isSupabaseConfigured,
+    sessionResolved: session !== undefined,
+    signedIn: Boolean(session),
+    tenantFeaturesLoading,
+    ticketAccessLoading,
+  });
+
+  useEffect(() => {
+    if (!workspacePreferencesHydrated || !workspaceNavigationReady) return;
+    const navigationKey = `${workspacePreferencesStorageKey}:${activeTenant?.id ?? "preview"}`;
+    if (workspaceStartNavigationRef.current === navigationKey) return;
+
+    workspaceStartNavigationRef.current = navigationKey;
+    if (workspacePreferences.startWorkplaceView) {
+      setWorkplaceRequestedView(workspacePreferences.startWorkplaceView);
+    }
+    setSection(workspacePreferences.startSection);
+  }, [
+    activeTenant?.id,
+    workspaceNavigationReady,
+    workspacePreferences.startSection,
+    workspacePreferences.startWorkplaceView,
+    workspacePreferencesHydrated,
+    workspacePreferencesStorageKey,
+  ]);
 
   useEffect(() => {
     if (!supabase || !session || !activeTenant) {
@@ -1974,9 +2021,11 @@ export function App() {
     if (!supabase || !session || !activeTenant) {
       setCanWorkTickets(false);
       setIsTenantAdmin(false);
+      setTicketAccessLoading(false);
       return;
     }
     let mounted = true;
+    setTicketAccessLoading(true);
     void supabase.functions
       .invoke("tenant-users", {
         body: { type: "getMyTicketAccess", tenantId: activeTenant.id },
@@ -1993,6 +2042,9 @@ export function App() {
         if (!mounted) return;
         setCanWorkTickets(false);
         setIsTenantAdmin(false);
+      })
+      .finally(() => {
+        if (mounted) setTicketAccessLoading(false);
       });
     return () => {
       mounted = false;
@@ -2002,10 +2054,12 @@ export function App() {
   useEffect(() => {
     if (!isSupabaseConfigured || !supabase || !session || !activeTenant) {
       setTenantFeatures({});
+      setTenantFeaturesLoading(false);
       return;
     }
 
     let mounted = true;
+    setTenantFeaturesLoading(true);
     void supabase.functions
       .invoke("tenant-feature-flags", {
         body: { type: "list", tenantId: activeTenant.id },
@@ -2020,6 +2074,9 @@ export function App() {
         // Optional modules fail closed so they never appear before the current
         // tenant entitlement has been verified by the server.
         if (mounted) setTenantFeatures({});
+      })
+      .finally(() => {
+        if (mounted) setTenantFeaturesLoading(false);
       });
 
     return () => {
@@ -2181,6 +2238,7 @@ export function App() {
   ]);
 
   useEffect(() => {
+    if (ticketAccessLoading || tenantFeaturesLoading) return;
     if (canWorkTickets) return;
     setTicketScope("mine");
     setSelectedTicketIds(new Set());
@@ -2188,7 +2246,13 @@ export function App() {
     if (!canRequesterOpenSection(section, requesterPortalEnabled)) {
       setSection("Übersicht");
     }
-  }, [canWorkTickets, requesterPortalEnabled, section]);
+  }, [
+    canWorkTickets,
+    requesterPortalEnabled,
+    section,
+    tenantFeaturesLoading,
+    ticketAccessLoading,
+  ]);
 
   useEffect(() => {
     setTicketPage(0);
@@ -2720,7 +2784,10 @@ export function App() {
   const isPersonalAppearanceDialog = workspacePreferencesContext === "personal";
   const featureSections = sections.filter((item) => {
     if (item.label === "Arbeitsplatz") {
-      return agentWorkbenchEnabled;
+      return isWorkplaceAvailable(
+        agentWorkbenchEnabled,
+        experienceWorkspaceEnabled,
+      );
     }
     if (item.label === "Mein Portal") return requesterPortalEnabled;
     if (
@@ -2732,7 +2799,6 @@ export function App() {
     }
     if (item.label === "Wissen") return isFeatureEnabled("knowledge.base");
     if (item.label === "Berichte") return isFeatureEnabled("reporting.service");
-    if (item.label === "Wiedervorlagen") return experienceWorkspaceEnabled;
     return true;
   });
   const workSections = canWorkTickets
@@ -2740,25 +2806,34 @@ export function App() {
     : requesterNavigationSections(featureSections);
 
   useEffect(() => {
+    if (ticketAccessLoading || tenantFeaturesLoading) return;
     const sectionFeature: Partial<Record<Section, string>> = {
-      Arbeitsplatz: "agent.workbench",
       Fälle: "assets.management",
       Assets: "assets.management",
       Berichte: "reporting.service",
       Services: "assets.management",
       "Mein Portal": "requester.portal",
       Wissen: "knowledge.base",
-      Wiedervorlagen: "experience.workspace",
     };
     const featureKey = sectionFeature[section];
+    const workplaceUnavailable =
+      section === "Arbeitsplatz" &&
+      !isWorkplaceAvailable(agentWorkbenchEnabled, experienceWorkspaceEnabled);
     if (
-      featureKey &&
+      (workplaceUnavailable || featureKey) &&
       isSupabaseConfigured &&
-      tenantFeatures[featureKey] !== true
+      (workplaceUnavailable || tenantFeatures[featureKey!] !== true)
     ) {
       setSection("Übersicht");
     }
-  }, [section, tenantFeatures]);
+  }, [
+    agentWorkbenchEnabled,
+    experienceWorkspaceEnabled,
+    section,
+    tenantFeatures,
+    tenantFeaturesLoading,
+    ticketAccessLoading,
+  ]);
 
   useEffect(() => {
     if (isSupabaseConfigured && tenantFeatures["ticketing.detail"] !== true) {
@@ -2921,7 +2996,13 @@ export function App() {
   ]);
 
   function updateWorkspacePreferences(updates: Partial<WorkspacePreferences>) {
-    setWorkspacePreferences((current) => ({ ...current, ...updates }));
+    setWorkspacePreferences((current) => ({
+      ...current,
+      ...updates,
+      ...(updates.startSection !== undefined
+        ? { startWorkplaceView: null }
+        : {}),
+    }));
   }
 
   function closeQuickCreateMenu(returnFocus = true) {
@@ -2936,8 +3017,11 @@ export function App() {
   function activateTenant(nextTenantId: string) {
     if (nextTenantId === activeTenantId) return;
     setCanWorkTickets(false);
+    setTicketAccessLoading(true);
     setIsTenantAdmin(false);
     setTenantFeatures({});
+    setTenantFeaturesLoading(true);
+    setWorkplaceRequestedView(null);
     setQuickCreateMenuOpen(false);
     setQuickCreateRequest(null);
     setTicketComposerOpen(false);
@@ -2989,7 +3073,7 @@ export function App() {
       action === "problem"
         ? "Fälle"
         : action === "followUp"
-          ? "Wiedervorlagen"
+          ? "Arbeitsplatz"
           : "Wissen",
     );
   }
@@ -3708,36 +3792,13 @@ export function App() {
           activeTenant &&
           isFeatureEnabled("reporting.service") ? (
           <ServiceReporting tenantId={activeTenant.id} />
-        ) : section === "Wiedervorlagen" &&
-          activeTenant &&
-          experienceWorkspaceEnabled ? (
-          <ExperienceWorkspace
-            createFollowUpRequestId={
-              activeQuickCreateRequest?.action === "followUp"
-                ? activeQuickCreateRequest.id
-                : undefined
-            }
-            focusFollowUpId={
-              globalSearchTarget?.resultType === "follow_up"
-                ? globalSearchTarget.entityId
-                : undefined
-            }
-            onCreateFollowUpRequestConsumed={consumeQuickCreateRequest}
-            onChanged={() =>
-              setExperienceFollowUpsRevision((revision) => revision + 1)
-            }
-            onNotice={(message, tone) => setExperienceNotice({ message, tone })}
-            onOpenTicket={(ticketId) => {
-              setSection("Tickets");
-              setSelectedTicketId(ticketId);
-            }}
-            tenantId={activeTenant.id}
-            tickets={view.tickets}
-          />
         ) : section === "Arbeitsplatz" &&
           activeTenant &&
           session &&
-          agentWorkbenchEnabled ? (
+          isWorkplaceAvailable(
+            agentWorkbenchEnabled,
+            experienceWorkspaceEnabled,
+          ) ? (
           <>
             <IntroTip
               tenantId={activeTenant.id}
@@ -3746,12 +3807,49 @@ export function App() {
             />
             <AgentWorkbenchPanel
               canManageIncidents={isTenantAdmin}
+              followUpsEnabled={experienceWorkspaceEnabled}
+              followUpsPanel={
+                experienceWorkspaceEnabled ? (
+                  <ExperienceWorkspace
+                    createFollowUpRequestId={
+                      activeQuickCreateRequest?.action === "followUp"
+                        ? activeQuickCreateRequest.id
+                        : undefined
+                    }
+                    focusFollowUpId={
+                      globalSearchTarget?.resultType === "follow_up"
+                        ? globalSearchTarget.entityId
+                        : undefined
+                    }
+                    onCreateFollowUpRequestConsumed={consumeQuickCreateRequest}
+                    onChanged={() =>
+                      setExperienceFollowUpsRevision((revision) => revision + 1)
+                    }
+                    onNotice={(message, tone) =>
+                      setExperienceNotice({ message, tone })
+                    }
+                    onOpenTicket={(ticketId) => {
+                      setSection("Tickets");
+                      setSelectedTicketId(ticketId);
+                    }}
+                    tenantId={activeTenant.id}
+                    tickets={view.tickets}
+                  />
+                ) : undefined
+              }
               onOpenQueue={openTeamQueue}
               onOpenTicket={(ticketId) => {
                 setSection("Tickets");
                 setSelectedTicketId(ticketId);
               }}
               onUnreadMentionsChange={ignoreUnreadMentions}
+              requestedView={requestedWorkplaceViewForFollowUps(
+                experienceWorkspaceEnabled,
+                workplaceRequestedView === "followUps" ||
+                  activeQuickCreateRequest?.action === "followUp" ||
+                  globalSearchTarget?.resultType === "follow_up",
+              )}
+              showAgentWorkbench={agentWorkbenchEnabled}
               tenantId={activeTenant.id}
             />
           </>
@@ -4149,7 +4247,10 @@ export function App() {
                   canWorkTickets &&
                   experienceWorkspaceEnabled && (
                     <MyDayCard
-                      onOpenFollowUps={() => setSection("Wiedervorlagen")}
+                      onOpenFollowUps={() => {
+                        setWorkplaceRequestedView("followUps");
+                        setSection("Arbeitsplatz");
+                      }}
                       onOpenTicket={(ticketId) => {
                         setSection("Tickets");
                         setSelectedTicketId(ticketId);

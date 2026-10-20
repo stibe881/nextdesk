@@ -142,3 +142,15 @@ Die Wissensdatenbank zeigt keine Kategorien oder Unterkategorien mehr: weder auf
 ## Dialogbasierter Wissenseditor
 
 Das Anlegen und Bearbeiten eines Wissensartikels öffnet den bestehenden Editor nicht mehr unterhalb der Artikelliste. Stattdessen erscheint er als fokussierter, viewport-fester Dialog über der Wissensdatenbank. Titel, Sichtbarkeit, Markdown-Eingabe, Live-Vorschau und Speichern bleiben unverändert verfügbar; nur innerhalb des Dialogs wird bei langem Inhalt gescrollt. Der Dialog fokussiert beim Öffnen den Titel, lässt sich kontrolliert über eine sichtbare Schaltfläche oder Escape schliessen und hält die Tastaturnavigation innerhalb des Dialogs. Es werden keine Datenmodelle, Berechtigungen oder Speicherabläufe verändert.
+
+## Wiedervorlagen im Arbeitsplatz
+
+Wiedervorlagen werden nicht mehr als eigener Eintrag in der Hauptnavigation geführt. Sie werden als eigener Registerbereich «Wiedervorlagen» im Arbeitsplatz angezeigt und verwenden dabei unverändert den bestehenden, mandantengebundenen Daten- und Speicherpfad.
+
+Direkte Zugänge aus «Mein Tag», der globalen Suche und dem zentralen Plus-Menü navigieren in den Arbeitsplatz und öffnen dort gezielt den Registerbereich «Wiedervorlagen». Bestehende persönliche Startseiten, die noch auf «Wiedervorlagen» zeigen, werden beim Laden sicher auf «Arbeitsplatz» umgestellt. Der Arbeitsplatz bleibt erreichbar, sofern mindestens Agentenwerkbank oder Wiedervorlagen für den Mandanten freigegeben ist; ohne Agentenwerkbank zeigt er ausschliesslich den Wiedervorlagenbereich.
+
+### Autorisierte Startnavigation und Wiedervorlagenzugriff
+
+Gespeicherte Startansichten werden erst nach abgeschlossener Sitzungs-, Mandanten-, Ticketarbeits- und Funktionsprüfung angewendet. Eine frühere Startansicht «Wiedervorlagen» wird strukturiert zu «Arbeitsplatz» plus Registerziel «Wiedervorlagen» migriert; beim bewussten Ändern der Startansicht entfällt dieses Altziel. Dadurch kann ein anfänglicher Standardwert während des Ladens keinen geschützten Arbeitsbereich verdrängen.
+
+Wiedervorlagen bleiben persönliche Agentenarbeit: Die gemeinsame Datenbankfunktion `can_work_tickets_in_tenant` prüft eine aktive Mandantenmitgliedschaft und mindestens eine effektive Ticketarbeitsberechtigung. Die Experience-Hub-Function verlangt sie für Listen, Erstellen und Erledigen; RLS sperrt direkte Lese- und Schreibzugriffe, und die globale Suchfunktion liefert Wiedervorlagen nur nach derselben Prüfung. Reine Anfragende behalten weder einen navigierbaren noch einen API-/Suchzugriff auf Wiedervorlagen.

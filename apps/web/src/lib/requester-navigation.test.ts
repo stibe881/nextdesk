@@ -9,7 +9,7 @@ describe("Navigation für reine Anfragende", () => {
     { label: "Übersicht" },
     { label: "Tickets" },
     { label: "Fälle" },
-    { label: "Wiedervorlagen" },
+    { label: "Arbeitsplatz" },
     { label: "Veranstaltungsräume" },
     { label: "Eintritte" },
     { label: "Wissen" },
@@ -28,7 +28,7 @@ describe("Navigation für reine Anfragende", () => {
     expect(canRequesterOpenSection("Tickets", true)).toBe(true);
     expect(canRequesterOpenSection("Mein Portal", true)).toBe(true);
     expect(canRequesterOpenSection("Mein Portal", false)).toBe(false);
-    expect(canRequesterOpenSection("Wiedervorlagen", true)).toBe(false);
+    expect(canRequesterOpenSection("Arbeitsplatz", true)).toBe(false);
     expect(canRequesterOpenSection("Veranstaltungsräume", true)).toBe(false);
     expect(canRequesterOpenSection("Eintritte", true)).toBe(false);
   });

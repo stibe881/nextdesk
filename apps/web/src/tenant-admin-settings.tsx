@@ -740,7 +740,6 @@ function CorporateDesignPreview({
   const previewNavigation = [
     { Icon: LayoutDashboard, label: "Übersicht" },
     { Icon: Ticket, label: "Tickets" },
-    { Icon: CalendarClock, label: "Wiedervorlagen" },
     { Icon: BriefcaseBusiness, label: "Arbeitsplatz" },
     { Icon: Box, label: "Services" },
     { Icon: Box, label: "Assets" },

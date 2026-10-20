@@ -5,6 +5,7 @@ import {
   Check,
   CircleHelp,
   Clock3,
+  ListTodo,
   LoaderCircle,
   ShieldCheck,
   UserRound,
@@ -20,7 +21,8 @@ import {
 import { supabase } from "./lib/supabase";
 import "./agent-workbench.css";
 
-type WorkbenchView = "team" | "mentions" | "delegations" | "incidents";
+type WorkbenchView =
+  "team" | "mentions" | "delegations" | "incidents" | "followUps";
 type IncidentStatus =
   "investigating" | "identified" | "monitoring" | "resolved";
 
@@ -1541,38 +1543,72 @@ export function IncidentBanner({
 
 export function AgentWorkbenchPanel({
   canManageIncidents,
-  initialView = "team",
+  followUpsEnabled,
+  followUpsPanel,
   onOpenQueue,
   onOpenTicket,
   onUnreadMentionsChange,
+  requestedView,
+  showAgentWorkbench = true,
   tenantId,
 }: {
   canManageIncidents: boolean;
-  initialView?: WorkbenchView;
+  followUpsEnabled: boolean;
+  followUpsPanel?: ReactNode | undefined;
   onOpenQueue: (queue: TeamQueue) => void;
   onOpenTicket: (ticketId: string) => void;
   onUnreadMentionsChange: (count: number) => void;
+  requestedView?: WorkbenchView | undefined;
+  showAgentWorkbench?: boolean;
   tenantId: string;
 }) {
-  const [view, setView] = useState<WorkbenchView>(initialView);
+  const [view, setView] = useState<WorkbenchView>(
+    showAgentWorkbench ? "team" : "followUps",
+  );
 
   useEffect(() => {
-    setView(initialView);
-  }, [initialView]);
+    if (requestedView === "followUps" && followUpsEnabled) {
+      setView("followUps");
+    }
+  }, [followUpsEnabled, requestedView]);
+
+  useEffect(() => {
+    if (!showAgentWorkbench && followUpsEnabled) setView("followUps");
+    if (showAgentWorkbench && view === "followUps" && !followUpsEnabled) {
+      setView("team");
+    }
+  }, [followUpsEnabled, showAgentWorkbench, view]);
 
   const views: Array<{
     Icon: typeof UsersRound;
     label: string;
     value: WorkbenchView;
   }> = [
-    { Icon: UsersRound, label: "Team", value: "team" },
-    { Icon: AtSign, label: "Erwähnungen", value: "mentions" },
-    { Icon: UserRound, label: "Stellvertretung", value: "delegations" },
-    { Icon: BellRing, label: "Störungen", value: "incidents" },
+    ...(showAgentWorkbench
+      ? [
+          { Icon: UsersRound, label: "Team", value: "team" as const },
+          { Icon: AtSign, label: "Erwähnungen", value: "mentions" as const },
+          {
+            Icon: UserRound,
+            label: "Stellvertretung",
+            value: "delegations" as const,
+          },
+          { Icon: BellRing, label: "Störungen", value: "incidents" as const },
+        ]
+      : []),
+    ...(followUpsEnabled
+      ? [
+          {
+            Icon: ListTodo,
+            label: "Wiedervorlagen",
+            value: "followUps" as const,
+          },
+        ]
+      : []),
   ];
 
   return (
-    <section className="agent-workbench" aria-label="Agentenwerkbank">
+    <section className="agent-workbench" aria-label="Arbeitsplatz">
       <header className="agent-workbench__header">
         <div>
           <p className="eyebrow">ARBEITSPLATZ</p>
@@ -1585,7 +1621,7 @@ export function AgentWorkbenchPanel({
         <ShieldCheck aria-hidden="true" size={24} strokeWidth={1.8} />
       </header>
       <nav
-        aria-label="Bereiche der Agentenwerkbank"
+        aria-label="Bereiche des Arbeitsplatzes"
         className="agent-workbench__tabs"
       >
         {views.map(({ Icon, label, value }) => (
@@ -1615,6 +1651,7 @@ export function AgentWorkbenchPanel({
       {view === "incidents" && (
         <IncidentsPanel canManage={canManageIncidents} tenantId={tenantId} />
       )}
+      {view === "followUps" && followUpsEnabled && followUpsPanel}
     </section>
   );
 }
