@@ -630,51 +630,157 @@ create policy asset_lifecycle_events_select_authorized on public.asset_lifecycle
     and public.is_asset_management_client_enabled(tenant_id)
   );
 
-do $$
-declare
-  table_name text;
-begin
-  foreach table_name in array array['ticket_services', 'ticket_assets', 'problem_tickets'] loop
-    execute format('drop policy if exists %I on public.%I',
-      table_name || '_select_member', table_name);
-    execute format('create policy %I on public.%I for select to authenticated '
-      || 'using (public.is_active_tenant_member(tenant_id) '
-      || 'and public.is_asset_management_client_enabled(tenant_id) '
-      || 'and public.can_read_ticket(ticket_id))',
-      table_name || '_select_member', table_name);
+-- Explicit policies make the feature gate auditable and avoid dynamic SQL
+-- during a production migration.
+drop policy if exists ticket_services_select_member on public.ticket_services;
+create policy ticket_services_select_member on public.ticket_services
+  for select to authenticated using (
+    public.is_active_tenant_member(tenant_id)
+    and public.is_asset_management_client_enabled(tenant_id)
+    and public.can_read_ticket(ticket_id)
+  );
+drop policy if exists ticket_services_insert_authorized on public.ticket_services;
+create policy ticket_services_insert_authorized on public.ticket_services
+  for insert to authenticated with check (
+    public.is_asset_management_client_enabled(tenant_id)
+    and linked_by = auth.uid()
+    and exists (
+      select 1 from public.tickets ticket
+      where ticket.id = ticket_services.ticket_id
+        and ticket.tenant_id = ticket_services.tenant_id
+        and public.has_ticket_permission(ticket.tenant_id, ticket.department_id, 'ticket.update')
+    )
+  );
+drop policy if exists ticket_services_update_authorized on public.ticket_services;
+create policy ticket_services_update_authorized on public.ticket_services
+  for update to authenticated using (
+    public.is_asset_management_client_enabled(tenant_id)
+    and exists (
+      select 1 from public.tickets ticket
+      where ticket.id = ticket_services.ticket_id
+        and ticket.tenant_id = ticket_services.tenant_id
+        and public.has_ticket_permission(ticket.tenant_id, ticket.department_id, 'ticket.update')
+    )
+  ) with check (
+    public.is_asset_management_client_enabled(tenant_id)
+    and exists (
+      select 1 from public.tickets ticket
+      where ticket.id = ticket_services.ticket_id
+        and ticket.tenant_id = ticket_services.tenant_id
+        and public.has_ticket_permission(ticket.tenant_id, ticket.department_id, 'ticket.update')
+    )
+  );
+drop policy if exists ticket_services_delete_authorized on public.ticket_services;
+create policy ticket_services_delete_authorized on public.ticket_services
+  for delete to authenticated using (
+    public.is_asset_management_client_enabled(tenant_id)
+    and exists (
+      select 1 from public.tickets ticket
+      where ticket.id = ticket_services.ticket_id
+        and ticket.tenant_id = ticket_services.tenant_id
+        and public.has_ticket_permission(ticket.tenant_id, ticket.department_id, 'ticket.update')
+    )
+  );
 
-    execute format('drop policy if exists %I on public.%I',
-      table_name || '_insert_authorized', table_name);
-    execute format('create policy %I on public.%I for insert to authenticated '
-      || 'with check (public.is_asset_management_client_enabled(%I.tenant_id) '
-      || 'and linked_by = auth.uid() and exists (select 1 from public.tickets ticket '
-      || 'where ticket.id = %I.ticket_id and ticket.tenant_id = %I.tenant_id '
-      || 'and public.has_ticket_permission(ticket.tenant_id, ticket.department_id, ''ticket.update'')))',
-      table_name || '_insert_authorized', table_name, table_name, table_name, table_name);
+drop policy if exists ticket_assets_select_member on public.ticket_assets;
+create policy ticket_assets_select_member on public.ticket_assets
+  for select to authenticated using (
+    public.is_active_tenant_member(tenant_id)
+    and public.is_asset_management_client_enabled(tenant_id)
+    and public.can_read_ticket(ticket_id)
+  );
+drop policy if exists ticket_assets_insert_authorized on public.ticket_assets;
+create policy ticket_assets_insert_authorized on public.ticket_assets
+  for insert to authenticated with check (
+    public.is_asset_management_client_enabled(tenant_id)
+    and linked_by = auth.uid()
+    and exists (
+      select 1 from public.tickets ticket
+      where ticket.id = ticket_assets.ticket_id
+        and ticket.tenant_id = ticket_assets.tenant_id
+        and public.has_ticket_permission(ticket.tenant_id, ticket.department_id, 'ticket.update')
+    )
+  );
+drop policy if exists ticket_assets_update_authorized on public.ticket_assets;
+create policy ticket_assets_update_authorized on public.ticket_assets
+  for update to authenticated using (
+    public.is_asset_management_client_enabled(tenant_id)
+    and exists (
+      select 1 from public.tickets ticket
+      where ticket.id = ticket_assets.ticket_id
+        and ticket.tenant_id = ticket_assets.tenant_id
+        and public.has_ticket_permission(ticket.tenant_id, ticket.department_id, 'ticket.update')
+    )
+  ) with check (
+    public.is_asset_management_client_enabled(tenant_id)
+    and exists (
+      select 1 from public.tickets ticket
+      where ticket.id = ticket_assets.ticket_id
+        and ticket.tenant_id = ticket_assets.tenant_id
+        and public.has_ticket_permission(ticket.tenant_id, ticket.department_id, 'ticket.update')
+    )
+  );
+drop policy if exists ticket_assets_delete_authorized on public.ticket_assets;
+create policy ticket_assets_delete_authorized on public.ticket_assets
+  for delete to authenticated using (
+    public.is_asset_management_client_enabled(tenant_id)
+    and exists (
+      select 1 from public.tickets ticket
+      where ticket.id = ticket_assets.ticket_id
+        and ticket.tenant_id = ticket_assets.tenant_id
+        and public.has_ticket_permission(ticket.tenant_id, ticket.department_id, 'ticket.update')
+    )
+  );
 
-    execute format('drop policy if exists %I on public.%I',
-      table_name || '_update_authorized', table_name);
-    execute format('create policy %I on public.%I for update to authenticated '
-      || 'using (public.is_asset_management_client_enabled(%I.tenant_id) and exists '
-      || '(select 1 from public.tickets ticket where ticket.id = %I.ticket_id '
-      || 'and ticket.tenant_id = %I.tenant_id and public.has_ticket_permission(ticket.tenant_id, ticket.department_id, ''ticket.update''))) '
-      || 'with check (public.is_asset_management_client_enabled(%I.tenant_id) and exists '
-      || '(select 1 from public.tickets ticket where ticket.id = %I.ticket_id '
-      || 'and ticket.tenant_id = %I.tenant_id and public.has_ticket_permission(ticket.tenant_id, ticket.department_id, ''ticket.update'')))',
-      table_name || '_update_authorized', table_name,
-      table_name, table_name, table_name,
-      table_name, table_name, table_name);
-
-    execute format('drop policy if exists %I on public.%I',
-      table_name || '_delete_authorized', table_name);
-    execute format('create policy %I on public.%I for delete to authenticated '
-      || 'using (public.is_asset_management_client_enabled(%I.tenant_id) and exists '
-      || '(select 1 from public.tickets ticket where ticket.id = %I.ticket_id '
-      || 'and ticket.tenant_id = %I.tenant_id and public.has_ticket_permission(ticket.tenant_id, ticket.department_id, ''ticket.update'')))',
-      table_name || '_delete_authorized', table_name, table_name, table_name, table_name);
-  end loop;
-end;
-$$;
+drop policy if exists problem_tickets_select_member on public.problem_tickets;
+create policy problem_tickets_select_member on public.problem_tickets
+  for select to authenticated using (
+    public.is_active_tenant_member(tenant_id)
+    and public.is_asset_management_client_enabled(tenant_id)
+    and public.can_read_ticket(ticket_id)
+  );
+drop policy if exists problem_tickets_insert_authorized on public.problem_tickets;
+create policy problem_tickets_insert_authorized on public.problem_tickets
+  for insert to authenticated with check (
+    public.is_asset_management_client_enabled(tenant_id)
+    and linked_by = auth.uid()
+    and exists (
+      select 1 from public.tickets ticket
+      where ticket.id = problem_tickets.ticket_id
+        and ticket.tenant_id = problem_tickets.tenant_id
+        and public.has_ticket_permission(ticket.tenant_id, ticket.department_id, 'ticket.update')
+    )
+  );
+drop policy if exists problem_tickets_update_authorized on public.problem_tickets;
+create policy problem_tickets_update_authorized on public.problem_tickets
+  for update to authenticated using (
+    public.is_asset_management_client_enabled(tenant_id)
+    and exists (
+      select 1 from public.tickets ticket
+      where ticket.id = problem_tickets.ticket_id
+        and ticket.tenant_id = problem_tickets.tenant_id
+        and public.has_ticket_permission(ticket.tenant_id, ticket.department_id, 'ticket.update')
+    )
+  ) with check (
+    public.is_asset_management_client_enabled(tenant_id)
+    and exists (
+      select 1 from public.tickets ticket
+      where ticket.id = problem_tickets.ticket_id
+        and ticket.tenant_id = problem_tickets.tenant_id
+        and public.has_ticket_permission(ticket.tenant_id, ticket.department_id, 'ticket.update')
+    )
+  );
+drop policy if exists problem_tickets_delete_authorized on public.problem_tickets;
+create policy problem_tickets_delete_authorized on public.problem_tickets
+  for delete to authenticated using (
+    public.is_asset_management_client_enabled(tenant_id)
+    and exists (
+      select 1 from public.tickets ticket
+      where ticket.id = problem_tickets.ticket_id
+        and ticket.tenant_id = problem_tickets.tenant_id
+        and public.has_ticket_permission(ticket.tenant_id, ticket.department_id, 'ticket.update')
+    )
+  );
 
 -- External device IDs are operational provider identifiers. Preserve their
 -- legacy values in a service-only relation, remove old public lookup copies

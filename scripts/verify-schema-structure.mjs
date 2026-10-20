@@ -832,6 +832,16 @@ for (const [migration, fragment] of requiredFragments) {
   }
 }
 
+if (
+  contents
+    .get("0083_asset_intune_local_preflight_control.sql")
+    ?.includes("execute format(")
+) {
+  throw new Error(
+    "0083_asset_intune_local_preflight_control.sql must keep explicit audited RLS policies instead of dynamic SQL.",
+  );
+}
+
 const functionConfiguration = await readFile(
   new URL("../supabase/config.toml", import.meta.url),
   "utf8",
