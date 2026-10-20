@@ -66,6 +66,7 @@ type KnowledgeCollection = {
   id: string;
   name: string;
   slug: string;
+  parentId: string | null;
 };
 
 type ListCollectionsRequest = { type: "listCollections"; tenantId: string };
@@ -73,6 +74,7 @@ type CreateCollectionRequest = {
   type: "createCollection";
   tenantId: string;
   name: string;
+  parentId?: string;
 };
 type SetArticleCollectionsRequest = {
   type: "setArticleCollections";
@@ -539,11 +541,17 @@ function parseCollection(value: unknown): KnowledgeCollection | null {
     !isRecord(value) ||
     typeof value.id !== "string" ||
     typeof value.name !== "string" ||
-    typeof value.slug !== "string"
+    typeof value.slug !== "string" ||
+    (typeof value.parent_id !== "string" && value.parent_id !== null)
   ) {
     return null;
   }
-  return { id: value.id, name: value.name, slug: value.slug };
+  return {
+    id: value.id,
+    name: value.name,
+    slug: value.slug,
+    parentId: value.parent_id,
+  };
 }
 
 function parseCollections(value: unknown): KnowledgeCollection[] {
@@ -564,6 +572,52 @@ function parseCollections(value: unknown): KnowledgeCollection[] {
     );
   }
   return parsed;
+}
+
+function sortCollections(
+  collections: KnowledgeCollection[],
+): KnowledgeCollection[] {
+  const byId = new Map(
+    collections.map((collection) => [collection.id, collection]),
+  );
+  return [...collections].sort((left, right) => {
+    const leftRoot = left.parentId
+      ? (byId.get(left.parentId)?.name ?? left.name)
+      : left.name;
+    const rightRoot = right.parentId
+      ? (byId.get(right.parentId)?.name ?? right.name)
+      : right.name;
+    const rootComparison = leftRoot.localeCompare(rightRoot, "de-CH");
+    if (rootComparison !== 0) return rootComparison;
+    if (left.parentId === null && right.parentId !== null) return -1;
+    if (left.parentId !== null && right.parentId === null) return 1;
+    return left.name.localeCompare(right.name, "de-CH");
+  });
+}
+
+function collectionPath(
+  collectionId: string,
+  collectionsById: Map<string, KnowledgeCollection>,
+): string | null {
+  const collection = collectionsById.get(collectionId);
+  if (!collection) return null;
+  const parent = collection.parentId
+    ? collectionsById.get(collection.parentId)
+    : null;
+  return parent ? `${parent.name} › ${collection.name}` : collection.name;
+}
+
+function collectionPaths(
+  collectionIds: string[],
+  collectionsById: Map<string, KnowledgeCollection>,
+): string[] {
+  return [
+    ...new Set(
+      collectionIds
+        .map((collectionId) => collectionPath(collectionId, collectionsById))
+        .filter((path): path is string => Boolean(path)),
+    ),
+  ];
 }
 
 function parseReturnedArticle(value: unknown): KnowledgeArticle {
@@ -671,6 +725,9 @@ export function KnowledgeBase({ tenantId }: KnowledgeBaseProps) {
   const [selected, setSelected] = useState<ArticleDetail | null>(null);
   const [editingArticleId, setEditingArticleId] = useState<string | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
+  const [categoryManagerOpen, setCategoryManagerOpen] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState("");
+  const [newCategoryParentId, setNewCategoryParentId] = useState("");
   const [draft, setDraft] = useState<ArticleDraft>(EMPTY_DRAFT);
   const [loadingList, setLoadingList] = useState(true);
   const [loadingDetail, setLoadingDetail] = useState(false);
@@ -682,6 +739,14 @@ export function KnowledgeBase({ tenantId }: KnowledgeBaseProps) {
 
   const isBusy = saving !== null;
   const selectedArticleId = selected?.article.id ?? null;
+  const collectionsById = useMemo(
+    () => new Map(collections.map((collection) => [collection.id, collection])),
+    [collections],
+  );
+  const rootCategories = useMemo(
+    () => collections.filter((collection) => collection.parentId === null),
+    [collections],
+  );
 
   const visibleArticles = useMemo(
     () => articles.filter(({ article }) => article.status !== "archived"),
@@ -731,7 +796,7 @@ export function KnowledgeBase({ tenantId }: KnowledgeBaseProps) {
         { type: "listCollections", tenantId },
         parseCollections,
       );
-      setCollections(nextCollections);
+      setCollections(sortCollections(nextCollections));
     } catch {
       // The article reader stays usable for people without internal knowledge
       // permissions. Category management is intentionally hidden for them.
@@ -744,6 +809,9 @@ export function KnowledgeBase({ tenantId }: KnowledgeBaseProps) {
     setEditingArticleId(null);
     setDraft(EMPTY_DRAFT);
     setEditorOpen(false);
+    setCategoryManagerOpen(false);
+    setNewCategoryName("");
+    setNewCategoryParentId("");
     setActiveQuery("");
     setSearchInput("");
     void loadArticles("");
@@ -888,16 +956,23 @@ export function KnowledgeBase({ tenantId }: KnowledgeBaseProps) {
         },
         () => undefined,
       );
+      const savedDetail: ArticleDetail = {
+        ...detail,
+        article: {
+          ...detail.article,
+          collectionIds: draft.collectionIds,
+        },
+      };
       setArticles((current) => {
         const withoutSaved = current.filter(
-          ({ article }) => article.id !== detail.article.id,
+          ({ article }) => article.id !== savedDetail.article.id,
         );
         return [
-          { article: detail.article, revision: detail.revision },
+          { article: savedDetail.article, revision: savedDetail.revision },
           ...withoutSaved,
         ];
       });
-      setSelected(detail);
+      setSelected(savedDetail);
       setEditingArticleId(null);
       setDraft(EMPTY_DRAFT);
       setEditorOpen(false);
@@ -943,15 +1018,27 @@ export function KnowledgeBase({ tenantId }: KnowledgeBaseProps) {
     }
   }
 
-  async function createCollection() {
-    const name = window.prompt("Name der neuen Wissenskategorie");
-    if (!name?.trim()) return;
+  async function createCollection(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const name = newCategoryName.trim();
+    if (name.length < 2 || name.length > 100) {
+      setError("Der Kategoriename muss zwischen 2 und 100 Zeichen lang sein.");
+      setSuccess("");
+      return;
+    }
+
+    const parentId = newCategoryParentId || undefined;
     setSaving("collection");
     setError("");
     setSuccess("");
     try {
       const collection = await invokeKnowledgeBase(
-        { type: "createCollection", tenantId, name: name.trim() },
+        {
+          type: "createCollection",
+          tenantId,
+          name,
+          ...(parentId ? { parentId } : {}),
+        },
         (value) => {
           const parsed = parseCollection(responseData(value).collection);
           if (!parsed)
@@ -961,16 +1048,18 @@ export function KnowledgeBase({ tenantId }: KnowledgeBaseProps) {
           return parsed;
         },
       );
-      setCollections((current) =>
-        [...current, collection].sort((left, right) =>
-          left.name.localeCompare(right.name, "de-CH"),
-        ),
-      );
+      setCollections((current) => sortCollections([...current, collection]));
       setDraft((current) => ({
         ...current,
         collectionIds: [...new Set([...current.collectionIds, collection.id])],
       }));
-      setSuccess(`Kategorie „${collection.name}“ wurde angelegt.`);
+      setNewCategoryName("");
+      setCategoryManagerOpen(false);
+      setSuccess(
+        parentId
+          ? `Unterkategorie „${collection.name}“ wurde angelegt.`
+          : `Hauptkategorie „${collection.name}“ wurde angelegt.`,
+      );
     } catch (nextError) {
       setError(
         errorMessage(nextError, "Die Kategorie konnte nicht angelegt werden."),
@@ -1134,13 +1223,76 @@ export function KnowledgeBase({ tenantId }: KnowledgeBaseProps) {
             <button
               className="knowledge-base__button"
               disabled={isBusy}
-              onClick={() => void createCollection()}
+              onClick={() => setCategoryManagerOpen((current) => !current)}
               type="button"
             >
-              Kategorie anlegen
+              Kategorien verwalten
             </button>
           </div>
         </div>
+
+        {categoryManagerOpen ? (
+          <form
+            className="knowledge-base__category-manager"
+            onSubmit={(event) => void createCollection(event)}
+          >
+            <div className="knowledge-base__category-manager-copy">
+              <strong>Haupt- und Unterkategorien</strong>
+              <p>
+                Wählen Sie eine Hauptkategorie für eine Unterkategorie oder
+                lassen Sie das Feld leer, um eine neue Hauptkategorie anzulegen.
+              </p>
+            </div>
+            <label>
+              Übergeordnete Kategorie
+              <select
+                disabled={isBusy}
+                onChange={(event) => setNewCategoryParentId(event.target.value)}
+                value={newCategoryParentId}
+              >
+                <option value="">Neue Hauptkategorie</option>
+                {rootCategories.map((category) => (
+                  <option key={category.id} value={category.id}>
+                    {category.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Name
+              <input
+                disabled={isBusy}
+                maxLength={100}
+                minLength={2}
+                onChange={(event) => setNewCategoryName(event.target.value)}
+                placeholder={
+                  newCategoryParentId
+                    ? "Zum Beispiel: Microsoft 365"
+                    : "Zum Beispiel: Arbeitsplätze"
+                }
+                required
+                value={newCategoryName}
+              />
+            </label>
+            <div className="knowledge-base__category-manager-actions">
+              <button
+                className="primary-button knowledge-base__save"
+                disabled={isBusy}
+                type="submit"
+              >
+                {saving === "collection" ? "Wird angelegt …" : "Anlegen"}
+              </button>
+              <button
+                className="knowledge-base__button"
+                disabled={isBusy}
+                onClick={() => setCategoryManagerOpen(false)}
+                type="button"
+              >
+                Abbrechen
+              </button>
+            </div>
+          </form>
+        ) : null}
 
         <div className="knowledge-base__content">
           <div className="knowledge-base__grid">
@@ -1192,6 +1344,17 @@ export function KnowledgeBase({ tenantId }: KnowledgeBaseProps) {
                             {visibilityLabels[article.visibility]}
                           </span>
                         </span>
+                        {collectionPaths(article.collectionIds, collectionsById)
+                          .length ? (
+                          <span className="knowledge-base__article-categories">
+                            {collectionPaths(
+                              article.collectionIds,
+                              collectionsById,
+                            ).map((path) => (
+                              <span key={path}>{path}</span>
+                            ))}
+                          </span>
+                        ) : null}
                         <h3>{article.title}</h3>
                         <p className="knowledge-base__article-excerpt">
                           {shortBody(revision?.body ?? null)}
@@ -1234,6 +1397,17 @@ export function KnowledgeBase({ tenantId }: KnowledgeBaseProps) {
                         >
                           {visibilityLabels[detailArticle.visibility]}
                         </span>
+                        {collectionPaths(
+                          detailArticle.collectionIds,
+                          collectionsById,
+                        ).map((path) => (
+                          <span
+                            className="knowledge-base__badge knowledge-base__badge--category"
+                            key={path}
+                          >
+                            {path}
+                          </span>
+                        ))}
                         <span>
                           Revision {selected.revision.revision} · Aktualisiert{" "}
                           {formatDate(detailArticle.updatedAt)}
@@ -1390,7 +1564,7 @@ export function KnowledgeBase({ tenantId }: KnowledgeBaseProps) {
             </label>
 
             <fieldset className="knowledge-base__category-picker">
-              <legend>Kategorien</legend>
+              <legend>Kategorien und Unterkategorien</legend>
               {collections.length > 0 ? (
                 <>
                   <p className="knowledge-base__category-limit">
@@ -1398,17 +1572,49 @@ export function KnowledgeBase({ tenantId }: KnowledgeBaseProps) {
                     Kategorien ausgewählt
                   </p>
                   <div className="knowledge-base__category-options">
-                    {collections.map((collection) => (
-                      <label key={collection.id}>
-                        <input
-                          checked={draft.collectionIds.includes(collection.id)}
-                          disabled={isBusy}
-                          onChange={() => toggleDraftCollection(collection.id)}
-                          type="checkbox"
-                        />
-                        <span>{collection.name}</span>
-                      </label>
-                    ))}
+                    {rootCategories.map((category) => {
+                      const subcategories = collections.filter(
+                        (collection) => collection.parentId === category.id,
+                      );
+                      return (
+                        <div
+                          className="knowledge-base__category-group"
+                          key={category.id}
+                        >
+                          <label className="knowledge-base__category-root">
+                            <input
+                              checked={draft.collectionIds.includes(
+                                category.id,
+                              )}
+                              disabled={isBusy}
+                              onChange={() =>
+                                toggleDraftCollection(category.id)
+                              }
+                              type="checkbox"
+                            />
+                            <span>{category.name} · Allgemein</span>
+                          </label>
+                          {subcategories.map((subcategory) => (
+                            <label
+                              className="knowledge-base__category-subcategory"
+                              key={subcategory.id}
+                            >
+                              <input
+                                checked={draft.collectionIds.includes(
+                                  subcategory.id,
+                                )}
+                                disabled={isBusy}
+                                onChange={() =>
+                                  toggleDraftCollection(subcategory.id)
+                                }
+                                type="checkbox"
+                              />
+                              <span>{subcategory.name}</span>
+                            </label>
+                          ))}
+                        </div>
+                      );
+                    })}
                   </div>
                 </>
               ) : (
@@ -1420,10 +1626,10 @@ export function KnowledgeBase({ tenantId }: KnowledgeBaseProps) {
             </fieldset>
 
             <p className="knowledge-base__hint">
-              Kategorien können mehrfach ausgewählt werden. Speichern erstellt
-              immer einen Entwurf; für externe Artikel bleibt die letzte
-              freigegebene Revision sichtbar, bis die neue Revision erneut
-              freigegeben wird.
+              Unterkategorien werden unter ihrer Hauptkategorie angezeigt und
+              können mehrfach ausgewählt werden. Speichern erstellt immer einen
+              Entwurf; für externe Artikel bleibt die letzte freigegebene
+              Revision sichtbar, bis die neue Revision erneut freigegeben wird.
             </p>
 
             <label className="knowledge-base__full-width">
@@ -1454,7 +1660,10 @@ export function KnowledgeBase({ tenantId }: KnowledgeBaseProps) {
               <div className="knowledge-base__preview-categories">
                 {previewCollections.length > 0
                   ? previewCollections.map((collection) => (
-                      <span key={collection.id}>{collection.name}</span>
+                      <span key={collection.id}>
+                        {collectionPath(collection.id, collectionsById) ??
+                          collection.name}
+                      </span>
                     ))
                   : "Noch keiner Kategorie zugeordnet"}
               </div>

@@ -16,7 +16,12 @@ const REVISION_SELECT =
 type Visibility = "internal" | "external";
 type Action =
   | { type: "listCollections"; tenantId: string }
-  | { type: "createCollection"; tenantId: string; name: string }
+  | {
+      type: "createCollection";
+      tenantId: string;
+      name: string;
+      parentId?: string;
+    }
   | { type: "listArticles"; tenantId: string; query?: string }
   | { type: "getArticle"; tenantId: string; articleId: string }
   | { type: "listRevisions"; tenantId: string; articleId: string }
@@ -102,7 +107,14 @@ function parseAction(value: unknown): Action | null {
 
   if (value.type === "createCollection") {
     const name = requiredText(value.name, 2, 100);
-    return name ? { type: value.type, tenantId: value.tenantId, name } : null;
+    const parent = optionalUuid(value.parentId);
+    if (!name || !parent.valid) return null;
+    return {
+      type: value.type,
+      tenantId: value.tenantId,
+      name,
+      ...(typeof parent.value === "string" ? { parentId: parent.value } : {}),
+    };
   }
 
   if (value.type === "listArticles") {
@@ -522,7 +534,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       return json(request, { error: { code: "article_read_denied" } }, 403);
     const { data, error } = await admin
       .from("knowledge_collections")
-      .select("id, name, slug, active")
+      .select("id, name, slug, parent_id, active")
       .eq("tenant_id", action.tenantId)
       .eq("active", true)
       .order("name", { ascending: true })
@@ -533,28 +545,63 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
   }
 
   if (action.type === "createCollection") {
-    const { data: existing } = await admin
+    let existingQuery = admin
       .from("knowledge_collections")
       .select("id")
       .eq("tenant_id", action.tenantId)
-      .eq("name", action.name)
-      .maybeSingle();
+      .eq("name", action.name);
+    existingQuery = action.parentId
+      ? existingQuery.eq("parent_id", action.parentId)
+      : existingQuery.is("parent_id", null);
+    const { data: existing, error: existingError } =
+      await existingQuery.maybeSingle();
+    if (existingError)
+      return json(request, { error: { code: "collection_read_failed" } }, 500);
     if (existing)
       return json(
         request,
         { error: { code: "collection_name_conflict" } },
         409,
       );
-    const slug = createSlug(action.name);
+
+    if (action.parentId) {
+      const { data: parent, error: parentError } = await admin
+        .from("knowledge_collections")
+        .select("id")
+        .eq("tenant_id", action.tenantId)
+        .eq("id", action.parentId)
+        .eq("active", true)
+        .is("parent_id", null)
+        .maybeSingle();
+      if (parentError)
+        return json(
+          request,
+          { error: { code: "collection_parent_read_failed" } },
+          500,
+        );
+      if (!parent)
+        return json(
+          request,
+          { error: { code: "collection_parent_not_found" } },
+          422,
+        );
+    }
+
+    const slug = createSlug(
+      action.parentId
+        ? `${action.parentId.slice(0, 8)}-${action.name}`
+        : action.name,
+    );
     const { data, error } = await admin
       .from("knowledge_collections")
       .insert({
         tenant_id: action.tenantId,
         name: action.name,
         slug,
+        parent_id: action.parentId ?? null,
         created_by: actorId,
       })
-      .select("id, name, slug, active")
+      .select("id, name, slug, parent_id, active")
       .single();
     if (error || !data)
       return json(

@@ -12148,6 +12148,62 @@ body:has(.ticket-detail) {
   padding: 16px 4px;
 }
 
+.knowledge-base .knowledge-base__category-manager {
+  display: grid;
+  grid-template-columns:
+    minmax(220px, 1.4fr) minmax(180px, 0.9fr) minmax(180px, 1fr)
+    auto;
+  align-items: end;
+  gap: 12px;
+  margin: 18px 28px 0;
+  border: 1px solid color-mix(in srgb, var(--primary) 24%, var(--border));
+  border-radius: 14px;
+  padding: 16px;
+  background: color-mix(in srgb, var(--primary-soft) 56%, var(--surface));
+}
+
+.knowledge-base .knowledge-base__category-manager-copy {
+  display: grid;
+  gap: 4px;
+}
+
+.knowledge-base .knowledge-base__category-manager-copy strong {
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.knowledge-base .knowledge-base__category-manager-copy p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.knowledge-base .knowledge-base__category-manager label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.knowledge-base .knowledge-base__category-manager :is(input, select) {
+  min-height: 40px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 8px 10px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+}
+
+.knowledge-base .knowledge-base__category-manager-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .knowledge-base.knowledge-base .knowledge-base__create-button {
   box-shadow: 0 8px 18px color-mix(in srgb, var(--primary) 22%, transparent);
 }
@@ -12208,6 +12264,28 @@ body:has(.ticket-detail) {
 
 .knowledge-base .knowledge-base__article-card-top .knowledge-base__badge {
   font-size: 11px;
+}
+
+.knowledge-base .knowledge-base__article-categories {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: -5px 0 11px;
+}
+
+.knowledge-base .knowledge-base__article-categories span,
+.knowledge-base.knowledge-base .knowledge-base__badge--category {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid color-mix(in srgb, var(--primary) 22%, var(--border));
+  border-radius: 999px;
+  padding: 4px 8px;
+  background: var(--primary-soft);
+  color: var(--primary);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.2;
 }
 
 .knowledge-base .knowledge-base__article-button h3 {
@@ -12375,31 +12453,57 @@ body:has(.ticket-detail) {
 }
 
 .knowledge-base .knowledge-base__category-options {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  max-height: 180px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 10px;
+  max-height: 290px;
   overflow: auto;
   padding: 4px;
+}
+
+.knowledge-base .knowledge-base__category-group {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 9px;
+  background: var(--surface-subtle);
 }
 
 .knowledge-base .knowledge-base__category-options label {
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  min-height: 36px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  padding: 6px 10px;
-  background: var(--surface);
+  min-height: 34px;
+  border: 0;
+  border-radius: 8px;
+  padding: 6px 8px;
+  background: transparent;
   color: var(--text);
   font-size: 12px;
   font-weight: 550;
   cursor: pointer;
 }
 
+.knowledge-base
+  .knowledge-base__category-options
+  .knowledge-base__category-root {
+  border-bottom: 1px solid var(--border);
+  border-radius: 6px 6px 0 0;
+  color: var(--ink);
+  font-weight: 750;
+}
+
+.knowledge-base
+  .knowledge-base__category-options
+  .knowledge-base__category-subcategory {
+  margin-left: 8px;
+  color: var(--muted);
+}
+
 .knowledge-base .knowledge-base__category-options label:has(input:checked) {
-  border-color: var(--primary);
+  box-shadow: inset 0 0 0 1px var(--primary);
   background: var(--primary-soft);
   color: var(--primary);
 }
@@ -12476,6 +12580,11 @@ body:has(.ticket-detail) {
   .knowledge-base .knowledge-base__toolbar {
     margin: 0 16px;
     padding: 14px 4px;
+  }
+
+  .knowledge-base .knowledge-base__category-manager {
+    grid-template-columns: minmax(0, 1fr);
+    margin: 14px 20px 0;
   }
 
   .knowledge-base .knowledge-base__detail {

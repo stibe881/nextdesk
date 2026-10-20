@@ -86,14 +86,140 @@ insert into public.assets (
   );
 SQL
   fi
+  if [[ "$(basename "$migration")" == "0088_knowledge_collection_hierarchy.sql" ]]; then
+    # Reproduce the completed import's category and assignment shape immediately
+    # before the hierarchy migration. The versioned fixture contains no article
+    # contents or personal data.
+    psql -v ON_ERROR_STOP=1 <<'SQL'
+insert into public.tenants (id, slug, name) values
+  ('f9010000-0000-4000-8000-000000000001', 'legacy-knowledge-import', 'Legacy Knowledge Import');
+SQL
+    psql -v ON_ERROR_STOP=1 -f "$ROOT_DIR/supabase/tests/fixtures/knowledge-legacy-import-sanitised.sql"
+  fi
   psql -v ON_ERROR_STOP=1 -f "$migration" >/dev/null
 done
+
+# A completed hierarchy migration must not touch legacy category timestamps or
+# create a second migration audit record if it is accidentally replayed.
+legacy_hierarchy_before="$(psql -At -c "
+  select string_agg(id::text || ':' || updated_at::text, ',' order by id)
+  from public.knowledge_collections
+  where tenant_id = 'f9010000-0000-4000-8000-000000000001'
+" | tr -d '\n')"
+legacy_hierarchy_audits_before="$(psql -At -c "
+  select count(*)
+  from public.audit_logs
+  where tenant_id = 'f9010000-0000-4000-8000-000000000001'
+    and action = 'knowledge.legacy_import.category_hierarchy'
+" | tr -d '\n')"
+psql -v ON_ERROR_STOP=1 -f "$ROOT_DIR/supabase/migrations/0088_knowledge_collection_hierarchy.sql" >/dev/null
+legacy_hierarchy_after="$(psql -At -c "
+  select string_agg(id::text || ':' || updated_at::text, ',' order by id)
+  from public.knowledge_collections
+  where tenant_id = 'f9010000-0000-4000-8000-000000000001'
+" | tr -d '\n')"
+legacy_hierarchy_audits_after="$(psql -At -c "
+  select count(*)
+  from public.audit_logs
+  where tenant_id = 'f9010000-0000-4000-8000-000000000001'
+    and action = 'knowledge.legacy_import.category_hierarchy'
+" | tr -d '\n')"
+[[ "$legacy_hierarchy_before" == "$legacy_hierarchy_after" ]]
+[[ "$legacy_hierarchy_audits_before" == "$legacy_hierarchy_audits_after" ]]
 
 psql -v ON_ERROR_STOP=1 <<'SQL'
 -- The test grants only emulate Supabase API read privileges; the migrations still provide RLS.
 grant usage on schema public, auth to authenticated;
 grant execute on function auth.uid() to authenticated;
 grant select on public.tickets, public.ticket_comments, public.ticket_statuses, public.ticket_priorities, public.ticket_categories to authenticated;
+
+-- Migration 0088 must transform the full synthetic legacy import without
+-- changing article-to-category links.
+do $$
+declare
+  v_root_count integer;
+  v_subcategory_count integer;
+  v_linked_article_count integer;
+  v_article_assignment_count integer;
+begin
+  select count(*) into v_root_count
+  from public.knowledge_collections
+  where tenant_id = 'f9010000-0000-4000-8000-000000000001'
+    and slug in ('legacy-root-ict-intern', 'legacy-root-ict-oeffentlich')
+    and parent_id is null;
+  select count(*) into v_subcategory_count
+  from public.knowledge_collections as collection
+  where collection.tenant_id = 'f9010000-0000-4000-8000-000000000001'
+    and collection.slug like 'legacy-folder-%'
+    and collection.parent_id is not null;
+  select count(distinct assignment.article_id) into v_linked_article_count
+  from public.knowledge_article_collections as assignment
+  join public.knowledge_collections as collection
+    on collection.id = assignment.collection_id
+   and collection.tenant_id = assignment.tenant_id
+  where assignment.tenant_id = 'f9010000-0000-4000-8000-000000000001'
+    and collection.slug like 'legacy-folder-%';
+  select count(*) into v_article_assignment_count
+  from public.knowledge_article_collections as assignment
+  join public.knowledge_collections as collection
+    on collection.id = assignment.collection_id
+   and collection.tenant_id = assignment.tenant_id
+  where assignment.tenant_id = 'f9010000-0000-4000-8000-000000000001'
+    and collection.slug like 'legacy-folder-%';
+  if v_root_count <> 2
+    or v_subcategory_count <> 27
+    or v_linked_article_count <> 64
+    or v_article_assignment_count <> 64 then
+    raise exception 'Legacy knowledge hierarchy migration did not preserve the expected import shape';
+  end if;
+end;
+$$;
+
+-- Knowledge collections support exactly one tenant-local subcategory level.
+insert into public.tenants (id, slug, name) values
+  ('f9000000-0000-4000-8000-000000000001', 'knowledge-hierarchy-test', 'Knowledge hierarchy test'),
+  ('f9000000-0000-4000-8000-000000000002', 'knowledge-hierarchy-foreign', 'Knowledge hierarchy foreign');
+insert into public.knowledge_collections (id, tenant_id, name, slug) values
+  ('f9000000-0000-4000-8000-000000000010', 'f9000000-0000-4000-8000-000000000001', 'Hauptkategorie', 'main-category'),
+  ('f9000000-0000-4000-8000-000000000011', 'f9000000-0000-4000-8000-000000000001', 'Unterkategorie', 'sub-category'),
+  ('f9000000-0000-4000-8000-000000000012', 'f9000000-0000-4000-8000-000000000002', 'Fremde Hauptkategorie', 'foreign-main-category');
+update public.knowledge_collections
+   set parent_id = 'f9000000-0000-4000-8000-000000000010'
+ where id = 'f9000000-0000-4000-8000-000000000011';
+do $$
+begin
+  begin
+    insert into public.knowledge_collections (tenant_id, name, slug, parent_id)
+    values (
+      'f9000000-0000-4000-8000-000000000001',
+      'Dritte Ebene',
+      'third-level',
+      'f9000000-0000-4000-8000-000000000011'
+    );
+    raise exception 'A third knowledge category level was accepted';
+  exception when check_violation then
+    null;
+  end;
+
+  begin
+    update public.knowledge_collections
+       set parent_id = 'f9000000-0000-4000-8000-000000000011'
+     where id = 'f9000000-0000-4000-8000-000000000010';
+    raise exception 'A root category with a child was allowed to become a subcategory';
+  exception when check_violation then
+    null;
+  end;
+
+  begin
+    update public.knowledge_collections
+       set parent_id = 'f9000000-0000-4000-8000-000000000012'
+     where id = 'f9000000-0000-4000-8000-000000000011';
+    raise exception 'A category accepted a parent from another tenant';
+  exception when foreign_key_violation then
+    null;
+  end;
+end;
+$$;
 
 -- Migration 0083 must safely migrate old browser-visible metadata identifiers.
 -- A case-different collision represents an ambiguous scan, never a migration
