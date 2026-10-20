@@ -89,6 +89,8 @@ const expectedFiles = [
   "0085_harden_sso_provisioning_offboarding.sql",
   "0086_controlled_ticket_automation_execution.sql",
   "0087_cascade_ticket_followups_and_confirmations.sql",
+  "0088_knowledge_collection_hierarchy.sql",
+  "0089_event_space_requests.sql",
 ];
 
 const availableFiles = await readdir(migrationDirectory);
@@ -927,6 +929,39 @@ const requiredFragments = [
     "0087_cascade_ticket_followups_and_confirmations.sql",
     "drop constraint if exists ticket_resolution_confirmations_ticket_tenant_fk",
   ],
+  [
+    "0089_event_space_requests.sql",
+    "create table if not exists public.event_spaces",
+  ],
+  [
+    "0089_event_space_requests.sql",
+    "create table if not exists public.event_space_requests",
+  ],
+  [
+    "0089_event_space_requests.sql",
+    "foreign key (space_id, tenant_id)\n    references public.event_spaces (id, tenant_id)",
+  ],
+  ["0089_event_space_requests.sql", "event_space_requests_singleton_valid"],
+  [
+    "0089_event_space_requests.sql",
+    "create trigger event_space_task_templates_seed",
+  ],
+  [
+    "0089_event_space_requests.sql",
+    "revoke all on table public.event_spaces, public.event_space_task_templates,",
+  ],
+  [
+    "0089_event_space_requests.sql",
+    "create or replace function public.has_event_space_permission",
+  ],
+  [
+    "0089_event_space_requests.sql",
+    "create or replace function public.create_event_space_request_series",
+  ],
+  ["0089_event_space_requests.sql", "pg_advisory_xact_lock"],
+  ["0089_event_space_requests.sql", "responsible_user_id uuid not null"],
+  ["0089_event_space_requests.sql", "p_conflict_snapshot text"],
+  ["0089_event_space_requests.sql", "Europe/Zurich"],
 ];
 
 for (const [migration, fragment] of requiredFragments) {
@@ -998,6 +1033,11 @@ if (
   throw new Error(
     "ticket-automation must explicitly require verified user JWTs.",
   );
+}
+if (
+  !functionConfiguration.includes("[functions.event-spaces]\nverify_jwt = true")
+) {
+  throw new Error("event-spaces must explicitly require verified user JWTs.");
 }
 
 console.log(

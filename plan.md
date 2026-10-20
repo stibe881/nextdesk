@@ -43,6 +43,22 @@ Nach dem Code-Rollout führt eine Kundin oder ein Kunde die erste Verbindung als
 - `apps/web/src/exchange-mail-settings.tsx`: Connect-Assistent und Mehrpostfachliste.
 - `docs/deployment/`: kundenverständliche, PowerShell-freie Einrichtung und Einschränkungen.
 
+## Veranstaltungsräume
+
+Planbare Einrichtungen in Aula und Sitzungszimmern sind keine Störung und gehören deshalb nicht in die Ticketkennzahlen. nextDesk erhält einen eigenständigen Bereich «Veranstaltungsräume», der Raumaufträge mandantenisoliert plant. Ein Auftrag enthält Raum, Anlass, Start und Ende, eine verantwortliche Person, erwartete Teilnehmendenzahl sowie standardisierte Ausstattungswünsche. Die sichtbaren Zustände sind `geplant`, `in Vorbereitung`, `bereit`, `durchgeführt` und `abgeschlossen`.
+
+Die Kalenderansicht zeigt die nächsten sieben Tage als zeitliche Planungsfläche, die Listenansicht alle bevorstehenden Raumaufträge. Wöchentliche und monatliche Wiederholungen werden nur durch die ausdrückliche Benutzeraktion beim Speichern zu einzelnen, begrenzten Aufträgen materialisiert. Der Bereich führt weder einen Scheduler noch einen Hintergrunddienst ein. Er erstellt niemals selbständig ein Ticket: Tritt bei der Einrichtung eine Störung auf, erfasst eine berechtigte Person dafür bewusst ein reguläres Ticket.
+
+Vor der Speicherung prüft der serverseitige Endpunkt mögliche Überlappungen eines Raums sowie identische, zeitgleich gewünschte technische Ressourcen. Die Antwort enthält nur die Anzahl und Art einer Überschneidung, niemals Details eines fremden Auftrags. Die Person kann danach den Zeitraum beziehungsweise die Ausstattung korrigieren oder die Warnung bewusst bestätigen. Pro Auftrag werden aus einer mandantenspezifischen Standardvorlage die Aufgaben «Technik prüfen», «Raum einrichten», «Videocall vorbereiten», «Vor-Ort-Test» und «Nach dem Anlass zurückbauen» erzeugt. Die Vorlage wird bei der Mandantenerstellung und einmalig für bestehende Mandanten angelegt.
+
+Die neue Migration ergänzt den Berechtigungskatalog um `event.spaces.request` und `event.spaces.manage`. Wer Tickets erfassen darf, kann einen Raumauftrag anfragen; wer Tickets bearbeiten oder Mandanteneinstellungen verwalten darf, verwaltet Räume, Verantwortlichkeiten, Zustände und Aufgaben. Alle Planungsdaten sind für direkte Browserzugriffe gesperrt. Die neue JWT-geschützte Edge Function validiert die aktive Mitgliedschaft und diese Berechtigungen vor jeder Abfrage oder Mutation, verwendet den Servicezugriff nur nach dieser Prüfung und erzeugt nachvollziehbare, datensparsame Audit-Einträge mit der handelnden Person.
+
+- `supabase/migrations/0089_event_space_requests.sql`: Räume, Vorlagen, Aufträge, Ausstattungswünsche, Aufgaben, Indizes, Berechtigungen und direkte Zugriffssperre.
+- `supabase/functions/event-spaces/`: serverseitige Liste, Konfliktvorschau, Raum- und Auftragsverwaltung ohne Ticket- oder Schedulerpfad.
+- `supabase/functions/_shared/event-space-schedule.ts`: begrenzte, testbare Validierung konkreter Terminserien und Konfliktzusammenfassungen.
+- `apps/web/src/event-spaces.tsx`: Kalender, Liste, Auftragsformular, bewusste Konfliktbestätigung und Aufgabenfortschritt.
+- `apps/web/src/App.tsx`, `apps/web/src/styles.css`: eigenständiger Menüpunkt, Bereichseinbindung und responsive Bedienoberfläche.
+
 ## Manuelle Entra-Agentenzuordnung
 
 Synchronisierte Personen bleiben immer normale Personen. In «Personen & Agenten» kann eine Mandantenadministration eine aktive Entra-Person bewusst einer aktiven Ziel-Abteilung als Support-Agent zuordnen oder diese Vormerkung wieder aufheben. Die Datenbank hält die auslösende Mandantenadministration, den Zeitpunkt und ausschliesslich die daraus erzeugte Rollen-Zuweisung fest. Bei bereits aktiver nextDesk-Mitgliedschaft wird diese Rollen-Zuweisung sofort eingerichtet; bei einer Person ohne bisherigen Login nur vorgemerkt und ausschliesslich beim späteren, objektgebundenen Entra-Login angewendet.

@@ -19,6 +19,7 @@ import {
   BookOpen,
   BriefcaseBusiness,
   CalendarClock,
+  CalendarDays,
   ChartNoAxesCombined,
   CircleCheck,
   CircleEllipsis,
@@ -73,6 +74,7 @@ import { TenantAdminSettings } from "./tenant-admin-settings";
 import { KnowledgeBase } from "./knowledge-base";
 import { ServiceReporting } from "./service-reporting";
 import { ServiceAssets } from "./service-assets";
+import { EventSpaces } from "./event-spaces";
 import { PersonalSettings } from "./personal-settings";
 import { ExperienceWorkspace, MyDayCard } from "./experience-workspace";
 import {
@@ -113,6 +115,7 @@ type Section =
   | "Services"
   | "Assets"
   | "Fälle"
+  | "Veranstaltungsräume"
   | "Wissen"
   | "Berichte"
   | "Wiedervorlagen"
@@ -223,6 +226,7 @@ const sections: readonly { label: Section; Icon: LucideIcon }[] = [
   { label: "Arbeitsplatz", Icon: BriefcaseBusiness },
   { label: "Services", Icon: MonitorCog },
   { label: "Assets", Icon: Boxes },
+  { label: "Veranstaltungsräume", Icon: CalendarDays },
   { label: "Wissen", Icon: BookOpen },
   { label: "Mein Portal", Icon: UserRound },
   { label: "Berichte", Icon: ChartNoAxesCombined },
@@ -2662,6 +2666,7 @@ export function App() {
         (item) =>
           item.label === "Übersicht" ||
           item.label === "Tickets" ||
+          item.label === "Veranstaltungsräume" ||
           item.label === "Mein Portal" ||
           item.label === "Wiedervorlagen",
       );
@@ -3287,6 +3292,8 @@ export function App() {
           activeTenant &&
           isFeatureEnabled("assets.management") ? (
           <ServiceAssets fixedTab="assets" tenantId={activeTenant.id} />
+        ) : section === "Veranstaltungsräume" && activeTenant ? (
+          <EventSpaces tenantId={activeTenant.id} />
         ) : section === "Services" &&
           activeTenant &&
           isFeatureEnabled("assets.management") ? (

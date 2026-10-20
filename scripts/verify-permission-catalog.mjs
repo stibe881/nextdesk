@@ -28,6 +28,10 @@ const ticketApprovalMigrationPath = new URL(
   "../supabase/migrations/0045_ticket_templates_and_approval_foundation.sql",
   import.meta.url,
 );
+const eventSpacesMigrationPath = new URL(
+  "../supabase/migrations/0089_event_space_requests.sql",
+  import.meta.url,
+);
 const catalog = await readFile(catalogPath, "utf8");
 const migrations = await Promise.all([
   readFile(baseMigrationPath, "utf8"),
@@ -36,6 +40,7 @@ const migrations = await Promise.all([
   readFile(requesterCommentMigrationPath, "utf8"),
   readFile(assetIntegrationMigrationPath, "utf8"),
   readFile(ticketApprovalMigrationPath, "utf8"),
+  readFile(eventSpacesMigrationPath, "utf8"),
 ]);
 const migration = migrations.join("\n");
 

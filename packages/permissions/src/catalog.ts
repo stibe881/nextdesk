@@ -33,6 +33,8 @@ export const permissionCodes = [
   "ticket.quality.review",
   "asset.manage",
   "asset.integration.manage",
+  "event.spaces.request",
+  "event.spaces.manage",
   "tenant.settings.manage",
   "platform.tenants.manage",
   "platform.support_access.request",

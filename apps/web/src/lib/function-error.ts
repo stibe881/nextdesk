@@ -143,6 +143,20 @@ export async function functionErrorMessage(
       return "Die lokale Intune-Konfiguration konnte nicht sicher verarbeitet werden. Bitte laden Sie die Ansicht neu.";
     case "knowledge_feature_disabled":
       return "Die Wissensdatenbank ist für Ihren Mandanten derzeit deaktiviert.";
+    case "event_space_permission_denied":
+      return "Für die Raumplanung fehlt Ihnen die erforderliche Berechtigung.";
+    case "event_space_reference_invalid":
+      return "Der ausgewählte Raum oder die verantwortliche Person ist nicht mehr verfügbar. Bitte wählen Sie die Angaben erneut.";
+    case "event_space_conflicts_confirmation_required":
+      return "Es gibt eine Überschneidung. Bitte prüfen Sie den Auftrag und bestätigen Sie ihn bei Bedarf ausdrücklich.";
+    case "event_space_conflict_check_too_broad":
+      return "Dieser Zeitraum überschneidet sich mit zu vielen bestehenden Aufträgen. Bitte planen Sie einen kürzeren Zeitraum oder eine kleinere Serie.";
+    case "event_space_template_unavailable":
+    case "event_space_service_unavailable":
+      return "Die Raumplanung ist derzeit nicht verfügbar. Bitte versuchen Sie es in wenigen Minuten erneut.";
+    case "event_space_request_not_found":
+    case "event_space_task_not_found":
+      return "Der Raumauftrag oder die Aufgabe ist nicht mehr verfügbar. Bitte laden Sie die Planung neu.";
     case "reporting_feature_disabled":
       return "Service-Reporting ist für Ihren Mandanten derzeit deaktiviert.";
     case "sla_feature_disabled":

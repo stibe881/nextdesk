@@ -111,6 +111,9 @@ verify_jwt = true
 [functions.service-assets]
 verify_jwt = true
 
+[functions.event-spaces]
+verify_jwt = true
+
 [functions.asset-registry]
 verify_jwt = true
 

@@ -4620,7 +4620,269 @@ set local role authenticated;
 			end;
 			$$;
 
-			set local role authenticated;
+			-- Veranstaltungsräume sind planbare ICT-Arbeit und dürfen weder
+			-- Ticketdaten erzeugen noch mandantenübergreifend verknüpft werden.
+			insert into public.event_spaces (
+			  id, tenant_id, name, kind, location, capacity, created_by
+			) values (
+			  '79000000-0000-4000-8000-000000000001',
+			  '10000000-0000-4000-8000-000000000001',
+			  'Aula Test', 'event_room', 'Hauptgebäude', 120,
+			  '00000000-0000-4000-8000-000000000002'
+			);
+			insert into public.event_space_requests (
+			  id, tenant_id, space_id, title, starts_at, ends_at,
+			  responsible_user_id, created_by
+			) values (
+			  '79100000-0000-4000-8000-000000000001',
+			  '10000000-0000-4000-8000-000000000001',
+			  '79000000-0000-4000-8000-000000000001',
+			  'Raumauftrag Regression', timezone('utc', now()) + interval '1 day',
+			  timezone('utc', now()) + interval '1 day 1 hour',
+			  '00000000-0000-4000-8000-000000000002',
+			  '00000000-0000-4000-8000-000000000002'
+			);
+			insert into public.event_space_request_equipment (
+			  tenant_id, request_id, equipment_key
+			) values (
+			  '10000000-0000-4000-8000-000000000001',
+			  '79100000-0000-4000-8000-000000000001', 'projector'
+			);
+			insert into public.event_space_tasks (
+			  tenant_id, request_id, template_id, title, position
+			)
+			select
+			  '10000000-0000-4000-8000-000000000001',
+			  '79100000-0000-4000-8000-000000000001',
+			  template.id, template.task_label, template.position
+			from public.event_space_task_templates as template
+			where template.tenant_id = '10000000-0000-4000-8000-000000000001'
+			  and template.name = 'Standard Raumauftrag'
+			  and template.active;
+			do $$
+			begin
+			  if (
+			    select count(*)
+			    from public.event_space_task_templates
+			    where tenant_id = '10000000-0000-4000-8000-000000000001'
+			      and name = 'Standard Raumauftrag'
+			      and active
+			  ) <> 5 or (
+			    select count(*)
+			    from public.event_space_tasks
+			    where request_id = '79100000-0000-4000-8000-000000000001'
+			  ) <> 5 then
+			    raise exception 'Event-space standard tasks were not created exactly once';
+			  end if;
+			  begin
+			    insert into public.event_space_request_equipment (
+			      tenant_id, request_id, equipment_key
+			    ) values (
+			      '20000000-0000-4000-8000-000000000002',
+			      '79100000-0000-4000-8000-000000000001', 'videocall'
+			    );
+			    raise exception 'Event-space equipment accepted a request from another tenant';
+			  exception when foreign_key_violation then
+			    null;
+			  end;
+			  if exists (
+			    select 1 from public.tickets
+			    where ticket_number = 'EVENT-SPACE-REGRESSION'
+			  ) then
+			    raise exception 'Event-space planning created a ticket';
+			  end if;
+				end;
+				$$;
+
+				-- Future tenant provisioning assigns ticket baselines after role creation.
+				-- The event-space rights must follow that proven provisioning path.
+				insert into public.tenants (id, slug, name) values
+				  ('79200000-0000-4000-8000-000000000001', 'event-space-future', 'Event Space Future');
+				insert into public.roles (id, tenant_id, name, scope, is_system) values
+				  ('79200000-0000-4000-8000-000000000010', '79200000-0000-4000-8000-000000000001', 'Future Requester', 'tenant', false),
+				  ('79200000-0000-4000-8000-000000000011', '79200000-0000-4000-8000-000000000001', 'Future Support', 'department', false);
+				insert into public.role_permissions (role_id, permission_code) values
+				  ('79200000-0000-4000-8000-000000000010', 'ticket.create'),
+				  ('79200000-0000-4000-8000-000000000011', 'ticket.update');
+				do $$
+				begin
+				  if not exists (
+				    select 1 from public.role_permissions
+				    where role_id = '79200000-0000-4000-8000-000000000010'
+				      and permission_code = 'event.spaces.request'
+				  ) or not exists (
+				    select 1 from public.role_permissions
+				    where role_id = '79200000-0000-4000-8000-000000000011'
+				      and permission_code = 'event.spaces.manage'
+				  ) or not exists (
+				    select 1 from public.role_permissions
+				    where role_id = '79200000-0000-4000-8000-000000000011'
+				      and permission_code = 'event.spaces.request'
+				  ) then
+				    raise exception 'Future tenant role baselines did not receive event-space permissions';
+				  end if;
+				end;
+				$$;
+
+				-- Final conflict revalidation, task creation and audit happen in one
+				-- service-only transaction. A subsequent unconfirmed collision returns
+				-- aggregate counts and leaves no partial request behind.
+				do $$
+				declare
+				  v_created integer;
+				  v_room_conflicts integer;
+				  v_equipment_conflicts integer;
+				  v_room_signature text;
+				  v_equipment_signature text;
+				  v_snapshot text;
+				begin
+				  select created_count, room_conflict_count, equipment_conflict_count
+				    into v_created, v_room_conflicts, v_equipment_conflicts
+				  from public.create_event_space_request_series(
+				    '10000000-0000-4000-8000-000000000001',
+				    '79000000-0000-4000-8000-000000000001',
+				    'Atomarer Raumauftrag', null, 18,
+				    '00000000-0000-4000-8000-000000000002',
+				    'none',
+				    array[timezone('utc', now()) + interval '3 days'],
+				    array[timezone('utc', now()) + interval '3 days 1 hour'],
+				    array['audio']::text[], false, null,
+				    '00000000-0000-4000-8000-000000000002'
+				  );
+				  if v_created <> 1 or v_room_conflicts <> 0 or v_equipment_conflicts <> 0 then
+				    raise exception 'Atomic event-space creation did not create the expected clean request';
+				  end if;
+				  if (
+				    select count(*) from public.event_space_tasks task
+				    join public.event_space_requests request on request.id = task.request_id
+				    where request.tenant_id = '10000000-0000-4000-8000-000000000001'
+				      and request.title = 'Atomarer Raumauftrag'
+				  ) <> 5 then
+				    raise exception 'Atomic event-space creation did not create its complete task template';
+				  end if;
+				  select created_count, room_conflict_count, equipment_conflict_count
+				    into v_created, v_room_conflicts, v_equipment_conflicts
+				  from public.create_event_space_request_series(
+				    '10000000-0000-4000-8000-000000000001',
+				    '79000000-0000-4000-8000-000000000001',
+				    'Unbestätigte Kollision', null, 18,
+				    '00000000-0000-4000-8000-000000000002',
+				    'none',
+				    array[timezone('utc', now()) + interval '3 days'],
+				    array[timezone('utc', now()) + interval '3 days 1 hour'],
+				    array['audio']::text[], false, null,
+				    '00000000-0000-4000-8000-000000000002'
+				  );
+				  if v_created <> 0 or v_room_conflicts < 1 or v_equipment_conflicts < 1
+				    or exists (
+				      select 1 from public.event_space_requests
+				      where tenant_id = '10000000-0000-4000-8000-000000000001'
+				        and title = 'Unbestätigte Kollision'
+				    ) then
+				    raise exception 'Atomic event-space conflict handling allowed an unconfirmed collision';
+				  end if;
+				  select
+				    encode(digest(string_agg(request.id::text, ',' order by request.id::text), 'sha256'), 'hex'),
+				    encode(digest(string_agg(request.id::text, ',' order by request.id::text), 'sha256'), 'hex')
+				    into v_room_signature, v_equipment_signature
+				  from public.event_space_requests request
+				  join public.event_space_request_equipment equipment
+				    on equipment.request_id = request.id
+				   and equipment.tenant_id = request.tenant_id
+				   and equipment.equipment_key = 'audio'
+				  where request.tenant_id = '10000000-0000-4000-8000-000000000001'
+				    and request.title = 'Atomarer Raumauftrag';
+				  v_snapshot := v_room_signature || '.' || v_equipment_signature;
+				  select created_count, room_conflict_count, equipment_conflict_count
+				    into v_created, v_room_conflicts, v_equipment_conflicts
+				  from public.create_event_space_request_series(
+				    '10000000-0000-4000-8000-000000000001',
+				    '79000000-0000-4000-8000-000000000001',
+				    'Bestätigte Kollision', null, 18,
+				    '00000000-0000-4000-8000-000000000002',
+				    'none',
+				    array[timezone('utc', now()) + interval '3 days'],
+				    array[timezone('utc', now()) + interval '3 days 1 hour'],
+				    array['audio']::text[], true, v_snapshot,
+				    '00000000-0000-4000-8000-000000000002'
+				  );
+				  if v_created <> 1 or v_room_conflicts <> 1 or v_equipment_conflicts <> 1 then
+				    raise exception 'A matching event-space conflict snapshot was not accepted';
+				  end if;
+				  select
+				    encode(digest(string_agg(request.id::text, ',' order by request.id::text), 'sha256'), 'hex'),
+				    encode(digest(string_agg(request.id::text, ',' order by request.id::text), 'sha256'), 'hex')
+				    into v_room_signature, v_equipment_signature
+				  from public.event_space_requests request
+				  join public.event_space_request_equipment equipment
+				    on equipment.request_id = request.id
+				   and equipment.tenant_id = request.tenant_id
+				   and equipment.equipment_key = 'audio'
+				  where request.tenant_id = '10000000-0000-4000-8000-000000000001'
+				    and request.title in ('Atomarer Raumauftrag', 'Bestätigte Kollision');
+				  v_snapshot := v_room_signature || '.' || v_equipment_signature;
+				  insert into public.event_space_requests (
+				    tenant_id, space_id, title, starts_at, ends_at, responsible_user_id, created_by
+				  ) values (
+				    '10000000-0000-4000-8000-000000000001',
+				    '79000000-0000-4000-8000-000000000001', 'Zwischenzeitliche Kollision',
+				    timezone('utc', now()) + interval '3 days',
+				    timezone('utc', now()) + interval '3 days 1 hour',
+				    '00000000-0000-4000-8000-000000000002',
+				    '00000000-0000-4000-8000-000000000002'
+				  );
+				  select created_count, room_conflict_count, equipment_conflict_count
+				    into v_created, v_room_conflicts, v_equipment_conflicts
+				  from public.create_event_space_request_series(
+				    '10000000-0000-4000-8000-000000000001',
+				    '79000000-0000-4000-8000-000000000001',
+				    'Veraltete Bestätigung', null, 18,
+				    '00000000-0000-4000-8000-000000000002',
+				    'none',
+				    array[timezone('utc', now()) + interval '3 days'],
+				    array[timezone('utc', now()) + interval '3 days 1 hour'],
+				    array['audio']::text[], true, v_snapshot,
+				    '00000000-0000-4000-8000-000000000002'
+				  );
+				  if v_created <> 0 or v_room_conflicts <> 3 or v_equipment_conflicts <> 2
+				    or exists (
+				      select 1 from public.event_space_requests
+				      where title = 'Veraltete Bestätigung'
+				    ) then
+				    raise exception 'A stale event-space conflict snapshot created an unconfirmed collision';
+				  end if;
+				  begin
+				    perform * from public.create_event_space_request_series(
+				      '10000000-0000-4000-8000-000000000001',
+				      '79000000-0000-4000-8000-000000000001', 'Ungültig wöchentlich', null, 1,
+				      '00000000-0000-4000-8000-000000000002', 'weekly',
+				      array['2027-02-03 08:00:00+00'::timestamptz, '2027-02-04 08:00:00+00'::timestamptz],
+				      array['2027-02-03 10:00:00+00'::timestamptz, '2027-02-04 10:00:00+00'::timestamptz],
+				      array[]::text[], false, null,
+				      '00000000-0000-4000-8000-000000000002'
+				    );
+				    raise exception 'Service-only creation accepted a non-weekly or internally overlapping series';
+				  exception when invalid_parameter_value then
+				    null;
+				  end;
+				  begin
+				    perform * from public.create_event_space_request_series(
+				      '10000000-0000-4000-8000-000000000001',
+				      '79000000-0000-4000-8000-000000000001', 'Ungültig monatlich', null, 1,
+				      '00000000-0000-4000-8000-000000000002', 'monthly',
+				      array['2027-01-31 08:00:00+00'::timestamptz, '2027-02-15 08:00:00+00'::timestamptz],
+				      array['2027-01-31 10:00:00+00'::timestamptz, '2027-02-15 10:00:00+00'::timestamptz],
+				      array[]::text[], false, null,
+				      '00000000-0000-4000-8000-000000000002'
+				    );
+				    raise exception 'Service-only creation accepted an invalid monthly series';
+				  exception when invalid_parameter_value then
+				    null;
+				  end;
+				end;
+				$$;
+
+				set local role authenticated;
 			select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-000000000002', true);
 			do $$
 			begin
@@ -4640,7 +4902,34 @@ set local role authenticated;
 			  exception when insufficient_privilege then
 			    null;
 			  end;
-			end;
+			  begin
+			    perform 1 from public.event_spaces limit 1;
+			    raise exception 'Authenticated browser role read direct event-space data';
+			  exception when insufficient_privilege then
+			    null;
+			  end;
+				  begin
+				    perform 1 from public.event_space_requests limit 1;
+				    raise exception 'Authenticated browser role read direct event-space requests';
+				  exception when insufficient_privilege then
+				    null;
+				  end;
+				  begin
+				    perform * from public.create_event_space_request_series(
+				      '10000000-0000-4000-8000-000000000001',
+				      '79000000-0000-4000-8000-000000000001',
+				      'Browser blocked', null, 1,
+				      '00000000-0000-4000-8000-000000000002',
+				      'none', array[timezone('utc', now()) + interval '4 days'],
+				      array[timezone('utc', now()) + interval '4 days 1 hour'],
+				      array[]::text[], false, null,
+				      '00000000-0000-4000-8000-000000000002'
+				    );
+				    raise exception 'Authenticated browser role called the event-space creation RPC';
+				  exception when insufficient_privilege then
+				    null;
+				  end;
+				end;
 			$$;
 			rollback;
 SQL
