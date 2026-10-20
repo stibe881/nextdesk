@@ -92,6 +92,7 @@ const expectedFiles = [
   "0088_knowledge_collection_hierarchy.sql",
   "0089_event_space_requests.sql",
   "0090_employee_onboarding.sql",
+  "0091_knowledge_fulltext_search.sql",
 ];
 
 const availableFiles = await readdir(migrationDirectory);
@@ -982,6 +983,23 @@ const requiredFragments = [
   [
     "0090_employee_onboarding.sql",
     "revoke all on table public.onboarding_templates",
+  ],
+  [
+    "0091_knowledge_fulltext_search.sql",
+    "knowledge_article_revisions_title_search_document_idx",
+  ],
+  [
+    "0091_knowledge_fulltext_search.sql",
+    "knowledge_article_revisions_apply_title_snapshot",
+  ],
+  [
+    "0091_knowledge_fulltext_search.sql",
+    "create or replace function public.search_knowledge_article_ids",
+  ],
+  ["0091_knowledge_fulltext_search.sql", "revision.title_snapshot"],
+  [
+    "0091_knowledge_fulltext_search.sql",
+    "grant execute on function public.search_knowledge_article_ids(uuid, text, boolean, uuid[]) to service_role",
   ],
 ];
 

@@ -4950,5 +4950,243 @@ set local role authenticated;
 				end;
 			$$;
 			rollback;
+
+-- Wissensartikel werden serverseitig über Titel, Zusammenfassung und Revisionstext
+-- durchsucht. Externe Personen sehen dabei ausschliesslich die veröffentlichte
+-- Revision und niemals interne oder fremdmandantige Treffer.
+insert into public.customer_organizations (id, tenant_id, name, active) values
+  (
+    '93000000-0000-4000-8000-000000000001',
+    '10000000-0000-4000-8000-000000000001',
+    'Volltext Organisation aktiv',
+    true
+  ),
+  (
+    '93000000-0000-4000-8000-000000000002',
+    '10000000-0000-4000-8000-000000000001',
+    'Volltext Organisation inaktiv',
+    false
+  );
+insert into public.customer_memberships (
+  customer_organization_id, user_id, access
+) values (
+  '93000000-0000-4000-8000-000000000001',
+  '00000000-0000-4000-8000-000000000002',
+  'company'
+);
+insert into public.knowledge_articles (
+  id, tenant_id, title, slug, visibility, status, current_revision, created_by
+) values
+  (
+    '91000000-0000-4000-8000-000000000001',
+    '10000000-0000-4000-8000-000000000001',
+    'Quasar-Drucker einrichten',
+    'quasar-drucker-einrichten',
+    'internal',
+    'draft',
+    1,
+    '00000000-0000-4000-8000-000000000002'
+  ),
+  (
+    '91000000-0000-4000-8000-000000000002',
+    '10000000-0000-4000-8000-000000000001',
+    'Öffentliche Netzwerkanleitung',
+    'oeffentliche-netzwerkanleitung',
+    'external',
+    'published',
+    1,
+    '00000000-0000-4000-8000-000000000002'
+  ),
+  (
+    '92000000-0000-4000-8000-000000000003',
+    '20000000-0000-4000-8000-000000000002',
+    'Fremdmandant-Dokument',
+    'fremdmandant-dokument',
+    'internal',
+    'draft',
+    1,
+    '00000000-0000-4000-8000-000000000004'
+  ),
+  (
+    '91000000-0000-4000-8000-000000000004',
+    '10000000-0000-4000-8000-000000000001',
+    'Inaktive Titelkennzeichnung',
+    'inaktive-titelkennzeichnung',
+    'external',
+    'published',
+    1,
+    '00000000-0000-4000-8000-000000000002'
+  );
+update public.knowledge_articles
+set published_revision = 1,
+    published_at = timezone('utc', now()),
+    customer_organization_id = '93000000-0000-4000-8000-000000000001'
+where id = '91000000-0000-4000-8000-000000000002';
+update public.knowledge_articles
+set published_revision = 1,
+    published_at = timezone('utc', now()),
+    customer_organization_id = '93000000-0000-4000-8000-000000000002'
+where id = '91000000-0000-4000-8000-000000000004';
+insert into public.knowledge_article_revisions (
+  article_id, revision, body, summary, author_id
+) values
+  (
+    '91000000-0000-4000-8000-000000000001',
+    1,
+    'Mit dem Wolkenfeder-Schlüssel wird die sichere Druckerverbindung eingerichtet.',
+    'Druckerverbindung',
+    '00000000-0000-4000-8000-000000000002'
+  ),
+  (
+    '91000000-0000-4000-8000-000000000002',
+    1,
+    'Das Lichtsignal bestätigt die freigegebene Netzwerkverbindung.',
+    'Netzwerkzugang',
+    '00000000-0000-4000-8000-000000000002'
+  ),
+  (
+    '92000000-0000-4000-8000-000000000003',
+    1,
+    'Wolkenfeder aus einem anderen Mandanten.',
+    'Fremdmandant',
+    '00000000-0000-4000-8000-000000000004'
+  ),
+  (
+    '91000000-0000-4000-8000-000000000004',
+    1,
+    'Inhalt der nicht mehr aktiven Organisation.',
+    'Inaktiver Zugriff',
+    '00000000-0000-4000-8000-000000000002'
+  );
+
+begin;
+set local role service_role;
+do $$
+begin
+  if has_function_privilege(
+    'authenticated',
+    'public.search_knowledge_article_ids(uuid, text, boolean, uuid[])',
+    'execute'
+  ) then
+    raise exception 'Authenticated browser role executed knowledge full-text search';
+  end if;
+  if not has_function_privilege(
+    'service_role',
+    'public.search_knowledge_article_ids(uuid, text, boolean, uuid[])',
+    'execute'
+  ) then
+    raise exception 'service_role may not execute knowledge full-text search';
+  end if;
+  if not exists (
+    select 1
+    from public.search_knowledge_article_ids(
+      '10000000-0000-4000-8000-000000000001',
+      'Wolkenfeder',
+      true,
+      array[]::uuid[]
+    ) result
+    where result.article_id = '91000000-0000-4000-8000-000000000001'
+  ) then
+    raise exception 'Knowledge full-text search missed an article body match';
+  end if;
+  if not exists (
+    select 1
+    from public.search_knowledge_article_ids(
+      '10000000-0000-4000-8000-000000000001',
+      'Druckerverbindung',
+      true,
+      array[]::uuid[]
+    ) result
+    where result.article_id = '91000000-0000-4000-8000-000000000001'
+  ) then
+    raise exception 'Knowledge full-text search missed an article summary match';
+  end if;
+  if not exists (
+    select 1
+    from public.search_knowledge_article_ids(
+      '10000000-0000-4000-8000-000000000001',
+      'Quasar',
+      true,
+      array[]::uuid[]
+    ) result
+    where result.article_id = '91000000-0000-4000-8000-000000000001'
+  ) then
+    raise exception 'Knowledge full-text search missed an article title match';
+  end if;
+  if exists (
+    select 1
+    from public.search_knowledge_article_ids(
+      '10000000-0000-4000-8000-000000000001',
+      'Wolkenfeder',
+      false,
+      array[]::uuid[]
+    ) result
+    where result.article_id = '91000000-0000-4000-8000-000000000001'
+  ) then
+    raise exception 'External knowledge search exposed an internal revision';
+  end if;
+  if not exists (
+    select 1
+    from public.search_knowledge_article_ids(
+      '10000000-0000-4000-8000-000000000001',
+      'Lichtsignal',
+      false,
+      array['93000000-0000-4000-8000-000000000001'::uuid]
+    ) result
+    where result.article_id = '91000000-0000-4000-8000-000000000002'
+  ) then
+    raise exception 'External knowledge search did not find a published revision';
+  end if;
+  if not exists (
+    select 1
+    from public.search_knowledge_article_ids(
+      '10000000-0000-4000-8000-000000000001',
+      'Netzwerkanleitung',
+      false,
+      array['93000000-0000-4000-8000-000000000001'::uuid]
+    ) result
+    where result.article_id = '91000000-0000-4000-8000-000000000002'
+  ) then
+    raise exception 'External knowledge search missed a published revision title';
+  end if;
+  if exists (
+    select 1
+    from public.search_knowledge_article_ids(
+      '10000000-0000-4000-8000-000000000001',
+      'Netzwerkanleitung',
+      false,
+      array[]::uuid[]
+    ) result
+    where result.article_id = '91000000-0000-4000-8000-000000000002'
+  ) then
+    raise exception 'External knowledge search ignored the customer organisation scope';
+  end if;
+  if exists (
+    select 1
+    from public.search_knowledge_article_ids(
+      '10000000-0000-4000-8000-000000000001',
+      'Titelkennzeichnung',
+      false,
+      array['93000000-0000-4000-8000-000000000002'::uuid]
+    ) result
+    where result.article_id = '91000000-0000-4000-8000-000000000004'
+  ) then
+    raise exception 'External knowledge search exposed an inactive customer organisation';
+  end if;
+  if exists (
+    select 1
+    from public.search_knowledge_article_ids(
+      '10000000-0000-4000-8000-000000000001',
+      'Wolkenfeder',
+      true,
+      array[]::uuid[]
+    ) result
+    where result.article_id = '92000000-0000-4000-8000-000000000003'
+  ) then
+    raise exception 'Knowledge full-text search crossed a tenant boundary';
+  end if;
+end;
+$$;
+rollback;
 SQL
 echo "PostgreSQL 16 migration and RLS integration checks passed."

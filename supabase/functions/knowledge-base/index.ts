@@ -9,9 +9,9 @@ const MAX_TITLE_LENGTH = 240;
 const MAX_BODY_LENGTH = 100_000;
 const MAX_QUERY_LENGTH = 120;
 const ARTICLE_SELECT =
-  "id, tenant_id, title, slug, visibility, customer_organization_id, status, current_revision, published_revision, review_requested_at, created_by, published_at, created_at, updated_at";
+  "id, title, slug, visibility, status, current_revision, published_revision, review_requested_at, published_at, created_at, updated_at";
 const REVISION_SELECT =
-  "id, article_id, revision, body, summary, author_id, created_at";
+  "id, article_id, revision, title_snapshot, body, summary, created_at";
 
 type Visibility = "internal" | "external";
 type Action =
@@ -322,10 +322,6 @@ async function requireAuthorization(
     : { ok: false, status: 403, code: "article_manage_denied" };
 }
 
-function escapeIlikePattern(value: string): string {
-  return value.replace(/[\\%_]/g, "\\$&");
-}
-
 function createSlug(title: string): string {
   const base = title
     .normalize("NFKD")
@@ -420,12 +416,15 @@ async function fetchLatestRevisions(
 async function customerOrganizationIds(
   admin: any,
   userId: string,
+  tenantId: string,
 ): Promise<string[] | null> {
   const { data, error } = await admin
     .from("customer_memberships")
-    .select("customer_organization_id")
+    .select("customer_organization_id, customer_organizations!inner(id)")
     .eq("user_id", userId)
-    .eq("access", "company");
+    .eq("access", "company")
+    .eq("customer_organizations.tenant_id", tenantId)
+    .eq("customer_organizations.active", true);
   if (error) return null;
   return (data ?? [])
     .map((membership: any) => membership.customer_organization_id)
@@ -444,6 +443,24 @@ function applyExternalArticleScope(query: any, organizationIds: string[]): any {
     .neq("status", "archived")
     .not("published_revision", "is", null)
     .or(scope.join(","));
+}
+
+function articleResponse(
+  article: any,
+  revision: any | null,
+  canReadInternal: boolean,
+  collectionIds: string[],
+): Record<string, unknown> {
+  const title =
+    !canReadInternal && typeof revision?.title_snapshot === "string"
+      ? revision.title_snapshot
+      : article.title;
+  return { ...article, title, collection_ids: collectionIds };
+}
+
+function revisionResponse(revision: any): Record<string, unknown> {
+  const { title_snapshot: _titleSnapshot, ...visibleRevision } = revision;
+  return visibleRevision;
 }
 
 async function fetchArticleCollectionIds(
@@ -659,7 +676,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       return json(request, { error: { code: "article_not_found" } }, 404);
     const { data, error } = await admin
       .from("knowledge_article_revisions")
-      .select("id, article_id, revision, summary, author_id, created_at")
+      .select("id, article_id, revision, summary, created_at")
       .eq("article_id", action.articleId)
       .order("revision", { ascending: false })
       .limit(50);
@@ -904,7 +921,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
 
     const organizationIds = canReadInternal
       ? []
-      : await customerOrganizationIds(admin, actorId);
+      : await customerOrganizationIds(admin, actorId, action.tenantId);
     if (organizationIds === null)
       return json(
         request,
@@ -913,6 +930,37 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       );
 
     if (action.type === "listArticles") {
+      const ranks = new Map<string, number>();
+      let matchingArticleIds: string[] | null = null;
+      if (action.query) {
+        const { data: matches, error: searchError } = await admin.rpc(
+          "search_knowledge_article_ids",
+          {
+            p_tenant_id: action.tenantId,
+            p_query: action.query,
+            p_can_read_internal: canReadInternal,
+            p_customer_organization_ids: organizationIds,
+          },
+        );
+        if (searchError)
+          return json(
+            request,
+            { error: { code: "article_search_failed" } },
+            500,
+          );
+        for (const match of matches ?? []) {
+          if (!isRecord(match) || !isUuid(match.article_id)) continue;
+          ranks.set(
+            match.article_id,
+            typeof match.rank === "number" ? match.rank : 0,
+          );
+        }
+        matchingArticleIds = [...ranks.keys()];
+        if (matchingArticleIds.length === 0) {
+          return json(request, { data: { articles: [] } });
+        }
+      }
+
       let query = admin
         .from("knowledge_articles")
         .select(ARTICLE_SELECT)
@@ -923,14 +971,19 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       if (!canReadInternal) {
         query = applyExternalArticleScope(query, organizationIds);
       }
-      if (action.query)
-        query = query.ilike("title", `%${escapeIlikePattern(action.query)}%`);
+      if (matchingArticleIds) query = query.in("id", matchingArticleIds);
 
       const { data, error } = await query;
       if (error)
         return json(request, { error: { code: "article_list_failed" } }, 500);
 
-      const articles = data ?? [];
+      const articles = [...(data ?? [])];
+      if (matchingArticleIds) {
+        articles.sort(
+          (left: any, right: any) =>
+            (ranks.get(right.id) ?? 0) - (ranks.get(left.id) ?? 0),
+        );
+      }
       const revisions = await fetchLatestRevisions(
         admin,
         articles,
@@ -958,9 +1011,15 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       return json(request, {
         data: {
           articles: articles.map((article: any) => ({
-            ...article,
-            revision: revisions.data.get(article.id) ?? null,
-            collection_ids: articleCollections.data.get(article.id) ?? [],
+            ...articleResponse(
+              article,
+              revisions.data.get(article.id) ?? null,
+              canReadInternal,
+              articleCollections.data.get(article.id) ?? [],
+            ),
+            revision: revisions.data.has(article.id)
+              ? revisionResponse(revisions.data.get(article.id))
+              : null,
           })),
         },
       });
@@ -1018,11 +1077,13 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       );
     return json(request, {
       data: {
-        article: {
-          ...article,
-          collection_ids: articleCollections.data.get(article.id) ?? [],
-        },
-        revision: revision.data,
+        article: articleResponse(
+          article,
+          revision.data,
+          canReadInternal,
+          articleCollections.data.get(article.id) ?? [],
+        ),
+        revision: revisionResponse(revision.data),
       },
     });
   }
@@ -1053,6 +1114,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         .insert({
           article_id: article.id,
           revision: 1,
+          title_snapshot: action.title,
           body: action.bodyMarkdown,
           author_id: actorId,
         })
@@ -1118,6 +1180,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       .insert({
         article_id: existing.id,
         revision: nextRevision,
+        title_snapshot: action.title,
         body: action.bodyMarkdown,
         author_id: actorId,
       })

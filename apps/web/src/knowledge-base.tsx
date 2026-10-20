@@ -178,6 +178,13 @@ const knowledgeBaseStyles = `
     max-width: 560px;
     gap: 8px;
   }
+  .knowledge-base__search-help {
+    flex: 1 0 100%;
+    margin: -2px 0 0;
+    color: #5d6f7a;
+    font-size: 12px;
+    line-height: 1.45;
+  }
   .knowledge-base__search input,
   .knowledge-base__form input,
   .knowledge-base__form select,
@@ -1199,11 +1206,12 @@ export function KnowledgeBase({ tenantId }: KnowledgeBaseProps) {
             onSubmit={(event) => void submitSearch(event)}
           >
             <input
-              aria-label="Wissensartikel durchsuchen"
+              aria-describedby="knowledge-search-help"
+              aria-label="Wissensdatenbank durchsuchen"
               disabled={loadingList || isBusy}
               maxLength={120}
               onChange={(event) => setSearchInput(event.target.value)}
-              placeholder="Titel durchsuchen"
+              placeholder="Titel und Artikelinhalt durchsuchen"
               type="search"
               value={searchInput}
             />
@@ -1224,6 +1232,12 @@ export function KnowledgeBase({ tenantId }: KnowledgeBaseProps) {
                 Suche löschen
               </button>
             ) : null}
+            <p
+              className="knowledge-base__search-help"
+              id="knowledge-search-help"
+            >
+              Durchsucht Titel, Zusammenfassung und Artikelinhalt.
+            </p>
           </form>
           <div className="knowledge-base__toolbar-actions">
             <button
