@@ -85,6 +85,7 @@ const expectedFiles = [
   "0081_entra_directory_configuration_management.sql",
   "0082_tenant_administrator_ticket_delete_permission.sql",
   "0083_asset_intune_local_preflight_control.sql",
+  "0084_harden_asset_feature_gate_membership.sql",
 ];
 
 const availableFiles = await readdir(migrationDirectory);
@@ -821,6 +822,10 @@ const requiredFragments = [
   [
     "0083_asset_intune_local_preflight_control.sql",
     "grant execute on function public.run_asset_intune_local_preflight(uuid, uuid, uuid, uuid)\n  to service_role",
+  ],
+  [
+    "0084_harden_asset_feature_gate_membership.sql",
+    "select public.is_active_tenant_member(p_tenant_id)",
   ],
 ];
 

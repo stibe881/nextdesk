@@ -3677,6 +3677,11 @@ where assignment.tenant_id = '10000000-0000-4000-8000-000000000001'
   and assignment.user_id = '00000000-0000-4000-8000-000000000002'
 on conflict do nothing;
 
+update public.tenant_feature_flags
+set enabled = true
+where tenant_id = '20000000-0000-4000-8000-000000000002'
+  and feature_key = 'assets.management';
+
 set local role authenticated;
 	select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-000000000002', true);
 	do $$
@@ -3718,14 +3723,19 @@ set local role authenticated;
 	  exception when insufficient_privilege then
 	    null;
 	  end;
-	  begin
-	    perform 1 from public.asset_intune_asset_links limit 1;
-	    raise exception 'Authenticated browser role read private Intune device links';
-	  exception when insufficient_privilege then
-	    null;
-	  end;
-	end;
-	$$;
+		  begin
+		    perform 1 from public.asset_intune_asset_links limit 1;
+		    raise exception 'Authenticated browser role read private Intune device links';
+		  exception when insufficient_privilege then
+		    null;
+		  end;
+		  if public.is_asset_management_client_enabled(
+		    '20000000-0000-4000-8000-000000000002'
+		  ) then
+		    raise exception 'An active member could probe the asset feature state of another tenant';
+		  end if;
+		end;
+		$$;
 	reset role;
 	update public.tenant_feature_flags
 	set enabled = false
