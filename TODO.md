@@ -95,3 +95,5 @@
   - Speichern, Sichtbarkeit, Review und Veröffentlichung bleiben getrennte, explizite Schritte. Die KI darf keine Artikel automatisch speichern, veröffentlichen oder als extern markieren.
   - Eine Mandantenadministration muss `ai.assist` aktivieren und Anthropic sichtbar für Wissensentwürfe freigeben. Interne und externe Artikelinhalte werden getrennt zugelassen; externe Inhalte erfordern eine zusätzliche bewusste Zustimmung.
   - Die serverseitige Function bleibt JWT-geschützt, prüft aktive Mandantenmitgliedschaft und `knowledge.manage`, begrenzt Anfrage und Ausgabe, speichert weder Rohinhalt noch Prompt oder Ergebnis und verweigert Aufrufe ohne gültige Freigabe, Modell oder Secret.
+
+- [x] **Arbeitsplatz: Team-Warteschlangen nur bei Verfügbarkeit.** Wenn der aktive Mandant keine Team-Warteschlangen anbietet, wird der vollständige nicht bedienbare Warteschlangenbereich im Arbeitsplatz ausgeblendet. Während des Ladens und bei vorhandenen Daten bleiben die bestehenden Rückmeldungen erhalten; Rechte, Mandantentrennung und API-Aufruf bleiben unverändert.

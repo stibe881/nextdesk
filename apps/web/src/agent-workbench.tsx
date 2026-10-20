@@ -19,6 +19,10 @@ import {
   type ReactNode,
 } from "react";
 import { supabase } from "./lib/supabase";
+import {
+  shouldShowTeamQueuesPanel,
+  type TeamQueuesPanelState,
+} from "./lib/team-queues-visibility";
 import "./agent-workbench.css";
 
 type WorkbenchView =
@@ -405,9 +409,7 @@ function TeamQueuesPanel({
   tenantId: string;
 }) {
   const [queues, setQueues] = useState<TeamQueue[]>([]);
-  const [state, setState] = useState<"loading" | "ready" | "unavailable">(
-    "loading",
-  );
+  const [state, setState] = useState<TeamQueuesPanelState>("loading");
 
   useEffect(() => {
     let mounted = true;
@@ -439,6 +441,8 @@ function TeamQueuesPanel({
     };
   }, [tenantId]);
 
+  if (!shouldShowTeamQueuesPanel(state)) return null;
+
   return (
     <section
       aria-labelledby="workbench-team-heading"
@@ -461,10 +465,6 @@ function TeamQueuesPanel({
       {state === "loading" ? (
         <p aria-busy="true" className="workbench-empty" role="status">
           Warteschlangen werden geladen …
-        </p>
-      ) : state === "unavailable" ? (
-        <p className="workbench-empty" role="status">
-          Team-Warteschlangen sind für diesen Mandanten derzeit nicht verfügbar.
         </p>
       ) : queues.length === 0 ? (
         <p className="workbench-empty">
