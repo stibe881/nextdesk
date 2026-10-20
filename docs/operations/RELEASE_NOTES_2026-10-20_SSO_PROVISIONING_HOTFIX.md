@@ -34,6 +34,13 @@
 - Das Hetzner-Webbundle wurde am 20. Oktober 2026 um `07:05:13 UTC` kontrolliert ausgerollt. Vorher wurde eine Rückfallkopie erstellt; der anschliessende Release-Smoke-Test war erfolgreich.
 - Der zugehörige native Quellhotfix ist als Mobil-Commit `54f33fe` gespeichert und durch TypeScript sowie Vitest geprüft. Er benötigt für bereits installierte iOS-Apps einen neuen EAS-/TestFlight-Build; ein solcher Build wurde mit diesem Release nicht gestartet.
 
+## Web-SSO-PKCE-Hotfix
+
+- **Codebasis:** `f2a969fee67e17766c9111092bcb0b9cd16d9dfe` – `fix(auth): exchange web SSO callbacks with PKCE`.
+- Der Browser-Supabase-Client verwendet für Azure-Anmeldungen nun explizit PKCE. Der Rücksprung wird als einmaliger Code mit dem im selben Browser gespeicherten Verifier ausgetauscht; damit ist keine implizite Sitzungsübergabe über ein URL-Fragment mehr vorausgesetzt.
+- Das Hetzner-Webbundle wurde am 20. Oktober 2026 um `07:51:13 UTC` nach einer datierten Rückfallkopie ausgerollt. Der Release-Smoke-Test sowie die vollständige TypeScript-, Deno-, PostgreSQL-RLS-, Schema- und Formatprüfung waren erfolgreich.
+- Der produktive Gatewaytest bestätigte ausschliesslich anhand anonymisierter Metadaten einen PKCE-Start (`code_challenge`, HTTP 302). Es wurden keine Token, Codes, Browser-Sitzungen oder Personendaten ausgelesen.
+
 ## Nicht Bestandteil dieses Releases
 
 - Es wurde kein neuer iOS-Build oder TestFlight-Upload ausgelöst.
