@@ -21,6 +21,7 @@ import {
   CalendarClock,
   CalendarDays,
   ChartNoAxesCombined,
+  ClipboardList,
   CircleCheck,
   CircleEllipsis,
   FileWarning,
@@ -75,6 +76,7 @@ import { KnowledgeBase } from "./knowledge-base";
 import { ServiceReporting } from "./service-reporting";
 import { ServiceAssets } from "./service-assets";
 import { EventSpaces } from "./event-spaces";
+import { Onboarding } from "./onboarding";
 import { PersonalSettings } from "./personal-settings";
 import { ExperienceWorkspace, MyDayCard } from "./experience-workspace";
 import {
@@ -116,6 +118,7 @@ type Section =
   | "Assets"
   | "Fälle"
   | "Veranstaltungsräume"
+  | "Eintritte"
   | "Wissen"
   | "Berichte"
   | "Wiedervorlagen"
@@ -227,6 +230,7 @@ const sections: readonly { label: Section; Icon: LucideIcon }[] = [
   { label: "Services", Icon: MonitorCog },
   { label: "Assets", Icon: Boxes },
   { label: "Veranstaltungsräume", Icon: CalendarDays },
+  { label: "Eintritte", Icon: ClipboardList },
   { label: "Wissen", Icon: BookOpen },
   { label: "Mein Portal", Icon: UserRound },
   { label: "Berichte", Icon: ChartNoAxesCombined },
@@ -2667,6 +2671,7 @@ export function App() {
           item.label === "Übersicht" ||
           item.label === "Tickets" ||
           item.label === "Veranstaltungsräume" ||
+          item.label === "Eintritte" ||
           item.label === "Mein Portal" ||
           item.label === "Wiedervorlagen",
       );
@@ -3294,6 +3299,8 @@ export function App() {
           <ServiceAssets fixedTab="assets" tenantId={activeTenant.id} />
         ) : section === "Veranstaltungsräume" && activeTenant ? (
           <EventSpaces tenantId={activeTenant.id} />
+        ) : section === "Eintritte" && activeTenant ? (
+          <Onboarding tenantId={activeTenant.id} />
         ) : section === "Services" &&
           activeTenant &&
           isFeatureEnabled("assets.management") ? (

@@ -4908,12 +4908,30 @@ set local role authenticated;
 			  exception when insufficient_privilege then
 			    null;
 			  end;
-				  begin
-				    perform 1 from public.event_space_requests limit 1;
-				    raise exception 'Authenticated browser role read direct event-space requests';
-				  exception when insufficient_privilege then
-				    null;
-				  end;
+			  begin
+			    perform 1 from public.event_space_requests limit 1;
+			    raise exception 'Authenticated browser role read direct event-space requests';
+			  exception when insufficient_privilege then
+			    null;
+			  end;
+			  begin
+			    perform 1 from public.onboarding_entries limit 1;
+			    raise exception 'Authenticated browser role read direct onboarding entries';
+			  exception when insufficient_privilege then
+			    null;
+			  end;
+			  begin
+			    perform public.create_onboarding_entry(
+			      '10000000-0000-4000-8000-000000000001', 'Browser blocked', current_date,
+			      null, null, '00000000-0000-4000-8000-000000000002',
+			      '00000000-0000-4000-8000-000000000002',
+			      (select id from public.onboarding_templates where tenant_id = '10000000-0000-4000-8000-000000000001' limit 1),
+			      '00000000-0000-4000-8000-000000000002'
+			    );
+			    raise exception 'Authenticated browser role called the onboarding creation RPC';
+			  exception when insufficient_privilege then
+			    null;
+			  end;
 				  begin
 				    perform * from public.create_event_space_request_series(
 				      '10000000-0000-4000-8000-000000000001',

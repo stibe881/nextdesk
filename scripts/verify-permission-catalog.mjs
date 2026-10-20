@@ -32,6 +32,10 @@ const eventSpacesMigrationPath = new URL(
   "../supabase/migrations/0089_event_space_requests.sql",
   import.meta.url,
 );
+const onboardingMigrationPath = new URL(
+  "../supabase/migrations/0090_employee_onboarding.sql",
+  import.meta.url,
+);
 const catalog = await readFile(catalogPath, "utf8");
 const migrations = await Promise.all([
   readFile(baseMigrationPath, "utf8"),
@@ -41,6 +45,7 @@ const migrations = await Promise.all([
   readFile(assetIntegrationMigrationPath, "utf8"),
   readFile(ticketApprovalMigrationPath, "utf8"),
   readFile(eventSpacesMigrationPath, "utf8"),
+  readFile(onboardingMigrationPath, "utf8"),
 ]);
 const migration = migrations.join("\n");
 

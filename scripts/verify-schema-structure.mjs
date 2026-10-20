@@ -91,6 +91,7 @@ const expectedFiles = [
   "0087_cascade_ticket_followups_and_confirmations.sql",
   "0088_knowledge_collection_hierarchy.sql",
   "0089_event_space_requests.sql",
+  "0090_employee_onboarding.sql",
 ];
 
 const availableFiles = await readdir(migrationDirectory);
@@ -962,6 +963,26 @@ const requiredFragments = [
   ["0089_event_space_requests.sql", "responsible_user_id uuid not null"],
   ["0089_event_space_requests.sql", "p_conflict_snapshot text"],
   ["0089_event_space_requests.sql", "Europe/Zurich"],
+  [
+    "0090_employee_onboarding.sql",
+    "create table if not exists public.onboarding_entries",
+  ],
+  [
+    "0090_employee_onboarding.sql",
+    "create table if not exists public.onboarding_tasks",
+  ],
+  [
+    "0090_employee_onboarding.sql",
+    "create table if not exists public.onboarding_exception_tickets",
+  ],
+  [
+    "0090_employee_onboarding.sql",
+    "create or replace function public.create_onboarding_entry",
+  ],
+  [
+    "0090_employee_onboarding.sql",
+    "revoke all on table public.onboarding_templates",
+  ],
 ];
 
 for (const [migration, fragment] of requiredFragments) {
@@ -1038,6 +1059,11 @@ if (
   !functionConfiguration.includes("[functions.event-spaces]\nverify_jwt = true")
 ) {
   throw new Error("event-spaces must explicitly require verified user JWTs.");
+}
+if (
+  !functionConfiguration.includes("[functions.onboarding]\nverify_jwt = true")
+) {
+  throw new Error("onboarding must explicitly require verified user JWTs.");
 }
 
 console.log(

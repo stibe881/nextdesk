@@ -35,6 +35,8 @@ export const permissionCodes = [
   "asset.integration.manage",
   "event.spaces.request",
   "event.spaces.manage",
+  "onboarding.request",
+  "onboarding.manage",
   "tenant.settings.manage",
   "platform.tenants.manage",
   "platform.support_access.request",

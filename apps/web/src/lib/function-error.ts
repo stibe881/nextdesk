@@ -157,6 +157,17 @@ export async function functionErrorMessage(
     case "event_space_request_not_found":
     case "event_space_task_not_found":
       return "Der Raumauftrag oder die Aufgabe ist nicht mehr verfügbar. Bitte laden Sie die Planung neu.";
+    case "onboarding_permission_denied":
+      return "Für diesen Onboarding-Schritt fehlt Ihnen die erforderliche Berechtigung.";
+    case "onboarding_reference_invalid":
+      return "Die gewählte Person, Vorlage, Aufgabe oder Ticketreferenz ist nicht mehr verfügbar. Bitte laden Sie die Ansicht neu.";
+    case "onboarding_entry_not_found":
+    case "onboarding_task_not_found":
+      return "Der Eintritt oder die Onboarding-Aufgabe ist nicht mehr verfügbar. Bitte laden Sie die Ansicht neu.";
+    case "onboarding_conflict":
+      return "Diese Ticketverknüpfung besteht bereits.";
+    case "onboarding_service_unavailable":
+      return "Das Onboarding ist derzeit nicht verfügbar. Bitte versuchen Sie es in wenigen Minuten erneut.";
     case "reporting_feature_disabled":
       return "Service-Reporting ist für Ihren Mandanten derzeit deaktiviert.";
     case "sla_feature_disabled":
