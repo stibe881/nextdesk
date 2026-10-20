@@ -27,6 +27,10 @@ import {
 import { supabase } from "./lib/supabase";
 import { functionErrorMessage } from "./lib/function-error";
 import {
+  groupRolePermissions,
+  roleScopeLabel,
+} from "./lib/role-management-presentation";
+import {
   getTenantSettings,
   type PushContentLevel,
   type PushTenantSettings,
@@ -1162,8 +1166,12 @@ export function TenantAdminSettings({
   const [roleAssignments, setRoleAssignments] = useState<
     RoleAssignmentWithDetails[]
   >([]);
+  const [roleCreationOpen, setRoleCreationOpen] = useState(false);
   const [assignmentPendingRevocation, setAssignmentPendingRevocation] =
     useState<RoleAssignmentWithDetails | null>(null);
+  const revokeRoleDialogRef = useRef<HTMLDivElement>(null);
+  const revokeRoleCancelButtonRef = useRef<HTMLButtonElement>(null);
+  const revokeRoleTriggerRef = useRef<HTMLButtonElement>(null);
   const [invitationEmail, setInvitationEmail] = useState("");
   const [invitationPersonForm, setInvitationPersonForm] =
     useState<PersonForm>(emptyPersonForm);
@@ -1490,12 +1498,72 @@ export function TenantAdminSettings({
 
   useEffect(() => {
     setRoleForm(emptyRoleForm);
+    setRoleCreationOpen(false);
     setEditingRoleId(null);
     setRoleEditForm(emptyRoleForm);
     setRoleAssignmentForm(emptyRoleAssignmentForm);
     setRoleAssignments([]);
     setAssignmentPendingRevocation(null);
   }, [tenantId]);
+
+  useEffect(() => {
+    if (!assignmentPendingRevocation) return;
+
+    const dialog = revokeRoleDialogRef.current;
+    if (!dialog) return;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const focusInitialButton = window.requestAnimationFrame(() => {
+      revokeRoleCancelButtonRef.current?.focus();
+    });
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setAssignmentPendingRevocation(null);
+        return;
+      }
+      if (event.key !== "Tab") return;
+
+      const focusable = Array.from(
+        dialog.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        ),
+      );
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (!first || !last) {
+        event.preventDefault();
+        return;
+      }
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    const handleFocusIn = (event: FocusEvent) => {
+      if (event.target instanceof Node && !dialog.contains(event.target)) {
+        revokeRoleCancelButtonRef.current?.focus();
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown, true);
+    document.addEventListener("focusin", handleFocusIn, true);
+
+    return () => {
+      window.cancelAnimationFrame(focusInitialButton);
+      document.removeEventListener("keydown", handleKeyDown, true);
+      document.removeEventListener("focusin", handleFocusIn, true);
+      document.body.style.overflow = previousOverflow;
+      window.requestAnimationFrame(() => {
+        if (document.contains(revokeRoleTriggerRef.current)) {
+          revokeRoleTriggerRef.current?.focus();
+        }
+      });
+    };
+  }, [assignmentPendingRevocation]);
 
   useEffect(() => {
     setFeatureQuery("");
@@ -1559,6 +1627,17 @@ export function TenantAdminSettings({
   const permissionsByCode = useMemo(
     () =>
       new Map(permissions.map((permission) => [permission.code, permission])),
+    [permissions],
+  );
+  const rolePermissionGroups = useMemo(
+    () =>
+      groupRolePermissions(
+        permissions.map((permission) => ({
+          code: permission.code,
+          description: permission.description,
+          isSensitive: permission.is_sensitive,
+        })),
+      ),
     [permissions],
   );
   const assignableRoles = useMemo(
@@ -2085,6 +2164,93 @@ export function TenantAdminSettings({
     return length >= 3 && length <= 120;
   }
 
+  function permissionPresentationFor(permissionCode: string) {
+    const permission = permissionsByCode.get(permissionCode);
+    return {
+      code: permissionCode,
+      description:
+        permission?.description ??
+        "Nicht mehr im Berechtigungskatalog verfügbar",
+      isSensitive: permission?.is_sensitive ?? false,
+    };
+  }
+
+  function renderPermissionDescriptions(permissionCodes: string[]) {
+    return (
+      <div className="tenant-admin-settings__role-detail-groups">
+        {groupRolePermissions(
+          permissionCodes.map(permissionPresentationFor),
+        ).map((group) => (
+          <section key={group.id}>
+            <h4>{group.label}</h4>
+            <ul>
+              {group.permissions.map((permission) => (
+                <li key={permission.code}>
+                  <span>{permission.description}</span>
+                  {permission.isSensitive ? (
+                    <small>Erweiterter Zugriff</small>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          </section>
+        ))}
+      </div>
+    );
+  }
+
+  function renderRolePermissionPicker(
+    form: RoleForm,
+    setForm: (updater: (current: RoleForm) => RoleForm) => void,
+  ) {
+    return (
+      <fieldset
+        className="tenant-admin-settings__role-permission-picker"
+        disabled={saving !== null}
+      >
+        <legend>Was darf diese Rolle?</legend>
+        <p className="tenant-admin-settings__field-hint">
+          Wählen Sie die Aufgaben aus, die diese Rolle im Mandanten erledigen
+          darf. Berechtigungen mit erweitertem Zugriff sind entsprechend
+          gekennzeichnet.
+        </p>
+        {rolePermissionGroups.length > 0 ? (
+          <div className="tenant-admin-settings__role-permission-groups">
+            {rolePermissionGroups.map((group) => (
+              <details key={group.id} open={group.id === "tickets"}>
+                <summary>
+                  <span>{group.label}</span>
+                  <span>{group.permissions.length} Berechtigungen</span>
+                </summary>
+                <div>
+                  {group.permissions.map((permission) => (
+                    <label key={permission.code}>
+                      <input
+                        type="checkbox"
+                        checked={form.permissionCodes.includes(permission.code)}
+                        onChange={() =>
+                          toggleRolePermission(permission.code, setForm)
+                        }
+                      />
+                      <span>
+                        <strong>{permission.description}</strong>
+                        {permission.isSensitive ? (
+                          <small>Erweiterter Zugriff</small>
+                        ) : null}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </details>
+            ))}
+          </div>
+        ) : (
+          <p>Es wurden keine Berechtigungen zurückgegeben.</p>
+        )}
+      </fieldset>
+    );
+  }
+
   async function createRole(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const name = roleForm.name.trim();
@@ -2102,6 +2268,7 @@ export function TenantAdminSettings({
         permissionCodes: roleForm.permissionCodes,
       });
       setRoleForm(emptyRoleForm);
+      setRoleCreationOpen(false);
       await loadData();
       setSuccess(`Die Rolle „${name}“ wurde erstellt.`);
     } catch (nextError) {
@@ -2270,6 +2437,14 @@ export function TenantAdminSettings({
     } finally {
       setSaving(null);
     }
+  }
+
+  function requestRoleRevocation(
+    assignment: RoleAssignmentWithDetails,
+    trigger: HTMLButtonElement,
+  ) {
+    revokeRoleTriggerRef.current = trigger;
+    setAssignmentPendingRevocation(assignment);
   }
 
   const featureGroups = useMemo(() => {
@@ -4438,160 +4613,399 @@ export function TenantAdminSettings({
 
             {activeArea === "roles" && (
               <section
-                className="tenant-admin-settings__section"
+                className="tenant-admin-settings__section tenant-admin-settings__roles-workspace"
                 aria-labelledby="tenant-roles-heading"
               >
-                <h2 id="tenant-roles-heading">Rollen</h2>
-                <p>
-                  Verwalten Sie mandantenweite Rollen und deren Berechtigungen.
-                  Systemrollen sind geschützt und können nicht verändert werden.
-                </p>
-                <h3>Rollenübersicht</h3>
-                {roles.length > 0 ? (
-                  <ul className="tenant-admin-settings__role-list">
-                    {roles.map((role) => {
-                      const target: SaveTarget = `role:${role.id}`;
-                      const scopeLabel =
-                        role.scope === "tenant"
-                          ? "Mandantenweit"
-                          : role.scope === "department"
-                            ? "Abteilungsweit"
-                            : role.scope === "team"
-                              ? "Teamweit"
-                              : role.scope;
-                      return (
-                        <li key={role.id}>
-                          <strong>{role.name}</strong>
-                          <span>{scopeLabel}</span>
-                          <span>{role.active ? "Aktiv" : "Inaktiv"}</span>
-                          {role.isSystem ? <span>Systemrolle</span> : null}
-                          <div>
-                            <strong>Berechtigungen</strong>
-                            {role.permissionCodes.length > 0 ? (
-                              <ul>
-                                {role.permissionCodes.map((permissionCode) => {
-                                  const permission =
-                                    permissionsByCode.get(permissionCode);
-                                  return (
-                                    <li key={permissionCode}>
-                                      <code>{permissionCode}</code>
-                                      {permission?.description
-                                        ? `: ${permission.description}`
-                                        : null}
-                                      {permission?.is_sensitive
-                                        ? " (sensibel)"
-                                        : null}
-                                    </li>
-                                  );
-                                })}
-                              </ul>
-                            ) : (
-                              <p>
-                                Dieser Rolle sind keine Berechtigungen
-                                zugeordnet.
-                              </p>
-                            )}
-                          </div>
-                          {!role.isSystem ? (
-                            <div>
-                              <button
-                                type="button"
-                                disabled={saving !== null}
-                                onClick={() => startRoleEdit(role)}
-                              >
-                                Bearbeiten
-                              </button>
-                              <button
-                                type="button"
-                                disabled={saving !== null}
-                                onClick={() => void setRoleActivity(role)}
-                              >
-                                {saving === target
-                                  ? "Wird gespeichert …"
-                                  : role.active
-                                    ? "Deaktivieren"
-                                    : "Aktivieren"}
-                              </button>
-                            </div>
-                          ) : null}
-                        </li>
-                      );
-                    })}
-                  </ul>
-                ) : (
-                  <p>Für diesen Mandanten wurden keine Rollen zurückgegeben.</p>
-                )}
+                <header className="tenant-admin-settings__roles-header">
+                  <div>
+                    <p className="tenant-admin-settings__eyebrow">
+                      ZUGRIFFSVERWALTUNG
+                    </p>
+                    <h2 id="tenant-roles-heading">Rollen & Zugriffe</h2>
+                    <p>
+                      Legen Sie fest, wer im Mandanten welche Aufgaben
+                      übernehmen darf. Systemrollen schützen grundlegende
+                      administrative Funktionen.
+                    </p>
+                  </div>
+                  <dl
+                    className="tenant-admin-settings__role-stats"
+                    aria-label="Zusammenfassung der Zugriffsverwaltung"
+                  >
+                    <div>
+                      <dt>Personen mit Zugriff</dt>
+                      <dd>{effectiveAccess.length}</dd>
+                    </div>
+                    <div>
+                      <dt>Aktive Rollen</dt>
+                      <dd>{roles.filter((role) => role.active).length}</dd>
+                    </div>
+                    <div>
+                      <dt>Eigene Rollen</dt>
+                      <dd>{roles.filter((role) => !role.isSystem).length}</dd>
+                    </div>
+                  </dl>
+                </header>
 
-                <form
-                  className="tenant-admin-settings__form"
-                  onSubmit={createRole}
+                <section
+                  className="tenant-admin-settings__role-grant"
+                  aria-labelledby="grant-role-heading"
                 >
-                  <h3>Neue Rolle erstellen</h3>
-                  <label>
-                    Rollenname
-                    <input
-                      type="text"
-                      value={roleForm.name}
-                      minLength={3}
-                      maxLength={120}
-                      required
-                      disabled={saving !== null}
-                      onChange={(event) =>
-                        setRoleForm((current) => ({
-                          ...current,
-                          name: event.target.value,
-                        }))
+                  <div>
+                    <p className="tenant-admin-settings__eyebrow">
+                      SCHNELLZUGRIFF
+                    </p>
+                    <h3 id="grant-role-heading">Zugriff vergeben</h3>
+                    <p>
+                      Wählen Sie eine aktive Person und eine Rolle. Die
+                      Zuweisung wirkt ausschliesslich im aktuellen Mandanten.
+                    </p>
+                  </div>
+                  <form onSubmit={assignRole}>
+                    <div className="tenant-admin-settings__form-grid">
+                      <label>
+                        Person
+                        <select
+                          value={roleAssignmentForm.userId}
+                          required
+                          disabled={saving !== null || activeUsers.length === 0}
+                          onChange={(event) =>
+                            setRoleAssignmentForm((current) => ({
+                              ...current,
+                              userId: event.target.value,
+                            }))
+                          }
+                        >
+                          <option value="">Person auswählen</option>
+                          {activeUsers.map((person) => (
+                            <option key={person.id} value={person.id}>
+                              {person.displayName?.trim()
+                                ? `${person.displayName} (${person.email})`
+                                : person.email}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label>
+                        Rolle
+                        <select
+                          value={roleAssignmentForm.roleId}
+                          required
+                          disabled={
+                            saving !== null || assignableRoles.length === 0
+                          }
+                          onChange={(event) =>
+                            setRoleAssignmentForm((current) => ({
+                              ...current,
+                              roleId: event.target.value,
+                            }))
+                          }
+                        >
+                          <option value="">Rolle auswählen</option>
+                          {assignableRoles.map((role) => (
+                            <option key={role.id} value={role.id}>
+                              {role.name}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    </div>
+                    <button
+                      type="submit"
+                      disabled={
+                        saving !== null ||
+                        activeUsers.length === 0 ||
+                        assignableRoles.length === 0
                       }
-                    />
-                  </label>
-                  <fieldset disabled={saving !== null}>
-                    <legend>Berechtigungen auswählen</legend>
-                    {permissions.length > 0 ? (
-                      <ul className="tenant-admin-settings__role-list">
-                        {permissions.map((permission) => (
-                          <li key={permission.code}>
-                            <label>
-                              <input
-                                type="checkbox"
-                                checked={roleForm.permissionCodes.includes(
-                                  permission.code,
+                    >
+                      {saving === "assign-role"
+                        ? "Zugriff wird vergeben …"
+                        : "Zugriff vergeben"}
+                    </button>
+                  </form>
+                </section>
+
+                <section
+                  className="tenant-admin-settings__role-people"
+                  aria-labelledby="role-people-heading"
+                >
+                  <div className="tenant-admin-settings__section-heading">
+                    <div>
+                      <p className="tenant-admin-settings__eyebrow">PERSONEN</p>
+                      <h3 id="role-people-heading">Wer hat Zugriff?</h3>
+                      <p>
+                        Diese Übersicht zeigt nur aktuell wirksame Rollen.
+                        Berechtigungsdetails bleiben bei Bedarf einsehbar.
+                      </p>
+                    </div>
+                    <span className="tenant-admin-settings__access-count">
+                      {effectiveAccess.length} Personen
+                    </span>
+                  </div>
+                  {effectiveAccess.length > 0 ? (
+                    <ul className="tenant-admin-settings__role-person-list">
+                      {effectiveAccess.map((person) => (
+                        <li key={person.id}>
+                          <div className="tenant-admin-settings__role-person-heading">
+                            <strong>
+                              {person.displayName?.trim() ||
+                                person.email ||
+                                "Unbekannte Person"}
+                            </strong>
+                            <span>
+                              {person.email ?? "E-Mail nicht hinterlegt"}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="tenant-admin-settings__access-label">
+                              Zugewiesene Rollen
+                            </span>
+                            <div className="tenant-admin-settings__role-chips">
+                              {person.roleNames.map((roleName) => (
+                                <span key={roleName}>{roleName}</span>
+                              ))}
+                            </div>
+                          </div>
+                          <details className="tenant-admin-settings__role-details">
+                            <summary>
+                              {person.permissionCodes.length} Berechtigungen
+                              anzeigen
+                            </summary>
+                            {renderPermissionDescriptions(
+                              person.permissionCodes,
+                            )}
+                            <details className="tenant-admin-settings__role-technical-details">
+                              <summary>Technische Kennungen</summary>
+                              <code>{person.permissionCodes.join(" · ")}</code>
+                            </details>
+                          </details>
+                          <div className="tenant-admin-settings__role-person-actions">
+                            {roleAssignments
+                              .filter(
+                                (assignment) =>
+                                  assignment.user_id === person.id,
+                              )
+                              .map((assignment) => {
+                                const target: SaveTarget = `revoke-role:${assignment.id}`;
+                                return (
+                                  <button
+                                    key={assignment.id}
+                                    type="button"
+                                    disabled={saving !== null}
+                                    onClick={(event) =>
+                                      requestRoleRevocation(
+                                        assignment,
+                                        event.currentTarget,
+                                      )
+                                    }
+                                  >
+                                    {saving === target
+                                      ? "Wird entzogen …"
+                                      : `«${assignment.roleName}» entziehen`}
+                                  </button>
+                                );
+                              })}
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="tenant-admin-settings__role-empty">
+                      Es ist noch keiner aktiven Person eine Rolle zugewiesen.
+                      Vergeben Sie den ersten Zugriff oben in dieser Ansicht.
+                    </p>
+                  )}
+                </section>
+
+                <details className="tenant-admin-settings__role-library" open>
+                  <summary>
+                    <span>
+                      <strong>Rollenbibliothek</strong>
+                      <small>
+                        Rollen definieren, prüfen und bei Bedarf anpassen
+                      </small>
+                    </span>
+                    <span>{roles.length} Rollen</span>
+                  </summary>
+                  <div className="tenant-admin-settings__role-library-content">
+                    {roles.length > 0 ? (
+                      <ul className="tenant-admin-settings__role-cards">
+                        {roles.map((role) => {
+                          const target: SaveTarget = `role:${role.id}`;
+                          return (
+                            <li key={role.id}>
+                              <div className="tenant-admin-settings__role-card-main">
+                                <div className="tenant-admin-settings__role-card-heading">
+                                  <div>
+                                    <strong>{role.name}</strong>
+                                    <span>{roleScopeLabel(role.scope)}</span>
+                                  </div>
+                                  <div className="tenant-admin-settings__role-chips">
+                                    <span
+                                      className={
+                                        role.active
+                                          ? "tenant-admin-settings__role-chip--active"
+                                          : "tenant-admin-settings__role-chip--inactive"
+                                      }
+                                    >
+                                      {role.active ? "Aktiv" : "Inaktiv"}
+                                    </span>
+                                    {role.isSystem ? (
+                                      <span>Geschützt</span>
+                                    ) : (
+                                      <span>Eigene Rolle</span>
+                                    )}
+                                  </div>
+                                </div>
+                                <p>
+                                  {role.permissionCodes.length === 1
+                                    ? "1 Aufgabe freigegeben"
+                                    : `${role.permissionCodes.length} Aufgaben freigegeben`}
+                                </p>
+                                {role.permissionCodes.length > 0 ? (
+                                  <details className="tenant-admin-settings__role-details">
+                                    <summary>Berechtigungen ansehen</summary>
+                                    {renderPermissionDescriptions(
+                                      role.permissionCodes,
+                                    )}
+                                    <details className="tenant-admin-settings__role-technical-details">
+                                      <summary>Technische Kennungen</summary>
+                                      <code>
+                                        {role.permissionCodes.join(" · ")}
+                                      </code>
+                                    </details>
+                                  </details>
+                                ) : (
+                                  <p className="tenant-admin-settings__field-hint">
+                                    Dieser Rolle sind noch keine Aufgaben
+                                    freigegeben.
+                                  </p>
                                 )}
-                                onChange={() =>
-                                  toggleRolePermission(
-                                    permission.code,
-                                    setRoleForm,
-                                  )
-                                }
-                              />
-                              <span>
-                                <code>{permission.code}</code>:{" "}
-                                {permission.description}
-                                {permission.is_sensitive ? " (sensibel)" : ""}
-                              </span>
-                            </label>
-                          </li>
-                        ))}
+                              </div>
+                              <div className="tenant-admin-settings__role-card-actions">
+                                {role.isSystem ? (
+                                  <span className="tenant-admin-settings__field-hint">
+                                    Systemrollen werden zentral geschützt.
+                                  </span>
+                                ) : (
+                                  <>
+                                    <button
+                                      type="button"
+                                      disabled={saving !== null}
+                                      onClick={() => startRoleEdit(role)}
+                                    >
+                                      Bearbeiten
+                                    </button>
+                                    <button
+                                      type="button"
+                                      disabled={saving !== null}
+                                      onClick={() => void setRoleActivity(role)}
+                                    >
+                                      {saving === target
+                                        ? "Wird gespeichert …"
+                                        : role.active
+                                          ? "Deaktivieren"
+                                          : "Aktivieren"}
+                                    </button>
+                                  </>
+                                )}
+                              </div>
+                            </li>
+                          );
+                        })}
                       </ul>
                     ) : (
-                      <p>Es wurden keine Berechtigungen zurückgegeben.</p>
+                      <p className="tenant-admin-settings__role-empty">
+                        Für diesen Mandanten wurden keine Rollen zurückgegeben.
+                      </p>
                     )}
-                  </fieldset>
-                  <button type="submit" disabled={saving !== null}>
-                    {saving === "role:create"
-                      ? "Rolle wird erstellt …"
-                      : "Rolle erstellen"}
-                  </button>
-                </form>
+                    <button
+                      className="tenant-admin-settings__role-create-toggle"
+                      type="button"
+                      disabled={saving !== null}
+                      onClick={() => {
+                        setRoleCreationOpen((current) => !current);
+                        setEditingRoleId(null);
+                        setRoleEditForm(emptyRoleForm);
+                      }}
+                    >
+                      {roleCreationOpen
+                        ? "Neue Rolle schliessen"
+                        : "Neue eigene Rolle erstellen"}
+                    </button>
+                  </div>
+                </details>
+
+                {roleCreationOpen ? (
+                  <form
+                    className="tenant-admin-settings__role-editor"
+                    onSubmit={createRole}
+                  >
+                    <div>
+                      <p className="tenant-admin-settings__eyebrow">
+                        EIGENE ROLLE
+                      </p>
+                      <h3>Neue Rolle erstellen</h3>
+                      <p>
+                        Geben Sie der Rolle einen verständlichen Namen und
+                        wählen Sie die erlaubten Aufgaben aus.
+                      </p>
+                    </div>
+                    <label>
+                      Rollenname
+                      <input
+                        type="text"
+                        value={roleForm.name}
+                        minLength={3}
+                        maxLength={120}
+                        required
+                        disabled={saving !== null}
+                        onChange={(event) =>
+                          setRoleForm((current) => ({
+                            ...current,
+                            name: event.target.value,
+                          }))
+                        }
+                      />
+                    </label>
+                    {renderRolePermissionPicker(roleForm, setRoleForm)}
+                    <div className="tenant-admin-settings__form-actions">
+                      <button type="submit" disabled={saving !== null}>
+                        {saving === "role:create"
+                          ? "Rolle wird erstellt …"
+                          : "Rolle erstellen"}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={saving !== null}
+                        onClick={() => {
+                          setRoleCreationOpen(false);
+                          setRoleForm(emptyRoleForm);
+                        }}
+                      >
+                        Abbrechen
+                      </button>
+                    </div>
+                  </form>
+                ) : null}
 
                 {editingRoleId &&
                 roles.some(
                   (role) => role.id === editingRoleId && !role.isSystem,
                 ) ? (
                   <form
-                    className="tenant-admin-settings__form"
+                    className="tenant-admin-settings__role-editor"
                     onSubmit={updateRole}
                   >
-                    <h3>Rolle bearbeiten</h3>
+                    <div>
+                      <p className="tenant-admin-settings__eyebrow">
+                        EIGENE ROLLE
+                      </p>
+                      <h3>Rolle bearbeiten</h3>
+                      <p>
+                        Passen Sie Name und erlaubte Aufgaben dieser Rolle an.
+                      </p>
+                    </div>
                     <label>
                       Rollenname
                       <input
@@ -4609,263 +5023,131 @@ export function TenantAdminSettings({
                         }
                       />
                     </label>
-                    <fieldset disabled={saving !== null}>
-                      <legend>Berechtigungen auswählen</legend>
-                      {permissions.length > 0 ? (
-                        <ul className="tenant-admin-settings__role-list">
-                          {permissions.map((permission) => (
-                            <li key={permission.code}>
-                              <label>
-                                <input
-                                  type="checkbox"
-                                  checked={roleEditForm.permissionCodes.includes(
-                                    permission.code,
-                                  )}
-                                  onChange={() =>
-                                    toggleRolePermission(
-                                      permission.code,
-                                      setRoleEditForm,
-                                    )
-                                  }
-                                />
-                                <span>
-                                  <code>{permission.code}</code>:{" "}
-                                  {permission.description}
-                                  {permission.is_sensitive ? " (sensibel)" : ""}
-                                </span>
-                              </label>
-                            </li>
-                          ))}
-                        </ul>
-                      ) : (
-                        <p>Es wurden keine Berechtigungen zurückgegeben.</p>
-                      )}
-                    </fieldset>
-                    <button type="submit" disabled={saving !== null}>
-                      {saving === `role:${editingRoleId}`
-                        ? "Rolle wird gespeichert …"
-                        : "Änderungen speichern"}
-                    </button>
-                    <button
-                      type="button"
-                      disabled={saving !== null}
-                      onClick={() => {
-                        setEditingRoleId(null);
-                        setRoleEditForm(emptyRoleForm);
-                      }}
-                    >
-                      Abbrechen
-                    </button>
+                    {renderRolePermissionPicker(roleEditForm, setRoleEditForm)}
+                    <div className="tenant-admin-settings__form-actions">
+                      <button type="submit" disabled={saving !== null}>
+                        {saving === `role:${editingRoleId}`
+                          ? "Änderungen werden gespeichert …"
+                          : "Änderungen speichern"}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={saving !== null}
+                        onClick={() => {
+                          setEditingRoleId(null);
+                          setRoleEditForm(emptyRoleForm);
+                        }}
+                      >
+                        Abbrechen
+                      </button>
+                    </div>
                   </form>
                 ) : null}
 
-                <form
-                  className="tenant-admin-settings__form"
-                  onSubmit={assignRole}
-                >
-                  <h3>Rolle zuweisen</h3>
-                  <p>
-                    Es können nur aktive, mandantenweite Rollen an aktive
-                    Personen zugewiesen werden.
-                  </p>
-                  <div className="tenant-admin-settings__form-grid">
-                    <label>
-                      Aktive Person
-                      <select
-                        value={roleAssignmentForm.userId}
-                        required
-                        disabled={saving !== null || activeUsers.length === 0}
-                        onChange={(event) =>
-                          setRoleAssignmentForm((current) => ({
-                            ...current,
-                            userId: event.target.value,
-                          }))
-                        }
-                      >
-                        <option value="">Bitte auswählen</option>
-                        {activeUsers.map((person) => (
-                          <option key={person.id} value={person.id}>
-                            {person.displayName?.trim()
-                              ? `${person.displayName} (${person.email})`
-                              : person.email}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <label>
-                      Aktive Rolle
-                      <select
-                        value={roleAssignmentForm.roleId}
-                        required
-                        disabled={
-                          saving !== null || assignableRoles.length === 0
-                        }
-                        onChange={(event) =>
-                          setRoleAssignmentForm((current) => ({
-                            ...current,
-                            roleId: event.target.value,
-                          }))
-                        }
-                      >
-                        <option value="">Bitte auswählen</option>
-                        {assignableRoles.map((role) => (
-                          <option key={role.id} value={role.id}>
-                            {role.name}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                  </div>
-                  <button
-                    type="submit"
-                    disabled={
-                      saving !== null ||
-                      activeUsers.length === 0 ||
-                      assignableRoles.length === 0
-                    }
-                  >
-                    {saving === "assign-role"
-                      ? "Rolle wird zugewiesen …"
-                      : "Rolle zuweisen"}
-                  </button>
-                </form>
-
-                <section
-                  className="tenant-admin-settings__access-overview"
-                  aria-labelledby="effective-access-heading"
-                >
-                  <div className="tenant-admin-settings__section-heading">
-                    <div>
-                      <h3 id="effective-access-heading">Effektiver Zugriff</h3>
-                      <p>
-                        Zusammenfassung aller aktiven Rollen und daraus
-                        resultierenden Berechtigungen je Person.
-                      </p>
-                    </div>
-                    <span className="tenant-admin-settings__access-count">
-                      {effectiveAccess.length} Personen
-                    </span>
-                  </div>
-                  {effectiveAccess.length > 0 ? (
-                    <ul className="tenant-admin-settings__access-list">
-                      {effectiveAccess.map((person) => (
-                        <li key={person.id}>
-                          <div>
-                            <strong>
-                              {person.displayName?.trim() ||
-                                person.email ||
-                                "Unbekannte Person"}
-                            </strong>
-                            <span>
-                              {person.email ?? "E-Mail nicht hinterlegt"}
-                            </span>
-                          </div>
-                          <div>
-                            <span className="tenant-admin-settings__access-label">
-                              Rollen
-                            </span>
-                            <p>{person.roleNames.join(" · ")}</p>
-                          </div>
-                          <div>
-                            <span className="tenant-admin-settings__access-label">
-                              Berechtigungen ({person.permissionCodes.length})
-                            </span>
-                            <p>{person.permissionCodes.join(" · ")}</p>
-                          </div>
-                        </li>
-                      ))}
+                <details className="tenant-admin-settings__role-assignment-management">
+                  <summary>
+                    Einzelne Zuweisungen verwalten ({roleAssignments.length})
+                  </summary>
+                  {roleAssignments.length > 0 ? (
+                    <ul className="tenant-admin-settings__role-assignment-list">
+                      {roleAssignments.map((assignment) => {
+                        const target: SaveTarget = `revoke-role:${assignment.id}`;
+                        return (
+                          <li key={assignment.id}>
+                            <div>
+                              <strong>
+                                {assignment.user.displayName?.trim() ||
+                                  assignment.user.email ||
+                                  "Unbekannte Person"}
+                              </strong>
+                              <span>
+                                {assignment.user.email ??
+                                  "E-Mail nicht hinterlegt"}
+                              </span>
+                            </div>
+                            <div>
+                              <span className="tenant-admin-settings__access-label">
+                                Rolle
+                              </span>
+                              <strong>{assignment.roleName}</strong>
+                              <span>
+                                Zugewiesen:{" "}
+                                {formatDate(assignment.starts_at) ??
+                                  "Nicht hinterlegt"}
+                              </span>
+                            </div>
+                            <button
+                              type="button"
+                              disabled={saving !== null}
+                              onClick={(event) =>
+                                requestRoleRevocation(
+                                  assignment,
+                                  event.currentTarget,
+                                )
+                              }
+                            >
+                              {saving === target
+                                ? "Wird entzogen …"
+                                : "Zugriff entziehen"}
+                            </button>
+                          </li>
+                        );
+                      })}
                     </ul>
                   ) : (
-                    <p className="tenant-admin-settings__hint">
-                      Sobald einer aktiven Person eine Rolle zugewiesen ist,
-                      erscheint ihre effektive Zugriffsübersicht hier.
+                    <p className="tenant-admin-settings__role-empty">
+                      Es gibt keine einzelnen Rollenzuweisungen zum Verwalten.
                     </p>
                   )}
-                </section>
-
-                <h3>Aktive Rollenzuweisungen</h3>
-                {roleAssignments.length > 0 ? (
-                  <ul className="tenant-admin-settings__person-list">
-                    {roleAssignments.map((assignment) => {
-                      const target: SaveTarget = `revoke-role:${assignment.id}`;
-                      return (
-                        <li key={assignment.id}>
-                          <strong>
-                            {assignment.user.displayName?.trim() ||
-                              assignment.user.email ||
-                              "Unbekannte Person"}
-                          </strong>
-                          <span>
-                            {assignment.user.email ?? "E-Mail nicht hinterlegt"}
-                          </span>
-                          <span>Rolle: {assignment.roleName}</span>
-                          {assignment.department_id ? (
-                            <span>Bereich: {assignment.department_id}</span>
-                          ) : null}
-                          {assignment.team_id ? (
-                            <span>Team: {assignment.team_id}</span>
-                          ) : null}
-                          <span>
-                            Zugewiesen:{" "}
-                            {formatDate(assignment.starts_at) ??
-                              "Nicht hinterlegt"}
-                          </span>
-                          <button
-                            type="button"
-                            disabled={saving !== null}
-                            onClick={() =>
-                              setAssignmentPendingRevocation(assignment)
-                            }
-                          >
-                            {saving === target
-                              ? "Wird entzogen …"
-                              : "Entziehen"}
-                          </button>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                ) : (
-                  <p>In dieser Ansicht wurde noch keine Rolle zugewiesen.</p>
-                )}
+                </details>
               </section>
             )}
           </div>
         </>
       ) : null}
       {assignmentPendingRevocation ? (
-        <div
-          className="tenant-admin-settings__confirmation-dialog"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="revoke-role-dialog-title"
-        >
-          <h2 id="revoke-role-dialog-title">Rollenzuweisung entziehen?</h2>
-          <p>
-            Die Zuweisung der Rolle „{assignmentPendingRevocation.roleName}“ an{" "}
-            {assignmentPendingRevocation.user.displayName?.trim() ||
-              assignmentPendingRevocation.user.email ||
-              "diese Person"}{" "}
-            wird entzogen. Dieser Vorgang kann nicht rückgängig gemacht werden.
-          </p>
-          <button
-            type="button"
-            disabled={saving !== null}
-            onClick={() =>
-              void revokeRoleAssignment(assignmentPendingRevocation)
-            }
+        <div className="tenant-admin-settings__confirmation-backdrop">
+          <div
+            ref={revokeRoleDialogRef}
+            className="tenant-admin-settings__confirmation-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="revoke-role-dialog-title"
+            aria-describedby="revoke-role-dialog-description"
+            tabIndex={-1}
           >
-            {saving === `revoke-role:${assignmentPendingRevocation.id}`
-              ? "Wird entzogen …"
-              : "Rolle endgültig entziehen"}
-          </button>
-          <button
-            type="button"
-            disabled={saving !== null}
-            onClick={() => setAssignmentPendingRevocation(null)}
-          >
-            Abbrechen
-          </button>
+            <h2 id="revoke-role-dialog-title">Rollenzuweisung entziehen?</h2>
+            <p id="revoke-role-dialog-description">
+              Die Zuweisung der Rolle „{assignmentPendingRevocation.roleName}“
+              an{" "}
+              {assignmentPendingRevocation.user.displayName?.trim() ||
+                assignmentPendingRevocation.user.email ||
+                "diese Person"}{" "}
+              wird entzogen. Dieser Vorgang kann nicht rückgängig gemacht
+              werden.
+            </p>
+            <div className="tenant-admin-settings__confirmation-actions">
+              <button
+                ref={revokeRoleCancelButtonRef}
+                type="button"
+                disabled={saving !== null}
+                onClick={() => setAssignmentPendingRevocation(null)}
+              >
+                Abbrechen
+              </button>
+              <button
+                type="button"
+                disabled={saving !== null}
+                onClick={() =>
+                  void revokeRoleAssignment(assignmentPendingRevocation)
+                }
+              >
+                {saving === `revoke-role:${assignmentPendingRevocation.id}`
+                  ? "Wird entzogen …"
+                  : "Rolle endgültig entziehen"}
+              </button>
+            </div>
+          </div>
         </div>
       ) : null}
     </section>

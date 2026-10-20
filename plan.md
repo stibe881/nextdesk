@@ -176,3 +176,24 @@ Der Arbeitsplatz blendet den vollständigen Bereich «Team-Warteschlangen» aus,
 ## Unaufdringliche Abteilungsrückfragen
 
 Die Einstellungen blenden die vollständige Konfiguration «Abteilungsleitungen» aus, wenn Abteilungsrückfragen für den aktiven Mandanten nicht erreichbar sind. Während des Ladens und bei verfügbaren Routen bleibt die bestehende Bedienoberfläche einschliesslich Aktualisieren erhalten. Damit bleibt die Abteilungsverwaltung ohne nicht bedienbare Fehlerfläche übersichtlich; Datenzugriff, Mandantentrennung und der bestehende serverseitige Berechtigungspfad bleiben unverändert.
+
+## Personenorientierte Rollenverwaltung
+
+Die administrativ geschützte Seite «Rollen» wird als verständliche Zugriffsverwaltung neu geordnet. Sie beginnt mit einer kompakten Zusammenfassung und der primären Handlung «Zugriff vergeben». Danach folgt eine personenorientierte Übersicht mit Rollenbezeichnungen und einer leicht erreichbaren Entzugsaktion; technische Berechtigungscodes werden nicht mehr als primäre Information gezeigt.
+
+Die Rollenübersicht bleibt vollständig funktionsfähig, trennt jedoch geschützte Systemrollen klar von eigenen Rollen, zeigt Status und Anzahl Berechtigungen in lesbaren Kennzahlen und hält Detailberechtigungen auf Anforderung in gruppierten, fachlich benannten Bereichen bereit. Das Erstellen und Bearbeiten eigener Rollen fasst Berechtigungen nach Fachbereich zusammen und verwendet die vorhandenen serverseitigen Aktionen unverändert. Datenmodell, Mandantentrennung, Berechtigungschecks sowie der Schutz von Systemrollen bleiben unverändert.
+
+### Gestaltung
+
+- **Design Movement:** Ruhige Verwaltungsoberfläche nach dem Prinzip «Person zuerst, Rechte danach».
+- **Core Principles:** klare Handlungspriorität, progressive Offenlegung technischer Details, sichere bestätigte Änderungen und konsistente mobile Lesbarkeit.
+- **Color Philosophy:** bestehende nextDesk-Akzentfarbe für primäre Zugriffsaktionen, zurückhaltende Oberflächen für Übersicht und dezente Statussignale statt warnender Techniklisten.
+- **Layout Paradigm:** vertikaler Arbeitsfluss aus Zugriffsvergabe, Personenübersicht und Rollenbibliothek; Detailrechte öffnen sich nur im jeweiligen Kontext.
+- **Signature Elements:** kompakte Kennzahlen, Rollen-Chips und fachlich gruppierte Berechtigungsabschnitte.
+- **Interaction Philosophy:** eine Mandantenadministration vergibt und entzieht Zugriffe direkt bei nachvollziehbaren Personen und Rollen; sensible technische Informationen bleiben erreichbar, aber nicht dominant.
+- **Animation:** vorhandene reduzierte Übergänge werden beibehalten; keine neuen dauerhaften Animationen.
+- **Typography System:** bestehende nextDesk-Sans-Serife mit klarer Hierarchie aus Abschnittstiteln, Kurzbeschreibungen und kleinen Metadaten.
+- **Brand Essence:** nextDesk macht Zugriffsverwaltung für Mandantenadministrationen verständlich, ohne die Sicherheitslogik zu vereinfachen.
+- **Brand Voice:** klar und handlungsorientiert, etwa «Zugriff vergeben» und «Zeigt, wer welche Rolle im Mandanten hat.»
+- **Wordmark & Logo:** unverändert.
+- **Signature Brand Color:** die bestehende primäre nextDesk-Farbe bleibt der eindeutige Handlungsakzent.
