@@ -108,6 +108,19 @@ type KnowledgeBaseRequest =
   | GetArticleRequest
   | ArchiveArticleRequest;
 
+type PrepareKnowledgeArticleRequest = {
+  type: "prepareKnowledgeArticle";
+  tenantId: string;
+  articleId?: string;
+  visibility: ArticleVisibility;
+  rawContent: string;
+};
+
+type PreparedKnowledgeArticle = {
+  title: string;
+  bodyMarkdown: string;
+};
+
 const EMPTY_DRAFT: ArticleDraft = {
   title: "",
   bodyMarkdown: "",
@@ -321,6 +334,27 @@ const knowledgeBaseStyles = `
   .knowledge-base__full-width {
     grid-column: 1 / -1;
   }
+  .knowledge-base__ai-assist {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    border: 1px solid #cfe1f4;
+    border-radius: 8px;
+    padding: 14px;
+    background: #f5f9ff;
+  }
+  .knowledge-base__ai-assist strong { color: #173246; font-size: 13px; }
+  .knowledge-base__ai-assist p {
+    max-width: 680px;
+    margin: 4px 0 0;
+    color: #4e6877;
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: normal;
+    line-height: 1.5;
+    text-transform: none;
+  }
   .knowledge-base__hint {
     margin: 0;
     color: #687b84;
@@ -364,6 +398,7 @@ const knowledgeBaseStyles = `
     .knowledge-base__search { max-width: none; }
     .knowledge-base__form { grid-template-columns: 1fr; }
     .knowledge-base__full-width { grid-column: auto; }
+    .knowledge-base__ai-assist { align-items: flex-start; flex-direction: column; }
   }
 `;
 
@@ -523,6 +558,21 @@ function parseReturnedArticle(value: unknown): KnowledgeArticle {
   return article;
 }
 
+function parsePreparedKnowledgeArticle(
+  value: unknown,
+): PreparedKnowledgeArticle {
+  const data = responseData(value);
+  const title = typeof data.title === "string" ? data.title.trim() : "";
+  const bodyMarkdown =
+    typeof data.bodyMarkdown === "string" ? data.bodyMarkdown.trim() : "";
+  if (title.length < 3 || title.length > 240 || !bodyMarkdown) {
+    throw new KnowledgeBaseRequestError(
+      "Die KI-Aufbereitung enthält keinen verwendbaren Entwurf.",
+    );
+  }
+  return { title, bodyMarkdown };
+}
+
 function statusFromError(error: unknown): number | null {
   if (!isRecord(error)) return null;
   if (typeof error.status === "number") return error.status;
@@ -563,6 +613,33 @@ async function invokeKnowledgeBase<T>(
     );
   }
 
+  return parseResponse(data);
+}
+
+async function invokeAiAssist<T>(
+  request: PrepareKnowledgeArticleRequest,
+  parseResponse: (value: unknown) => T,
+): Promise<T> {
+  if (!supabase) {
+    throw new KnowledgeBaseRequestError(
+      "Die Verbindung zu Supabase ist nicht konfiguriert.",
+    );
+  }
+  const { data, error } = await supabase.functions.invoke<unknown>(
+    "ai-assist",
+    {
+      body: request,
+    },
+  );
+  if (error) {
+    throw new KnowledgeBaseRequestError(
+      await functionErrorMessage(
+        error,
+        "Die KI-Aufbereitung ist derzeit nicht verfügbar.",
+      ),
+      statusFromError(error),
+    );
+  }
   return parseResponse(data);
 }
 
@@ -622,6 +699,8 @@ export function KnowledgeBase({
   const [editingArticleId, setEditingArticleId] = useState<string | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
   const [draft, setDraft] = useState<ArticleDraft>(EMPTY_DRAFT);
+  const [rawContent, setRawContent] = useState("");
+  const [aiPreparing, setAiPreparing] = useState(false);
   const [loadingList, setLoadingList] = useState(true);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [saving, setSaving] = useState<SaveState>(null);
@@ -631,7 +710,7 @@ export function KnowledgeBase({
   const detailRequestVersion = useRef(0);
   const lastArticleCreateRequestId = useRef<number | undefined>(undefined);
 
-  const isBusy = saving !== null;
+  const isBusy = saving !== null || aiPreparing;
   const selectedArticleId = selected?.article.id ?? null;
   const editorPanelRef = useRef<HTMLElement | null>(null);
   const editorTitleInputRef = useRef<HTMLInputElement | null>(null);
@@ -684,6 +763,8 @@ export function KnowledgeBase({
     setSelected(null);
     setEditingArticleId(null);
     setDraft(EMPTY_DRAFT);
+    setRawContent("");
+    setAiPreparing(false);
     setEditorOpen(false);
     setActiveQuery("");
     setSearchInput("");
@@ -754,6 +835,7 @@ export function KnowledgeBase({
         : null;
     setEditingArticleId(null);
     setDraft(EMPTY_DRAFT);
+    setRawContent("");
     setError("");
     setSuccess("");
     setEditorOpen(true);
@@ -779,6 +861,7 @@ export function KnowledgeBase({
         : null;
     setEditingArticleId(selected.article.id);
     setDraft(draftFromDetail(selected));
+    setRawContent("");
     setError("");
     setSuccess("");
     setEditorOpen(true);
@@ -789,6 +872,7 @@ export function KnowledgeBase({
     editorWasBusyRef.current = false;
     setEditingArticleId(null);
     setDraft(EMPTY_DRAFT);
+    setRawContent("");
     setEditorOpen(false);
     window.requestAnimationFrame(() => {
       editorReturnFocusRef.current?.focus({ preventScroll: true });
@@ -849,6 +933,52 @@ export function KnowledgeBase({
     await loadArticles("");
   }
 
+  async function prepareWithAi() {
+    const normalizedRawContent = rawContent.trim();
+    if (!normalizedRawContent) {
+      setError(
+        "Erfassen Sie zuerst den fachlichen Rohinhalt für die KI-Aufbereitung.",
+      );
+      setSuccess("");
+      return;
+    }
+    setAiPreparing(true);
+    setError("");
+    setSuccess("");
+    try {
+      const prepared = await invokeAiAssist(
+        {
+          type: "prepareKnowledgeArticle",
+          tenantId,
+          ...(editingArticleId ? { articleId: editingArticleId } : {}),
+          visibility: draft.visibility,
+          rawContent: normalizedRawContent,
+        },
+        parsePreparedKnowledgeArticle,
+      );
+      setDraft((current) => ({
+        ...current,
+        title: prepared.title,
+        bodyMarkdown: prepared.bodyMarkdown,
+      }));
+      setSuccess(
+        "Der KI-Entwurf wurde eingesetzt. Prüfen und ändern Sie ihn bei Bedarf, bevor Sie den Artikel speichern.",
+      );
+    } catch (nextError) {
+      const status =
+        nextError instanceof KnowledgeBaseRequestError
+          ? nextError.status
+          : null;
+      setError(
+        status === 403
+          ? "Die KI-Aufbereitung ist für diesen Mandanten oder diese Sichtbarkeit noch nicht freigegeben."
+          : "Die KI-Aufbereitung ist derzeit nicht verfügbar. Der Artikelentwurf wurde nicht verändert.",
+      );
+    } finally {
+      setAiPreparing(false);
+    }
+  }
+
   async function saveArticle(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const title = draft.title.trim();
@@ -892,6 +1022,7 @@ export function KnowledgeBase({
       setSelected(savedDetail);
       setEditingArticleId(null);
       setDraft(EMPTY_DRAFT);
+      setRawContent("");
       setEditorOpen(false);
       setSuccess(
         isEditing
@@ -1376,6 +1507,38 @@ export function KnowledgeBase({
                 bleibt die letzte freigegebene Revision sichtbar, bis die neue
                 Revision erneut freigegeben wird.
               </p>
+
+              <label className="knowledge-base__full-width">
+                Rohinhalt für die KI-Aufbereitung
+                <textarea
+                  disabled={isBusy}
+                  maxLength={1200}
+                  onChange={(event) => setRawContent(event.target.value)}
+                  placeholder="Zum Beispiel: Problem, Lösungsschritte, Voraussetzungen, bekannte Hinweise und offene Punkte."
+                  rows={7}
+                  value={rawContent}
+                />
+              </label>
+
+              <div className="knowledge-base__full-width knowledge-base__ai-assist">
+                <div>
+                  <strong>Mit KI aufbereiten</strong>
+                  <p>
+                    Erst beim Klick wird der Rohinhalt zur Aufbereitung an den
+                    für diesen Mandanten freigegebenen externen KI-Anbieter
+                    übermittelt. Der Vorschlag wird nicht automatisch
+                    gespeichert oder veröffentlicht.
+                  </p>
+                </div>
+                <button
+                  className="knowledge-base__button"
+                  disabled={isBusy || rawContent.trim().length === 0}
+                  onClick={() => void prepareWithAi()}
+                  type="button"
+                >
+                  {aiPreparing ? "KI bereitet auf …" : "Mit KI aufbereiten"}
+                </button>
+              </div>
 
               <label className="knowledge-base__full-width">
                 Markdown-Inhalt

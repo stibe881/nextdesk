@@ -88,3 +88,10 @@
 - [x] **Arbeitsplatz als erster Arbeitsbereich**
   - Für berechtigte Agent:innen erscheint «Arbeitsplatz» direkt oberhalb von «Übersicht» als erster verfügbarer Navigationseintrag.
   - Die Reihenfolge aller übrigen Bereiche, Feature-Gates sowie die begrenzte Navigation reiner Anfragender bleiben unverändert.
+
+- [x] **Manuelle Claude-Aufbereitung für Wissensartikel**
+  - Im dialogbasierten Wissenseditor kann eine berechtigte Person fachlichen Rohinhalt erfassen und ihn erst mit dem bewussten Klick auf «Mit KI aufbereiten» an Anthropic senden.
+  - Die KI gibt ausschliesslich einen validierten Titel und strukturierten Markdown-Inhalt mit Einleitung, Voraussetzungen, nummerierten Schritten, Hinweisen beziehungsweise Warnungen und weiterführenden Informationen zurück. nextDesk übernimmt nur Titel und Markdown in den weiterhin frei editierbaren Entwurf.
+  - Speichern, Sichtbarkeit, Review und Veröffentlichung bleiben getrennte, explizite Schritte. Die KI darf keine Artikel automatisch speichern, veröffentlichen oder als extern markieren.
+  - Eine Mandantenadministration muss `ai.assist` aktivieren und Anthropic sichtbar für Wissensentwürfe freigeben. Interne und externe Artikelinhalte werden getrennt zugelassen; externe Inhalte erfordern eine zusätzliche bewusste Zustimmung.
+  - Die serverseitige Function bleibt JWT-geschützt, prüft aktive Mandantenmitgliedschaft und `knowledge.manage`, begrenzt Anfrage und Ausgabe, speichert weder Rohinhalt noch Prompt oder Ergebnis und verweigert Aufrufe ohne gültige Freigabe, Modell oder Secret.

@@ -1230,6 +1230,16 @@ insert into public.tenant_ai_provider_approvals (
   'nextdesk-managed', true, array['general_draft']::text[],
   '00000000-0000-4000-8000-000000000001', timezone('utc', now())
 );
+insert into public.tenant_ai_provider_approvals (
+  tenant_id, provider_key, enabled, allowed_purposes,
+  allow_external_article_content, approved_by, approved_at
+) values (
+  '10000000-0000-4000-8000-000000000001',
+  'anthropic', true,
+  array['general_draft', 'knowledge_article_draft']::text[],
+  true,
+  '00000000-0000-4000-8000-000000000001', timezone('utc', now())
+);
 
 begin;
 set local role service_role;
@@ -1241,15 +1251,50 @@ begin
   from public.queue_ai_draft_request(
     '10000000-0000-4000-8000-000000000001',
     '00000000-0000-4000-8000-000000000001',
-    'nextdesk-managed', 'general_draft', 'none', null, 12, 16, 1
+    'nextdesk-managed', 'general_draft', 'none', null, 12, 16, 1, false
   );
   if queued is null then
     raise exception 'AI metadata queue did not return a request id';
+  end if;
+  select request_id into queued
+  from public.queue_ai_draft_request(
+    '10000000-0000-4000-8000-000000000001',
+    '00000000-0000-4000-8000-000000000001',
+    'anthropic', 'general_draft', 'none', null, 12, 16, 1, false
+  );
+  if queued is null then
+    raise exception 'Anthropic AI metadata queue did not return a request id';
   end if;
 end;
 $$;
 reset role;
 commit;
+
+-- 0095: a tenant's explicit provider approval does not implicitly permit
+-- external article content. The atomic queue must reject it before a provider
+-- call can occur, even for a not-yet-saved article.
+begin;
+update public.tenant_ai_provider_approvals
+set allow_external_article_content = false
+where tenant_id = '10000000-0000-4000-8000-000000000001'
+  and provider_key = 'anthropic';
+set local role service_role;
+do $$
+begin
+  begin
+    perform public.queue_ai_draft_request(
+      '10000000-0000-4000-8000-000000000001',
+      '00000000-0000-4000-8000-000000000001',
+      'anthropic', 'general_draft', 'none', null, 12, 16, 1, true
+    );
+    raise exception 'External article content was queued without explicit approval';
+  exception when sqlstate 'P0003' then
+    null;
+  end;
+end;
+$$;
+reset role;
+rollback;
 
 begin;
 set local "request.jwt.claim.sub" = '00000000-0000-4000-8000-000000000004';
@@ -1266,7 +1311,7 @@ begin
     or has_table_privilege('authenticated', 'public.ai_draft_requests', 'insert')
     or has_function_privilege(
       'authenticated',
-      'public.queue_ai_draft_request(uuid, uuid, text, text, text, uuid, integer, integer, integer)',
+      'public.queue_ai_draft_request(uuid, uuid, text, text, text, uuid, integer, integer, integer, boolean)',
       'execute'
     ) then
     raise exception 'Authenticated users must not access AI queue metadata or RPC directly';
@@ -1285,7 +1330,7 @@ begin
     or has_table_privilege('anon', 'public.ai_draft_requests', 'select')
     or has_function_privilege(
       'anon',
-      'public.queue_ai_draft_request(uuid, uuid, text, text, text, uuid, integer, integer, integer)',
+      'public.queue_ai_draft_request(uuid, uuid, text, text, text, uuid, integer, integer, integer, boolean)',
       'execute'
     ) then
     raise exception 'anon retained access to 0057 Experience or AI data';

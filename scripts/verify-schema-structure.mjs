@@ -95,6 +95,8 @@ const expectedFiles = [
   "0091_knowledge_fulltext_search.sql",
   "0092_global_workspace_fulltext_search.sql",
   "0093_ticket_fulltext_filter_search.sql",
+  "0094_follow_up_agent_authorization.sql",
+  "0095_anthropic_knowledge_drafts.sql",
 ];
 
 const availableFiles = await readdir(migrationDirectory);
@@ -1043,6 +1045,14 @@ const requiredFragments = [
     "0093_ticket_fulltext_filter_search.sql",
     "grant execute on function public.list_authorized_ticket_list_page",
   ],
+  [
+    "0095_anthropic_knowledge_drafts.sql",
+    "allow_external_article_content boolean not null default false",
+  ],
+  [
+    "0095_anthropic_knowledge_drafts.sql",
+    "check (provider_key in ('nextdesk-managed', 'anthropic'))",
+  ],
 ];
 
 for (const [migration, fragment] of requiredFragments) {
@@ -1147,6 +1157,11 @@ if (
   )
 ) {
   throw new Error("global-search must explicitly require verified user JWTs.");
+}
+if (
+  !functionConfiguration.includes("[functions.ai-assist]\nverify_jwt = true")
+) {
+  throw new Error("ai-assist must explicitly require verified user JWTs.");
 }
 
 console.log(

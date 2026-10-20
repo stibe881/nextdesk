@@ -1,34 +1,25 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Bot, Check, CircleAlert, ShieldCheck } from "lucide-react";
+import { functionErrorMessage } from "./lib/function-error";
 import { supabase } from "./lib/supabase";
 import "./self-service.css";
 
-type AiPurpose =
-  "general_draft" | "ticket_reply_draft" | "knowledge_article_draft";
-
-type AiCapabilities = {
-  draftRequestsEnabled: boolean;
-  providerInvocation: boolean;
-  purposes: AiPurpose[];
-  limits: {
-    maxInputCharacters: number;
-    maxOutputTokens: number;
-    maxCostCents: number;
-    maxRequestsPerHour: number;
-  };
+type AiPurpose = "general_draft" | "knowledge_article_draft";
+type Approval = {
+  enabled: boolean;
+  allowExternalArticleContent: boolean;
+  allowedPurposes: AiPurpose[];
 };
-
-type CapabilityState =
+type State =
   | { status: "loading" }
-  | { status: "ready"; capabilities: AiCapabilities }
+  | { status: "ready"; approval: Approval }
   | { status: "unavailable"; message: string };
 
-const PLANNED_PURPOSES: ReadonlyArray<{ key: AiPurpose; label: string }> = [
-  { key: "general_draft", label: "Allgemeine Entwürfe" },
-  { key: "ticket_reply_draft", label: "Antwortentwürfe für Tickets" },
+const PURPOSES: ReadonlyArray<{ key: AiPurpose; label: string }> = [
+  { key: "general_draft", label: "Neue Wissensartikel aufbereiten" },
   {
     key: "knowledge_article_draft",
-    label: "Entwürfe für Wissensartikel",
+    label: "Bestehende Wissensartikel überarbeiten",
   },
 ];
 
@@ -36,121 +27,94 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function isPurpose(value: unknown): value is AiPurpose {
-  return (
-    value === "general_draft" ||
-    value === "ticket_reply_draft" ||
-    value === "knowledge_article_draft"
-  );
-}
-
-function isPositiveInteger(value: unknown): value is number {
-  return typeof value === "number" && Number.isSafeInteger(value) && value > 0;
-}
-
-function parseCapabilities(value: unknown): AiCapabilities {
-  if (!isRecord(value) || !isRecord(value.data)) {
-    throw new Error("invalid_ai_capabilities");
+function parseApproval(value: unknown): Approval {
+  if (!isRecord(value) || !isRecord(value.approval)) {
+    throw new Error("invalid_ai_configuration");
   }
-  const data = value.data;
+  const approval = value.approval;
+  const allowedPurposes = Array.isArray(approval.allowedPurposes)
+    ? approval.allowedPurposes.filter(
+        (purpose): purpose is AiPurpose =>
+          purpose === "general_draft" || purpose === "knowledge_article_draft",
+      )
+    : [];
   if (
-    typeof data.draftRequestsEnabled !== "boolean" ||
-    data.providerInvocation !== false ||
-    !Array.isArray(data.purposes) ||
-    !data.purposes.every(isPurpose) ||
-    new Set(data.purposes).size !== data.purposes.length ||
-    !isRecord(data.limits) ||
-    !isPositiveInteger(data.limits.maxInputCharacters) ||
-    !isPositiveInteger(data.limits.maxOutputTokens) ||
-    !isPositiveInteger(data.limits.maxCostCents) ||
-    !isPositiveInteger(data.limits.maxRequestsPerHour)
+    typeof approval.enabled !== "boolean" ||
+    typeof approval.allowExternalArticleContent !== "boolean"
   ) {
-    throw new Error("invalid_ai_capabilities");
+    throw new Error("invalid_ai_configuration");
   }
-
   return {
-    draftRequestsEnabled: data.draftRequestsEnabled,
-    providerInvocation: data.providerInvocation,
-    purposes: data.purposes,
-    limits: {
-      maxInputCharacters: data.limits.maxInputCharacters,
-      maxOutputTokens: data.limits.maxOutputTokens,
-      maxCostCents: data.limits.maxCostCents,
-      maxRequestsPerHour: data.limits.maxRequestsPerHour,
-    },
+    enabled: approval.enabled,
+    allowExternalArticleContent: approval.allowExternalArticleContent,
+    allowedPurposes,
   };
 }
 
-async function functionErrorCode(error: unknown): Promise<string | null> {
-  if (!isRecord(error) || !(error.context instanceof Response)) return null;
-  try {
-    const body: unknown = await error.context.clone().json();
-    return isRecord(body) &&
-      isRecord(body.error) &&
-      typeof body.error.code === "string"
-      ? body.error.code
-      : null;
-  } catch {
-    return null;
-  }
-}
-
-function unavailableMessage(code: string | null): string {
-  switch (code) {
-    case "ai_feature_disabled":
-      return "KI-Assistenz ist für diesen Mandanten nicht aktiviert.";
-    case "ai_provider_not_approved":
-      return "Noch nicht einsatzbereit: Die erforderliche Anbieterfreigabe liegt nicht vor oder ist nicht mehr gültig.";
-    case "ai_purpose_not_approved":
-      return "Noch nicht einsatzbereit: Für die vorgesehenen Zwecke liegt keine gültige Freigabe vor.";
-    case "ai_governance_unavailable":
-      return "Der Governance-Status kann im Moment nicht zuverlässig geprüft werden. KI-Assistenz bleibt bis zur erfolgreichen Prüfung nicht verfügbar.";
-    case "tenant_feature_lookup_failed":
-    case "authorization_check_failed":
-      return "Der Status der KI-Assistenz kann im Moment nicht geprüft werden.";
-    default:
-      return "Der Status der KI-Assistenz ist im Moment nicht verfügbar. Es werden keine KI-Anfragen vorbereitet.";
-  }
-}
-
 export function AiGovernancePanel({ tenantId }: { tenantId: string }) {
-  const [state, setState] = useState<CapabilityState>({ status: "loading" });
+  const [state, setState] = useState<State>({ status: "loading" });
+  const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
+  const load = useCallback(async () => {
     if (!supabase) {
       setState({
         status: "unavailable",
         message:
-          "Der Governance-Status ist in dieser Umgebung nicht konfiguriert. Es werden keine KI-Anfragen vorbereitet.",
+          "Die Governance-Einstellungen sind in dieser Umgebung nicht konfiguriert.",
       });
       return;
     }
-
-    let mounted = true;
     setState({ status: "loading" });
-    void supabase.functions
-      .invoke("ai-assist", { body: { type: "getCapabilities", tenantId } })
-      .then(({ data, error }) => {
-        if (error) throw error;
-        const capabilities = parseCapabilities(data);
-        if (mounted) setState({ status: "ready", capabilities });
-      })
-      .catch(async (error: unknown) => {
-        if (!mounted) return;
-        setState({
-          status: "unavailable",
-          message: unavailableMessage(await functionErrorCode(error)),
-        });
+    try {
+      const { data, error } = await supabase.functions.invoke<unknown>(
+        "ai-assist",
+        { body: { type: "getAdminConfiguration", tenantId } },
+      );
+      if (error) throw error;
+      setState({ status: "ready", approval: parseApproval(data) });
+    } catch (error) {
+      setState({
+        status: "unavailable",
+        message: await functionErrorMessage(
+          error,
+          "Die Governance-Einstellungen konnten nicht geladen werden.",
+        ),
       });
-
-    return () => {
-      mounted = false;
-    };
+    }
   }, [tenantId]);
 
-  const approvedPurposes =
-    state.status === "ready" ? new Set(state.capabilities.purposes) : new Set();
+  useEffect(() => {
+    void load();
+  }, [load]);
 
+  async function saveApproval(next: Approval) {
+    if (!supabase || saving) return;
+    setSaving(true);
+    try {
+      const { error } = await supabase.functions.invoke("ai-assist", {
+        body: {
+          type: "setAnthropicApproval",
+          tenantId,
+          enabled: next.enabled,
+          allowExternalArticleContent: next.allowExternalArticleContent,
+        },
+      });
+      if (error) throw error;
+      setState({ status: "ready", approval: next });
+    } catch (error) {
+      setState({
+        status: "unavailable",
+        message: await functionErrorMessage(
+          error,
+          "Die Anthropic-Freigabe konnte nicht gespeichert werden.",
+        ),
+      });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const approval = state.status === "ready" ? state.approval : null;
   return (
     <section
       aria-labelledby="ai-governance-heading"
@@ -159,92 +123,112 @@ export function AiGovernancePanel({ tenantId }: { tenantId: string }) {
       <div className="ai-governance-panel__heading">
         <Bot aria-hidden="true" size={22} strokeWidth={1.8} />
         <div>
-          <p className="ai-governance-panel__eyebrow">GOVERNANCE</p>
-          <h2 id="ai-governance-heading">KI-Assistenz</h2>
+          <p className="ai-governance-panel__eyebrow">EXTERNE KI-ANBINDUNG</p>
+          <h2 id="ai-governance-heading">Claude für Wissensartikel</h2>
           <p>
-            KI-Unterstützung erstellt ausschliesslich vorbereitete Entwürfe.
-            Anbieterfreigabe, Datenschutzentscheid und Zweckbindung müssen vor
-            jeder Nutzung gültig sein.
+            Anthropic kann Rohinhalt auf einen einheitlich strukturierten
+            Markdown-Entwurf aufbereiten. Ein Aufruf erfolgt nur nach einem
+            bewussten Klick im Wissenseditor.
           </p>
         </div>
       </div>
 
-      <div className="ai-governance-panel__status" role="status">
-        <ShieldCheck aria-hidden="true" size={19} strokeWidth={1.8} />
-        <div>
-          <strong>
-            {state.status === "loading"
-              ? "Governance-Status wird geprüft"
-              : state.status === "ready"
-                ? "Entwürfe sind gemäss aktueller Mandantenfreigabe vorbereitet"
-                : "KI-Assistenz derzeit nicht verfügbar"}
-          </strong>
-          <p>
-            {state.status === "loading"
-              ? "Die serverseitigen Fähigkeiten werden abgerufen …"
-              : state.status === "ready"
-                ? "Es erfolgt kein externer Provideraufruf über diese Funktion."
-                : state.message}
-          </p>
+      {state.status === "unavailable" ? (
+        <div className="ai-governance-panel__status" role="alert">
+          <CircleAlert aria-hidden="true" size={19} strokeWidth={1.8} />
+          <div>
+            <strong>Anthropic ist derzeit nicht verfügbar</strong>
+            <p>{state.message}</p>
+          </div>
         </div>
-      </div>
+      ) : (
+        <>
+          <div className="ai-governance-panel__status" role="status">
+            <ShieldCheck aria-hidden="true" size={19} strokeWidth={1.8} />
+            <div>
+              <strong>
+                {state.status === "loading"
+                  ? "Freigabe wird geprüft"
+                  : approval?.enabled
+                    ? "Anthropic ist für Wissensentwürfe freigegeben"
+                    : "Anthropic ist noch nicht freigegeben"}
+              </strong>
+              <p>
+                Zusätzlich muss die Funktion «KI-Assistenz» in den Einstellungen
+                aktiviert sein. Ohne beides übermittelt nextDesk keine Inhalte.
+              </p>
+            </div>
+          </div>
 
-      <div className="ai-governance-panel__content">
-        <div>
-          <h3>Vorgesehene Zwecke</h3>
-          <ul className="ai-governance-panel__purpose-list">
-            {PLANNED_PURPOSES.map((purpose) => {
-              const approved = approvedPurposes.has(purpose.key);
-              return (
-                <li key={purpose.key}>
-                  <Check aria-hidden="true" size={16} strokeWidth={2} />
-                  <span>{purpose.label}</span>
-                  <small>
-                    {state.status === "ready"
-                      ? approved
-                        ? "Aktuell freigegeben"
-                        : "Nicht freigegeben"
-                      : "Freigabe wird serverseitig geprüft"}
-                  </small>
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-        {state.status === "ready" ? (
-          <dl className="ai-governance-panel__limits">
-            <div>
-              <dt>Eingabe</dt>
-              <dd>
-                max. {state.capabilities.limits.maxInputCharacters} Zeichen
-              </dd>
+          {approval ? (
+            <div className="ai-governance-panel__content">
+              <div>
+                <h3>Freigabe für Wissensentwürfe</h3>
+                <label className="ai-governance-panel__control">
+                  <input
+                    checked={approval.enabled}
+                    disabled={saving}
+                    onChange={(event) =>
+                      void saveApproval({
+                        ...approval,
+                        enabled: event.target.checked,
+                      })
+                    }
+                    type="checkbox"
+                  />
+                  <span>
+                    Ich genehmige die Übermittlung von internem fachlichem
+                    Rohinhalt an Anthropic, ausschliesslich für manuell
+                    ausgelöste Wissensentwürfe.
+                  </span>
+                </label>
+                <label className="ai-governance-panel__control">
+                  <input
+                    checked={approval.allowExternalArticleContent}
+                    disabled={saving || !approval.enabled}
+                    onChange={(event) =>
+                      void saveApproval({
+                        ...approval,
+                        allowExternalArticleContent: event.target.checked,
+                      })
+                    }
+                    type="checkbox"
+                  />
+                  <span>
+                    Ich genehmige zusätzlich die Übermittlung von Rohinhalt für
+                    externe Artikel an Anthropic.
+                  </span>
+                </label>
+              </div>
+              <div>
+                <h3>Erlaubte Zwecke</h3>
+                <ul className="ai-governance-panel__purpose-list">
+                  {PURPOSES.map((purpose) => (
+                    <li key={purpose.key}>
+                      <Check aria-hidden="true" size={16} strokeWidth={2} />
+                      <span>{purpose.label}</span>
+                      <small>
+                        {approval.allowedPurposes.includes(purpose.key) &&
+                        approval.enabled
+                          ? "Freigegeben"
+                          : "Nicht freigegeben"}
+                      </small>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             </div>
-            <div>
-              <dt>Entwurf</dt>
-              <dd>max. {state.capabilities.limits.maxOutputTokens} Token</dd>
-            </div>
-            <div>
-              <dt>Budget</dt>
-              <dd>
-                max. {state.capabilities.limits.maxCostCents} Rp. je Anfrage
-              </dd>
-            </div>
-            <div>
-              <dt>Stundenlimit</dt>
-              <dd>
-                max. {state.capabilities.limits.maxRequestsPerHour} Anfragen
-              </dd>
-            </div>
-          </dl>
-        ) : null}
-      </div>
+          ) : null}
+        </>
+      )}
 
       <aside className="ai-governance-panel__safety-note">
         <CircleAlert aria-hidden="true" size={18} strokeWidth={1.8} />
         <p>
-          KI-Ergebnisse bleiben immer Entwürfe. nextDesk ändert dadurch nie
-          automatisch Tickets, Status, Rollen oder Wissen. Dieses Panel
-          aktiviert keinen Anbieter und nimmt keine Schlüssel entgegen.
+          API-Schlüssel und Modell bleiben ausschliesslich serverseitig. Der
+          Rohinhalt wird nicht in nextDesk gespeichert, und das Ergebnis bleibt
+          ein editierbarer Entwurf: Speichern, Sichtbarkeit, Prüfung und
+          Veröffentlichung erfolgen weiterhin separat.
         </p>
       </aside>
     </section>

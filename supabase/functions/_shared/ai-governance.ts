@@ -8,7 +8,7 @@ import { resolveTenantFeatureStates } from "./tenant-features.ts";
  * Until then every write path remains unavailable (fail closed).
  */
 export const AI_ASSIST_FEATURE_KEY = "ai.assist";
-export const AI_PROVIDER_KEY = "nextdesk-managed";
+export const AI_PROVIDER_KEY = "anthropic";
 export const AI_DRAFT_QUEUE_RPC = "queue_ai_draft_request";
 
 export const MAX_INPUT_CHARACTERS = 1_200;
@@ -33,6 +33,7 @@ export type AiDraftObject =
 
 export type AiProviderPolicy = {
   allowedPurposes: readonly AiPurpose[];
+  allowExternalArticleContent: boolean;
   maxRequestsPerHour: number;
   maxOutputTokens: number;
   maxCostCentsPerRequest: number;
@@ -81,13 +82,21 @@ type AiObjectUnavailableFailure = {
   message: string;
 };
 
+type AiExternalArticleContentNotApprovedFailure = {
+  ok: false;
+  status: 403;
+  code: "ai_external_article_content_not_approved";
+  message: string;
+};
+
 export type AiGovernanceFailure =
   | AiFeatureDisabledFailure
   | AiProviderNotApprovedFailure
   | AiPurposeNotApprovedFailure
   | AiBudgetExceededFailure
   | AiGovernanceUnavailableFailure
-  | AiObjectUnavailableFailure;
+  | AiObjectUnavailableFailure
+  | AiExternalArticleContentNotApprovedFailure;
 
 export type AiGovernanceSuccess = {
   ok: true;
@@ -101,12 +110,14 @@ export type QueuedAiDraft =
   | AiGovernanceUnavailableFailure
   | AiProviderNotApprovedFailure
   | AiBudgetExceededFailure
-  | AiObjectUnavailableFailure;
+  | AiObjectUnavailableFailure
+  | AiExternalArticleContentNotApprovedFailure;
 
 type ProviderApprovalRow = {
   provider_key?: unknown;
   enabled?: unknown;
   allowed_purposes?: unknown;
+  allow_external_article_content?: unknown;
   approved_at?: unknown;
   expires_at?: unknown;
   max_requests_per_hour?: unknown;
@@ -200,6 +211,7 @@ function approvalPolicy(
     row.allowed_purposes.length > 3 ||
     !row.allowed_purposes.every(isAiPurpose) ||
     new Set(row.allowed_purposes).size !== row.allowed_purposes.length ||
+    typeof row.allow_external_article_content !== "boolean" ||
     !isPositiveInteger(row.max_requests_per_hour, MAX_TENANT_RATE_PER_HOUR) ||
     !isPositiveInteger(row.max_output_tokens, MAX_TENANT_OUTPUT_TOKENS) ||
     !isPositiveInteger(row.max_cost_cents_per_request, MAX_TENANT_COST_CENTS)
@@ -211,6 +223,7 @@ function approvalPolicy(
 
   return {
     allowedPurposes: row.allowed_purposes,
+    allowExternalArticleContent: row.allow_external_article_content,
     maxRequestsPerHour: row.max_requests_per_hour,
     maxOutputTokens: row.max_output_tokens,
     maxCostCentsPerRequest: row.max_cost_cents_per_request,
@@ -251,7 +264,7 @@ async function resolveProviderPolicy(
   const { data, error } = await admin
     .from("tenant_ai_provider_approvals")
     .select(
-      "provider_key, enabled, allowed_purposes, approved_at, expires_at, max_requests_per_hour, max_output_tokens, max_cost_cents_per_request",
+      "provider_key, enabled, allowed_purposes, allow_external_article_content, approved_at, expires_at, max_requests_per_hour, max_output_tokens, max_cost_cents_per_request",
     )
     .eq("tenant_id", tenantId)
     .eq("provider_key", AI_PROVIDER_KEY)
@@ -347,6 +360,7 @@ export async function queueMinimalAiDraftRequest(
     inputCharacterCount: number;
     maxOutputTokens: number;
     maxCostCents: number;
+    externalArticleContent: boolean;
   },
 ): Promise<QueuedAiDraft> {
   const { data, error } = await admin.rpc(AI_DRAFT_QUEUE_RPC, {
@@ -359,6 +373,7 @@ export async function queueMinimalAiDraftRequest(
     p_input_character_count: request.inputCharacterCount,
     p_max_output_tokens: request.maxOutputTokens,
     p_max_cost_cents: request.maxCostCents,
+    p_external_article_content: request.externalArticleContent,
   });
 
   if (error) {
@@ -380,6 +395,15 @@ export async function queueMinimalAiDraftRequest(
         status: 404,
         code: "ai_object_not_available",
         message: "Das Objekt ist für die KI-Anfrage nicht verfügbar.",
+      };
+    }
+    if (code === "P0003") {
+      return {
+        ok: false,
+        status: 403,
+        code: "ai_external_article_content_not_approved",
+        message:
+          "Externe Artikelinhalte sind für diesen KI-Anbieter nicht freigegeben.",
       };
     }
     // Do not expose PostgREST/PostgreSQL details, including schema names.

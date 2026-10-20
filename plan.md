@@ -162,3 +162,9 @@ Die Onboarding-Function verarbeitet Browser-CORS bewusst vor der `withSupabase`-
 ## Arbeitsplatz vor Übersicht
 
 «Arbeitsplatz» wird für berechtigte Agent:innen als erster verfügbarer Arbeitsbereich oberhalb von «Übersicht» angezeigt. Die bestehende Feature- und Rechtefilterung bleibt danach unverändert wirksam: Ist der Arbeitsplatz nicht freigegeben, beginnt die Navigation weiterhin bei «Übersicht»; reine Anfragende behalten ausschliesslich ihre zugelassenen Bereiche.
+
+## Manuelle Claude-Aufbereitung für Wissensartikel
+
+Der Wissenseditor erhält eine separate Rohinhalt-Eingabe und die Aktion «Mit KI aufbereiten». Ein bewusster Klick übermittelt ausschliesslich den begrenzten aktuellen Rohinhalt an Anthropic und erhält einen strukturierten Vorschlag aus Titel und Markdown zurück. Der Vorschlag wird ausschliesslich in den weiter editierbaren Dialog eingesetzt: Er speichert keinen Artikel, verändert Sichtbarkeit oder Status nicht und startet weder Review noch Veröffentlichung. Das bestehende Markdown-Design bleibt die einzige Darstellungslogik für interne und externe Artikel.
+
+Die serverseitige `ai-assist`-Function bleibt JWT-geschützt und verlangt aktive Mandantenmitgliedschaft, `knowledge.manage`, das Funktionsflag `ai.assist` sowie eine aktuelle, explizite Anthropic-Freigabe pro Mandant. Die Freigabe wird nur für den Zweck Wissensentwurf konfiguriert und hat eine getrennte ausdrückliche Zustimmung für externe Artikelinhalte. Jeder Aufruf reserviert nur datensparsame Governance-Metadaten, erzwingt Limits und schreibt kein Rohmaterial, keinen Prompt und keinen Entwurf in Datenbank oder Audit. Bei bestehenden Artikeln liest die atomare Queue die aktuelle Sichtbarkeit mandantengebunden aus der Datenbank und sperrt externe Inhalte ohne explizite Freigabe; ein Browserwert kann diese Regel nicht umgehen. API-Schlüssel und Modell bleiben ausschliesslich serverseitige Secrets; fehlen sie, verweigert die Function den Aufruf fail-closed.
