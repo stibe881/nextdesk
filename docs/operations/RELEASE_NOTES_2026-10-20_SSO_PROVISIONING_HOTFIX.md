@@ -18,9 +18,17 @@
 - Produktiv bestätigt: alle SSO-RPCs vorhanden, Browserrollen haben keine Ausführungsrechte auf den Service-Role-RPCs, die Service-Role hat diese Rechte.
 - Ein unabhängiger finaler Sicherheitsreview meldete keine kritischen oder hohen Befunde.
 
+## SSO-Loginfolgehotfix
+
+- **Codebasis:** `bb8ef49adab6a306559efbb037dab454c264c934` – `fix: handle one-row sso claims from PostgREST`.
+- `tenant-sso-access` **v19** und `tenant-users` **v13** sind aktiv, weiterhin mit JWT-Pflicht.
+- Die beiden gelockten PostgreSQL-Claims liefern eine einzelne Tabellenzeile. Der Edge-Code behandelt die von PostgREST dafür verwendete einreihige Antwort jetzt korrekt und verweigert weiterhin jede leere oder mehrdeutige Antwort.
+- Damit kann eine erfolgreich verifizierte Entra-Anmeldung eines erstmals berechtigten Mitarbeitenden wieder den mandantengebundenen Arbeitsbereich erstellen. Es werden weder Agentenrechte noch erhöhte Rollen automatisch vergeben.
+- TypeScript-, Deno-, PostgreSQL-RLS-, Schema- und Formatprüfungen waren vor der Auslieferung erfolgreich. Der Benutzer muss die Anmeldung dennoch einmal erneut ausführen; es wurde kein Benutzerkonto oder Mandantenmitglied manuell verändert.
+
 ## Nicht Bestandteil dieses Releases
 
-- Kein neuer iOS-/TestFlight-Build und kein App-Store-Upload.
+- Der iOS-Quellhotfix ist separat auf dem Mobil-Repository gespeichert. Ein autorisierter Remote-TestFlight-Build wurde gestartet; dessen Ergebnis wird erst nach der Rückmeldung von EAS bestätigt.
 - Kein neuer Provider, keine neue Entra-Berechtigung, kein Scheduler und keine automatische Löschung.
 - Keine Änderung am produktiven Microsoft-365-/Exchange-E-Mail-Kanal.
 
