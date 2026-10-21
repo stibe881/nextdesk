@@ -495,7 +495,20 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         role.scope === "tenant"
       );
     });
-    return json(request, { data: { canWorkTickets, isTenantAdmin } });
+    const canManageContracts = effectiveRoles.some((assignment) => {
+      const role = relatedRole(assignment.roles);
+      return (
+        role?.active === true &&
+        role.scope === "tenant" &&
+        (role.name === TENANT_ADMINISTRATOR_ROLE || role.name === "Verträge") &&
+        (role.role_permissions ?? []).some(
+          (permission) => permission.permission_code === "contracts.manage",
+        )
+      );
+    });
+    return json(request, {
+      data: { canWorkTickets, canManageContracts, isTenantAdmin },
+    });
   }
 
   if (action.type === "listUsers") {

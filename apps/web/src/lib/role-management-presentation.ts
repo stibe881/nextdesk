@@ -18,6 +18,7 @@ const GROUPS: ReadonlyArray<{
   { id: "tickets", label: "Tickets", prefixes: ["ticket"] },
   { id: "knowledge", label: "Wissensdatenbank", prefixes: ["knowledge"] },
   { id: "assets", label: "Assets", prefixes: ["asset"] },
+  { id: "contracts", label: "Verträge", prefixes: ["contracts"] },
   {
     id: "planning",
     label: "Planung",

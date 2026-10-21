@@ -241,6 +241,12 @@ function isProtectedTenantAdministrator(
 ): boolean {
   return role.name === TENANT_ADMINISTRATOR_ROLE && role.scope === "tenant";
 }
+function isProtectedContractsRole(role: Pick<Role, "name" | "scope">): boolean {
+  return role.name === "Verträge" && role.scope === "tenant";
+}
+function isProtectedSystemRole(role: Pick<Role, "name" | "scope">): boolean {
+  return isProtectedTenantAdministrator(role) || isProtectedContractsRole(role);
+}
 
 function relatedRole(value: Assignment["roles"]): AssignmentRole | null {
   return Array.isArray(value) ? (value[0] ?? null) : value;
@@ -641,7 +647,10 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
   }
 
   if (action.type === "createRole") {
-    if (action.name === TENANT_ADMINISTRATOR_ROLE) {
+    if (
+      action.name === TENANT_ADMINISTRATOR_ROLE ||
+      action.name === "Verträge"
+    ) {
       return json(
         request,
         { error: { code: "tenant_administrator_role_protected" } },
@@ -763,7 +772,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
 
     const role = existingRole as Role;
     if (
-      isProtectedTenantAdministrator(role) &&
+      isProtectedSystemRole(role) &&
       (action.name !== undefined ||
         action.permissionCodes !== undefined ||
         action.active !== undefined)
@@ -774,7 +783,10 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         422,
       );
     }
-    if (action.name === TENANT_ADMINISTRATOR_ROLE) {
+    if (
+      action.name === TENANT_ADMINISTRATOR_ROLE ||
+      action.name === "Verträge"
+    ) {
       return json(
         request,
         { error: { code: "tenant_administrator_role_protected" } },
@@ -925,10 +937,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     if (!role.active) {
       return json(request, { error: { code: "role_inactive" } }, 422);
     }
-    if (
-      isProtectedTenantAdministrator(role) &&
-      !authorization.isTenantAdministrator
-    ) {
+    if (isProtectedSystemRole(role) && !authorization.isTenantAdministrator) {
       return json(
         request,
         { error: { code: "tenant_administrator_required" } },
@@ -1130,7 +1139,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
   ).map((permission) => permission.permission_code);
   if (
     assignmentRole &&
-    isProtectedTenantAdministrator(assignmentRole) &&
+    isProtectedSystemRole(assignmentRole) &&
     !authorization.isTenantAdministrator
   ) {
     return json(

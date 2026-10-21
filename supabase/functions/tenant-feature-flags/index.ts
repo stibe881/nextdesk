@@ -13,6 +13,7 @@ const KNOWN_FEATURE_KEYS = new Set([
   "reporting.service",
   "integrations.email",
   "assets.management",
+  "contracts.management",
   "experience.workspace",
   "portal.self-service",
   "ai.assist",

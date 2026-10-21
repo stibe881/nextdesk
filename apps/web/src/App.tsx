@@ -26,6 +26,7 @@ import {
   CircleCheck,
   CircleEllipsis,
   FileWarning,
+  FileText,
   LayoutDashboard,
   LogOut,
   MessageSquareText,
@@ -75,6 +76,7 @@ import { KnowledgeBase } from "./knowledge-base";
 import { GlobalSearch, type GlobalSearchResult } from "./global-search";
 import { ServiceReporting } from "./service-reporting";
 import { ServiceAssets } from "./service-assets";
+import { Contracts } from "./contracts";
 import { EventSpaces } from "./event-spaces";
 import { Onboarding } from "./onboarding";
 import { PersonalSettings } from "./personal-settings";
@@ -139,6 +141,7 @@ type Section =
   | "Services"
   | "Assets"
   | "Fälle"
+  | "Verträge"
   | "Veranstaltungsräume"
   | "Eintritte"
   | "Wissen"
@@ -239,6 +242,7 @@ type BulkStatusOption = {
 };
 
 type TenantTicketAccess = {
+  canManageContracts: boolean;
   canWorkTickets: boolean;
   isTenantAdmin: boolean;
 };
@@ -266,6 +270,7 @@ const sections: readonly { label: Section; Icon: LucideIcon }[] =
     { label: "Arbeitsplatz", Icon: BriefcaseBusiness },
     { label: "Services", Icon: MonitorCog },
     { label: "Assets", Icon: Boxes },
+    { label: "Verträge", Icon: FileText },
     { label: "Veranstaltungsräume", Icon: CalendarDays },
     { label: "Eintritte", Icon: ClipboardList },
     { label: "Wissen", Icon: BookOpen },
@@ -508,9 +513,11 @@ function tenantTicketAccessFromResponse(
   if (!data || typeof data !== "object") return null;
   const parsed = data as Record<string, unknown>;
   return typeof parsed.canWorkTickets === "boolean" &&
+    typeof parsed.canManageContracts === "boolean" &&
     typeof parsed.isTenantAdmin === "boolean"
     ? {
         canWorkTickets: parsed.canWorkTickets,
+        canManageContracts: parsed.canManageContracts,
         isTenantAdmin: parsed.isTenantAdmin,
       }
     : null;
@@ -1532,6 +1539,7 @@ export function App() {
   const [quickCreateRequest, setQuickCreateRequest] =
     useState<QuickCreateRequest | null>(null);
   const [canWorkTickets, setCanWorkTickets] = useState(false);
+  const [canManageContracts, setCanManageContracts] = useState(false);
   const [ticketAccessLoading, setTicketAccessLoading] =
     useState(isSupabaseConfigured);
   const [tenantFeaturesLoading, setTenantFeaturesLoading] =
@@ -1674,6 +1682,7 @@ export function App() {
       setOwnerAccessError("");
       setOwnerView("console");
       setCanWorkTickets(false);
+      setCanManageContracts(false);
       setTicketAccessLoading(Boolean(nextSession));
       setTenantFeaturesLoading(Boolean(nextSession));
       setIsTenantAdmin(false);
@@ -1868,6 +1877,10 @@ export function App() {
     isSupabaseConfigured &&
     canWorkTickets &&
     tenantFeatures["agent.workbench"] === true;
+  const contractsAvailable =
+    isSupabaseConfigured &&
+    canManageContracts &&
+    tenantFeatures["contracts.management"] === true;
   const workspaceNavigationReady = isWorkspaceNavigationReady({
     activeTenantAvailable: activeTenant !== null,
     isSupabaseConfigured,
@@ -2050,6 +2063,7 @@ export function App() {
   useEffect(() => {
     if (!supabase || !session || !activeTenant) {
       setCanWorkTickets(false);
+      setCanManageContracts(false);
       setIsTenantAdmin(false);
       setTicketAccessLoading(false);
       return;
@@ -2066,11 +2080,13 @@ export function App() {
         if (!access) throw new Error("invalid_ticket_access_response");
         if (!mounted) return;
         setCanWorkTickets(access.canWorkTickets);
+        setCanManageContracts(access.canManageContracts);
         setIsTenantAdmin(access.isTenantAdmin);
       })
       .catch(() => {
         if (!mounted) return;
         setCanWorkTickets(false);
+        setCanManageContracts(false);
         setIsTenantAdmin(false);
       })
       .finally(() => {
@@ -2273,11 +2289,16 @@ export function App() {
     setTicketScope("mine");
     setSelectedTicketIds(new Set());
     setTicketActionStatus("");
+    if (!canWorkTickets && contractsAvailable) {
+      if (section !== "Verträge") setSection("Verträge");
+      return;
+    }
     if (!canRequesterOpenSection(section, requesterPortalEnabled)) {
       setSection("Übersicht");
     }
   }, [
     canWorkTickets,
+    contractsAvailable,
     requesterPortalEnabled,
     section,
     tenantFeaturesLoading,
@@ -2414,8 +2435,10 @@ export function App() {
 
   function setSection(nextSection: Section) {
     if (
-      !canWorkTickets &&
-      !canRequesterOpenSection(nextSection, requesterPortalEnabled)
+      (!canWorkTickets && contractsAvailable && nextSection !== "Verträge") ||
+      (!canWorkTickets &&
+        !contractsAvailable &&
+        !canRequesterOpenSection(nextSection, requesterPortalEnabled))
     ) {
       setGlobalSearchTarget(null);
       setRequestedSection("Übersicht");
@@ -2828,12 +2851,16 @@ export function App() {
       return isFeatureEnabled("assets.management");
     }
     if (item.label === "Wissen") return isFeatureEnabled("knowledge.base");
+    if (item.label === "Verträge") return contractsAvailable;
     if (item.label === "Berichte") return isFeatureEnabled("reporting.service");
     return true;
   });
+  const requesterSections = requesterNavigationSections(featureSections);
   const workSections = canWorkTickets
     ? featureSections
-    : requesterNavigationSections(featureSections);
+    : contractsAvailable
+      ? featureSections.filter((item) => item.label === "Verträge")
+      : requesterSections;
 
   useEffect(() => {
     if (ticketAccessLoading || tenantFeaturesLoading) return;
@@ -2844,21 +2871,24 @@ export function App() {
       Services: "assets.management",
       "Mein Portal": "requester.portal",
       Wissen: "knowledge.base",
+      Verträge: "contracts.management",
     };
     const featureKey = sectionFeature[section];
     const workplaceUnavailable =
       section === "Arbeitsplatz" &&
       !isWorkplaceAvailable(agentWorkbenchEnabled, experienceWorkspaceEnabled);
     if (
-      (workplaceUnavailable || featureKey) &&
-      isSupabaseConfigured &&
-      (workplaceUnavailable || tenantFeatures[featureKey!] !== true)
+      ((workplaceUnavailable || featureKey) &&
+        isSupabaseConfigured &&
+        (workplaceUnavailable || tenantFeatures[featureKey!] !== true)) ||
+      (section === "Verträge" && !contractsAvailable)
     ) {
       setSection("Übersicht");
     }
   }, [
     agentWorkbenchEnabled,
     experienceWorkspaceEnabled,
+    contractsAvailable,
     section,
     tenantFeatures,
     tenantFeaturesLoading,
@@ -3047,6 +3077,7 @@ export function App() {
   function activateTenant(nextTenantId: string) {
     if (nextTenantId === activeTenantId) return;
     setCanWorkTickets(false);
+    setCanManageContracts(false);
     setTicketAccessLoading(true);
     setIsTenantAdmin(false);
     setTenantFeatures({});
@@ -3807,6 +3838,8 @@ export function App() {
             onCreateArticleRequestConsumed={consumeQuickCreateRequest}
             tenantId={activeTenant.id}
           />
+        ) : section === "Verträge" && activeTenant && contractsAvailable ? (
+          <Contracts tenantId={activeTenant.id} />
         ) : section === "Assets" &&
           activeTenant &&
           isFeatureEnabled("assets.management") ? (

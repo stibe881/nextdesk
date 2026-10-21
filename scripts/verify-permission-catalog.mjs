@@ -36,6 +36,10 @@ const onboardingMigrationPath = new URL(
   "../supabase/migrations/0090_employee_onboarding.sql",
   import.meta.url,
 );
+const contractsMigrationPath = new URL(
+  "../supabase/migrations/0100_contracts_module_foundation.sql",
+  import.meta.url,
+);
 const catalog = await readFile(catalogPath, "utf8");
 const migrations = await Promise.all([
   readFile(baseMigrationPath, "utf8"),
@@ -46,6 +50,7 @@ const migrations = await Promise.all([
   readFile(ticketApprovalMigrationPath, "utf8"),
   readFile(eventSpacesMigrationPath, "utf8"),
   readFile(onboardingMigrationPath, "utf8"),
+  readFile(contractsMigrationPath, "utf8"),
 ]);
 const migration = migrations.join("\n");
 
