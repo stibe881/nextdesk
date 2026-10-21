@@ -99,6 +99,15 @@ const expectedFiles = [
   "0095_anthropic_knowledge_drafts.sql",
   "0096_fix_ticket_custom_field_active_positions.sql",
   "0097_atomic_ticket_custom_field_edit.sql",
+  "0098_intune_manual_asset_sync.sql",
+  "0099_intune_primary_person_links.sql",
+  "0100_contracts_module_foundation.sql",
+  "0101_personal_push_delivery_and_contract_deadlines.sql",
+  "0102_department_teams_ticket_visibility.sql",
+  "0103_knowledge_collection_atomic_mutations.sql",
+  "0104_ticket_notification_recipient_authorization.sql",
+  "0105_knowledge_taxonomy_fulltext_search.sql",
+  "0106_service_status_page.sql",
 ];
 
 const availableFiles = await readdir(migrationDirectory);

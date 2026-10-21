@@ -382,3 +382,50 @@ Das Dashboard vergleicht Ticketvolumen, offene und gelöste Tickets, Eskalatione
 - `supabase/functions/_shared/team-ticket-access.test.ts`: Regressionen für Teamgrenzen, Vergleichszeiträume und Berichtszugriff.
 - `apps/web/src/service-reporting.tsx`: Berichts-Dashboard, Vorperiodenvergleich, lokale Zusammenstellung und Druckansicht.
 - `apps/web/src/App.tsx`: sichere Navigation und Übergabe des bestehenden Corporate Designs an Berichte.
+
+## Öffentlicher Systemstatus und SharePoint-Badge
+
+nextDesk erhält einen neuen Bereich «Systemstatus» direkt bei den Services. Der Servicekatalog erhält pro aktivem Service einen bewusst gepflegten Betriebszustand: `Betriebsbereit`, `Beeinträchtigte Leistung`, `Teilweiser Ausfall`, `Schwerwiegender Ausfall` oder `Wird gewartet`. Der Zustand ist kein automatisch abgeleiteter Ticket- oder Assetzustand. Berechtigte Personen setzen ihn ausdrücklich im bestehenden Serviceformular; jede Änderung erzeugt eine zeitlich nachvollziehbare Statushistorie.
+
+Die neue öffentliche Statusseite übernimmt die klare Informationshierarchie der Referenz: eine dominante Gesamtstatusfläche, eine zugängliche Legende, einzelne Servicezeilen mit aktuellem Status und eine lesbare 90-Tage-Verlaufslinie. Es werden keine künstlichen Gruppen erfunden, weil der bestehende Servicekatalog keine Kategorien besitzt. Lange Servicenamen umbrechen sauber, jede Statusfarbe erhält einen ausgeschriebenen Text und der Verlauf besitzt einen zugänglichen Alternativtext. Die Ansicht verwendet die bestehenden Mandantenfarben und das konfigurierte Logo, sobald diese für die bewusste Veröffentlichung verfügbar sind.
+
+### Freigabe, Datenschutz und Mandantentrennung
+
+Eine öffentliche Statusseite ist immer eine explizite Mandantenentscheidung. Sie bleibt standardmässig deaktiviert. Erst eine Person mit `tenant.settings.manage` kann die Veröffentlichung aktivieren und damit eine zufällige öffentliche Kennung freigeben. Dieselbe Berechtigung kann die Kennung rotieren. Die öffentliche Function gibt bei deaktivierter oder unbekannter Kennung dieselbe neutrale Nichtverfügbarkeitsantwort zurück. Sie verwendet ausschliesslich eine serverseitige Auswahl veröffentlichter Services mit Name, bewusst gesetztem Zustand, öffentlicher Seitenüberschrift, zulässiger Markeninformation und aggregiertem Verlauf. Sie gibt keine Tenant-ID, Tickets, Assetdaten, Fälle, Personalien, interne Beschreibungen, Auditdaten oder nicht veröffentlichte Services aus.
+
+Der öffentliche Badge ist ein minimales SVG mit deutschem Statussatz, etwa «Alle Dienste verfügbar» oder «Teilweise eingeschränkt». Er ist als Bildadresse für den SharePoint-Bild-Webpart vorgesehen und verlinkt auf die öffentliche nextDesk-Statusseite. Es wird keine SharePoint-Sitzung, Graph-Berechtigung oder automatische Änderung einer SharePoint-Seite benötigt oder eingerichtet. Die Seite zeigt in nextDesk eine kopierbare Bildadresse, einen HTML-Fallback sowie kurze manuelle SharePoint-Schritte. Dadurch bleiben DSGVO, revDSG und die Datenminimierung gewahrt.
+
+### Datenmodell und Serververträge
+
+Migration `0106_service_status_page.sql` ergänzt `public.services` um den validierten Betriebszustand und die ausdrückliche öffentliche Sichtbarkeit. Eine mandantengefencete `service_status_events`-Tabelle zeichnet ausschliesslich Statuswechsel auf. Eine `service_status_pages`-Tabelle hält die explizite Veröffentlichung, zufällige Kennung, öffentliche Überschrift und Revisionsinformationen. RLS bleibt für Browserrollen geschlossen; Schreibvorgänge sind zusätzlich über bestehende `asset.manage`- beziehungsweise `tenant.settings.manage`-Prüfungen in Edge Functions geschützt. Trigger schreiben den anfänglichen Zustand und spätere Änderungen atomar, ohne den bisherigen Serviceaudit zu ersetzen.
+
+`service-assets` bleibt JWT-geschützt und akzeptiert den Servicezustand nur nach aktiver Mitgliedschaft, aktivierter Assetverwaltung und `asset.manage`. `service-status` bleibt ebenfalls JWT-geschützt und liefert die interne Statusübersicht sowie die Einstellungen der Statusseite; das Speichern oder Rotieren einer öffentlichen Kennung verlangt zusätzlich `tenant.settings.manage`. Eine separate, bewusst ohne JWT betriebene `service-status-public`-Function akzeptiert nur eine UUID-Kennung, liest über serverseitigen Zugriff ausschliesslich aktivierte öffentliche Inhalte und liefert entweder einen begrenzten JSON-Vertrag für die Statusseite oder ein SVG-Badge. Der Browser leitet keine Sichtbarkeit aus lokalen Service- oder Mandantendaten ab.
+
+### Gestaltung
+
+- **Design Movement:** Vertrauenswürdiges Service-Operations-Design, inspiriert von modernen Statusseiten mit ruhiger Schweizer Verwaltungsästhetik.
+- **Core Principles:** Sofort erfassbarer Gesamtzustand, nachvollziehbarer Verlauf, klare Statussprache und zurückhaltende Verwaltungssteuerung.
+- **Color Philosophy:** Grün, Gelb, Orange, Rot und Blau tragen Statusbedeutung, werden aber immer durch Text und Symbol ergänzt; Mandantenfarben rahmen die Marke, übersteuern jedoch nie Warnfarben.
+- **Layout Paradigm:** Eine vertikale Statusgeschichte vom Gesamtzustand über Legende zu einzelnen Diensten; keine dichte Dashboard-Kachelwand.
+- **Signature Elements:** Breite Statusleiste, fein segmentierte 90-Tage-Verlaufslinien und ein kompakter, als Bild einbettbarer Badge.
+- **Interaction Philosophy:** Status wird bewusst gesetzt, Veröffentlichung bewusst aktiviert und URLs werden explizit kopiert statt automatisch in externe Systeme geschrieben.
+- **Animation:** Keine Dauerschleifen; Zustandswechsel sind auf kurze, respektvolle Übergänge begrenzt und respektieren reduzierte Bewegung.
+- **Typography System:** Die vorhandene nextDesk-Schrift- und Hierarchieskala bleibt verbindlich; Gesamtstatus ist klar dominant, Serviceinformationen sind kompakt und gut lesbar.
+- **Brand Essence:** nextDesk macht die Verfügbarkeit klar, glaubwürdig und sicher sichtbar – sachlich, transparent und handlungsorientiert.
+- **Brand Voice:** Präzise und ruhig, zum Beispiel «Alle veröffentlichten Dienste sind verfügbar.» und «Der Dienst wird planmässig gewartet.»
+- **Wordmark & Logo:** Das konfigurierte Mandantenlogo bleibt das alleinige Markenzeichen; die Statusseite erfindet kein neues Logo.
+- **Signature Brand Color:** Die konfigurierten Mandantenfarben akzentuieren Header und Links, während die semantischen Statusfarben für Betriebslagen reserviert bleiben.
+
+### Projektstruktur
+
+- `supabase/migrations/0106_service_status_page.sql`: Servicezustände, Statushistorie, öffentliche Statusseitenkonfiguration, RLS und atomare Trigger.
+- `supabase/functions/service-assets/`: Erweiterung des vorhandenen serverautorisierten Servicevertrags um den Zustand.
+- `supabase/functions/service-status/`: JWT-geschützte interne Übersicht und Veröffentlichungsverwaltung.
+- `supabase/functions/service-status-public/`: datensparsame öffentliche Seite- und SVG-Badge-Ausgabe ohne Schreibpfad.
+- `apps/web/src/service-status.tsx`: Interne Systemstatusverwaltung und öffentliche Statusansicht.
+- `apps/web/src/service-assets.tsx`: Zustandsauswahl im bestehenden Serviceformular und klare Darstellung in Servicezeilen.
+- `apps/web/src/App.tsx`, `apps/web/src/styles.css`: neuer Bereich, öffentliche Query-Route und responsive, zugängliche Statusdarstellung.
+
+### Umgesetzte Sicherheitsdetails
+
+Die 90-Tage-Verlaufslinie erhält pro Service zusätzlich den letzten serverautorisierten Statuswechsel vor dem sichtbaren Zeitfenster. Dadurch wird ein späterer Störungszustand nicht rückwirkend auf frühere Tage übertragen. Öffentliche Status- und Badge-Antworten sind mit `no-store` gegen Wiederverwendung nach einer Kennungsrotation geschützt. Der bewusst öffentliche SVG-Badge kann ohne Credentials auch von einem SharePoint-Bild-Webpart oder dessen Proxy bezogen werden; die JSON-Statusseite akzeptiert CORS weiterhin nur von `https://app.nextdesk.ch`.

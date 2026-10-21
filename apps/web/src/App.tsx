@@ -76,6 +76,11 @@ import { KnowledgeBase } from "./knowledge-base";
 import { GlobalSearch, type GlobalSearchResult } from "./global-search";
 import { ServiceReporting } from "./service-reporting";
 import { ServiceAssets } from "./service-assets";
+import {
+  isPublicServiceStatusRequested,
+  PublicServiceStatusPage,
+  ServiceStatus,
+} from "./service-status";
 import { Contracts } from "./contracts";
 import { EventSpaces } from "./event-spaces";
 import { Onboarding } from "./onboarding";
@@ -139,6 +144,7 @@ type Section =
   | "Erwähnungen"
   | "Mein Portal"
   | "Services"
+  | "Systemstatus"
   | "Assets"
   | "Fälle"
   | "Verträge"
@@ -270,6 +276,7 @@ const sections: readonly { label: Section; Icon: LucideIcon }[] =
     { label: "Fälle", Icon: FileWarning },
     { label: "Arbeitsplatz", Icon: BriefcaseBusiness },
     { label: "Services", Icon: MonitorCog },
+    { label: "Systemstatus", Icon: CircleCheck },
     { label: "Assets", Icon: Boxes },
     { label: "Verträge", Icon: FileText },
     { label: "Veranstaltungsräume", Icon: CalendarDays },
@@ -1482,7 +1489,7 @@ function TicketListDetailPreview({
   );
 }
 
-export function App() {
+function AuthenticatedApp() {
   const [section, setRequestedSection] = useState<Section>("Übersicht");
   const [globalSearchTarget, setGlobalSearchTarget] =
     useState<GlobalSearchResult | null>(null);
@@ -2866,6 +2873,7 @@ export function App() {
     if (item.label === "Mein Portal") return requesterPortalEnabled;
     if (
       item.label === "Services" ||
+      item.label === "Systemstatus" ||
       item.label === "Assets" ||
       item.label === "Fälle"
     ) {
@@ -2891,6 +2899,7 @@ export function App() {
     const sectionFeature: Partial<Record<Section, string>> = {
       Fälle: "assets.management",
       Assets: "assets.management",
+      Systemstatus: "assets.management",
       Berichte: "reporting.service",
       Services: "assets.management",
       "Mein Portal": "requester.portal",
@@ -3893,6 +3902,10 @@ export function App() {
           activeTenant &&
           isFeatureEnabled("assets.management") ? (
           <ServiceAssets fixedTab="services" tenantId={activeTenant.id} />
+        ) : section === "Systemstatus" &&
+          activeTenant &&
+          isFeatureEnabled("assets.management") ? (
+          <ServiceStatus tenantId={activeTenant.id} />
         ) : section === "Fälle" &&
           activeTenant &&
           isFeatureEnabled("assets.management") ? (
@@ -4759,6 +4772,15 @@ export function App() {
           />
         )}
     </div>
+  );
+}
+
+export function App() {
+  const publicStatusId = isPublicServiceStatusRequested();
+  return publicStatusId ? (
+    <PublicServiceStatusPage publicId={publicStatusId} />
+  ) : (
+    <AuthenticatedApp />
   );
 }
 

@@ -114,6 +114,12 @@ verify_jwt = true
 [functions.service-assets]
 verify_jwt = true
 
+[functions.service-status]
+verify_jwt = true
+
+[functions.service-status-public]
+verify_jwt = false
+
 [functions.event-spaces]
 verify_jwt = true
 

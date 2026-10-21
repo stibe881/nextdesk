@@ -6631,6 +6631,127 @@ begin
   end if;
 end;
 $$;
+
+-- Der Systemstatus bleibt mandantengefencet, zeichnet Zustandswechsel atomar
+-- auf und ist ohne eine explizite Seitenfreigabe nie öffentlich.
+insert into public.tenants (id, slug, name) values
+  ('f1060000-0000-4000-8000-000000000001', 'service-status-a', 'Service Status A'),
+  ('f1060000-0000-4000-8000-000000000002', 'service-status-b', 'Service Status B');
+insert into public.services (
+  id, tenant_id, name, status, status_public
+) values
+  (
+    'f1060000-0000-4000-8000-000000000010',
+    'f1060000-0000-4000-8000-000000000001',
+    'Öffentlicher Dienst A',
+    'operational',
+    true
+  ),
+  (
+    'f1060000-0000-4000-8000-000000000020',
+    'f1060000-0000-4000-8000-000000000002',
+    'Fremder Dienst B',
+    'major_outage',
+    true
+  );
+
+update public.services
+   set status = 'partial_outage'
+ where id = 'f1060000-0000-4000-8000-000000000010';
+
+insert into public.service_status_pages (
+  tenant_id, title, public_enabled
+) values (
+  'f1060000-0000-4000-8000-000000000001',
+  'Öffentlicher Systemstatus',
+  true
+);
+
+update public.service_status_events
+   set changed_at = timezone('utc', now()) - interval '120 days'
+ where tenant_id = 'f1060000-0000-4000-8000-000000000001'
+   and service_id = 'f1060000-0000-4000-8000-000000000010'
+   and status = 'operational';
+update public.service_status_events
+   set changed_at = timezone('utc', now()) - interval '1 day'
+ where tenant_id = 'f1060000-0000-4000-8000-000000000001'
+   and service_id = 'f1060000-0000-4000-8000-000000000010'
+   and status = 'partial_outage';
+
+do $$
+begin
+  if (select count(*) from public.service_status_events
+      where tenant_id = 'f1060000-0000-4000-8000-000000000001'
+        and service_id = 'f1060000-0000-4000-8000-000000000010') <> 2 then
+    raise exception 'Service status history did not record creation and transition';
+  end if;
+  if not exists (
+    select 1 from public.service_status_events
+    where tenant_id = 'f1060000-0000-4000-8000-000000000001'
+      and service_id = 'f1060000-0000-4000-8000-000000000010'
+      and status = 'partial_outage'
+  ) then
+    raise exception 'Service status history lost the explicit current transition';
+  end if;
+  if not exists (
+    select 1
+    from public.service_status_history_baselines(
+      'f1060000-0000-4000-8000-000000000001',
+      array['f1060000-0000-4000-8000-000000000010']::uuid[],
+      timezone('utc', now()) - interval '89 days'
+    ) as baseline
+    where baseline.service_id = 'f1060000-0000-4000-8000-000000000010'
+      and baseline.status = 'operational'
+  ) then
+    raise exception 'Service status history baseline did not preserve the pre-window state';
+  end if;
+  if not exists (
+    select 1 from public.service_status_pages
+    where tenant_id = 'f1060000-0000-4000-8000-000000000001'
+      and public_enabled
+      and public_id is not null
+  ) then
+    raise exception 'Explicit public status page was not persisted';
+  end if;
+  if not (
+    select relrowsecurity and relforcerowsecurity
+    from pg_class
+    where oid = 'public.service_status_events'::regclass
+  ) or not (
+    select relrowsecurity and relforcerowsecurity
+    from pg_class
+    where oid = 'public.service_status_pages'::regclass
+  ) then
+    raise exception 'Service status tables must enable and force RLS';
+  end if;
+  if has_table_privilege('anon', 'public.service_status_events', 'select')
+    or has_table_privilege('authenticated', 'public.service_status_events', 'select')
+    or has_table_privilege('anon', 'public.service_status_pages', 'select')
+    or has_table_privilege('authenticated', 'public.service_status_pages', 'select') then
+    raise exception 'Browser roles retained direct access to service status data';
+  end if;
+  begin
+    insert into public.service_status_events (
+      tenant_id, service_id, status
+    ) values (
+      'f1060000-0000-4000-8000-000000000001',
+      'f1060000-0000-4000-8000-000000000020',
+      'operational'
+    );
+    raise exception 'A cross-tenant service status event was accepted';
+  exception when foreign_key_violation then
+    null;
+  end;
+  begin
+    update public.services
+       set status = 'invented_status'
+     where id = 'f1060000-0000-4000-8000-000000000010';
+    raise exception 'An invalid service status was accepted';
+  exception when check_violation then
+    null;
+  end;
+end;
+$$;
 rollback;
 SQL
 echo "PostgreSQL 16 migration and RLS integration checks passed."

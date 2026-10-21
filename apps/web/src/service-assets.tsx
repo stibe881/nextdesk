@@ -21,6 +21,12 @@ export type ServiceAssetsProps = {
 
 export type CatalogTab = "services" | "assets" | "problems";
 type Criticality = "low" | "medium" | "high" | "critical";
+type ServiceStatus =
+  | "operational"
+  | "degraded"
+  | "partial_outage"
+  | "major_outage"
+  | "maintenance";
 type ProblemStatus = "open" | "investigating" | "known_error" | "resolved";
 type EditableProblemStatus = Exclude<ProblemStatus, "resolved">;
 type JsonValue =
@@ -32,6 +38,8 @@ type Service = {
   name: string;
   description: string | null;
   criticality: Criticality;
+  status: ServiceStatus;
+  status_public: boolean;
   active: boolean;
   created_at: string;
   updated_at: string;
@@ -89,6 +97,8 @@ type ServiceForm = {
   name: string;
   description: string;
   criticality: Criticality;
+  status: ServiceStatus;
+  statusPublic: boolean;
 };
 
 type AssetForm = {
@@ -128,6 +138,8 @@ type ServiceSaveRequest = {
   name: string;
   description: string | null;
   criticality: Criticality;
+  status: ServiceStatus;
+  statusPublic: boolean;
   active: boolean;
   serviceId?: string;
 };
@@ -217,6 +229,8 @@ const EMPTY_SERVICE_FORM: ServiceForm = {
   name: "",
   description: "",
   criticality: "medium",
+  status: "operational",
+  statusPublic: false,
 };
 
 const EMPTY_ASSET_FORM: AssetForm = {
@@ -250,6 +264,14 @@ const CRITICALITY_LABELS: Record<Criticality, string> = {
   medium: "Mittel",
   high: "Hoch",
   critical: "Kritisch",
+};
+
+const SERVICE_STATUS_LABELS: Record<ServiceStatus, string> = {
+  operational: "Betriebsbereit",
+  degraded: "Beeinträchtigte Leistung",
+  partial_outage: "Teilweiser Ausfall",
+  major_outage: "Schwerwiegender Ausfall",
+  maintenance: "Wird gewartet",
 };
 
 const PROBLEM_STATUS_LABELS: Record<ProblemStatus, string> = {
@@ -317,6 +339,16 @@ function isCriticality(value: unknown): value is Criticality {
   );
 }
 
+function isServiceStatus(value: unknown): value is ServiceStatus {
+  return (
+    value === "operational" ||
+    value === "degraded" ||
+    value === "partial_outage" ||
+    value === "major_outage" ||
+    value === "maintenance"
+  );
+}
+
 function isProblemStatus(value: unknown): value is ProblemStatus {
   return (
     value === "open" ||
@@ -334,6 +366,8 @@ function parseService(value: unknown): Service | null {
     typeof value.name !== "string" ||
     !isNullableString(value.description) ||
     !isCriticality(value.criticality) ||
+    !isServiceStatus(value.status) ||
+    typeof value.status_public !== "boolean" ||
     typeof value.active !== "boolean" ||
     typeof value.created_at !== "string" ||
     typeof value.updated_at !== "string"
@@ -346,6 +380,8 @@ function parseService(value: unknown): Service | null {
     name: value.name,
     description: value.description,
     criticality: value.criticality,
+    status: value.status,
+    status_public: value.status_public,
     active: value.active,
     created_at: value.created_at,
     updated_at: value.updated_at,
@@ -697,6 +733,8 @@ function serviceDraft(service: Service): ServiceForm {
     name: service.name,
     description: service.description ?? "",
     criticality: service.criticality,
+    status: service.status,
+    statusPublic: service.status_public,
   };
 }
 
@@ -1227,6 +1265,8 @@ export function ServiceAssets({
         name,
         description: optionalText(serviceForm.description),
         criticality: serviceForm.criticality,
+        status: serviceForm.status,
+        statusPublic: serviceForm.statusPublic,
         active: true,
       };
       const saved = parseSavedService(await requestServiceAssets(request));
@@ -1712,6 +1752,12 @@ export function ServiceAssets({
                 <li key={service.id}>
                   <article>
                     <h4>{service.name}</h4>
+                    <span
+                      className={`service-assets__service-status service-assets__service-status--${service.status}`}
+                    >
+                      <span aria-hidden="true" />
+                      {SERVICE_STATUS_LABELS[service.status]}
+                    </span>
                     <p>
                       <strong>{CRITICALITY_LABELS[service.criticality]}</strong>
                       {service.description ? ` · ${service.description}` : ""}
@@ -1795,6 +1841,27 @@ export function ServiceAssets({
                 </select>
               </label>
               <label>
+                Betriebszustand
+                <select
+                  disabled={controlsDisabled}
+                  onChange={(event) =>
+                    setServiceForm((current) => ({
+                      ...current,
+                      status: event.target.value as ServiceStatus,
+                    }))
+                  }
+                  value={serviceForm.status}
+                >
+                  {(Object.keys(SERVICE_STATUS_LABELS) as ServiceStatus[]).map(
+                    (status) => (
+                      <option key={status} value={status}>
+                        {SERVICE_STATUS_LABELS[status]}
+                      </option>
+                    ),
+                  )}
+                </select>
+              </label>
+              <label>
                 Beschreibung (optional)
                 <textarea
                   disabled={controlsDisabled}
@@ -1808,6 +1875,26 @@ export function ServiceAssets({
                   rows={3}
                   value={serviceForm.description}
                 />
+              </label>
+              <label className="service-assets__status-public-toggle">
+                <input
+                  checked={serviceForm.statusPublic}
+                  disabled={controlsDisabled}
+                  onChange={(event) =>
+                    setServiceForm((current) => ({
+                      ...current,
+                      statusPublic: event.target.checked,
+                    }))
+                  }
+                  type="checkbox"
+                />
+                <span>
+                  <strong>Auf öffentlicher Statusseite anzeigen</strong>
+                  <small>
+                    Der Service erscheint erst nach bewusster Freigabe der
+                    Statusseite unter Systemstatus.
+                  </small>
+                </span>
               </label>
               <p>
                 <button

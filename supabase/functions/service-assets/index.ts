@@ -14,7 +14,7 @@ const INTUNE_PRIMARY_PERSON_LOOKUP_PAGE_SIZE = 100;
 const MAX_CATALOG_ROWS = 10_000;
 const MAX_TICKET_SEARCH_RESULTS = 30;
 const SERVICE_SELECT =
-  "id, tenant_id, name, description, criticality, active, created_at, updated_at";
+  "id, tenant_id, name, description, criticality, status, status_public, active, created_at, updated_at";
 const ASSET_SELECT =
   "id, tenant_id, service_id, name, asset_tag, inventory_number, serial_number, manufacturer, model, operating_system, kind, status, customer_organization_id, metadata, active, created_at, updated_at";
 const PROBLEM_SELECT =
@@ -159,6 +159,17 @@ const SERVICE_FIELDS: Record<string, Field> = {
     column: "criticality",
     validate: enumeration(["low", "medium", "high", "critical"]),
   },
+  status: {
+    column: "status",
+    validate: enumeration([
+      "operational",
+      "degraded",
+      "partial_outage",
+      "major_outage",
+      "maintenance",
+    ]),
+  },
+  statusPublic: { column: "status_public", validate: boolean },
   active: { column: "active", validate: boolean },
 };
 const ASSET_FIELDS: Record<string, Field> = {
@@ -791,9 +802,12 @@ async function manageResource(
     "asset_manage_required",
   );
   const resource = RESOURCES[action.type];
+  // The resource is selected from a finite, server-owned table map. Avoid
+  // expanding PostgREST's full table-union here; values were strictly parsed
+  // above and the same tenant filters are applied in every mutation branch.
+  const resourceClient: any = client.from(resource.table);
   if (action.operation === "create") {
-    const { data, error } = await client
-      .from(resource.table)
+    const { data, error } = await resourceClient
       .insert({
         ...action.values,
         tenant_id: action.tenantId,
@@ -820,8 +834,7 @@ async function manageResource(
       : action.operation === "resolve"
         ? { ...action.values, status: "resolved" }
         : action.values;
-  const { data, error } = await client
-    .from(resource.table)
+  const { data, error } = await resourceClient
     .update(values)
     .eq("tenant_id", action.tenantId)
     .eq("id", action.id!)

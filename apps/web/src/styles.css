@@ -14872,3 +14872,515 @@ body:has(.knowledge-base__editor-backdrop) {
     padding: 18px;
   }
 }
+
+/* Systemstatus und öffentliche Servicekommunikation */
+.service-assets__service-status,
+.service-status__pill,
+.service-status__publication-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  border-radius: 999px;
+  padding: 4px 9px;
+  font-size: 12px;
+  font-weight: 750;
+  line-height: 1.35;
+}
+
+.service-assets__service-status {
+  justify-self: end;
+  color: var(--muted);
+  background: var(--surface-subtle);
+}
+
+.service-assets__service-status > span,
+.service-status__pill > span {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.service-assets__service-status--operational,
+.service-status__pill--operational {
+  color: var(--success);
+  background: var(--success-soft);
+}
+
+.service-assets__service-status--degraded,
+.service-status__pill--degraded {
+  color: var(--warning);
+  background: var(--warning-soft);
+}
+
+.service-assets__service-status--partial_outage,
+.service-status__pill--partial_outage {
+  color: #b45309;
+  background: #ffedd5;
+}
+
+.service-assets__service-status--major_outage,
+.service-status__pill--major_outage {
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.service-assets__service-status--maintenance,
+.service-status__pill--maintenance {
+  color: var(--info);
+  background: var(--info-soft);
+}
+
+.service-assets__status-public-toggle,
+.service-status__publish-toggle {
+  grid-column: 1 / -1;
+  display: flex !important;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.service-assets__status-public-toggle input,
+.service-status__publish-toggle input {
+  width: 18px;
+  height: 18px;
+  margin: 1px 0 0;
+  accent-color: var(--primary);
+}
+
+.service-assets__status-public-toggle span,
+.service-status__publish-toggle span {
+  display: grid;
+  gap: 3px;
+}
+
+.service-assets__status-public-toggle small,
+.service-status__publish-toggle small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.5;
+}
+
+.service-status {
+  display: grid;
+  gap: 20px;
+  margin-bottom: 28px;
+  padding: 24px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.service-status__header,
+.service-status__service-heading,
+.service-status__publication .panel-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.service-status__header h2,
+.service-status__header p,
+.service-status__service-heading h3,
+.service-status__service-heading p,
+.service-status__publication h4,
+.service-status__publication p {
+  margin: 0;
+}
+
+.service-status__header h2 {
+  color: var(--ink);
+  font-size: 24px;
+}
+
+.service-status__header > div > p:last-child {
+  max-width: 680px;
+  margin-top: 6px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.service-status__header .secondary-button {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 7px;
+}
+
+.service-status__hero {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 72px;
+  padding: 16px 18px;
+  border-radius: 12px;
+  color: var(--success);
+  background: var(--success-soft);
+}
+
+.service-status__hero > div {
+  display: grid;
+  gap: 3px;
+}
+
+.service-status__hero strong {
+  color: currentColor;
+  font-size: 16px;
+}
+
+.service-status__hero span {
+  color: color-mix(in srgb, currentColor 78%, var(--ink));
+  font-size: 13px;
+}
+
+.service-status__hero--degraded {
+  color: var(--warning);
+  background: var(--warning-soft);
+}
+
+.service-status__hero--partial_outage {
+  color: #b45309;
+  background: #ffedd5;
+}
+
+.service-status__hero--major_outage {
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.service-status__hero--maintenance {
+  color: var(--info);
+  background: var(--info-soft);
+}
+
+.service-status__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.service-status__service-list {
+  display: grid;
+  gap: 12px;
+}
+
+.service-status__service-list article {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.service-status__service-heading h3 {
+  color: var(--ink);
+  font-size: 16px;
+}
+
+.service-status__service-heading p {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.service-status__availability {
+  display: grid;
+  gap: 7px;
+}
+
+.service-status__availability-bars {
+  display: grid;
+  grid-template-columns: repeat(90, minmax(2px, 1fr));
+  gap: 2px;
+  min-width: 0;
+}
+
+.service-status__availability-day {
+  min-width: 2px;
+  height: 24px;
+  border-radius: 1px;
+  background: var(--success);
+}
+
+.service-status__availability-day--degraded {
+  background: var(--warning);
+}
+
+.service-status__availability-day--partial_outage {
+  background: #d97706;
+}
+
+.service-status__availability-day--major_outage {
+  background: var(--danger);
+}
+
+.service-status__availability-day--maintenance {
+  background: var(--info);
+}
+
+.service-status__availability-summary {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.service-status__empty,
+.service-status__permission-note {
+  margin: 0;
+  padding: 16px;
+  border: 1px dashed var(--border-strong, var(--border));
+  border-radius: 10px;
+  color: var(--muted);
+  background: var(--surface-subtle);
+  line-height: 1.6;
+}
+
+.service-status__publication {
+  display: grid;
+  gap: 16px;
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-subtle);
+}
+
+.service-status__publication-state {
+  flex: 0 0 auto;
+  color: var(--muted);
+  background: var(--disabled-surface);
+}
+
+.service-status__publication-state--published {
+  color: var(--success);
+  background: var(--success-soft);
+}
+
+.service-status__publication form {
+  display: grid;
+  gap: 14px;
+}
+
+.service-status__publication form > label:not(.service-status__publish-toggle) {
+  display: grid;
+  gap: 6px;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.service-status__publication-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.service-status__sharepoint {
+  display: grid;
+  gap: 12px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.service-status__sharepoint h4 {
+  color: var(--ink);
+  font-size: 15px;
+}
+
+.service-status__sharepoint > p {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.service-status__sharepoint > label {
+  display: grid;
+  gap: 6px;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.service-status__copy-row {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+}
+
+.service-status__copy-row :is(input, textarea) {
+  min-width: 0;
+  flex: 1 1 auto;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 12px;
+}
+
+.service-status__copy-row textarea {
+  resize: vertical;
+}
+
+.service-status__copy-row :is(button, a) {
+  display: grid;
+  width: 38px;
+  min-height: 38px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--primary);
+  background: var(--surface);
+}
+
+/* Diese Ansicht hat bewusst keinen angemeldeten Arbeitsbereich und keine privaten Daten. */
+.public-service-status {
+  min-height: 100dvh;
+  color: #17233c;
+  background: #f7f9fc;
+}
+
+.public-service-status__masthead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  min-height: 66px;
+  padding: 0 clamp(20px, 5vw, 72px);
+  border-bottom: 1px solid #dbe3f0;
+  background: #fff;
+}
+
+.public-service-status__masthead a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  color: var(--service-status-accent, #075985);
+  text-decoration: none;
+}
+
+.public-service-status__masthead img {
+  display: block;
+  width: auto;
+  max-width: min(240px, 54vw);
+  height: 36px;
+  object-fit: contain;
+  object-position: left center;
+}
+
+.public-service-status__masthead strong {
+  font-size: 20px;
+  letter-spacing: -0.03em;
+}
+
+.public-service-status__masthead > span {
+  color: #52617a;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.public-service-status__content {
+  width: min(100% - 40px, 980px);
+  margin: 0 auto;
+  padding: clamp(36px, 7vw, 76px) 0 48px;
+}
+
+.public-service-status__heading {
+  margin-bottom: 24px;
+}
+
+.public-service-status__heading h1 {
+  margin: 4px 0 8px;
+  color: #17233c;
+  font-size: clamp(28px, 5vw, 42px);
+  letter-spacing: -0.04em;
+}
+
+.public-service-status__heading > p:last-child,
+.public-service-status__footer {
+  margin: 0;
+  color: #65758f;
+  font-size: 13px;
+}
+
+.public-service-status .service-status__hero {
+  margin-bottom: 18px;
+}
+
+.public-service-status .service-status__legend {
+  justify-content: center;
+  margin: 0 0 22px;
+}
+
+.public-service-status .service-status__service-list article {
+  background: #fff;
+  box-shadow: 0 6px 24px rgb(27 53 103 / 4%);
+}
+
+.public-service-status__message {
+  margin: 0;
+  padding: 20px;
+  border: 1px solid #dbe3f0;
+  border-radius: 12px;
+  color: #52617a;
+  background: #fff;
+}
+
+.public-service-status__message--error {
+  color: #b42318;
+  background: #fef3f2;
+}
+
+.public-service-status__footer {
+  margin-top: 28px;
+  text-align: center;
+}
+
+@media (max-width: 720px) {
+  .service-assets__service-status {
+    justify-self: start;
+    grid-column: 1 / -1;
+  }
+
+  .service-status {
+    gap: 16px;
+    padding: 16px;
+  }
+
+  .service-status__header,
+  .service-status__service-heading,
+  .service-status__publication .panel-heading {
+    display: grid;
+  }
+
+  .service-status__header .secondary-button {
+    justify-self: start;
+  }
+
+  .service-status__copy-row {
+    align-items: flex-start;
+  }
+
+  .public-service-status__masthead {
+    min-height: 58px;
+    padding: 0 20px;
+  }
+
+  .public-service-status__masthead > span {
+    display: none;
+  }
+
+  .public-service-status__content {
+    width: min(100% - 28px, 980px);
+    padding-top: 36px;
+  }
+
+  .public-service-status .service-status__legend {
+    justify-content: flex-start;
+  }
+}
