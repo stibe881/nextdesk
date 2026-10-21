@@ -5,6 +5,12 @@ const atomicMigration = await Deno.readTextFile(
     import.meta.url,
   ),
 );
+const taxonomySearchMigration = await Deno.readTextFile(
+  new URL(
+    "../../migrations/0105_knowledge_taxonomy_fulltext_search.sql",
+    import.meta.url,
+  ),
+);
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
@@ -114,6 +120,45 @@ Deno.test(
         ) &&
         atomicMigration.includes("'knowledge.article.collections_updated'"),
       "Replacing article collection assignments and its audit record must share one transaction.",
+    );
+  },
+);
+
+Deno.test(
+  "knowledge taxonomy search stays internal, tenant-scoped and hierarchy-safe",
+  () => {
+    assert(
+      taxonomySearchMigration.includes(
+        "create index if not exists knowledge_collections_active_name_search_document_idx",
+      ) && taxonomySearchMigration.includes("where active;"),
+      "Category full-text indexing must exclude inactive taxonomy nodes.",
+    );
+    assert(
+      taxonomySearchMigration.includes("where p_can_read_internal") &&
+        taxonomySearchMigration.includes(
+          "from public.knowledge_article_collections as assignment",
+        ) &&
+        taxonomySearchMigration.includes(
+          "assignment.tenant_id = article.tenant_id",
+        ),
+      "Taxonomy matches must stay internal and tied to the article tenant.",
+    );
+    assert(
+      taxonomySearchMigration.includes(
+        "collection.parent_id is null\n        or (parent.active and parent.parent_id is null)",
+      ) &&
+        taxonomySearchMigration.includes("child.parent_id = parent.id") &&
+        taxonomySearchMigration.includes("child.active"),
+      "Only active, complete root and direct-child category paths may match.",
+    );
+    assert(
+      taxonomySearchMigration.includes(
+        "or taxonomy.taxonomy_rank is not null",
+      ) &&
+        taxonomySearchMigration.includes(
+          "or to_tsvector('german'::regconfig, revision.title_snapshot) @@ v_query",
+        ),
+      "Taxonomy matches must extend, rather than replace, revision and title search.",
     );
   },
 );

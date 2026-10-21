@@ -6513,5 +6513,124 @@ begin
 end;
 $$;
 rollback;
+
+-- Migration 0105 must find active root and direct-child taxonomy assignments
+-- for internal readers, while external search never learns taxonomy names.
+begin;
+insert into public.tenants (id, slug, name) values
+  ('f1050000-0000-4000-8000-000000000001', 'knowledge-search-a', 'Wissenssuche A'),
+  ('f1050000-0000-4000-8000-000000000002', 'knowledge-search-b', 'Wissenssuche B');
+
+insert into public.knowledge_collections (id, tenant_id, name, slug, parent_id, active) values
+  ('f1050000-0000-4000-8000-000000000010', 'f1050000-0000-4000-8000-000000000001', 'Hardware', 'hardware', null, true),
+  ('f1050000-0000-4000-8000-000000000011', 'f1050000-0000-4000-8000-000000000001', 'Drucker', 'hardware-drucker', 'f1050000-0000-4000-8000-000000000010', true),
+  ('f1050000-0000-4000-8000-000000000012', 'f1050000-0000-4000-8000-000000000001', 'Veraltet', 'hardware-veraltet', 'f1050000-0000-4000-8000-000000000010', false),
+  ('f1050000-0000-4000-8000-000000000013', 'f1050000-0000-4000-8000-000000000001', 'Verborgene Kategorie', 'verborgene-kategorie', null, false),
+  ('f1050000-0000-4000-8000-000000000014', 'f1050000-0000-4000-8000-000000000001', 'Verschwunden', 'verborgene-unterkategorie', 'f1050000-0000-4000-8000-000000000013', true),
+  ('f1050000-0000-4000-8000-000000000015', 'f1050000-0000-4000-8000-000000000001', 'Zwischenebene', 'hardware-zwischenebene', 'f1050000-0000-4000-8000-000000000010', true),
+  ('f1050000-0000-4000-8000-000000000016', 'f1050000-0000-4000-8000-000000000001', 'Kundensegment', 'kundensegment', null, true),
+  ('f1050000-0000-4000-8000-000000000018', 'f1050000-0000-4000-8000-000000000001', 'Kundenanleitung', 'kundensegment-anleitung', 'f1050000-0000-4000-8000-000000000016', true),
+  ('f1050000-0000-4000-8000-000000000020', 'f1050000-0000-4000-8000-000000000002', 'Hardware', 'hardware', null, true);
+
+-- The production trigger forbids a third level. A controlled malformed row
+-- proves the search nevertheless fails closed if historical corruption exists.
+set local session_replication_role = replica;
+insert into public.knowledge_collections (id, tenant_id, name, slug, parent_id, active)
+values ('f1050000-0000-4000-8000-000000000017', 'f1050000-0000-4000-8000-000000000001', 'Tiefe Kategorie', 'hardware-tiefe-kategorie', 'f1050000-0000-4000-8000-000000000015', true);
+set local session_replication_role = origin;
+
+insert into public.knowledge_articles (
+  id, tenant_id, title, slug, visibility, status, current_revision, published_revision
+) values
+  ('f1050000-0000-4000-8000-000000000101', 'f1050000-0000-4000-8000-000000000001', 'Interner Leitfaden für Geräte', 'internes-geraet', 'internal', 'published', 1, 1),
+  ('f1050000-0000-4000-8000-000000000102', 'f1050000-0000-4000-8000-000000000001', 'Interner Leitfaden für Wartung', 'interne-wartung', 'internal', 'published', 1, 1),
+  ('f1050000-0000-4000-8000-000000000103', 'f1050000-0000-4000-8000-000000000001', 'Interner Leitfaden für Altbestand', 'interner-altbestand', 'internal', 'published', 1, 1),
+  ('f1050000-0000-4000-8000-000000000104', 'f1050000-0000-4000-8000-000000000001', 'Interner Leitfaden für geschützte Abläufe', 'interner-geschuetzt', 'internal', 'published', 1, 1),
+  ('f1050000-0000-4000-8000-000000000105', 'f1050000-0000-4000-8000-000000000001', 'Interner Leitfaden für Sonderfälle', 'interner-sonderfall', 'internal', 'published', 1, 1),
+  ('f1050000-0000-4000-8000-000000000106', 'f1050000-0000-4000-8000-000000000001', 'Externer Leitfaden für Kundschaft', 'externer-leitfaden', 'external', 'published', 1, 1),
+  ('f1050000-0000-4000-8000-000000000201', 'f1050000-0000-4000-8000-000000000002', 'Fremder Leitfaden', 'fremder-leitfaden', 'internal', 'published', 1, 1);
+
+insert into public.knowledge_article_revisions (article_id, revision, body, summary) values
+  ('f1050000-0000-4000-8000-000000000101', 1, 'Ein allgemeiner Ablauf ohne Taxonomiebegriff.', null),
+  ('f1050000-0000-4000-8000-000000000102', 1, 'Ein weiterer allgemeiner Ablauf ohne Taxonomiebegriff.', null),
+  ('f1050000-0000-4000-8000-000000000103', 1, 'Ein neutraler Artikelinhalt ohne Taxonomiebegriff.', null),
+  ('f1050000-0000-4000-8000-000000000104', 1, 'Ein neutraler geschützter Ablauf ohne Taxonomiebegriff.', null),
+  ('f1050000-0000-4000-8000-000000000105', 1, 'Ein neutraler Sonderablauf ohne Taxonomiebegriff.', null),
+  ('f1050000-0000-4000-8000-000000000106', 1, 'Ein veröffentlichter Artikel ohne Taxonomiebegriff.', null),
+  ('f1050000-0000-4000-8000-000000000201', 1, 'Ein fremder Artikel ohne Taxonomiebegriff.', null);
+
+insert into public.knowledge_article_collections (tenant_id, article_id, collection_id) values
+  ('f1050000-0000-4000-8000-000000000001', 'f1050000-0000-4000-8000-000000000101', 'f1050000-0000-4000-8000-000000000010'),
+  ('f1050000-0000-4000-8000-000000000001', 'f1050000-0000-4000-8000-000000000102', 'f1050000-0000-4000-8000-000000000011'),
+  ('f1050000-0000-4000-8000-000000000001', 'f1050000-0000-4000-8000-000000000103', 'f1050000-0000-4000-8000-000000000012'),
+  ('f1050000-0000-4000-8000-000000000001', 'f1050000-0000-4000-8000-000000000104', 'f1050000-0000-4000-8000-000000000014'),
+  ('f1050000-0000-4000-8000-000000000001', 'f1050000-0000-4000-8000-000000000105', 'f1050000-0000-4000-8000-000000000017'),
+  ('f1050000-0000-4000-8000-000000000001', 'f1050000-0000-4000-8000-000000000106', 'f1050000-0000-4000-8000-000000000018'),
+  ('f1050000-0000-4000-8000-000000000002', 'f1050000-0000-4000-8000-000000000201', 'f1050000-0000-4000-8000-000000000020');
+
+do $$
+begin
+  if not exists (
+    select 1 from public.search_knowledge_article_ids(
+      'f1050000-0000-4000-8000-000000000001', 'Hardware', true, array[]::uuid[]
+    ) where article_id = 'f1050000-0000-4000-8000-000000000101'
+  ) or not exists (
+    select 1 from public.search_knowledge_article_ids(
+      'f1050000-0000-4000-8000-000000000001', 'Hardware', true, array[]::uuid[]
+    ) where article_id = 'f1050000-0000-4000-8000-000000000102'
+  ) or exists (
+    select 1 from public.search_knowledge_article_ids(
+      'f1050000-0000-4000-8000-000000000001', 'Hardware', true, array[]::uuid[]
+    ) where article_id = 'f1050000-0000-4000-8000-000000000201'
+  ) then
+    raise exception 'Knowledge taxonomy root search did not retain direct-child and tenant fences';
+  end if;
+
+  if not exists (
+    select 1 from public.search_knowledge_article_ids(
+      'f1050000-0000-4000-8000-000000000001', 'Drucker', true, array[]::uuid[]
+    ) where article_id = 'f1050000-0000-4000-8000-000000000102'
+  ) or exists (
+    select 1 from public.search_knowledge_article_ids(
+      'f1050000-0000-4000-8000-000000000001', 'Drucker', true, array[]::uuid[]
+    ) where article_id = 'f1050000-0000-4000-8000-000000000101'
+  ) then
+    raise exception 'Knowledge taxonomy subcategory search was not exact';
+  end if;
+
+  if exists (
+    select 1 from public.search_knowledge_article_ids(
+      'f1050000-0000-4000-8000-000000000001', 'Veraltet', true, array[]::uuid[]
+    )
+  ) or exists (
+    select 1 from public.search_knowledge_article_ids(
+      'f1050000-0000-4000-8000-000000000001', 'Verschwunden', true, array[]::uuid[]
+    )
+  ) or exists (
+    select 1 from public.search_knowledge_article_ids(
+      'f1050000-0000-4000-8000-000000000001', 'Tiefe Kategorie', true, array[]::uuid[]
+    )
+  ) then
+    raise exception 'Knowledge taxonomy search accepted an inactive or incomplete hierarchy';
+  end if;
+
+  if not exists (
+    select 1 from public.search_knowledge_article_ids(
+      'f1050000-0000-4000-8000-000000000001', 'Kundensegment', true, array[]::uuid[]
+    ) where article_id = 'f1050000-0000-4000-8000-000000000106'
+  ) or exists (
+    select 1 from public.search_knowledge_article_ids(
+      'f1050000-0000-4000-8000-000000000001', 'Kundensegment', false, array[]::uuid[]
+    )
+  ) or exists (
+    select 1 from public.search_knowledge_article_ids(
+      'f1050000-0000-4000-8000-000000000001', 'Kundenanleitung', false, array[]::uuid[]
+    )
+  ) then
+    raise exception 'Knowledge taxonomy leaked into an external search scope';
+  end if;
+end;
+$$;
+rollback;
 SQL
 echo "PostgreSQL 16 migration and RLS integration checks passed."
