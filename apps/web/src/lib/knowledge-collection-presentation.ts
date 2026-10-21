@@ -22,6 +22,11 @@ export type KnowledgeCollectionFilter = {
   subcategoryId: string;
 };
 
+export type KnowledgeTopicSelection = {
+  categoryId: string;
+  subcategoryId: string;
+};
+
 const LEGACY_VISIBILITY_GROUPING_SLUGS = new Set([
   "legacy-root-ict-intern",
   "legacy-root-ict-oeffentlich",
@@ -52,6 +57,12 @@ function activeCollectionsById(
   );
 }
 
+function hasLegacyVisibilityGroupingSlug(
+  collection: KnowledgeCollectionForPresentation,
+): boolean {
+  return LEGACY_VISIBILITY_GROUPING_SLUGS.has(collection.slug);
+}
+
 /**
  * The XML importer created these two stable roots exclusively as a technical
  * separation for internal versus public material. Their human-readable names
@@ -62,8 +73,7 @@ function isVisibilityGrouping(
   collection: KnowledgeCollectionForPresentation,
 ): boolean {
   return (
-    collection.parentId === null &&
-    LEGACY_VISIBILITY_GROUPING_SLUGS.has(collection.slug)
+    collection.parentId === null && hasLegacyVisibilityGroupingSlug(collection)
   );
 }
 
@@ -78,6 +88,7 @@ export function knowledgeTopicCategories(
   const collectionsById = activeCollectionsById(collections);
   return Array.from(collectionsById.values())
     .filter((collection) => {
+      if (hasLegacyVisibilityGroupingSlug(collection)) return false;
       if (collection.parentId === null)
         return !isVisibilityGrouping(collection);
       const parent = collectionsById.get(collection.parentId);
@@ -112,12 +123,58 @@ export function knowledgeTopicSubcategories(
   }
 
   return Array.from(collectionsById.values())
-    .filter((collection) => collection.parentId === category.id)
+    .filter(
+      (collection) =>
+        collection.parentId === category.id &&
+        !hasLegacyVisibilityGroupingSlug(collection),
+    )
     .sort(
       (left, right) =>
         left.name.localeCompare(right.name, "de-CH", { sensitivity: "base" }) ||
         left.id.localeCompare(right.id),
     );
+}
+
+/**
+ * Rehydrates the editor selection from already authorised article assignments.
+ * A regular subcategory keeps its real root category. A child of an imported
+ * visibility grouping is itself the user-facing topic category.
+ */
+export function resolveKnowledgeTopicSelection(
+  collectionIds: readonly string[],
+  collections: readonly KnowledgeCollectionForPresentation[],
+): KnowledgeTopicSelection {
+  const collectionsById = activeCollectionsById(collections);
+  const topicCategoriesById = new Map(
+    knowledgeTopicCategories(collections).map((collection) => [
+      collection.id,
+      collection,
+    ]),
+  );
+  const assignedCollections = collectionIds
+    .map((collectionId) => collectionsById.get(collectionId))
+    .filter(
+      (collection): collection is KnowledgeCollectionForPresentation =>
+        collection !== undefined,
+    );
+
+  const selectedSubcategory = assignedCollections.find((collection) => {
+    if (!collection.parentId) return false;
+    return topicCategoriesById.has(collection.parentId);
+  });
+  if (selectedSubcategory?.parentId) {
+    return {
+      categoryId: selectedSubcategory.parentId,
+      subcategoryId: selectedSubcategory.id,
+    };
+  }
+
+  const selectedCategory = assignedCollections.find((collection) =>
+    topicCategoriesById.has(collection.id),
+  );
+  return selectedCategory
+    ? { categoryId: selectedCategory.id, subcategoryId: "" }
+    : { categoryId: "", subcategoryId: "" };
 }
 
 /**
@@ -139,6 +196,7 @@ export function formatKnowledgeCollectionPaths(
   for (const collectionId of selectedIds) {
     const collection = collectionsById.get(collectionId);
     if (!collection) continue;
+    if (hasLegacyVisibilityGroupingSlug(collection)) continue;
 
     if (collection.parentId === null) {
       const hasSelectedChild = Array.from(selectedIds).some(
@@ -202,6 +260,7 @@ export function articleMatchesKnowledgeCollectionFilter(
       : undefined;
     if (
       !subcategory ||
+      hasLegacyVisibilityGroupingSlug(subcategory) ||
       !parent ||
       parent.parentId !== null ||
       isVisibilityGrouping(parent)
@@ -215,7 +274,7 @@ export function articleMatchesKnowledgeCollectionFilter(
   }
 
   const category = collectionsById.get(categoryId);
-  if (!category) return false;
+  if (!category || hasLegacyVisibilityGroupingSlug(category)) return false;
   if (category.parentId !== null) {
     const parent = collectionsById.get(category.parentId);
     return (

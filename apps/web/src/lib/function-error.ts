@@ -232,6 +232,16 @@ export async function functionErrorMessage(
       return "Tags werden in nextDesk nicht mehr verwendet. Bitte nutzen Sie Kategorien und Unterkategorien.";
     case "ai_provider_not_configured":
       return "Die serverseitige Anthropic-Konfiguration ist noch nicht vollständig. Bitte lassen Sie API-Zugang und Modell durch die Administration prüfen.";
+    case "ai_provider_authentication_failed":
+      return "Der serverseitige Anthropic-API-Zugang wurde nicht akzeptiert. Bitte prüfen Sie den hinterlegten API-Schlüssel.";
+    case "ai_provider_access_denied":
+      return "Der serverseitige Anthropic-API-Zugang ist für dieses Modell oder diesen Workspace nicht berechtigt. Bitte prüfen Sie die Anbieterfreigabe.";
+    case "ai_provider_model_not_found":
+      return "Die serverseitig konfigurierte Anthropic-Modellkennung ist nicht verfügbar. Bitte prüfen Sie den hinterlegten Modellwert.";
+    case "ai_provider_request_rejected":
+      return "Anthropic hat die KI-Anfrage abgelehnt. Bitte prüfen Sie die serverseitige Modellkennung und versuchen Sie es erneut.";
+    case "ai_provider_rate_limited":
+      return "Anthropic begrenzt die Aufbereitung derzeit. Bitte warten Sie kurz und starten Sie anschliessend bewusst einen neuen Versuch.";
     case "ai_provider_request_failed":
     case "ai_provider_response_invalid":
       return "Anthropic konnte den Entwurf nicht verarbeiten. Der Artikelentwurf wurde nicht verändert. Bitte versuchen Sie es später erneut.";

@@ -451,3 +451,17 @@ Die vorhandene, bereits serverautorisierte Kategorienliste enthält bei importie
 Die Weboberfläche verwendet weiterhin ausschliesslich die bereits für den aktiven Mandanten geladene Liste. Sie erkennt ausschliesslich die stabilen Import-Slugs der zwei sichtbarkeitsbezogenen Obergruppen als technische Gruppierung, nie deren umbenennbare Namen. Deren aktive direkte Untereinträge – etwa «WLAN» oder «Toniebox» – erscheinen im Dropdown «Kategorie» und werden als exakte, fachliche Zuordnung gefiltert. Reguläre Kategorien ausserhalb solcher Obergruppen sowie deren echte Unterkategorien bleiben vollständig nutzbar. Fehlende, inaktive oder unvollständige Einträge bleiben fail-soft verborgen.
 
 Auf Artikellisten und in Details wird eine erkannte Sichtbarkeitsgruppe ebenfalls nicht mehr vor dem fachlichen Thema wiederholt; «Anzeigen» und die vorhandenen Statuschips bleiben die einzige Sichtbarkeitsdarstellung. Die Änderung lädt keine Daten nach, leitet keine Berechtigungen ab und verändert keine Kategorienzuordnungen.
+
+## Wissenseditor: fachliche Kategorien statt Sichtbarkeitsgruppen
+
+Der Wissenseditor verwendet für die Einordnung dieselbe, rein präsentative Themenprojektion wie der Listenfilter. Die stabil vom XML-Import gekennzeichneten Wurzeln `legacy-root-ict-intern` und `legacy-root-ict-oeffentlich` bleiben technische Sichtbarkeitsgruppen und erscheinen weder beim Anlegen noch beim Bearbeiten als Kategorie. Ihre aktiven direkten Kinder – etwa «WLAN» oder «Toniebox» – sind die auswählbaren fachlichen Kategorien.
+
+Bei bestehenden Artikeln wird die serverautorisierte Zuordnung fail-soft auf die sichtbare Bearbeitungswahl abgebildet: Eine echte Unterkategorie wird zusammen mit ihrer regulären Oberkategorie wiederhergestellt; ein Thema unter einer technischen Sichtbarkeitsgruppe wird direkt als Kategorie gewählt. Unbekannte, inaktive, verwaiste oder zu tiefe Zuordnungen werden nicht erraten. Die nicht geänderte Artikelspeicherung erhält ursprüngliche Mehrfachzuordnungen, bis eine Person bewusst eine neue Einordnung wählt.
+
+Neue Kategorien bleiben eigenständige Wurzeln und können reale Unterkategorien erhalten. Ein importiertes Thema wie «WLAN» kann umbenannt, aber nicht fälschlich als technische Obergruppe für eine weitere Ebene verwendet werden. Die Änderung nutzt ausschliesslich die bereits serverautorisierte Kategorienliste des aktiven Mandanten und verändert weder Zuordnungen, Sichtbarkeiten noch Berechtigungen.
+
+## KI-Aufbereitung: sichere Konfigurationsdiagnose
+
+Die KI-Aufbereitung bleibt bewusst serverseitig und gibt weder Anthropic-Antworttexte, Artikelrohinhalt noch Geheimnisse an den Browser oder in Audits weiter. Der aktuelle Endpunkt unterscheidet fehlende Konfiguration bereits von einem Fehler beim Anbieter, fasst aber alle HTTP-Ablehnungen desselben generischen Code zusammen. Die Fehlerklassifikation wird deshalb auf eine kleine, sichere Menge erweitert: ungültige oder nicht berechtigte API-Zugangsdaten, nicht verfügbares Modell, ungültiger Requestvertrag, Rate-Limit und zeitweise Anbieter-Störung. Auditdaten erhalten nur diesen Code und keinen Antworttext.
+
+Der Editor übersetzt diese Codes in konkrete, deutschsprachige Handlungshinweise. Dadurch bleibt ein fehlgeschlagener Entwurf unverändert, Personen können den Modellwert oder API-Zugang gezielt prüfen und erneut bewusst starten. Die Verbesserung verändert keine Mandantenfreigabe, Kostenlimite, Inhalte, Speicherung oder Veröffentlichung und löst keine externe Anfrage automatisch aus.

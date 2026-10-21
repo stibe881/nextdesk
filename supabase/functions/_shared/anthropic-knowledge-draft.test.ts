@@ -1,6 +1,7 @@
 import {
   ANTHROPIC_API_VERSION,
   ANTHROPIC_MESSAGES_URL,
+  classifyAnthropicResponseStatus,
   createKnowledgeDraftRequest,
   generateKnowledgeDraft,
   parseKnowledgeDraft,
@@ -104,6 +105,37 @@ Deno.test(
     assert(
       captured?.headers.get("x-api-key") === "server-secret",
       "The key must be confined to the outbound server request.",
+    );
+  },
+);
+
+Deno.test(
+  "Anthropic-Ablehnungen bleiben ohne Antworttext sicher klassifiziert",
+  () => {
+    assert(
+      classifyAnthropicResponseStatus(400) === "ai_provider_request_rejected",
+      "Invalid requests must remain non-sensitive.",
+    );
+    assert(
+      classifyAnthropicResponseStatus(401) ===
+        "ai_provider_authentication_failed",
+      "Authentication failures must be actionable.",
+    );
+    assert(
+      classifyAnthropicResponseStatus(403) === "ai_provider_access_denied",
+      "Access failures must be actionable.",
+    );
+    assert(
+      classifyAnthropicResponseStatus(404) === "ai_provider_model_not_found",
+      "Unknown models must be actionable.",
+    );
+    assert(
+      classifyAnthropicResponseStatus(429) === "ai_provider_rate_limited",
+      "Provider throttling must remain retryable.",
+    );
+    assert(
+      classifyAnthropicResponseStatus(503) === "ai_provider_request_failed",
+      "Unknown provider failures must stay generic.",
     );
   },
 );

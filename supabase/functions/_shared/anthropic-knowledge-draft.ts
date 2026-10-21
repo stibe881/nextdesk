@@ -21,6 +21,11 @@ export type KnowledgeDraft = {
 export class AnthropicKnowledgeDraftError extends Error {
   readonly code:
     | "ai_provider_not_configured"
+    | "ai_provider_authentication_failed"
+    | "ai_provider_access_denied"
+    | "ai_provider_model_not_found"
+    | "ai_provider_request_rejected"
+    | "ai_provider_rate_limited"
     | "ai_provider_request_failed"
     | "ai_provider_response_invalid";
 
@@ -29,6 +34,21 @@ export class AnthropicKnowledgeDraftError extends Error {
     this.name = "AnthropicKnowledgeDraftError";
     this.code = code;
   }
+}
+
+/**
+ * Provider response bodies may contain operational details. Keep the only
+ * persisted and browser-visible diagnostic to a small, non-sensitive code.
+ */
+export function classifyAnthropicResponseStatus(
+  status: number,
+): AnthropicKnowledgeDraftError["code"] {
+  if (status === 400) return "ai_provider_request_rejected";
+  if (status === 401) return "ai_provider_authentication_failed";
+  if (status === 403) return "ai_provider_access_denied";
+  if (status === 404) return "ai_provider_model_not_found";
+  if (status === 429) return "ai_provider_rate_limited";
+  return "ai_provider_request_failed";
 }
 
 function isRecord(value: unknown): value is Row {
@@ -172,7 +192,7 @@ export async function generateKnowledgeDraft(input: {
     });
     if (!response.ok) {
       throw new AnthropicKnowledgeDraftError(
-        "ai_provider_request_failed",
+        classifyAnthropicResponseStatus(response.status),
         "Die KI-Aufbereitung ist im Moment nicht verfügbar.",
       );
     }

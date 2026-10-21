@@ -4,6 +4,7 @@ import {
   formatKnowledgeCollectionPaths,
   knowledgeTopicCategories,
   knowledgeTopicSubcategories,
+  resolveKnowledgeTopicSelection,
   visibleKnowledgeArticleRevision,
 } from "./knowledge-collection-presentation";
 
@@ -233,6 +234,56 @@ describe("Wissenskategorie-Filter", () => {
         (collection) => collection.name,
       ),
     ).toEqual(["HR"]);
+  });
+
+  it("stellt die Editorwahl für reguläre Unterkategorien und importierte Themen sicher wieder her", () => {
+    expect(
+      resolveKnowledgeTopicSelection(
+        ["hardware", "hardware-drucker"],
+        collections,
+      ),
+    ).toEqual({ categoryId: "hardware", subcategoryId: "hardware-drucker" });
+    expect(
+      resolveKnowledgeTopicSelection(
+        ["ict-public", "wlan"],
+        importedVisibilityCollections,
+      ),
+    ).toEqual({ categoryId: "wlan", subcategoryId: "" });
+    expect(
+      resolveKnowledgeTopicSelection(["unknown", "orphan"], collections),
+    ).toEqual({ categoryId: "", subcategoryId: "" });
+  });
+
+  it("zeigt eine falsch platzierte technische Importgruppe nie als fachliche Einordnung", () => {
+    const malformedLegacyGroup = [
+      ...collections,
+      {
+        active: true,
+        id: "misplaced-legacy-root",
+        name: "Technische Gruppe",
+        parentId: "hardware",
+        slug: "legacy-root-ict-oeffentlich",
+      },
+    ];
+
+    expect(
+      knowledgeTopicSubcategories(malformedLegacyGroup, "hardware").map(
+        (collection) => collection.id,
+      ),
+    ).toEqual(["hardware-drucker"]);
+    expect(
+      formatKnowledgeCollectionPaths(
+        ["misplaced-legacy-root"],
+        malformedLegacyGroup,
+      ),
+    ).toEqual([]);
+    expect(
+      articleMatchesKnowledgeCollectionFilter(
+        ["misplaced-legacy-root"],
+        malformedLegacyGroup,
+        { categoryId: "misplaced-legacy-root", subcategoryId: "" },
+      ),
+    ).toBe(false);
   });
 
   it("grenzt Sichtbarkeitsgruppen weiterhin aus der Kategorienfilterung aus", () => {

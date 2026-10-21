@@ -19,6 +19,7 @@ import {
   formatKnowledgeCollectionPaths,
   knowledgeTopicCategories,
   knowledgeTopicSubcategories,
+  resolveKnowledgeTopicSelection,
   visibleKnowledgeArticleRevision,
 } from "./lib/knowledge-collection-presentation";
 import {
@@ -1049,20 +1050,23 @@ export function KnowledgeBase({
       ),
     [activeCollections, articleFilterCategory],
   );
+  const editorTopicCategories = useMemo(
+    () => knowledgeTopicCategories(activeCollections),
+    [activeCollections],
+  );
   const selectedCategory = useMemo(
     () =>
-      rootCollections.find(
+      editorTopicCategories.find(
         (collection) => collection.id === selectedCategoryId,
       ),
-    [rootCollections, selectedCategoryId],
+    [editorTopicCategories, selectedCategoryId],
   );
   const subcategoryCollections = useMemo(
     () =>
-      selectedCategory
-        ? activeCollections
-            .filter((collection) => collection.parentId === selectedCategory.id)
-            .sort((left, right) => left.name.localeCompare(right.name, "de-CH"))
-        : [],
+      knowledgeTopicSubcategories(
+        activeCollections,
+        selectedCategory?.id ?? "",
+      ),
     [activeCollections, selectedCategory],
   );
   const selectedSubcategory = useMemo(
@@ -1087,6 +1091,8 @@ export function KnowledgeBase({
   ]);
   const collectionAssignmentReady =
     collectionsReady && collectionLoadError.length === 0;
+  const selectedCategorySupportsSubcategories =
+    selectedCategory?.parentId === null;
 
   const loadArticles = useCallback(
     async (query: string) => {
@@ -1246,24 +1252,12 @@ export function KnowledgeBase({
     ) {
       return;
     }
-    const activeCollectionsById = new Map(
-      activeCollections.map((collection) => [collection.id, collection]),
+    const selection = resolveKnowledgeTopicSelection(
+      collectionSelectionSourceIds,
+      activeCollections,
     );
-    const selectedChild = collectionSelectionSourceIds
-      .map((id) => activeCollectionsById.get(id))
-      .find(
-        (collection) =>
-          collection !== undefined &&
-          collection.parentId !== null &&
-          activeCollectionsById.get(collection.parentId)?.parentId === null,
-      );
-    const selectedRoot = selectedChild
-      ? activeCollectionsById.get(selectedChild.parentId!)
-      : collectionSelectionSourceIds
-          .map((id) => activeCollectionsById.get(id))
-          .find((collection) => collection?.parentId === null);
-    setSelectedCategoryId(selectedRoot?.id ?? "");
-    setSelectedSubcategoryId(selectedChild?.id ?? "");
+    setSelectedCategoryId(selection.categoryId);
+    setSelectedSubcategoryId(selection.subcategoryId);
     setCollectionSelectionNeedsHydration(false);
   }, [
     activeCollections,
@@ -1549,7 +1543,7 @@ export function KnowledgeBase({
   }
 
   function changeCategory(nextCategoryId: string) {
-    const nextCategory = rootCollections.find(
+    const nextCategory = editorTopicCategories.find(
       (collection) => collection.id === nextCategoryId,
     );
     setSelectedCategoryId(nextCategory?.id ?? "");
@@ -1577,9 +1571,11 @@ export function KnowledgeBase({
 
   function startCollectionCreator(kind: CollectionCreatorKind) {
     if (!collectionAssignmentReady) return;
-    if (kind === "child" && !selectedCategory) {
+    if (kind === "child" && !selectedCategorySupportsSubcategories) {
       setCollectionActionError(
-        "Wählen Sie zuerst eine Kategorie für die neue Unterkategorie.",
+        selectedCategory
+          ? "Zu diesem importierten Thema können keine weiteren Unterkategorien angelegt werden."
+          : "Wählen Sie zuerst eine Kategorie für die neue Unterkategorie.",
       );
       return;
     }
@@ -1611,7 +1607,11 @@ export function KnowledgeBase({
   async function createCollection() {
     const normalizedName = collectionName.trim();
     const parentId =
-      collectionCreator === "child" ? selectedCategory?.id : undefined;
+      collectionCreator === "child" &&
+      selectedCategory &&
+      selectedCategory.parentId === null
+        ? selectedCategory.id
+        : undefined;
     if (!collectionCreator || !collectionAssignmentReady) return;
     if (normalizedName.length < 2 || normalizedName.length > 100) {
       setCollectionActionError(
@@ -2581,7 +2581,7 @@ export function KnowledgeBase({
                       value={selectedCategory?.id ?? ""}
                     >
                       <option value="">Keine Kategorie</option>
-                      {rootCollections.map((collection) => (
+                      {editorTopicCategories.map((collection) => (
                         <option key={collection.id} value={collection.id}>
                           {collection.name}
                         </option>
@@ -2616,7 +2616,8 @@ export function KnowledgeBase({
                   </label>
                 </div>
 
-                {collectionAssignmentReady && rootCollections.length === 0 ? (
+                {collectionAssignmentReady &&
+                editorTopicCategories.length === 0 ? (
                   <p className="knowledge-base__collection-status">
                     Es sind noch keine Kategorien vorhanden.
                   </p>
@@ -2634,7 +2635,9 @@ export function KnowledgeBase({
                   <button
                     className="knowledge-base__button"
                     disabled={
-                      isBusy || !collectionAssignmentReady || !selectedCategory
+                      isBusy ||
+                      !collectionAssignmentReady ||
+                      !selectedCategorySupportsSubcategories
                     }
                     onClick={() => startCollectionCreator("child")}
                     type="button"
