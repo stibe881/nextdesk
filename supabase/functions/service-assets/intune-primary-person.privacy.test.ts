@@ -10,6 +10,8 @@ Deno.test(
       'admin\n      .from("tenant_entra_directory_people")',
       "intune_primary_person_name",
       'p_permission_code: "asset.manage"',
+      "const INTUNE_PRIMARY_PERSON_LOOKUP_PAGE_SIZE = 100",
+      "index + INTUNE_PRIMARY_PERSON_LOOKUP_PAGE_SIZE",
     ]) {
       if (!source.includes(required)) {
         throw new Error(

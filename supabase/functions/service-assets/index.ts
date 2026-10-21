@@ -6,6 +6,11 @@ const MAX_REQUEST_BYTES = 512 * 1024;
 const MAX_TEXT_LENGTH = 50_000;
 const MAX_METADATA_BYTES = 32 * 1024;
 const PAGE_SIZE = 500;
+// PostgREST GET filters encode each UUID in the URL. A catalogue page may hold
+// 500 assets, but resolving all of their optional Intune links in one `.in()`
+// filter exceeds practical request-URI limits. Keep this lookup deliberately
+// bounded; it changes only the batching, never the visible asset set.
+const INTUNE_PRIMARY_PERSON_LOOKUP_PAGE_SIZE = 100;
 const MAX_CATALOG_ROWS = 10_000;
 const MAX_TICKET_SEARCH_RESULTS = 30;
 const SERVICE_SELECT =
@@ -516,12 +521,22 @@ async function readIntunePrimaryPersonNames(
 
   const links: Row[] = [];
   const assetIdList = [...assetIds];
-  for (let index = 0; index < assetIdList.length; index += PAGE_SIZE) {
+  for (
+    let index = 0;
+    index < assetIdList.length;
+    index += INTUNE_PRIMARY_PERSON_LOOKUP_PAGE_SIZE
+  ) {
     const { data, error } = await admin
       .from("asset_intune_primary_person_links")
       .select("asset_id, entra_object_id")
       .eq("tenant_id", tenantId)
-      .in("asset_id", assetIdList.slice(index, index + PAGE_SIZE))
+      .in(
+        "asset_id",
+        assetIdList.slice(
+          index,
+          index + INTUNE_PRIMARY_PERSON_LOOKUP_PAGE_SIZE,
+        ),
+      )
       .overrideTypes<Row[], { merge: false }>();
     if (error) databaseFailure(error);
     if (!data) {
