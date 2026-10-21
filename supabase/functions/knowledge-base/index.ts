@@ -22,6 +22,12 @@ type Action =
       name: string;
       parentId?: string;
     }
+  | {
+      type: "updateCollection";
+      tenantId: string;
+      collectionId: string;
+      name: string;
+    }
   | { type: "listArticles"; tenantId: string; query?: string }
   | { type: "getArticle"; tenantId: string; articleId: string }
   | { type: "listRevisions"; tenantId: string; articleId: string }
@@ -114,6 +120,17 @@ function parseAction(value: unknown): Action | null {
       tenantId: value.tenantId,
       name,
       ...(typeof parent.value === "string" ? { parentId: parent.value } : {}),
+    };
+  }
+
+  if (value.type === "updateCollection") {
+    const name = requiredText(value.name, 2, 100);
+    if (!isUuid(value.collectionId) || !name) return null;
+    return {
+      type: value.type,
+      tenantId: value.tenantId,
+      collectionId: value.collectionId,
+      name,
     };
   }
 
@@ -506,6 +523,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     action.type === "saveArticle" ||
     action.type === "archiveArticle" ||
     action.type === "createCollection" ||
+    action.type === "updateCollection" ||
     action.type === "setArticleCollections" ||
     action.type === "requestReview" ||
     action.type === "decideReview";
@@ -547,7 +565,22 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       action.tenantId,
       KNOWLEDGE_READ_PERMISSION,
     );
-    if (canReadInternal !== true)
+    const canManage =
+      canReadInternal === true
+        ? false
+        : await hasTenantPermission(
+            admin,
+            actorId,
+            action.tenantId,
+            KNOWLEDGE_MANAGE_PERMISSION,
+          );
+    if (canReadInternal === null || canManage === null)
+      return json(
+        request,
+        { error: { code: "authorization_check_failed" } },
+        500,
+      );
+    if (canReadInternal !== true && canManage !== true)
       return json(request, { error: { code: "article_read_denied" } }, 403);
     const { data, error } = await admin
       .from("knowledge_collections")
@@ -562,86 +595,55 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
   }
 
   if (action.type === "createCollection") {
-    let existingQuery = admin
-      .from("knowledge_collections")
-      .select("id")
-      .eq("tenant_id", action.tenantId)
-      .eq("name", action.name);
-    existingQuery = action.parentId
-      ? existingQuery.eq("parent_id", action.parentId)
-      : existingQuery.is("parent_id", null);
-    const { data: existing, error: existingError } =
-      await existingQuery.maybeSingle();
-    if (existingError)
-      return json(request, { error: { code: "collection_read_failed" } }, 500);
-    if (existing)
+    const { data, error } = await admin.rpc("create_knowledge_collection", {
+      p_tenant_id: action.tenantId,
+      p_name: action.name,
+      p_parent_id: action.parentId ?? null,
+      p_actor_id: actorId,
+    });
+    const collection =
+      Array.isArray(data) && data.length === 1 ? data[0] : null;
+    if (error || !collection)
       return json(
         request,
-        { error: { code: "collection_name_conflict" } },
-        409,
+        {
+          error: {
+            code:
+              error?.code === "23505"
+                ? "collection_name_conflict"
+                : "collection_create_failed",
+          },
+        },
+        error?.code === "23505" ? 409 : 422,
       );
+    return json(request, { data: { collection } }, 201);
+  }
 
-    if (action.parentId) {
-      const { data: parent, error: parentError } = await admin
-        .from("knowledge_collections")
-        .select("id")
-        .eq("tenant_id", action.tenantId)
-        .eq("id", action.parentId)
-        .eq("active", true)
-        .is("parent_id", null)
-        .maybeSingle();
-      if (parentError)
-        return json(
-          request,
-          { error: { code: "collection_parent_read_failed" } },
-          500,
-        );
-      if (!parent)
-        return json(
-          request,
-          { error: { code: "collection_parent_not_found" } },
-          422,
-        );
-    }
-
-    const slug = createSlug(
-      action.parentId
-        ? `${action.parentId.slice(0, 8)}-${action.name}`
-        : action.name,
-    );
-    const { data, error } = await admin
-      .from("knowledge_collections")
-      .insert({
-        tenant_id: action.tenantId,
-        name: action.name,
-        slug,
-        parent_id: action.parentId ?? null,
-        created_by: actorId,
-      })
-      .select("id, name, slug, parent_id, active")
-      .single();
-    if (error || !data)
+  if (action.type === "updateCollection") {
+    const { data, error } = await admin.rpc("rename_knowledge_collection", {
+      p_tenant_id: action.tenantId,
+      p_collection_id: action.collectionId,
+      p_name: action.name,
+      p_actor_id: actorId,
+    });
+    const collection =
+      Array.isArray(data) && data.length === 1 ? data[0] : null;
+    if (error || !collection)
       return json(
         request,
-        { error: { code: "collection_create_failed" } },
-        422,
+        {
+          error: {
+            code:
+              error?.code === "23505"
+                ? "collection_name_conflict"
+                : error?.code === "P0002"
+                  ? "collection_not_found"
+                  : "collection_update_failed",
+          },
+        },
+        error?.code === "P0002" ? 404 : error?.code === "23505" ? 409 : 422,
       );
-    await writeAudit(
-      admin,
-      action.tenantId,
-      actorId,
-      "knowledge.collection.created",
-      data.id,
-      null,
-      {
-        title: data.name,
-        visibility: "internal",
-        status: "active",
-        currentRevision: null,
-        bodyLength: 0,
-      },
-    );
-    return json(request, { data: { collection: data } }, 201);
+    return json(request, { data: { collection } });
   }
 
   if (action.type === "decideReview") {
@@ -690,77 +692,32 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
   }
 
   if (action.type === "setArticleCollections") {
-    const { data: article, error: articleError } = await admin
-      .from("knowledge_articles")
-      .select(ARTICLE_SELECT)
-      .eq("tenant_id", action.tenantId)
-      .eq("id", action.articleId)
-      .neq("status", "archived")
-      .maybeSingle();
-    if (articleError)
-      return json(request, { error: { code: "article_read_failed" } }, 500);
-    if (!article)
-      return json(request, { error: { code: "article_not_found" } }, 404);
-
-    if (action.collectionIds.length) {
-      const { data: collections, error: collectionError } = await admin
-        .from("knowledge_collections")
-        .select("id")
-        .eq("tenant_id", action.tenantId)
-        .eq("active", true)
-        .in("id", action.collectionIds);
-      if (collectionError)
-        return json(
-          request,
-          { error: { code: "collection_read_failed" } },
-          500,
-        );
-      if ((collections ?? []).length !== action.collectionIds.length)
-        return json(request, { error: { code: "collection_not_found" } }, 422);
-    }
-
-    const { error: deleteError } = await admin
-      .from("knowledge_article_collections")
-      .delete()
-      .eq("tenant_id", action.tenantId)
-      .eq("article_id", action.articleId);
-    if (deleteError)
+    const { data, error } = await admin.rpc(
+      "replace_knowledge_article_collections",
+      {
+        p_tenant_id: action.tenantId,
+        p_article_id: action.articleId,
+        p_collection_ids: action.collectionIds,
+        p_actor_id: actorId,
+      },
+    );
+    if (error || !Array.isArray(data))
       return json(
         request,
-        { error: { code: "collection_assignment_failed" } },
-        500,
+        {
+          error: {
+            code:
+              error?.code === "P0002"
+                ? "article_not_found"
+                : "collection_assignment_failed",
+          },
+        },
+        error?.code === "P0002" ? 404 : 422,
       );
-    if (action.collectionIds.length) {
-      const { error: insertError } = await admin
-        .from("knowledge_article_collections")
-        .insert(
-          action.collectionIds.map((collectionId) => ({
-            tenant_id: action.tenantId,
-            article_id: action.articleId,
-            collection_id: collectionId,
-            created_by: actorId,
-          })),
-        );
-      if (insertError)
-        return json(
-          request,
-          { error: { code: "collection_assignment_failed" } },
-          500,
-        );
-    }
-    await writeAudit(
-      admin,
-      action.tenantId,
-      actorId,
-      "knowledge.article.collections_updated",
-      action.articleId,
-      auditData(article, null),
-      auditData(article, null),
-    );
     return json(request, {
       data: {
         articleId: action.articleId,
-        collectionIds: action.collectionIds,
+        collectionIds: data,
       },
     });
   }

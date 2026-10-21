@@ -31,6 +31,15 @@ type ArticleStatus = "draft" | "review" | "published" | "archived";
 type ArticleListFilter = "all" | ArticleVisibility | "draft";
 type EditableArticleStatus = Exclude<ArticleStatus, "archived">;
 type SaveState = "save" | "archive" | "review" | "decision" | null;
+type CollectionCreatorKind = "root" | "child";
+
+type KnowledgeCollection = {
+  id: string;
+  name: string;
+  slug: string;
+  parentId: string | null;
+  active: boolean;
+};
 
 type KnowledgeArticle = {
   id: string;
@@ -44,6 +53,7 @@ type KnowledgeArticle = {
   publishedAt: string | null;
   createdAt: string;
   updatedAt: string;
+  collectionIds: string[];
 };
 
 type KnowledgeArticleRevision = {
@@ -101,13 +111,43 @@ type ArchiveArticleRequest = {
   articleId: string;
 };
 
+type ListCollectionsRequest = {
+  type: "listCollections";
+  tenantId: string;
+};
+
+type CreateCollectionRequest = {
+  type: "createCollection";
+  tenantId: string;
+  name: string;
+  parentId?: string;
+};
+
+type UpdateCollectionRequest = {
+  type: "updateCollection";
+  tenantId: string;
+  collectionId: string;
+  name: string;
+};
+
+type SetArticleCollectionsRequest = {
+  type: "setArticleCollections";
+  tenantId: string;
+  articleId: string;
+  collectionIds: string[];
+};
+
 type KnowledgeBaseRequest =
   | KnowledgeArticleSaveRequest
   | ReviewRequest
   | ReviewDecisionRequest
   | ListArticlesRequest
   | GetArticleRequest
-  | ArchiveArticleRequest;
+  | ArchiveArticleRequest
+  | ListCollectionsRequest
+  | CreateCollectionRequest
+  | UpdateCollectionRequest
+  | SetArticleCollectionsRequest;
 
 type PrepareKnowledgeArticleRequest = {
   type: "prepareKnowledgeArticle";
@@ -396,6 +436,68 @@ const knowledgeBaseStyles = `
     font-size: 12px;
     line-height: 1.45;
   }
+  .knowledge-base__collection-fieldset {
+    display: grid;
+    gap: 12px;
+    margin: 0;
+    border: 1px solid #d8e4e7;
+    border-radius: 8px;
+    padding: 14px;
+  }
+  .knowledge-base__collection-fieldset legend {
+    color: #173246;
+    font-size: 13px;
+    font-weight: 800;
+    padding: 0 5px;
+  }
+  .knowledge-base__collection-intro {
+    margin: 0;
+    color: #5d6f7a;
+    font-size: 12px;
+    line-height: 1.45;
+  }
+  .knowledge-base__collection-controls {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+  .knowledge-base__collection-actions,
+  .knowledge-base__collection-edit-actions,
+  .knowledge-base__collection-inline-actions {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .knowledge-base__collection-inline-form {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: end;
+    gap: 8px;
+    border-top: 1px solid #e1eaec;
+    padding-top: 12px;
+  }
+  .knowledge-base__collection-inline-form label {
+    min-width: 0;
+  }
+  .knowledge-base__collection-inline-actions {
+    justify-content: flex-end;
+  }
+  .knowledge-base__collection-status {
+    margin: 0;
+    color: #607783;
+    font-size: 12px;
+    line-height: 1.45;
+  }
+  .knowledge-base__collection-load-error {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .knowledge-base__collection-load-error .knowledge-base__message {
+    margin: 0;
+  }
   .knowledge-base__message {
     display: flex;
     align-items: flex-start;
@@ -434,6 +536,9 @@ const knowledgeBaseStyles = `
     .knowledge-base__form { grid-template-columns: 1fr; }
     .knowledge-base__full-width { grid-column: auto; }
     .knowledge-base__ai-assist { align-items: flex-start; flex-direction: column; }
+    .knowledge-base__collection-controls,
+    .knowledge-base__collection-inline-form { grid-template-columns: 1fr; }
+    .knowledge-base__collection-inline-actions { justify-content: flex-start; }
   }
 `;
 
@@ -478,8 +583,45 @@ function asNullableString(value: unknown): string | null {
   return typeof value === "string" ? value : null;
 }
 
+function parseCollectionIds(value: unknown): string[] | null {
+  if (value === undefined) return [];
+  if (
+    !Array.isArray(value) ||
+    !value.every((item) => typeof item === "string" && item.trim().length > 0)
+  ) {
+    return null;
+  }
+  return [...new Set(value.map((item) => item.trim()))];
+}
+
+function parseCollection(value: unknown): KnowledgeCollection | null {
+  if (!isRecord(value)) return null;
+  if (
+    typeof value.id !== "string" ||
+    !value.id ||
+    typeof value.name !== "string" ||
+    value.name.trim().length < 2 ||
+    value.name.trim().length > 100 ||
+    typeof value.slug !== "string" ||
+    !value.slug ||
+    (value.parent_id !== null &&
+      (typeof value.parent_id !== "string" || !value.parent_id)) ||
+    typeof value.active !== "boolean"
+  ) {
+    return null;
+  }
+  return {
+    id: value.id,
+    name: value.name.trim(),
+    slug: value.slug,
+    parentId: value.parent_id,
+    active: value.active,
+  };
+}
+
 function parseArticle(value: unknown): KnowledgeArticle | null {
   if (!isRecord(value)) return null;
+  const collectionIds = parseCollectionIds(value.collection_ids);
   if (
     typeof value.id !== "string" ||
     typeof value.title !== "string" ||
@@ -489,7 +631,8 @@ function parseArticle(value: unknown): KnowledgeArticle | null {
     (typeof value.current_revision !== "number" &&
       value.current_revision !== null) ||
     typeof value.created_at !== "string" ||
-    typeof value.updated_at !== "string"
+    typeof value.updated_at !== "string" ||
+    collectionIds === null
   ) {
     return null;
   }
@@ -509,6 +652,7 @@ function parseArticle(value: unknown): KnowledgeArticle | null {
     publishedAt: asNullableString(value.published_at),
     createdAt: value.created_at,
     updatedAt: value.updated_at,
+    collectionIds,
   };
 }
 
@@ -581,6 +725,51 @@ function parseArticleList(value: unknown): ArticleListItem[] {
     articles.push({ article, revision });
   }
   return articles;
+}
+
+function parseCollectionList(value: unknown): KnowledgeCollection[] {
+  const data = responseData(value);
+  if (!Array.isArray(data.collections)) {
+    throw new KnowledgeBaseRequestError(
+      "Die Kategorien sind unvollständig oder ungültig.",
+    );
+  }
+  const collections = data.collections.map(parseCollection);
+  if (
+    !collections.every(
+      (collection): collection is KnowledgeCollection => collection !== null,
+    )
+  ) {
+    throw new KnowledgeBaseRequestError(
+      "Eine Kategorie enthält ungültige Daten.",
+    );
+  }
+  return collections;
+}
+
+function parseCollectionMutation(value: unknown): KnowledgeCollection {
+  const collection = parseCollection(responseData(value).collection);
+  if (!collection) {
+    throw new KnowledgeBaseRequestError(
+      "Die Kategorieantwort ist unvollständig oder ungültig.",
+    );
+  }
+  return collection;
+}
+
+function parseSetArticleCollections(value: unknown): void {
+  const data = responseData(value);
+  const collectionIds = parseCollectionIds(data.collectionIds);
+  if (
+    typeof data.articleId !== "string" ||
+    !data.articleId ||
+    !Array.isArray(data.collectionIds) ||
+    collectionIds === null
+  ) {
+    throw new KnowledgeBaseRequestError(
+      "Die Einordnung des Artikels wurde nicht bestätigt.",
+    );
+  }
 }
 
 function parseArchivedArticle(value: unknown): KnowledgeArticle {
@@ -753,11 +942,43 @@ export function KnowledgeBase({
   const [saving, setSaving] = useState<SaveState>(null);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [collections, setCollections] = useState<KnowledgeCollection[]>([]);
+  const [collectionsReady, setCollectionsReady] = useState(false);
+  const [collectionsLoading, setCollectionsLoading] = useState(false);
+  const [collectionLoadError, setCollectionLoadError] = useState("");
+  const [selectedCategoryId, setSelectedCategoryId] = useState("");
+  const [selectedSubcategoryId, setSelectedSubcategoryId] = useState("");
+  const [collectionSelectionSourceIds, setCollectionSelectionSourceIds] =
+    useState<string[]>([]);
+  const [collectionSelectionChanged, setCollectionSelectionChanged] =
+    useState(false);
+  const [
+    collectionSelectionNeedsHydration,
+    setCollectionSelectionNeedsHydration,
+  ] = useState(false);
+  const [collectionCreator, setCollectionCreator] =
+    useState<CollectionCreatorKind | null>(null);
+  const [collectionName, setCollectionName] = useState("");
+  const [renamingCollectionId, setRenamingCollectionId] = useState<
+    string | null
+  >(null);
+  const [renamedCollectionName, setRenamedCollectionName] = useState("");
+  const [collectionMutating, setCollectionMutating] = useState(false);
+  const [collectionActionError, setCollectionActionError] = useState("");
+  const [collectionActionMessage, setCollectionActionMessage] = useState("");
   const listRequestVersion = useRef(0);
   const detailRequestVersion = useRef(0);
+  const collectionRequestVersion = useRef(0);
+  const collectionsByTenantRef = useRef(
+    new Map<string, KnowledgeCollection[]>(),
+  );
+  const collectionErrorsByTenantRef = useRef(new Map<string, string>());
+  const collectionRequestsByTenantRef = useRef(
+    new Map<string, Promise<KnowledgeCollection[]>>(),
+  );
   const lastArticleCreateRequestId = useRef<number | undefined>(undefined);
 
-  const isBusy = saving !== null || aiPreparing;
+  const isBusy = saving !== null || aiPreparing || collectionMutating;
   const selectedArticleId = selected?.article.id ?? null;
   const editorPanelRef = useRef<HTMLElement | null>(null);
   const editorTitleInputRef = useRef<HTMLInputElement | null>(null);
@@ -771,6 +992,56 @@ export function KnowledgeBase({
       ),
     [articleListFilter, articles],
   );
+
+  const activeCollections = useMemo(
+    () => collections.filter((collection) => collection.active),
+    [collections],
+  );
+  const rootCollections = useMemo(
+    () =>
+      activeCollections
+        .filter((collection) => collection.parentId === null)
+        .sort((left, right) => left.name.localeCompare(right.name, "de-CH")),
+    [activeCollections],
+  );
+  const selectedCategory = useMemo(
+    () =>
+      rootCollections.find(
+        (collection) => collection.id === selectedCategoryId,
+      ),
+    [rootCollections, selectedCategoryId],
+  );
+  const subcategoryCollections = useMemo(
+    () =>
+      selectedCategory
+        ? activeCollections
+            .filter((collection) => collection.parentId === selectedCategory.id)
+            .sort((left, right) => left.name.localeCompare(right.name, "de-CH"))
+        : [],
+    [activeCollections, selectedCategory],
+  );
+  const selectedSubcategory = useMemo(
+    () =>
+      subcategoryCollections.find(
+        (collection) => collection.id === selectedSubcategoryId,
+      ),
+    [selectedSubcategoryId, subcategoryCollections],
+  );
+  const selectedCollectionIds = useMemo(() => {
+    if (editingArticleId && !collectionSelectionChanged) {
+      return collectionSelectionSourceIds;
+    }
+    if (selectedSubcategory) return [selectedSubcategory.id];
+    return selectedCategory ? [selectedCategory.id] : [];
+  }, [
+    collectionSelectionChanged,
+    collectionSelectionSourceIds,
+    editingArticleId,
+    selectedCategory,
+    selectedSubcategory,
+  ]);
+  const collectionAssignmentReady =
+    collectionsReady && collectionLoadError.length === 0;
 
   const loadArticles = useCallback(
     async (query: string) => {
@@ -809,6 +1080,81 @@ export function KnowledgeBase({
     [tenantId],
   );
 
+  const loadCollections = useCallback(
+    async (force = false) => {
+      const requestVersion = collectionRequestVersion.current + 1;
+      collectionRequestVersion.current = requestVersion;
+      setCollectionsReady(false);
+      setCollectionsLoading(false);
+      setCollectionLoadError("");
+
+      if (force) {
+        const runningRequest =
+          collectionRequestsByTenantRef.current.get(tenantId);
+        if (runningRequest) await runningRequest;
+        collectionsByTenantRef.current.delete(tenantId);
+        collectionErrorsByTenantRef.current.delete(tenantId);
+      }
+
+      const cachedCollections = collectionsByTenantRef.current.get(tenantId);
+      if (cachedCollections !== undefined) {
+        setCollections(cachedCollections);
+        setCollectionLoadError(
+          collectionErrorsByTenantRef.current.get(tenantId) ?? "",
+        );
+        setCollectionsReady(true);
+        return cachedCollections;
+      }
+
+      setCollectionsLoading(true);
+      let request = collectionRequestsByTenantRef.current.get(tenantId);
+      if (!request) {
+        request = invokeKnowledgeBase(
+          { type: "listCollections", tenantId },
+          parseCollectionList,
+        )
+          .then((nextCollections) => {
+            collectionsByTenantRef.current.set(tenantId, nextCollections);
+            collectionErrorsByTenantRef.current.delete(tenantId);
+            return nextCollections;
+          })
+          .catch((nextError) => {
+            const nextMessage = errorMessage(
+              nextError,
+              "Die Kategorien konnten nicht geladen werden.",
+            );
+            collectionErrorsByTenantRef.current.set(tenantId, nextMessage);
+            return [];
+          })
+          .finally(() => {
+            collectionRequestsByTenantRef.current.delete(tenantId);
+          });
+        collectionRequestsByTenantRef.current.set(tenantId, request);
+      }
+      await request;
+      const nextCollections =
+        collectionsByTenantRef.current.get(tenantId) ?? [];
+      if (collectionRequestVersion.current !== requestVersion)
+        return nextCollections;
+      setCollections(nextCollections);
+      setCollectionLoadError(
+        collectionErrorsByTenantRef.current.get(tenantId) ?? "",
+      );
+      setCollectionsLoading(false);
+      setCollectionsReady(true);
+      return nextCollections;
+    },
+    [tenantId],
+  );
+
+  const updateCurrentCollections = useCallback(
+    (nextCollections: KnowledgeCollection[]) => {
+      collectionsByTenantRef.current.set(tenantId, nextCollections);
+      setCollections(nextCollections);
+    },
+    [tenantId],
+  );
+
   useEffect(() => {
     setSelected(null);
     setEditingArticleId(null);
@@ -819,13 +1165,66 @@ export function KnowledgeBase({
     setActiveQuery("");
     setArticleListFilter("all");
     setSearchInput("");
+    setCollections([]);
+    setCollectionsReady(false);
+    setCollectionsLoading(false);
+    setCollectionLoadError("");
+    setSelectedCategoryId("");
+    setSelectedSubcategoryId("");
+    setCollectionSelectionSourceIds([]);
+    setCollectionSelectionChanged(false);
+    setCollectionSelectionNeedsHydration(false);
+    setCollectionCreator(null);
+    setCollectionName("");
+    setRenamingCollectionId(null);
+    setRenamedCollectionName("");
+    setCollectionMutating(false);
+    setCollectionActionError("");
+    setCollectionActionMessage("");
     void loadArticles("");
+    void loadCollections();
 
     return () => {
       listRequestVersion.current += 1;
       detailRequestVersion.current += 1;
+      collectionRequestVersion.current += 1;
     };
-  }, [loadArticles]);
+  }, [loadArticles, loadCollections]);
+
+  useEffect(() => {
+    if (
+      !editorOpen ||
+      !collectionSelectionNeedsHydration ||
+      !collectionsReady
+    ) {
+      return;
+    }
+    const activeCollectionsById = new Map(
+      activeCollections.map((collection) => [collection.id, collection]),
+    );
+    const selectedChild = collectionSelectionSourceIds
+      .map((id) => activeCollectionsById.get(id))
+      .find(
+        (collection) =>
+          collection !== undefined &&
+          collection.parentId !== null &&
+          activeCollectionsById.get(collection.parentId)?.parentId === null,
+      );
+    const selectedRoot = selectedChild
+      ? activeCollectionsById.get(selectedChild.parentId!)
+      : collectionSelectionSourceIds
+          .map((id) => activeCollectionsById.get(id))
+          .find((collection) => collection?.parentId === null);
+    setSelectedCategoryId(selectedRoot?.id ?? "");
+    setSelectedSubcategoryId(selectedChild?.id ?? "");
+    setCollectionSelectionNeedsHydration(false);
+  }, [
+    activeCollections,
+    collectionSelectionNeedsHydration,
+    collectionSelectionSourceIds,
+    collectionsReady,
+    editorOpen,
+  ]);
 
   useEffect(() => {
     if (!editorOpen) {
@@ -887,6 +1286,17 @@ export function KnowledgeBase({
     setEditingArticleId(null);
     setDraft(EMPTY_DRAFT);
     setRawContent("");
+    setSelectedCategoryId("");
+    setSelectedSubcategoryId("");
+    setCollectionSelectionSourceIds([]);
+    setCollectionSelectionChanged(false);
+    setCollectionSelectionNeedsHydration(false);
+    setCollectionCreator(null);
+    setCollectionName("");
+    setRenamingCollectionId(null);
+    setRenamedCollectionName("");
+    setCollectionActionError("");
+    setCollectionActionMessage("");
     setError("");
     setSuccess("");
     setEditorOpen(true);
@@ -913,6 +1323,17 @@ export function KnowledgeBase({
     setEditingArticleId(selected.article.id);
     setDraft(draftFromDetail(selected));
     setRawContent("");
+    setSelectedCategoryId("");
+    setSelectedSubcategoryId("");
+    setCollectionSelectionSourceIds(selected.article.collectionIds);
+    setCollectionSelectionChanged(false);
+    setCollectionSelectionNeedsHydration(true);
+    setCollectionCreator(null);
+    setCollectionName("");
+    setRenamingCollectionId(null);
+    setRenamedCollectionName("");
+    setCollectionActionError("");
+    setCollectionActionMessage("");
     setError("");
     setSuccess("");
     setEditorOpen(true);
@@ -924,6 +1345,17 @@ export function KnowledgeBase({
     setEditingArticleId(null);
     setDraft(EMPTY_DRAFT);
     setRawContent("");
+    setSelectedCategoryId("");
+    setSelectedSubcategoryId("");
+    setCollectionSelectionSourceIds([]);
+    setCollectionSelectionChanged(false);
+    setCollectionSelectionNeedsHydration(false);
+    setCollectionCreator(null);
+    setCollectionName("");
+    setRenamingCollectionId(null);
+    setRenamedCollectionName("");
+    setCollectionActionError("");
+    setCollectionActionMessage("");
     setEditorOpen(false);
     window.requestAnimationFrame(() => {
       editorReturnFocusRef.current?.focus({ preventScroll: true });
@@ -993,6 +1425,187 @@ export function KnowledgeBase({
     );
   }
 
+  function changeCategory(nextCategoryId: string) {
+    const nextCategory = rootCollections.find(
+      (collection) => collection.id === nextCategoryId,
+    );
+    setSelectedCategoryId(nextCategory?.id ?? "");
+    setSelectedSubcategoryId("");
+    setCollectionSelectionChanged(true);
+    setCollectionCreator(null);
+    setCollectionName("");
+    setRenamingCollectionId(null);
+    setRenamedCollectionName("");
+    setCollectionActionError("");
+    setCollectionActionMessage("");
+  }
+
+  function changeSubcategory(nextSubcategoryId: string) {
+    const nextSubcategory = subcategoryCollections.find(
+      (collection) => collection.id === nextSubcategoryId,
+    );
+    setSelectedSubcategoryId(nextSubcategory?.id ?? "");
+    setCollectionSelectionChanged(true);
+    setRenamingCollectionId(null);
+    setRenamedCollectionName("");
+    setCollectionActionError("");
+    setCollectionActionMessage("");
+  }
+
+  function startCollectionCreator(kind: CollectionCreatorKind) {
+    if (!collectionAssignmentReady) return;
+    if (kind === "child" && !selectedCategory) {
+      setCollectionActionError(
+        "Wählen Sie zuerst eine Kategorie für die neue Unterkategorie.",
+      );
+      return;
+    }
+    setCollectionCreator(kind);
+    setCollectionName("");
+    setRenamingCollectionId(null);
+    setRenamedCollectionName("");
+    setCollectionActionError("");
+    setCollectionActionMessage("");
+  }
+
+  function beginCollectionRename(collection: KnowledgeCollection) {
+    setCollectionCreator(null);
+    setCollectionName("");
+    setRenamingCollectionId(collection.id);
+    setRenamedCollectionName(collection.name);
+    setCollectionActionError("");
+    setCollectionActionMessage("");
+  }
+
+  function cancelCollectionForm() {
+    setCollectionCreator(null);
+    setCollectionName("");
+    setRenamingCollectionId(null);
+    setRenamedCollectionName("");
+    setCollectionActionError("");
+  }
+
+  async function createCollection() {
+    const normalizedName = collectionName.trim();
+    const parentId =
+      collectionCreator === "child" ? selectedCategory?.id : undefined;
+    if (!collectionCreator || !collectionAssignmentReady) return;
+    if (normalizedName.length < 2 || normalizedName.length > 100) {
+      setCollectionActionError(
+        "Der Kategoriename muss zwischen 2 und 100 Zeichen lang sein.",
+      );
+      return;
+    }
+    if (collectionCreator === "child" && !parentId) {
+      setCollectionActionError(
+        "Wählen Sie zuerst eine Kategorie für die neue Unterkategorie.",
+      );
+      return;
+    }
+
+    setCollectionMutating(true);
+    setCollectionActionError("");
+    setCollectionActionMessage("");
+    try {
+      const created = await invokeKnowledgeBase(
+        {
+          type: "createCollection",
+          tenantId,
+          name: normalizedName,
+          ...(parentId ? { parentId } : {}),
+        },
+        parseCollectionMutation,
+      );
+      if (!created.active || created.parentId !== (parentId ?? null)) {
+        throw new KnowledgeBaseRequestError(
+          "Die neue Kategorie konnte nicht sicher übernommen werden.",
+        );
+      }
+      const reloadedCollections = await loadCollections(true);
+      const loadedCollection = reloadedCollections.find(
+        (collection) => collection.id === created.id && collection.active,
+      );
+      if (
+        !loadedCollection ||
+        loadedCollection.parentId !== (parentId ?? null)
+      ) {
+        throw new KnowledgeBaseRequestError(
+          "Die neue Kategorie konnte nicht sicher erneut geladen werden.",
+        );
+      }
+      if (collectionCreator === "root") {
+        setSelectedCategoryId(loadedCollection.id);
+        setSelectedSubcategoryId("");
+      } else {
+        setSelectedSubcategoryId(loadedCollection.id);
+      }
+      setCollectionSelectionChanged(true);
+      setCollectionCreator(null);
+      setCollectionName("");
+      setCollectionActionMessage(
+        collectionCreator === "root"
+          ? "Die Kategorie wurde angelegt und ausgewählt."
+          : "Die Unterkategorie wurde angelegt und ausgewählt.",
+      );
+    } catch (nextError) {
+      setCollectionActionError(
+        errorMessage(nextError, "Die Kategorie konnte nicht angelegt werden."),
+      );
+    } finally {
+      setCollectionMutating(false);
+    }
+  }
+
+  async function renameCollection() {
+    const normalizedName = renamedCollectionName.trim();
+    const collection = activeCollections.find(
+      (item) => item.id === renamingCollectionId,
+    );
+    if (!collection || !collectionAssignmentReady) return;
+    if (normalizedName.length < 2 || normalizedName.length > 100) {
+      setCollectionActionError(
+        "Der Kategoriename muss zwischen 2 und 100 Zeichen lang sein.",
+      );
+      return;
+    }
+
+    setCollectionMutating(true);
+    setCollectionActionError("");
+    setCollectionActionMessage("");
+    try {
+      const updated = await invokeKnowledgeBase(
+        {
+          type: "updateCollection",
+          tenantId,
+          collectionId: collection.id,
+          name: normalizedName,
+        },
+        parseCollectionMutation,
+      );
+      if (
+        !updated.active ||
+        updated.id !== collection.id ||
+        updated.parentId !== collection.parentId
+      ) {
+        throw new KnowledgeBaseRequestError(
+          "Die Kategorie konnte nicht sicher übernommen werden.",
+        );
+      }
+      updateCurrentCollections(
+        collections.map((item) => (item.id === updated.id ? updated : item)),
+      );
+      setRenamingCollectionId(null);
+      setRenamedCollectionName("");
+      setCollectionActionMessage("Die Kategorie wurde umbenannt.");
+    } catch (nextError) {
+      setCollectionActionError(
+        errorMessage(nextError, "Die Kategorie konnte nicht umbenannt werden."),
+      );
+    } finally {
+      setCollectionMutating(false);
+    }
+  }
+
   async function prepareWithAi() {
     const normalizedRawContent = rawContent.trim();
     if (!normalizedRawContent) {
@@ -1044,6 +1657,15 @@ export function KnowledgeBase({
   async function saveArticle(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const title = draft.title.trim();
+    if (!collectionAssignmentReady) {
+      setError(
+        collectionLoadError
+          ? "Der Artikel kann erst gespeichert werden, wenn die Kategorien sicher geladen sind. Die aktuelle Einordnung würde sonst nicht zuverlässig erhalten bleiben."
+          : "Die Kategorien werden noch geladen. Bitte warten Sie, bevor Sie den Artikel speichern.",
+      );
+      setSuccess("");
+      return;
+    }
     if (title.length < 3 || title.length > 240) {
       setError("Der Titel muss zwischen 3 und 240 Zeichen lang sein.");
       setSuccess("");
@@ -1056,6 +1678,9 @@ export function KnowledgeBase({
     }
 
     const isEditing = editingArticleId !== null;
+    const collectionIds = selectedCollectionIds;
+    const shouldReplaceCollections =
+      collectionSelectionChanged || (!isEditing && collectionIds.length > 0);
     setSaving("save");
     setError("");
     setSuccess("");
@@ -1071,7 +1696,55 @@ export function KnowledgeBase({
         }),
         parseArticleDetail,
       );
-      const savedDetail = detail;
+      if (shouldReplaceCollections) {
+        try {
+          await invokeKnowledgeBase(
+            {
+              type: "setArticleCollections",
+              tenantId,
+              articleId: detail.article.id,
+              collectionIds,
+            },
+            parseSetArticleCollections,
+          );
+        } catch (_collectionError) {
+          const savedWithoutCollections: ArticleDetail = {
+            ...detail,
+            article: {
+              ...detail.article,
+              collectionIds: isEditing ? collectionSelectionSourceIds : [],
+            },
+          };
+          setArticles((current) => {
+            const withoutSaved = current.filter(
+              ({ article }) => article.id !== detail.article.id,
+            );
+            return [
+              {
+                article: savedWithoutCollections.article,
+                revision: savedWithoutCollections.revision,
+              },
+              ...withoutSaved,
+            ];
+          });
+          setSelected(savedWithoutCollections);
+          setEditingArticleId(null);
+          setDraft(EMPTY_DRAFT);
+          setRawContent("");
+          setEditorOpen(false);
+          setError(
+            isEditing
+              ? "Der Artikel wurde gespeichert. Die bisherige Einordnung blieb unverändert, weil die neue Einordnung nicht sicher gespeichert werden konnte."
+              : "Der Artikel wurde gespeichert, aber die Einordnung wurde nicht gespeichert. Öffnen Sie den Artikel erneut und versuchen Sie die Einordnung nochmals.",
+          );
+          setSuccess("");
+          return;
+        }
+      }
+      const savedDetail: ArticleDetail = {
+        ...detail,
+        article: { ...detail.article, collectionIds },
+      };
       setArticles((current) => {
         const withoutSaved = current.filter(
           ({ article }) => article.id !== savedDetail.article.id,
@@ -1142,10 +1815,28 @@ export function KnowledgeBase({
         { type: "requestReview", tenantId, articleId: selected.article.id },
         parseReturnedArticle,
       );
-      setSelected((current) => (current ? { ...current, article } : current));
+      setSelected((current) =>
+        current
+          ? {
+              ...current,
+              article: {
+                ...article,
+                collectionIds: current.article.collectionIds,
+              },
+            }
+          : current,
+      );
       setArticles((current) =>
         current.map((item) =>
-          item.article.id === article.id ? { ...item, article } : item,
+          item.article.id === article.id
+            ? {
+                ...item,
+                article: {
+                  ...article,
+                  collectionIds: item.article.collectionIds,
+                },
+              }
+            : item,
         ),
       );
       setSuccess("Der Artikel wurde zur Freigabe eingereicht.");
@@ -1176,10 +1867,28 @@ export function KnowledgeBase({
         },
         parseReturnedArticle,
       );
-      setSelected((current) => (current ? { ...current, article } : current));
+      setSelected((current) =>
+        current
+          ? {
+              ...current,
+              article: {
+                ...article,
+                collectionIds: current.article.collectionIds,
+              },
+            }
+          : current,
+      );
       setArticles((current) =>
         current.map((item) =>
-          item.article.id === article.id ? { ...item, article } : item,
+          item.article.id === article.id
+            ? {
+                ...item,
+                article: {
+                  ...article,
+                  collectionIds: item.article.collectionIds,
+                },
+              }
+            : item,
         ),
       );
       setSuccess(
@@ -1594,6 +2303,237 @@ export function KnowledgeBase({
                 Revision erneut freigegeben wird.
               </p>
 
+              <fieldset className="knowledge-base__collection-fieldset knowledge-base__full-width">
+                <legend>Einordnung</legend>
+                <p className="knowledge-base__collection-intro">
+                  Optional können Sie den Artikel einer Kategorie und einer
+                  passenden Unterkategorie zuordnen. Bei einer Unterkategorie
+                  wird nur diese gespeichert.
+                </p>
+
+                {collectionsLoading ? (
+                  <p
+                    className="knowledge-base__collection-status"
+                    role="status"
+                  >
+                    Kategorien werden geladen …
+                  </p>
+                ) : null}
+                {collectionLoadError ? (
+                  <div
+                    className="knowledge-base__collection-load-error"
+                    role="alert"
+                  >
+                    <p className="knowledge-base__message knowledge-base__message--error">
+                      Kategorien konnten nicht geladen werden.{" "}
+                      {collectionLoadError}
+                    </p>
+                    <button
+                      className="knowledge-base__button"
+                      disabled={isBusy || collectionsLoading}
+                      onClick={() => void loadCollections(true)}
+                      type="button"
+                    >
+                      Kategorien erneut laden
+                    </button>
+                  </div>
+                ) : null}
+
+                <div className="knowledge-base__collection-controls">
+                  <label>
+                    Kategorie
+                    <select
+                      disabled={isBusy || !collectionAssignmentReady}
+                      onChange={(event) => changeCategory(event.target.value)}
+                      value={selectedCategory?.id ?? ""}
+                    >
+                      <option value="">Keine Kategorie</option>
+                      {rootCollections.map((collection) => (
+                        <option key={collection.id} value={collection.id}>
+                          {collection.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label>
+                    Unterkategorie
+                    <select
+                      disabled={
+                        isBusy ||
+                        !collectionAssignmentReady ||
+                        selectedCategory === undefined
+                      }
+                      onChange={(event) =>
+                        changeSubcategory(event.target.value)
+                      }
+                      value={selectedSubcategory?.id ?? ""}
+                    >
+                      <option value="">
+                        {selectedCategory
+                          ? "Keine Unterkategorie"
+                          : "Zuerst Kategorie wählen"}
+                      </option>
+                      {subcategoryCollections.map((collection) => (
+                        <option key={collection.id} value={collection.id}>
+                          {collection.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+
+                {collectionAssignmentReady && rootCollections.length === 0 ? (
+                  <p className="knowledge-base__collection-status">
+                    Es sind noch keine Kategorien vorhanden.
+                  </p>
+                ) : null}
+
+                <div className="knowledge-base__collection-actions">
+                  <button
+                    className="knowledge-base__button"
+                    disabled={isBusy || !collectionAssignmentReady}
+                    onClick={() => startCollectionCreator("root")}
+                    type="button"
+                  >
+                    Neue Kategorie
+                  </button>
+                  <button
+                    className="knowledge-base__button"
+                    disabled={
+                      isBusy || !collectionAssignmentReady || !selectedCategory
+                    }
+                    onClick={() => startCollectionCreator("child")}
+                    type="button"
+                  >
+                    Neue Unterkategorie
+                  </button>
+                  {selectedCategory ? (
+                    <button
+                      className="knowledge-base__button"
+                      disabled={isBusy || !collectionAssignmentReady}
+                      onClick={() => beginCollectionRename(selectedCategory)}
+                      type="button"
+                    >
+                      Kategorie umbenennen
+                    </button>
+                  ) : null}
+                  {selectedSubcategory ? (
+                    <button
+                      className="knowledge-base__button"
+                      disabled={isBusy || !collectionAssignmentReady}
+                      onClick={() => beginCollectionRename(selectedSubcategory)}
+                      type="button"
+                    >
+                      Unterkategorie umbenennen
+                    </button>
+                  ) : null}
+                </div>
+
+                {collectionCreator ? (
+                  <div className="knowledge-base__collection-inline-form">
+                    <label>
+                      {collectionCreator === "root"
+                        ? "Name der neuen Kategorie"
+                        : `Name der neuen Unterkategorie in ${selectedCategory?.name ?? "der Kategorie"}`}
+                      <input
+                        disabled={isBusy}
+                        maxLength={100}
+                        minLength={2}
+                        onChange={(event) =>
+                          setCollectionName(event.target.value)
+                        }
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            event.preventDefault();
+                            void createCollection();
+                          }
+                        }}
+                        required
+                        value={collectionName}
+                      />
+                    </label>
+                    <div className="knowledge-base__collection-inline-actions">
+                      <button
+                        className="knowledge-base__button"
+                        disabled={isBusy}
+                        onClick={() => void createCollection()}
+                        type="button"
+                      >
+                        Anlegen
+                      </button>
+                      <button
+                        className="knowledge-base__button"
+                        disabled={isBusy}
+                        onClick={cancelCollectionForm}
+                        type="button"
+                      >
+                        Abbrechen
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+
+                {renamingCollectionId ? (
+                  <div className="knowledge-base__collection-inline-form">
+                    <label>
+                      Neuer Name
+                      <input
+                        disabled={isBusy}
+                        maxLength={100}
+                        minLength={2}
+                        onChange={(event) =>
+                          setRenamedCollectionName(event.target.value)
+                        }
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            event.preventDefault();
+                            void renameCollection();
+                          }
+                        }}
+                        required
+                        value={renamedCollectionName}
+                      />
+                    </label>
+                    <div className="knowledge-base__collection-inline-actions">
+                      <button
+                        className="knowledge-base__button"
+                        disabled={isBusy}
+                        onClick={() => void renameCollection()}
+                        type="button"
+                      >
+                        Umbenennen
+                      </button>
+                      <button
+                        className="knowledge-base__button"
+                        disabled={isBusy}
+                        onClick={cancelCollectionForm}
+                        type="button"
+                      >
+                        Abbrechen
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+
+                {collectionActionError ? (
+                  <p
+                    className="knowledge-base__message knowledge-base__message--error"
+                    role="alert"
+                  >
+                    {collectionActionError}
+                  </p>
+                ) : null}
+                {collectionActionMessage ? (
+                  <p
+                    className="knowledge-base__message knowledge-base__message--success"
+                    role="status"
+                  >
+                    {collectionActionMessage}
+                  </p>
+                ) : null}
+              </fieldset>
+
               <label className="knowledge-base__full-width">
                 Rohinhalt für die KI-Aufbereitung
                 <textarea
@@ -1666,7 +2606,7 @@ export function KnowledgeBase({
               <div className="knowledge-base__form-actions knowledge-base__full-width">
                 <button
                   className="primary-button knowledge-base__save"
-                  disabled={isBusy}
+                  disabled={isBusy || !collectionAssignmentReady}
                   type="submit"
                 >
                   {saving === "save"

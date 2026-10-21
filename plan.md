@@ -329,3 +329,7 @@ Die iOS-Einstellung zeigt die Dreifachauswahl pro serverseitig erlaubter Kategor
 ## Wissensdatenbank: Sichtbarkeits- und Entwurfsfilter
 
 Die bestehende serverautorisierte Liste bleibt die alleinige Datenquelle. `knowledge-base.tsx` ergänzt darauf eine lokale, kombinierbare Listenauswahl für Intern, Extern, Entwurf und Alle Artikel. Sie filtert nur bereits autorisierte, nicht archivierte Artikel; bei einem Wechsel wird ein nicht mehr passender Detailartikel geschlossen. Eine neue Function, Datenbankabfrage oder Rechteableitung im Browser ist nicht erforderlich.
+
+## Wissenseditor: Kategorien und Unterkategorien
+
+Die vorhandenen mandantenisolierten `knowledge_collections` und ihre bereits auf eine Kategorie plus eine Unterkategorie begrenzte Parent-Hierarchie werden wieder im Wissenseditor verwendet. Die bestehende Wissens-Function liefert aktive Kategorien nur an berechtigte interne Lesende und verwaltet Anlage, Umbenennung sowie Artikelzuordnung weiterhin mit serverseitiger Membership- und `knowledge.manage`-Prüfung. Der Dialog wählt höchstens eine Kategorie und eine zugehörige Unterkategorie, speichert nur die relevante Zuordnung und kann sie bewusst entfernen. Anlage und Umbenennung erfolgen im selben zugänglichen Editorbereich; sie ändern nie Sichtbarkeit, Review oder Veröffentlichung eines Artikels. Browser erhalten weder versteckte Kategorien noch andere Mandantendaten und leiten keine Rechte selbst ab.
