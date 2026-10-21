@@ -28,6 +28,7 @@ export type KnowledgeBaseProps = {
 
 type ArticleVisibility = "internal" | "external";
 type ArticleStatus = "draft" | "review" | "published" | "archived";
+type ArticleListFilter = "all" | ArticleVisibility | "draft";
 type EditableArticleStatus = Exclude<ArticleStatus, "archived">;
 type SaveState = "save" | "archive" | "review" | "decision" | null;
 
@@ -140,6 +141,13 @@ const visibilityLabels: Record<ArticleVisibility, string> = {
   external: "Extern",
 };
 
+const articleListFilterLabels: Record<ArticleListFilter, string> = {
+  all: "Alle Artikel",
+  internal: "Intern",
+  external: "Extern",
+  draft: "Entwurf",
+};
+
 const knowledgeBaseStyles = `
   .knowledge-base {
     display: grid;
@@ -164,6 +172,33 @@ const knowledgeBaseStyles = `
     flex: 1 1 280px;
     max-width: 560px;
     gap: 8px;
+  }
+  .knowledge-base__filters {
+    display: flex;
+    align-items: end;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .knowledge-base__filter {
+    display: grid;
+    gap: 4px;
+    color: #49616d;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+  }
+  .knowledge-base__filter select {
+    min-height: 44px;
+    min-width: 150px;
+    border: 1px solid #c9d8dd;
+    border-radius: 5px;
+    background: #fff;
+    color: #173246;
+    font: inherit;
+    font-size: 12px;
+    font-weight: 700;
+    padding: 8px 28px 8px 10px;
   }
   .knowledge-base__search-help {
     flex: 1 0 100%;
@@ -427,6 +462,16 @@ function isArticleStatus(value: unknown): value is ArticleStatus {
     value === "published" ||
     value === "archived"
   );
+}
+
+function articleMatchesListFilter(
+  article: KnowledgeArticle,
+  filter: ArticleListFilter,
+): boolean {
+  if (article.status === "archived") return false;
+  if (filter === "all") return true;
+  if (filter === "draft") return article.status === "draft";
+  return article.visibility === filter;
 }
 
 function asNullableString(value: unknown): string | null {
@@ -695,6 +740,8 @@ export function KnowledgeBase({
   const [articles, setArticles] = useState<ArticleListItem[]>([]);
   const [searchInput, setSearchInput] = useState("");
   const [activeQuery, setActiveQuery] = useState("");
+  const [articleListFilter, setArticleListFilter] =
+    useState<ArticleListFilter>("all");
   const [selected, setSelected] = useState<ArticleDetail | null>(null);
   const [editingArticleId, setEditingArticleId] = useState<string | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
@@ -718,8 +765,11 @@ export function KnowledgeBase({
   const editorWasBusyRef = useRef(false);
 
   const visibleArticles = useMemo(
-    () => articles.filter(({ article }) => article.status !== "archived"),
-    [articles],
+    () =>
+      articles.filter(({ article }) =>
+        articleMatchesListFilter(article, articleListFilter),
+      ),
+    [articleListFilter, articles],
   );
 
   const loadArticles = useCallback(
@@ -767,6 +817,7 @@ export function KnowledgeBase({
     setAiPreparing(false);
     setEditorOpen(false);
     setActiveQuery("");
+    setArticleListFilter("all");
     setSearchInput("");
     void loadArticles("");
 
@@ -931,6 +982,15 @@ export function KnowledgeBase({
     setActiveQuery("");
     setSelected(null);
     await loadArticles("");
+  }
+
+  function changeArticleListFilter(nextFilter: ArticleListFilter) {
+    setArticleListFilter(nextFilter);
+    setSelected((current) =>
+      current && articleMatchesListFilter(current.article, nextFilter)
+        ? current
+        : null,
+    );
   }
 
   async function prepareWithAi() {
@@ -1144,6 +1204,7 @@ export function KnowledgeBase({
     : "Neuen Wissensartikel anlegen";
   const detailArticle = selected?.article;
   const articleCountLabel = `${visibleArticles.length} Artikel`;
+  const isListFiltered = articleListFilter !== "all";
   const previewTitle = draft.title.trim() || "Titel des Artikels";
 
   return (
@@ -1164,7 +1225,7 @@ export function KnowledgeBase({
           </div>
           <div className="knowledge-base__library-summary">
             <span className="knowledge-base__count">
-              {activeQuery
+              {activeQuery || isListFiltered
                 ? `${articleCountLabel} gefunden`
                 : articleCountLabel}
             </span>
@@ -1218,6 +1279,29 @@ export function KnowledgeBase({
               Durchsucht Titel, Zusammenfassung und Artikelinhalt.
             </p>
           </form>
+          <div className="knowledge-base__filters">
+            <label className="knowledge-base__filter">
+              Anzeigen
+              <select
+                aria-label="Wissensartikel nach Sichtbarkeit oder Status filtern"
+                disabled={loadingList || isBusy}
+                onChange={(event) =>
+                  changeArticleListFilter(
+                    event.target.value as ArticleListFilter,
+                  )
+                }
+                value={articleListFilter}
+              >
+                {(
+                  Object.keys(articleListFilterLabels) as ArticleListFilter[]
+                ).map((filter) => (
+                  <option key={filter} value={filter}>
+                    {articleListFilterLabels[filter]}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
           <div className="knowledge-base__toolbar-actions">
             <button
               className="primary-button knowledge-base__button knowledge-base__create-button"
@@ -1248,8 +1332,8 @@ export function KnowledgeBase({
                 </p>
               ) : visibleArticles.length === 0 ? (
                 <p className="knowledge-base__empty">
-                  {activeQuery
-                    ? "Für diese Suche wurden keine Artikel gefunden."
+                  {activeQuery || isListFiltered
+                    ? "Für diese Suche und Filterauswahl wurden keine Artikel gefunden."
                     : "Es sind noch keine Wissensartikel vorhanden."}
                 </p>
               ) : (
