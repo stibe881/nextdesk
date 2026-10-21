@@ -141,6 +141,21 @@ export async function functionErrorMessage(
     case "intune_configuration_read_failed":
     case "intune_preflight_read_failed":
       return "Die lokale Intune-Konfiguration konnte nicht sicher verarbeitet werden. Bitte laden Sie die Ansicht neu.";
+    case "intune_manual_sync_not_ready":
+      return "Der manuelle Intune-Abgleich ist noch nicht bereit. Prüfen Sie die gespeicherte Intune-Konfiguration und die Azure-SSO-Bindung.";
+    case "intune_manual_sync_in_progress":
+      return "Für diesen Mandanten läuft bereits ein manueller Intune-Abgleich. Bitte warten Sie auf dessen Abschluss.";
+    case "intune_manual_sync_invalidated":
+      return "Die Intune-Konfiguration oder Ihre Berechtigung wurde geändert. Starten Sie den Abgleich nach dem Neuladen erneut.";
+    case "intune_manual_sync_service_unavailable":
+      return "Der manuelle Intune-Abgleich ist derzeit nicht verfügbar. Bitte versuchen Sie es später erneut.";
+    case "intune_provider_not_configured":
+      return "Die serverseitige Intune-Anbindung ist noch nicht vollständig eingerichtet. Die Mandantenadministration muss die separate Microsoft-Graph-Anwendung konfigurieren.";
+    case "intune_provider_rate_limited":
+      return "Microsoft Intune begrenzt den Abgleich derzeit. Warten Sie kurz und starten Sie bei Bedarf eine bewusste manuelle Wiederholung.";
+    case "intune_provider_response_invalid":
+    case "intune_provider_unavailable":
+      return "Microsoft Intune konnte nicht sicher verarbeitet werden. Es wurden keine Providerdetails angezeigt; versuchen Sie es später erneut.";
     case "knowledge_feature_disabled":
       return "Die Wissensdatenbank ist für Ihren Mandanten derzeit deaktiviert.";
     case "article_search_failed":

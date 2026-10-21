@@ -48,7 +48,14 @@ type Action =
       tenantId: string;
       clientRequestId: string;
       retryOfRunId: string;
-    };
+    }
+  | { type: "getIntuneManualSyncConfiguration"; tenantId: string }
+  | {
+      type: "updateIntuneManualSyncConfiguration";
+      tenantId: string;
+      enabled: boolean;
+    }
+  | { type: "listIntuneManualSyncRuns"; tenantId: string };
 
 class HttpError extends Error {
   constructor(
@@ -135,13 +142,28 @@ function parseAction(value: unknown): Action | null {
   }
   if (
     value.type === "getIntuneConfiguration" ||
-    value.type === "listIntuneRuns"
+    value.type === "listIntuneRuns" ||
+    value.type === "getIntuneManualSyncConfiguration" ||
+    value.type === "listIntuneManualSyncRuns"
   ) {
     return hasOnlyKeys(value, ["type", "tenantId"])
       ? { type: value.type, tenantId }
       : null;
   }
   if (value.type === "updateIntuneConfiguration") {
+    if (
+      !hasOnlyKeys(value, ["type", "tenantId", "enabled"]) ||
+      typeof value.enabled !== "boolean"
+    ) {
+      return null;
+    }
+    return {
+      type: value.type,
+      tenantId,
+      enabled: value.enabled,
+    };
+  }
+  if (value.type === "updateIntuneManualSyncConfiguration") {
     if (
       !hasOnlyKeys(value, ["type", "tenantId", "enabled"]) ||
       typeof value.enabled !== "boolean"
@@ -650,6 +672,51 @@ async function intuneConfiguration(
   return response(request, { data: { configuration } });
 }
 
+async function intuneManualSyncConfiguration(
+  request: Request,
+  admin: AdminClient,
+  actorId: string,
+  action: Extract<
+    Action,
+    {
+      type:
+        | "getIntuneManualSyncConfiguration"
+        | "updateIntuneManualSyncConfiguration";
+    }
+  >,
+): Promise<Response> {
+  const result =
+    action.type === "updateIntuneManualSyncConfiguration"
+      ? await admin.rpc("configure_asset_intune_manual_sync", {
+          p_actor_id: actorId,
+          p_tenant_id: action.tenantId,
+          p_enabled: action.enabled,
+        })
+      : await admin.rpc("get_asset_intune_manual_sync_configuration", {
+          p_actor_id: actorId,
+          p_tenant_id: action.tenantId,
+        });
+  if (result.error) {
+    if (result.error.code === "P0001") {
+      throw new HttpError(
+        409,
+        "intune_manual_sync_not_ready",
+        "Der manuelle Intune-Abgleich ist noch nicht bereit.",
+      );
+    }
+    databaseFailure(result.error);
+  }
+  const configuration = Array.isArray(result.data) ? result.data[0] : null;
+  if (!isRecord(configuration)) {
+    throw new HttpError(
+      500,
+      "intune_configuration_read_failed",
+      "Die Intune-Konfiguration konnte nicht sicher gelesen werden.",
+    );
+  }
+  return response(request, { data: { configuration } });
+}
+
 async function listIntuneRuns(
   request: Request,
   admin: AdminClient,
@@ -662,6 +729,24 @@ async function listIntuneRuns(
     )
     .eq("tenant_id", action.tenantId)
     .eq("execution_scope", "local_preflight")
+    .order("started_at", { ascending: false })
+    .order("id", { ascending: false })
+    .limit(30);
+  if (error) databaseFailure(error);
+  return response(request, { data: { runs: data ?? [] } });
+}
+
+async function listIntuneManualSyncRuns(
+  request: Request,
+  admin: AdminClient,
+  action: Extract<Action, { type: "listIntuneManualSyncRuns" }>,
+): Promise<Response> {
+  const { data, error } = await admin
+    .from("asset_intune_manual_sync_runs")
+    .select(
+      "id, mode, status, result_code, started_at, finished_at, provider_contacted, devices_seen, assets_created, assets_updated, assets_skipped, ambiguous_devices, retry_of_run_id, root_run_id, attempt_no",
+    )
+    .eq("tenant_id", action.tenantId)
     .order("started_at", { ascending: false })
     .order("id", { ascending: false })
     .limit(30);
@@ -770,9 +855,29 @@ const securedHandler = withSupabase(
           action,
         );
       }
+      if (
+        action.type === "getIntuneManualSyncConfiguration" ||
+        action.type === "updateIntuneManualSyncConfiguration"
+      ) {
+        await requireIntegrationManage(context.supabase, action.tenantId);
+        return await intuneManualSyncConfiguration(
+          request,
+          context.supabaseAdmin,
+          context.userClaims.id,
+          action,
+        );
+      }
       if (action.type === "listIntuneRuns") {
         await requireIntegrationManage(context.supabase, action.tenantId);
         return await listIntuneRuns(request, context.supabaseAdmin, action);
+      }
+      if (action.type === "listIntuneManualSyncRuns") {
+        await requireIntegrationManage(context.supabase, action.tenantId);
+        return await listIntuneManualSyncRuns(
+          request,
+          context.supabaseAdmin,
+          action,
+        );
       }
       await requireIntegrationManage(context.supabase, action.tenantId);
       return await runIntuneLocalPreflight(

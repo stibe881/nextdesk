@@ -4316,9 +4316,291 @@ set local role authenticated;
 	    from public.audit_logs audit
 	    where audit.tenant_id = v_tenant
 	      and audit.action like 'asset.intune_preflight.%'
-	      and audit.metadata ?| array['directory_tenant_id', 'device_id', 'token', 'provider_error']
+			  and audit.metadata ?| array['directory_tenant_id', 'device_id', 'token', 'provider_error']
+		  ) then
+		    raise exception 'Local Intune preflight audit leaked provider or tenant details';
+		  end if;
+		end;
+		$$;
+
+	-- Der manuelle P1.5.1-Graph-Lauf bleibt privat, gefencet, idempotent und
+	-- trennt Vorschau und Übernahme. Der Test kontaktiert keinen Provider;
+	-- der dokumentierte Graph-Kontakt wird nur über die service-role-RPC
+	-- markiert, wie dies die Edge Function unmittelbar vor dem GET tut.
+	do $$
+	begin
+	  if has_table_privilege('authenticated', 'public.asset_intune_manual_sync_runs', 'select')
+	    or has_table_privilege('authenticated', 'public.asset_intune_manual_sync_stage', 'select')
+	    or has_function_privilege(
+	      'authenticated',
+	      'public.claim_asset_intune_manual_sync_run(uuid, uuid, uuid, text, uuid)',
+	      'execute'
+	    ) then
+	    raise exception 'Authenticated browser role retained manual Intune sync access';
+	  end if;
+	end;
+	$$;
+
+	set local role service_role;
+	do $$
+	declare
+	  v_tenant constant uuid := '10000000-0000-4000-8000-000000000001';
+	  v_admin constant uuid := '00000000-0000-4000-8000-000000000002';
+	  v_configuration record;
+	  v_dry_claim record;
+	  v_dry_complete record;
+	  v_sync_claim record;
+	  v_sync_complete record;
+	  v_duplicate record;
+	  v_expired_claim record;
+	  v_stage_count integer;
+	begin
+	  perform public.configure_asset_intune_preflight(v_admin, v_tenant, true);
+	  select * into v_configuration
+	  from public.configure_asset_intune_manual_sync(v_admin, v_tenant, true);
+	  if not v_configuration.manual_sync_enabled then
+	    raise exception 'Manual Intune sync configuration did not enable explicitly';
+	  end if;
+	  if exists (
+	    select 1 from public.asset_intune_connections
+	    where tenant_id = v_tenant and sync_enabled
 	  ) then
-	    raise exception 'Local Intune preflight audit leaked provider or tenant details';
+	    raise exception 'Manual Intune sync configuration enabled a scheduler switch';
+	  end if;
+
+	  select * into v_dry_claim
+	  from public.claim_asset_intune_manual_sync_run(
+	    v_admin,
+	    v_tenant,
+	    '60000000-0000-4000-8000-000000000011',
+	    'dry_run'
+	  );
+	  if v_dry_claim.outcome <> 'claimed'
+	    or v_dry_claim.status <> 'running'
+	    or v_dry_claim.entra_tenant_id is null then
+	    raise exception 'Manual Intune dry run was not claimed with a server-bound tenant';
+	  end if;
+	  begin
+	    perform public.stage_asset_intune_manual_sync_devices(
+	      v_admin, v_tenant, v_dry_claim.id,
+	      v_dry_claim.configuration_generation, v_dry_claim.manual_sync_generation,
+	      '[]'::jsonb
+	    );
+	    raise exception 'Manual Intune staging proceeded before a confirmed Graph request';
+	  exception when sqlstate 'P0002' then
+	    null;
+	  end;
+	  perform public.mark_asset_intune_manual_sync_provider_contact(
+	    v_admin, v_tenant, v_dry_claim.id,
+	    v_dry_claim.configuration_generation, v_dry_claim.manual_sync_generation
+	  );
+	  perform public.renew_asset_intune_manual_sync_fence(
+	    v_admin, v_tenant, v_dry_claim.id,
+	    v_dry_claim.configuration_generation, v_dry_claim.manual_sync_generation
+	  );
+	  select public.stage_asset_intune_manual_sync_devices(
+	    v_admin, v_tenant, v_dry_claim.id,
+	    v_dry_claim.configuration_generation, v_dry_claim.manual_sync_generation,
+	    jsonb_build_array(
+	      jsonb_build_object(
+	        'external_device_id', 'P15-INTUNE-DEVICE-001',
+	        'device_name', 'Eindeutig verknüpftes Gerät',
+	        'serial_number', 'P15-SERIAL-001',
+	        'manufacturer', 'nextDesk Test',
+	        'model', 'Ambiguous',
+	        'operating_system', 'Windows',
+	        'os_version', '11',
+	        'compliance_state', 'compliant',
+	        'is_encrypted', true,
+	        'last_sync_at', '2026-10-21T05:00:00Z',
+	        'enrolled_at', '2026-10-01T05:00:00Z'
+	      ),
+	      jsonb_build_object(
+	        'external_device_id', 'P15-DRY-NEW-001',
+	        'device_name', 'P1.5.1 Dry Run neu',
+	        'serial_number', 'P15-DRY-NEW-001',
+	        'manufacturer', 'nextDesk Test',
+	        'model', 'Preview',
+	        'operating_system', 'Windows',
+	        'os_version', '11',
+	        'compliance_state', 'compliant',
+	        'is_encrypted', true,
+	        'last_sync_at', '2026-10-21T05:00:00Z',
+	        'enrolled_at', '2026-10-01T05:00:00Z'
+	      ),
+	      jsonb_build_object(
+	        'external_device_id', 'P15-SERIAL-COLLISION-001',
+	        'device_name', 'P1.5.1 Seriennummernkollision',
+	        'serial_number', 'P15-SERIAL-001',
+	        'manufacturer', 'nextDesk Test',
+	        'model', 'Collision',
+	        'operating_system', 'Windows',
+	        'os_version', '11',
+	        'compliance_state', 'compliant',
+	        'is_encrypted', true,
+	        'last_sync_at', '2026-10-21T05:00:00Z',
+	        'enrolled_at', '2026-10-01T05:00:00Z'
+	      )
+	    )
+	  ) into v_stage_count;
+	  if v_stage_count <> 3 then
+	    raise exception 'Manual Intune dry run did not stage every bounded device';
+	  end if;
+	  select * into v_dry_complete
+	  from public.complete_asset_intune_manual_sync_run(
+	    v_admin, v_tenant, v_dry_claim.id,
+	    v_dry_claim.configuration_generation, v_dry_claim.manual_sync_generation
+	  );
+	  if v_dry_complete.status <> 'succeeded'
+	    or v_dry_complete.result_code <> 'provider_dry_run_succeeded'
+	    or not v_dry_complete.provider_contacted
+	    or v_dry_complete.devices_seen <> 3
+	    or v_dry_complete.assets_created <> 1
+	    or v_dry_complete.assets_updated <> 1
+	    or v_dry_complete.assets_skipped <> 1
+	    or v_dry_complete.ambiguous_devices <> 0 then
+	    raise exception 'Manual Intune dry run did not retain its atomic preview contract';
+	  end if;
+	  if exists (
+	    select 1 from public.assets
+	    where tenant_id = v_tenant and name = 'P1.5.1 Dry Run neu'
+	  ) or exists (
+	    select 1 from public.asset_intune_manual_sync_stage
+	    where run_id = v_dry_claim.id and tenant_id = v_tenant
+	  ) then
+	    raise exception 'Manual Intune dry run persisted staged or preview-only data';
+	  end if;
+
+	  select * into v_sync_claim
+	  from public.claim_asset_intune_manual_sync_run(
+	    v_admin,
+	    v_tenant,
+	    '60000000-0000-4000-8000-000000000012',
+	    'synchronize'
+	  );
+	  perform public.mark_asset_intune_manual_sync_provider_contact(
+	    v_admin, v_tenant, v_sync_claim.id,
+	    v_sync_claim.configuration_generation, v_sync_claim.manual_sync_generation
+	  );
+	  perform public.stage_asset_intune_manual_sync_devices(
+	    v_admin, v_tenant, v_sync_claim.id,
+	    v_sync_claim.configuration_generation, v_sync_claim.manual_sync_generation,
+	    jsonb_build_array(jsonb_build_object(
+	      'external_device_id', 'P15-SYNC-NEW-001',
+	      'device_name', 'P1.5.1 Synchronisation neu',
+	      'serial_number', 'P15-SYNC-NEW-001',
+	      'manufacturer', 'nextDesk Test',
+	      'model', 'Sync',
+	      'operating_system', 'Windows',
+	      'os_version', '11',
+	      'compliance_state', 'compliant',
+	      'is_encrypted', true,
+	      'last_sync_at', '2026-10-21T05:00:00Z',
+	      'enrolled_at', '2026-10-01T05:00:00Z'
+	    ))
+	  );
+	  select * into v_sync_complete
+	  from public.complete_asset_intune_manual_sync_run(
+	    v_admin, v_tenant, v_sync_claim.id,
+	    v_sync_claim.configuration_generation, v_sync_claim.manual_sync_generation
+	  );
+	  if v_sync_complete.status <> 'succeeded'
+	    or v_sync_complete.result_code <> 'provider_sync_succeeded'
+	    or v_sync_complete.assets_created <> 1
+	    or v_sync_complete.assets_updated <> 0 then
+	    raise exception 'Manual Intune sync did not create the explicitly confirmed new asset';
+	  end if;
+	  select * into v_duplicate
+	  from public.claim_asset_intune_manual_sync_run(
+	    v_admin,
+	    v_tenant,
+	    '60000000-0000-4000-8000-000000000012',
+	    'synchronize'
+	  );
+	  if v_duplicate.outcome <> 'existing' or v_duplicate.id <> v_sync_claim.id then
+	    raise exception 'Manual Intune sync request was not idempotent';
+	  end if;
+
+	  select * into v_expired_claim
+	  from public.claim_asset_intune_manual_sync_run(
+	    v_admin,
+	    v_tenant,
+	    '60000000-0000-4000-8000-000000000013',
+	    'dry_run'
+	  );
+	  perform public.mark_asset_intune_manual_sync_provider_contact(
+	    v_admin, v_tenant, v_expired_claim.id,
+	    v_expired_claim.configuration_generation, v_expired_claim.manual_sync_generation
+	  );
+	  perform public.stage_asset_intune_manual_sync_devices(
+	    v_admin, v_tenant, v_expired_claim.id,
+	    v_expired_claim.configuration_generation, v_expired_claim.manual_sync_generation,
+	    jsonb_build_array(jsonb_build_object('external_device_id', 'P15-EXPIRED-001'))
+	  );
+	end;
+	$$;
+	reset role;
+	update public.asset_intune_connections
+	set manual_sync_lease_expires_at = timezone('utc', now()) - interval '1 second'
+	where tenant_id = '10000000-0000-4000-8000-000000000001'
+	  and active_manual_sync_run_id = (
+	    select run.id
+	    from public.asset_intune_manual_sync_runs run
+	    where run.tenant_id = '10000000-0000-4000-8000-000000000001'
+	      and run.client_request_id = '60000000-0000-4000-8000-000000000013'
+	  );
+	set local role service_role;
+	do $$
+	declare
+	  v_tenant constant uuid := '10000000-0000-4000-8000-000000000001';
+	  v_admin constant uuid := '00000000-0000-4000-8000-000000000002';
+	  v_recovery_claim record;
+	begin
+	  select * into v_recovery_claim
+	  from public.claim_asset_intune_manual_sync_run(
+	    v_admin,
+	    v_tenant,
+	    '60000000-0000-4000-8000-000000000014',
+	    'dry_run'
+	  );
+	  if v_recovery_claim.outcome <> 'claimed' then
+	    raise exception 'Expired manual Intune run blocked the next manual recovery (outcome %, status %, result %)',
+	      v_recovery_claim.outcome, v_recovery_claim.status, v_recovery_claim.result_code;
+	  end if;
+	  perform public.fail_asset_intune_manual_sync_run(
+	    v_tenant, v_recovery_claim.id, 'run_expired'
+	  );
+	end;
+	$$;
+	reset role;
+	do $$
+	begin
+	  if not exists (
+	    select 1
+	    from public.asset_intune_manual_sync_runs run
+	    where run.tenant_id = '10000000-0000-4000-8000-000000000001'
+	      and run.client_request_id = '60000000-0000-4000-8000-000000000013'
+	      and run.status = 'blocked'
+	      and run.result_code = 'run_expired'
+	  ) or exists (
+	    select 1
+	    from public.asset_intune_manual_sync_stage stage
+	    join public.asset_intune_manual_sync_runs run on run.id = stage.run_id
+	    where run.tenant_id = '10000000-0000-4000-8000-000000000001'
+	      and run.client_request_id = '60000000-0000-4000-8000-000000000013'
+	  ) then
+	    raise exception 'Expired manual Intune run was not closed and purged before recovery';
+	  end if;
+	  if not exists (
+	    select 1
+	    from public.assets asset
+	    join public.asset_intune_asset_links link
+	      on link.tenant_id = asset.tenant_id and link.asset_id = asset.id
+	    where asset.tenant_id = '10000000-0000-4000-8000-000000000001'
+	      and asset.name = 'P1.5.1 Synchronisation neu'
+	      and link.canonical_external_device_id = 'p15-sync-new-001'
+	  ) then
+	    raise exception 'Manual Intune sync did not create its private exact device link';
 	  end if;
 	end;
 	$$;

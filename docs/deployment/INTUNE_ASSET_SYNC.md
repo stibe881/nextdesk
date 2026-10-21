@@ -1,45 +1,72 @@
-# Intune-Assetstatus für nextDesk
+# Microsoft-Intune-Assetabgleich für nextDesk
 
-## Aktueller Betriebsstand: lokale Vorbereitung, keine Synchronisation
+## Betriebsmodell
 
-nextDesk führt derzeit **keinen** Microsoft-Intune- oder Microsoft-Graph-Abgleich aus. Das P1.5-Paket stellt ausschliesslich einen auditierbaren lokalen Preflight und eine Run-Historie bereit. Eine ausgelöste Prüfung bleibt innerhalb von nextDesk und ist kein Test gegen Microsoft.
+nextDesk bietet einen **bewusst manuellen, ausschliesslich lesenden** Microsoft-Intune-Assetabgleich. Es gibt keinen Scheduler, Worker, Webhook, Delta-Feed, Queue-Run oder automatischen Retry. Jede Person startet jeden Lauf einzeln in **Einstellungen → Funktionen → Asset-Management → Microsoft Intune**; eine übernehmende Synchronisation verlangt zusätzlich eine sichtbare Bestätigung.
 
-Der lokale Preflight:
+Der bisherige lokale Preflight bleibt erhalten und kontaktiert Microsoft nicht. Er prüft nur die serverseitige Mandantenbindung und kann weder Geräte noch Assets ändern.
 
-- fordert kein Graph-Token an;
-- ruft keinen Microsoft-Endpunkt auf;
-- liest, erstellt, aktualisiert oder löscht keine Intune-Geräte und keine Assets;
-- aktiviert weder `sync_enabled` noch einen Worker oder Scheduler;
-- protokolliert nur einen allgemeinen Ergebniscode und aggregierte Nullzähler;
-- zeigt weder Entra-Tenant-ID, Geräte-ID, Token, Providerfehler noch Personendaten im Browser.
+Der neue Graph-Abgleich ist erst tatsächlich ausführbar, wenn die unten beschriebene separate Microsoft-Anwendung, der Admin-Consent und beide Edge-Function-Secrets eingerichtet sind. Bis dahin blockt nextDesk den Lauf fail-closed; es wird keine Graph-Anfrage ausgelöst.
 
-Der frühere Endpoint `intune-asset-sync` ist JWT-geschützt und bis zu einer separaten fachlichen und sicherheitlichen Freigabe fail-closed. Er kann keine Secrets lesen, keine Graph-Anfrage erzeugen und keine Providersynchronisation starten.
+## Mandanten- und Rechtebindung
 
-## Mandantenadministration
+Für Konfiguration, Vorschau und Synchronisation gelten kumulativ:
 
-Die Bedienung erfolgt unter **Einstellungen → Funktionen → Asset-Management → Microsoft Intune**:
+1. Das Feature `assets.management` ist für den Mandanten aktiviert und nicht abgelaufen.
+2. Die handelnde Person ist aktive Mandantenmitgliedschaft und besitzt `asset.integration.manage`.
+3. Eine aktive, **tenant-spezifische** Azure-SSO-Konfiguration besteht. nextDesk leitet die Entra-Mandanten-ID ausschliesslich serverseitig aus der gespeicherten Issuer-/Discovery-URL ab. Es gibt kein editierbares Tenant-ID-Feld.
+4. Die lokale Intune-Konfiguration wurde gespeichert.
+5. Der manuelle Microsoft-Graph-Abgleich wurde in der UI separat freigegeben.
 
-1. Asset-Management muss bewusst aktiviert sein und darf nicht abgelaufen sein.
-2. Die handelnde Person benötigt `asset.integration.manage`.
-3. Für eine aktivierte lokale Vorbereitung muss eine aktive, **tenant-spezifische** Azure-SSO-Konfiguration bestehen. nextDesk leitet die Bindung nur serverseitig aus der bereits gespeicherten Microsoft-URL ab; es gibt kein frei editierbares Entra-Tenant-ID-Feld.
-4. Die lokale Konfiguration kann gespeichert, anschliessend vor Ort geprüft und bei Bedarf mit einer neuen Request-ID wiederholt werden.
+Start, vor Tokenbezug, jede Graph-Seite und Commit prüfen diese Voraussetzungen erneut. Ein Mandanten-, Rechte- oder Konfigurationswechsel invalidiert den laufenden Run ohne Teilübernahme. Für den vollständigen Commit werden SSO-, Mitgliedschafts-, Rollen-, Berechtigungs- und Feature-Zustand transaktional gesperrt.
 
-Details zu Audit, Wiederholung und Recovery stehen im [lokalen Preflight-Runbook](../operations/INTUNE_LOCAL_PREFLIGHT_RUNBOOK.md).
+## Einmalige Microsoft-Administration
 
-## Datenzugriff und QR-/Barcode-Lookup
+Für alle Kundenmandanten ist eine **separate mehrmandantenfähige** Microsoft-Entra-App-Registrierung vorgesehen. Sie darf nicht dieselben Credentials wie der nextDesk-Personenabgleich verwenden.
 
-Assetlisten liefern nur den für die Inventararbeit notwendigen Datenvertrag. Externe Intune-Gerätekennungen, Geräte-Snapshots und zugeordnete Personen liegen in privaten Tabellen und sind weder über die Browser- noch über die Mobile-API direkt lesbar. Migration 0083 entfernt rekursiv bekannte private Providerfelder, einschliesslich der historischen JSON-Metadatenkopie `external_device_id`, aus browserlesbaren Assetzeilen und weist neue solche Metadaten ab. Fallunterschiede in alten Kennungen bleiben als private, mehrdeutige Zuordnungen erhalten und führen beim Scan nicht zu einer beliebigen Auswahl. Der mandantengebundene Lookup verarbeitet Assetkennungen, Inventar- und Seriennummern sowie bereits vorhandene externe Gerätekennungen ausschliesslich im autorisierten Serverpfad und gibt danach nur das berechtigte Assetresultat zurück.
+1. In Microsoft Entra ID eine neue App-Registrierung für den manuellen nextDesk-Intune-Assetabgleich erstellen.
+2. Unter **API-Berechtigungen → Microsoft Graph → Anwendungsberechtigungen** ausschliesslich `DeviceManagementManagedDevices.Read.All` hinzufügen.
+3. Einen Administrator-Consent für jeden Kundenmandanten erteilen, dessen Intune-Inventar synchronisiert werden soll.
+4. Ein Client-Secret erzeugen und sowohl die Anwendungs-ID als auch das Secret ausschliesslich als Supabase Edge-Function-Secrets hinterlegen:
+   - `INTUNE_MANAGED_DEVICES_CLIENT_ID`
+   - `INTUNE_MANAGED_DEVICES_CLIENT_SECRET`
 
-Die Datenbankpolicies kontrollieren die Assetdomäne zusätzlich mit der Feature- und Pilotprüfung. Damit gibt es bei deaktiviertem oder abgelaufenem Asset-Management keinen direkten PostgREST-Bypass.
+`DeviceManagementManagedDevices.ReadWrite.All` wird nicht benötigt und darf nicht vergeben werden. Weder Client-ID noch Secret gehören in Git, Browsercode, mobile Bundles, Screenshots oder Chatnachrichten.
 
-## Erst nach separater Freigabe
+## Datenvertrag und Datenschutz
 
-Für einen zukünftigen echten, weiterhin nur lesenden Intune-Abgleich braucht es vor jeder Implementierung eine neue Entscheidung zu Datenschutz, Datenvertrag, Aufbewahrung, Admin-Consent, Secretverwaltung, Retry-Verhalten und einem möglichen Scheduler. Erst dann wäre als minimale Microsoft-Graph-Anwendungsberechtigung `DeviceManagementManagedDevices.Read.All` zu bewerten und pro Kundenmandant ausdrücklich durch eine Administration freizugeben. `DeviceManagementManagedDevices.ReadWrite.All` wird nicht benötigt und darf nicht vergeben werden.
+Die Edge Function ruft ausschliesslich `GET /v1.0/deviceManagement/managedDevices` auf. Die feste Graph-Feldliste umfasst nur:
 
-Secrets gehören ausschliesslich in Supabase Edge-Function-Secrets – nie in Git, Browsercode, mobile Bundles oder Chatnachrichten.
+- Geräte-ID (nur private technische Verknüpfung),
+- Gerätename,
+- Seriennummer,
+- Hersteller und Modell,
+- Betriebssystem und Version,
+- Compliance- und Verschlüsselungsstatus,
+- letzte Synchronisation und Einschreibung.
 
-## Quellen für eine spätere, separat freigegebene Integration
+Nicht angefragt und nicht gespeichert werden Benutzerdaten, E-Mail-Adressen, UPN, Telefon, IMEI, MAC-Adresse, SIM, UDID, Remote-Assistance- oder Health-Attestation-Daten. Tokens, Entra-Tenant-IDs, Provider-IDs, vollständige Graph-Antworten und Providerfehler erscheinen nie im Browser, in Mobile, Audit oder Logs.
+
+Der Lauf validiert Paging-Herkunft und -Pfad, erlaubt nur HTTPS zu Microsoft Graph, akzeptiert keine Redirects und begrenzt die Seitenzahl. Ergebnisse landen zunächst in einer privaten, service-role-only Staging-Relation. Erst ein vollständig gelesener und weiterhin gültiger Lauf wird atomar übernommen; die Staging-Daten werden danach gelöscht. Läuft ein einmalig gestarteter Prozess ab oder bricht er ab, schliesst der nächste bewusste Start den alten Lauf als `run_expired` und löscht dessen Staging-Daten, bevor ein neuer Providerkontakt möglich ist.
+
+## Zuordnen und Übernehmen
+
+- Eine exakt eindeutige private externe Geräte-ID-Verknüpfung aktualisiert nur die reduzierten technischen Intune-Aggregate des verbundenen Assets.
+- Mehrdeutige oder mandantenfremde Verknüpfungen werden nur gezählt; sie überschreiben kein Asset.
+- Bisher nicht verknüpfte Geräte können nach der bewussten Synchronisationsbestätigung als neue nextDesk-Assets angelegt werden.
+- Besteht bereits ein Asset mit derselben Seriennummer, wird weder verknüpft noch überschrieben; der Fall wird als übersprungen gezählt.
+- Ein nicht mehr in Intune gelistetes Gerät löscht, deaktiviert, entkoppelt oder verändert kein vorhandenes Asset.
+
+Die datensparsame Vorschau (`dry_run`) liest Intune und berechnet ausschliesslich aggregierte Zähler. Sie schreibt weder Assets noch einen aktuellen Gerätebestand. Erst «Intune-Assets abgleichen» kann nach der zweiten Bestätigung Assets anlegen oder technische Aggregatfelder aktualisieren.
+
+## Run-Historie, Retry und Recovery
+
+Die UI zeigt nur Zeit, Modus, Status, allgemeine Ergebniskennung und Zähler. Es werden maximal 30 Läufe angezeigt. Nur vorübergehende Fehler (`provider_unavailable`, `provider_rate_limited`) können bewusst manuell wiederholt werden; der ursprüngliche Lauf ist dabei begrenzt auf insgesamt drei Versuche. Es gibt keine Hintergrundwiederholung.
+
+Zum sofortigen Stoppen weiterer Läufe den separaten Schalter «Manuellen Microsoft-Graph-Abgleich für diesen Mandanten freigeben» deaktivieren. Bereits angelegte oder aktualisierte Assets werden bewusst nicht automatisch zurückgesetzt oder gelöscht. Korrekturen erfolgen gezielt über die Assetverwaltung.
+
+## Quellen
 
 - Microsoft Graph `managedDevice`: https://learn.microsoft.com/en-us/graph/api/resources/intune-devices-manageddevice?view=graph-rest-1.0
+- Microsoft Graph `managedDevices` auflisten: https://learn.microsoft.com/en-us/graph/api/intune-devices-manageddevice-list?view=graph-rest-1.0
 - Microsoft Graph Berechtigungsreferenz: https://learn.microsoft.com/en-us/graph/permissions-reference
-- Expo Camera und Barcode-Scanning: https://docs.expo.dev/versions/latest/sdk/camera/
