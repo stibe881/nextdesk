@@ -17,6 +17,8 @@ import {
 import {
   articleMatchesKnowledgeCollectionFilter,
   formatKnowledgeCollectionPaths,
+  knowledgeTopicCategories,
+  knowledgeTopicSubcategories,
   visibleKnowledgeArticleRevision,
 } from "./lib/knowledge-collection-presentation";
 import {
@@ -1028,22 +1030,23 @@ export function KnowledgeBase({
         .sort((left, right) => left.name.localeCompare(right.name, "de-CH")),
     [activeCollections],
   );
+  const articleFilterCategories = useMemo(
+    () => knowledgeTopicCategories(activeCollections),
+    [activeCollections],
+  );
   const articleFilterCategory = useMemo(
     () =>
-      rootCollections.find(
+      articleFilterCategories.find(
         (collection) => collection.id === articleCategoryFilterId,
       ),
-    [articleCategoryFilterId, rootCollections],
+    [articleCategoryFilterId, articleFilterCategories],
   );
   const articleFilterSubcategoryCollections = useMemo(
     () =>
-      articleFilterCategory
-        ? activeCollections
-            .filter(
-              (collection) => collection.parentId === articleFilterCategory.id,
-            )
-            .sort((left, right) => left.name.localeCompare(right.name, "de-CH"))
-        : [],
+      knowledgeTopicSubcategories(
+        activeCollections,
+        articleFilterCategory?.id ?? "",
+      ),
     [activeCollections, articleFilterCategory],
   );
   const selectedCategory = useMemo(
@@ -1504,7 +1507,7 @@ export function KnowledgeBase({
   }
 
   function changeArticleCategoryFilter(nextCategoryId: string) {
-    const nextCategory = rootCollections.find(
+    const nextCategory = articleFilterCategories.find(
       (collection) => collection.id === nextCategoryId,
     );
     const categoryId = nextCategory?.id ?? "";
@@ -2146,7 +2149,9 @@ export function KnowledgeBase({
                   <select
                     aria-label="Wissensartikel nach Kategorie filtern"
                     disabled={
-                      loadingList || isBusy || rootCollections.length === 0
+                      loadingList ||
+                      isBusy ||
+                      articleFilterCategories.length === 0
                     }
                     onChange={(event) =>
                       changeArticleCategoryFilter(event.target.value)
@@ -2154,11 +2159,11 @@ export function KnowledgeBase({
                     value={articleCategoryFilterId}
                   >
                     <option value="">
-                      {rootCollections.length > 0
+                      {articleFilterCategories.length > 0
                         ? "Alle Kategorien"
                         : "Keine Kategorien vorhanden"}
                     </option>
-                    {rootCollections.map((collection) => (
+                    {articleFilterCategories.map((collection) => (
                       <option key={collection.id} value={collection.id}>
                         {collection.name}
                       </option>

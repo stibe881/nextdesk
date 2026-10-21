@@ -443,3 +443,11 @@ Die heutige Vite-Auslieferung beantwortet direkte Pfade wie `/tickets` noch mit 
 - `apps/web/src/App.tsx`: zentrale, featuregefilterte Abschnittsreihenfolge sowie bestehende Positionen von Arbeitsplatz, Mein Portal und Einstellungen.
 - `apps/web/src/lib/requester-navigation.ts`: unveränderte, begrenzte Navigation für reine Anfragende.
 - `apps/web/src/lib/workplace-first-navigation.ts`: unveränderte Heraushebung des Arbeitsplatzes oberhalb des allgemeinen Arbeitsbereichs.
+
+## Wissensfilter: fachliche Kategorien statt Sichtbarkeitsgruppen
+
+Die vorhandene, bereits serverautorisierte Kategorienliste enthält bei importierten Artikeln teilweise übergeordnete Sammelgruppen wie «ICT intern» oder «ICT öffentlich». Diese Gruppen beschreiben die Sichtbarkeit, welche in nextDesk bereits bewusst über «Anzeigen» gefiltert wird. Der Kategorienfilter darf sie deshalb nicht zusätzlich als fachliche Themen anbieten.
+
+Die Weboberfläche verwendet weiterhin ausschliesslich die bereits für den aktiven Mandanten geladene Liste. Sie erkennt ausschliesslich die stabilen Import-Slugs der zwei sichtbarkeitsbezogenen Obergruppen als technische Gruppierung, nie deren umbenennbare Namen. Deren aktive direkte Untereinträge – etwa «WLAN» oder «Toniebox» – erscheinen im Dropdown «Kategorie» und werden als exakte, fachliche Zuordnung gefiltert. Reguläre Kategorien ausserhalb solcher Obergruppen sowie deren echte Unterkategorien bleiben vollständig nutzbar. Fehlende, inaktive oder unvollständige Einträge bleiben fail-soft verborgen.
+
+Auf Artikellisten und in Details wird eine erkannte Sichtbarkeitsgruppe ebenfalls nicht mehr vor dem fachlichen Thema wiederholt; «Anzeigen» und die vorhandenen Statuschips bleiben die einzige Sichtbarkeitsdarstellung. Die Änderung lädt keine Daten nach, leitet keine Berechtigungen ab und verändert keine Kategorienzuordnungen.

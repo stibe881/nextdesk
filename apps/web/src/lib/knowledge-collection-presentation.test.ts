@@ -2,29 +2,84 @@ import { describe, expect, it } from "vitest";
 import {
   articleMatchesKnowledgeCollectionFilter,
   formatKnowledgeCollectionPaths,
+  knowledgeTopicCategories,
+  knowledgeTopicSubcategories,
   visibleKnowledgeArticleRevision,
 } from "./knowledge-collection-presentation";
 
 const collections = [
-  { active: true, id: "hardware", name: "Hardware", parentId: null },
+  {
+    active: true,
+    id: "hardware",
+    name: "Hardware",
+    parentId: null,
+    slug: "hardware",
+  },
   {
     active: true,
     id: "hardware-drucker",
     name: "Drucker",
     parentId: "hardware",
+    slug: "drucker",
   },
-  { active: false, id: "legacy", name: "Altbestand", parentId: null },
+  {
+    active: false,
+    id: "legacy",
+    name: "Altbestand",
+    parentId: null,
+    slug: "altbestand",
+  },
   {
     active: true,
     id: "orphan",
     name: "Ohne Oberkategorie",
     parentId: "missing",
+    slug: "ohne-oberkategorie",
   },
   {
     active: true,
     id: "too-deep",
     name: "Zu tief",
     parentId: "hardware-drucker",
+    slug: "zu-tief",
+  },
+];
+
+const importedVisibilityCollections = [
+  {
+    active: true,
+    id: "ict-internal",
+    name: "ICT intern",
+    parentId: null,
+    slug: "legacy-root-ict-intern",
+  },
+  {
+    active: true,
+    id: "ict-public",
+    name: "ICT öffentlich",
+    parentId: null,
+    slug: "legacy-root-ict-oeffentlich",
+  },
+  {
+    active: true,
+    id: "wlan",
+    name: "WLAN",
+    parentId: "ict-public",
+    slug: "wlan",
+  },
+  {
+    active: true,
+    id: "toniebox",
+    name: "Toniebox",
+    parentId: "ict-internal",
+    slug: "toniebox",
+  },
+  {
+    active: false,
+    id: "old-topic",
+    name: "Alt",
+    parentId: "ict-public",
+    slug: "alt",
   },
 ];
 
@@ -42,6 +97,15 @@ describe("Wissenskategorie-Darstellung", () => {
     expect(
       formatKnowledgeCollectionPaths(["hardware-drucker"], collections),
     ).toEqual(["Hardware · Drucker"]);
+  });
+
+  it("zeigt bei importierten Sichtbarkeitsgruppen nur das fachliche Thema", () => {
+    expect(
+      formatKnowledgeCollectionPaths(
+        ["ict-public", "wlan", "ict-internal", "toniebox"],
+        importedVisibilityCollections,
+      ),
+    ).toEqual(["WLAN", "Toniebox"]);
   });
 
   it("blendet unbekannte, inaktive und unvollständige Hierarchien fail-soft aus", () => {
@@ -84,6 +148,100 @@ describe("Wissenskategorie-Filter", () => {
         categoryId: "hardware",
         subcategoryId: "hardware-drucker",
       }),
+    ).toBe(false);
+  });
+
+  it("bietet Themen unter importierten Sichtbarkeitsgruppen als Kategorien an", () => {
+    expect(
+      knowledgeTopicCategories(importedVisibilityCollections).map(
+        (collection) => collection.name,
+      ),
+    ).toEqual(["Toniebox", "WLAN"]);
+    expect(
+      knowledgeTopicSubcategories(importedVisibilityCollections, "wlan"),
+    ).toEqual([]);
+    expect(
+      articleMatchesKnowledgeCollectionFilter(
+        ["wlan"],
+        importedVisibilityCollections,
+        { categoryId: "wlan", subcategoryId: "" },
+      ),
+    ).toBe(true);
+    expect(
+      articleMatchesKnowledgeCollectionFilter(
+        ["ict-public"],
+        importedVisibilityCollections,
+        { categoryId: "wlan", subcategoryId: "" },
+      ),
+    ).toBe(false);
+  });
+
+  it("erkennt importierte Sichtbarkeitsgruppen trotz Umbenennung über ihren stabilen Import-Slug", () => {
+    const renamedCollections = importedVisibilityCollections.map(
+      (collection) =>
+        collection.id === "ict-public"
+          ? { ...collection, name: "Öffentliche Anleitungen" }
+          : collection,
+    );
+
+    expect(
+      knowledgeTopicCategories(renamedCollections).map(
+        (collection) => collection.name,
+      ),
+    ).toEqual(["Toniebox", "WLAN"]);
+    expect(
+      formatKnowledgeCollectionPaths(["wlan"], renamedCollections),
+    ).toEqual(["WLAN"]);
+  });
+
+  it("blendet eine unvollständige importierte Sichtbarkeitsgruppe weiterhin fail-soft aus", () => {
+    const incompleteCollections = importedVisibilityCollections.filter(
+      (collection) => collection.id !== "wlan" && collection.id !== "toniebox",
+    );
+
+    expect(knowledgeTopicCategories(incompleteCollections)).toEqual([]);
+    expect(
+      formatKnowledgeCollectionPaths(["ict-public"], incompleteCollections),
+    ).toEqual([]);
+  });
+
+  it("behält eine reguläre Kategorie mit dem Namen Intern sichtbar", () => {
+    const regularCollections = [
+      {
+        active: true,
+        id: "internal-processes",
+        name: "Intern",
+        parentId: null,
+        slug: "interne-prozesse",
+      },
+      {
+        active: true,
+        id: "internal-processes-hr",
+        name: "HR",
+        parentId: "internal-processes",
+        slug: "hr",
+      },
+    ];
+
+    expect(
+      knowledgeTopicCategories(regularCollections).map(
+        (collection) => collection.name,
+      ),
+    ).toEqual(["Intern"]);
+    expect(
+      knowledgeTopicSubcategories(regularCollections, "internal-processes").map(
+        (collection) => collection.name,
+      ),
+    ).toEqual(["HR"]);
+  });
+
+  it("grenzt Sichtbarkeitsgruppen weiterhin aus der Kategorienfilterung aus", () => {
+    expect(
+      articleMatchesKnowledgeCollectionFilter(
+        ["wlan"],
+        importedVisibilityCollections,
+        { categoryId: "ict-public", subcategoryId: "" },
+      ),
     ).toBe(false);
   });
 
