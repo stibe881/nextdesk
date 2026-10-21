@@ -4331,12 +4331,17 @@ set local role authenticated;
 	begin
 	  if has_table_privilege('authenticated', 'public.asset_intune_manual_sync_runs', 'select')
 	    or has_table_privilege('authenticated', 'public.asset_intune_manual_sync_stage', 'select')
+	    or has_table_privilege('authenticated', 'public.asset_intune_primary_person_links', 'select')
 	    or has_function_privilege(
 	      'authenticated',
 	      'public.claim_asset_intune_manual_sync_run(uuid, uuid, uuid, text, uuid)',
 	      'execute'
+	    ) or has_function_privilege(
+	      'authenticated',
+	      'public.sync_asset_intune_primary_person_link(uuid, uuid, uuid, uuid)',
+	      'execute'
 	    ) then
-	    raise exception 'Authenticated browser role retained manual Intune sync access';
+	    raise exception 'Authenticated browser role retained private manual Intune sync access';
 	  end if;
 	end;
 	$$;
@@ -4496,7 +4501,8 @@ set local role authenticated;
 	      'compliance_state', 'compliant',
 	      'is_encrypted', true,
 	      'last_sync_at', '2026-10-21T05:00:00Z',
-	      'enrolled_at', '2026-10-01T05:00:00Z'
+	      'enrolled_at', '2026-10-01T05:00:00Z',
+	      'primary_user_object_id', '30000000-0000-4000-8000-000000000003'
 	    ))
 	  );
 	  select * into v_sync_complete

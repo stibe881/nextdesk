@@ -499,6 +499,88 @@ async function readCatalog(
   }
 }
 
+async function readIntunePrimaryPersonNames(
+  admin: AdminClient,
+  tenantId: string,
+  assets: Row[],
+): Promise<Row[]> {
+  const assetIds = new Set(
+    assets.flatMap((asset) => (isUuid(asset.id) ? [asset.id] : [])),
+  );
+  if (assetIds.size === 0) {
+    return assets.map((asset) => ({
+      ...asset,
+      intune_primary_person_name: null,
+    }));
+  }
+
+  const links: Row[] = [];
+  const assetIdList = [...assetIds];
+  for (let index = 0; index < assetIdList.length; index += PAGE_SIZE) {
+    const { data, error } = await admin
+      .from("asset_intune_primary_person_links")
+      .select("asset_id, entra_object_id")
+      .eq("tenant_id", tenantId)
+      .in("asset_id", assetIdList.slice(index, index + PAGE_SIZE))
+      .overrideTypes<Row[], { merge: false }>();
+    if (error) databaseFailure(error);
+    if (!data) {
+      throw new HttpError(
+        500,
+        "catalog_read_failed",
+        "Der Katalog konnte nicht vollständig gelesen werden.",
+      );
+    }
+    links.push(
+      ...data.filter(
+        (link) => isUuid(link.asset_id) && assetIds.has(link.asset_id),
+      ),
+    );
+  }
+
+  const personIds = [
+    ...new Set(
+      links.flatMap((link) =>
+        isUuid(link.entra_object_id) ? [link.entra_object_id] : [],
+      ),
+    ),
+  ];
+  const namesByPersonId = new Map<string, string>();
+  for (let index = 0; index < personIds.length; index += PAGE_SIZE) {
+    const { data, error } = await admin
+      .from("tenant_entra_directory_people")
+      .select("entra_object_id, display_name")
+      .eq("tenant_id", tenantId)
+      .eq("account_enabled", true)
+      .is("inactive_at", null)
+      .in("entra_object_id", personIds.slice(index, index + PAGE_SIZE))
+      .overrideTypes<Row[], { merge: false }>();
+    if (error) databaseFailure(error);
+    for (const person of data ?? []) {
+      if (
+        isUuid(person.entra_object_id) &&
+        validString(person.display_name) &&
+        person.display_name.trim()
+      ) {
+        namesByPersonId.set(person.entra_object_id, person.display_name.trim());
+      }
+    }
+  }
+
+  const personByAssetId = new Map<string, string>();
+  for (const link of links) {
+    if (!isUuid(link.asset_id) || !isUuid(link.entra_object_id)) continue;
+    const displayName = namesByPersonId.get(link.entra_object_id);
+    if (displayName) personByAssetId.set(link.asset_id, displayName);
+  }
+  return assets.map((asset) => ({
+    ...asset,
+    intune_primary_person_name: isUuid(asset.id)
+      ? (personByAssetId.get(asset.id) ?? null)
+      : null,
+  }));
+}
+
 function ticketSummary(row: unknown): TicketSummary | null {
   if (!isRecord(row) || !isUuid(row.id)) return null;
   if (!validString(row.ticket_number) || !validString(row.subject)) return null;
@@ -893,12 +975,35 @@ const handler = withSupabase(
         );
       }
       if (action.type === "listCatalog") {
-        const [services, assets, problems] = await Promise.all([
+        const [services, assets, problems, assetManage] = await Promise.all([
           readCatalog(client, action.tenantId, RESOURCES.manageService),
           readCatalog(client, action.tenantId, RESOURCES.manageAsset),
           readCatalog(client, action.tenantId, RESOURCES.manageProblem),
+          client.rpc("has_tenant_permission", {
+            p_tenant_id: action.tenantId,
+            p_permission_code: "asset.manage",
+          }),
         ]);
-        return json(request, { data: { services, assets, problems } });
+        if (assetManage.error || typeof assetManage.data !== "boolean") {
+          throw new HttpError(
+            503,
+            "authorization_check_failed",
+            "Die Berechtigung konnte nicht geprüft werden.",
+          );
+        }
+        const resolvedAssets = assetManage.data
+          ? await readIntunePrimaryPersonNames(
+              context.supabaseAdmin,
+              action.tenantId,
+              assets,
+            )
+          : assets.map((asset) => ({
+              ...asset,
+              intune_primary_person_name: null,
+            }));
+        return json(request, {
+          data: { services, assets: resolvedAssets, problems },
+        });
       }
       if (action.type === "listProblemOwners") {
         return await listProblemOwners(

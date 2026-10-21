@@ -56,6 +56,7 @@ Deno.test(
             isEncrypted: true,
             lastSyncDateTime: "2026-10-21T05:00:00Z",
             enrolledDateTime: "2026-10-01T05:00:00Z",
+            userId: "22222222-2222-4222-8222-222222222222",
             userPrincipalName: "must-not-be-read@example.invalid",
             imei: "must-not-be-read",
           },
@@ -115,10 +116,40 @@ Deno.test(
     const device = (pages[0] as Array<Record<string, unknown>>)[0];
     if (
       device.external_device_id !== "device-a" ||
+      device.primary_user_object_id !==
+        "22222222-2222-4222-8222-222222222222" ||
       "userPrincipalName" in device ||
       "imei" in device
     ) {
       throw new Error("The normalized device projection leaked provider data.");
+    }
+  },
+);
+
+Deno.test(
+  "Intune graph discards a malformed optional primary user object ID",
+  async () => {
+    const fakeFetch: typeof fetch = async (input) => {
+      if (String(input).includes("/token")) {
+        return Response.json({ access_token: "token-value" });
+      }
+      return Response.json({
+        value: [{ id: "device-a", userId: "not-an-entra-object-id" }],
+      });
+    };
+    const token = await requestIntuneGraphAccessToken(
+      TENANT_ID,
+      credentials,
+      fakeFetch,
+    );
+    const pages: Array<Array<Record<string, unknown>>> = [];
+    await readIntuneManagedDevices(
+      token,
+      async (devices) => pages.push(devices),
+      fakeFetch,
+    );
+    if (pages[0]?.[0]?.primary_user_object_id !== null) {
+      throw new Error("An untrusted provider user ID was retained.");
     }
   },
 );

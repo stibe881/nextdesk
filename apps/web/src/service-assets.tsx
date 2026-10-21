@@ -51,6 +51,7 @@ type Asset = {
   kind: string;
   status: string;
   customer_organization_id: string | null;
+  intune_primary_person_name: string | null;
   metadata: { [key: string]: JsonValue };
   active: boolean;
   created_at: string;
@@ -355,6 +356,8 @@ function parseAsset(value: unknown): Asset | null {
     typeof value.kind !== "string" ||
     typeof value.status !== "string" ||
     !isNullableString(value.customer_organization_id) ||
+    (Object.hasOwn(value, "intune_primary_person_name") &&
+      !isNullableString(value.intune_primary_person_name)) ||
     typeof value.active !== "boolean" ||
     typeof value.created_at !== "string" ||
     typeof value.updated_at !== "string"
@@ -375,6 +378,11 @@ function parseAsset(value: unknown): Asset | null {
     kind: value.kind,
     status: value.status,
     customer_organization_id: value.customer_organization_id,
+    intune_primary_person_name: isNullableString(
+      value.intune_primary_person_name,
+    )
+      ? value.intune_primary_person_name
+      : null,
     metadata: value.metadata as { [key: string]: JsonValue },
     active: value.active,
     created_at: value.created_at,
@@ -782,6 +790,13 @@ export function ServiceAssets({
       ),
     [assets],
   );
+  const editedAssetPrimaryPerson = useMemo(() => {
+    if (!assetForm.id) return null;
+    return (
+      assets.find((asset) => asset.id === assetForm.id)
+        ?.intune_primary_person_name ?? null
+    );
+  }, [assetForm.id, assets]);
   const filteredServices = useMemo(
     () =>
       services.filter(
@@ -807,6 +822,7 @@ export function ServiceAssets({
               asset.operating_system,
               asset.kind,
               asset.status,
+              asset.intune_primary_person_name,
               asset.service_id
                 ? (serviceNames.get(asset.service_id) ?? null)
                 : null,
@@ -1310,7 +1326,13 @@ export function ServiceAssets({
       setAssets((current) =>
         sortByName([
           ...current.filter((asset) => asset.id !== saved.id),
-          saved,
+          {
+            ...saved,
+            intune_primary_person_name:
+              current.find((asset) => asset.id === saved.id)
+                ?.intune_primary_person_name ??
+              saved.intune_primary_person_name,
+          },
         ]),
       );
       resetAssetForm();
@@ -1907,6 +1929,10 @@ export function ServiceAssets({
                         : "Nicht zugeordnet"}
                     </p>
                     <p>
+                      Primäre Person (Intune):{" "}
+                      {asset.intune_primary_person_name ?? "Nicht zugeordnet"}
+                    </p>
+                    <p>
                       <code>{metadataPreview(asset.metadata)}</code>
                     </p>
                     <button
@@ -1979,6 +2005,18 @@ export function ServiceAssets({
                         Schliessen
                       </button>
                     </div>
+                    {assetForm.id ? (
+                      <p>
+                        <strong>Primäre Person (Intune):</strong>{" "}
+                        {editedAssetPrimaryPerson ?? "Nicht zugeordnet"}
+                        <br />
+                        <small>
+                          Diese Angabe wird beim bewussten Intune-Abgleich aus
+                          dem lokal verifizierten Entra-Verzeichnis übernommen
+                          und kann hier nicht manuell geändert werden.
+                        </small>
+                      </p>
+                    ) : null}
                     <form onSubmit={(event) => void saveAsset(event)}>
                       <label>
                         Name

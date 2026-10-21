@@ -17,6 +17,7 @@ const COMPLIANCE_STATES = new Set([
 
 const SELECT_FIELDS = [
   "id",
+  "userId",
   "deviceName",
   "serialNumber",
   "manufacturer",
@@ -33,6 +34,7 @@ const CONTINUATION_QUERY_KEYS = new Set(["$skiptoken", "$top", "$select"]);
 
 export type IntuneManagedDevice = {
   external_device_id: string;
+  primary_user_object_id: string | null;
   device_name: string | null;
   serial_number: string | null;
   manufacturer: string | null;
@@ -140,6 +142,21 @@ function optionalTimestamp(value: unknown): string | null {
   return new Date(timestamp).toISOString();
 }
 
+function optionalPrimaryUserObjectId(value: unknown): string | null {
+  // `userId` is the Entra object ID documented on a managedDevice. It is the
+  // only person-related Graph field permitted here. An unrecognised optional
+  // value must never prevent a technical inventory sync, nor become a fallback
+  // identity such as a UPN or e-mail address.
+  if (value === null || value === undefined) return null;
+  if (typeof value !== "string" || !value.isWellFormed()) return null;
+  const normalized = value.trim();
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    normalized,
+  )
+    ? normalized.toLowerCase()
+    : null;
+}
+
 function parseDevice(value: unknown): IntuneManagedDevice {
   if (!isRecord(value)) throw new IntuneGraphError("provider_payload_invalid");
   const externalDeviceId = optionalText(value.id, 200);
@@ -157,6 +174,7 @@ function parseDevice(value: unknown): IntuneManagedDevice {
   }
   return {
     external_device_id: externalDeviceId.toLowerCase(),
+    primary_user_object_id: optionalPrimaryUserObjectId(value.userId),
     device_name: optionalText(value.deviceName, 240),
     serial_number: optionalText(value.serialNumber, 160),
     manufacturer: optionalText(value.manufacturer, 160),

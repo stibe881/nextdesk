@@ -291,3 +291,11 @@ Die erste datensparsame Intune-Vorschau kann eine von Microsoft Graph gelieferte
 ## Sichtbare Assetbearbeitung nach Intune-Import
 
 Bei umfangreichen Assetlisten darf die Aktion «Bearbeiten» nicht nur ein ausserhalb des sichtbaren Bereichs liegendes Inline-Formular befüllen. Die Assetverwaltung verwendet deshalb für Anlage und Bearbeitung einen viewport-festen, zugänglichen Dialog. Ein Klick auf «Bearbeiten» übernimmt nur die bereits sichtbaren, mandantenautorisierten Assetdaten in den Entwurf, setzt den Fokus auf das Namensfeld und öffnet den Dialog. Speichern, Abbrechen, Klick ausserhalb und Escape schliessen den Dialog kontrolliert; die Tastaturnavigation bleibt im Dialog. Speichern verwendet unverändert den bestehenden JWT-geschützten `service-assets`-Vertrag mit `asset.manage`. Es werden keine Berechtigungen, Datenmodelle oder Intune-Daten verändert.
+
+## Datensparsame Intune-Primärperson
+
+Der manuelle Intune-Abgleich liest zusätzlich ausschliesslich `managedDevice.userId`, die von Microsoft Graph dokumentierte unveränderliche Kennung der einem Gerät zugeordneten Person. Weder UPN noch E-Mail, Anzeigename oder weitere Personenattribute werden aus Intune abgefragt oder gespeichert. Die Kennung wird nur im privaten, service-role-geschützten Laufstaging verarbeitet und am Ende desselben bestätigten Synchronisationslaufs gegen die bestehende, mandantengebundene Tabelle `tenant_entra_directory_people` aufgelöst.
+
+Eine Auflösung ist nur möglich, wenn die Entra-Person im gleichen Mandanten aktiv ist. Persistiert wird dann ausschliesslich die relationale Verknüpfung `Asset ↔ Entra-Objekt-ID`; unaufgelöste, deaktivierte oder ungültige Graph-IDs erzeugen weder eine Zuweisung noch einen Fallback über E-Mail. Der Browser erhält für berechtigte Asset-Verwaltende nur den aktuellen Anzeigenamen der lokal verifizierten Verzeichnis-Person. Objekt-ID, UPN, E-Mail und rohe Graph-Antworten bleiben serverseitig. Die automatisch angezeigte Intune-Primärperson ist bewusst keine manuelle Ausleihe oder Ticket-Anfragendenzuordnung.
+
+Die Erweiterung bleibt an den bestehenden, bewusst gestarteten `dry_run`-/`synchronize`-Ablauf gebunden. Sie führt keine Hintergrundsynchronisation ein und muss nach Produktivbereitstellung über einen neuen, expliziten manuellen Abgleich aktualisiert werden.
