@@ -11,13 +11,15 @@ type ClaimRow = {
   outbox_id: string;
   tenant_id: string;
   user_id: string;
-  notification_id: string;
-  ticket_id: string;
+  notification_id: string | null;
+  source_type: "ticket" | "contract";
+  ticket_id: string | null;
+  contract_id: string | null;
   kind: string;
-  ticket_number: string;
+  ticket_number: string | null;
   subject: string | null;
+  delivery_mode: "immediate" | "summary";
   devices: unknown;
-  quiet_hours: boolean;
 };
 type Delivery = { status: number; reason?: string };
 
@@ -64,6 +66,7 @@ function category(
   | "escalation"
   | "sla"
   | "follow_up"
+  | "contract_deadline"
   | null {
   if (kind === "ticket.assigned") return "assigned";
   if (kind === "ticket.requester_reply") return "requester_reply";
@@ -78,6 +81,7 @@ function category(
     return "approval";
   if (kind === "ticket.escalation_opened") return "escalation";
   if (kind === "ticket.follow_up_due") return "follow_up";
+  if (kind === "contract.deadline") return "contract_deadline";
   return kind.startsWith("ticket.sla.") ? "sla" : null;
 }
 
@@ -196,7 +200,7 @@ async function completeForDeliveries(
 async function skip(
   admin: any,
   outboxId: string,
-  reason: "apns_not_configured" | "quiet_hours",
+  reason: "apns_not_configured",
 ): Promise<void> {
   await admin
     .from("push_outbox")
@@ -223,9 +227,10 @@ async function deliverSingle(admin: any, row: ClaimRow): Promise<void> {
   const payload = buildApnsPayload({
     kind: payloadKind(row.kind, preferenceCategory),
     tenantId: row.tenant_id,
-    notificationId: row.notification_id,
-    ticketId: row.ticket_id,
-    ticketNumber: row.ticket_number,
+    notificationId: row.notification_id ?? row.outbox_id,
+    ...(row.ticket_id ? { ticketId: row.ticket_id } : {}),
+    ...(row.contract_id ? { contractId: row.contract_id } : {}),
+    ...(row.ticket_number ? { ticketNumber: row.ticket_number } : {}),
     subject: row.subject,
   });
   const results = await Promise.all(
@@ -234,7 +239,7 @@ async function deliverSingle(admin: any, row: ClaimRow): Promise<void> {
         device.token,
         device.environment,
         payload,
-        row.notification_id,
+        row.notification_id ?? row.outbox_id,
       );
       await updateDeviceForDelivery(admin, device, result);
       return result;
@@ -253,7 +258,7 @@ async function deliverSummary(admin: any, rows: ClaimRow[]): Promise<void> {
   const payload = buildApnsPayload({
     kind: "summary",
     tenantId: anchor.tenant_id,
-    notificationId: anchor.notification_id,
+    notificationId: anchor.notification_id ?? anchor.outbox_id,
     summaryCount: rows.length,
   });
   const results = await Promise.all(
@@ -262,7 +267,7 @@ async function deliverSummary(admin: any, rows: ClaimRow[]): Promise<void> {
         device.token,
         device.environment,
         payload,
-        anchor.notification_id,
+        anchor.notification_id ?? anchor.outbox_id,
       );
       await updateDeviceForDelivery(admin, device, result);
       return result;
@@ -296,7 +301,7 @@ const handler = withSupabase(
     }
 
     const { data, error: claimError } = await context.supabaseAdmin.rpc(
-      "push_claim_outbox",
+      "push_claim_outbox_v2",
       { p_limit: 50 },
     );
     if (claimError) return response({ error: { code: "claim_failed" } }, 500);
@@ -311,20 +316,17 @@ const handler = withSupabase(
       });
     }
 
-    const groups = new Map<string, ClaimRow[]>();
+    const summaryGroups = new Map<string, ClaimRow[]>();
     for (const row of claimed) {
-      if (row.quiet_hours) {
-        await skip(context.supabaseAdmin, row.outbox_id, "quiet_hours");
-        continue;
+      if (row.delivery_mode === "summary") {
+        const key = `${row.tenant_id}:${row.user_id}`;
+        summaryGroups.set(key, [...(summaryGroups.get(key) ?? []), row]);
+      } else {
+        await deliverSingle(context.supabaseAdmin, row);
       }
-      const key = `${row.tenant_id}:${row.user_id}`;
-      groups.set(key, [...(groups.get(key) ?? []), row]);
     }
-    for (const rows of groups.values()) {
-      if (rows.length > 3) await deliverSummary(context.supabaseAdmin, rows);
-      else {
-        for (const row of rows) await deliverSingle(context.supabaseAdmin, row);
-      }
+    for (const rows of summaryGroups.values()) {
+      await deliverSummary(context.supabaseAdmin, rows);
     }
     return response({ data: { claimed: claimed.length } });
   },

@@ -12,6 +12,7 @@ export type ApnsPayloadKind =
   | "escalation"
   | "sla"
   | "follow_up"
+  | "contract_deadline"
   | "summary"
   | "test";
 
@@ -20,6 +21,7 @@ export type ApnsPayloadInput = {
   tenantId: string;
   notificationId: string;
   ticketId?: string;
+  contractId?: string;
   ticketNumber?: string;
   subject?: string | null;
   summaryCount?: number;
@@ -210,10 +212,15 @@ function alertFor(input: ApnsPayloadInput): { title: string; body: string } {
           ? `Eine Wiedervorlage zu ${ticketNumber} ist fällig: ${subject}`
           : "Eine Wiedervorlage ist fällig.",
       };
+    case "contract_deadline":
+      return {
+        title: "Vertragsfrist",
+        body: "Eine Vertragsfrist erfordert deine Aufmerksamkeit.",
+      };
     case "summary":
       return {
         title: "nextDesk",
-        body: `${Math.max(1, input.summaryCount ?? 1)} neue Hinweise zu deinen Tickets.`,
+        body: `${Math.max(1, input.summaryCount ?? 1)} neue Hinweise in nextDesk.`,
       };
     case "test":
       return {
@@ -236,6 +243,9 @@ export function buildApnsPayload(
   };
   if (input.ticketId && input.kind !== "summary" && input.kind !== "test") {
     data.ticketId = input.ticketId;
+  }
+  if (input.contractId && input.kind === "contract_deadline") {
+    data.contractId = input.contractId;
   }
   const aps: Record<string, unknown> = {
     alert,

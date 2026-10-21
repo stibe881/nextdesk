@@ -2122,10 +2122,10 @@ begin
   if not exists (
     select 1 from public.push_outbox
     where notification_id = '1e100000-0000-4000-8000-000000000003'
-      and status = 'skipped'
-      and last_error = 'off_shift'
+      and status = 'pending'
+      and last_error = 'deferred_off_shift'
   ) then
-    raise exception 'Push claim did not skip an unchecked-in user as off_shift';
+    raise exception 'Push claim did not defer an unchecked-in user';
   end if;
 end;
 $$;
@@ -6038,6 +6038,42 @@ begin
     where follow_up.id = '95000000-0000-4000-8000-000000000003'
   ) then
     raise exception 'Ticket agent could not create an own follow-up';
+  end if;
+end;
+$$;
+rollback;
+
+-- Migration 0101: der serverseitige Präferenz-Upsert muss beide CHECK-Hilfen
+-- ausführen können; Browserrollen erhalten daraus keine neuen Rechte.
+begin;
+set local role service_role;
+insert into public.push_preferences (
+  tenant_id, user_id, enabled_categories, category_modes, global_enabled,
+  summary_hour, quiet_hours_enabled, quiet_start, quiet_end, timezone
+) values (
+  '10000000-0000-4000-8000-000000000001',
+  '00000000-0000-4000-8000-000000000002',
+  array['assigned']::text[],
+  jsonb_build_object('assigned', 'immediate', 'contract_deadline', 'off'),
+  false, 9, false, 22, 7, 'Europe/Zurich'
+)
+on conflict (tenant_id, user_id) do update
+  set enabled_categories = excluded.enabled_categories,
+      category_modes = excluded.category_modes,
+      global_enabled = excluded.global_enabled,
+      summary_hour = excluded.summary_hour;
+do $$
+begin
+  if not exists (
+    select 1
+    from public.push_preferences preference
+    where preference.tenant_id = '10000000-0000-4000-8000-000000000001'
+      and preference.user_id = '00000000-0000-4000-8000-000000000002'
+      and preference.global_enabled = false
+      and preference.category_modes ->> 'contract_deadline' = 'off'
+      and preference.summary_hour = 9
+  ) then
+    raise exception 'Service role could not persist personal push modes';
   end if;
 end;
 $$;

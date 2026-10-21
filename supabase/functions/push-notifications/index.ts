@@ -18,6 +18,7 @@ const ALL_CATEGORIES = [
   "escalation",
   "approval",
   "follow_up",
+  "contract_deadline",
 ] as const;
 const AGENT_CATEGORIES = [
   "assigned",
@@ -31,6 +32,7 @@ const AGENT_CATEGORIES = [
 const REQUESTER_CATEGORIES = ["support_reply", "resolved", "approval"] as const;
 
 type Category = (typeof ALL_CATEGORIES)[number];
+type DeliveryMode = "immediate" | "summary" | "off";
 type Row = Record<string, unknown>;
 type Client = SupabaseContext["supabase"];
 type Admin = SupabaseContext["supabaseAdmin"];
@@ -61,6 +63,9 @@ type Action =
       quietStart: number;
       quietEnd: number;
       timezone: string;
+      globalEnabled?: boolean;
+      categoryModes?: Partial<Record<Category, DeliveryMode>>;
+      summaryHour?: number;
     }
   | { type: "sendTest"; tenantId: string }
   | { type: "checkIn"; tenantId: string }
@@ -82,6 +87,9 @@ type PreferenceRow = {
   quiet_start: number;
   quiet_end: number;
   timezone: string;
+  global_enabled?: boolean;
+  category_modes?: unknown;
+  summary_hour?: number;
   last_test_at: string | null;
 };
 
@@ -225,6 +233,27 @@ function isCategories(value: unknown): value is Category[] {
   );
 }
 
+function isDeliveryMode(value: unknown): value is DeliveryMode {
+  return value === "immediate" || value === "summary" || value === "off";
+}
+
+function parseCategoryModes(
+  value: unknown,
+): Partial<Record<Category, DeliveryMode>> | null {
+  if (!isRecord(value)) return null;
+  const result: Partial<Record<Category, DeliveryMode>> = {};
+  for (const [category, mode] of Object.entries(value)) {
+    if (
+      !(ALL_CATEGORIES as readonly string[]).includes(category) ||
+      !isDeliveryMode(mode)
+    ) {
+      return null;
+    }
+    result[category as Category] = mode;
+  }
+  return result;
+}
+
 function parseAction(value: unknown): Action | null {
   if (
     !isRecord(value) ||
@@ -298,13 +327,24 @@ function parseAction(value: unknown): Action | null {
       "quietStart",
       "quietEnd",
       "timezone",
+      "globalEnabled",
+      "categoryModes",
+      "summaryHour",
     ]) &&
     isCategories(value.enabledCategories) &&
     typeof value.quietHoursEnabled === "boolean" &&
     isHour(value.quietStart) &&
     isHour(value.quietEnd) &&
-    isTimezone(value.timezone)
+    isTimezone(value.timezone) &&
+    (!hasOwn(value, "globalEnabled") ||
+      typeof value.globalEnabled === "boolean") &&
+    (!hasOwn(value, "categoryModes") ||
+      parseCategoryModes(value.categoryModes) !== null) &&
+    (!hasOwn(value, "summaryHour") || isHour(value.summaryHour))
   ) {
+    const categoryModes = hasOwn(value, "categoryModes")
+      ? parseCategoryModes(value.categoryModes)
+      : undefined;
     return {
       type: "updatePreferences",
       tenantId,
@@ -313,6 +353,15 @@ function parseAction(value: unknown): Action | null {
       quietStart: value.quietStart,
       quietEnd: value.quietEnd,
       timezone: value.timezone,
+      ...(hasOwn(value, "globalEnabled")
+        ? { globalEnabled: value.globalEnabled as boolean }
+        : {}),
+      ...(categoryModes !== null && categoryModes !== undefined
+        ? { categoryModes }
+        : {}),
+      ...(hasOwn(value, "summaryHour")
+        ? { summaryHour: value.summaryHour as number }
+        : {}),
     };
   }
   if (
@@ -393,20 +442,36 @@ function fail(request: Request, error: unknown): Response {
 function defaultPreferences() {
   return {
     enabledCategories: [...ALL_CATEGORIES],
+    globalEnabled: true,
+    categoryModes: Object.fromEntries(
+      ALL_CATEGORIES.map((category) => [category, "immediate"]),
+    ) as Record<Category, DeliveryMode>,
     quietHoursEnabled: false,
     quietStart: 22,
     quietEnd: 7,
+    summaryHour: 8,
     timezone: "Europe/Zurich",
   };
 }
 
 function preferencesForResponse(row: PreferenceRow | null) {
   if (!row) return defaultPreferences();
+  const categoryModes = parseCategoryModes(row.category_modes) ?? {};
+  const enabled = new Set(row.enabled_categories);
   return {
     enabledCategories: row.enabled_categories,
+    globalEnabled: row.global_enabled !== false,
+    categoryModes: Object.fromEntries(
+      ALL_CATEGORIES.map((category) => [
+        category,
+        categoryModes[category] ??
+          (enabled.has(category) ? "immediate" : "off"),
+      ]),
+    ) as Record<Category, DeliveryMode>,
     quietHoursEnabled: row.quiet_hours_enabled,
     quietStart: row.quiet_start,
     quietEnd: row.quiet_end,
+    summaryHour: isHour(row.summary_hour) ? row.summary_hour : 8,
     timezone: row.timezone,
   };
 }
@@ -507,7 +572,7 @@ async function readPreferences(
   const { data, error } = await admin
     .from("push_preferences")
     .select(
-      "enabled_categories, quiet_hours_enabled, quiet_start, quiet_end, timezone, last_test_at",
+      "enabled_categories, quiet_hours_enabled, quiet_start, quiet_end, timezone, global_enabled, category_modes, summary_hour, last_test_at",
     )
     .eq("tenant_id", tenantId)
     .eq("user_id", actorId)
@@ -536,15 +601,33 @@ async function readDevices(
 
 async function applicableCategories(
   client: Client,
+  _admin: Admin,
   tenantId: string,
+  _actorId: string,
 ): Promise<string[]> {
-  const { data, error } = await client.rpc("is_tenant_ticket_agent", {
-    p_tenant_id: tenantId,
-  });
-  if (error || typeof data !== "boolean") {
+  const [
+    { data: isAgent, error: agentError },
+    { data: canManageContracts, error: contractsError },
+  ] = await Promise.all([
+    client.rpc("is_tenant_ticket_agent", { p_tenant_id: tenantId }),
+    client.rpc("is_contracts_management_client_enabled", {
+      p_tenant_id: tenantId,
+    }),
+  ]);
+  if (
+    agentError ||
+    contractsError ||
+    typeof isAgent !== "boolean" ||
+    typeof canManageContracts !== "boolean"
+  ) {
     throw new HttpError(500, "authorization_check_failed");
   }
-  return data ? [...AGENT_CATEGORIES] : [...REQUESTER_CATEGORIES];
+  const categories = new Set<string>([
+    ...REQUESTER_CATEGORIES,
+    ...(isAgent ? AGENT_CATEGORIES : []),
+  ]);
+  if (canManageContracts) categories.add("contract_deadline");
+  return [...categories];
 }
 
 function workHoursSettings(configuration: Row): WorkHoursSettings {
@@ -668,7 +751,7 @@ async function getStatus(
     featureConfiguration(admin, action.tenantId),
     readPreferences(admin, action.tenantId, actorId),
     readDevices(admin, action.tenantId, actorId),
-    applicableCategories(client, action.tenantId),
+    applicableCategories(client, admin, action.tenantId, actorId),
   ]);
   const workHours = await readWorkHours(
     admin,
@@ -790,23 +873,42 @@ async function updatePreferences(
   action: Extract<Action, { type: "updatePreferences" }>,
   actorId: string,
 ): Promise<Response> {
+  const existing = await readPreferences(admin, action.tenantId, actorId);
+  const fallback = preferencesForResponse(existing);
+  const categoryModes = action.categoryModes
+    ? ({ ...fallback.categoryModes, ...action.categoryModes } as Record<
+        Category,
+        DeliveryMode
+      >)
+    : (Object.fromEntries(
+        ALL_CATEGORIES.map((category) => [
+          category,
+          action.enabledCategories.includes(category) ? "immediate" : "off",
+        ]),
+      ) as Record<Category, DeliveryMode>);
+  const enabledCategories = ALL_CATEGORIES.filter(
+    (category) => categoryModes[category] !== "off",
+  );
   const { data, error } = await admin
     .from("push_preferences")
     .upsert(
       {
         tenant_id: action.tenantId,
         user_id: actorId,
-        enabled_categories: action.enabledCategories,
+        enabled_categories: enabledCategories,
+        global_enabled: action.globalEnabled ?? fallback.globalEnabled,
+        category_modes: categoryModes,
         quiet_hours_enabled: action.quietHoursEnabled,
         quiet_start: action.quietStart,
         quiet_end: action.quietEnd,
+        summary_hour: action.summaryHour ?? fallback.summaryHour,
         timezone: action.timezone,
         updated_at: new Date().toISOString(),
       },
       { onConflict: "tenant_id,user_id" },
     )
     .select(
-      "enabled_categories, quiet_hours_enabled, quiet_start, quiet_end, timezone, last_test_at",
+      "enabled_categories, quiet_hours_enabled, quiet_start, quiet_end, timezone, global_enabled, category_modes, summary_hour, last_test_at",
     )
     .single();
   if (error || !data) throw new HttpError(422, "preferences_update_failed");
@@ -818,7 +920,8 @@ async function updatePreferences(
     "push_preferences",
     actorId,
     {
-      enabledCategoryCount: action.enabledCategories.length,
+      globalEnabled: action.globalEnabled ?? fallback.globalEnabled,
+      modeCount: Object.keys(categoryModes).length,
       quietHoursEnabled: action.quietHoursEnabled,
     },
   );
