@@ -1,4 +1,5 @@
 import {
+  INTUNE_MANAGED_DEVICE_SELECT,
   IntuneGraphError,
   readIntuneGraphCredentials,
   readIntuneManagedDevices,
@@ -164,10 +165,18 @@ Deno.test(
       graphCalls += 1;
       sequence.push(`get:${graphCalls}`);
       if (graphCalls === 1) {
+        const next = new URL(
+          "https://graph.microsoft.com/v1.0/deviceManagement/managedDevices",
+        );
+        next.searchParams.set(
+          "$select",
+          INTUNE_MANAGED_DEVICE_SELECT.join(","),
+        );
+        next.searchParams.set("$top", "100");
+        next.searchParams.set("$skiptoken", "page-two");
         return Response.json({
           value: [{ id: "page-one" }],
-          "@odata.nextLink":
-            "https://graph.microsoft.com/v1.0/deviceManagement/managedDevices?$skiptoken=page-two",
+          "@odata.nextLink": next.toString(),
         });
       }
       return Response.json({ value: [{ id: "page-two" }] });
@@ -202,3 +211,78 @@ Deno.test(
     }
   },
 );
+
+Deno.test(
+  "Intune graph rejects unexpected continuation query parameters",
+  async () => {
+    const fakeFetch: typeof fetch = async (input) => {
+      const url = String(input);
+      if (url.includes("/token")) {
+        return Response.json({ access_token: "token-value" });
+      }
+      return Response.json({
+        value: [],
+        "@odata.nextLink":
+          "https://graph.microsoft.com/v1.0/deviceManagement/managedDevices?$skiptoken=page-two&$filter=deviceName%20ne%20null",
+      });
+    };
+    const token = await requestIntuneGraphAccessToken(
+      TENANT_ID,
+      credentials,
+      fakeFetch,
+    );
+    try {
+      await readIntuneManagedDevices(token, async () => {}, fakeFetch);
+    } catch (error) {
+      if (
+        error instanceof IntuneGraphError &&
+        error.code === "provider_payload_invalid"
+      ) {
+        return;
+      }
+      throw error;
+    }
+    throw new Error("An unexpected continuation parameter was accepted.");
+  },
+);
+
+for (const [label, continuation] of [
+  [
+    "missing select",
+    "https://graph.microsoft.com/v1.0/deviceManagement/managedDevices?$top=100&$skiptoken=page-two",
+  ],
+  [
+    "missing page size",
+    `https://graph.microsoft.com/v1.0/deviceManagement/managedDevices?$select=${encodeURIComponent(INTUNE_MANAGED_DEVICE_SELECT.join(","))}&$skiptoken=page-two`,
+  ],
+  [
+    "blank skip token",
+    `https://graph.microsoft.com/v1.0/deviceManagement/managedDevices?$select=${encodeURIComponent(INTUNE_MANAGED_DEVICE_SELECT.join(","))}&$top=100&$skiptoken=%20`,
+  ],
+] as const) {
+  Deno.test(`Intune graph rejects a continuation with ${label}`, async () => {
+    const fakeFetch: typeof fetch = async (input) => {
+      if (String(input).includes("/token")) {
+        return Response.json({ access_token: "token-value" });
+      }
+      return Response.json({ value: [], "@odata.nextLink": continuation });
+    };
+    const token = await requestIntuneGraphAccessToken(
+      TENANT_ID,
+      credentials,
+      fakeFetch,
+    );
+    try {
+      await readIntuneManagedDevices(token, async () => {}, fakeFetch);
+    } catch (error) {
+      if (
+        error instanceof IntuneGraphError &&
+        error.code === "provider_payload_invalid"
+      ) {
+        return;
+      }
+      throw error;
+    }
+    throw new Error(`A continuation with ${label} was accepted.`);
+  });
+}

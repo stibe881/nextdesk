@@ -28,6 +28,8 @@ const SELECT_FIELDS = [
   "lastSyncDateTime",
   "enrolledDateTime",
 ] as const;
+const SELECT_QUERY_VALUE = SELECT_FIELDS.join(",");
+const CONTINUATION_QUERY_KEYS = new Set(["$skiptoken", "$top", "$select"]);
 
 export type IntuneManagedDevice = {
   external_device_id: string;
@@ -171,7 +173,7 @@ function parseDevice(value: unknown): IntuneManagedDevice {
 
 function initialGraphUrl(): URL {
   const url = new URL(`${GRAPH_ORIGIN}${GRAPH_PATH}`);
-  url.searchParams.set("$select", SELECT_FIELDS.join(","));
+  url.searchParams.set("$select", SELECT_QUERY_VALUE);
   url.searchParams.set("$top", String(PAGE_SIZE));
   return url;
 }
@@ -187,11 +189,24 @@ function validateNextLink(value: unknown): URL | null {
   } catch {
     throw new IntuneGraphError("provider_payload_invalid");
   }
+  const skipTokens = url.searchParams.getAll("$skiptoken");
+  const pageSizes = url.searchParams.getAll("$top");
+  const selectValues = url.searchParams.getAll("$select");
   if (
     url.protocol !== "https:" ||
     url.origin !== GRAPH_ORIGIN ||
     url.pathname !== GRAPH_PATH ||
-    [...url.searchParams.keys()].some((key) => key !== "$skiptoken")
+    [...url.searchParams.keys()].some(
+      (key) => !CONTINUATION_QUERY_KEYS.has(key),
+    ) ||
+    skipTokens.length !== 1 ||
+    !skipTokens[0].trim() ||
+    pageSizes.length !== 1 ||
+    !/^\d+$/.test(pageSizes[0]) ||
+    Number(pageSizes[0]) < 1 ||
+    Number(pageSizes[0]) > PAGE_SIZE ||
+    selectValues.length !== 1 ||
+    selectValues[0] !== SELECT_QUERY_VALUE
   ) {
     throw new IntuneGraphError("provider_payload_invalid");
   }

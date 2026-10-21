@@ -283,3 +283,7 @@ Die Einstellungsoberfläche zeigt weiterhin den lokalen Preflight sowie eine kla
 - `supabase/functions/asset-registry/`: ausschliesslich serverautorisierte Konfigurations- und redigierte History-Aktionen.
 - `apps/web/src/asset-intune-settings.tsx`: klare Freigabe, Bestätigungsdialog, aggregierte Live-Run-Historie und verständliche Fehlermeldungen.
 - `docs/deployment/` und `docs/operations/`: Microsoft-Admin-Consent, Secretnamen, Datenvertrag, manueller Ablauf und Rücknahme.
+
+## Intune Graph: sichere OData-Continuation
+
+Die erste datensparsame Intune-Vorschau kann eine von Microsoft Graph gelieferte vollständige `@odata.nextLink`-URL erhalten, welche die ursprünglichen OData-Parameter `$top` und `$select` zusätzlich zum `$skiptoken` fortführt. Der Server akzeptiert weiterhin ausschliesslich HTTPS-URLs auf `graph.microsoft.com` für exakt `/v1.0/deviceManagement/managedDevices`. Für Fortsetzungen sind einmalig und zwingend nur `$skiptoken`, `$top` (1–100) und `$select` mit der unveränderten, bereits freigegebenen Minimalprojektion zulässig. Fremde Origins, Pfade, Query-Parameter, leere Tokens und abweichende Feldprojektionen werden weiterhin fail-closed abgelehnt. Der Hotfix liest keine zusätzlichen Felder, ändert keine Schreibrechte und startet keinen automatischen Abgleich.
