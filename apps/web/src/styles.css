@@ -7200,6 +7200,53 @@ body:has(.ticket-detail) {
   justify-self: start;
 }
 
+.service-assets__dialog-backdrop {
+  position: fixed;
+  z-index: 90;
+  inset: 0;
+  display: grid;
+  overflow-y: auto;
+  place-items: center;
+  padding: 24px;
+  background: var(--overlay);
+}
+
+.service-assets__asset-editor-dialog {
+  display: grid;
+  gap: 16px;
+  width: min(100%, 760px);
+  max-height: min(760px, calc(100dvh - 48px));
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  padding: 20px;
+  background: var(--surface);
+  box-shadow: var(--shadow-lg);
+}
+
+.service-assets__asset-editor-dialog .panel-heading {
+  padding: 0 0 4px;
+}
+
+.service-assets__asset-editor-dialog form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.service-assets__asset-editor-dialog label {
+  display: grid;
+  gap: 6px;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.service-assets__asset-editor-dialog form > :last-child {
+  grid-column: 1 / -1;
+  justify-self: start;
+}
+
 .ticket-detail-comments:has(#ticket-affected-items-heading) {
   background: var(--surface-subtle);
 }
@@ -7211,7 +7258,8 @@ body:has(.ticket-detail) {
   }
 
   .service-assets fieldset,
-  .service-assets .panel form {
+  .service-assets .panel form,
+  .service-assets__asset-editor-dialog form {
     grid-template-columns: 1fr;
   }
 
@@ -7225,6 +7273,17 @@ body:has(.ticket-detail) {
 
   .service-assets li > article button {
     min-height: 42px;
+  }
+
+  .service-assets__dialog-backdrop {
+    align-items: end;
+    padding: 12px;
+  }
+
+  .service-assets__asset-editor-dialog {
+    width: 100%;
+    max-height: calc(100dvh - 24px);
+    padding: 18px;
   }
 }
 

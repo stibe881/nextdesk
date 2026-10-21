@@ -7,6 +7,7 @@ import {
   type FormEvent,
   type KeyboardEvent,
 } from "react";
+import { createPortal } from "react-dom";
 import { supabase } from "./lib/supabase";
 
 export type ServiceAssetsProps = {
@@ -730,6 +731,7 @@ export function ServiceAssets({
   const [problemForm, setProblemForm] =
     useState<ProblemForm>(EMPTY_PROBLEM_FORM);
   const [problemMode, setProblemMode] = useState<ProblemFormMode>("create");
+  const [assetEditorOpen, setAssetEditorOpen] = useState(false);
   const [serviceQuery, setServiceQuery] = useState("");
   const [serviceCriticality, setServiceCriticality] = useState<
     "all" | Criticality
@@ -760,6 +762,10 @@ export function ServiceAssets({
   const problemTicketsRequestVersion = useRef(0);
   const ticketSearchRequestVersion = useRef(0);
   const lastProblemCreateRequestId = useRef<number | undefined>(undefined);
+  const assetEditorRef = useRef<HTMLElement | null>(null);
+  const assetNameInputRef = useRef<HTMLInputElement | null>(null);
+  const assetEditorTriggerRef = useRef<HTMLElement | null>(null);
+  const assetCreateButtonRef = useRef<HTMLButtonElement | null>(null);
 
   const serviceNames = useMemo(
     () => new Map(services.map((service) => [service.id, service.name])),
@@ -929,12 +935,22 @@ export function ServiceAssets({
   useEffect(() => {
     setServiceForm(EMPTY_SERVICE_FORM);
     setAssetForm(EMPTY_ASSET_FORM);
+    setAssetEditorOpen(false);
+    assetEditorTriggerRef.current = null;
     setProblemForm(EMPTY_PROBLEM_FORM);
     setProblemMode("create");
     clearProblemTicketState();
     setProblemOwners([]);
     setSuccess("");
   }, [tenantId]);
+
+  useEffect(() => {
+    if (!assetEditorOpen) return;
+    const focusTimer = window.setTimeout(() => {
+      assetNameInputRef.current?.focus();
+    }, 0);
+    return () => window.clearTimeout(focusTimer);
+  }, [assetEditorOpen]);
 
   useEffect(() => {
     const problemId = problemForm.id;
@@ -1038,10 +1054,71 @@ export function ServiceAssets({
     setSuccess("");
   }
 
+  function restoreAssetEditorFocus() {
+    const trigger = assetEditorTriggerRef.current;
+    assetEditorTriggerRef.current = null;
+    window.setTimeout(() => {
+      const triggerIsUsable =
+        trigger?.isConnected &&
+        !(trigger instanceof HTMLButtonElement && trigger.disabled);
+      const fallback = assetCreateButtonRef.current;
+      const fallbackIsUsable = fallback?.isConnected && !fallback.disabled;
+      if (triggerIsUsable) {
+        trigger.focus();
+      } else if (fallbackIsUsable) {
+        fallback.focus();
+      }
+    }, 0);
+  }
+
   function resetAssetForm() {
     setAssetForm(EMPTY_ASSET_FORM);
+    setAssetEditorOpen(false);
     setError("");
     setSuccess("");
+    restoreAssetEditorFocus();
+  }
+
+  function openAssetEditor(asset?: Asset, trigger?: HTMLElement) {
+    assetEditorTriggerRef.current =
+      trigger ??
+      (document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null);
+    setAssetForm(asset ? assetDraft(asset) : EMPTY_ASSET_FORM);
+    setError("");
+    setSuccess("");
+    setAssetEditorOpen(true);
+  }
+
+  function handleAssetEditorKeyDown(event: KeyboardEvent<HTMLElement>) {
+    if (event.key === "Escape" && !controlsDisabled) {
+      event.preventDefault();
+      resetAssetForm();
+      return;
+    }
+    if (event.key !== "Tab") return;
+    const dialog = assetEditorRef.current;
+    if (!dialog) return;
+    const focusable = [
+      ...dialog.querySelectorAll<HTMLElement>(
+        "button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [href]",
+      ),
+    ];
+    if (focusable.length === 0) {
+      event.preventDefault();
+      dialog.focus();
+      return;
+    }
+    const first = focusable[0]!;
+    const last = focusable[focusable.length - 1]!;
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
   }
 
   function resetProblemForm() {
@@ -1743,6 +1820,17 @@ export function ServiceAssets({
               <h3>Assets</h3>
               <p>{activeCount} passende Assets</p>
             </div>
+            <button
+              className="secondary-button"
+              disabled={controlsDisabled}
+              onClick={(event) =>
+                openAssetEditor(undefined, event.currentTarget)
+              }
+              ref={assetCreateButtonRef}
+              type="button"
+            >
+              Asset erfassen
+            </button>
           </div>
           <fieldset disabled={controlsDisabled}>
             <legend>Assets filtern</legend>
@@ -1823,11 +1911,9 @@ export function ServiceAssets({
                     </p>
                     <button
                       disabled={controlsDisabled}
-                      onClick={() => {
-                        setAssetForm(assetDraft(asset));
-                        setError("");
-                        setSuccess("");
-                      }}
+                      onClick={(event) =>
+                        openAssetEditor(asset, event.currentTarget)
+                      }
                       type="button"
                     >
                       Bearbeiten
@@ -1847,228 +1933,265 @@ export function ServiceAssets({
             </ul>
           )}
 
-          <section
-            aria-labelledby="service-assets-asset-form-title"
-            className="panel"
-          >
-            <div className="panel-heading">
-              <div>
-                <p className="eyebrow">
-                  {assetForm.id ? "Asset bearbeiten" : "Neues Asset"}
-                </p>
-                <h3 id="service-assets-asset-form-title">
-                  {assetForm.id ? "Asset aktualisieren" : "Asset anlegen"}
-                </h3>
-              </div>
-            </div>
-            <form onSubmit={(event) => void saveAsset(event)}>
-              <label>
-                Name
-                <input
-                  disabled={controlsDisabled}
-                  maxLength={240}
-                  onChange={(event) =>
-                    setAssetForm((current) => ({
-                      ...current,
-                      name: event.target.value,
-                    }))
+          {assetEditorOpen
+            ? createPortal(
+                <div
+                  aria-label={
+                    assetForm.id ? "Asset bearbeiten" : "Asset erfassen"
                   }
-                  required
-                  value={assetForm.name}
-                />
-              </label>
-              <label>
-                Zugehöriger Service (optional)
-                <select
-                  disabled={controlsDisabled}
-                  onChange={(event) =>
-                    setAssetForm((current) => ({
-                      ...current,
-                      serviceId: event.target.value,
-                    }))
-                  }
-                  value={assetForm.serviceId}
+                  aria-modal="true"
+                  className="service-assets__dialog-backdrop"
+                  onMouseDown={(event) => {
+                    if (
+                      event.currentTarget === event.target &&
+                      !controlsDisabled
+                    ) {
+                      resetAssetForm();
+                    }
+                  }}
+                  role="dialog"
                 >
-                  <option value="">Nicht zugeordnet</option>
-                  {services.map((service) => (
-                    <option key={service.id} value={service.id}>
-                      {service.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                Asset-Kennung (optional)
-                <input
-                  disabled={controlsDisabled}
-                  maxLength={160}
-                  onChange={(event) =>
-                    setAssetForm((current) => ({
-                      ...current,
-                      assetTag: event.target.value,
-                    }))
-                  }
-                  value={assetForm.assetTag}
-                />
-              </label>
-              <label>
-                Inventarnummer (optional)
-                <input
-                  disabled={controlsDisabled}
-                  maxLength={160}
-                  onChange={(event) =>
-                    setAssetForm((current) => ({
-                      ...current,
-                      inventoryNumber: event.target.value,
-                    }))
-                  }
-                  value={assetForm.inventoryNumber}
-                />
-              </label>
-              <label>
-                Seriennummer (optional)
-                <input
-                  disabled={controlsDisabled}
-                  maxLength={160}
-                  onChange={(event) =>
-                    setAssetForm((current) => ({
-                      ...current,
-                      serialNumber: event.target.value,
-                    }))
-                  }
-                  value={assetForm.serialNumber}
-                />
-              </label>
-              <label>
-                Hersteller (optional)
-                <input
-                  disabled={controlsDisabled}
-                  maxLength={160}
-                  onChange={(event) =>
-                    setAssetForm((current) => ({
-                      ...current,
-                      manufacturer: event.target.value,
-                    }))
-                  }
-                  value={assetForm.manufacturer}
-                />
-              </label>
-              <label>
-                Modell (optional)
-                <input
-                  disabled={controlsDisabled}
-                  maxLength={160}
-                  onChange={(event) =>
-                    setAssetForm((current) => ({
-                      ...current,
-                      model: event.target.value,
-                    }))
-                  }
-                  value={assetForm.model}
-                />
-              </label>
-              <label>
-                Betriebssystem (optional)
-                <input
-                  disabled={controlsDisabled}
-                  maxLength={160}
-                  onChange={(event) =>
-                    setAssetForm((current) => ({
-                      ...current,
-                      operatingSystem: event.target.value,
-                    }))
-                  }
-                  value={assetForm.operatingSystem}
-                />
-              </label>
-              <label>
-                Art
-                <input
-                  disabled={controlsDisabled}
-                  maxLength={64}
-                  onChange={(event) =>
-                    setAssetForm((current) => ({
-                      ...current,
-                      kind: event.target.value,
-                    }))
-                  }
-                  required
-                  value={assetForm.kind}
-                />
-              </label>
-              <label>
-                Status
-                <input
-                  disabled={controlsDisabled}
-                  maxLength={64}
-                  onChange={(event) =>
-                    setAssetForm((current) => ({
-                      ...current,
-                      status: event.target.value,
-                    }))
-                  }
-                  required
-                  value={assetForm.status}
-                />
-              </label>
-              <label>
-                Kundenorganisation-ID (optional)
-                <input
-                  disabled={controlsDisabled}
-                  onChange={(event) =>
-                    setAssetForm((current) => ({
-                      ...current,
-                      customerOrganizationId: event.target.value,
-                    }))
-                  }
-                  placeholder="UUID"
-                  value={assetForm.customerOrganizationId}
-                />
-              </label>
-              <label>
-                Metadaten (JSON-Objekt)
-                <textarea
-                  aria-describedby="service-assets-metadata-help"
-                  disabled={controlsDisabled}
-                  onChange={(event) =>
-                    setAssetForm((current) => ({
-                      ...current,
-                      metadata: event.target.value,
-                    }))
-                  }
-                  rows={5}
-                  spellCheck={false}
-                  value={assetForm.metadata}
-                />
-              </label>
-              <p id="service-assets-metadata-help">
-                Erlaubt ist ein JSON-Objekt, zum Beispiel {"{"}
-                "standort":"Zürich"{"}"}.
-              </p>
-              <p>
-                <button
-                  className="primary-button"
-                  disabled={controlsDisabled}
-                  type="submit"
-                >
-                  {pendingAction?.startsWith("asset:save:")
-                    ? "Wird gespeichert …"
-                    : assetForm.id
-                      ? "Änderungen speichern"
-                      : "Asset anlegen"}
-                </button>{" "}
-                {assetForm.id ? (
-                  <button
-                    disabled={controlsDisabled}
-                    onClick={resetAssetForm}
-                    type="button"
+                  <section
+                    aria-busy={controlsDisabled}
+                    aria-labelledby="service-assets-asset-form-title"
+                    className="service-assets__asset-editor-dialog"
+                    onKeyDown={handleAssetEditorKeyDown}
+                    ref={assetEditorRef}
+                    tabIndex={-1}
                   >
-                    Abbrechen
-                  </button>
-                ) : null}
-              </p>
-            </form>
-          </section>
+                    <div className="panel-heading">
+                      <div>
+                        <p className="eyebrow">
+                          {assetForm.id ? "Asset bearbeiten" : "Neues Asset"}
+                        </p>
+                        <h3 id="service-assets-asset-form-title">
+                          {assetForm.id
+                            ? "Asset aktualisieren"
+                            : "Asset anlegen"}
+                        </h3>
+                      </div>
+                      <button
+                        aria-label="Assetbearbeitung schliessen"
+                        disabled={controlsDisabled}
+                        onClick={resetAssetForm}
+                        type="button"
+                      >
+                        Schliessen
+                      </button>
+                    </div>
+                    <form onSubmit={(event) => void saveAsset(event)}>
+                      <label>
+                        Name
+                        <input
+                          disabled={controlsDisabled}
+                          maxLength={240}
+                          onChange={(event) =>
+                            setAssetForm((current) => ({
+                              ...current,
+                              name: event.target.value,
+                            }))
+                          }
+                          ref={assetNameInputRef}
+                          required
+                          value={assetForm.name}
+                        />
+                      </label>
+                      <label>
+                        Zugehöriger Service (optional)
+                        <select
+                          disabled={controlsDisabled}
+                          onChange={(event) =>
+                            setAssetForm((current) => ({
+                              ...current,
+                              serviceId: event.target.value,
+                            }))
+                          }
+                          value={assetForm.serviceId}
+                        >
+                          <option value="">Nicht zugeordnet</option>
+                          {services.map((service) => (
+                            <option key={service.id} value={service.id}>
+                              {service.name}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label>
+                        Asset-Kennung (optional)
+                        <input
+                          disabled={controlsDisabled}
+                          maxLength={160}
+                          onChange={(event) =>
+                            setAssetForm((current) => ({
+                              ...current,
+                              assetTag: event.target.value,
+                            }))
+                          }
+                          value={assetForm.assetTag}
+                        />
+                      </label>
+                      <label>
+                        Inventarnummer (optional)
+                        <input
+                          disabled={controlsDisabled}
+                          maxLength={160}
+                          onChange={(event) =>
+                            setAssetForm((current) => ({
+                              ...current,
+                              inventoryNumber: event.target.value,
+                            }))
+                          }
+                          value={assetForm.inventoryNumber}
+                        />
+                      </label>
+                      <label>
+                        Seriennummer (optional)
+                        <input
+                          disabled={controlsDisabled}
+                          maxLength={160}
+                          onChange={(event) =>
+                            setAssetForm((current) => ({
+                              ...current,
+                              serialNumber: event.target.value,
+                            }))
+                          }
+                          value={assetForm.serialNumber}
+                        />
+                      </label>
+                      <label>
+                        Hersteller (optional)
+                        <input
+                          disabled={controlsDisabled}
+                          maxLength={160}
+                          onChange={(event) =>
+                            setAssetForm((current) => ({
+                              ...current,
+                              manufacturer: event.target.value,
+                            }))
+                          }
+                          value={assetForm.manufacturer}
+                        />
+                      </label>
+                      <label>
+                        Modell (optional)
+                        <input
+                          disabled={controlsDisabled}
+                          maxLength={160}
+                          onChange={(event) =>
+                            setAssetForm((current) => ({
+                              ...current,
+                              model: event.target.value,
+                            }))
+                          }
+                          value={assetForm.model}
+                        />
+                      </label>
+                      <label>
+                        Betriebssystem (optional)
+                        <input
+                          disabled={controlsDisabled}
+                          maxLength={160}
+                          onChange={(event) =>
+                            setAssetForm((current) => ({
+                              ...current,
+                              operatingSystem: event.target.value,
+                            }))
+                          }
+                          value={assetForm.operatingSystem}
+                        />
+                      </label>
+                      <label>
+                        Art
+                        <input
+                          disabled={controlsDisabled}
+                          maxLength={64}
+                          onChange={(event) =>
+                            setAssetForm((current) => ({
+                              ...current,
+                              kind: event.target.value,
+                            }))
+                          }
+                          required
+                          value={assetForm.kind}
+                        />
+                      </label>
+                      <label>
+                        Status
+                        <input
+                          disabled={controlsDisabled}
+                          maxLength={64}
+                          onChange={(event) =>
+                            setAssetForm((current) => ({
+                              ...current,
+                              status: event.target.value,
+                            }))
+                          }
+                          required
+                          value={assetForm.status}
+                        />
+                      </label>
+                      <label>
+                        Kundenorganisation-ID (optional)
+                        <input
+                          disabled={controlsDisabled}
+                          onChange={(event) =>
+                            setAssetForm((current) => ({
+                              ...current,
+                              customerOrganizationId: event.target.value,
+                            }))
+                          }
+                          placeholder="UUID"
+                          value={assetForm.customerOrganizationId}
+                        />
+                      </label>
+                      <label>
+                        Metadaten (JSON-Objekt)
+                        <textarea
+                          aria-describedby="service-assets-metadata-help"
+                          disabled={controlsDisabled}
+                          onChange={(event) =>
+                            setAssetForm((current) => ({
+                              ...current,
+                              metadata: event.target.value,
+                            }))
+                          }
+                          rows={5}
+                          spellCheck={false}
+                          value={assetForm.metadata}
+                        />
+                      </label>
+                      <p id="service-assets-metadata-help">
+                        Erlaubt ist ein JSON-Objekt, zum Beispiel {"{"}
+                        "standort":"Zürich"{"}"}.
+                      </p>
+                      <p>
+                        <button
+                          className="primary-button"
+                          disabled={controlsDisabled}
+                          type="submit"
+                        >
+                          {pendingAction?.startsWith("asset:save:")
+                            ? "Wird gespeichert …"
+                            : assetForm.id
+                              ? "Änderungen speichern"
+                              : "Asset anlegen"}
+                        </button>{" "}
+                        {assetForm.id ? (
+                          <button
+                            disabled={controlsDisabled}
+                            onClick={resetAssetForm}
+                            type="button"
+                          >
+                            Abbrechen
+                          </button>
+                        ) : null}
+                      </p>
+                    </form>
+                  </section>
+                </div>,
+                document.body,
+              )
+            : null}
         </section>
       ) : null}
 
