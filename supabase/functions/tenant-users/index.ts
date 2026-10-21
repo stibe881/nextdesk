@@ -471,7 +471,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       await context.supabaseAdmin
         .from("user_role_assignments")
         .select(
-          "user_id, starts_at, expires_at, roles!user_role_assignments_role_tenant_fk!inner(name, scope, active, role_permissions(permission_code))",
+          "user_id, department_id, starts_at, expires_at, roles!user_role_assignments_role_tenant_fk!inner(name, scope, active, role_permissions(permission_code))",
         )
         .eq("tenant_id", action.tenantId)
         .eq("user_id", actorId)
@@ -506,8 +506,25 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         )
       );
     });
+    const canReadReports = effectiveRoles.some((assignment) => {
+      const role = relatedRole(assignment.roles);
+      return (
+        isEffectiveAssignment(assignment, now) &&
+        assignment.department_id === null &&
+        role?.active === true &&
+        role.scope === "tenant" &&
+        (role.role_permissions ?? []).some(
+          (permission) => permission.permission_code === "report.read",
+        )
+      );
+    });
     return json(request, {
-      data: { canWorkTickets, canManageContracts, isTenantAdmin },
+      data: {
+        canWorkTickets,
+        canManageContracts,
+        canReadReports,
+        isTenantAdmin,
+      },
     });
   }
 

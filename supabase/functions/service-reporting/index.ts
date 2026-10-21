@@ -1,8 +1,19 @@
 import { withSupabase } from "@supabase/server";
 import { resolveTenantFeatureStates } from "../_shared/tenant-features.ts";
 
-type Period = "7d" | "30d" | "90d";
-type Action = { type: "getReport"; tenantId: string; period: Period };
+type Period = "7d" | "30d" | "90d" | "custom";
+type Action = {
+  type: "getReport";
+  tenantId: string;
+  period: Period;
+  startsOn?: string;
+  endsOn?: string;
+};
+type PeriodRange = {
+  key: Period;
+  startsAt: string;
+  endsAt: string;
+};
 type DatabaseError = {
   code?: unknown;
   message?: unknown;
@@ -23,15 +34,18 @@ type TicketRow = {
 };
 type TeamScopedTicketRow = { assigned_team_id?: unknown };
 type TimeEntryRow = {
+  created_at: string;
   minutes: number;
   billing_kind: string;
   tickets?: TeamScopedTicketRow | TeamScopedTicketRow[] | null;
 };
 type SatisfactionRow = {
+  submitted_at: string;
   score: number | null;
   tickets?: TeamScopedTicketRow | TeamScopedTicketRow[] | null;
 };
 type EscalationRow = {
+  opened_at: string;
   resolved_at: string | null;
   tickets?: TeamScopedTicketRow | TeamScopedTicketRow[] | null;
 };
@@ -42,7 +56,14 @@ type Department = { id?: unknown; name?: unknown };
 const ALLOWED_ORIGIN = "https://app.nextdesk.ch";
 const PAGE_SIZE = 1_000;
 const MAX_REPORT_ROWS = 100_000;
-const PERIOD_DAYS: Record<Period, number> = { "7d": 7, "30d": 30, "90d": 90 };
+const PERIOD_DAYS: Record<Exclude<Period, "custom">, number> = {
+  "7d": 7,
+  "30d": 30,
+  "90d": 90,
+};
+const MAX_CUSTOM_PERIOD_DAYS = 366;
+const DAY_MS = 24 * 60 * 60 * 1_000;
+const DATE_INPUT = /^(\d{4})-(\d{2})-(\d{2})$/;
 
 function response(
   request: Request,
@@ -81,7 +102,181 @@ function isUuid(value: unknown): value is string {
 }
 
 function isPeriod(value: unknown): value is Period {
-  return value === "7d" || value === "30d" || value === "90d";
+  return (
+    value === "7d" || value === "30d" || value === "90d" || value === "custom"
+  );
+}
+
+function isDateInput(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  const match = DATE_INPUT.exec(value);
+  if (!match) return false;
+  const [year, month, day] = match.slice(1).map(Number);
+  const parsed = new Date(Date.UTC(year, month - 1, day));
+  return (
+    parsed.getUTCFullYear() === year &&
+    parsed.getUTCMonth() === month - 1 &&
+    parsed.getUTCDate() === day
+  );
+}
+
+function swissDateInput(date: Date): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Zurich",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const value = (kind: Intl.DateTimeFormatPartTypes) =>
+    parts.find((part) => part.type === kind)?.value;
+  return `${value("year")}-${value("month")}-${value("day")}`;
+}
+
+function swissDateTimeAsUtc(dateInput: string, endOfDay: boolean): Date | null {
+  const match = DATE_INPUT.exec(dateInput);
+  if (!match) return null;
+  const [year, month, day] = match.slice(1).map(Number);
+  const hour = endOfDay ? 23 : 0;
+  const minute = endOfDay ? 59 : 0;
+  const second = endOfDay ? 59 : 0;
+  const millisecond = endOfDay ? 999 : 0;
+  const nominalUtc = Date.UTC(
+    year,
+    month - 1,
+    day,
+    hour,
+    minute,
+    second,
+    millisecond,
+  );
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Zurich",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(new Date(nominalUtc));
+  const value = (kind: Intl.DateTimeFormatPartTypes) =>
+    Number(parts.find((part) => part.type === kind)?.value);
+  const offset =
+    Date.UTC(
+      value("year"),
+      value("month") - 1,
+      value("day"),
+      value("hour"),
+      value("minute"),
+      value("second"),
+      millisecond,
+    ) - nominalUtc;
+  const result = new Date(nominalUtc - offset);
+  return Number.isFinite(result.getTime()) ? result : null;
+}
+
+function shiftDateInput(dateInput: string, days: number): string | null {
+  const match = DATE_INPUT.exec(dateInput);
+  if (!match) return null;
+  const [year, month, day] = match.slice(1).map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+export function customPeriodRange(
+  startsOn: string,
+  endsOn: string,
+): {
+  current: PeriodRange;
+  previous: PeriodRange;
+} | null {
+  const start = swissDateTimeAsUtc(startsOn, false);
+  const requestedEnd = swissDateTimeAsUtc(endsOn, true);
+  const now = new Date();
+  if (
+    !start ||
+    !requestedEnd ||
+    startsOn > endsOn ||
+    startsOn > swissDateInput(now) ||
+    endsOn > swissDateInput(now)
+  ) {
+    return null;
+  }
+
+  const currentEnd = requestedEnd > now ? now : requestedEnd;
+  const calendarDays =
+    (Date.UTC(
+      Number(endsOn.slice(0, 4)),
+      Number(endsOn.slice(5, 7)) - 1,
+      Number(endsOn.slice(8, 10)),
+    ) -
+      Date.UTC(
+        Number(startsOn.slice(0, 4)),
+        Number(startsOn.slice(5, 7)) - 1,
+        Number(startsOn.slice(8, 10)),
+      )) /
+      DAY_MS +
+    1;
+  if (
+    currentEnd < start ||
+    calendarDays < 1 ||
+    calendarDays > MAX_CUSTOM_PERIOD_DAYS
+  ) {
+    return null;
+  }
+  const previousStartsOn = shiftDateInput(startsOn, -calendarDays);
+  const previousEndsOn = shiftDateInput(startsOn, -1);
+  const previousStart = previousStartsOn
+    ? swissDateTimeAsUtc(previousStartsOn, false)
+    : null;
+  const previousEnd = previousEndsOn
+    ? swissDateTimeAsUtc(previousEndsOn, true)
+    : null;
+  if (!previousStart || !previousEnd) return null;
+  return {
+    current: {
+      key: "custom",
+      startsAt: start.toISOString(),
+      endsAt: currentEnd.toISOString(),
+    },
+    previous: {
+      key: "custom",
+      startsAt: previousStart.toISOString(),
+      endsAt: previousEnd.toISOString(),
+    },
+  };
+}
+
+function periodRanges(
+  action: Action,
+): { current: PeriodRange; previous: PeriodRange } | null {
+  if (action.period === "custom") {
+    return action.startsOn && action.endsOn
+      ? customPeriodRange(action.startsOn, action.endsOn)
+      : null;
+  }
+
+  const endsAt = new Date();
+  const startsAt = new Date(
+    endsAt.getTime() - PERIOD_DAYS[action.period] * DAY_MS,
+  );
+  const previousStartsAt = new Date(
+    startsAt.getTime() - PERIOD_DAYS[action.period] * DAY_MS,
+  );
+  const previousEndsAt = new Date(startsAt.getTime() - 1);
+  return {
+    current: {
+      key: action.period,
+      startsAt: startsAt.toISOString(),
+      endsAt: endsAt.toISOString(),
+    },
+    previous: {
+      key: action.period,
+      startsAt: previousStartsAt.toISOString(),
+      endsAt: previousEndsAt.toISOString(),
+    },
+  };
 }
 
 function hasOnlyKeys(value: Record<string, unknown>, keys: string[]): boolean {
@@ -92,7 +287,7 @@ function hasOnlyKeys(value: Record<string, unknown>, keys: string[]): boolean {
 function parseAction(value: unknown): Action | null {
   if (
     !isRecord(value) ||
-    !hasOnlyKeys(value, ["type", "tenantId", "period"]) ||
+    !hasOnlyKeys(value, ["type", "tenantId", "period", "startsOn", "endsOn"]) ||
     value.type !== "getReport" ||
     !isUuid(value.tenantId) ||
     !isPeriod(value.period)
@@ -100,6 +295,17 @@ function parseAction(value: unknown): Action | null {
     return null;
   }
 
+  if (value.period === "custom") {
+    if (!isDateInput(value.startsOn) || !isDateInput(value.endsOn)) return null;
+    return {
+      type: value.type,
+      tenantId: value.tenantId,
+      period: value.period,
+      startsOn: value.startsOn,
+      endsOn: value.endsOn,
+    };
+  }
+  if (value.startsOn !== undefined || value.endsOn !== undefined) return null;
   return { type: value.type, tenantId: value.tenantId, period: value.period };
 }
 
@@ -314,12 +520,12 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     );
   }
 
-  const periodEndsAt = new Date();
-  const periodStartsAt = new Date(
-    periodEndsAt.getTime() - PERIOD_DAYS[action.period] * 24 * 60 * 60 * 1_000,
-  );
-  const since = periodStartsAt.toISOString();
-  const until = periodEndsAt.toISOString();
+  const ranges = periodRanges(action);
+  if (!ranges) {
+    return response(request, { error: { code: "invalid_request" } }, 400);
+  }
+  const since = ranges.previous.startsAt;
+  const until = ranges.current.endsAt;
 
   const [
     ticketsResult,
@@ -345,7 +551,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       context.supabaseAdmin
         .from("ticket_time_entries")
         .select(
-          "minutes, billing_kind, tickets!inner(tenant_id, assigned_team_id)",
+          "created_at, minutes, billing_kind, tickets!inner(tenant_id, assigned_team_id)",
         )
         .eq("tickets.tenant_id", action.tenantId)
         .gte("created_at", since)
@@ -356,7 +562,9 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     fetchAll<SatisfactionRow>((from, to) =>
       context.supabaseAdmin
         .from("ticket_satisfaction")
-        .select("score, tickets!inner(tenant_id, assigned_team_id)")
+        .select(
+          "submitted_at, score, tickets!inner(tenant_id, assigned_team_id)",
+        )
         .eq("tickets.tenant_id", action.tenantId)
         .gte("submitted_at", since)
         .lte("submitted_at", until)
@@ -366,7 +574,9 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     fetchAll<EscalationRow>((from, to) =>
       context.supabaseAdmin
         .from("ticket_escalations")
-        .select("resolved_at, tickets!inner(tenant_id, assigned_team_id)")
+        .select(
+          "opened_at, resolved_at, tickets!inner(tenant_id, assigned_team_id)",
+        )
         .eq("tickets.tenant_id", action.tenantId)
         .gte("opened_at", since)
         .lte("opened_at", until)
@@ -458,100 +668,119 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     );
   }
 
-  const byPriority = new Map<
-    string,
-    { key: string | null; label: string | null; ticketCount: number }
-  >();
-  const byDepartment = new Map<
-    string,
-    { id: string | null; name: string | null; ticketCount: number }
-  >();
-  const firstResponseMinutes: number[] = [];
-  const resolutionMinutes: number[] = [];
-  let resolvedTickets = 0;
-
-  for (const ticket of tickets) {
-    const status = one<TicketStatus>(ticket.status);
-    if (status?.is_closed === true) resolvedTickets += 1;
-
-    const priority = one<TicketPriority>(ticket.priority);
-    const priorityKey = typeof priority?.key === "string" ? priority.key : null;
-    const priorityLabel =
-      typeof priority?.label === "string" ? priority.label : null;
-    const priorityGroup = `${priorityKey ?? ""}\u0000${priorityLabel ?? ""}`;
-    const priorityMetric = byPriority.get(priorityGroup) ?? {
-      key: priorityKey,
-      label: priorityLabel,
-      ticketCount: 0,
-    };
-    priorityMetric.ticketCount += 1;
-    byPriority.set(priorityGroup, priorityMetric);
-
-    const department = one<Department>(ticket.department);
-    const departmentId =
-      typeof department?.id === "string" ? department.id : null;
-    const departmentName =
-      typeof department?.name === "string" ? department.name : null;
-    const departmentGroup = `${departmentId ?? ""}\u0000${
-      departmentName ?? ""
-    }`;
-    const departmentMetric = byDepartment.get(departmentGroup) ?? {
-      id: departmentId,
-      name: departmentName,
-      ticketCount: 0,
-    };
-    departmentMetric.ticketCount += 1;
-    byDepartment.set(departmentGroup, departmentMetric);
-
-    const firstResponse = elapsedMinutes(
-      ticket.created_at,
-      ticket.first_responded_at,
+  const inRange = (value: unknown, range: PeriodRange) => {
+    if (typeof value !== "string") return false;
+    const timestamp = Date.parse(value);
+    return (
+      Number.isFinite(timestamp) &&
+      timestamp >= Date.parse(range.startsAt) &&
+      timestamp <= Date.parse(range.endsAt)
     );
-    if (firstResponse !== null) firstResponseMinutes.push(firstResponse);
-    const resolution = elapsedMinutes(ticket.created_at, ticket.resolved_at);
-    if (resolution !== null) resolutionMinutes.push(resolution);
-  }
+  };
 
-  const timeByBillingKind = new Map<
-    string,
-    { billingKind: string; entryCount: number; minutes: number }
-  >();
-  for (const entry of timeEntries) {
-    if (
-      typeof entry.billing_kind !== "string" ||
-      typeof entry.minutes !== "number" ||
-      !Number.isFinite(entry.minutes)
-    ) {
-      continue;
+  const buildMetrics = (
+    range: PeriodRange,
+    rangeTickets: TicketRow[],
+    rangeTimeEntries: TimeEntryRow[],
+    rangeSatisfaction: SatisfactionRow[],
+    rangeEscalations: EscalationRow[],
+  ) => {
+    const byPriority = new Map<
+      string,
+      { key: string | null; label: string | null; ticketCount: number }
+    >();
+    const byDepartment = new Map<
+      string,
+      { id: string | null; name: string | null; ticketCount: number }
+    >();
+    const firstResponseMinutes: number[] = [];
+    const resolutionMinutes: number[] = [];
+    let resolvedTickets = 0;
+
+    for (const ticket of rangeTickets) {
+      const status = one<TicketStatus>(ticket.status);
+      if (status?.is_closed === true) resolvedTickets += 1;
+      const priority = one<TicketPriority>(ticket.priority);
+      const priorityKey =
+        typeof priority?.key === "string" ? priority.key : null;
+      const priorityLabel =
+        typeof priority?.label === "string" ? priority.label : null;
+      const priorityGroup = `${priorityKey ?? ""}\u0000${priorityLabel ?? ""}`;
+      const priorityMetric = byPriority.get(priorityGroup) ?? {
+        key: priorityKey,
+        label: priorityLabel,
+        ticketCount: 0,
+      };
+      priorityMetric.ticketCount += 1;
+      byPriority.set(priorityGroup, priorityMetric);
+
+      const department = one<Department>(ticket.department);
+      const departmentId =
+        typeof department?.id === "string" ? department.id : null;
+      const departmentName =
+        typeof department?.name === "string" ? department.name : null;
+      const departmentGroup = `${departmentId ?? ""}\u0000${departmentName ?? ""}`;
+      const departmentMetric = byDepartment.get(departmentGroup) ?? {
+        id: departmentId,
+        name: departmentName,
+        ticketCount: 0,
+      };
+      departmentMetric.ticketCount += 1;
+      byDepartment.set(departmentGroup, departmentMetric);
+
+      const firstResponse = elapsedMinutes(
+        ticket.created_at,
+        ticket.first_responded_at,
+      );
+      if (firstResponse !== null) firstResponseMinutes.push(firstResponse);
+      const resolution = elapsedMinutes(ticket.created_at, ticket.resolved_at);
+      if (resolution !== null) resolutionMinutes.push(resolution);
     }
-    const metric = timeByBillingKind.get(entry.billing_kind) ?? {
-      billingKind: entry.billing_kind,
-      entryCount: 0,
-      minutes: 0,
-    };
-    metric.entryCount += 1;
-    metric.minutes += entry.minutes;
-    timeByBillingKind.set(entry.billing_kind, metric);
-  }
 
-  const satisfactionScores = satisfaction
-    .map((entry) => entry.score)
-    .filter(
-      (score): score is number =>
-        typeof score === "number" && Number.isFinite(score),
+    const timeByBillingKind = new Map<
+      string,
+      { billingKind: string; entryCount: number; minutes: number }
+    >();
+    for (const entry of rangeTimeEntries) {
+      if (
+        typeof entry.billing_kind !== "string" ||
+        typeof entry.minutes !== "number" ||
+        !Number.isFinite(entry.minutes)
+      )
+        continue;
+      const metric = timeByBillingKind.get(entry.billing_kind) ?? {
+        billingKind: entry.billing_kind,
+        entryCount: 0,
+        minutes: 0,
+      };
+      metric.entryCount += 1;
+      metric.minutes += entry.minutes;
+      timeByBillingKind.set(entry.billing_kind, metric);
+    }
+
+    const satisfactionScores = rangeSatisfaction
+      .map((entry) => entry.score)
+      .filter(
+        (score): score is number =>
+          typeof score === "number" && Number.isFinite(score),
+      );
+    const timeTrackingByBillingKind = [...timeByBillingKind.values()].sort(
+      (a, b) => a.billingKind.localeCompare(b.billingKind),
+    );
+    const timeTrackingMinutes = timeTrackingByBillingKind.reduce(
+      (total, entry) => total + entry.minutes,
+      0,
+    );
+    const timeTrackingEntryCount = timeTrackingByBillingKind.reduce(
+      (total, entry) => total + entry.entryCount,
+      0,
     );
 
-  const openTickets = tickets.length - resolvedTickets;
-  return response(request, {
-    data: {
-      period: {
-        key: action.period,
-        startsAt: since,
-        endsAt: until,
-      },
-      ticketVolume: tickets.length,
+    return {
+      period: range,
+      ticketVolume: rangeTickets.length,
       tickets: {
-        open: openTickets,
+        open: rangeTickets.length - resolvedTickets,
         resolved: resolvedTickets,
         byPriority: [...byPriority.values()].sort((a, b) =>
           (a.label ?? a.key ?? "").localeCompare(
@@ -567,12 +796,52 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       firstResponseSampleSize: firstResponseMinutes.length,
       averageResolutionMinutes: average(resolutionMinutes),
       resolutionSampleSize: resolutionMinutes.length,
-      timeTrackingByBillingKind: [...timeByBillingKind.values()].sort((a, b) =>
-        a.billingKind.localeCompare(b.billingKind),
-      ),
-      openEscalations: escalations.length,
+      timeTrackingByBillingKind,
+      timeTrackingMinutes,
+      timeTrackingEntryCount,
+      openEscalations: rangeEscalations.length,
       averageSatisfaction: average(satisfactionScores),
       satisfactionSampleSize: satisfactionScores.length,
+    };
+  };
+
+  const current = buildMetrics(
+    ranges.current,
+    tickets.filter((ticket) => inRange(ticket.created_at, ranges.current)),
+    timeEntries.filter((entry) => inRange(entry.created_at, ranges.current)),
+    satisfaction.filter((entry) => inRange(entry.submitted_at, ranges.current)),
+    escalations.filter((entry) => inRange(entry.opened_at, ranges.current)),
+  );
+  const previous = buildMetrics(
+    ranges.previous,
+    tickets.filter((ticket) => inRange(ticket.created_at, ranges.previous)),
+    timeEntries.filter((entry) => inRange(entry.created_at, ranges.previous)),
+    satisfaction.filter((entry) =>
+      inRange(entry.submitted_at, ranges.previous),
+    ),
+    escalations.filter((entry) => inRange(entry.opened_at, ranges.previous)),
+  );
+
+  return response(request, {
+    data: {
+      ...current,
+      comparison: {
+        period: previous.period,
+        ticketVolume: previous.ticketVolume,
+        tickets: {
+          open: previous.tickets.open,
+          resolved: previous.tickets.resolved,
+        },
+        averageFirstResponseMinutes: previous.averageFirstResponseMinutes,
+        firstResponseSampleSize: previous.firstResponseSampleSize,
+        averageResolutionMinutes: previous.averageResolutionMinutes,
+        resolutionSampleSize: previous.resolutionSampleSize,
+        timeTrackingMinutes: previous.timeTrackingMinutes,
+        timeTrackingEntryCount: previous.timeTrackingEntryCount,
+        openEscalations: previous.openEscalations,
+        averageSatisfaction: previous.averageSatisfaction,
+        satisfactionSampleSize: previous.satisfactionSampleSize,
+      },
     },
   });
 });

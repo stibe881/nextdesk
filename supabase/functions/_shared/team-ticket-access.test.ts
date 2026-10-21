@@ -1,3 +1,5 @@
+import { customPeriodRange } from "../service-reporting/index.ts";
+
 const source = async (path: string) => await Deno.readTextFile(path);
 
 function requireSource(sourceText: string, expected: string) {
@@ -46,6 +48,74 @@ Deno.test(
     requireSource(reporting, "readableTeamIds");
     requireSource(reporting, "canIncludeTeam");
     requireSource(reporting, "assigned_team_id");
+  },
+);
+
+Deno.test(
+  "reporting derives both comparison periods only after the team fence",
+  async () => {
+    const reporting = await source(
+      "supabase/functions/service-reporting/index.ts",
+    );
+    requireSource(reporting, "periodRanges(action)");
+    requireSource(reporting, "ranges.previous.startsAt");
+    requireSource(reporting, "tickets.filter((ticket) =>");
+    requireSource(reporting, "timeEntries.filter((entry) =>");
+    requireSource(reporting, "comparison:");
+  },
+);
+
+Deno.test(
+  "workspace access exposes reports only for an effective tenant report role",
+  async () => {
+    const tenantUsers = await source(
+      "supabase/functions/tenant-users/index.ts",
+    );
+    requireSource(tenantUsers, "canReadReports");
+    requireSource(tenantUsers, 'permission.permission_code === "report.read"');
+    requireSource(tenantUsers, "isEffectiveAssignment(assignment, now)");
+    requireSource(tenantUsers, "assignment.department_id === null");
+  },
+);
+
+Deno.test(
+  "custom reporting dates use the full Europe/Zurich calendar day",
+  () => {
+    const range = customPeriodRange("2026-07-01", "2026-07-01");
+    if (!range) throw new Error("Expected a valid reporting period.");
+    if (range.current.startsAt !== "2026-06-30T22:00:00.000Z") {
+      throw new Error("The summer start must be Zurich midnight.");
+    }
+    if (range.current.endsAt !== "2026-07-01T21:59:59.999Z") {
+      throw new Error("The summer end must be the final Zurich millisecond.");
+    }
+    if (range.previous.endsAt !== "2026-06-30T21:59:59.999Z") {
+      throw new Error(
+        "The previous period must end immediately before the current period.",
+      );
+    }
+  },
+);
+
+Deno.test(
+  "custom reporting preserves full local comparison days across the Zurich DST change",
+  () => {
+    const range = customPeriodRange("2026-03-29", "2026-03-29");
+    if (!range) throw new Error("Expected a valid DST reporting period.");
+    if (range.current.startsAt !== "2026-03-28T23:00:00.000Z") {
+      throw new Error("The DST day must start at Zurich midnight.");
+    }
+    if (range.current.endsAt !== "2026-03-29T21:59:59.999Z") {
+      throw new Error("The DST day must end at the final Zurich millisecond.");
+    }
+    if (range.previous.startsAt !== "2026-03-27T23:00:00.000Z") {
+      throw new Error("The prior day must start at its own Zurich midnight.");
+    }
+    if (range.previous.endsAt !== "2026-03-28T22:59:59.999Z") {
+      throw new Error(
+        "The prior day must retain its full pre-DST Zurich boundary.",
+      );
+    }
   },
 );
 

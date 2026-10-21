@@ -368,3 +368,17 @@ Die reine Filterlogik liegt testbar bei der bestehenden Kategorienpräsentation 
 Die bestehende service-role-only Funktion `search_knowledge_article_ids` bleibt der einzige Suchpfad der Wissensdatenbank. Eine additive Migration erweitert ihren deutschen Volltextabgleich um aktive, mandantengebundene Kategorien und Unterkategorien einer Artikelzuordnung. Eine Suche nach einer Oberkategorie findet auch Artikel, die nur einer bekannten direkten Unterkategorie zugeordnet sind. Die Suchgewichtung integriert Taxonomietreffer ohne die bestehende Revisions-, Sichtbarkeits-, Kundenorganisations- oder Archivierungsgrenze zu verändern.
 
 Kategorienamen werden nur dann in den Suchumfang aufgenommen, wenn der serverseitig bestätigte Aufruf interne Wissensleserechte hat. Externe Personen durchsuchen unverändert ausschliesslich Titel, Zusammenfassung und die veröffentlichte Revision; so kann eine interne Kategorietaxonomie nicht über blosse Treffereffekte abgeleitet werden. Unbekannte, inaktive oder unvollständige Hierarchien bleiben ausserhalb der Taxonomiesuche. Ein aktiver Namenindex unterstützt den serverseitigen Abgleich. Der Webclient behält sein bestehendes Suchformular und erklärt dessen erweiterten Umfang, ohne neue Datenquellen oder Berechtigungsableitungen einzuführen.
+
+## Berichte: Zeitvergleich, frei erstellter Druckbericht und Corporate Design
+
+Der bestehende, feature- und berechtigungsgeschützte Menüpunkt «Berichte» wird als Berichts-Dashboard erweitert; es entsteht kein paralleler Reportingpfad. Die `service-reporting`-Function bleibt die alleinige Kennzahlenquelle. Sie akzeptiert neben 7, 30 und 90 Tagen einen strikt begrenzten, datumsbasierten Zeitraum und liefert für jede Abfrage die direkt vorhergehende Periode gleicher Länge. Aktive Mitgliedschaft, das aktivierte Reporting-Feature, `report.read` sowie die bestehende Teamgrenze werden serverseitig vor jeder Kennzahlenberechnung geprüft. Der vorhandene `tenant-users`-Vertrag gibt die wirksame, mandantenbezogene Leseberechtigung für die sichtbare Navigation zurück; der Browser leitet sie nicht selbst ab.
+
+Das Dashboard vergleicht Ticketvolumen, offene und gelöste Tickets, Eskalationen, Erstreaktion, Lösungszeit, Zufriedenheit und Zeitaufwand mit der Vorperiode. Berechtigte Personen können ausschliesslich lokal einen Titel und die gewünschten Abschnitte eines Berichts zusammenstellen. Der Browserdruck verwendet nur die bereits geladene autorisierte Ansicht und speichert, versendet oder verändert weder Berichte noch Kennzahlen. Logo, Portalname und Farben stammen aus dem bestehenden Workspace-Branding; der Druckkopf enthält Brand, Zeitraum und Erstellzeitpunkt und blendet Navigation sowie Bedienelemente aus. Es gibt keine Migration, Rollenaufweitung, Scheduler-Aktivierung oder automatischen Produktionsrelease.
+
+### Projektstruktur
+
+- `supabase/functions/service-reporting/index.ts`: validierte Zeiträume sowie mandanten- und teamautorisierte Kennzahlen für aktuelle und vorherige Periode.
+- `supabase/functions/tenant-users/index.ts`: serverautorisierte Kennzeichnung der wirksamen Berechtigung `report.read` für die Arbeitsbereichsnavigation.
+- `supabase/functions/_shared/team-ticket-access.test.ts`: Regressionen für Teamgrenzen, Vergleichszeiträume und Berichtszugriff.
+- `apps/web/src/service-reporting.tsx`: Berichts-Dashboard, Vorperiodenvergleich, lokale Zusammenstellung und Druckansicht.
+- `apps/web/src/App.tsx`: sichere Navigation und Übergabe des bestehenden Corporate Designs an Berichte.

@@ -243,6 +243,7 @@ type BulkStatusOption = {
 
 type TenantTicketAccess = {
   canManageContracts: boolean;
+  canReadReports: boolean;
   canWorkTickets: boolean;
   isTenantAdmin: boolean;
 };
@@ -514,10 +515,12 @@ function tenantTicketAccessFromResponse(
   const parsed = data as Record<string, unknown>;
   return typeof parsed.canWorkTickets === "boolean" &&
     typeof parsed.canManageContracts === "boolean" &&
+    typeof parsed.canReadReports === "boolean" &&
     typeof parsed.isTenantAdmin === "boolean"
     ? {
         canWorkTickets: parsed.canWorkTickets,
         canManageContracts: parsed.canManageContracts,
+        canReadReports: parsed.canReadReports,
         isTenantAdmin: parsed.isTenantAdmin,
       }
     : null;
@@ -1540,6 +1543,7 @@ export function App() {
     useState<QuickCreateRequest | null>(null);
   const [canWorkTickets, setCanWorkTickets] = useState(false);
   const [canManageContracts, setCanManageContracts] = useState(false);
+  const [canReadReports, setCanReadReports] = useState(false);
   const [ticketAccessLoading, setTicketAccessLoading] =
     useState(isSupabaseConfigured);
   const [tenantFeaturesLoading, setTenantFeaturesLoading] =
@@ -1683,6 +1687,7 @@ export function App() {
       setOwnerView("console");
       setCanWorkTickets(false);
       setCanManageContracts(false);
+      setCanReadReports(false);
       setTicketAccessLoading(Boolean(nextSession));
       setTenantFeaturesLoading(Boolean(nextSession));
       setIsTenantAdmin(false);
@@ -1881,6 +1886,10 @@ export function App() {
     isSupabaseConfigured &&
     canManageContracts &&
     tenantFeatures["contracts.management"] === true;
+  const reportsAvailable =
+    isSupabaseConfigured &&
+    canReadReports &&
+    tenantFeatures["reporting.service"] === true;
   const workspaceNavigationReady = isWorkspaceNavigationReady({
     activeTenantAvailable: activeTenant !== null,
     isSupabaseConfigured,
@@ -2064,6 +2073,7 @@ export function App() {
     if (!supabase || !session || !activeTenant) {
       setCanWorkTickets(false);
       setCanManageContracts(false);
+      setCanReadReports(false);
       setIsTenantAdmin(false);
       setTicketAccessLoading(false);
       return;
@@ -2081,12 +2091,14 @@ export function App() {
         if (!mounted) return;
         setCanWorkTickets(access.canWorkTickets);
         setCanManageContracts(access.canManageContracts);
+        setCanReadReports(access.canReadReports);
         setIsTenantAdmin(access.isTenantAdmin);
       })
       .catch(() => {
         if (!mounted) return;
         setCanWorkTickets(false);
         setCanManageContracts(false);
+        setCanReadReports(false);
         setIsTenantAdmin(false);
       })
       .finally(() => {
@@ -2289,8 +2301,14 @@ export function App() {
     setTicketScope("mine");
     setSelectedTicketIds(new Set());
     setTicketActionStatus("");
-    if (!canWorkTickets && contractsAvailable) {
-      if (section !== "Verträge") setSection("Verträge");
+    const restrictedWorkspaceSections: Section[] = [];
+    if (contractsAvailable) restrictedWorkspaceSections.push("Verträge");
+    if (reportsAvailable) restrictedWorkspaceSections.push("Berichte");
+    if (restrictedWorkspaceSections.length > 0) {
+      const fallbackSection = restrictedWorkspaceSections[0];
+      if (fallbackSection && !restrictedWorkspaceSections.includes(section)) {
+        setSection(fallbackSection);
+      }
       return;
     }
     if (!canRequesterOpenSection(section, requesterPortalEnabled)) {
@@ -2299,6 +2317,7 @@ export function App() {
   }, [
     canWorkTickets,
     contractsAvailable,
+    reportsAvailable,
     requesterPortalEnabled,
     section,
     tenantFeaturesLoading,
@@ -2434,11 +2453,13 @@ export function App() {
   }
 
   function setSection(nextSection: Section) {
+    const nonTicketSectionAllowed =
+      (nextSection === "Verträge" && contractsAvailable) ||
+      (nextSection === "Berichte" && reportsAvailable);
     if (
-      (!canWorkTickets && contractsAvailable && nextSection !== "Verträge") ||
-      (!canWorkTickets &&
-        !contractsAvailable &&
-        !canRequesterOpenSection(nextSection, requesterPortalEnabled))
+      !canWorkTickets &&
+      !nonTicketSectionAllowed &&
+      !canRequesterOpenSection(nextSection, requesterPortalEnabled)
     ) {
       setGlobalSearchTarget(null);
       setRequestedSection("Übersicht");
@@ -2852,14 +2873,17 @@ export function App() {
     }
     if (item.label === "Wissen") return isFeatureEnabled("knowledge.base");
     if (item.label === "Verträge") return contractsAvailable;
-    if (item.label === "Berichte") return isFeatureEnabled("reporting.service");
+    if (item.label === "Berichte") return reportsAvailable;
     return true;
   });
   const requesterSections = requesterNavigationSections(featureSections);
+  const restrictedWorkSections = featureSections.filter(
+    (item) => item.label === "Verträge" || item.label === "Berichte",
+  );
   const workSections = canWorkTickets
     ? featureSections
-    : contractsAvailable
-      ? featureSections.filter((item) => item.label === "Verträge")
+    : restrictedWorkSections.length > 0
+      ? restrictedWorkSections
       : requesterSections;
 
   useEffect(() => {
@@ -2881,7 +2905,8 @@ export function App() {
       ((workplaceUnavailable || featureKey) &&
         isSupabaseConfigured &&
         (workplaceUnavailable || tenantFeatures[featureKey!] !== true)) ||
-      (section === "Verträge" && !contractsAvailable)
+      (section === "Verträge" && !contractsAvailable) ||
+      (section === "Berichte" && !reportsAvailable)
     ) {
       setSection("Übersicht");
     }
@@ -2889,6 +2914,7 @@ export function App() {
     agentWorkbenchEnabled,
     experienceWorkspaceEnabled,
     contractsAvailable,
+    reportsAvailable,
     section,
     tenantFeatures,
     tenantFeaturesLoading,
@@ -3078,6 +3104,7 @@ export function App() {
     if (nextTenantId === activeTenantId) return;
     setCanWorkTickets(false);
     setCanManageContracts(false);
+    setCanReadReports(false);
     setTicketAccessLoading(true);
     setIsTenantAdmin(false);
     setTenantFeatures({});
@@ -3879,10 +3906,18 @@ export function App() {
             onCreateProblemRequestConsumed={consumeQuickCreateRequest}
             tenantId={activeTenant.id}
           />
-        ) : section === "Berichte" &&
-          activeTenant &&
-          isFeatureEnabled("reporting.service") ? (
-          <ServiceReporting tenantId={activeTenant.id} />
+        ) : section === "Berichte" && activeTenant && reportsAvailable ? (
+          <ServiceReporting
+            branding={{
+              accentColor: activeWorkspaceBranding?.accentColor ?? "#075985",
+              logoUrl: workspaceBrandLogo,
+              name: workspaceBrandName,
+              primaryColor: activeWorkspaceBranding?.primaryColor ?? "#4338CA",
+              secondaryColor:
+                activeWorkspaceBranding?.secondaryColor ?? "#3730A3",
+            }}
+            tenantId={activeTenant.id}
+          />
         ) : section === "Arbeitsplatz" &&
           activeTenant &&
           session &&
