@@ -59,7 +59,9 @@ jobs:
           printf '%s\n' "$HETZNER_SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
           printf '%s\n' "$HETZNER_SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
-          ssh -i ~/.ssh/id_ed25519 -p "$HETZNER_SSH_PORT" -o BatchMode=yes "$HETZNER_SSH_USER@$HETZNER_SSH_HOST" 'mkdir -p "$HETZNER_WEB_ROOT"'
+          remote_web_root=$(printf '%q' "$HETZNER_WEB_ROOT")
+          ssh -i ~/.ssh/id_ed25519 -p "$HETZNER_SSH_PORT" -o BatchMode=yes "$HETZNER_SSH_USER@$HETZNER_SSH_HOST" "mkdir -p -- $remote_web_root"
+
       - name: Upload static build
         env:
           HETZNER_SSH_HOST: ${{ vars.HETZNER_SSH_HOST }}
