@@ -6,16 +6,38 @@ import {
 } from "./workplace-first-navigation";
 
 describe("workplaceFirstNavigation", () => {
-  it("platziert Arbeitsplatz direkt vor Übersicht und erhält die restliche Reihenfolge", () => {
+  it("platziert Arbeitsplatz direkt vor Übersicht und erhält die logische Reihenfolge der übrigen Bereiche", () => {
     expect(
       workplaceFirstNavigation([
         { label: "Übersicht" },
         { label: "Tickets" },
         { label: "Fälle" },
-        { label: "Arbeitsplatz" },
+        { label: "Wissen" },
         { label: "Services" },
+        { label: "Assets" },
+        { label: "Systemstatus" },
+        { label: "Veranstaltungsräume" },
+        { label: "Eintritte" },
+        { label: "Verträge" },
+        { label: "Berichte" },
+        { label: "Arbeitsplatz" },
+        { label: "Mein Portal" },
       ]).map((section) => section.label),
-    ).toEqual(["Arbeitsplatz", "Übersicht", "Tickets", "Fälle", "Services"]);
+    ).toEqual([
+      "Arbeitsplatz",
+      "Übersicht",
+      "Tickets",
+      "Fälle",
+      "Wissen",
+      "Services",
+      "Assets",
+      "Systemstatus",
+      "Veranstaltungsräume",
+      "Eintritte",
+      "Verträge",
+      "Berichte",
+      "Mein Portal",
+    ]);
   });
 
   it("behält die Navigation unverändert, wenn Arbeitsplatz nicht verfügbar ist", () => {

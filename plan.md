@@ -429,3 +429,17 @@ Migration `0106_service_status_page.sql` ergänzt `public.services` um den valid
 ### Umgesetzte Sicherheitsdetails
 
 Die 90-Tage-Verlaufslinie erhält pro Service zusätzlich den letzten serverautorisierten Statuswechsel vor dem sichtbaren Zeitfenster. Dadurch wird ein späterer Störungszustand nicht rückwirkend auf frühere Tage übertragen. Öffentliche Status- und Badge-Antworten sind mit `no-store` gegen Wiederverwendung nach einer Kennungsrotation geschützt. Der bewusst öffentliche SVG-Badge kann ohne Credentials auch von einem SharePoint-Bild-Webpart oder dessen Proxy bezogen werden; die JSON-Statusseite akzeptiert CORS weiterhin nur von `https://app.nextdesk.ch`.
+
+## Logische Reihenfolge der Webnavigation
+
+Die bestehende Navigation bleibt in ihren sicheren, serverautorisierten Bereichs- und Featuregrenzen unverändert. Der Arbeitsplatz bleibt als primärer Einstieg direkt unter der Marke. Mein Portal bleibt im abgetrennten persönlichen Bereich oberhalb des Benutzerprofils. Die übrigen verfügbaren Bereiche folgen dem fachlichen Arbeitsfluss: Übersicht, Tickets, Fälle, Wissen, Services, Assets, Systemstatus, Veranstaltungsräume, Eintritte, Verträge und Berichte. Mandantenadministrationen sehen Einstellungen weiterhin als letzten Verwaltungsbereich.
+
+Die Umsetzung ändert ausschliesslich die zentrale Reihenfolge der bestehenden Abschnittsdeklaration. Sie führt weder neue Datenabfragen noch neue Berechtigungsableitungen ein und verändert die eingeschränkte Navigation für reine Anfragende nicht. Bestehende Dialoge, Direktzugriffe aus Suche und Schnellaktionen sowie der aktuelle Anmelde- und Mandantenwechselpfad bleiben unverändert.
+
+Die heutige Vite-Auslieferung beantwortet direkte Pfade wie `/tickets` noch mit 404. Eine echte mehrseitige Webauslieferung mit stabilen Bereichs-URLs braucht deshalb eine separate Routing- und Hostingumstellung; sie wird nicht unbemerkt mit dieser reinen Reihenfolgenänderung vermischt.
+
+### Projektstruktur
+
+- `apps/web/src/App.tsx`: zentrale, featuregefilterte Abschnittsreihenfolge sowie bestehende Positionen von Arbeitsplatz, Mein Portal und Einstellungen.
+- `apps/web/src/lib/requester-navigation.ts`: unveränderte, begrenzte Navigation für reine Anfragende.
+- `apps/web/src/lib/workplace-first-navigation.ts`: unveränderte Heraushebung des Arbeitsplatzes oberhalb des allgemeinen Arbeitsbereichs.

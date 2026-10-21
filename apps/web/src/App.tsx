@@ -274,16 +274,16 @@ const sections: readonly { label: Section; Icon: LucideIcon }[] =
     { label: "Übersicht", Icon: LayoutDashboard },
     { label: "Tickets", Icon: Ticket },
     { label: "Fälle", Icon: FileWarning },
-    { label: "Arbeitsplatz", Icon: BriefcaseBusiness },
+    { label: "Wissen", Icon: BookOpen },
     { label: "Services", Icon: MonitorCog },
-    { label: "Systemstatus", Icon: CircleCheck },
     { label: "Assets", Icon: Boxes },
-    { label: "Verträge", Icon: FileText },
+    { label: "Systemstatus", Icon: CircleCheck },
     { label: "Veranstaltungsräume", Icon: CalendarDays },
     { label: "Eintritte", Icon: ClipboardList },
-    { label: "Wissen", Icon: BookOpen },
-    { label: "Mein Portal", Icon: UserRound },
+    { label: "Verträge", Icon: FileText },
     { label: "Berichte", Icon: ChartNoAxesCombined },
+    { label: "Arbeitsplatz", Icon: BriefcaseBusiness },
+    { label: "Mein Portal", Icon: UserRound },
   ]);
 
 const DEFAULT_WORKSPACE_PREFERENCES: WorkspacePreferences = {
