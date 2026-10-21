@@ -703,7 +703,9 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
   const [ticketResult, requesterResult] = await Promise.all([
     context.supabaseAdmin
       .from("tickets")
-      .select("id,tenant_id,department_id,requester_id,requester_contact_id")
+      .select(
+        "id,tenant_id,department_id,assigned_team_id,requester_id,requester_contact_id",
+      )
       .eq("id", action.ticketId)
       .eq("tenant_id", action.tenantId)
       .maybeSingle(),
@@ -720,6 +722,13 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
   const requester = contact(requesterResult.data);
   if (!ticket || !requester)
     return fail(request, "requester_or_ticket_not_found", 404);
+  const { data: teamAllowed, error: teamAllowedError } =
+    await context.supabase.rpc("can_access_ticket_team", {
+      p_ticket_id: ticket.id,
+    });
+  if (teamAllowedError) return fail(request, "authorization_check_failed", 500);
+  if (teamAllowed !== true)
+    return fail(request, "requester_assignment_denied", 403);
   const { data: allowed, error: permissionError } = await context.supabase.rpc(
     "has_ticket_permission",
     {

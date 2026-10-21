@@ -367,7 +367,9 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       action.ticketIds.length > 0
         ? await context.supabaseAdmin
             .from("tickets")
-            .select("id, tenant_id, department_id, assigned_agent_id")
+            .select(
+              "id, tenant_id, department_id, assigned_team_id, assigned_agent_id",
+            )
             .eq("tenant_id", action.tenantId)
             .in("id", action.ticketIds)
         : { data: [], error: null };
@@ -378,11 +380,30 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         500,
       );
     }
+    const { data: teamMemberships, error: teamMembershipsError } =
+      await context.supabaseAdmin
+        .from("team_memberships")
+        .select("team_id")
+        .eq("tenant_id", action.tenantId)
+        .eq("user_id", actorId);
+    if (teamMembershipsError) {
+      return response(
+        request,
+        { error: { code: "ticket_agents_lookup_failed" } },
+        500,
+      );
+    }
+    const teamMembershipIds = new Set(
+      (teamMemberships ?? []).map((entry: any) => entry.team_id).filter(isUuid),
+    );
     const assignedAgentIds = [
       ...new Set(
         (tickets ?? []).flatMap((ticket: any) =>
           ticket.tenant_id === action.tenantId &&
           departmentAccess.get(ticket.department_id) === true &&
+          (ticket.assigned_team_id === null ||
+            typeof ticket.assigned_team_id !== "string" ||
+            teamMembershipIds.has(ticket.assigned_team_id)) &&
           isUuid(ticket.assigned_agent_id)
             ? [ticket.assigned_agent_id]
             : [],
@@ -425,7 +446,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
 
   const { data: ticket, error: ticketError } = await context.supabaseAdmin
     .from("tickets")
-    .select("id, tenant_id, department_id, assigned_agent_id")
+    .select("id, tenant_id, department_id, assigned_team_id, assigned_agent_id")
     .eq("id", action.ticketId)
     .eq("tenant_id", action.tenantId)
     .maybeSingle();
@@ -434,6 +455,20 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
   }
   if (!ticket) {
     return response(request, { error: { code: "ticket_not_found" } }, 404);
+  }
+  const { data: readable, error: readableError } = await context.supabase.rpc(
+    "can_read_ticket",
+    { p_ticket_id: ticket.id },
+  );
+  if (readableError) {
+    return response(
+      request,
+      { error: { code: "authorization_check_failed" } },
+      500,
+    );
+  }
+  if (readable !== true) {
+    return response(request, { error: { code: "ticket_access_denied" } }, 403);
   }
 
   const canAssign = await hasTicketPermission(
@@ -476,6 +511,9 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     context.supabaseAdmin,
     ticket.tenant_id,
     ticket.department_id,
+    typeof ticket.assigned_team_id === "string"
+      ? ticket.assigned_team_id
+      : null,
   );
   if (candidates.error) {
     return response(

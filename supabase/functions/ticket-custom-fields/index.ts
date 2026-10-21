@@ -568,6 +568,19 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       );
   }
 
+  if (action.type === "listValues" || action.type === "setValues") {
+    const { data: teamAllowed, error: teamAllowedError } =
+      await context.supabase.rpc("can_access_ticket_team", {
+        p_ticket_id: action.ticketId,
+      });
+    if (teamAllowedError || teamAllowed !== true)
+      return response(
+        request,
+        { error: { code: "ticket_team_access_denied" } },
+        403,
+      );
+  }
+
   let result: unknown;
   let error: { code?: string; message?: string } | null = null;
   switch (action.type) {

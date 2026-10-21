@@ -6079,5 +6079,439 @@ end;
 $$;
 rollback;
 
+-- Migration 0102: Ein Teamticket bleibt für Abteilungsagenten ohne
+-- Mitgliedschaft unsichtbar, auch wenn es ihnen noch persönlich zugewiesen ist.
+-- Beim Wechsel der Teamabteilung erzwingt die Datenbank die passenden
+-- Abteilungsmitgliedschaften aller bestehenden Teammitglieder.
+begin;
+insert into public.teams (id, tenant_id, department_id, name, active)
+values (
+  '98000000-0000-4000-8000-000000000001',
+  '10000000-0000-4000-8000-000000000001',
+  '11000000-0000-4000-8000-000000000001',
+  'System Engineering',
+  true
+);
+insert into public.tickets (
+  id, tenant_id, department_id, assigned_team_id, assigned_agent_id,
+  ticket_number, subject, description, status_id, priority_id, requester_id
+) values (
+  '98000000-0000-4000-8000-000000000002',
+  '10000000-0000-4000-8000-000000000001',
+  '11000000-0000-4000-8000-000000000001',
+  '98000000-0000-4000-8000-000000000001',
+  null,
+  'ICT-2026-TEAM-001',
+  'Teamtest',
+  'Darf nur dem zuständigen Team angezeigt werden.',
+  '13000000-0000-4000-8000-000000000001',
+  '14000000-0000-4000-8000-000000000001',
+  '00000000-0000-4000-8000-000000000001'
+);
+reset role;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-000000000002', true);
+do $$
+begin
+  if public.can_read_ticket('98000000-0000-4000-8000-000000000002') then
+    raise exception 'Agent without team membership could read a personally assigned team ticket';
+  end if;
+end;
+$$;
+do $$
+begin
+  perform public.create_ticket_department_question(
+    '10000000-0000-4000-8000-000000000001',
+    '98000000-0000-4000-8000-000000000002',
+    'Teamgrenze prüfen'
+  );
+  raise exception 'Agent outside a team could create a department question for a team ticket';
+exception when insufficient_privilege then
+  null;
+end;
+$$;
+reset role;
+insert into public.team_memberships (team_id, user_id, tenant_id)
+values (
+  '98000000-0000-4000-8000-000000000001',
+  '00000000-0000-4000-8000-000000000002',
+  '10000000-0000-4000-8000-000000000001'
+);
+update public.tickets
+set assigned_agent_id = '00000000-0000-4000-8000-000000000002'
+where id = '98000000-0000-4000-8000-000000000002';
+insert into public.teams (id, tenant_id, department_id, name, active)
+values (
+  '98000000-0000-4000-8000-000000000003',
+  '10000000-0000-4000-8000-000000000001',
+  '11000000-0000-4000-8000-000000000001',
+  'Support',
+  true
+);
+insert into public.team_memberships (team_id, user_id, tenant_id)
+values (
+  '98000000-0000-4000-8000-000000000003',
+  '00000000-0000-4000-8000-000000000002',
+  '10000000-0000-4000-8000-000000000001'
+);
+do $$
+begin
+  begin
+    update public.teams
+    set department_id = '12000000-0000-4000-8000-000000000002'
+    where id = '98000000-0000-4000-8000-000000000003';
+    raise exception 'Team changed department without matching member department membership';
+  exception when foreign_key_violation then
+    null;
+  end;
+end;
+$$;
+insert into public.department_memberships (department_id, tenant_id, user_id, status)
+values (
+  '12000000-0000-4000-8000-000000000002',
+  '10000000-0000-4000-8000-000000000001',
+  '00000000-0000-4000-8000-000000000002',
+  'active'
+) on conflict (department_id, user_id) do update set status = 'active';
+update public.teams
+set department_id = '12000000-0000-4000-8000-000000000002'
+where id = '98000000-0000-4000-8000-000000000003';
+reset role;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-000000000002', true);
+do $$
+begin
+  if not public.can_read_ticket('98000000-0000-4000-8000-000000000002') then
+    raise exception 'Agent with matching team membership could not read the team ticket';
+  end if;
+end;
+$$;
+reset role;
+
+-- Migration 0103: Ticketmetadaten dürfen nicht an aktive Watcher ausserhalb
+-- des zugewiesenen Teams gelangen. Auch bereits eingereihte Alt-Einträge
+-- werden vor einer Push-Zustellung neutral ausgesondert.
+do $$
+begin
+  if public.ticket_notification_recipient_authorized(
+    '10000000-0000-4000-8000-000000000001',
+    '98000000-0000-4000-8000-000000000002',
+    '00000000-0000-4000-8000-000000000003'
+  ) then
+    raise exception 'Watcher outside the assigned team was notification-authorized';
+  end if;
+  if not public.ticket_notification_recipient_authorized(
+    '10000000-0000-4000-8000-000000000001',
+    '98000000-0000-4000-8000-000000000002',
+    '00000000-0000-4000-8000-000000000002'
+  ) then
+    raise exception 'Matching team member was not notification-authorized';
+  end if;
+end;
+$$;
+select public.push_insert_ticket_notification(
+  '10000000-0000-4000-8000-000000000001',
+  '00000000-0000-4000-8000-000000000003',
+  '98000000-0000-4000-8000-000000000002',
+  'ticket.escalation_opened',
+  jsonb_build_object('regression', 'outside-team-helper'),
+  '00000000-0000-4000-8000-000000000001'
+);
+do $$
+begin
+  if exists (
+    select 1 from public.ticket_notifications
+    where ticket_id = '98000000-0000-4000-8000-000000000002'
+      and user_id = '00000000-0000-4000-8000-000000000003'
+      and payload ->> 'regression' = 'outside-team-helper'
+  ) then
+    raise exception 'Notification helper persisted metadata for an outside-team watcher';
+  end if;
+end;
+$$;
+alter table public.ticket_notifications
+  disable trigger ticket_notifications_authorize_recipient_trigger;
+insert into public.ticket_notifications (tenant_id, user_id, ticket_id, kind, payload)
+values (
+  '10000000-0000-4000-8000-000000000001',
+  '00000000-0000-4000-8000-000000000003',
+  '98000000-0000-4000-8000-000000000002',
+  'ticket.escalation_opened',
+  jsonb_build_object('regression', 'outside-team-queued')
+);
+alter table public.ticket_notifications
+  enable trigger ticket_notifications_authorize_recipient_trigger;
+insert into public.push_outbox (tenant_id, user_id, notification_id)
+select tenant_id, user_id, id
+from public.ticket_notifications
+where ticket_id = '98000000-0000-4000-8000-000000000002'
+  and user_id = '00000000-0000-4000-8000-000000000003'
+  and payload ->> 'regression' = 'outside-team-queued'
+on conflict (notification_id) do nothing;
+select public.push_skip_unauthorized_ticket_outbox();
+do $$
+begin
+  if not exists (
+    select 1
+    from public.push_outbox outbox
+    join public.ticket_notifications notification on notification.id = outbox.notification_id
+    where notification.payload ->> 'regression' = 'outside-team-queued'
+      and outbox.status = 'skipped'
+      and outbox.last_error = 'recipient_not_authorized'
+  ) then
+    raise exception 'Queued outside-team push was not skipped before delivery';
+  end if;
+end;
+$$;
+
+-- Team replacement is a delta. Only departing members lose their open
+-- assignments; retained members and every closed-ticket assignment are kept.
+-- Department membership loss must remove matching team memberships on both a
+-- status withdrawal and a DELETE, again without changing historical tickets.
+insert into public.department_memberships (department_id, tenant_id, user_id, status)
+values (
+  '11000000-0000-4000-8000-000000000001',
+  '10000000-0000-4000-8000-000000000001',
+  '00000000-0000-4000-8000-000000000003',
+  'active'
+) on conflict (department_id, user_id) do update set status = 'active';
+insert into public.team_memberships (team_id, user_id, tenant_id)
+values (
+  '98000000-0000-4000-8000-000000000001',
+  '00000000-0000-4000-8000-000000000003',
+  '10000000-0000-4000-8000-000000000001'
+);
+insert into public.tickets (
+  id, tenant_id, department_id, assigned_team_id, assigned_agent_id,
+  ticket_number, subject, description, status_id, priority_id, requester_id, closed_at
+) values
+(
+  '98000000-0000-4000-8000-000000000004',
+  '10000000-0000-4000-8000-000000000001',
+  '11000000-0000-4000-8000-000000000001',
+  '98000000-0000-4000-8000-000000000001',
+  '00000000-0000-4000-8000-000000000003',
+  'ICT-2026-TEAM-002',
+  'Delta beibehalten',
+  'Die beibehaltene Mitgliedschaft darf nicht kurz entfernt werden.',
+  '13000000-0000-4000-8000-000000000001',
+  '14000000-0000-4000-8000-000000000001',
+  '00000000-0000-4000-8000-000000000001',
+  null
+),
+(
+  '98000000-0000-4000-8000-000000000005',
+  '10000000-0000-4000-8000-000000000001',
+  '11000000-0000-4000-8000-000000000001',
+  '98000000-0000-4000-8000-000000000001',
+  '00000000-0000-4000-8000-000000000002',
+  'ICT-2026-TEAM-003',
+  'Geschlossene Historie A',
+  'Eine entfernte Mitgliedschaft darf die historische Zuweisung nicht löschen.',
+  '13000000-0000-4000-8000-000000000001',
+  '14000000-0000-4000-8000-000000000001',
+  '00000000-0000-4000-8000-000000000001',
+  timezone('utc', now())
+),
+(
+  '98000000-0000-4000-8000-000000000006',
+  '10000000-0000-4000-8000-000000000001',
+  '11000000-0000-4000-8000-000000000001',
+  '98000000-0000-4000-8000-000000000001',
+  '00000000-0000-4000-8000-000000000003',
+  'ICT-2026-TEAM-004',
+  'Geschlossene Historie B',
+  'Auch ein Departmententzug darf diese historische Zuweisung nicht löschen.',
+  '13000000-0000-4000-8000-000000000001',
+  '14000000-0000-4000-8000-000000000001',
+  '00000000-0000-4000-8000-000000000001',
+  timezone('utc', now())
+);
+do $$
+begin
+  if public.replace_team_memberships(
+    '10000000-0000-4000-8000-000000000001',
+    '98000000-0000-4000-8000-000000000001',
+    array['00000000-0000-4000-8000-000000000003']::uuid[]
+  ) <> 'updated' then
+    raise exception 'Atomic team-member replacement did not report success';
+  end if;
+  if exists (
+    select 1 from public.team_memberships
+    where team_id = '98000000-0000-4000-8000-000000000001'
+      and user_id = '00000000-0000-4000-8000-000000000002'
+  ) or not exists (
+    select 1 from public.team_memberships
+    where team_id = '98000000-0000-4000-8000-000000000001'
+      and user_id = '00000000-0000-4000-8000-000000000003'
+  ) or exists (
+    select 1 from public.tickets
+    where id = '98000000-0000-4000-8000-000000000002'
+      and assigned_agent_id is not null
+  ) then
+    raise exception 'Team replacement did not remove only the departing open assignment';
+  end if;
+  if not exists (
+    select 1 from public.tickets
+    where id = '98000000-0000-4000-8000-000000000004'
+      and assigned_agent_id = '00000000-0000-4000-8000-000000000003'
+  ) or not exists (
+    select 1 from public.tickets
+    where id = '98000000-0000-4000-8000-000000000005'
+      and assigned_agent_id = '00000000-0000-4000-8000-000000000002'
+  ) then
+    raise exception 'Team replacement changed a retained or closed-ticket assignment';
+  end if;
+end;
+$$;
+
+update public.tickets
+set assigned_agent_id = '00000000-0000-4000-8000-000000000003'
+where id = '98000000-0000-4000-8000-000000000004';
+update public.department_memberships
+set status = 'suspended'
+where department_id = '11000000-0000-4000-8000-000000000001'
+  and user_id = '00000000-0000-4000-8000-000000000003';
+do $$
+begin
+  if exists (
+    select 1 from public.team_memberships
+    where team_id = '98000000-0000-4000-8000-000000000001'
+      and user_id = '00000000-0000-4000-8000-000000000003'
+  ) or exists (
+    select 1 from public.tickets
+    where id = '98000000-0000-4000-8000-000000000004'
+      and assigned_agent_id is not null
+  ) then
+    raise exception 'Department status loss retained a team membership or open assignment';
+  end if;
+  if not exists (
+    select 1 from public.tickets
+    where id = '98000000-0000-4000-8000-000000000006'
+      and assigned_agent_id = '00000000-0000-4000-8000-000000000003'
+  ) then
+    raise exception 'Department status loss altered a closed ticket assignment';
+  end if;
+end;
+$$;
+
+update public.department_memberships
+set status = 'active'
+where department_id = '11000000-0000-4000-8000-000000000001'
+  and user_id = '00000000-0000-4000-8000-000000000003';
+insert into public.team_memberships (team_id, user_id, tenant_id)
+values (
+  '98000000-0000-4000-8000-000000000001',
+  '00000000-0000-4000-8000-000000000003',
+  '10000000-0000-4000-8000-000000000001'
+);
+update public.tickets
+set assigned_agent_id = '00000000-0000-4000-8000-000000000003'
+where id = '98000000-0000-4000-8000-000000000004';
+delete from public.department_memberships
+where department_id = '11000000-0000-4000-8000-000000000001'
+  and user_id = '00000000-0000-4000-8000-000000000003';
+do $$
+begin
+  if exists (
+    select 1 from public.team_memberships
+    where team_id = '98000000-0000-4000-8000-000000000001'
+      and user_id = '00000000-0000-4000-8000-000000000003'
+  ) or exists (
+    select 1 from public.tickets
+    where id = '98000000-0000-4000-8000-000000000004'
+      and assigned_agent_id is not null
+  ) or not exists (
+    select 1 from public.tickets
+    where id = '98000000-0000-4000-8000-000000000006'
+      and assigned_agent_id = '00000000-0000-4000-8000-000000000003'
+  ) then
+    raise exception 'Department membership DELETE did not preserve the required integrity boundary';
+  end if;
+end;
+$$;
+
+-- Archiving uses one locked check/update, permits closed history to remain and
+-- prevents a ticket from becoming open again after the team is archived.
+insert into public.team_memberships (team_id, user_id, tenant_id)
+values (
+  '98000000-0000-4000-8000-000000000001',
+  '00000000-0000-4000-8000-000000000002',
+  '10000000-0000-4000-8000-000000000001'
+);
+update public.tickets
+set assigned_agent_id = '00000000-0000-4000-8000-000000000002'
+where id = '98000000-0000-4000-8000-000000000002';
+do $$
+begin
+  begin
+    update public.teams
+    set active = false
+    where id = '98000000-0000-4000-8000-000000000001';
+    raise exception 'Direct team archive accepted an open team ticket';
+  exception when check_violation then
+    null;
+  end;
+  if public.archive_team_if_no_open_tickets(
+    '10000000-0000-4000-8000-000000000001',
+    '98000000-0000-4000-8000-000000000001'
+  ) <> 'team_has_open_tickets' then
+    raise exception 'Atomic team archive did not reject open team tickets';
+  end if;
+end;
+$$;
+update public.tickets
+set closed_at = timezone('utc', now())
+where assigned_team_id = '98000000-0000-4000-8000-000000000001'
+  and closed_at is null;
+do $$
+begin
+  if public.archive_team_if_no_open_tickets(
+    '10000000-0000-4000-8000-000000000001',
+    '98000000-0000-4000-8000-000000000001'
+  ) <> 'archived' then
+    raise exception 'Atomic team archive did not archive a team with only closed tickets';
+  end if;
+  if not exists (
+    select 1 from public.tickets
+    where id = '98000000-0000-4000-8000-000000000002'
+      and assigned_agent_id = '00000000-0000-4000-8000-000000000002'
+  ) or not exists (
+    select 1 from public.tickets
+    where id = '98000000-0000-4000-8000-000000000005'
+      and assigned_agent_id = '00000000-0000-4000-8000-000000000002'
+  ) then
+    raise exception 'Team archive altered a closed ticket assignment';
+  end if;
+  begin
+    update public.tickets
+    set closed_at = null
+    where id = '98000000-0000-4000-8000-000000000002';
+    raise exception 'Archived team ticket could be reopened';
+  exception when check_violation then
+    null;
+  end;
+  if has_function_privilege(
+    'authenticated',
+    'public.replace_team_memberships(uuid, uuid, uuid[])',
+    'execute'
+  ) or has_function_privilege(
+    'authenticated',
+    'public.archive_team_if_no_open_tickets(uuid, uuid)',
+    'execute'
+  ) or not has_function_privilege(
+    'service_role',
+    'public.replace_team_memberships(uuid, uuid, uuid[])',
+    'execute'
+  ) or not has_function_privilege(
+    'service_role',
+    'public.archive_team_if_no_open_tickets(uuid, uuid)',
+    'execute'
+  ) then
+    raise exception 'Team mutation RPC privileges are not service-role-only';
+  end if;
+end;
+$$;
+rollback;
 SQL
 echo "PostgreSQL 16 migration and RLS integration checks passed."

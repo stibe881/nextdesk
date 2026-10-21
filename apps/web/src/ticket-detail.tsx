@@ -6231,7 +6231,7 @@ export function TicketDetail({
                       assignedTeamId: event.target.value || null,
                     });
                   }}
-                  value={detail.ticket.assigned_team_id ?? ""}
+                  value={selectedTeamId}
                 >
                   <option value="">Kein Team</option>
                   {detail.teams.map((team) => (

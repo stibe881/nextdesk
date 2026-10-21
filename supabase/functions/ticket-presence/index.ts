@@ -185,7 +185,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
   const { data: ticket, error: ticketError } = await admin
     .from("tickets")
     .select(
-      "id, tenant_id, department_id, requester_id, affected_user_id, assigned_agent_id, customer_organization_id",
+      "id, tenant_id, department_id, assigned_team_id, requester_id, affected_user_id, assigned_agent_id, customer_organization_id",
     )
     .eq("id", action.ticketId)
     .eq("tenant_id", action.tenantId)
@@ -201,6 +201,14 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
   }
   if (!ticket || !(await canReadTicket(admin, actorId, ticket))) {
     return response(request, { error: { code: "ticket_not_found" } }, 404);
+  }
+  if (ticket.assigned_team_id) {
+    const { data: teamAllowed, error: teamAllowedError } =
+      await context.supabase.rpc("can_access_ticket_team", {
+        p_ticket_id: ticket.id,
+      });
+    if (teamAllowedError || teamAllowed !== true)
+      return response(request, { error: { code: "ticket_not_found" } }, 404);
   }
 
   const featureStates = await resolveTenantFeatureStates(

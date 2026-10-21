@@ -103,6 +103,19 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     return fail(request, "ticket_department_change_failed", 500);
   }
   if (!ticket) return fail(request, "ticket_not_found", 404);
+  const { data: readable, error: readableError } = await context.supabase.rpc(
+    "can_read_ticket",
+    { p_ticket_id: ticket.id },
+  );
+  if (readableError) return fail(request, "authorization_check_failed", 500);
+  if (readable !== true) return fail(request, "ticket_access_denied", 403);
+  const { data: teamAllowed, error: teamAllowedError } =
+    await context.supabase.rpc("can_access_ticket_team", {
+      p_ticket_id: ticket.id,
+    });
+  if (teamAllowedError) return fail(request, "authorization_check_failed", 500);
+  if (teamAllowed !== true)
+    return fail(request, "ticket_team_access_denied", 403);
   if (!targetDepartment) return fail(request, "ticket_department_invalid", 422);
   if (ticket.department_id === targetDepartment.id) {
     return response(request, { data: { changed: false } });
@@ -136,6 +149,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       department_id: targetDepartment.id,
       category_id: null,
       subcategory_id: null,
+      assigned_team_id: null,
       assigned_agent_id: null,
     })
     .eq("id", ticket.id)
@@ -150,6 +164,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       payload: {
         previous_department_id: ticket.department_id,
         department_id: targetDepartment.id,
+        assigned_team_cleared: true,
         assigned_agent_cleared: ticket.assigned_agent_id !== null,
       },
     }),

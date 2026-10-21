@@ -9751,6 +9751,169 @@ body:has(.ticket-detail) {
   }
 }
 
+.department-management__teams {
+  display: grid;
+  gap: 16px;
+  padding-top: 22px;
+  border-top: 1px solid var(--border);
+}
+
+.department-management__team-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.department-management__team-heading h3,
+.department-management__team-heading p,
+.department-management__team-form h4,
+.department-management__team-form p {
+  margin: 0;
+}
+
+.department-management__team-heading p:not(.eyebrow),
+.department-management__team-form p,
+.department-management__member-editor p {
+  max-width: 72ch;
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.department-management__team-form {
+  display: grid;
+  grid-template-columns:
+    minmax(170px, 0.8fr) minmax(180px, 1fr) minmax(180px, 1fr)
+    auto;
+  align-items: end;
+  gap: 16px;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface);
+}
+
+.department-management__team-form > div:first-child {
+  grid-column: 1 / -1;
+}
+
+.department-management__team-form label {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+  font-weight: 650;
+}
+
+.department-management__team-groups {
+  display: grid;
+  gap: 22px;
+}
+
+.department-management__list .department-management__team-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.department-management__member-editor {
+  display: grid;
+  grid-column: 1 / -1;
+  gap: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.department-management__member-editor fieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.department-management__member-editor legend {
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.department-management__member-editor .department-management__empty {
+  margin-top: 12px;
+}
+
+.department-management__member-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.department-management__member-options label {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-subtle);
+  color: var(--ink);
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.department-management__member-options label:has(input:checked) {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+}
+
+.department-management__member-options input {
+  flex: 0 0 auto;
+}
+
+.department-management__member-options span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 760px) {
+  .department-management__list .department-management__team-row {
+    grid-template-columns: 1fr;
+  }
+
+  .department-management__team-heading {
+    flex-direction: column;
+  }
+
+  .department-management__team-heading .department-management__header-actions {
+    width: 100%;
+  }
+
+  .department-management__team-heading
+    .department-management__header-actions
+    button,
+  .department-management__team-form .department-management__form-actions button,
+  .department-management__member-editor
+    .department-management__form-actions
+    button {
+    flex: 1 1 160px;
+  }
+
+  .department-management__team-form {
+    grid-template-columns: 1fr;
+  }
+
+  .department-management__team-form > div:first-child {
+    grid-column: auto;
+  }
+
+  .department-management__member-options {
+    grid-template-columns: 1fr;
+  }
+}
+
 .tenant-admin-settings__directory-sync {
   align-items: center;
   background: var(--primary-soft);

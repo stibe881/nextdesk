@@ -244,12 +244,18 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
   const { data: ticket } = await context.supabaseAdmin
     .from("tickets")
     .select(
-      "id, tenant_id, department_id, requester_id, affected_user_id, assigned_agent_id, customer_organization_id",
+      "id, tenant_id, department_id, assigned_team_id, requester_id, affected_user_id, assigned_agent_id, customer_organization_id",
     )
     .eq("tenant_id", action.tenantId)
     .eq("id", action.ticketId)
     .maybeSingle();
   if (!ticket || !(await canReadTicket(context.supabaseAdmin, actorId, ticket)))
+    return json(request, { error: { code: "ticket_access_denied" } }, 403);
+  const { data: teamAllowed, error: teamAllowedError } =
+    await context.supabase.rpc("can_access_ticket_team", {
+      p_ticket_id: ticket.id,
+    });
+  if (teamAllowedError || teamAllowed !== true)
     return json(request, { error: { code: "ticket_access_denied" } }, 403);
 
   const featureStates = await resolveTenantFeatureStates(

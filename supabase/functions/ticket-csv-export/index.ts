@@ -114,7 +114,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
 
   const rows: Record<string, unknown>[] = [];
   for (let from = 0; ; from += PAGE_SIZE) {
-    const { data, error } = await context.supabaseAdmin
+    const { data, error } = await context.supabase
       .from("tickets")
       .select(
         "id, ticket_number, subject, created_at, updated_at, status:ticket_statuses(label), priority:ticket_priorities(label), department:departments(name)",

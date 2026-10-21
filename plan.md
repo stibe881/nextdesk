@@ -333,3 +333,11 @@ Die bestehende serverautorisierte Liste bleibt die alleinige Datenquelle. `knowl
 ## Wissenseditor: Kategorien und Unterkategorien
 
 Die vorhandenen mandantenisolierten `knowledge_collections` und ihre bereits auf eine Kategorie plus eine Unterkategorie begrenzte Parent-Hierarchie werden wieder im Wissenseditor verwendet. Die bestehende Wissens-Function liefert aktive Kategorien nur an berechtigte interne Lesende und verwaltet Anlage, Umbenennung sowie Artikelzuordnung weiterhin mit serverseitiger Membership- und `knowledge.manage`-Prüfung. Der Dialog wählt höchstens eine Kategorie und eine zugehörige Unterkategorie, speichert nur die relevante Zuordnung und kann sie bewusst entfernen. Anlage und Umbenennung erfolgen im selben zugänglichen Editorbereich; sie ändern nie Sichtbarkeit, Review oder Veröffentlichung eines Artikels. Browser erhalten weder versteckte Kategorien noch andere Mandantendaten und leiten keine Rechte selbst ab.
+
+## Abteilungsteams und Ticketgrenzen
+
+Teams gehören immer zu genau einer aktiven Abteilung. Mandantenadministrationen verwalten Teams mit aktiven Personen derselben Abteilung; die Mehrfachauswahl kann auch bisher nicht zugewiesene Personen aufnehmen, verleiht jedoch keine Rolle oder Abteilungsmitgliedschaft. Tickets können ein Team ihrer bereits gewählten Abteilung tragen. Bei einem Teamticket gilt die Teammitgliedschaft zusätzlich zu den bisherigen Ticketregeln für Agent:innen in Datenbank, RLS und allen serverseitigen Lese-, Such-, Mutations-, Export-, Reporting-, Push- und Benachrichtigungspfaden. Die bisherige persönliche Sicht der anfragenden, betroffenen oder berechtigten Kundenperson bleibt unverändert. Teamlose Tickets behalten ihren bisherigen Zugriff. Die Datenbank schützt Abteilungs- und Teamkonsistenz bei Teamwechseln, Archivierungen und beim Entzug einer Mitgliedschaft, ohne ticketunabhängige persönliche Wiedervorlagen offenzulegen oder zu löschen.
+
+## Arbeitsplatz: Stellvertretung
+
+Die Stellvertretung lädt die erlaubten Zielpersonen über eine eigene, JWT-geschützte Serveraktion. Diese gibt nur aktive Agenten desselben Mandanten zurück und validiert das Ziel beim Speichern nochmals serverseitig. Der Browser leitet aus einer Personenliste weder Berechtigungen noch Mitgliedschaften ab.

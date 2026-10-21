@@ -13,6 +13,7 @@ const ACTIONS = [
   "markMentionRead",
   "createMentions",
   "listDelegations",
+  "listDelegationAgents",
   "saveDelegation",
   "endDelegation",
   "listAssignableAgents",
@@ -242,12 +243,19 @@ async function ticketPermission(
 ): Promise<void> {
   const tenantId = data.tenant_id;
   const departmentId = data.department_id;
-  if (!isUuid(tenantId) || !isUuid(departmentId))
+  if (!isUuid(tenantId) || !isUuid(departmentId) || !isUuid(data.id))
     throw new HttpError(
       500,
       "invalid_stored_data",
       "Das Ticket ist fehlerhaft gespeichert.",
     );
+  await rpcTrue(
+    client,
+    "can_read_ticket",
+    { p_ticket_id: data.id },
+    "ticket_permission_required",
+    "Für dieses Ticket fehlt die Berechtigung.",
+  );
   await rpcTrue(
     client,
     "has_ticket_permission",
@@ -629,6 +637,127 @@ async function listDelegations(
   if (error) db(error);
   return reply(request, { data: { delegations: data ?? [] } });
 }
+
+type DelegationAgent = { id: string; displayName: string };
+
+async function loadDelegationAgents(
+  admin: Admin,
+  tenantId: string,
+): Promise<{ agents: DelegationAgent[]; error: boolean }> {
+  const now = new Date().toISOString();
+  const [membershipsResult, departmentMembershipsResult, assignmentsResult] =
+    await Promise.all([
+      admin
+        .from("tenant_memberships")
+        .select("user_id")
+        .eq("tenant_id", tenantId)
+        .eq("status", "active"),
+      admin
+        .from("department_memberships")
+        .select("user_id, department_id")
+        .eq("tenant_id", tenantId)
+        .eq("status", "active"),
+      admin
+        .from("user_role_assignments")
+        .select(
+          "user_id, department_id, roles!user_role_assignments_role_tenant_fk!inner(tenant_id, active, scope, role_permissions!inner(permission_code))",
+        )
+        .eq("tenant_id", tenantId)
+        .lte("starts_at", now)
+        .or(`expires_at.is.null,expires_at.gt.${now}`),
+    ]);
+  if (
+    membershipsResult.error ||
+    departmentMembershipsResult.error ||
+    assignmentsResult.error
+  ) {
+    return { agents: [], error: true };
+  }
+  const activeMemberIds = new Set(
+    (membershipsResult.data ?? []).flatMap((membership: Row) =>
+      isUuid(membership.user_id) ? [membership.user_id] : [],
+    ),
+  );
+  const activeDepartmentMemberships = new Set(
+    (departmentMembershipsResult.data ?? []).flatMap((membership: Row) =>
+      isUuid(membership.user_id) && isUuid(membership.department_id)
+        ? [`${membership.user_id}:${membership.department_id}`]
+        : [],
+    ),
+  );
+  const agentIds = new Set<string>();
+  for (const assignment of assignmentsResult.data ?? []) {
+    if (
+      !isUuid(assignment.user_id) ||
+      !activeMemberIds.has(assignment.user_id)
+    ) {
+      continue;
+    }
+    const role = Array.isArray(assignment.roles)
+      ? assignment.roles[0]
+      : assignment.roles;
+    const hasTicketPermission = (role?.role_permissions ?? []).some(
+      (permission: Row) =>
+        permission.permission_code === "ticket.read.assigned" ||
+        permission.permission_code === "ticket.update",
+    );
+    const tenantScoped =
+      role?.tenant_id === tenantId &&
+      role?.active === true &&
+      role.scope === "tenant";
+    const departmentScoped =
+      role?.tenant_id === tenantId &&
+      role?.active === true &&
+      role.scope === "department" &&
+      isUuid(assignment.department_id) &&
+      activeDepartmentMemberships.has(
+        `${assignment.user_id}:${assignment.department_id}`,
+      );
+    if (hasTicketPermission && (tenantScoped || departmentScoped)) {
+      agentIds.add(assignment.user_id);
+    }
+  }
+  if (agentIds.size === 0) return { agents: [], error: false };
+  const { data: profiles, error: profilesError } = await admin
+    .from("user_profiles")
+    .select("id, display_name")
+    .in("id", [...agentIds]);
+  if (profilesError) return { agents: [], error: true };
+  const names = new Map<string, string>();
+  for (const profile of profiles ?? []) {
+    if (!isUuid(profile.id) || typeof profile.display_name !== "string")
+      continue;
+    const displayName = profile.display_name.trim();
+    if (displayName) names.set(profile.id, displayName);
+  }
+  const agents = [...agentIds].map((id) => ({
+    id,
+    displayName: names.get(id) ?? "Aktiver Agent",
+  }));
+  agents.sort(
+    (left, right) =>
+      left.displayName.localeCompare(right.displayName, "de-CH", {
+        sensitivity: "base",
+      }) || left.id.localeCompare(right.id),
+  );
+  return { agents, error: false };
+}
+
+async function listDelegationAgents(
+  request: Request,
+  admin: Admin,
+  action: Action,
+  actorId: string,
+): Promise<Response> {
+  const result = await loadDelegationAgents(admin, action.tenantId);
+  if (result.error) {
+    return reply(request, { error: { code: "delegation_agents_failed" } }, 500);
+  }
+  return reply(request, {
+    data: { agents: result.agents.filter((agent) => agent.id !== actorId) },
+  });
+}
+
 async function saveDelegation(
   request: Request,
   client: Client,
@@ -642,11 +771,15 @@ async function saveDelegation(
       : await activeMember(admin, action.tenantId, action.agentId);
   if (agentId !== actorId)
     await tenantPermission(client, action.tenantId, "ticket.manage");
-  const delegateId = await activeMember(
-    admin,
-    action.tenantId,
-    action.delegateId,
-  );
+  const delegateId =
+    typeof action.delegateId === "string" ? action.delegateId : "";
+  const delegationAgents = await loadDelegationAgents(admin, action.tenantId);
+  if (delegationAgents.error)
+    throw new HttpError(
+      503,
+      "delegation_agents_failed",
+      "Die aktiven Agenten konnten nicht geladen werden.",
+    );
   const startsAt = timestamp(action.startsAt);
   const endsAt = timestamp(action.endsAt);
   const note = optionalText(action.note, 2000);
@@ -655,7 +788,8 @@ async function saveDelegation(
     !endsAt ||
     Date.parse(endsAt) <= Date.parse(startsAt) ||
     note === undefined ||
-    agentId === delegateId
+    agentId === delegateId ||
+    !delegationAgents.agents.some((agent) => agent.id === delegateId)
   )
     throw new HttpError(
       400,
@@ -919,6 +1053,7 @@ async function teamQueues(
 }
 async function myMetrics(
   request: Request,
+  client: Client,
   admin: Admin,
   action: Action,
   actorId: string,
@@ -927,7 +1062,7 @@ async function myMetrics(
     admin
       .from("tickets")
       .select(
-        "id, status_id, created_at, first_responded_at, resolved_at, response_due_at, resolution_due_at",
+        "id, assigned_team_id, status_id, created_at, first_responded_at, resolved_at, response_due_at, resolution_due_at",
       )
       .eq("tenant_id", action.tenantId)
       .eq("assigned_agent_id", actorId)
@@ -975,7 +1110,18 @@ async function myMetrics(
   const slaDueEntries: { id: string; dueAt: number }[] = [];
   let open = 0;
   let solvedToday = 0;
-  for (const entry of rows.data ?? []) {
+  const readableRows = (
+    await Promise.all(
+      (rows.data ?? []).map(async (entry) => {
+        if (!isUuid(entry.id)) return null;
+        const { data: readable, error } = await client.rpc("can_read_ticket", {
+          p_ticket_id: entry.id,
+        });
+        return !error && readable === true ? entry : null;
+      }),
+    )
+  ).filter((entry): entry is NonNullable<typeof entry> => entry !== null);
+  for (const entry of readableRows) {
     const closed = closedStatusIds.has(entry.status_id);
     if (!closed) {
       open += 1;
@@ -1032,12 +1178,15 @@ async function myMetrics(
   if (due.error) db(due.error);
   const dueTicketIds: string[] = [];
   for (const entry of due.data ?? []) {
-    if (
-      typeof entry.ticket_id === "string" &&
-      !dueTicketIds.includes(entry.ticket_id) &&
-      dueTicketIds.length < maxIds
-    )
-      dueTicketIds.push(entry.ticket_id);
+    if (typeof entry.ticket_id !== "string") continue;
+    const { data: teamAllowed, error: teamAllowedError } = await admin.rpc(
+      "can_user_access_ticket_team",
+      { p_ticket_id: entry.ticket_id, p_user_id: actorId },
+    );
+    if (teamAllowedError) db(teamAllowedError);
+    if (teamAllowed !== true || dueTicketIds.includes(entry.ticket_id))
+      continue;
+    if (dueTicketIds.length < maxIds) dueTicketIds.push(entry.ticket_id);
   }
   return reply(request, {
     data: {
@@ -1046,7 +1195,7 @@ async function myMetrics(
         solvedToday,
         medianFirstResponseMinutes: median,
         // Bleibt für ältere App-Versionen erhalten (fällige Wiedervorlagen).
-        dueFollowUps: due.count ?? 0,
+        dueFollowUps: dueTicketIds.length,
         slaDue: slaDueEntries.length,
         ticketIds: {
           assigned: assignedIds,
@@ -1083,7 +1232,13 @@ async function ticketContext(
   action: Action,
 ): Promise<Response> {
   const info = await ticket(admin, action.tenantId, action.ticketId);
-  await ticketPermission(client, info, "ticket.read.department");
+  await rpcTrue(
+    client,
+    "can_read_ticket",
+    { p_ticket_id: info.id as string },
+    "ticket_permission_required",
+    "Für dieses Ticket fehlt die Berechtigung.",
+  );
   const related = await admin
     .from("tickets")
     .select("id, ticket_number, subject, resolved_at, created_at")
@@ -1100,6 +1255,17 @@ async function ticketContext(
     .limit(100);
   if (related.error) db(related.error);
   if (links.error) db(links.error);
+  const readableRequesterTickets = (
+    await Promise.all(
+      (related.data ?? []).map(async (candidate: any) =>
+        typeof candidate?.id === "string" &&
+        (await client.rpc("can_read_ticket", { p_ticket_id: candidate.id }))
+          .data === true
+          ? candidate
+          : null,
+      ),
+    )
+  ).filter((candidate) => candidate !== null);
   const assetIds = (links.data ?? [])
     .map((entry) => entry.asset_id)
     .filter(isUuid);
@@ -1189,7 +1355,7 @@ async function ticketContext(
   return reply(request, {
     data: {
       ticket: info,
-      requesterTickets: related.data ?? [],
+      requesterTickets: readableRequesterTickets,
       assets: assets.data ?? [],
       assetHistory: history.data ?? [],
       resolutionConfirmations: confirmations.data ?? [],
@@ -1508,6 +1674,8 @@ const handler = withSupabase(
         return await createMentions(request, client, admin, action, actorId);
       if (action.type === "listDelegations")
         return await listDelegations(request, client, admin, action, actorId);
+      if (action.type === "listDelegationAgents")
+        return await listDelegationAgents(request, admin, action, actorId);
       if (action.type === "saveDelegation")
         return await saveDelegation(request, client, admin, action, actorId);
       if (action.type === "endDelegation")
@@ -1519,7 +1687,7 @@ const handler = withSupabase(
       if (action.type === "teamQueues")
         return await teamQueues(request, client, action);
       if (action.type === "myMetrics")
-        return await myMetrics(request, admin, action, actorId);
+        return await myMetrics(request, client, admin, action, actorId);
       if (action.type === "ticketContext")
         return await ticketContext(request, client, admin, action);
       if (action.type === "knowledgeDraftFromTicket")

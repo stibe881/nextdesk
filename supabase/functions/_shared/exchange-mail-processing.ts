@@ -1168,7 +1168,28 @@ export async function dispatchOutboundMessage(
       message.kind === "department_question" ||
       message.kind === "department_answer";
     if (internalDepartmentNotice) {
-      if (!message.department_question_id || !message.recipient_user_id) {
+      if (
+        !message.department_question_id ||
+        !message.recipient_user_id ||
+        !message.ticket_id
+      ) {
+        await updateMessage(admin, message.id, {
+          processing_status: "ignored",
+          ignore_reason: "recipient_not_authorized",
+        });
+        return;
+      }
+      const ticketAuthorization = await admin.rpc(
+        "ticket_notification_recipient_authorized",
+        {
+          p_tenant_id: message.tenant_id,
+          p_ticket_id: message.ticket_id,
+          p_user_id: message.recipient_user_id,
+        },
+      );
+      // A recipient can lose access after a message is queued. Treat lookup
+      // failures identically to a denial and reveal no ticket data to Graph.
+      if (ticketAuthorization.error || ticketAuthorization.data !== true) {
         await updateMessage(admin, message.id, {
           processing_status: "ignored",
           ignore_reason: "recipient_not_authorized",

@@ -209,7 +209,43 @@ async function skip(
     .eq("status", "sending");
 }
 
+async function ticketNotificationRecipientAuthorized(
+  admin: any,
+  row: ClaimRow,
+): Promise<boolean> {
+  if (row.source_type !== "ticket") return true;
+  if (!row.ticket_id) return false;
+  const { data, error } = await admin.rpc(
+    "ticket_notification_recipient_authorized",
+    {
+      p_tenant_id: row.tenant_id,
+      p_ticket_id: row.ticket_id,
+      p_user_id: row.user_id,
+    },
+  );
+  return !error && data === true;
+}
+
+async function skipUnauthorizedRecipient(
+  admin: any,
+  row: ClaimRow,
+): Promise<void> {
+  await admin
+    .from("push_outbox")
+    .update({
+      status: "skipped",
+      last_error: "recipient_not_authorized",
+      claimed_at: null,
+    })
+    .eq("id", row.outbox_id)
+    .eq("status", "sending");
+}
+
 async function deliverSingle(admin: any, row: ClaimRow): Promise<void> {
+  if (!(await ticketNotificationRecipientAuthorized(admin, row))) {
+    await skipUnauthorizedRecipient(admin, row);
+    return;
+  }
   const preferenceCategory = category(row.kind);
   if (!preferenceCategory) {
     await admin
@@ -249,17 +285,33 @@ async function deliverSingle(admin: any, row: ClaimRow): Promise<void> {
 }
 
 async function deliverSummary(admin: any, rows: ClaimRow[]): Promise<void> {
+  const authorization = await Promise.all(
+    rows.map(async (row) => ({
+      row,
+      authorized: await ticketNotificationRecipientAuthorized(admin, row),
+    })),
+  );
+  const authorizedRows = authorization
+    .filter((entry) => entry.authorized)
+    .map((entry) => entry.row);
+  await Promise.all(
+    authorization
+      .filter((entry) => !entry.authorized)
+      .map(({ row }) => skipUnauthorizedRecipient(admin, row)),
+  );
+  if (authorizedRows.length === 0) return;
+
   const uniqueDevices = new Map<string, Device>();
-  for (const row of rows) {
+  for (const row of authorizedRows) {
     for (const device of devices(row.devices))
       uniqueDevices.set(device.id, device);
   }
-  const anchor = rows[0];
+  const anchor = authorizedRows[0];
   const payload = buildApnsPayload({
     kind: "summary",
     tenantId: anchor.tenant_id,
     notificationId: anchor.notification_id ?? anchor.outbox_id,
-    summaryCount: rows.length,
+    summaryCount: authorizedRows.length,
   });
   const results = await Promise.all(
     [...uniqueDevices.values()].map(async (device) => {
@@ -273,7 +325,8 @@ async function deliverSummary(admin: any, rows: ClaimRow[]): Promise<void> {
       return result;
     }),
   );
-  for (const row of rows) await completeForDeliveries(admin, row, results);
+  for (const row of authorizedRows)
+    await completeForDeliveries(admin, row, results);
 }
 
 const handler = withSupabase(
@@ -291,12 +344,16 @@ const handler = withSupabase(
       return response({ error: { code: "unauthorized" } }, 401);
     }
 
-    const { error: authorizationSweepError } = await context.supabaseAdmin.rpc(
-      "push_skip_unauthorized_department_question_outbox",
-    );
-    // Fail closed: when the re-authorization check cannot run, no sensitive
-    // department-question notification is claimed for APNs delivery.
-    if (authorizationSweepError) {
+    const [ticketAuthorizationSweep, questionAuthorizationSweep] =
+      await Promise.all([
+        context.supabaseAdmin.rpc("push_skip_unauthorized_ticket_outbox"),
+        context.supabaseAdmin.rpc(
+          "push_skip_unauthorized_department_question_outbox",
+        ),
+      ]);
+    // Fail closed: a queue cannot be claimed if current ticket access cannot
+    // be rechecked. The second sweep retains question lifecycle checks.
+    if (ticketAuthorizationSweep.error || questionAuthorizationSweep.error) {
       return response({ error: { code: "authorization_check_failed" } }, 500);
     }
 

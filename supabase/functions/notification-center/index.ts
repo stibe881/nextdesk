@@ -155,6 +155,7 @@ async function hasActiveTenantMembership(
 async function listNotifications(
   request: Request,
   admin: any,
+  client: any,
   actorId: string,
   action: Extract<Action, { type: "list" }>,
 ): Promise<Response> {
@@ -193,9 +194,32 @@ async function listNotifications(
     return json(request, { error: { code: "notification_list_failed" } }, 500);
 
   const notifications = (data ?? []) as NotificationRow[];
+  const tenantIds = [
+    ...new Set(notifications.map((notification) => notification.tenant_id)),
+  ];
+  const { data: memberships, error: membershipError } = tenantIds.length
+    ? await client
+        .from("tenant_memberships")
+        .select("tenant_id")
+        .eq("user_id", actorId)
+        .eq("status", "active")
+        .in("tenant_id", tenantIds)
+    : { data: [], error: null };
+  if (membershipError)
+    return json(
+      request,
+      { error: { code: "authorization_check_failed" } },
+      500,
+    );
+  const activeTenantIds = new Set(
+    (memberships ?? []).map((membership: any) => membership.tenant_id),
+  );
+  const membershipVisibleNotifications = notifications.filter((notification) =>
+    activeTenantIds.has(notification.tenant_id),
+  );
   const ticketIds = [
     ...new Set(
-      notifications
+      membershipVisibleNotifications
         .map((notification) => notification.ticket_id)
         .filter((ticketId): ticketId is string => ticketId !== null),
     ),
@@ -203,7 +227,7 @@ async function listNotifications(
 
   const ticketsById = new Map<string, TicketRow>();
   if (ticketIds.length > 0) {
-    const { data: tickets, error: ticketError } = await admin
+    const { data: tickets, error: ticketError } = await client
       .from("tickets")
       .select("id, tenant_id, ticket_number, subject")
       .in("id", ticketIds);
@@ -217,10 +241,15 @@ async function listNotifications(
       ticketsById.set(ticket.id, ticket);
     }
   }
+  const visibleNotifications = membershipVisibleNotifications.filter(
+    (notification) =>
+      notification.ticket_id === null ||
+      ticketsById.has(notification.ticket_id),
+  );
 
   return json(request, {
     data: {
-      notifications: notifications.map((notification) => {
+      notifications: visibleNotifications.map((notification) => {
         const ticket = notification.ticket_id
           ? ticketsById.get(notification.ticket_id)
           : undefined;
@@ -386,7 +415,13 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
 
   const admin = context.supabaseAdmin;
   if (action.type === "list")
-    return await listNotifications(request, admin, actorId, action);
+    return await listNotifications(
+      request,
+      admin,
+      context.supabase,
+      actorId,
+      action,
+    );
   if (action.type === "markRead")
     return await markRead(request, admin, actorId, action.notificationId);
   return await markAllRead(request, admin, actorId, action.tenantId);

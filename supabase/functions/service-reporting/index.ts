@@ -13,6 +13,7 @@ type QueryResult<T> =
 
 type TicketRow = {
   id: string;
+  assigned_team_id: string | null;
   created_at: string;
   first_responded_at: string | null;
   resolved_at: string | null;
@@ -20,9 +21,20 @@ type TicketRow = {
   priority: unknown;
   department: unknown;
 };
-type TimeEntryRow = { minutes: number; billing_kind: string };
-type SatisfactionRow = { score: number | null };
-type EscalationRow = { resolved_at: string | null };
+type TeamScopedTicketRow = { assigned_team_id?: unknown };
+type TimeEntryRow = {
+  minutes: number;
+  billing_kind: string;
+  tickets?: TeamScopedTicketRow | TeamScopedTicketRow[] | null;
+};
+type SatisfactionRow = {
+  score: number | null;
+  tickets?: TeamScopedTicketRow | TeamScopedTicketRow[] | null;
+};
+type EscalationRow = {
+  resolved_at: string | null;
+  tickets?: TeamScopedTicketRow | TeamScopedTicketRow[] | null;
+};
 type TicketStatus = { key?: unknown; label?: unknown; is_closed?: unknown };
 type TicketPriority = { key?: unknown; label?: unknown };
 type Department = { id?: unknown; name?: unknown };
@@ -314,12 +326,14 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     timeEntriesResult,
     satisfactionResult,
     escalationsResult,
+    teamMembershipsResult,
+    departmentMembershipsResult,
   ] = await Promise.all([
     fetchAll<TicketRow>((from, to) =>
       context.supabaseAdmin
         .from("tickets")
         .select(
-          "id, created_at, first_responded_at, resolved_at, status:ticket_statuses(key, label, is_closed), priority:ticket_priorities(key, label), department:departments(id, name)",
+          "id, assigned_team_id, created_at, first_responded_at, resolved_at, status:ticket_statuses(key, label, is_closed), priority:ticket_priorities(key, label), department:departments(id, name)",
         )
         .eq("tenant_id", action.tenantId)
         .gte("created_at", since)
@@ -330,7 +344,9 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     fetchAll<TimeEntryRow>((from, to) =>
       context.supabaseAdmin
         .from("ticket_time_entries")
-        .select("minutes, billing_kind, tickets!inner(tenant_id)")
+        .select(
+          "minutes, billing_kind, tickets!inner(tenant_id, assigned_team_id)",
+        )
         .eq("tickets.tenant_id", action.tenantId)
         .gte("created_at", since)
         .lte("created_at", until)
@@ -340,7 +356,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     fetchAll<SatisfactionRow>((from, to) =>
       context.supabaseAdmin
         .from("ticket_satisfaction")
-        .select("score, tickets!inner(tenant_id)")
+        .select("score, tickets!inner(tenant_id, assigned_team_id)")
         .eq("tickets.tenant_id", action.tenantId)
         .gte("submitted_at", since)
         .lte("submitted_at", until)
@@ -350,7 +366,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     fetchAll<EscalationRow>((from, to) =>
       context.supabaseAdmin
         .from("ticket_escalations")
-        .select("resolved_at, tickets!inner(tenant_id)")
+        .select("resolved_at, tickets!inner(tenant_id, assigned_team_id)")
         .eq("tickets.tenant_id", action.tenantId)
         .gte("opened_at", since)
         .lte("opened_at", until)
@@ -358,6 +374,17 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         .order("opened_at", { ascending: true })
         .range(from, to),
     ),
+    context.supabaseAdmin
+      .from("team_memberships")
+      .select("team_id, teams!inner(active, department_id)")
+      .eq("tenant_id", action.tenantId)
+      .eq("user_id", actorId),
+    context.supabaseAdmin
+      .from("department_memberships")
+      .select("department_id")
+      .eq("tenant_id", action.tenantId)
+      .eq("user_id", actorId)
+      .eq("status", "active"),
   ]);
 
   for (const result of [
@@ -365,6 +392,8 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     timeEntriesResult,
     satisfactionResult,
     escalationsResult,
+    teamMembershipsResult,
+    departmentMembershipsResult,
   ]) {
     if (result.error) {
       if (result.error.code === "reporting_result_limit_exceeded") {
@@ -384,10 +413,43 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     }
   }
 
-  const tickets = ticketsResult.data;
-  const timeEntries = timeEntriesResult.data;
-  const satisfaction = satisfactionResult.data;
-  const escalations = escalationsResult.data;
+  const activeDepartmentIds = new Set(
+    (departmentMembershipsResult.data ?? []).flatMap((membership: any) =>
+      isUuid(membership.department_id) ? [membership.department_id] : [],
+    ),
+  );
+  const readableTeamIds = new Set(
+    (teamMembershipsResult.data ?? []).flatMap((membership: any) => {
+      const team = one<{ active?: unknown; department_id?: unknown }>(
+        membership.teams,
+      );
+      return isUuid(membership.team_id) &&
+        team?.active === true &&
+        isUuid(team.department_id) &&
+        activeDepartmentIds.has(team.department_id)
+        ? [membership.team_id]
+        : [];
+    }),
+  );
+  const canIncludeTeam = (teamId: unknown) =>
+    teamId === null ||
+    teamId === undefined ||
+    (isUuid(teamId) && readableTeamIds.has(teamId));
+  const nestedTeamId = (value: unknown) =>
+    one<TeamScopedTicketRow>(value)?.assigned_team_id;
+
+  const tickets = (ticketsResult.data ?? []).filter((ticket) =>
+    canIncludeTeam(ticket.assigned_team_id),
+  );
+  const timeEntries = (timeEntriesResult.data ?? []).filter((entry) =>
+    canIncludeTeam(nestedTeamId(entry.tickets)),
+  );
+  const satisfaction = (satisfactionResult.data ?? []).filter((entry) =>
+    canIncludeTeam(nestedTeamId(entry.tickets)),
+  );
+  const escalations = (escalationsResult.data ?? []).filter((entry) =>
+    canIncludeTeam(nestedTeamId(entry.tickets)),
+  );
   if (!tickets || !timeEntries || !satisfaction || !escalations) {
     return response(
       request,

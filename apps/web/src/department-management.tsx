@@ -2,6 +2,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type FormEvent,
 } from "react";
@@ -19,6 +20,14 @@ import {
   shouldShowDepartmentQuestionRouting,
   type DepartmentQuestionRoutingState,
 } from "./lib/department-question-routing-visibility";
+import {
+  archiveDepartmentTeam,
+  listDepartmentTeams,
+  replaceDepartmentTeamMembers,
+  saveDepartmentTeam,
+  type DepartmentTeam,
+  type DepartmentTeamsList,
+} from "./lib/department-teams";
 import { functionErrorMessage } from "./lib/function-error";
 import { supabase } from "./lib/supabase";
 
@@ -40,6 +49,12 @@ type DepartmentForm = {
   name: string;
 };
 
+type TeamForm = {
+  id: string | null;
+  departmentId: string;
+  name: string;
+};
+
 type DepartmentQuestionRoute = {
   department: Pick<Department, "id" | "key" | "name">;
   primaryUserId: string | null;
@@ -54,6 +69,7 @@ type DepartmentRequest =
   | { type: "archiveDepartment"; tenantId: string; id: string };
 
 const EMPTY_FORM: DepartmentForm = { id: null, name: "" };
+const EMPTY_TEAM_FORM: TeamForm = { id: null, departmentId: "", name: "" };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -442,6 +458,558 @@ function DepartmentQuestionRouting({ tenantId }: { tenantId: string }) {
   );
 }
 
+function teamMemberSummary(team: DepartmentTeam): string {
+  if (team.members.length === 0) return "Noch keine Mitglieder zugeordnet.";
+  const names = team.members.map((member) => member.displayName);
+  const visibleNames = names.slice(0, 3).join(", ");
+  return names.length > 3
+    ? `${visibleNames} und ${names.length - 3} weitere Person(en)`
+    : visibleNames;
+}
+
+function DepartmentTeams({ tenantId }: { tenantId: string }) {
+  const [data, setData] = useState<DepartmentTeamsList | null>(null);
+  const [dataTenantId, setDataTenantId] = useState<string | null>(null);
+  const [form, setForm] = useState<TeamForm>(EMPTY_TEAM_FORM);
+  const [formVisible, setFormVisible] = useState(false);
+  const [memberEditorTeamId, setMemberEditorTeamId] = useState<string | null>(
+    null,
+  );
+  const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [savingTarget, setSavingTarget] = useState<string | null>(null);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const requestVersion = useRef(0);
+
+  const visibleData = dataTenantId === tenantId ? data : null;
+  const activeDepartments = useMemo(
+    () =>
+      visibleData?.departments.filter((department) => department.active) ?? [],
+    [visibleData],
+  );
+  const activeTeams = useMemo(
+    () =>
+      visibleData?.teams.filter(
+        (team) =>
+          team.active &&
+          visibleData.departments.some(
+            (department) =>
+              department.id === team.departmentId && department.active,
+          ),
+      ) ?? [],
+    [visibleData],
+  );
+  const archivedTeams = useMemo(
+    () =>
+      visibleData?.teams.filter(
+        (team) =>
+          !team.active ||
+          !visibleData.departments.some(
+            (department) =>
+              department.id === team.departmentId && department.active,
+          ),
+      ) ?? [],
+    [visibleData],
+  );
+
+  const load = useCallback(async (): Promise<boolean> => {
+    const currentRequest = requestVersion.current + 1;
+    requestVersion.current = currentRequest;
+    setLoading(true);
+    setData(null);
+    setDataTenantId(null);
+    setError("");
+
+    try {
+      const nextData = await listDepartmentTeams(tenantId);
+      if (currentRequest !== requestVersion.current) return false;
+      setData(nextData);
+      setDataTenantId(tenantId);
+      return true;
+    } catch (nextError) {
+      if (currentRequest !== requestVersion.current) return false;
+      setData(null);
+      setDataTenantId(null);
+      setError(
+        nextError instanceof Error
+          ? nextError.message
+          : "Die Teams konnten nicht geladen werden.",
+      );
+      return false;
+    } finally {
+      if (currentRequest === requestVersion.current) setLoading(false);
+    }
+  }, [tenantId]);
+
+  useEffect(() => {
+    setForm(EMPTY_TEAM_FORM);
+    setFormVisible(false);
+    setMemberEditorTeamId(null);
+    setSelectedMemberIds([]);
+    setMessage("");
+    void load();
+  }, [load]);
+
+  function startCreate() {
+    setForm({
+      ...EMPTY_TEAM_FORM,
+      departmentId: activeDepartments[0]?.id ?? "",
+    });
+    setFormVisible(true);
+    setMemberEditorTeamId(null);
+    setMessage("");
+    setError("");
+  }
+
+  function startEdit(team: DepartmentTeam) {
+    setForm({
+      id: team.id,
+      departmentId: team.departmentId,
+      name: team.name,
+    });
+    setFormVisible(true);
+    setMemberEditorTeamId(null);
+    setMessage("");
+    setError("");
+  }
+
+  function openMemberEditor(team: DepartmentTeam) {
+    const candidateIds = new Set(
+      visibleData?.candidates
+        .filter((candidate) =>
+          candidate.departmentIds.includes(team.departmentId),
+        )
+        .map(({ id }) => id),
+    );
+    setSelectedMemberIds(
+      team.members
+        .map((member) => member.userId)
+        .filter((userId) => candidateIds.has(userId)),
+    );
+    setMemberEditorTeamId(team.id);
+    setFormVisible(false);
+    setMessage("");
+    setError("");
+  }
+
+  function toggleMember(userId: string) {
+    setSelectedMemberIds((current) =>
+      current.includes(userId)
+        ? current.filter((id) => id !== userId)
+        : [...current, userId],
+    );
+  }
+
+  async function saveTeam(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const name = form.name.trim();
+    if (Array.from(name).length < 2 || Array.from(name).length > 120) {
+      setError("Der Teamname muss zwischen 2 und 120 Zeichen lang sein.");
+      return;
+    }
+    if (
+      !activeDepartments.some(
+        (department) => department.id === form.departmentId,
+      )
+    ) {
+      setError("Bitte wählen Sie eine aktive Abteilung für das Team aus.");
+      return;
+    }
+
+    setSavingTarget("team-form");
+    setError("");
+    setMessage("");
+    try {
+      await saveDepartmentTeam({
+        tenantId,
+        ...(form.id ? { id: form.id } : {}),
+        departmentId: form.departmentId,
+        name,
+      });
+      setForm(EMPTY_TEAM_FORM);
+      setFormVisible(false);
+      if (await load()) {
+        setMessage(
+          form.id
+            ? `Das Team „${name}“ wurde gespeichert.`
+            : `Das Team „${name}“ wurde angelegt.`,
+        );
+      }
+    } catch (nextError) {
+      setError(
+        nextError instanceof Error
+          ? nextError.message
+          : "Das Team konnte nicht gespeichert werden.",
+      );
+    } finally {
+      setSavingTarget(null);
+    }
+  }
+
+  async function archiveTeam(team: DepartmentTeam) {
+    setSavingTarget(`archive:${team.id}`);
+    setError("");
+    setMessage("");
+    try {
+      await archiveDepartmentTeam({ tenantId, id: team.id });
+      if (form.id === team.id) {
+        setForm(EMPTY_TEAM_FORM);
+        setFormVisible(false);
+      }
+      if (memberEditorTeamId === team.id) setMemberEditorTeamId(null);
+      if (await load()) {
+        setMessage(`Das Team „${team.name}“ wurde archiviert.`);
+      }
+    } catch (nextError) {
+      setError(
+        nextError instanceof Error
+          ? nextError.message
+          : "Das Team konnte nicht archiviert werden.",
+      );
+    } finally {
+      setSavingTarget(null);
+    }
+  }
+
+  async function saveMembers(team: DepartmentTeam) {
+    const candidateIds = new Set(visibleData?.candidates.map(({ id }) => id));
+    const userIds = selectedMemberIds.filter((userId) =>
+      candidateIds.has(userId),
+    );
+    if (userIds.length !== selectedMemberIds.length) {
+      setError(
+        "Die Mitgliederauswahl wurde aktualisiert. Bitte prüfen Sie die Auswahl erneut.",
+      );
+      return;
+    }
+
+    setSavingTarget(`members:${team.id}`);
+    setError("");
+    setMessage("");
+    try {
+      await replaceDepartmentTeamMembers({
+        tenantId,
+        teamId: team.id,
+        userIds: [...userIds].sort(),
+      });
+      setMemberEditorTeamId(null);
+      setSelectedMemberIds([]);
+      if (await load()) {
+        setMessage(`Die Mitglieder von „${team.name}“ wurden gespeichert.`);
+      }
+    } catch (nextError) {
+      setError(
+        nextError instanceof Error
+          ? nextError.message
+          : "Die Teammitglieder konnten nicht gespeichert werden.",
+      );
+    } finally {
+      setSavingTarget(null);
+    }
+  }
+
+  const isSaving = savingTarget !== null;
+
+  return (
+    <section
+      aria-labelledby="department-teams-heading"
+      className="department-management__teams"
+    >
+      <div className="department-management__team-heading">
+        <div>
+          <p className="eyebrow">TEAMS</p>
+          <h3 id="department-teams-heading">Teams pro Abteilung</h3>
+          <p>
+            Teammitgliedschaften grenzen Teamtickets zusätzlich ein. Wählbar
+            sind aktive Personen derselben Abteilung – auch ohne aktuelle
+            Ticketzuweisung.
+          </p>
+        </div>
+        <div className="department-management__header-actions">
+          <button
+            aria-label="Teams aktualisieren"
+            disabled={loading || isSaving}
+            onClick={() => void load()}
+            type="button"
+          >
+            <RefreshCw aria-hidden="true" size={16} /> Aktualisieren
+          </button>
+          <button
+            className="primary-button"
+            disabled={loading || isSaving}
+            onClick={startCreate}
+            type="button"
+          >
+            <Plus aria-hidden="true" size={16} /> Team anlegen
+          </button>
+        </div>
+      </div>
+
+      {error ? (
+        <p
+          className="tenant-admin-settings__notice tenant-admin-settings__notice--error"
+          role="alert"
+        >
+          {error}
+        </p>
+      ) : null}
+      {message ? (
+        <p
+          className="tenant-admin-settings__notice tenant-admin-settings__notice--success"
+          role="status"
+        >
+          {message}
+        </p>
+      ) : null}
+
+      {formVisible ? (
+        <form className="department-management__team-form" onSubmit={saveTeam}>
+          <div>
+            <h4>{form.id ? "Team bearbeiten" : "Neues Team"}</h4>
+            <p>Ordnen Sie jedes Team genau einer aktiven Abteilung zu.</p>
+          </div>
+          <label>
+            Name des Teams
+            <input
+              autoFocus
+              disabled={isSaving}
+              maxLength={120}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, name: event.target.value }))
+              }
+              placeholder="Zum Beispiel Service Desk"
+              required
+              value={form.name}
+            />
+          </label>
+          <label>
+            Abteilung
+            <select
+              disabled={isSaving}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  departmentId: event.target.value,
+                }))
+              }
+              required
+              value={form.departmentId}
+            >
+              <option value="">Aktive Abteilung auswählen</option>
+              {activeDepartments.map((department) => (
+                <option key={department.id} value={department.id}>
+                  {department.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="department-management__form-actions">
+            <button
+              className="primary-button"
+              disabled={isSaving}
+              type="submit"
+            >
+              {savingTarget === "team-form"
+                ? "Wird gespeichert …"
+                : form.id
+                  ? "Änderungen speichern"
+                  : "Team anlegen"}
+            </button>
+            <button
+              disabled={isSaving}
+              onClick={() => {
+                setForm(EMPTY_TEAM_FORM);
+                setFormVisible(false);
+              }}
+              type="button"
+            >
+              Abbrechen
+            </button>
+          </div>
+        </form>
+      ) : null}
+
+      {loading ? (
+        <p className="tenant-admin-settings__loading" role="status">
+          Teams werden geladen …
+        </p>
+      ) : visibleData ? (
+        <div className="department-management__team-groups">
+          {activeDepartments.length === 0 ? (
+            <p className="department-management__empty">
+              Es gibt keine aktive Abteilung, der ein Team zugeordnet werden
+              kann.
+            </p>
+          ) : (
+            activeDepartments.map((department) => {
+              const teams = activeTeams.filter(
+                (team) => team.departmentId === department.id,
+              );
+              const headingId = `department-team-group-${department.id}`;
+              return (
+                <section aria-labelledby={headingId} key={department.id}>
+                  <div className="department-management__group-heading">
+                    <h4 id={headingId}>{department.name}</h4>
+                    <span>{teams.length}</span>
+                  </div>
+                  {teams.length === 0 ? (
+                    <p className="department-management__empty">
+                      Für diese Abteilung gibt es noch kein Team.
+                    </p>
+                  ) : (
+                    <ul className="department-management__list">
+                      {teams.map((team) => (
+                        <li
+                          className="department-management__team-row"
+                          key={team.id}
+                        >
+                          <div className="department-management__item-main">
+                            <span className="department-management__icon">
+                              <UsersRound aria-hidden="true" size={18} />
+                            </span>
+                            <div>
+                              <strong>{team.name}</strong>
+                              <span>{teamMemberSummary(team)}</span>
+                            </div>
+                          </div>
+                          <div className="department-management__item-actions">
+                            <button
+                              aria-label={`Mitglieder von ${team.name} verwalten`}
+                              disabled={isSaving}
+                              onClick={() => openMemberEditor(team)}
+                              type="button"
+                            >
+                              Mitglieder verwalten
+                            </button>
+                            <button
+                              aria-label={`Team ${team.name} bearbeiten`}
+                              disabled={isSaving}
+                              onClick={() => startEdit(team)}
+                              type="button"
+                            >
+                              <Pencil aria-hidden="true" size={15} /> Bearbeiten
+                            </button>
+                            <button
+                              aria-label={`Team ${team.name} archivieren`}
+                              disabled={isSaving}
+                              onClick={() => void archiveTeam(team)}
+                              type="button"
+                            >
+                              <Archive aria-hidden="true" size={15} />
+                              Archivieren
+                            </button>
+                          </div>
+                          {memberEditorTeamId === team.id ? (
+                            <div className="department-management__member-editor">
+                              <fieldset disabled={isSaving}>
+                                <legend>
+                                  Mitglieder von „{team.name}“ auswählen
+                                </legend>
+                                <p>
+                                  Diese Zuordnung ist rein organisatorisch und
+                                  ändert keine Rollen oder Berechtigungen.
+                                </p>
+                                {visibleData.candidates.filter((candidate) =>
+                                  candidate.departmentIds.includes(
+                                    team.departmentId,
+                                  ),
+                                ).length === 0 ? (
+                                  <p className="department-management__empty">
+                                    Es sind keine aktiven Personen dieser
+                                    Abteilung verfügbar.
+                                  </p>
+                                ) : (
+                                  <div
+                                    aria-label={`Aktive Personen aus ${team.name} auswählen`}
+                                    className="department-management__member-options"
+                                  >
+                                    {visibleData.candidates
+                                      .filter((candidate) =>
+                                        candidate.departmentIds.includes(
+                                          team.departmentId,
+                                        ),
+                                      )
+                                      .map((candidate) => (
+                                        <label key={candidate.id}>
+                                          <input
+                                            aria-label={`${candidate.displayName} als Teammitglied auswählen`}
+                                            checked={selectedMemberIds.includes(
+                                              candidate.id,
+                                            )}
+                                            onChange={() =>
+                                              toggleMember(candidate.id)
+                                            }
+                                            type="checkbox"
+                                          />
+                                          <span>{candidate.displayName}</span>
+                                        </label>
+                                      ))}
+                                  </div>
+                                )}
+                              </fieldset>
+                              <div className="department-management__form-actions">
+                                <button
+                                  className="primary-button"
+                                  disabled={isSaving}
+                                  onClick={() => void saveMembers(team)}
+                                  type="button"
+                                >
+                                  {savingTarget === `members:${team.id}`
+                                    ? "Wird gespeichert …"
+                                    : "Mitglieder speichern"}
+                                </button>
+                                <button
+                                  disabled={isSaving}
+                                  onClick={() => {
+                                    setMemberEditorTeamId(null);
+                                    setSelectedMemberIds([]);
+                                  }}
+                                  type="button"
+                                >
+                                  Abbrechen
+                                </button>
+                              </div>
+                            </div>
+                          ) : null}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </section>
+              );
+            })
+          )}
+
+          {archivedTeams.length > 0 ? (
+            <section aria-labelledby="archived-teams-heading">
+              <div className="department-management__group-heading">
+                <h4 id="archived-teams-heading">Archivierte Teams</h4>
+                <span>{archivedTeams.length}</span>
+              </div>
+              <ul className="department-management__list department-management__list--archived">
+                {archivedTeams.map((team) => (
+                  <li className="department-management__team-row" key={team.id}>
+                    <div className="department-management__item-main">
+                      <span className="department-management__icon">
+                        <Archive aria-hidden="true" size={18} />
+                      </span>
+                      <div>
+                        <strong>{team.name}</strong>
+                        <span>{teamMemberSummary(team)}</span>
+                      </div>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 export function DepartmentManagement({ tenantId }: DepartmentManagementProps) {
   const [departments, setDepartments] = useState<Department[]>([]);
   const [form, setForm] = useState<DepartmentForm>(EMPTY_FORM);
@@ -592,7 +1160,8 @@ export function DepartmentManagement({ tenantId }: DepartmentManagementProps) {
           <p>
             Abteilungen steuern Zuständigkeiten, Ticketzuordnung und die Auswahl
             von Agent*innen. Personen werden im Bereich „Personen“ einer
-            Abteilung zugeordnet.
+            Abteilung zugeordnet. Teams organisieren die Zusammenarbeit
+            innerhalb einer Abteilung und verleihen keine Rechte.
           </p>
         </div>
         <div className="department-management__header-actions">
@@ -764,6 +1333,7 @@ export function DepartmentManagement({ tenantId }: DepartmentManagementProps) {
           ) : null}
         </div>
       )}
+      <DepartmentTeams tenantId={tenantId} />
       <DepartmentQuestionRouting tenantId={tenantId} />
     </section>
   );

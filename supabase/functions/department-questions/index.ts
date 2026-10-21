@@ -313,21 +313,9 @@ async function ticket(
   return result.data;
 }
 async function canReadTicket(client: Client, info: any): Promise<boolean> {
-  const args = {
-    p_tenant_id: info.tenant_id,
-    p_department_id: info.department_id,
-  };
-  if (
-    await rpcBoolean(client, "has_ticket_permission", {
-      ...args,
-      p_permission_code: "ticket.read.department",
-    })
-  )
-    return true;
-  return rpcBoolean(client, "has_ticket_permission", {
-    ...args,
-    p_permission_code: "ticket.read.assigned",
-  });
+  return typeof info?.id === "string"
+    ? rpcBoolean(client, "can_read_ticket", { p_ticket_id: info.id })
+    : false;
 }
 async function displayNames(
   admin: Admin,
@@ -437,6 +425,17 @@ async function queueInternalMail(input: {
   kind: "department_question" | "department_answer";
 }): Promise<boolean> {
   if (!input.recipientUserId) return false;
+  const authorization = await input.admin.rpc(
+    "ticket_notification_recipient_authorized",
+    {
+      p_tenant_id: input.tenantId,
+      p_ticket_id: input.ticket.id,
+      p_user_id: input.recipientUserId,
+    },
+  );
+  // Fail closed without distinguishing a missing team membership from any
+  // other revoked ticket access. The caller exposes only emailQueued: false.
+  if (authorization.error || authorization.data !== true) return false;
   const flags = await resolveTenantFeatureStates(input.admin, input.tenantId, [
     "integrations.email",
   ]);

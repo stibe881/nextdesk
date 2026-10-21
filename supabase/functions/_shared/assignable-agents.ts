@@ -15,12 +15,14 @@ export async function listAssignableAgents(
   admin: any,
   tenantId: string,
   departmentId: string,
+  teamId: string | null = null,
 ): Promise<{ agents: TicketAgent[]; error: boolean }> {
   const now = new Date().toISOString();
   const [
     { data: tenantMemberships, error: tenantMembershipsError },
     { data: departmentMemberships, error: departmentMembershipsError },
     { data: roleAssignments, error: roleAssignmentsError },
+    { data: teamMemberships, error: teamMembershipsError },
   ] = await Promise.all([
     admin
       .from("tenant_memberships")
@@ -41,11 +43,19 @@ export async function listAssignableAgents(
       .eq("tenant_id", tenantId)
       .lte("starts_at", now)
       .or(`expires_at.is.null,expires_at.gt.${now}`),
+    teamId
+      ? admin
+          .from("team_memberships")
+          .select("user_id")
+          .eq("tenant_id", tenantId)
+          .eq("team_id", teamId)
+      : Promise.resolve({ data: [], error: null }),
   ]);
   if (
     tenantMembershipsError ||
     departmentMembershipsError ||
-    roleAssignmentsError
+    roleAssignmentsError ||
+    teamMembershipsError
   ) {
     return { agents: [], error: true };
   }
@@ -88,9 +98,24 @@ export async function listAssignableAgents(
       activeDepartmentMemberIds.has(assignment.user_id);
     if (
       canHandleAssignedTickets &&
+      activeDepartmentMemberIds.has(assignment.user_id) &&
       (tenantScopedAgent || departmentScopedAgent)
     ) {
       agentIds.add(assignment.user_id);
+    }
+  }
+  if (teamId) {
+    const teamMemberIds = new Set(
+      (teamMemberships ?? []).flatMap((membership: any) =>
+        isUuid(membership.user_id) ? [membership.user_id] : [],
+      ),
+    );
+    for (const agentId of agentIds) {
+      if (
+        !teamMemberIds.has(agentId) ||
+        !activeDepartmentMemberIds.has(agentId)
+      )
+        agentIds.delete(agentId);
     }
   }
   if (agentIds.size === 0) return { agents: [], error: false };

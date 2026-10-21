@@ -336,30 +336,28 @@ function queueFromValue(value: unknown): TeamQueue | null {
   };
 }
 
-function peopleFromRows(value: unknown): Person[] {
-  if (!Array.isArray(value)) return [];
+function delegationPeopleFromResponse(value: unknown): Person[] | null {
+  const data = responseData(value);
+  if (!data || !Array.isArray(data.agents)) return null;
   const seen = new Set<string>();
   const people: Person[] = [];
-  for (const raw of value) {
-    if (!isRecord(raw) || !isUuid(raw.user_id) || seen.has(raw.user_id))
-      continue;
-    seen.add(raw.user_id);
-    const profile = Array.isArray(raw.user_profiles)
-      ? raw.user_profiles[0]
-      : raw.user_profiles;
-    const profileRecord = isRecord(profile) ? profile : null;
-    const displayName = profileRecord?.display_name;
+  for (const raw of data.agents) {
+    if (
+      !isRecord(raw) ||
+      !isUuid(raw.id) ||
+      typeof raw.displayName !== "string" ||
+      !raw.displayName.trim() ||
+      seen.has(raw.id)
+    ) {
+      return null;
+    }
+    seen.add(raw.id);
     people.push({
-      id: raw.user_id,
-      name:
-        typeof displayName === "string" && displayName.trim()
-          ? displayName.trim()
-          : `Person ${shortId(raw.user_id)}`,
+      id: raw.id,
+      name: raw.displayName.trim(),
     });
   }
-  return people.sort((left, right) =>
-    left.name.localeCompare(right.name, "de-CH"),
-  );
+  return people;
 }
 
 async function invokeAgentWorkbench(body: Record<string, unknown>) {
@@ -707,30 +705,25 @@ function DelegationsPanel({ tenantId }: { tenantId: string }) {
     setMessage("");
     void Promise.all([
       invokeAgentWorkbench({ tenantId, type: "listDelegations" }),
-      supabase
-        ? supabase
-            .from("tenant_memberships")
-            .select("user_id, user_profiles(display_name)")
-            .eq("tenant_id", tenantId)
-            .eq("status", "active")
-        : Promise.resolve({ data: [], error: new Error("not_configured") }),
+      invokeAgentWorkbench({ tenantId, type: "listDelegationAgents" }),
     ])
-      .then(([delegationValue, peopleResult]) => {
+      .then(([delegationValue, agentsValue]) => {
         const data = responseData(delegationValue);
         const nextDelegations = Array.isArray(data?.delegations)
           ? data.delegations.map(delegationFromValue)
           : [];
+        const nextPeople = delegationPeopleFromResponse(agentsValue);
         if (
           !nextDelegations.every(
             (delegation): delegation is Delegation => delegation !== null,
           ) ||
-          peopleResult.error
+          nextPeople === null
         ) {
           throw new Error("invalid_delegations_response");
         }
         if (!mounted) return;
         setDelegations(nextDelegations);
-        setPeople(peopleFromRows(peopleResult.data));
+        setPeople(nextPeople);
         setState("ready");
       })
       .catch(() => {
@@ -877,7 +870,7 @@ function DelegationsPanel({ tenantId }: { tenantId: string }) {
                   required
                   value={delegateId}
                 >
-                  <option value="">Aktive Person auswählen</option>
+                  <option value="">Aktiven Agenten auswählen</option>
                   {people.map((person) => (
                     <option key={person.id} value={person.id}>
                       {person.name}

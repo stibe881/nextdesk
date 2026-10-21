@@ -531,6 +531,7 @@ async function getEligibleTicketAgentIds(
     { data: tenantMemberships, error: tenantMembershipsError },
     { data: departmentMemberships, error: departmentMembershipsError },
     { data: roleAssignments, error: roleAssignmentsError },
+    { data: teamMemberships, error: teamMembershipsError },
   ] = await Promise.all([
     admin
       .from("tenant_memberships")
@@ -551,11 +552,19 @@ async function getEligibleTicketAgentIds(
       .eq("tenant_id", ticket.tenant_id)
       .lte("starts_at", now)
       .or(`expires_at.is.null,expires_at.gt.${now}`),
+    isUuid(ticket.assigned_team_id)
+      ? admin
+          .from("team_memberships")
+          .select("user_id")
+          .eq("tenant_id", ticket.tenant_id)
+          .eq("team_id", ticket.assigned_team_id)
+      : Promise.resolve({ data: [], error: null }),
   ]);
   if (
     tenantMembershipsError ||
     departmentMembershipsError ||
-    roleAssignmentsError
+    roleAssignmentsError ||
+    teamMembershipsError
   )
     return { agentIds: [], error: true };
 
@@ -591,8 +600,25 @@ async function getEligibleTicketAgentIds(
       role.scope === "department" &&
       assignment.department_id === ticket.department_id &&
       activeDepartmentMemberIds.has(assignment.user_id);
-    if (tenantScopedAgent || departmentScopedAgent)
+    if (
+      activeDepartmentMemberIds.has(assignment.user_id) &&
+      (tenantScopedAgent || departmentScopedAgent)
+    )
       agentIds.add(assignment.user_id);
+  }
+  if (isUuid(ticket.assigned_team_id)) {
+    const teamMemberIds = new Set(
+      (teamMemberships ?? [])
+        .map((membership: any) => membership.user_id)
+        .filter(isUuid),
+    );
+    for (const agentId of agentIds) {
+      if (
+        !teamMemberIds.has(agentId) ||
+        !activeDepartmentMemberIds.has(agentId)
+      )
+        agentIds.delete(agentId);
+    }
   }
   return { agentIds: [...agentIds], error: false };
 }
@@ -685,6 +711,36 @@ async function getAssignedTicketAgent(
   };
 }
 
+async function canAccessTeamTicket(
+  admin: any,
+  userId: string,
+  ticketId: string,
+) {
+  const { data, error } = await admin.rpc("can_user_access_ticket_team", {
+    p_ticket_id: ticketId,
+    p_user_id: userId,
+  });
+  return !error && data === true;
+}
+
+async function ticketNotificationRecipientAuthorized(
+  admin: any,
+  ticket: any,
+  userId: string,
+) {
+  const { data, error } = await admin.rpc(
+    "ticket_notification_recipient_authorized",
+    {
+      p_tenant_id: ticket.tenant_id,
+      p_ticket_id: ticket.id,
+      p_user_id: userId,
+    },
+  );
+  // Notification recipients are always fail-closed. A service-role lookup
+  // failure must not expose a team ticket's metadata to a watcher.
+  return !error && data === true;
+}
+
 async function canRead(admin: any, userId: string, ticket: any) {
   if (!(await activeMember(admin, userId, ticket.tenant_id))) return false;
   if (ticket.requester_id === userId || ticket.affected_user_id === userId)
@@ -697,19 +753,23 @@ async function canRead(admin: any, userId: string, ticket: any) {
       ticket.tenant_id,
       ticket.department_id,
       "ticket.read.assigned",
-    ))
-  )
+    )) &&
+    (await canAccessTeamTicket(admin, userId, ticket.id))
+  ) {
     return true;
+  }
   if (
-    await hasPermission(
+    (await hasPermission(
       admin,
       userId,
       ticket.tenant_id,
       ticket.department_id,
       "ticket.read.department",
-    )
-  )
+    )) &&
+    (await canAccessTeamTicket(admin, userId, ticket.id))
+  ) {
     return true;
+  }
   if (ticket.customer_organization_id) {
     const { data } = await admin
       .from("customer_memberships")
@@ -1095,6 +1155,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         .from("teams")
         .select("id, name")
         .eq("tenant_id", ticket.tenant_id)
+        .eq("department_id", ticket.department_id)
         .eq("active", true)
         .order("name"),
       context.supabaseAdmin
@@ -1134,7 +1195,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       context.supabaseAdmin
         .from("tickets")
         .select(
-          "id, tenant_id, department_id, ticket_number, subject, requester_id, affected_user_id, assigned_agent_id, customer_organization_id, parent_ticket_id, merged_into_ticket_id, status:ticket_statuses(id, key, label, is_closed)",
+          "id, tenant_id, department_id, ticket_number, subject, requester_id, affected_user_id, assigned_agent_id, assigned_team_id, customer_organization_id, parent_ticket_id, merged_into_ticket_id, status:ticket_statuses(id, key, label, is_closed)",
         )
         .eq("tenant_id", ticket.tenant_id)
         .or(
@@ -1145,7 +1206,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         ? context.supabaseAdmin
             .from("tickets")
             .select(
-              "id, tenant_id, department_id, ticket_number, subject, requester_id, affected_user_id, assigned_agent_id, customer_organization_id, status:ticket_statuses(id, key, label, is_closed)",
+              "id, tenant_id, department_id, ticket_number, subject, requester_id, affected_user_id, assigned_agent_id, assigned_team_id, customer_organization_id, status:ticket_statuses(id, key, label, is_closed)",
             )
             .eq("tenant_id", ticket.tenant_id)
             .neq("id", ticket.id)
@@ -1387,7 +1448,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       ? await context.supabaseAdmin
           .from("tickets")
           .select(
-            "id, tenant_id, department_id, ticket_number, subject, requester_id, affected_user_id, assigned_agent_id, customer_organization_id, status:ticket_statuses(id, key, label, is_closed)",
+            "id, tenant_id, department_id, ticket_number, subject, requester_id, affected_user_id, assigned_agent_id, assigned_team_id, customer_organization_id, status:ticket_statuses(id, key, label, is_closed)",
           )
           .eq("tenant_id", ticket.tenant_id)
           .in("id", relatedTicketIds)
@@ -1579,7 +1640,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     const { data: candidates, error } = await context.supabaseAdmin
       .from("tickets")
       .select(
-        "id, tenant_id, department_id, ticket_number, subject, requester_id, affected_user_id, assigned_agent_id, customer_organization_id, status:ticket_statuses(label)",
+        "id, tenant_id, department_id, ticket_number, subject, requester_id, affected_user_id, assigned_agent_id, assigned_team_id, customer_organization_id, status:ticket_statuses(label)",
       )
       .eq("tenant_id", ticket.tenant_id)
       .neq("id", ticket.id)
@@ -1676,27 +1737,23 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     for (const watcher of watchers ?? [])
       if (isUuid(watcher.user_id)) recipientIds.add(watcher.user_id);
 
-    const { data: recipientMemberships, error: recipientMembershipsError } =
-      recipientIds.size > 0
-        ? await context.supabaseAdmin
-            .from("tenant_memberships")
-            .select("user_id")
-            .eq("tenant_id", ticket.tenant_id)
-            .eq("status", "active")
-            .in("user_id", [...recipientIds])
-        : { data: [], error: null };
-    if (recipientMembershipsError)
-      return response(
-        request,
-        { error: { code: "ticket_escalation_recipients_failed" } },
-        500,
-      );
     const notificationRecipientIds = [
       ...new Set(
-        (recipientMemberships ?? [])
-          .map((membership: any) => membership.user_id)
-          .filter(isUuid)
-          .filter((userId: string) => userId !== actorId),
+        (
+          await Promise.all(
+            [...recipientIds]
+              .filter((userId) => userId !== actorId)
+              .map(async (userId) =>
+                (await ticketNotificationRecipientAuthorized(
+                  context.supabaseAdmin,
+                  ticket,
+                  userId,
+                ))
+                  ? userId
+                  : null,
+              ),
+          )
+        ).filter((userId): userId is string => userId !== null),
       ),
     ];
 
@@ -2676,7 +2733,13 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       if (action.assignedAgentId !== null) {
         const eligibleAgentIds = await getEligibleTicketAgentIds(
           context.supabaseAdmin,
-          ticket,
+          {
+            ...ticket,
+            assigned_team_id:
+              action.assignedTeamId === undefined
+                ? ticket.assigned_team_id
+                : action.assignedTeamId,
+          },
         );
         if (eligibleAgentIds.error)
           return response(
@@ -2698,8 +2761,48 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     }
     if (
       action.assignedTeamId !== undefined &&
+      action.assignedAgentId === undefined &&
+      ticket.assigned_agent_id
+    ) {
+      const eligibleAgentIds = await getEligibleTicketAgentIds(
+        context.supabaseAdmin,
+        {
+          ...ticket,
+          assigned_team_id: action.assignedTeamId,
+        },
+      );
+      if (eligibleAgentIds.error)
+        return response(
+          request,
+          { error: { code: "ticket_agents_lookup_failed" } },
+          500,
+        );
+      if (!eligibleAgentIds.agentIds.includes(ticket.assigned_agent_id)) {
+        update.assigned_agent_id = null;
+        changedFields.push("assignedAgent");
+      }
+    }
+    if (
+      action.assignedTeamId !== undefined &&
       action.assignedTeamId !== (ticket.assigned_team_id ?? null)
     ) {
+      if (action.assignedTeamId !== null) {
+        const { data: team, error: teamError } = await context.supabaseAdmin
+          .from("teams")
+          .select("id")
+          .eq("id", action.assignedTeamId)
+          .eq("tenant_id", ticket.tenant_id)
+          .eq("department_id", ticket.department_id)
+          .eq("active", true)
+          .maybeSingle();
+        if (teamError || !team) {
+          return response(
+            request,
+            { error: { code: "assigned_team_invalid" } },
+            422,
+          );
+        }
+      }
       update.assigned_team_id = action.assignedTeamId;
       changedFields.push("assignedTeam");
     }
