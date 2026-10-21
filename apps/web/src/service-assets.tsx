@@ -296,6 +296,18 @@ function isNullableString(value: unknown): value is string | null {
   return typeof value === "string" || value === null;
 }
 
+function personInitials(value: string): string {
+  const initials = value
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join("")
+    .toLocaleUpperCase("de-CH");
+  return initials || "?";
+}
+
 function isCriticality(value: unknown): value is Criticality {
   return (
     value === "low" ||
@@ -1928,13 +1940,32 @@ export function ServiceAssets({
                           "Nicht im aktiven Katalog")
                         : "Nicht zugeordnet"}
                     </p>
-                    <p>
-                      Primäre Person (Intune):{" "}
-                      {asset.intune_primary_person_name ?? "Nicht zugeordnet"}
-                    </p>
-                    <p>
-                      <code>{metadataPreview(asset.metadata)}</code>
-                    </p>
+                    {asset.intune_primary_person_name ? (
+                      <div className="service-assets__primary-person">
+                        <span
+                          aria-hidden="true"
+                          className="service-assets__primary-person-avatar"
+                        >
+                          {personInitials(asset.intune_primary_person_name)}
+                        </span>
+                        <span className="service-assets__primary-person-copy">
+                          <small>Primäre Person</small>
+                          <strong>{asset.intune_primary_person_name}</strong>
+                        </span>
+                        <span className="service-assets__primary-person-source">
+                          Intune
+                        </span>
+                      </div>
+                    ) : (
+                      <p className="service-assets__primary-person-empty">
+                        Keine primäre Person durch Intune erkannt
+                      </p>
+                    )}
+                    {metadataPreview(asset.metadata) !== "{}" ? (
+                      <p>
+                        <code>{metadataPreview(asset.metadata)}</code>
+                      </p>
+                    ) : null}
                     <button
                       disabled={controlsDisabled}
                       onClick={(event) =>
@@ -2006,16 +2037,31 @@ export function ServiceAssets({
                       </button>
                     </div>
                     {assetForm.id ? (
-                      <p>
-                        <strong>Primäre Person (Intune):</strong>{" "}
-                        {editedAssetPrimaryPerson ?? "Nicht zugeordnet"}
-                        <br />
-                        <small>
-                          Diese Angabe wird beim bewussten Intune-Abgleich aus
-                          dem lokal verifizierten Entra-Verzeichnis übernommen
-                          und kann hier nicht manuell geändert werden.
-                        </small>
-                      </p>
+                      <aside className="service-assets__primary-person service-assets__primary-person--dialog">
+                        <span
+                          aria-hidden="true"
+                          className="service-assets__primary-person-avatar"
+                        >
+                          {editedAssetPrimaryPerson
+                            ? personInitials(editedAssetPrimaryPerson)
+                            : "—"}
+                        </span>
+                        <span className="service-assets__primary-person-copy">
+                          <small>Primäre Person</small>
+                          <strong>
+                            {editedAssetPrimaryPerson ??
+                              "Keine primäre Person erkannt"}
+                          </strong>
+                        </span>
+                        <span className="service-assets__primary-person-source">
+                          Intune
+                        </span>
+                        <p>
+                          Lokal aus dem verifizierten Entra-Verzeichnis
+                          übernommen. Diese Angabe kann hier nicht manuell
+                          geändert werden.
+                        </p>
+                      </aside>
                     ) : null}
                     <form onSubmit={(event) => void saveAsset(event)}>
                       <label>

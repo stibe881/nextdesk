@@ -7174,6 +7174,97 @@ body:has(.ticket-detail) {
   font-size: 12px;
 }
 
+.service-assets__primary-person {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  margin: 2px 0;
+  border: 1px solid var(--border-tint-d8dcff);
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: linear-gradient(135deg, var(--primary-soft), var(--surface));
+}
+
+.service-assets__primary-person-avatar {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--primary);
+  color: var(--surface);
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+.service-assets__primary-person-copy {
+  display: grid;
+  min-width: 0;
+  gap: 1px;
+}
+
+.service-assets__primary-person-copy small {
+  color: var(--primary);
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.service-assets__primary-person-copy strong {
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 16px;
+  font-weight: 750;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.service-assets__primary-person-source {
+  border-radius: 999px;
+  padding: 4px 8px;
+  background: var(--surface);
+  color: var(--primary);
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.service-assets__primary-person-empty {
+  grid-column: 1 / -1 !important;
+  margin: 0;
+  color: var(--muted) !important;
+  font-style: italic;
+}
+
+.service-assets__primary-person--dialog {
+  margin: 0;
+  padding: 14px;
+}
+
+.service-assets__primary-person--dialog .service-assets__primary-person-avatar {
+  width: 44px;
+  height: 44px;
+  font-size: 15px;
+}
+
+.service-assets__primary-person--dialog
+  .service-assets__primary-person-copy
+  strong {
+  font-size: 18px;
+}
+
+.service-assets__primary-person--dialog p {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
 .service-assets li > article button {
   min-height: 36px;
   padding: 6px 10px;
@@ -7269,6 +7360,10 @@ body:has(.ticket-detail) {
 
   .service-assets li > article p {
     grid-column: 1 / -1;
+  }
+
+  .service-assets__primary-person-source {
+    align-self: start;
   }
 
   .service-assets li > article button {
