@@ -356,3 +356,9 @@ Artikelkarten behalten Status und Sichtbarkeit bei und ergänzen eine kompakte Z
 - `apps/web/src/lib/knowledge-collection-presentation.test.ts`: Regressionen für Hierarchie, unbekannte oder inaktive IDs sowie interne und externe Versionsrückfälle.
 - `apps/web/src/knowledge-base.tsx`: Verwendung der bereits autorisiert geladenen Artikelliste und Kategorien in Karten und Detailansicht.
 - `apps/web/src/styles.css`: scoped Metadaten- und Ordnerzeilen für Karten und Detailansicht.
+
+## Wissensdatenbank: Filter für Kategorie und Unterkategorie
+
+Die bestehende Wissensliste erhält neben Sichtbarkeit und Status zwei zugängliche Auswahllisten für Kategorie und Unterkategorie. Beide Listen verwenden ausschliesslich die bereits über die JWT-geschützte `knowledge-base`-Function geladenen, aktiven Kategorien des aktuellen Mandanten. Eine Kategorie filtert sowohl direkt zugeordnete Artikel als auch Artikel, die nur einer ihrer bekannten Unterkategorien zugeordnet sind; eine Unterkategorie trifft nur exakt zugeordnete Artikel. Unbekannte, inaktive oder strukturell unvollständige IDs liefern keine Treffer. Beim Mandantenwechsel, bei ungültig gewordenen Auswahlen und beim Wechsel der Kategorie wird die abhängige Unterkategorie sicher zurückgesetzt. Es gibt keine neue Browser-Berechtigungslogik, keine Datenbankmigration und keine zusätzliche Abfrage.
+
+Die reine Filterlogik liegt testbar bei der bestehenden Kategorienpräsentation in `apps/web/src/lib/knowledge-collection-presentation.ts`. `apps/web/src/knowledge-base.tsx` bindet die Dropdowns, Zustände und kombinierte Listenfilter ein; `apps/web/src/styles.css` übernimmt nur die bestehende, responsive Filterdarstellung.

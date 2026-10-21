@@ -15,6 +15,7 @@ import {
   type KnowledgeArticleSaveRequest,
 } from "./lib/knowledge-article-save";
 import {
+  articleMatchesKnowledgeCollectionFilter,
   formatKnowledgeCollectionPaths,
   visibleKnowledgeArticleRevision,
 } from "./lib/knowledge-collection-presentation";
@@ -936,6 +937,9 @@ export function KnowledgeBase({
   const [activeQuery, setActiveQuery] = useState("");
   const [articleListFilter, setArticleListFilter] =
     useState<ArticleListFilter>("all");
+  const [articleCategoryFilterId, setArticleCategoryFilterId] = useState("");
+  const [articleSubcategoryFilterId, setArticleSubcategoryFilterId] =
+    useState("");
   const [selected, setSelected] = useState<ArticleDetail | null>(null);
   const [editingArticleId, setEditingArticleId] = useState<string | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
@@ -992,10 +996,25 @@ export function KnowledgeBase({
 
   const visibleArticles = useMemo(
     () =>
-      articles.filter(({ article }) =>
-        articleMatchesListFilter(article, articleListFilter),
+      articles.filter(
+        ({ article }) =>
+          articleMatchesListFilter(article, articleListFilter) &&
+          articleMatchesKnowledgeCollectionFilter(
+            article.collectionIds,
+            collections,
+            {
+              categoryId: articleCategoryFilterId,
+              subcategoryId: articleSubcategoryFilterId,
+            },
+          ),
       ),
-    [articleListFilter, articles],
+    [
+      articleCategoryFilterId,
+      articleListFilter,
+      articleSubcategoryFilterId,
+      articles,
+      collections,
+    ],
   );
 
   const activeCollections = useMemo(
@@ -1008,6 +1027,24 @@ export function KnowledgeBase({
         .filter((collection) => collection.parentId === null)
         .sort((left, right) => left.name.localeCompare(right.name, "de-CH")),
     [activeCollections],
+  );
+  const articleFilterCategory = useMemo(
+    () =>
+      rootCollections.find(
+        (collection) => collection.id === articleCategoryFilterId,
+      ),
+    [articleCategoryFilterId, rootCollections],
+  );
+  const articleFilterSubcategoryCollections = useMemo(
+    () =>
+      articleFilterCategory
+        ? activeCollections
+            .filter(
+              (collection) => collection.parentId === articleFilterCategory.id,
+            )
+            .sort((left, right) => left.name.localeCompare(right.name, "de-CH"))
+        : [],
+    [activeCollections, articleFilterCategory],
   );
   const selectedCategory = useMemo(
     () =>
@@ -1169,6 +1206,8 @@ export function KnowledgeBase({
     setEditorOpen(false);
     setActiveQuery("");
     setArticleListFilter("all");
+    setArticleCategoryFilterId("");
+    setArticleSubcategoryFilterId("");
     setSearchInput("");
     setCollections([]);
     setCollectionsReady(false);
@@ -1229,6 +1268,31 @@ export function KnowledgeBase({
     collectionSelectionSourceIds,
     collectionsReady,
     editorOpen,
+  ]);
+
+  useEffect(() => {
+    if (!articleCategoryFilterId) {
+      if (articleSubcategoryFilterId) setArticleSubcategoryFilterId("");
+      return;
+    }
+    if (!articleFilterCategory) {
+      setArticleCategoryFilterId("");
+      setArticleSubcategoryFilterId("");
+      return;
+    }
+    if (
+      articleSubcategoryFilterId &&
+      !articleFilterSubcategoryCollections.some(
+        (collection) => collection.id === articleSubcategoryFilterId,
+      )
+    ) {
+      setArticleSubcategoryFilterId("");
+    }
+  }, [
+    articleCategoryFilterId,
+    articleFilterCategory,
+    articleFilterSubcategoryCollections,
+    articleSubcategoryFilterId,
   ]);
 
   useEffect(() => {
@@ -1424,7 +1488,58 @@ export function KnowledgeBase({
   function changeArticleListFilter(nextFilter: ArticleListFilter) {
     setArticleListFilter(nextFilter);
     setSelected((current) =>
-      current && articleMatchesListFilter(current.article, nextFilter)
+      current &&
+      articleMatchesListFilter(current.article, nextFilter) &&
+      articleMatchesKnowledgeCollectionFilter(
+        current.article.collectionIds,
+        collections,
+        {
+          categoryId: articleCategoryFilterId,
+          subcategoryId: articleSubcategoryFilterId,
+        },
+      )
+        ? current
+        : null,
+    );
+  }
+
+  function changeArticleCategoryFilter(nextCategoryId: string) {
+    const nextCategory = rootCollections.find(
+      (collection) => collection.id === nextCategoryId,
+    );
+    const categoryId = nextCategory?.id ?? "";
+    setArticleCategoryFilterId(categoryId);
+    setArticleSubcategoryFilterId("");
+    setSelected((current) =>
+      current &&
+      articleMatchesListFilter(current.article, articleListFilter) &&
+      articleMatchesKnowledgeCollectionFilter(
+        current.article.collectionIds,
+        collections,
+        { categoryId, subcategoryId: "" },
+      )
+        ? current
+        : null,
+    );
+  }
+
+  function changeArticleSubcategoryFilter(nextSubcategoryId: string) {
+    const nextSubcategory = articleFilterSubcategoryCollections.find(
+      (collection) => collection.id === nextSubcategoryId,
+    );
+    const subcategoryId = nextSubcategory?.id ?? "";
+    setArticleSubcategoryFilterId(subcategoryId);
+    setSelected((current) =>
+      current &&
+      articleMatchesListFilter(current.article, articleListFilter) &&
+      articleMatchesKnowledgeCollectionFilter(
+        current.article.collectionIds,
+        collections,
+        {
+          categoryId: articleCategoryFilterId,
+          subcategoryId,
+        },
+      )
         ? current
         : null,
     );
@@ -1924,7 +2039,10 @@ export function KnowledgeBase({
     ? visibleKnowledgeArticleRevision(detailArticle, selected?.revision)
     : null;
   const articleCountLabel = `${visibleArticles.length} Artikel`;
-  const isListFiltered = articleListFilter !== "all";
+  const isListFiltered =
+    articleListFilter !== "all" ||
+    articleCategoryFilterId.length > 0 ||
+    articleSubcategoryFilterId.length > 0;
   const previewTitle = draft.title.trim() || "Titel des Artikels";
 
   return (
@@ -2021,6 +2139,63 @@ export function KnowledgeBase({
                 ))}
               </select>
             </label>
+            {collectionAssignmentReady ? (
+              <>
+                <label className="knowledge-base__filter">
+                  Kategorie
+                  <select
+                    aria-label="Wissensartikel nach Kategorie filtern"
+                    disabled={
+                      loadingList || isBusy || rootCollections.length === 0
+                    }
+                    onChange={(event) =>
+                      changeArticleCategoryFilter(event.target.value)
+                    }
+                    value={articleCategoryFilterId}
+                  >
+                    <option value="">
+                      {rootCollections.length > 0
+                        ? "Alle Kategorien"
+                        : "Keine Kategorien vorhanden"}
+                    </option>
+                    {rootCollections.map((collection) => (
+                      <option key={collection.id} value={collection.id}>
+                        {collection.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="knowledge-base__filter">
+                  Unterkategorie
+                  <select
+                    aria-label="Wissensartikel nach Unterkategorie filtern"
+                    disabled={
+                      loadingList ||
+                      isBusy ||
+                      !articleFilterCategory ||
+                      articleFilterSubcategoryCollections.length === 0
+                    }
+                    onChange={(event) =>
+                      changeArticleSubcategoryFilter(event.target.value)
+                    }
+                    value={articleSubcategoryFilterId}
+                  >
+                    <option value="">
+                      {articleFilterCategory
+                        ? articleFilterSubcategoryCollections.length > 0
+                          ? "Alle Unterkategorien"
+                          : "Keine Unterkategorien vorhanden"
+                        : "Zuerst Kategorie wählen"}
+                    </option>
+                    {articleFilterSubcategoryCollections.map((collection) => (
+                      <option key={collection.id} value={collection.id}>
+                        {collection.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </>
+            ) : null}
           </div>
           <div className="knowledge-base__toolbar-actions">
             <button

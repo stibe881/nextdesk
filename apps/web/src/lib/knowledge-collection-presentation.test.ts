@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  articleMatchesKnowledgeCollectionFilter,
   formatKnowledgeCollectionPaths,
   visibleKnowledgeArticleRevision,
 } from "./knowledge-collection-presentation";
@@ -50,6 +51,55 @@ describe("Wissenskategorie-Darstellung", () => {
         collections,
       ),
     ).toEqual([]);
+  });
+});
+
+describe("Wissenskategorie-Filter", () => {
+  it("findet über eine Kategorie direkte und untergeordnete Artikelzuordnungen", () => {
+    expect(
+      articleMatchesKnowledgeCollectionFilter(["hardware"], collections, {
+        categoryId: "hardware",
+        subcategoryId: "",
+      }),
+    ).toBe(true);
+    expect(
+      articleMatchesKnowledgeCollectionFilter(
+        ["hardware-drucker"],
+        collections,
+        { categoryId: "hardware", subcategoryId: "" },
+      ),
+    ).toBe(true);
+  });
+
+  it("grenzt eine Unterkategorie auf ihre exakte Zuordnung ein", () => {
+    expect(
+      articleMatchesKnowledgeCollectionFilter(
+        ["hardware-drucker"],
+        collections,
+        { categoryId: "hardware", subcategoryId: "hardware-drucker" },
+      ),
+    ).toBe(true);
+    expect(
+      articleMatchesKnowledgeCollectionFilter(["hardware"], collections, {
+        categoryId: "hardware",
+        subcategoryId: "hardware-drucker",
+      }),
+    ).toBe(false);
+  });
+
+  it("findet bei unbekannten, inaktiven oder unvollständigen Filtern nichts", () => {
+    expect(
+      articleMatchesKnowledgeCollectionFilter(["hardware"], collections, {
+        categoryId: "legacy",
+        subcategoryId: "",
+      }),
+    ).toBe(false);
+    expect(
+      articleMatchesKnowledgeCollectionFilter(["orphan"], collections, {
+        categoryId: "",
+        subcategoryId: "orphan",
+      }),
+    ).toBe(false);
   });
 });
 
