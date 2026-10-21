@@ -7,12 +7,17 @@ import {
   type FormEvent,
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
+import { FolderOpen } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { functionErrorMessage } from "./lib/function-error";
 import {
   buildKnowledgeArticleSaveRequest,
   type KnowledgeArticleSaveRequest,
 } from "./lib/knowledge-article-save";
+import {
+  formatKnowledgeCollectionPaths,
+  visibleKnowledgeArticleRevision,
+} from "./lib/knowledge-collection-presentation";
 import {
   knowledgeEditorDialogTabIndex,
   shouldCloseKnowledgeEditor,
@@ -1912,6 +1917,12 @@ export function KnowledgeBase({
     ? "Wissensartikel bearbeiten"
     : "Neuen Wissensartikel anlegen";
   const detailArticle = selected?.article;
+  const detailCollectionPaths = detailArticle
+    ? formatKnowledgeCollectionPaths(detailArticle.collectionIds, collections)
+    : [];
+  const detailRevision = detailArticle
+    ? visibleKnowledgeArticleRevision(detailArticle, selected?.revision)
+    : null;
   const articleCountLabel = `${visibleArticles.length} Artikel`;
   const isListFiltered = articleListFilter !== "all";
   const previewTitle = draft.title.trim() || "Titel des Artikels";
@@ -2050,39 +2061,67 @@ export function KnowledgeBase({
                   className="knowledge-base__list"
                   aria-label="Wissensartikel"
                 >
-                  {visibleArticles.map(({ article, revision }) => (
-                    <li key={article.id}>
-                      <button
-                        aria-current={
-                          selectedArticleId === article.id || undefined
-                        }
-                        className="knowledge-base__article-button"
-                        disabled={isBusy}
-                        onClick={() => void openArticle(article.id)}
-                        type="button"
-                      >
-                        <span className="knowledge-base__article-card-top">
-                          <span
-                            className={`knowledge-base__badge knowledge-base__badge--${article.status}`}
-                          >
-                            {statusLabels[article.status]}
+                  {visibleArticles.map(({ article, revision }) => {
+                    const collectionPaths = formatKnowledgeCollectionPaths(
+                      article.collectionIds,
+                      collections,
+                    );
+                    const visibleRevision = visibleKnowledgeArticleRevision(
+                      article,
+                      revision,
+                    );
+
+                    return (
+                      <li key={article.id}>
+                        <button
+                          aria-current={
+                            selectedArticleId === article.id || undefined
+                          }
+                          className="knowledge-base__article-button"
+                          disabled={isBusy}
+                          onClick={() => void openArticle(article.id)}
+                          type="button"
+                        >
+                          <span className="knowledge-base__article-card-top">
+                            <span className="knowledge-base__article-card-badges">
+                              <span
+                                className={`knowledge-base__badge knowledge-base__badge--${article.status}`}
+                              >
+                                {statusLabels[article.status]}
+                              </span>
+                              <span
+                                className={`knowledge-base__badge${article.visibility === "external" ? " knowledge-base__badge--external" : ""}`}
+                              >
+                                {visibilityLabels[article.visibility]}
+                              </span>
+                            </span>
+                            {visibleRevision !== null ? (
+                              <span className="knowledge-base__article-version">
+                                Version {visibleRevision}
+                              </span>
+                            ) : null}
                           </span>
-                          <span
-                            className={`knowledge-base__badge${article.visibility === "external" ? " knowledge-base__badge--external" : ""}`}
-                          >
-                            {visibilityLabels[article.visibility]}
+                          <h3>{article.title}</h3>
+                          <p className="knowledge-base__article-excerpt">
+                            {shortBody(revision?.body ?? null)}
+                          </p>
+                          {collectionPaths.length > 0 ? (
+                            <span className="knowledge-base__article-collections">
+                              <FolderOpen
+                                aria-hidden="true"
+                                size={14}
+                                strokeWidth={1.8}
+                              />
+                              <span>{collectionPaths.join(" · ")}</span>
+                            </span>
+                          ) : null}
+                          <span className="knowledge-base__article-link">
+                            Artikel lesen <span aria-hidden="true">→</span>
                           </span>
-                        </span>
-                        <h3>{article.title}</h3>
-                        <p className="knowledge-base__article-excerpt">
-                          {shortBody(revision?.body ?? null)}
-                        </p>
-                        <span className="knowledge-base__article-link">
-                          Artikel lesen <span aria-hidden="true">→</span>
-                        </span>
-                      </button>
-                    </li>
-                  ))}
+                        </button>
+                      </li>
+                    );
+                  })}
                 </ul>
               )}
             </div>
@@ -2101,9 +2140,6 @@ export function KnowledgeBase({
                       <p className="eyebrow">
                         Wissensdatenbank · Wissensartikel
                       </p>
-                      <h3 id="knowledge-article-detail-heading">
-                        {detailArticle.title}
-                      </h3>
                       <p className="knowledge-base__meta">
                         <span
                           className={`knowledge-base__badge knowledge-base__badge--${detailArticle.status}`}
@@ -2115,9 +2151,13 @@ export function KnowledgeBase({
                         >
                           {visibilityLabels[detailArticle.visibility]}
                         </span>
+                        {detailRevision !== null ? (
+                          <span className="knowledge-base__detail-version">
+                            Version {detailRevision}
+                          </span>
+                        ) : null}
                         <span>
-                          Revision {selected.revision.revision} · Aktualisiert{" "}
-                          {formatDate(detailArticle.updatedAt)}
+                          Aktualisiert {formatDate(detailArticle.updatedAt)}
                         </span>
                         {detailArticle.publishedRevision ? (
                           <span>
@@ -2126,6 +2166,19 @@ export function KnowledgeBase({
                           </span>
                         ) : null}
                       </p>
+                      {detailCollectionPaths.length > 0 ? (
+                        <p className="knowledge-base__detail-collections">
+                          <FolderOpen
+                            aria-hidden="true"
+                            size={16}
+                            strokeWidth={1.8}
+                          />
+                          <span>{detailCollectionPaths.join(" · ")}</span>
+                        </p>
+                      ) : null}
+                      <h3 id="knowledge-article-detail-heading">
+                        {detailArticle.title}
+                      </h3>
                     </div>
                   </div>
                   <article

@@ -341,3 +341,18 @@ Teams gehören immer zu genau einer aktiven Abteilung. Mandantenadministrationen
 ## Arbeitsplatz: Stellvertretung
 
 Die Stellvertretung lädt die erlaubten Zielpersonen über eine eigene, JWT-geschützte Serveraktion. Diese gibt nur aktive Agenten desselben Mandanten zurück und validiert das Ziel beim Speichern nochmals serverseitig. Der Browser leitet aus einer Personenliste weder Berechtigungen noch Mitgliedschaften ab.
+
+## Wissensdatenbank: Kategorien, Unterkategorien und Versionen in der Lesedarstellung
+
+Die bestehende, serverautorisierte Artikelliste enthält die Artikelzuordnungen `collectionIds`; die bereits mandantengefencete Kategorienliste liefert dazu `id`, `name`, `parentId` und `active`. Die Weboberfläche löst diese beiden bereits geladenen Antworten ausschliesslich lokal für die Darstellung zusammen. Sie führt keine zusätzliche Kategorien- oder Artikelabfrage aus und leitet daraus keine Berechtigung, Sichtbarkeit oder Veröffentlichung ab.
+
+Eine kleine reine Hilfslogik akzeptiert nur aktive, bekannte Kategorien. Sie zeigt eine Oberkategorie eigenständig oder eine Unterkategorie mit ihrer bekannten aktiven Oberkategorie im Format `Kategorie · Unterkategorie`. Unbekannte, inaktive oder strukturell ungültige Zuordnungen bleiben leer; Namen werden nie geraten. Die gleiche Hilfslogik bestimmt die sichtbare Versionsnummer: die vom Backend gelieferte Revision hat Vorrang, andernfalls fällt eine interne Darstellung auf die aktuelle und eine externe Darstellung nur auf die veröffentlichte Revision zurück.
+
+Artikelkarten behalten Status und Sichtbarkeit bei und ergänzen eine kompakte Zeile `Version n` sowie eine sekundäre Ordnerzeile für die Kategoriehierarchie. Die Detailansicht setzt Sichtbarkeit, Version, Aktualisierung und Kategorien vor den Titel und den Markdown-Inhalt, analog zur iOS-Reihenfolge. Die bestehende nextDesk-Leseoberfläche erhält dafür nur scoped, responsive Stile mit Umbruchschutz für lange Kategorienamen; es gibt keine Datenbank-, Function-, Berechtigungs- oder Releaseänderung.
+
+### Projektstruktur
+
+- `apps/web/src/lib/knowledge-collection-presentation.ts`: reine, testbare und fehlertolerante Auflösung von sichtbaren Kategoriepfaden und der tatsächlich sichtbaren Revision.
+- `apps/web/src/lib/knowledge-collection-presentation.test.ts`: Regressionen für Hierarchie, unbekannte oder inaktive IDs sowie interne und externe Versionsrückfälle.
+- `apps/web/src/knowledge-base.tsx`: Verwendung der bereits autorisiert geladenen Artikelliste und Kategorien in Karten und Detailansicht.
+- `apps/web/src/styles.css`: scoped Metadaten- und Ordnerzeilen für Karten und Detailansicht.
