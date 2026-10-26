@@ -521,3 +521,7 @@ Die Wissenswerkzeugleiste wird nach der Nutzungshäufigkeit gegliedert: Die Voll
 Die Abteilungsregister bei «Priorisierte Tickets» und in der Ticketliste werden nicht mehr aus einer allgemeinen Browserabfrage aller aktiven Abteilungen aufgebaut. Der vorhandene serverautorisierte Agentenverzeichnisvertrag prüft bereits pro Abteilung die Berechtigung `ticket.read.department`. Er liefert künftig ausschliesslich die dabei bestätigten Abteilungskennungen, Schlüssel und Namen zurück. Der Webclient verwendet genau diese autorisierte Liste für Queue-Register, Abteilungsfilter und die bereits vorhandene Weiterleitung aus Team-Queues; er leitet weder Abteilungszugriffe aus Rollen noch aus aktuell geladenen Tickets ab. Bei einer fehlenden oder ungültigen Katalogantwort zeigt die Oberfläche keine Abteilungsregister und errät keine Abteilung.
 
 Die Umsetzung enthält zusätzlich einen verhaltensbasierten Edge-Test: Eine ausdrücklich erlaubte Abteilung erscheint, eine verweigerte oder fehlende Entscheidung nicht. Der anfängliche textbasierte Reviewbefund ist damit behoben.
+
+## Abstand zwischen Filterauslöser und Queue-Leiste
+
+Der einzelne Trichter-Auslöser bleibt als kompakte Aktion rechts oberhalb der Ticketliste. Er erhält jedoch eine eigene vertikale Luftzone, sodass die Queue-Register «Alle Queues» und die folgenden Ticketkarten klar davon getrennt beginnen. Es ändern sich ausschliesslich Abstand und visuelle Hierarchie; Filterpanel, Queueauswahl, serverautorisierte Ticketmenge, gespeicherte Ansichten, Berechtigungen und Tastaturbedienung bleiben unverändert.

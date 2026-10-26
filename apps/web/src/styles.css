@@ -7897,7 +7897,7 @@ body:has(.ticket-detail) {
 .ticket-list-filters {
   display: flex;
   justify-content: flex-end;
-  margin: 10px 22px 0;
+  margin: 14px 22px 20px;
 }
 
 .ticket-list-filters__trigger {
@@ -8381,7 +8381,7 @@ body:has(.ticket-list-filter-panel) {
   }
 
   .ticket-list-filters {
-    margin: 8px 12px 0;
+    margin: 12px 12px 16px;
   }
 
   .ticket-list-filter-panel-backdrop {
