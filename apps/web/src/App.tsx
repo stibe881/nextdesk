@@ -25,6 +25,7 @@ import {
   ClipboardList,
   CircleCheck,
   CircleEllipsis,
+  Filter,
   FileWarning,
   FileText,
   LayoutDashboard,
@@ -5432,7 +5433,10 @@ function TicketListFilters({
   query: string;
   statuses: readonly string[];
 }) {
-  const [showControls, setShowControls] = useState(false);
+  const [isPanelOpen, setIsPanelOpen] = useState(false);
+  const panelRef = useRef<HTMLElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const activeControlCount = [
     filters.agent !== "all",
     filters.status !== "all",
@@ -5441,149 +5445,260 @@ function TicketListFilters({
     filters.sortBy !== "updated",
     filters.sortDirection !== "desc",
   ].filter(Boolean).length;
+  const activeFilterCount =
+    activeControlCount + Number(query.trim().length > 0);
   const update = <Key extends keyof TicketListRefinement>(
     key: Key,
     value: TicketListRefinement[Key],
   ) => onChange({ ...filters, [key]: value });
 
+  const closePanel = () => {
+    setIsPanelOpen(false);
+    window.requestAnimationFrame(() => triggerRef.current?.focus());
+  };
+
+  useEffect(() => {
+    if (!isPanelOpen) return;
+    const frame = window.requestAnimationFrame(() =>
+      (searchInputRef.current ?? panelRef.current)?.focus(),
+    );
+    return () => window.cancelAnimationFrame(frame);
+  }, [isPanelOpen]);
+
   const clear = () => {
     onClear();
-    setShowControls(false);
+  };
+
+  const handlePanelKeyDown = (event: ReactKeyboardEvent<HTMLElement>) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      closePanel();
+      return;
+    }
+    if (event.key !== "Tab") {
+      event.stopPropagation();
+      return;
+    }
+
+    const focusableElements = Array.from(
+      event.currentTarget.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ),
+    );
+    const firstFocusableElement = focusableElements[0];
+    const lastFocusableElement =
+      focusableElements[focusableElements.length - 1];
+    if (!firstFocusableElement || !lastFocusableElement) {
+      event.stopPropagation();
+      return;
+    }
+
+    if (event.shiftKey && document.activeElement === firstFocusableElement) {
+      event.preventDefault();
+      event.stopPropagation();
+      lastFocusableElement.focus();
+      return;
+    }
+    if (!event.shiftKey && document.activeElement === lastFocusableElement) {
+      event.preventDefault();
+      event.stopPropagation();
+      firstFocusableElement.focus();
+      return;
+    }
+
+    event.stopPropagation();
   };
 
   return (
-    <section
-      aria-labelledby="ticket-filter-heading"
-      className="ticket-list-filters"
-    >
-      <div className="ticket-list-filters__heading">
-        <h3 id="ticket-filter-heading">Tickets durchsuchen</h3>
-        <div className="ticket-list-filters__actions">
-          <button
-            aria-controls="ticket-list-filter-controls"
-            aria-expanded={showControls}
-            className="ticket-list-filters__toggle"
-            onClick={() => setShowControls((current) => !current)}
-            type="button"
+    <>
+      <div className="ticket-list-filters">
+        <button
+          aria-controls="ticket-list-filter-panel"
+          aria-expanded={isPanelOpen}
+          aria-haspopup="dialog"
+          aria-label={
+            activeFilterCount > 0
+              ? `Filter & Sortierung öffnen (${activeFilterCount} aktiv)`
+              : "Filter & Sortierung öffnen"
+          }
+          className={
+            activeFilterCount > 0
+              ? "ticket-list-filters__trigger ticket-list-filters__trigger--active"
+              : "ticket-list-filters__trigger"
+          }
+          onClick={() => setIsPanelOpen(true)}
+          ref={triggerRef}
+          title="Filter & Sortierung"
+          type="button"
+        >
+          <Filter aria-hidden="true" size={19} strokeWidth={2} />
+        </button>
+      </div>
+      {isPanelOpen && (
+        <div
+          className="ticket-list-filter-panel-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) closePanel();
+          }}
+        >
+          <section
+            aria-describedby="ticket-list-filter-description"
+            aria-labelledby="ticket-list-filter-heading"
+            aria-modal="true"
+            className="ticket-list-filter-panel"
+            id="ticket-list-filter-panel"
+            onKeyDown={handlePanelKeyDown}
+            ref={panelRef}
+            role="dialog"
+            tabIndex={-1}
           >
-            <SlidersHorizontal aria-hidden="true" size={15} strokeWidth={2} />
-            <span>Filter &amp; Sortierung</span>
-            {activeControlCount > 0 && (
-              <span className="ticket-list-filters__count">
-                {activeControlCount}
-              </span>
-            )}
-          </button>
-          {hasActiveFilters && (
-            <button className="text-button" onClick={clear} type="button">
-              Zurücksetzen
-            </button>
-          )}
+            <header className="ticket-list-filter-panel__header">
+              <div>
+                <p className="eyebrow">TICKETLISTE</p>
+                <h2 id="ticket-list-filter-heading">Filter &amp; Sortierung</h2>
+                <p id="ticket-list-filter-description">
+                  Verfeinern Sie die sichtbaren Tickets nach den gewünschten
+                  Kriterien.
+                </p>
+              </div>
+              <button
+                aria-label="Filter & Sortierung schliessen"
+                className="ticket-list-filter-panel__close"
+                onClick={closePanel}
+                title="Schliessen"
+                type="button"
+              >
+                <X aria-hidden="true" size={20} strokeWidth={2} />
+              </button>
+            </header>
+            <div className="ticket-list-filter-panel__content">
+              <label className="ticket-list-filter-panel__search">
+                <span>Tickets durchsuchen</span>
+                <input
+                  autoComplete="off"
+                  onChange={(event) => onQueryChange(event.target.value)}
+                  placeholder="Ticketnummer, Betreff oder Beschreibung durchsuchen"
+                  ref={searchInputRef}
+                  spellCheck={false}
+                  type="search"
+                  value={query}
+                />
+              </label>
+              <div className="ticket-list-filter-panel__controls">
+                <label>
+                  <span>Agent</span>
+                  <select
+                    onChange={(event) => update("agent", event.target.value)}
+                    value={filters.agent}
+                  >
+                    <option value="all">Alle Agenten</option>
+                    <option value="mine">Mir zugewiesen</option>
+                    <option value="unassigned">Nicht zugewiesen</option>
+                    {agents.map((agent) => (
+                      <option key={agent.id} value={agent.id}>
+                        {agent.displayName}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span>Status</span>
+                  <select
+                    onChange={(event) => update("status", event.target.value)}
+                    value={filters.status}
+                  >
+                    <option value="all">Alle Status</option>
+                    {statuses.map((status) => (
+                      <option key={status} value={status}>
+                        {status}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span>Abteilung</span>
+                  <select
+                    onChange={(event) =>
+                      update("department", event.target.value)
+                    }
+                    value={filters.department}
+                  >
+                    <option value="all">Alle Abteilungen</option>
+                    {departments.map((department) => (
+                      <option key={department.key} value={department.key}>
+                        {department.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span>Priorität</span>
+                  <select
+                    onChange={(event) => update("priority", event.target.value)}
+                    value={filters.priority}
+                  >
+                    <option value="all">Alle Prioritäten</option>
+                    {priorities.map((priority) => (
+                      <option key={priority} value={priority}>
+                        {priority}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span>Sortieren nach</span>
+                  <select
+                    onChange={(event) =>
+                      update("sortBy", event.target.value as TicketSortBy)
+                    }
+                    value={filters.sortBy}
+                  >
+                    <option value="updated">Letzte Änderung</option>
+                    <option value="agent">Agent</option>
+                    <option value="status">Status</option>
+                    <option value="department">Abteilung</option>
+                    <option value="priority">Priorität</option>
+                  </select>
+                </label>
+                <label>
+                  <span>Reihenfolge</span>
+                  <select
+                    onChange={(event) =>
+                      update(
+                        "sortDirection",
+                        event.target.value as TicketSortDirection,
+                      )
+                    }
+                    value={filters.sortDirection}
+                  >
+                    <option value="desc">Absteigend</option>
+                    <option value="asc">Aufsteigend</option>
+                  </select>
+                </label>
+              </div>
+            </div>
+            <footer className="ticket-list-filter-panel__footer">
+              <button
+                className="secondary-button"
+                disabled={!hasActiveFilters}
+                onClick={clear}
+                type="button"
+              >
+                Filter zurücksetzen
+              </button>
+              <button
+                className="primary-button"
+                onClick={closePanel}
+                type="button"
+              >
+                Fertig
+              </button>
+            </footer>
+          </section>
         </div>
-      </div>
-      <label className="ticket-list-filters__search">
-        <span className="sr-only">Ticket-Volltextsuche</span>
-        <input
-          autoComplete="off"
-          onChange={(event) => onQueryChange(event.target.value)}
-          placeholder="Ticketnummer, Betreff oder Beschreibung durchsuchen"
-          spellCheck={false}
-          type="search"
-          value={query}
-        />
-      </label>
-      <div
-        className="ticket-list-filters__controls"
-        hidden={!showControls}
-        id="ticket-list-filter-controls"
-      >
-        <label>
-          <span>Agent</span>
-          <select
-            onChange={(event) => update("agent", event.target.value)}
-            value={filters.agent}
-          >
-            <option value="all">Alle Agenten</option>
-            <option value="mine">Mir zugewiesen</option>
-            <option value="unassigned">Nicht zugewiesen</option>
-            {agents.map((agent) => (
-              <option key={agent.id} value={agent.id}>
-                {agent.displayName}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          <span>Status</span>
-          <select
-            onChange={(event) => update("status", event.target.value)}
-            value={filters.status}
-          >
-            <option value="all">Alle Status</option>
-            {statuses.map((status) => (
-              <option key={status} value={status}>
-                {status}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          <span>Abteilung</span>
-          <select
-            onChange={(event) => update("department", event.target.value)}
-            value={filters.department}
-          >
-            <option value="all">Alle Abteilungen</option>
-            {departments.map((department) => (
-              <option key={department.key} value={department.key}>
-                {department.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          <span>Priorität</span>
-          <select
-            onChange={(event) => update("priority", event.target.value)}
-            value={filters.priority}
-          >
-            <option value="all">Alle Prioritäten</option>
-            {priorities.map((priority) => (
-              <option key={priority} value={priority}>
-                {priority}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          <span>Sortieren nach</span>
-          <select
-            onChange={(event) =>
-              update("sortBy", event.target.value as TicketSortBy)
-            }
-            value={filters.sortBy}
-          >
-            <option value="updated">Letzte Änderung</option>
-            <option value="agent">Agent</option>
-            <option value="status">Status</option>
-            <option value="department">Abteilung</option>
-            <option value="priority">Priorität</option>
-          </select>
-        </label>
-        <label>
-          <span>Reihenfolge</span>
-          <select
-            onChange={(event) =>
-              update("sortDirection", event.target.value as TicketSortDirection)
-            }
-            value={filters.sortDirection}
-          >
-            <option value="desc">Absteigend</option>
-            <option value="asc">Aufsteigend</option>
-          </select>
-        </label>
-      </div>
-    </section>
+      )}
+    </>
   );
 }
 
