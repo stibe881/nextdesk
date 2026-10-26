@@ -27,6 +27,12 @@ type Action =
       attachmentId: string;
     }
   | {
+      type: "createInlineImageUrls";
+      tenantId: string;
+      ticketId: string;
+      attachmentIds: string[];
+    }
+  | {
       type: "delete";
       tenantId: string;
       ticketId: string;
@@ -58,6 +64,7 @@ const UPLOAD_URL_TTL_SECONDS = 2 * 60 * 60;
 const DOWNLOAD_URL_TTL_SECONDS = 10 * 60;
 const MAX_REQUEST_BYTES = 16 * 1024;
 const MAX_FILENAME_LENGTH = 255;
+const MAX_INLINE_IMAGE_URLS = 16;
 const ALLOWED_CONTENT_TYPES = new Set([
   "application/pdf",
   "text/plain",
@@ -166,6 +173,22 @@ function parseByteSize(value: unknown): number | null {
     : null;
 }
 
+function parseAttachmentIds(value: unknown): string[] | null {
+  if (
+    !Array.isArray(value) ||
+    value.length < 1 ||
+    value.length > MAX_INLINE_IMAGE_URLS
+  ) {
+    return null;
+  }
+  const attachmentIds = value.map(canonicalUuid);
+  return attachmentIds.every((attachmentId): attachmentId is string =>
+    Boolean(attachmentId),
+  ) && new Set(attachmentIds).size === attachmentIds.length
+    ? attachmentIds
+    : null;
+}
+
 function parseAction(value: unknown): Action | null {
   if (!isRecord(value) || typeof value.type !== "string") return null;
   const tenantId = canonicalUuid(value.tenantId);
@@ -243,6 +266,16 @@ function parseAction(value: unknown): Action | null {
     const attachmentId = canonicalUuid(value.attachmentId);
     if (!attachmentId) return null;
     return { type: value.type, tenantId, ticketId, attachmentId };
+  }
+
+  if (
+    value.type === "createInlineImageUrls" &&
+    hasOnlyKeys(value, ["type", "tenantId", "ticketId", "attachmentIds"])
+  ) {
+    const attachmentIds = parseAttachmentIds(value.attachmentIds);
+    return attachmentIds
+      ? { type: value.type, tenantId, ticketId, attachmentIds }
+      : null;
   }
 
   return null;
@@ -450,6 +483,65 @@ const handler = withSupabase(
           500,
         );
       return json(request, { data: { attachments: attachments ?? [] } });
+    }
+
+    if (action.type === "createInlineImageUrls") {
+      const { data: attachments, error: attachmentError } = await admin
+        .from("ticket_attachments")
+        .select(
+          "id, ticket_id, storage_bucket, storage_object_path, original_filename, content_type, byte_size, uploaded_by, created_at, inline_content_id",
+        )
+        .eq("ticket_id", ticket.id)
+        .in("id", action.attachmentIds)
+        .eq("malware_status", "clean")
+        .not("inline_content_id", "is", null);
+      if (attachmentError)
+        return json(
+          request,
+          { error: { code: "inline_attachment_lookup_failed" } },
+          500,
+        );
+
+      const inlineImages: Array<{
+        attachmentId: string;
+        originalFilename: string;
+        signedUrl: string;
+      }> = [];
+      for (const attachment of attachments ?? []) {
+        const typedAttachment = attachment as Attachment & {
+          inline_content_id?: string | null;
+        };
+        if (
+          typedAttachment.inline_content_id === null ||
+          typedAttachment.inline_content_id === undefined ||
+          !["image/png", "image/jpeg", "image/webp"].includes(
+            typedAttachment.content_type,
+          ) ||
+          typedAttachment.storage_bucket !== BUCKET ||
+          !isTicketStoragePath(
+            typedAttachment.storage_object_path,
+            ticket.tenant_id,
+            ticket.id,
+          )
+        ) {
+          continue;
+        }
+        const { data: signed, error: signedError } = await admin.storage
+          .from(BUCKET)
+          .createSignedUrl(
+            typedAttachment.storage_object_path,
+            DOWNLOAD_URL_TTL_SECONDS,
+          );
+        if (signedError || !signed?.signedUrl) continue;
+        inlineImages.push({
+          attachmentId: typedAttachment.id,
+          originalFilename: typedAttachment.original_filename,
+          signedUrl: signed.signedUrl,
+        });
+      }
+      return json(request, {
+        data: { expiresIn: DOWNLOAD_URL_TTL_SECONDS, inlineImages },
+      });
     }
 
     if (action.type === "createDownloadUrl") {

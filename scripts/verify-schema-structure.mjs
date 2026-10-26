@@ -108,6 +108,8 @@ const expectedFiles = [
   "0104_ticket_notification_recipient_authorization.sql",
   "0105_knowledge_taxonomy_fulltext_search.sql",
   "0106_service_status_page.sql",
+  "0107_exchange_mail_inline_attachments.sql",
+  "0108_exchange_mail_inline_media_recovery.sql",
 ];
 
 const availableFiles = await readdir(migrationDirectory);
@@ -246,6 +248,18 @@ const requiredFragments = [
   [
     "0018_private_ticket_attachments_storage.sql",
     "insert into storage.buckets",
+  ],
+  [
+    "0107_exchange_mail_inline_attachments.sql",
+    "add column if not exists inline_content_id text",
+  ],
+  [
+    "0107_exchange_mail_inline_attachments.sql",
+    "ticket_attachments_inline_content_lookup_idx",
+  ],
+  [
+    "0108_exchange_mail_inline_media_recovery.sql",
+    "mail_messages_inline_media_recovery_idx",
   ],
   [
     "0019_services_assets_and_problem_management.sql",

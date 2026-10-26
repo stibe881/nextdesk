@@ -6753,5 +6753,57 @@ begin
 end;
 $$;
 rollback;
+
+-- Exchange-Inlinebilder bleiben private Ticketanhänge. Die Content-ID ist nur
+-- ein begrenztes, nicht ausführbares Zuordnungsmerkmal und akzeptiert weder
+-- Leerzeichen noch Markersteuerzeichen.
+begin;
+insert into public.ticket_attachments (
+  id, ticket_id, uploaded_by, storage_bucket, storage_object_path,
+  original_filename, content_type, byte_size, malware_status, inline_content_id
+) values (
+  '6f000000-0000-4000-8000-000000000001',
+  '17000000-0000-4000-8000-000000000001',
+  '00000000-0000-4000-8000-000000000002',
+  'ticket-attachments',
+  '10000000-0000-4000-8000-000000000001/17000000-0000-4000-8000-000000000001/6f000000-0000-4000-8000-000000000002',
+  'logo.png',
+  'image/png',
+  42,
+  'clean',
+  'logo-1@mail'
+);
+do $$
+begin
+  if not exists (
+    select 1
+    from public.ticket_attachments
+    where id = '6f000000-0000-4000-8000-000000000001'
+      and inline_content_id = 'logo-1@mail'
+  ) then
+    raise exception 'Exchange inline Content-ID was not persisted privately';
+  end if;
+  begin
+    insert into public.ticket_attachments (
+      ticket_id, uploaded_by, storage_bucket, storage_object_path,
+      original_filename, content_type, byte_size, malware_status, inline_content_id
+    ) values (
+      '17000000-0000-4000-8000-000000000001',
+      '00000000-0000-4000-8000-000000000002',
+      'ticket-attachments',
+      '10000000-0000-4000-8000-000000000001/17000000-0000-4000-8000-000000000001/6f000000-0000-4000-8000-000000000003',
+      'invalid-logo.png',
+      'image/png',
+      42,
+      'clean',
+      'invalid cid]'
+    );
+    raise exception 'Unsafe Exchange inline Content-ID was accepted';
+  exception when check_violation then
+    null;
+  end;
+end;
+$$;
+rollback;
 SQL
 echo "PostgreSQL 16 migration and RLS integration checks passed."

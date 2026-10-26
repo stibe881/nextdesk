@@ -33,6 +33,11 @@ import {
   updateTicketCommentDraft,
   type TicketCommentComposerContext,
 } from "./lib/ticket-comment-composer";
+import {
+  isTrustedTicketInlineImageUrl,
+  ticketInlineAttachmentIds,
+  ticketInlineMediaSegments,
+} from "./lib/ticket-inline-media";
 import { supabase } from "./lib/supabase";
 import { TicketApprovals } from "./ticket-approvals";
 import { TicketComparison } from "./ticket-comparison";
@@ -254,6 +259,12 @@ type TicketAttachmentAction =
       tenantId: string;
       ticketId: string;
       attachmentId: string;
+    }
+  | {
+      type: "createInlineImageUrls";
+      tenantId: string;
+      ticketId: string;
+      attachmentIds: string[];
     }
   | {
       type: "delete";
@@ -486,6 +497,12 @@ type AttachmentUpload = {
   signedUrl: string;
   contentType: string;
   byteSize: number;
+};
+
+type TicketInlineImage = {
+  attachmentId: string;
+  originalFilename: string;
+  signedUrl: string;
 };
 
 type TicketSatisfaction = {
@@ -1249,6 +1266,101 @@ function parseAttachmentDownloadUrl(value: unknown): string | null {
   const envelope = asRecord(value);
   const data = asRecord(envelope?.data);
   return isHttpsUrl(data?.signedUrl) ? data.signedUrl : null;
+}
+
+function parseTicketInlineImages(value: unknown): TicketInlineImage[] | null {
+  const envelope = asRecord(value);
+  const data = asRecord(envelope?.data);
+  if (
+    !data ||
+    !hasOnlyKeys(data, ["expiresIn", "inlineImages"]) ||
+    !Array.isArray(data.inlineImages)
+  ) {
+    return null;
+  }
+  const images = data.inlineImages.flatMap((item) => {
+    const image = asRecord(item);
+    if (
+      !image ||
+      !isUuid(image.attachmentId) ||
+      typeof image.originalFilename !== "string" ||
+      !image.originalFilename.trim() ||
+      !isTrustedTicketInlineImageUrl(
+        image.signedUrl,
+        import.meta.env.VITE_SUPABASE_URL,
+      )
+    ) {
+      return [];
+    }
+    return [
+      {
+        attachmentId: image.attachmentId.toLowerCase(),
+        originalFilename: image.originalFilename,
+        signedUrl: image.signedUrl,
+      },
+    ];
+  });
+  return images.length === data.inlineImages.length ? images : null;
+}
+
+function TicketTextWithInlineImages({
+  body,
+  imagesByAttachmentId,
+  loading,
+  onImageError,
+}: {
+  body: string;
+  imagesByAttachmentId: Readonly<Record<string, TicketInlineImage>>;
+  loading: boolean;
+  onImageError: (attachmentId: string) => void;
+}) {
+  return (
+    <div className="ticket-rendered-body">
+      {ticketInlineMediaSegments(body).map((segment, index) => {
+        if (segment.kind === "text") {
+          return (
+            <span className="ticket-rendered-body__text" key={`text-${index}`}>
+              {segment.value}
+            </span>
+          );
+        }
+        const image = imagesByAttachmentId[segment.attachmentId];
+        if (image) {
+          return (
+            <figure
+              className="ticket-inline-email-image"
+              key={`image-${segment.attachmentId}-${index}`}
+            >
+              <img
+                alt={image.originalFilename}
+                decoding="async"
+                loading="lazy"
+                onError={() => onImageError(segment.attachmentId)}
+                referrerPolicy="no-referrer"
+                src={image.signedUrl}
+              />
+            </figure>
+          );
+        }
+        return loading ? (
+          <span
+            className="ticket-inline-email-image__status"
+            key={`image-${segment.attachmentId}-${index}`}
+            role="status"
+          >
+            Eingebettetes Bild wird geladen …
+          </span>
+        ) : (
+          <span
+            className="ticket-inline-email-image__status"
+            key={`image-${segment.attachmentId}-${index}`}
+          >
+            Eingebettetes Bild ist nicht verfügbar.
+          </span>
+        );
+      })}
+    </div>
+  );
 }
 
 function isTicketSatisfaction(value: unknown): value is TicketSatisfaction {
@@ -3353,6 +3465,10 @@ export function TicketDetail({
   const [attachmentsLoading, setAttachmentsLoading] = useState(false);
   const [attachmentsLoaded, setAttachmentsLoaded] = useState(false);
   const [attachmentError, setAttachmentError] = useState("");
+  const [inlineImagesByAttachmentId, setInlineImagesByAttachmentId] = useState<
+    Record<string, TicketInlineImage>
+  >({});
+  const [inlineImagesLoading, setInlineImagesLoading] = useState(false);
   const [selectedAttachmentFile, setSelectedAttachmentFile] =
     useState<File | null>(null);
   const [pendingAttachmentAction, setPendingAttachmentAction] =
@@ -3393,6 +3509,7 @@ export function TicketDetail({
   const [affectedItemsLoaded, setAffectedItemsLoaded] = useState(false);
   const [affectedItemsError, setAffectedItemsError] = useState("");
   const [selectedCatalogItemKey, setSelectedCatalogItemKey] = useState("");
+  const [inlineImageRefreshToken, setInlineImageRefreshToken] = useState(0);
   const [pendingCatalogAction, setPendingCatalogAction] =
     useState<PendingCatalogAction>(null);
   const [pendingCatalogItemKey, setPendingCatalogItemKey] = useState<
@@ -3400,6 +3517,8 @@ export function TicketDetail({
   >(null);
   const requestSequence = useRef(0);
   const attachmentRequestSequence = useRef(0);
+  const inlineImageRequestSequence = useRef(0);
+  const inlineImageErrorRefreshes = useRef(new Set<string>());
   const feedbackRequestSequence = useRef(0);
   const qualityRequestSequence = useRef(0);
   const handoverRequestSequence = useRef(0);
@@ -3432,6 +3551,22 @@ export function TicketDetail({
       detail.canUseInternalNotes ||
       detail.canEscalate === true),
   );
+  const inlineAttachmentIds = useMemo(
+    () =>
+      detail
+        ? ticketInlineAttachmentIds([
+            detail.ticket.description,
+            ...detail.comments.map((comment) => comment.body),
+          ])
+        : [],
+    [detail?.comments, detail?.ticket.description],
+  );
+  const inlineAttachmentIdsKey = inlineAttachmentIds.join(",");
+  const refreshInlineImageAfterError = useCallback((attachmentId: string) => {
+    if (inlineImageErrorRefreshes.current.has(attachmentId)) return;
+    inlineImageErrorRefreshes.current.add(attachmentId);
+    setInlineImageRefreshToken((current) => current + 1);
+  }, []);
   const commentBody = ticketCommentDraftForMode(
     commentDrafts,
     commentVisibility,
@@ -3953,6 +4088,56 @@ export function TicketDetail({
       requestSequence.current += 1;
     };
   }, [loadTicket]);
+
+  useEffect(() => {
+    inlineImageErrorRefreshes.current.clear();
+  }, [inlineAttachmentIdsKey, tenantId, ticketId]);
+
+  useEffect(() => {
+    const requestId = ++inlineImageRequestSequence.current;
+    setInlineImagesByAttachmentId({});
+    if (!inlineAttachmentIdsKey) {
+      setInlineImagesLoading(false);
+      return;
+    }
+
+    setInlineImagesLoading(true);
+    void invokeTicketAttachmentAction({
+      type: "createInlineImageUrls",
+      tenantId,
+      ticketId,
+      attachmentIds: inlineAttachmentIds,
+    })
+      .then((response) => {
+        const images = parseTicketInlineImages(response);
+        if (!images || requestId !== inlineImageRequestSequence.current) return;
+        setInlineImagesByAttachmentId(
+          Object.fromEntries(
+            images.map((image) => [image.attachmentId, image]),
+          ),
+        );
+      })
+      .catch(() => {
+        if (requestId === inlineImageRequestSequence.current) {
+          setInlineImagesByAttachmentId({});
+        }
+      })
+      .finally(() => {
+        if (requestId === inlineImageRequestSequence.current) {
+          setInlineImagesLoading(false);
+        }
+      });
+
+    return () => {
+      inlineImageRequestSequence.current += 1;
+    };
+  }, [
+    inlineAttachmentIds,
+    inlineAttachmentIdsKey,
+    inlineImageRefreshToken,
+    tenantId,
+    ticketId,
+  ]);
 
   useEffect(() => {
     if (!detail || !supabase) {
@@ -5844,7 +6029,14 @@ export function TicketDetail({
             <h3 id="ticket-description-heading">Beschreibung</h3>
           </div>
         </div>
-        <p className="ticket-detail-description">{detail.ticket.description}</p>
+        <div className="ticket-detail-description">
+          <TicketTextWithInlineImages
+            body={detail.ticket.description}
+            imagesByAttachmentId={inlineImagesByAttachmentId}
+            loading={inlineImagesLoading}
+            onImageError={refreshInlineImageAfterError}
+          />
+        </div>
       </section>
 
       <section
@@ -5936,7 +6128,12 @@ export function TicketDetail({
                       {formatDateTime(item.created_at)}
                     </time>
                   </div>
-                  <p>{item.body}</p>
+                  <TicketTextWithInlineImages
+                    body={item.body}
+                    imagesByAttachmentId={inlineImagesByAttachmentId}
+                    loading={inlineImagesLoading}
+                    onImageError={refreshInlineImageAfterError}
+                  />
                 </li>
               );
             })}

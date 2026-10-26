@@ -3786,6 +3786,55 @@ body:has(.ticket-detail) {
   white-space: pre-wrap;
 }
 
+.ticket-rendered-body {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.ticket-detail-description .ticket-rendered-body {
+  margin-top: 0;
+  line-height: 1.8;
+}
+
+.ticket-rendered-body__text {
+  min-width: 0;
+  white-space: pre-wrap;
+}
+
+.ticket-inline-email-image {
+  width: fit-content;
+  max-width: min(100%, 560px);
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--surface);
+}
+
+.ticket-inline-email-image img {
+  display: block;
+  width: auto;
+  max-width: 100%;
+  height: auto;
+  max-height: 420px;
+  object-fit: contain;
+}
+
+.ticket-inline-email-image__status {
+  width: fit-content;
+  max-width: 100%;
+  border-left: 3px solid var(--border-tint-0891b2);
+  padding: 7px 10px;
+  color: var(--muted);
+  background: var(--surface-subtle);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 .ticket-detail-selects {
   margin: 18px 0;
 }

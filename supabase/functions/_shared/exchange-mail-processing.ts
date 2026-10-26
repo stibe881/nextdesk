@@ -3,6 +3,11 @@ import {
   delegatedGraphRequest,
   type DelegatedConnection,
 } from "./exchange-delegated-oauth.ts";
+import {
+  normalizeInlineContentId,
+  prepareInboundBodyWithInlineMarkers,
+  resolveInboundInlineMarkers,
+} from "./exchange-inline-media.ts";
 import { resolveTenantFeatureStates } from "./tenant-features.ts";
 
 const SERVICE_EMAIL = "exchange-mail-service@app.nextdesk.ch";
@@ -61,6 +66,16 @@ type Message = {
   recipient_user_id: string | null;
   to_addresses: string[];
   attempt_count: number;
+  inline_media_status?: string | null;
+  inline_media_attempt_count?: number | null;
+};
+
+type InboundAttachment = {
+  bytes: Uint8Array;
+  contentId: string | null;
+  contentType: string;
+  filename: string;
+  size: number;
 };
 
 async function delegatedConnectionForChannel(
@@ -312,6 +327,21 @@ async function recoverStaleProcessing(admin: Admin): Promise<void> {
       })
       .eq("id", item.id)
       .eq("processing_status", "processing");
+  }
+  const staleInline = await admin
+    .from("mail_messages")
+    .select("id, tenant_id, inline_media_attempt_count")
+    .eq("processing_status", "processed")
+    .eq("inline_media_status", "processing")
+    .lt("updated_at", new Date(Date.now() - 15 * 60_000).toISOString())
+    .limit(50);
+  for (const item of (staleInline.data ?? []) as Message[]) {
+    await updateInlineMediaStatus(
+      admin,
+      item,
+      "failed",
+      "inline_media_processing_timeout",
+    );
   }
 }
 
@@ -680,14 +710,11 @@ async function isOtherChannelMailbox(
   return !result.error && Boolean(result.data);
 }
 
-async function createInboundAttachments(
+async function readInboundAttachments(
   admin: Admin,
   channel: Channel,
   graphMessageId: string,
-  ticketId: string,
-  commentId: string | null,
-  serviceIdentityId: string,
-): Promise<void> {
+): Promise<InboundAttachment[]> {
   const mailbox = graphMailboxIdentifier(
     channel.mailbox_object_id,
     channel.mailbox_address,
@@ -695,10 +722,12 @@ async function createInboundAttachments(
   const response = await graphRequestForChannel<Row>(
     admin,
     channel,
-    `/users/${mailbox}/messages/${encodeURIComponent(graphMessageId)}/attachments?$top=${MAX_INBOUND_ATTACHMENTS}`,
+    `/users/${mailbox}/messages/${encodeURIComponent(graphMessageId)}/attachments?$top=${MAX_INBOUND_ATTACHMENTS}&$select=id,name,contentType,size,contentBytes,isInline,contentId`,
   );
   const entries = array(response.data.value).slice(0, MAX_INBOUND_ATTACHMENTS);
+  const attachments: InboundAttachment[] = [];
   let total = 0;
+
   for (const entry of entries) {
     if (entry["@odata.type"] !== "#microsoft.graph.fileAttachment") continue;
     const contentType = asString(entry.contentType)?.toLowerCase();
@@ -715,28 +744,142 @@ async function createInboundAttachments(
       total + size > MAX_INBOUND_TOTAL_BYTES ||
       filename.length > 255 ||
       /[\u0000-\u001f\u007f/\\]/.test(filename)
+    ) {
+      continue;
+    }
+
+    let bytes: Uint8Array;
+    try {
+      bytes = Uint8Array.from(atob(contentBytes), (character) =>
+        character.charCodeAt(0),
+      );
+    } catch {
+      continue;
+    }
+    if (bytes.byteLength !== size) continue;
+    total += size;
+    attachments.push({
+      bytes,
+      contentId:
+        entry.isInline === true &&
+        (contentType === "image/png" ||
+          contentType === "image/jpeg" ||
+          contentType === "image/webp")
+          ? normalizeInlineContentId(entry.contentId)
+          : null,
+      contentType,
+      filename,
+      size,
+    });
+  }
+
+  return attachments;
+}
+
+async function storeInboundAttachments(
+  admin: Admin,
+  channel: Channel,
+  ticketId: string,
+  commentId: string | null,
+  serviceIdentityId: string,
+  attachments: readonly InboundAttachment[],
+): Promise<Map<string, string>> {
+  const attachmentIdByContentId = new Map<string, string>();
+  const inlineContentIds = attachments
+    .map((attachment) => attachment.contentId)
+    .filter((contentId): contentId is string => contentId !== null);
+  if (inlineContentIds.length > 0) {
+    let existing = admin
+      .from("ticket_attachments")
+      .select("id, inline_content_id")
+      .eq("ticket_id", ticketId)
+      .in("inline_content_id", inlineContentIds);
+    existing = commentId
+      ? existing.eq("comment_id", commentId)
+      : existing.is("comment_id", null);
+    const rows = await existing;
+    if (rows.error) throw new Error("inline_attachment_lookup_failed");
+    for (const row of rows.data ?? []) {
+      const id = asString(row.id);
+      const contentId = normalizeInlineContentId(row.inline_content_id);
+      if (id && contentId) attachmentIdByContentId.set(contentId, id);
+    }
+  }
+  for (const attachment of attachments) {
+    if (
+      attachment.contentId &&
+      attachmentIdByContentId.has(attachment.contentId)
     )
       continue;
-    const raw = Uint8Array.from(atob(contentBytes), (character) =>
-      character.charCodeAt(0),
-    );
-    if (raw.byteLength !== size) continue;
-    total += size;
     const path = `${channel.tenant_id}/${ticketId}/${crypto.randomUUID()}`;
     const uploaded = await admin.storage
       .from(BUCKET)
-      .upload(path, raw, { contentType, upsert: false });
-    if (uploaded.error) continue;
-    await admin.from("ticket_attachments").insert({
-      ticket_id: ticketId,
-      comment_id: commentId,
-      uploaded_by: serviceIdentityId,
-      storage_bucket: BUCKET,
-      storage_object_path: path,
-      original_filename: filename,
-      content_type: contentType,
-      byte_size: size,
-    });
+      .upload(path, attachment.bytes, {
+        contentType: attachment.contentType,
+        upsert: false,
+      });
+    if (uploaded.error) {
+      if (attachment.contentId)
+        throw new Error("inline_attachment_upload_failed");
+      continue;
+    }
+    const stored = await admin
+      .from("ticket_attachments")
+      .insert({
+        ticket_id: ticketId,
+        comment_id: commentId,
+        uploaded_by: serviceIdentityId,
+        storage_bucket: BUCKET,
+        storage_object_path: path,
+        original_filename: attachment.filename,
+        content_type: attachment.contentType,
+        byte_size: attachment.size,
+        inline_content_id: attachment.contentId,
+      })
+      .select("id")
+      .maybeSingle();
+    if (stored.error || !asString(stored.data?.id)) {
+      await admin.storage.from(BUCKET).remove([path]);
+      if (attachment.contentId)
+        throw new Error("inline_attachment_store_failed");
+      continue;
+    }
+    if (attachment.contentId) {
+      attachmentIdByContentId.set(attachment.contentId, stored.data.id);
+    }
+  }
+  return attachmentIdByContentId;
+}
+
+async function updateInlineMediaStatus(
+  admin: Admin,
+  message: Message,
+  status: "pending" | "completed" | "failed" | "conflict",
+  errorCode: string | null = null,
+): Promise<void> {
+  const attempts = Number(message.inline_media_attempt_count ?? 0);
+  const nextAttempt = status === "failed" ? attempts + 1 : attempts;
+  const retryAt =
+    status === "pending"
+      ? new Date().toISOString()
+      : status === "failed" && nextAttempt < 6
+        ? new Date(
+            Date.now() + retryDelaySeconds(nextAttempt) * 1000,
+          ).toISOString()
+        : null;
+  const updated = await admin
+    .from("mail_messages")
+    .update({
+      inline_media_status: status,
+      inline_media_attempt_count: nextAttempt,
+      inline_media_next_attempt_at: retryAt,
+      inline_media_last_error_code: errorCode,
+    })
+    .eq("id", message.id)
+    .eq("tenant_id", message.tenant_id)
+    .select("id");
+  if (updated.error || !updated.data?.length) {
+    throw new Error("inline_media_status_update_failed");
   }
 }
 
@@ -982,6 +1125,15 @@ export async function processInboundMessage(
     const contact = await requesterContact(admin, channel.tenant_id, sender);
     stage = "service_identity";
     const serviceIdentityId = await ensureExchangeMailServiceIdentity(admin);
+    const inboundAttachments =
+      graph.hasAttachments === true
+        ? await readInboundAttachments(admin, channel, message.graph_message_id)
+        : [];
+    const hasInlineMedia = inboundAttachments.some(
+      (attachment) => attachment.contentId !== null,
+    );
+    if (hasInlineMedia)
+      await updateInlineMediaStatus(admin, message, "pending");
     const body = cleanText(
       record(graph.uniqueBody)
         ? graph.uniqueBody.content
@@ -989,6 +1141,13 @@ export async function processInboundMessage(
           ? graph.body.content
           : null,
     );
+    const preparedBody = prepareInboundBodyWithInlineMarkers(
+      body,
+      inboundAttachments
+        .map((attachment) => attachment.contentId)
+        .filter((contentId): contentId is string => contentId !== null),
+    );
+    const persistedBody = resolveInboundInlineMarkers(preparedBody, new Map());
     stage = "commit_inbound";
     const committed = await admin.rpc("exchange_mail_commit_inbound", {
       p_tenant_id: channel.tenant_id,
@@ -1001,8 +1160,8 @@ export async function processInboundMessage(
       p_sender: sender,
       p_subject: subject(graph.subject),
       p_body: replyAuthorized
-        ? body
-        : `Eingegangene E-Mail von ${displayNameFromAddress(sender)}\n\n${body}`,
+        ? persistedBody
+        : `Eingegangene E-Mail von ${displayNameFromAddress(sender)}\n\n${persistedBody}`,
       p_internet_message_id: asString(graph.internetMessageId),
       p_conversation_id: asString(graph.conversationId),
       p_to_addresses: array(graph.toRecipients)
@@ -1027,15 +1186,69 @@ export async function processInboundMessage(
       (kind !== "new_ticket" && kind !== "reply")
     )
       throw new Error("inbound_commit_invalid");
-    if (graph.hasAttachments === true) {
-      await createInboundAttachments(
-        admin,
-        channel,
-        message.graph_message_id,
-        ticketId,
-        commentId,
-        serviceIdentityId,
-      ).catch(() => undefined);
+    if (inboundAttachments.length > 0) {
+      let attachmentIdByContentId: Map<string, string>;
+      try {
+        attachmentIdByContentId = await storeInboundAttachments(
+          admin,
+          channel,
+          ticketId,
+          commentId,
+          serviceIdentityId,
+          inboundAttachments,
+        );
+      } catch (attachmentError) {
+        if (hasInlineMedia)
+          await updateInlineMediaStatus(
+            admin,
+            message,
+            "failed",
+            errorCode(attachmentError),
+          );
+        throw attachmentError;
+      }
+      const resolvedBody = resolveInboundInlineMarkers(
+        preparedBody,
+        attachmentIdByContentId,
+      );
+      const resolvedStoredBody = replyAuthorized
+        ? resolvedBody
+        : `Eingegangene E-Mail von ${displayNameFromAddress(sender)}\n\n${resolvedBody}`;
+      if (resolvedStoredBody !== persistedBody) {
+        let updated: { data?: Array<{ id: string }> | null; error?: unknown };
+        if (kind === "reply" && commentId) {
+          updated = await admin
+            .from("ticket_comments")
+            .update({ body: resolvedStoredBody })
+            .eq("id", commentId)
+            .eq("ticket_id", ticketId)
+            .eq("body", persistedBody)
+            .select("id");
+        } else if (kind === "new_ticket") {
+          updated = await admin
+            .from("tickets")
+            .update({ description: resolvedStoredBody })
+            .eq("id", ticketId)
+            .eq("tenant_id", channel.tenant_id)
+            .eq("description", persistedBody)
+            .select("id");
+        } else {
+          updated = { data: [] };
+        }
+        if (updated.error) throw new Error("inline_body_update_failed");
+        if (!updated.data?.length) {
+          if (hasInlineMedia)
+            await updateInlineMediaStatus(
+              admin,
+              message,
+              "conflict",
+              "inline_body_changed",
+            );
+          return;
+        }
+      }
+      if (hasInlineMedia)
+        await updateInlineMediaStatus(admin, message, "completed");
     }
     await audit(
       admin,
@@ -1051,6 +1264,106 @@ export async function processInboundMessage(
     );
   } catch (error) {
     await retryOrFail(admin, message, error, stage);
+  }
+}
+
+async function recoverProcessedInlineMedia(
+  admin: Admin,
+  message: Message,
+): Promise<void> {
+  if (!message.ticket_id || !message.graph_message_id) return;
+  const claimed = await admin
+    .from("mail_messages")
+    .update({ inline_media_status: "processing" })
+    .eq("id", message.id)
+    .eq("tenant_id", message.tenant_id)
+    .eq("processing_status", "processed")
+    .in("inline_media_status", ["pending", "failed"])
+    .select("id");
+  if (claimed.error || !claimed.data?.length) return;
+  try {
+    const channelResult = await admin
+      .from("exchange_mail_channels")
+      .select("*")
+      .eq("id", message.channel_id)
+      .eq("tenant_id", message.tenant_id)
+      .eq("configuration_version", message.exchange_configuration_version)
+      .maybeSingle();
+    const channel = channelResult.data as Channel | null;
+    if (channelResult.error || !channel || channel.status !== "active")
+      throw new Error("channel_inactive");
+    const mailbox = graphMailboxIdentifier(
+      channel.mailbox_object_id,
+      channel.mailbox_address,
+    );
+    const graph = (
+      await graphRequestForChannel<Row>(
+        admin,
+        channel,
+        `/users/${mailbox}/messages/${encodeURIComponent(message.graph_message_id)}?$select=from,sender,uniqueBody,body,hasAttachments`,
+        { headers: { Prefer: 'outlook.body-content-type="text"' } },
+      )
+    ).data;
+    const sender = emailFromPerson(graph.from) ?? emailFromPerson(graph.sender);
+    if (!sender || graph.hasAttachments !== true)
+      throw new Error("inline_media_source_unavailable");
+    const attachments = (
+      await readInboundAttachments(admin, channel, message.graph_message_id)
+    ).filter((attachment) => attachment.contentId !== null);
+    if (!attachments.length) throw new Error("inline_media_source_unavailable");
+    const body = cleanText(
+      record(graph.uniqueBody)
+        ? graph.uniqueBody.content
+        : record(graph.body)
+          ? graph.body.content
+          : null,
+    );
+    const prepared = prepareInboundBodyWithInlineMarkers(
+      body,
+      attachments.map((attachment) => attachment.contentId!),
+    );
+    const expected =
+      message.kind === "reply"
+        ? resolveInboundInlineMarkers(prepared, new Map())
+        : `Eingegangene E-Mail von ${displayNameFromAddress(sender)}\n\n${resolveInboundInlineMarkers(prepared, new Map())}`;
+    const serviceIdentityId = await ensureExchangeMailServiceIdentity(admin);
+    const mappings = await storeInboundAttachments(
+      admin,
+      channel,
+      message.ticket_id,
+      message.comment_id,
+      serviceIdentityId,
+      attachments,
+    );
+    const resolved =
+      message.kind === "reply"
+        ? resolveInboundInlineMarkers(prepared, mappings)
+        : `Eingegangene E-Mail von ${displayNameFromAddress(sender)}\n\n${resolveInboundInlineMarkers(prepared, mappings)}`;
+    const updated =
+      message.kind === "reply" && message.comment_id
+        ? await admin
+            .from("ticket_comments")
+            .update({ body: resolved })
+            .eq("id", message.comment_id)
+            .eq("ticket_id", message.ticket_id)
+            .eq("body", expected)
+            .select("id")
+        : await admin
+            .from("tickets")
+            .update({ description: resolved })
+            .eq("id", message.ticket_id)
+            .eq("tenant_id", message.tenant_id)
+            .eq("description", expected)
+            .select("id");
+    if (updated.error) throw new Error("inline_body_update_failed");
+    await updateInlineMediaStatus(
+      admin,
+      message,
+      updated.data?.length ? "completed" : "conflict",
+      updated.data?.length ? null : "inline_body_changed",
+    );
+  } catch (error) {
+    await updateInlineMediaStatus(admin, message, "failed", errorCode(error));
   }
 }
 
@@ -1483,6 +1796,21 @@ export async function maintenance(admin: Admin): Promise<void> {
     if (message.direction === "inbound")
       await processInboundMessage(admin, message);
     else await dispatchOutboundMessage(admin, message);
+  }
+  const inlineRecovery = await admin
+    .from("mail_messages")
+    .select(
+      "id, tenant_id, channel_id, exchange_configuration_version, direction, kind, graph_message_id, ticket_id, comment_id, department_question_id, recipient_user_id, to_addresses, attempt_count, inline_media_status, inline_media_attempt_count",
+    )
+    .eq("direction", "inbound")
+    .eq("processing_status", "processed")
+    .in("inline_media_status", ["pending", "failed"])
+    .lte("inline_media_next_attempt_at", new Date().toISOString())
+    .lt("inline_media_attempt_count", 6)
+    .order("created_at")
+    .limit(20);
+  for (const message of (inlineRecovery.data ?? []) as Message[]) {
+    await recoverProcessedInlineMedia(admin, message);
   }
 }
 
