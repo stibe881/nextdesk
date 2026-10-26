@@ -3965,23 +3965,6 @@ function AuthenticatedApp() {
                       ? `${filteredTickets.length} geladen`
                       : `${filteredTickets.length} Treffer`}
                   </span>
-                  {canWorkTickets && ticketScope !== "all" && (
-                    <button
-                      className="text-button"
-                      onClick={() => {
-                        clearTicketFilters();
-                        setSection("Übersicht");
-                      }}
-                      type="button"
-                    >
-                      <ArrowLeft
-                        aria-hidden="true"
-                        size={16}
-                        strokeWidth={1.8}
-                      />
-                      Zur Übersicht
-                    </button>
-                  )}
                 </div>
               </div>
               <TicketScopeMetricTiles
