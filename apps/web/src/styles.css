@@ -13165,11 +13165,70 @@ body:has(.knowledge-base__editor-backdrop) {
 }
 
 .knowledge-base .knowledge-base__toolbar {
-  align-items: center;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: stretch;
   margin: 0 24px;
   border-top: 1px solid var(--border);
   border-bottom: 1px solid var(--border);
-  padding: 16px 4px;
+  padding: 18px 4px;
+  gap: 18px;
+}
+
+.knowledge-base .knowledge-base__search {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  flex: initial;
+  max-width: none;
+  gap: 8px 10px;
+}
+
+.knowledge-base .knowledge-base__search input {
+  min-width: 0;
+  width: 100%;
+}
+
+.knowledge-base .knowledge-base__search-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.knowledge-base .knowledge-base__search-help {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
+.knowledge-base .knowledge-base__filter-region {
+  display: grid;
+  gap: 10px;
+  border-top: 1px solid var(--border);
+  padding-top: 16px;
+}
+
+.knowledge-base .knowledge-base__filter-heading {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.knowledge-base .knowledge-base__filters {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.knowledge-base .knowledge-base__filter {
+  min-width: 0;
+}
+
+.knowledge-base .knowledge-base__filter select {
+  width: 100%;
+  min-width: 0;
 }
 
 .knowledge-base.knowledge-base .knowledge-base__create-button {
@@ -13484,6 +13543,18 @@ body:has(.knowledge-base__editor-backdrop) {
   .knowledge-base .knowledge-base__toolbar {
     margin: 0 16px;
     padding: 14px 4px;
+  }
+
+  .knowledge-base .knowledge-base__search {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .knowledge-base .knowledge-base__search-controls {
+    justify-content: flex-start;
+  }
+
+  .knowledge-base .knowledge-base__filters {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .knowledge-base .knowledge-base__editor-backdrop {

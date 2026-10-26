@@ -511,3 +511,7 @@ Jede gespeicherte Ansicht ist ausschliesslich persönlich: Sie gehört der erste
 ## Harmonisierung des Hintergrunds gespeicherter Ansichten
 
 Der Auswahlbereich für persönliche gespeicherte Ansichten erhält keinen eigenständigen grauen Verlauf mehr. Er übernimmt den Hintergrund seiner umgebenden Ticketoberfläche; im rechten Filterpanel trennt nur eine feine Linie den Bereich von der anschliessenden Suche. So bleibt die Einordnung sichtbar, ohne eine zusätzliche, unpassende Fläche zu erzeugen. Datenfluss, persönliche Sichtbarkeit, Filterwirkung und Berechtigungsprüfung bleiben unverändert.
+
+## Ruhige Suche und Filter in der Wissensdatenbank
+
+Die Wissenswerkzeugleiste wird nach der Nutzungshäufigkeit gegliedert: Die Volltextsuche ist der primäre, volle Bereich. Sichtbarkeit/Status, Kategorie und Unterkategorie bilden darunter eine klar beschriftete Filterzeile mit gleichwertigen Auswahlfeldern. Der neue Artikel gehört als bewusste Erstellaktion zu Artikelzahl und Aktualisieren in den Kopfbereich. Damit verschwinden die kollidierenden Elemente aus einer einzigen horizontalen Zeile, ohne die bestehenden serverautorisierten Daten, Filter oder Rechte zu verändern. Auf schmalen Ansichten darf die Filterzeile sauber umbrechen; Labels und native Auswahlfelder bleiben zugänglich.

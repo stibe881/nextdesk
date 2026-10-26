@@ -2078,6 +2078,14 @@ export function KnowledgeBase({
             >
               {loadingList ? "Wird aktualisiert …" : "Aktualisieren"}
             </button>
+            <button
+              className="primary-button knowledge-base__button knowledge-base__create-button"
+              disabled={isBusy}
+              onClick={beginNewArticle}
+              type="button"
+            >
+              Neuer Artikel
+            </button>
           </div>
         </div>
 
@@ -2096,23 +2104,25 @@ export function KnowledgeBase({
               type="search"
               value={searchInput}
             />
-            <button
-              className="knowledge-base__button"
-              disabled={loadingList || isBusy}
-              type="submit"
-            >
-              Suchen
-            </button>
-            {activeQuery ? (
+            <div className="knowledge-base__search-controls">
               <button
                 className="knowledge-base__button"
                 disabled={loadingList || isBusy}
-                onClick={() => void clearSearch()}
-                type="button"
+                type="submit"
               >
-                Suche löschen
+                Suchen
               </button>
-            ) : null}
+              {activeQuery ? (
+                <button
+                  className="knowledge-base__button"
+                  disabled={loadingList || isBusy}
+                  onClick={() => void clearSearch()}
+                  type="button"
+                >
+                  Suche löschen
+                </button>
+              ) : null}
+            </div>
             <p
               className="knowledge-base__search-help"
               id="knowledge-search-help"
@@ -2120,97 +2130,90 @@ export function KnowledgeBase({
               Durchsucht Titel, Zusammenfassung und Artikelinhalt.
             </p>
           </form>
-          <div className="knowledge-base__filters">
-            <label className="knowledge-base__filter">
-              Anzeigen
-              <select
-                aria-label="Wissensartikel nach Sichtbarkeit oder Status filtern"
-                disabled={loadingList || isBusy}
-                onChange={(event) =>
-                  changeArticleListFilter(
-                    event.target.value as ArticleListFilter,
-                  )
-                }
-                value={articleListFilter}
-              >
-                {(
-                  Object.keys(articleListFilterLabels) as ArticleListFilter[]
-                ).map((filter) => (
-                  <option key={filter} value={filter}>
-                    {articleListFilterLabels[filter]}
-                  </option>
-                ))}
-              </select>
-            </label>
-            {collectionAssignmentReady ? (
-              <>
-                <label className="knowledge-base__filter">
-                  Kategorie
-                  <select
-                    aria-label="Wissensartikel nach Kategorie filtern"
-                    disabled={
-                      loadingList ||
-                      isBusy ||
-                      articleFilterCategories.length === 0
-                    }
-                    onChange={(event) =>
-                      changeArticleCategoryFilter(event.target.value)
-                    }
-                    value={articleCategoryFilterId}
-                  >
-                    <option value="">
-                      {articleFilterCategories.length > 0
-                        ? "Alle Kategorien"
-                        : "Keine Kategorien vorhanden"}
+          <div className="knowledge-base__filter-region">
+            <p className="knowledge-base__filter-heading">Artikel filtern</p>
+            <div className="knowledge-base__filters">
+              <label className="knowledge-base__filter">
+                Anzeigen
+                <select
+                  aria-label="Wissensartikel nach Sichtbarkeit oder Status filtern"
+                  disabled={loadingList || isBusy}
+                  onChange={(event) =>
+                    changeArticleListFilter(
+                      event.target.value as ArticleListFilter,
+                    )
+                  }
+                  value={articleListFilter}
+                >
+                  {(
+                    Object.keys(articleListFilterLabels) as ArticleListFilter[]
+                  ).map((filter) => (
+                    <option key={filter} value={filter}>
+                      {articleListFilterLabels[filter]}
                     </option>
-                    {articleFilterCategories.map((collection) => (
-                      <option key={collection.id} value={collection.id}>
-                        {collection.name}
+                  ))}
+                </select>
+              </label>
+              {collectionAssignmentReady ? (
+                <>
+                  <label className="knowledge-base__filter">
+                    Kategorie
+                    <select
+                      aria-label="Wissensartikel nach Kategorie filtern"
+                      disabled={
+                        loadingList ||
+                        isBusy ||
+                        articleFilterCategories.length === 0
+                      }
+                      onChange={(event) =>
+                        changeArticleCategoryFilter(event.target.value)
+                      }
+                      value={articleCategoryFilterId}
+                    >
+                      <option value="">
+                        {articleFilterCategories.length > 0
+                          ? "Alle Kategorien"
+                          : "Keine Kategorien vorhanden"}
                       </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="knowledge-base__filter">
-                  Unterkategorie
-                  <select
-                    aria-label="Wissensartikel nach Unterkategorie filtern"
-                    disabled={
-                      loadingList ||
-                      isBusy ||
-                      !articleFilterCategory ||
-                      articleFilterSubcategoryCollections.length === 0
-                    }
-                    onChange={(event) =>
-                      changeArticleSubcategoryFilter(event.target.value)
-                    }
-                    value={articleSubcategoryFilterId}
-                  >
-                    <option value="">
-                      {articleFilterCategory
-                        ? articleFilterSubcategoryCollections.length > 0
-                          ? "Alle Unterkategorien"
-                          : "Keine Unterkategorien vorhanden"
-                        : "Zuerst Kategorie wählen"}
-                    </option>
-                    {articleFilterSubcategoryCollections.map((collection) => (
-                      <option key={collection.id} value={collection.id}>
-                        {collection.name}
+                      {articleFilterCategories.map((collection) => (
+                        <option key={collection.id} value={collection.id}>
+                          {collection.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="knowledge-base__filter">
+                    Unterkategorie
+                    <select
+                      aria-label="Wissensartikel nach Unterkategorie filtern"
+                      disabled={
+                        loadingList ||
+                        isBusy ||
+                        !articleFilterCategory ||
+                        articleFilterSubcategoryCollections.length === 0
+                      }
+                      onChange={(event) =>
+                        changeArticleSubcategoryFilter(event.target.value)
+                      }
+                      value={articleSubcategoryFilterId}
+                    >
+                      <option value="">
+                        {articleFilterCategory
+                          ? articleFilterSubcategoryCollections.length > 0
+                            ? "Alle Unterkategorien"
+                            : "Keine Unterkategorien vorhanden"
+                          : "Zuerst Kategorie wählen"}
                       </option>
-                    ))}
-                  </select>
-                </label>
-              </>
-            ) : null}
-          </div>
-          <div className="knowledge-base__toolbar-actions">
-            <button
-              className="primary-button knowledge-base__button knowledge-base__create-button"
-              disabled={isBusy}
-              onClick={beginNewArticle}
-              type="button"
-            >
-              Neuer Artikel
-            </button>
+                      {articleFilterSubcategoryCollections.map((collection) => (
+                        <option key={collection.id} value={collection.id}>
+                          {collection.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </>
+              ) : null}
+            </div>
           </div>
         </div>
 
