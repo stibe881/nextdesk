@@ -5508,6 +5508,7 @@ export function TicketDetail({
             aria-label="Ticketdetails schliessen"
             className="more-button"
             onClick={onClose}
+            title="Ticketdetails schliessen"
             type="button"
           >
             <X aria-hidden="true" size={18} strokeWidth={1.8} />
@@ -5589,6 +5590,11 @@ export function TicketDetail({
             }
             disabled={busy}
             onClick={() => void toggleWatch()}
+            title={
+              detail.watching
+                ? "Ticket nicht mehr beobachten"
+                : "Ticket beobachten"
+            }
             type="button"
           >
             {pendingAction === "watch" ? (
@@ -5613,6 +5619,7 @@ export function TicketDetail({
               className="secondary-button"
               disabled={busy}
               onClick={startTicketEdit}
+              title="Ticket bearbeiten"
               type="button"
             >
               Bearbeiten
@@ -5627,6 +5634,11 @@ export function TicketDetail({
             }
             disabled={busy}
             onClick={() => setFocusMode((current) => !current)}
+            title={
+              focusMode
+                ? "Fokusmodus beenden und alle Bereiche anzeigen"
+                : "Fokusmodus aktivieren"
+            }
             type="button"
           >
             <Focus aria-hidden="true" size={16} strokeWidth={1.8} />
@@ -5639,6 +5651,7 @@ export function TicketDetail({
             className="more-button"
             disabled={busy}
             onClick={onClose}
+            title="Ticketdetails schliessen"
             type="button"
           >
             <X aria-hidden="true" size={18} strokeWidth={1.8} />

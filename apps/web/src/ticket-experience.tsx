@@ -531,7 +531,9 @@ export function TicketFollowUps({
       <button
         aria-controls={formId}
         aria-expanded={expanded}
-        aria-label="Wiedervorlage setzen"
+        aria-label={
+          expanded ? "Wiedervorlage-Fenster schliessen" : "Wiedervorlage setzen"
+        }
         className="secondary-button ticket-experience__header-action"
         disabled={pending !== null}
         onClick={() => {
@@ -544,6 +546,9 @@ export function TicketFollowUps({
           setNotice("");
         }}
         ref={triggerRef}
+        title={
+          expanded ? "Wiedervorlage-Fenster schliessen" : "Wiedervorlage setzen"
+        }
         type="button"
       >
         <CalendarClock aria-hidden="true" size={16} strokeWidth={1.8} />

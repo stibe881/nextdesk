@@ -332,6 +332,11 @@ export function TicketPdfRecord({
         className="secondary-button"
         disabled={pending}
         onClick={() => void exportRecord()}
+        title={
+          pending
+            ? "Ticketakte wird als PDF erstellt"
+            : "Ticketakte als PDF öffnen und drucken"
+        }
         type="button"
       >
         {pending ? (
