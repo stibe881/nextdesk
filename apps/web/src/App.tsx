@@ -69,6 +69,7 @@ import {
   type TenantOption,
 } from "./lib/live-dashboard";
 import { acceptTenantInvitations } from "./lib/tenant-invitations";
+import { normalizeQueueSelection, shouldShowQueueTabs } from "./lib/queue-tabs";
 import { TicketComposer } from "./ticket-composer";
 import { TicketDetail } from "./ticket-detail";
 import { TenantAdminSettings } from "./tenant-admin-settings";
@@ -2613,6 +2614,14 @@ function AuthenticatedApp() {
       department.label,
     ]);
   }, [view.ticketFilterCatalog?.departments]);
+  const hasAuthorizedQueueCatalog = Boolean(view.ticketFilterCatalog);
+  useEffect(() => {
+    if (!hasAuthorizedQueueCatalog) return;
+
+    setQueue((currentQueue) =>
+      normalizeQueueSelection(currentQueue, queueOptions),
+    );
+  }, [hasAuthorizedQueueCatalog, queueOptions]);
   const ticketFilterOptions = useMemo(() => {
     const collator = new Intl.Collator("de-CH", { sensitivity: "base" });
     const statuses =
@@ -5602,6 +5611,8 @@ function QueueTabs({
   queueOptions: readonly [string, string][];
   setQueue: (key: string) => void;
 }) {
+  if (!shouldShowQueueTabs(queueOptions)) return null;
+
   return (
     <div className="queue-tabs" role="group" aria-label="Ticket-Queue">
       <button

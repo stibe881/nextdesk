@@ -529,3 +529,7 @@ Der einzelne Trichter-Auslöser bleibt als kompakte Aktion rechts oberhalb der T
 ## Bereinigung der Ticketkopfaktionen
 
 In der Ticketkopfzeile entfallen die drei markierten Zusatzaktionen «Listen-Detail-Ansicht», «CSV exportieren» und «Tickets importieren» sowie im Web die Navigation «Zur Übersicht». Damit konzentriert sich die Zeile auf die Trefferzahl. Die globale Schaltfläche «Ansicht» bleibt unverändert, ebenso die persönliche Listen-Detail-Einstellung in den Ansichtsoptionen. Die Übersichtsnavigation bleibt ausschliesslich in der nativen iOS-App erhalten; deren Code wird nicht verändert. Es gibt keine Änderung an Ticketdaten, Import-/Exportendpunkten, Berechtigungen oder automatischen Abläufen.
+
+## Queue-Leiste nur bei echter Auswahl
+
+Die zentrale Webkomponente für Queue-Register rendert sich nur, wenn der bereits serverautorisierte Katalog mindestens eine Abteilung oder Teamqueue zusätzlich zu «Alle Queues» enthält. Bei einem einzelnen Standardwert verschwindet die leere Auswahlzeile sowohl in der Ticketliste als auch in «Priorisierte Tickets». Falls sich Mandant oder Berechtigung ändern und die zuvor gewählte Queue nicht mehr im autorisierten Katalog vorkommt, wird die Webauswahl kontrolliert auf «Alle Queues» zurückgesetzt. Es werden keine Queues im Browser hergeleitet, keine Rechte erweitert und keine iOS-Datei verändert.
