@@ -14057,6 +14057,11 @@ body:has(.knowledge-base__editor-backdrop) {
   z-index: 35;
 }
 
+.app-shell:has(.ticket-detail) .global-search {
+  visibility: hidden;
+  pointer-events: none;
+}
+
 .global-search__field {
   width: 100%;
 }

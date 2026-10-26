@@ -475,3 +475,7 @@ Die bestehende serverautorisierte Ticketabfrage, Volltextsuche, Filter- und Sort
 ## Quick-Infos für Ticketaktionen
 
 Die kompakte Aktionsleiste in Ticketdetails erhält für die Maussteuerung plattformnative Quick-Infos über `title`-Attribute. Sie decken PDF-Druck, Wiedervorlage, Beobachten, Bearbeiten, Fokusmodus und Schliessen ab. Bei umschaltbaren Aktionen entspricht der Hinweis dem gerade möglichen Schritt. Die bereits vorhandenen `aria-label`-, `aria-pressed`- und sichtbaren Beschriftungen bleiben erhalten; die Änderung betrifft nur die Darstellung und übermittelt oder verändert keine Ticket-, Mandanten- oder Berechtigungsdaten.
+
+## Globale Suche hinter offenem Ticketdetail
+
+Ein geöffnetes Ticketdetail ist ein fokussierter Arbeitszustand und erhält Vorrang vor der globalen Suche. Die globale Suche bleibt ausserhalb eines offenen Tickets unverändert verfügbar. Sobald `.app-shell` ein Ticketdetail enthält, wird nur die Suche ausgeblendet und gegen Eingaben gesperrt; sie liegt damit weder optisch noch interaktiv über dem Detail. Der bestehende Stack-Kontext des Ticketdetails, die Suchlogik, Tastaturbedienung sowie sämtliche serverautorisierten Suchresultate bleiben unverändert.
