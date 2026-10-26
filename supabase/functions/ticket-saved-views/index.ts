@@ -25,7 +25,6 @@ type Action =
       tenantId: string;
       viewId?: string;
       name: string;
-      visibility: "private" | "tenant";
       filters: Filters;
     }
   | { type: "deleteSavedView"; tenantId: string; viewId: string };
@@ -147,17 +146,9 @@ function parseAction(value: unknown): Action | null {
   }
   if (
     value.type === "saveSavedView" &&
-    hasOnlyKeys(value, [
-      "type",
-      "tenantId",
-      "viewId",
-      "name",
-      "visibility",
-      "filters",
-    ]) &&
+    hasOnlyKeys(value, ["type", "tenantId", "viewId", "name", "filters"]) &&
     (value.viewId === undefined || isUuid(value.viewId)) &&
-    typeof value.name === "string" &&
-    (value.visibility === "private" || value.visibility === "tenant")
+    typeof value.name === "string"
   ) {
     const name = value.name.trim();
     const filters = parseFilters(value.filters);
@@ -174,7 +165,6 @@ function parseAction(value: unknown): Action | null {
       tenantId: value.tenantId,
       ...(value.viewId === undefined ? {} : { viewId: value.viewId }),
       name,
-      visibility: value.visibility,
       filters,
     };
   }
@@ -199,43 +189,13 @@ async function isActiveMember(admin: any, userId: string, tenantId: string) {
   return !error && Boolean(data);
 }
 
-async function canManageTenantViews(
-  admin: any,
-  userId: string,
-  tenantId: string,
-) {
-  const now = new Date().toISOString();
-  const { data, error } = await admin
-    .from("user_role_assignments")
-    .select(
-      "roles!user_role_assignments_role_tenant_fk!inner(active, scope, role_permissions!inner(permission_code))",
-    )
-    .eq("tenant_id", tenantId)
-    .eq("user_id", userId)
-    .lte("starts_at", now)
-    .or(`expires_at.is.null,expires_at.gt.${now}`);
-  if (error) return false;
-  return (data ?? []).some((assignment: any) => {
-    const role = Array.isArray(assignment.roles)
-      ? assignment.roles[0]
-      : assignment.roles;
-    return (
-      role?.active === true &&
-      role.scope === "tenant" &&
-      (role.role_permissions ?? []).some(
-        (permission: any) => permission.permission_code === "ticket.manage",
-      )
-    );
-  });
-}
-
 function toResponse(view: any) {
   return {
     id: view.id,
     tenantId: view.tenant_id,
     ownerId: view.owner_id,
     name: view.name,
-    visibility: view.visibility,
+    visibility: "private",
     filters: view.filters,
     createdAt: view.created_at,
     updatedAt: view.updated_at,
@@ -247,7 +207,7 @@ function auditData(view: any) {
   return {
     name: typeof view?.name === "string" ? view.name : "",
     ownerId: typeof view?.owner_id === "string" ? view.owner_id : "",
-    visibility: view?.visibility === "tenant" ? "tenant" : "private",
+    visibility: "private",
     filterKeys: Object.keys(filters).sort(),
   };
 }
@@ -272,7 +232,7 @@ async function audit(
     after_data: afterData,
     metadata: {
       ownerId: view.owner_id,
-      visibility: view.visibility,
+      visibility: "private",
       filterKeys: afterData?.filterKeys ?? beforeData?.filterKeys ?? [],
     },
   });
@@ -312,26 +272,18 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     );
   }
 
-  const manager = await canManageTenantViews(
-    context.supabaseAdmin,
-    actorId,
-    action.tenantId,
-  );
-
   if (action.type === "listSavedViews") {
     const { data, error } = await context.supabaseAdmin
       .from("saved_ticket_views")
       .select(selectColumns)
       .eq("tenant_id", action.tenantId)
-      .or(`owner_id.eq.${actorId},visibility.eq.tenant`)
-      .order("visibility")
+      .eq("owner_id", actorId)
       .order("updated_at", { ascending: false });
     if (error) {
       return json(request, { error: { code: "saved_view_list_failed" } }, 500);
     }
     return json(request, {
       data: {
-        canManageTenantViews: manager,
         savedViews: (data ?? []).map(toResponse),
       },
     });
@@ -345,7 +297,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
           tenant_id: action.tenantId,
           owner_id: actorId,
           name: action.name,
-          visibility: action.visibility,
+          visibility: "private",
           filters: action.filters,
         })
         .select(selectColumns)
@@ -392,7 +344,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     if (!previous) {
       return json(request, { error: { code: "saved_view_not_found" } }, 404);
     }
-    if (previous.owner_id !== actorId && !manager) {
+    if (previous.owner_id !== actorId) {
       return json(
         request,
         { error: { code: "saved_view_manage_denied" } },
@@ -404,7 +356,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       .from("saved_ticket_views")
       .update({
         name: action.name,
-        visibility: action.visibility,
+        visibility: "private",
         filters: action.filters,
       })
       .eq("id", previous.id)
@@ -449,7 +401,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
   if (!previous) {
     return json(request, { error: { code: "saved_view_not_found" } }, 404);
   }
-  if (previous.owner_id !== actorId && !manager) {
+  if (previous.owner_id !== actorId) {
     return json(request, { error: { code: "saved_view_manage_denied" } }, 403);
   }
 

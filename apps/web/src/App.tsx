@@ -6,6 +6,7 @@ import {
   type CSSProperties,
   type FormEvent,
   type KeyboardEvent as ReactKeyboardEvent,
+  type RefObject,
   type ReactNode,
 } from "react";
 import type { Session } from "@supabase/supabase-js";
@@ -239,7 +240,7 @@ type SavedTicketView = {
   name: string;
   ownerId: string;
   updatedAt: string;
-  visibility: "private" | "tenant";
+  visibility: "private";
 };
 
 type BulkStatusOption = {
@@ -778,7 +779,7 @@ function savedTicketViewFromValue(value: unknown): SavedTicketView | null {
     typeof value.id !== "string" ||
     typeof value.ownerId !== "string" ||
     typeof value.name !== "string" ||
-    (value.visibility !== "private" && value.visibility !== "tenant") ||
+    value.visibility !== "private" ||
     typeof value.createdAt !== "string" ||
     typeof value.updatedAt !== "string" ||
     !isRecord(value.filters) ||
@@ -806,13 +807,11 @@ function savedTicketViewFromValue(value: unknown): SavedTicketView | null {
 }
 
 function savedTicketViewsFromResponse(value: unknown): {
-  canManageTenantViews: boolean;
   savedViews: SavedTicketView[];
 } | null {
   if (
     !isRecord(value) ||
     !isRecord(value.data) ||
-    typeof value.data.canManageTenantViews !== "boolean" ||
     !Array.isArray(value.data.savedViews)
   )
     return null;
@@ -820,7 +819,7 @@ function savedTicketViewsFromResponse(value: unknown): {
   return savedViews.every(
     (savedView): savedView is SavedTicketView => savedView !== null,
   )
-    ? { canManageTenantViews: value.data.canManageTenantViews, savedViews }
+    ? { savedViews }
     : null;
 }
 
@@ -1507,7 +1506,6 @@ function AuthenticatedApp() {
   const [savedTicketViews, setSavedTicketViews] = useState<SavedTicketView[]>(
     [],
   );
-  const [canManageTenantViews, setCanManageTenantViews] = useState(false);
   const [savedTicketViewsLoading, setSavedTicketViewsLoading] = useState(false);
   const [session, setSession] = useState<Session | null | undefined>(
     isSupabaseConfigured ? undefined : null,
@@ -1981,7 +1979,6 @@ function AuthenticatedApp() {
   useEffect(() => {
     if (!supabase || !session || !activeTenant || !canWorkTickets) {
       setSavedTicketViews([]);
-      setCanManageTenantViews(false);
       setSavedTicketViewsLoading(false);
       return;
     }
@@ -1998,12 +1995,10 @@ function AuthenticatedApp() {
         if (!parsed) throw new Error("invalid_saved_view_response");
         if (!mounted) return;
         setSavedTicketViews(parsed.savedViews);
-        setCanManageTenantViews(parsed.canManageTenantViews);
       })
       .catch(async (error: unknown) => {
         if (!mounted) return;
         setSavedTicketViews([]);
-        setCanManageTenantViews(false);
         setErrorMessage(
           await functionErrorMessage(
             error,
@@ -4088,23 +4083,7 @@ function AuthenticatedApp() {
                   onChange={setTicketListRefinement}
                   onClear={clearTicketFilters}
                   onQueryChange={updateTicketSearchQuery}
-                  priorities={ticketFilterOptions.priorities}
-                  query={query}
-                  statuses={ticketFilterOptions.statuses}
-                />
-              )}
-              {activeTenant && isSupabaseConfigured && canWorkTickets && (
-                <SavedTicketViews
-                  canManageTenantViews={canManageTenantViews}
-                  currentUserId={session?.user.id}
-                  filters={{
-                    ...ticketListRefinement,
-                    query,
-                    queue,
-                    ticketScope,
-                  }}
-                  loading={savedTicketViewsLoading}
-                  onApply={(filters) => {
+                  onSavedViewApply={(filters) => {
                     clearTicketSelection();
                     setMetricTicketFilter(null);
                     setQuery(filters.query);
@@ -4120,8 +4099,19 @@ function AuthenticatedApp() {
                     });
                   }}
                   onSavedViewsChange={setSavedTicketViews}
+                  priorities={ticketFilterOptions.priorities}
+                  query={query}
+                  savedViewFilters={{
+                    ...ticketListRefinement,
+                    query,
+                    queue,
+                    ticketScope,
+                  }}
                   savedViews={savedTicketViews}
+                  savedViewsLoading={savedTicketViewsLoading}
+                  statuses={ticketFilterOptions.statuses}
                   tenantId={activeTenant.id}
+                  currentUserId={session?.user.id}
                 />
               )}
               {activeTenant && isSupabaseConfigured && canWorkTickets && (
@@ -5111,27 +5101,26 @@ function BulkTicketStatusActions({
 }
 
 function SavedTicketViews({
-  canManageTenantViews,
   currentUserId,
   filters,
   loading,
   onApply,
   onSavedViewsChange,
   savedViews,
+  selectRef,
   tenantId,
 }: {
-  canManageTenantViews: boolean;
   currentUserId: string | undefined;
   filters: SavedTicketViewFilters;
   loading: boolean;
   onApply: (filters: SavedTicketViewFilters) => void;
   onSavedViewsChange: (savedViews: SavedTicketView[]) => void;
   savedViews: SavedTicketView[];
+  selectRef?: RefObject<HTMLSelectElement | null>;
   tenantId: string;
 }) {
   const [selectedViewId, setSelectedViewId] = useState("");
   const [name, setName] = useState("");
-  const [visibility, setVisibility] = useState<"private" | "tenant">("private");
   const [pending, setPending] = useState<"save" | "delete" | null>(null);
   const [status, setStatus] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
@@ -5139,9 +5128,7 @@ function SavedTicketViews({
   const selectedView =
     savedViews.find((savedView) => savedView.id === selectedViewId) ?? null;
   const canDelete = Boolean(
-    selectedView &&
-    (selectedView.ownerId === currentUserId ||
-      (selectedView.visibility === "tenant" && canManageTenantViews)),
+    selectedView && selectedView.ownerId === currentUserId,
   );
 
   useEffect(() => {
@@ -5152,7 +5139,6 @@ function SavedTicketViews({
     if (nextSelectedView) return;
     setSelectedViewId("");
     setName("");
-    setVisibility("private");
   }, [savedViews, selectedViewId]);
 
   function applySelectedView(viewId: string) {
@@ -5164,11 +5150,9 @@ function SavedTicketViews({
     );
     if (!nextSelectedView) {
       setName("");
-      setVisibility("private");
       return;
     }
     setName(nextSelectedView.name);
-    setVisibility(nextSelectedView.visibility);
     onApply(nextSelectedView.filters);
     setStatus(`Ansicht „${nextSelectedView.name}“ angewendet.`);
   }
@@ -5176,7 +5160,6 @@ function SavedTicketViews({
   function startNewView() {
     setSelectedViewId("");
     setName("");
-    setVisibility("private");
     setErrorMessage("");
     setEditorOpen(true);
     setStatus("Neue Ansicht aus den aktuellen Filtern anlegen.");
@@ -5212,7 +5195,6 @@ function SavedTicketViews({
             tenantId,
             ...(selectedView ? { viewId: selectedView.id } : {}),
             name: trimmedName,
-            visibility,
             filters,
           },
         },
@@ -5224,15 +5206,10 @@ function SavedTicketViews({
         [
           ...savedViews.filter((view) => view.id !== savedView.id),
           savedView,
-        ].sort(
-          (left, right) =>
-            left.visibility.localeCompare(right.visibility) ||
-            right.updatedAt.localeCompare(left.updatedAt),
-        ),
+        ].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt)),
       );
       setSelectedViewId(savedView.id);
       setName(savedView.name);
-      setVisibility(savedView.visibility);
       setEditorOpen(false);
       setStatus(
         updating
@@ -5270,7 +5247,6 @@ function SavedTicketViews({
       );
       setSelectedViewId("");
       setName("");
-      setVisibility("private");
       setEditorOpen(false);
       setStatus(`Ansicht „${selectedView.name}“ gelöscht.`);
     } catch (error: unknown) {
@@ -5290,12 +5266,19 @@ function SavedTicketViews({
       aria-label="Gespeicherte Ticketansichten"
       className="saved-ticket-views"
     >
+      <div className="saved-ticket-views__heading">
+        <div>
+          <p className="eyebrow">GESPEICHERTE ANSICHTEN</p>
+          <p>Nur für Sie sichtbar.</p>
+        </div>
+      </div>
       <div className="saved-ticket-views__picker">
         <label>
           <span>Gespeicherte Ansicht</span>
           <select
             disabled={loading || pending !== null}
             onChange={(event) => applySelectedView(event.target.value)}
+            ref={selectRef}
             value={selectedViewId}
           >
             <option value="">
@@ -5304,9 +5287,6 @@ function SavedTicketViews({
             {savedViews.map((savedView) => (
               <option key={savedView.id} value={savedView.id}>
                 {savedView.name}
-                {savedView.visibility === "tenant"
-                  ? " · Mandant"
-                  : " · Persönlich"}
               </option>
             ))}
           </select>
@@ -5342,21 +5322,6 @@ function SavedTicketViews({
               required
               value={name}
             />
-          </label>
-          <label>
-            <span>Sichtbarkeit</span>
-            <select
-              disabled={loading || pending !== null}
-              onChange={(event) =>
-                setVisibility(
-                  event.target.value === "tenant" ? "tenant" : "private",
-                )
-              }
-              value={visibility}
-            >
-              <option value="private">Nur für mich</option>
-              <option value="tenant">Für den Mandanten</option>
-            </select>
           </label>
           <div className="saved-ticket-views__actions">
             <button
@@ -5412,30 +5377,44 @@ function SavedTicketViews({
 
 function TicketListFilters({
   agents,
+  currentUserId,
   departments,
   filters,
   hasActiveFilters,
   onChange,
   onClear,
   onQueryChange,
+  onSavedViewApply,
+  onSavedViewsChange,
   priorities,
   query,
+  savedViewFilters,
+  savedViews,
+  savedViewsLoading,
   statuses,
+  tenantId,
 }: {
   agents: readonly TicketAgentOption[];
+  currentUserId: string | undefined;
   departments: readonly { key: string; label: string }[];
   filters: TicketListRefinement;
   hasActiveFilters: boolean;
   onChange: (next: TicketListRefinement) => void;
   onClear: () => void;
   onQueryChange: (value: string) => void;
+  onSavedViewApply: (filters: SavedTicketViewFilters) => void;
+  onSavedViewsChange: (savedViews: SavedTicketView[]) => void;
   priorities: readonly string[];
   query: string;
+  savedViewFilters: SavedTicketViewFilters;
+  savedViews: SavedTicketView[];
+  savedViewsLoading: boolean;
   statuses: readonly string[];
+  tenantId: string;
 }) {
   const [isPanelOpen, setIsPanelOpen] = useState(false);
   const panelRef = useRef<HTMLElement>(null);
-  const searchInputRef = useRef<HTMLInputElement>(null);
+  const savedViewsSelectRef = useRef<HTMLSelectElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const activeControlCount = [
     filters.agent !== "all",
@@ -5460,7 +5439,7 @@ function TicketListFilters({
   useEffect(() => {
     if (!isPanelOpen) return;
     const frame = window.requestAnimationFrame(() =>
-      (searchInputRef.current ?? panelRef.current)?.focus(),
+      (savedViewsSelectRef.current ?? panelRef.current)?.focus(),
     );
     return () => window.cancelAnimationFrame(frame);
   }, [isPanelOpen]);
@@ -5573,13 +5552,22 @@ function TicketListFilters({
               </button>
             </header>
             <div className="ticket-list-filter-panel__content">
+              <SavedTicketViews
+                currentUserId={currentUserId}
+                filters={savedViewFilters}
+                loading={savedViewsLoading}
+                onApply={onSavedViewApply}
+                onSavedViewsChange={onSavedViewsChange}
+                savedViews={savedViews}
+                selectRef={savedViewsSelectRef}
+                tenantId={tenantId}
+              />
               <label className="ticket-list-filter-panel__search">
                 <span>Tickets durchsuchen</span>
                 <input
                   autoComplete="off"
                   onChange={(event) => onQueryChange(event.target.value)}
                   placeholder="Ticketnummer, Betreff oder Beschreibung durchsuchen"
-                  ref={searchInputRef}
                   spellCheck={false}
                   type="search"
                   value={query}

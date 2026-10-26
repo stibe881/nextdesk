@@ -8016,6 +8016,41 @@ body:has(.ticket-list-filter-panel) {
   padding: 22px;
 }
 
+.ticket-list-filter-panel .saved-ticket-views {
+  gap: 12px;
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px;
+  background: var(--surface-subtle);
+}
+
+.saved-ticket-views__heading {
+  display: grid;
+  gap: 3px;
+}
+
+.saved-ticket-views__heading .eyebrow {
+  margin: 0;
+}
+
+.saved-ticket-views__heading p:last-child {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.ticket-list-filter-panel .saved-ticket-views__picker,
+.ticket-list-filter-panel .saved-ticket-views__editor,
+.ticket-list-filter-panel .saved-ticket-views__actions {
+  align-items: stretch;
+}
+
+.ticket-list-filter-panel .saved-ticket-views__picker label,
+.ticket-list-filter-panel .saved-ticket-views__editor label {
+  flex-basis: 100%;
+}
+
 .ticket-list-filter-panel__search,
 .ticket-list-filter-panel__controls label {
   display: grid;

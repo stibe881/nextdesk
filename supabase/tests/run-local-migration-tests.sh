@@ -96,8 +96,36 @@ insert into public.tenants (id, slug, name) values
 SQL
     psql -v ON_ERROR_STOP=1 -f "$ROOT_DIR/supabase/tests/fixtures/knowledge-legacy-import-sanitised.sql"
   fi
+  if [[ "$(basename "$migration")" == "0109_personal_saved_ticket_views.sql" ]]; then
+    # Reproduce a legacy shared view immediately before the owner-only upgrade.
+    psql -v ON_ERROR_STOP=1 <<'SQL'
+insert into public.tenants (id, slug, name) values
+  ('f9090000-0000-4000-8000-000000000001', 'legacy-saved-view-upgrade', 'Legacy Saved View Upgrade');
+insert into auth.users (id) values
+  ('f9090000-0000-4000-8000-000000000001');
+insert into public.user_profiles (id, display_name) values
+  ('f9090000-0000-4000-8000-000000000001', 'Legacy Saved View Owner');
+insert into public.saved_ticket_views (tenant_id, owner_id, name, visibility, filters) values
+  (
+    'f9090000-0000-4000-8000-000000000001',
+    'f9090000-0000-4000-8000-000000000001',
+    'Frühere Mandantenansicht',
+    'tenant',
+    '{"query":"legacy","queue":"alle","ticketScope":"open"}'
+  );
+SQL
+  fi
   psql -v ON_ERROR_STOP=1 -f "$migration" >/dev/null
 done
+
+legacy_saved_view_visibility="$(psql -At -c "
+  select visibility
+  from public.saved_ticket_views
+  where tenant_id = 'f9090000-0000-4000-8000-000000000001'
+    and owner_id = 'f9090000-0000-4000-8000-000000000001'
+    and name = 'Frühere Mandantenansicht'
+" | tr -d '\n')"
+[[ "$legacy_saved_view_visibility" == "private" ]]
 
 # A completed hierarchy migration must not touch legacy category timestamps or
 # create a second migration audit record if it is accidentally replayed.
@@ -731,8 +759,8 @@ rollback;
 
 insert into public.saved_ticket_views (tenant_id, owner_id, name, visibility, filters) values
   ('10000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000001', 'Privat A', 'private', '{"query":"intern","queue":"alle","ticketScope":"all"}'),
-  ('10000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000002', 'Mandant A', 'tenant', '{"query":"","queue":"alle","ticketScope":"open"}'),
-  ('20000000-0000-4000-8000-000000000002', '00000000-0000-4000-8000-000000000004', 'Mandant B', 'tenant', '{"query":"","queue":"alle","ticketScope":"closed"}');
+  ('10000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000002', 'Privat Agent A', 'private', '{"query":"","queue":"alle","ticketScope":"open"}'),
+  ('20000000-0000-4000-8000-000000000002', '00000000-0000-4000-8000-000000000004', 'Privat B', 'private', '{"query":"","queue":"alle","ticketScope":"closed"}');
 
 insert into public.tenant_member_directory (tenant_id, user_id, department_id, job_title, offer) values
   ('10000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000002', '11000000-0000-4000-8000-000000000001', 'Support Engineer', 'Arbeitsplatz');
@@ -1289,24 +1317,22 @@ $$;
 reset role;
 rollback;
 
--- Saved views must remain tenant-isolated: members only see their own private
--- views plus tenant-shared views. Tenant-wide ticket managers may edit shared
--- views they do not own, while an ordinary member cannot spoof an owner.
+-- Saved views are personal. Even a tenant administrator cannot read, change or
+-- delete another member's saved filters through direct table access.
 begin;
 set local "request.jwt.claim.sub" = '00000000-0000-4000-8000-000000000001';
 set local role authenticated;
 do $$
 begin
-  if (select count(*) from public.saved_ticket_views) <> 2 then
-    raise exception 'Tenant A manager must only see own and Tenant A shared views';
+  if (select count(*) from public.saved_ticket_views) <> 1 then
+    raise exception 'Tenant A administrator must see only own saved views';
   end if;
   update public.saved_ticket_views
-  set name = 'Mandant A verwaltet'
+  set name = 'Unzulässig verwaltet'
   where tenant_id = '10000000-0000-4000-8000-000000000001'
-    and owner_id = '00000000-0000-4000-8000-000000000002'
-    and visibility = 'tenant';
-  if not found then
-    raise exception 'Tenant ticket manager must update a shared view';
+    and owner_id = '00000000-0000-4000-8000-000000000002';
+  if found then
+    raise exception 'Tenant administrator could update another personal view';
   end if;
 end;
 $$;
@@ -1318,8 +1344,8 @@ set local "request.jwt.claim.sub" = '00000000-0000-4000-8000-000000000003';
 set local role authenticated;
 do $$
 begin
-  if (select count(*) from public.saved_ticket_views) <> 1 then
-    raise exception 'Tenant A member must only see shared views, not another private view';
+  if (select count(*) from public.saved_ticket_views) <> 0 then
+    raise exception 'Tenant A member must not see another personal view';
   end if;
   insert into public.saved_ticket_views (tenant_id, owner_id, name, visibility, filters)
   values ('10000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000003', 'Privat B', 'private', '{"query":"","queue":"alle","ticketScope":"all"}');
@@ -1328,6 +1354,13 @@ begin
     values ('10000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000002', 'Unzulässig', 'private', '{"query":"","queue":"alle","ticketScope":"all"}');
     raise exception 'Member was allowed to create a view for another owner';
   exception when insufficient_privilege then
+    null;
+  end;
+  begin
+    insert into public.saved_ticket_views (tenant_id, owner_id, name, visibility, filters)
+    values ('10000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000003', 'Mandantenweit', 'tenant', '{"query":"","queue":"alle","ticketScope":"all"}');
+    raise exception 'Member was allowed to create a tenant-shared view';
+  exception when check_violation or insufficient_privilege then
     null;
   end;
 end;

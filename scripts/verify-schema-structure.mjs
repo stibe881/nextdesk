@@ -110,6 +110,7 @@ const expectedFiles = [
   "0106_service_status_page.sql",
   "0107_exchange_mail_inline_attachments.sql",
   "0108_exchange_mail_inline_media_recovery.sql",
+  "0109_personal_saved_ticket_views.sql",
 ];
 
 const availableFiles = await readdir(migrationDirectory);
@@ -135,6 +136,12 @@ for (const migration of expectedFiles) {
 }
 
 const requiredFragments = [
+  ["0109_personal_saved_ticket_views.sql", "check (visibility = 'private')"],
+  [
+    "0109_personal_saved_ticket_views.sql",
+    "create policy saved_ticket_views_select_owner",
+  ],
+  ["0109_personal_saved_ticket_views.sql", "owner_id = auth.uid()"],
   ["0002_platform_and_tenants.sql", "create table public.platform_audit_logs"],
   ["0002_platform_and_tenants.sql", "create table public.tenant_domains"],
   [
