@@ -7846,10 +7846,10 @@ body:has(.ticket-detail) {
 }
 
 .ticket-list-filters {
-  margin: 12px 22px 16px;
+  margin: 10px 22px 14px;
   border: 1px solid var(--border);
   border-radius: 14px;
-  padding: 14px 16px 16px;
+  padding: 10px 12px;
   background: var(--surface-subtle);
 }
 
@@ -7860,31 +7860,66 @@ body:has(.ticket-detail) {
   gap: 12px;
 }
 
-.ticket-list-filters__heading .eyebrow {
-  margin: 0 0 2px;
-}
-
 .ticket-list-filters__heading h3 {
   margin: 0;
   color: var(--ink);
-  font-size: 15px;
+  font-size: 14px;
+}
+
+.ticket-list-filters__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.ticket-list-filters__toggle {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  gap: 6px;
+  border: 1px solid var(--border-tint-d8dcff);
+  border-radius: 9px;
+  padding: 0 10px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.ticket-list-filters__toggle:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.ticket-list-filters__toggle:focus-visible {
+  outline: 3px solid var(--primary);
+  outline-offset: 1px;
+}
+
+.ticket-list-filters__count {
+  display: inline-grid;
+  min-width: 18px;
+  height: 18px;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--primary);
+  color: var(--on-primary);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
 }
 
 .ticket-list-filters__search {
-  display: grid;
-  gap: 5px;
-  margin-top: 14px;
-}
-
-.ticket-list-filters__search > span {
-  color: var(--muted);
-  font-size: 11px;
-  font-weight: 650;
+  display: block;
+  margin-top: 9px;
 }
 
 .ticket-list-filters__search input {
   width: 100%;
-  min-height: 42px;
+  min-height: 38px;
   border: 1px solid var(--border-tint-d8dcff);
   border-radius: 10px;
   padding: 0 12px;
@@ -7903,17 +7938,13 @@ body:has(.ticket-detail) {
   outline-offset: 1px;
 }
 
-.ticket-list-filters__search small {
-  color: var(--muted);
-  font-size: 11px;
-  line-height: 1.45;
-}
-
 .ticket-list-filters__controls {
   display: grid;
-  grid-template-columns: repeat(3, minmax(160px, 1fr));
-  gap: 10px;
-  margin-top: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+  gap: 8px 10px;
+  margin-top: 10px;
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
 }
 
 .ticket-list-filters__controls label {
@@ -7931,7 +7962,7 @@ body:has(.ticket-detail) {
 .ticket-list-filters__controls select {
   width: 100%;
   min-width: 0;
-  min-height: 38px;
+  min-height: 36px;
   border: 1px solid var(--border);
   border-radius: 9px;
   padding: 0 9px;
@@ -8223,16 +8254,19 @@ body:has(.ticket-detail) {
 
   .ticket-list-filters {
     margin-inline: 12px;
-    padding: 14px;
+    padding: 10px 12px;
   }
 
   .ticket-list-filters__heading {
     align-items: flex-start;
-    flex-direction: column;
+  }
+
+  .ticket-list-filters__actions {
+    justify-content: flex-start;
   }
 
   .ticket-list-filters__controls {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1fr;
   }
 
   .ticket-bulk-actions {

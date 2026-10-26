@@ -5432,10 +5432,24 @@ function TicketListFilters({
   query: string;
   statuses: readonly string[];
 }) {
+  const [showControls, setShowControls] = useState(false);
+  const activeControlCount = [
+    filters.agent !== "all",
+    filters.status !== "all",
+    filters.department !== "all",
+    filters.priority !== "all",
+    filters.sortBy !== "updated",
+    filters.sortDirection !== "desc",
+  ].filter(Boolean).length;
   const update = <Key extends keyof TicketListRefinement>(
     key: Key,
     value: TicketListRefinement[Key],
   ) => onChange({ ...filters, [key]: value });
+
+  const clear = () => {
+    onClear();
+    setShowControls(false);
+  };
 
   return (
     <section
@@ -5443,18 +5457,32 @@ function TicketListFilters({
       className="ticket-list-filters"
     >
       <div className="ticket-list-filters__heading">
-        <div>
-          <p className="eyebrow">Liste verfeinern</p>
-          <h3 id="ticket-filter-heading">Filter &amp; Sortierung</h3>
-        </div>
-        {hasActiveFilters && (
-          <button className="text-button" onClick={onClear} type="button">
-            Filter zurücksetzen
+        <h3 id="ticket-filter-heading">Tickets durchsuchen</h3>
+        <div className="ticket-list-filters__actions">
+          <button
+            aria-controls="ticket-list-filter-controls"
+            aria-expanded={showControls}
+            className="ticket-list-filters__toggle"
+            onClick={() => setShowControls((current) => !current)}
+            type="button"
+          >
+            <SlidersHorizontal aria-hidden="true" size={15} strokeWidth={2} />
+            <span>Filter &amp; Sortierung</span>
+            {activeControlCount > 0 && (
+              <span className="ticket-list-filters__count">
+                {activeControlCount}
+              </span>
+            )}
           </button>
-        )}
+          {hasActiveFilters && (
+            <button className="text-button" onClick={clear} type="button">
+              Zurücksetzen
+            </button>
+          )}
+        </div>
       </div>
       <label className="ticket-list-filters__search">
-        <span>Ticket-Volltextsuche</span>
+        <span className="sr-only">Ticket-Volltextsuche</span>
         <input
           autoComplete="off"
           onChange={(event) => onQueryChange(event.target.value)}
@@ -5463,11 +5491,12 @@ function TicketListFilters({
           type="search"
           value={query}
         />
-        <small>
-          Mindestens 2 Zeichen. Filter und Sortierung bleiben aktiv.
-        </small>
       </label>
-      <div className="ticket-list-filters__controls">
+      <div
+        className="ticket-list-filters__controls"
+        hidden={!showControls}
+        id="ticket-list-filter-controls"
+      >
         <label>
           <span>Agent</span>
           <select
