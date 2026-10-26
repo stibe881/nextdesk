@@ -2700,7 +2700,7 @@ time,
   margin: 0;
   border-top: 1px solid var(--border);
   padding: 16px 24px 18px;
-  background: linear-gradient(90deg, var(--surface-subtle), var(--surface));
+  background: transparent;
 }
 .saved-ticket-views__picker,
 .saved-ticket-views__editor,
@@ -8019,10 +8019,11 @@ body:has(.ticket-list-filter-panel) {
 .ticket-list-filter-panel .saved-ticket-views {
   gap: 12px;
   margin: 0;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 14px;
-  background: var(--surface-subtle);
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  padding: 0 0 20px;
+  background: transparent;
 }
 
 .saved-ticket-views__heading {
