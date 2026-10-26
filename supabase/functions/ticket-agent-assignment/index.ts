@@ -1,6 +1,7 @@
 import { withSupabase } from "@supabase/server";
 import { resolveTenantFeatureStates } from "../_shared/tenant-features.ts";
 import { listAssignableAgents } from "../_shared/assignable-agents.ts";
+import { readableTicketDepartments } from "../_shared/readable-ticket-departments.ts";
 
 type Action =
   | { type: "list"; tenantId: string; ticketId: string }
@@ -24,6 +25,12 @@ type PermissionCode =
   | "ticket.read.department"
   | "ticket.update";
 
+type DepartmentRow = {
+  id: string;
+  key: string;
+  name: string;
+};
+
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -32,6 +39,14 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 
 const isUuid = (value: unknown): value is string =>
   typeof value === "string" && UUID_PATTERN.test(value);
+
+const isDepartmentRow = (value: unknown): value is DepartmentRow =>
+  isRecord(value) &&
+  isUuid(value.id) &&
+  typeof value.key === "string" &&
+  value.key.trim().length > 0 &&
+  typeof value.name === "string" &&
+  value.name.trim().length > 0;
 
 function hasOnlyKeys(value: Record<string, unknown>, keys: string[]): boolean {
   const allowed = new Set(keys);
@@ -296,12 +311,13 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
 
   if (action.type === "listForTenant") {
     const departmentIds: string[] = [];
+    const departmentsById = new Map<string, DepartmentRow>();
     const departmentPageSize = 250;
     for (let offset = 0; ; offset += departmentPageSize) {
       const { data: departments, error: departmentsError } =
         await context.supabaseAdmin
           .from("departments")
-          .select("id")
+          .select("id, key, name")
           .eq("tenant_id", action.tenantId)
           .eq("active", true)
           .order("id", { ascending: true })
@@ -314,7 +330,9 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         );
       }
       for (const department of departments ?? []) {
-        if (isUuid(department.id)) departmentIds.push(department.id);
+        if (!isDepartmentRow(department)) continue;
+        departmentIds.push(department.id);
+        departmentsById.set(department.id, department);
       }
       if ((departments ?? []).length < departmentPageSize) break;
     }
@@ -339,6 +357,13 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
 
     const readableDepartmentIds = departmentIds.filter(
       (departmentId) => departmentAccess.get(departmentId) === true,
+    );
+    const readableDepartments = readableTicketDepartments(
+      departmentIds.flatMap((departmentId) => {
+        const department = departmentsById.get(departmentId);
+        return department ? [department] : [];
+      }),
+      departmentAccess,
     );
     const agentsById = new Map<string, { id: string; displayName: string }>();
     if (action.includeAgents) {
@@ -441,7 +466,9 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
           sensitivity: "base",
         }) || left.id.localeCompare(right.id),
     );
-    return response(request, { data: { agents, assignedAgentNames } });
+    return response(request, {
+      data: { agents, assignedAgentNames, departments: readableDepartments },
+    });
   }
 
   const { data: ticket, error: ticketError } = await context.supabaseAdmin

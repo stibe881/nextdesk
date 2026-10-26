@@ -573,28 +573,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function departmentQueueKeysFromRows(
-  value: unknown,
-): Record<string, { key: string; label: string }> | null {
-  if (!Array.isArray(value)) return null;
-  const queues: Record<string, { key: string; label: string }> = {};
-  for (const department of value) {
-    if (
-      !isRecord(department) ||
-      typeof department.id !== "string" ||
-      typeof department.key !== "string" ||
-      typeof department.name !== "string"
-    ) {
-      return null;
-    }
-    queues[department.id] = {
-      key: department.key,
-      label: department.name,
-    };
-  }
-  return queues;
-}
-
 function usableTenantLogoUrl(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const normalized = value.trim();
@@ -1583,9 +1561,6 @@ function AuthenticatedApp() {
   const [tenantFeatures, setTenantFeatures] = useState<Record<string, boolean>>(
     {},
   );
-  const [departmentQueueKeys, setDepartmentQueueKeys] = useState<
-    Record<string, { key: string; label: string }>
-  >({});
   const [activeIncidentNotices, setActiveIncidentNotices] = useState<
     ActiveIncidentNotice[]
   >([]);
@@ -1703,7 +1678,6 @@ function AuthenticatedApp() {
       setWorkplaceRequestedView(null);
       setSsoEnforced(false);
       setTenantFeatures({});
-      setDepartmentQueueKeys({});
       setActiveIncidentNotices([]);
       setTenantWorkspaceBranding(null);
       setExperienceNotice(null);
@@ -2144,33 +2118,6 @@ function AuthenticatedApp() {
       mounted = false;
     };
   }, [activeTenant, session, tenantFeatureRevision]);
-
-  useEffect(() => {
-    if (!supabase || !session || !activeTenant) {
-      setDepartmentQueueKeys({});
-      return;
-    }
-
-    let mounted = true;
-    void supabase
-      .from("departments")
-      .select("id, key, name")
-      .eq("tenant_id", activeTenant.id)
-      .eq("active", true)
-      .then(({ data, error }) => {
-        if (error) throw error;
-        const nextQueues = departmentQueueKeysFromRows(data);
-        if (!nextQueues) throw new Error("invalid_departments_response");
-        if (mounted) setDepartmentQueueKeys(nextQueues);
-      })
-      .then(undefined, () => {
-        if (mounted) setDepartmentQueueKeys({});
-      });
-
-    return () => {
-      mounted = false;
-    };
-  }, [activeTenant, session]);
 
   useEffect(() => {
     if (!supabase || !session || !activeTenant || !requesterPortalEnabled) {
@@ -2651,20 +2598,23 @@ function AuthenticatedApp() {
         updatedAt: "wird geladen",
       })
     : previewView;
+  const departmentQueueKeys = useMemo(
+    () =>
+      Object.fromEntries(
+        (view.ticketFilterCatalog?.departments ?? []).map((department) => [
+          department.id,
+          { key: department.key, label: department.label },
+        ]),
+      ),
+    [view.ticketFilterCatalog?.departments],
+  );
   const queueOptions = useMemo<readonly [string, string][]>(() => {
     const configuredQueues = view.ticketFilterCatalog?.departments ?? [];
-    if (configuredQueues.length > 0) {
-      return configuredQueues.map((department): [string, string] => [
-        department.key,
-        department.label,
-      ]);
-    }
-    return Array.from(
-      new Map(
-        view.tickets.map((ticket) => [ticket.queue, ticket.queueLabel]),
-      ).entries(),
-    ) as [string, string][];
-  }, [view.ticketFilterCatalog?.departments, view.tickets]);
+    return configuredQueues.map((department): [string, string] => [
+      department.key,
+      department.label,
+    ]);
+  }, [view.ticketFilterCatalog?.departments]);
   const ticketFilterOptions = useMemo(() => {
     const collator = new Intl.Collator("de-CH", { sensitivity: "base" });
     const statuses =

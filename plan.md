@@ -515,3 +515,9 @@ Der Auswahlbereich für persönliche gespeicherte Ansichten erhält keinen eigen
 ## Ruhige Suche und Filter in der Wissensdatenbank
 
 Die Wissenswerkzeugleiste wird nach der Nutzungshäufigkeit gegliedert: Die Volltextsuche ist der primäre, volle Bereich. Sichtbarkeit/Status, Kategorie und Unterkategorie bilden darunter eine klar beschriftete Filterzeile mit gleichwertigen Auswahlfeldern. Der neue Artikel gehört als bewusste Erstellaktion zu Artikelzahl und Aktualisieren in den Kopfbereich. Damit verschwinden die kollidierenden Elemente aus einer einzigen horizontalen Zeile, ohne die bestehenden serverautorisierten Daten, Filter oder Rechte zu verändern. Auf schmalen Ansichten darf die Filterzeile sauber umbrechen; Labels und native Auswahlfelder bleiben zugänglich.
+
+## Priorisierte Tickets: nur zugängliche Abteilungen
+
+Die Abteilungsregister bei «Priorisierte Tickets» und in der Ticketliste werden nicht mehr aus einer allgemeinen Browserabfrage aller aktiven Abteilungen aufgebaut. Der vorhandene serverautorisierte Agentenverzeichnisvertrag prüft bereits pro Abteilung die Berechtigung `ticket.read.department`. Er liefert künftig ausschliesslich die dabei bestätigten Abteilungskennungen, Schlüssel und Namen zurück. Der Webclient verwendet genau diese autorisierte Liste für Queue-Register, Abteilungsfilter und die bereits vorhandene Weiterleitung aus Team-Queues; er leitet weder Abteilungszugriffe aus Rollen noch aus aktuell geladenen Tickets ab. Bei einer fehlenden oder ungültigen Katalogantwort zeigt die Oberfläche keine Abteilungsregister und errät keine Abteilung.
+
+Die Umsetzung enthält zusätzlich einen verhaltensbasierten Edge-Test: Eine ausdrücklich erlaubte Abteilung erscheint, eine verweigerte oder fehlende Entscheidung nicht. Der anfängliche textbasierte Reviewbefund ist damit behoben.

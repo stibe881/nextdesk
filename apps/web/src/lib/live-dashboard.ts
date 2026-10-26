@@ -21,8 +21,14 @@ export type TicketAgentOption = {
   id: string;
 };
 
+export type TicketDepartmentOption = {
+  id: string;
+  key: string;
+  label: string;
+};
+
 export type TicketFilterCatalog = {
-  departments: { key: string; label: string }[];
+  departments: TicketDepartmentOption[];
   priorities: string[];
   statuses: string[];
 };
@@ -197,13 +203,15 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function ticketAgentsFromResponse(value: unknown): {
+export function ticketAgentsFromResponse(value: unknown): {
   agents: TicketAgentOption[];
   assignedAgentNames: Map<string, string>;
+  departments: TicketDepartmentOption[];
 } | null {
   if (!isRecord(value) || !isRecord(value.data)) return null;
   if (
     !Array.isArray(value.data.agents) ||
+    !Array.isArray(value.data.departments) ||
     !isRecord(value.data.assignedAgentNames)
   ) {
     return null;
@@ -223,6 +231,26 @@ function ticketAgentsFromResponse(value: unknown): {
     agents.push({ id: entry.id, displayName: entry.displayName.trim() });
   }
 
+  const departments: TicketDepartmentOption[] = [];
+  for (const entry of value.data.departments) {
+    if (
+      !isRecord(entry) ||
+      typeof entry.id !== "string" ||
+      typeof entry.key !== "string" ||
+      typeof entry.label !== "string" ||
+      !UUID_PATTERN.test(entry.id) ||
+      !entry.key.trim() ||
+      !entry.label.trim()
+    ) {
+      return null;
+    }
+    departments.push({
+      id: entry.id,
+      key: entry.key.trim(),
+      label: entry.label.trim(),
+    });
+  }
+
   const assignedAgentNames = new Map<string, string>();
   for (const [id, displayName] of Object.entries(
     value.data.assignedAgentNames,
@@ -235,7 +263,7 @@ function ticketAgentsFromResponse(value: unknown): {
       assignedAgentNames.set(id, displayName.trim());
     }
   }
-  return { agents, assignedAgentNames };
+  return { agents, assignedAgentNames, departments };
 }
 
 function requireSupabase() {
@@ -340,30 +368,23 @@ export async function loadLiveDashboard(
     error: userError,
   } = await client.auth.getUser();
   if (userError) throw userError;
-  const [statusesResult, prioritiesResult, departmentsResult] =
-    await Promise.all([
-      client
-        .from("ticket_statuses")
-        .select("id, label, is_closed, sort_order")
-        .eq("tenant_id", tenant.id),
-      client
-        .from("ticket_priorities")
-        .select("id, label, sort_order")
-        .eq("tenant_id", tenant.id),
-      client
-        .from("departments")
-        .select("id, key, name")
-        .eq("tenant_id", tenant.id)
-        .eq("active", true),
-    ]);
+  const [statusesResult, prioritiesResult] = await Promise.all([
+    client
+      .from("ticket_statuses")
+      .select("id, label, is_closed, sort_order")
+      .eq("tenant_id", tenant.id),
+    client
+      .from("ticket_priorities")
+      .select("id, label, sort_order")
+      .eq("tenant_id", tenant.id),
+  ]);
 
   if (statusesResult.error) throw statusesResult.error;
   if (prioritiesResult.error) throw prioritiesResult.error;
-  if (departmentsResult.error) throw departmentsResult.error;
 
   const statuses = (statusesResult.data ?? []) as TicketStatusRecord[];
   const priorities = (prioritiesResult.data ?? []) as TicketPriorityRecord[];
-  const departments = (departmentsResult.data ?? []) as DepartmentRecord[];
+  let departments: DepartmentRecord[] = [];
   let ticketAgents: TicketAgentOption[] = [];
   const { data: agentDirectoryData, error: agentDirectoryError } =
     await client.functions.invoke("ticket-agent-assignment", {
@@ -376,7 +397,14 @@ export async function loadLiveDashboard(
     });
   if (!agentDirectoryError) {
     const directory = ticketAgentsFromResponse(agentDirectoryData);
-    if (directory) ticketAgents = directory.agents;
+    if (directory) {
+      ticketAgents = directory.agents;
+      departments = directory.departments.map((department) => ({
+        id: department.id,
+        key: department.key,
+        name: department.label,
+      }));
+    }
   }
   const ticketsResult = await client.rpc(
     "list_authorized_ticket_list_page",
@@ -560,7 +588,11 @@ export async function loadLiveDashboard(
     ticketAgents,
     ticketFilterCatalog: {
       departments: departments
-        .map((department) => ({ key: department.key, label: department.name }))
+        .map((department) => ({
+          id: department.id,
+          key: department.key,
+          label: department.name,
+        }))
         .sort((left, right) => left.label.localeCompare(right.label, "de-CH")),
       priorities: priorities
         .slice()
