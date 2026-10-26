@@ -26,6 +26,13 @@ import {
   UsersRound,
   X,
 } from "lucide-react";
+import {
+  ticketCommentComposerCopy,
+  ticketCommentComposerModeForTicketContext,
+  ticketCommentDraftForMode,
+  updateTicketCommentDraft,
+  type TicketCommentComposerContext,
+} from "./lib/ticket-comment-composer";
 import { supabase } from "./lib/supabase";
 import { TicketApprovals } from "./ticket-approvals";
 import { TicketComparison } from "./ticket-comparison";
@@ -3296,7 +3303,10 @@ export function TicketDetail({
   const [requesterOffer, setRequesterOffer] = useState("");
   const [requesterProfileBusy, setRequesterProfileBusy] = useState(false);
   const [assignableAgents, setAssignableAgents] = useState<TicketAgent[]>([]);
-  const [comment, setComment] = useState("");
+  const [commentDrafts, setCommentDrafts] = useState({
+    external: "",
+    internal: "",
+  });
   const [commentVisibility, setCommentVisibility] =
     useState<CommentVisibility>("internal");
   const [mentionedUserIds, setMentionedUserIds] = useState<string[]>([]);
@@ -3396,6 +3406,10 @@ export function TicketDetail({
   const affectedItemsRequestSequence = useRef(0);
   const mergeSearchRequestSequence = useRef(0);
   const ticketCategoriesRequestSequence = useRef(0);
+  const commentModeContextRef = useRef<TicketCommentComposerContext | null>(
+    null,
+  );
+  const commentVisibilityRef = useRef<CommentVisibility>("internal");
   const undoTimerRef = useRef<number | null>(null);
   const attachmentInputRef = useRef<HTMLInputElement>(null);
   const ticketIsClosed = Boolean(
@@ -3418,17 +3432,39 @@ export function TicketDetail({
       detail.canUseInternalNotes ||
       detail.canEscalate === true),
   );
-  const restoreReplyDraft = useCallback((body: string) => {
-    setComment(body);
+  const commentBody = ticketCommentDraftForMode(
+    commentDrafts,
+    commentVisibility,
+  );
+  const commentComposer = ticketCommentComposerCopy(commentVisibility);
+  const restoreInternalNoteDraft = useCallback((body: string) => {
+    setCommentDrafts((current) =>
+      updateTicketCommentDraft(current, "internal", body),
+    );
   }, []);
-  const replyDraft = useTicketReplyDraft({
-    body: comment,
-    onRestore: restoreReplyDraft,
+  const restoreExternalReplyDraft = useCallback((body: string) => {
+    setCommentDrafts((current) =>
+      updateTicketCommentDraft(current, "external", body),
+    );
+  }, []);
+  const internalNoteDraft = useTicketReplyDraft({
+    body: commentDrafts.internal,
+    onRestore: restoreInternalNoteDraft,
     tenantId,
     ticketId,
     userId: currentUserId,
-    visibility: commentVisibility,
+    visibility: "internal",
   });
+  const externalReplyDraft = useTicketReplyDraft({
+    body: commentDrafts.external,
+    onRestore: restoreExternalReplyDraft,
+    tenantId,
+    ticketId,
+    userId: currentUserId,
+    visibility: "external",
+  });
+  const activeCommunicationDraft =
+    commentVisibility === "internal" ? internalNoteDraft : externalReplyDraft;
 
   const offerUndo = useCallback((change: UndoChange) => {
     if (undoTimerRef.current !== null) {
@@ -3699,8 +3735,26 @@ export function TicketDetail({
       setTicketCategorySaving(false);
       setTicketCategoryError("");
       void loadTicketCategoriesForDepartment(nextDetail.ticket.department_id);
-      if (!nextDetail?.canUseInternalNotes) {
-        setCommentVisibility("external");
+      const nextCommentContext = {
+        canUseInternalNotes: nextDetail.canUseInternalNotes,
+        key: `${tenantId}:${ticketId}`,
+      };
+      const previousCommentContext = commentModeContextRef.current;
+      const nextCommentMode = ticketCommentComposerModeForTicketContext({
+        currentMode: commentVisibilityRef.current,
+        nextContext: nextCommentContext,
+        previousContext: previousCommentContext,
+      });
+      commentModeContextRef.current = nextCommentContext;
+      if (nextCommentMode !== commentVisibilityRef.current) {
+        commentVisibilityRef.current = nextCommentMode;
+        setCommentVisibility(nextCommentMode);
+      }
+      if (
+        previousCommentContext?.key !== nextCommentContext.key ||
+        !nextDetail.canUseInternalNotes
+      ) {
+        setMentionedUserIds([]);
       }
       void loadTicketContext(nextDetail.ticket);
       void loadRequesterProfile(
@@ -4911,7 +4965,7 @@ export function TicketDetail({
 
   async function saveComment(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const body = comment.trim();
+    const body = commentBody.trim();
     const mentionRecipients =
       commentVisibility === "internal"
         ? mentionedUserIds.filter((userId) => userId !== currentUserId)
@@ -4937,7 +4991,9 @@ export function TicketDetail({
         body,
         visibility: commentVisibility,
       });
-      setComment("");
+      setCommentDrafts((current) =>
+        updateTicketCommentDraft(current, commentVisibility, ""),
+      );
       onChanged();
       const updatedDetail = await loadTicket();
       if (mentionRecipients.length > 0 && updatedDetail) {
@@ -4982,6 +5038,13 @@ export function TicketDetail({
     } finally {
       setPendingAction(null);
     }
+  }
+
+  function selectCommentMode(mode: CommentVisibility) {
+    commentVisibilityRef.current = mode;
+    setCommentVisibility(mode);
+    setCommentNotice("");
+    if (mode === "external") setMentionedUserIds([]);
   }
 
   async function saveTimeEntry(event: FormEvent<HTMLFormElement>) {
@@ -5218,9 +5281,14 @@ export function TicketDetail({
     }
 
     if (preview.responseText !== null) {
-      setComment(preview.responseText);
-      setCommentVisibility("external");
-      setMentionedUserIds([]);
+      setCommentDrafts((current) =>
+        updateTicketCommentDraft(
+          current,
+          "external",
+          preview.responseText ?? "",
+        ),
+      );
+      selectCommentMode("external");
     }
     if (preview.categoryId !== null || preview.subcategoryId !== null) {
       const saved = await saveTicketCategory(
@@ -5786,13 +5854,13 @@ export function TicketDetail({
         <div className="ticket-detail-section-heading">
           <div>
             <p className="eyebrow">KOMMUNIKATION</p>
-            <h3 id="ticket-comments-heading">Kommentare</h3>
+            <h3 id="ticket-comments-heading">Kommunikation</h3>
           </div>
           <span className="data-caption">{detail.comments.length}</span>
         </div>
 
         {detail.comments.length === 0 ? (
-          <p className="empty-state">Noch keine Kommentare vorhanden.</p>
+          <p className="empty-state">Noch keine Nachrichten vorhanden.</p>
         ) : (
           <ol className="ticket-comment-list ticket-conversation">
             {[...detail.comments].reverse().map((item) => {
@@ -5876,25 +5944,67 @@ export function TicketDetail({
         )}
 
         <form className="ticket-comment-form" onSubmit={saveComment}>
+          <div
+            aria-label="Nachrichtenart wählen"
+            className={`ticket-comment-mode-switch${detail.canUseInternalNotes ? "" : " ticket-comment-mode-switch--external-only"}`}
+            role="group"
+          >
+            {detail.canUseInternalNotes && (
+              <button
+                aria-pressed={commentVisibility === "internal"}
+                className="ticket-comment-mode ticket-comment-mode--internal"
+                disabled={busy}
+                onClick={() => selectCommentMode("internal")}
+                type="button"
+              >
+                <MessageSquare aria-hidden="true" size={17} />
+                <span>
+                  <strong>Interne Notiz</strong>
+                  <small>Nur für berechtigte Mitarbeitende</small>
+                </span>
+              </button>
+            )}
+            <button
+              aria-pressed={commentVisibility === "external"}
+              className="ticket-comment-mode ticket-comment-mode--external"
+              disabled={busy}
+              onClick={() => selectCommentMode("external")}
+              type="button"
+            >
+              <Send aria-hidden="true" size={17} strokeWidth={1.8} />
+              <span>
+                <strong>Antwort an anfragende Person</strong>
+                <small>Für die anfragende Person sichtbar</small>
+              </span>
+            </button>
+          </div>
           <label className="ticket-comment-body">
-            Neuer Kommentar
+            {commentComposer.bodyLabel}
             <textarea
               aria-describedby="ticket-comment-visibility-hint"
               disabled={busy}
               maxLength={50_000}
-              onChange={(event) => setComment(event.target.value)}
-              placeholder="Interne Notiz oder Antwort verfassen …"
+              onChange={(event) =>
+                setCommentDrafts((current) =>
+                  updateTicketCommentDraft(
+                    current,
+                    commentVisibility,
+                    event.target.value,
+                  ),
+                )
+              }
+              placeholder={commentComposer.placeholder}
               required
               rows={4}
-              value={comment}
+              value={commentBody}
             />
           </label>
-          {replyDraft.restored && (
+          {activeCommunicationDraft.restored && (
             <p className="ticket-workbench__notice" role="status">
               Entwurf wiederhergestellt.
               <button
                 className="text-button"
-                onClick={replyDraft.clearRestoredNotice}
+                onClick={activeCommunicationDraft.clearRestoredNotice}
                 type="button"
               >
                 Hinweis ausblenden
@@ -5908,11 +6018,19 @@ export function TicketDetail({
             }
             onChange={setMentionedUserIds}
             onInsertMention={(displayName) =>
-              setComment((current) => {
+              setCommentDrafts((current) => {
+                const internalNote = ticketCommentDraftForMode(
+                  current,
+                  "internal",
+                );
                 const mention = `@${displayName}`;
-                return current.includes(mention)
-                  ? current
-                  : `${current}${current.trim() ? " " : ""}${mention} `;
+                return updateTicketCommentDraft(
+                  current,
+                  "internal",
+                  internalNote.includes(mention)
+                    ? internalNote
+                    : `${internalNote}${internalNote.trim() ? " " : ""}${mention} `,
+                );
               })
             }
             people={visibleAssignableAgents
@@ -5923,42 +6041,12 @@ export function TicketDetail({
               }))}
             selectedIds={mentionedUserIds}
           />
-          <fieldset className="ticket-comment-visibility" disabled={busy}>
-            <legend>Kommentar-Sichtbarkeit</legend>
-            {detail.canUseInternalNotes && (
-              <label>
-                <input
-                  checked={commentVisibility === "internal"}
-                  name="comment-visibility"
-                  onChange={() => setCommentVisibility("internal")}
-                  type="radio"
-                  value="internal"
-                />
-                Interne Notiz
-              </label>
-            )}
-            <label>
-              <input
-                checked={commentVisibility === "external"}
-                name="comment-visibility"
-                onChange={() => {
-                  setCommentVisibility("external");
-                  setMentionedUserIds([]);
-                }}
-                type="radio"
-                value="external"
-              />
-              Externe Antwort
-            </label>
-          </fieldset>
           <p
             className={`ticket-comment-visibility-hint ${commentVisibility}`}
             id="ticket-comment-visibility-hint"
             aria-live="polite"
           >
-            {commentVisibility === "internal"
-              ? "Interne Notiz: Nur berechtigte Mitarbeitende sehen diesen Kommentar."
-              : "Externe Antwort: Diese Nachricht ist für die anfragende Person sichtbar."}
+            {commentComposer.hint}
           </p>
           {commentNotice && (
             <p className="ticket-workbench__notice" role="status">
@@ -5975,9 +6063,7 @@ export function TicketDetail({
             ) : (
               <Send aria-hidden="true" size={16} strokeWidth={1.8} />
             )}
-            {commentVisibility === "internal"
-              ? "Interne Notiz speichern"
-              : "Externe Antwort senden"}
+            {commentComposer.submitLabel}
           </button>
         </form>
       </section>
