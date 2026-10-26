@@ -525,3 +525,7 @@ Die Umsetzung enthält zusätzlich einen verhaltensbasierten Edge-Test: Eine aus
 ## Abstand zwischen Filterauslöser und Queue-Leiste
 
 Der einzelne Trichter-Auslöser bleibt als kompakte Aktion rechts oberhalb der Ticketliste. Er erhält jedoch eine eigene vertikale Luftzone, sodass die Queue-Register «Alle Queues» und die folgenden Ticketkarten klar davon getrennt beginnen. Es ändern sich ausschliesslich Abstand und visuelle Hierarchie; Filterpanel, Queueauswahl, serverautorisierte Ticketmenge, gespeicherte Ansichten, Berechtigungen und Tastaturbedienung bleiben unverändert.
+
+## Bereinigung der Ticketkopfaktionen
+
+In der Ticketkopfzeile entfallen die drei markierten Zusatzaktionen «Listen-Detail-Ansicht», «CSV exportieren» und «Tickets importieren». Dadurch konzentriert sich die Zeile auf Trefferzahl und die bereits vorhandene Navigation «Zur Übersicht». Die globale Schaltfläche «Ansicht» bleibt unverändert, ebenso die persönliche Listen-Detail-Einstellung in den Ansichtsoptionen; sie werden nicht mit den entfernten Kopfaktionen vermischt. Es gibt keine Änderung an Ticketdaten, Import-/Exportendpunkten, Berechtigungen oder automatischen Abläufen.

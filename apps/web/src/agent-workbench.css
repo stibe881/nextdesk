@@ -757,10 +757,6 @@
   .workbench-metrics dl {
     grid-template-columns: 1fr;
   }
-
-  .ticket-split-toggle {
-    display: none;
-  }
 }
 
 @media (max-width: 520px) {
