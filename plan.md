@@ -549,3 +549,9 @@ Der bereits aktive Exchange-Mail-Wartungslauf bleibt im automatischen Migrations
 - `apps/web/src/ticket-detail.tsx`: Realtime-Invalidierung eines offenen Tickets mit anschliessendem bestehenden autorisierten Detailabruf.
 - `supabase/functions/ticket-agent-assignment/`: mengenbasierte Auswertung lesbarer Abteilungen und zuweisbarer Agent:innen.
 - `supabase/migrations/0111_ticket_realtime_invalidation.sql`: kontrollierte Realtime-Publikation für Ticket-Invalidierungen.
+
+## Lesbare eingehende E-Mail-Inhalte
+
+Eingehende Microsoft-365-Nachrichten bleiben ausschliesslich serverautorisierte, reine Textinhalte. Vor dem Speichern entfernt eine kleine gemeinsame Funktion technische Outlook- und Office-Reste, Tracking- und Abo-Fusszeilen, leere Profilbildplatzhalter sowie nicht auflösbare temporäre Bildkennungen. Fachlicher Nachrichtentext, Signaturzeilen und nur die vorhandenen, validierten `cid:`-Verweise bleiben erhalten; bereits bestehende private Inlinebildmarker werden weiterhin allein über den bestehenden Anhangspfad aufgelöst. Die Aufbereitung lädt weder externe Bilder noch URLs und erzeugt keinen HTML- oder Skriptausführungspfad.
+
+Die iOS-App bereinigt dieselben bekannten Darstellungsreste rein lokal und ohne Datenmutation für schon gespeicherte E-Mail-Tickets und E-Mail-Kommentare. Damit wird die aktuelle Ansicht unmittelbar lesbar, während die Edge Function künftig neue Nachrichten bereits sauber speichert. Die serverseitige Berechtigungsprüfung, Mandantentrennung, Threadzuordnung und die bisherigen privaten, kurzlebigen Anhang-URLs bleiben unverändert. Die Edge Function wird erst nach einer separaten Produktivfreigabe ausgerollt.

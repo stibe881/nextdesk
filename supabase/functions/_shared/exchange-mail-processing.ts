@@ -8,6 +8,7 @@ import {
   prepareInboundBodyWithInlineMarkers,
   resolveInboundInlineMarkers,
 } from "./exchange-inline-media.ts";
+import { normalizeInboundEmailText } from "./exchange-inbound-text.ts";
 import { resolveTenantFeatureStates } from "./tenant-features.ts";
 
 const SERVICE_EMAIL = "exchange-mail-service@app.nextdesk.ch";
@@ -952,7 +953,7 @@ async function createNewTicket(
       department_id: department.data.id,
       ticket_number: number.data,
       subject: subject(graph.subject),
-      description: `Eingegangene E-Mail von ${displayNameFromAddress(sender)}\n\n${cleanText(
+      description: `Eingegangene E-Mail von ${displayNameFromAddress(sender)}\n\n${normalizeInboundEmailText(
         record(graph.uniqueBody) ? graph.uniqueBody.content : null,
       )}`,
       status_id: status.data.id,
@@ -1141,7 +1142,7 @@ export async function processInboundMessage(
     );
     if (hasInlineMedia)
       await updateInlineMediaStatus(admin, message, "pending");
-    const body = cleanText(
+    const body = normalizeInboundEmailText(
       record(graph.uniqueBody)
         ? graph.uniqueBody.content
         : record(graph.body)
@@ -1326,7 +1327,7 @@ async function recoverProcessedInlineMedia(
       await readInboundAttachments(admin, channel, message.graph_message_id)
     ).filter((attachment) => attachment.contentId !== null);
     if (!attachments.length) throw new Error("inline_media_source_unavailable");
-    const body = cleanText(
+    const body = normalizeInboundEmailText(
       record(graph.uniqueBody)
         ? graph.uniqueBody.content
         : record(graph.body)
