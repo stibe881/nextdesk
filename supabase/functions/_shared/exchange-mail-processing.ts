@@ -10,7 +10,9 @@ import {
 } from "./exchange-inline-media.ts";
 import { normalizeInboundEmailText } from "./exchange-inbound-text.ts";
 import {
+  normalizeCustomerTicketEmailBranding,
   renderCustomerTicketEmail,
+  type CustomerTicketEmailBrand,
   type CustomerTicketEmailKind,
 } from "./customer-ticket-email-template.ts";
 import { resolveTenantFeatureStates } from "./tenant-features.ts";
@@ -23,6 +25,9 @@ const MAX_INBOUND_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 const MAX_INBOUND_TOTAL_BYTES = 25 * 1024 * 1024;
 const MAX_OUTBOUND_ATTACHMENT_BYTES = 3 * 1024 * 1024;
 const BUCKET = "ticket-attachments";
+const TENANT_BRANDING_BUCKET = "tenant-branding";
+const MAX_TENANT_LOGO_BYTES = 2 * 1024 * 1024;
+const TENANT_LOGO_CONTENT_ID = "nextdesk-tenant-brand-logo";
 const ALLOWED_CONTENT_TYPES = new Set([
   "application/pdf",
   "text/plain",
@@ -95,6 +100,115 @@ export function customerTicketEmailKindForOutbound(
   )
     return messageKind;
   return null;
+}
+
+export function supportsInlineCustomerEmailLogo(
+  kind: CustomerTicketEmailKind,
+): boolean {
+  // Microsoft Graph accepts JSON file attachments for sendMail, but not for
+  // message/reply. Threaded agent replies therefore retain colours and the
+  // text brand while avoiding an unsupported CID attachment payload.
+  return kind !== "agent_reply";
+}
+
+export function tenantBrandingStoragePath(
+  value: unknown,
+  tenantId: string,
+): string | null {
+  if (typeof value !== "string" || !value || !tenantId) return null;
+  try {
+    const url = new URL(value);
+    const prefix = "/storage/v1/object/public/tenant-branding/";
+    if (
+      url.protocol !== "https:" ||
+      url.username ||
+      url.password ||
+      url.search ||
+      url.hash ||
+      !url.pathname.startsWith(prefix)
+    )
+      return null;
+    const path = decodeURIComponent(url.pathname.slice(prefix.length));
+    const escapedTenantId = tenantId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const expected = new RegExp(
+      `^tenant/${escapedTenantId}/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\\.(?:png|jpe?g|webp)$`,
+      "i",
+    );
+    return expected.test(path) ? path : null;
+  } catch {
+    return null;
+  }
+}
+
+function tenantLogoContentType(
+  contentType: unknown,
+  path: string,
+): string | null {
+  const normalized =
+    typeof contentType === "string" ? contentType.toLowerCase().trim() : "";
+  if (["image/png", "image/jpeg", "image/webp"].includes(normalized))
+    return normalized;
+  if (path.endsWith(".png")) return "image/png";
+  if (path.endsWith(".jpg") || path.endsWith(".jpeg")) return "image/jpeg";
+  if (path.endsWith(".webp")) return "image/webp";
+  return null;
+}
+
+function base64(bytes: Uint8Array): string {
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary);
+}
+
+async function customerEmailBranding(
+  admin: Admin,
+  tenantId: string,
+  portalName: string,
+  includeInlineLogo: boolean,
+): Promise<{ branding: CustomerTicketEmailBrand; logoAttachment: Row | null }> {
+  const result = await admin
+    .from("tenant_branding")
+    .select("logo_path, primary_color, secondary_color, accent_color")
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+  const row = result.error || !record(result.data) ? {} : result.data;
+  const path = includeInlineLogo
+    ? tenantBrandingStoragePath(row.logo_path, tenantId)
+    : null;
+  let logoAttachment: Row | null = null;
+  if (path) {
+    const logo = await admin.storage
+      .from(TENANT_BRANDING_BUCKET)
+      .download(path);
+    if (!logo.error && logo.data) {
+      const bytes = new Uint8Array(await logo.data.arrayBuffer());
+      const contentType = tenantLogoContentType(logo.data.type, path);
+      if (
+        bytes.byteLength > 0 &&
+        bytes.byteLength <= MAX_TENANT_LOGO_BYTES &&
+        contentType
+      ) {
+        logoAttachment = {
+          "@odata.type": "#microsoft.graph.fileAttachment",
+          contentBytes: base64(bytes),
+          contentId: TENANT_LOGO_CONTENT_ID,
+          contentType,
+          isInline: true,
+          name: `nextdesk-logo.${contentType === "image/jpeg" ? "jpg" : contentType.slice("image/".length)}`,
+        };
+      }
+    }
+  }
+  return {
+    branding: normalizeCustomerTicketEmailBranding({
+      accentColor: asString(row.accent_color) ?? undefined,
+      displayName: portalName,
+      logoContentId: logoAttachment ? TENANT_LOGO_CONTENT_ID : null,
+      primaryColor: asString(row.primary_color) ?? undefined,
+      secondaryColor: asString(row.secondary_color) ?? undefined,
+    }),
+    logoAttachment,
+  };
 }
 
 async function delegatedConnectionForChannel(
@@ -1638,6 +1752,15 @@ export async function dispatchOutboundMessage(
     const customerEmailKind = customerTicketEmailKindForOutbound(message.kind);
     if (!internalDepartmentNotice && !customerEmailKind)
       throw new Error("outbound_message_kind_unsupported");
+    const customerBranding =
+      !internalDepartmentNotice && customerEmailKind
+        ? await customerEmailBranding(
+            admin,
+            message.tenant_id,
+            portalName,
+            supportsInlineCustomerEmailLogo(customerEmailKind),
+          )
+        : null;
     const html = internalDepartmentNotice
       ? internalNoticeHtmlTemplate({
           text: bodyText,
@@ -1650,10 +1773,16 @@ export async function dispatchOutboundMessage(
           text: bodyText,
           ticketNumber,
           subject: ticketSubject,
-          portalName,
+          branding: customerBranding!.branding,
           attachmentNotice: attachments.omitted,
           kind: customerEmailKind!,
         });
+    const graphAttachments = [
+      ...attachments.attachments,
+      ...(customerBranding?.logoAttachment
+        ? [customerBranding.logoAttachment]
+        : []),
+    ];
     const graphMessage: Row = {
       subject:
         message.kind === "agent_reply"
@@ -1665,9 +1794,7 @@ export async function dispatchOutboundMessage(
         { name: "X-nextDesk-Ticket", value: ticketNumber },
         { name: "X-Auto-Response-Suppress", value: "All" },
       ],
-      ...(attachments.attachments.length
-        ? { attachments: attachments.attachments }
-        : {}),
+      ...(graphAttachments.length ? { attachments: graphAttachments } : {}),
     };
     if (!(await activeChannel(admin, channel))) {
       await updateMessage(admin, message.id, {
