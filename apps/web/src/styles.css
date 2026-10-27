@@ -4952,8 +4952,15 @@ body:has(.ticket-detail) {
   font-size: 13px;
 }
 
+.tenant-admin-settings__people-heading > label {
+  flex: 0 1 360px;
+  width: min(100%, 360px);
+  min-width: 280px;
+}
+
 .tenant-admin-settings__people-heading input {
-  min-width: min(100%, 260px);
+  width: 100%;
+  min-width: 0;
 }
 
 .tenant-admin-settings__agent-toggle {
@@ -6820,6 +6827,11 @@ body:has(.ticket-detail) {
   .tenant-admin-settings__people-heading {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .tenant-admin-settings__people-heading > label {
+    width: 100%;
+    min-width: 0;
   }
 
   .tenant-admin-settings__people-heading input {
