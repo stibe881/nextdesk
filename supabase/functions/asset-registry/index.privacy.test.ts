@@ -35,3 +35,34 @@ Deno.test(
     }
   },
 );
+
+Deno.test(
+  "Assetdetail verwendet die eindeutige mandantengebundene Ticketstatusrelation",
+  async () => {
+    const source = await Deno.readTextFile(
+      new URL("./index.ts", import.meta.url),
+    );
+    const explicitJoin =
+      "status:ticket_statuses!tickets_status_tenant_fk!inner(label)";
+    if (!source.includes(explicitJoin)) {
+      throw new Error(
+        "Der Assetdetailpfad muss die mandantengebundene Ticketstatusrelation explizit wählen.",
+      );
+    }
+    if (source.includes("status:ticket_statuses!inner(label)")) {
+      throw new Error(
+        "Der Assetdetailpfad enthält weiterhin einen mehrdeutigen Ticketstatus-Join.",
+      );
+    }
+    for (const required of [
+      '.eq("tenant_id", action.tenantId)',
+      '.eq("asset_id", action.assetId)',
+    ]) {
+      if (!source.includes(required)) {
+        throw new Error(
+          `Der Assetdetailpfad hat seine Mandanten- oder Assetbindung verloren: ${required}`,
+        );
+      }
+    }
+  },
+);

@@ -476,7 +476,7 @@ async function getAsset(
     client
       .from("ticket_assets")
       .select(
-        "tickets!inner(id, ticket_number, subject, status:ticket_statuses!inner(label))",
+        "tickets!inner(id, ticket_number, subject, status:ticket_statuses!tickets_status_tenant_fk!inner(label))",
       )
       .eq("tenant_id", action.tenantId)
       .eq("asset_id", action.assetId)
