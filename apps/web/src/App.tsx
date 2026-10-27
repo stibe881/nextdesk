@@ -1466,6 +1466,17 @@ function TicketListDetailPreview({
   );
 }
 
+function useDebouncedValue(value: string, delayMs: number): string {
+  const [debouncedValue, setDebouncedValue] = useState(value);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => setDebouncedValue(value), delayMs);
+    return () => window.clearTimeout(timeout);
+  }, [delayMs, value]);
+
+  return debouncedValue;
+}
+
 function AuthenticatedApp() {
   const [section, setRequestedSection] = useState<Section>("Übersicht");
   const [globalSearchTarget, setGlobalSearchTarget] =
@@ -1480,6 +1491,7 @@ function AuthenticatedApp() {
   const [metricTicketFilter, setMetricTicketFilter] =
     useState<MetricTicketFilter | null>(null);
   const [query, setQuery] = useState("");
+  const debouncedQuery = useDebouncedValue(query, 300);
   const [savedTicketViews, setSavedTicketViews] = useState<SavedTicketView[]>(
     [],
   );
@@ -2278,10 +2290,9 @@ function AuthenticatedApp() {
   }, [
     activeTenant?.id,
     canWorkTickets,
-    dashboardRevision,
+    debouncedQuery,
     metricTicketFilter,
     period,
-    query,
     queue,
     ticketListRefinement,
     ticketScope,
@@ -2303,7 +2314,6 @@ function AuthenticatedApp() {
 
     let mounted = true;
     setDashboardLoading(true);
-    if (ticketPage === 0) setSnapshot(null);
     setErrorMessage("");
     void loadLiveDashboard(
       activeTenant,
@@ -2312,7 +2322,7 @@ function AuthenticatedApp() {
       ticketListRefinement,
       {
         metricTicketIds: metricTicketFilter?.ticketIds ?? null,
-        query,
+        query: debouncedQuery,
         queue,
         scope: canWorkTickets ? ticketScope : "mine",
       },
@@ -2373,15 +2383,50 @@ function AuthenticatedApp() {
     activeTenant,
     dashboardRevision,
     canWorkTickets,
+    debouncedQuery,
     metricTicketFilter,
     period,
-    query,
     queue,
     session,
     ticketListRefinement,
     ticketPage,
     ticketScope,
   ]);
+
+  useEffect(() => {
+    if (!supabase || !session || !activeTenant) return;
+
+    const realtimeClient = supabase;
+    let refreshTimer: number | null = null;
+    const scheduleDashboardRefresh = () => {
+      if (document.visibilityState !== "visible" || refreshTimer !== null)
+        return;
+      refreshTimer = window.setTimeout(() => {
+        refreshTimer = null;
+        setDashboardRevision((current) => current + 1);
+      }, 250);
+    };
+    const channel = realtimeClient
+      .channel(
+        `ticket-dashboard-invalidation:${activeTenant.id}:${session.user.id}`,
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          filter: `tenant_id=eq.${activeTenant.id}`,
+          schema: "public",
+          table: "tickets",
+        },
+        scheduleDashboardRefresh,
+      )
+      .subscribe();
+
+    return () => {
+      if (refreshTimer !== null) window.clearTimeout(refreshTimer);
+      void realtimeClient.removeChannel(channel);
+    };
+  }, [activeTenant?.id, session?.user.id]);
 
   async function signOut() {
     if (!supabase) return;

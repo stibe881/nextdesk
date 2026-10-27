@@ -363,21 +363,31 @@ export async function loadLiveDashboard(
 ): Promise<LiveDashboardSnapshot> {
   const client = requireSupabase();
   const since = startDate(period);
+  const [authResult, statusesResult, prioritiesResult, agentDirectoryResult] =
+    await Promise.all([
+      client.auth.getUser(),
+      client
+        .from("ticket_statuses")
+        .select("id, label, is_closed, sort_order")
+        .eq("tenant_id", tenant.id),
+      client
+        .from("ticket_priorities")
+        .select("id, label, sort_order")
+        .eq("tenant_id", tenant.id),
+      client.functions.invoke("ticket-agent-assignment", {
+        body: {
+          includeAgents: true,
+          ticketIds: [],
+          tenantId: tenant.id,
+          type: "listForTenant",
+        },
+      }),
+    ]);
   const {
     data: { user },
     error: userError,
-  } = await client.auth.getUser();
+  } = authResult;
   if (userError) throw userError;
-  const [statusesResult, prioritiesResult] = await Promise.all([
-    client
-      .from("ticket_statuses")
-      .select("id, label, is_closed, sort_order")
-      .eq("tenant_id", tenant.id),
-    client
-      .from("ticket_priorities")
-      .select("id, label, sort_order")
-      .eq("tenant_id", tenant.id),
-  ]);
 
   if (statusesResult.error) throw statusesResult.error;
   if (prioritiesResult.error) throw prioritiesResult.error;
@@ -386,17 +396,8 @@ export async function loadLiveDashboard(
   const priorities = (prioritiesResult.data ?? []) as TicketPriorityRecord[];
   let departments: DepartmentRecord[] = [];
   let ticketAgents: TicketAgentOption[] = [];
-  const { data: agentDirectoryData, error: agentDirectoryError } =
-    await client.functions.invoke("ticket-agent-assignment", {
-      body: {
-        includeAgents: true,
-        ticketIds: [],
-        tenantId: tenant.id,
-        type: "listForTenant",
-      },
-    });
-  if (!agentDirectoryError) {
-    const directory = ticketAgentsFromResponse(agentDirectoryData);
+  if (!agentDirectoryResult.error) {
+    const directory = ticketAgentsFromResponse(agentDirectoryResult.data);
     if (directory) {
       ticketAgents = directory.agents;
       departments = directory.departments.map((department) => ({
@@ -424,21 +425,40 @@ export async function loadLiveDashboard(
 
   const tickets = (ticketsResult.data ?? []) as TicketListRecord[];
 
-  let assignedAgentNames = new Map<string, string>();
-  const { data: agentNamesData, error: agentNamesError } =
-    await client.functions.invoke("ticket-agent-assignment", {
-      body: {
-        includeAgents: false,
-        ticketIds: tickets
-          .slice(0, TICKET_PAGE_SIZE)
-          .map((ticket) => ticket.id),
-        tenantId: tenant.id,
-        type: "listForTenant",
-      },
-    });
-  if (!agentNamesError) {
-    const directory = ticketAgentsFromResponse(agentNamesData);
-    if (directory) assignedAgentNames = directory.assignedAgentNames;
+  const assignedAgentNames = new Map<string, string>(
+    ticketAgents.map((agent) => [agent.id, agent.displayName]),
+  );
+  const missingAssignedAgentIds = [
+    ...new Set(
+      tickets
+        .slice(0, TICKET_PAGE_SIZE)
+        .map((ticket) => ticket.assigned_agent_id)
+        .filter(
+          (agentId): agentId is string =>
+            typeof agentId === "string" && !assignedAgentNames.has(agentId),
+        ),
+    ),
+  ];
+  if (missingAssignedAgentIds.length > 0) {
+    const { data: agentNamesData, error: agentNamesError } =
+      await client.functions.invoke("ticket-agent-assignment", {
+        body: {
+          includeAgents: false,
+          ticketIds: tickets
+            .slice(0, TICKET_PAGE_SIZE)
+            .map((ticket) => ticket.id),
+          tenantId: tenant.id,
+          type: "listForTenant",
+        },
+      });
+    if (!agentNamesError) {
+      const directory = ticketAgentsFromResponse(agentNamesData);
+      if (directory) {
+        for (const [agentId, displayName] of directory.assignedAgentNames) {
+          assignedAgentNames.set(agentId, displayName);
+        }
+      }
+    }
   }
 
   const ticketRows = tickets.slice(0, TICKET_PAGE_SIZE).map((ticket) => {
@@ -507,7 +527,8 @@ export async function loadLiveDashboard(
       .is("assigned_agent_id", null),
     client
       .from("ticket_events")
-      .select("event_type, created_at")
+      .select("event_type, created_at, tickets!inner(tenant_id)")
+      .eq("tickets.tenant_id", tenant.id)
       .gte("created_at", since)
       .order("created_at", { ascending: false })
       .limit(3),

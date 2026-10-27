@@ -42,6 +42,7 @@ $$;
 create role anon nologin;
 create role authenticated nologin;
 create role service_role nologin;
+create publication supabase_realtime;
 SQL
 
 for migration in "$ROOT_DIR"/supabase/migrations/*.sql; do
@@ -117,6 +118,15 @@ SQL
   fi
   psql -v ON_ERROR_STOP=1 -f "$migration" >/dev/null
 done
+
+realtime_ticket_tables="$(psql -At -c "
+  select string_agg(tablename, ',' order by tablename)
+  from pg_publication_tables
+  where pubname = 'supabase_realtime'
+    and schemaname = 'public'
+    and tablename in ('tickets', 'ticket_comments')
+" | tr -d '\n')"
+[[ "$realtime_ticket_tables" == "ticket_comments,tickets" ]]
 
 legacy_saved_view_visibility="$(psql -At -c "
   select visibility

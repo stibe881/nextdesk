@@ -533,3 +533,19 @@ In der Ticketkopfzeile entfallen die drei markierten Zusatzaktionen «Listen-Det
 ## Queue-Leiste nur bei echter Auswahl
 
 Die zentrale Webkomponente für Queue-Register rendert sich nur, wenn der bereits serverautorisierte Katalog mindestens eine Abteilung oder Teamqueue zusätzlich zu «Alle Queues» enthält. Bei einem einzelnen Standardwert verschwindet die leere Auswahlzeile sowohl in der Ticketliste als auch in «Priorisierte Tickets». Falls sich Mandant oder Berechtigung ändern und die zuvor gewählte Queue nicht mehr im autorisierten Katalog vorkommt, wird die Webauswahl kontrolliert auf «Alle Queues» zurückgesetzt. Es werden keine Queues im Browser hergeleitet, keine Rechte erweitert und keine iOS-Datei verändert.
+
+## Reaktionsschnelle Ticketarbeit und E-Mail-Eingang
+
+Die Ticketarbeitsfläche soll ohne Lockerung der Mandantentrennung schneller und aktueller reagieren. Der Dashboardabruf behält während einer erneuten serverautorisierten Aktualisierung bereits bestätigte Kennzahlen und Listen sichtbar, entprellt die Ticket-Volltextsuche und setzt bei einer Hintergrundaktualisierung keine Pagination zurück. Statische Ticketkataloge, Ticketliste und Kennzahlen werden im bestehenden autorisierten Ablauf mit weniger seriellen Netzwerkbarrieren geladen; der Agentenverzeichnis-Endpunkt löst lesbare Abteilungen und zuweisbare Agent:innen innerhalb einer Anfrage mengenbasiert statt pro Abteilung über wiederholte Datenbankabfragen auf.
+
+Eingehende Ticketänderungen lösen im Browser ausschliesslich eine Invalidierung aus. Ein Supabase-Realtime-Ereignis enthält keine übernommene Ticket- oder Kommentardaten und entscheidet keine Berechtigung. Es veranlasst lediglich das erneute Laden über die vorhandenen RLS- und Edge-Function-Pfade. Ticket- und Kommentar-Tabellen werden dafür nur nach ausdrücklichem Datenbankrelease in die bestehende `supabase_realtime`-Publikation aufgenommen; RLS bleibt vor jeder Ereignislieferung und jedem anschliessenden Abruf verbindlich. Die Web-Kommunikation folgt derselben ruhigen Chronologie wie die iOS-App: ältere Nachrichten stehen oben, neue Nachrichten unten; die serverseitig berechtigte Kommentarmenge bleibt unverändert.
+
+Der bereits aktive Exchange-Mail-Wartungslauf bleibt im automatischen Migrationspfad unverändert auf fünf Minuten. Eine spätere Taktverkürzung für freigegebene Shared Mailboxes ist eine separate Betriebsaktion: Sie wird erst nach einer ausdrücklichen neuen Freigabe ausserhalb von Migrationen konfiguriert und muss den bestehenden idempotenten Worker, die Graph-Quota und die aktuelle Scheduler-Konfiguration vor der Änderung prüfen.
+
+### Projektstruktur
+
+- `apps/web/src/lib/live-dashboard.ts`: paralleler, weiterhin serverautorisierter Dashboardabruf und weniger Verzeichnisrückrufe.
+- `apps/web/src/App.tsx`: Entprellung, stale-while-revalidate und Realtime-Invalidierung ohne Übernahme von Ereignisdaten.
+- `apps/web/src/ticket-detail.tsx`: Realtime-Invalidierung eines offenen Tickets mit anschliessendem bestehenden autorisierten Detailabruf.
+- `supabase/functions/ticket-agent-assignment/`: mengenbasierte Auswertung lesbarer Abteilungen und zuweisbarer Agent:innen.
+- `supabase/migrations/0111_ticket_realtime_invalidation.sql`: kontrollierte Realtime-Publikation für Ticket-Invalidierungen.

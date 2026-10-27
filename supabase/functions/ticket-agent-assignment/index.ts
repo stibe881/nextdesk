@@ -1,6 +1,9 @@
 import { withSupabase } from "@supabase/server";
 import { resolveTenantFeatureStates } from "../_shared/tenant-features.ts";
-import { listAssignableAgents } from "../_shared/assignable-agents.ts";
+import {
+  listAssignableAgents,
+  listAssignableAgentsForDepartments,
+} from "../_shared/assignable-agents.ts";
 import { readableTicketDepartments } from "../_shared/readable-ticket-departments.ts";
 
 type Action =
@@ -310,11 +313,11 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
   }
 
   if (action.type === "listForTenant") {
-    const departmentIds: string[] = [];
-    const departmentsById = new Map<string, DepartmentRow>();
+    const now = new Date().toISOString();
+    const departments: DepartmentRow[] = [];
     const departmentPageSize = 250;
     for (let offset = 0; ; offset += departmentPageSize) {
-      const { data: departments, error: departmentsError } =
+      const { data: departmentRows, error: departmentsError } =
         await context.supabaseAdmin
           .from("departments")
           .select("id, key, name")
@@ -329,62 +332,90 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
           500,
         );
       }
-      for (const department of departments ?? []) {
-        if (!isDepartmentRow(department)) continue;
-        departmentIds.push(department.id);
-        departmentsById.set(department.id, department);
-      }
-      if ((departments ?? []).length < departmentPageSize) break;
-    }
-    const departmentAccess = new Map<string, boolean>();
-    for (const departmentId of departmentIds) {
-      const canRead = await hasTicketPermission(
-        context.supabaseAdmin,
-        actorId,
-        action.tenantId,
-        departmentId,
-        "ticket.read.department",
-      );
-      if (canRead.error) {
-        return response(
-          request,
-          { error: { code: "ticket_agents_lookup_failed" } },
-          500,
-        );
-      }
-      departmentAccess.set(departmentId, canRead.allowed);
+      departments.push(...(departmentRows ?? []).filter(isDepartmentRow));
+      if ((departmentRows ?? []).length < departmentPageSize) break;
     }
 
-    const readableDepartmentIds = departmentIds.filter(
-      (departmentId) => departmentAccess.get(departmentId) === true,
+    const [
+      { data: departmentMemberships, error: departmentMembershipsError },
+      { data: roleAssignments, error: roleAssignmentsError },
+    ] = await Promise.all([
+      context.supabaseAdmin
+        .from("department_memberships")
+        .select("department_id")
+        .eq("tenant_id", action.tenantId)
+        .eq("user_id", actorId)
+        .eq("status", "active"),
+      context.supabaseAdmin
+        .from("user_role_assignments")
+        .select(
+          "department_id, roles!user_role_assignments_role_tenant_fk!inner(tenant_id, active, scope, role_permissions!inner(permission_code))",
+        )
+        .eq("tenant_id", action.tenantId)
+        .eq("user_id", actorId)
+        .lte("starts_at", now)
+        .or(`expires_at.is.null,expires_at.gt.${now}`),
+    ]);
+    if (departmentMembershipsError || roleAssignmentsError) {
+      return response(
+        request,
+        { error: { code: "ticket_agents_lookup_failed" } },
+        500,
+      );
+    }
+
+    const activeDepartmentMembershipIds = new Set(
+      (departmentMemberships ?? []).flatMap((membership: any) =>
+        isUuid(membership.department_id) ? [membership.department_id] : [],
+      ),
+    );
+    const departmentAccess = new Map<string, boolean>();
+    for (const department of departments) {
+      const allowed =
+        activeDepartmentMembershipIds.has(department.id) &&
+        (roleAssignments ?? []).some((assignment: any) => {
+          const role = Array.isArray(assignment.roles)
+            ? assignment.roles[0]
+            : assignment.roles;
+          const roleApplies =
+            role?.scope === "tenant" ||
+            (role?.scope === "department" &&
+              assignment.department_id === department.id);
+          return (
+            role?.tenant_id === action.tenantId &&
+            role?.active === true &&
+            roleApplies &&
+            (role?.role_permissions ?? []).some(
+              (item: any) => item.permission_code === "ticket.read.department",
+            )
+          );
+        });
+      departmentAccess.set(department.id, allowed);
+    }
+
+    const readableDepartmentIds = departments.flatMap((department) =>
+      departmentAccess.get(department.id) === true ? [department.id] : [],
     );
     const readableDepartments = readableTicketDepartments(
-      departmentIds.flatMap((departmentId) => {
-        const department = departmentsById.get(departmentId);
-        return department ? [department] : [];
-      }),
+      departments,
       departmentAccess,
     );
     const agentsById = new Map<string, { id: string; displayName: string }>();
     if (action.includeAgents) {
-      const candidateResults = await Promise.all(
-        readableDepartmentIds.map((departmentId) =>
-          listAssignableAgents(
-            context.supabaseAdmin,
-            action.tenantId,
-            departmentId,
-          ),
-        ),
+      const candidates = await listAssignableAgentsForDepartments(
+        context.supabaseAdmin,
+        action.tenantId,
+        readableDepartmentIds,
       );
-      if (candidateResults.some((result) => result.error)) {
+      if (candidates.error) {
         return response(
           request,
           { error: { code: "ticket_agents_lookup_failed" } },
           500,
         );
       }
-      for (const result of candidateResults) {
-        for (const agent of result.agents) agentsById.set(agent.id, agent);
+      for (const agents of candidates.agentsByDepartmentId.values()) {
+        for (const agent of agents) agentsById.set(agent.id, agent);
       }
     }
 

@@ -33,6 +33,7 @@ import {
   updateTicketCommentDraft,
   type TicketCommentComposerContext,
 } from "./lib/ticket-comment-composer";
+import { chronologicalTicketComments } from "./lib/ticket-comment-order";
 import {
   isTrustedTicketInlineImageUrl,
   ticketInlineAttachmentIds,
@@ -4206,6 +4207,56 @@ export function TicketDetail({
   }, [backgroundTicketRefreshBlocked, detail?.ticket.id, loadTicket, ticketId]);
 
   useEffect(() => {
+    if (!supabase || !detail || detail.ticket.id !== ticketId) return;
+
+    const realtimeClient = supabase;
+    let refreshTimer: number | null = null;
+    const refreshAfterAuthorizedCommentChange = () => {
+      if (
+        document.visibilityState === "hidden" ||
+        backgroundTicketRefreshBlockedRef.current ||
+        backgroundTicketRefreshInFlightRef.current ||
+        hasActiveTicketTextInput() ||
+        refreshTimer !== null
+      ) {
+        return;
+      }
+      refreshTimer = window.setTimeout(() => {
+        refreshTimer = null;
+        if (
+          backgroundTicketRefreshBlockedRef.current ||
+          backgroundTicketRefreshInFlightRef.current ||
+          hasActiveTicketTextInput()
+        ) {
+          return;
+        }
+        backgroundTicketRefreshInFlightRef.current = true;
+        void loadTicket({ background: true }).finally(() => {
+          backgroundTicketRefreshInFlightRef.current = false;
+        });
+      }, 150);
+    };
+    const channel = realtimeClient
+      .channel(`ticket-comment-invalidation:${tenantId}:${ticketId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          filter: `ticket_id=eq.${ticketId}`,
+          schema: "public",
+          table: "ticket_comments",
+        },
+        refreshAfterAuthorizedCommentChange,
+      )
+      .subscribe();
+
+    return () => {
+      if (refreshTimer !== null) window.clearTimeout(refreshTimer);
+      void realtimeClient.removeChannel(channel);
+    };
+  }, [detail?.ticket.id, loadTicket, tenantId, ticketId]);
+
+  useEffect(() => {
     inlineImageErrorRefreshes.current.clear();
   }, [inlineAttachmentIdsKey, tenantId, ticketId]);
 
@@ -6171,7 +6222,7 @@ export function TicketDetail({
           <p className="empty-state">Noch keine Nachrichten vorhanden.</p>
         ) : (
           <ol className="ticket-comment-list ticket-conversation">
-            {[...detail.comments].reverse().map((item) => {
+            {chronologicalTicketComments(detail.comments).map((item) => {
               const requesterName = detail.requesterContact?.displayName
                 ?.trim()
                 .toLocaleLowerCase("de-CH");
