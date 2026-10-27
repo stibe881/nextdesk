@@ -51,6 +51,7 @@ type Channel = {
   status: string;
   activated_at: string | null;
   poll_watermark: string | null;
+  deleted_at: string | null;
 };
 type Message = {
   id: string;
@@ -135,7 +136,11 @@ async function activeChannel(
   expected: Channel,
 ): Promise<Channel | null> {
   const result = await matchChannelTarget(
-    admin.from("exchange_mail_channels").select("*").eq("status", "active"),
+    admin
+      .from("exchange_mail_channels")
+      .select("*")
+      .eq("status", "active")
+      .is("deleted_at", null),
     expected,
   ).maybeSingle();
   if (result.error) throw new Error("channel_load_failed");
@@ -705,6 +710,7 @@ async function isOtherChannelMailbox(
     .from("exchange_mail_channels")
     .select("id")
     .eq("mailbox_address", sender)
+    .is("deleted_at", null)
     .limit(1)
     .maybeSingle();
   return !result.error && Boolean(result.data);
@@ -1021,6 +1027,7 @@ export async function processInboundMessage(
     .eq("id", message.channel_id)
     .eq("tenant_id", message.tenant_id)
     .eq("configuration_version", message.exchange_configuration_version)
+    .is("deleted_at", null)
     .maybeSingle();
   const channel = channelResult.data as Channel | null;
   if (channelResult.error || !channel || channel.status !== "active") {
@@ -1290,8 +1297,16 @@ async function recoverProcessedInlineMedia(
       .eq("configuration_version", message.exchange_configuration_version)
       .maybeSingle();
     const channel = channelResult.data as Channel | null;
-    if (channelResult.error || !channel || channel.status !== "active")
-      throw new Error("channel_inactive");
+    if (channelResult.error) throw new Error("channel_load_failed");
+    if (!channel || channel.deleted_at || channel.status !== "active") {
+      await updateInlineMediaStatus(
+        admin,
+        message,
+        "conflict",
+        channel?.deleted_at ? "channel_deleted" : "channel_inactive",
+      );
+      return;
+    }
     const mailbox = graphMailboxIdentifier(
       channel.mailbox_object_id,
       channel.mailbox_address,
@@ -1446,6 +1461,7 @@ export async function dispatchOutboundMessage(
     .eq("id", message.channel_id)
     .eq("tenant_id", message.tenant_id)
     .eq("configuration_version", message.exchange_configuration_version)
+    .is("deleted_at", null)
     .maybeSingle();
   const channel = channelResult.data as Channel | null;
   if (channelResult.error || !channel || channel.status !== "active") {
@@ -1720,6 +1736,7 @@ export async function maintenance(admin: Admin): Promise<void> {
     .select("*")
     .eq("status", "active")
     .eq("access_mode", "delegated")
+    .is("deleted_at", null)
     .limit(100);
   const channels = (channelsResult.data ?? []) as Channel[];
   for (const channel of channels) {

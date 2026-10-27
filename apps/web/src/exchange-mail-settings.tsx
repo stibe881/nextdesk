@@ -21,6 +21,7 @@ import {
   Save,
   Send,
   ShieldCheck,
+  Trash2,
   TriangleAlert,
   X,
 } from "lucide-react";
@@ -30,10 +31,10 @@ import { supabase } from "./lib/supabase";
 type ExchangeChannelStatus =
   "draft" | "verified" | "active" | "paused" | "error";
 type ExchangeAction =
-  "connect" | "save" | "verify" | "activate" | "pause" | "test";
+  "connect" | "save" | "verify" | "activate" | "pause" | "test" | "delete";
 type Feedback = { kind: "success" | "error" | "warning"; message: string };
 type ConfirmationAction = {
-  kind: "activate" | "pause";
+  kind: "activate" | "pause" | "delete";
   channelId: string;
 } | null;
 
@@ -111,6 +112,12 @@ type ExchangeMailRequest =
   | { action: "verifyConnection"; tenantId: string; channelId: string }
   | { action: "activate"; tenantId: string; channelId: string }
   | { action: "pause"; tenantId: string; channelId: string }
+  | {
+      action: "deleteMailbox";
+      tenantId: string;
+      channelId: string;
+      confirmDelete: true;
+    }
   | { action: "sendTestMail"; tenantId: string; channelId: string };
 
 const emptyForm: ExchangeSettingsForm = {
@@ -415,6 +422,7 @@ function actionLabel(action: ExchangeAction): string {
     activate: "Kanal wird aktiviert …",
     pause: "Kanal wird pausiert …",
     test: "Testmail wird vorbereitet …",
+    delete: "Postfach wird gelöscht …",
   }[action];
 }
 
@@ -629,19 +637,32 @@ export function ExchangeMailSettings({ tenantId }: { tenantId: string }) {
     setFeedback(null);
     try {
       await request<unknown>(
-        { action: kind, tenantId, channelId },
+        kind === "delete"
+          ? {
+              action: "deleteMailbox",
+              tenantId,
+              channelId,
+              confirmDelete: true,
+            }
+          : { action: kind, tenantId, channelId },
         kind === "activate"
           ? "Der E-Mail-Kanal konnte nicht aktiviert werden."
-          : "Der E-Mail-Kanal konnte nicht pausiert werden.",
+          : kind === "pause"
+            ? "Der E-Mail-Kanal konnte nicht pausiert werden."
+            : "Das Support-Postfach konnte nicht gelöscht werden.",
       );
-      await load();
-      setFeedback({
-        kind: "success",
-        message:
-          kind === "activate"
-            ? "Der E-Mail-Kanal ist aktiv. Eingehende E-Mails werden periodisch abgerufen."
-            : "Der E-Mail-Kanal wurde pausiert. Es werden keine weiteren E-Mails verarbeitet.",
-      });
+      if (await load()) {
+        if (kind === "delete" && selectedChannelId === channelId) cancelEdit();
+        setFeedback({
+          kind: "success",
+          message:
+            kind === "activate"
+              ? "Der E-Mail-Kanal ist aktiv. Eingehende E-Mails werden periodisch abgerufen."
+              : kind === "pause"
+                ? "Der E-Mail-Kanal wurde pausiert. Es werden keine weiteren E-Mails verarbeitet."
+                : "Das Support-Postfach wurde aus der Konfiguration entfernt. Bereits vorhandene Tickets behalten ihre E-Mail-Herkunft.",
+        });
+      }
     } catch (error) {
       setFeedback({
         kind: "error",
@@ -952,6 +973,20 @@ export function ExchangeMailSettings({ tenantId }: { tenantId: string }) {
                           <Send aria-hidden="true" size={16} />
                           Testmail
                         </button>
+                        <button
+                          className="exchange-mail-settings__delete-button"
+                          disabled={loading || pendingAction !== null}
+                          onClick={() =>
+                            setConfirmation({
+                              kind: "delete",
+                              channelId: channel.id,
+                            })
+                          }
+                          type="button"
+                        >
+                          <Trash2 aria-hidden="true" size={16} />
+                          Löschen
+                        </button>
                       </div>
                     </article>
                   );
@@ -1170,16 +1205,32 @@ export function ExchangeMailSettings({ tenantId }: { tenantId: string }) {
             <h4 id="exchange-mail-confirm-title">
               {confirmation.kind === "activate"
                 ? "E-Mail-Kanal aktivieren?"
-                : "E-Mail-Kanal pausieren?"}
+                : confirmation.kind === "pause"
+                  ? "E-Mail-Kanal pausieren?"
+                  : "Support-Postfach löschen?"}
             </h4>
             <p>
               {confirmation.kind === "activate"
                 ? "Neue E-Mails dieses Postfachs werden periodisch abgerufen. Antworten und Statusmails bleiben an dieses Postfach gebunden."
-                : "Die Verarbeitung dieses Postfachs stoppt sofort. Bereits verbundene Tickets behalten ihre Herkunft, bis der Kanal wieder aktiviert wird."}
+                : confirmation.kind === "pause"
+                  ? "Die Verarbeitung dieses Postfachs stoppt sofort. Bereits verbundene Tickets behalten ihre Herkunft, bis der Kanal wieder aktiviert wird."
+                  : "Dieses Postfach wird aus der Konfiguration entfernt. Neue E-Mails und ausstehende Zustellungen über dieses Postfach werden nicht mehr verarbeitet; bereits begonnene Zustellungen können noch enden. Die Microsoft-365-Verbindung und bereits vorhandene Tickets bleiben erhalten."}
             </p>
             <div className="exchange-mail-settings__actions">
-              <button onClick={() => void runConfirmation()} type="button">
-                {confirmation.kind === "activate" ? "Aktivieren" : "Pausieren"}
+              <button
+                className={
+                  confirmation.kind === "delete"
+                    ? "exchange-mail-settings__delete-button"
+                    : undefined
+                }
+                onClick={() => void runConfirmation()}
+                type="button"
+              >
+                {confirmation.kind === "activate"
+                  ? "Aktivieren"
+                  : confirmation.kind === "pause"
+                    ? "Pausieren"
+                    : "Postfach löschen"}
               </button>
               <button onClick={() => setConfirmation(null)} type="button">
                 Abbrechen

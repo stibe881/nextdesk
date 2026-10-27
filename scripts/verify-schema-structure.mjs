@@ -111,6 +111,7 @@ const expectedFiles = [
   "0107_exchange_mail_inline_attachments.sql",
   "0108_exchange_mail_inline_media_recovery.sql",
   "0109_personal_saved_ticket_views.sql",
+  "0110_exchange_mail_channel_soft_delete.sql",
 ];
 
 const availableFiles = await readdir(migrationDirectory);
@@ -268,6 +269,23 @@ const requiredFragments = [
     "0108_exchange_mail_inline_media_recovery.sql",
     "mail_messages_inline_media_recovery_idx",
   ],
+  [
+    "0110_exchange_mail_channel_soft_delete.sql",
+    "add column if not exists deleted_at timestamptz",
+  ],
+  [
+    "0110_exchange_mail_channel_soft_delete.sql",
+    "exchange_mail_channels_mailbox_address_active_unique",
+  ],
+  [
+    "0110_exchange_mail_channel_soft_delete.sql",
+    "exchange_mail_channels_entra_mailbox_object_active_unique",
+  ],
+  [
+    "0110_exchange_mail_channel_soft_delete.sql",
+    "create trigger exchange_mail_messages_require_active_channel",
+  ],
+  ["0110_exchange_mail_channel_soft_delete.sql", "for share"],
   [
     "0019_services_assets_and_problem_management.sql",
     "create table if not exists public.services",

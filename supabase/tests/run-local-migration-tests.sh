@@ -2624,6 +2624,81 @@ begin
   end if;
 end;
 $$;
+
+-- Removing a support mailbox retains its ticket origin and message history,
+-- releases its active address reservation and rejects every later queue entry
+-- for the archived channel.
+update public.exchange_mail_channels
+set status = 'paused',
+    deleted_at = timezone('utc', now()),
+    deleted_by = '00000000-0000-4000-8000-000000000002',
+    configuration_version = configuration_version + 1
+where id = '1c000000-0000-4000-8000-000000000003';
+insert into public.exchange_mail_channels (
+  id, tenant_id, entra_tenant_id, connection_id, access_mode, mailbox_address,
+  mailbox_object_id, default_department_id, send_agent_replies, send_resolution,
+  status, created_by, updated_by, activated_at
+) values (
+  '1c000000-0000-4000-8000-000000000005',
+  '10000000-0000-4000-8000-000000000001',
+  '1d000000-0000-4000-8000-000000000003',
+  '1e000000-0000-4000-8000-000000000003',
+  'delegated',
+  'support@tenant-a.example',
+  '1a000000-0000-4000-8000-000000000005',
+  '11000000-0000-4000-8000-000000000001',
+  true, true, 'active',
+  '00000000-0000-4000-8000-000000000002',
+  '00000000-0000-4000-8000-000000000002', now()
+);
+insert into public.mail_messages (
+  tenant_id, channel_id, exchange_configuration_version, direction, kind,
+  from_address, to_addresses, subject
+) values (
+  '10000000-0000-4000-8000-000000000001',
+  '1c000000-0000-4000-8000-000000000005',
+  1, 'outbound', 'test', 'support@tenant-a.example',
+  array['recipient@tenant-a.example'], 'Aktiver Kanal akzeptiert Queue'
+);
+update public.exchange_mail_channels
+set status = 'paused',
+    deleted_at = timezone('utc', now()),
+    deleted_by = '00000000-0000-4000-8000-000000000002',
+    configuration_version = configuration_version + 1
+where id = '1c000000-0000-4000-8000-000000000005';
+insert into public.mail_messages (
+  tenant_id, channel_id, exchange_configuration_version, direction, kind,
+  from_address, to_addresses, subject
+) values (
+  '10000000-0000-4000-8000-000000000001',
+  '1c000000-0000-4000-8000-000000000005',
+  1, 'outbound', 'test', 'support@tenant-a.example',
+  array['recipient@tenant-a.example'], 'Entfernter Kanal darf nicht queueen'
+);
+do $$
+begin
+  if not exists (
+    select 1 from public.tickets
+    where id = '17000000-0000-4000-8000-000000000001'
+      and exchange_mail_channel_id = '1c000000-0000-4000-8000-000000000003'
+  ) then
+    raise exception 'Mailbox removal lost the historical ticket origin';
+  end if;
+  if (select count(*) from public.exchange_mail_channels
+      where mailbox_address = 'support@tenant-a.example' and deleted_at is null) <> 0 then
+    raise exception 'Archived mailbox still reserves an active mailbox address';
+  end if;
+  if not exists (
+    select 1 from public.mail_messages
+    where subject = 'Aktiver Kanal akzeptiert Queue'
+  ) or exists (
+    select 1 from public.mail_messages
+    where subject = 'Entfernter Kanal darf nicht queueen'
+  ) then
+    raise exception 'Mailbox queue guard did not fence archived channels';
+  end if;
+end;
+$$;
 -- OAuth states and encrypted credentials remain private, but Edge Functions with
 -- a service-role context can use only the narrow, atomic RPC surface.
 begin;

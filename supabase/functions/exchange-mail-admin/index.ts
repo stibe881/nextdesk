@@ -41,6 +41,7 @@ type Channel = Row & {
   last_outbound_at: string | null;
   activated_at: string | null;
   poll_watermark: string | null;
+  deleted_at: string | null;
 };
 type Action =
   | { action: "getStatus"; tenantId: string }
@@ -60,6 +61,12 @@ type Action =
   | { action: "verifyConnection"; tenantId: string; channelId: string }
   | { action: "activate"; tenantId: string; channelId: string }
   | { action: "pause"; tenantId: string; channelId: string }
+  | {
+      action: "deleteMailbox";
+      tenantId: string;
+      channelId: string;
+      confirmDelete: true;
+    }
   | { action: "sendTestMail"; tenantId: string; channelId: string };
 
 class HttpError extends Error {
@@ -129,6 +136,18 @@ function parseAction(value: unknown): Action | null {
     isUuid(value.channelId)
   ) {
     return { ...base, channelId: value.channelId.toLowerCase() } as Action;
+  }
+  if (
+    base.action === "deleteMailbox" &&
+    onlyKeys(value, ["action", "tenantId", "channelId", "confirmDelete"]) &&
+    isUuid(value.channelId) &&
+    value.confirmDelete === true
+  ) {
+    return {
+      ...base,
+      channelId: value.channelId.toLowerCase(),
+      confirmDelete: true,
+    } as Action;
   }
   if (
     base.action !== "saveMailbox" ||
@@ -288,6 +307,7 @@ async function getChannel(
     .select("*")
     .eq("id", channelId)
     .eq("tenant_id", tenantId)
+    .is("deleted_at", null)
     .maybeSingle();
   if (result.error) throw new HttpError(500, "operation_failed");
   if (!result.data) throw new HttpError(422, "invalid_settings");
@@ -370,6 +390,7 @@ async function getStatus(
         .from("exchange_mail_channels")
         .select("*")
         .eq("tenant_id", tenantId)
+        .is("deleted_at", null)
         .order("created_at"),
       admin
         .from("departments")
@@ -822,6 +843,70 @@ async function pause(
   });
 }
 
+async function deleteMailbox(
+  request: Request,
+  admin: Admin,
+  tenantId: string,
+  channelId: string,
+  actorId: string,
+): Promise<Response> {
+  // Bereinigung muss auch möglich sein, wenn der Funktionsschalter bereits
+  // deaktiviert ist. Die Mandantenadministrationsprüfung erfolgt vor diesem
+  // Aufruf für jede Action im Handler.
+  const channel = await getChannel(admin, tenantId, channelId);
+  await removeSubscriptionsForChannel(admin, channel);
+
+  const deletedAt = new Date().toISOString();
+  const archived = await matchChannelTarget(
+    admin
+      .from("exchange_mail_channels")
+      .update({
+        status: "paused",
+        poll_watermark: null,
+        deleted_at: deletedAt,
+        deleted_by: actorId,
+        updated_by: actorId,
+        configuration_version: channel.configuration_version + 1,
+      })
+      .is("deleted_at", null),
+    channel,
+  )
+    .select("id")
+    .maybeSingle();
+  if (archived.error) throw new HttpError(500, "operation_failed");
+  if (!archived.data)
+    throw new HttpError(409, "exchange_configuration_changed");
+
+  const cancelled = await admin
+    .from("mail_messages")
+    .update({
+      processing_status: "ignored",
+      ignore_reason: "channel_deleted",
+      last_error_code: "channel_deleted",
+    })
+    .eq("tenant_id", tenantId)
+    .eq("channel_id", channel.id)
+    .in("processing_status", ["pending", "failed", "processing"])
+    .select("id");
+  if (cancelled.error) throw new HttpError(500, "operation_failed");
+
+  await admin.from("audit_logs").insert({
+    tenant_id: tenantId,
+    actor_id: actorId,
+    action: "exchange_mail.channel.deleted",
+    entity_type: "exchange_mail_channel",
+    entity_id: channel.id,
+    severity: "security",
+    metadata: {
+      access_mode: channel.access_mode,
+      cancelled_messages: Array.isArray(cancelled.data)
+        ? cancelled.data.length
+        : null,
+    },
+  });
+  return reply(request, { data: { deleted: true } });
+}
+
 async function sendTestMail(
   request: Request,
   admin: Admin,
@@ -835,17 +920,22 @@ async function sendTestMail(
   const user = await (admin.auth.admin as any).getUserById(actorId);
   const recipient = mailbox(user?.data?.user?.email);
   if (!recipient) throw new HttpError(422, "invalid_settings");
-  const queued = await admin.from("mail_messages").insert({
-    tenant_id: tenantId,
-    channel_id: channel.id,
-    exchange_configuration_version: channel.configuration_version,
-    direction: "outbound",
-    kind: "test",
-    from_address: channel.mailbox_address,
-    to_addresses: [recipient],
-    subject: "nextDesk E-Mail-Kanal Test",
-  });
+  const queued = await admin
+    .from("mail_messages")
+    .insert({
+      tenant_id: tenantId,
+      channel_id: channel.id,
+      exchange_configuration_version: channel.configuration_version,
+      direction: "outbound",
+      kind: "test",
+      from_address: channel.mailbox_address,
+      to_addresses: [recipient],
+      subject: "nextDesk E-Mail-Kanal Test",
+    })
+    .select("id");
   if (queued.error) throw new HttpError(500, "operation_failed");
+  if (!queued.data?.length)
+    throw new HttpError(409, "exchange_configuration_changed");
   return reply(request, { data: { queued: true } }, 202);
 }
 
@@ -885,6 +975,14 @@ const handler = withSupabase(
       );
     if (action.action === "pause")
       return await pause(
+        request,
+        context.supabaseAdmin,
+        action.tenantId,
+        action.channelId,
+        actorId,
+      );
+    if (action.action === "deleteMailbox")
+      return await deleteMailbox(
         request,
         context.supabaseAdmin,
         action.tenantId,

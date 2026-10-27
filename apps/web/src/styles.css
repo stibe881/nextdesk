@@ -12249,6 +12249,17 @@ body:has(.ticket-list-filter-panel) {
   justify-content: flex-end;
 }
 
+.exchange-mail-settings__delete-button {
+  border-color: color-mix(in srgb, var(--danger) 34%, var(--border));
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.exchange-mail-settings__delete-button:hover:not(:disabled) {
+  border-color: var(--danger);
+  background: color-mix(in srgb, var(--danger-soft) 68%, var(--surface));
+}
+
 .exchange-mail-settings__empty {
   margin: 0;
   color: var(--muted);

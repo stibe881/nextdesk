@@ -1,6 +1,6 @@
 # nextDesk – Microsoft-365-E-Mail-Kanäle (Vertrag)
 
-Stand: 19.10.2026. Verbindlich für die Migrationen `0061`, `0067` und `0068`, die Functions `exchange-mail-admin`, `exchange-mail-connect`, `exchange-mail-worker` und die E-Mail-Warteschlange. Die generische Function `email-ingress` bleibt unverändert.
+Stand: 27.10.2026. Verbindlich für die Migrationen `0061`, `0067`, `0068` und `0110`, die Functions `exchange-mail-admin`, `exchange-mail-connect`, `exchange-mail-worker` und die E-Mail-Warteschlange. Die generische Function `email-ingress` bleibt unverändert.
 
 ## Zielbild
 
@@ -22,7 +22,7 @@ Die zentrale Entra-App **`nextDesk – Exchange Online`** ist mehrmandantenfähi
 
 `mail_private.exchange_mail_connection_credentials`: verschlüsselter Refresh-Token pro Verbindung. `mail_private.exchange_mail_oauth_states`: kurzlebige, verbrauchte PKCE-Zustände. Beide Tabellen sind RLS-erzwungen und nur für `service_role` zugänglich.
 
-`public.exchange_mail_channels` erhält `connection_id` und `access_mode`. Neue Kanäle verwenden zwingend `access_mode='delegated'` mit einer zum gleichen Mandanten gehörenden Verbindung und einer kanonisierten `mailbox_object_id`. Beim Speichern löst nextDesk die eingegebene Postfachadresse einmal über Graph auf und speichert die bestätigte Objekt-ID sowie die kanonische Mailadresse. Ein partieller Unique-Index auf `(entra_tenant_id, mailbox_object_id)` verhindert Alias-Dubletten und mandantenübergreifende Doppelzuordnungen. Bestehende `legacy_rbac`-Kanäle werden mit Migration `0068` pausiert, ihre offenen Warteschlangeneinträge ignoriert und weder von Worker noch Webhook verarbeitet.
+`public.exchange_mail_channels` erhält `connection_id` und `access_mode`. Neue Kanäle verwenden zwingend `access_mode='delegated'` mit einer zum gleichen Mandanten gehörenden Verbindung und einer kanonisierten `mailbox_object_id`. Beim Speichern löst nextDesk die eingegebene Postfachadresse einmal über Graph auf und speichert die bestätigte Objekt-ID sowie die kanonische Mailadresse. Partielle Unique-Indizes auf aktiven, nicht entfernten Kanälen verhindern Alias-Dubletten und mandantenübergreifende Doppelzuordnungen, erlauben aber eine spätere ausdrückliche Wiederanlage eines entfernten Postfachs. Bestehende `legacy_rbac`-Kanäle werden mit Migration `0068` pausiert, ihre offenen Warteschlangeneinträge ignoriert und weder von Worker noch Webhook verarbeitet.
 
 `public.tickets.exchange_mail_channel_id` referenziert `(channel_id, tenant_id)`. Der atomare Inbound-Commit schreibt diesen Ursprungskanal bei neuen Tickets und bei autorisierten Antworten auf bisher nicht gebundene Bestands-Tickets.
 
@@ -36,6 +36,7 @@ Die zentrale Entra-App **`nextDesk – Exchange Online`** ist mehrmandantenfähi
 - `verifyConnection`: prüft für den ausgewählten Kanal `/users/{mailbox}/mailFolders/inbox`, eine minimale Nachrichtenliste und sendet eine kurze Berechtigungs-Bestätigung an das verbundene Connector-Konto. Damit werden Vollzugriff und **Senden als** vor Aktivierung nachgewiesen. Erfolg setzt `verified`.
 - `activate`: verlangt `verified` und eine verbundene Connectoridentität, setzt Wasserzeichen und aktiviert den Kanal. Es wird kein Delegated-Webhook angelegt.
 - `pause`: erhöht `configuration_version`, pausiert den Kanal und verwirft nicht versandte Queue-Einträge des Kanals.
+- `deleteMailbox`: verlangt `{ channelId, confirmDelete: true }` sowie dieselbe serverseitige Mandantenadministrationsprüfung. Das Postfach wird aus der aktiven Konfiguration entfernt, erhält eine neue Konfigurationsrevision und stoppt die weitere Verarbeitung. Bereits bestehende Tickets, ihre E-Mail-Herkunft und die minimale Versandtelemetrie bleiben erhalten; die Microsoft-365-Verbindung bleibt für andere Postfächer verfügbar. Die Bereinigung ist auch bei deaktiviertem Funktionsschalter möglich.
 - `sendTestMail`: erstellt eine `kind='test'`-Queue-Nachricht an die E-Mail-Adresse der handelnden Person.
 
 ## Worker und Verarbeitung
@@ -43,6 +44,7 @@ Die zentrale Entra-App **`nextDesk – Exchange Online`** ist mehrmandantenfähi
 - Alle neuen Kanäle holen OAuth-Access-Tokens durch Refresh der konkreten `connection_id`; Tokens leben nur im Function-Speicher und werden fünf Minuten vor Ablauf erneuert.
 - Alle Graph-Aufrufe für Abruf, Nachrichtendetails, Anhänge, Antworten und `sendMail` verwenden die Verbindung des konkreten Kanals.
 - Der Wartungsjob pollt jeden aktiven delegierten Kanal mindestens alle fünf Minuten ab `poll_watermark - 10 Minuten`, verarbeitet höchstens 50 Kandidaten pro Lauf, dedupliziert über `(channel_id, graph_message_id)` und aktualisiert das Wasserzeichen nur für diese Konfigurationsrevision.
+- Ein Datenbank-Trigger nimmt neue Queue-Einträge nur für einen aktiven, nicht entfernten Kanal derselben Konfigurationsrevision an und hält dabei eine gemeinsame Zeilensperre. Die administrative Entfernung und die Queue-Erzeugung sind damit serialisiert; nach Entfernung entsteht kein später verarbeitbarer Eintrag mehr.
 - Delegierte Kanäle erzeugen keine Graph-Subscription. Vorbestehende Application-RBAC-Abos werden mit dem Legacy-Cutover lokal stillgelegt; der öffentliche frühere Webhook nimmt danach nur noch Provider-Validierungen an und verarbeitet keine Benachrichtigungen.
 - Inbound- und Outbound-Verarbeitung bleibt revisionsgebunden und fail-closed. Referenzheader, Ticketnummern, Conversation-IDs und der Reply-Thread werden immer zusätzlich auf `channel_id` beziehungsweise `tickets.exchange_mail_channel_id` eingeschränkt; ein Ticket wird deshalb nie über ein anderes Support-Postfach fortgesetzt. Alle fachlichen Anti-Loop-, Absender-, Anhänge-, Rate-Limit- und Wiederholungsregeln der bestehenden Verarbeitung gelten unverändert.
 
