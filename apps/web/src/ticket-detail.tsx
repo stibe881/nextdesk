@@ -627,6 +627,25 @@ type TicketDetailData = {
   canTrackTime: boolean;
 };
 
+function ticketCommentRevision(comments: readonly TicketComment[]): string {
+  return comments
+    .map(
+      (comment) =>
+        `${comment.id}:${comment.created_at}:${comment.emailDelivery ?? ""}`,
+    )
+    .join("|");
+}
+
+function hasActiveTicketTextInput(): boolean {
+  const activeElement = document.activeElement;
+  return (
+    activeElement instanceof HTMLInputElement ||
+    activeElement instanceof HTMLTextAreaElement ||
+    activeElement instanceof HTMLSelectElement ||
+    activeElement?.getAttribute("contenteditable") === "true"
+  );
+}
+
 type TicketDetailProps = {
   currentUserId: string | null;
   tenantId: string;
@@ -2659,7 +2678,7 @@ function KnowledgeSection({
 }: KnowledgeReference & {
   canUpdate: boolean;
   canUseInternalNotes: boolean;
-  refreshToken: TicketDetailData;
+  refreshToken: string;
   onChanged: () => void;
   onSent: () => Promise<boolean>;
 }) {
@@ -3525,12 +3544,39 @@ export function TicketDetail({
   const affectedItemsRequestSequence = useRef(0);
   const mergeSearchRequestSequence = useRef(0);
   const ticketCategoriesRequestSequence = useRef(0);
+  const detailRef = useRef<TicketDetailData | null>(null);
+  const backgroundTicketRefreshInFlightRef = useRef(false);
+  const backgroundTicketRefreshBlockedRef = useRef(true);
   const commentModeContextRef = useRef<TicketCommentComposerContext | null>(
     null,
   );
   const commentVisibilityRef = useRef<CommentVisibility>("internal");
   const undoTimerRef = useRef<number | null>(null);
   const attachmentInputRef = useRef<HTMLInputElement>(null);
+  const backgroundTicketRefreshBlocked =
+    loading ||
+    isEditingTicket ||
+    pendingAction !== null ||
+    pendingCloseConfirmation !== null ||
+    pendingAttachmentAction !== null ||
+    pendingHandoverAction !== null ||
+    pendingCatalogAction !== null ||
+    ticketCategorySaving ||
+    requesterProfileBusy ||
+    ticketCategoriesLoading ||
+    attachmentsLoading ||
+    inlineImagesLoading ||
+    feedbackLoading ||
+    qualityLoading ||
+    handoversLoading ||
+    affectedItemsLoading ||
+    mergeSearchLoading ||
+    commentDrafts.external.trim().length > 0 ||
+    commentDrafts.internal.trim().length > 0 ||
+    ticketCategoryDraft !== null ||
+    selectedAttachmentFile !== null;
+  detailRef.current = detail;
+  backgroundTicketRefreshBlockedRef.current = backgroundTicketRefreshBlocked;
   const ticketIsClosed = Boolean(
     detail?.statuses.some(
       (status) => status.id === detail.ticket.status_id && status.is_closed,
@@ -3827,95 +3873,132 @@ export function TicketDetail({
     [tenantId],
   );
 
-  const loadTicket = useCallback(async (): Promise<TicketDetailData | null> => {
-    const requestId = ++requestSequence.current;
-    setLoading(true);
-    setError("");
+  const loadTicket = useCallback(
+    async ({
+      background = false,
+    }: { background?: boolean } = {}): Promise<TicketDetailData | null> => {
+      const requestId = ++requestSequence.current;
+      if (!background) {
+        setLoading(true);
+        setError("");
+      }
 
-    try {
-      const response = await invokeTicketOperation({
-        type: "getTicket",
-        tenantId,
-        ticketId,
-      });
-      let nextDetail = parseTicketDetail(response);
-      if (nextDetail === undefined) {
-        throw new Error("Die Ticketdaten sind unvollständig.");
-      }
-      if (nextDetail === null) {
-        throw new Error("Dieses Ticket ist nicht mehr verfügbar.");
-      }
-      if (requestId !== requestSequence.current) return null;
+      try {
+        const response = await invokeTicketOperation({
+          type: "getTicket",
+          tenantId,
+          ticketId,
+        });
+        let nextDetail = parseTicketDetail(response);
+        if (nextDetail === undefined) {
+          throw new Error("Die Ticketdaten sind unvollständig.");
+        }
+        if (nextDetail === null) {
+          throw new Error("Dieses Ticket ist nicht mehr verfügbar.");
+        }
+        if (requestId !== requestSequence.current) return null;
 
-      setAssignableAgents(nextDetail.agents);
-      setDetail(nextDetail);
-      setStatusKey(
-        nextDetail?.statuses.find(
-          (status) => status.id === nextDetail.ticket.status_id,
-        )?.key ?? "",
-      );
-      setPriorityKey(
-        nextDetail?.priorities.find(
-          (priority) => priority.id === nextDetail.ticket.priority_id,
-        )?.key ?? "",
-      );
-      setEditSubject(nextDetail?.ticket.subject ?? "");
-      setEditDescription(nextDetail?.ticket.description ?? "");
-      setSelectedTeamId(nextDetail?.ticket.assigned_team_id ?? "");
-      setSelectedAgentId(nextDetail?.ticket.assigned_agent_id ?? "");
-      setAssignmentPrefilled(false);
-      setSelectedDepartmentId(nextDetail?.ticket.department_id ?? "");
-      setTicketCategories([]);
-      setTicketCategoryDraft(null);
-      setTicketCategorySaving(false);
-      setTicketCategoryError("");
-      void loadTicketCategoriesForDepartment(nextDetail.ticket.department_id);
-      const nextCommentContext = {
-        canUseInternalNotes: nextDetail.canUseInternalNotes,
-        key: `${tenantId}:${ticketId}`,
-      };
-      const previousCommentContext = commentModeContextRef.current;
-      const nextCommentMode = ticketCommentComposerModeForTicketContext({
-        currentMode: commentVisibilityRef.current,
-        nextContext: nextCommentContext,
-        previousContext: previousCommentContext,
-      });
-      commentModeContextRef.current = nextCommentContext;
-      if (nextCommentMode !== commentVisibilityRef.current) {
-        commentVisibilityRef.current = nextCommentMode;
-        setCommentVisibility(nextCommentMode);
+        if (background) {
+          const currentDetail = detailRef.current;
+          if (
+            backgroundTicketRefreshBlockedRef.current ||
+            hasActiveTicketTextInput() ||
+            !currentDetail ||
+            currentDetail.ticket.id !== ticketId ||
+            ticketCommentRevision(currentDetail.comments) ===
+              ticketCommentRevision(nextDetail.comments)
+          ) {
+            return currentDetail;
+          }
+          const nextCommunicationDetail = {
+            ...currentDetail,
+            comments: nextDetail.comments,
+          };
+          detailRef.current = nextCommunicationDetail;
+          setDetail(nextCommunicationDetail);
+          return nextCommunicationDetail;
+        }
+
+        detailRef.current = nextDetail;
+        setDetail(nextDetail);
+        if (!background) {
+          setAssignableAgents(nextDetail.agents);
+          setStatusKey(
+            nextDetail?.statuses.find(
+              (status) => status.id === nextDetail.ticket.status_id,
+            )?.key ?? "",
+          );
+          setPriorityKey(
+            nextDetail?.priorities.find(
+              (priority) => priority.id === nextDetail.ticket.priority_id,
+            )?.key ?? "",
+          );
+          setEditSubject(nextDetail?.ticket.subject ?? "");
+          setEditDescription(nextDetail?.ticket.description ?? "");
+          setSelectedTeamId(nextDetail?.ticket.assigned_team_id ?? "");
+          setSelectedAgentId(nextDetail?.ticket.assigned_agent_id ?? "");
+          setAssignmentPrefilled(false);
+          setSelectedDepartmentId(nextDetail?.ticket.department_id ?? "");
+          setTicketCategories([]);
+          setTicketCategoryDraft(null);
+          setTicketCategorySaving(false);
+          setTicketCategoryError("");
+          void loadTicketCategoriesForDepartment(
+            nextDetail.ticket.department_id,
+          );
+          const nextCommentContext = {
+            canUseInternalNotes: nextDetail.canUseInternalNotes,
+            key: `${tenantId}:${ticketId}`,
+          };
+          const previousCommentContext = commentModeContextRef.current;
+          const nextCommentMode = ticketCommentComposerModeForTicketContext({
+            currentMode: commentVisibilityRef.current,
+            nextContext: nextCommentContext,
+            previousContext: previousCommentContext,
+          });
+          commentModeContextRef.current = nextCommentContext;
+          if (nextCommentMode !== commentVisibilityRef.current) {
+            commentVisibilityRef.current = nextCommentMode;
+            setCommentVisibility(nextCommentMode);
+          }
+          if (
+            previousCommentContext?.key !== nextCommentContext.key ||
+            !nextDetail.canUseInternalNotes
+          ) {
+            setMentionedUserIds([]);
+          }
+          void loadTicketContext(nextDetail.ticket);
+          void loadRequesterProfile(
+            nextDetail.requesterContact,
+            nextDetail.canUpdate,
+          );
+        }
+        return nextDetail;
+      } catch (nextError) {
+        if (requestId === requestSequence.current) {
+          if (background) {
+            return detailRef.current;
+          }
+          detailRef.current = null;
+          setDetail(null);
+          setError(errorMessage(nextError));
+        }
+        return null;
+      } finally {
+        if (requestId === requestSequence.current && !background) {
+          setLoaded(true);
+          setLoading(false);
+        }
       }
-      if (
-        previousCommentContext?.key !== nextCommentContext.key ||
-        !nextDetail.canUseInternalNotes
-      ) {
-        setMentionedUserIds([]);
-      }
-      void loadTicketContext(nextDetail.ticket);
-      void loadRequesterProfile(
-        nextDetail.requesterContact,
-        nextDetail.canUpdate,
-      );
-      return nextDetail;
-    } catch (nextError) {
-      if (requestId === requestSequence.current) {
-        setDetail(null);
-        setError(errorMessage(nextError));
-      }
-      return null;
-    } finally {
-      if (requestId === requestSequence.current) {
-        setLoaded(true);
-        setLoading(false);
-      }
-    }
-  }, [
-    loadTicketCategoriesForDepartment,
-    loadRequesterProfile,
-    loadTicketContext,
-    tenantId,
-    ticketId,
-  ]);
+    },
+    [
+      loadTicketCategoriesForDepartment,
+      loadRequesterProfile,
+      loadTicketContext,
+      tenantId,
+      ticketId,
+    ],
+  );
 
   const loadAttachments = useCallback(async () => {
     const requestId = ++attachmentRequestSequence.current;
@@ -4088,6 +4171,39 @@ export function TicketDetail({
       requestSequence.current += 1;
     };
   }, [loadTicket]);
+
+  useEffect(() => {
+    if (!detail || detail.ticket.id !== ticketId) return;
+
+    let cancelled = false;
+    const refreshVisibleTicket = () => {
+      if (
+        cancelled ||
+        document.visibilityState === "hidden" ||
+        backgroundTicketRefreshBlocked ||
+        backgroundTicketRefreshInFlightRef.current ||
+        hasActiveTicketTextInput()
+      ) {
+        return;
+      }
+      backgroundTicketRefreshInFlightRef.current = true;
+      void loadTicket({ background: true }).finally(() => {
+        backgroundTicketRefreshInFlightRef.current = false;
+      });
+    };
+
+    const interval = window.setInterval(refreshVisibleTicket, 15_000);
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") refreshVisibleTicket();
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, [backgroundTicketRefreshBlocked, detail?.ticket.id, loadTicket, ticketId]);
 
   useEffect(() => {
     inlineImageErrorRefreshes.current.clear();
@@ -6810,7 +6926,7 @@ export function TicketDetail({
               ticketId={ticketId}
               canUpdate={detail.canUpdate}
               canUseInternalNotes={detail.canUseInternalNotes}
-              refreshToken={detail}
+              refreshToken={`${detail.ticket.id}:${detail.canUpdate}:${detail.canUseInternalNotes}`}
               onChanged={onChanged}
               onSent={async () => (await loadTicket()) !== null}
             />
