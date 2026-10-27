@@ -9,6 +9,10 @@ import {
   resolveInboundInlineMarkers,
 } from "./exchange-inline-media.ts";
 import { normalizeInboundEmailText } from "./exchange-inbound-text.ts";
+import {
+  renderCustomerTicketEmail,
+  type CustomerTicketEmailKind,
+} from "./customer-ticket-email-template.ts";
 import { resolveTenantFeatureStates } from "./tenant-features.ts";
 
 const SERVICE_EMAIL = "exchange-mail-service@app.nextdesk.ch";
@@ -79,6 +83,19 @@ type InboundAttachment = {
   filename: string;
   size: number;
 };
+
+export function customerTicketEmailKindForOutbound(
+  messageKind: string | null,
+): CustomerTicketEmailKind | null {
+  if (
+    messageKind === "agent_reply" ||
+    messageKind === "acknowledgement" ||
+    messageKind === "resolution" ||
+    messageKind === "test"
+  )
+    return messageKind;
+  return null;
+}
 
 async function delegatedConnectionForChannel(
   admin: Admin,
@@ -220,7 +237,7 @@ function escapeHtml(value: string): string {
   });
 }
 
-function htmlTemplate(input: {
+function internalNoticeHtmlTemplate(input: {
   text: string;
   ticketNumber: string;
   subject: string;
@@ -1618,13 +1635,25 @@ export async function dispatchOutboundMessage(
       ticket && !internalDepartmentNotice
         ? await outboundAttachments(admin, ticket.id, message.comment_id)
         : { attachments: [], omitted: false };
-    const html = htmlTemplate({
-      text: bodyText,
-      ticketNumber,
-      subject: ticketSubject,
-      portalName,
-      attachmentNotice: attachments.omitted,
-    });
+    const customerEmailKind = customerTicketEmailKindForOutbound(message.kind);
+    if (!internalDepartmentNotice && !customerEmailKind)
+      throw new Error("outbound_message_kind_unsupported");
+    const html = internalDepartmentNotice
+      ? internalNoticeHtmlTemplate({
+          text: bodyText,
+          ticketNumber,
+          subject: ticketSubject,
+          portalName,
+          attachmentNotice: attachments.omitted,
+        })
+      : renderCustomerTicketEmail({
+          text: bodyText,
+          ticketNumber,
+          subject: ticketSubject,
+          portalName,
+          attachmentNotice: attachments.omitted,
+          kind: customerEmailKind!,
+        });
     const graphMessage: Row = {
       subject:
         message.kind === "agent_reply"
