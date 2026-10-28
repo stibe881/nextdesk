@@ -260,3 +260,9 @@
   - Kategorie steht links und Unterkategorie rechts in einer gemeinsamen, gleich breiten Zeile im Ticketüberblick.
   - Die Bearbeitende Abteilung und der Erfassungszeitpunkt bilden die darüberliegende Zeile; die Asset-/Katalogverknüpfung bleibt darunter über die gesamte Breite.
   - Auf sehr schmalen Ansichten stapeln die zwei Felder ohne Überlappung. Direkte Speicherung, Kategorienabhängigkeit, Rechte und Mandantentrennung bleiben unverändert. TypeScript, 122 Webtests, Produktionsbuild und ein sauberer Diff sind geprüft; ein Webrelease wird nicht ausgelöst.
+
+- [x] **Web-Ticketüberblick: durchsuchbare Asset- und Katalogverknüpfung**
+  - Ein Klick auf «Asset / Katalogeintrag verknüpfen» öffnet eine fokussierte Suche statt einer langen statischen Auswahlliste.
+  - Die Suche berücksichtigt Name, Asset-Kennung, Typ, Status sowie Bezeichnung und Beschreibung von Services und Problemfällen; Treffer zeigen ihren Typ klar an und können mit Maus oder Tastatur ausgewählt werden.
+  - Ausschliesslich die bereits serverseitig für den aktuellen Mandanten und die aktuelle Person erlaubten, noch nicht verknüpften Einträge werden durchsucht. Erst eine bewusste Auswahl aktiviert «Verknüpfen»; die Serverprüfung der Mutation bleibt unverändert.
+  - Suche schliesst mit Escape oder ausserhalb der Auswahl, zeigt bei leeren Treffern eine verständliche Rückmeldung und klappt innerhalb der Ticketansicht auf, damit sie in kurzen Ansichten nicht abgeschnitten wird. Fokussierte Regressionen, TypeScript, 126 Webtests, Produktionsbuild und ein sauberer Diff sind geprüft. Es erfolgt kein Webrelease.

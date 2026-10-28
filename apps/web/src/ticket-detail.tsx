@@ -22,6 +22,7 @@ import {
   MessageSquare,
   RefreshCw,
   Save,
+  Search,
   Send,
   Star,
   FolderTree,
@@ -51,6 +52,7 @@ import {
 } from "./lib/ticket-comment-attachments";
 import { ticketWatchPresentation } from "./lib/ticket-watch-presentation";
 import { formatPersonDisplayName } from "./lib/person-display-name";
+import { searchTicketCatalogItems } from "./lib/ticket-catalog-search";
 import { supabase } from "./lib/supabase";
 import { TicketApprovals } from "./ticket-approvals";
 import { TicketComparison } from "./ticket-comparison";
@@ -574,6 +576,7 @@ type TicketHandover = {
 type CatalogService = {
   id: string;
   name: string;
+  description: string | null;
   criticality: string;
 };
 
@@ -588,6 +591,7 @@ type CatalogAsset = {
 type CatalogProblem = {
   id: string;
   title: string;
+  description: string | null;
   status: string;
 };
 
@@ -1584,6 +1588,7 @@ function toCatalogService(value: unknown): CatalogService | null {
     !service ||
     typeof service.id !== "string" ||
     typeof service.name !== "string" ||
+    !isStringOrNull(service.description) ||
     typeof service.criticality !== "string"
   ) {
     return null;
@@ -1591,6 +1596,7 @@ function toCatalogService(value: unknown): CatalogService | null {
   return {
     id: service.id,
     name: service.name,
+    description: service.description,
     criticality: service.criticality,
   };
 }
@@ -1622,11 +1628,17 @@ function toCatalogProblem(value: unknown): CatalogProblem | null {
     !problem ||
     typeof problem.id !== "string" ||
     typeof problem.title !== "string" ||
+    !isStringOrNull(problem.description) ||
     typeof problem.status !== "string"
   ) {
     return null;
   }
-  return { id: problem.id, title: problem.title, status: problem.status };
+  return {
+    id: problem.id,
+    title: problem.title,
+    description: problem.description,
+    status: problem.status,
+  };
 }
 
 function parseTicketCatalog(value: unknown): TicketCatalog | null {
@@ -3619,6 +3631,8 @@ export function TicketDetail({
   const [affectedItemsLoaded, setAffectedItemsLoaded] = useState(false);
   const [affectedItemsError, setAffectedItemsError] = useState("");
   const [selectedCatalogItemKey, setSelectedCatalogItemKey] = useState("");
+  const [catalogSearchQuery, setCatalogSearchQuery] = useState("");
+  const [catalogPickerOpen, setCatalogPickerOpen] = useState(false);
   const [inlineImageRefreshToken, setInlineImageRefreshToken] = useState(0);
   const [pendingCatalogAction, setPendingCatalogAction] =
     useState<PendingCatalogAction>(null);
@@ -3645,6 +3659,10 @@ export function TicketDetail({
   const undoTimerRef = useRef<number | null>(null);
   const attachmentInputRef = useRef<HTMLInputElement>(null);
   const commentImageInputRef = useRef<HTMLInputElement>(null);
+  const catalogPickerRef = useRef<HTMLDivElement>(null);
+  const catalogPickerTriggerRef = useRef<HTMLButtonElement>(null);
+  const catalogSearchInputRef = useRef<HTMLInputElement>(null);
+  const catalogSearchResultRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const backgroundTicketRefreshBlocked =
     loading ||
     isEditingTicket ||
@@ -4741,7 +4759,12 @@ export function TicketDetail({
         kind: "service" as const,
         id: service.id,
         label: service.name,
-        description: `Kritikalität: ${criticalityLabel(service.criticality)}`,
+        description: [
+          service.description?.trim() || null,
+          `Kritikalität: ${criticalityLabel(service.criticality)}`,
+        ]
+          .filter((entry): entry is string => entry !== null)
+          .join(" · "),
       })),
       ...catalog.assets.map((asset) => ({
         kind: "asset" as const,
@@ -4759,7 +4782,12 @@ export function TicketDetail({
         kind: "problem" as const,
         id: problem.id,
         label: problem.title,
-        description: `Status: ${problem.status}`,
+        description: [
+          problem.description?.trim() || null,
+          `Status: ${problem.status}`,
+        ]
+          .filter((entry): entry is string => entry !== null)
+          .join(" · "),
       })),
     ];
     return items
@@ -4774,6 +4802,54 @@ export function TicketDetail({
         );
       });
   }, [catalog, linkedCatalogItems]);
+  const selectedCatalogItem = useMemo(
+    () =>
+      availableCatalogItems.find(
+        (item) => catalogSelectionKey(item) === selectedCatalogItemKey,
+      ) ?? null,
+    [availableCatalogItems, selectedCatalogItemKey],
+  );
+  const catalogSearchResults = useMemo(
+    () => searchTicketCatalogItems(availableCatalogItems, catalogSearchQuery),
+    [availableCatalogItems, catalogSearchQuery],
+  );
+  const catalogPickerResultsId = `ticket-catalog-picker-results-${ticketId}`;
+
+  useEffect(() => {
+    setCatalogPickerOpen(false);
+    setCatalogSearchQuery("");
+  }, [ticketId]);
+
+  useEffect(() => {
+    if (!catalogPickerOpen) return;
+
+    const focusFrame = window.requestAnimationFrame(() => {
+      catalogSearchInputRef.current?.focus();
+    });
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      if (
+        event.target instanceof Node &&
+        catalogPickerRef.current?.contains(event.target)
+      ) {
+        return;
+      }
+      setCatalogPickerOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setCatalogPickerOpen(false);
+      setCatalogSearchQuery("");
+      catalogPickerTriggerRef.current?.focus();
+    };
+
+    window.addEventListener("pointerdown", closeOnOutsidePointer);
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      window.cancelAnimationFrame(focusFrame);
+      window.removeEventListener("pointerdown", closeOnOutsidePointer);
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [catalogPickerOpen]);
 
   async function saveFeedback(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -6056,6 +6132,19 @@ export function TicketDetail({
     }
   }
 
+  function selectCatalogSearchResult(itemKey: string) {
+    setSelectedCatalogItemKey(itemKey);
+    setCatalogSearchQuery("");
+    setCatalogPickerOpen(false);
+    window.requestAnimationFrame(() => {
+      catalogPickerTriggerRef.current?.focus();
+    });
+  }
+
+  function focusCatalogSearchResult(index: number) {
+    catalogSearchResultRefs.current[index]?.focus();
+  }
+
   async function unlinkCatalogItem(item: LinkedCatalogItem) {
     if (!detail || !detail.canUpdate || catalogBusy) return;
 
@@ -7102,32 +7191,162 @@ export function TicketDetail({
                   className="ticket-overview-catalog-link"
                   onSubmit={linkCatalogItem}
                 >
-                  <select
-                    aria-label="Asset oder Katalogeintrag verknüpfen"
-                    disabled={
-                      catalogBusy ||
-                      affectedItemsLoading ||
-                      availableCatalogItems.length === 0
-                    }
-                    onChange={(event) =>
-                      setSelectedCatalogItemKey(event.target.value)
-                    }
-                    required
-                    value={selectedCatalogItemKey}
-                  >
-                    <option value="">
-                      Asset oder Katalogeintrag auswählen
-                    </option>
-                    {availableCatalogItems.map((item) => (
-                      <option
-                        key={catalogSelectionKey(item)}
-                        value={catalogSelectionKey(item)}
+                  <div className="ticket-catalog-picker" ref={catalogPickerRef}>
+                    <button
+                      aria-controls={
+                        catalogPickerOpen ? catalogPickerResultsId : undefined
+                      }
+                      aria-expanded={catalogPickerOpen}
+                      className="ticket-catalog-picker__trigger"
+                      disabled={
+                        catalogBusy ||
+                        affectedItemsLoading ||
+                        availableCatalogItems.length === 0
+                      }
+                      onClick={() => setCatalogPickerOpen((open) => !open)}
+                      ref={catalogPickerTriggerRef}
+                      type="button"
+                    >
+                      <span>
+                        <strong>
+                          {selectedCatalogItem
+                            ? selectedCatalogItem.label
+                            : "Asset oder Katalogeintrag suchen"}
+                        </strong>
+                        {selectedCatalogItem ? (
+                          <small>
+                            {catalogKindLabel(selectedCatalogItem.kind)} ·{" "}
+                            {selectedCatalogItem.description}
+                          </small>
+                        ) : null}
+                      </span>
+                      <ChevronDown
+                        aria-hidden="true"
+                        size={16}
+                        strokeWidth={1.8}
+                      />
+                    </button>
+                    {catalogPickerOpen ? (
+                      <section
+                        aria-label="Asset oder Katalogeintrag suchen"
+                        className="ticket-catalog-picker__panel"
+                        id={catalogPickerResultsId}
                       >
-                        {catalogKindLabel(item.kind)} – {item.label} (
-                        {item.description})
-                      </option>
-                    ))}
-                  </select>
+                        <label className="ticket-catalog-picker__search">
+                          <Search
+                            aria-hidden="true"
+                            size={16}
+                            strokeWidth={1.8}
+                          />
+                          <input
+                            aria-label="Assets und Katalogeinträge durchsuchen"
+                            autoComplete="off"
+                            onChange={(event) =>
+                              setCatalogSearchQuery(event.target.value)
+                            }
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter") {
+                                event.preventDefault();
+                                return;
+                              }
+                              if (
+                                event.key === "ArrowDown" &&
+                                catalogSearchResults.length > 0
+                              ) {
+                                event.preventDefault();
+                                focusCatalogSearchResult(0);
+                              }
+                            }}
+                            placeholder="Name, Asset-Kennung oder Typ suchen …"
+                            ref={catalogSearchInputRef}
+                            type="search"
+                            value={catalogSearchQuery}
+                          />
+                          {catalogSearchQuery ? (
+                            <button
+                              aria-label="Assetsuche löschen"
+                              className="ticket-catalog-picker__clear"
+                              onClick={() => setCatalogSearchQuery("")}
+                              type="button"
+                            >
+                              <X
+                                aria-hidden="true"
+                                size={15}
+                                strokeWidth={1.8}
+                              />
+                            </button>
+                          ) : null}
+                        </label>
+                        {catalogSearchQuery.trim().length < 2 ? (
+                          <p className="ticket-catalog-picker__state">
+                            Mindestens zwei Zeichen eingeben, um verfügbare
+                            Assets und Katalogeinträge zu suchen.
+                          </p>
+                        ) : catalogSearchResults.length === 0 ? (
+                          <p className="ticket-catalog-picker__state">
+                            Keine verfügbaren Treffer für «
+                            {catalogSearchQuery.trim()}
+                            ».
+                          </p>
+                        ) : (
+                          <ul>
+                            {catalogSearchResults.map((item, index) => {
+                              const itemKey = catalogSelectionKey(item);
+                              return (
+                                <li key={itemKey}>
+                                  <button
+                                    className={
+                                      selectedCatalogItemKey === itemKey
+                                        ? "ticket-catalog-picker__option ticket-catalog-picker__option--selected"
+                                        : "ticket-catalog-picker__option"
+                                    }
+                                    onClick={() =>
+                                      selectCatalogSearchResult(itemKey)
+                                    }
+                                    onKeyDown={(event) => {
+                                      if (event.key === "ArrowDown") {
+                                        event.preventDefault();
+                                        focusCatalogSearchResult(
+                                          Math.min(
+                                            index + 1,
+                                            catalogSearchResults.length - 1,
+                                          ),
+                                        );
+                                      } else if (event.key === "ArrowUp") {
+                                        event.preventDefault();
+                                        if (index === 0) {
+                                          catalogSearchInputRef.current?.focus();
+                                        } else {
+                                          focusCatalogSearchResult(index - 1);
+                                        }
+                                      } else if (event.key === "Home") {
+                                        event.preventDefault();
+                                        focusCatalogSearchResult(0);
+                                      } else if (event.key === "End") {
+                                        event.preventDefault();
+                                        focusCatalogSearchResult(
+                                          catalogSearchResults.length - 1,
+                                        );
+                                      }
+                                    }}
+                                    ref={(element) => {
+                                      catalogSearchResultRefs.current[index] =
+                                        element;
+                                    }}
+                                    type="button"
+                                  >
+                                    <span>{catalogKindLabel(item.kind)}</span>
+                                    <strong>{item.label}</strong>
+                                    <small>{item.description}</small>
+                                  </button>
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        )}
+                      </section>
+                    ) : null}
+                  </div>
                   <button
                     className="secondary-button"
                     disabled={
