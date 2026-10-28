@@ -429,3 +429,43 @@ Migration `0106_service_status_page.sql` ergänzt `public.services` um den valid
 ### Umgesetzte Sicherheitsdetails
 
 Die 90-Tage-Verlaufslinie erhält pro Service zusätzlich den letzten serverautorisierten Statuswechsel vor dem sichtbaren Zeitfenster. Dadurch wird ein späterer Störungszustand nicht rückwirkend auf frühere Tage übertragen. Öffentliche Status- und Badge-Antworten sind mit `no-store` gegen Wiederverwendung nach einer Kennungsrotation geschützt. Der bewusst öffentliche SVG-Badge kann ohne Credentials auch von einem SharePoint-Bild-Webpart oder dessen Proxy bezogen werden; die JSON-Statusseite akzeptiert CORS weiterhin nur von `https://app.nextdesk.ch`.
+
+
+## Systemstatus: Wartungsfenster und öffentliche Servicekommunikation
+
+Der bestehende Statuszweig wird als Grundlage weitergeführt. Servicezustände bleiben eine bewusste, berechtigte Angabe pro Service: **Betriebsbereit**, **Beeinträchtigte Leistung**, **Teilweiser Ausfall**, **Schwerwiegender Ausfall** oder **Wird gewartet**. Der Status wird weder aus Tickets, Assets noch aus Monitoring abgeleitet.
+
+### Wartungsfenster
+
+Eine berechtigte Person kann im Bereich **Systemstatus** Wartungsfenster anlegen, bearbeiten, abschliessen oder abbrechen. Ein Wartungsfenster enthält Titel, optionale kundenverständliche Beschreibung, Beginn, Ende, Zustand (`geplant`, `aktiv`, `abgeschlossen`, `abgebrochen`) und eine Mehrfachauswahl der betroffenen Services. Ein Fenster ist intern, bis es bewusst als öffentlich markiert wird. Öffentliche Wartungen müssen mindestens einen ebenfalls für die Statusseite veröffentlichten Service betreffen; diese Regel wird serverseitig erzwungen. Es gibt keinen Scheduler und keine automatische Datenmutation: Zeitwerte beeinflussen nur die Anzeige, niemals den gespeicherten Zustand.
+
+Eine additive Migration `0107_service_status_maintenance.sql` ergänzt mandantenisolierte Wartungsfenster und ihre betroffenen Services über zusammengesetzte Tenant-Fremdschlüssel. Beide Tabellen erhalten RLS, erzwungene RLS, direkte Browser-Sperre und ausschliesslich Service-Role-Zugriff. Die bestehende `service-status`-Function prüft vor jeder Aktion aktive Mitgliedschaft, `assets.management` und `asset.manage`; eine öffentliche Wartung verlangt zusätzlich `tenant.settings.manage`. Wartungsänderungen erhalten einen datensparsamen Audit-Eintrag ohne öffentliche Texte im Audit-Metadatum.
+
+### Kundenstatusseite und SharePoint
+
+Die öffentliche Statusseite liefert weiterhin ausschliesslich bewusst freigegebene Serviceinformationen. Sie ergänzt aktuelle und kommende, bewusst öffentliche Wartungsfenster mit Titel, Beschreibung, Beginn, Ende, Zustand und den Namen der veröffentlichten betroffenen Services. Interne Wartungen, interne Services, Personen, Tenant-ID, Ticket-/Assetbezüge und Auditdaten bleiben ausgeschlossen. Eine zur Zeit aktive öffentliche Wartung beeinflusst den Gesamtstatus und damit den SVG-Badge, ohne den Status eines Services automatisch in der Datenbank zu verändern.
+
+Die bestehende SharePoint-Ausgabe bleibt eine kopierbare SVG-Bildadresse plus Kundenstatusadresse. Der Badge führt per bewusster SharePoint-Bildverlinkung zur öffentlichen Statusseite. nextDesk verbindet sich nicht mit SharePoint, verändert keine externe Seite und veröffentlicht nichts automatisch.
+
+### Gestaltung
+
+- **Design Movement:** Vertrauenswürdige Statuskommunikation nach dem Muster klarer Incident- und Wartungsseiten.
+- **Core Principles:** Sofort erkennbare Gesamtlage, klare Servicezeilen, Wartungen als eigene Zeitachse und progressive Offenlegung der Freigabe.
+- **Color Philosophy:** Grün signalisiert Betriebsbereitschaft; Blau ist ausschliesslich für geplante Wartung reserviert; Gelb, Orange und Rot stufen Störungen ruhig und eindeutig ab.
+- **Layout Paradigm:** Gesamtstatus zuerst, darunter Serviceverfügbarkeit und anschliessend eine klar abgegrenzte Sektion für aktuelle und geplante Wartungen.
+- **Signature Elements:** 90-Tage-Verfügbarkeitsleisten, zustandsbezogene Pills und kompakte Wartungskarten mit betroffenen Services und Zeitfenster.
+- **Interaction Philosophy:** Jede Veröffentlichung ist eine explizite Aktion; Änderungen bleiben verständlich, rücknehmbar und werden serverseitig abgesichert.
+- **Animation:** Bestehende reduzierte Übergänge; keine automatische Fortschritts- oder Statusanimation.
+- **Typography System:** Bestehende nextDesk-Typografie mit klarer Hierarchie aus Service, Zustand, Zeitraum und Beschreibung.
+- **Brand Essence:** nextDesk zeigt Kundinnen und Kunden den aktuellen Servicezustand präzise, ohne interne Betriebsdaten preiszugeben.
+- **Brand Voice:** Kurz und klar, zum Beispiel «Alle Dienste sind verfügbar.» und «Geplante Wartung: Dienstag, 19:00–20:00 Uhr.»
+- **Wordmark & Logo:** Der vorhandene Mandanten-Logo-/Farbvertrag der öffentlichen Seite bleibt bestehen.
+- **Signature Brand Color:** Die bestehende Mandanten-Akzentfarbe bleibt Markenzeichen; Statusfarben behalten ihre semantische Bedeutung.
+
+### Projektstruktur
+
+- `supabase/migrations/0107_service_status_maintenance.sql`: Wartungsfenster, Impact-Zuordnungen, RLS, zusammengesetzte Tenant-Fremdschlüssel und direkte Browser-Sperre.
+- `supabase/functions/service-status/`: JWT-geschützte Übersicht und serverautorisierte Wartungsverwaltung.
+- `supabase/functions/service-status-public/`: strikt minimierte Kundenprojektion und SharePoint-SVG-Badge.
+- `apps/web/src/service-status.tsx`: interne Status- und Wartungsverwaltung sowie öffentliche Kundenansicht.
+- `apps/web/src/styles.css`: responsives Wartungslayout im bestehenden Statusseiten-Design.

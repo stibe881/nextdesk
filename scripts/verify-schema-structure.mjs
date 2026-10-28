@@ -108,6 +108,8 @@ const expectedFiles = [
   "0104_ticket_notification_recipient_authorization.sql",
   "0105_knowledge_taxonomy_fulltext_search.sql",
   "0106_service_status_page.sql",
+  "0107_service_status_maintenance.sql",
+  "0108_atomic_service_status_maintenance.sql",
 ];
 
 const availableFiles = await readdir(migrationDirectory);
@@ -1100,6 +1102,70 @@ const requiredFragments = [
   [
     "0097_atomic_ticket_custom_field_edit.sql",
     "from public, anon, authenticated",
+  ],
+  [
+    "0107_service_status_maintenance.sql",
+    "create table if not exists public.service_status_maintenances",
+  ],
+  [
+    "0107_service_status_maintenance.sql",
+    "create table if not exists public.service_status_maintenance_services",
+  ],
+  [
+    "0107_service_status_maintenance.sql",
+    "foreign key (maintenance_id, tenant_id)",
+  ],
+  [
+    "0107_service_status_maintenance.sql",
+    "foreign key (service_id, tenant_id)",
+  ],
+  [
+    "0107_service_status_maintenance.sql",
+    "alter table public.service_status_maintenances force row level security",
+  ],
+  [
+    "0107_service_status_maintenance.sql",
+    "alter table public.service_status_maintenance_services force row level security",
+  ],
+  [
+    "0107_service_status_maintenance.sql",
+    "revoke all on table public.service_status_maintenances,",
+  ],
+  [
+    "0108_atomic_service_status_maintenance.sql",
+    "create or replace function public.save_service_status_maintenance",
+  ],
+  [
+    "0108_atomic_service_status_maintenance.sql",
+    "security definer",
+  ],
+  [
+    "0108_atomic_service_status_maintenance.sql",
+    "for update",
+  ],
+  [
+    "0108_atomic_service_status_maintenance.sql",
+    "public.user_has_tenant_permission(",
+  ],
+  [
+    "0108_atomic_service_status_maintenance.sql",
+    "delete from public.service_status_maintenance_services",
+  ],
+  [
+    "0108_atomic_service_status_maintenance.sql",
+    "insert into public.audit_logs",
+  ],
+  [
+    "0108_atomic_service_status_maintenance.sql",
+    "'serviceCount', v_requested_service_count",
+  ],
+  [
+    "0108_atomic_service_status_maintenance.sql",
+    "revoke all on function public.save_service_status_maintenance(",
+  ],
+  [
+    "0108_atomic_service_status_maintenance.sql",
+    ") to service_role;",
   ],
 ];
 

@@ -3,6 +3,7 @@ import {
   resolveEntraPersonnelForMember,
   type EntraPersonnelRecord,
 } from "../_shared/entra-personnel.ts";
+import { canManageServiceStatusFromAssignments } from "../_shared/tenant-service-status-access.ts";
 
 const APP_ORIGIN = "https://app.nextdesk.ch";
 const REQUESTER_ROLE = "Requester";
@@ -487,6 +488,10 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         isEffectiveAssignment(assignment, now) &&
         roleCanWorkTickets(relatedRole(assignment.roles)),
     );
+    const canManageServiceStatus = canManageServiceStatusFromAssignments(
+      effectiveRoles,
+      now,
+    );
     const isTenantAdmin = effectiveRoles.some((assignment) => {
       const role = relatedRole(assignment.roles);
       return (
@@ -522,6 +527,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       data: {
         canWorkTickets,
         canManageContracts,
+        canManageServiceStatus,
         canReadReports,
         isTenantAdmin,
       },
