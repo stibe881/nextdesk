@@ -95,7 +95,6 @@ type HandoverStatus = "open" | "acknowledged" | "resolved";
 type PendingCloseConfirmation = {
   statusKey: string;
   statusLabel: string;
-  source: "overview" | "editor";
 };
 
 type UndoChange = {
@@ -4730,14 +4729,6 @@ export function TicketDetail({
     (editSubject.trim() !== detail.ticket.subject ||
       editDescription.trim() !== detail.ticket.description),
   );
-  const hasChanges = Boolean(
-    detail &&
-    (statusKey !== selectedStatus?.key ||
-      priorityKey !== selectedPriority?.key ||
-      selectedTeamId !== assignedTeamId ||
-      (detail.canAssign && selectedAgentId !== assignedAgentId) ||
-      hasContentChanges),
-  );
   const busy = pendingAction !== null;
   const attachmentBusy = pendingAttachmentAction !== null;
   const handoverBusy = pendingHandoverAction !== null;
@@ -5241,21 +5232,7 @@ export function TicketDetail({
     if (!detail || busy) return;
     setEditSubject(detail.ticket.subject);
     setEditDescription(detail.ticket.description);
-    setStatusKey(
-      detail.statuses.find((status) => status.id === detail.ticket.status_id)
-        ?.key ?? "",
-    );
-    setPriorityKey(
-      detail.priorities.find(
-        (priority) => priority.id === detail.ticket.priority_id,
-      )?.key ?? "",
-    );
-    setSelectedTeamId(detail.ticket.assigned_team_id ?? "");
-    setSelectedAgentId(detail.ticket.assigned_agent_id ?? "");
-    setAssignmentPrefilled(false);
-    setSelectedDepartmentId(detail.ticket.department_id);
     setIsEditingTicket(false);
-    setPendingCloseConfirmation(null);
     setError("");
   }
 
@@ -5282,7 +5259,6 @@ export function TicketDetail({
       setPendingCloseConfirmation({
         statusKey: closingStatus.key,
         statusLabel: closingStatus.label,
-        source: "overview",
       });
       return;
     }
@@ -5406,8 +5382,8 @@ export function TicketDetail({
     }
   }
 
-  async function saveTicketChanges(confirmedClose = false) {
-    if (!detail || !detail.canUpdate || !hasChanges) return;
+  async function saveTicketContent() {
+    if (!detail || !detail.canUpdate || !hasContentChanges) return;
 
     const subject = editSubject.trim();
     const description = editDescription.trim();
@@ -5437,65 +5413,20 @@ export function TicketDetail({
       tenantId,
       ticketId,
     };
-    if (statusKey && statusKey !== selectedStatus?.key) {
-      action.statusKey = statusKey;
-    }
-    if (priorityKey && priorityKey !== selectedPriority?.key) {
-      action.priorityKey = priorityKey;
-    }
-    if (selectedTeamId !== assignedTeamId) {
-      action.assignedTeamId = selectedTeamId || null;
-    }
-    const assignedAgentChanged =
-      detail.canAssign && selectedAgentId !== assignedAgentId;
     if (hasContentChanges && subject !== detail.ticket.subject) {
       action.subject = subject;
     }
     if (hasContentChanges && description !== detail.ticket.description) {
       action.description = description;
     }
-    if (
-      !action.statusKey &&
-      !action.priorityKey &&
-      action.assignedTeamId === undefined &&
-      action.subject === undefined &&
-      action.description === undefined &&
-      !assignedAgentChanged
-    ) {
+    if (action.subject === undefined && action.description === undefined) {
       return;
     }
-
-    const closingStatus = closingStatusForKey(action.statusKey);
-    if (closingStatus && !confirmedClose) {
-      setPendingCloseConfirmation({
-        statusKey: closingStatus.key,
-        statusLabel: closingStatus.label,
-        source: "editor",
-      });
-      return;
-    }
-    if (closingStatus) action.confirmClose = true;
 
     setPendingAction("update");
     setError("");
     try {
-      const hasTicketUpdate =
-        action.statusKey !== undefined ||
-        action.priorityKey !== undefined ||
-        action.assignedTeamId !== undefined ||
-        action.subject !== undefined ||
-        action.description !== undefined;
-      if (hasTicketUpdate) {
-        await invokeTicketOperation(action);
-      }
-      if (assignedAgentChanged) {
-        await invokeTicketAgentAssignment({
-          type: "assign",
-          tenantId,
-          ticketId,
-          assignedAgentId: selectedAgentId || null,
-        });
-      }
+      await invokeTicketOperation(action);
       setIsEditingTicket(false);
       onChanged();
       await Promise.all([loadTicket(), loadFeedback(), loadQuality()]);
@@ -5510,17 +5441,7 @@ export function TicketDetail({
     const confirmation = pendingCloseConfirmation;
     if (!confirmation || busy) return;
     setPendingCloseConfirmation(null);
-    if (confirmation.source === "overview") {
-      await saveOverviewChange({ statusKey: confirmation.statusKey }, true);
-      return;
-    }
-    if (statusKey !== confirmation.statusKey) {
-      setError(
-        "Der Abschlussstatus wurde geändert. Bitte wählen Sie ihn erneut aus.",
-      );
-      return;
-    }
-    await saveTicketChanges(true);
+    await saveOverviewChange({ statusKey: confirmation.statusKey }, true);
   }
 
   async function saveComment(event: FormEvent<HTMLFormElement>) {
@@ -6271,15 +6192,14 @@ export function TicketDetail({
           </button>
           {detail.canUpdate && (
             <button
-              aria-controls="ticket-editor"
               aria-expanded={isEditingTicket}
               className="secondary-button"
               disabled={busy}
               onClick={startTicketEdit}
-              title="Ticket bearbeiten"
+              title="Betreff und Beschreibung bearbeiten"
               type="button"
             >
-              Bearbeiten
+              Inhalt bearbeiten
             </button>
           )}
           <button
@@ -6825,12 +6745,7 @@ export function TicketDetail({
                 <button
                   className="secondary-button"
                   disabled={busy}
-                  onClick={() => {
-                    if (pendingCloseConfirmation.source === "editor") {
-                      setStatusKey(selectedStatus?.key ?? "");
-                    }
-                    setPendingCloseConfirmation(null);
-                  }}
+                  onClick={() => setPendingCloseConfirmation(null)}
                   type="button"
                 >
                   Abbrechen
@@ -8890,155 +8805,77 @@ export function TicketDetail({
               </section>
             )}
 
-            {detail.canUpdate && (
+            {detail.canUpdate && isEditingTicket && (
               <section
                 className="ticket-detail-editor"
-                aria-labelledby="ticket-status-heading"
+                aria-labelledby="ticket-content-heading"
                 id="ticket-editor"
               >
                 <div className="ticket-detail-section-heading">
                   <div>
                     <p className="eyebrow">BEARBEITEN</p>
-                    <h3 id="ticket-status-heading">Ticket bearbeiten</h3>
+                    <h3 id="ticket-content-heading">Ticketinhalt bearbeiten</h3>
                   </div>
                 </div>
-                {isEditingTicket && (
-                  <div className="ticket-comment-form">
-                    <label className="ticket-comment-body">
-                      Titel
-                      <input
-                        autoFocus
-                        disabled={busy}
-                        maxLength={240}
-                        minLength={3}
-                        onChange={(event) => setEditSubject(event.target.value)}
-                        required
-                        value={editSubject}
-                      />
-                    </label>
-                    <p className="data-caption" aria-live="polite">
-                      {[...editSubject].length}/240 Zeichen
-                    </p>
-                    <label className="ticket-comment-body">
-                      Beschreibung
-                      <textarea
-                        disabled={busy}
-                        maxLength={10_000}
-                        minLength={1}
-                        onChange={(event) =>
-                          setEditDescription(event.target.value)
-                        }
-                        required
-                        rows={5}
-                        value={editDescription}
-                      />
-                    </label>
-                    <p className="data-caption" aria-live="polite">
-                      {[...editDescription].length}/10&apos;000 Zeichen
-                    </p>
-                    <button
-                      className="secondary-button"
+                <div className="ticket-comment-form">
+                  <label className="ticket-comment-body">
+                    Titel
+                    <input
+                      autoFocus
                       disabled={busy}
-                      onClick={cancelTicketEdit}
-                      type="button"
-                    >
-                      Abbrechen
-                    </button>
-                  </div>
-                )}
-                <div className="ticket-detail-selects">
-                  <label>
-                    Status
-                    <select
-                      disabled={busy || detail.statuses.length === 0}
-                      onChange={(event) => setStatusKey(event.target.value)}
-                      value={statusKey}
-                    >
-                      {selectableStatuses.map((status) => (
-                        <option key={status.id} value={status.key}>
-                          {status.label}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label>
-                    Priorität
-                    <select
-                      disabled={busy || detail.priorities.length === 0}
-                      onChange={(event) => setPriorityKey(event.target.value)}
-                      value={priorityKey}
-                    >
-                      {detail.priorities.map((priority) => (
-                        <option key={priority.id} value={priority.key}>
-                          {priority.label}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label>
-                    Zugewiesenes Team
-                    <select
-                      disabled={busy}
-                      onChange={(event) =>
-                        setSelectedTeamId(event.target.value)
-                      }
-                      value={selectedTeamId}
-                    >
-                      <option value="">Keinem Team zugewiesen</option>
-                      {detail.teams.map((team) => (
-                        <option key={team.id} value={team.id}>
-                          {team.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  {detail.canAssign ? (
-                    <label>
-                      Zugewiesener Agent
-                      <select
-                        disabled={busy}
-                        onChange={(event) =>
-                          setSelectedAgentId(event.target.value)
-                        }
-                        value={selectedAgentId}
-                      >
-                        <option value="">Nicht zugewiesen</option>
-                        {visibleAssignableAgents.map((agent) => (
-                          <option key={agent.id} value={agent.id}>
-                            {agent.displayName}
-                            {agent.id === currentUserId ? " (Ich)" : ""}
-                          </option>
-                        ))}
-                      </select>
-                      <span className="data-caption">
-                        Alle aktiven, für diese Abteilung berechtigten Agenten
-                        des Mandanten stehen zur Auswahl.
-                      </span>
-                    </label>
-                  ) : (
-                    <p className="data-caption">
-                      Zugewiesener Agent:{" "}
-                      {detail.assignedAgent?.displayName ?? "Nicht zugewiesen"}
-                    </p>
-                  )}
-                </div>
-                <button
-                  className="secondary-button"
-                  disabled={busy || !hasChanges}
-                  onClick={() => void saveTicketChanges()}
-                  type="button"
-                >
-                  {pendingAction === "update" ? (
-                    <LoaderCircle
-                      aria-hidden="true"
-                      className="ticket-detail-spinner"
-                      size={16}
+                      maxLength={240}
+                      minLength={3}
+                      onChange={(event) => setEditSubject(event.target.value)}
+                      required
+                      value={editSubject}
                     />
-                  ) : (
-                    <Save aria-hidden="true" size={16} strokeWidth={1.8} />
-                  )}
-                  {isEditingTicket ? "Speichern" : "Änderungen speichern"}
-                </button>
+                  </label>
+                  <p className="data-caption" aria-live="polite">
+                    {[...editSubject].length}/240 Zeichen
+                  </p>
+                  <label className="ticket-comment-body">
+                    Beschreibung
+                    <textarea
+                      disabled={busy}
+                      maxLength={10_000}
+                      minLength={1}
+                      onChange={(event) =>
+                        setEditDescription(event.target.value)
+                      }
+                      required
+                      rows={5}
+                      value={editDescription}
+                    />
+                  </label>
+                  <p className="data-caption" aria-live="polite">
+                    {[...editDescription].length}/10&apos;000 Zeichen
+                  </p>
+                  <button
+                    className="secondary-button"
+                    disabled={busy}
+                    onClick={cancelTicketEdit}
+                    type="button"
+                  >
+                    Abbrechen
+                  </button>
+                  <button
+                    className="secondary-button"
+                    disabled={busy || !hasContentChanges}
+                    onClick={() => void saveTicketContent()}
+                    type="button"
+                  >
+                    {pendingAction === "update" ? (
+                      <LoaderCircle
+                        aria-hidden="true"
+                        className="ticket-detail-spinner"
+                        size={16}
+                      />
+                    ) : (
+                      <Save aria-hidden="true" size={16} strokeWidth={1.8} />
+                    )}
+                    Ticketinhalt speichern
+                  </button>
+                </div>
               </section>
             )}
           </div>
