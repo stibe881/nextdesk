@@ -287,3 +287,8 @@
   - Nach den Filtern «Suche», «Service» und «Status» beginnt die Assetliste mit einem deutlich kleineren, ruhigen Abstand.
   - Die Änderung betrifft nur die Assetansicht; Abstände in Services, Problemen und Formularen bleiben unverändert.
   - Filterlogik, Mandantentrennung und die vorhandene Darstellung der Assetkarte werden nicht verändert. TypeScript, 127 Webtests, Produktionsbuild und ein sauberer Diff sind geprüft; ein Webrelease wird nicht ausgelöst.
+
+- [x] **Web-Assetformular: Kundenorganisation-ID und JSON-Metadaten ausblenden**
+  - Die technischen Eingabefelder «Kundenorganisation-ID (optional)» und «Metadaten (JSON-Objekt)» erscheinen weder beim Erfassen noch beim Bearbeiten eines Assets.
+  - Bereits gespeicherte Werte bleiben bei einer normalen Assetbearbeitung unverändert erhalten; sie werden nicht gelöscht oder für Browser neu offengelegt.
+  - Intune-Synchronisation, Mandantentrennung und Assetberechtigungen bleiben unverändert. TypeScript, 127 Webtests, Produktionsbuild und ein sauberer Diff sind geprüft; ein Webrelease wird nicht ausgelöst.

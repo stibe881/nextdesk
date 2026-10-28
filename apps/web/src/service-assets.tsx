@@ -2305,40 +2305,6 @@ export function ServiceAssets({
                           value={assetForm.status}
                         />
                       </label>
-                      <label>
-                        Kundenorganisation-ID (optional)
-                        <input
-                          disabled={controlsDisabled}
-                          onChange={(event) =>
-                            setAssetForm((current) => ({
-                              ...current,
-                              customerOrganizationId: event.target.value,
-                            }))
-                          }
-                          placeholder="UUID"
-                          value={assetForm.customerOrganizationId}
-                        />
-                      </label>
-                      <label>
-                        Metadaten (JSON-Objekt)
-                        <textarea
-                          aria-describedby="service-assets-metadata-help"
-                          disabled={controlsDisabled}
-                          onChange={(event) =>
-                            setAssetForm((current) => ({
-                              ...current,
-                              metadata: event.target.value,
-                            }))
-                          }
-                          rows={5}
-                          spellCheck={false}
-                          value={assetForm.metadata}
-                        />
-                      </label>
-                      <p id="service-assets-metadata-help">
-                        Erlaubt ist ein JSON-Objekt, zum Beispiel {"{"}
-                        "standort":"Zürich"{"}"}.
-                      </p>
                       <p>
                         <button
                           className="primary-button"
