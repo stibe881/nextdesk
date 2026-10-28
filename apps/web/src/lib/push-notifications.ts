@@ -20,6 +20,11 @@ export const pushCategoryMeta = {
     description: "Erinnerung zum gesetzten Termin",
     label: "Wiedervorlagen",
   },
+  inventory_low_stock: {
+    description:
+      "Wenn die Gesamtverfügbarkeit eines Artikels den Mindestbestand erreicht",
+    label: "Lagerunterbestand",
+  },
   mention: {
     description: "Wenn Sie in einem Ticket erwähnt werden",
     label: "Erwähnungen",

@@ -85,6 +85,7 @@ import {
 import { Contracts } from "./contracts";
 import { EventSpaces } from "./event-spaces";
 import { Onboarding } from "./onboarding";
+import { Inventory } from "./inventory";
 import { PersonalSettings } from "./personal-settings";
 import { ExperienceWorkspace, MyDayCard } from "./experience-workspace";
 import {
@@ -151,6 +152,7 @@ type Section =
   | "Services"
   | "Systemstatus"
   | "Assets"
+  | "Lager"
   | "Fälle"
   | "Verträge"
   | "Veranstaltungsräume"
@@ -275,6 +277,7 @@ const sections: readonly { label: Section; Icon: LucideIcon }[] =
     { label: "Wissen", Icon: BookOpen },
     { label: "Services", Icon: MonitorCog },
     { label: "Assets", Icon: Boxes },
+    { label: "Lager", Icon: Boxes },
     { label: "Systemstatus", Icon: CircleCheck },
     { label: "Veranstaltungsräume", Icon: CalendarDays },
     { label: "Eintritte", Icon: ClipboardList },
@@ -283,6 +286,44 @@ const sections: readonly { label: Section; Icon: LucideIcon }[] =
     { label: "Arbeitsplatz", Icon: BriefcaseBusiness },
     { label: "Mein Portal", Icon: UserRound },
   ]);
+
+const NAVIGATION_CATEGORIES = [
+  {
+    heading: "ARBEITSBEREICH",
+    id: "navigation-category-workspace",
+    navigationLabel: "Arbeitsbereich",
+    sectionLabels: ["Übersicht", "Tickets", "Fälle", "Berichte"],
+  },
+  {
+    heading: "WISSEN & RESSOURCEN",
+    id: "navigation-category-resources",
+    navigationLabel: "Wissen und Ressourcen",
+    sectionLabels: ["Wissen", "Assets", "Lager"],
+  },
+  {
+    heading: "PLANUNG & BETRIEB",
+    id: "navigation-category-operations",
+    navigationLabel: "Planung und Betrieb",
+    sectionLabels: [
+      "Veranstaltungsräume",
+      "Eintritte",
+      "Verträge",
+      "Services",
+      "Systemstatus",
+    ],
+  },
+  {
+    heading: "VERWALTUNG",
+    id: "navigation-category-administration",
+    navigationLabel: "Verwaltung",
+    sectionLabels: ["Einstellungen"],
+  },
+] as const satisfies readonly {
+  heading: string;
+  id: string;
+  navigationLabel: string;
+  sectionLabels: readonly Section[];
+}[];
 
 const DEFAULT_WORKSPACE_PREFERENCES: WorkspacePreferences = {
   density: "standard",
@@ -2875,6 +2916,7 @@ function AuthenticatedApp() {
     ) {
       return isFeatureEnabled("assets.management");
     }
+    if (item.label === "Lager") return isFeatureEnabled("inventory.management");
     if (item.label === "Wissen") return isFeatureEnabled("knowledge.base");
     if (item.label === "Verträge") return contractsAvailable;
     if (item.label === "Berichte") return reportsAvailable;
@@ -2885,7 +2927,8 @@ function AuthenticatedApp() {
     (item) =>
       item.label === "Verträge" ||
       item.label === "Berichte" ||
-      item.label === "Systemstatus",
+      item.label === "Systemstatus" ||
+      item.label === "Lager",
   );
   const workSections = canWorkTickets
     ? featureSections
@@ -2898,6 +2941,7 @@ function AuthenticatedApp() {
     const sectionFeature: Partial<Record<Section, string>> = {
       Fälle: "assets.management",
       Assets: "assets.management",
+      Lager: "inventory.management",
       Systemstatus: "assets.management",
       Berichte: "reporting.service",
       Services: "assets.management",
@@ -3346,6 +3390,16 @@ function AuthenticatedApp() {
   const portalNavigationItem = visibleSections.find(
     (item) => item.label === "Mein Portal",
   );
+  const navigationItemsBySection = new Map(
+    remainingNavigationSections.map((item) => [item.label, item]),
+  );
+  const navigationGroups = NAVIGATION_CATEGORIES.map((category) => ({
+    ...category,
+    items: category.sectionLabels.flatMap((label) => {
+      const item = navigationItemsBySection.get(label);
+      return item ? [item] : [];
+    }),
+  })).filter((category) => category.items.length > 0);
   const unreadNotificationCount = useMemo(
     () =>
       notifications.filter((notification) => notification.readAt === null)
@@ -3458,33 +3512,40 @@ function AuthenticatedApp() {
             </button>
           </nav>
         )}
-        <div className="navigation-cluster">
-          <p className="navigation-label">ARBEITSBEREICH</p>
-          <nav className="nav-list">
-            {remainingNavigationSections.map((item) => (
-              <button
-                className={
-                  section === item.label ? "nav-item active" : "nav-item"
-                }
-                key={item.label}
-                onClick={() => {
-                  setPersonalSettingsOpen(false);
-                  setSection(item.label);
-                }}
-                type="button"
-              >
-                <item.Icon aria-hidden="true" size={18} strokeWidth={1.8} />
-                {sectionDisplayLabel(item.label)}
-              </button>
-            ))}
-          </nav>
+        <div className="navigation-categories">
+          {navigationGroups.map((category) => (
+            <section
+              aria-labelledby={category.id}
+              className="navigation-cluster"
+              key={category.id}
+            >
+              <h2 className="navigation-label" id={category.id}>
+                {category.heading}
+              </h2>
+              <nav aria-label={category.navigationLabel} className="nav-list">
+                {category.items.map((item) => (
+                  <button
+                    className={
+                      section === item.label ? "nav-item active" : "nav-item"
+                    }
+                    key={item.label}
+                    onClick={() => {
+                      setPersonalSettingsOpen(false);
+                      setSection(item.label);
+                    }}
+                    type="button"
+                  >
+                    <item.Icon aria-hidden="true" size={18} strokeWidth={1.8} />
+                    {sectionDisplayLabel(item.label)}
+                  </button>
+                ))}
+              </nav>
+            </section>
+          ))}
         </div>
         <div className="rail-footer">
           {portalNavigationItem && (
-            <nav
-              aria-label="Persönlicher Bereich"
-              className="rail-footer__navigation"
-            >
+            <nav aria-label="Mein Portal" className="rail-footer__navigation">
               <button
                 className={
                   section === portalNavigationItem.label
@@ -3883,6 +3944,10 @@ function AuthenticatedApp() {
           activeTenant &&
           isFeatureEnabled("assets.management") ? (
           <ServiceAssets fixedTab="assets" tenantId={activeTenant.id} />
+        ) : section === "Lager" &&
+          activeTenant &&
+          isFeatureEnabled("inventory.management") ? (
+          <Inventory tenantId={activeTenant.id} />
         ) : section === "Veranstaltungsräume" && activeTenant ? (
           <EventSpaces
             focusRequestId={
