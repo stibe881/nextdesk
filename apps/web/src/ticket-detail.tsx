@@ -50,6 +50,7 @@ import {
   ticketCommentBodyWithAttachments,
 } from "./lib/ticket-comment-attachments";
 import { ticketWatchPresentation } from "./lib/ticket-watch-presentation";
+import { formatPersonDisplayName } from "./lib/person-display-name";
 import { supabase } from "./lib/supabase";
 import { TicketApprovals } from "./ticket-approvals";
 import { TicketComparison } from "./ticket-comparison";
@@ -6303,9 +6304,9 @@ export function TicketDetail({
                 statusLabel: selectedStatus?.label ?? "Status nicht verfügbar",
                 priorityLabel:
                   selectedPriority?.label ?? "Priorität nicht verfügbar",
-                requesterName:
-                  detail.requesterContact?.displayName ??
-                  "Anfragende Person nicht verfügbar",
+                requesterName: detail.requesterContact
+                  ? formatPersonDisplayName(detail.requesterContact.displayName)
+                  : "Anfragende Person nicht verfügbar",
                 isClosed: ticketIsClosed,
                 isResolved: ticketIsResolved,
               }}
@@ -6773,7 +6774,9 @@ export function TicketDetail({
           {detail.requesterContact && (
             <div>
               <dt>Anfragende Person</dt>
-              <dd>{detail.requesterContact.displayName}</dd>
+              <dd>
+                {formatPersonDisplayName(detail.requesterContact.displayName)}
+              </dd>
             </div>
           )}
           <div
