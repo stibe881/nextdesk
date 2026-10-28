@@ -272,3 +272,8 @@
   - Während die serverautorisierten Einträge laden, bleibt die Auswahl nur vorübergehend gesperrt und erklärt den Ladezustand.
   - Gibt es keine verfügbaren Einträge, lässt sich die Auswahl trotzdem öffnen und zeigt eine verständliche Rückmeldung statt dauerhaft ausgegraut zu bleiben.
   - Mandantentrennung, bestehende serverseitige Berechtigungsprüfung und Verknüpfungsmutation bleiben unverändert. Fokussierte Regressionen, TypeScript, 127 Webtests, Produktionsbuild und ein sauberer Diff sind geprüft; ein Webrelease wird nicht ausgelöst.
+
+- [x] **Web-Ticketüberblick: verknüpfte Assets und Katalogeinträge sichtbar anzeigen**
+  - Nach einer erfolgreichen Verknüpfung erscheint der Eintrag unmittelbar unter der Such- und Verknüpfungsaktion im oberen Ticketüberblick.
+  - Mehrere Verknüpfungen werden mit Typ, Name und vorhandenen Metadaten übersichtlich als Liste dargestellt; die bestehende serverautorisierte Entfernung bleibt im Bereich «Betroffene Elemente» verfügbar.
+  - Die Anzeige verwendet ausschliesslich die bereits serverseitig erlaubten und geladenen Einträge. Mandantentrennung, Rechte und der bestehende Verknüpfungsablauf bleiben unverändert. TypeScript, 127 Webtests, Produktionsbuild und ein sauberer Diff sind geprüft; ein Webrelease wird nicht ausgelöst.

@@ -7395,11 +7395,28 @@ export function TicketDetail({
                     Verknüpfen
                   </button>
                 </form>
-              ) : linkedCatalogItems.length > 0 ? (
-                `${linkedCatalogItems.length} verknüpft`
-              ) : (
+              ) : null}
+              {linkedCatalogItems.length > 0 ? (
+                <div
+                  aria-label="Verknüpfte Assets und Katalogeinträge"
+                  className="ticket-overview-linked-catalog"
+                >
+                  <p className="data-caption">Verknüpft</p>
+                  <ul>
+                    {linkedCatalogItems.map((item) => (
+                      <li key={catalogItemKey(item)}>
+                        <span>{catalogKindLabel(item.kind)}</span>
+                        <strong>{item.label}</strong>
+                        {item.metadata.length > 0 ? (
+                          <small>{item.metadata.join(" · ")}</small>
+                        ) : null}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : !detail.canUpdate ? (
                 "Keine Elemente verknüpft"
-              )}
+              ) : null}
               {detail.canUpdate && affectedItemsLoading ? (
                 <p className="data-caption" aria-live="polite" role="status">
                   Verfügbare Assets und Katalogeinträge werden geladen …

@@ -8986,6 +8986,65 @@ body:has(.ticket-list-filter-panel) {
   white-space: nowrap;
 }
 
+.ticket-overview-linked-catalog {
+  display: grid;
+  gap: 5px;
+  margin-top: 10px;
+}
+
+.ticket-overview-linked-catalog > .data-caption {
+  margin: 0;
+}
+
+.ticket-overview-linked-catalog ul {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ticket-overview-linked-catalog li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 2px 7px;
+  align-items: baseline;
+  border: 1px solid var(--border-tint-rgb-216-220-255-82);
+  border-radius: 8px;
+  padding: 7px 8px;
+  background: var(--surface-subtle);
+}
+
+.ticket-overview-linked-catalog li > span {
+  grid-column: 1;
+  align-self: center;
+  color: var(--primary);
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.ticket-overview-linked-catalog li > strong,
+.ticket-overview-linked-catalog li > small {
+  grid-column: 2;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ticket-overview-linked-catalog li > strong {
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.ticket-overview-linked-catalog li > small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 500;
+}
+
 .ticket-catalog-picker {
   position: relative;
   min-width: 0;
