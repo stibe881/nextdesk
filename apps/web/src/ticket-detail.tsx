@@ -7060,6 +7060,81 @@ export function TicketDetail({
               )}
             </dd>
           </div>
+          <div
+            className={
+              detail.canUpdate
+                ? "ticket-detail-fact--editable ticket-detail-fact--catalog-link"
+                : "ticket-detail-fact--catalog-link"
+            }
+          >
+            <dt>Asset / Katalogeintrag verknüpfen</dt>
+            <dd>
+              {detail.canUpdate ? (
+                <form
+                  className="ticket-overview-catalog-link"
+                  onSubmit={linkCatalogItem}
+                >
+                  <select
+                    aria-label="Asset oder Katalogeintrag verknüpfen"
+                    disabled={
+                      catalogBusy ||
+                      affectedItemsLoading ||
+                      availableCatalogItems.length === 0
+                    }
+                    onChange={(event) =>
+                      setSelectedCatalogItemKey(event.target.value)
+                    }
+                    required
+                    value={selectedCatalogItemKey}
+                  >
+                    <option value="">
+                      Asset oder Katalogeintrag auswählen
+                    </option>
+                    {availableCatalogItems.map((item) => (
+                      <option
+                        key={catalogSelectionKey(item)}
+                        value={catalogSelectionKey(item)}
+                      >
+                        {catalogKindLabel(item.kind)} – {item.label} (
+                        {item.description})
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    className="secondary-button"
+                    disabled={
+                      catalogBusy ||
+                      affectedItemsLoading ||
+                      !selectedCatalogItemKey
+                    }
+                    type="submit"
+                  >
+                    {pendingCatalogAction === "link" ? (
+                      <LoaderCircle
+                        aria-hidden="true"
+                        className="ticket-detail-spinner"
+                        size={16}
+                      />
+                    ) : (
+                      <Circle aria-hidden="true" size={16} strokeWidth={1.8} />
+                    )}
+                    Verknüpfen
+                  </button>
+                </form>
+              ) : linkedCatalogItems.length > 0 ? (
+                `${linkedCatalogItems.length} verknüpft`
+              ) : (
+                "Keine Elemente verknüpft"
+              )}
+              {detail.canUpdate &&
+              availableCatalogItems.length === 0 &&
+              affectedItemsLoaded ? (
+                <p className="data-caption" aria-live="polite">
+                  Keine weiteren verfügbaren Katalogeinträge.
+                </p>
+              ) : null}
+            </dd>
+          </div>
           <div>
             <dt>Erfasst am</dt>
             <dd>{formatDateTime(detail.ticket.created_at)}</dd>
@@ -7485,70 +7560,6 @@ export function TicketDetail({
                 <p className="ticket-detail-message error" role="alert">
                   <AlertCircle aria-hidden="true" size={17} />
                   {affectedItemsError}
-                </p>
-              )}
-
-              {detail.canUpdate ? (
-                <form
-                  className="ticket-comment-form"
-                  onSubmit={linkCatalogItem}
-                >
-                  <label>
-                    Katalogeintrag verknüpfen
-                    <select
-                      aria-describedby="ticket-affected-items-help"
-                      disabled={
-                        catalogBusy ||
-                        affectedItemsLoading ||
-                        availableCatalogItems.length === 0
-                      }
-                      onChange={(event) =>
-                        setSelectedCatalogItemKey(event.target.value)
-                      }
-                      required
-                      value={selectedCatalogItemKey}
-                    >
-                      <option value="">Katalogeintrag auswählen</option>
-                      {availableCatalogItems.map((item) => (
-                        <option
-                          key={catalogSelectionKey(item)}
-                          value={catalogSelectionKey(item)}
-                        >
-                          {catalogKindLabel(item.kind)} – {item.label} (
-                          {item.description})
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <button
-                    className="secondary-button"
-                    disabled={
-                      catalogBusy ||
-                      affectedItemsLoading ||
-                      !selectedCatalogItemKey
-                    }
-                    type="submit"
-                  >
-                    {pendingCatalogAction === "link" ? (
-                      <LoaderCircle
-                        aria-hidden="true"
-                        className="ticket-detail-spinner"
-                        size={16}
-                      />
-                    ) : (
-                      <Circle aria-hidden="true" size={16} strokeWidth={1.8} />
-                    )}
-                    Verknüpfen
-                  </button>
-                  {availableCatalogItems.length === 0 && affectedItemsLoaded ? (
-                    <p className="data-caption" aria-live="polite">
-                      Keine weiteren verfügbaren Katalogeinträge.
-                    </p>
-                  ) : null}
-                </form>
-              ) : (
-                <p className="data-caption">
-                  Sie haben für diese Elemente nur Leserechte.
                 </p>
               )}
 

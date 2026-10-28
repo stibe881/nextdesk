@@ -8948,6 +8948,22 @@ body:has(.ticket-list-filter-panel) {
   overflow: visible;
 }
 
+.ticket-detail-fact--catalog-link {
+  grid-column: 1 / -1;
+}
+
+.ticket-overview-catalog-link {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.ticket-overview-catalog-link .secondary-button {
+  min-height: 34px;
+  white-space: nowrap;
+}
+
 .ticket-requester-context-fields {
   display: grid;
   gap: 5px;
@@ -9642,6 +9658,14 @@ body:has(.ticket-list-filter-panel) {
   .ticket-category-editor select,
   .ticket-category-create input {
     font-size: 16px;
+  }
+
+  .ticket-overview-catalog-link {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .ticket-overview-catalog-link .secondary-button {
+    width: 100%;
   }
 
   .ticket-category-editor {

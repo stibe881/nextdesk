@@ -233,3 +233,8 @@
   - Kategorie und Unterkategorie erscheinen im oberen direkt speichernden Ticketüberblick und verwenden dort die bestehenden mandantengebundenen Auswahl- und Speicherregeln.
   - Die bisherigen doppelten Auswahlfelder sind aus dem unteren Einordnungsbereich entfernt; die berechtigte Erstellung neuer Kategorien und Unterkategorien bleibt verfügbar.
   - Direkte Speicherung, Rechte, Mandantentrennung und die sichere Abhängigkeit einer Unterkategorie von ihrer Kategorie bleiben unverändert. TypeScript, 119 Webtests, Produktionsbuild und ein sauberer Diff sind geprüft; ein Webrelease wird nicht ausgelöst.
+
+- [x] **Web-Ticketdetails: Asset- und Katalogverknüpfung im Überblick**
+  - Die Auswahl und das direkte Verknüpfen berechtigter Assets beziehungsweise Katalogeinträge erscheinen im oberen Ticketüberblick.
+  - Im unteren Bereich «Betroffene Elemente» bleibt nur die bereits verknüpfte Liste mit dem serverautorisierten Entfernen; die doppelte Auswahl ist entfernt.
+  - Mandantentrennung, Berechtigungsprüfung, Lade- und Fehlerzustände sowie die sichere Verknüpfung bleiben unverändert. TypeScript, 119 Webtests, Produktionsbuild und ein sauberer Diff sind geprüft; ein Webrelease wird nicht ausgelöst.
