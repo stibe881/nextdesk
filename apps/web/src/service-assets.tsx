@@ -2020,6 +2020,9 @@ export function ServiceAssets({
                         ? ` · Inventar: ${asset.inventory_number}`
                         : ""}
                     </p>
+                    {asset.serial_number ? (
+                      <p>Seriennummer: {asset.serial_number}</p>
+                    ) : null}
                     <p>
                       Service:{" "}
                       {asset.service_id

@@ -277,3 +277,8 @@
   - Nach einer erfolgreichen Verknüpfung erscheint der Eintrag unmittelbar unter der Such- und Verknüpfungsaktion im oberen Ticketüberblick.
   - Mehrere Verknüpfungen werden mit Typ, Name und vorhandenen Metadaten übersichtlich als Liste dargestellt; die bestehende serverautorisierte Entfernung bleibt im Bereich «Betroffene Elemente» verfügbar.
   - Die Anzeige verwendet ausschliesslich die bereits serverseitig erlaubten und geladenen Einträge. Mandantentrennung, Rechte und der bestehende Verknüpfungsablauf bleiben unverändert. TypeScript, 127 Webtests, Produktionsbuild und ein sauberer Diff sind geprüft; ein Webrelease wird nicht ausgelöst.
+
+- [x] **Web-Assetübersicht: Seriennummer sichtbar darstellen**
+  - Besitzt ein Asset eine Seriennummer, wird sie in seiner Übersichtskarte direkt bei den Gerätedaten angezeigt.
+  - Fehlende Seriennummern erzeugen keine leere oder irreführende Zeile.
+  - Die Anzeige verwendet ausschliesslich das bereits serverseitig berechtigte Feld `serial_number`; Intune-Synchronisation, Mandantentrennung und Bearbeitungsrechte bleiben unverändert. TypeScript, 127 Webtests, Produktionsbuild und ein sauberer Diff sind geprüft; ein Webrelease wird nicht ausgelöst.
