@@ -439,7 +439,7 @@ Der bestehende Statuszweig wird als Grundlage weitergeführt. Servicezustände b
 
 Eine berechtigte Person kann im Bereich **Systemstatus** Wartungsfenster anlegen, bearbeiten, abschliessen oder abbrechen. Ein Wartungsfenster enthält Titel, optionale kundenverständliche Beschreibung, Beginn, Ende, Zustand (`geplant`, `aktiv`, `abgeschlossen`, `abgebrochen`) und eine Mehrfachauswahl der betroffenen Services. Ein Fenster ist intern, bis es bewusst als öffentlich markiert wird. Öffentliche Wartungen müssen mindestens einen ebenfalls für die Statusseite veröffentlichten Service betreffen; diese Regel wird serverseitig erzwungen. Es gibt keinen Scheduler und keine automatische Datenmutation: Zeitwerte beeinflussen nur die Anzeige, niemals den gespeicherten Zustand.
 
-Eine additive Migration `0107_service_status_maintenance.sql` ergänzt mandantenisolierte Wartungsfenster und ihre betroffenen Services über zusammengesetzte Tenant-Fremdschlüssel. Beide Tabellen erhalten RLS, erzwungene RLS, direkte Browser-Sperre und ausschliesslich Service-Role-Zugriff. Die bestehende `service-status`-Function prüft vor jeder Aktion aktive Mitgliedschaft, `assets.management` und `asset.manage`; eine öffentliche Wartung verlangt zusätzlich `tenant.settings.manage`. Wartungsänderungen erhalten einen datensparsamen Audit-Eintrag ohne öffentliche Texte im Audit-Metadatum.
+Eine additive Migration `0107_service_status_maintenance.sql` ergänzt mandantenisolierte Wartungsfenster und ihre betroffenen Services über zusammengesetzte Tenant-Fremdschlüssel. Beide Tabellen erhalten RLS, erzwungene RLS und eine direkte Browser-Sperre. Die anschliessende Migration `0108_atomic_service_status_maintenance.sql` kapselt Anlage oder Änderung, vollständigen Austausch der Servicezuordnungen und den datensparsamen Audit-Eintrag in einer einzigen, ausschliesslich für `service_role` ausführbaren Transaktion. Die bestehende `service-status`-Function prüft vor jeder Aktion aktive Mitgliedschaft, `assets.management` und `asset.manage`; eine öffentliche oder bereits öffentliche Wartung verlangt zusätzlich `tenant.settings.manage`, das in der RPC gegen Rennbedingungen erneut geprüft wird. Audit-Metadaten enthalten keine öffentlichen Texte oder Service-IDs.
 
 ### Kundenstatusseite und SharePoint
 
@@ -465,6 +465,7 @@ Die bestehende SharePoint-Ausgabe bleibt eine kopierbare SVG-Bildadresse plus Ku
 ### Projektstruktur
 
 - `supabase/migrations/0107_service_status_maintenance.sql`: Wartungsfenster, Impact-Zuordnungen, RLS, zusammengesetzte Tenant-Fremdschlüssel und direkte Browser-Sperre.
+- `supabase/migrations/0108_atomic_service_status_maintenance.sql`: transaktionale, ausschliesslich service-autorisierte Wartungsänderung mit atomarem Link-Austausch und Audit.
 - `supabase/functions/service-status/`: JWT-geschützte Übersicht und serverautorisierte Wartungsverwaltung.
 - `supabase/functions/service-status-public/`: strikt minimierte Kundenprojektion und SharePoint-SVG-Badge.
 - `apps/web/src/service-status.tsx`: interne Status- und Wartungsverwaltung sowie öffentliche Kundenansicht.
