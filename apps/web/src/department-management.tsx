@@ -30,6 +30,7 @@ import {
 } from "./lib/department-teams";
 import { functionErrorMessage } from "./lib/function-error";
 import { supabase } from "./lib/supabase";
+import { useTransientSuccessMessage } from "./lib/use-transient-success-message";
 
 export type DepartmentManagementProps = {
   tenantId: string;
@@ -242,7 +243,7 @@ function DepartmentQuestionRouting({ tenantId }: { tenantId: string }) {
   const [savingDepartmentId, setSavingDepartmentId] = useState<string | null>(
     null,
   );
-  const [message, setMessage] = useState("");
+  const [message, setMessage] = useTransientSuccessMessage();
   const [error, setError] = useState("");
 
   const load = useCallback(async () => {
@@ -478,7 +479,7 @@ function DepartmentTeams({ tenantId }: { tenantId: string }) {
   const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [savingTarget, setSavingTarget] = useState<string | null>(null);
-  const [message, setMessage] = useState("");
+  const [message, setMessage] = useTransientSuccessMessage();
   const [error, setError] = useState("");
   const requestVersion = useRef(0);
 
@@ -1016,7 +1017,7 @@ export function DepartmentManagement({ tenantId }: DepartmentManagementProps) {
   const [formVisible, setFormVisible] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState("");
+  const [message, setMessage] = useTransientSuccessMessage();
   const [error, setError] = useState("");
 
   const activeDepartments = useMemo(

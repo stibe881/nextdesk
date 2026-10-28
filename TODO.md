@@ -238,3 +238,8 @@
   - Die Auswahl und das direkte Verknüpfen berechtigter Assets beziehungsweise Katalogeinträge erscheinen im oberen Ticketüberblick.
   - Im unteren Bereich «Betroffene Elemente» bleibt nur die bereits verknüpfte Liste mit dem serverautorisierten Entfernen; die doppelte Auswahl ist entfernt.
   - Mandantentrennung, Berechtigungsprüfung, Lade- und Fehlerzustände sowie die sichere Verknüpfung bleiben unverändert. TypeScript, 119 Webtests, Produktionsbuild und ein sauberer Diff sind geprüft; ein Webrelease wird nicht ausgelöst.
+
+- [x] **Web-Einstellungen: Erfolgsmeldungen für Teams und Abteilungen blenden nach drei Sekunden aus**
+  - Bestätigungen nach Anlegen, Speichern, Archivieren oder Mitgliederzuordnung eines Teams verschwinden selbständig nach exakt drei Sekunden.
+  - Dasselbe gilt für Bestätigungen in der Abteilungsverwaltung und für die Zuweisung von Abteilungsleitungen.
+  - Fehler bleiben sichtbar, bis eine neue Aktion oder Eingabe sie bereinigt. Ein neuer Erfolgshinweis startet die Drei-Sekunden-Frist stets neu. Die Regression, TypeScript, 120 Webtests, Produktionsbuild und ein sauberer Diff sind geprüft; ein Webrelease wird nicht ausgelöst.
