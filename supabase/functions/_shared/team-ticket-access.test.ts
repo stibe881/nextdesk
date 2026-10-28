@@ -146,7 +146,12 @@ Deno.test(
       operations,
       "activeDepartmentMemberIds.has(assignment.user_id)",
     );
-    requireSource(operations, "update.assigned_agent_id = null");
+    requireSource(operations, "assigned_agent_team_mismatch");
+    if (operations.includes("update.assigned_agent_id = null")) {
+      throw new Error(
+        "Ein Teamwechsel darf eine bestehende Ticketzuweisung nicht stillschweigend aufheben.",
+      );
+    }
     const workbench = await source(
       "supabase/functions/agent-workbench/index.ts",
     );

@@ -2840,10 +2840,12 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
           { error: { code: "ticket_agents_lookup_failed" } },
           500,
         );
-      if (!eligibleAgentIds.agentIds.includes(ticket.assigned_agent_id)) {
-        update.assigned_agent_id = null;
-        changedFields.push("assignedAgent");
-      }
+      if (!eligibleAgentIds.agentIds.includes(ticket.assigned_agent_id))
+        return response(
+          request,
+          { error: { code: "assigned_agent_team_mismatch" } },
+          422,
+        );
     }
     if (
       action.assignedTeamId !== undefined &&

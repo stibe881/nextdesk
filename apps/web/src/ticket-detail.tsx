@@ -5320,7 +5320,22 @@ export function TicketDetail({
         offerUndo({ change: previousChange, label });
       }
     } catch (nextError) {
-      setError(errorMessage(nextError));
+      if (change.assignedTeamId !== undefined) {
+        setSelectedTeamId(detail.ticket.assigned_team_id ?? "");
+      }
+      if (change.assignedAgentId !== undefined) {
+        setSelectedAgentId(detail.ticket.assigned_agent_id ?? "");
+      }
+      if (
+        change.assignedTeamId !== undefined &&
+        functionErrorStatus(nextError) === 422
+      ) {
+        setError(
+          "Das Team wurde nicht geändert, weil die zugewiesene Person diesem Team nicht angehört. Fügen Sie die Person zuerst zum Team hinzu oder heben Sie die Zuweisung bewusst auf.",
+        );
+      } else {
+        setError(errorMessage(nextError));
+      }
     } finally {
       setPendingAction(null);
     }

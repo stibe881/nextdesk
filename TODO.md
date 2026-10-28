@@ -243,3 +243,8 @@
   - Bestätigungen nach Anlegen, Speichern, Archivieren oder Mitgliederzuordnung eines Teams verschwinden selbständig nach exakt drei Sekunden.
   - Dasselbe gilt für Bestätigungen in der Abteilungsverwaltung und für die Zuweisung von Abteilungsleitungen.
   - Fehler bleiben sichtbar, bis eine neue Aktion oder Eingabe sie bereinigt. Ein neuer Erfolgshinweis startet die Drei-Sekunden-Frist stets neu. Die Regression, TypeScript, 120 Webtests, Produktionsbuild und ein sauberer Diff sind geprüft; ein Webrelease wird nicht ausgelöst.
+
+- [x] **Teamwechsel entzieht keine Ticketzuweisung mehr stillschweigend**
+  - Wird ein Team ausgewählt, dem die aktuell zugewiesene Person nicht angehört, lehnt der Server die Änderung ab und lässt Team sowie Person unverändert.
+  - Das Web stellt die vorherige Auswahl wieder her und erklärt, dass die Person zuerst ins Team aufgenommen oder die Zuweisung bewusst aufgehoben werden muss.
+  - Freigaben ändern keine Ticketzuweisung. Bestehende Rechte, Mandantentrennung und Teamzugriffsregeln bleiben serverseitig durchgesetzt. 102 Edge-Tests, 120 Webtests, Schema- und Edge-Checks, TypeScript, Produktionsbuild und ein sauberer Diff sind geprüft. Es erfolgt weder ein Edge-Function- noch ein Web-Produktivrelease ohne ausdrückliche Freigabe.
