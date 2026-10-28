@@ -228,3 +228,8 @@
   - Status, Priorität, Team und zugewiesene Person werden ausschliesslich im oberen direkt speichernden Überblick bearbeitet und erscheinen nicht nochmals im unteren Sammel-Editor.
   - Die verbleibende Aktion «Inhalt bearbeiten» ändert weiterhin ausschliesslich Betreff und Beschreibung mit den bestehenden Längen- und Rechteprüfungen.
   - Direkte Speicherung, Zuweisungsrechte, Abschlussbestätigung und Mandantentrennung bleiben unverändert. TypeScript, 119 Webtests, Produktionsbuild und ein sauberer Diff sind geprüft; ein Webrelease wird nicht ausgelöst.
+
+- [x] **Web-Ticketdetails: Kategorie und Unterkategorie im Überblick**
+  - Kategorie und Unterkategorie erscheinen im oberen direkt speichernden Ticketüberblick und verwenden dort die bestehenden mandantengebundenen Auswahl- und Speicherregeln.
+  - Die bisherigen doppelten Auswahlfelder sind aus dem unteren Einordnungsbereich entfernt; die berechtigte Erstellung neuer Kategorien und Unterkategorien bleibt verfügbar.
+  - Direkte Speicherung, Rechte, Mandantentrennung und die sichere Abhängigkeit einer Unterkategorie von ihrer Kategorie bleiben unverändert. TypeScript, 119 Webtests, Produktionsbuild und ein sauberer Diff sind geprüft; ein Webrelease wird nicht ausgelöst.
