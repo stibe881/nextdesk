@@ -5596,9 +5596,421 @@ set local role authenticated;
 				end;
 				$$;
 
+				-- Strukturierte Quellreservationen bleiben opt-in, haben keine
+				-- Rückwirkung und dürfen Raumaufträge oder Eintritte bei fehlendem
+				-- Bestand beziehungsweise einer inaktiven Zielkonfiguration nie
+				-- zurückrollen. Erfolgreiche Entfernungen lösen ausschliesslich eine
+				-- noch offene Reservation mit einer Gegenbewegung.
+				update public.tenant_feature_flags
+				set enabled = true
+				where tenant_id = '10000000-0000-4000-8000-000000000001'
+				  and feature_key = 'inventory.management';
+				insert into public.inventory_locations (id, tenant_id, code, name) values (
+				  '7a100000-0000-4000-8000-000000000001',
+				  '10000000-0000-4000-8000-000000000001', 'source-auto', 'Source Auto'
+				);
+				insert into public.inventory_items (id, tenant_id, article_number, name) values (
+				  '7a100000-0000-4000-8000-000000000002',
+				  '10000000-0000-4000-8000-000000000001', 'source-auto-item', 'Source Auto Item'
+				);
+				insert into public.inventory_stock_balances (
+				  tenant_id, item_id, location_id, physical_quantity, reserved_quantity
+				) values (
+				  '10000000-0000-4000-8000-000000000001',
+				  '7a100000-0000-4000-8000-000000000002',
+				  '7a100000-0000-4000-8000-000000000001', 5, 0
+				);
+				insert into public.inventory_source_reservation_rules (
+				  id, tenant_id, source_kind, event_equipment_key, item_id, location_id, quantity, enabled
+				) values
+				  (
+				    '7a100000-0000-4000-8000-000000000010',
+				    '10000000-0000-4000-8000-000000000001', 'event_space_equipment', 'projector',
+				    '7a100000-0000-4000-8000-000000000002', '7a100000-0000-4000-8000-000000000001', 2, true
+				  ),
+				  (
+				    '7a100000-0000-4000-8000-000000000011',
+				    '10000000-0000-4000-8000-000000000001', 'event_space_equipment', 'audio',
+				    '7a100000-0000-4000-8000-000000000002', '7a100000-0000-4000-8000-000000000001', 6, true
+				  ),
+				  (
+				    '7a100000-0000-4000-8000-000000000012',
+				    '10000000-0000-4000-8000-000000000001', 'event_space_equipment', 'display',
+				    '7a100000-0000-4000-8000-000000000002', '7a100000-0000-4000-8000-000000000001', 1, true
+				  ),
+				  (
+				    '7a100000-0000-4000-8000-000000000013',
+				    '10000000-0000-4000-8000-000000000001', 'event_space_equipment', 'videocall',
+				    '7a100000-0000-4000-8000-000000000002', '7a100000-0000-4000-8000-000000000001', 1, false
+				  );
+				do $$
+				begin
+				  if exists (
+				    select 1
+				    from public.inventory_source_reservations source_reservation
+				    where source_reservation.event_space_request_id = '79100000-0000-4000-8000-000000000001'
+				  ) then
+				    raise exception 'An automatic rule was applied retrospectively to an existing room source';
+				  end if;
+				  if (select enabled from public.inventory_source_reservation_rules
+				      where id = '7a100000-0000-4000-8000-000000000013') then
+				    raise exception 'Automatic source reservation rules are not disabled by default';
+				  end if;
+				end;
+				$$;
+				insert into public.event_space_requests (
+				  id, tenant_id, space_id, title, starts_at, ends_at, responsible_user_id, created_by
+				) values
+				  (
+				    '7a100000-0000-4000-8000-000000000020',
+				    '10000000-0000-4000-8000-000000000001',
+				    '79000000-0000-4000-8000-000000000001', 'Source Reservation Event',
+				    timezone('utc', now()) + interval '11 days', timezone('utc', now()) + interval '11 days 1 hour',
+				    '00000000-0000-4000-8000-000000000002', '00000000-0000-4000-8000-000000000002'
+				  ),
+				  (
+				    '7a100000-0000-4000-8000-000000000021',
+				    '10000000-0000-4000-8000-000000000001',
+				    '79000000-0000-4000-8000-000000000001', 'Source Exception Event',
+				    timezone('utc', now()) + interval '12 days', timezone('utc', now()) + interval '12 days 1 hour',
+				    '00000000-0000-4000-8000-000000000002', '00000000-0000-4000-8000-000000000002'
+				  ),
+				  (
+				    '7a100000-0000-4000-8000-000000000022',
+				    '10000000-0000-4000-8000-000000000001',
+				    '79000000-0000-4000-8000-000000000001', 'Source Disabled Event',
+				    timezone('utc', now()) + interval '13 days', timezone('utc', now()) + interval '13 days 1 hour',
+				    '00000000-0000-4000-8000-000000000002', '00000000-0000-4000-8000-000000000002'
+				  );
+				insert into public.event_space_request_equipment (tenant_id, request_id, equipment_key) values (
+				  '10000000-0000-4000-8000-000000000001',
+				  '7a100000-0000-4000-8000-000000000020', 'projector'
+				);
+				do $$
+				declare
+				  v_reservation_id uuid;
+				begin
+				  select reservation_id into v_reservation_id
+				  from public.inventory_source_reservations
+				  where tenant_id = '10000000-0000-4000-8000-000000000001'
+				    and rule_id = '7a100000-0000-4000-8000-000000000010'
+				    and event_space_request_id = '7a100000-0000-4000-8000-000000000020'
+				    and event_equipment_key = 'projector';
+				  if v_reservation_id is null
+				    or not exists (
+				      select 1 from public.inventory_reservations reservation
+				      where reservation.id = v_reservation_id
+				        and reservation.status = 'open' and reservation.quantity = 2
+				    )
+				    or (select reserved_quantity from public.inventory_stock_balances
+				        where tenant_id = '10000000-0000-4000-8000-000000000001'
+				          and item_id = '7a100000-0000-4000-8000-000000000002'
+				          and location_id = '7a100000-0000-4000-8000-000000000001') <> 2 then
+				    raise exception 'A new room-equipment source did not create its exact open inventory hold';
+				  end if;
+				end;
+				$$;
+				do $$
+				begin
+				  perform public.create_inventory_source_reservation(
+				    '10000000-0000-4000-8000-000000000001', 'event_space_equipment',
+				    '7a100000-0000-4000-8000-000000000020', 'projector', null, null,
+				    '7a100000-0000-4000-8000-000000000010',
+				    '00000000-0000-4000-8000-000000000002'
+				  );
+				  if (select count(*) from public.inventory_source_reservations source_reservation
+				      where source_reservation.rule_id = '7a100000-0000-4000-8000-000000000010'
+				        and source_reservation.event_space_request_id = '7a100000-0000-4000-8000-000000000020') <> 1
+				    or not exists (
+				      select 1 from public.inventory_source_reservation_exceptions exception_state
+				      where exception_state.rule_id = '7a100000-0000-4000-8000-000000000010'
+				        and exception_state.event_space_request_id = '7a100000-0000-4000-8000-000000000020'
+				        and exception_state.exception_code = 'duplicate_source'
+				    ) then
+				    raise exception 'A duplicate source delivery was not idempotent and auditable';
+				  end if;
+				end;
+				$$;
+				delete from public.event_space_request_equipment
+				where tenant_id = '10000000-0000-4000-8000-000000000001'
+				  and request_id = '7a100000-0000-4000-8000-000000000020'
+				  and equipment_key = 'projector';
+				do $$
+				begin
+				  if exists (
+				    select 1
+				    from public.inventory_reservations reservation
+				    where reservation.tenant_id = '10000000-0000-4000-8000-000000000001'
+				      and reservation.item_id = '7a100000-0000-4000-8000-000000000002'
+				      and reservation.location_id = '7a100000-0000-4000-8000-000000000001'
+				      and reservation.status = 'open'
+				  ) or (select reserved_quantity from public.inventory_stock_balances
+				        where tenant_id = '10000000-0000-4000-8000-000000000001'
+				          and item_id = '7a100000-0000-4000-8000-000000000002'
+				          and location_id = '7a100000-0000-4000-8000-000000000001') <> 0
+				    or not exists (
+				      select 1 from public.inventory_events event
+				      where event.tenant_id = '10000000-0000-4000-8000-000000000001'
+				        and event.event_type = 'reservation_release'
+				    ) then
+				    raise exception 'Removing an equipment source did not release only its open hold by counterbooking';
+					  end if;
+					end;
+					$$;
+					-- Eine fehlgeschlagene Gegenbuchung, Statusaktualisierung oder Auditierung
+					-- darf die Quellenloeschung nicht bis zur FK-Cascade fortsetzen. Die
+					-- Quelle und ihr Mapping muessen fuer einen spaeteren Retry erhalten bleiben.
+					insert into public.event_space_request_equipment (tenant_id, request_id, equipment_key) values (
+					  '10000000-0000-4000-8000-000000000001',
+					  '7a100000-0000-4000-8000-000000000020', 'projector'
+					);
+					create or replace function public.reject_inventory_source_reservation_release_audit()
+					returns trigger
+					language plpgsql
+					set search_path = pg_catalog, public, pg_temp
+					as $$
+					begin
+					  if new.action = 'inventory.source_reservation.released' then
+					    raise exception 'Injected inventory source release audit failure' using errcode = 'P0001';
+					  end if;
+					  return new;
+					end;
+					$$;
+					create trigger reject_inventory_source_reservation_release_audit
+					before insert on public.audit_logs
+					for each row execute function public.reject_inventory_source_reservation_release_audit();
+					do $$
+					declare
+					  v_reservation_id uuid;
+					begin
+					  select source_reservation.reservation_id into v_reservation_id
+					  from public.inventory_source_reservations source_reservation
+					  where source_reservation.tenant_id = '10000000-0000-4000-8000-000000000001'
+					    and source_reservation.rule_id = '7a100000-0000-4000-8000-000000000010'
+					    and source_reservation.event_space_request_id = '7a100000-0000-4000-8000-000000000020'
+					    and source_reservation.event_equipment_key = 'projector';
+					  if v_reservation_id is null then
+					    raise exception 'The audit-failure regression source did not create an open hold';
+					  end if;
+
+					  begin
+					    delete from public.event_space_request_equipment
+					    where tenant_id = '10000000-0000-4000-8000-000000000001'
+					      and request_id = '7a100000-0000-4000-8000-000000000020'
+					      and equipment_key = 'projector';
+					    raise exception 'Source deletion continued despite a failed release audit';
+					  exception when raise_exception then
+					    if sqlerrm <> 'Injected inventory source release audit failure' then
+					      raise;
+					    end if;
+					  end;
+
+					  if not exists (
+					    select 1 from public.event_space_request_equipment equipment
+					    where equipment.tenant_id = '10000000-0000-4000-8000-000000000001'
+					      and equipment.request_id = '7a100000-0000-4000-8000-000000000020'
+					      and equipment.equipment_key = 'projector'
+					  ) or not exists (
+					    select 1 from public.inventory_source_reservations source_reservation
+					    where source_reservation.reservation_id = v_reservation_id
+					      and source_reservation.tenant_id = '10000000-0000-4000-8000-000000000001'
+					  ) or not exists (
+					    select 1 from public.inventory_reservations reservation
+					    where reservation.id = v_reservation_id and reservation.status = 'open'
+					  ) or exists (
+					    select 1 from public.inventory_events event
+					    where event.tenant_id = '10000000-0000-4000-8000-000000000001'
+					      and event.event_type = 'reservation_release'
+					      and event.reference_id = v_reservation_id
+					  ) or (select reserved_quantity from public.inventory_stock_balances
+					        where tenant_id = '10000000-0000-4000-8000-000000000001'
+					          and item_id = '7a100000-0000-4000-8000-000000000002'
+					          and location_id = '7a100000-0000-4000-8000-000000000001') <> 2 then
+					    raise exception 'A failed source-release audit did not retain a retryable source, mapping and open hold';
+					  end if;
+					end;
+					$$;
+					drop trigger reject_inventory_source_reservation_release_audit on public.audit_logs;
+					drop function public.reject_inventory_source_reservation_release_audit();
+					delete from public.event_space_request_equipment
+					where tenant_id = '10000000-0000-4000-8000-000000000001'
+					  and request_id = '7a100000-0000-4000-8000-000000000020'
+					  and equipment_key = 'projector';
+					do $$
+					begin
+					  if exists (
+					    select 1 from public.event_space_request_equipment equipment
+					    where equipment.tenant_id = '10000000-0000-4000-8000-000000000001'
+					      and equipment.request_id = '7a100000-0000-4000-8000-000000000020'
+					      and equipment.equipment_key = 'projector'
+					  ) or exists (
+					    select 1 from public.inventory_source_reservations source_reservation
+					    where source_reservation.tenant_id = '10000000-0000-4000-8000-000000000001'
+					      and source_reservation.rule_id = '7a100000-0000-4000-8000-000000000010'
+					      and source_reservation.event_space_request_id = '7a100000-0000-4000-8000-000000000020'
+					      and source_reservation.event_equipment_key = 'projector'
+					  ) or exists (
+					    select 1 from public.inventory_reservations reservation
+					    where reservation.tenant_id = '10000000-0000-4000-8000-000000000001'
+					      and reservation.item_id = '7a100000-0000-4000-8000-000000000002'
+					      and reservation.location_id = '7a100000-0000-4000-8000-000000000001'
+					      and reservation.status = 'open'
+					  ) or (select reserved_quantity from public.inventory_stock_balances
+					        where tenant_id = '10000000-0000-4000-8000-000000000001'
+					          and item_id = '7a100000-0000-4000-8000-000000000002'
+					          and location_id = '7a100000-0000-4000-8000-000000000001') <> 0 then
+					    raise exception 'The successful source-release retry did not release the retained hold';
+					  end if;
+					end;
+					$$;
+					insert into public.event_space_request_equipment (tenant_id, request_id, equipment_key) values
+					  ('10000000-0000-4000-8000-000000000001', '7a100000-0000-4000-8000-000000000021', 'audio'),
+					  ('10000000-0000-4000-8000-000000000001', '7a100000-0000-4000-8000-000000000022', 'videocall');
+				update public.inventory_locations
+				set active = false
+				where id = '7a100000-0000-4000-8000-000000000001';
+				insert into public.event_space_request_equipment (tenant_id, request_id, equipment_key) values (
+				  '10000000-0000-4000-8000-000000000001',
+				  '7a100000-0000-4000-8000-000000000021', 'display'
+				);
+				update public.inventory_locations
+				set active = true
+				where id = '7a100000-0000-4000-8000-000000000001';
+				do $$
+				begin
+				  if not exists (
+				    select 1 from public.event_space_request_equipment equipment
+				    where equipment.request_id = '7a100000-0000-4000-8000-000000000021'
+				      and equipment.equipment_key = 'audio'
+				  ) or exists (
+				    select 1 from public.inventory_source_reservations source_reservation
+				    where source_reservation.event_space_request_id = '7a100000-0000-4000-8000-000000000021'
+				  ) then
+				    raise exception 'A source reservation failure rolled back a room source or created a partial link';
+				  end if;
+				  if not exists (
+				    select 1 from public.inventory_source_reservation_exceptions exception_state
+				    where exception_state.event_space_request_id = '7a100000-0000-4000-8000-000000000021'
+				      and exception_state.exception_code = 'stock_unavailable'
+				  ) or not exists (
+				    select 1 from public.inventory_source_reservation_exceptions exception_state
+				    where exception_state.event_space_request_id = '7a100000-0000-4000-8000-000000000021'
+				      and exception_state.exception_code = 'location_unavailable'
+				  ) or exists (
+				    select 1 from public.inventory_source_reservations source_reservation
+				    where source_reservation.event_space_request_id = '7a100000-0000-4000-8000-000000000022'
+				  ) then
+				    raise exception 'Structured source exceptions or the disabled rule boundary were not preserved';
+				  end if;
+				end;
+				$$;
+				do $$
+				declare
+				  v_template_id uuid;
+				  v_template_task_id uuid;
+				  v_entry_id uuid;
+				  v_onboarding_task_id uuid;
+				  v_reservation_id uuid;
+				begin
+				  select template.id, template_task.id
+				  into v_template_id, v_template_task_id
+				  from public.onboarding_templates template
+				  join public.onboarding_template_tasks template_task
+				    on template_task.template_id = template.id
+				    and template_task.tenant_id = template.tenant_id
+				  where template.tenant_id = '10000000-0000-4000-8000-000000000001'
+				    and template.template_key = 'standard'
+				    and template_task.task_key = 'device';
+				  insert into public.inventory_source_reservation_rules (
+				    id, tenant_id, source_kind, onboarding_template_id, onboarding_template_task_id,
+				    item_id, location_id, quantity, enabled
+				  ) values (
+				    '7a100000-0000-4000-8000-000000000014',
+				    '10000000-0000-4000-8000-000000000001', 'onboarding_template_task',
+				    v_template_id, v_template_task_id,
+				    '7a100000-0000-4000-8000-000000000002', '7a100000-0000-4000-8000-000000000001', 1, true
+				  );
+				  select public.create_onboarding_entry(
+				    '10000000-0000-4000-8000-000000000001', 'Source Reservation Entry', current_date + 30,
+				    'ICT', 'Test', '00000000-0000-4000-8000-000000000002',
+				    '00000000-0000-4000-8000-000000000002', v_template_id,
+				    '00000000-0000-4000-8000-000000000002'
+				  ) into v_entry_id;
+				  select source_reservation.onboarding_task_id, source_reservation.reservation_id
+				  into v_onboarding_task_id, v_reservation_id
+				  from public.inventory_source_reservations source_reservation
+				  where source_reservation.tenant_id = '10000000-0000-4000-8000-000000000001'
+				    and source_reservation.rule_id = '7a100000-0000-4000-8000-000000000014'
+				    and source_reservation.onboarding_entry_id = v_entry_id;
+				  if v_onboarding_task_id is null or v_reservation_id is null
+				    or not exists (
+				      select 1 from public.inventory_reservations reservation
+				      where reservation.id = v_reservation_id and reservation.status = 'open'
+				    ) then
+				    raise exception 'A concrete onboarding template task did not create its source hold';
+				  end if;
+				  delete from public.onboarding_tasks where id = v_onboarding_task_id;
+				  if not exists (
+				    select 1 from public.inventory_reservations reservation
+				    where reservation.id = v_reservation_id and reservation.status = 'released'
+				  ) then
+				    raise exception 'Removing an onboarding task did not release its open source hold';
+				  end if;
+				end;
+				$$;
+				savepoint inventory_source_reservation_rls_test;
 				set local role authenticated;
-			select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-000000000002', true);
-			do $$
+				select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-000000000002', true);
+				do $$
+				begin
+				  begin
+				    perform 1 from public.inventory_source_reservation_rules limit 1;
+				    raise exception 'Authenticated browser role read source reservation rules';
+				  exception when insufficient_privilege then
+				    null;
+				  end;
+				  begin
+				    perform 1 from public.inventory_source_reservations limit 1;
+				    raise exception 'Authenticated browser role read source reservation links';
+				  exception when insufficient_privilege then
+				    null;
+				  end;
+				  begin
+				    perform 1 from public.inventory_source_reservation_exceptions limit 1;
+				    raise exception 'Authenticated browser role read source reservation exceptions';
+				  exception when insufficient_privilege then
+				    null;
+				  end;
+				  begin
+				    perform public.create_inventory_source_reservation(
+				      '10000000-0000-4000-8000-000000000001', 'event_space_equipment',
+				      '7a100000-0000-4000-8000-000000000020', 'projector', null, null,
+				      '7a100000-0000-4000-8000-000000000010',
+				      '00000000-0000-4000-8000-000000000002'
+				    );
+				    raise exception 'Authenticated browser role called the private source reservation creator';
+				  exception when insufficient_privilege then
+				    null;
+				  end;
+				end;
+				$$;
+				rollback to savepoint inventory_source_reservation_rls_test;
+				release savepoint inventory_source_reservation_rls_test;
+				do $$
+				begin
+				  if exists (
+				    select 1 from public.audit_logs audit
+				    where audit.action like 'inventory.source_reservation.%'
+				      and audit.metadata ?| array['name', 'quantity', 'supplier', 'free_text']
+				  ) then
+				    raise exception 'Source-reservation audit metadata retained disallowed detail';
+				  end if;
+				end;
+				$$;
+
+				set local role authenticated;
+				select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-000000000002', true);
+				do $$
 			begin
 			  begin
 			    perform public.prepare_ticket_automation_auto_close(
@@ -7272,6 +7684,167 @@ end;
 $$;
 drop trigger test_service_status_reject_audit_insert on public.audit_logs;
 drop function public.test_service_status_reject_audit_insert();
+rollback;
+
+-- Unterbestands-Empfängerbelege dürfen auch für service-role-Schreibpfade nur
+-- innerhalb eines Mandanten auf die erzeugte Benachrichtigung und eine passende
+-- Mitgliedschaft zeigen. Der tatsächliche Event-Trigger bleibt dabei mit den
+-- zusammengesetzten Fremdschlüsseln schreibfähig.
+begin;
+update public.tenant_feature_flags
+set enabled = true,
+    pilot_ends_at = null
+where tenant_id = '10000000-0000-4000-8000-000000000001'
+  and feature_key in ('inventory.management', 'notifications.push');
+insert into public.roles (id, tenant_id, name, scope) values (
+  '11700000-0000-4000-8000-000000000001',
+  '10000000-0000-4000-8000-000000000001',
+  'Low-stock FK Testrolle',
+  'tenant'
+);
+insert into public.role_permissions (role_id, permission_code) values (
+  '11700000-0000-4000-8000-000000000001',
+  'inventory.manage'
+);
+insert into public.user_role_assignments (tenant_id, user_id, role_id) values (
+  '10000000-0000-4000-8000-000000000001',
+  '00000000-0000-4000-8000-000000000002',
+  '11700000-0000-4000-8000-000000000001'
+);
+insert into public.push_preferences (
+  tenant_id, user_id, enabled_categories, category_modes, global_enabled,
+  summary_hour, quiet_hours_enabled, quiet_start, quiet_end, timezone
+) values (
+  '10000000-0000-4000-8000-000000000001',
+  '00000000-0000-4000-8000-000000000002',
+  array['inventory_low_stock']::text[],
+  jsonb_build_object('inventory_low_stock', 'immediate'),
+  true,
+  8,
+  false,
+  22,
+  7,
+  'Europe/Zurich'
+)
+on conflict (tenant_id, user_id) do update set
+  enabled_categories = excluded.enabled_categories,
+  category_modes = excluded.category_modes,
+  global_enabled = excluded.global_enabled,
+  summary_hour = excluded.summary_hour,
+  quiet_hours_enabled = excluded.quiet_hours_enabled,
+  quiet_start = excluded.quiet_start,
+  quiet_end = excluded.quiet_end,
+  timezone = excluded.timezone;
+insert into public.inventory_locations (id, tenant_id, code, name) values (
+  '11700000-0000-4000-8000-000000000002',
+  '10000000-0000-4000-8000-000000000001',
+  'low-stock-fk',
+  'Low-stock FK Lager'
+);
+insert into public.inventory_items (
+  id, tenant_id, article_number, name, minimum_quantity, target_quantity
+) values (
+  '11700000-0000-4000-8000-000000000003',
+  '10000000-0000-4000-8000-000000000001',
+  'low-stock-fk-item',
+  'Low-stock FK Artikel',
+  1,
+  1
+);
+insert into public.inventory_events (
+  id, tenant_id, client_request_id, event_type, actor_id
+) values (
+  '11700000-0000-4000-8000-000000000004',
+  '10000000-0000-4000-8000-000000000001',
+  '11700000-0000-4000-8000-000000000005',
+  'movement_receipt',
+  '00000000-0000-4000-8000-000000000001'
+);
+insert into public.inventory_event_lines (
+  tenant_id, event_id, item_id, location_id, physical_delta
+) values (
+  '10000000-0000-4000-8000-000000000001',
+  '11700000-0000-4000-8000-000000000004',
+  '11700000-0000-4000-8000-000000000003',
+  '11700000-0000-4000-8000-000000000002',
+  1
+);
+do $$
+begin
+  if not exists (
+    select 1
+    from public.inventory_low_stock_episode_recipients as recipient
+    join public.inventory_low_stock_episodes as episode
+      on episode.id = recipient.episode_id
+     and episode.tenant_id = recipient.tenant_id
+    join public.ticket_notifications as notification
+      on notification.id = recipient.notification_id
+     and notification.tenant_id = recipient.tenant_id
+    where episode.tenant_id = '10000000-0000-4000-8000-000000000001'
+      and episode.item_id = '11700000-0000-4000-8000-000000000003'
+      and recipient.recipient_user_id = '00000000-0000-4000-8000-000000000002'
+      and notification.kind = 'inventory.low_stock'
+  ) then
+    raise exception 'Low-stock trigger could not create a tenant-bound recipient receipt';
+  end if;
+end;
+$$;
+insert into public.ticket_notifications (id, tenant_id, user_id, kind) values
+  (
+    '11700000-0000-4000-8000-000000000006',
+    '20000000-0000-4000-8000-000000000002',
+    '00000000-0000-4000-8000-000000000004',
+    'low-stock-fk-test'
+  ),
+  (
+    '11700000-0000-4000-8000-000000000007',
+    '10000000-0000-4000-8000-000000000001',
+    '00000000-0000-4000-8000-000000000002',
+    'low-stock-fk-test'
+  );
+set local role service_role;
+do $$
+declare
+  v_episode_id uuid;
+begin
+  select id into v_episode_id
+  from public.inventory_low_stock_episodes
+  where tenant_id = '10000000-0000-4000-8000-000000000001'
+    and item_id = '11700000-0000-4000-8000-000000000003';
+  if v_episode_id is null then
+    raise exception 'Low-stock FK regression fixture has no episode';
+  end if;
+
+  begin
+    insert into public.inventory_low_stock_episode_recipients (
+      tenant_id, episode_id, recipient_user_id, notification_id
+    ) values (
+      '10000000-0000-4000-8000-000000000001',
+      v_episode_id,
+      '00000000-0000-4000-8000-000000000001',
+      '11700000-0000-4000-8000-000000000006'
+    );
+    raise exception 'Service role linked a low-stock recipient to a foreign-tenant notification';
+  exception when foreign_key_violation then
+    null;
+  end;
+
+  begin
+    insert into public.inventory_low_stock_episode_recipients (
+      tenant_id, episode_id, recipient_user_id, notification_id
+    ) values (
+      '10000000-0000-4000-8000-000000000001',
+      v_episode_id,
+      '00000000-0000-4000-8000-000000000004',
+      '11700000-0000-4000-8000-000000000007'
+    );
+    raise exception 'Service role linked a low-stock recipient without a same-tenant membership';
+  exception when foreign_key_violation then
+    null;
+  end;
+end;
+$$;
+reset role;
 rollback;
 
 -- Exchange-Inlinebilder bleiben private Ticketanhänge. Die Content-ID ist nur

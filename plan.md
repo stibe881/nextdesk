@@ -627,3 +627,56 @@ Die bestehende SharePoint-Ausgabe bleibt eine kopierbare SVG-Bildadresse plus Ku
 - `supabase/functions/service-status-public/`: strikt minimierte Kundenprojektion und SharePoint-SVG-Badge.
 - `apps/web/src/service-status.tsx`: interne Status- und Wartungsverwaltung sowie öffentliche Kundenansicht.
 - `apps/web/src/styles.css`: responsives Wartungslayout im bestehenden Statusseiten-Design.
+
+# Lager-Modul – bestätigter Umsetzungsplan
+
+## Ziel und Abgrenzung
+
+Das neue Modul **«Lager»** wird im Web als eigener Menüpunkt direkt unter «Assets» umgesetzt. Es verwaltet quantitative Lagerartikel und deren Bewegungen, ohne langlebige Einzelgeräte aus dem bestehenden Asset-Modul umzudeuten. Assets bleiben Geräte mit Inventar-/Seriennummer, Lebenszyklus und Personenzuordnung; Lager verwaltet physische, reservierte und verfügbare Mengen von Artikeln wie Kabeln, Adaptern oder Verbrauchsmaterial.
+
+Die Umsetzung erfolgt ohne Produktivdeployment, ohne Anwendung der Migration und ohne neuen iOS-Build. Alle schreibenden Abläufe bleiben serverautorisiert; Browser und iOS leiten weder Rechte noch Bestände oder Verfügbarkeiten selbst her.
+
+## Fachlicher Lieferumfang
+
+1. **Lagerartikel und Lagerorte:** Artikelstamm mit Name, Artikelnummer, Kategorie, Einheit, Mengenführung, Mindest- und Sollbestand, Hersteller, Modell, Lieferant, Notiz und Aktivstatus. Artikelnummern können gescannt werden; eine Serienführung wird erst mit einem gesicherten Serial-Unit-Erfassungsablauf aktiviert. Lagerorte und Fächer bleiben eine eigene Domäne und werden nicht mit Assetstandorten oder Veranstaltungsräumen vermischt.
+2. **Bestandsbuch:** Eingang, Ausgabe, Rückgabe, Umlagerung, Defekt/Verlust, manuelle Korrektur, Reservationshaltung, Reservationsauflösung und Reservationsverbrauch werden als unveränderbare, auditierte Ledger-Ereignisse gespeichert. Physischer und reservierter Bestand werden serverseitig als Summe des Ledgers ermittelt; verfügbarer Bestand ist physisch minus reserviert.
+3. **Reservationen und Inventur:** Bewusste Reservationen mit optionalem autorisiertem Ticketbezug; Bestandsprüfung, Idempotenz und Sperren erfolgen transaktional. Eine Inventur hat getrennte Zählzeilen und kann nur durch eine bewusste Abschlussaktion Differenzbewegungen erzeugen.
+4. **Operative Übersicht:** Das Web zeigt kritische Unterbestände, offene Reservationen, laufende Inventuren, jüngste Bewegungen und reine Bestellvorschläge. Bestellungen, Benachrichtigungen, Provider oder Scheduler werden weder aktiviert noch automatisch ausgelöst.
+5. **Mobile Nutzung:** iOS erhält innerhalb von Assets einen Einstieg «Lager» mit lesender Übersicht und Artikelsuche. Der Scanner bleibt ein bewusster Unterpfad; der globale Scan-Tab wird aus dem unteren Menü entfernt. Ein gemischter Scanvertrag wird erst für eindeutig typisierte Serverantworten genutzt; unbekannte oder mehrdeutige Codes erzeugen keine Buchung.
+
+## Sicherheits- und Datenmodellentscheidungen
+
+- Alle Lagerrelationen besitzen `tenant_id`, zusammengesetzte Tenant-FKs und RLS. Tabellenrechte für `anon` und `authenticated` werden entzogen; nur service-only RPCs schreiben.
+- Neue Rechte: `inventory.read`, `inventory.manage`, `inventory.move`, `inventory.adjust` und `inventory.count.close`. Tenant-Administrierende erhalten sie als sichere Voreinstellung; weitere Rollen werden bewusst über die bestehende Rollenverwaltung zugewiesen.
+- Das Mandanten-Feature `inventory.management` ist standardmässig deaktiviert. Sichtbarkeit und jede Edge-Aktion prüfen die Freigabe sowie aktive Mitgliedschaft und Berechtigung erneut auf dem Server.
+- Ledgerzeilen sind append-only: Trigger verweigern `UPDATE` und `DELETE`; jede Berichtigung erfolgt durch eine Gegenbuchung. Mutationen verwenden `clientRequestId` für Idempotenz und transaktionale Sperren pro Artikel/Lagerort.
+- Audits enthalten nur Typ, Mengen und Referenzart – keine Barcodewerte, Notizen oder privaten Bildpfade.
+- Raumaufträge und Eintritte liegen im aktuellen Hauptzweig noch nicht vor. Für sie wird keine unsichere Freitextreferenz gebaut. Eine additive Folge-Migration ergänzt zusammengesetzte FKs und explizite Reservationsaktionen erst nach Zusammenführung der Raum-/Onboarding-Migrationen.
+
+## Implementierungsstruktur
+
+- `supabase/migrations/0115_inventory_foundation.sql`: Feature, Rechte, Tabellen, Constraints, RPCs, RLS, Ledger-Sperren und Audit.
+- `supabase/functions/inventory/index.ts`: JWT-geschützte, allowlistbasierte Read- und Command-API für Web und iOS.
+- `supabase/functions/inventory/index.test.ts`: Regressionen für Aktionsparser, Datenminimierung und Berechtigungsgrenzen.
+- `apps/web/src/inventory.tsx`: operative Lageransicht mit Übersicht, Artikeln, Orten, Bewegungen, Reservationen und Inventur.
+- `apps/web/src/App.tsx` und `apps/web/src/styles.css`: featuregegate-te Navigation und Layoutintegration.
+- `nextdeskios`: Lagerzugang im Assetbereich, serverseitig validierte Datenverträge und bewusster Scanpfad; keine Offlinebestände oder stillen Buchungen.
+
+## Design
+
+Das Modul übernimmt die bestehende nextDesk-Arbeitsoberfläche: ruhige Flächen, klare Statusfarben und handlungsnahe Informationen vor administrativen Details. Die Übersicht ist keine Tabellenwand, sondern eine Abfolge operativer Zustände: Unterbestand, offene Reservationen, Inventur, Bewegungen. Ein einzelner, klar beschrifteter Aktionsbereich bündelt Artikel erfassen und Bestand buchen; kritische Werte sind sichtbar, aber nicht alarmistisch.
+
+Die Typografie bleibt beim bestehenden System. Primärfarbe, Logo und Kontrast folgen den servergeladenen Mandanteneinstellungen. Leerzustände führen jeweils zu genau einer nächsten sicheren Handlung, zum Beispiel «Ersten Lagerort erfassen» oder «Ersten Artikel erfassen».
+
+## Nicht enthaltene Automatiken
+
+Nicht Bestandteil dieser Lieferung sind Seriengeräte-Erfassung und -Buchung, automatische Bestellungen, automatische Reservationsabläufe, Scheduler, Push-Benachrichtigungen, Lieferantenintegration, Bild-Uploads, externe Einkaufs-APIs oder automatische Raum-/Onboarding-Reservierungen. Solche Schritte benötigen eine separate fachliche und produktive Freigabe.
+
+## Erweiterter Lieferumfang – Unterbestand, Artikelbilder und Quellreservationen
+
+Die folgenden Erweiterungen gehören verbindlich zur vorbereiteten Lagerlieferung. Sie bleiben bis zu einer separaten Produktionsfreigabe ausschliesslich Quellcode und lokale Qualitätssicherung.
+
+1. **Unterbestandsmeldung:** Nach einer abgeschlossenen Bestandsbuchung wird der Gesamtbestand eines Artikels über alle Lagerorte als physisch minus reserviert bewertet. Beim einmaligen Übergang in Unterbestand wird eine bestehende In-App-/Push-Mitteilung ausschliesslich an aktive Personen mit `inventory.manage` und explizitem Opt-in für «Mindestbestand» vorgemerkt; der Buchungsactor wird nie selbst benachrichtigt. Die Zustellung bleibt über die vorhandene Push-Outbox, inklusive erneuter Autorisierung direkt vor dem Versand. Kein Scheduler, keine automatische Nachbestellung, keine Provideraktivierung und keine Push-Freigabe pro Mandant erfolgen automatisch.
+2. **Privates Artikelbild:** Ein Lagerartikel kann genau ein primäres Bild haben. Der Bucket bleibt privat; die Weboberfläche erhält zum Hoch- und Herunterladen nur kurzlebige, serverseitig autorisierte URLs. Zulässig sind JPEG, PNG und WebP bis 5 MiB sowie klar begrenzte Bilddimensionen; der Server prüft Pfad, Storage-Metadaten, Magic Bytes und Bildgrenzen. Dauerhafte URLs, öffentliche Buckets, Browser-Storage-Policies und personenbezogene EXIF-Daten im Bildvertrag werden nicht verwendet.
+3. **Strukturierte automatische Reservationen:** Reservationen entstehen nur aus explizit aktivierten, auditierbaren Regeln. Raumauftragsregeln verknüpfen einen vorhandenen Ausstattungswert mit einem konkreten Lagerartikel, Lagerort und einer Menge; Onboarding-Regeln verknüpfen eine konkrete Vorlagenaufgabe entsprechend. Jede Zuordnung hat Tenant-FKs, wird bei einer strukturierten Quellenanlage idempotent gehalten und bei Entfernung oder Storno einer Quelle nur als noch offene Reservation gelöst. Fehlbestand erzeugt einen auditierbaren Ausnahmezustand statt Quell-, Ticket- oder Bestellmutation. Verbrauch/Ausgabe bleibt immer eine bewusste, berechtigte Lageraktion.
+4. **Releasescope:** Die Vorbereitungsbranche enthält die Lager-Migrationen, die JWT-geschützte `inventory`-Function und die Weboberfläche. Ein Produktionsrelease ist ausdrücklich noch nicht freigegeben. Die laufende iOS-Buildnummer 10037 und die mobile App werden durch diese Web-first-Erweiterung nicht verändert.

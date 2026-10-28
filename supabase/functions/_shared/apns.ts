@@ -13,6 +13,7 @@ export type ApnsPayloadKind =
   | "sla"
   | "follow_up"
   | "contract_deadline"
+  | "inventory_low_stock"
   | "summary"
   | "test";
 
@@ -217,6 +218,11 @@ function alertFor(input: ApnsPayloadInput): { title: string; body: string } {
         title: "Vertragsfrist",
         body: "Eine Vertragsfrist erfordert deine Aufmerksamkeit.",
       };
+    case "inventory_low_stock":
+      return {
+        title: "Lagerunterbestand",
+        body: "Ein Lagerartikel hat den Mindestbestand erreicht.",
+      };
     case "summary":
       return {
         title: "nextDesk",
@@ -241,7 +247,12 @@ export function buildApnsPayload(
     notificationId: input.notificationId,
     kind: input.kind,
   };
-  if (input.ticketId && input.kind !== "summary" && input.kind !== "test") {
+  if (
+    input.ticketId &&
+    input.kind !== "summary" &&
+    input.kind !== "test" &&
+    input.kind !== "inventory_low_stock"
+  ) {
     data.ticketId = input.ticketId;
   }
   if (input.contractId && input.kind === "contract_deadline") {
@@ -251,7 +262,12 @@ export function buildApnsPayload(
     alert,
     sound: "default",
   };
-  if (input.ticketId && input.kind !== "summary" && input.kind !== "test") {
+  if (
+    input.ticketId &&
+    input.kind !== "summary" &&
+    input.kind !== "test" &&
+    input.kind !== "inventory_low_stock"
+  ) {
     aps["thread-id"] = input.ticketId;
   }
   return { aps, body: data };

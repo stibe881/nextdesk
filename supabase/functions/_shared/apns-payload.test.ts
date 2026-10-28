@@ -43,3 +43,39 @@ Deno.test("summary payload is source-neutral", () => {
   assertStringIncludes(String(alert.body), "2 neue Hinweise");
   assertFalse(String(alert.body).toLowerCase().includes("ticket"));
 });
+
+Deno.test("low-stock payload contains no item data or deep link", () => {
+  const payload = buildApnsPayload({
+    kind: "inventory_low_stock",
+    tenantId: "00000000-0000-4000-8000-000000000001",
+    notificationId: "00000000-0000-4000-8000-000000000002",
+    ticketId: "00000000-0000-4000-8000-000000000003",
+    subject: "Adapter A-42 · 3 Stück · Hauptlager · Lieferant Beispiel AG",
+  });
+  const body = payload.body as Record<string, unknown>;
+  const aps = payload.aps as Record<string, unknown>;
+  const alert = aps.alert as Record<string, unknown>;
+
+  assertEquals(body.kind, "inventory_low_stock");
+  assertEquals(Object.keys(body).sort(), [
+    "kind",
+    "nextdeskV",
+    "notificationId",
+    "tenantId",
+  ]);
+  assertFalse("ticketId" in body);
+  assertFalse("contractId" in body);
+  assertFalse("thread-id" in aps);
+  const serialized = JSON.stringify(payload);
+  for (const forbidden of [
+    "Adapter",
+    "A-42",
+    "3 Stück",
+    "Hauptlager",
+    "Lieferant",
+    "Beispiel AG",
+  ]) {
+    assertFalse(serialized.includes(forbidden));
+  }
+  assertStringIncludes(String(alert.title), "Lagerunterbestand");
+});

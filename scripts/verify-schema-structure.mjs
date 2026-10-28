@@ -1206,6 +1206,11 @@ if (
   );
 }
 if (
+  !functionConfiguration.includes("[functions.inventory]\nverify_jwt = true")
+) {
+  throw new Error("inventory must explicitly require verified user JWTs.");
+}
+if (
   !functionConfiguration.includes(
     "[functions.tenant-sso-access]\nverify_jwt = true",
   )

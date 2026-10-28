@@ -67,6 +67,7 @@ function category(
   | "sla"
   | "follow_up"
   | "contract_deadline"
+  | "inventory_low_stock"
   | null {
   if (kind === "ticket.assigned") return "assigned";
   if (kind === "ticket.requester_reply") return "requester_reply";
@@ -82,6 +83,7 @@ function category(
   if (kind === "ticket.escalation_opened") return "escalation";
   if (kind === "ticket.follow_up_due") return "follow_up";
   if (kind === "contract.deadline") return "contract_deadline";
+  if (kind === "inventory.low_stock") return "inventory_low_stock";
   return kind.startsWith("ticket.sla.") ? "sla" : null;
 }
 
@@ -209,12 +211,22 @@ async function skip(
     .eq("status", "sending");
 }
 
-async function ticketNotificationRecipientAuthorized(
+export async function ticketNotificationRecipientAuthorized(
   admin: any,
   row: ClaimRow,
 ): Promise<boolean> {
   if (row.source_type !== "ticket") return true;
-  if (!row.ticket_id) return false;
+  if (!row.ticket_id) {
+    if (row.kind !== "inventory.low_stock") return false;
+    const { data, error } = await admin.rpc(
+      "inventory_low_stock_delivery_authorized",
+      {
+        p_tenant_id: row.tenant_id,
+        p_user_id: row.user_id,
+      },
+    );
+    return !error && data === true;
+  }
   const { data, error } = await admin.rpc(
     "ticket_notification_recipient_authorized",
     {

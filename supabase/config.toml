@@ -135,6 +135,9 @@ verify_jwt = true
 [functions.intune-asset-sync]
 verify_jwt = true
 
+[functions.inventory]
+verify_jwt = true
+
 [functions.ticket-quality]
 verify_jwt = true
 

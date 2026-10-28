@@ -8,6 +8,7 @@ import { resolveTenantFeatureStates } from "../_shared/tenant-features.ts";
 
 const ALLOWED_ORIGIN = "https://app.nextdesk.ch";
 const FEATURE = "notifications.push";
+const INVENTORY_FEATURE = "inventory.management";
 const ALL_CATEGORIES = [
   "assigned",
   "requester_reply",
@@ -19,6 +20,7 @@ const ALL_CATEGORIES = [
   "approval",
   "follow_up",
   "contract_deadline",
+  "inventory_low_stock",
 ] as const;
 const AGENT_CATEGORIES = [
   "assigned",
@@ -37,6 +39,9 @@ type Row = Record<string, unknown>;
 type Client = SupabaseContext["supabase"];
 type Admin = SupabaseContext["supabaseAdmin"];
 type Environment = "production" | "development";
+const DEFAULT_ENABLED_CATEGORIES = ALL_CATEGORIES.filter(
+  (category) => category !== "inventory_low_stock",
+) as Category[];
 
 type Action =
   | { type: "getStatus"; tenantId: string }
@@ -439,18 +444,49 @@ function fail(request: Request, error: unknown): Response {
   return reply(request, { error: { code: safe.code } }, safe.status);
 }
 
-function defaultPreferences() {
+export function defaultPreferences() {
   return {
-    enabledCategories: [...ALL_CATEGORIES],
+    // Unterbestand braucht immer ein persönliches, nachträgliches Opt-in.
+    // Die neue Kategorie darf weder für bestehende noch neue Präferenzen aus
+    // einer bisherigen Push-Standardauswahl geerbt werden.
+    enabledCategories: [...DEFAULT_ENABLED_CATEGORIES],
     globalEnabled: true,
     categoryModes: Object.fromEntries(
-      ALL_CATEGORIES.map((category) => [category, "immediate"]),
+      ALL_CATEGORIES.map((category) => [
+        category,
+        category === "inventory_low_stock" ? "off" : "immediate",
+      ]),
     ) as Record<Category, DeliveryMode>,
     quietHoursEnabled: false,
     quietStart: 22,
     quietEnd: 7,
     summaryHour: 8,
     timezone: "Europe/Zurich",
+  };
+}
+
+export function testPreferenceUpsertValues(preference: PreferenceRow | null) {
+  if (preference) {
+    // Der Testpush aktualisiert nur den Zeitstempel und darf ein vorhandenes
+    // persönliches Opt-in oder Opt-out nie umschreiben.
+    return {
+      enabled_categories: preference.enabled_categories,
+      quiet_hours_enabled: preference.quiet_hours_enabled,
+      quiet_start: preference.quiet_start,
+      quiet_end: preference.quiet_end,
+      timezone: preference.timezone,
+    };
+  }
+  const defaults = defaultPreferences();
+  return {
+    enabled_categories: defaults.enabledCategories,
+    global_enabled: defaults.globalEnabled,
+    category_modes: defaults.categoryModes,
+    quiet_hours_enabled: defaults.quietHoursEnabled,
+    quiet_start: defaults.quietStart,
+    quiet_end: defaults.quietEnd,
+    summary_hour: defaults.summaryHour,
+    timezone: defaults.timezone,
   };
 }
 
@@ -601,24 +637,34 @@ async function readDevices(
 
 async function applicableCategories(
   client: Client,
-  _admin: Admin,
+  admin: Admin,
   tenantId: string,
   _actorId: string,
 ): Promise<string[]> {
   const [
     { data: isAgent, error: agentError },
     { data: canManageContracts, error: contractsError },
+    { data: canManageInventory, error: inventoryPermissionError },
+    inventoryFeatures,
   ] = await Promise.all([
     client.rpc("is_tenant_ticket_agent", { p_tenant_id: tenantId }),
     client.rpc("is_contracts_management_client_enabled", {
       p_tenant_id: tenantId,
     }),
+    client.rpc("has_tenant_permission", {
+      p_tenant_id: tenantId,
+      p_permission_code: "inventory.manage",
+    }),
+    resolveTenantFeatureStates(admin, tenantId, [FEATURE, INVENTORY_FEATURE]),
   ]);
   if (
     agentError ||
     contractsError ||
+    inventoryPermissionError ||
+    !inventoryFeatures ||
     typeof isAgent !== "boolean" ||
-    typeof canManageContracts !== "boolean"
+    typeof canManageContracts !== "boolean" ||
+    typeof canManageInventory !== "boolean"
   ) {
     throw new HttpError(500, "authorization_check_failed");
   }
@@ -627,6 +673,13 @@ async function applicableCategories(
     ...(isAgent ? AGENT_CATEGORIES : []),
   ]);
   if (canManageContracts) categories.add("contract_deadline");
+  if (
+    inventoryFeatures[FEATURE] === true &&
+    inventoryFeatures[INVENTORY_FEATURE] === true &&
+    canManageInventory
+  ) {
+    categories.add("inventory_low_stock");
+  }
   return [...categories];
 }
 
@@ -966,21 +1019,7 @@ async function sendTest(
       {
         tenant_id: action.tenantId,
         user_id: actorId,
-        ...(preference
-          ? {
-              enabled_categories: preference.enabled_categories,
-              quiet_hours_enabled: preference.quiet_hours_enabled,
-              quiet_start: preference.quiet_start,
-              quiet_end: preference.quiet_end,
-              timezone: preference.timezone,
-            }
-          : {
-              enabled_categories: [...ALL_CATEGORIES],
-              quiet_hours_enabled: false,
-              quiet_start: 22,
-              quiet_end: 7,
-              timezone: "Europe/Zurich",
-            }),
+        ...testPreferenceUpsertValues(preference),
         last_test_at: new Date(now).toISOString(),
         updated_at: new Date(now).toISOString(),
       },
