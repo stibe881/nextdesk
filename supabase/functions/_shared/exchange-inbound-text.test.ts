@@ -94,3 +94,102 @@ Deno.test(
     }
   },
 );
+
+Deno.test(
+  "entfernt eindeutige Unternehmenssignaturen nur für neue Ticketbeschreibungen",
+  () => {
+    const input = `Hallo zusammen
+
+Bitte helfen Sie beim Anmelden am Laptop.
+
+Lieber Gruss
+Mara
+
+Mara Muster
+Sozialpädagogik
+t: 041 000 00 00
+[Logo_Beispiel.png]
+<https://www.linkedin.com/company/beispiel> <https://www.instagram.com/beispiel>
+BEISPIEL
+CH-6340 Baar
+m: info@beispiel.ch
+w: beispiel.ch<https://www.beispiel.ch/>`;
+    const result = normalizeInboundEmailText(input, undefined, {
+      removeCorporateSignature: true,
+    });
+    const expected = `Hallo zusammen
+
+Bitte helfen Sie beim Anmelden am Laptop.
+
+Lieber Gruss
+Mara`;
+    if (result !== expected) {
+      throw new Error(`Unternehmenssignatur blieb sichtbar: ${result}`);
+    }
+
+    const replyResult = normalizeInboundEmailText(input);
+    if (
+      !replyResult.includes("Mara Muster") ||
+      !replyResult.includes("Logo_Beispiel.png")
+    ) {
+      throw new Error(
+        "Eine bestehende Ticketunterhaltung wurde unerwartet wie eine neue Ticketbeschreibung gekürzt.",
+      );
+    }
+  },
+);
+
+Deno.test(
+  "behält persönliche Abschlüsse ohne eindeutige Unternehmenssignatur bei",
+  () => {
+    const input = `Danke für Ihre Hilfe.
+
+Liebe Grüsse
+Mara
+
+PS: Ich bin morgen wieder erreichbar.`;
+    const result = normalizeInboundEmailText(input, undefined, {
+      removeCorporateSignature: true,
+    });
+    if (result !== input) {
+      throw new Error(
+        `Persönlicher Abschluss wurde unerwartet gekürzt: ${result}`,
+      );
+    }
+  },
+);
+
+Deno.test(
+  "bewahrt einzelne CID- und Bilddateiverweise nach einer Grussformel",
+  () => {
+    for (const attachment of ["[cid:screenshot@message]", "[Skizze.png]"]) {
+      const input = `Freundliche Grüsse
+Mara
+${attachment}`;
+      const result = normalizeInboundEmailText(input, undefined, {
+        removeCorporateSignature: true,
+      });
+      if (result !== input) {
+        throw new Error(
+          `Ein einzelner legitimer Bildverweis wurde als Signatur entfernt: ${attachment}`,
+        );
+      }
+    }
+  },
+);
+
+Deno.test("behält einen persönlichen Nachtrag mit Link und Adresse bei", () => {
+  const input = `Freundliche Grüsse
+Mara
+
+PS: Der Ablauf steht unter https://beispiel.ch/ablauf.
+Treffpunkt: 8000 Zürich`;
+  const result = normalizeInboundEmailText(input, undefined, {
+    removeCorporateSignature: true,
+  });
+  if (result !== input) {
+    throw new Error(
+      `Persönlicher Nachtrag wurde unerwartet gekürzt: ${result}`,
+    );
+  }
+});

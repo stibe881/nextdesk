@@ -95,3 +95,23 @@ Deno.test(
     }
   },
 );
+
+Deno.test(
+  "neue E-Mail-Ticketbeschreibungen bereinigen Signaturen, Antworten bleiben unverändert",
+  async () => {
+    const source = await Deno.readTextFile(
+      new URL("./exchange-mail-processing.ts", import.meta.url),
+    );
+    for (const required of [
+      "{ removeCorporateSignature: !replyAuthorized }",
+      '{ removeCorporateSignature: message.kind !== "reply" }',
+      "p_body: replyAuthorized\n        ? persistedBody",
+    ]) {
+      if (!source.includes(required)) {
+        throw new Error(
+          `Der Inbound-Pfad trennt Ticketbeschreibung und Antwort nicht sicher: ${required}`,
+        );
+      }
+    }
+  },
+);

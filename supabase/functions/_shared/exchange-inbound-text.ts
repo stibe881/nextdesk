@@ -30,6 +30,17 @@ const OUTLOOK_FOOTER_START =
   /^(?:führen sie jetzt ein upgrade auf das neueste outlook|diese e-mail wird durch die verwendung microsoft(?: 365| outlook)?)/iu;
 const OUTLOOK_LINK_LINE =
   /^(?:zu nachricht wechseln|abonnement kündigen|mac|ios|android)\s*<https?:\/\/[^>]+>\s*$/iu;
+const SIGNATURE_FAREWELL =
+  /^(?:(?:(?:mit\s+)?freundliche[nr]?|liebe[nr]?|beste[nr]?|herzliche[nr]?|viele[nr]?)\s+)?gr(?:uss|üsse|uesse)[,!\.\s]*$/iu;
+const SIGNATURE_IMAGE_FILE =
+  /^\s*\[(?!cid:)[^\]]+\.(?:png|jpe?g|gif|webp|svg)\]\s*$/iu;
+const SIGNATURE_CONTACT = /^(?:tel(?:efon)?|mobile?|handy|t|m|f|w)\s*:\s*\S+/iu;
+const SIGNATURE_EMAIL = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/iu;
+const SIGNATURE_LINK =
+  /(?:<https?:\/\/[^>]+>|https?:\/\/\S+|(?:linkedin|facebook|instagram)\.com)/iu;
+const SIGNATURE_POSTAL_ADDRESS = /\b(?:CH-)?\d{4}\s+[\p{L}.-]+/iu;
+const PERSONAL_POSTSCRIPT = /^(?:p\.?\s*s\.?|nachtrag|hinweis)\b/iu;
+const SIGNATURE_SCAN_LIMIT = 18;
 
 function decodeEntitiesOnce(value: string): string {
   const named: Record<string, string> = {
@@ -225,6 +236,67 @@ function normalizeLines(value: string): string {
   return lines.join("\n").trim();
 }
 
+function signatureEvidence(value: string): Set<string> {
+  const line = value.trim();
+  const signals = new Set<string>();
+  if (!line) return signals;
+  if (SIGNATURE_IMAGE_FILE.test(line)) signals.add("image");
+  if (SIGNATURE_CONTACT.test(line)) signals.add("contact");
+  if (SIGNATURE_EMAIL.test(line)) signals.add("email");
+  if (SIGNATURE_LINK.test(line)) signals.add("link");
+  if (SIGNATURE_POSTAL_ADDRESS.test(line)) signals.add("postal_address");
+  return signals;
+}
+
+/**
+ * Removes only a clearly identifiable corporate signature following a German
+ * farewell. The immediately following closing name stays part of the message.
+ * Two distinct signature signals including a contact indication are required.
+ * CID markers remain untouched for the private inline-media pipeline, and a
+ * personal postscript stops the scan so ordinary message content stays intact.
+ */
+function removeCorporateSignature(value: string): string {
+  const lines = value.split("\n");
+  for (
+    let farewellIndex = 0;
+    farewellIndex < lines.length;
+    farewellIndex += 1
+  ) {
+    if (!SIGNATURE_FAREWELL.test(lines[farewellIndex].trim())) continue;
+    let closingIndex = farewellIndex + 1;
+    while (closingIndex < lines.length && !lines[closingIndex].trim()) {
+      closingIndex += 1;
+    }
+    if (
+      closingIndex >= lines.length ||
+      closingIndex - farewellIndex > 3 ||
+      !lines[closingIndex].trim()
+    ) {
+      continue;
+    }
+
+    const signals = new Set<string>();
+    const scanEnd = Math.min(
+      lines.length,
+      closingIndex + 1 + SIGNATURE_SCAN_LIMIT,
+    );
+    for (let index = closingIndex + 1; index < scanEnd; index += 1) {
+      if (PERSONAL_POSTSCRIPT.test(lines[index].trim())) break;
+      for (const signal of signatureEvidence(lines[index])) signals.add(signal);
+      if (
+        signals.size >= 2 &&
+        (signals.has("contact") || signals.has("email"))
+      ) {
+        return lines
+          .slice(0, closingIndex + 1)
+          .join("\n")
+          .trimEnd();
+      }
+    }
+  }
+  return value;
+}
+
 /**
  * Converts a Graph text/HTML fallback into safe ticket text. It deliberately
  * retains only textual content and existing CID references for the separate,
@@ -233,12 +305,18 @@ function normalizeLines(value: string): string {
 export function normalizeInboundEmailText(
   value: unknown,
   fallback = DEFAULT_FALLBACK,
+  options: { removeCorporateSignature?: boolean } = {},
 ): string {
   if (typeof value !== "string") return fallback;
   const text = decodeEntities(
     stripHtmlToText(decodeMarkupDelimiters(value.replace(/\u0000/gu, ""))),
   );
-  const normalized = normalizeLines(text)
+  const normalizedLines = normalizeLines(text);
+  const normalized = (
+    options.removeCorporateSignature
+      ? removeCorporateSignature(normalizedLines)
+      : normalizedLines
+  )
     .replace(INLINE_MARKER, "")
     .replace(/\n{3,}/gu, "\n\n")
     .trim()
