@@ -1553,6 +1553,13 @@ function AuthenticatedApp() {
   const [quickCreateRequest, setQuickCreateRequest] =
     useState<QuickCreateRequest | null>(null);
   const [canWorkTickets, setCanWorkTickets] = useState(false);
+  const [eventSpaceAttentionCount, setEventSpaceAttentionCount] = useState<
+    number | null
+  >(null);
+  const [eventSpaceNavigationAccess, setEventSpaceNavigationAccess] =
+    useState(false);
+  const [eventSpaceAttentionRevision, setEventSpaceAttentionRevision] =
+    useState(0);
   const [canManageContracts, setCanManageContracts] = useState(false);
   const [canManageServiceStatus, setCanManageServiceStatus] = useState(false);
   const [canReadReports, setCanReadReports] = useState(false);
@@ -2134,6 +2141,53 @@ function AuthenticatedApp() {
   }, [activeTenant, session]);
 
   useEffect(() => {
+    if (!supabase || !session || !activeTenant) {
+      setEventSpaceAttentionCount(null);
+      setEventSpaceNavigationAccess(false);
+      return;
+    }
+    let mounted = true;
+    setEventSpaceAttentionCount(null);
+    void supabase.functions
+      .invoke("event-spaces", {
+        body: { type: "navigationSummary", tenantId: activeTenant.id },
+      })
+      .then(({ data, error }) => {
+        if (error) throw error;
+        const summary =
+          data && typeof data === "object"
+            ? (
+                data as {
+                  data?: { attentionCount?: unknown; canAccess?: unknown };
+                }
+              ).data
+            : null;
+        const value = summary?.attentionCount;
+        if (
+          !Number.isSafeInteger(value) ||
+          typeof value !== "number" ||
+          value < 0 ||
+          summary?.canAccess !== true
+        ) {
+          throw new Error("invalid_event_space_navigation_summary");
+        }
+        if (mounted) {
+          setEventSpaceAttentionCount(value);
+          setEventSpaceNavigationAccess(true);
+        }
+      })
+      .catch(() => {
+        if (mounted) {
+          setEventSpaceAttentionCount(null);
+          setEventSpaceNavigationAccess(false);
+        }
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [activeTenant?.id, eventSpaceAttentionRevision, session?.user.id]);
+
+  useEffect(() => {
     if (!isSupabaseConfigured || !supabase || !session || !activeTenant) {
       setTenantFeatures({});
       setTenantFeaturesLoading(false);
@@ -2303,6 +2357,9 @@ function AuthenticatedApp() {
     if (reportsAvailable) restrictedWorkspaceSections.push("Berichte");
     if (serviceStatusAvailable)
       restrictedWorkspaceSections.push("Systemstatus");
+    if (eventSpaceNavigationAccess) {
+      restrictedWorkspaceSections.push("Veranstaltungsräume");
+    }
     if (restrictedWorkspaceSections.length > 0) {
       const fallbackSection = restrictedWorkspaceSections[0];
       if (fallbackSection && !restrictedWorkspaceSections.includes(section)) {
@@ -2316,6 +2373,7 @@ function AuthenticatedApp() {
   }, [
     canWorkTickets,
     contractsAvailable,
+    eventSpaceNavigationAccess,
     reportsAvailable,
     requesterPortalEnabled,
     section,
@@ -2488,7 +2546,8 @@ function AuthenticatedApp() {
   function setSection(nextSection: Section) {
     const nonTicketSectionAllowed =
       (nextSection === "Verträge" && contractsAvailable) ||
-      (nextSection === "Berichte" && reportsAvailable);
+      (nextSection === "Berichte" && reportsAvailable) ||
+      (nextSection === "Veranstaltungsräume" && eventSpaceNavigationAccess);
     if (
       !canWorkTickets &&
       !nonTicketSectionAllowed &&
@@ -2930,10 +2989,14 @@ function AuthenticatedApp() {
       item.label === "Systemstatus" ||
       item.label === "Lager",
   );
+  const independentlyAvailableEventSpaceSections = eventSpaceNavigationAccess
+    ? featureSections.filter((item) => item.label === "Veranstaltungsräume")
+    : [];
   const workSections = canWorkTickets
     ? featureSections
-    : restrictedWorkSections.length > 0
-      ? restrictedWorkSections
+    : [...restrictedWorkSections, ...independentlyAvailableEventSpaceSections]
+          .length > 0
+      ? [...restrictedWorkSections, ...independentlyAvailableEventSpaceSections]
       : requesterSections;
 
   useEffect(() => {
@@ -3523,22 +3586,49 @@ function AuthenticatedApp() {
                 {category.heading}
               </h2>
               <nav aria-label={category.navigationLabel} className="nav-list">
-                {category.items.map((item) => (
-                  <button
-                    className={
-                      section === item.label ? "nav-item active" : "nav-item"
-                    }
-                    key={item.label}
-                    onClick={() => {
-                      setPersonalSettingsOpen(false);
-                      setSection(item.label);
-                    }}
-                    type="button"
-                  >
-                    <item.Icon aria-hidden="true" size={18} strokeWidth={1.8} />
-                    {sectionDisplayLabel(item.label)}
-                  </button>
-                ))}
+                {category.items.map((item) => {
+                  const attentionCount =
+                    item.label === "Veranstaltungsräume"
+                      ? eventSpaceAttentionCount
+                      : null;
+                  const hasAttention =
+                    typeof attentionCount === "number" && attentionCount > 0;
+                  const label = sectionDisplayLabel(item.label);
+                  return (
+                    <button
+                      aria-current={section === item.label ? "page" : undefined}
+                      aria-label={
+                        hasAttention
+                          ? `${label} – ${attentionCount} Raumaufträge benötigen Zuweisung oder Klärung`
+                          : label
+                      }
+                      className={
+                        section === item.label ? "nav-item active" : "nav-item"
+                      }
+                      key={item.label}
+                      onClick={() => {
+                        setPersonalSettingsOpen(false);
+                        setSection(item.label);
+                      }}
+                      type="button"
+                    >
+                      {hasAttention ? (
+                        <span
+                          aria-hidden="true"
+                          className="nav-item__badge nav-item__badge--leading"
+                        >
+                          {attentionCount > 99 ? "99+" : attentionCount}
+                        </span>
+                      ) : null}
+                      <item.Icon
+                        aria-hidden="true"
+                        size={18}
+                        strokeWidth={1.8}
+                      />
+                      <span className="nav-item__label">{label}</span>
+                    </button>
+                  );
+                })}
               </nav>
             </section>
           ))}
@@ -3731,6 +3821,10 @@ function AuthenticatedApp() {
                 onSelect={(result) => {
                   if (
                     !canWorkTickets &&
+                    !(
+                      sectionFromGlobalSearchResult(result) ===
+                        "Veranstaltungsräume" && eventSpaceNavigationAccess
+                    ) &&
                     !canRequesterOpenSection(
                       sectionFromGlobalSearchResult(result),
                       requesterPortalEnabled,
@@ -3746,7 +3840,11 @@ function AuthenticatedApp() {
                   }
                   setSection(sectionFromGlobalSearchResult(result));
                 }}
-                scope={canWorkTickets ? "all" : "tickets-only"}
+                scope={
+                  canWorkTickets || eventSpaceNavigationAccess
+                    ? "all"
+                    : "tickets-only"
+                }
                 tenantId={activeTenant.id}
               />
             )}
@@ -3954,6 +4052,9 @@ function AuthenticatedApp() {
               globalSearchTarget?.resultType === "event_space"
                 ? globalSearchTarget.entityId
                 : undefined
+            }
+            onAttentionChanged={() =>
+              setEventSpaceAttentionRevision((revision) => revision + 1)
             }
             tenantId={activeTenant.id}
           />

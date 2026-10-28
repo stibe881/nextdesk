@@ -116,13 +116,24 @@ const expectedFiles = [
   "0112_ticket_attachment_comment_visibility.sql",
   "0113_service_status_maintenance.sql",
   "0114_atomic_service_status_maintenance.sql",
+  "0115_inventory_foundation.sql",
+  "0116_private_inventory_item_images.sql",
+  "0117_inventory_low_stock_push.sql",
+  "0118_inventory_source_reservations.sql",
+  "0119_event_space_email_ticket_intake.sql",
 ];
 
-const availableFiles = await readdir(migrationDirectory);
-for (const migration of expectedFiles) {
-  if (!availableFiles.includes(migration)) {
-    throw new Error(`Missing required migration: ${migration}`);
-  }
+const availableFiles = (await readdir(migrationDirectory))
+  .filter((file) => file.endsWith(".sql"))
+  .sort();
+const declaredFiles = [...expectedFiles].sort();
+if (
+  availableFiles.length !== declaredFiles.length ||
+  availableFiles.some((file, index) => file !== declaredFiles[index])
+) {
+  throw new Error(
+    `Migration catalog differs from the enforced version list. Expected: ${declaredFiles.join(", ")}. Found: ${availableFiles.join(", ")}.`,
+  );
 }
 
 const contents = new Map();
@@ -1151,6 +1162,46 @@ const requiredFragments = [
   [
     "0097_atomic_ticket_custom_field_edit.sql",
     "from public, anon, authenticated",
+  ],
+  [
+    "0119_event_space_email_ticket_intake.sql",
+    "create table if not exists public.event_space_ticket_intake_outbox",
+  ],
+  [
+    "0119_event_space_email_ticket_intake.sql",
+    "event_space_ticket_intake_outbox_ticket_tenant_fk",
+  ],
+  [
+    "0119_event_space_email_ticket_intake.sql",
+    "event_space_requests_source_ticket_tenant_fk",
+  ],
+  [
+    "0119_event_space_email_ticket_intake.sql",
+    "revoke all on function public.create_event_space_email_ticket_request",
+  ],
+  [
+    "0119_event_space_email_ticket_intake.sql",
+    "grant execute on function public.create_event_space_email_ticket_request",
+  ],
+  [
+    "0119_event_space_email_ticket_intake.sql",
+    "revoke all on function public.resolve_event_space_email_ticket_request",
+  ],
+  [
+    "0119_event_space_email_ticket_intake.sql",
+    "grant execute on function public.resolve_event_space_email_ticket_request",
+  ],
+  [
+    "0119_event_space_email_ticket_intake.sql",
+    "alter table public.event_space_ticket_intake_outbox enable row level security",
+  ],
+  [
+    "0119_event_space_email_ticket_intake.sql",
+    "revoke all on table public.event_space_ticket_intake_outbox",
+  ],
+  [
+    "0119_event_space_email_ticket_intake.sql",
+    "event_space_ticket_intake_outbox_service_role_only",
   ],
 ];
 

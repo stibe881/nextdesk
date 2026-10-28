@@ -1102,6 +1102,15 @@ time,
   font-weight: 550;
 }
 
+.nav-item__badge {
+  border-radius: 999px;
+  padding: 1px 5px;
+  color: var(--on-primary);
+  background: var(--primary);
+  font-size: 12px;
+  font-weight: 750;
+}
+
 .nav-item svg {
   color: var(--text-tint-617089);
 }
@@ -14176,6 +14185,15 @@ body:has(.knowledge-base__editor-backdrop) {
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   line-height: 1;
+}
+
+.event-spaces__email-recovery,
+.event-spaces__clarifications {
+  display: grid;
+  gap: 12px;
+  border: 1px solid var(--border);
+  padding: 16px;
+  background: var(--surface);
 }
 
 .event-spaces__message,

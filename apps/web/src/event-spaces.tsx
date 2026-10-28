@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import {
   swissEventSpaceOccurrences,
+  swissWallTimeToInstant,
   swissWallValue,
 } from "./lib/event-space-time";
 import { functionErrorMessage } from "./lib/function-error";
@@ -25,6 +26,8 @@ const EQUIPMENT = [
   ["audio", "Audio"],
   ["videocall", "Videocall"],
   ["microphones", "Mikrofone"],
+  ["screen", "Leinwand"],
+  ["reception_laptop", "Empfangslaptop"],
 ] as const;
 
 type EquipmentKey = (typeof EQUIPMENT)[number][0];
@@ -60,6 +63,22 @@ type RoomRequest = {
   equipment: EquipmentKey[];
   tasks: Task[];
 };
+type ClarificationCase = {
+  id: string;
+  title: string;
+  sourceOrderNumber: string | null;
+  requestedSpaceText: string | null;
+  requestedStartsAt: string | null;
+  requestedEndsAt: string | null;
+  requestedEquipment: string[];
+  reasons: string[];
+};
+type EmailIntakeRecovery = {
+  ticketId: string;
+  state: "pending" | "failed" | "retrying";
+  retryCount: number;
+  canRetry: boolean;
+};
 type ConflictSummary = {
   hasConflicts: boolean;
   roomConflictCount: number;
@@ -74,6 +93,8 @@ type Workspace = {
   people: Person[];
   permissions: { canRequest: boolean; canManage: boolean };
   pagination: { hasMore: boolean; nextOffset: number | null };
+  clarifications: ClarificationCase[];
+  emailIntakes: EmailIntakeRecovery[];
   requests: RoomRequest[];
 };
 type RequestDraft = {
@@ -100,6 +121,31 @@ const taskStatusLabels: Record<TaskStatus, string> = {
   open: "Offen",
   in_progress: "In Arbeit",
   completed: "Erledigt",
+};
+const clarificationReasonLabels: Record<string, string> = {
+  ambiguous_local_time: "Beginnzeit wegen Sommerzeit klären",
+  duplicate_field: "Doppelte Angaben prüfen",
+  equipment_invalid: "Technikangaben prüfen",
+  equipment_conflict: "Techniküberschneidung prüfen",
+  invalid_date: "Anlassdatum prüfen",
+  invalid_description: "Angaben prüfen",
+  invalid_https_url: "Link zum Auftrag prüfen",
+  invalid_start_time: "Beginnzeit prüfen",
+  invalid_yes_no: "Ja/Nein-Angaben prüfen",
+  missing_required_field: "Fehlende Angaben ergänzen",
+  missing_start_time: "Beginnzeit ergänzen",
+  nonexistent_local_time: "Beginnzeit wegen Sommerzeit klären",
+  room_conflict: "Raumüberschneidung prüfen",
+  room_not_matched: "Raum zuordnen",
+  room_unavailable: "Raum ist nicht verfügbar",
+  start_time_invalid: "Beginnzeit ergänzen",
+  task_template_unavailable: "Aufgabenvorlage prüfen",
+  unknown_field: "Angaben prüfen",
+};
+const emailIntakeStateLabels: Record<EmailIntakeRecovery["state"], string> = {
+  pending: "Ausstehend",
+  failed: "Fehlgeschlagen",
+  retrying: "Wird verarbeitet",
 };
 const equipmentLabels = new Map(EQUIPMENT);
 
@@ -181,6 +227,8 @@ function parseWorkspace(value: unknown): Workspace | null {
   if (
     !Array.isArray(data.rooms) ||
     !Array.isArray(data.people) ||
+    !Array.isArray(data.clarifications) ||
+    !Array.isArray(data.emailIntakes) ||
     !Array.isArray(data.requests) ||
     !data.pagination ||
     typeof data.pagination !== "object"
@@ -236,9 +284,11 @@ function nextTaskStatus(status: TaskStatus): TaskStatus {
 
 export function EventSpaces({
   focusRequestId,
+  onAttentionChanged,
   tenantId,
 }: {
   focusRequestId?: string | undefined;
+  onAttentionChanged: () => void;
   tenantId: string;
 }) {
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
@@ -266,6 +316,16 @@ export function EventSpaces({
   const [expandedRequestId, setExpandedRequestId] = useState<string | null>(
     null,
   );
+  const [clarificationDrafts, setClarificationDrafts] = useState<
+    Record<
+      string,
+      {
+        responsibleUserId: string;
+        spaceId: string;
+        startsAt: string;
+      }
+    >
+  >({});
 
   const loadWorkspace = async (
     offset: number,
@@ -345,13 +405,25 @@ export function EventSpaces({
   }, [focusRequestId, loadingMore, workspace]);
 
   useEffect(() => {
-    if (!requestDraft.responsibleUserId && workspace?.people.length === 1) {
-      setRequestDraft((current) => ({
-        ...current,
-        responsibleUserId: workspace.people[0]!.id,
-      }));
-    }
-  }, [requestDraft.responsibleUserId, workspace?.people]);
+    const cases = workspace?.clarifications ?? [];
+    if (!cases.length) return;
+    setClarificationDrafts((current) => {
+      let changed = false;
+      const next = { ...current };
+      for (const item of cases) {
+        if (next[item.id]) continue;
+        next[item.id] = {
+          responsibleUserId: "",
+          spaceId: "",
+          startsAt: item.requestedStartsAt
+            ? swissWallValue(new Date(item.requestedStartsAt))
+            : "",
+        };
+        changed = true;
+      }
+      return changed ? next : current;
+    });
+  }, [workspace?.clarifications]);
 
   const roomsById = useMemo(
     () => new Map((workspace?.rooms ?? []).map((room) => [room.id, room])),
@@ -501,6 +573,7 @@ export function EventSpaces({
       setPendingConflicts(null);
       setEditor(null);
       await refresh(true);
+      onAttentionChanged();
     } catch (error) {
       setPendingConflicts(null);
       setErrorMessage(
@@ -576,11 +649,148 @@ export function EventSpaces({
       if (error) throw error;
       setNotice("Der Raumauftragsstatus wurde aktualisiert.");
       await refresh(true);
+      onAttentionChanged();
     } catch (error) {
       setErrorMessage(
         await functionErrorMessage(
           error,
           "Der Status konnte nicht aktualisiert werden. Bitte versuchen Sie es erneut.",
+        ),
+      );
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function assignResponsible(
+    requestId: string,
+    responsibleUserId: string,
+  ) {
+    if (!supabase || !responsibleUserId) return;
+    setPending(true);
+    setErrorMessage("");
+    try {
+      const { error } = await supabase.functions.invoke("event-spaces", {
+        body: {
+          type: "assignResponsible",
+          tenantId,
+          requestId,
+          responsibleUserId,
+        },
+      });
+      if (error) throw error;
+      setNotice("Die verantwortliche Person wurde zugewiesen.");
+      await refresh(true);
+      onAttentionChanged();
+    } catch (error) {
+      setErrorMessage(
+        await functionErrorMessage(
+          error,
+          "Die verantwortliche Person konnte nicht zugewiesen werden. Bitte versuchen Sie es erneut.",
+        ),
+      );
+    } finally {
+      setPending(false);
+    }
+  }
+
+  function updateClarificationDraft(
+    requestId: string,
+    key: "responsibleUserId" | "spaceId" | "startsAt",
+    value: string,
+  ) {
+    setClarificationDrafts((current) => ({
+      ...current,
+      [requestId]: {
+        responsibleUserId: current[requestId]?.responsibleUserId ?? "",
+        spaceId: current[requestId]?.spaceId ?? "",
+        startsAt: current[requestId]?.startsAt ?? "",
+        [key]: value,
+      },
+    }));
+  }
+
+  async function resolveClarification(item: ClarificationCase) {
+    if (!supabase) return;
+    const requestId = item.id;
+    const draft = clarificationDrafts[requestId];
+    const start = swissWallTimeToInstant(
+      draft?.startsAt ??
+        (item.requestedStartsAt
+          ? swissWallValue(new Date(item.requestedStartsAt))
+          : ""),
+    );
+    if (!draft?.spaceId || !draft.responsibleUserId || !start) {
+      setErrorMessage(
+        "Bitte geben Sie einen gültigen Schweizer Beginn sowie Raum und verantwortliche Person an.",
+      );
+      return;
+    }
+    setPending(true);
+    setErrorMessage("");
+    try {
+      const { error } = await supabase.functions.invoke("event-spaces", {
+        body: {
+          type: "resolveEmailIntake",
+          tenantId,
+          requestId,
+          spaceId: draft.spaceId,
+          responsibleUserId: draft.responsibleUserId,
+          startsAt: start.toISOString(),
+          endsAt: new Date(start.getTime() + 30 * 60 * 1_000).toISOString(),
+        },
+      });
+      if (error) throw error;
+      setNotice("Der E-Mail-Auftrag wurde konfliktfrei geplant.");
+      setClarificationDrafts((current) => {
+        const next = { ...current };
+        delete next[requestId];
+        return next;
+      });
+      await refresh(true);
+      onAttentionChanged();
+    } catch (error) {
+      setErrorMessage(
+        await functionErrorMessage(
+          error,
+          "Der Klärungsfall konnte nicht geplant werden. Bitte prüfen Sie Raum, Zeit und Technik.",
+        ),
+      );
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function retryEmailTicketIntake(ticketId: string) {
+    if (!supabase) return;
+    setPending(true);
+    setErrorMessage("");
+    setNotice("");
+    try {
+      const { data, error } = await supabase.functions.invoke("event-spaces", {
+        body: { type: "retryEmailTicketIntake", tenantId, ticketId },
+      });
+      if (error) throw error;
+      const state =
+        data && typeof data === "object"
+          ? (data as { data?: { state?: unknown } }).data?.state
+          : null;
+      if (state === "processed") {
+        setNotice("Der ausgewählte E-Mail-Import wurde einmalig wiederholt.");
+      } else if (state === "failed") {
+        setErrorMessage(
+          "Der ausgewählte E-Mail-Import konnte nicht abgeschlossen werden. Der Ticketversand bleibt unverändert.",
+        );
+      } else {
+        setNotice("Der E-Mail-Import ist nicht mehr erneut verfügbar.");
+      }
+      await refresh(true);
+      onAttentionChanged();
+    } catch (error) {
+      setErrorMessage(
+        await functionErrorMessage(
+          error,
+          "Der E-Mail-Import konnte nicht wiederholt werden. Der Ticketversand bleibt unverändert.",
         ),
       );
     } finally {
@@ -625,6 +835,8 @@ export function EventSpaces({
 
   const canRequest = workspace?.permissions.canRequest ?? false;
   const canManage = workspace?.permissions.canManage ?? false;
+  const clarifications = workspace?.clarifications ?? [];
+  const emailIntakes = workspace?.emailIntakes ?? [];
   const requests = workspace?.requests ?? [];
 
   return (
@@ -679,6 +891,169 @@ export function EventSpaces({
           <strong>{metrics.ready}</strong>
         </article>
       </div>
+
+      {canManage && emailIntakes.length ? (
+        <section className="event-spaces__email-recovery panel">
+          <div className="event-spaces__email-recovery-heading">
+            <div>
+              <p className="eyebrow">Manuelle Wiederherstellung</p>
+              <h3>E-Mail-Import erneut ausführen</h3>
+              <p>
+                Hier werden nur der Importzustand und die Anzahl bewusster
+                Wiederholungen angezeigt. Ticket- und E-Mail-Inhalte bleiben
+                ausgeblendet.
+              </p>
+            </div>
+            <strong>{emailIntakes.length}</strong>
+          </div>
+          <ul>
+            {emailIntakes.map((item) => (
+              <li key={item.ticketId}>
+                <span>
+                  <strong>{emailIntakeStateLabels[item.state]}</strong>
+                  <small>
+                    Manuelle Wiederholungen: {item.retryCount} von 3
+                  </small>
+                </span>
+                <button
+                  className="secondary-button"
+                  disabled={pending || !item.canRetry}
+                  onClick={() => void retryEmailTicketIntake(item.ticketId)}
+                  type="button"
+                >
+                  Einzelnen Import wiederholen
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
+      {canManage && clarifications.length ? (
+        <section className="event-spaces__clarifications panel">
+          <div className="event-spaces__clarifications-heading">
+            <div>
+              <p className="eyebrow">Prüfen vor dem Planen</p>
+              <h3>Klärung erforderlich</h3>
+              <p>
+                Diese E-Mail-Aufträge reservieren weder Raum noch Technik, bis
+                die Angaben bewusst ergänzt und geprüft sind.
+              </p>
+            </div>
+            <strong>{clarifications.length}</strong>
+          </div>
+          <ul>
+            {clarifications.map((item) => (
+              <li key={item.id}>
+                <article>
+                  <div>
+                    <small>
+                      {item.sourceOrderNumber
+                        ? `Antrag ${item.sourceOrderNumber}`
+                        : "E-Mail-Auftrag"}
+                    </small>
+                    <h4>{item.title}</h4>
+                    <p>
+                      {item.requestedSpaceText
+                        ? `Gewünschter Raum: ${item.requestedSpaceText}`
+                        : "Raum noch nicht eindeutig angegeben"}
+                      {item.requestedStartsAt
+                        ? ` · ${fullDateTimeLabel(item.requestedStartsAt)}`
+                        : ""}
+                    </p>
+                  </div>
+                  <p className="event-spaces__clarification-reasons">
+                    {item.reasons.length
+                      ? item.reasons
+                          .map(
+                            (reason) =>
+                              clarificationReasonLabels[reason] ??
+                              "Angaben prüfen",
+                          )
+                          .join(" · ")
+                      : "Angaben prüfen"}
+                  </p>
+                  <div className="event-spaces__clarification-actions">
+                    <label>
+                      Beginn (Europe/Zurich)
+                      <input
+                        type="datetime-local"
+                        value={
+                          clarificationDrafts[item.id]?.startsAt ??
+                          (item.requestedStartsAt
+                            ? swissWallValue(new Date(item.requestedStartsAt))
+                            : "")
+                        }
+                        onChange={(event) =>
+                          updateClarificationDraft(
+                            item.id,
+                            "startsAt",
+                            event.target.value,
+                          )
+                        }
+                      />
+                    </label>
+                    <label>
+                      Raum
+                      <select
+                        value={clarificationDrafts[item.id]?.spaceId ?? ""}
+                        onChange={(event) =>
+                          updateClarificationDraft(
+                            item.id,
+                            "spaceId",
+                            event.target.value,
+                          )
+                        }
+                      >
+                        <option value="">Raum auswählen …</option>
+                        {workspace?.rooms.map((room) => (
+                          <option key={room.id} value={room.id}>
+                            {room.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label>
+                      Verantwortliche Person
+                      <select
+                        value={
+                          clarificationDrafts[item.id]?.responsibleUserId ?? ""
+                        }
+                        onChange={(event) =>
+                          updateClarificationDraft(
+                            item.id,
+                            "responsibleUserId",
+                            event.target.value,
+                          )
+                        }
+                      >
+                        <option value="">Person auswählen …</option>
+                        {workspace?.people.map((person) => (
+                          <option key={person.id} value={person.id}>
+                            {person.displayName}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <button
+                      className="primary-button"
+                      disabled={
+                        pending ||
+                        !clarificationDrafts[item.id]?.spaceId ||
+                        !clarificationDrafts[item.id]?.responsibleUserId
+                      }
+                      onClick={() => void resolveClarification(item)}
+                      type="button"
+                    >
+                      Konfliktfrei planen (30 Min.)
+                    </button>
+                  </div>
+                </article>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       {errorMessage ? (
         <p
@@ -1195,6 +1570,7 @@ export function EventSpaces({
                   expanded={expandedRequestId === request.id}
                   focused={focusRequestId === request.id}
                   key={request.id}
+                  onAssignResponsible={assignResponsible}
                   onChangeRequestStatus={changeRequestStatus}
                   onChangeTaskStatus={changeTaskStatus}
                   onToggle={() =>
@@ -1202,6 +1578,7 @@ export function EventSpaces({
                       current === request.id ? null : request.id,
                     )
                   }
+                  people={workspace?.people ?? []}
                   request={request}
                   room={roomsById.get(request.spaceId) ?? null}
                 />
@@ -1249,21 +1626,25 @@ function RequestCard({
   canManage,
   expanded,
   focused,
+  onAssignResponsible,
   onChangeRequestStatus,
   onChangeTaskStatus,
   onToggle,
+  people,
   request,
   room,
 }: {
   canManage: boolean;
   expanded: boolean;
   focused: boolean;
+  onAssignResponsible: (requestId: string, responsibleUserId: string) => void;
   onChangeRequestStatus: (
     requestId: string,
     status: RequestStatus,
   ) => Promise<void>;
   onChangeTaskStatus: (task: Task) => Promise<void>;
   onToggle: () => void;
+  people: readonly Person[];
   request: RoomRequest;
   room: Room | null;
 }) {
@@ -1328,6 +1709,28 @@ function RequestCard({
               </strong>
             </div>
           </div>
+          {canManage && !request.responsibleName ? (
+            <label className="event-spaces__status-control">
+              Verantwortliche Person zuweisen
+              <select
+                defaultValue=""
+                onChange={(event) => {
+                  const responsibleUserId = event.target.value;
+                  if (!responsibleUserId) return;
+                  onAssignResponsible(request.id, responsibleUserId);
+                }}
+              >
+                <option disabled value="">
+                  Person auswählen …
+                </option>
+                {people.map((person) => (
+                  <option key={person.id} value={person.id}>
+                    {person.displayName}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
           {canManage ? (
             <label className="event-spaces__status-control">
               Auftragsstatus

@@ -5595,6 +5595,256 @@ set local role authenticated;
 				  end;
 				end;
 				$$;
+				-- Ein E-Mail-Raumticket bleibt nach einem fehlgeschlagenen Intake
+				-- ausschliesslich über einen bewussten Einzel-Claim wiederholbar.
+				-- Der Claim ist mandantengebunden, kurz gelockt, maximal dreimal
+				-- möglich und schreibt keine Maildaten in den Audit-Trail.
+				insert into public.ticket_requesters (
+				  id, tenant_id, email, display_name, source
+				) values (
+				  '79300000-0000-4000-8000-000000000001',
+				  '10000000-0000-4000-8000-000000000001',
+				  'recovery@example.invalid', 'Recovery Test', 'email'
+				);
+				insert into public.tickets (
+				  id, tenant_id, department_id, ticket_number, subject, description,
+				  status_id, priority_id, requester_id, requester_contact_id, source
+				) values (
+				  '79310000-0000-4000-8000-000000000001',
+				  '10000000-0000-4000-8000-000000000001',
+				  '11000000-0000-4000-8000-000000000001', 'ICT-2026-RECOVERY-001',
+				  'Neuer Auftrag Einrichten [RECOVERY-1] für [Raumtest]',
+				  'Eingegangene E-Mail von Recovery Test\n\nAnlassdatum: 2026-12-01',
+				  '13000000-0000-4000-8000-000000000001',
+				  '14000000-0000-4000-8000-000000000001',
+				  '00000000-0000-4000-8000-000000000001',
+				  '79300000-0000-4000-8000-000000000001', 'email'
+				);
+				set local role service_role;
+				do $$
+				declare
+				  v_outcome text;
+				  v_retry_count integer;
+				  v_subject text;
+				  v_description text;
+				begin
+				  select outcome, retry_count, ticket_subject, ticket_description
+				    into v_outcome, v_retry_count, v_subject, v_description
+				  from public.claim_event_space_email_ticket_intake_retry(
+				    '10000000-0000-4000-8000-000000000001',
+				    '79310000-0000-4000-8000-000000000001',
+				    '00000000-0000-4000-8000-000000000002'
+				  );
+				  if v_outcome <> 'claimed' or v_retry_count <> 1
+				    or v_subject is null or v_description is null then
+				    raise exception 'Manual event-space intake recovery did not claim the linked e-mail ticket';
+				  end if;
+				  select outcome, retry_count into v_outcome, v_retry_count
+				  from public.claim_event_space_email_ticket_intake_retry(
+				    '10000000-0000-4000-8000-000000000001',
+				    '79310000-0000-4000-8000-000000000001',
+				    '00000000-0000-4000-8000-000000000002'
+				  );
+				  if v_outcome <> 'busy' or v_retry_count <> 1 then
+				    raise exception 'Concurrent manual recovery was not held by the short retry lease';
+				  end if;
+				  update public.event_space_ticket_intake_outbox
+				  set retry_lease_expires_at = now() - interval '1 hour'
+				  where ticket_id = '79310000-0000-4000-8000-000000000001';
+				  select outcome, retry_count into v_outcome, v_retry_count
+				  from public.claim_event_space_email_ticket_intake_retry(
+				    '10000000-0000-4000-8000-000000000001',
+				    '79310000-0000-4000-8000-000000000001',
+				    '00000000-0000-4000-8000-000000000002'
+				  );
+				  if v_outcome <> 'claimed' or v_retry_count <> 2 then
+				    raise exception 'An explicit stale recovery lease could not be reclaimed';
+				  end if;
+				  update public.event_space_ticket_intake_outbox
+				  set retry_lease_expires_at = now() - interval '1 hour'
+				  where ticket_id = '79310000-0000-4000-8000-000000000001';
+				  select outcome, retry_count into v_outcome, v_retry_count
+				  from public.claim_event_space_email_ticket_intake_retry(
+				    '10000000-0000-4000-8000-000000000001',
+				    '79310000-0000-4000-8000-000000000001',
+				    '00000000-0000-4000-8000-000000000002'
+				  );
+				  if v_outcome <> 'claimed' or v_retry_count <> 3 then
+				    raise exception 'The third explicit event-space intake retry was not recorded';
+				  end if;
+				  update public.event_space_ticket_intake_outbox
+				  set retry_lease_expires_at = now() - interval '1 hour'
+				  where ticket_id = '79310000-0000-4000-8000-000000000001';
+				  select outcome, retry_count into v_outcome, v_retry_count
+				  from public.claim_event_space_email_ticket_intake_retry(
+				    '10000000-0000-4000-8000-000000000001',
+				    '79310000-0000-4000-8000-000000000001',
+				    '00000000-0000-4000-8000-000000000002'
+				  );
+				  if v_outcome <> 'retry_limit_reached' or v_retry_count <> 3 then
+				    raise exception 'Manual event-space intake recovery exceeded the three-attempt bound';
+				  end if;
+				  select outcome into v_outcome
+				  from public.claim_event_space_email_ticket_intake_retry(
+				    '20000000-0000-4000-8000-000000000002',
+				    '79310000-0000-4000-8000-000000000001',
+				    '00000000-0000-4000-8000-000000000004'
+				  );
+				  if v_outcome <> 'unavailable' then
+				    raise exception 'Manual event-space intake recovery crossed a tenant boundary';
+				  end if;
+				end;
+				$$;
+
+				reset role;
+				-- Die service-only Erstellung bleibt idempotent, tenant-gebunden und
+				-- erzeugt nur nach vollständigem, konfliktfreiem Intake einen Raumauftrag.
+				insert into public.tickets (
+				  id, tenant_id, department_id, ticket_number, subject, description,
+				  status_id, priority_id, requester_id, requester_contact_id, source
+				) values
+				  (
+				    '79320000-0000-4000-8000-000000000001',
+				    '10000000-0000-4000-8000-000000000001',
+				    '11000000-0000-4000-8000-000000000001', 'ICT-2026-INTAKE-001',
+				    'Neuer Auftrag Einrichten [IDEMPOTENT-1] für [Aula Test]', 'E-Mail-Test',
+				    '13000000-0000-4000-8000-000000000001',
+				    '14000000-0000-4000-8000-000000000001',
+				    '00000000-0000-4000-8000-000000000001',
+				    '79300000-0000-4000-8000-000000000001', 'email'
+				  ),
+				  (
+				    '79330000-0000-4000-8000-000000000001',
+				    '10000000-0000-4000-8000-000000000001',
+				    '11000000-0000-4000-8000-000000000001', 'ICT-2026-INTAKE-002',
+				    'Neuer Auftrag Einrichten [CLARIFY-1] für [Aula Test]', 'E-Mail-Test',
+				    '13000000-0000-4000-8000-000000000001',
+				    '14000000-0000-4000-8000-000000000001',
+				    '00000000-0000-4000-8000-000000000001',
+				    '79300000-0000-4000-8000-000000000001', 'email'
+				  );
+				set local role service_role;
+				do $$
+				declare
+				  v_first uuid;
+				  v_repeat uuid;
+				  v_clarification uuid;
+				  v_status text;
+				  v_resolved boolean;
+				  v_starts_at timestamptz := timezone('utc', now()) + interval '20 days';
+				begin
+				  select request_id, request_status into v_first, v_status
+				  from public.create_event_space_email_ticket_request(
+				    '10000000-0000-4000-8000-000000000001',
+				    '79320000-0000-4000-8000-000000000001', 'IDEMPOTENT-1',
+				    'Aula Test', 'Test Organisation',
+				    '79000000-0000-4000-8000-000000000001', 'Aula Test',
+				    v_starts_at, v_starts_at + interval '30 minutes', array[]::text[],
+				    true, false, false, false, false, null, null, null, array[]::text[]
+				  );
+				  if v_first is null or v_status <> 'planned' then
+				    raise exception 'Event-space e-mail intake did not create a planned request';
+				  end if;
+				  select request_id, request_status into v_repeat, v_status
+				  from public.create_event_space_email_ticket_request(
+				    '10000000-0000-4000-8000-000000000001',
+				    '79320000-0000-4000-8000-000000000001', 'IDEMPOTENT-1',
+				    'Aula Test', 'Test Organisation',
+				    '79000000-0000-4000-8000-000000000001', 'Aula Test',
+				    v_starts_at, v_starts_at + interval '30 minutes', array[]::text[],
+				    true, false, false, false, false, null, null, null, array[]::text[]
+				  );
+				  if v_repeat is distinct from v_first or v_status <> 'planned' then
+				    raise exception 'Event-space e-mail intake did not return the prior request on repetition';
+				  end if;
+				  begin
+				    perform * from public.create_event_space_email_ticket_request(
+				      '20000000-0000-4000-8000-000000000002',
+				      '79320000-0000-4000-8000-000000000001', 'FOREIGN-1',
+				      'Fremdmandant', null, null, 'Fremder Raum',
+				      v_starts_at, v_starts_at + interval '30 minutes', array[]::text[],
+				      false, false, false, false, false, null, null, null, array[]::text[]
+				    );
+				    raise exception 'Event-space e-mail intake crossed a tenant boundary';
+				  exception when foreign_key_violation then
+				    null;
+				  end;
+				  select request_id, request_status into v_clarification, v_status
+				  from public.create_event_space_email_ticket_request(
+				    '10000000-0000-4000-8000-000000000001',
+				    '79330000-0000-4000-8000-000000000001', 'CLARIFY-1',
+				    'Klärung Aula Test', null, null, 'Aula Test',
+				    v_starts_at + interval '1 day', v_starts_at + interval '1 day 30 minutes',
+				    array[]::text[], true, false, false, false, false, null, null, null,
+				    array[]::text[]
+				  );
+				  if v_clarification is null or v_status <> 'clarification_required' then
+				    raise exception 'Incomplete e-mail intake did not remain a clarification case';
+				  end if;
+				  begin
+				    perform * from public.resolve_event_space_email_ticket_request(
+				      '20000000-0000-4000-8000-000000000002', v_clarification,
+				      '79000000-0000-4000-8000-000000000001',
+				      '00000000-0000-4000-8000-000000000002',
+				      v_starts_at + interval '1 day', v_starts_at + interval '1 day 30 minutes',
+				      '00000000-0000-4000-8000-000000000004'
+				    );
+				    raise exception 'Event-space clarification resolution crossed a tenant boundary';
+				  exception when no_data_found then
+				    null;
+				  end;
+				  select resolved into v_resolved
+				  from public.resolve_event_space_email_ticket_request(
+				    '10000000-0000-4000-8000-000000000001', v_clarification,
+				    '79000000-0000-4000-8000-000000000001',
+				    '00000000-0000-4000-8000-000000000002',
+				    v_starts_at + interval '1 day', v_starts_at + interval '1 day 30 minutes',
+				    '00000000-0000-4000-8000-000000000002'
+				  );
+				  if not v_resolved then
+				    raise exception 'A valid event-space clarification was not resolved consciously';
+				  end if;
+				end;
+				$$;
+
+				reset role;
+				do $$
+				begin
+				  if (
+				    select count(*)
+				    from public.event_space_requests
+				    where source_ticket_id = '79320000-0000-4000-8000-000000000001'
+				  ) <> 1 then
+				    raise exception 'Event-space e-mail intake did not persist exactly one ticket-bound request';
+				  end if;
+				  if not exists (
+				    select 1
+				    from public.event_space_requests
+				    where source_ticket_id = '79330000-0000-4000-8000-000000000001'
+				      and status = 'planned'
+				  ) then
+				    raise exception 'A valid event-space clarification was not persisted as planned';
+				  end if;
+				end;
+				$$;
+				do $$
+				begin
+				  if (
+				    select count(*)
+				    from public.audit_logs audit
+				    where audit.tenant_id = '10000000-0000-4000-8000-000000000001'
+				      and audit.action = 'event_spaces.email_ticket_intake.retry_started'
+				      and audit.entity_id = '79310000-0000-4000-8000-000000000001'
+				  ) <> 3 or exists (
+				    select 1
+				    from public.audit_logs audit
+				    where audit.entity_id = '79310000-0000-4000-8000-000000000001'
+				      and audit.metadata ?| array['subject', 'description', 'ticketSubject', 'ticketDescription']
+				  ) then
+				    raise exception 'Manual event-space intake recovery audit was incomplete or retained mail data';
+				  end if;
+				end;
+				$$;
 
 				-- Strukturierte Quellreservationen bleiben opt-in, haben keine
 				-- Rückwirkung und dürfen Raumaufträge oder Eintritte bei fehlendem
@@ -6034,13 +6284,23 @@ set local role authenticated;
 			  exception when insufficient_privilege then
 			    null;
 			  end;
-			  begin
-			    perform 1 from public.event_space_requests limit 1;
-			    raise exception 'Authenticated browser role read direct event-space requests';
-			  exception when insufficient_privilege then
-			    null;
-			  end;
-			  begin
+				  begin
+				    perform 1 from public.event_space_requests limit 1;
+				    raise exception 'Authenticated browser role read direct event-space requests';
+				  exception when insufficient_privilege then
+				    null;
+				  end;
+				  begin
+				    perform * from public.claim_event_space_email_ticket_intake_retry(
+				      '10000000-0000-4000-8000-000000000001',
+				      '79310000-0000-4000-8000-000000000001',
+				      '00000000-0000-4000-8000-000000000002'
+				    );
+				    raise exception 'Authenticated browser role claimed an event-space intake retry';
+				  exception when insufficient_privilege then
+				    null;
+				  end;
+				  begin
 			    perform 1 from public.onboarding_entries limit 1;
 			    raise exception 'Authenticated browser role read direct onboarding entries';
 			  exception when insufficient_privilege then

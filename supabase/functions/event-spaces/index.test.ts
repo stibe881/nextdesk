@@ -97,3 +97,62 @@ Deno.test("event space responses keep conflict details aggregated", () => {
     "The API must not return personal or event content from conflicting requests.",
   );
 });
+
+Deno.test(
+  "event space attention and email clarification actions stay server-authorized",
+  () => {
+    assert(
+      source.includes('type: "navigationSummary"') &&
+        source.includes("attentionCount") &&
+        source.includes(
+          "responsible_user_id.is.null,status.eq.clarification_required",
+        ),
+      "The navigation badge must be a server-side aggregate of unassigned or clarification requests.",
+    );
+    assert(
+      source.includes('type: "assignResponsible"') &&
+        source.includes('type: "resolveEmailIntake"') &&
+        source.includes('"event.spaces.manage"'),
+      "Assignment and clarification resolution must remain manager-protected actions.",
+    );
+    assert(
+      source.includes('neq("status", "clarification_required")') &&
+        source.includes('rpc(\n    "resolve_event_space_email_ticket_request"'),
+      "A clarification case must not be promoted through a plain status update.",
+    );
+  },
+);
+
+Deno.test(
+  "manual email-intake recovery stays explicit, bounded and private",
+  () => {
+    assert(
+      source.includes('type: "retryEmailTicketIntake"') &&
+        source.includes("retryEmailTicketIntake(") &&
+        source.includes("claim_event_space_email_ticket_intake_retry"),
+      "A recovery must use a dedicated one-item server-side claim rather than a scheduler or list replay.",
+    );
+    assert(
+      source.includes("await requireMembership(client, tenantId)") &&
+        source.includes(
+          'await requirePermission(client, tenantId, "event.spaces.manage")',
+        ),
+      "Manual recovery must require an active membership and event-space management permission server-side.",
+    );
+    assert(
+      source.includes("eventSpaceEmailIntakeBodyFromStoredTicket") &&
+        source.includes('return { state: "unavailable" as const }'),
+      "The Edge Function may replay a stored body privately but must return only a neutral outcome to the browser.",
+    );
+    assert(
+      source.includes(
+        'select(\n            "ticket_id, status, manual_retry_count, retry_lease_expires_at",',
+      ) && !source.includes('"ticket_id, subject, description"'),
+      "Recovery lists must expose outbox state only, without ticket or e-mail content.",
+    );
+    assert(
+      !source.includes("setInterval") && !source.includes("cron"),
+      "Manual recovery must not introduce automatic retries.",
+    );
+  },
+);
