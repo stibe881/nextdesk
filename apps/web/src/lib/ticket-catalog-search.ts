@@ -5,6 +5,17 @@ export type TicketCatalogSearchItem = {
   description: string;
 };
 
+/**
+ * Der Überblick braucht den Katalog für Verknüpfungen; lesende Personen erst,
+ * wenn sie den Bereich der betroffenen Elemente öffnen.
+ */
+export function shouldLoadTicketCatalog(
+  canUpdateTicket: boolean,
+  isClosureContextOpen: boolean,
+): boolean {
+  return canUpdateTicket || isClosureContextOpen;
+}
+
 function normalizedSearchText(value: string): string {
   return value
     .normalize("NFKD")

@@ -266,3 +266,9 @@
   - Die Suche berücksichtigt Name, Asset-Kennung, Typ, Status sowie Bezeichnung und Beschreibung von Services und Problemfällen; Treffer zeigen ihren Typ klar an und können mit Maus oder Tastatur ausgewählt werden.
   - Ausschliesslich die bereits serverseitig für den aktuellen Mandanten und die aktuelle Person erlaubten, noch nicht verknüpften Einträge werden durchsucht. Erst eine bewusste Auswahl aktiviert «Verknüpfen»; die Serverprüfung der Mutation bleibt unverändert.
   - Suche schliesst mit Escape oder ausserhalb der Auswahl, zeigt bei leeren Treffern eine verständliche Rückmeldung und klappt innerhalb der Ticketansicht auf, damit sie in kurzen Ansichten nicht abgeschnitten wird. Fokussierte Regressionen, TypeScript, 126 Webtests, Produktionsbuild und ein sauberer Diff sind geprüft. Es erfolgt kein Webrelease.
+
+- [x] **Web-Ticketüberblick: Assetsuche lädt unabhängig vom unteren Abschlussbereich**
+  - Berechtigte Personen können die Asset- und Katalogsuche im oberen Ticketüberblick nutzen, ohne zuerst «Abschluss & Nachbereitung» zu öffnen.
+  - Während die serverautorisierten Einträge laden, bleibt die Auswahl nur vorübergehend gesperrt und erklärt den Ladezustand.
+  - Gibt es keine verfügbaren Einträge, lässt sich die Auswahl trotzdem öffnen und zeigt eine verständliche Rückmeldung statt dauerhaft ausgegraut zu bleiben.
+  - Mandantentrennung, bestehende serverseitige Berechtigungsprüfung und Verknüpfungsmutation bleiben unverändert. Fokussierte Regressionen, TypeScript, 127 Webtests, Produktionsbuild und ein sauberer Diff sind geprüft; ein Webrelease wird nicht ausgelöst.

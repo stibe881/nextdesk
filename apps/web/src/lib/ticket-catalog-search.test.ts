@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { searchTicketCatalogItems } from "./ticket-catalog-search";
+import {
+  searchTicketCatalogItems,
+  shouldLoadTicketCatalog,
+} from "./ticket-catalog-search";
 
 const catalog = [
   {
@@ -24,6 +27,12 @@ const catalog = [
 ];
 
 describe("searchTicketCatalogItems", () => {
+  it("lädt den Katalog für den editierbaren Überblick auch ohne Abschlussbereich", () => {
+    expect(shouldLoadTicketCatalog(true, false)).toBe(true);
+    expect(shouldLoadTicketCatalog(false, true)).toBe(true);
+    expect(shouldLoadTicketCatalog(false, false)).toBe(false);
+  });
+
   it("findet Assets nach Name, Asset-Kennung und mehreren Suchbegriffen", () => {
     expect(searchTicketCatalogItems(catalog, "nb001")).toEqual([catalog[0]]);
     expect(searchTicketCatalogItems(catalog, "kennung nb001")).toEqual([

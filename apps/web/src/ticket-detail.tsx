@@ -52,7 +52,10 @@ import {
 } from "./lib/ticket-comment-attachments";
 import { ticketWatchPresentation } from "./lib/ticket-watch-presentation";
 import { formatPersonDisplayName } from "./lib/person-display-name";
-import { searchTicketCatalogItems } from "./lib/ticket-catalog-search";
+import {
+  searchTicketCatalogItems,
+  shouldLoadTicketCatalog,
+} from "./lib/ticket-catalog-search";
 import { supabase } from "./lib/supabase";
 import { TicketApprovals } from "./ticket-approvals";
 import { TicketComparison } from "./ticket-comparison";
@@ -4553,7 +4556,16 @@ export function TicketDetail({
   }, [isClosureContextOpen, loadHandovers, detail?.canUpdate]);
 
   useEffect(() => {
-    if (!isClosureContextOpen) return;
+    if (
+      !shouldLoadTicketCatalog(Boolean(detail?.canUpdate), isClosureContextOpen)
+    ) {
+      setCatalog(emptyTicketCatalog());
+      setLinkedCatalogItems([]);
+      setAffectedItemsLoaded(false);
+      setAffectedItemsError("");
+      setSelectedCatalogItemKey("");
+      return;
+    }
     setCatalog(emptyTicketCatalog());
     setLinkedCatalogItems([]);
     setAffectedItemsLoaded(false);
@@ -4563,7 +4575,7 @@ export function TicketDetail({
     return () => {
       affectedItemsRequestSequence.current += 1;
     };
-  }, [isClosureContextOpen, loadAffectedItems]);
+  }, [detail?.canUpdate, isClosureContextOpen, loadAffectedItems]);
 
   useEffect(() => {
     setMergeQuery("");
@@ -7198,11 +7210,7 @@ export function TicketDetail({
                       }
                       aria-expanded={catalogPickerOpen}
                       className="ticket-catalog-picker__trigger"
-                      disabled={
-                        catalogBusy ||
-                        affectedItemsLoading ||
-                        availableCatalogItems.length === 0
-                      }
+                      disabled={catalogBusy || affectedItemsLoading}
                       onClick={() => setCatalogPickerOpen((open) => !open)}
                       ref={catalogPickerTriggerRef}
                       type="button"
@@ -7277,7 +7285,26 @@ export function TicketDetail({
                             </button>
                           ) : null}
                         </label>
-                        {catalogSearchQuery.trim().length < 2 ? (
+                        {affectedItemsError ? (
+                          <p
+                            className="ticket-catalog-picker__state"
+                            role="alert"
+                          >
+                            {affectedItemsError}
+                          </p>
+                        ) : !affectedItemsLoaded || affectedItemsLoading ? (
+                          <p
+                            className="ticket-catalog-picker__state"
+                            role="status"
+                          >
+                            Verfügbare Assets und Katalogeinträge werden geladen
+                            …
+                          </p>
+                        ) : availableCatalogItems.length === 0 ? (
+                          <p className="ticket-catalog-picker__state">
+                            Keine weiteren verfügbaren Katalogeinträge.
+                          </p>
+                        ) : catalogSearchQuery.trim().length < 2 ? (
                           <p className="ticket-catalog-picker__state">
                             Mindestens zwei Zeichen eingeben, um verfügbare
                             Assets und Katalogeinträge zu suchen.
@@ -7373,9 +7400,13 @@ export function TicketDetail({
               ) : (
                 "Keine Elemente verknüpft"
               )}
-              {detail.canUpdate &&
-              availableCatalogItems.length === 0 &&
-              affectedItemsLoaded ? (
+              {detail.canUpdate && affectedItemsLoading ? (
+                <p className="data-caption" aria-live="polite" role="status">
+                  Verfügbare Assets und Katalogeinträge werden geladen …
+                </p>
+              ) : detail.canUpdate &&
+                availableCatalogItems.length === 0 &&
+                affectedItemsLoaded ? (
                 <p className="data-caption" aria-live="polite">
                   Keine weiteren verfügbaren Katalogeinträge.
                 </p>
