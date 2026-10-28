@@ -95,6 +95,8 @@
   - Für berechtigte Agent:innen erscheint «Arbeitsplatz» direkt oberhalb von «Übersicht» als erster verfügbarer Navigationseintrag.
   - Die Reihenfolge aller übrigen Bereiche, Feature-Gates sowie die begrenzte Navigation reiner Anfragender bleiben unverändert.
 
+- [x] **Exklusive Navigationskategorien in der linken Leiste.** Die Kategorien «Arbeitsbereich», «Wissen & Ressourcen» und «Planung & Betrieb» lassen sich über ihre Überschriften ein- und ausklappen. Beim Start ist nur «Arbeitsbereich» offen; das Öffnen einer anderen Kategorie klappt jede zuvor offene Kategorie ein. «Verwaltung» entfällt vollständig. Der weiterhin berechtigungsgeprüfte Menüpunkt «Einstellungen» steht im unteren linken Nutzerbereich oberhalb von «Mein Portal» und dem Benutzerprofil; «Mein Portal» bleibt unmittelbar über dem Profil.
+
 - [x] **Manuelle Claude-Aufbereitung für Wissensartikel**
   - Im dialogbasierten Wissenseditor kann eine berechtigte Person fachlichen Rohinhalt erfassen und ihn erst mit dem bewussten Klick auf «Mit KI aufbereiten» an Anthropic senden.
   - Die KI gibt ausschliesslich einen validierten Titel und strukturierten Markdown-Inhalt mit Einleitung, Voraussetzungen, nummerierten Schritten, Hinweisen beziehungsweise Warnungen und weiterführenden Informationen zurück. nextDesk übernimmt nur Titel und Markdown in den weiterhin frei editierbaren Entwurf.

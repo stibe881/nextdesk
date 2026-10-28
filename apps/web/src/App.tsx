@@ -23,6 +23,7 @@ import {
   CalendarClock,
   CalendarDays,
   ChartNoAxesCombined,
+  ChevronDown,
   ClipboardList,
   CircleCheck,
   CircleEllipsis,
@@ -141,6 +142,7 @@ import {
   splitWorkplaceNavigation,
   workplaceFirstNavigation,
 } from "./lib/workplace-first-navigation";
+import { nextExpandedAccordionId } from "./lib/navigation-accordion";
 import { appRedirectUrl, isSupabaseConfigured, supabase } from "./lib/supabase";
 
 type Section =
@@ -311,12 +313,6 @@ const NAVIGATION_CATEGORIES = [
       "Services",
       "Systemstatus",
     ],
-  },
-  {
-    heading: "VERWALTUNG",
-    id: "navigation-category-administration",
-    navigationLabel: "Verwaltung",
-    sectionLabels: ["Einstellungen"],
   },
 ] as const satisfies readonly {
   heading: string;
@@ -1550,6 +1546,8 @@ function AuthenticatedApp() {
   >(null);
   const [ticketComposerOpen, setTicketComposerOpen] = useState(false);
   const [quickCreateMenuOpen, setQuickCreateMenuOpen] = useState(false);
+  const [expandedNavigationCategoryId, setExpandedNavigationCategoryId] =
+    useState<string | null>("navigation-category-workspace");
   const [quickCreateRequest, setQuickCreateRequest] =
     useState<QuickCreateRequest | null>(null);
   const [canWorkTickets, setCanWorkTickets] = useState(false);
@@ -1619,6 +1617,14 @@ function AuthenticatedApp() {
   const workspaceStartNavigationRef = useRef<string | null>(null);
   const workspacePreferencesStorageKey = `nextdesk:workspace-preferences:v2:${session?.user.id ?? "preview"}`;
   const legacyWorkspacePreferencesStorageKey = `nextdesk:workspace-preferences:${session?.user.id ?? "preview"}`;
+
+  useEffect(() => {
+    const category = NAVIGATION_CATEGORIES.find((candidate) => {
+      const categorySections = candidate.sectionLabels as readonly Section[];
+      return categorySections.includes(section);
+    });
+    if (category) setExpandedNavigationCategoryId(category.id);
+  }, [section]);
 
   useEffect(() => {
     if (isSupabaseConfigured && session === undefined) return;
@@ -3446,12 +3452,16 @@ function AuthenticatedApp() {
     ? [...workSections, { label: "Einstellungen" as const, Icon: Settings }]
     : workSections;
   const primaryNavigationSections = visibleSections.filter(
-    (item) => item.label !== "Mein Portal",
+    (item) =>
+      item.label !== "Mein Portal" && item.label !== "Einstellungen",
   );
   const { workplaceNavigationItem, remainingNavigationSections } =
     splitWorkplaceNavigation(primaryNavigationSections);
   const portalNavigationItem = visibleSections.find(
     (item) => item.label === "Mein Portal",
+  );
+  const settingsNavigationItem = visibleSections.find(
+    (item) => item.label === "Einstellungen",
   );
   const navigationItemsBySection = new Map(
     remainingNavigationSections.map((item) => [item.label, item]),
@@ -3576,64 +3586,125 @@ function AuthenticatedApp() {
           </nav>
         )}
         <div className="navigation-categories">
-          {navigationGroups.map((category) => (
-            <section
-              aria-labelledby={category.id}
-              className="navigation-cluster"
-              key={category.id}
-            >
-              <h2 className="navigation-label" id={category.id}>
-                {category.heading}
-              </h2>
-              <nav aria-label={category.navigationLabel} className="nav-list">
-                {category.items.map((item) => {
-                  const attentionCount =
-                    item.label === "Veranstaltungsräume"
-                      ? eventSpaceAttentionCount
-                      : null;
-                  const hasAttention =
-                    typeof attentionCount === "number" && attentionCount > 0;
-                  const label = sectionDisplayLabel(item.label);
-                  return (
-                    <button
-                      aria-current={section === item.label ? "page" : undefined}
-                      aria-label={
-                        hasAttention
-                          ? `${label} – ${attentionCount} Raumaufträge benötigen Zuweisung oder Klärung`
-                          : label
-                      }
-                      className={
-                        section === item.label ? "nav-item active" : "nav-item"
-                      }
-                      key={item.label}
-                      onClick={() => {
-                        setPersonalSettingsOpen(false);
-                        setSection(item.label);
-                      }}
-                      type="button"
-                    >
-                      {hasAttention ? (
-                        <span
-                          aria-hidden="true"
-                          className="nav-item__badge nav-item__badge--leading"
+          {navigationGroups.map((category) => {
+            const categoryExpanded =
+              expandedNavigationCategoryId === category.id;
+            const panelId = `${category.id}-panel`;
+
+            return (
+              <section className="navigation-cluster" key={category.id}>
+                <h2 className="navigation-label">
+                  <button
+                    aria-controls={panelId}
+                    aria-expanded={categoryExpanded}
+                    className="navigation-cluster__toggle"
+                    id={category.id}
+                    onClick={() =>
+                      setExpandedNavigationCategoryId((current) =>
+                        nextExpandedAccordionId(current, category.id),
+                      )
+                    }
+                    type="button"
+                  >
+                    <span>{category.heading}</span>
+                    <ChevronDown
+                      aria-hidden="true"
+                      className="navigation-cluster__chevron"
+                      size={15}
+                      strokeWidth={1.9}
+                    />
+                  </button>
+                </h2>
+                <div
+                  className="navigation-cluster__content"
+                  hidden={!categoryExpanded}
+                  id={panelId}
+                >
+                  <nav
+                    aria-labelledby={category.id}
+                    className="nav-list"
+                  >
+                    {category.items.map((item) => {
+                      const attentionCount =
+                        item.label === "Veranstaltungsräume"
+                          ? eventSpaceAttentionCount
+                          : null;
+                      const hasAttention =
+                        typeof attentionCount === "number" &&
+                        attentionCount > 0;
+                      const label = sectionDisplayLabel(item.label);
+                      return (
+                        <button
+                          aria-current={
+                            section === item.label ? "page" : undefined
+                          }
+                          aria-label={
+                            hasAttention
+                              ? `${label} – ${attentionCount} Raumaufträge benötigen Zuweisung oder Klärung`
+                              : label
+                          }
+                          className={
+                            section === item.label
+                              ? "nav-item active"
+                              : "nav-item"
+                          }
+                          key={item.label}
+                          onClick={() => {
+                            setPersonalSettingsOpen(false);
+                            setSection(item.label);
+                          }}
+                          type="button"
                         >
-                          {attentionCount > 99 ? "99+" : attentionCount}
-                        </span>
-                      ) : null}
-                      <item.Icon
-                        aria-hidden="true"
-                        size={18}
-                        strokeWidth={1.8}
-                      />
-                      <span className="nav-item__label">{label}</span>
-                    </button>
-                  );
-                })}
-              </nav>
-            </section>
-          ))}
+                          {hasAttention ? (
+                            <span
+                              aria-hidden="true"
+                              className="nav-item__badge nav-item__badge--leading"
+                            >
+                              {attentionCount > 99 ? "99+" : attentionCount}
+                            </span>
+                          ) : null}
+                          <item.Icon
+                            aria-hidden="true"
+                            size={18}
+                            strokeWidth={1.8}
+                          />
+                          <span className="nav-item__label">{label}</span>
+                        </button>
+                      );
+                    })}
+                  </nav>
+                </div>
+              </section>
+            );
+          })}
         </div>
         <div className="rail-footer">
+          {settingsNavigationItem && (
+            <nav
+              aria-label="Einstellungen"
+              className="rail-footer__settings"
+            >
+              <button
+                className={
+                  section === settingsNavigationItem.label
+                    ? "nav-item active"
+                    : "nav-item"
+                }
+                onClick={() => {
+                  setPersonalSettingsOpen(false);
+                  setSection(settingsNavigationItem.label);
+                }}
+                type="button"
+              >
+                <settingsNavigationItem.Icon
+                  aria-hidden="true"
+                  size={18}
+                  strokeWidth={1.8}
+                />
+                {sectionDisplayLabel(settingsNavigationItem.label)}
+              </button>
+            </nav>
+          )}
           {portalNavigationItem && (
             <nav aria-label="Mein Portal" className="rail-footer__navigation">
               <button
