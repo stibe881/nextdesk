@@ -33,7 +33,10 @@ import {
   updateTicketCommentDraft,
   type TicketCommentComposerContext,
 } from "./lib/ticket-comment-composer";
-import { chronologicalTicketComments } from "./lib/ticket-comment-order";
+import {
+  chronologicalTicketComments,
+  ticketConversationCountLabel,
+} from "./lib/ticket-comment-order";
 import {
   isTrustedTicketInlineImageUrl,
   ticketInlineAttachmentIds,
@@ -6212,10 +6215,12 @@ export function TicketDetail({
       >
         <div className="ticket-detail-section-heading">
           <div>
-            <p className="eyebrow">KOMMUNIKATION</p>
-            <h3 id="ticket-comments-heading">Kommunikation</h3>
+            <p className="eyebrow">UNTERHALTUNG</p>
+            <h3 id="ticket-comments-heading">Unterhaltung</h3>
           </div>
-          <span className="data-caption">{detail.comments.length}</span>
+          <span className="data-caption">
+            {ticketConversationCountLabel(detail.comments.length)}
+          </span>
         </div>
 
         {detail.comments.length === 0 ? (

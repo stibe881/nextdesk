@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { chronologicalTicketComments } from "./ticket-comment-order";
+import {
+  chronologicalTicketComments,
+  ticketConversationCountLabel,
+} from "./ticket-comment-order";
 
 describe("chronologicalTicketComments", () => {
   it("shows older ticket messages first and uses the ID as a stable tie-breaker", () => {
@@ -10,5 +13,11 @@ describe("chronologicalTicketComments", () => {
     ]);
 
     expect(comments.map((comment) => comment.id)).toEqual(["a", "c", "b"]);
+  });
+
+  it("beschriftet die sichtbare Unterhaltungsanzahl auf Deutsch", () => {
+    expect(ticketConversationCountLabel(0)).toBe("0 Nachrichten");
+    expect(ticketConversationCountLabel(1)).toBe("1 Nachricht");
+    expect(ticketConversationCountLabel(9)).toBe("9 Nachrichten");
   });
 });

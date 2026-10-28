@@ -3,6 +3,10 @@ export type TimestampedTicketComment = {
   id: string;
 };
 
+export function ticketConversationCountLabel(count: number): string {
+  return `${count} ${count === 1 ? "Nachricht" : "Nachrichten"}`;
+}
+
 export function chronologicalTicketComments<T extends TimestampedTicketComment>(
   comments: readonly T[],
 ): T[] {
