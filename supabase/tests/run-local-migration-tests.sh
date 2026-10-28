@@ -6870,6 +6870,408 @@ begin
   end;
 end;
 $$;
+
+-- Wartungsfenster bleiben mandantengefencet, haben keine Browserpolicies und
+-- verknüpfen Services ausschliesslich über zusammengesetzte Tenant-FKs.
+insert into public.service_status_maintenances (
+  id, tenant_id, title, description, starts_at, ends_at, state, public_enabled
+) values (
+  'f1060000-0000-4000-8000-000000000030',
+  'f1060000-0000-4000-8000-000000000001',
+  'Geplante Wartung',
+  'Kurzzeitige Wartung am öffentlichen Dienst.',
+  timezone('utc', now()) + interval '1 hour',
+  timezone('utc', now()) + interval '2 hours',
+  'scheduled',
+  true
+);
+insert into public.service_status_maintenance_services (
+  tenant_id, maintenance_id, service_id
+) values (
+  'f1060000-0000-4000-8000-000000000001',
+  'f1060000-0000-4000-8000-000000000030',
+  'f1060000-0000-4000-8000-000000000010'
+);
+
+do $$
+begin
+  if not (
+    select relrowsecurity and relforcerowsecurity
+    from pg_class
+    where oid = 'public.service_status_maintenances'::regclass
+  ) or not (
+    select relrowsecurity and relforcerowsecurity
+    from pg_class
+    where oid = 'public.service_status_maintenance_services'::regclass
+  ) then
+    raise exception 'Maintenance tables must enable and force RLS';
+  end if;
+  if has_table_privilege('anon', 'public.service_status_maintenances', 'select')
+    or has_table_privilege('authenticated', 'public.service_status_maintenances', 'select')
+    or has_table_privilege('anon', 'public.service_status_maintenance_services', 'select')
+    or has_table_privilege('authenticated', 'public.service_status_maintenance_services', 'select') then
+    raise exception 'Browser roles retained direct access to maintenance data';
+  end if;
+  if not has_table_privilege('service_role', 'public.service_status_maintenances', 'select')
+    or has_table_privilege('service_role', 'public.service_status_maintenances', 'insert')
+    or has_table_privilege('service_role', 'public.service_status_maintenances', 'update')
+    or has_table_privilege('service_role', 'public.service_status_maintenance_services', 'insert')
+    or has_table_privilege('service_role', 'public.service_status_maintenance_services', 'delete') then
+    raise exception 'Maintenance writes must be available only through the atomic RPC';
+  end if;
+  if exists (
+    select 1 from pg_policies
+    where schemaname = 'public'
+      and tablename in (
+        'service_status_maintenances',
+        'service_status_maintenance_services'
+      )
+  ) then
+    raise exception 'Maintenance tables must not define browser policies';
+  end if;
+  if to_regclass('public.service_status_maintenances_tenant_window_idx') is null
+    or to_regclass('public.service_status_maintenances_public_window_idx') is null then
+    raise exception 'Maintenance lookup indexes were not created';
+  end if;
+  begin
+    insert into public.service_status_maintenance_services (
+      tenant_id, maintenance_id, service_id
+    ) values (
+      'f1060000-0000-4000-8000-000000000001',
+      'f1060000-0000-4000-8000-000000000030',
+      'f1060000-0000-4000-8000-000000000020'
+    );
+    raise exception 'A cross-tenant maintenance service link was accepted';
+  exception when foreign_key_violation then
+    null;
+  end;
+  begin
+    update public.service_status_maintenances
+       set ends_at = starts_at
+     where id = 'f1060000-0000-4000-8000-000000000030';
+    raise exception 'A maintenance window accepted a non-later end';
+  exception when check_violation then
+    null;
+  end;
+  begin
+    update public.service_status_maintenances
+       set state = 'automatic'
+     where id = 'f1060000-0000-4000-8000-000000000030';
+    raise exception 'An invalid maintenance state was accepted';
+  exception when check_violation then
+    null;
+  end;
+end;
+$$;
+
+-- The Edge Function service role receives exactly one maintenance write entry
+-- point. The function itself owns the complete transaction, including links and
+-- audit. These tests force failures after the maintenance insert to prove that
+-- no unreadable, linkless maintenance window can survive.
+begin;
+
+insert into public.tenant_memberships (tenant_id, user_id, status, joined_at)
+values (
+  'f1060000-0000-4000-8000-000000000001',
+  '00000000-0000-4000-8000-000000000002',
+  'active',
+  timezone('utc', now())
+);
+insert into public.roles (id, tenant_id, name, scope) values (
+  'f1060000-0000-4000-8000-000000000040',
+  'f1060000-0000-4000-8000-000000000001',
+  'Status publication manager',
+  'tenant'
+);
+insert into public.role_permissions (role_id, permission_code) values (
+  'f1060000-0000-4000-8000-000000000040',
+  'tenant.settings.manage'
+);
+insert into public.user_role_assignments (tenant_id, user_id, role_id) values (
+  'f1060000-0000-4000-8000-000000000001',
+  '00000000-0000-4000-8000-000000000002',
+  'f1060000-0000-4000-8000-000000000040'
+);
+
+do $$
+begin
+  if has_function_privilege(
+    'anon',
+    'public.save_service_status_maintenance(uuid, uuid, uuid, text, text, timestamptz, timestamptz, text, boolean, uuid[])',
+    'execute'
+  ) or has_function_privilege(
+    'authenticated',
+    'public.save_service_status_maintenance(uuid, uuid, uuid, text, text, timestamptz, timestamptz, text, boolean, uuid[])',
+    'execute'
+  ) then
+    raise exception 'Browser roles may not execute the maintenance mutation RPC';
+  end if;
+  if not has_function_privilege(
+    'service_role',
+    'public.save_service_status_maintenance(uuid, uuid, uuid, text, text, timestamptz, timestamptz, text, boolean, uuid[])',
+    'execute'
+  ) then
+    raise exception 'service_role may not execute the maintenance mutation RPC';
+  end if;
+end;
+$$;
+
+set local role service_role;
+select public.save_service_status_maintenance(
+  '00000000-0000-4000-8000-000000000002',
+  'f1060000-0000-4000-8000-000000000001',
+  null,
+  'Atomare RPC-Wartung',
+  'Nur die atomare Wartungs-RPC darf diese Daten speichern.',
+  timezone('utc', now()) + interval '4 hours',
+  timezone('utc', now()) + interval '5 hours',
+  'scheduled',
+  true,
+  array['f1060000-0000-4000-8000-000000000010']::uuid[]
+);
+reset role;
+
+do $$
+declare
+  v_maintenance_id uuid;
+begin
+  select id into v_maintenance_id
+    from public.service_status_maintenances
+   where tenant_id = 'f1060000-0000-4000-8000-000000000001'
+     and title = 'Atomare RPC-Wartung';
+  if v_maintenance_id is null
+    or not exists (
+      select 1
+      from public.service_status_maintenance_services as link
+      where link.tenant_id = 'f1060000-0000-4000-8000-000000000001'
+        and link.maintenance_id = v_maintenance_id
+        and link.service_id = 'f1060000-0000-4000-8000-000000000010'
+    ) then
+    raise exception 'Atomic maintenance RPC did not persist the complete maintenance window';
+  end if;
+  if not exists (
+    select 1
+    from public.audit_logs as audit
+    where audit.tenant_id = 'f1060000-0000-4000-8000-000000000001'
+      and audit.entity_id = v_maintenance_id
+      and audit.action = 'service_status_maintenance.created'
+      and audit.before_data is null
+      and audit.after_data is null
+      and audit.metadata = jsonb_build_object(
+        'source', 'service_status',
+        'state', 'scheduled',
+        'publicEnabled', true,
+        'serviceCount', 1
+      )
+  ) then
+    raise exception 'Atomic maintenance RPC did not write data-minimal audit metadata';
+  end if;
+end;
+$$;
+
+-- A public window remains publication-protected inside the RPC, independent of
+-- the Edge Function's earlier user-bound checks.
+do $$
+declare
+  v_maintenance_id uuid;
+begin
+  if public.user_has_tenant_permission(
+    '00000000-0000-4000-8000-000000000006',
+    'f1060000-0000-4000-8000-000000000001',
+    'tenant.settings.manage'
+  ) then
+    raise exception 'The selected public-maintenance denial actor unexpectedly has publication permission';
+  end if;
+  select id into v_maintenance_id
+    from public.service_status_maintenances
+   where tenant_id = 'f1060000-0000-4000-8000-000000000001'
+     and title = 'Atomare RPC-Wartung';
+  if v_maintenance_id is null then
+    raise exception 'The public maintenance test fixture is missing';
+  end if;
+  perform set_config(
+    'nextdesk.test_public_maintenance_id',
+    v_maintenance_id::text,
+    true
+  );
+end;
+$$;
+set local role service_role;
+do $$
+declare
+  v_maintenance_id uuid := current_setting(
+    'nextdesk.test_public_maintenance_id',
+    true
+  )::uuid;
+begin
+  begin
+    perform public.save_service_status_maintenance(
+      '00000000-0000-4000-8000-000000000006',
+      'f1060000-0000-4000-8000-000000000001',
+      v_maintenance_id,
+      'Unberechtigte Änderung',
+      null,
+      timezone('utc', now()) + interval '4 hours',
+      timezone('utc', now()) + interval '5 hours',
+      'scheduled',
+      false,
+      array['f1060000-0000-4000-8000-000000000010']::uuid[]
+    );
+    raise exception 'A public maintenance window was editable without publication permission';
+  exception when insufficient_privilege then
+    null;
+  end;
+end;
+$$;
+reset role;
+
+do $$
+begin
+  if not exists (
+    select 1
+    from public.service_status_maintenances
+    where tenant_id = 'f1060000-0000-4000-8000-000000000001'
+      and title = 'Atomare RPC-Wartung'
+      and public_enabled
+  ) then
+    raise exception 'Denied public maintenance update left a partial mutation behind';
+  end if;
+end;
+$$;
+
+create function public.test_service_status_reject_link_insert()
+returns trigger
+language plpgsql
+as $$
+begin
+  if new.tenant_id = 'f1060000-0000-4000-8000-000000000001'
+    and new.service_id = 'f1060000-0000-4000-8000-000000000010' then
+    raise exception 'service-status-test-link-insert-failure';
+  end if;
+  return new;
+end;
+$$;
+create trigger test_service_status_reject_link_insert
+before insert on public.service_status_maintenance_services
+for each row execute function public.test_service_status_reject_link_insert();
+
+set local role service_role;
+do $$
+begin
+  begin
+    perform public.save_service_status_maintenance(
+      '00000000-0000-4000-8000-000000000002',
+      'f1060000-0000-4000-8000-000000000001',
+      null,
+      'Link-Fehler ohne Restdaten',
+      null,
+      timezone('utc', now()) + interval '6 hours',
+      timezone('utc', now()) + interval '7 hours',
+      'scheduled',
+      false,
+      array['f1060000-0000-4000-8000-000000000010']::uuid[]
+    );
+    raise exception 'Forced maintenance link insert failure was accepted';
+  exception when raise_exception then
+    if sqlerrm <> 'service-status-test-link-insert-failure' then
+      raise;
+    end if;
+  end;
+end;
+$$;
+reset role;
+
+do $$
+begin
+  if exists (
+    select 1
+    from public.service_status_maintenances
+    where tenant_id = 'f1060000-0000-4000-8000-000000000001'
+      and title = 'Link-Fehler ohne Restdaten'
+  ) then
+    raise exception 'Failed maintenance link insert left a maintenance row behind';
+  end if;
+  if exists (
+    select 1
+    from public.audit_logs
+    where tenant_id = 'f1060000-0000-4000-8000-000000000001'
+      and action = 'service_status_maintenance.created'
+      and entity_id not in (
+        select id from public.service_status_maintenances
+      )
+  ) then
+    raise exception 'Failed maintenance link insert left an orphan audit row behind';
+  end if;
+end;
+$$;
+drop trigger test_service_status_reject_link_insert
+  on public.service_status_maintenance_services;
+drop function public.test_service_status_reject_link_insert();
+
+create function public.test_service_status_reject_audit_insert()
+returns trigger
+language plpgsql
+as $$
+begin
+  if new.action = 'service_status_maintenance.created'
+    and new.metadata->>'source' = 'service_status' then
+    raise exception 'service-status-test-audit-insert-failure';
+  end if;
+  return new;
+end;
+$$;
+create trigger test_service_status_reject_audit_insert
+before insert on public.audit_logs
+for each row execute function public.test_service_status_reject_audit_insert();
+
+set local role service_role;
+do $$
+begin
+  begin
+    perform public.save_service_status_maintenance(
+      '00000000-0000-4000-8000-000000000002',
+      'f1060000-0000-4000-8000-000000000001',
+      null,
+      'Audit-Fehler ohne Restdaten',
+      null,
+      timezone('utc', now()) + interval '8 hours',
+      timezone('utc', now()) + interval '9 hours',
+      'scheduled',
+      false,
+      array['f1060000-0000-4000-8000-000000000010']::uuid[]
+    );
+    raise exception 'Forced maintenance audit insert failure was accepted';
+  exception when raise_exception then
+    if sqlerrm <> 'service-status-test-audit-insert-failure' then
+      raise;
+    end if;
+  end;
+end;
+$$;
+reset role;
+
+do $$
+begin
+  if exists (
+    select 1
+    from public.service_status_maintenances
+    where tenant_id = 'f1060000-0000-4000-8000-000000000001'
+      and title = 'Audit-Fehler ohne Restdaten'
+  ) or exists (
+    select 1
+    from public.service_status_maintenance_services as link
+    join public.service_status_maintenances as maintenance
+      on maintenance.id = link.maintenance_id
+     and maintenance.tenant_id = link.tenant_id
+    where maintenance.tenant_id = 'f1060000-0000-4000-8000-000000000001'
+      and maintenance.title = 'Audit-Fehler ohne Restdaten'
+  ) then
+    raise exception 'Failed maintenance audit insert left partial maintenance data behind';
+  end if;
+end;
+$$;
+drop trigger test_service_status_reject_audit_insert on public.audit_logs;
+drop function public.test_service_status_reject_audit_insert();
 rollback;
 
 -- Exchange-Inlinebilder bleiben private Ticketanhänge. Die Content-ID ist nur

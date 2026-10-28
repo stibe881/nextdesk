@@ -113,6 +113,9 @@ const expectedFiles = [
   "0109_personal_saved_ticket_views.sql",
   "0110_exchange_mail_channel_soft_delete.sql",
   "0111_ticket_realtime_invalidation.sql",
+  "0112_ticket_attachment_comment_visibility.sql",
+  "0113_service_status_maintenance.sql",
+  "0114_atomic_service_status_maintenance.sql",
 ];
 
 const availableFiles = await readdir(migrationDirectory);

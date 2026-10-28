@@ -122,6 +122,10 @@ import {
   type QuickCreateAction,
 } from "./lib/quick-create-actions";
 import {
+  isServiceStatusAvailable,
+  tenantTicketAccessFromResponse,
+} from "./lib/tenant-ticket-access";
+import {
   canRequesterOpenSection,
   requesterNavigationSections,
 } from "./lib/requester-navigation";
@@ -246,13 +250,6 @@ type BulkStatusOption = {
   isClosed: boolean;
   key: string;
   label: string;
-};
-
-type TenantTicketAccess = {
-  canManageContracts: boolean;
-  canReadReports: boolean;
-  canWorkTickets: boolean;
-  isTenantAdmin: boolean;
 };
 
 type TenantFeatureFlag = {
@@ -510,28 +507,6 @@ function TicketScopeMetricTiles({
       )}
     </section>
   );
-}
-
-function tenantTicketAccessFromResponse(
-  value: unknown,
-): TenantTicketAccess | null {
-  if (!value || typeof value !== "object" || !("data" in value)) {
-    return null;
-  }
-  const data = value.data;
-  if (!data || typeof data !== "object") return null;
-  const parsed = data as Record<string, unknown>;
-  return typeof parsed.canWorkTickets === "boolean" &&
-    typeof parsed.canManageContracts === "boolean" &&
-    typeof parsed.canReadReports === "boolean" &&
-    typeof parsed.isTenantAdmin === "boolean"
-    ? {
-        canWorkTickets: parsed.canWorkTickets,
-        canManageContracts: parsed.canManageContracts,
-        canReadReports: parsed.canReadReports,
-        isTenantAdmin: parsed.isTenantAdmin,
-      }
-    : null;
 }
 
 function tenantFeatureFlagsFromResponse(
@@ -1538,7 +1513,10 @@ function AuthenticatedApp() {
     useState<QuickCreateRequest | null>(null);
   const [canWorkTickets, setCanWorkTickets] = useState(false);
   const [canManageContracts, setCanManageContracts] = useState(false);
+  const [canManageServiceStatus, setCanManageServiceStatus] = useState(false);
   const [canReadReports, setCanReadReports] = useState(false);
+  const [serviceStatusAccessTenantId, setServiceStatusAccessTenantId] =
+    useState<string | null>(null);
   const [ticketAccessLoading, setTicketAccessLoading] =
     useState(isSupabaseConfigured);
   const [tenantFeaturesLoading, setTenantFeaturesLoading] =
@@ -1679,7 +1657,9 @@ function AuthenticatedApp() {
       setOwnerView("console");
       setCanWorkTickets(false);
       setCanManageContracts(false);
+      setCanManageServiceStatus(false);
       setCanReadReports(false);
+      setServiceStatusAccessTenantId(null);
       setTicketAccessLoading(Boolean(nextSession));
       setTenantFeaturesLoading(Boolean(nextSession));
       setIsTenantAdmin(false);
@@ -1881,6 +1861,13 @@ function AuthenticatedApp() {
     isSupabaseConfigured &&
     canReadReports &&
     tenantFeatures["reporting.service"] === true;
+  const serviceStatusAvailable =
+    serviceStatusAccessTenantId === activeTenant?.id &&
+    isServiceStatusAvailable({
+      assetManagementEnabled:
+        isSupabaseConfigured && tenantFeatures["assets.management"] === true,
+      canManageServiceStatus,
+    });
   const workspaceNavigationReady = isWorkspaceNavigationReady({
     activeTenantAvailable: activeTenant !== null,
     isSupabaseConfigured,
@@ -2061,13 +2048,17 @@ function AuthenticatedApp() {
     if (!supabase || !session || !activeTenant) {
       setCanWorkTickets(false);
       setCanManageContracts(false);
+      setCanManageServiceStatus(false);
       setCanReadReports(false);
+      setServiceStatusAccessTenantId(null);
       setIsTenantAdmin(false);
       setTicketAccessLoading(false);
       return;
     }
     let mounted = true;
     setTicketAccessLoading(true);
+    setCanManageServiceStatus(false);
+    setServiceStatusAccessTenantId(null);
     void supabase.functions
       .invoke("tenant-users", {
         body: { type: "getMyTicketAccess", tenantId: activeTenant.id },
@@ -2079,14 +2070,18 @@ function AuthenticatedApp() {
         if (!mounted) return;
         setCanWorkTickets(access.canWorkTickets);
         setCanManageContracts(access.canManageContracts);
+        setCanManageServiceStatus(access.canManageServiceStatus);
         setCanReadReports(access.canReadReports);
+        setServiceStatusAccessTenantId(activeTenant.id);
         setIsTenantAdmin(access.isTenantAdmin);
       })
       .catch(() => {
         if (!mounted) return;
         setCanWorkTickets(false);
         setCanManageContracts(false);
+        setCanManageServiceStatus(false);
         setCanReadReports(false);
+        setServiceStatusAccessTenantId(null);
         setIsTenantAdmin(false);
       })
       .finally(() => {
@@ -2265,6 +2260,8 @@ function AuthenticatedApp() {
     const restrictedWorkspaceSections: Section[] = [];
     if (contractsAvailable) restrictedWorkspaceSections.push("Verträge");
     if (reportsAvailable) restrictedWorkspaceSections.push("Berichte");
+    if (serviceStatusAvailable)
+      restrictedWorkspaceSections.push("Systemstatus");
     if (restrictedWorkspaceSections.length > 0) {
       const fallbackSection = restrictedWorkspaceSections[0];
       if (fallbackSection && !restrictedWorkspaceSections.includes(section)) {
@@ -2281,6 +2278,7 @@ function AuthenticatedApp() {
     reportsAvailable,
     requesterPortalEnabled,
     section,
+    serviceStatusAvailable,
     tenantFeaturesLoading,
     ticketAccessLoading,
   ]);
@@ -2869,9 +2867,9 @@ function AuthenticatedApp() {
       );
     }
     if (item.label === "Mein Portal") return requesterPortalEnabled;
+    if (item.label === "Systemstatus") return serviceStatusAvailable;
     if (
       item.label === "Services" ||
-      item.label === "Systemstatus" ||
       item.label === "Assets" ||
       item.label === "Fälle"
     ) {
@@ -2884,7 +2882,10 @@ function AuthenticatedApp() {
   });
   const requesterSections = requesterNavigationSections(featureSections);
   const restrictedWorkSections = featureSections.filter(
-    (item) => item.label === "Verträge" || item.label === "Berichte",
+    (item) =>
+      item.label === "Verträge" ||
+      item.label === "Berichte" ||
+      item.label === "Systemstatus",
   );
   const workSections = canWorkTickets
     ? featureSections
@@ -2908,10 +2909,13 @@ function AuthenticatedApp() {
     const workplaceUnavailable =
       section === "Arbeitsplatz" &&
       !isWorkplaceAvailable(agentWorkbenchEnabled, experienceWorkspaceEnabled);
+    const serviceStatusUnavailable =
+      section === "Systemstatus" && !serviceStatusAvailable;
     if (
       ((workplaceUnavailable || featureKey) &&
         isSupabaseConfigured &&
         (workplaceUnavailable || tenantFeatures[featureKey!] !== true)) ||
+      serviceStatusUnavailable ||
       (section === "Verträge" && !contractsAvailable) ||
       (section === "Berichte" && !reportsAvailable)
     ) {
@@ -2923,6 +2927,7 @@ function AuthenticatedApp() {
     contractsAvailable,
     reportsAvailable,
     section,
+    serviceStatusAvailable,
     tenantFeatures,
     tenantFeaturesLoading,
     ticketAccessLoading,
@@ -3902,7 +3907,7 @@ function AuthenticatedApp() {
           <ServiceAssets fixedTab="services" tenantId={activeTenant.id} />
         ) : section === "Systemstatus" &&
           activeTenant &&
-          isFeatureEnabled("assets.management") ? (
+          serviceStatusAvailable ? (
           <ServiceStatus tenantId={activeTenant.id} />
         ) : section === "Fälle" &&
           activeTenant &&

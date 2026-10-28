@@ -1,10 +1,13 @@
 import { type SupabaseContext, withSupabase } from "@supabase/server";
-import { resolveTenantFeatureStates } from "../_shared/tenant-features.ts";
 
 const ALLOWED_ORIGIN = "https://app.nextdesk.ch";
 const MAX_REQUEST_BYTES = 32 * 1024;
 const MAX_SERVICES = 500;
 const MAX_EVENTS = 15_000;
+const MAX_MAINTENANCES = 500;
+const MAX_MAINTENANCE_SERVICES = 100;
+const MAX_MAINTENANCE_SERVICE_LINKS = MAX_MAINTENANCES *
+  MAX_MAINTENANCE_SERVICES;
 const STATUS_VALUES = [
   "operational",
   "degraded",
@@ -12,19 +15,39 @@ const STATUS_VALUES = [
   "major_outage",
   "maintenance",
 ] as const;
+const MAINTENANCE_STATES = [
+  "scheduled",
+  "active",
+  "completed",
+  "cancelled",
+] as const;
 
 type ServiceStatus = (typeof STATUS_VALUES)[number];
+type MaintenanceState = (typeof MAINTENANCE_STATES)[number];
 type CallerClient = SupabaseContext["supabase"];
 type AdminClient = SupabaseContext["supabaseAdmin"];
 type Action =
   | { type: "getStatusOverview"; tenantId: string }
   | {
-      type: "saveStatusPage";
-      tenantId: string;
-      title: string;
-      publicEnabled: boolean;
-    }
-  | { type: "rotateStatusPageId"; tenantId: string };
+    type: "saveStatusPage";
+    tenantId: string;
+    title: string;
+    publicEnabled: boolean;
+  }
+  | { type: "rotateStatusPageId"; tenantId: string }
+  | {
+    type: "manageMaintenance";
+    tenantId: string;
+    operation: "create" | "update";
+    maintenanceId?: string;
+    title: string;
+    description: string | null;
+    startsAt: string;
+    endsAt: string;
+    state: MaintenanceState;
+    publicEnabled: boolean;
+    serviceIds: string[];
+  };
 
 type StatusService = {
   id: string;
@@ -38,6 +61,18 @@ type StatusEvent = {
   serviceId: string;
   status: ServiceStatus;
   changedAt: string;
+};
+
+type StatusMaintenance = {
+  id: string;
+  title: string;
+  description: string | null;
+  startsAt: string;
+  endsAt: string;
+  state: MaintenanceState;
+  publicEnabled: boolean;
+  serviceIds: string[];
+  updatedAt: string;
 };
 
 class HttpError extends Error {
@@ -57,15 +92,23 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function isUuid(value: unknown): value is string {
   return (
     typeof value === "string" &&
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
-      value,
-    )
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+      .test(
+        value,
+      )
   );
 }
 
 function isStatus(value: unknown): value is ServiceStatus {
   return (
     typeof value === "string" && STATUS_VALUES.includes(value as ServiceStatus)
+  );
+}
+
+function isMaintenanceState(value: unknown): value is MaintenanceState {
+  return (
+    typeof value === "string" &&
+    MAINTENANCE_STATES.includes(value as MaintenanceState)
   );
 }
 
@@ -77,6 +120,38 @@ function isSafeText(value: unknown, min: number, max: number): value is string {
     [...value.trim()].length >= min &&
     [...value.trim()].length <= max
   );
+}
+
+function parseIsoTimestamp(value: unknown): string | null {
+  if (
+    typeof value !== "string" ||
+    value.length > 64 ||
+    !value.isWellFormed() ||
+    !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/i
+      .test(
+        value,
+      )
+  ) {
+    return null;
+  }
+  const epoch = Date.parse(value);
+  return Number.isFinite(epoch) ? new Date(epoch).toISOString() : null;
+}
+
+function parseServiceIds(value: unknown): string[] | null {
+  if (
+    !Array.isArray(value) ||
+    value.length < 1 ||
+    value.length > MAX_MAINTENANCE_SERVICES
+  ) {
+    return null;
+  }
+  const ids = value.map((serviceId) =>
+    isUuid(serviceId) ? serviceId.toLowerCase() : null
+  );
+  if (ids.some((serviceId) => serviceId === null)) return null;
+  const normalized = ids as string[];
+  return new Set(normalized).size === normalized.length ? normalized : null;
 }
 
 function hasOnlyKeys(
@@ -119,7 +194,64 @@ function parseAction(value: unknown): Action | null {
       publicEnabled: value.publicEnabled,
     };
   }
-  return null;
+  if (
+    value.type !== "manageMaintenance" ||
+    (value.operation !== "create" && value.operation !== "update")
+  ) {
+    return null;
+  }
+  const allowedKeys = [
+    "type",
+    "tenantId",
+    "operation",
+    "title",
+    "description",
+    "startsAt",
+    "endsAt",
+    "state",
+    "publicEnabled",
+    "serviceIds",
+  ];
+  if (value.operation === "update") allowedKeys.push("maintenanceId");
+  if (!hasOnlyKeys(value, allowedKeys)) return null;
+  if (
+    !isSafeText(value.title, 2, 180) ||
+    (value.description !== null && !isSafeText(value.description, 0, 2_000)) ||
+    !isMaintenanceState(value.state) ||
+    typeof value.publicEnabled !== "boolean"
+  ) {
+    return null;
+  }
+  const startsAt = parseIsoTimestamp(value.startsAt);
+  const endsAt = parseIsoTimestamp(value.endsAt);
+  const serviceIds = parseServiceIds(value.serviceIds);
+  if (
+    !startsAt ||
+    !endsAt ||
+    Date.parse(endsAt) <= Date.parse(startsAt) ||
+    !serviceIds
+  ) {
+    return null;
+  }
+  const maintenanceId = value.operation === "update"
+    ? value.maintenanceId
+    : undefined;
+  if (value.operation === "update" && !isUuid(maintenanceId)) return null;
+  return {
+    type: value.type,
+    tenantId,
+    operation: value.operation,
+    ...(typeof maintenanceId === "string"
+      ? { maintenanceId: maintenanceId.toLowerCase() }
+      : {}),
+    title: value.title.trim(),
+    description: value.description === null ? null : value.description.trim(),
+    startsAt,
+    endsAt,
+    state: value.state,
+    publicEnabled: value.publicEnabled,
+    serviceIds,
+  };
 }
 
 function corsHeaders(request: Request): Headers {
@@ -236,20 +368,22 @@ async function requireActiveMembership(
 }
 
 async function requireAssetFeature(
-  admin: AdminClient,
+  client: CallerClient,
   tenantId: string,
 ): Promise<void> {
-  const states = await resolveTenantFeatureStates(admin, tenantId, [
-    "assets.management",
-  ]);
-  if (!states) {
+  // The SECURITY DEFINER gate exposes only an effective boolean to an active
+  // member. This keeps all user-bound checks ahead of service-role data access.
+  const result = await client.rpc("is_asset_management_client_enabled", {
+    p_tenant_id: tenantId,
+  });
+  if (result.error || typeof result.data !== "boolean") {
     throw new HttpError(
       503,
       "tenant_feature_lookup_failed",
       "Die Funktionsberechtigung konnte nicht geprüft werden.",
     );
   }
-  if (states["assets.management"] !== true) {
+  if (result.data !== true) {
     throw new HttpError(
       403,
       "asset_feature_disabled",
@@ -270,7 +404,7 @@ function parseService(value: unknown): StatusService | null {
     return null;
   }
   return {
-    id: value.id,
+    id: value.id.toLowerCase(),
     name: value.name.trim(),
     status: value.status,
     statusPublic: value.status_public,
@@ -285,17 +419,150 @@ function parseEvent(
   if (!isRecord(value)) return null;
   if (
     !isUuid(value.service_id) ||
-    !serviceIds.has(value.service_id) ||
+    !serviceIds.has(value.service_id.toLowerCase()) ||
     !isStatus(value.status) ||
     typeof value.changed_at !== "string"
   ) {
     return null;
   }
   return {
-    serviceId: value.service_id,
+    serviceId: value.service_id.toLowerCase(),
     status: value.status,
     changedAt: value.changed_at,
   };
+}
+
+function parseMaintenance(
+  value: unknown,
+): Omit<StatusMaintenance, "serviceIds"> | null {
+  if (!isRecord(value)) return null;
+  const startsAt = parseIsoTimestamp(value.starts_at);
+  const endsAt = parseIsoTimestamp(value.ends_at);
+  if (
+    !isUuid(value.id) ||
+    !isSafeText(value.title, 2, 180) ||
+    (value.description !== null && !isSafeText(value.description, 0, 2_000)) ||
+    !startsAt ||
+    !endsAt ||
+    Date.parse(endsAt) <= Date.parse(startsAt) ||
+    !isMaintenanceState(value.state) ||
+    typeof value.public_enabled !== "boolean" ||
+    typeof value.updated_at !== "string"
+  ) {
+    return null;
+  }
+  return {
+    id: value.id.toLowerCase(),
+    title: value.title.trim(),
+    description: value.description === null ? null : value.description.trim(),
+    startsAt,
+    endsAt,
+    state: value.state,
+    publicEnabled: value.public_enabled,
+    updatedAt: value.updated_at,
+  };
+}
+
+async function readMaintenances(
+  admin: AdminClient,
+  tenantId: string,
+): Promise<StatusMaintenance[]> {
+  const maintenanceResult = await admin
+    .from("service_status_maintenances")
+    .select(
+      "id, title, description, starts_at, ends_at, state, public_enabled, updated_at",
+    )
+    .eq("tenant_id", tenantId)
+    .order("starts_at", { ascending: false })
+    .order("id")
+    .limit(MAX_MAINTENANCES + 1);
+  if (maintenanceResult.error) {
+    throw new HttpError(
+      503,
+      "maintenance_data_unavailable",
+      "Die Wartungsdaten konnten nicht geladen werden.",
+    );
+  }
+  if ((maintenanceResult.data?.length ?? 0) > MAX_MAINTENANCES) {
+    throw new HttpError(
+      413,
+      "maintenance_limit_exceeded",
+      "Es sind zu viele Wartungsfenster für eine einzelne Statusansicht vorhanden.",
+    );
+  }
+  const maintenances = (maintenanceResult.data ?? []).map(parseMaintenance);
+  if (maintenances.some((maintenance) => maintenance === null)) {
+    throw new HttpError(
+      503,
+      "maintenance_data_invalid",
+      "Die Wartungsdaten konnten nicht geladen werden.",
+    );
+  }
+  const validMaintenances = maintenances as Array<
+    Omit<StatusMaintenance, "serviceIds">
+  >;
+  if (validMaintenances.length === 0) return [];
+
+  const maintenanceIds = validMaintenances.map((maintenance) => maintenance.id);
+  const maintenanceIdSet = new Set(maintenanceIds);
+  const servicesResult = await admin
+    .from("service_status_maintenance_services")
+    .select("maintenance_id, service_id")
+    .eq("tenant_id", tenantId)
+    .in("maintenance_id", maintenanceIds)
+    .order("maintenance_id")
+    .order("service_id")
+    .limit(MAX_MAINTENANCE_SERVICE_LINKS + 1);
+  if (servicesResult.error) {
+    throw new HttpError(
+      503,
+      "maintenance_data_unavailable",
+      "Die Wartungsdaten konnten nicht geladen werden.",
+    );
+  }
+  if ((servicesResult.data?.length ?? 0) > MAX_MAINTENANCE_SERVICE_LINKS) {
+    throw new HttpError(
+      413,
+      "maintenance_service_limit_exceeded",
+      "Die Servicezuordnungen sind für eine einzelne Statusansicht zu umfangreich.",
+    );
+  }
+
+  const serviceIdsByMaintenance = new Map<string, string[]>();
+  for (const link of servicesResult.data ?? []) {
+    if (
+      !isRecord(link) ||
+      !isUuid(link.maintenance_id) ||
+      !maintenanceIdSet.has(link.maintenance_id.toLowerCase()) ||
+      !isUuid(link.service_id)
+    ) {
+      throw new HttpError(
+        503,
+        "maintenance_data_invalid",
+        "Die Wartungsdaten konnten nicht geladen werden.",
+      );
+    }
+    const maintenanceId = link.maintenance_id.toLowerCase();
+    const links = serviceIdsByMaintenance.get(maintenanceId) ?? [];
+    links.push(link.service_id.toLowerCase());
+    serviceIdsByMaintenance.set(maintenanceId, links);
+  }
+
+  return validMaintenances.map((maintenance) => {
+    const serviceIds = serviceIdsByMaintenance.get(maintenance.id) ?? [];
+    if (
+      serviceIds.length < 1 ||
+      serviceIds.length > MAX_MAINTENANCE_SERVICES ||
+      new Set(serviceIds).size !== serviceIds.length
+    ) {
+      throw new HttpError(
+        503,
+        "maintenance_data_invalid",
+        "Die Wartungsdaten konnten nicht geladen werden.",
+      );
+    }
+    return { ...maintenance, serviceIds };
+  });
 }
 
 async function readOverview(
@@ -310,29 +577,32 @@ async function readOverview(
   };
   services: StatusService[];
   events: StatusEvent[];
+  maintenances: StatusMaintenance[];
 }> {
   const cutoff = new Date(Date.now() - 91 * 24 * 60 * 60 * 1000).toISOString();
-  const [pageResult, servicesResult, eventsResult] = await Promise.all([
-    admin
-      .from("service_status_pages")
-      .select("public_id, title, public_enabled, updated_at")
-      .eq("tenant_id", tenantId)
-      .maybeSingle(),
-    admin
-      .from("services")
-      .select("id, name, status, status_public, updated_at")
-      .eq("tenant_id", tenantId)
-      .eq("active", true)
-      .order("name")
-      .limit(MAX_SERVICES + 1),
-    admin
-      .from("service_status_events")
-      .select("service_id, status, changed_at")
-      .eq("tenant_id", tenantId)
-      .gte("changed_at", cutoff)
-      .order("changed_at", { ascending: true })
-      .limit(MAX_EVENTS + 1),
-  ]);
+  const [pageResult, servicesResult, eventsResult, maintenances] = await Promise
+    .all([
+      admin
+        .from("service_status_pages")
+        .select("public_id, title, public_enabled, updated_at")
+        .eq("tenant_id", tenantId)
+        .maybeSingle(),
+      admin
+        .from("services")
+        .select("id, name, status, status_public, updated_at")
+        .eq("tenant_id", tenantId)
+        .eq("active", true)
+        .order("name")
+        .limit(MAX_SERVICES + 1),
+      admin
+        .from("service_status_events")
+        .select("service_id, status, changed_at")
+        .eq("tenant_id", tenantId)
+        .gte("changed_at", cutoff)
+        .order("changed_at", { ascending: true })
+        .limit(MAX_EVENTS + 1),
+      readMaintenances(admin, tenantId),
+    ]);
   if (pageResult.error || servicesResult.error || eventsResult.error) {
     throw new HttpError(
       503,
@@ -366,14 +636,13 @@ async function readOverview(
     );
   }
   const serviceIds = new Set(services.map((service) => service.id));
-  const baselineResult =
-    services.length === 0
-      ? { data: [], error: null }
-      : await admin.rpc("service_status_history_baselines", {
-          p_tenant_id: tenantId,
-          p_service_ids: services.map((service) => service.id),
-          p_before: cutoff,
-        });
+  const baselineResult = services.length === 0
+    ? { data: [], error: null }
+    : await admin.rpc("service_status_history_baselines", {
+      p_tenant_id: tenantId,
+      p_service_ids: services.map((service) => service.id),
+      p_before: cutoff,
+    });
   if (baselineResult.error) {
     throw new HttpError(
       503,
@@ -414,10 +683,11 @@ async function readOverview(
     },
     services,
     events,
+    maintenances,
   };
 }
 
-async function writeAudit(
+async function writePageAudit(
   admin: AdminClient,
   tenantId: string,
   actorId: string,
@@ -462,7 +732,7 @@ async function savePage(
       "Die Veröffentlichungseinstellungen konnten nicht gespeichert werden.",
     );
   }
-  await writeAudit(
+  await writePageAudit(
     admin,
     action.tenantId,
     actorId,
@@ -490,7 +760,72 @@ async function rotatePage(
       "Die öffentliche Adresse konnte nicht ersetzt werden.",
     );
   }
-  await writeAudit(admin, tenantId, actorId, "service_status_page.rotated");
+  await writePageAudit(
+    admin,
+    tenantId,
+    actorId,
+    "service_status_page.rotated",
+  );
+}
+
+async function manageMaintenance(
+  admin: AdminClient,
+  actorId: string,
+  action: Extract<Action, { type: "manageMaintenance" }>,
+): Promise<void> {
+  const result = await admin.rpc("save_service_status_maintenance", {
+    p_actor_id: actorId,
+    p_tenant_id: action.tenantId,
+    p_maintenance_id: action.operation === "update" ? action.maintenanceId! : null,
+    p_title: action.title,
+    p_description: action.description,
+    p_starts_at: action.startsAt,
+    p_ends_at: action.endsAt,
+    p_state: action.state,
+    p_public_enabled: action.publicEnabled,
+    p_service_ids: action.serviceIds,
+  });
+  if (result.error) {
+    // Do not forward database errors. The RPC validates and mutates as one
+    // transaction, so every unknown failure must remain fail-closed.
+    if (result.error.code === "P0002") {
+      throw new HttpError(
+        404,
+        "maintenance_not_found",
+        "Das Wartungsfenster ist nicht verfügbar.",
+      );
+    }
+    if (result.error.code === "42501") {
+      throw new HttpError(
+        403,
+        "permission_denied",
+        "Für diese Aktion fehlt die Berechtigung.",
+      );
+    }
+    if (
+      ["22023", "23502", "23503", "23505", "23514"].includes(
+        result.error.code,
+      )
+    ) {
+      throw new HttpError(
+        422,
+        "maintenance_validation_failed",
+        "Das Wartungsfenster oder die gewählten Services sind nicht verfügbar.",
+      );
+    }
+    throw new HttpError(
+      503,
+      "maintenance_write_failed",
+      "Das Wartungsfenster konnte nicht gespeichert werden.",
+    );
+  }
+  if (!isUuid(result.data)) {
+    throw new HttpError(
+      503,
+      "maintenance_write_failed",
+      "Das Wartungsfenster konnte nicht gespeichert werden.",
+    );
+  }
 }
 
 const handler = withSupabase(
@@ -505,8 +840,10 @@ const handler = withSupabase(
       );
     }
     const action = await parseBoundedAction(request);
+    // Keep every user-bound authorization check ahead of the first service-role
+    // read or write. The feature RPC is intentionally caller-scoped.
     await requireActiveMembership(context.supabase, action.tenantId);
-    await requireAssetFeature(context.supabaseAdmin, action.tenantId);
+    await requireAssetFeature(context.supabase, action.tenantId);
     await requirePermission(context.supabase, action.tenantId, "asset.manage");
 
     if (action.type === "getStatusOverview") {
@@ -530,18 +867,34 @@ const handler = withSupabase(
       });
     }
 
-    await requirePermission(
-      context.supabase,
-      action.tenantId,
-      "tenant.settings.manage",
-    );
-    if (action.type === "saveStatusPage") {
-      await savePage(context.supabaseAdmin, actorId, action);
+    if (action.type === "manageMaintenance") {
+      await manageMaintenance(
+        context.supabaseAdmin,
+        actorId,
+        action,
+      );
     } else {
-      await rotatePage(context.supabaseAdmin, actorId, action.tenantId);
+      // Public page settings retain their existing, stricter publication gate.
+      await requirePermission(
+        context.supabase,
+        action.tenantId,
+        "tenant.settings.manage",
+      );
+      if (action.type === "saveStatusPage") {
+        await savePage(context.supabaseAdmin, actorId, action);
+      } else {
+        await rotatePage(context.supabaseAdmin, actorId, action.tenantId);
+      }
     }
     const overview = await readOverview(context.supabaseAdmin, action.tenantId);
-    return json(request, { data: { ...overview, canManagePublication: true } });
+    const canManagePublication =
+      action.type !== "manageMaintenance" || action.publicEnabled ? true : (
+        await context.supabase.rpc("has_tenant_permission", {
+          p_tenant_id: action.tenantId,
+          p_permission_code: "tenant.settings.manage",
+        })
+      ).data === true;
+    return json(request, { data: { ...overview, canManagePublication } });
   },
 );
 
@@ -607,13 +960,13 @@ export default {
             result.status === 401
               ? "authentication_required"
               : result.status === 403
-                ? "permission_denied"
-                : "authentication_unavailable",
+              ? "permission_denied"
+              : "authentication_unavailable",
             result.status === 401
               ? "Eine gültige Benutzeranmeldung ist erforderlich."
               : result.status === 403
-                ? "Für diese Aktion fehlt die Berechtigung."
-                : "Die Anmeldung konnte derzeit nicht geprüft werden.",
+              ? "Für diese Aktion fehlt die Berechtigung."
+              : "Die Anmeldung konnte derzeit nicht geprüft werden.",
           ),
         );
       }
@@ -624,13 +977,11 @@ export default {
     } catch (error) {
       return failure(
         request,
-        error instanceof HttpError
-          ? error
-          : new HttpError(
-              500,
-              "operation_failed",
-              "Die Statusaktion konnte nicht abgeschlossen werden.",
-            ),
+        error instanceof HttpError ? error : new HttpError(
+          500,
+          "operation_failed",
+          "Die Statusaktion konnte nicht abgeschlossen werden.",
+        ),
       );
     }
   },

@@ -4,6 +4,11 @@ import { resolveTenantFeatureStates } from "../_shared/tenant-features.ts";
 const ALLOWED_ORIGIN = "https://app.nextdesk.ch";
 const MAX_SERVICES = 500;
 const MAX_EVENTS = 15_000;
+const MAX_PUBLIC_MAINTENANCES = 100;
+const MAX_MAINTENANCE_SERVICES = 100;
+const MAX_PUBLIC_MAINTENANCE_LINKS = MAX_PUBLIC_MAINTENANCES *
+  MAX_MAINTENANCE_SERVICES;
+const MAINTENANCE_SERVICE_LOOKUP_PAGE_SIZE = 100;
 const STATUS_VALUES = [
   "operational",
   "degraded",
@@ -11,18 +16,29 @@ const STATUS_VALUES = [
   "major_outage",
   "maintenance",
 ] as const;
+const PUBLIC_MAINTENANCE_STATES = ["scheduled", "active"] as const;
 
 type ServiceStatus = (typeof STATUS_VALUES)[number];
+type PublicMaintenanceState = (typeof PUBLIC_MAINTENANCE_STATES)[number];
 type PublicService = {
   name: string;
   status: ServiceStatus;
   updatedAt: string;
   history: Array<{ changedAt: string; status: ServiceStatus }>;
 };
+type PublicMaintenance = {
+  title: string;
+  description: string | null;
+  startsAt: string;
+  endsAt: string;
+  state: PublicMaintenanceState;
+  serviceNames: string[];
+};
 type PublicStatusPayload = {
   accentColor: string | null;
   generatedAt: string;
   logoUrl: string | null;
+  maintenances: PublicMaintenance[];
   overallStatus: ServiceStatus;
   services: PublicService[];
   title: string;
@@ -35,15 +51,25 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function isUuid(value: unknown): value is string {
   return (
     typeof value === "string" &&
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
-      value,
-    )
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+      .test(
+        value,
+      )
   );
 }
 
 function isStatus(value: unknown): value is ServiceStatus {
   return (
     typeof value === "string" && STATUS_VALUES.includes(value as ServiceStatus)
+  );
+}
+
+function isPublicMaintenanceState(
+  value: unknown,
+): value is PublicMaintenanceState {
+  return (
+    typeof value === "string" &&
+    PUBLIC_MAINTENANCE_STATES.includes(value as PublicMaintenanceState)
   );
 }
 
@@ -59,6 +85,22 @@ function safeText(value: unknown, min: number, max: number): string | null {
   return [...trimmed].length >= min && [...trimmed].length <= max
     ? trimmed
     : null;
+}
+
+function safeIsoTimestamp(value: unknown): string | null {
+  if (
+    typeof value !== "string" ||
+    value.length > 64 ||
+    !value.isWellFormed() ||
+    !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/i
+      .test(
+        value,
+      )
+  ) {
+    return null;
+  }
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : null;
 }
 
 function safeHttpsUrl(value: unknown): string | null {
@@ -123,12 +165,32 @@ function severity(status: ServiceStatus): number {
   }[status];
 }
 
-function overallStatus(services: readonly PublicService[]): ServiceStatus {
-  return services.reduce<ServiceStatus>(
+function hasActivePublicMaintenance(
+  maintenances: readonly PublicMaintenance[],
+  now: number,
+): boolean {
+  return maintenances.some(
+    (maintenance) =>
+      maintenance.state === "active" &&
+      Date.parse(maintenance.startsAt) <= now &&
+      Date.parse(maintenance.endsAt) > now,
+  );
+}
+
+function overallStatus(
+  services: readonly PublicService[],
+  maintenances: readonly PublicMaintenance[],
+  now: number,
+): ServiceStatus {
+  const serviceStatus = services.reduce<ServiceStatus>(
     (current, service) =>
       severity(service.status) > severity(current) ? service.status : current,
     "operational",
   );
+  return hasActivePublicMaintenance(maintenances, now) &&
+      severity("maintenance") > severity(serviceStatus)
+    ? "maintenance"
+    : serviceStatus;
 }
 
 function badgeLabel(status: ServiceStatus): string {
@@ -161,7 +223,10 @@ function badgeResponse(
   const label = badgeLabel(payload.overallStatus);
   const colours = badgeColours(payload.overallStatus);
   const width = Math.max(235, 92 + label.length * 7);
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="48" viewBox="0 0 ${width} 48" role="img" aria-labelledby="title"><title id="title">Systemstatus: ${label}</title><rect width="${width}" height="48" rx="5" fill="#174260"/><rect x="10" y="8" width="${width - 20}" height="32" rx="4" fill="${colours.fill}"/><circle cx="28" cy="24" r="9" fill="${colours.foreground}" opacity=".96"/><path d="m23.5 24 3 3.2 5.5-6" fill="none" stroke="${colours.fill}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><text x="45" y="29" fill="${colours.foreground}" font-family="Arial,Helvetica,sans-serif" font-size="14" font-weight="700">${label}</text></svg>`;
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="48" viewBox="0 0 ${width} 48" role="img" aria-labelledby="title"><title id="title">Systemstatus: ${label}</title><rect width="${width}" height="48" rx="5" fill="#174260"/><rect x="10" y="8" width="${
+      width - 20
+    }" height="32" rx="4" fill="${colours.fill}"/><circle cx="28" cy="24" r="9" fill="${colours.foreground}" opacity=".96"/><path d="m23.5 24 3 3.2 5.5-6" fill="none" stroke="${colours.fill}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><text x="45" y="29" fill="${colours.foreground}" font-family="Arial,Helvetica,sans-serif" font-size="14" font-weight="700">${label}</text></svg>`;
   const headers = corsHeaders(request, { badge: true });
   headers.set("Content-Type", "image/svg+xml; charset=utf-8");
   headers.set(
@@ -179,6 +244,168 @@ function unavailableBadge(request: Request): Response {
   const svg =
     '<svg xmlns="http://www.w3.org/2000/svg" width="245" height="48" viewBox="0 0 245 48" role="img" aria-label="Systemstatus nicht verfügbar"><rect width="245" height="48" rx="5" fill="#475569"/><text x="16" y="29" fill="#ffffff" font-family="Arial,Helvetica,sans-serif" font-size="14" font-weight="700">Systemstatus nicht verfügbar</text></svg>';
   return new Response(svg, { status: 404, headers });
+}
+
+async function readPublicMaintenances(
+  admin: any,
+  tenantId: string,
+  now: string,
+): Promise<PublicMaintenance[]> {
+  const maintenanceResult = await admin
+    .from("service_status_maintenances")
+    .select("id, title, description, starts_at, ends_at, state")
+    .eq("tenant_id", tenantId)
+    .eq("public_enabled", true)
+    .in("state", [...PUBLIC_MAINTENANCE_STATES])
+    .gte("ends_at", now)
+    .order("starts_at")
+    .order("id")
+    .limit(MAX_PUBLIC_MAINTENANCES + 1);
+  if (maintenanceResult.error) throw new Error("maintenance_data_failed");
+  if ((maintenanceResult.data?.length ?? 0) > MAX_PUBLIC_MAINTENANCES) {
+    throw new Error("maintenance_limit_exceeded");
+  }
+
+  const internalMaintenances = (maintenanceResult.data ?? []).map(
+    (maintenance: unknown) => {
+      if (!isRecord(maintenance)) return null;
+      const title = safeText(maintenance.title, 2, 180);
+      const description = maintenance.description === null
+        ? null
+        : safeText(maintenance.description, 0, 2_000);
+      const startsAt = safeIsoTimestamp(maintenance.starts_at);
+      const endsAt = safeIsoTimestamp(maintenance.ends_at);
+      if (
+        !isUuid(maintenance.id) ||
+        !title ||
+        description === null && maintenance.description !== null ||
+        !startsAt ||
+        !endsAt ||
+        Date.parse(endsAt) <= Date.parse(startsAt) ||
+        !isPublicMaintenanceState(maintenance.state)
+      ) {
+        return null;
+      }
+      return {
+        id: maintenance.id.toLowerCase(),
+        title,
+        description,
+        startsAt,
+        endsAt,
+        state: maintenance.state,
+      };
+    },
+  );
+  if (
+    internalMaintenances.some((maintenance: unknown) => maintenance === null)
+  ) {
+    throw new Error("maintenance_data_invalid");
+  }
+  const maintenances = internalMaintenances as Array<{
+    id: string;
+    title: string;
+    description: string | null;
+    startsAt: string;
+    endsAt: string;
+    state: PublicMaintenanceState;
+  }>;
+  if (maintenances.length === 0) return [];
+
+  const maintenanceIds = maintenances.map((maintenance) => maintenance.id);
+  const maintenanceIdSet = new Set(maintenanceIds);
+  const linksResult = await admin
+    .from("service_status_maintenance_services")
+    .select("maintenance_id, service_id")
+    .eq("tenant_id", tenantId)
+    .in("maintenance_id", maintenanceIds)
+    .order("maintenance_id")
+    .order("service_id")
+    .limit(MAX_PUBLIC_MAINTENANCE_LINKS + 1);
+  if (linksResult.error) throw new Error("maintenance_links_failed");
+  if ((linksResult.data?.length ?? 0) > MAX_PUBLIC_MAINTENANCE_LINKS) {
+    throw new Error("maintenance_links_limit_exceeded");
+  }
+
+  const serviceIdsByMaintenance = new Map<string, string[]>();
+  const serviceIdSet = new Set<string>();
+  for (const link of linksResult.data ?? []) {
+    if (
+      !isRecord(link) ||
+      !isUuid(link.maintenance_id) ||
+      !maintenanceIdSet.has(link.maintenance_id.toLowerCase()) ||
+      !isUuid(link.service_id)
+    ) {
+      throw new Error("maintenance_links_invalid");
+    }
+    const maintenanceId = link.maintenance_id.toLowerCase();
+    const serviceId = link.service_id.toLowerCase();
+    const serviceIds = serviceIdsByMaintenance.get(maintenanceId) ?? [];
+    serviceIds.push(serviceId);
+    serviceIdsByMaintenance.set(maintenanceId, serviceIds);
+    serviceIdSet.add(serviceId);
+  }
+
+  const publicServiceNames = new Map<string, string>();
+  const serviceIds = [...serviceIdSet];
+  for (
+    let index = 0;
+    index < serviceIds.length;
+    index += MAINTENANCE_SERVICE_LOOKUP_PAGE_SIZE
+  ) {
+    const result = await admin
+      .from("services")
+      .select("id, name")
+      .eq("tenant_id", tenantId)
+      .eq("active", true)
+      .eq("status_public", true)
+      .in(
+        "id",
+        serviceIds.slice(
+          index,
+          index + MAINTENANCE_SERVICE_LOOKUP_PAGE_SIZE,
+        ),
+      )
+      .limit(MAINTENANCE_SERVICE_LOOKUP_PAGE_SIZE + 1);
+    if (result.error) throw new Error("maintenance_services_failed");
+    if ((result.data?.length ?? 0) > MAINTENANCE_SERVICE_LOOKUP_PAGE_SIZE) {
+      throw new Error("maintenance_services_limit_exceeded");
+    }
+    for (const service of result.data ?? []) {
+      const name = isRecord(service) ? safeText(service.name, 1, 240) : null;
+      if (!isRecord(service) || !isUuid(service.id) || !name) {
+        throw new Error("maintenance_service_data_invalid");
+      }
+      publicServiceNames.set(service.id.toLowerCase(), name);
+    }
+  }
+
+  // A stale publication flag must never turn a formerly public service into an
+  // indirect disclosure through its maintenance window. Hide the whole window
+  // unless every selected service is still active and explicitly public.
+  return maintenances.flatMap((maintenance) => {
+    const linkedIds = serviceIdsByMaintenance.get(maintenance.id) ?? [];
+    if (
+      linkedIds.length < 1 ||
+      linkedIds.length > MAX_MAINTENANCE_SERVICES ||
+      new Set(linkedIds).size !== linkedIds.length ||
+      linkedIds.some((serviceId) => !publicServiceNames.has(serviceId))
+    ) {
+      return [];
+    }
+    const serviceNames = linkedIds
+      .map((serviceId) => publicServiceNames.get(serviceId)!)
+      .sort((left, right) => left.localeCompare(right, "de-CH"));
+    return [
+      {
+        title: maintenance.title,
+        description: maintenance.description,
+        startsAt: maintenance.startsAt,
+        endsAt: maintenance.endsAt,
+        state: maintenance.state,
+        serviceNames,
+      },
+    ];
+  });
 }
 
 async function readPublicStatus(
@@ -204,29 +431,34 @@ async function readPublicStatus(
   if (!featureStates) throw new Error("feature_lookup_failed");
   if (featureStates["assets.management"] !== true) return null;
 
-  const cutoff = new Date(Date.now() - 91 * 24 * 60 * 60 * 1000).toISOString();
-  const [servicesResult, eventsResult, brandingResult] = await Promise.all([
-    admin
-      .from("services")
-      .select("id, name, status, updated_at")
-      .eq("tenant_id", page.tenant_id)
-      .eq("active", true)
-      .eq("status_public", true)
-      .order("name")
-      .limit(MAX_SERVICES + 1),
-    admin
-      .from("service_status_events")
-      .select("service_id, status, changed_at")
-      .eq("tenant_id", page.tenant_id)
-      .gte("changed_at", cutoff)
-      .order("changed_at", { ascending: true })
-      .limit(MAX_EVENTS + 1),
-    admin
-      .from("tenant_branding")
-      .select("logo_path, accent_color")
-      .eq("tenant_id", page.tenant_id)
-      .maybeSingle(),
-  ]);
+  const now = new Date();
+  const nowIso = now.toISOString();
+  const cutoff = new Date(now.getTime() - 91 * 24 * 60 * 60 * 1000)
+    .toISOString();
+  const [servicesResult, eventsResult, brandingResult, maintenances] =
+    await Promise.all([
+      admin
+        .from("services")
+        .select("id, name, status, updated_at")
+        .eq("tenant_id", page.tenant_id)
+        .eq("active", true)
+        .eq("status_public", true)
+        .order("name")
+        .limit(MAX_SERVICES + 1),
+      admin
+        .from("service_status_events")
+        .select("service_id, status, changed_at")
+        .eq("tenant_id", page.tenant_id)
+        .gte("changed_at", cutoff)
+        .order("changed_at", { ascending: true })
+        .limit(MAX_EVENTS + 1),
+      admin
+        .from("tenant_branding")
+        .select("logo_path, accent_color")
+        .eq("tenant_id", page.tenant_id)
+        .maybeSingle(),
+      readPublicMaintenances(admin, page.tenant_id, nowIso),
+    ]);
   if (servicesResult.error || eventsResult.error || brandingResult.error) {
     throw new Error("status_data_failed");
   }
@@ -249,7 +481,7 @@ async function readPublicStatus(
       return null;
     }
     return {
-      id: service.id,
+      id: service.id.toLowerCase(),
       name,
       status: service.status,
       updatedAt: service.updated_at,
@@ -265,35 +497,37 @@ async function readPublicStatus(
     updatedAt: string;
   }>;
   const serviceIds = new Set(services.map((service) => service.id));
-  const baselineResult =
-    services.length === 0
-      ? { data: [], error: null }
-      : await admin.rpc("service_status_history_baselines", {
-          p_tenant_id: page.tenant_id,
-          p_service_ids: services.map((service) => service.id),
-          p_before: cutoff,
-        });
+  const baselineResult = services.length === 0
+    ? { data: [], error: null }
+    : await admin.rpc("service_status_history_baselines", {
+      p_tenant_id: page.tenant_id,
+      p_service_ids: services.map((service) => service.id),
+      p_before: cutoff,
+    });
   if (baselineResult.error) throw new Error("history_baseline_failed");
   const eventsByService = new Map<
     string,
     Array<{ changedAt: string; status: ServiceStatus }>
   >();
-  for (const event of [
-    ...(baselineResult.data ?? []),
-    ...(eventsResult.data ?? []),
-  ]) {
+  for (
+    const event of [
+      ...(baselineResult.data ?? []),
+      ...(eventsResult.data ?? []),
+    ]
+  ) {
     if (
       !isRecord(event) ||
       !isUuid(event.service_id) ||
-      !serviceIds.has(event.service_id) ||
+      !serviceIds.has(event.service_id.toLowerCase()) ||
       !isStatus(event.status) ||
       typeof event.changed_at !== "string"
     ) {
       continue;
     }
-    const list = eventsByService.get(event.service_id) ?? [];
+    const serviceId = event.service_id.toLowerCase();
+    const list = eventsByService.get(serviceId) ?? [];
     list.push({ changedAt: event.changed_at, status: event.status });
-    eventsByService.set(event.service_id, list);
+    eventsByService.set(serviceId, list);
   }
 
   const publicServices: PublicService[] = services.map((service) => ({
@@ -304,9 +538,10 @@ async function readPublicStatus(
   }));
   return {
     accentColor: safeColor(brandingResult.data?.accent_color),
-    generatedAt: new Date().toISOString(),
+    generatedAt: nowIso,
     logoUrl: safeHttpsUrl(brandingResult.data?.logo_path),
-    overallStatus: overallStatus(publicServices),
+    maintenances,
+    overallStatus: overallStatus(publicServices, maintenances, now.getTime()),
     services: publicServices,
     title,
   };
