@@ -49,6 +49,7 @@ import {
   ticketCommentAttachmentIds,
   ticketCommentBodyWithAttachments,
 } from "./lib/ticket-comment-attachments";
+import { ticketWatchPresentation } from "./lib/ticket-watch-presentation";
 import { supabase } from "./lib/supabase";
 import { TicketApprovals } from "./ticket-approvals";
 import { TicketComparison } from "./ticket-comparison";
@@ -6209,6 +6210,8 @@ export function TicketDetail({
     );
   }
 
+  const watchPresentation = ticketWatchPresentation(detail.watching);
+
   return (
     <section
       className={
@@ -6240,11 +6243,7 @@ export function TicketDetail({
             ticketNumber={detail.ticket.ticket_number}
           />
           <button
-            aria-label={
-              detail.watching
-                ? "Ticket nicht mehr beobachten"
-                : "Ticket beobachten"
-            }
+            aria-label={watchPresentation.actionLabel}
             className={
               detail.watching
                 ? "secondary-button ticket-watch-button active"
@@ -6252,11 +6251,7 @@ export function TicketDetail({
             }
             disabled={busy}
             onClick={() => void toggleWatch()}
-            title={
-              detail.watching
-                ? "Ticket nicht mehr beobachten"
-                : "Ticket beobachten"
-            }
+            title={watchPresentation.actionLabel}
             type="button"
           >
             {pendingAction === "watch" ? (
@@ -6265,13 +6260,13 @@ export function TicketDetail({
                 className="ticket-detail-spinner"
                 size={16}
               />
-            ) : detail.watching ? (
-              <EyeOff aria-hidden="true" size={16} strokeWidth={1.8} />
-            ) : (
+            ) : watchPresentation.icon === "eye" ? (
               <Eye aria-hidden="true" size={16} strokeWidth={1.8} />
+            ) : (
+              <EyeOff aria-hidden="true" size={16} strokeWidth={1.8} />
             )}
             <span className="ticket-detail-action-label">
-              {detail.watching ? "Nicht mehr beobachten" : "Beobachten"}
+              {watchPresentation.label}
             </span>
           </button>
           {detail.canUpdate && (
