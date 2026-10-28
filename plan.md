@@ -655,7 +655,8 @@ Die Umsetzung erfolgt ohne Produktivdeployment, ohne Anwendung der Migration und
 
 ## Implementierungsstruktur
 
-- `supabase/migrations/0115_inventory_foundation.sql`: Feature, Rechte, Tabellen, Constraints, RPCs, RLS, Ledger-Sperren und Audit.
+- `supabase/migrations/0115_inventory_foundation_part_01.sql` bis `0124_inventory_foundation_part_10.sql`: dieselbe Lagergrundlage in zehn kleinen, jeweils transaktionalen Release-Migrationen; Feature, Rechte, Tabellen, Constraints, RPCs, RLS, Ledger-Sperren und Audit bleiben in ihrer ursprünglichen SQL-Statementfolge erhalten.
+- `supabase/migrations/0125_private_inventory_item_images.sql`, `0126_inventory_low_stock_push_part_01.sql` bis `0130_inventory_low_stock_push_part_05.sql`, `0131_inventory_source_reservations_part_01.sql` bis `0135_inventory_source_reservations_part_05.sql` sowie `0136_event_space_email_ticket_intake_part_01.sql` bis `0139_event_space_email_ticket_intake_part_04.sql`: anschliessende, ebenfalls transaktionale Release-Migrationen für Bilder, Unterbestand, Quellreservationen und Raumticket-Intake.
 - `supabase/functions/inventory/index.ts`: JWT-geschützte, allowlistbasierte Read- und Command-API für Web und iOS.
 - `supabase/functions/inventory/index.test.ts`: Regressionen für Aktionsparser, Datenminimierung und Berechtigungsgrenzen.
 - `apps/web/src/inventory.tsx`: operative Lageransicht mit Übersicht, Artikeln, Orten, Bewegungen, Reservationen und Inventur.

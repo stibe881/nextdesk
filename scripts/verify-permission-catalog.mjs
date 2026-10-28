@@ -41,7 +41,7 @@ const contractsMigrationPath = new URL(
   import.meta.url,
 );
 const inventoryMigrationPath = new URL(
-  "../supabase/migrations/0115_inventory_foundation.sql",
+  "../supabase/migrations/0115_inventory_foundation_part_01.sql",
   import.meta.url,
 );
 const catalog = await readFile(catalogPath, "utf8");
