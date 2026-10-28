@@ -1,42 +1,17 @@
-import { readFile } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 
 const catalogPath = new URL(
   "../packages/permissions/src/catalog.ts",
   import.meta.url,
 );
-const baseMigrationPath = new URL(
-  "../supabase/migrations/0006_harden_tenant_integrity_and_rbac.sql",
-  import.meta.url,
-);
-const operationsMigrationPath = new URL(
-  "../supabase/migrations/0014_ticket_operations_core.sql",
-  import.meta.url,
-);
-const savedViewsMigrationPath = new URL(
-  "../supabase/migrations/0030_saved_ticket_views.sql",
-  import.meta.url,
-);
-const requesterCommentMigrationPath = new URL(
-  "../supabase/migrations/0043_requester_own_ticket_comments.sql",
-  import.meta.url,
-);
-const assetIntegrationMigrationPath = new URL(
-  "../supabase/migrations/0044_asset_intune_inventory_foundation.sql",
-  import.meta.url,
-);
-const ticketApprovalMigrationPath = new URL(
-  "../supabase/migrations/0045_ticket_templates_and_approval_foundation.sql",
-  import.meta.url,
-);
+const migrationsDirectory = new URL("../supabase/migrations/", import.meta.url);
 const catalog = await readFile(catalogPath, "utf8");
-const migrations = await Promise.all([
-  readFile(baseMigrationPath, "utf8"),
-  readFile(operationsMigrationPath, "utf8"),
-  readFile(savedViewsMigrationPath, "utf8"),
-  readFile(requesterCommentMigrationPath, "utf8"),
-  readFile(assetIntegrationMigrationPath, "utf8"),
-  readFile(ticketApprovalMigrationPath, "utf8"),
-]);
+const migrationFiles = (await readdir(migrationsDirectory))
+  .filter((file) => /^\d+_[a-z0-9_]+\.sql$/i.test(file))
+  .sort();
+const migrations = await Promise.all(
+  migrationFiles.map((file) => readFile(new URL(file, migrationsDirectory), "utf8")),
+);
 const migration = migrations.join("\n");
 
 const catalogSection = catalog.match(

@@ -34,6 +34,7 @@ import {
   SlidersHorizontal,
   Ticket,
   UserRound,
+  Warehouse,
   Boxes,
   X,
   type LucideIcon,
@@ -71,6 +72,7 @@ import { KnowledgeBase } from "./knowledge-base";
 import { SlaManagement } from "./sla-management";
 import { ServiceReporting } from "./service-reporting";
 import { ServiceAssets } from "./service-assets";
+import { Inventory } from "./inventory";
 import { PersonalSettings } from "./personal-settings";
 import { ExperienceWorkspace, MyDayCard } from "./experience-workspace";
 import {
@@ -105,6 +107,7 @@ type Section =
   | "Mein Portal"
   | "Services"
   | "Assets"
+  | "Lager"
   | "Wissen"
   | "Berichte"
   | "Wiedervorlagen"
@@ -199,6 +202,7 @@ const sections: readonly { label: Section; Icon: LucideIcon }[] = [
   { label: "Arbeitsplatz", Icon: BriefcaseBusiness },
   { label: "Services", Icon: MonitorCog },
   { label: "Assets", Icon: Boxes },
+  { label: "Lager", Icon: Warehouse },
   { label: "Wissen", Icon: BookOpen },
   { label: "Mein Portal", Icon: UserRound },
   { label: "Berichte", Icon: ChartNoAxesCombined },
@@ -2284,6 +2288,7 @@ export function App() {
     }
     if (item.label === "Mein Portal") return requesterPortalEnabled;
     if (item.label === "Assets") return isFeatureEnabled("assets.management");
+    if (item.label === "Lager") return isFeatureEnabled("inventory.management");
     if (item.label === "Wissen") return isFeatureEnabled("knowledge.base");
     if (item.label === "Berichte") return isFeatureEnabled("reporting.service");
     if (item.label === "Wiedervorlagen") return experienceWorkspaceEnabled;
@@ -2303,6 +2308,7 @@ export function App() {
     const sectionFeature: Partial<Record<Section, string>> = {
       Arbeitsplatz: "agent.workbench",
       Assets: "assets.management",
+      Lager: "inventory.management",
       Berichte: "reporting.service",
       "Mein Portal": "requester.portal",
       Wissen: "knowledge.base",
@@ -2900,6 +2906,10 @@ export function App() {
           activeTenant &&
           isFeatureEnabled("assets.management") ? (
           <ServiceAssets initialTab="assets" tenantId={activeTenant.id} />
+        ) : section === "Lager" &&
+          activeTenant &&
+          isFeatureEnabled("inventory.management") ? (
+          <Inventory tenantId={activeTenant.id} />
         ) : section === "Services" && activeTenant ? (
           <>
             <ServiceAssets

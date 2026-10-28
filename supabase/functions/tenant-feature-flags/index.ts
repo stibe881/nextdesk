@@ -3,7 +3,7 @@ import { withSupabase } from "@supabase/server";
 const APP_ORIGIN = "https://app.nextdesk.ch";
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const KNOWN_FEATURE_KEYS = new Set([
+export const KNOWN_FEATURE_KEYS: ReadonlySet<string> = new Set([
   "ticketing.detail",
   "ticketing.checklists",
   "ticketing.time-tracking",
@@ -13,6 +13,7 @@ const KNOWN_FEATURE_KEYS = new Set([
   "reporting.service",
   "integrations.email",
   "assets.management",
+  "inventory.management",
   "experience.workspace",
   "portal.self-service",
   "ai.assist",
