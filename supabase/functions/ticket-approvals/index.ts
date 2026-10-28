@@ -1,9 +1,11 @@
 import { withSupabase } from "@supabase/server";
+import { isApprovalInboxCandidate } from "../_shared/approval-inbox.ts";
 import { resolveTenantFeatureStates } from "../_shared/tenant-features.ts";
 
 type ApprovalStatus = "pending" | "approved" | "rejected" | "cancelled";
 type Decision = "approved" | "rejected";
 type Action =
+  | { type: "listInbox"; tenantId: string }
   | { type: "list"; tenantId: string; ticketId: string }
   | {
       type: "request";
@@ -32,10 +34,13 @@ type Ticket = {
   id: string;
   tenant_id: string;
   department_id: string;
+  assigned_team_id: string | null;
   requester_id: string | null;
   affected_user_id: string | null;
   assigned_agent_id: string | null;
   customer_organization_id: string | null;
+  ticket_number?: string | null;
+  subject?: string | null;
 };
 
 const ALLOWED_ORIGIN = "https://app.nextdesk.ch";
@@ -80,8 +85,10 @@ function json(request: Request, body: Record<string, unknown>, status = 200) {
 }
 
 function parseAction(value: unknown): Action | null {
-  if (!isRecord(value) || !isUuid(value.tenantId) || !isUuid(value.ticketId))
-    return null;
+  if (!isRecord(value) || !isUuid(value.tenantId)) return null;
+  if (value.type === "listInbox")
+    return { type: "listInbox", tenantId: value.tenantId };
+  if (!isUuid(value.ticketId)) return null;
   if (value.type === "list")
     return { type: "list", tenantId: value.tenantId, ticketId: value.ticketId };
   if (value.type === "request") {
@@ -233,6 +240,167 @@ async function canReadTicket(admin: any, userId: string, ticket: Ticket) {
   );
 }
 
+async function approvalNames(
+  admin: any,
+  requests: readonly any[],
+): Promise<ReadonlyMap<string, string>> {
+  const ids = new Set<string>();
+  for (const item of requests) {
+    if (isUuid(item.requested_by)) ids.add(item.requested_by);
+    for (const decision of item.ticket_approval_decisions ?? []) {
+      if (isUuid(decision.approver_id)) ids.add(decision.approver_id);
+    }
+  }
+  const { data: profiles } = ids.size
+    ? await admin
+        .from("user_profiles")
+        .select("id, display_name")
+        .in("id", [...ids])
+    : { data: [] };
+  return new Map<string, string>(
+    (profiles ?? []).map((profile: any): [string, string] => [
+      String(profile.id),
+      typeof profile.display_name === "string"
+        ? profile.display_name
+        : "nextDesk Benutzer",
+    ]),
+  );
+}
+
+function serializeApproval(item: any, names: ReadonlyMap<string, string>) {
+  return {
+    id: item.id,
+    approvalKind: item.approval_kind,
+    status: item.status as ApprovalStatus,
+    requiredApprovals: item.required_approvals,
+    requestedBy: item.requested_by,
+    requestedByName: names.get(item.requested_by) ?? "nextDesk Benutzer",
+    reason: item.reason,
+    requestedAt: item.requested_at,
+    decidedAt: item.decided_at,
+    decisions: (item.ticket_approval_decisions ?? []).map((decision: any) => ({
+      id: decision.id,
+      approverId: decision.approver_id,
+      approverName: names.get(decision.approver_id) ?? "nextDesk Benutzer",
+      decision: decision.decision as Decision,
+      comment: decision.comment,
+      decidedAt: decision.decided_at,
+    })),
+  };
+}
+
+async function listApprovalInbox(
+  request: Request,
+  context: any,
+  actorId: string,
+  tenantId: string,
+) {
+  const { data: requests, error: requestsError } = await context.supabaseAdmin
+    .from("ticket_approval_requests")
+    .select(
+      "id, ticket_id, approval_kind, status, required_approvals, requested_by, reason, requested_at, ticket_approval_decisions(approver_id, decision)",
+    )
+    .eq("tenant_id", tenantId)
+    .eq("status", "pending")
+    .neq("requested_by", actorId)
+    .order("requested_at", { ascending: true })
+    .limit(1000);
+  if (requestsError)
+    return json(
+      request,
+      { error: { code: "ticket_approval_inbox_lookup_failed" } },
+      500,
+    );
+
+  const ticketIds = [
+    ...new Set((requests ?? []).map((item: any) => item.ticket_id)),
+  ].filter(isUuid);
+  if (ticketIds.length === 0) return json(request, { data: { approvals: [] } });
+
+  const { data: tickets, error: ticketsError } = await context.supabaseAdmin
+    .from("tickets")
+    .select(
+      "id, tenant_id, department_id, assigned_team_id, requester_id, affected_user_id, assigned_agent_id, customer_organization_id, ticket_number, subject",
+    )
+    .eq("tenant_id", tenantId)
+    .in("id", ticketIds);
+  if (ticketsError)
+    return json(
+      request,
+      { error: { code: "ticket_approval_inbox_lookup_failed" } },
+      500,
+    );
+  const ticketsById = new Map<string, Ticket>(
+    (tickets ?? []).map((ticket: any): [string, Ticket] => [
+      String(ticket.id),
+      ticket as Ticket,
+    ]),
+  );
+
+  const visible = (
+    await Promise.all(
+      (requests ?? []).map(async (approval: any) => {
+        const ticket = ticketsById.get(approval.ticket_id);
+        if (!ticket) return null;
+        const [canRead, canDecide, teamAccess] = await Promise.all([
+          canReadTicket(context.supabaseAdmin, actorId, ticket),
+          hasPermission(
+            context.supabaseAdmin,
+            actorId,
+            tenantId,
+            ticket.department_id,
+            "ticket.approval.decide",
+          ),
+          context.supabase.rpc("can_access_ticket_team", {
+            p_ticket_id: ticket.id,
+          }),
+        ]);
+        const teamAllowed = !teamAccess.error && teamAccess.data === true;
+        if (
+          !isApprovalInboxCandidate({
+            actorId,
+            candidate: {
+              approvalId: approval.id,
+              canDecide,
+              canReadTicket: canRead && teamAllowed,
+              decisionApproverIds: (approval.ticket_approval_decisions ?? [])
+                .map((decision: any) => decision.approver_id)
+                .filter(isUuid),
+              requestedBy: approval.requested_by,
+              status: approval.status,
+            },
+          })
+        ) {
+          return null;
+        }
+        return { approval, ticket };
+      }),
+    )
+  ).filter((item): item is { approval: any; ticket: Ticket } => item !== null);
+  return json(request, {
+    data: {
+      approvals: visible.map(({ approval, ticket }) => ({
+        canDecide: true,
+        ticket: {
+          id: ticket.id,
+          number: ticket.ticket_number ?? "",
+          subject: ticket.subject ?? "",
+        },
+        approval: {
+          id: approval.id,
+          approvalKind: approval.approval_kind,
+          approvedDecisions: (approval.ticket_approval_decisions ?? []).filter(
+            (decision: any) => decision.decision === "approved",
+          ).length,
+          reason: approval.reason,
+          requestedAt: approval.requested_at,
+          requiredApprovals: approval.required_approvals,
+        },
+      })),
+    },
+  });
+}
+
 const handler = withSupabase({ auth: "user" }, async (request, context) => {
   if (request.method !== "POST")
     return json(request, { error: { code: "method_not_allowed" } }, 405);
@@ -240,6 +408,30 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
   const actorId = context.userClaims?.id;
   if (!action || typeof actorId !== "string")
     return json(request, { error: { code: "invalid_request" } }, 400);
+
+  if (action.type === "listInbox") {
+    if (
+      !(await activeMember(context.supabaseAdmin, actorId, action.tenantId))
+    ) {
+      return json(request, { error: { code: "ticket_access_denied" } }, 403);
+    }
+    const featureStates = await resolveTenantFeatureStates(
+      context.supabaseAdmin,
+      action.tenantId,
+      ["ticketing.detail"],
+    );
+    if (!featureStates) {
+      return json(
+        request,
+        { error: { code: "tenant_feature_lookup_failed" } },
+        503,
+      );
+    }
+    if (featureStates["ticketing.detail"] !== true) {
+      return json(request, { error: { code: "ticket_feature_disabled" } }, 403);
+    }
+    return listApprovalInbox(request, context, actorId, action.tenantId);
+  }
 
   const { data: ticket } = await context.supabaseAdmin
     .from("tickets")
@@ -389,6 +581,21 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         { error: { code: "ticket_approval_decision_denied" } },
         403,
       );
+    const { data: approvalLink, error: approvalLinkError } =
+      await context.supabaseAdmin
+        .from("ticket_approval_requests")
+        .select("ticket_id")
+        .eq("tenant_id", ticket.tenant_id)
+        .eq("id", action.approvalId)
+        .maybeSingle();
+    if (approvalLinkError)
+      return json(
+        request,
+        { error: { code: "ticket_approval_lookup_failed" } },
+        500,
+      );
+    if (!approvalLink || approvalLink.ticket_id !== ticket.id)
+      return json(request, { error: { code: "ticket_access_denied" } }, 403);
     const { data, error } = await context.supabaseAdmin.rpc(
       "decide_ticket_approval",
       {

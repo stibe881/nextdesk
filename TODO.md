@@ -292,3 +292,8 @@
   - Die technischen Eingabefelder «Kundenorganisation-ID (optional)» und «Metadaten (JSON-Objekt)» erscheinen weder beim Erfassen noch beim Bearbeiten eines Assets.
   - Bereits gespeicherte Werte bleiben bei einer normalen Assetbearbeitung unverändert erhalten; sie werden nicht gelöscht oder für Browser neu offengelegt.
   - Intune-Synchronisation, Mandantentrennung und Assetberechtigungen bleiben unverändert. TypeScript, 127 Webtests, Produktionsbuild und ein sauberer Diff sind geprüft; ein Webrelease wird nicht ausgelöst.
+
+- [x] **Freigabe-Eingang: serverautorisierte offene Entscheidungsanfragen**
+  - `ticket-approvals` liefert mit einer eigenen Leseaktion nur offene Anfragen des aktiven Mandanten, für deren Ticket die angemeldete Person serverseitig Lese- und Entscheidungsrecht besitzt, die sie nicht selbst beantragt und noch nicht entschieden hat.
+  - Die Antwort enthält nur Ticketnummer, Betreff, Freigabeart, Grund, Zeitpunkt, benötigte Anzahl und aggregierte positive Entscheide. Mandant, Feature, aktive Mitgliedschaft, Ticketzugriff, Teamzugriff und Entscheidungsrecht werden serverseitig geprüft; eine Entscheidung bindet die Freigabe-ID zusätzlich an das zuvor geprüfte Ticket und wird anschliessend erneut durch die vorhandene RPC autorisiert.
+  - Die Erweiterung benötigt keine Migration und verändert keine bestehenden Freigabeentscheidungen. Die vollständige Edge-Typprüfung, 110 Edge-Tests sowie Schema- und Berechtigungskatalogprüfungen sind erfolgreich. Eine produktive Bereitstellung von `ticket-approvals` erfolgt ausschliesslich nach separater ausdrücklicher Freigabe.
