@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  escapeHtmlAttribute,
   parsePublicServiceStatus,
   parseStatusOverview,
 } from "./service-status";
@@ -101,6 +102,16 @@ function publicResponse(
   };
 }
 
+describe("HTML-Attribut-Escaping", () => {
+  it("kodiert Anführungszeichen, kaufmännisches Und und Markup im Seitentitel", () => {
+    expect(
+      escapeHtmlAttribute(`Status "kritisch" & <img src=x onerror='alert(1)'>`),
+    ).toBe(
+      "Status &quot;kritisch&quot; &amp; &lt;img src=x onerror=&#39;alert(1)&#39;&gt;",
+    );
+  });
+});
+
 describe("Status-Wartungsparser", () => {
   it("liest eine vollständige interne Wartung nur mit bekannten Services", () => {
     const overview = parseStatusOverview(overviewResponse());
@@ -185,7 +196,9 @@ describe("Status-Wartungsparser", () => {
       ),
     ).toThrow("Wartungsliste");
     expect(() =>
-      parseStatusOverview(overviewResponse([internalMaintenance({ title: "W" })])),
+      parseStatusOverview(
+        overviewResponse([internalMaintenance({ title: "W" })]),
+      ),
     ).toThrow("Wartungsliste");
     expect(() =>
       parsePublicServiceStatus(
@@ -201,10 +214,9 @@ describe("Status-Wartungsparser", () => {
 
     expect(() =>
       parseStatusOverview(
-        overviewResponse(
-          [internalMaintenance({ serviceIds })],
-          { services: serviceIds.map((id) => internalService(id)) },
-        ),
+        overviewResponse([internalMaintenance({ serviceIds })], {
+          services: serviceIds.map((id) => internalService(id)),
+        }),
       ),
     ).toThrow("Wartungsliste");
   });
@@ -279,7 +291,9 @@ describe("Status-Wartungsparser", () => {
       logoUrl: "https://cdn.example.com/logo.svg",
     });
     expect(() =>
-      parsePublicServiceStatus(publicResponse(undefined, { accentColor: "#abc" })),
+      parsePublicServiceStatus(
+        publicResponse(undefined, { accentColor: "#abc" }),
+      ),
     ).toThrow("nicht verfügbar");
     expect(() =>
       parsePublicServiceStatus(
@@ -328,9 +342,7 @@ describe("Status-Wartungsparser", () => {
     ).toThrow("nicht verfügbar");
     expect(() =>
       parsePublicServiceStatus(
-        publicResponse(
-          Array.from({ length: 101 }, () => publicMaintenance()),
-        ),
+        publicResponse(Array.from({ length: 101 }, () => publicMaintenance())),
       ),
     ).toThrow("nicht verfügbar");
   });

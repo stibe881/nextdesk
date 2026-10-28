@@ -6,8 +6,8 @@ const MAX_SERVICES = 500;
 const MAX_EVENTS = 15_000;
 const MAX_MAINTENANCES = 500;
 const MAX_MAINTENANCE_SERVICES = 100;
-const MAX_MAINTENANCE_SERVICE_LINKS = MAX_MAINTENANCES *
-  MAX_MAINTENANCE_SERVICES;
+const MAX_MAINTENANCE_SERVICE_LINKS =
+  MAX_MAINTENANCES * MAX_MAINTENANCE_SERVICES;
 const STATUS_VALUES = [
   "operational",
   "degraded",
@@ -29,25 +29,25 @@ type AdminClient = SupabaseContext["supabaseAdmin"];
 type Action =
   | { type: "getStatusOverview"; tenantId: string }
   | {
-    type: "saveStatusPage";
-    tenantId: string;
-    title: string;
-    publicEnabled: boolean;
-  }
+      type: "saveStatusPage";
+      tenantId: string;
+      title: string;
+      publicEnabled: boolean;
+    }
   | { type: "rotateStatusPageId"; tenantId: string }
   | {
-    type: "manageMaintenance";
-    tenantId: string;
-    operation: "create" | "update";
-    maintenanceId?: string;
-    title: string;
-    description: string | null;
-    startsAt: string;
-    endsAt: string;
-    state: MaintenanceState;
-    publicEnabled: boolean;
-    serviceIds: string[];
-  };
+      type: "manageMaintenance";
+      tenantId: string;
+      operation: "create" | "update";
+      maintenanceId?: string;
+      title: string;
+      description: string | null;
+      startsAt: string;
+      endsAt: string;
+      state: MaintenanceState;
+      publicEnabled: boolean;
+      serviceIds: string[];
+    };
 
 type StatusService = {
   id: string;
@@ -92,10 +92,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function isUuid(value: unknown): value is string {
   return (
     typeof value === "string" &&
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
-      .test(
-        value,
-      )
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      value,
+    )
   );
 }
 
@@ -127,10 +126,9 @@ function parseIsoTimestamp(value: unknown): string | null {
     typeof value !== "string" ||
     value.length > 64 ||
     !value.isWellFormed() ||
-    !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/i
-      .test(
-        value,
-      )
+    !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/i.test(
+      value,
+    )
   ) {
     return null;
   }
@@ -147,7 +145,7 @@ function parseServiceIds(value: unknown): string[] | null {
     return null;
   }
   const ids = value.map((serviceId) =>
-    isUuid(serviceId) ? serviceId.toLowerCase() : null
+    isUuid(serviceId) ? serviceId.toLowerCase() : null,
   );
   if (ids.some((serviceId) => serviceId === null)) return null;
   const normalized = ids as string[];
@@ -233,9 +231,8 @@ function parseAction(value: unknown): Action | null {
   ) {
     return null;
   }
-  const maintenanceId = value.operation === "update"
-    ? value.maintenanceId
-    : undefined;
+  const maintenanceId =
+    value.operation === "update" ? value.maintenanceId : undefined;
   if (value.operation === "update" && !isUuid(maintenanceId)) return null;
   return {
     type: value.type,
@@ -580,8 +577,8 @@ async function readOverview(
   maintenances: StatusMaintenance[];
 }> {
   const cutoff = new Date(Date.now() - 91 * 24 * 60 * 60 * 1000).toISOString();
-  const [pageResult, servicesResult, eventsResult, maintenances] = await Promise
-    .all([
+  const [pageResult, servicesResult, eventsResult, maintenances] =
+    await Promise.all([
       admin
         .from("service_status_pages")
         .select("public_id, title, public_enabled, updated_at")
@@ -636,13 +633,14 @@ async function readOverview(
     );
   }
   const serviceIds = new Set(services.map((service) => service.id));
-  const baselineResult = services.length === 0
-    ? { data: [], error: null }
-    : await admin.rpc("service_status_history_baselines", {
-      p_tenant_id: tenantId,
-      p_service_ids: services.map((service) => service.id),
-      p_before: cutoff,
-    });
+  const baselineResult =
+    services.length === 0
+      ? { data: [], error: null }
+      : await admin.rpc("service_status_history_baselines", {
+          p_tenant_id: tenantId,
+          p_service_ids: services.map((service) => service.id),
+          p_before: cutoff,
+        });
   if (baselineResult.error) {
     throw new HttpError(
       503,
@@ -760,12 +758,7 @@ async function rotatePage(
       "Die öffentliche Adresse konnte nicht ersetzt werden.",
     );
   }
-  await writePageAudit(
-    admin,
-    tenantId,
-    actorId,
-    "service_status_page.rotated",
-  );
+  await writePageAudit(admin, tenantId, actorId, "service_status_page.rotated");
 }
 
 async function manageMaintenance(
@@ -776,7 +769,8 @@ async function manageMaintenance(
   const result = await admin.rpc("save_service_status_maintenance", {
     p_actor_id: actorId,
     p_tenant_id: action.tenantId,
-    p_maintenance_id: action.operation === "update" ? action.maintenanceId! : null,
+    p_maintenance_id:
+      action.operation === "update" ? action.maintenanceId! : null,
     p_title: action.title,
     p_description: action.description,
     p_starts_at: action.startsAt,
@@ -803,9 +797,7 @@ async function manageMaintenance(
       );
     }
     if (
-      ["22023", "23502", "23503", "23505", "23514"].includes(
-        result.error.code,
-      )
+      ["22023", "23502", "23503", "23505", "23514"].includes(result.error.code)
     ) {
       throw new HttpError(
         422,
@@ -868,11 +860,7 @@ const handler = withSupabase(
     }
 
     if (action.type === "manageMaintenance") {
-      await manageMaintenance(
-        context.supabaseAdmin,
-        actorId,
-        action,
-      );
+      await manageMaintenance(context.supabaseAdmin, actorId, action);
     } else {
       // Public page settings retain their existing, stricter publication gate.
       await requirePermission(
@@ -888,12 +876,14 @@ const handler = withSupabase(
     }
     const overview = await readOverview(context.supabaseAdmin, action.tenantId);
     const canManagePublication =
-      action.type !== "manageMaintenance" || action.publicEnabled ? true : (
-        await context.supabase.rpc("has_tenant_permission", {
-          p_tenant_id: action.tenantId,
-          p_permission_code: "tenant.settings.manage",
-        })
-      ).data === true;
+      action.type !== "manageMaintenance" || action.publicEnabled
+        ? true
+        : (
+            await context.supabase.rpc("has_tenant_permission", {
+              p_tenant_id: action.tenantId,
+              p_permission_code: "tenant.settings.manage",
+            })
+          ).data === true;
     return json(request, { data: { ...overview, canManagePublication } });
   },
 );
@@ -960,13 +950,13 @@ export default {
             result.status === 401
               ? "authentication_required"
               : result.status === 403
-              ? "permission_denied"
-              : "authentication_unavailable",
+                ? "permission_denied"
+                : "authentication_unavailable",
             result.status === 401
               ? "Eine gültige Benutzeranmeldung ist erforderlich."
               : result.status === 403
-              ? "Für diese Aktion fehlt die Berechtigung."
-              : "Die Anmeldung konnte derzeit nicht geprüft werden.",
+                ? "Für diese Aktion fehlt die Berechtigung."
+                : "Die Anmeldung konnte derzeit nicht geprüft werden.",
           ),
         );
       }
@@ -977,11 +967,13 @@ export default {
     } catch (error) {
       return failure(
         request,
-        error instanceof HttpError ? error : new HttpError(
-          500,
-          "operation_failed",
-          "Die Statusaktion konnte nicht abgeschlossen werden.",
-        ),
+        error instanceof HttpError
+          ? error
+          : new HttpError(
+              500,
+              "operation_failed",
+              "Die Statusaktion konnte nicht abgeschlossen werden.",
+            ),
       );
     }
   },

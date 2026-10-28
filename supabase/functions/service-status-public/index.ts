@@ -6,8 +6,8 @@ const MAX_SERVICES = 500;
 const MAX_EVENTS = 15_000;
 const MAX_PUBLIC_MAINTENANCES = 100;
 const MAX_MAINTENANCE_SERVICES = 100;
-const MAX_PUBLIC_MAINTENANCE_LINKS = MAX_PUBLIC_MAINTENANCES *
-  MAX_MAINTENANCE_SERVICES;
+const MAX_PUBLIC_MAINTENANCE_LINKS =
+  MAX_PUBLIC_MAINTENANCES * MAX_MAINTENANCE_SERVICES;
 const MAINTENANCE_SERVICE_LOOKUP_PAGE_SIZE = 100;
 const STATUS_VALUES = [
   "operational",
@@ -51,10 +51,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function isUuid(value: unknown): value is string {
   return (
     typeof value === "string" &&
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
-      .test(
-        value,
-      )
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      value,
+    )
   );
 }
 
@@ -92,10 +91,9 @@ function safeIsoTimestamp(value: unknown): string | null {
     typeof value !== "string" ||
     value.length > 64 ||
     !value.isWellFormed() ||
-    !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/i
-      .test(
-        value,
-      )
+    !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/i.test(
+      value,
+    )
   ) {
     return null;
   }
@@ -188,7 +186,7 @@ function overallStatus(
     "operational",
   );
   return hasActivePublicMaintenance(maintenances, now) &&
-      severity("maintenance") > severity(serviceStatus)
+    severity("maintenance") > severity(serviceStatus)
     ? "maintenance"
     : serviceStatus;
 }
@@ -223,10 +221,9 @@ function badgeResponse(
   const label = badgeLabel(payload.overallStatus);
   const colours = badgeColours(payload.overallStatus);
   const width = Math.max(235, 92 + label.length * 7);
-  const svg =
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="48" viewBox="0 0 ${width} 48" role="img" aria-labelledby="title"><title id="title">Systemstatus: ${label}</title><rect width="${width}" height="48" rx="5" fill="#174260"/><rect x="10" y="8" width="${
-      width - 20
-    }" height="32" rx="4" fill="${colours.fill}"/><circle cx="28" cy="24" r="9" fill="${colours.foreground}" opacity=".96"/><path d="m23.5 24 3 3.2 5.5-6" fill="none" stroke="${colours.fill}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><text x="45" y="29" fill="${colours.foreground}" font-family="Arial,Helvetica,sans-serif" font-size="14" font-weight="700">${label}</text></svg>`;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="48" viewBox="0 0 ${width} 48" role="img" aria-labelledby="title"><title id="title">Systemstatus: ${label}</title><rect width="${width}" height="48" rx="5" fill="#174260"/><rect x="10" y="8" width="${
+    width - 20
+  }" height="32" rx="4" fill="${colours.fill}"/><circle cx="28" cy="24" r="9" fill="${colours.foreground}" opacity=".96"/><path d="m23.5 24 3 3.2 5.5-6" fill="none" stroke="${colours.fill}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><text x="45" y="29" fill="${colours.foreground}" font-family="Arial,Helvetica,sans-serif" font-size="14" font-weight="700">${label}</text></svg>`;
   const headers = corsHeaders(request, { badge: true });
   headers.set("Content-Type", "image/svg+xml; charset=utf-8");
   headers.set(
@@ -270,15 +267,16 @@ async function readPublicMaintenances(
     (maintenance: unknown) => {
       if (!isRecord(maintenance)) return null;
       const title = safeText(maintenance.title, 2, 180);
-      const description = maintenance.description === null
-        ? null
-        : safeText(maintenance.description, 0, 2_000);
+      const description =
+        maintenance.description === null
+          ? null
+          : safeText(maintenance.description, 0, 2_000);
       const startsAt = safeIsoTimestamp(maintenance.starts_at);
       const endsAt = safeIsoTimestamp(maintenance.ends_at);
       if (
         !isUuid(maintenance.id) ||
         !title ||
-        description === null && maintenance.description !== null ||
+        (description === null && maintenance.description !== null) ||
         !startsAt ||
         !endsAt ||
         Date.parse(endsAt) <= Date.parse(startsAt) ||
@@ -360,10 +358,7 @@ async function readPublicMaintenances(
       .eq("status_public", true)
       .in(
         "id",
-        serviceIds.slice(
-          index,
-          index + MAINTENANCE_SERVICE_LOOKUP_PAGE_SIZE,
-        ),
+        serviceIds.slice(index, index + MAINTENANCE_SERVICE_LOOKUP_PAGE_SIZE),
       )
       .limit(MAINTENANCE_SERVICE_LOOKUP_PAGE_SIZE + 1);
     if (result.error) throw new Error("maintenance_services_failed");
@@ -433,8 +428,9 @@ async function readPublicStatus(
 
   const now = new Date();
   const nowIso = now.toISOString();
-  const cutoff = new Date(now.getTime() - 91 * 24 * 60 * 60 * 1000)
-    .toISOString();
+  const cutoff = new Date(
+    now.getTime() - 91 * 24 * 60 * 60 * 1000,
+  ).toISOString();
   const [servicesResult, eventsResult, brandingResult, maintenances] =
     await Promise.all([
       admin
@@ -497,24 +493,23 @@ async function readPublicStatus(
     updatedAt: string;
   }>;
   const serviceIds = new Set(services.map((service) => service.id));
-  const baselineResult = services.length === 0
-    ? { data: [], error: null }
-    : await admin.rpc("service_status_history_baselines", {
-      p_tenant_id: page.tenant_id,
-      p_service_ids: services.map((service) => service.id),
-      p_before: cutoff,
-    });
+  const baselineResult =
+    services.length === 0
+      ? { data: [], error: null }
+      : await admin.rpc("service_status_history_baselines", {
+          p_tenant_id: page.tenant_id,
+          p_service_ids: services.map((service) => service.id),
+          p_before: cutoff,
+        });
   if (baselineResult.error) throw new Error("history_baseline_failed");
   const eventsByService = new Map<
     string,
     Array<{ changedAt: string; status: ServiceStatus }>
   >();
-  for (
-    const event of [
-      ...(baselineResult.data ?? []),
-      ...(eventsResult.data ?? []),
-    ]
-  ) {
+  for (const event of [
+    ...(baselineResult.data ?? []),
+    ...(eventsResult.data ?? []),
+  ]) {
     if (
       !isRecord(event) ||
       !isUuid(event.service_id) ||

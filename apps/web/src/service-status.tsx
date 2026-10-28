@@ -132,6 +132,13 @@ const MAX_MAINTENANCE_SERVICES = 100;
 const ISO_TIMESTAMP_PATTERN =
   /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/i;
 const ACCENT_COLOR_PATTERN = /^#[0-9a-f]{6}$/i;
+const HTML_ATTRIBUTE_ESCAPES: Record<string, string> = {
+  "&": "&amp;",
+  "<": "&lt;",
+  ">": "&gt;",
+  '"': "&quot;",
+  "'": "&#39;",
+};
 
 const STATUS_LABELS: Record<ServiceStatus, string> = {
   operational: "Betriebsbereit",
@@ -254,6 +261,13 @@ function parseServiceIdArray(value: unknown): string[] | null {
 
 function isAccentColor(value: unknown): value is string {
   return typeof value === "string" && ACCENT_COLOR_PATTERN.test(value);
+}
+
+export function escapeHtmlAttribute(value: string): string {
+  return value.replace(
+    /[&<>"']/g,
+    (character) => HTML_ATTRIBUTE_ESCAPES[character] ?? character,
+  );
 }
 
 function isSafeHttpsUrl(value: unknown): value is string {
@@ -886,7 +900,8 @@ function MaintenanceList({
                         {maintenance.publicEnabled && !canManagePublication ? (
                           <p className="service-status__maintenance-access-note">
                             Für Änderungen an einer öffentlichen Wartung ist die
-                            Berechtigung für Mandanteneinstellungen erforderlich.
+                            Berechtigung für Mandanteneinstellungen
+                            erforderlich.
                           </p>
                         ) : null}
                       </article>
@@ -1325,7 +1340,7 @@ export function ServiceStatus({ tenantId }: ServiceStatusProps) {
     : null;
   const embedCode =
     pageUrl && currentBadgeUrl
-      ? `<a href="${pageUrl}"><img src="${currentBadgeUrl}" alt="Systemstatus von ${overview?.page.title ?? "nextDesk"}"></a>`
+      ? `<a href="${pageUrl}"><img src="${currentBadgeUrl}" alt="Systemstatus von ${escapeHtmlAttribute(overview?.page.title ?? "nextDesk")}"></a>`
       : null;
 
   async function save(event: FormEvent<HTMLFormElement>) {
