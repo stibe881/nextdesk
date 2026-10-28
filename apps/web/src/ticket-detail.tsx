@@ -7016,67 +7016,77 @@ export function TicketDetail({
               detail.canUpdate ? "ticket-detail-fact--editable" : undefined
             }
           >
-            <dt>Kategorie</dt>
-            <dd>
-              {ticketCategoriesLoading ? (
-                "Wird geladen …"
-              ) : detail.canUpdate ? (
-                <select
-                  aria-label="Ticketkategorie direkt ändern"
-                  disabled={ticketCategorySaving}
-                  onChange={(event) =>
-                    void saveTicketCategory(event.target.value || null, null)
-                  }
-                  value={selectedTicketCategory?.id ?? ""}
-                >
-                  <option value="">Keine Kategorie</option>
-                  {rootTicketCategories.map((category) => (
-                    <option key={category.id} value={category.id}>
-                      {category.name}
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                (selectedTicketCategory?.name ?? "Keine Kategorie")
-              )}
-            </dd>
+            <dt>Erfasst am</dt>
+            <dd>{formatDateTime(detail.ticket.created_at)}</dd>
           </div>
-          <div
-            className={
-              detail.canUpdate ? "ticket-detail-fact--editable" : undefined
-            }
-          >
-            <dt>Unterkategorie</dt>
-            <dd>
-              {ticketCategoriesLoading ? (
-                "Wird geladen …"
-              ) : detail.canUpdate ? (
-                <select
-                  aria-label="Ticketunterkategorie direkt ändern"
-                  disabled={!selectedTicketCategory || ticketCategorySaving}
-                  onChange={(event) =>
-                    void saveTicketCategory(
-                      selectedTicketCategory?.id ?? null,
-                      event.target.value || null,
-                    )
-                  }
-                  value={selectedTicketSubcategory?.id ?? ""}
-                >
-                  <option value="">
-                    {selectedTicketCategory
-                      ? "Keine Unterkategorie"
-                      : "Zuerst Kategorie wählen"}
-                  </option>
-                  {availableTicketSubcategories.map((category) => (
-                    <option key={category.id} value={category.id}>
-                      {category.name}
+          <div className="ticket-detail-fact-pair">
+            <div
+              className={
+                detail.canUpdate ? "ticket-detail-fact--editable" : undefined
+              }
+            >
+              <dt>Kategorie</dt>
+              <dd>
+                {ticketCategoriesLoading ? (
+                  "Wird geladen …"
+                ) : detail.canUpdate ? (
+                  <select
+                    aria-label="Ticketkategorie direkt ändern"
+                    disabled={ticketCategorySaving}
+                    onChange={(event) =>
+                      void saveTicketCategory(event.target.value || null, null)
+                    }
+                    value={selectedTicketCategory?.id ?? ""}
+                  >
+                    <option value="">Keine Kategorie</option>
+                    {rootTicketCategories.map((category) => (
+                      <option key={category.id} value={category.id}>
+                        {category.name}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  (selectedTicketCategory?.name ?? "Keine Kategorie")
+                )}
+              </dd>
+            </div>
+            <div
+              className={
+                detail.canUpdate ? "ticket-detail-fact--editable" : undefined
+              }
+            >
+              <dt>Unterkategorie</dt>
+              <dd>
+                {ticketCategoriesLoading ? (
+                  "Wird geladen …"
+                ) : detail.canUpdate ? (
+                  <select
+                    aria-label="Ticketunterkategorie direkt ändern"
+                    disabled={!selectedTicketCategory || ticketCategorySaving}
+                    onChange={(event) =>
+                      void saveTicketCategory(
+                        selectedTicketCategory?.id ?? null,
+                        event.target.value || null,
+                      )
+                    }
+                    value={selectedTicketSubcategory?.id ?? ""}
+                  >
+                    <option value="">
+                      {selectedTicketCategory
+                        ? "Keine Unterkategorie"
+                        : "Zuerst Kategorie wählen"}
                     </option>
-                  ))}
-                </select>
-              ) : (
-                (selectedTicketSubcategory?.name ?? "Keine Unterkategorie")
-              )}
-            </dd>
+                    {availableTicketSubcategories.map((category) => (
+                      <option key={category.id} value={category.id}>
+                        {category.name}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  (selectedTicketSubcategory?.name ?? "Keine Unterkategorie")
+                )}
+              </dd>
+            </div>
           </div>
           <div
             className={
@@ -7152,10 +7162,6 @@ export function TicketDetail({
                 </p>
               ) : null}
             </dd>
-          </div>
-          <div>
-            <dt>Erfasst am</dt>
-            <dd>{formatDateTime(detail.ticket.created_at)}</dd>
           </div>
         </dl>
       </section>

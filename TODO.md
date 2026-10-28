@@ -255,3 +255,8 @@
   - Vollständig klein geschriebene Namen der anfragenden Person, zum Beispiel «stefan gross», erscheinen im oberen Ticketüberblick und im Arbeitsbereich als «Stefan Gross».
   - Bereits gepflegte Schreibweisen, Eigenschreibweisen und E-Mail-Adressen werden nicht verändert; gespeicherte Personen- und Ticketdaten bleiben unverändert.
   - Die Änderung betrifft nur die Webanzeige. Mandantentrennung, Berechtigungen und Ticketdatenzugriff bleiben unverändert. Die fokussierte Regression, TypeScript, 122 Webtests, Produktionsbuild und ein sauberer Diff sind geprüft; ein Webrelease wird nicht ausgelöst.
+
+- [x] **Web-Ticketüberblick: Kategorie und Unterkategorie als gemeinsame Zeile**
+  - Kategorie steht links und Unterkategorie rechts in einer gemeinsamen, gleich breiten Zeile im Ticketüberblick.
+  - Die Bearbeitende Abteilung und der Erfassungszeitpunkt bilden die darüberliegende Zeile; die Asset-/Katalogverknüpfung bleibt darunter über die gesamte Breite.
+  - Auf sehr schmalen Ansichten stapeln die zwei Felder ohne Überlappung. Direkte Speicherung, Kategorienabhängigkeit, Rechte und Mandantentrennung bleiben unverändert. TypeScript, 122 Webtests, Produktionsbuild und ein sauberer Diff sind geprüft; ein Webrelease wird nicht ausgelöst.
