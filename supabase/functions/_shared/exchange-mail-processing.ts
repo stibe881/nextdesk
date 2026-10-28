@@ -1087,7 +1087,7 @@ async function createNewTicket(
       description: `Eingegangene E-Mail von ${displayNameFromAddress(sender)}\n\n${normalizeInboundEmailText(
         record(graph.uniqueBody) ? graph.uniqueBody.content : null,
         undefined,
-        { removeCorporateSignature: true },
+        { formatCorporateSignature: true },
       )}`,
       status_id: status.data.id,
       priority_id: priority.data.id,
@@ -1282,7 +1282,7 @@ export async function processInboundMessage(
           ? graph.body.content
           : null,
       undefined,
-      { removeCorporateSignature: !replyAuthorized },
+      { formatCorporateSignature: !replyAuthorized },
     );
     const preparedBody = prepareInboundBodyWithInlineMarkers(
       body,
@@ -1469,7 +1469,7 @@ async function recoverProcessedInlineMedia(
           ? graph.body.content
           : null,
       undefined,
-      { removeCorporateSignature: message.kind !== "reply" },
+      { formatCorporateSignature: message.kind !== "reply" },
     );
     const prepared = prepareInboundBodyWithInlineMarkers(
       body,

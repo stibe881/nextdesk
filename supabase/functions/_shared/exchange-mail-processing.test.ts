@@ -97,14 +97,14 @@ Deno.test(
 );
 
 Deno.test(
-  "neue E-Mail-Ticketbeschreibungen bereinigen Signaturen, Antworten bleiben unverändert",
+  "neue E-Mail-Ticketbeschreibungen formatieren Signaturen, Antworten bleiben unverändert",
   async () => {
     const source = await Deno.readTextFile(
       new URL("./exchange-mail-processing.ts", import.meta.url),
     );
     for (const required of [
-      "{ removeCorporateSignature: !replyAuthorized }",
-      '{ removeCorporateSignature: message.kind !== "reply" }',
+      "{ formatCorporateSignature: !replyAuthorized }",
+      '{ formatCorporateSignature: message.kind !== "reply" }',
       "p_body: replyAuthorized\n        ? persistedBody",
     ]) {
       if (!source.includes(required)) {

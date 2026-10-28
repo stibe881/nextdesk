@@ -33,13 +33,18 @@ const OUTLOOK_LINK_LINE =
 const SIGNATURE_FAREWELL =
   /^(?:(?:(?:mit\s+)?freundliche[nr]?|liebe[nr]?|beste[nr]?|herzliche[nr]?|viele[nr]?)\s+)?gr(?:uss|üsse|uesse)[,!\.\s]*$/iu;
 const SIGNATURE_IMAGE_FILE =
-  /^\s*\[(?!cid:)[^\]]+\.(?:png|jpe?g|gif|webp|svg)\]\s*$/iu;
+  /^\s*\[(?!cid:)([^\]]+\.(?:png|jpe?g|gif|webp|svg))\]\s*$/iu;
 const SIGNATURE_CONTACT = /^(?:tel(?:efon)?|mobile?|handy|t|m|f|w)\s*:\s*\S+/iu;
 const SIGNATURE_EMAIL = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/iu;
 const SIGNATURE_LINK =
   /(?:<https?:\/\/[^>]+>|https?:\/\/\S+|(?:linkedin|facebook|instagram)\.com)/iu;
 const SIGNATURE_POSTAL_ADDRESS = /\b(?:CH-)?\d{4}\s+[\p{L}.-]+/iu;
 const PERSONAL_POSTSCRIPT = /^(?:p\.?\s*s\.?|nachtrag|hinweis)\b/iu;
+const DECORATIVE_SIGNATURE_IMAGE =
+  /(?:^|[-_.\s])(?:logo|signatur|signature|footer|banner)(?=$|[-_.\s])/iu;
+const RAW_SIGNATURE_LINK = /(?:<https?:\/\/[^>]+>|https?:\/\/[^\s<]+)/giu;
+const SOCIAL_NETWORK_LABEL =
+  /^(?:linkedin|facebook|instagram|x|twitter|youtube|tiktok)\s*:?\s*$/iu;
 const SIGNATURE_SCAN_LIMIT = 18;
 
 function decodeEntitiesOnce(value: string): string {
@@ -248,14 +253,29 @@ function signatureEvidence(value: string): Set<string> {
   return signals;
 }
 
+function displayableSignatureLine(value: string): string | null {
+  const line = value.trim();
+  if (!line) return null;
+  const imageFile = SIGNATURE_IMAGE_FILE.exec(line)?.[1] ?? null;
+  if (imageFile) {
+    return DECORATIVE_SIGNATURE_IMAGE.test(imageFile)
+      ? null
+      : `Bildanhang: ${imageFile}`;
+  }
+  const withoutLinks = line
+    .replace(RAW_SIGNATURE_LINK, "")
+    .replace(/\s{2,}/gu, " ")
+    .trim();
+  if (!withoutLinks || SOCIAL_NETWORK_LABEL.test(withoutLinks)) return null;
+  return withoutLinks;
+}
+
 /**
- * Removes only a clearly identifiable corporate signature following a German
- * farewell. The immediately following closing name stays part of the message.
- * Two distinct signature signals including a contact indication are required.
- * CID markers remain untouched for the private inline-media pipeline, and a
- * personal postscript stops the scan so ordinary message content stays intact.
+ * Keeps a clearly identifiable corporate signature visible, but separates it
+ * from the actual message and removes technical image filenames and raw link
+ * lists. CID markers remain untouched for the private inline-media pipeline.
  */
-function removeCorporateSignature(value: string): string {
+function formatCorporateSignature(value: string): string {
   const lines = value.split("\n");
   for (
     let farewellIndex = 0;
@@ -276,23 +296,43 @@ function removeCorporateSignature(value: string): string {
     }
 
     const signals = new Set<string>();
+    let signatureDetected = false;
+    let postscriptIndex: number | null = null;
     const scanEnd = Math.min(
       lines.length,
       closingIndex + 1 + SIGNATURE_SCAN_LIMIT,
     );
     for (let index = closingIndex + 1; index < scanEnd; index += 1) {
-      if (PERSONAL_POSTSCRIPT.test(lines[index].trim())) break;
+      if (PERSONAL_POSTSCRIPT.test(lines[index].trim())) {
+        if (signatureDetected) postscriptIndex = index;
+        break;
+      }
       for (const signal of signatureEvidence(lines[index])) signals.add(signal);
       if (
         signals.size >= 2 &&
         (signals.has("contact") || signals.has("email"))
       ) {
-        return lines
-          .slice(0, closingIndex + 1)
-          .join("\n")
-          .trimEnd();
+        signatureDetected = true;
       }
     }
+    if (!signatureDetected) continue;
+
+    const signatureLines = lines
+      .slice(closingIndex + 1, postscriptIndex ?? lines.length)
+      .map(displayableSignatureLine)
+      .filter((line): line is string => line !== null);
+    if (!signatureLines.length) return value;
+    return [
+      ...lines.slice(0, closingIndex + 1),
+      "",
+      "E-Mail-Signatur",
+      ...signatureLines,
+      ...(postscriptIndex === null
+        ? []
+        : ["", ...lines.slice(postscriptIndex)]),
+    ]
+      .join("\n")
+      .trimEnd();
   }
   return value;
 }
@@ -305,7 +345,7 @@ function removeCorporateSignature(value: string): string {
 export function normalizeInboundEmailText(
   value: unknown,
   fallback = DEFAULT_FALLBACK,
-  options: { removeCorporateSignature?: boolean } = {},
+  options: { formatCorporateSignature?: boolean } = {},
 ): string {
   if (typeof value !== "string") return fallback;
   const text = decodeEntities(
@@ -313,8 +353,8 @@ export function normalizeInboundEmailText(
   );
   const normalizedLines = normalizeLines(text);
   const normalized = (
-    options.removeCorporateSignature
-      ? removeCorporateSignature(normalizedLines)
+    options.formatCorporateSignature
+      ? formatCorporateSignature(normalizedLines)
       : normalizedLines
   )
     .replace(INLINE_MARKER, "")

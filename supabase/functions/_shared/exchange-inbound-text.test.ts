@@ -96,7 +96,7 @@ Deno.test(
 );
 
 Deno.test(
-  "entfernt eindeutige Unternehmenssignaturen nur für neue Ticketbeschreibungen",
+  "zeigt eindeutige Unternehmenssignaturen nur in neuen Ticketbeschreibungen bereinigt an",
   () => {
     const input = `Hallo zusammen
 
@@ -110,21 +110,33 @@ Sozialpädagogik
 t: 041 000 00 00
 [Logo_Beispiel.png]
 <https://www.linkedin.com/company/beispiel> <https://www.instagram.com/beispiel>
+https://www.linkedin.com/company/beispiel https://www.instagram.com/beispiel
 BEISPIEL
 CH-6340 Baar
 m: info@beispiel.ch
-w: beispiel.ch<https://www.beispiel.ch/>`;
+w: beispiel.ch<https://www.beispiel.ch/>
+[Skizze.png]`;
     const result = normalizeInboundEmailText(input, undefined, {
-      removeCorporateSignature: true,
+      formatCorporateSignature: true,
     });
     const expected = `Hallo zusammen
 
 Bitte helfen Sie beim Anmelden am Laptop.
 
 Lieber Gruss
-Mara`;
+Mara
+
+E-Mail-Signatur
+Mara Muster
+Sozialpädagogik
+t: 041 000 00 00
+BEISPIEL
+CH-6340 Baar
+m: info@beispiel.ch
+w: beispiel.ch
+Bildanhang: Skizze.png`;
     if (result !== expected) {
-      throw new Error(`Unternehmenssignatur blieb sichtbar: ${result}`);
+      throw new Error(`Signatur wurde nicht sauber dargestellt: ${result}`);
     }
 
     const replyResult = normalizeInboundEmailText(input);
@@ -149,7 +161,7 @@ Mara
 
 PS: Ich bin morgen wieder erreichbar.`;
     const result = normalizeInboundEmailText(input, undefined, {
-      removeCorporateSignature: true,
+      formatCorporateSignature: true,
     });
     if (result !== input) {
       throw new Error(
@@ -167,7 +179,7 @@ Deno.test(
 Mara
 ${attachment}`;
       const result = normalizeInboundEmailText(input, undefined, {
-        removeCorporateSignature: true,
+        formatCorporateSignature: true,
       });
       if (result !== input) {
         throw new Error(
@@ -185,11 +197,64 @@ Mara
 PS: Der Ablauf steht unter https://beispiel.ch/ablauf.
 Treffpunkt: 8000 Zürich`;
   const result = normalizeInboundEmailText(input, undefined, {
-    removeCorporateSignature: true,
+    formatCorporateSignature: true,
   });
   if (result !== input) {
     throw new Error(
       `Persönlicher Nachtrag wurde unerwartet gekürzt: ${result}`,
+    );
+  }
+});
+
+Deno.test(
+  "ordnet einen persönlichen Nachtrag ausserhalb der sichtbaren Signatur ein",
+  () => {
+    const input = `Danke für die Rückmeldung.
+
+Freundliche Grüsse
+Mara
+
+Mara Muster
+t: 041 000 00 00
+m: mara@beispiel.ch
+
+PS: Der Ablauf steht unter https://beispiel.ch/ablauf.`;
+    const result = normalizeInboundEmailText(input, undefined, {
+      formatCorporateSignature: true,
+    });
+    const expected = `Danke für die Rückmeldung.
+
+Freundliche Grüsse
+Mara
+
+E-Mail-Signatur
+Mara Muster
+t: 041 000 00 00
+m: mara@beispiel.ch
+
+PS: Der Ablauf steht unter https://beispiel.ch/ablauf.`;
+    if (result !== expected) {
+      throw new Error(
+        `Persönlicher Nachtrag wurde falsch eingeordnet: ${result}`,
+      );
+    }
+  },
+);
+
+Deno.test("bewahrt CID-Bilder in einer erkannten sichtbaren Signatur", () => {
+  const input = `Freundliche Grüsse
+Mara
+
+Mara Muster
+t: 041 000 00 00
+m: mara@beispiel.ch
+[cid:logo@message]`;
+  const result = normalizeInboundEmailText(input, undefined, {
+    formatCorporateSignature: true,
+  });
+  if (!result.includes("[cid:logo@message]")) {
+    throw new Error(
+      `CID-Bild ging in der sichtbaren Signatur verloren: ${result}`,
     );
   }
 });
