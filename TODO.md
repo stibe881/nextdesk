@@ -282,3 +282,8 @@
   - Besitzt ein Asset eine Seriennummer, wird sie in seiner Übersichtskarte direkt bei den Gerätedaten angezeigt.
   - Fehlende Seriennummern erzeugen keine leere oder irreführende Zeile.
   - Die Anzeige verwendet ausschliesslich das bereits serverseitig berechtigte Feld `serial_number`; Intune-Synchronisation, Mandantentrennung und Bearbeitungsrechte bleiben unverändert. TypeScript, 127 Webtests, Produktionsbuild und ein sauberer Diff sind geprüft; ein Webrelease wird nicht ausgelöst.
+
+- [x] **Web-Assetübersicht: kompakter Abstand zwischen Filter und erster Assetkarte**
+  - Nach den Filtern «Suche», «Service» und «Status» beginnt die Assetliste mit einem deutlich kleineren, ruhigen Abstand.
+  - Die Änderung betrifft nur die Assetansicht; Abstände in Services, Problemen und Formularen bleiben unverändert.
+  - Filterlogik, Mandantentrennung und die vorhandene Darstellung der Assetkarte werden nicht verändert. TypeScript, 127 Webtests, Produktionsbuild und ein sauberer Diff sind geprüft; ein Webrelease wird nicht ausgelöst.

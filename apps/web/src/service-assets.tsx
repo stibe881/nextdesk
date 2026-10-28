@@ -1925,6 +1925,7 @@ export function ServiceAssets({
 
       {!loading && !forbidden && allowAssets && activeTab === "assets" ? (
         <section
+          className="service-assets__asset-panel"
           aria-labelledby={
             fixedTab ? "service-assets-title" : "service-assets-assets-tab"
           }

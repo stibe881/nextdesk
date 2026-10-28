@@ -7168,6 +7168,11 @@ body:has(.ticket-detail) {
   gap: 16px;
 }
 
+.service-assets .service-assets__asset-panel {
+  display: grid;
+  gap: 8px;
+}
+
 .service-assets fieldset {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(180px, 0.45fr);
