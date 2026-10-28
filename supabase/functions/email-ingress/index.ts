@@ -1,4 +1,5 @@
 import { withSupabase } from "@supabase/server";
+import { processEventSpaceEmailTicketIntake } from "../_shared/event-space-email-ticket-intake.ts";
 
 /**
  * Deployment requirements (kept here because this task must not change config.toml):
@@ -791,6 +792,13 @@ const handler = withSupabase(
         requestId,
       );
     }
+
+    await processEventSpaceEmailTicketIntake(context.supabaseAdmin, {
+      tenantId: tenant.id,
+      ticketId: ticket.id,
+      subject: payload.subject,
+      description: payload.text,
+    });
 
     return json(
       {

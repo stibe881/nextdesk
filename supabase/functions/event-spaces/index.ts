@@ -4,6 +4,11 @@ import {
   eventSpaceWorkspacePage,
 } from "../_shared/event-space-pagination.ts";
 import {
+  eventSpaceEmailIntakeBodyFromStoredTicket,
+  failEventSpaceEmailTicketIntake,
+  processEventSpaceEmailTicketIntake,
+} from "../_shared/event-space-email-ticket-intake.ts";
+import {
   eventSpaceConflictSnapshot,
   isEventSpaceConflictSnapshot,
   parseEventSpaceEquipment,
@@ -22,7 +27,12 @@ const MAX_CONFLICT_CANDIDATES = 500;
 type CallerClient = SupabaseContext["supabase"];
 type AdminClient = SupabaseContext["supabaseAdmin"];
 type RequestStatus =
-  "planned" | "in_preparation" | "ready" | "conducted" | "completed";
+  | "planned"
+  | "in_preparation"
+  | "ready"
+  | "conducted"
+  | "completed"
+  | "clarification_required";
 type TaskStatus = "open" | "in_progress" | "completed";
 type SpaceKind = "meeting_room" | "event_room" | "other";
 
@@ -40,6 +50,7 @@ type RequestInput = {
 
 type Action =
   | { type: "listWorkspace"; tenantId: string; offset: number }
+  | { type: "navigationSummary"; tenantId: string }
   | ({ type: "previewConflicts" } & RequestInput)
   | ({
       type: "createRequest";
@@ -59,6 +70,26 @@ type Action =
       tenantId: string;
       requestId: string;
       status: RequestStatus;
+    }
+  | {
+      type: "assignResponsible";
+      tenantId: string;
+      requestId: string;
+      responsibleUserId: string;
+    }
+  | {
+      type: "resolveEmailIntake";
+      tenantId: string;
+      requestId: string;
+      spaceId: string;
+      responsibleUserId: string;
+      startsAt: string;
+      endsAt: string;
+    }
+  | {
+      type: "retryEmailTicketIntake";
+      tenantId: string;
+      ticketId: string;
     }
   | {
       type: "updateTaskStatus";
@@ -186,6 +217,11 @@ function parseAction(value: unknown): Action | null {
       ? { type: value.type, tenantId: value.tenantId.toLowerCase(), offset }
       : null;
   }
+  if (value.type === "navigationSummary") {
+    return isUuid(value.tenantId) && hasOnlyKeys(value, ["type", "tenantId"])
+      ? { type: value.type, tenantId: value.tenantId.toLowerCase() }
+      : null;
+  }
   if (value.type === "previewConflicts") {
     return hasOnlyKeys(value, [
       "type",
@@ -283,6 +319,63 @@ function parseAction(value: unknown): Action | null {
           tenantId: value.tenantId.toLowerCase(),
           requestId: value.requestId.toLowerCase(),
           status: value.status as RequestStatus,
+        }
+      : null;
+  }
+  if (value.type === "assignResponsible") {
+    return isUuid(value.tenantId) &&
+      isUuid(value.requestId) &&
+      isUuid(value.responsibleUserId) &&
+      hasOnlyKeys(value, ["type", "tenantId", "requestId", "responsibleUserId"])
+      ? {
+          type: value.type,
+          tenantId: value.tenantId.toLowerCase(),
+          requestId: value.requestId.toLowerCase(),
+          responsibleUserId: value.responsibleUserId.toLowerCase(),
+        }
+      : null;
+  }
+  if (value.type === "resolveEmailIntake") {
+    const occurrences = parseEventSpaceOccurrences(
+      [{ startsAt: value.startsAt, endsAt: value.endsAt }],
+      "none",
+    );
+    return isUuid(value.tenantId) &&
+      isUuid(value.requestId) &&
+      isUuid(value.spaceId) &&
+      isUuid(value.responsibleUserId) &&
+      occurrences?.length === 1 &&
+      Date.parse(occurrences[0]!.endsAt) -
+        Date.parse(occurrences[0]!.startsAt) ===
+        30 * 60 * 1_000 &&
+      hasOnlyKeys(value, [
+        "type",
+        "tenantId",
+        "requestId",
+        "spaceId",
+        "responsibleUserId",
+        "startsAt",
+        "endsAt",
+      ])
+      ? {
+          type: value.type,
+          tenantId: value.tenantId.toLowerCase(),
+          requestId: value.requestId.toLowerCase(),
+          spaceId: value.spaceId.toLowerCase(),
+          responsibleUserId: value.responsibleUserId.toLowerCase(),
+          startsAt: occurrences[0]!.startsAt,
+          endsAt: occurrences[0]!.endsAt,
+        }
+      : null;
+  }
+  if (value.type === "retryEmailTicketIntake") {
+    return isUuid(value.tenantId) &&
+      isUuid(value.ticketId) &&
+      hasOnlyKeys(value, ["type", "tenantId", "ticketId"])
+      ? {
+          type: value.type,
+          tenantId: value.tenantId.toLowerCase(),
+          ticketId: value.ticketId.toLowerCase(),
         }
       : null;
   }
@@ -614,6 +707,33 @@ function publicRoom(row: Row) {
   };
 }
 
+async function navigationSummary(
+  client: CallerClient,
+  admin: AdminClient,
+  tenantId: string,
+) {
+  await requireMembership(client, tenantId);
+  const [canRequest, canManage] = await Promise.all([
+    hasPermission(client, tenantId, "event.spaces.request"),
+    hasPermission(client, tenantId, "event.spaces.manage"),
+  ]);
+  if (!canRequest && !canManage) {
+    throw new HttpError(
+      403,
+      "event_space_permission_denied",
+      "Für Veranstaltungsräume fehlt Ihnen die erforderliche Berechtigung.",
+    );
+  }
+  const { count, error } = await admin
+    .from("event_space_requests")
+    .select("id", { count: "exact", head: true })
+    .eq("tenant_id", tenantId)
+    .neq("status", "completed")
+    .or("responsible_user_id.is.null,status.eq.clarification_required");
+  if (error) databaseFailure(error);
+  return { attentionCount: Math.max(0, count ?? 0), canAccess: true };
+}
+
 async function listWorkspace(
   client: CallerClient,
   admin: AdminClient,
@@ -637,7 +757,12 @@ async function listWorkspace(
   // A bounded weekly series may contain up to 52 occurrences. Keep the
   // complete planned year visible instead of silently hiding its later dates.
   const until = new Date(Date.now() + 400 * 24 * 60 * 60 * 1000).toISOString();
-  const [roomsResult, requestsResult] = await Promise.all([
+  const [
+    roomsResult,
+    requestsResult,
+    clarificationsResult,
+    emailIntakesResult,
+  ] = await Promise.all([
     admin
       .from("event_spaces")
       .select("id, name, kind, location, capacity")
@@ -655,9 +780,33 @@ async function listWorkspace(
       .order("starts_at")
       .order("id")
       .range(offset, offset + EVENT_SPACE_WORKSPACE_PAGE_SIZE),
+    canManage
+      ? admin
+          .from("event_space_requests")
+          .select(
+            "id, title, source_order_number, requested_space_text, requested_starts_at, requested_ends_at, requested_equipment_keys, clarification_reasons",
+          )
+          .eq("tenant_id", tenantId)
+          .eq("status", "clarification_required")
+          .order("created_at", { ascending: false })
+          .limit(100)
+      : Promise.resolve({ data: [], error: null }),
+    canManage
+      ? admin
+          .from("event_space_ticket_intake_outbox")
+          .select(
+            "ticket_id, status, manual_retry_count, retry_lease_expires_at",
+          )
+          .eq("tenant_id", tenantId)
+          .in("status", ["pending", "failed", "retrying"])
+          .order("created_at")
+          .limit(50)
+      : Promise.resolve({ data: [], error: null }),
   ]);
   if (roomsResult.error) databaseFailure(roomsResult.error);
   if (requestsResult.error) databaseFailure(requestsResult.error);
+  if (clarificationsResult.error) databaseFailure(clarificationsResult.error);
+  if (emailIntakesResult.error) databaseFailure(emailIntakesResult.error);
   const rooms = (roomsResult.data ?? []).map((row: Row) => publicRoom(row));
   const requestPage = eventSpaceWorkspacePage(
     requestsResult.data ?? [],
@@ -809,6 +958,74 @@ async function listWorkspace(
       hasMore: requestPage.hasMore,
       nextOffset: requestPage.nextOffset,
     },
+    clarifications: canManage
+      ? (clarificationsResult.data ?? [])
+          .filter((row: Row) => typeof row.id === "string")
+          .map((row: Row) => ({
+            id: String(row.id),
+            title: typeof row.title === "string" ? row.title : "Raumauftrag",
+            sourceOrderNumber:
+              typeof row.source_order_number === "string"
+                ? row.source_order_number
+                : null,
+            requestedSpaceText:
+              typeof row.requested_space_text === "string"
+                ? row.requested_space_text
+                : null,
+            requestedStartsAt:
+              typeof row.requested_starts_at === "string"
+                ? row.requested_starts_at
+                : null,
+            requestedEndsAt:
+              typeof row.requested_ends_at === "string"
+                ? row.requested_ends_at
+                : null,
+            requestedEquipment: Array.isArray(row.requested_equipment_keys)
+              ? row.requested_equipment_keys.filter(
+                  (item): item is string => typeof item === "string",
+                )
+              : [],
+            reasons: Array.isArray(row.clarification_reasons)
+              ? row.clarification_reasons.filter(
+                  (item): item is string => typeof item === "string",
+                )
+              : [],
+          }))
+      : [],
+    emailIntakes: canManage
+      ? (emailIntakesResult.data ?? [])
+          .filter(
+            (row: Row) =>
+              typeof row.ticket_id === "string" &&
+              (row.status === "pending" ||
+                row.status === "failed" ||
+                row.status === "retrying") &&
+              Number.isInteger(row.manual_retry_count) &&
+              typeof row.manual_retry_count === "number" &&
+              row.manual_retry_count >= 0 &&
+              row.manual_retry_count <= 3,
+          )
+          .map((row: Row) => {
+            const state = row.status as "pending" | "failed" | "retrying";
+            const retryCount = row.manual_retry_count as number;
+            const leaseExpiresAt =
+              typeof row.retry_lease_expires_at === "string"
+                ? Date.parse(row.retry_lease_expires_at)
+                : Number.NaN;
+            return {
+              ticketId: String(row.ticket_id),
+              state,
+              retryCount,
+              canRetry:
+                ((state === "pending" || state === "failed") &&
+                  retryCount < 3) ||
+                (state === "retrying" &&
+                  retryCount < 3 &&
+                  Number.isFinite(leaseExpiresAt) &&
+                  leaseExpiresAt <= Date.now()),
+            };
+          })
+      : [],
     requests: requestRows.map((row) => ({
       id: String(row.id),
       spaceId: String(row.space_id),
@@ -924,6 +1141,7 @@ async function updateRequestStatus(
     .update({ status })
     .eq("tenant_id", tenantId)
     .eq("id", requestId)
+    .neq("status", "clarification_required")
     .select("id")
     .maybeSingle();
   if (error) databaseFailure(error);
@@ -942,6 +1160,150 @@ async function updateRequestStatus(
     requestId,
     { status },
   );
+}
+
+async function assignResponsible(
+  admin: AdminClient,
+  actorId: string,
+  tenantId: string,
+  requestId: string,
+  responsibleUserId: string,
+) {
+  await assertResponsibleMember(admin, tenantId, responsibleUserId);
+  const { data, error } = await admin
+    .from("event_space_requests")
+    .update({ responsible_user_id: responsibleUserId })
+    .eq("tenant_id", tenantId)
+    .eq("id", requestId)
+    .neq("status", "completed")
+    .select("id")
+    .maybeSingle();
+  if (error) databaseFailure(error);
+  if (!data)
+    throw new HttpError(
+      404,
+      "event_space_request_not_found",
+      "Der Raumauftrag ist nicht mehr verfügbar.",
+    );
+  await audit(
+    admin,
+    tenantId,
+    actorId,
+    "event_spaces.request.responsible_assigned",
+    "event_space_request",
+    requestId,
+    { assigned: true },
+  );
+}
+
+async function resolveEmailIntake(
+  admin: AdminClient,
+  actorId: string,
+  tenantId: string,
+  requestId: string,
+  spaceId: string,
+  responsibleUserId: string,
+  startsAt: string,
+  endsAt: string,
+) {
+  const { data, error } = await admin.rpc(
+    "resolve_event_space_email_ticket_request",
+    {
+      p_tenant_id: tenantId,
+      p_request_id: requestId,
+      p_space_id: spaceId,
+      p_responsible_user_id: responsibleUserId,
+      p_starts_at: startsAt,
+      p_ends_at: endsAt,
+      p_actor_id: actorId,
+    },
+  );
+  if (error) databaseFailure(error);
+  const result = Array.isArray(data) ? data[0] : data;
+  if (!result || (result as Row).resolved !== true) {
+    throw new HttpError(
+      409,
+      "event_space_clarification_conflict",
+      "Der Raum oder die benötigte Technik ist im gewünschten Zeitraum nicht verfügbar.",
+    );
+  }
+}
+
+async function retryEmailTicketIntake(
+  client: CallerClient,
+  admin: AdminClient,
+  actorId: string,
+  tenantId: string,
+  ticketId: string,
+) {
+  // Permission checks intentionally happen before the service-role claim. The
+  // claim repeats active-membership and ticket/outbox relationship checks in
+  // the database so a browser-supplied UUID cannot cross a tenant boundary.
+  await requireMembership(client, tenantId);
+  await requirePermission(client, tenantId, "event.spaces.manage");
+  const { data, error } = await admin.rpc(
+    "claim_event_space_email_ticket_intake_retry",
+    {
+      p_tenant_id: tenantId,
+      p_ticket_id: ticketId,
+      p_actor_id: actorId,
+    },
+  );
+  if (error) databaseFailure(error);
+  const claim = Array.isArray(data) ? data[0] : data;
+  const claimOutcome =
+    claim &&
+    typeof claim === "object" &&
+    typeof (claim as Row).outcome === "string"
+      ? (claim as Row).outcome
+      : null;
+  if (claimOutcome !== "claimed") {
+    // A concurrent click, terminal intake or exhausted limit is intentionally
+    // indistinguishable to the UI. It exposes no ticket or mail information.
+    return { state: "unavailable" as const };
+  }
+
+  const retryCount =
+    typeof (claim as Row).retry_count === "number" &&
+    Number.isSafeInteger((claim as Row).retry_count)
+      ? ((claim as Row).retry_count as number)
+      : null;
+  const ticketSubject = (claim as Row).ticket_subject;
+  const sourceDescription = eventSpaceEmailIntakeBodyFromStoredTicket(
+    (claim as Row).ticket_description,
+  );
+  const outcome =
+    typeof ticketSubject === "string" && sourceDescription
+      ? await processEventSpaceEmailTicketIntake(admin, {
+          tenantId,
+          ticketId,
+          subject: ticketSubject,
+          description: sourceDescription,
+        })
+      : (await failEventSpaceEmailTicketIntake(
+          admin,
+          { tenantId, ticketId },
+          "event_space_intake_source_unavailable",
+        ),
+        "failed" as const);
+
+  // The transactional claim is already an audit record even if this optional
+  // completion record cannot be persisted. A missing audit write must not
+  // turn a completed source ticket into an HTTP delivery failure.
+  try {
+    await audit(
+      admin,
+      tenantId,
+      actorId,
+      "event_spaces.email_ticket_intake.retry_finished",
+      "event_space_ticket_intake_outbox",
+      ticketId,
+      { outcome, retryCount },
+    );
+  } catch {
+    // The started audit and the outbox state remain the durable recovery trail.
+  }
+  return { state: outcome };
 }
 
 async function updateTaskStatus(
@@ -1006,6 +1368,15 @@ const handler = withSupabase(
             action.tenantId,
             actorId,
             action.offset,
+          ),
+        });
+      }
+      if (action.type === "navigationSummary") {
+        return json(request, {
+          data: await navigationSummary(
+            context.supabase,
+            context.supabaseAdmin,
+            action.tenantId,
           ),
         });
       }
@@ -1094,6 +1465,50 @@ const handler = withSupabase(
           action.status,
         );
         return json(request, { data: { updated: true } });
+      }
+      if (action.type === "assignResponsible") {
+        await requirePermission(
+          context.supabase,
+          action.tenantId,
+          "event.spaces.manage",
+        );
+        await assignResponsible(
+          context.supabaseAdmin,
+          actorId,
+          action.tenantId,
+          action.requestId,
+          action.responsibleUserId,
+        );
+        return json(request, { data: { updated: true } });
+      }
+      if (action.type === "resolveEmailIntake") {
+        await requirePermission(
+          context.supabase,
+          action.tenantId,
+          "event.spaces.manage",
+        );
+        await resolveEmailIntake(
+          context.supabaseAdmin,
+          actorId,
+          action.tenantId,
+          action.requestId,
+          action.spaceId,
+          action.responsibleUserId,
+          action.startsAt,
+          action.endsAt,
+        );
+        return json(request, { data: { resolved: true } });
+      }
+      if (action.type === "retryEmailTicketIntake") {
+        return json(request, {
+          data: await retryEmailTicketIntake(
+            context.supabase,
+            context.supabaseAdmin,
+            actorId,
+            action.tenantId,
+            action.ticketId,
+          ),
+        });
       }
       await requirePermission(
         context.supabase,

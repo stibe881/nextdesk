@@ -1,0 +1,206 @@
+import {
+  eventSpaceEmailIntakeSubject,
+  parseEventSpaceEmailIntake,
+  type EventSpaceEmailIntake,
+} from "./event-space-email-intake.ts";
+
+type Admin = any;
+
+type IntakeInput = Readonly<{
+  description: string;
+  subject: string;
+  tenantId: string;
+  ticketId: string;
+}>;
+
+type OutboxInput = Pick<IntakeInput, "tenantId" | "ticketId">;
+
+export type EventSpaceEmailTicketIntakeOutcome =
+  "failed" | "ignored" | "processed";
+
+type Room = Readonly<{ id: string; name: string }>;
+
+const STORED_EMAIL_TICKET_PREFIX =
+  /^Eingegangene E-Mail von [^\r\n]{1,160}\r?\n\r?\n/u;
+
+function normaliseRoomName(value: string): string {
+  return value
+    .normalize("NFKC")
+    .replace(/\s+/gu, " ")
+    .trim()
+    .toLocaleLowerCase("de-CH");
+}
+
+function clarificationCodes(
+  result: ReturnType<typeof parseEventSpaceEmailIntake>,
+): string[] {
+  return result.status === "needs_clarification"
+    ? result.clarifications.map((item) => item.code)
+    : [];
+}
+
+/**
+ * Both supported e-mail ingress paths persist this bounded display-name prefix
+ * before the original body. A manual recovery only accepts that known envelope;
+ * it must never treat an edited arbitrary ticket description as intake input.
+ */
+export function eventSpaceEmailIntakeBodyFromStoredTicket(
+  description: unknown,
+): string | null {
+  if (
+    typeof description !== "string" ||
+    description.length < 1 ||
+    description.length > 50_000 ||
+    !description.isWellFormed() ||
+    description.includes("\u0000")
+  ) {
+    return null;
+  }
+  const match = STORED_EMAIL_TICKET_PREFIX.exec(description);
+  if (!match) return null;
+  const body = description.slice(match[0].length);
+  return body.length >= 1 && body.length <= 48_000 ? body : null;
+}
+
+async function markOutbox(
+  admin: Admin,
+  input: OutboxInput,
+  status: "failed" | "ignored",
+  errorCode: string | null,
+): Promise<void> {
+  const { error } = await admin
+    .from("event_space_ticket_intake_outbox")
+    .update({
+      status,
+      last_error_code: errorCode,
+      processed_at: null,
+      retry_lease_expires_at: null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("ticket_id", input.ticketId)
+    .eq("tenant_id", input.tenantId)
+    .in("status", ["pending", "failed", "retrying"]);
+  if (error) throw new Error("event_space_intake_outbox_update_failed");
+}
+
+/**
+ * A recovery error remains private to the optional intake. This helper is also
+ * used when a stored ticket no longer has the original ingress envelope.
+ */
+export async function failEventSpaceEmailTicketIntake(
+  admin: Admin,
+  input: OutboxInput,
+  errorCode: string,
+): Promise<void> {
+  try {
+    await markOutbox(admin, input, "failed", errorCode);
+  } catch {
+    // The source ticket has already committed. Never turn optional intake
+    // bookkeeping into a failed e-mail delivery or recovery response.
+  }
+}
+
+async function matchingRoomId(
+  admin: Admin,
+  tenantId: string,
+  requestedSpaceText: string,
+): Promise<string | null> {
+  const { data, error } = await admin
+    .from("event_spaces")
+    .select("id, name")
+    .eq("tenant_id", tenantId)
+    .eq("active", true);
+  if (error) throw new Error("event_space_lookup_failed");
+  const requested = normaliseRoomName(requestedSpaceText);
+  const matches = (data ?? []).filter(
+    (room: Room) =>
+      typeof room.id === "string" &&
+      typeof room.name === "string" &&
+      normaliseRoomName(room.name) === requested,
+  );
+  return matches.length === 1 ? matches[0]!.id : null;
+}
+
+function rpcPayload(
+  input: IntakeInput,
+  request: EventSpaceEmailIntake | null,
+  extraClarifications: readonly string[],
+) {
+  const subject = eventSpaceEmailIntakeSubject(input.subject);
+  if (!subject) return null;
+  const requirements = request?.requirements;
+  return {
+    p_tenant_id: input.tenantId,
+    p_ticket_id: input.ticketId,
+    p_order_number: subject.sourceOrderNumber,
+    p_title: subject.title,
+    p_organizer: request?.organiser ?? null,
+    p_space_id: null as string | null,
+    p_requested_space_text: request?.requestedSpaceText ?? null,
+    p_starts_at: request?.startAt ?? null,
+    p_ends_at: request?.endAt ?? null,
+    p_equipment_keys: request?.equipmentKeys ?? [],
+    p_room_reservation_requested: requirements?.roomReservation ?? false,
+    p_ict_material_requested: requirements?.ictMaterial ?? false,
+    p_internet_access_requested: requirements?.internetAccess ?? false,
+    p_sobe_network_access_requested: requirements?.sobeNetworkAccess ?? false,
+    p_reception_laptop_requested: requirements?.receptionLaptop ?? false,
+    p_remarks: request?.notes ?? null,
+    p_sharepoint_url: request?.orderUrl ?? null,
+    p_phone_number: request?.contactPhone ?? null,
+    p_clarification_reasons: [...extraClarifications],
+  };
+}
+
+/**
+ * Runs synchronously after a new email ticket has committed. All failures are
+ * isolated from ticket delivery and retained in the private outbox for an
+ * explicit later retry; this helper never introduces a scheduler or logs mail
+ * data. The database operation remains the final idempotency and conflict lock.
+ */
+export async function processEventSpaceEmailTicketIntake(
+  admin: Admin,
+  input: IntakeInput,
+): Promise<EventSpaceEmailTicketIntakeOutcome> {
+  try {
+    const subject = eventSpaceEmailIntakeSubject(input.subject);
+    if (!subject) {
+      await markOutbox(admin, input, "ignored", null);
+      return "ignored";
+    }
+    const parsed = parseEventSpaceEmailIntake({
+      subject: input.subject,
+      description: input.description,
+    });
+    const request = parsed.status === "ready" ? parsed.request : null;
+    const extraClarifications = clarificationCodes(parsed);
+    const payload = rpcPayload(input, request, extraClarifications);
+    if (!payload) {
+      await markOutbox(admin, input, "ignored", null);
+      return "ignored";
+    }
+
+    if (request) {
+      const roomId = await matchingRoomId(
+        admin,
+        input.tenantId,
+        request.requestedSpaceText,
+      );
+      payload.p_space_id = roomId;
+    }
+
+    const { error } = await admin.rpc(
+      "create_event_space_email_ticket_request",
+      payload,
+    );
+    if (error) throw new Error("event_space_intake_persist_failed");
+    return "processed";
+  } catch {
+    await failEventSpaceEmailTicketIntake(
+      admin,
+      input,
+      "event_space_intake_failed",
+    );
+    return "failed";
+  }
+}

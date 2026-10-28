@@ -1087,6 +1087,7 @@ time,
 }
 
 .nav-item {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 11px;
@@ -1100,6 +1101,38 @@ time,
   text-align: left;
   font-size: 14px;
   font-weight: 550;
+}
+
+.nav-item__label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nav-item__badge {
+  min-width: 22px;
+  margin-left: auto;
+  border-radius: 999px;
+  padding: 2px 7px;
+  color: var(--on-primary);
+  background: var(--primary);
+  font-size: 12px;
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.25;
+  text-align: center;
+}
+
+/* Der Raum-Badge steht bewusst direkt vor dem Icon. Als Flex-Element bleibt er
+   auch bei zweistelligen Werten klar lesbar und überdeckt keine Navigation. */
+.nav-item__badge--leading {
+  position: static;
+  min-width: 18px;
+  min-height: 18px;
+  margin: 0;
+  padding: 2px 5px;
+  flex: 0 0 auto;
 }
 
 .nav-item svg {
@@ -14135,6 +14168,189 @@ body:has(.knowledge-base__editor-backdrop) {
   line-height: 1;
 }
 
+.event-spaces__email-recovery {
+  display: grid;
+  gap: 14px;
+  border: 1px solid color-mix(in srgb, var(--warning) 34%, var(--border));
+  padding: 20px;
+  background: color-mix(in srgb, var(--warning-soft) 38%, var(--surface));
+}
+
+.event-spaces__email-recovery-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.event-spaces__email-recovery h3,
+.event-spaces__email-recovery p {
+  margin: 0;
+}
+
+.event-spaces__email-recovery h3 {
+  color: var(--ink);
+  font-size: 20px;
+}
+
+.event-spaces__email-recovery-heading p:not(.eyebrow) {
+  max-width: 72ch;
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.event-spaces__email-recovery-heading > strong {
+  display: grid;
+  min-width: 30px;
+  height: 30px;
+  place-items: center;
+  border-radius: 999px;
+  color: var(--on-primary);
+  background: var(--warning);
+  font-variant-numeric: tabular-nums;
+}
+
+.event-spaces__email-recovery ul {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.event-spaces__email-recovery li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  background: var(--surface);
+}
+
+.event-spaces__email-recovery li > span {
+  display: grid;
+  gap: 3px;
+}
+
+.event-spaces__email-recovery li strong {
+  color: var(--ink);
+}
+
+.event-spaces__email-recovery li small {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.event-spaces__clarifications {
+  display: grid;
+  gap: 16px;
+  border: 1px solid color-mix(in srgb, var(--warning) 38%, var(--border));
+  padding: 20px;
+  background: color-mix(in srgb, var(--warning-soft) 64%, var(--surface));
+}
+
+.event-spaces__clarifications-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.event-spaces__clarifications h3,
+.event-spaces__clarifications h4,
+.event-spaces__clarifications p {
+  margin: 0;
+}
+
+.event-spaces__clarifications h3 {
+  color: var(--ink);
+  font-size: 20px;
+}
+
+.event-spaces__clarifications-heading p:not(.eyebrow) {
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.event-spaces__clarifications-heading > strong {
+  display: grid;
+  min-width: 30px;
+  height: 30px;
+  place-items: center;
+  border-radius: 999px;
+  color: var(--on-primary);
+  background: var(--warning);
+  font-variant-numeric: tabular-nums;
+}
+
+.event-spaces__clarifications ul {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.event-spaces__clarifications li > article {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(180px, 0.7fr);
+  gap: 12px 20px;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  background: var(--surface);
+}
+
+.event-spaces__clarifications small,
+.event-spaces__clarifications li p {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.event-spaces__clarification-reasons {
+  color: var(--warning) !important;
+  font-weight: 650;
+}
+
+.event-spaces__clarification-actions {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
+  gap: 10px 14px;
+  align-items: end;
+}
+
+.event-spaces__clarification-actions label {
+  display: grid;
+  gap: 6px;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 620;
+}
+
+.event-spaces__clarification-actions select,
+.event-spaces__clarification-actions input {
+  min-width: 0;
+  min-height: 40px;
+  border: 1px solid var(--control-border);
+  border-radius: var(--radius);
+  padding: 8px 10px;
+  color: var(--ink);
+  background: var(--surface);
+  font: inherit;
+}
+
+.event-spaces__clarification-follow-up {
+  grid-column: 1 / -1;
+  color: var(--muted) !important;
+  font-size: 13px;
+}
+
 .event-spaces__message,
 .event-spaces__access-note {
   margin: 0;
@@ -14718,6 +14934,20 @@ body:has(.knowledge-base__editor-backdrop) {
   .event-spaces__metrics,
   .event-spaces__request-detail-grid {
     grid-template-columns: 1fr;
+  }
+
+  .event-spaces__clarifications li > article,
+  .event-spaces__clarification-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .event-spaces__email-recovery li {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .event-spaces__email-recovery li > button {
+    width: 100%;
   }
 
   .event-spaces__conflict {

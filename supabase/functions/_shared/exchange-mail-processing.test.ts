@@ -115,3 +115,21 @@ Deno.test(
     }
   },
 );
+
+Deno.test(
+  "der Raumticket-Intake folgt direkt auf den neuen Ticketcommit vor der Anhangsnachbearbeitung",
+  async () => {
+    const source = await Deno.readTextFile(
+      new URL("./exchange-mail-processing.ts", import.meta.url),
+    );
+    const intake = source.indexOf(
+      "await processEventSpaceEmailTicketIntake(admin",
+    );
+    const attachments = source.indexOf("if (inboundAttachments.length > 0)");
+    if (intake < 0 || attachments < 0 || intake > attachments) {
+      throw new Error(
+        "Ein neuer Raumticket-Intake darf nicht von einer optionalen Anhangsnachbearbeitung übersprungen werden.",
+      );
+    }
+  },
+);

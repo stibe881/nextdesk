@@ -15,6 +15,7 @@ import {
   type CustomerTicketEmailBrand,
   type CustomerTicketEmailKind,
 } from "./customer-ticket-email-template.ts";
+import { processEventSpaceEmailTicketIntake } from "./event-space-email-ticket-intake.ts";
 import { resolveTenantFeatureStates } from "./tenant-features.ts";
 
 const SERVICE_EMAIL = "exchange-mail-service@app.nextdesk.ch";
@@ -1329,6 +1330,14 @@ export async function processInboundMessage(
       (kind !== "new_ticket" && kind !== "reply")
     )
       throw new Error("inbound_commit_invalid");
+    if (kind === "new_ticket") {
+      await processEventSpaceEmailTicketIntake(admin, {
+        tenantId: channel.tenant_id,
+        ticketId,
+        subject: subject(graph.subject),
+        description: body,
+      });
+    }
     if (inboundAttachments.length > 0) {
       let attachmentIdByContentId: Map<string, string>;
       try {

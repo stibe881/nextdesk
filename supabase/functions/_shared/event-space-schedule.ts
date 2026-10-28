@@ -5,6 +5,8 @@ export const EVENT_SPACE_EQUIPMENT = [
   "audio",
   "videocall",
   "microphones",
+  "screen",
+  "reception_laptop",
 ] as const;
 
 export type EventSpaceEquipment = (typeof EVENT_SPACE_EQUIPMENT)[number];
