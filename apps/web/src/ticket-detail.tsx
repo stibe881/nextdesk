@@ -4,6 +4,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type DragEvent,
   type FormEvent,
 } from "react";
 import {
@@ -15,6 +16,7 @@ import {
   Eye,
   EyeOff,
   Focus,
+  ImagePlus,
   LoaderCircle,
   Mail,
   MessageSquare,
@@ -42,6 +44,11 @@ import {
   ticketInlineAttachmentIds,
   ticketInlineMediaSegments,
 } from "./lib/ticket-inline-media";
+import {
+  MAX_TICKET_COMMENT_IMAGE_ATTACHMENTS,
+  ticketCommentAttachmentIds,
+  ticketCommentBodyWithAttachments,
+} from "./lib/ticket-comment-attachments";
 import { supabase } from "./lib/supabase";
 import { TicketApprovals } from "./ticket-approvals";
 import { TicketComparison } from "./ticket-comparison";
@@ -190,6 +197,7 @@ type AddCommentAction = {
   ticketId: string;
   body: string;
   visibility: CommentVisibility;
+  attachmentIds?: string[];
 };
 
 type ToggleWatchAction = {
@@ -248,6 +256,7 @@ type TicketAttachmentAction =
       filename: string;
       contentType: string;
       byteSize: number;
+      visibility?: CommentVisibility;
     }
   | {
       type: "completeUpload";
@@ -257,6 +266,7 @@ type TicketAttachmentAction =
       originalFilename: string;
       contentType: string;
       byteSize: number;
+      visibility?: CommentVisibility;
     }
   | {
       type: "createDownloadUrl";
@@ -490,10 +500,24 @@ type MergeSearchTarget = {
 
 type TicketAttachment = {
   id: string;
+  commentId: string | null;
+  visibility: CommentVisibility;
   originalFilename: string;
   contentType: string;
   byteSize: number;
   createdAt: string;
+};
+
+type QueuedCommentImage = {
+  key: string;
+  file: File;
+  originalFilename: string;
+  byteSize: number;
+};
+
+type CommentImageNotice = {
+  tone: "error" | "success";
+  text: string;
 };
 
 type AttachmentUpload = {
@@ -628,6 +652,8 @@ type TicketDetailData = {
   /** Bei älteren Edge-Function-Deployments nicht vorhanden; kein Fallback auf canUpdate. */
   canEscalate?: boolean;
   canUseInternalNotes: boolean;
+  canWriteInternalNotes: boolean;
+  canCommentExternal: boolean;
   canTrackTime: boolean;
 };
 
@@ -677,6 +703,12 @@ const ALLOWED_ATTACHMENT_CONTENT_TYPES = new Set<string>(
 const ATTACHMENT_ACCEPT = ATTACHMENT_CONTENT_TYPES.join(",");
 const ATTACHMENT_ALLOWLIST_LABEL =
   "PDF, TXT, CSV, DOC, DOCX, XLS, XLSX, PNG, JPG/JPEG und WebP";
+const COMMENT_IMAGE_CONTENT_TYPES = new Set<string>([
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+]);
+const COMMENT_IMAGE_ACCEPT = [...COMMENT_IMAGE_CONTENT_TYPES].join(",");
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   return typeof value === "object" && value !== null && !Array.isArray(value)
@@ -1212,28 +1244,54 @@ function parseMergeSearchTargets(value: unknown): MergeSearchTarget[] | null {
 
 function toTicketAttachment(value: unknown): TicketAttachment | null {
   const attachment = asRecord(value);
+  const originalFilename =
+    typeof attachment?.original_filename === "string"
+      ? attachment.original_filename
+      : attachment?.originalFilename;
+  const contentType =
+    typeof attachment?.content_type === "string"
+      ? attachment.content_type
+      : attachment?.contentType;
+  const byteSize =
+    typeof attachment?.byte_size === "number"
+      ? attachment.byte_size
+      : attachment?.byteSize;
+  const createdAt =
+    typeof attachment?.created_at === "string"
+      ? attachment.created_at
+      : attachment?.createdAt;
+  const commentId =
+    attachment?.comment_id === null || attachment?.comment_id === undefined
+      ? (attachment?.commentId ?? null)
+      : attachment.comment_id;
+  const visibility =
+    attachment?.visibility === undefined ? "external" : attachment.visibility;
   if (
     !attachment ||
     typeof attachment.id !== "string" ||
-    typeof attachment.original_filename !== "string" ||
-    !attachment.original_filename.trim() ||
-    typeof attachment.content_type !== "string" ||
-    !ALLOWED_ATTACHMENT_CONTENT_TYPES.has(attachment.content_type) ||
-    typeof attachment.byte_size !== "number" ||
-    !Number.isSafeInteger(attachment.byte_size) ||
-    attachment.byte_size < 1 ||
-    attachment.byte_size > MAX_ATTACHMENT_BYTES ||
-    typeof attachment.created_at !== "string"
+    typeof originalFilename !== "string" ||
+    !originalFilename.trim() ||
+    typeof contentType !== "string" ||
+    !ALLOWED_ATTACHMENT_CONTENT_TYPES.has(contentType) ||
+    typeof byteSize !== "number" ||
+    !Number.isSafeInteger(byteSize) ||
+    byteSize < 1 ||
+    byteSize > MAX_ATTACHMENT_BYTES ||
+    typeof createdAt !== "string" ||
+    (commentId !== null && !isUuid(commentId)) ||
+    (visibility !== "internal" && visibility !== "external")
   ) {
     return null;
   }
 
   return {
     id: attachment.id,
-    originalFilename: attachment.original_filename,
-    contentType: attachment.content_type,
-    byteSize: attachment.byte_size,
-    createdAt: attachment.created_at,
+    commentId,
+    visibility,
+    originalFilename,
+    contentType,
+    byteSize,
+    createdAt,
   };
 }
 
@@ -1248,6 +1306,14 @@ function parseTicketAttachments(value: unknown): TicketAttachment[] | null {
   )
     ? attachments
     : null;
+}
+
+function parseCompletedTicketAttachment(
+  value: unknown,
+): TicketAttachment | null {
+  const envelope = asRecord(value);
+  const data = asRecord(envelope?.data);
+  return data ? toTicketAttachment(data.attachment) : null;
 }
 
 function isHttpsUrl(value: unknown): value is string {
@@ -1720,6 +1786,14 @@ function attachmentFileError(file: File): string | null {
   return null;
 }
 
+function commentImageFileError(file: File): string | null {
+  const validationError = attachmentFileError(file);
+  if (validationError) return validationError;
+  return COMMENT_IMAGE_CONTENT_TYPES.has(file.type.trim().toLowerCase())
+    ? null
+    : "Hier können nur PNG-, JPG/JPEG- oder WebP-Bilder hochgeladen werden.";
+}
+
 function valuesOf<T>(value: unknown, guard: (item: unknown) => item is T): T[] {
   return Array.isArray(value) ? value.filter(guard) : [];
 }
@@ -1874,6 +1948,8 @@ function parseTicketDetail(
     canClose: data.canClose === true,
     ...(canEscalate === undefined ? {} : { canEscalate }),
     canUseInternalNotes: data.canUseInternalNotes === true,
+    canWriteInternalNotes: data.canWriteInternalNotes === true,
+    canCommentExternal: data.canCommentExternal === true,
     canTrackTime: data.canTrackTime === true,
   };
 }
@@ -3494,6 +3570,16 @@ export function TicketDetail({
   const [inlineImagesLoading, setInlineImagesLoading] = useState(false);
   const [selectedAttachmentFile, setSelectedAttachmentFile] =
     useState<File | null>(null);
+  const [commentImageAttachments, setCommentImageAttachments] = useState<
+    Record<CommentVisibility, QueuedCommentImage[]>
+  >({
+    external: [],
+    internal: [],
+  });
+  const [commentImageNotice, setCommentImageNotice] =
+    useState<CommentImageNotice | null>(null);
+  const [isCommentImageDropActive, setIsCommentImageDropActive] =
+    useState(false);
   const [pendingAttachmentAction, setPendingAttachmentAction] =
     useState<PendingAttachmentAction>(null);
   const [pendingAttachmentId, setPendingAttachmentId] = useState<string | null>(
@@ -3557,6 +3643,7 @@ export function TicketDetail({
   const commentVisibilityRef = useRef<CommentVisibility>("internal");
   const undoTimerRef = useRef<number | null>(null);
   const attachmentInputRef = useRef<HTMLInputElement>(null);
+  const commentImageInputRef = useRef<HTMLInputElement>(null);
   const backgroundTicketRefreshBlocked =
     loading ||
     isEditingTicket ||
@@ -3577,6 +3664,8 @@ export function TicketDetail({
     mergeSearchLoading ||
     commentDrafts.external.trim().length > 0 ||
     commentDrafts.internal.trim().length > 0 ||
+    commentImageAttachments.external.length > 0 ||
+    commentImageAttachments.internal.length > 0 ||
     ticketCategoryDraft !== null ||
     selectedAttachmentFile !== null;
   detailRef.current = detail;
@@ -3621,6 +3710,24 @@ export function TicketDetail({
     commentDrafts,
     commentVisibility,
   );
+  const activeCommentImageAttachments =
+    commentImageAttachments[commentVisibility];
+  const canAttachCommentImages = Boolean(
+    detail &&
+    (commentVisibility === "internal"
+      ? detail.canWriteInternalNotes
+      : detail.canCommentExternal),
+  );
+  const attachmentsByCommentId = useMemo(() => {
+    const grouped = new Map<string, TicketAttachment[]>();
+    for (const attachment of attachments) {
+      if (!attachment.commentId) continue;
+      const current = grouped.get(attachment.commentId) ?? [];
+      current.push(attachment);
+      grouped.set(attachment.commentId, current);
+    }
+    return grouped;
+  }, [attachments]);
   const commentComposer = ticketCommentComposerCopy(commentVisibility);
   const restoreInternalNoteDraft = useCallback((body: string) => {
     setCommentDrafts((current) =>
@@ -4392,7 +4499,6 @@ export function TicketDetail({
   }, [isClosureContextOpen, loadQuality, ticketIsClosed]);
 
   useEffect(() => {
-    if (!isClosureContextOpen) return;
     setAttachments([]);
     setAttachmentsLoaded(false);
     setSelectedAttachmentFile(null);
@@ -4401,7 +4507,13 @@ export function TicketDetail({
     return () => {
       attachmentRequestSequence.current += 1;
     };
-  }, [isClosureContextOpen, loadAttachments]);
+  }, [loadAttachments]);
+
+  useEffect(() => {
+    setCommentImageAttachments({ external: [], internal: [] });
+    setCommentImageNotice(null);
+    if (commentImageInputRef.current) commentImageInputRef.current.value = "";
+  }, [tenantId, ticketId]);
 
   useEffect(() => {
     if (!isClosureContextOpen) return;
@@ -4916,6 +5028,54 @@ export function TicketDetail({
     setSelectedAttachmentFile(file);
   }
 
+  async function uploadTicketAttachment(
+    file: File,
+    visibility?: CommentVisibility,
+  ): Promise<TicketAttachment> {
+    const filename = file.name.trim();
+    const contentType = file.type.trim().toLowerCase();
+    const createResponse = await invokeTicketAttachmentAction({
+      type: "createUpload",
+      tenantId,
+      ticketId,
+      filename,
+      contentType,
+      byteSize: file.size,
+      ...(visibility ? { visibility } : {}),
+    });
+    const upload = parseAttachmentUpload(createResponse);
+    if (
+      !upload ||
+      upload.contentType !== contentType ||
+      upload.byteSize !== file.size
+    ) {
+      throw new Error("Ungültige Upload-Antwort.");
+    }
+
+    const uploadResponse = await fetch(upload.signedUrl, {
+      method: "PUT",
+      headers: { "Content-Type": contentType },
+      body: file,
+    });
+    if (!uploadResponse.ok) throw new Error("Upload fehlgeschlagen.");
+
+    const completeResponse = await invokeTicketAttachmentAction({
+      type: "completeUpload",
+      tenantId,
+      ticketId,
+      storageObjectPath: upload.storageObjectPath,
+      originalFilename: filename,
+      contentType,
+      byteSize: file.size,
+      ...(visibility ? { visibility } : {}),
+    });
+    const attachment = parseCompletedTicketAttachment(completeResponse);
+    if (!attachment || attachment.visibility !== (visibility ?? "external")) {
+      throw new Error("Ungültige Anhang-Antwort.");
+    }
+    return attachment;
+  }
+
   async function uploadAttachment(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!detail || !detail.canUpdate || !selectedAttachmentFile) return;
@@ -4927,44 +5087,10 @@ export function TicketDetail({
       return;
     }
 
-    const filename = file.name.trim();
-    const contentType = file.type.trim().toLowerCase();
     setPendingAttachmentAction("upload");
     setAttachmentError("");
     try {
-      const createResponse = await invokeTicketAttachmentAction({
-        type: "createUpload",
-        tenantId,
-        ticketId,
-        filename,
-        contentType,
-        byteSize: file.size,
-      });
-      const upload = parseAttachmentUpload(createResponse);
-      if (
-        !upload ||
-        upload.contentType !== contentType ||
-        upload.byteSize !== file.size
-      ) {
-        throw new Error("Ungültige Upload-Antwort.");
-      }
-
-      const uploadResponse = await fetch(upload.signedUrl, {
-        method: "PUT",
-        headers: { "Content-Type": contentType },
-        body: file,
-      });
-      if (!uploadResponse.ok) throw new Error("Upload fehlgeschlagen.");
-
-      await invokeTicketAttachmentAction({
-        type: "completeUpload",
-        tenantId,
-        ticketId,
-        storageObjectPath: upload.storageObjectPath,
-        originalFilename: filename,
-        contentType,
-        byteSize: file.size,
-      });
+      await uploadTicketAttachment(file);
       setSelectedAttachmentFile(null);
       if (attachmentInputRef.current) attachmentInputRef.current.value = "";
       onChanged();
@@ -5020,6 +5146,84 @@ export function TicketDetail({
       setPendingAttachmentId(null);
       setPendingAttachmentAction(null);
     }
+  }
+
+  function clearCommentImageAttachments(visibility: CommentVisibility) {
+    setCommentImageAttachments((current) => ({ ...current, [visibility]: [] }));
+    if (commentImageInputRef.current) commentImageInputRef.current.value = "";
+  }
+
+  function addCommentImages(files: readonly File[]) {
+    if (!detail || !canAttachCommentImages || busy || attachmentBusy) return;
+    const remaining =
+      MAX_TICKET_COMMENT_IMAGE_ATTACHMENTS -
+      commentImageAttachments[commentVisibility].length;
+    if (remaining < 1) {
+      setCommentImageNotice({
+        tone: "error",
+        text: `Pro Nachricht sind höchstens ${MAX_TICKET_COMMENT_IMAGE_ATTACHMENTS} Bilder möglich.`,
+      });
+      return;
+    }
+
+    const selectedFiles = [...files].slice(0, remaining);
+    const validationError = selectedFiles
+      .map(commentImageFileError)
+      .find((message): message is string => Boolean(message));
+    if (validationError) {
+      setCommentImageNotice({ tone: "error", text: validationError });
+      return;
+    }
+    if (selectedFiles.length === 0) return;
+
+    setCommentImageNotice(null);
+    const queuedImages = selectedFiles.map((file) => {
+      return {
+        key: crypto.randomUUID(),
+        file,
+        originalFilename: file.name.trim(),
+        byteSize: file.size,
+      };
+    });
+    setCommentImageAttachments((current) => ({
+      ...current,
+      [commentVisibility]: [...current[commentVisibility], ...queuedImages],
+    }));
+    setCommentImageNotice({
+      tone: "success",
+      text:
+        queuedImages.length === 1
+          ? "Bild vorgemerkt. Es wird erst beim Speichern der Nachricht hochgeladen."
+          : `${queuedImages.length} Bilder vorgemerkt. Sie werden erst beim Speichern der Nachricht hochgeladen.`,
+    });
+    if (commentImageInputRef.current) commentImageInputRef.current.value = "";
+  }
+
+  function removeCommentImage(
+    attachment: QueuedCommentImage,
+    visibility: CommentVisibility,
+  ) {
+    if (busy || attachmentBusy) return;
+    setCommentImageNotice(null);
+    setCommentImageAttachments((current) => ({
+      ...current,
+      [visibility]: current[visibility].filter(
+        (item) => item.key !== attachment.key,
+      ),
+    }));
+  }
+
+  function handleCommentImageDragOver(event: DragEvent<HTMLDivElement>) {
+    event.preventDefault();
+    if (!busy && !attachmentBusy && canAttachCommentImages) {
+      setIsCommentImageDropActive(true);
+    }
+  }
+
+  function handleCommentImageDrop(event: DragEvent<HTMLDivElement>) {
+    event.preventDefault();
+    setIsCommentImageDropActive(false);
+    void addCommentImages([...event.dataTransfer.files]);
   }
 
   function startTicketEdit() {
@@ -5320,7 +5524,10 @@ export function TicketDetail({
 
   async function saveComment(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const body = commentBody.trim();
+    const body = ticketCommentBodyWithAttachments(
+      commentBody,
+      activeCommentImageAttachments.length,
+    );
     const mentionRecipients =
       commentVisibility === "internal"
         ? mentionedUserIds.filter((userId) => userId !== currentUserId)
@@ -5338,19 +5545,37 @@ export function TicketDetail({
     setError("");
     setCommentNotice("");
     const submittedAt = Date.now();
+    const uploadedAttachments: TicketAttachment[] = [];
+    let commentSaved = false;
     try {
+      if (activeCommentImageAttachments.length > 0) {
+        setPendingAttachmentAction("upload");
+        for (const image of activeCommentImageAttachments) {
+          uploadedAttachments.push(
+            await uploadTicketAttachment(image.file, commentVisibility),
+          );
+        }
+        setPendingAttachmentAction(null);
+      }
+      const attachmentIds = ticketCommentAttachmentIds(uploadedAttachments);
       await invokeTicketOperation({
         type: "addComment",
         tenantId,
         ticketId,
         body,
         visibility: commentVisibility,
+        ...(attachmentIds.length > 0 ? { attachmentIds } : {}),
       });
+      commentSaved = true;
       setCommentDrafts((current) =>
         updateTicketCommentDraft(current, commentVisibility, ""),
       );
+      clearCommentImageAttachments(commentVisibility);
       onChanged();
-      const updatedDetail = await loadTicket();
+      const [updatedDetail] = await Promise.all([
+        loadTicket(),
+        loadAttachments(),
+      ]);
       if (mentionRecipients.length > 0 && updatedDetail) {
         const savedComment = [...updatedDetail.comments]
           .filter(
@@ -5389,8 +5614,21 @@ export function TicketDetail({
         setCommentNotice("Interne Notiz wurde gespeichert.");
       }
     } catch (nextError) {
+      if (!commentSaved && uploadedAttachments.length > 0) {
+        await Promise.allSettled(
+          uploadedAttachments.map((attachment) =>
+            invokeTicketAttachmentAction({
+              type: "delete",
+              tenantId,
+              ticketId,
+              attachmentId: attachment.id,
+            }),
+          ),
+        );
+      }
       setError(errorMessage(nextError));
     } finally {
+      setPendingAttachmentAction(null);
       setPendingAction(null);
     }
   }
@@ -5399,6 +5637,7 @@ export function TicketDetail({
     commentVisibilityRef.current = mode;
     setCommentVisibility(mode);
     setCommentNotice("");
+    setCommentImageNotice(null);
     if (mode === "external") setMentionedUserIds([]);
   }
 
@@ -6262,6 +6501,8 @@ export function TicketDetail({
                     : emailDelivery === "failed"
                       ? "E-Mail-Versand fehlgeschlagen"
                       : null;
+              const commentAttachments =
+                attachmentsByCommentId.get(item.id) ?? [];
               return (
                 <li
                   className={`ticket-comment ticket-conversation__message ticket-conversation__message--${direction}`}
@@ -6306,6 +6547,30 @@ export function TicketDetail({
                     loading={inlineImagesLoading}
                     onImageError={refreshInlineImageAfterError}
                   />
+                  {commentAttachments.length > 0 ? (
+                    <ul className="ticket-comment-attachment-list">
+                      {commentAttachments.map((attachment) => (
+                        <li key={attachment.id}>
+                          <ImagePlus aria-hidden="true" size={16} />
+                          <span>
+                            <strong>{attachment.originalFilename}</strong>
+                            <small>{formatFileSize(attachment.byteSize)}</small>
+                          </span>
+                          <button
+                            className="text-button"
+                            disabled={attachmentBusy}
+                            onClick={() => void downloadAttachment(attachment)}
+                            type="button"
+                          >
+                            {pendingAttachmentAction === "download" &&
+                            pendingAttachmentId === attachment.id
+                              ? "Wird geöffnet …"
+                              : "Öffnen"}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
                 </li>
               );
             })}
@@ -6322,7 +6587,7 @@ export function TicketDetail({
               <button
                 aria-pressed={commentVisibility === "internal"}
                 className="ticket-comment-mode ticket-comment-mode--internal"
-                disabled={busy}
+                disabled={busy || attachmentBusy}
                 onClick={() => selectCommentMode("internal")}
                 type="button"
               >
@@ -6336,7 +6601,7 @@ export function TicketDetail({
             <button
               aria-pressed={commentVisibility === "external"}
               className="ticket-comment-mode ticket-comment-mode--external"
-              disabled={busy}
+              disabled={busy || attachmentBusy}
               onClick={() => selectCommentMode("external")}
               type="button"
             >
@@ -6351,7 +6616,7 @@ export function TicketDetail({
             {commentComposer.bodyLabel}
             <textarea
               aria-describedby="ticket-comment-visibility-hint"
-              disabled={busy}
+              disabled={busy || attachmentBusy}
               maxLength={50_000}
               onChange={(event) =>
                 setCommentDrafts((current) =>
@@ -6363,11 +6628,84 @@ export function TicketDetail({
                 )
               }
               placeholder={commentComposer.placeholder}
-              required
               rows={4}
               value={commentBody}
             />
           </label>
+          {canAttachCommentImages ? (
+            <div
+              className={`ticket-comment-image-dropzone${isCommentImageDropActive ? " ticket-comment-image-dropzone--active" : ""}`}
+              onDragLeave={() => setIsCommentImageDropActive(false)}
+              onDragOver={handleCommentImageDragOver}
+              onDrop={handleCommentImageDrop}
+            >
+              <input
+                accept={COMMENT_IMAGE_ACCEPT}
+                aria-label="Bilder für diese Nachricht auswählen"
+                className="ticket-comment-image-input"
+                disabled={busy || attachmentBusy}
+                multiple
+                onChange={(event) =>
+                  void addCommentImages([...(event.currentTarget.files ?? [])])
+                }
+                ref={commentImageInputRef}
+                type="file"
+              />
+              <div className="ticket-comment-image-dropzone__copy">
+                <ImagePlus aria-hidden="true" size={19} />
+                <span>
+                  <strong>Bilder zur Nachricht hinzufügen</strong>
+                  <small>
+                    Hierher ziehen oder hochladen · PNG, JPG/JPEG und WebP ·
+                    maximal 25 MiB pro Bild
+                  </small>
+                </span>
+              </div>
+              <button
+                className="secondary-button"
+                disabled={busy || attachmentBusy}
+                onClick={() => commentImageInputRef.current?.click()}
+                type="button"
+              >
+                <ImagePlus aria-hidden="true" size={16} />
+                Bilder hochladen
+              </button>
+              {activeCommentImageAttachments.length > 0 ? (
+                <ul className="ticket-comment-image-preview-list">
+                  {activeCommentImageAttachments.map((attachment) => (
+                    <li key={attachment.key}>
+                      <ImagePlus aria-hidden="true" size={19} />
+                      <span>
+                        <strong>{attachment.originalFilename}</strong>
+                        <small>{formatFileSize(attachment.byteSize)}</small>
+                      </span>
+                      <button
+                        aria-label={`${attachment.originalFilename} entfernen`}
+                        className="icon-button"
+                        disabled={busy || attachmentBusy}
+                        onClick={() =>
+                          removeCommentImage(attachment, commentVisibility)
+                        }
+                        type="button"
+                      >
+                        <X aria-hidden="true" size={16} />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+              {commentImageNotice ? (
+                <p
+                  className={`ticket-comment-image-notice ticket-comment-image-notice--${commentImageNotice.tone}`}
+                  role={
+                    commentImageNotice.tone === "error" ? "alert" : "status"
+                  }
+                >
+                  {commentImageNotice.text}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
           {activeCommunicationDraft.restored && (
             <p className="ticket-workbench__notice" role="status">
               Entwurf wiederhergestellt.
@@ -6422,7 +6760,11 @@ export function TicketDetail({
               {commentNotice}
             </p>
           )}
-          <button className="primary-button" disabled={busy} type="submit">
+          <button
+            className="primary-button"
+            disabled={busy || attachmentBusy}
+            type="submit"
+          >
             {pendingAction === "comment" ? (
               <LoaderCircle
                 aria-hidden="true"

@@ -1,5 +1,11 @@
 import { withSupabase } from "@supabase/server";
 import { resolveTenantFeatureStates } from "../_shared/tenant-features.ts";
+import {
+  hasTicketCommentImageSignature,
+  TICKET_COMMENT_IMAGE_CONTENT_TYPES,
+} from "../_shared/ticket-comment-image.ts";
+
+type AttachmentVisibility = "internal" | "external";
 
 type Action =
   | { type: "list"; tenantId: string; ticketId: string }
@@ -10,6 +16,7 @@ type Action =
       filename: string;
       contentType: string;
       byteSize: number;
+      visibility?: AttachmentVisibility;
     }
   | {
       type: "completeUpload";
@@ -19,6 +26,7 @@ type Action =
       originalFilename: string;
       contentType: string;
       byteSize: number;
+      visibility?: AttachmentVisibility;
     }
   | {
       type: "createDownloadUrl";
@@ -43,11 +51,14 @@ type Ticket = {
   id: string;
   tenant_id: string;
   department_id: string;
+  requester_id: string | null;
 };
 
 type Attachment = {
   id: string;
   ticket_id: string;
+  comment_id: string | null;
+  visibility: AttachmentVisibility;
   storage_bucket: string;
   storage_object_path: string;
   original_filename: string;
@@ -78,7 +89,7 @@ const ALLOWED_CONTENT_TYPES = new Set([
   "image/webp",
 ]);
 const ATTACHMENT_SELECT =
-  "id, ticket_id, storage_bucket, storage_object_path, original_filename, content_type, byte_size, uploaded_by, created_at";
+  "id, ticket_id, comment_id, visibility, storage_bucket, storage_object_path, original_filename, content_type, byte_size, uploaded_by, created_at";
 
 function corsHeaders(request: Request): Headers {
   const headers = new Headers({ Vary: "Origin" });
@@ -164,6 +175,12 @@ function parseContentType(value: unknown): string | null {
   return ALLOWED_CONTENT_TYPES.has(contentType) ? contentType : null;
 }
 
+function parseAttachmentVisibility(
+  value: unknown,
+): AttachmentVisibility | null {
+  return value === "internal" || value === "external" ? value : null;
+}
+
 function parseByteSize(value: unknown): number | null {
   return typeof value === "number" &&
     Number.isSafeInteger(value) &&
@@ -210,12 +227,23 @@ function parseAction(value: unknown): Action | null {
       "filename",
       "contentType",
       "byteSize",
+      "visibility",
     ])
   ) {
     const filename = parseFilename(value.filename);
     const contentType = parseContentType(value.contentType);
     const byteSize = parseByteSize(value.byteSize);
-    if (!filename || !contentType || byteSize === null) return null;
+    const visibility =
+      value.visibility === undefined
+        ? undefined
+        : parseAttachmentVisibility(value.visibility);
+    if (
+      !filename ||
+      !contentType ||
+      byteSize === null ||
+      (value.visibility !== undefined && !visibility)
+    )
+      return null;
     return {
       type: value.type,
       tenantId,
@@ -223,6 +251,7 @@ function parseAction(value: unknown): Action | null {
       filename,
       contentType,
       byteSize,
+      ...(visibility ? { visibility } : {}),
     };
   }
 
@@ -236,16 +265,22 @@ function parseAction(value: unknown): Action | null {
       "originalFilename",
       "contentType",
       "byteSize",
+      "visibility",
     ])
   ) {
     const originalFilename = parseFilename(value.originalFilename);
     const contentType = parseContentType(value.contentType);
     const byteSize = parseByteSize(value.byteSize);
+    const visibility =
+      value.visibility === undefined
+        ? undefined
+        : parseAttachmentVisibility(value.visibility);
     if (
       typeof value.storageObjectPath !== "string" ||
       !originalFilename ||
       !contentType ||
-      byteSize === null
+      byteSize === null ||
+      (value.visibility !== undefined && !visibility)
     )
       return null;
     return {
@@ -256,6 +291,7 @@ function parseAction(value: unknown): Action | null {
       originalFilename,
       contentType,
       byteSize,
+      ...(visibility ? { visibility } : {}),
     };
   }
 
@@ -303,7 +339,7 @@ async function resolveReadableTicket(
 }> {
   const { data: ticket, error: ticketError } = await admin
     .from("tickets")
-    .select("id, tenant_id, department_id")
+    .select("id, tenant_id, department_id, requester_id")
     .eq("id", ticketId)
     .eq("tenant_id", tenantId)
     .maybeSingle();
@@ -336,6 +372,72 @@ async function canUpdateTicket(
   });
   if (error) return null;
   return data === true;
+}
+
+async function canReadInternalTicketAttachment(
+  userClient: any,
+  ticketId: string,
+): Promise<boolean | null> {
+  const { data, error } = await userClient.rpc("can_read_internal_note", {
+    p_ticket_id: ticketId,
+  });
+  if (error) return null;
+  return data === true;
+}
+
+async function canWriteInternalTicketAttachment(
+  userClient: any,
+  ticket: Ticket,
+): Promise<boolean | null> {
+  const { data, error } = await userClient.rpc("has_ticket_permission", {
+    p_department_id: ticket.department_id,
+    p_permission_code: "ticket.internal_notes.write",
+    p_tenant_id: ticket.tenant_id,
+  });
+  if (error) return null;
+  return data === true;
+}
+
+async function canWriteExternalTicketAttachment(
+  userClient: any,
+  actorId: string,
+  ticket: Ticket,
+): Promise<boolean | null> {
+  const directCommentPermission = await userClient.rpc(
+    "has_ticket_permission",
+    {
+      p_department_id: ticket.department_id,
+      p_permission_code: "ticket.comment.external",
+      p_tenant_id: ticket.tenant_id,
+    },
+  );
+  if (directCommentPermission.error) return null;
+  if (directCommentPermission.data === true) return true;
+  if (ticket.requester_id !== actorId) return false;
+
+  const [canReadOwnTicket, canCommentOnOwnTicket] = await Promise.all([
+    userClient.rpc("has_tenant_permission", {
+      p_permission_code: "ticket.read.own",
+      p_tenant_id: ticket.tenant_id,
+    }),
+    userClient.rpc("has_tenant_permission", {
+      p_permission_code: "ticket.comment.external.own",
+      p_tenant_id: ticket.tenant_id,
+    }),
+  ]);
+  if (canReadOwnTicket.error || canCommentOnOwnTicket.error) return null;
+  return canReadOwnTicket.data === true && canCommentOnOwnTicket.data === true;
+}
+
+async function canWriteCommentAttachment(
+  userClient: any,
+  actorId: string,
+  ticket: Ticket,
+  visibility: AttachmentVisibility,
+): Promise<boolean | null> {
+  return visibility === "internal"
+    ? canWriteInternalTicketAttachment(userClient, ticket)
+    : canWriteExternalTicketAttachment(userClient, actorId, ticket);
 }
 
 async function getStoredObject(
@@ -381,6 +483,22 @@ function objectMetadataMatches(
   );
 }
 
+async function hasValidCommentImageSignature(
+  admin: any,
+  storageObjectPath: string,
+  contentType: string,
+  byteSize: number,
+): Promise<boolean | null> {
+  if (!TICKET_COMMENT_IMAGE_CONTENT_TYPES.has(contentType)) return false;
+  const { data, error } = await admin.storage
+    .from(BUCKET)
+    .download(storageObjectPath);
+  if (error || !data) return null;
+  if (data.size !== byteSize) return false;
+  const bytes = new Uint8Array(await data.slice(0, 16).arrayBuffer());
+  return hasTicketCommentImageSignature(contentType, bytes);
+}
+
 async function writeAudit(
   admin: any,
   tenantId: string,
@@ -407,6 +525,8 @@ async function writeAudit(
 function attachmentAuditData(attachment: Attachment): Record<string, unknown> {
   return {
     ticketId: attachment.ticket_id,
+    commentId: attachment.comment_id,
+    visibility: attachment.visibility,
     originalFilename: attachment.original_filename,
     contentType: attachment.content_type,
     byteSize: Number(attachment.byte_size),
@@ -469,13 +589,27 @@ const handler = withSupabase(
       return json(request, { error: { code: "ticket_feature_disabled" } }, 403);
 
     if (action.type === "list") {
-      const { data: attachments, error } = await admin
+      const canReadInternal = await canReadInternalTicketAttachment(
+        context.supabase,
+        ticket.id,
+      );
+      if (canReadInternal === null)
+        return json(
+          request,
+          { error: { code: "internal_attachment_access_check_failed" } },
+          500,
+        );
+      let attachmentQuery = admin
         .from("ticket_attachments")
         .select(
-          "id, ticket_id, original_filename, content_type, byte_size, malware_status, uploaded_by, created_at",
+          "id, ticket_id, comment_id, visibility, original_filename, content_type, byte_size, malware_status, uploaded_by, created_at",
         )
         .eq("ticket_id", ticket.id)
         .order("created_at", { ascending: false });
+      if (!canReadInternal) {
+        attachmentQuery = attachmentQuery.eq("visibility", "external");
+      }
+      const { data: attachments, error } = await attachmentQuery;
       if (error)
         return json(
           request,
@@ -486,15 +620,30 @@ const handler = withSupabase(
     }
 
     if (action.type === "createInlineImageUrls") {
-      const { data: attachments, error: attachmentError } = await admin
+      const canReadInternal = await canReadInternalTicketAttachment(
+        context.supabase,
+        ticket.id,
+      );
+      if (canReadInternal === null)
+        return json(
+          request,
+          { error: { code: "internal_attachment_access_check_failed" } },
+          500,
+        );
+      let attachmentQuery = admin
         .from("ticket_attachments")
         .select(
-          "id, ticket_id, storage_bucket, storage_object_path, original_filename, content_type, byte_size, uploaded_by, created_at, inline_content_id",
+          "id, ticket_id, comment_id, visibility, storage_bucket, storage_object_path, original_filename, content_type, byte_size, uploaded_by, created_at, inline_content_id",
         )
         .eq("ticket_id", ticket.id)
         .in("id", action.attachmentIds)
         .eq("malware_status", "clean")
         .not("inline_content_id", "is", null);
+      if (!canReadInternal) {
+        attachmentQuery = attachmentQuery.eq("visibility", "external");
+      }
+      const { data: attachments, error: attachmentError } =
+        await attachmentQuery;
       if (attachmentError)
         return json(
           request,
@@ -545,6 +694,16 @@ const handler = withSupabase(
     }
 
     if (action.type === "createDownloadUrl") {
+      const canReadInternal = await canReadInternalTicketAttachment(
+        context.supabase,
+        ticket.id,
+      );
+      if (canReadInternal === null)
+        return json(
+          request,
+          { error: { code: "internal_attachment_access_check_failed" } },
+          500,
+        );
       const { data: attachment, error: attachmentError } = await admin
         .from("ticket_attachments")
         .select(ATTACHMENT_SELECT)
@@ -560,6 +719,8 @@ const handler = withSupabase(
       if (!attachment)
         return json(request, { error: { code: "attachment_not_found" } }, 404);
       const typedAttachment = attachment as Attachment;
+      if (typedAttachment.visibility === "internal" && !canReadInternal)
+        return json(request, { error: { code: "attachment_not_found" } }, 404);
       if (
         typedAttachment.storage_bucket !== BUCKET ||
         !isTicketStoragePath(
@@ -594,17 +755,35 @@ const handler = withSupabase(
       });
     }
 
-    const canUpdate = await canUpdateTicket(context.supabase, ticket);
-    if (canUpdate === null)
-      return json(
-        request,
-        { error: { code: "ticket_permission_check_failed" } },
-        500,
-      );
-    if (!canUpdate)
-      return json(request, { error: { code: "ticket_update_denied" } }, 403);
-
     if (action.type === "createUpload") {
+      const canCreateUpload =
+        action.visibility === undefined
+          ? await canUpdateTicket(context.supabase, ticket)
+          : await canWriteCommentAttachment(
+              context.supabase,
+              actorId,
+              ticket,
+              action.visibility,
+            );
+      if (canCreateUpload === null)
+        return json(
+          request,
+          { error: { code: "attachment_permission_check_failed" } },
+          500,
+        );
+      if (!canCreateUpload)
+        return json(
+          request,
+          {
+            error: {
+              code:
+                action.visibility === undefined
+                  ? "ticket_update_denied"
+                  : "comment_attachment_write_denied",
+            },
+          },
+          403,
+        );
       const storageObjectPath = `${ticket.tenant_id}/${ticket.id}/${crypto.randomUUID()}`;
       const { data: signed, error: signedError } = await admin.storage
         .from(BUCKET)
@@ -628,6 +807,35 @@ const handler = withSupabase(
     }
 
     if (action.type === "completeUpload") {
+      const visibility = action.visibility ?? "external";
+      const canCompleteUpload =
+        action.visibility === undefined
+          ? await canUpdateTicket(context.supabase, ticket)
+          : await canWriteCommentAttachment(
+              context.supabase,
+              actorId,
+              ticket,
+              action.visibility,
+            );
+      if (canCompleteUpload === null)
+        return json(
+          request,
+          { error: { code: "attachment_permission_check_failed" } },
+          500,
+        );
+      if (!canCompleteUpload)
+        return json(
+          request,
+          {
+            error: {
+              code:
+                action.visibility === undefined
+                  ? "ticket_update_denied"
+                  : "comment_attachment_write_denied",
+            },
+          },
+          403,
+        );
       if (
         !isTicketStoragePath(
           action.storageObjectPath,
@@ -671,12 +879,33 @@ const handler = withSupabase(
           { error: { code: "storage_object_metadata_mismatch" } },
           422,
         );
+      if (action.visibility !== undefined) {
+        const validCommentImage = await hasValidCommentImageSignature(
+          admin,
+          action.storageObjectPath,
+          action.contentType,
+          action.byteSize,
+        );
+        if (validCommentImage === null)
+          return json(
+            request,
+            { error: { code: "comment_image_inspection_failed" } },
+            500,
+          );
+        if (!validCommentImage)
+          return json(
+            request,
+            { error: { code: "invalid_comment_image_content" } },
+            422,
+          );
+      }
 
       const { data: attachment, error: insertError } = await admin
         .from("ticket_attachments")
         .insert({
           ticket_id: ticket.id,
           uploaded_by: actorId,
+          visibility,
           storage_bucket: BUCKET,
           storage_object_path: action.storageObjectPath,
           original_filename: action.originalFilename,
@@ -716,10 +945,12 @@ const handler = withSupabase(
             attachment: {
               id: typedAttachment.id,
               ticketId: typedAttachment.ticket_id,
+              commentId: typedAttachment.comment_id,
               originalFilename: typedAttachment.original_filename,
               contentType: typedAttachment.content_type,
               byteSize: Number(typedAttachment.byte_size),
               uploadedBy: typedAttachment.uploaded_by,
+              visibility: typedAttachment.visibility,
               createdAt: typedAttachment.created_at,
             },
           },
@@ -732,6 +963,16 @@ const handler = withSupabase(
     // exhaustive, but keeping the guard prevents accidental future fallthrough.
     if (action.type !== "delete")
       return json(request, { error: { code: "invalid_request" } }, 422);
+
+    const canUpdate = await canUpdateTicket(context.supabase, ticket);
+    if (canUpdate === null)
+      return json(
+        request,
+        { error: { code: "ticket_permission_check_failed" } },
+        500,
+      );
+    if (!canUpdate)
+      return json(request, { error: { code: "ticket_update_denied" } }, 403);
 
     const { data: attachment, error: attachmentError } = await admin
       .from("ticket_attachments")

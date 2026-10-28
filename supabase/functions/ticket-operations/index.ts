@@ -72,6 +72,7 @@ type Action =
       ticketId: string;
       body: string;
       visibility: "internal" | "external";
+      attachmentIds: string[];
     }
   | {
       type: "saveDraft";
@@ -152,6 +153,19 @@ const hasOnlyKeys = (value: Record<string, unknown>, keys: string[]) => {
   const allowed = new Set(keys);
   return Object.keys(value).every((key) => allowed.has(key));
 };
+
+function parseCommentAttachmentIds(value: unknown): string[] | null {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.length > 5) return null;
+  const attachmentIds = value.map((attachmentId) =>
+    isUuid(attachmentId) ? attachmentId.toLowerCase() : null,
+  );
+  return attachmentIds.every((attachmentId): attachmentId is string =>
+    Boolean(attachmentId),
+  ) && new Set(attachmentIds).size === attachmentIds.length
+    ? attachmentIds
+    : null;
+}
 
 function parseAction(value: unknown): Action | null {
   if (!isRecord(value) || !isUuid(value.tenantId) || !isUuid(value.ticketId))
@@ -235,16 +249,28 @@ function parseAction(value: unknown): Action | null {
   }
   if (
     value.type === "addComment" &&
+    hasOnlyKeys(value, [
+      "type",
+      "tenantId",
+      "ticketId",
+      "body",
+      "visibility",
+      "attachmentIds",
+    ]) &&
     typeof value.body === "string" &&
     (value.visibility === "internal" || value.visibility === "external")
-  )
+  ) {
+    const attachmentIds = parseCommentAttachmentIds(value.attachmentIds);
+    if (!attachmentIds) return null;
     return {
       type: value.type,
       tenantId: value.tenantId,
       ticketId: value.ticketId,
       body: value.body.trim(),
       visibility: value.visibility,
+      attachmentIds,
     };
+  }
   if (
     value.type === "saveDraft" &&
     typeof value.body === "string" &&
@@ -2428,22 +2454,56 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         },
         403,
       );
-    const { data: comment, error } = await context.supabaseAdmin
-      .from("ticket_comments")
-      .insert({
-        ticket_id: ticket.id,
+    let comment: {
+      id: string;
+      author_id: string;
+      visibility: "internal" | "external";
+    };
+    if (action.attachmentIds.length > 0) {
+      const { data: commentId, error } = await context.supabaseAdmin.rpc(
+        "create_ticket_comment_with_attachments",
+        {
+          p_attachment_ids: action.attachmentIds,
+          p_author_id: actorId,
+          p_body: action.body,
+          p_ticket_id: ticket.id,
+          p_visibility: action.visibility,
+        },
+      );
+      if (error || !isUuid(commentId))
+        return response(
+          request,
+          { error: { code: "comment_attachment_link_failed" } },
+          422,
+        );
+      comment = {
+        id: commentId,
         author_id: actorId,
         visibility: action.visibility,
-        body: action.body,
-      })
-      .select("id, author_id, visibility")
-      .single();
-    if (error)
-      return response(
-        request,
-        { error: { code: "comment_create_failed" } },
-        422,
-      );
+      };
+    } else {
+      const { data: createdComment, error } = await context.supabaseAdmin
+        .from("ticket_comments")
+        .insert({
+          ticket_id: ticket.id,
+          author_id: actorId,
+          visibility: action.visibility,
+          body: action.body,
+        })
+        .select("id, author_id, visibility")
+        .single();
+      if (!createdComment || error)
+        return response(
+          request,
+          { error: { code: "comment_create_failed" } },
+          422,
+        );
+      comment = createdComment as {
+        id: string;
+        author_id: string;
+        visibility: "internal" | "external";
+      };
+    }
     await context.supabaseAdmin.from("ticket_events").insert({
       ticket_id: ticket.id,
       actor_id: actorId,
@@ -2451,7 +2511,10 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         action.visibility === "internal"
           ? "comment.internal_added"
           : "comment.external_added",
-      payload: {},
+      payload:
+        action.attachmentIds.length > 0
+          ? { attachmentCount: action.attachmentIds.length }
+          : {},
     });
     if (action.visibility === "external" && actorId !== ticket.requester_id) {
       const firstRespondedAt = new Date().toISOString();
