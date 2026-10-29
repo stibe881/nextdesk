@@ -46,6 +46,17 @@ type Service = {
   status_public: boolean;
   primary_responsible_id: string | null;
   secondary_responsible_id: string | null;
+  service_category_id: string | null;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+type ServiceCategory = {
+  id: string;
+  tenant_id: string;
+  name: string;
+  parent_id: string | null;
   active: boolean;
   created_at: string;
   updated_at: string;
@@ -112,6 +123,13 @@ type ServiceForm = {
   statusPublic: boolean;
   primaryResponsibleId: string;
   secondaryResponsibleId: string;
+  categoryId: string;
+};
+
+type ServiceCategoryForm = {
+  id: string | null;
+  name: string;
+  parentId: string;
 };
 
 type AssetForm = {
@@ -182,7 +200,16 @@ type ServiceSaveRequest = {
   statusPublic: boolean;
   primaryResponsibleId: string | null;
   secondaryResponsibleId: string | null;
+  categoryId?: string | null;
   serviceId?: string;
+};
+type ServiceCategorySaveRequest = {
+  type: "manageServiceCategory";
+  tenantId: string;
+  operation: "create" | "update";
+  name: string;
+  parentId: string | null;
+  categoryId?: string;
 };
 type ServiceArchiveRequest = {
   type: "manageService";
@@ -265,6 +292,7 @@ type ServiceAssetsRequest =
   | ServiceSaveRequest
   | ServiceArchiveRequest
   | ServiceRestoreRequest
+  | ServiceCategorySaveRequest
   | AssetSaveRequest
   | AssetArchiveRequest
   | ProblemSaveRequest
@@ -282,6 +310,13 @@ const EMPTY_SERVICE_FORM: ServiceForm = {
   statusPublic: false,
   primaryResponsibleId: "",
   secondaryResponsibleId: "",
+  categoryId: "",
+};
+
+const EMPTY_SERVICE_CATEGORY_FORM: ServiceCategoryForm = {
+  id: null,
+  name: "",
+  parentId: "",
 };
 
 const EMPTY_ASSET_FORM: AssetForm = {
@@ -338,6 +373,44 @@ const EDITABLE_PROBLEM_STATUSES: EditableProblemStatus[] = [
   "known_error",
 ];
 
+function serviceCategoryPath(
+  categories: readonly ServiceCategory[],
+  categoryId: string | null | undefined,
+): ServiceCategory[] {
+  if (!categoryId) return [];
+  const categoriesById = new Map(
+    categories.map((category) => [category.id, category]),
+  );
+  const path: ServiceCategory[] = [];
+  const seen = new Set<string>();
+  let current = categoriesById.get(categoryId) ?? null;
+  while (current && !seen.has(current.id) && path.length < 3) {
+    seen.add(current.id);
+    path.unshift(current);
+    current = current.parent_id
+      ? (categoriesById.get(current.parent_id) ?? null)
+      : null;
+  }
+  return path;
+}
+
+function serviceCategoryLabel(
+  categories: readonly ServiceCategory[],
+  categoryId: string | null | undefined,
+): string | null {
+  const path = serviceCategoryPath(categories, categoryId);
+  return path.length > 0
+    ? path.map((category) => category.name).join(" · ")
+    : null;
+}
+
+function serviceCategoryDepth(
+  categories: readonly ServiceCategory[],
+  category: ServiceCategory,
+): number {
+  return serviceCategoryPath(categories, category.id).length;
+}
+
 type ServiceEditorFieldsProps = {
   controlsDisabled: boolean;
   nameInputRef: RefObject<HTMLInputElement | null>;
@@ -348,6 +421,8 @@ type ServiceEditorFieldsProps = {
   serviceResponsibleAgentNames: ReadonlyMap<string, string>;
   serviceResponsibleAgents: ServiceResponsibleAgent[];
   serviceResponsibleAgentsLoading: boolean;
+  serviceCategories: ServiceCategory[];
+  supportsServiceCategories: boolean;
   setServiceForm: Dispatch<SetStateAction<ServiceForm>>;
 };
 
@@ -361,8 +436,25 @@ function ServiceEditorFields({
   serviceResponsibleAgentNames,
   serviceResponsibleAgents,
   serviceResponsibleAgentsLoading,
+  serviceCategories,
+  supportsServiceCategories,
   setServiceForm,
 }: ServiceEditorFieldsProps) {
+  const selectedCategoryPath = serviceCategoryPath(
+    serviceCategories,
+    serviceForm.categoryId,
+  );
+  const rootCategoryId = selectedCategoryPath[0]?.id ?? "";
+  const subcategoryId = selectedCategoryPath[1]?.id ?? "";
+  const rootCategories = serviceCategories.filter(
+    (category) => category.parent_id === null,
+  );
+  const subcategories = serviceCategories.filter(
+    (category) => category.parent_id === rootCategoryId,
+  );
+  const detailCategories = serviceCategories.filter(
+    (category) => category.parent_id === subcategoryId,
+  );
   return (
     <form onSubmit={(event) => void onSubmit(event)}>
       <label>
@@ -438,6 +530,100 @@ function ServiceEditorFields({
           value={serviceForm.description}
         />
       </label>
+      {supportsServiceCategories ? (
+        <div
+          aria-label="Serviceeinordnung"
+          className="service-assets__service-category-fields"
+          role="group"
+        >
+          <div>
+            <strong>Serviceeinordnung</strong>
+            <small>
+              Ordnen Sie den Service bei Bedarf einer Kategorie mit bis zu drei
+              Ebenen zu.
+            </small>
+          </div>
+          <label>
+            Kategorie
+            <select
+              disabled={controlsDisabled}
+              onChange={(event) =>
+                setServiceForm((current) => ({
+                  ...current,
+                  categoryId: event.target.value,
+                }))
+              }
+              value={rootCategoryId}
+            >
+              <option value="">Nicht zugeordnet</option>
+              {rootCategories.map((category) => (
+                <option key={category.id} value={category.id}>
+                  {category.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Unterkategorie
+            <select
+              disabled={controlsDisabled || !rootCategoryId}
+              onChange={(event) =>
+                setServiceForm((current) => ({
+                  ...current,
+                  categoryId: event.target.value || rootCategoryId,
+                }))
+              }
+              value={subcategoryId}
+            >
+              <option value="">
+                {rootCategoryId
+                  ? "Keine Unterkategorie"
+                  : "Zuerst Kategorie wählen"}
+              </option>
+              {subcategories.map((category) => (
+                <option key={category.id} value={category.id}>
+                  {category.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Unterunterkategorie
+            <select
+              disabled={controlsDisabled || !subcategoryId}
+              onChange={(event) =>
+                setServiceForm((current) => ({
+                  ...current,
+                  categoryId:
+                    event.target.value || subcategoryId || rootCategoryId,
+                }))
+              }
+              value={
+                selectedCategoryPath[2]?.id && subcategoryId
+                  ? selectedCategoryPath[2].id
+                  : ""
+              }
+            >
+              <option value="">
+                {subcategoryId
+                  ? "Keine Unterunterkategorie"
+                  : "Zuerst Unterkategorie wählen"}
+              </option>
+              {detailCategories.map((category) => (
+                <option key={category.id} value={category.id}>
+                  {category.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          {rootCategories.length === 0 ? (
+            <p>
+              Es sind noch keine Servicekategorien angelegt. Sie können die
+              Einordnung später ergänzen.
+            </p>
+          ) : null}
+        </div>
+      ) : null}
       <label>
         Primär verantwortliche Agent:in (optional)
         <select
@@ -631,6 +817,9 @@ function parseService(value: unknown): Service | null {
   )
     ? value.secondary_responsible_id
     : null;
+  const serviceCategoryId = Object.hasOwn(value, "service_category_id")
+    ? value.service_category_id
+    : null;
   if (
     typeof value.id !== "string" ||
     typeof value.tenant_id !== "string" ||
@@ -641,6 +830,7 @@ function parseService(value: unknown): Service | null {
     typeof value.status_public !== "boolean" ||
     !isNullableString(primaryResponsibleId) ||
     !isNullableString(secondaryResponsibleId) ||
+    !isNullableString(serviceCategoryId) ||
     typeof value.active !== "boolean" ||
     typeof value.created_at !== "string" ||
     typeof value.updated_at !== "string"
@@ -657,6 +847,31 @@ function parseService(value: unknown): Service | null {
     status_public: value.status_public,
     primary_responsible_id: primaryResponsibleId,
     secondary_responsible_id: secondaryResponsibleId,
+    service_category_id: serviceCategoryId,
+    active: value.active,
+    created_at: value.created_at,
+    updated_at: value.updated_at,
+  };
+}
+
+function parseServiceCategory(value: unknown): ServiceCategory | null {
+  if (
+    !isRecord(value) ||
+    typeof value.id !== "string" ||
+    typeof value.tenant_id !== "string" ||
+    typeof value.name !== "string" ||
+    !isNullableString(value.parent_id) ||
+    typeof value.active !== "boolean" ||
+    typeof value.created_at !== "string" ||
+    typeof value.updated_at !== "string"
+  ) {
+    return null;
+  }
+  return {
+    id: value.id,
+    tenant_id: value.tenant_id,
+    name: value.name,
+    parent_id: value.parent_id,
     active: value.active,
     created_at: value.created_at,
     updated_at: value.updated_at,
@@ -885,6 +1100,8 @@ export function parseCatalog(value: unknown): {
   archivedServices: Service[];
   canManageServices: boolean;
   supportsArchivedServices: boolean;
+  serviceCategories: ServiceCategory[];
+  supportsServiceCategories: boolean;
   assets: Asset[];
   problems: Problem[];
 } {
@@ -893,10 +1110,15 @@ export function parseCatalog(value: unknown): {
   const archivedServices = supportsArchivedServices
     ? data.archivedServices
     : [];
+  const supportsServiceCategories = Object.hasOwn(data, "serviceCategories");
+  const serviceCategories = supportsServiceCategories
+    ? data.serviceCategories
+    : [];
   const canManageServices = data.canManageServices ?? false;
   if (
     !Array.isArray(data.services) ||
     !Array.isArray(archivedServices) ||
+    !Array.isArray(serviceCategories) ||
     typeof canManageServices !== "boolean" ||
     !Array.isArray(data.assets) ||
     !Array.isArray(data.problems)
@@ -906,11 +1128,13 @@ export function parseCatalog(value: unknown): {
 
   const services = data.services.map(parseService);
   const archived = archivedServices.map(parseService);
+  const categories = serviceCategories.map(parseServiceCategory);
   const assets = data.assets.map(parseAsset);
   const problems = data.problems.map(parseProblem);
   if (
     services.some((item) => item === null) ||
     archived.some((item) => item === null) ||
+    categories.some((item) => item === null) ||
     assets.some((item) => item === null) ||
     problems.some((item) => item === null)
   ) {
@@ -922,6 +1146,8 @@ export function parseCatalog(value: unknown): {
     archivedServices: archived as Service[],
     canManageServices,
     supportsArchivedServices,
+    serviceCategories: categories as ServiceCategory[],
+    supportsServiceCategories,
     assets: assets as Asset[],
     problems: problems as Problem[],
   };
@@ -931,6 +1157,14 @@ function parseSavedService(value: unknown): Service {
   const service = parseService(responseData(value).service);
   if (!service) throw new Error("Der gespeicherte Service ist unvollständig.");
   return service;
+}
+
+function parseSavedServiceCategory(value: unknown): ServiceCategory {
+  const category = parseServiceCategory(responseData(value).serviceCategory);
+  if (!category) {
+    throw new Error("Die gespeicherte Servicekategorie ist unvollständig.");
+  }
+  return category;
 }
 
 function parseSavedAsset(value: unknown): Asset {
@@ -1017,6 +1251,41 @@ function sortByName<T extends { name: string }>(items: T[]): T[] {
   );
 }
 
+export function sortServiceCategories(
+  categories: ServiceCategory[],
+): ServiceCategory[] {
+  const categoriesByParent = new Map<string | null, ServiceCategory[]>();
+  const categoriesById = new Map(
+    categories.map((category) => [category.id, category]),
+  );
+  for (const category of categories) {
+    const parentId =
+      category.parent_id && categoriesById.has(category.parent_id)
+        ? category.parent_id
+        : null;
+    const siblings = categoriesByParent.get(parentId) ?? [];
+    siblings.push(category);
+    categoriesByParent.set(parentId, siblings);
+  }
+  for (const siblings of categoriesByParent.values()) {
+    siblings.sort((left, right) => left.name.localeCompare(right.name, "de"));
+  }
+
+  const ordered: ServiceCategory[] = [];
+  const seen = new Set<string>();
+  const visit = (category: ServiceCategory) => {
+    if (seen.has(category.id)) return;
+    seen.add(category.id);
+    ordered.push(category);
+    for (const child of categoriesByParent.get(category.id) ?? []) {
+      visit(child);
+    }
+  };
+  for (const root of categoriesByParent.get(null) ?? []) visit(root);
+  for (const category of sortByName(categories)) visit(category);
+  return ordered;
+}
+
 function sortProblems(items: Problem[]): Problem[] {
   return [...items].sort((left, right) =>
     right.updated_at.localeCompare(left.updated_at),
@@ -1060,6 +1329,7 @@ function serviceDraft(service: Service): ServiceForm {
     statusPublic: service.status_public,
     primaryResponsibleId: service.primary_responsible_id ?? "",
     secondaryResponsibleId: service.secondary_responsible_id ?? "",
+    categoryId: service.service_category_id ?? "",
   };
 }
 
@@ -1111,6 +1381,15 @@ export function ServiceAssets({
   const [canManageServices, setCanManageServices] = useState(false);
   const [supportsArchivedServices, setSupportsArchivedServices] =
     useState(false);
+  const [serviceCategories, setServiceCategories] = useState<ServiceCategory[]>(
+    [],
+  );
+  const [supportsServiceCategories, setSupportsServiceCategories] =
+    useState(false);
+  const [serviceCategoryManagerOpen, setServiceCategoryManagerOpen] =
+    useState(false);
+  const [serviceCategoryForm, setServiceCategoryForm] =
+    useState<ServiceCategoryForm>(EMPTY_SERVICE_CATEGORY_FORM);
   const [showArchivedServices, setShowArchivedServices] = useState(false);
   const [assets, setAssets] = useState<Asset[]>([]);
   const [problems, setProblems] = useState<Problem[]>([]);
@@ -1177,6 +1456,39 @@ export function ServiceAssets({
     () => new Map(services.map((service) => [service.id, service.name])),
     [services],
   );
+  const serviceCategoryLabels = useMemo(
+    () =>
+      new Map(
+        serviceCategories.map((category) => [
+          category.id,
+          serviceCategoryLabel(serviceCategories, category.id) ?? category.name,
+        ]),
+      ),
+    [serviceCategories],
+  );
+  const selectableServiceCategoryParents = useMemo(
+    () =>
+      serviceCategories.filter(
+        (category) => serviceCategoryDepth(serviceCategories, category) < 3,
+      ),
+    [serviceCategories],
+  );
+  const serviceCategoryParentOptions = useMemo(
+    () =>
+      selectableServiceCategoryParents.filter((category) => {
+        if (!serviceCategoryForm.id || category.id === serviceCategoryForm.id) {
+          return category.id !== serviceCategoryForm.id;
+        }
+        return !serviceCategoryPath(serviceCategories, category.id).some(
+          (ancestor) => ancestor.id === serviceCategoryForm.id,
+        );
+      }),
+    [
+      selectableServiceCategoryParents,
+      serviceCategories,
+      serviceCategoryForm.id,
+    ],
+  );
   const problemOwnerNames = useMemo(
     () => new Map(problemOwners.map((owner) => [owner.id, owner.displayName])),
     [problemOwners],
@@ -1206,21 +1518,41 @@ export function ServiceAssets({
     () =>
       services.filter(
         (service) =>
-          contains([service.name, service.description], serviceQuery) &&
+          contains(
+            [
+              service.name,
+              service.description,
+              service.service_category_id
+                ? (serviceCategoryLabels.get(service.service_category_id) ??
+                  null)
+                : null,
+            ],
+            serviceQuery,
+          ) &&
           (serviceCriticality === "all" ||
             service.criticality === serviceCriticality),
       ),
-    [serviceCriticality, serviceQuery, services],
+    [serviceCategoryLabels, serviceCriticality, serviceQuery, services],
   );
   const filteredArchivedServices = useMemo(
     () =>
       archivedServices.filter(
         (service) =>
-          contains([service.name, service.description], serviceQuery) &&
+          contains(
+            [
+              service.name,
+              service.description,
+              service.service_category_id
+                ? (serviceCategoryLabels.get(service.service_category_id) ??
+                  null)
+                : null,
+            ],
+            serviceQuery,
+          ) &&
           (serviceCriticality === "all" ||
             service.criticality === serviceCriticality),
       ),
-    [archivedServices, serviceCriticality, serviceQuery],
+    [archivedServices, serviceCategoryLabels, serviceCriticality, serviceQuery],
   );
   const filteredAssets = useMemo(
     () =>
@@ -1319,6 +1651,12 @@ export function ServiceAssets({
       setCanManageServices(catalog.canManageServices);
       setSupportsArchivedServices(catalog.supportsArchivedServices);
       if (!catalog.supportsArchivedServices) setShowArchivedServices(false);
+      setServiceCategories(sortServiceCategories(catalog.serviceCategories));
+      setSupportsServiceCategories(catalog.supportsServiceCategories);
+      if (!catalog.supportsServiceCategories) {
+        setServiceCategoryManagerOpen(false);
+        setServiceCategoryForm(EMPTY_SERVICE_CATEGORY_FORM);
+      }
       setAssets(sortByName(catalog.assets));
       setProblems(sortProblems(catalog.problems));
     } catch (nextError) {
@@ -1327,6 +1665,10 @@ export function ServiceAssets({
       setArchivedServices([]);
       setCanManageServices(false);
       setSupportsArchivedServices(false);
+      setServiceCategories([]);
+      setSupportsServiceCategories(false);
+      setServiceCategoryManagerOpen(false);
+      setServiceCategoryForm(EMPTY_SERVICE_CATEGORY_FORM);
       setAssets([]);
       setProblems([]);
       setForbidden(errorStatus(nextError) === 403);
@@ -1429,6 +1771,10 @@ export function ServiceAssets({
     setArchivedServices([]);
     setCanManageServices(false);
     setSupportsArchivedServices(false);
+    setServiceCategories([]);
+    setSupportsServiceCategories(false);
+    setServiceCategoryManagerOpen(false);
+    setServiceCategoryForm(EMPTY_SERVICE_CATEGORY_FORM);
     setShowArchivedServices(false);
     setSuccess("");
   }, [tenantId]);
@@ -1805,6 +2151,9 @@ export function ServiceAssets({
         statusPublic: serviceForm.statusPublic,
         primaryResponsibleId: serviceForm.primaryResponsibleId || null,
         secondaryResponsibleId: serviceForm.secondaryResponsibleId || null,
+        ...(supportsServiceCategories
+          ? { categoryId: serviceForm.categoryId || null }
+          : {}),
       };
       const saved = parseSavedService(await requestServiceAssets(request));
       setServices((current) =>
@@ -1825,6 +2174,68 @@ export function ServiceAssets({
         await apiErrorMessage(
           nextError,
           "Der Service konnte nicht gespeichert werden.",
+        ),
+      );
+    } finally {
+      setPendingAction(null);
+    }
+  }
+
+  function openServiceCategoryManager(category?: ServiceCategory) {
+    setServiceCategoryManagerOpen(true);
+    setServiceCategoryForm(
+      category
+        ? {
+            id: category.id,
+            name: category.name,
+            parentId: category.parent_id ?? "",
+          }
+        : EMPTY_SERVICE_CATEGORY_FORM,
+    );
+    setError("");
+    setSuccess("");
+  }
+
+  async function saveServiceCategory(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const name = serviceCategoryForm.name.trim();
+    if (!name) {
+      setError("Bitte geben Sie einen Namen für die Servicekategorie ein.");
+      return;
+    }
+    if (!supportsServiceCategories || !canManageServices) return;
+    const editing = serviceCategoryForm.id !== null;
+    beginAction(`service-category:save:${serviceCategoryForm.id ?? "new"}`);
+    try {
+      const request: ServiceCategorySaveRequest = {
+        type: "manageServiceCategory",
+        tenantId,
+        operation: editing ? "update" : "create",
+        ...(editing ? { categoryId: serviceCategoryForm.id! } : {}),
+        name,
+        parentId: serviceCategoryForm.parentId || null,
+      };
+      const saved = parseSavedServiceCategory(
+        await requestServiceAssets(request),
+      );
+      setServiceCategories((current) =>
+        sortServiceCategories([
+          ...current.filter((category) => category.id !== saved.id),
+          saved,
+        ]),
+      );
+      setServiceCategoryForm(EMPTY_SERVICE_CATEGORY_FORM);
+      setSuccess(
+        editing
+          ? `Die Servicekategorie „${saved.name}“ wurde gespeichert.`
+          : `Die Servicekategorie „${saved.name}“ wurde angelegt.`,
+      );
+    } catch (nextError) {
+      setForbidden(errorStatus(nextError) === 403);
+      setError(
+        await apiErrorMessage(
+          nextError,
+          "Die Servicekategorie konnte nicht gespeichert werden.",
         ),
       );
     } finally {
@@ -2329,7 +2740,152 @@ export function ServiceAssets({
               <h3>Services</h3>
               <p>{activeCount} passende Services</p>
             </div>
+            {canManageServices && supportsServiceCategories ? (
+              <button
+                className="secondary-button"
+                disabled={controlsDisabled}
+                onClick={() =>
+                  serviceCategoryManagerOpen
+                    ? setServiceCategoryManagerOpen(false)
+                    : openServiceCategoryManager()
+                }
+                type="button"
+              >
+                {serviceCategoryManagerOpen
+                  ? "Kategorien schliessen"
+                  : "Kategorien verwalten"}
+              </button>
+            ) : null}
           </div>
+          {canManageServices &&
+          supportsServiceCategories &&
+          serviceCategoryManagerOpen ? (
+            <section
+              aria-labelledby="service-assets-category-manager-title"
+              className="service-assets__category-manager"
+            >
+              <div className="service-assets__category-manager-heading">
+                <div>
+                  <p className="eyebrow">Servicehierarchie</p>
+                  <h4 id="service-assets-category-manager-title">
+                    Kategorien strukturieren
+                  </h4>
+                  <p>
+                    Drei Ebenen sind möglich: Kategorie, Unterkategorie und
+                    Unterunterkategorie.
+                  </p>
+                </div>
+                {serviceCategoryForm.id ? (
+                  <button
+                    disabled={controlsDisabled}
+                    onClick={() =>
+                      setServiceCategoryForm(EMPTY_SERVICE_CATEGORY_FORM)
+                    }
+                    type="button"
+                  >
+                    Neue Kategorie
+                  </button>
+                ) : null}
+              </div>
+              <form onSubmit={(event) => void saveServiceCategory(event)}>
+                <label>
+                  Name
+                  <input
+                    disabled={controlsDisabled}
+                    maxLength={120}
+                    onChange={(event) =>
+                      setServiceCategoryForm((current) => ({
+                        ...current,
+                        name: event.target.value,
+                      }))
+                    }
+                    required
+                    value={serviceCategoryForm.name}
+                  />
+                </label>
+                <label>
+                  Übergeordnete Kategorie
+                  <select
+                    disabled={controlsDisabled}
+                    onChange={(event) =>
+                      setServiceCategoryForm((current) => ({
+                        ...current,
+                        parentId: event.target.value,
+                      }))
+                    }
+                    value={serviceCategoryForm.parentId}
+                  >
+                    <option value="">Kategorie (oberste Ebene)</option>
+                    {serviceCategoryParentOptions.map((category) => (
+                      <option key={category.id} value={category.id}>
+                        {`${"— ".repeat(
+                          serviceCategoryDepth(serviceCategories, category) - 1,
+                        )}${serviceCategoryLabel(serviceCategories, category.id) ?? category.name}`}
+                      </option>
+                    ))}
+                  </select>
+                  <small>
+                    Die Datenbank begrenzt die Hierarchie verbindlich auf drei
+                    Ebenen.
+                  </small>
+                </label>
+                <p className="service-assets__category-manager-actions">
+                  <button
+                    className="primary-button"
+                    disabled={controlsDisabled}
+                    type="submit"
+                  >
+                    {pendingAction?.startsWith("service-category:save:")
+                      ? "Wird gespeichert …"
+                      : serviceCategoryForm.id
+                        ? "Kategorie speichern"
+                        : "Kategorie anlegen"}
+                  </button>
+                  <button
+                    disabled={controlsDisabled}
+                    onClick={() =>
+                      setServiceCategoryForm(EMPTY_SERVICE_CATEGORY_FORM)
+                    }
+                    type="button"
+                  >
+                    Abbrechen
+                  </button>
+                </p>
+              </form>
+              {serviceCategories.length === 0 ? (
+                <p className="service-assets__category-manager-empty">
+                  Legen Sie die erste Kategorie an, um Services strukturiert
+                  einzuordnen.
+                </p>
+              ) : (
+                <ul
+                  aria-label="Servicekategorien"
+                  className="service-assets__category-list"
+                >
+                  {serviceCategories.map((category) => (
+                    <li
+                      data-depth={serviceCategoryDepth(
+                        serviceCategories,
+                        category,
+                      )}
+                      key={category.id}
+                    >
+                      <span>
+                        {serviceCategoryLabel(serviceCategories, category.id)}
+                      </span>
+                      <button
+                        disabled={controlsDisabled}
+                        onClick={() => openServiceCategoryManager(category)}
+                        type="button"
+                      >
+                        Bearbeiten
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          ) : null}
           <fieldset disabled={controlsDisabled}>
             <legend>Services filtern</legend>
             <label>
@@ -2395,60 +2951,106 @@ export function ServiceAssets({
                       inlineServiceEditorId === service.id || undefined
                     }
                   >
-                    <h4>{service.name}</h4>
-                    <span
-                      className={`service-assets__service-status service-assets__service-status--${service.status}`}
-                    >
-                      <span aria-hidden="true" />
-                      {SERVICE_STATUS_LABELS[service.status]}
-                    </span>
-                    <p>
-                      <strong>{CRITICALITY_LABELS[service.criticality]}</strong>
-                      {service.description ? ` · ${service.description}` : ""}
-                    </p>
-                    {canManageServices && service.primary_responsible_id ? (
-                      <p>
-                        Primär verantwortlich:{" "}
-                        {serviceResponsibleAgentNames.get(
-                          service.primary_responsible_id,
-                        ) ?? "Nicht mehr verfügbar"}
-                        {service.secondary_responsible_id
-                          ? ` · Sekundär: ${
-                              serviceResponsibleAgentNames.get(
-                                service.secondary_responsible_id,
-                              ) ?? "Nicht mehr verfügbar"
-                            }`
-                          : ""}
+                    <div className="service-assets__service-card-header">
+                      <div className="service-assets__service-identity">
+                        <span
+                          aria-hidden="true"
+                          className="service-assets__service-mark"
+                        >
+                          {service.name.slice(0, 1).toLocaleUpperCase("de-CH")}
+                        </span>
+                        <div>
+                          <h4>{service.name}</h4>
+                          {service.service_category_id ? (
+                            <p className="service-assets__service-category">
+                              {serviceCategoryLabels.get(
+                                service.service_category_id,
+                              ) ?? "Serviceeinordnung nicht mehr verfügbar"}
+                            </p>
+                          ) : (
+                            <p className="service-assets__service-category service-assets__service-category--empty">
+                              Nicht eingeordnet
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                      <span
+                        className={`service-assets__service-status service-assets__service-status--${service.status}`}
+                      >
+                        <span aria-hidden="true" />
+                        {SERVICE_STATUS_LABELS[service.status]}
+                      </span>
+                    </div>
+                    {service.description ? (
+                      <p className="service-assets__service-description">
+                        {service.description}
                       </p>
                     ) : null}
-                    <p>Zuletzt geändert: {formatDate(service.updated_at)}</p>
-                    {canManageServices ? (
-                      <button
-                        aria-expanded={inlineServiceEditorId === service.id}
-                        disabled={controlsDisabled}
-                        onClick={(event) =>
-                          openInlineServiceEditor(service, event.currentTarget)
-                        }
-                        type="button"
-                      >
-                        {inlineServiceEditorId === service.id
-                          ? "Bearbeitung schliessen"
-                          : "Bearbeiten"}
-                      </button>
-                    ) : null}{" "}
-                    {canArchiveServices(
+                    <dl className="service-assets__service-facts">
+                      <div>
+                        <dt>Kritikalität</dt>
+                        <dd>{CRITICALITY_LABELS[service.criticality]}</dd>
+                      </div>
+                      {canManageServices && service.primary_responsible_id ? (
+                        <div>
+                          <dt>Verantwortung</dt>
+                          <dd>
+                            {serviceResponsibleAgentNames.get(
+                              service.primary_responsible_id,
+                            ) ?? "Nicht mehr verfügbar"}
+                            {service.secondary_responsible_id
+                              ? ` · ${
+                                  serviceResponsibleAgentNames.get(
+                                    service.secondary_responsible_id,
+                                  ) ?? "Nicht mehr verfügbar"
+                                }`
+                              : ""}
+                          </dd>
+                        </div>
+                      ) : null}
+                      <div>
+                        <dt>Letzte Änderung</dt>
+                        <dd>{formatDate(service.updated_at)}</dd>
+                      </div>
+                    </dl>
+                    {canManageServices ||
+                    canArchiveServices(
                       canManageServices,
                       supportsArchivedServices,
                     ) ? (
-                      <button
-                        disabled={controlsDisabled}
-                        onClick={() => void archiveService(service)}
-                        type="button"
-                      >
-                        {pendingAction === `service:archive:${service.id}`
-                          ? "Wird archiviert …"
-                          : "Archivieren"}
-                      </button>
+                      <div className="service-assets__service-card-actions">
+                        {canManageServices ? (
+                          <button
+                            aria-expanded={inlineServiceEditorId === service.id}
+                            disabled={controlsDisabled}
+                            onClick={(event) =>
+                              openInlineServiceEditor(
+                                service,
+                                event.currentTarget,
+                              )
+                            }
+                            type="button"
+                          >
+                            {inlineServiceEditorId === service.id
+                              ? "Bearbeitung schliessen"
+                              : "Bearbeiten"}
+                          </button>
+                        ) : null}
+                        {canArchiveServices(
+                          canManageServices,
+                          supportsArchivedServices,
+                        ) ? (
+                          <button
+                            disabled={controlsDisabled}
+                            onClick={() => void archiveService(service)}
+                            type="button"
+                          >
+                            {pendingAction === `service:archive:${service.id}`
+                              ? "Wird archiviert …"
+                              : "Archivieren"}
+                          </button>
+                        ) : null}
+                      </div>
                     ) : null}
                     {inlineServiceEditorId === service.id ? (
                       <section
@@ -2494,6 +3096,8 @@ export function ServiceAssets({
                           serviceResponsibleAgentsLoading={
                             serviceResponsibleAgentsLoading
                           }
+                          serviceCategories={serviceCategories}
+                          supportsServiceCategories={supportsServiceCategories}
                           setServiceForm={setServiceForm}
                         />
                       </section>
@@ -2645,6 +3249,8 @@ export function ServiceAssets({
                       serviceResponsibleAgentsLoading={
                         serviceResponsibleAgentsLoading
                       }
+                      serviceCategories={serviceCategories}
+                      supportsServiceCategories={supportsServiceCategories}
                       setServiceForm={setServiceForm}
                     />
                   </section>

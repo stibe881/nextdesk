@@ -8282,6 +8282,222 @@ begin
   end if;
 end;
 $$;
+
+-- Servicekategorien bleiben mandantenlokal, haben maximal drei Ebenen und
+-- können nur als aktive Kategorie einem Service zugeordnet werden.
+insert into public.service_categories (id, tenant_id, name) values
+  ('f1440000-0000-4000-8000-000000000051', 'f1420000-0000-4000-8000-000000000001', 'Fachanwendungen'),
+  ('f1440000-0000-4000-8000-000000000052', 'f1420000-0000-4000-8000-000000000001', 'Finanzen'),
+  ('f1440000-0000-4000-8000-000000000055', 'f1420000-0000-4000-8000-000000000001', 'Alternative Wurzel'),
+  ('f1440000-0000-4000-8000-000000000054', '20000000-0000-4000-8000-000000000002', 'Fremde Kategorie');
+update public.service_categories
+set parent_id = 'f1440000-0000-4000-8000-000000000051'
+where id = 'f1440000-0000-4000-8000-000000000052';
+insert into public.service_categories (id, tenant_id, name, parent_id) values
+  (
+    'f1440000-0000-4000-8000-000000000053',
+    'f1420000-0000-4000-8000-000000000001',
+    'Abacus',
+    'f1440000-0000-4000-8000-000000000052'
+  );
+insert into public.services (id, tenant_id, name, service_category_id) values
+  (
+    'f1440000-0000-4000-8000-000000000061',
+    'f1420000-0000-4000-8000-000000000001',
+    'Service mit Detailkategorie',
+    'f1440000-0000-4000-8000-000000000053'
+  );
+do $$
+begin
+  begin
+    insert into public.service_categories (tenant_id, name, parent_id)
+    values (
+      'f1420000-0000-4000-8000-000000000001',
+      'Nicht erlaubte vierte Ebene',
+      'f1440000-0000-4000-8000-000000000053'
+    );
+    raise exception 'A fourth service category level was accepted';
+  exception when check_violation then
+    null;
+  end;
+  begin
+    insert into public.service_categories (tenant_id, name, parent_id)
+    values (
+      'f1420000-0000-4000-8000-000000000001',
+      'Fremde Unterkategorie',
+      'f1440000-0000-4000-8000-000000000054'
+    );
+    raise exception 'A cross-tenant service category parent was accepted';
+  exception when foreign_key_violation then
+    null;
+  end;
+  begin
+    update public.service_categories
+    set parent_id = 'f1440000-0000-4000-8000-000000000055'
+    where id = 'f1440000-0000-4000-8000-000000000051';
+    raise exception 'Reparenting a category tree created an accepted fourth level';
+  exception when check_violation then
+    null;
+  end;
+  begin
+    insert into public.services (tenant_id, name, service_category_id)
+    values (
+      'f1420000-0000-4000-8000-000000000001',
+      'Fremde Kategoriezuordnung',
+      'f1440000-0000-4000-8000-000000000054'
+    );
+    raise exception 'A cross-tenant service category assignment was accepted';
+  exception when foreign_key_violation then
+    null;
+  end;
+end;
+$$;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', 'f1420000-0000-4000-8000-000000000011', true);
+do $$
+begin
+  if (
+    select count(*)
+    from public.service_categories
+    where tenant_id = 'f1420000-0000-4000-8000-000000000001'
+  ) <> 4 then
+    raise exception 'An active service member could not read active categories';
+  end if;
+  begin
+    insert into public.service_categories (tenant_id, name)
+    values (
+      'f1420000-0000-4000-8000-000000000001',
+      'Unauthorised Category'
+    );
+    raise exception 'A non-manager could create a service category';
+  exception when insufficient_privilege then
+    null;
+  end;
+end;
+$$;
+reset role;
 rollback;
 SQL
+
+# Both validation triggers take the same tenant-scoped transaction lock. These
+# real parallel sessions prove that a valid tree move cannot race a valid child
+# insertion into a fourth level, and a deactivation cannot race a service
+# assignment into an inactive category.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+insert into public.tenants (id, slug, name) values
+  ('f1440000-0000-4000-8000-000000000101', 'service-category-race', 'Service Category Race');
+insert into public.service_categories (id, tenant_id, name, parent_id) values
+  ('f1440000-0000-4000-8000-000000000102', 'f1440000-0000-4000-8000-000000000101', 'Root A', null),
+  ('f1440000-0000-4000-8000-000000000103', 'f1440000-0000-4000-8000-000000000101', 'Child B', 'f1440000-0000-4000-8000-000000000102'),
+  ('f1440000-0000-4000-8000-000000000104', 'f1440000-0000-4000-8000-000000000101', 'Root D', null),
+  ('f1440000-0000-4000-8000-000000000105', 'f1440000-0000-4000-8000-000000000101', 'Lifecycle', null);
+SQL
+
+tree_move_log="$TEST_DIR/service-category-tree-move.log"
+tree_insert_log="$TEST_DIR/service-category-tree-insert.log"
+(
+  psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+update public.service_categories
+set parent_id = 'f1440000-0000-4000-8000-000000000104'
+where id = 'f1440000-0000-4000-8000-000000000102';
+select pg_sleep(1);
+commit;
+SQL
+) >"$tree_move_log" 2>&1 &
+tree_move_pid=$!
+sleep 0.1
+(
+  psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+insert into public.service_categories (id, tenant_id, name, parent_id) values (
+  'f1440000-0000-4000-8000-000000000106',
+  'f1440000-0000-4000-8000-000000000101',
+  'Concurrent Detail C',
+  'f1440000-0000-4000-8000-000000000103'
+);
+commit;
+SQL
+) >"$tree_insert_log" 2>&1 &
+tree_insert_pid=$!
+tree_move_status=0
+tree_insert_status=0
+wait "$tree_move_pid" || tree_move_status=$?
+wait "$tree_insert_pid" || tree_insert_status=$?
+tree_successes=0
+if [[ "$tree_move_status" -eq 0 ]]; then tree_successes=$((tree_successes + 1)); fi
+if [[ "$tree_insert_status" -eq 0 ]]; then tree_successes=$((tree_successes + 1)); fi
+if [[ "$tree_successes" -ne 1 ]]; then
+  cat "$tree_move_log" "$tree_insert_log" >&2
+  echo "Service category tree race did not reject exactly one concurrent write" >&2
+  exit 1
+fi
+
+lifecycle_deactivate_log="$TEST_DIR/service-category-lifecycle-deactivate.log"
+lifecycle_assign_log="$TEST_DIR/service-category-lifecycle-assign.log"
+(
+  psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+update public.service_categories
+set active = false
+where id = 'f1440000-0000-4000-8000-000000000105';
+select pg_sleep(1);
+commit;
+SQL
+) >"$lifecycle_deactivate_log" 2>&1 &
+lifecycle_deactivate_pid=$!
+sleep 0.1
+(
+  psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+insert into public.services (id, tenant_id, name, service_category_id) values (
+  'f1440000-0000-4000-8000-000000000107',
+  'f1440000-0000-4000-8000-000000000101',
+  'Concurrent Lifecycle Assignment',
+  'f1440000-0000-4000-8000-000000000105'
+);
+commit;
+SQL
+) >"$lifecycle_assign_log" 2>&1 &
+lifecycle_assign_pid=$!
+lifecycle_deactivate_status=0
+lifecycle_assign_status=0
+wait "$lifecycle_deactivate_pid" || lifecycle_deactivate_status=$?
+wait "$lifecycle_assign_pid" || lifecycle_assign_status=$?
+lifecycle_successes=0
+if [[ "$lifecycle_deactivate_status" -eq 0 ]]; then lifecycle_successes=$((lifecycle_successes + 1)); fi
+if [[ "$lifecycle_assign_status" -eq 0 ]]; then lifecycle_successes=$((lifecycle_successes + 1)); fi
+if [[ "$lifecycle_successes" -ne 1 ]]; then
+  cat "$lifecycle_deactivate_log" "$lifecycle_assign_log" >&2
+  echo "Service category lifecycle race did not reject exactly one concurrent write" >&2
+  exit 1
+fi
+
+invalid_tree_depth="$(psql -At -c "
+  with recursive tree as (
+    select id, tenant_id, 1 as depth
+    from public.service_categories
+    where tenant_id = 'f1440000-0000-4000-8000-000000000101'
+      and parent_id is null
+    union all
+    select child.id, child.tenant_id, tree.depth + 1
+    from public.service_categories child
+    join tree
+      on tree.id = child.parent_id
+     and tree.tenant_id = child.tenant_id
+  )
+  select count(*) from tree where depth > 3
+" | tr -d '[:space:]')"
+[[ "$invalid_tree_depth" == "0" ]]
+inactive_assignments="$(psql -At -c "
+  select count(*)
+  from public.services service
+  join public.service_categories category
+    on category.id = service.service_category_id
+   and category.tenant_id = service.tenant_id
+  where service.tenant_id = 'f1440000-0000-4000-8000-000000000101'
+    and service.active
+    and not category.active
+" | tr -d '[:space:]')"
+[[ "$inactive_assignments" == "0" ]]
 echo "PostgreSQL 16 migration and RLS integration checks passed."

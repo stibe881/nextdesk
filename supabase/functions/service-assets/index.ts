@@ -15,7 +15,9 @@ const INTUNE_PRIMARY_PERSON_LOOKUP_PAGE_SIZE = 100;
 const MAX_CATALOG_ROWS = 10_000;
 const MAX_TICKET_SEARCH_RESULTS = 30;
 const SERVICE_SELECT =
-  "id, tenant_id, name, description, criticality, status, status_public, primary_responsible_id, secondary_responsible_id, active, created_at, updated_at";
+  "id, tenant_id, name, description, criticality, status, status_public, primary_responsible_id, secondary_responsible_id, service_category_id, active, created_at, updated_at";
+const SERVICE_CATEGORY_SELECT =
+  "id, tenant_id, name, parent_id, active, created_at, updated_at";
 const ASSET_SELECT =
   "id, tenant_id, service_id, name, asset_tag, inventory_number, serial_number, manufacturer, model, operating_system, kind, status, customer_organization_id, metadata, active, created_at, updated_at";
 const PROBLEM_SELECT =
@@ -28,35 +30,44 @@ const PROBLEM_TICKET_SUMMARY_SELECT = `tickets!inner(${TICKET_SUMMARY_SELECT})`;
 // problemId, respectively. Updates are partial, but must change at least one
 // allowed field. Immutable IDs, tenant IDs, actors and timestamps are never
 // accepted as writable fields.
-type JsonValue =
-  | null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
+type JsonValue = null | boolean | number | string | JsonValue[] | {
+  [key: string]: JsonValue;
+};
 type Kind = "service" | "asset" | "problem";
 type ManageType = "manageService" | "manageAsset" | "manageProblem";
 type Operation = "create" | "update" | "archive" | "restore" | "resolve";
 type Action =
   | {
-      type: "listCatalog";
-      tenantId: string;
-      includeArchivedServices: boolean;
-    }
+    type: "listCatalog";
+    tenantId: string;
+    includeArchivedServices: boolean;
+  }
   | { type: "listServiceResponsibleAgents"; tenantId: string }
   | { type: "listProblemOwners"; tenantId: string }
   | { type: "listProblemTickets"; tenantId: string; problemId: string }
   | { type: "searchTickets"; tenantId: string; query: string }
   | {
-      type: ManageType;
-      tenantId: string;
-      operation: Operation;
-      id?: string;
-      values: Record<string, JsonValue>;
-    }
+    type: "manageServiceCategory";
+    tenantId: string;
+    operation: "create" | "update";
+    categoryId?: string;
+    name: string;
+    parentId: string | null;
+  }
   | {
-      type: "linkTicket" | "unlinkTicket";
-      tenantId: string;
-      ticketId: string;
-      kind: Kind;
-      targetId: string;
-    };
+    type: ManageType;
+    tenantId: string;
+    operation: Operation;
+    id?: string;
+    values: Record<string, JsonValue>;
+  }
+  | {
+    type: "linkTicket" | "unlinkTicket";
+    tenantId: string;
+    ticketId: string;
+    kind: Kind;
+    targetId: string;
+  };
 type CallerClient = SupabaseContext["supabase"];
 type AdminClient = SupabaseContext["supabaseAdmin"];
 type DatabaseError = { code?: string };
@@ -88,9 +99,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function isUuid(value: unknown): value is string {
   return (
     typeof value === "string" &&
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
-      value,
-    )
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+      .test(
+        value,
+      )
   );
 }
 
@@ -151,7 +163,7 @@ function metadata(value: unknown): JsonValue | typeof INVALID {
   if (!validJson(value, 0)) return INVALID;
   if (
     new TextEncoder().encode(JSON.stringify(value)).byteLength >
-    MAX_METADATA_BYTES
+      MAX_METADATA_BYTES
   ) {
     return INVALID;
   }
@@ -184,6 +196,7 @@ const SERVICE_FIELDS: Record<string, Field> = {
     column: "secondary_responsible_id",
     validate: nullable(uuid),
   },
+  categoryId: { column: "service_category_id", validate: nullable(uuid) },
 };
 const ASSET_FIELDS: Record<string, Field> = {
   name: { column: "name", validate: text(1, 240) },
@@ -250,6 +263,11 @@ const RESOURCES = {
     fields: PROBLEM_FIELDS,
   },
 } as const;
+const SERVICE_CATEGORY_RESOURCE = {
+  table: "service_categories",
+  select: SERVICE_CATEGORY_SELECT,
+  key: "service" as const,
+};
 const LINKS = {
   service: {
     table: "ticket_services",
@@ -328,8 +346,9 @@ export function parseAction(value: unknown): Action | null {
       (value.kind !== "service" &&
         value.kind !== "asset" &&
         value.kind !== "problem")
-    )
+    ) {
       return null;
+    }
     return {
       type: value.type,
       tenantId,
@@ -338,12 +357,55 @@ export function parseAction(value: unknown): Action | null {
       targetId: value.targetId.toLowerCase(),
     };
   }
+  if (value.type === "manageServiceCategory") {
+    if (
+      (value.operation !== "create" && value.operation !== "update") ||
+      !hasOnlyKeys(
+        value,
+        value.operation === "create"
+          ? ["type", "tenantId", "operation", "name", "parentId"]
+          : [
+            "type",
+            "tenantId",
+            "operation",
+            "categoryId",
+            "name",
+            "parentId",
+          ],
+      )
+    ) {
+      return null;
+    }
+    const name = text(1, 120)(value.name);
+    const parentId = nullable(uuid)(value.parentId);
+    const categoryId = value.operation === "update"
+      ? value.categoryId
+      : undefined;
+    if (
+      typeof name !== "string" ||
+      (typeof parentId !== "string" && parentId !== null) ||
+      (value.operation === "update" && !isUuid(categoryId))
+    ) {
+      return null;
+    }
+    return {
+      type: value.type,
+      tenantId,
+      operation: value.operation,
+      ...(typeof categoryId === "string"
+        ? { categoryId: categoryId.toLowerCase() }
+        : {}),
+      name,
+      parentId,
+    };
+  }
   if (
     value.type !== "manageService" &&
     value.type !== "manageAsset" &&
     value.type !== "manageProblem"
-  )
+  ) {
     return null;
+  }
   const resource = RESOURCES[value.type];
   const operation = value.operation;
   if (
@@ -352,14 +414,14 @@ export function parseAction(value: unknown): Action | null {
     !(value.type !== "manageProblem" && operation === "archive") &&
     !(value.type === "manageService" && operation === "restore") &&
     !(value.type === "manageProblem" && operation === "resolve")
-  )
+  ) {
     return null;
-  const fields =
-    operation === "archive" || operation === "restore"
-      ? {}
-      : operation === "resolve"
-        ? RESOLUTION_FIELDS
-        : resource.fields;
+  }
+  const fields = operation === "archive" || operation === "restore"
+    ? {}
+    : operation === "resolve"
+    ? RESOLUTION_FIELDS
+    : resource.fields;
   const allowedKeys = ["type", "tenantId", "operation", ...Object.keys(fields)];
   if (operation !== "create") allowedKeys.push(resource.idKey);
   if (!hasOnlyKeys(value, allowedKeys)) return null;
@@ -509,17 +571,16 @@ async function readCatalog(
   active = true,
 ): Promise<Row[]> {
   const rows: Row[] = [];
-  for (let from = 0; ; from += PAGE_SIZE) {
+  for (let from = 0;; from += PAGE_SIZE) {
     let query = client
       .from(resource.table)
       .select(resource.select)
       .eq("tenant_id", tenantId);
-    query =
-      resource.key === "problem"
-        ? query
-            .in("status", ["open", "investigating", "known_error"])
-            .order("updated_at", { ascending: false })
-        : query.eq("active", active).order("name");
+    query = resource.key === "problem"
+      ? query
+        .in("status", ["open", "investigating", "known_error"])
+        .order("updated_at", { ascending: false })
+      : query.eq("active", active).order("name");
     const { data, error } = await query
       .order("id")
       .range(from, from + PAGE_SIZE - 1)
@@ -596,7 +657,7 @@ async function readIntunePrimaryPersonNames(
   const personIds = [
     ...new Set(
       links.flatMap((link) =>
-        isUuid(link.entra_object_id) ? [link.entra_object_id] : [],
+        isUuid(link.entra_object_id) ? [link.entra_object_id] : []
       ),
     ),
   ];
@@ -720,7 +781,7 @@ async function ensureServiceResponsibleAgents(
   const secondary = values.secondary_responsible_id;
   if (primary === undefined && secondary === undefined) return;
   const selectedIds = [primary, secondary].flatMap((value) =>
-    isUuid(value) ? [value.toLowerCase()] : [],
+    isUuid(value) ? [value.toLowerCase()] : []
   );
   if (new Set(selectedIds).size !== selectedIds.length) {
     throw new HttpError(
@@ -747,6 +808,81 @@ async function ensureServiceResponsibleAgents(
   }
 }
 
+async function ensureActiveServiceCategory(
+  client: CallerClient,
+  tenantId: string,
+  values: Record<string, JsonValue>,
+): Promise<void> {
+  const categoryId = values.service_category_id;
+  if (categoryId === undefined || categoryId === null) return;
+  if (!isUuid(categoryId)) {
+    throw new HttpError(
+      422,
+      "invalid_service_category",
+      "Die gewählte Servicekategorie ist nicht verfügbar.",
+    );
+  }
+  // The caller-scoped query keeps the category tenant- and RLS-bound before
+  // the database trigger repeats the composite-FK and active-state check.
+  const { data, error } = await client
+    .from("service_categories")
+    .select("id")
+    .eq("tenant_id", tenantId)
+    .eq("id", categoryId)
+    .eq("active", true)
+    .maybeSingle();
+  if (error) databaseFailure(error);
+  if (!data) {
+    throw new HttpError(
+      422,
+      "invalid_service_category",
+      "Die gewählte Servicekategorie ist nicht verfügbar.",
+    );
+  }
+}
+
+async function manageServiceCategory(
+  request: Request,
+  client: CallerClient,
+  action: Extract<Action, { type: "manageServiceCategory" }>,
+): Promise<Response> {
+  await requirePermission(
+    client,
+    "has_tenant_permission",
+    {
+      p_tenant_id: action.tenantId,
+      p_permission_code: "asset.manage",
+    },
+    "asset_manage_required",
+  );
+  const values = { name: action.name, parent_id: action.parentId };
+  const categories = client.from("service_categories");
+  const result = action.operation === "create"
+    ? await categories
+      .insert({ ...values, tenant_id: action.tenantId })
+      .select(SERVICE_CATEGORY_SELECT)
+      .single()
+    : await categories
+      .update(values)
+      .eq("tenant_id", action.tenantId)
+      .eq("id", action.categoryId!)
+      .select(SERVICE_CATEGORY_SELECT)
+      .maybeSingle();
+  if (result.error) databaseFailure(result.error);
+  if (!result.data) {
+    throw new HttpError(
+      404,
+      "service_category_not_found",
+      "Die Servicekategorie ist nicht verfügbar.",
+    );
+  }
+  return json(
+    request,
+    { data: { serviceCategory: result.data } },
+    action.operation === "create" ? 201 : 200,
+  );
+}
+
 async function listServiceResponsibleAgents(
   request: Request,
   client: CallerClient,
@@ -762,7 +898,10 @@ async function listServiceResponsibleAgents(
     },
     "asset_manage_required",
   );
-  const result = await listAssignableTenantSupportAgents(admin, action.tenantId);
+  const result = await listAssignableTenantSupportAgents(
+    admin,
+    action.tenantId,
+  );
   if (result.error) {
     throw new HttpError(
       503,
@@ -800,14 +939,14 @@ async function listProblemOwners(
   const owners = (data ?? []).flatMap((membership) => {
     const profile = membership.user_profiles;
     return typeof membership.user_id === "string" &&
-      isRecord(profile) &&
-      validString(profile.display_name) &&
-      profile.display_name.trim()
+        isRecord(profile) &&
+        validString(profile.display_name) &&
+        profile.display_name.trim()
       ? [{ id: membership.user_id, displayName: profile.display_name.trim() }]
       : [];
   });
   owners.sort((left, right) =>
-    left.displayName.localeCompare(right.displayName, "de-CH"),
+    left.displayName.localeCompare(right.displayName, "de-CH")
   );
   return json(request, { data: { owners } });
 }
@@ -899,6 +1038,7 @@ async function manageResource(
     (action.operation === "create" || action.operation === "update")
   ) {
     await ensureServiceResponsibleAgents(admin, action.tenantId, action.values);
+    await ensureActiveServiceCategory(client, action.tenantId, action.values);
   }
   // The resource is selected from a finite, server-owned table map. Avoid
   // expanding PostgREST's full table-union here; values were strictly parsed
@@ -926,16 +1066,15 @@ async function manageResource(
   // Tenant and row filters are mandatory even though the caller's RLS also
   // protects every write. Constraints enforce cross-tenant references and the
   // migration's triggers handle timestamps, immutable identity and audit logs.
-  const values =
-    action.operation === "archive"
-      ? action.type === "manageService"
-        ? { active: false, status_public: false }
-        : { active: false }
-      : action.operation === "restore"
-        ? { active: true }
-        : action.operation === "resolve"
-        ? { ...action.values, status: "resolved" }
-        : action.values;
+  const values = action.operation === "archive"
+    ? action.type === "manageService"
+      ? { active: false, status_public: false }
+      : { active: false }
+    : action.operation === "restore"
+    ? { active: true }
+    : action.operation === "resolve"
+    ? { ...action.values, status: "resolved" }
+    : action.values;
   const { data, error } = await resourceClient
     .update(values)
     .eq("tenant_id", action.tenantId)
@@ -1009,26 +1148,25 @@ async function mutateTicketLink(
   }
   const columns = `tenant_id, ticket_id, ${link.column}, linked_by, created_at`;
   // No upsert: duplicates are conflicts, not updates of the original actor.
-  const result =
-    action.type === "linkTicket"
-      ? await client
-          .from(link.table)
-          .insert({
-            tenant_id: action.tenantId,
-            ticket_id: action.ticketId,
-            [link.column]: action.targetId,
-            linked_by: actorId,
-          })
-          .select(columns)
-          .single()
-      : await client
-          .from(link.table)
-          .delete()
-          .eq("tenant_id", action.tenantId)
-          .eq("ticket_id", action.ticketId)
-          .eq(link.column, action.targetId)
-          .select(columns)
-          .maybeSingle();
+  const result = action.type === "linkTicket"
+    ? await client
+      .from(link.table)
+      .insert({
+        tenant_id: action.tenantId,
+        ticket_id: action.ticketId,
+        [link.column]: action.targetId,
+        linked_by: actorId,
+      })
+      .select(columns)
+      .single()
+    : await client
+      .from(link.table)
+      .delete()
+      .eq("tenant_id", action.tenantId)
+      .eq("ticket_id", action.ticketId)
+      .eq(link.column, action.targetId)
+      .select(columns)
+      .maybeSingle();
   if (result.error) databaseFailure(result.error);
   if (!result.data) {
     throw new HttpError(
@@ -1105,15 +1243,17 @@ const handler = withSupabase(
         );
       }
       if (action.type === "listCatalog") {
-        const [services, assets, problems, assetManage] = await Promise.all([
-          readCatalog(client, action.tenantId, RESOURCES.manageService),
-          readCatalog(client, action.tenantId, RESOURCES.manageAsset),
-          readCatalog(client, action.tenantId, RESOURCES.manageProblem),
-          client.rpc("has_tenant_permission", {
-            p_tenant_id: action.tenantId,
-            p_permission_code: "asset.manage",
-          }),
-        ]);
+        const [services, assets, problems, serviceCategories, assetManage] =
+          await Promise.all([
+            readCatalog(client, action.tenantId, RESOURCES.manageService),
+            readCatalog(client, action.tenantId, RESOURCES.manageAsset),
+            readCatalog(client, action.tenantId, RESOURCES.manageProblem),
+            readCatalog(client, action.tenantId, SERVICE_CATEGORY_RESOURCE),
+            client.rpc("has_tenant_permission", {
+              p_tenant_id: action.tenantId,
+              p_permission_code: "asset.manage",
+            }),
+          ]);
         if (assetManage.error || typeof assetManage.data !== "boolean") {
           throw new HttpError(
             503,
@@ -1124,27 +1264,28 @@ const handler = withSupabase(
         const archivedServices =
           action.includeArchivedServices && assetManage.data
             ? await readCatalog(
-                client,
-                action.tenantId,
-                RESOURCES.manageService,
-                false,
-              )
+              client,
+              action.tenantId,
+              RESOURCES.manageService,
+              false,
+            )
             : [];
         const resolvedAssets = assetManage.data
           ? await readIntunePrimaryPersonNames(
-              context.supabaseAdmin,
-              action.tenantId,
-              assets,
-            )
+            context.supabaseAdmin,
+            action.tenantId,
+            assets,
+          )
           : assets.map((asset) => ({
-              ...asset,
-              intune_primary_person_name: null,
-            }));
+            ...asset,
+            intune_primary_person_name: null,
+          }));
         return json(request, {
           data: {
             services,
             archivedServices,
             canManageServices: assetManage.data,
+            serviceCategories,
             assets: resolvedAssets,
             problems,
           },
@@ -1172,6 +1313,9 @@ const handler = withSupabase(
       if (action.type === "searchTickets") {
         return await searchTickets(request, client, action);
       }
+      if (action.type === "manageServiceCategory") {
+        return await manageServiceCategory(request, client, action);
+      }
       if ("operation" in action) {
         return await manageResource(
           request,
@@ -1185,13 +1329,11 @@ const handler = withSupabase(
     } catch (error) {
       return failure(
         request,
-        error instanceof HttpError
-          ? error
-          : new HttpError(
-              500,
-              "operation_failed",
-              "Die Aktion konnte nicht abgeschlossen werden.",
-            ),
+        error instanceof HttpError ? error : new HttpError(
+          500,
+          "operation_failed",
+          "Die Aktion konnte nicht abgeschlossen werden.",
+        ),
       );
     }
   },
@@ -1366,13 +1508,11 @@ export default {
     } catch (error) {
       return failure(
         request,
-        error instanceof HttpError
-          ? error
-          : new HttpError(
-              500,
-              "operation_failed",
-              "Die Aktion konnte nicht abgeschlossen werden.",
-            ),
+        error instanceof HttpError ? error : new HttpError(
+          500,
+          "operation_failed",
+          "Die Aktion konnte nicht abgeschlossen werden.",
+        ),
       );
     }
   },

@@ -3,6 +3,7 @@ import {
   canArchiveServices,
   catalogRequest,
   parseCatalog,
+  sortServiceCategories,
 } from "./service-assets";
 
 const SERVICE = {
@@ -13,6 +14,16 @@ const SERVICE = {
   criticality: "high",
   status: "operational",
   status_public: true,
+  active: true,
+  created_at: "2026-10-29T09:00:00.000Z",
+  updated_at: "2026-10-29T09:00:00.000Z",
+};
+
+const SERVICE_CATEGORY = {
+  id: "00000000-0000-4000-8000-000000000003",
+  tenant_id: SERVICE.tenant_id,
+  name: "Verwaltung",
+  parent_id: null,
   active: true,
   created_at: "2026-10-29T09:00:00.000Z",
   updated_at: "2026-10-29T09:00:00.000Z",
@@ -92,5 +103,48 @@ describe("Servicekatalog-Compatibility", () => {
         catalog.supportsArchivedServices,
       ),
     ).toBe(false);
+  });
+
+  it("liest eine serverbestätigte Servicehierarchie und die optionale Zuordnung", () => {
+    const catalog = parseCatalog({
+      data: {
+        ...legacyCatalogResponse().data,
+        services: [{ ...SERVICE, service_category_id: SERVICE_CATEGORY.id }],
+        archivedServices: [],
+        canManageServices: true,
+        serviceCategories: [SERVICE_CATEGORY],
+      },
+    });
+
+    expect(catalog.supportsServiceCategories).toBe(true);
+    expect(catalog.serviceCategories).toEqual([SERVICE_CATEGORY]);
+    expect(catalog.services[0]?.service_category_id).toBe(SERVICE_CATEGORY.id);
+  });
+
+  it("ordnet Unterkategorien unmittelbar unter ihrer alphabetisch sortierten Wurzel ein", () => {
+    const root = { ...SERVICE_CATEGORY, id: "root", name: "Verwaltung" };
+    const child = {
+      ...SERVICE_CATEGORY,
+      id: "child",
+      name: "Abacus",
+      parent_id: root.id,
+    };
+    const detail = {
+      ...SERVICE_CATEGORY,
+      id: "detail",
+      name: "Berechtigungen",
+      parent_id: child.id,
+    };
+    const otherRoot = {
+      ...SERVICE_CATEGORY,
+      id: "other-root",
+      name: "Arbeitsplatz",
+    };
+
+    expect(
+      sortServiceCategories([child, detail, root, otherRoot]).map(
+        (category) => category.id,
+      ),
+    ).toEqual([otherRoot.id, root.id, child.id, detail.id]);
   });
 });

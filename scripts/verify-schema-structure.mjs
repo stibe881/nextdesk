@@ -141,6 +141,9 @@ const expectedFiles = [
   "0137_event_space_email_ticket_intake_part_02.sql",
   "0138_event_space_email_ticket_intake_part_03.sql",
   "0139_event_space_email_ticket_intake_part_04.sql",
+  "0142_service_archive_visibility_and_restore.sql",
+  "0143_service_responsible_agents.sql",
+  "0144_service_category_hierarchy.sql",
 ];
 
 const availableFiles = (await readdir(migrationDirectory))
