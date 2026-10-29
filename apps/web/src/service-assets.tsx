@@ -1888,6 +1888,7 @@ export function ServiceAssets({
 
       {!loading && !forbidden && activeTab === "services" ? (
         <section
+          className="service-assets__services-panel"
           aria-labelledby={
             fixedTab ? "service-assets-title" : "service-assets-services-tab"
           }
@@ -2086,7 +2087,7 @@ export function ServiceAssets({
 
           <section
             aria-labelledby="service-assets-service-form-title"
-            className="panel"
+            className="service-assets__service-editor panel"
           >
             <div className="panel-heading">
               <div>

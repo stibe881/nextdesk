@@ -7189,6 +7189,21 @@ body:has(.ticket-detail) {
   gap: 16px;
 }
 
+.service-assets__services-panel {
+  display: grid;
+  gap: 24px;
+}
+
+.service-assets__services-panel > .panel-heading {
+  padding: 4px 4px 2px;
+}
+
+.service-assets__services-panel > .panel-heading > div,
+.service-assets__service-editor .panel-heading > div {
+  display: grid;
+  gap: 8px;
+}
+
 .service-assets .service-assets__asset-panel {
   display: grid;
   gap: 8px;
@@ -7203,6 +7218,11 @@ body:has(.ticket-detail) {
   border: 1px solid var(--border);
   border-radius: 10px;
   background: var(--surface-subtle);
+}
+
+.service-assets__services-panel > fieldset {
+  gap: 20px;
+  padding: 20px;
 }
 
 .service-assets legend {
@@ -7229,6 +7249,10 @@ body:has(.ticket-detail) {
   list-style: none;
 }
 
+.service-assets__services-panel > ul {
+  gap: 14px;
+}
+
 .service-assets li > article {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto auto;
@@ -7238,6 +7262,11 @@ body:has(.ticket-detail) {
   border: 1px solid var(--border);
   border-radius: 10px;
   background: var(--surface);
+}
+
+.service-assets__services-panel > ul > li > article {
+  row-gap: 8px;
+  padding: 20px;
 }
 
 .service-assets li > article h4,
@@ -7410,6 +7439,23 @@ body:has(.ticket-detail) {
   gap: 14px;
 }
 
+.service-assets__service-editor {
+  gap: 22px !important;
+  padding: 24px !important;
+}
+
+.service-assets__service-editor form {
+  column-gap: 18px !important;
+  row-gap: 20px !important;
+}
+
+.service-assets__service-editor form > p {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 4px 0 0;
+}
+
 .service-assets .panel form > :last-child {
   grid-column: 1 / -1;
   justify-self: start;
@@ -7470,6 +7516,15 @@ body:has(.ticket-detail) {
   .service-assets {
     gap: 16px;
     padding: 16px;
+  }
+
+  .service-assets__services-panel {
+    gap: 20px;
+  }
+
+  .service-assets__services-panel > fieldset,
+  .service-assets__service-editor {
+    padding: 18px !important;
   }
 
   .service-assets fieldset,
