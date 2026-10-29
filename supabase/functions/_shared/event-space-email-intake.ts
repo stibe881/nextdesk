@@ -282,10 +282,22 @@ function collectFields(
     const line = lines[index].trim();
     if (!line) continue;
 
-    const labelled = /^([^:]{1,120}):\s*(.*)$/u.exec(line);
+    // A mail client may render the link row as "Link zum Auftrag https://…"
+    // without a colon. Treat a known label directly followed by a URL as a
+    // labelled field instead of splitting at the colon of "https:".
+    const labelledUrl = /^([^:]{1,120}?)\s+(<?https?:\/\/\S+>?)$/u.exec(line);
+    const labelledUrlField = labelledUrl
+      ? isKnownLabelLine(labelledUrl[1] ?? "")
+      : undefined;
+    const labelled = labelledUrlField
+      ? null
+      : /^([^:]{1,120}):\s*(.*)$/u.exec(line);
     let field: FieldName | undefined;
     let value: string | undefined;
-    if (labelled) {
+    if (labelledUrlField && labelledUrl) {
+      field = labelledUrlField;
+      value = normaliseText(labelledUrl[2] ?? "");
+    } else if (labelled) {
       field = isKnownLabelLine(labelled[1]);
       value = normaliseText(labelled[2]);
     } else {
