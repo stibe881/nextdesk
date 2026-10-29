@@ -17452,6 +17452,7 @@ body:has(.knowledge-base__editor-backdrop) {
   display: flex;
   gap: 20px;
   justify-content: space-between;
+  padding: 22px 24px;
 }
 
 .inventory__header h1 {
@@ -17571,11 +17572,38 @@ body:has(.knowledge-base__editor-backdrop) {
 
 .inventory__panel {
   min-width: 0;
+  padding: 0 24px 24px;
 }
 
 .inventory__panel .panel-heading {
   align-items: start;
   gap: 16px;
+  padding: 24px 0 0;
+}
+
+.inventory__form {
+  margin-top: 17px;
+}
+
+.inventory__form + .inventory__form {
+  margin-top: 10px;
+}
+
+.inventory__form > summary {
+  color: var(--primary);
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.inventory__form > form {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.inventory__form > form label {
+  display: grid;
+  gap: 6px;
 }
 
 .inventory__panel .panel-heading > svg {
@@ -17851,6 +17879,14 @@ body:has(.knowledge-base__editor-backdrop) {
 
   .inventory__metrics {
     grid-template-columns: 1fr;
+  }
+
+  .inventory__header {
+    padding: 18px 16px;
+  }
+
+  .inventory__panel {
+    padding: 0 16px 18px;
   }
 }
 
