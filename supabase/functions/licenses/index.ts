@@ -5,15 +5,9 @@ const ORIGIN = "https://app.nextdesk.ch";
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const STATUSES = ["draft", "active", "terminated", "archived"] as const;
-const TYPES = [
-  "subscription",
-  "perpetual",
-  "volume",
-  "open_source",
-  "other",
-] as const;
 type Status = (typeof STATUSES)[number];
-type LicenseType = (typeof TYPES)[number];
+// Built-in keys (subscription, perpetual, …) or a custom type name.
+type LicenseType = string;
 type Row = Record<string, unknown>;
 type Admin = SupabaseContext["supabaseAdmin"];
 type Values = {
@@ -99,6 +93,8 @@ function parseValues(value: unknown): Values | null {
   const vendorName = cleanText(value.vendorName, 2, 160);
   const referenceNumber = optionalText(value.referenceNumber, 120);
   const notes = optionalText(value.notes, 2000);
+  // Built-in keys and custom types are both stored as short, cleaned text.
+  const customType = cleanText(value.licenseType, 1, 60);
   const startsOn = optionalDate(value.startsOn);
   const endsOn = optionalDate(value.endsOn);
   const responsibleUserId =
@@ -135,7 +131,7 @@ function parseValues(value: unknown): Values | null {
     endsOn === undefined ||
     responsibleUserId === undefined ||
     noticePeriodDays === undefined ||
-    !TYPES.includes(value.licenseType as LicenseType) ||
+    customType === null ||
     !["draft", "active", "terminated"].includes(value.status as string) ||
     (startsOn && endsOn && endsOn < startsOn)
   )
@@ -144,7 +140,7 @@ function parseValues(value: unknown): Values | null {
     title,
     vendorName,
     referenceNumber,
-    licenseType: value.licenseType as LicenseType,
+    licenseType: customType,
     quantity,
     status: value.status as Exclude<Status, "archived">,
     startsOn,

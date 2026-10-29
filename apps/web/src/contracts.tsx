@@ -4,14 +4,19 @@ import {
   Archive,
   CalendarClock,
   FileText,
+  Paperclip,
   Plus,
   RefreshCw,
   X,
 } from "lucide-react";
 import { isSupabaseConfigured, supabase } from "./lib/supabase";
+import {
+  RecordAttachments,
+  uploadRecordAttachment,
+} from "./record-attachments";
 
 type ContractStatus = "draft" | "active" | "terminated" | "archived";
-type ContractType = "service" | "license" | "maintenance" | "lease" | "other";
+type ContractType = string;
 type Contract = {
   id: string;
   title: string;
@@ -61,13 +66,16 @@ const statusLabel: Record<ContractStatus, string> = {
   terminated: "Beendet",
   archived: "Archiviert",
 };
-const typeLabel: Record<ContractType, string> = {
+const typeLabel: Record<string, string> = {
   service: "Dienstleistung",
   license: "Lizenz",
   maintenance: "Wartung",
   lease: "Miete / Leasing",
   other: "Weitere",
 };
+const typeText = (type: string) =>
+  Object.hasOwn(typeLabel, type) ? (typeLabel[type] ?? type) : type;
+const NEW_TYPE = "__new__";
 const today = () => new Date().toISOString().slice(0, 10);
 const formatDate = (value: string | null) =>
   value
@@ -149,6 +157,10 @@ export function Contracts({ tenantId }: { tenantId: string }) {
   const [editorOpen, setEditorOpen] = useState(false);
   const [form, setForm] = useState<Form>(EMPTY);
   const [pending, setPending] = useState(false);
+  const [addingType, setAddingType] = useState(false);
+  const [newTypeName, setNewTypeName] = useState("");
+  const [queuedFiles, setQueuedFiles] = useState<File[]>([]);
+  const [documentsFor, setDocumentsFor] = useState<Contract | null>(null);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const nameRef = useRef<HTMLInputElement | null>(null);
   const load = async () => {
@@ -224,9 +236,49 @@ export function Contracts({ tenantId }: { tenantId: string }) {
       }),
     [contracts, due, query, status, type],
   );
+  // Names already used on saved records are offered while typing.
+  const partyNames = useMemo(() => {
+    const byKey = new Map<string, string>();
+    for (const item of contracts) {
+      const name = item.counterpartyName.trim();
+      const key = name.toLocaleLowerCase("de-CH");
+      if (name && !byKey.has(key)) byKey.set(key, name);
+    }
+    return [...byKey.values()].sort((a, b) => a.localeCompare(b, "de-CH"));
+  }, [contracts]);
+  // Built-in types first, then every custom type already in use.
+  const typeOptions = useMemo(() => {
+    const custom = new Map<string, string>();
+    for (const item of contracts) {
+      const name = item.contractType;
+      if (!Object.hasOwn(typeLabel, name) && !custom.has(name.toLocaleLowerCase("de-CH"))) {
+        custom.set(name.toLocaleLowerCase("de-CH"), name);
+      }
+    }
+    return [
+      ...Object.keys(typeLabel),
+      ...[...custom.values()].sort((a, b) => a.localeCompare(b, "de-CH")),
+    ];
+  }, [contracts]);
+  const applyNewType = () => {
+    const name = newTypeName.trim().replace(/\s+/g, " ");
+    if (name.length < 2) return;
+    // An existing type (any letter case) is reused instead of duplicated.
+    const existing = typeOptions.find(
+      (key) =>
+        typeText(key).toLocaleLowerCase("de-CH") ===
+        name.toLocaleLowerCase("de-CH"),
+    );
+    setForm({ ...form, contractType: existing ?? name });
+    setAddingType(false);
+    setNewTypeName("");
+  };
   const close = () => {
     if (pending) return;
     setEditorOpen(false);
+    setAddingType(false);
+    setNewTypeName("");
+    setQueuedFiles([]);
     setForm(EMPTY);
     window.setTimeout(() => triggerRef.current?.focus(), 0);
   };
@@ -284,6 +336,21 @@ export function Contracts({ tenantId }: { tenantId: string }) {
           ? "Der Vertrag wurde aktualisiert."
           : "Der Vertrag wurde erfasst.",
       );
+      if (queuedFiles.length > 0) {
+        let failed = 0;
+        for (const file of queuedFiles) {
+          try {
+            await uploadRecordAttachment(tenantId, "contract", saved.id, file);
+          } catch {
+            failed += 1;
+          }
+        }
+        if (failed > 0) {
+          setError(
+            `Gespeichert, aber ${failed} Anhang/Anhänge konnten nicht hochgeladen werden. Öffnen Sie «Dokumente», um es erneut zu versuchen.`,
+          );
+        }
+      }
       close();
     } catch (reason) {
       setError(
@@ -406,9 +473,9 @@ export function Contracts({ tenantId }: { tenantId: string }) {
             onChange={(event) => setType(event.target.value as typeof type)}
           >
             <option value="all">Alle</option>
-            {(Object.keys(typeLabel) as ContractType[]).map((key) => (
+            {typeOptions.map((key) => (
               <option key={key} value={key}>
-                {typeLabel[key]}
+                {typeText(key)}
               </option>
             ))}
           </select>
@@ -467,7 +534,7 @@ export function Contracts({ tenantId }: { tenantId: string }) {
                       {statusLabel[contract.status]}
                     </span>
                     <span className="contracts__type">
-                      {typeLabel[contract.contractType]}
+                      {typeText(contract.contractType)}
                     </span>
                   </div>
                   <dl>
@@ -496,6 +563,13 @@ export function Contracts({ tenantId }: { tenantId: string }) {
                     </p>
                   )}
                   <div className="contracts__card-actions">
+                    <button
+                      className="secondary-button"
+                      onClick={() => setDocumentsFor(contract)}
+                      type="button"
+                    >
+                      <Paperclip size={16} /> Dokumente
+                    </button>
                     <button
                       className="secondary-button"
                       disabled={pending || contract.status === "archived"}
@@ -575,11 +649,18 @@ export function Contracts({ tenantId }: { tenantId: string }) {
                     required
                     minLength={2}
                     maxLength={160}
+                    autoComplete="off"
+                    list="contract-counterparties"
                     value={form.counterpartyName}
                     onChange={(event) =>
                       setForm({ ...form, counterpartyName: event.target.value })
                     }
                   />
+                  <datalist id="contract-counterparties">
+                    {partyNames.map((name) => (
+                      <option key={name} value={name} />
+                    ))}
+                  </datalist>
                 </label>
                 <label>
                   Vertragsnummer
@@ -594,20 +675,58 @@ export function Contracts({ tenantId }: { tenantId: string }) {
                 <label>
                   Art
                   <select
-                    value={form.contractType}
-                    onChange={(event) =>
-                      setForm({
-                        ...form,
-                        contractType: event.target.value as ContractType,
-                      })
-                    }
+                    value={addingType ? NEW_TYPE : form.contractType}
+                    onChange={(event) => {
+                      if (event.target.value === NEW_TYPE) {
+                        setAddingType(true);
+                        return;
+                      }
+                      setAddingType(false);
+                      setForm({ ...form, contractType: event.target.value });
+                    }}
                   >
-                    {(Object.keys(typeLabel) as ContractType[]).map((key) => (
+                    {typeOptions.includes(form.contractType) ? null : (
+                      <option value={form.contractType}>{form.contractType}</option>
+                    )}
+                    {typeOptions.map((key) => (
                       <option key={key} value={key}>
-                        {typeLabel[key]}
+                        {typeText(key)}
                       </option>
                     ))}
+                    <option value={NEW_TYPE}>+ Neue Art hinzufügen …</option>
                   </select>
+                  {addingType ? (
+                    <span className="contracts__new-type">
+                      <input
+                        autoFocus
+                        maxLength={60}
+                        onChange={(event) => setNewTypeName(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            event.preventDefault();
+                            applyNewType();
+                          }
+                        }}
+                        placeholder="Name der neuen Art"
+                        value={newTypeName}
+                      />
+                      <button
+                        className="primary-button"
+                        disabled={newTypeName.trim().length < 2}
+                        onClick={applyNewType}
+                        type="button"
+                      >
+                        Übernehmen
+                      </button>
+                      <button
+                        className="secondary-button"
+                        onClick={() => setAddingType(false)}
+                        type="button"
+                      >
+                        Abbrechen
+                      </button>
+                    </span>
+                  ) : null}
                 </label>
                 <label>
                   Status
@@ -688,6 +807,15 @@ export function Contracts({ tenantId }: { tenantId: string }) {
                     }
                   />
                 </label>
+                <div className="contracts__notes">
+                  <RecordAttachments
+                    entityId={form.id}
+                    entityType="contract"
+                    onQueuedChange={setQueuedFiles}
+                    queued={queuedFiles}
+                    tenantId={tenantId}
+                  />
+                </div>
                 <div className="form-actions">
                   <button
                     className="secondary-button"
@@ -706,6 +834,48 @@ export function Contracts({ tenantId }: { tenantId: string }) {
                   </button>
                 </div>
               </form>
+            </section>
+          </div>,
+          document.body,
+        )}
+      {documentsFor &&
+        createPortal(
+          <div
+            className="contracts__dialog-backdrop"
+            onMouseDown={(event) => {
+              if (event.target === event.currentTarget) setDocumentsFor(null);
+            }}
+          >
+            <section
+              className="contracts__editor-dialog"
+              aria-label="Dokumente"
+              aria-modal="true"
+              role="dialog"
+            >
+              <header className="panel-heading">
+                <div>
+                  <p className="eyebrow">Dokumente</p>
+                  <h2>{documentsFor.title}</h2>
+                </div>
+                <button
+                  aria-label="Dialog schliessen"
+                  className="icon-button"
+                  onClick={() => setDocumentsFor(null)}
+                  type="button"
+                >
+                  <X size={18} />
+                </button>
+              </header>
+              <div className="contracts__notes">
+                <RecordAttachments
+                  entityId={documentsFor.id}
+                  entityType="contract"
+                  onQueuedChange={() => undefined}
+                  queued={[]}
+                  readOnly={documentsFor.status === "archived"}
+                  tenantId={tenantId}
+                />
+              </div>
             </section>
           </div>,
           document.body,
