@@ -6,6 +6,7 @@ import {
   ChevronRight,
   ClipboardCheck,
   DoorOpen,
+  Mail,
   Plus,
   RefreshCw,
   UsersRound,
@@ -20,6 +21,9 @@ import { functionErrorMessage } from "./lib/function-error";
 import { supabase } from "./lib/supabase";
 
 const EQUIPMENT = [
+  ["ict_material", "ICT Material"],
+  ["internet_access", "Zugang Internet"],
+  ["sobe_network_access", "Zugang SOBE Netzwerk"],
   ["projector", "Beamer"],
   ["connections", "Anschlüsse"],
   ["display", "Bildschirm"],
@@ -36,6 +40,7 @@ type RequestStatus =
 type TaskStatus = "open" | "in_progress" | "completed";
 type View = "calendar" | "list";
 type Recurrence = "none" | "weekly" | "monthly";
+type IntakeSource = "manual" | "email_ticket";
 
 type Room = {
   id: string;
@@ -51,10 +56,12 @@ type RoomRequest = {
   spaceId: string;
   title: string;
   organizer: string | null;
+  remarks: string | null;
   expectedParticipants: number | null;
   startsAt: string;
   endsAt: string;
   responsibleName: string | null;
+  intakeSource: IntakeSource;
   status: RequestStatus;
   recurrence: Recurrence;
   seriesId: string | null;
@@ -66,6 +73,9 @@ type RoomRequest = {
 type ClarificationCase = {
   id: string;
   title: string;
+  organizer: string | null;
+  remarks: string | null;
+  assignedAgent: Person | null;
   sourceOrderNumber: string | null;
   requestedSpaceText: string | null;
   requestedStartsAt: string | null;
@@ -91,6 +101,7 @@ type ConflictPreview = {
 type Workspace = {
   rooms: Room[];
   people: Person[];
+  agents: Person[];
   permissions: { canRequest: boolean; canManage: boolean };
   pagination: { hasMore: boolean; nextOffset: number | null };
   clarifications: ClarificationCase[];
@@ -227,6 +238,7 @@ function parseWorkspace(value: unknown): Workspace | null {
   if (
     !Array.isArray(data.rooms) ||
     !Array.isArray(data.people) ||
+    !Array.isArray(data.agents) ||
     !Array.isArray(data.clarifications) ||
     !Array.isArray(data.emailIntakes) ||
     !Array.isArray(data.requests) ||
@@ -411,9 +423,19 @@ export function EventSpaces({
       let changed = false;
       const next = { ...current };
       for (const item of cases) {
-        if (next[item.id]) continue;
+        const existing = next[item.id];
+        if (existing) {
+          if (!existing.responsibleUserId && item.assignedAgent?.id) {
+            next[item.id] = {
+              ...existing,
+              responsibleUserId: item.assignedAgent.id,
+            };
+            changed = true;
+          }
+          continue;
+        }
         next[item.id] = {
-          responsibleUserId: "",
+          responsibleUserId: item.assignedAgent?.id ?? "",
           spaceId: "",
           startsAt: item.requestedStartsAt
             ? swissWallValue(new Date(item.requestedStartsAt))
@@ -694,6 +716,43 @@ export function EventSpaces({
     }
   }
 
+  async function assignEmailAgent(
+    requestId: string,
+    responsibleUserId: string,
+  ) {
+    if (!supabase) return;
+    if (!responsibleUserId) {
+      setErrorMessage("Bitte wählen Sie eine Agent:in aus.");
+      return;
+    }
+    setPending(true);
+    setErrorMessage("");
+    setNotice("");
+    try {
+      const { error } = await supabase.functions.invoke("event-spaces", {
+        body: {
+          type: "assignAgent",
+          tenantId,
+          requestId,
+          responsibleUserId,
+        },
+      });
+      if (error) throw error;
+      setNotice("Die Agent:in wurde der E-Mail-Anfrage zugewiesen.");
+      await refresh(true);
+      onAttentionChanged();
+    } catch (error) {
+      setErrorMessage(
+        await functionErrorMessage(
+          error,
+          "Die Agent:in konnte nicht zugewiesen werden. Bitte versuchen Sie es erneut.",
+        ),
+      );
+    } finally {
+      setPending(false);
+    }
+  }
+
   function updateClarificationDraft(
     requestId: string,
     key: "responsibleUserId" | "spaceId" | "startsAt",
@@ -722,7 +781,7 @@ export function EventSpaces({
     );
     if (!draft?.spaceId || !draft.responsibleUserId || !start) {
       setErrorMessage(
-        "Bitte geben Sie einen gültigen Schweizer Beginn sowie Raum und verantwortliche Person an.",
+        "Bitte geben Sie einen gültigen Schweizer Beginn sowie Raum und Agent:in an.",
       );
       return;
     }
@@ -933,11 +992,11 @@ export function EventSpaces({
         <section className="event-spaces__clarifications panel">
           <div className="event-spaces__clarifications-heading">
             <div>
-              <p className="eyebrow">Prüfen vor dem Planen</p>
-              <h3>Klärung erforderlich</h3>
+              <p className="eyebrow">Neue E-Mail-Anfragen</p>
+              <h3>Klärung und Übernahme erforderlich</h3>
               <p>
-                Diese E-Mail-Aufträge reservieren weder Raum noch Technik, bis
-                die Angaben bewusst ergänzt und geprüft sind.
+                Neue Anfragen reservieren weder Raum noch Technik. Weisen Sie
+                zuerst eine Agent:in zu und ergänzen Sie danach Raum und Zeit.
               </p>
             </div>
             <strong>{clarifications.length}</strong>
@@ -946,7 +1005,10 @@ export function EventSpaces({
             {clarifications.map((item) => (
               <li key={item.id}>
                 <article>
-                  <div>
+                  <div className="event-spaces__clarification-summary">
+                    <span className="event-spaces__email-intake-label">
+                      <Mail aria-hidden="true" size={14} /> Neue E-Mail-Anfrage
+                    </span>
                     <small>
                       {item.sourceOrderNumber
                         ? `Antrag ${item.sourceOrderNumber}`
@@ -962,6 +1024,28 @@ export function EventSpaces({
                         : ""}
                     </p>
                   </div>
+                  <dl className="event-spaces__clarification-meta">
+                    <div>
+                      <dt>Auftrag ausgelöst von</dt>
+                      <dd>
+                        {item.organizer ??
+                          "Bei diesem bestehenden Auftrag nicht gespeichert"}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Interne Agent:in</dt>
+                      <dd>
+                        {item.assignedAgent?.displayName ??
+                          "Noch nicht zugewiesen"}
+                      </dd>
+                    </div>
+                    {item.remarks ? (
+                      <div>
+                        <dt>Bemerkungen</dt>
+                        <dd>{item.remarks}</dd>
+                      </div>
+                    ) : null}
+                  </dl>
                   <p className="event-spaces__clarification-reasons">
                     {item.reasons.length
                       ? item.reasons
@@ -974,6 +1058,48 @@ export function EventSpaces({
                       : "Angaben prüfen"}
                   </p>
                   <div className="event-spaces__clarification-actions">
+                    <label>
+                      Agent:in
+                      <select
+                        value={
+                          clarificationDrafts[item.id]?.responsibleUserId ?? ""
+                        }
+                        onChange={(event) =>
+                          updateClarificationDraft(
+                            item.id,
+                            "responsibleUserId",
+                            event.target.value,
+                          )
+                        }
+                      >
+                        <option value="">Agent:in auswählen …</option>
+                        {workspace?.agents.map((agent) => (
+                          <option key={agent.id} value={agent.id}>
+                            {agent.displayName}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <button
+                      className="secondary-button"
+                      disabled={
+                        pending ||
+                        !clarificationDrafts[item.id]?.responsibleUserId ||
+                        item.assignedAgent?.id ===
+                          clarificationDrafts[item.id]?.responsibleUserId
+                      }
+                      onClick={() =>
+                        void assignEmailAgent(
+                          item.id,
+                          clarificationDrafts[item.id]?.responsibleUserId ?? "",
+                        )
+                      }
+                      type="button"
+                    >
+                      {item.assignedAgent
+                        ? "Agent:in ändern"
+                        : "Agent:in zuweisen"}
+                    </button>
                     <label>
                       Beginn (Europe/Zurich)
                       <input
@@ -1009,28 +1135,6 @@ export function EventSpaces({
                         {workspace?.rooms.map((room) => (
                           <option key={room.id} value={room.id}>
                             {room.name}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <label>
-                      Verantwortliche Person
-                      <select
-                        value={
-                          clarificationDrafts[item.id]?.responsibleUserId ?? ""
-                        }
-                        onChange={(event) =>
-                          updateClarificationDraft(
-                            item.id,
-                            "responsibleUserId",
-                            event.target.value,
-                          )
-                        }
-                      >
-                        <option value="">Person auswählen …</option>
-                        {workspace?.people.map((person) => (
-                          <option key={person.id} value={person.id}>
-                            {person.displayName}
                           </option>
                         ))}
                       </select>
@@ -1547,6 +1651,11 @@ export function EventSpaces({
                           type="button"
                         >
                           <time>{timeLabel(request.startsAt)}</time>
+                          {request.intakeSource === "email_ticket" ? (
+                            <span className="event-spaces__calendar-intake-label">
+                              E-Mail-Auftrag
+                            </span>
+                          ) : null}
                           <strong>{request.title}</strong>
                           <span>
                             {roomsById.get(request.spaceId)?.name ?? "Raum"}
@@ -1570,6 +1679,8 @@ export function EventSpaces({
                   expanded={expandedRequestId === request.id}
                   focused={focusRequestId === request.id}
                   key={request.id}
+                  agents={workspace?.agents ?? []}
+                  onAssignAgent={assignEmailAgent}
                   onAssignResponsible={assignResponsible}
                   onChangeRequestStatus={changeRequestStatus}
                   onChangeTaskStatus={changeTaskStatus}
@@ -1623,9 +1734,11 @@ export function EventSpaces({
 }
 
 function RequestCard({
+  agents,
   canManage,
   expanded,
   focused,
+  onAssignAgent,
   onAssignResponsible,
   onChangeRequestStatus,
   onChangeTaskStatus,
@@ -1634,9 +1747,11 @@ function RequestCard({
   request,
   room,
 }: {
+  agents: readonly Person[];
   canManage: boolean;
   expanded: boolean;
   focused: boolean;
+  onAssignAgent: (requestId: string, responsibleUserId: string) => void;
   onAssignResponsible: (requestId: string, responsibleUserId: string) => void;
   onChangeRequestStatus: (
     requestId: string,
@@ -1667,14 +1782,33 @@ function RequestCard({
           </span>
         </time>
         <div>
-          <span className="event-spaces__request-room">
-            {room?.name ?? "Raum"}
-          </span>
+          <div className="event-spaces__request-context">
+            <span className="event-spaces__request-room">
+              {room?.name ?? "Raum"}
+            </span>
+            {request.intakeSource === "email_ticket" ? (
+              <span className="event-spaces__email-intake-label">
+                <Mail aria-hidden="true" size={13} />
+                {request.responsibleName
+                  ? "E-Mail-Auftrag"
+                  : "Neue E-Mail-Anfrage"}
+              </span>
+            ) : null}
+          </div>
           <h4>{request.title}</h4>
           <p>
-            {request.responsibleName
-              ? `Verantwortlich: ${request.responsibleName}`
-              : "Verantwortung noch offen"}
+            {request.intakeSource === "email_ticket"
+              ? request.organizer
+                ? `Auftrag ausgelöst von: ${request.organizer}`
+                : "Auftrag ausgelöst von: Nicht übermittelt"
+              : request.responsibleName
+                ? `Verantwortlich: ${request.responsibleName}`
+                : "Verantwortung noch offen"}
+            {request.intakeSource === "email_ticket"
+              ? request.responsibleName
+                ? ` · Agent:in: ${request.responsibleName}`
+                : " · Agent:in noch offen"
+              : ""}
             {request.expectedParticipants !== null
               ? ` · ${request.expectedParticipants} Teilnehmende`
               : ""}
@@ -1708,22 +1842,51 @@ function RequestCard({
                 {progress.completed} von {progress.total} erledigt
               </strong>
             </div>
+            {request.intakeSource === "email_ticket" ? (
+              <>
+                <div>
+                  <span>Auftrag ausgelöst von</span>
+                  <strong>{request.organizer ?? "Nicht übermittelt"}</strong>
+                </div>
+                <div>
+                  <span>Herkunft</span>
+                  <strong>E-Mail-Auftrag</strong>
+                </div>
+                {request.remarks ? (
+                  <div>
+                    <span>Bemerkungen</span>
+                    <p>{request.remarks}</p>
+                  </div>
+                ) : null}
+              </>
+            ) : null}
           </div>
           {canManage && !request.responsibleName ? (
             <label className="event-spaces__status-control">
-              Verantwortliche Person zuweisen
+              {request.intakeSource === "email_ticket"
+                ? "Agent:in zuweisen"
+                : "Verantwortliche Person zuweisen"}
               <select
                 defaultValue=""
                 onChange={(event) => {
                   const responsibleUserId = event.target.value;
                   if (!responsibleUserId) return;
-                  onAssignResponsible(request.id, responsibleUserId);
+                  if (request.intakeSource === "email_ticket") {
+                    onAssignAgent(request.id, responsibleUserId);
+                  } else {
+                    onAssignResponsible(request.id, responsibleUserId);
+                  }
                 }}
               >
                 <option disabled value="">
-                  Person auswählen …
+                  {request.intakeSource === "email_ticket"
+                    ? "Agent:in auswählen …"
+                    : "Person auswählen …"}
                 </option>
-                {people.map((person) => (
+                {(request.intakeSource === "email_ticket"
+                  ? agents
+                  : people
+                ).map((person) => (
                   <option key={person.id} value={person.id}>
                     {person.displayName}
                   </option>

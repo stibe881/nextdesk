@@ -116,6 +116,24 @@ Deno.test(
       "Assignment and clarification resolution must remain manager-protected actions.",
     );
     assert(
+      source.includes('type: "assignAgent"') &&
+        source.includes("assertAssignableEventSpaceAgent") &&
+        source.includes("event_spaces.email_ticket.agent_assigned"),
+      "A clarification assignment must use a separate server-authorized agent action with an audit record.",
+    );
+    assert(
+      source.includes('.eq("intake_source", "manual")') &&
+        source.includes('.eq("intake_source", "email_ticket")') &&
+        source.includes('.neq("status", "completed")'),
+      "A generic responsible-person assignment must not bypass the server-authorized agent path for e-mail requests.",
+    );
+    assert(
+      source.includes("organizer, remarks, responsible_user_id") &&
+        source.includes("remarks") &&
+        source.includes("intake_source"),
+      "Authorized workspace views must receive only the minimal initiator, internal assignment, remark and intake source fields.",
+    );
+    assert(
       source.includes('neq("status", "clarification_required")') &&
         source.includes('rpc(\n    "resolve_event_space_email_ticket_request"'),
       "A clarification case must not be promoted through a plain status update.",

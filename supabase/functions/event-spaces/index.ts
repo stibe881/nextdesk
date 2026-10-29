@@ -78,6 +78,12 @@ type Action =
       responsibleUserId: string;
     }
   | {
+      type: "assignAgent";
+      tenantId: string;
+      requestId: string;
+      responsibleUserId: string;
+    }
+  | {
       type: "resolveEmailIntake";
       tenantId: string;
       requestId: string;
@@ -323,6 +329,19 @@ function parseAction(value: unknown): Action | null {
       : null;
   }
   if (value.type === "assignResponsible") {
+    return isUuid(value.tenantId) &&
+      isUuid(value.requestId) &&
+      isUuid(value.responsibleUserId) &&
+      hasOnlyKeys(value, ["type", "tenantId", "requestId", "responsibleUserId"])
+      ? {
+          type: value.type,
+          tenantId: value.tenantId.toLowerCase(),
+          requestId: value.requestId.toLowerCase(),
+          responsibleUserId: value.responsibleUserId.toLowerCase(),
+        }
+      : null;
+  }
+  if (value.type === "assignAgent") {
     return isUuid(value.tenantId) &&
       isUuid(value.requestId) &&
       isUuid(value.responsibleUserId) &&
@@ -597,6 +616,194 @@ async function assertResponsibleMember(
   }
 }
 
+function roleAllowsEventSpaceAssignment(role: Row, tenantId: string): boolean {
+  if (role.tenant_id !== tenantId || role.active !== true) return false;
+  const permissions = role.role_permissions;
+  return (
+    Array.isArray(permissions) &&
+    permissions.some(
+      (permission) =>
+        isRecord(permission) &&
+        (permission.permission_code === "ticket.read.assigned" ||
+          permission.permission_code === "ticket.update"),
+    )
+  );
+}
+
+function assignmentAllowsEventSpaceAssignment(
+  assignment: unknown,
+  tenantId: string,
+  activeDepartmentIds: ReadonlySet<string>,
+): boolean {
+  if (!isRecord(assignment)) return false;
+  const roles = assignment.roles;
+  const role = Array.isArray(roles) ? roles[0] : roles;
+  if (!isRecord(role) || !roleAllowsEventSpaceAssignment(role, tenantId)) {
+    return false;
+  }
+  if (role.scope === "tenant") return true;
+  return (
+    role.scope === "department" &&
+    typeof assignment.department_id === "string" &&
+    activeDepartmentIds.has(assignment.department_id)
+  );
+}
+
+async function assertAssignableEventSpaceAgent(
+  admin: AdminClient,
+  tenantId: string,
+  responsibleUserId: string,
+) {
+  const now = new Date().toISOString();
+  const [membershipResult, departmentMembershipsResult, assignmentsResult] =
+    await Promise.all([
+    admin
+      .from("tenant_memberships")
+      .select("user_id")
+      .eq("tenant_id", tenantId)
+      .eq("user_id", responsibleUserId)
+      .eq("status", "active")
+      .maybeSingle(),
+    admin
+      .from("department_memberships")
+      .select("department_id")
+      .eq("tenant_id", tenantId)
+      .eq("user_id", responsibleUserId)
+      .eq("status", "active")
+      .limit(1000),
+    admin
+      .from("user_role_assignments")
+      .select(
+        "department_id, roles!user_role_assignments_role_tenant_fk!inner(tenant_id, active, scope, role_permissions!inner(permission_code))",
+      )
+      .eq("tenant_id", tenantId)
+      .eq("user_id", responsibleUserId)
+      .lte("starts_at", now)
+      .or(`expires_at.is.null,expires_at.gt.${now}`),
+    ]);
+  if (membershipResult.error) databaseFailure(membershipResult.error);
+  if (departmentMembershipsResult.error) {
+    databaseFailure(departmentMembershipsResult.error);
+  }
+  if (assignmentsResult.error) databaseFailure(assignmentsResult.error);
+  const activeDepartmentIds = new Set(
+    (departmentMembershipsResult.data ?? [])
+      .map((membership: Row) => membership.department_id)
+      .filter(
+        (departmentId): departmentId is string =>
+          typeof departmentId === "string",
+      ),
+  );
+  const isAgent = (assignmentsResult.data ?? []).some((assignment: Row) =>
+    assignmentAllowsEventSpaceAssignment(
+      assignment,
+      tenantId,
+      activeDepartmentIds,
+    ),
+  );
+  if (!membershipResult.data || !isAgent) {
+    throw new HttpError(
+      422,
+      "event_space_reference_invalid",
+      "Die ausgewählte Agent:in ist nicht verfügbar.",
+    );
+  }
+}
+
+async function listAssignableEventSpaceAgents(
+  admin: AdminClient,
+  tenantId: string,
+) {
+  const now = new Date().toISOString();
+  const [membershipsResult, departmentMembershipsResult, assignmentsResult] =
+    await Promise.all([
+    admin
+      .from("tenant_memberships")
+      .select("user_id")
+      .eq("tenant_id", tenantId)
+      .eq("status", "active")
+      .limit(1000),
+    admin
+      .from("department_memberships")
+      .select("user_id, department_id")
+      .eq("tenant_id", tenantId)
+      .eq("status", "active")
+      .limit(2000),
+    admin
+      .from("user_role_assignments")
+      .select(
+        "user_id, department_id, roles!user_role_assignments_role_tenant_fk!inner(tenant_id, active, scope, role_permissions!inner(permission_code))",
+      )
+      .eq("tenant_id", tenantId)
+      .lte("starts_at", now)
+      .or(`expires_at.is.null,expires_at.gt.${now}`)
+      .limit(2000),
+    ]);
+  if (membershipsResult.error) databaseFailure(membershipsResult.error);
+  if (departmentMembershipsResult.error) {
+    databaseFailure(departmentMembershipsResult.error);
+  }
+  if (assignmentsResult.error) databaseFailure(assignmentsResult.error);
+  const activeMemberIds = new Set(
+    (membershipsResult.data ?? [])
+      .map((membership: Row) => membership.user_id)
+      .filter((userId): userId is string => typeof userId === "string"),
+  );
+  const activeDepartmentIdsByUser = new Map<string, Set<string>>();
+  for (const membership of departmentMembershipsResult.data ?? []) {
+    if (
+      typeof membership.user_id !== "string" ||
+      typeof membership.department_id !== "string"
+    ) {
+      continue;
+    }
+    const departmentIds =
+      activeDepartmentIdsByUser.get(membership.user_id) ?? new Set<string>();
+    departmentIds.add(membership.department_id);
+    activeDepartmentIdsByUser.set(membership.user_id, departmentIds);
+  }
+  const agentIds = new Set<string>();
+  for (const assignment of assignmentsResult.data ?? []) {
+    if (
+      typeof assignment.user_id === "string" &&
+      activeMemberIds.has(assignment.user_id) &&
+      assignmentAllowsEventSpaceAssignment(
+        assignment,
+        tenantId,
+        activeDepartmentIdsByUser.get(assignment.user_id) ?? new Set<string>(),
+      )
+    ) {
+      agentIds.add(assignment.user_id);
+    }
+  }
+  if (agentIds.size === 0) return [] as Array<{ id: string; displayName: string }>;
+
+  const { data: profiles, error: profilesError } = await admin
+    .from("user_profiles")
+    .select("id, display_name")
+    .in("id", [...agentIds])
+    .limit(agentIds.size);
+  if (profilesError) databaseFailure(profilesError);
+  const profileNames = new Map(
+    (profiles ?? [])
+      .filter((profile: Row) => typeof profile.id === "string")
+      .map((profile: Row) => [
+        profile.id as string,
+        typeof profile.display_name === "string" && profile.display_name.trim()
+          ? profile.display_name.trim()
+          : "Aktive Agent:in",
+      ]),
+  );
+  return [...agentIds]
+    .map((id) => ({ id, displayName: profileNames.get(id) ?? "Aktive Agent:in" }))
+    .sort(
+      (first, second) =>
+        first.displayName.localeCompare(second.displayName, "de-CH", {
+          sensitivity: "base",
+        }) || first.id.localeCompare(second.id),
+    );
+}
+
 async function conflictSummary(admin: AdminClient, input: RequestInput) {
   const earliestStart = input.occurrences[0]!.startsAt;
   const latestEnd = input.occurrences[input.occurrences.length - 1]!.endsAt;
@@ -772,7 +979,7 @@ async function listWorkspace(
     admin
       .from("event_space_requests")
       .select(
-        "id, space_id, title, organizer, expected_participants, starts_at, ends_at, responsible_user_id, status, recurrence_kind, series_id, series_index, conflicts_acknowledged",
+        "id, space_id, title, organizer, remarks, expected_participants, starts_at, ends_at, responsible_user_id, status, recurrence_kind, series_id, series_index, conflicts_acknowledged, intake_source",
       )
       .eq("tenant_id", tenantId)
       .gte("starts_at", from)
@@ -784,7 +991,7 @@ async function listWorkspace(
       ? admin
           .from("event_space_requests")
           .select(
-            "id, title, source_order_number, requested_space_text, requested_starts_at, requested_ends_at, requested_equipment_keys, clarification_reasons",
+            "id, title, organizer, remarks, responsible_user_id, source_order_number, requested_space_text, requested_starts_at, requested_ends_at, requested_equipment_keys, clarification_reasons",
           )
           .eq("tenant_id", tenantId)
           .eq("status", "clarification_required")
@@ -843,8 +1050,8 @@ async function listWorkspace(
 
   const responsibleIds = [
     ...new Set(
-      requestRows
-        .map((row) => row.responsible_user_id)
+      [...requestRows, ...(canManage ? clarificationsResult.data ?? [] : [])]
+        .map((row: Row) => row.responsible_user_id)
         .filter((id): id is string => typeof id === "string"),
     ),
   ];
@@ -926,6 +1133,9 @@ async function listWorkspace(
       { id: actorId, displayName: responsibleNames.get(actorId) ?? "Ich" },
     ];
   }
+  const agents = canManage
+    ? await listAssignableEventSpaceAgents(admin, tenantId)
+    : [];
 
   const tasksByRequest = new Map<string, Array<Record<string, unknown>>>();
   for (const row of tasksResult.data ?? []) {
@@ -953,6 +1163,7 @@ async function listWorkspace(
   return {
     rooms,
     people,
+    agents,
     permissions: { canRequest, canManage },
     pagination: {
       hasMore: requestPage.hasMore,
@@ -964,6 +1175,17 @@ async function listWorkspace(
           .map((row: Row) => ({
             id: String(row.id),
             title: typeof row.title === "string" ? row.title : "Raumauftrag",
+            organizer: typeof row.organizer === "string" ? row.organizer : null,
+            remarks: typeof row.remarks === "string" ? row.remarks : null,
+            assignedAgent:
+              typeof row.responsible_user_id === "string"
+                ? {
+                    id: row.responsible_user_id,
+                    displayName:
+                      responsibleNames.get(row.responsible_user_id) ??
+                      "Zugewiesene Agent:in",
+                  }
+                : null,
             sourceOrderNumber:
               typeof row.source_order_number === "string"
                 ? row.source_order_number
@@ -1031,6 +1253,7 @@ async function listWorkspace(
       spaceId: String(row.space_id),
       title: typeof row.title === "string" ? row.title : "Raumauftrag",
       organizer: typeof row.organizer === "string" ? row.organizer : null,
+      remarks: typeof row.remarks === "string" ? row.remarks : null,
       expectedParticipants:
         typeof row.expected_participants === "number"
           ? row.expected_participants
@@ -1042,6 +1265,8 @@ async function listWorkspace(
           ? (responsibleNames.get(row.responsible_user_id) ??
             "Verantwortliche Person")
           : null,
+      intakeSource:
+        row.intake_source === "email_ticket" ? "email_ticket" : "manual",
       status: String(row.status),
       recurrence: String(row.recurrence_kind),
       seriesId: typeof row.series_id === "string" ? row.series_id : null,
@@ -1060,6 +1285,11 @@ async function createRequest(
   confirmConflicts: boolean,
   conflictSnapshot: string | null,
 ) {
+  await assertResponsibleMember(
+    admin,
+    input.tenantId,
+    input.responsibleUserId,
+  );
   const preview = await conflictSummary(admin, input);
   if (preview.conflicts.hasConflicts && !confirmConflicts) {
     throw new HttpError(
@@ -1175,6 +1405,7 @@ async function assignResponsible(
     .update({ responsible_user_id: responsibleUserId })
     .eq("tenant_id", tenantId)
     .eq("id", requestId)
+    .eq("intake_source", "manual")
     .neq("status", "completed")
     .select("id")
     .maybeSingle();
@@ -1196,6 +1427,46 @@ async function assignResponsible(
   );
 }
 
+async function assignAgent(
+  admin: AdminClient,
+  actorId: string,
+  tenantId: string,
+  requestId: string,
+  responsibleUserId: string,
+) {
+  await assertAssignableEventSpaceAgent(
+    admin,
+    tenantId,
+    responsibleUserId,
+  );
+  const { data, error } = await admin
+    .from("event_space_requests")
+    .update({ responsible_user_id: responsibleUserId })
+    .eq("tenant_id", tenantId)
+    .eq("id", requestId)
+    .eq("intake_source", "email_ticket")
+    .neq("status", "completed")
+    .select("id")
+    .maybeSingle();
+  if (error) databaseFailure(error);
+  if (!data) {
+    throw new HttpError(
+      404,
+      "event_space_request_not_found",
+      "Die E-Mail-Anfrage ist nicht mehr zur Klärung verfügbar.",
+    );
+  }
+  await audit(
+    admin,
+    tenantId,
+    actorId,
+    "event_spaces.email_ticket.agent_assigned",
+    "event_space_request",
+    requestId,
+    { assigned: true },
+  );
+}
+
 async function resolveEmailIntake(
   admin: AdminClient,
   actorId: string,
@@ -1206,6 +1477,11 @@ async function resolveEmailIntake(
   startsAt: string,
   endsAt: string,
 ) {
+  await assertAssignableEventSpaceAgent(
+    admin,
+    tenantId,
+    responsibleUserId,
+  );
   const { data, error } = await admin.rpc(
     "resolve_event_space_email_ticket_request",
     {
@@ -1473,6 +1749,21 @@ const handler = withSupabase(
           "event.spaces.manage",
         );
         await assignResponsible(
+          context.supabaseAdmin,
+          actorId,
+          action.tenantId,
+          action.requestId,
+          action.responsibleUserId,
+        );
+        return json(request, { data: { updated: true } });
+      }
+      if (action.type === "assignAgent") {
+        await requirePermission(
+          context.supabase,
+          action.tenantId,
+          "event.spaces.manage",
+        );
+        await assignAgent(
           context.supabaseAdmin,
           actorId,
           action.tenantId,

@@ -1,4 +1,7 @@
 export const EVENT_SPACE_EQUIPMENT = [
+  "ict_material",
+  "internet_access",
+  "sobe_network_access",
   "projector",
   "connections",
   "display",

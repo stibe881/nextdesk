@@ -14,13 +14,14 @@ export const EVENT_SPACE_EMAIL_INTAKE_TIME_ZONE = "Europe/Zurich";
 export const EVENT_SPACE_EMAIL_INTAKE_DURATION_MINUTES = 30;
 
 /**
- * Subset of the existing event-space equipment allow-list which has an
- * unambiguous counterpart in the e-mail form. Internet/SOBE access and a
- * reception laptop remain operational requirements; they are not silently
- * mapped to an unrelated shared-equipment resource.
+ * The e-mail form has seven explicit operational requirements. Each one maps
+ * to its own allow-listed key, so a positive answer neither disappears nor is
+ * silently represented as an unrelated shared-equipment resource.
  */
 export const EVENT_SPACE_EMAIL_INTAKE_EQUIPMENT_KEYS = [
-  "connections",
+  "ict_material",
+  "internet_access",
+  "sobe_network_access",
   "projector",
   "screen",
   "microphones",
@@ -322,6 +323,25 @@ function fieldValue(
   return fields.get(field)?.[0];
 }
 
+/**
+ * Extracts only the explicitly labelled initiating person for private server-side
+ * persistence. It intentionally does not alter the public clarification result:
+ * incomplete forms still expose no partial input to a caller. A duplicated,
+ * malformed or missing value remains unavailable rather than guessed.
+ */
+export function eventSpaceEmailIntakeOrganizer(
+  description: unknown,
+): string | null {
+  const fields = collectFields(
+    description,
+    new Set<EventSpaceEmailIntakeClarificationCode>(),
+  );
+  const organisers = fields.get("organiser");
+  if (!organisers || organisers.length !== 1) return null;
+  const organiser = normaliseText(organisers[0] ?? "");
+  return isBoundedText(organiser, 2, 160) ? organiser : null;
+}
+
 function parseDate(value: string): CivilDate | null {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/u.exec(value);
   if (!match) return null;
@@ -449,7 +469,9 @@ function requestEquipmentKeys(
   requirements: EventSpaceEmailIntakeRequirements,
 ): EventSpaceEquipment[] {
   const keys: EventSpaceEquipment[] = [];
-  if (requirements.ictMaterial) keys.push("connections");
+  if (requirements.ictMaterial) keys.push("ict_material");
+  if (requirements.internetAccess) keys.push("internet_access");
+  if (requirements.sobeNetworkAccess) keys.push("sobe_network_access");
   if (requirements.projector) keys.push("projector");
   if (requirements.screen) keys.push("screen");
   if (requirements.microphone) keys.push("microphones");

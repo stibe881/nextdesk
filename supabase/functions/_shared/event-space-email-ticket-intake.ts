@@ -1,4 +1,5 @@
 import {
+  eventSpaceEmailIntakeOrganizer,
   eventSpaceEmailIntakeSubject,
   parseEventSpaceEmailIntake,
   type EventSpaceEmailIntake,
@@ -26,9 +27,44 @@ const STORED_EMAIL_TICKET_PREFIX =
 function normaliseRoomName(value: string): string {
   return value
     .normalize("NFKC")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
     .replace(/\s+/gu, " ")
     .trim()
     .toLocaleLowerCase("de-CH");
+}
+
+function containsWholeRoomName(value: string, candidate: string): boolean {
+  return ` ${value} `.includes(` ${candidate} `);
+}
+
+/**
+ * Matches the exact room name first. A longer form value such as "A1 09 Aula"
+ * may then match the single active room named "Aula". Any ambiguity remains a
+ * clarification case; a partial text match never selects the first room.
+ */
+export function eventSpaceEmailIntakeMatchingRoomId(
+  requestedSpaceText: unknown,
+  rooms: readonly Room[],
+): string | null {
+  if (typeof requestedSpaceText !== "string") return null;
+  const requested = normaliseRoomName(requestedSpaceText);
+  if (!requested) return null;
+  const validRooms = rooms.filter(
+    (room) =>
+      typeof room.id === "string" &&
+      typeof room.name === "string" &&
+      normaliseRoomName(room.name).length > 0,
+  );
+  const exact = validRooms.filter(
+    (room) => normaliseRoomName(room.name) === requested,
+  );
+  if (exact.length === 1) return exact[0]!.id;
+  if (exact.length > 1) return null;
+  const identifiedByName = validRooms.filter((room) => {
+    const roomName = normaliseRoomName(room.name);
+    return roomName.length >= 4 && containsWholeRoomName(requested, roomName);
+  });
+  return identifiedByName.length === 1 ? identifiedByName[0]!.id : null;
 }
 
 function clarificationCodes(
@@ -111,14 +147,7 @@ async function matchingRoomId(
     .eq("tenant_id", tenantId)
     .eq("active", true);
   if (error) throw new Error("event_space_lookup_failed");
-  const requested = normaliseRoomName(requestedSpaceText);
-  const matches = (data ?? []).filter(
-    (room: Room) =>
-      typeof room.id === "string" &&
-      typeof room.name === "string" &&
-      normaliseRoomName(room.name) === requested,
-  );
-  return matches.length === 1 ? matches[0]!.id : null;
+  return eventSpaceEmailIntakeMatchingRoomId(requestedSpaceText, data ?? []);
 }
 
 function rpcPayload(
@@ -134,7 +163,8 @@ function rpcPayload(
     p_ticket_id: input.ticketId,
     p_order_number: subject.sourceOrderNumber,
     p_title: subject.title,
-    p_organizer: request?.organiser ?? null,
+    p_organizer:
+      request?.organiser ?? eventSpaceEmailIntakeOrganizer(input.description),
     p_space_id: null as string | null,
     p_requested_space_text: request?.requestedSpaceText ?? null,
     p_starts_at: request?.startAt ?? null,

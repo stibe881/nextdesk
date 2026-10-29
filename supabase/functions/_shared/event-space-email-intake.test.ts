@@ -1,5 +1,6 @@
 import {
   EVENT_SPACE_EMAIL_INTAKE_DURATION_MINUTES,
+  eventSpaceEmailIntakeOrganizer,
   parseEventSpaceEmailIntake,
   type EventSpaceEmailIntakeClarificationCode,
   type EventSpaceEmailIntakeResult,
@@ -100,8 +101,8 @@ Deno.test(
     );
     assert(
       result.request.equipmentKeys.join(",") ===
-        "connections,projector,microphones",
-      "Nur eindeutig abbildbare positive Materialanforderungen dürfen Equipment-Schlüssel erzeugen.",
+        "ict_material,sobe_network_access,projector,microphones",
+      "Jede positiv bestätigte Material- oder Zugangsanforderung muss einen eigenen Equipment-Schlüssel erzeugen.",
     );
     assert(
       result.request.requirements.internetAccess === false &&
@@ -151,6 +152,11 @@ Empfangslaptop: Nein`,
       result.request.startAt === "2026-11-11T13:00:00.000Z" &&
         result.request.endAt === "2026-11-11T13:30:00.000Z",
       "Die Beginnzeit muss in Europe/Zurich mit fester Dauer verarbeitet werden.",
+    );
+    assert(
+      result.request.equipmentKeys.join(",") ===
+        "ict_material,internet_access,sobe_network_access,projector,screen",
+      "Das ursprüngliche Formular muss jede ausschliesslich mit «Ja» bestätigte Anforderung übernehmen.",
     );
   },
 );
@@ -230,6 +236,29 @@ Deno.test(
     assert(
       !("request" in result),
       "Bei Klärungsbedarf dürfen keine partiellen personenbezogenen Daten zurückgegeben werden.",
+    );
+  },
+);
+
+Deno.test(
+  "bewahrt den eindeutig beschrifteten Ersteller intern bei einem Klärungsfall",
+  () => {
+    const description = descriptionWith(
+      validDescription,
+      "Beginn:   09 : 30   Uhr\n",
+      "",
+    );
+    const result = parseEventSpaceEmailIntake({
+      subject: validSubject,
+      description,
+    });
+    assert(
+      result.status === "needs_clarification" && !("request" in result),
+      "Ein Klärungsresultat darf weiterhin keine Teildaten an Aufrufende zurückgeben.",
+    );
+    assert(
+      eventSpaceEmailIntakeOrganizer(description) === "Ada Beispiel",
+      "Nur der validierte, eindeutig beschriftete Ersteller darf intern gespeichert werden.",
     );
   },
 );
