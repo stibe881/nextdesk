@@ -21,6 +21,7 @@ const PUBLIC_MAINTENANCE_STATES = ["scheduled", "active"] as const;
 type ServiceStatus = (typeof STATUS_VALUES)[number];
 type PublicMaintenanceState = (typeof PUBLIC_MAINTENANCE_STATES)[number];
 type PublicService = {
+  displayStatus: ServiceStatus;
   name: string;
   status: ServiceStatus;
   updatedAt: string;
@@ -42,6 +43,10 @@ type PublicStatusPayload = {
   overallStatus: ServiceStatus;
   services: PublicService[];
   title: string;
+};
+type PublicMaintenanceProjection = {
+  activeServiceIds: ReadonlySet<string>;
+  maintenances: PublicMaintenance[];
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -163,32 +168,40 @@ function severity(status: ServiceStatus): number {
   }[status];
 }
 
+function isCurrentPublicMaintenance(
+  maintenance: Pick<PublicMaintenance, "startsAt" | "endsAt" | "state">,
+  now: number,
+): boolean {
+  return (
+    (maintenance.state === "scheduled" || maintenance.state === "active") &&
+    Date.parse(maintenance.startsAt) <= now &&
+    Date.parse(maintenance.endsAt) > now
+  );
+}
+
 function hasActivePublicMaintenance(
   maintenances: readonly PublicMaintenance[],
   now: number,
 ): boolean {
-  return maintenances.some(
-    (maintenance) =>
-      maintenance.state === "active" &&
-      Date.parse(maintenance.startsAt) <= now &&
-      Date.parse(maintenance.endsAt) > now,
+  return maintenances.some((maintenance) =>
+    isCurrentPublicMaintenance(maintenance, now),
   );
 }
 
-function overallStatus(
-  services: readonly PublicService[],
-  maintenances: readonly PublicMaintenance[],
-  now: number,
-): ServiceStatus {
+function overallStatus(services: readonly PublicService[]): ServiceStatus {
   const serviceStatus = services.reduce<ServiceStatus>(
     (current, service) =>
       severity(service.status) > severity(current) ? service.status : current,
     "operational",
   );
-  return hasActivePublicMaintenance(maintenances, now) &&
-    severity("maintenance") > severity(serviceStatus)
-    ? "maintenance"
-    : serviceStatus;
+  if (severity(serviceStatus) >= severity("degraded")) return serviceStatus;
+  return services.reduce<ServiceStatus>(
+    (current, service) =>
+      severity(service.displayStatus) > severity(current)
+        ? service.displayStatus
+        : current,
+    "operational",
+  );
 }
 
 function badgeLabel(status: ServiceStatus): string {
@@ -208,9 +221,9 @@ function badgeColours(status: ServiceStatus): {
   return {
     operational: { fill: "#31a85a", foreground: "#ffffff" },
     maintenance: { fill: "#2563eb", foreground: "#ffffff" },
-    degraded: { fill: "#b7791f", foreground: "#ffffff" },
+    degraded: { fill: "#d97706", foreground: "#ffffff" },
     partial_outage: { fill: "#d97706", foreground: "#ffffff" },
-    major_outage: { fill: "#c2412d", foreground: "#ffffff" },
+    major_outage: { fill: "#dc2626", foreground: "#ffffff" },
   }[status];
 }
 
@@ -220,10 +233,8 @@ function badgeResponse(
 ): Response {
   const label = badgeLabel(payload.overallStatus);
   const colours = badgeColours(payload.overallStatus);
-  const width = Math.max(235, 92 + label.length * 7);
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="48" viewBox="0 0 ${width} 48" role="img" aria-labelledby="title"><title id="title">Systemstatus: ${label}</title><rect width="${width}" height="48" rx="5" fill="#174260"/><rect x="10" y="8" width="${
-    width - 20
-  }" height="32" rx="4" fill="${colours.fill}"/><circle cx="28" cy="24" r="9" fill="${colours.foreground}" opacity=".96"/><path d="m23.5 24 3 3.2 5.5-6" fill="none" stroke="${colours.fill}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><text x="45" y="29" fill="${colours.foreground}" font-family="Arial,Helvetica,sans-serif" font-size="14" font-weight="700">${label}</text></svg>`;
+  const width = Math.max(223, 72 + label.length * 7);
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="32" viewBox="0 0 ${width} 32" role="img" aria-labelledby="title"><title id="title">Systemstatus: ${label}</title><rect width="${width}" height="32" rx="4" fill="${colours.fill}"/><circle cx="18" cy="16" r="8" fill="${colours.foreground}" opacity=".96"/><path d="m14 16 2.6 2.8 4.8-5.3" fill="none" stroke="${colours.fill}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/><text x="33" y="21" fill="${colours.foreground}" font-family="Arial,Helvetica,sans-serif" font-size="14" font-weight="700">${label}</text></svg>`;
   const headers = corsHeaders(request, { badge: true });
   headers.set("Content-Type", "image/svg+xml; charset=utf-8");
   headers.set(
@@ -247,7 +258,7 @@ async function readPublicMaintenances(
   admin: any,
   tenantId: string,
   now: string,
-): Promise<PublicMaintenance[]> {
+): Promise<PublicMaintenanceProjection> {
   const maintenanceResult = await admin
     .from("service_status_maintenances")
     .select("id, title, description, starts_at, ends_at, state")
@@ -307,7 +318,9 @@ async function readPublicMaintenances(
     endsAt: string;
     state: PublicMaintenanceState;
   }>;
-  if (maintenances.length === 0) return [];
+  if (maintenances.length === 0) {
+    return { activeServiceIds: new Set<string>(), maintenances: [] };
+  }
 
   const maintenanceIds = maintenances.map((maintenance) => maintenance.id);
   const maintenanceIdSet = new Set(maintenanceIds);
@@ -374,10 +387,11 @@ async function readPublicMaintenances(
     }
   }
 
-  // A stale publication flag must never turn a formerly public service into an
-  // indirect disclosure through its maintenance window. Hide the whole window
-  // unless every selected service is still active and explicitly public.
-  return maintenances.flatMap((maintenance) => {
+  const activeServiceIds = new Set<string>();
+  const publicMaintenances = maintenances.flatMap((maintenance) => {
+    // A stale publication flag must never turn a formerly public service into
+    // an indirect disclosure through its maintenance window. Hide the whole
+    // window unless every selected service is still active and explicitly public.
     const linkedIds = serviceIdsByMaintenance.get(maintenance.id) ?? [];
     if (
       linkedIds.length < 1 ||
@@ -390,17 +404,20 @@ async function readPublicMaintenances(
     const serviceNames = linkedIds
       .map((serviceId) => publicServiceNames.get(serviceId)!)
       .sort((left, right) => left.localeCompare(right, "de-CH"));
-    return [
-      {
-        title: maintenance.title,
-        description: maintenance.description,
-        startsAt: maintenance.startsAt,
-        endsAt: maintenance.endsAt,
-        state: maintenance.state,
-        serviceNames,
-      },
-    ];
+    const publicMaintenance: PublicMaintenance = {
+      title: maintenance.title,
+      description: maintenance.description,
+      startsAt: maintenance.startsAt,
+      endsAt: maintenance.endsAt,
+      state: maintenance.state,
+      serviceNames,
+    };
+    if (hasActivePublicMaintenance([publicMaintenance], Date.parse(now))) {
+      for (const serviceId of linkedIds) activeServiceIds.add(serviceId);
+    }
+    return [publicMaintenance];
   });
+  return { activeServiceIds, maintenances: publicMaintenances };
 }
 
 async function readPublicStatus(
@@ -431,7 +448,7 @@ async function readPublicStatus(
   const cutoff = new Date(
     now.getTime() - 91 * 24 * 60 * 60 * 1000,
   ).toISOString();
-  const [servicesResult, eventsResult, brandingResult, maintenances] =
+  const [servicesResult, eventsResult, brandingResult, maintenanceProjection] =
     await Promise.all([
       admin
         .from("services")
@@ -526,6 +543,9 @@ async function readPublicStatus(
   }
 
   const publicServices: PublicService[] = services.map((service) => ({
+    displayStatus: maintenanceProjection.activeServiceIds.has(service.id)
+      ? "maintenance"
+      : service.status,
     name: service.name,
     status: service.status,
     updatedAt: service.updatedAt,
@@ -535,8 +555,8 @@ async function readPublicStatus(
     accentColor: safeColor(brandingResult.data?.accent_color),
     generatedAt: nowIso,
     logoUrl: safeHttpsUrl(brandingResult.data?.logo_path),
-    maintenances,
-    overallStatus: overallStatus(publicServices, maintenances, now.getTime()),
+    maintenances: maintenanceProjection.maintenances,
+    overallStatus: overallStatus(publicServices),
     services: publicServices,
     title,
   };

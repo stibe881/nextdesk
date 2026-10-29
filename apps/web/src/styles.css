@@ -15926,8 +15926,8 @@ body:has(.knowledge-base__editor-backdrop) {
 
 .service-assets__service-status--degraded,
 .service-status__pill--degraded {
-  color: var(--warning);
-  background: var(--warning-soft);
+  color: #b45309;
+  background: #ffedd5;
 }
 
 .service-assets__service-status--partial_outage,
@@ -16057,8 +16057,8 @@ body:has(.knowledge-base__editor-backdrop) {
 }
 
 .service-status__hero--degraded {
-  color: var(--warning);
-  background: var(--warning-soft);
+  color: #b45309;
+  background: #ffedd5;
 }
 
 .service-status__hero--partial_outage {

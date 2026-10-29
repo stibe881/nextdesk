@@ -154,6 +154,10 @@ Deno.test(
       'select("id, title, description, starts_at, ends_at, state")',
       'select("maintenance_id, service_id")',
       "function hasActivePublicMaintenance",
+      "function isCurrentPublicMaintenance",
+      "activeServiceIds",
+      "displayStatus",
+      'height="32"',
       "MAX_PUBLIC_MAINTENANCES = 100",
       "MAX_MAINTENANCE_SERVICES = 100",
       "Cross-Origin-Resource-Policy",
@@ -170,6 +174,9 @@ Deno.test(
           `The public status contract lost its privacy fence: ${required}`,
         );
       }
+    }
+    if (publicSource.includes('fill="#174260"')) {
+      throw new Error("The public status badge must not render a blue outer background.");
     }
 
     const publicServiceProjection = publicSource.slice(

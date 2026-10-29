@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  displayOverallStatus,
   escapeHtmlAttribute,
+  isCurrentMaintenance,
+  maintenanceRefreshDelay,
+  nextMaintenanceTransition,
   parsePublicServiceStatus,
   parseStatusOverview,
 } from "./service-status";
@@ -65,6 +69,7 @@ function overviewResponse(
 
 function publicService() {
   return {
+    displayStatus: "operational",
     name: "Kundenportal",
     status: "operational",
     updatedAt: UPDATED_AT,
@@ -109,6 +114,68 @@ describe("HTML-Attribut-Escaping", () => {
     ).toBe(
       "Status &quot;kritisch&quot; &amp; &lt;img src=x onerror=&#39;alert(1)&#39;&gt;",
     );
+  });
+});
+
+describe("Zeitgesteuerte Wartungsanzeige", () => {
+  const start = Date.parse(STARTS_AT);
+  const end = Date.parse(ENDS_AT);
+  const maintenance = {
+    startsAt: STARTS_AT,
+    endsAt: ENDS_AT,
+    state: "scheduled" as const,
+  };
+
+  it("ist nur innerhalb des Zeitfensters wirksam und kehrt danach zum gespeicherten Status zurück", () => {
+    expect(isCurrentMaintenance(maintenance, start - 1)).toBe(false);
+    expect(isCurrentMaintenance(maintenance, start)).toBe(true);
+    expect(isCurrentMaintenance(maintenance, end - 1)).toBe(true);
+    expect(isCurrentMaintenance(maintenance, end)).toBe(false);
+
+    expect(
+      displayOverallStatus([
+        {
+          status: "operational" as const,
+          displayStatus: "maintenance" as const,
+        },
+      ]),
+    ).toBe("maintenance");
+    expect(
+      displayOverallStatus([
+        {
+          status: "operational" as const,
+          displayStatus: "operational" as const,
+        },
+      ]),
+    ).toBe("operational");
+  });
+
+  it("behält einen gespeicherten Incident gegenüber einer Wartung im Gesamtstatus bei", () => {
+    expect(
+      displayOverallStatus([
+        {
+          status: "major_outage" as const,
+          displayStatus: "maintenance" as const,
+        },
+      ]),
+    ).toBe("major_outage");
+    expect(
+      displayOverallStatus([
+        {
+          status: "partial_outage" as const,
+          displayStatus: "maintenance" as const,
+        },
+      ]),
+    ).toBe("partial_outage");
+  });
+
+  it("plant die nächste Zeitaktualisierung sicher auch bei weit entfernten Wartungen", () => {
+    expect(nextMaintenanceTransition([maintenance], start - 100)).toBe(start);
+    expect(maintenanceRefreshDelay(start + 250, start)).toBe(250);
+    expect(maintenanceRefreshDelay(start + 3_000_000_000, start)).toBe(
+      2_000_000_000,
+    );
+    expect(maintenanceRefreshDelay(null, start)).toBeNull();
   });
 });
 
@@ -330,6 +397,15 @@ describe("Status-Wartungsparser", () => {
         publicResponse([publicMaintenance({ serviceNames: [] })]),
       ),
     ).toThrow("nicht verfügbar");
+  });
+
+  it("verlangt einen gültigen wirksamen Anzeigezustand pro Service", () => {
+    const response = publicResponse() as {
+      data: { services: Array<Record<string, unknown>> };
+    };
+    delete response.data.services[0]?.displayStatus;
+
+    expect(() => parsePublicServiceStatus(response)).toThrow("nicht verfügbar");
   });
 
   it("weist alle überschrittenen öffentlichen Collection-Obergrenzen ab", () => {

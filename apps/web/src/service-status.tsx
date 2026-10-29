@@ -106,6 +106,7 @@ type StatusAction =
       serviceIds: string[];
     };
 type PublicService = {
+  displayStatus: ServiceStatus;
   history: Array<{ changedAt: string; status: ServiceStatus }>;
   name: string;
   status: ServiceStatus;
@@ -134,6 +135,7 @@ const MAX_EVENTS = 15_000;
 const MAX_MAINTENANCES = 500;
 const MAX_PUBLIC_MAINTENANCES = 100;
 const MAX_MAINTENANCE_SERVICES = 100;
+const MAX_MAINTENANCE_TIMER_DELAY = 2_000_000_000;
 const ISO_TIMESTAMP_PATTERN =
   /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/i;
 const ACCENT_COLOR_PATTERN = /^#[0-9a-f]{6}$/i;
@@ -454,6 +456,7 @@ function parsePublicService(value: unknown): PublicService | null {
     !isRecord(value) ||
     !isString(value.name, 1, 240) ||
     !isStatus(value.status) ||
+    !isStatus(value.displayStatus) ||
     !isDateTime(value.updatedAt) ||
     !Array.isArray(value.history)
   ) {
@@ -471,6 +474,7 @@ function parsePublicService(value: unknown): PublicService | null {
   });
   if (history.some((item) => item === null)) return null;
   return {
+    displayStatus: value.displayStatus,
     history: history as Array<{ changedAt: string; status: ServiceStatus }>,
     name: value.name.trim(),
     status: value.status,
@@ -608,6 +612,79 @@ function overallStatus(
   );
 }
 
+export function isCurrentMaintenance(
+  maintenance: Pick<StatusMaintenance, "startsAt" | "endsAt" | "state">,
+  now: number,
+): boolean {
+  return (
+    (maintenance.state === "scheduled" || maintenance.state === "active") &&
+    Date.parse(maintenance.startsAt) <= now &&
+    Date.parse(maintenance.endsAt) > now
+  );
+}
+
+function activeMaintenanceServiceIds(
+  maintenances: readonly StatusMaintenance[],
+  now: number,
+): ReadonlySet<string> {
+  const serviceIds = new Set<string>();
+  for (const maintenance of maintenances) {
+    if (!isCurrentMaintenance(maintenance, now)) continue;
+    for (const serviceId of maintenance.serviceIds) serviceIds.add(serviceId);
+  }
+  return serviceIds;
+}
+
+export function displayOverallStatus(
+  services: readonly Pick<PublicService, "displayStatus" | "status">[],
+): ServiceStatus {
+  const storedStatus = overallStatus(services);
+  // An explicitly recorded incident remains authoritative over a planned
+  // maintenance window; the affected service still displays the maintenance
+  // state, but an independent degradation or outage is never hidden globally.
+  if (statusSeverity(storedStatus) >= statusSeverity("degraded")) {
+    return storedStatus;
+  }
+  return services.reduce<ServiceStatus>(
+    (current, service) =>
+      statusSeverity(service.displayStatus) > statusSeverity(current)
+        ? service.displayStatus
+        : current,
+    "operational",
+  );
+}
+
+export function nextMaintenanceTransition(
+  maintenances: readonly Pick<
+    StatusMaintenance,
+    "startsAt" | "endsAt" | "state"
+  >[],
+  now: number,
+): number | null {
+  const transitions = maintenances
+    .filter(
+      (maintenance) =>
+        maintenance.state === "scheduled" || maintenance.state === "active",
+    )
+    .flatMap((maintenance) => [
+      Date.parse(maintenance.startsAt),
+      Date.parse(maintenance.endsAt),
+    ])
+    .filter((timestamp) => Number.isFinite(timestamp) && timestamp > now);
+  return transitions.length > 0 ? Math.min(...transitions) : null;
+}
+
+export function maintenanceRefreshDelay(
+  nextTransition: number | null,
+  now: number,
+): number | null {
+  if (nextTransition === null) return null;
+  return Math.min(
+    MAX_MAINTENANCE_TIMER_DELAY,
+    Math.max(1, nextTransition - now),
+  );
+}
+
 function dateLabel(value: string): string {
   const date = new Date(value);
   return Number.isNaN(date.getTime())
@@ -729,7 +806,7 @@ function StatusPresentation({
                   <h3>{service.name}</h3>
                   <p>Zuletzt aktualisiert: {dateLabel(service.updatedAt)}</p>
                 </div>
-                <StatusPill status={service.status} />
+                <StatusPill status={service.displayStatus} />
               </div>
               <AvailabilityLine service={service} />
             </article>
@@ -1213,6 +1290,7 @@ async function requestStatus(action: StatusAction): Promise<StatusOverview> {
 
 function internalToPublicPayload(
   overview: StatusOverview,
+  now = Date.now(),
 ): PublicStatusPayload {
   const eventsByService = new Map<
     string,
@@ -1223,9 +1301,16 @@ function internalToPublicPayload(
     history.push({ changedAt: event.changedAt, status: event.status });
     eventsByService.set(event.serviceId, history);
   }
+  const maintenanceServiceIds = activeMaintenanceServiceIds(
+    overview.maintenances,
+    now,
+  );
   const services = overview.services
     .filter((service) => service.statusPublic)
     .map((service) => ({
+      displayStatus: maintenanceServiceIds.has(service.id)
+        ? "maintenance"
+        : service.status,
       history: eventsByService.get(service.id) ?? [],
       name: service.name,
       status: service.status,
@@ -1260,11 +1345,7 @@ function internalToPublicPayload(
     accentColor: null,
     generatedAt: new Date().toISOString(),
     logoUrl: null,
-    overallStatus: maintenances.some(
-      (maintenance) => maintenance.state === "active",
-    )
-      ? "maintenance"
-      : overallStatus(services),
+    overallStatus: displayOverallStatus(services),
     services,
     maintenances,
     title: overview.page.title,
@@ -1302,12 +1383,14 @@ export function ServiceStatus({
   const [publicEnabled, setPublicEnabled] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [statusClock, setStatusClock] = useState(() => Date.now());
   const lastMaintenanceCreateRequestId = useRef<number | undefined>(undefined);
 
   function applyOverview(next: StatusOverview) {
     setOverview(next);
     setTitle(next.page.title);
     setPublicEnabled(next.page.publicEnabled);
+    setStatusClock(Date.now());
   }
 
   const load = useCallback(async () => {
@@ -1333,9 +1416,21 @@ export function ServiceStatus({
     void load();
   }, [load]);
 
+  useEffect(() => {
+    if (!overview) return;
+    const nextTransition = nextMaintenanceTransition(
+      overview.maintenances,
+      statusClock,
+    );
+    const delay = maintenanceRefreshDelay(nextTransition, Date.now());
+    if (delay === null) return;
+    const timer = window.setTimeout(() => setStatusClock(Date.now()), delay);
+    return () => window.clearTimeout(timer);
+  }, [overview, statusClock]);
+
   const publicPayload = useMemo(
-    () => (overview ? internalToPublicPayload(overview) : null),
-    [overview],
+    () => (overview ? internalToPublicPayload(overview, statusClock) : null),
+    [overview, statusClock],
   );
   const pageUrl = overview?.page.publicId
     ? publicPageUrl(overview.page.publicId)
@@ -1813,33 +1908,65 @@ export function PublicServiceStatusPage({
   const [payload, setPayload] = useState<PublicStatusPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const publicLoadAbortController = useRef<AbortController | null>(null);
+  const publicLoadRequestId = useRef(0);
+
+  const load = useCallback(async () => {
+    publicLoadAbortController.current?.abort();
+    const abortController = new AbortController();
+    publicLoadAbortController.current = abortController;
+    const requestId = publicLoadRequestId.current + 1;
+    publicLoadRequestId.current = requestId;
+    setLoading(true);
+    setError("");
+    try {
+      const base = import.meta.env.VITE_SUPABASE_URL;
+      if (!base) throw new Error("missing_configuration");
+      const url = new URL("/functions/v1/service-status-public", base);
+      url.searchParams.set("id", publicId);
+      const response = await fetch(url, {
+        headers: { Accept: "application/json" },
+        signal: abortController.signal,
+      });
+      if (!response.ok) throw new Error("status_page_unavailable");
+      const next = parsePublicServiceStatus(await response.json());
+      if (
+        !abortController.signal.aborted &&
+        publicLoadRequestId.current === requestId
+      ) {
+        setPayload(next);
+      }
+    } catch {
+      if (
+        !abortController.signal.aborted &&
+        publicLoadRequestId.current === requestId
+      ) {
+        setError("Diese Statusseite ist nicht verfügbar.");
+      }
+    } finally {
+      if (publicLoadRequestId.current === requestId) setLoading(false);
+    }
+  }, [publicId]);
 
   useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      setLoading(true);
-      setError("");
-      try {
-        const base = import.meta.env.VITE_SUPABASE_URL;
-        if (!base) throw new Error("missing_configuration");
-        const url = new URL("/functions/v1/service-status-public", base);
-        url.searchParams.set("id", publicId);
-        const response = await fetch(url, {
-          headers: { Accept: "application/json" },
-        });
-        if (!response.ok) throw new Error("status_page_unavailable");
-        const next = parsePublicServiceStatus(await response.json());
-        if (!cancelled) setPayload(next);
-      } catch {
-        if (!cancelled) setError("Diese Statusseite ist nicht verfügbar.");
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
+    void load();
     return () => {
-      cancelled = true;
+      publicLoadRequestId.current += 1;
+      publicLoadAbortController.current?.abort();
     };
-  }, [publicId]);
+  }, [load]);
+
+  useEffect(() => {
+    if (!payload) return;
+    const nextTransition = nextMaintenanceTransition(
+      payload.maintenances,
+      Date.now(),
+    );
+    const delay = maintenanceRefreshDelay(nextTransition, Date.now());
+    if (delay === null) return;
+    const timer = window.setTimeout(() => void load(), delay);
+    return () => window.clearTimeout(timer);
+  }, [load, payload]);
 
   const style: CSSProperties | undefined =
     payload?.accentColor && /^#[0-9a-f]{6}$/i.test(payload.accentColor)
