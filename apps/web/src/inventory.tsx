@@ -1802,7 +1802,7 @@ function InventoryLocations({
           <h2>Orte und Fächer</h2>
           <p>
             Lagerorte sind unabhängig von Assetstandorten und
-            Veranstaltungsräumen.
+            Raumplanung.
           </p>
         </div>
         <MapPin aria-hidden="true" size={21} />

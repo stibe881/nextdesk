@@ -13,7 +13,7 @@ export type GlobalSearchResult = {
     | "Tickets"
     | "Wiedervorlagen"
     | "Wissen"
-    | "Veranstaltungsräume"
+    | "Raumplanung"
     | "Eintritte";
   ticketId: string | null;
 };
@@ -50,11 +50,16 @@ function parseResults(value: unknown): GlobalSearchResult[] | null {
     "Tickets",
     "Wiedervorlagen",
     "Wissen",
-    "Veranstaltungsräume",
+    "Raumplanung",
     "Eintritte",
   ]);
   const results: GlobalSearchResult[] = [];
-  for (const item of value.data.results) {
+  for (const rawItem of value.data.results) {
+    // The search function still labels this section with its former name.
+    const item =
+      isRecord(rawItem) && rawItem.section === "Veranstaltungsräume"
+        ? { ...rawItem, section: "Raumplanung" }
+        : rawItem;
     if (
       !isRecord(item) ||
       !allowedTypes.has(item.resultType as GlobalSearchResult["resultType"]) ||
