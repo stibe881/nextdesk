@@ -1,5 +1,5 @@
 import { type SupabaseContext, withSupabase } from "@supabase/server";
-import { resolveTenantFeatureStates } from "../_shared/tenant-features.ts";
+import { resolveTenantFeatureStatesCached } from "../_shared/tenant-features.ts";
 
 const ALLOWED_ORIGIN = "https://app.nextdesk.ch";
 const FEATURE = "inventory.management";
@@ -1171,7 +1171,7 @@ async function canIncludeAssetCandidates(
   admin: AdminClient,
   tenantId: string,
 ): Promise<boolean> {
-  const featureStates = await resolveTenantFeatureStates(admin, tenantId, [
+  const featureStates = await resolveTenantFeatureStatesCached(admin, tenantId, [
     ASSET_FEATURE,
   ]);
   if (featureStates === null) {
@@ -1285,8 +1285,14 @@ async function requireEnabledInventory(
   admin: AdminClient,
   tenantId: string,
 ): Promise<void> {
+  // The feature lookup does not depend on the membership check, so both run
+  // at once; the membership error still takes precedence.
+  const statesPromise = resolveTenantFeatureStatesCached(admin, tenantId, [
+    FEATURE,
+  ]);
+  statesPromise.catch(() => undefined);
   await requireActiveMembership(client, tenantId);
-  const states = await resolveTenantFeatureStates(admin, tenantId, [FEATURE]);
+  const states = await statesPromise;
   if (!states) {
     throw new HttpError(
       503,
