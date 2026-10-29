@@ -19,7 +19,33 @@ describe("Raumplanungskennzahlen", () => {
       upcoming: 3,
       in_preparation: 1,
       ready: 1,
+      unassigned: 3,
     });
+  });
+
+  it("zählt zugewiesene und abgeschlossene Aufträge nicht als nicht zugewiesen", () => {
+    expect(
+      eventSpaceMetricCounts(
+        [
+          {
+            assignedAgent: { id: "a" },
+            endsAt: "2026-10-29T10:30:00.000Z",
+            status: "planned",
+          },
+          {
+            assignedAgent: null,
+            endsAt: "2026-10-29T10:30:00.000Z",
+            status: "planned",
+          },
+          {
+            assignedAgent: null,
+            endsAt: "2026-10-29T09:30:00.000Z",
+            status: "completed",
+          },
+        ],
+        now,
+      ).unassigned,
+    ).toBe(1);
   });
 
   it("zeigt bei bevorstehenden Aufträgen keine abgeschlossenen Einträge", () => {

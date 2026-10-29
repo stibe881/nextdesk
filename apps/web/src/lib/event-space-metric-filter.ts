@@ -1,6 +1,11 @@
-export type EventSpaceMetricFilter = "upcoming" | "in_preparation" | "ready";
+export type EventSpaceMetricFilter =
+  | "upcoming"
+  | "in_preparation"
+  | "ready"
+  | "unassigned";
 
 export type EventSpaceMetricRequest = Readonly<{
+  assignedAgent?: unknown;
   endsAt: string;
   status: string;
 }>;
@@ -12,6 +17,7 @@ export const eventSpaceMetricFilterLabels: Record<
   upcoming: "Bevorstehend",
   in_preparation: "In Vorbereitung",
   ready: "Bereit",
+  unassigned: "Nicht zugewiesen",
 };
 
 export function matchesEventSpaceMetricFilter(
@@ -25,6 +31,9 @@ export function matchesEventSpaceMetricFilter(
       Number.isFinite(Date.parse(request.endsAt)) &&
       new Date(request.endsAt) >= now
     );
+  }
+  if (filter === "unassigned") {
+    return request.status !== "completed" && request.assignedAgent == null;
   }
   return request.status === filter;
 }
@@ -42,6 +51,9 @@ export function eventSpaceMetricCounts(
     ).length,
     ready: requests.filter((request) =>
       matchesEventSpaceMetricFilter(request, "ready", now),
+    ).length,
+    unassigned: requests.filter((request) =>
+      matchesEventSpaceMetricFilter(request, "unassigned", now),
     ).length,
   };
 }
