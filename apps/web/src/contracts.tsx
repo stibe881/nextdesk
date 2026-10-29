@@ -231,6 +231,16 @@ export function Contracts({ tenantId }: { tenantId: string }) {
       }),
     [contracts, due, query, status, type],
   );
+  // Names already used on saved records are offered while typing.
+  const partyNames = useMemo(() => {
+    const byKey = new Map<string, string>();
+    for (const item of contracts) {
+      const name = item.counterpartyName.trim();
+      const key = name.toLocaleLowerCase("de-CH");
+      if (name && !byKey.has(key)) byKey.set(key, name);
+    }
+    return [...byKey.values()].sort((a, b) => a.localeCompare(b, "de-CH"));
+  }, [contracts]);
   const close = () => {
     if (pending) return;
     setEditorOpen(false);
@@ -605,11 +615,18 @@ export function Contracts({ tenantId }: { tenantId: string }) {
                     required
                     minLength={2}
                     maxLength={160}
+                    autoComplete="off"
+                    list="contract-counterparties"
                     value={form.counterpartyName}
                     onChange={(event) =>
                       setForm({ ...form, counterpartyName: event.target.value })
                     }
                   />
+                  <datalist id="contract-counterparties">
+                    {partyNames.map((name) => (
+                      <option key={name} value={name} />
+                    ))}
+                  </datalist>
                 </label>
                 <label>
                   Vertragsnummer
