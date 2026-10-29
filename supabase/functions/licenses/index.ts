@@ -20,7 +20,8 @@ type Values = {
   startsOn: string | null;
   endsOn: string | null;
   noticePeriodDays: number | null;
-  reminderDaysBefore: number | null;
+  // undefined: not sent (older clients); an update then leaves it unchanged.
+  reminderDaysBefore?: number | null;
   responsibleUserId: string | null;
   notes: string | null;
 };
@@ -123,8 +124,9 @@ function parseValues(value: unknown): Values | null {
           value.quantity <= 1_000_000
         ? value.quantity
         : undefined;
-  const reminderDaysBefore =
-    value.reminderDaysBefore === null || value.reminderDaysBefore === ""
+  const reminderDaysBefore = !("reminderDaysBefore" in value)
+    ? null
+    : value.reminderDaysBefore === null || value.reminderDaysBefore === ""
       ? null
       : typeof value.reminderDaysBefore === "number" &&
           Number.isInteger(value.reminderDaysBefore) &&
@@ -158,7 +160,7 @@ function parseValues(value: unknown): Values | null {
     startsOn,
     endsOn,
     noticePeriodDays,
-    reminderDaysBefore,
+    ...("reminderDaysBefore" in value ? { reminderDaysBefore } : {}),
     responsibleUserId,
     notes,
   };
@@ -403,7 +405,9 @@ async function handler(
       starts_on: action.values.startsOn,
       ends_on: action.values.endsOn,
       notice_period_days: action.values.noticePeriodDays,
-      reminder_days_before: action.values.reminderDaysBefore,
+      ...(action.values.reminderDaysBefore !== undefined
+        ? { reminder_days_before: action.values.reminderDaysBefore }
+        : {}),
       responsible_user_id: action.values.responsibleUserId,
       notes: action.values.notes,
       updated_by: actorId,
@@ -422,6 +426,13 @@ async function handler(
             .eq("tenant_id", action.tenantId)
             .select()
             .maybeSingle();
+    if (result.error) {
+      console.error(
+        "license save failed",
+        result.error.code,
+        result.error.message,
+      );
+    }
     if (result.error)
       throw new HttpError(
         result.error.code === "23505" ? 422 : 503,
@@ -430,7 +441,7 @@ async function handler(
           : "license_save_failed",
         result.error.code === "23505"
           ? "Die Lizenznummer wird bereits verwendet."
-          : "Die Lizenz konnte nicht gespeichert werden.",
+          : `Die Lizenz konnte nicht gespeichert werden. (Datenbankfehler ${result.error.code ?? "unbekannt"})`,
       );
     if (!result.data)
       throw new HttpError(

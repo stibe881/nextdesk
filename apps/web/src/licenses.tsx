@@ -348,7 +348,20 @@ export function Licenses({ tenantId }: { tenantId: string }) {
           ? { type: "update", tenantId, licenseId: form.id, values }
           : { type: "create", tenantId, values },
       });
-      if (result.error) throw new Error("save_failed");
+      if (result.error) {
+        // Show the server's readable reason instead of a generic message.
+        let detail = "";
+        try {
+          const context = (result.error as { context?: Response }).context;
+          const payload = context ? await context.json() : null;
+          if (typeof payload?.error?.message === "string") {
+            detail = payload.error.message;
+          }
+        } catch {
+          // keep the generic message
+        }
+        throw new Error(detail ? `server:${detail}` : "save_failed");
+      }
       const data = responseData(result.data);
       const saved = data?.license as License | undefined;
       if (!saved?.id) throw new Error("invalid_response");
@@ -386,7 +399,9 @@ export function Licenses({ tenantId }: { tenantId: string }) {
             ? "Die Anzahl muss eine ganze Zahl zwischen 1 und 1 000 000 sein."
             : reason instanceof Error && reason.message === "invalid_notice"
             ? "Die Kündigungsfrist muss zwischen 0 und 3650 Tagen liegen."
-            : "Die Lizenz konnte nicht gespeichert werden.",
+            : reason instanceof Error && reason.message.startsWith("server:")
+              ? reason.message.slice(7)
+              : "Die Lizenz konnte nicht gespeichert werden.",
       );
     } finally {
       setPending(false);

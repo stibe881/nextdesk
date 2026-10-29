@@ -17950,14 +17950,14 @@ body:has(.knowledge-base__editor-backdrop) {
 }
 
 /* Einbettbares Status-Badge (iframe, z. B. SharePoint). */
-html:has(.status-badge),
-html:has(.status-badge) body {
+html:has(.embed-status-badge),
+html:has(.embed-status-badge) body {
   margin: 0;
   background: transparent;
   overflow: hidden;
 }
 
-.status-badge {
+.embed-status-badge {
   display: inline-flex;
   align-items: center;
   gap: 10px;
@@ -17972,13 +17972,13 @@ html:has(.status-badge) body {
   background: #31a85a;
 }
 
-.status-badge--maintenance { background: #2563eb; }
-.status-badge--degraded,
-.status-badge--partial_outage { background: #d97706; }
-.status-badge--major_outage { background: #dc2626; }
-.status-badge--unavailable { background: #475569; }
+.embed-status-badge--maintenance { background: #2563eb; }
+.embed-status-badge--degraded,
+.embed-status-badge--partial_outage { background: #d97706; }
+.embed-status-badge--major_outage { background: #dc2626; }
+.embed-status-badge--unavailable { background: #475569; }
 
-.status-badge__dot {
+.embed-status-badge__dot {
   width: 12px;
   height: 12px;
   border-radius: 50%;
