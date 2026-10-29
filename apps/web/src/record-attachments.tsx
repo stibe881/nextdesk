@@ -380,7 +380,11 @@ export function RecordAttachments({
         ))}
       </ul>
       {loading ? <p className="record-attachments__hint">Anhänge werden geladen …</p> : null}
-      {!loading && entityId && attachments.length === 0 && uploading.length === 0 ? (
+      {!loading &&
+      !error &&
+      entityId &&
+      attachments.length === 0 &&
+      uploading.length === 0 ? (
         <p className="record-attachments__hint">Noch keine Anhänge.</p>
       ) : null}
     </div>
