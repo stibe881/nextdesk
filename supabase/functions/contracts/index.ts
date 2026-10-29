@@ -19,7 +19,8 @@ type Values = {
   startsOn: string | null;
   endsOn: string | null;
   noticePeriodDays: number | null;
-  reminderDaysBefore: number | null;
+  // undefined: not sent (older clients); an update then leaves it unchanged.
+  reminderDaysBefore?: number | null;
   responsibleUserId: string | null;
   notes: string | null;
 };
@@ -112,8 +113,9 @@ function parseValues(value: unknown): Values | null {
           value.noticePeriodDays <= 3650
         ? value.noticePeriodDays
         : undefined;
-  const reminderDaysBefore =
-    value.reminderDaysBefore === null || value.reminderDaysBefore === ""
+  const reminderDaysBefore = !("reminderDaysBefore" in value)
+    ? null
+    : value.reminderDaysBefore === null || value.reminderDaysBefore === ""
       ? null
       : typeof value.reminderDaysBefore === "number" &&
           Number.isInteger(value.reminderDaysBefore) &&
@@ -145,7 +147,7 @@ function parseValues(value: unknown): Values | null {
     startsOn,
     endsOn,
     noticePeriodDays,
-    reminderDaysBefore,
+    ...("reminderDaysBefore" in value ? { reminderDaysBefore } : {}),
     responsibleUserId,
     notes,
   };
@@ -388,7 +390,9 @@ async function handler(
       starts_on: action.values.startsOn,
       ends_on: action.values.endsOn,
       notice_period_days: action.values.noticePeriodDays,
-      reminder_days_before: action.values.reminderDaysBefore,
+      ...(action.values.reminderDaysBefore !== undefined
+        ? { reminder_days_before: action.values.reminderDaysBefore }
+        : {}),
       responsible_user_id: action.values.responsibleUserId,
       notes: action.values.notes,
       updated_by: actorId,
