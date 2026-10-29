@@ -423,6 +423,10 @@ type ServiceEditorFieldsProps = {
   serviceResponsibleAgentsLoading: boolean;
   serviceCategories: ServiceCategory[];
   supportsServiceCategories: boolean;
+  onCreateCategory?: (
+    name: string,
+    parentId: string | null,
+  ) => Promise<ServiceCategory | null>;
   setServiceForm: Dispatch<SetStateAction<ServiceForm>>;
 };
 
@@ -438,8 +442,11 @@ function ServiceEditorFields({
   serviceResponsibleAgentsLoading,
   serviceCategories,
   supportsServiceCategories,
+  onCreateCategory,
   setServiceForm,
 }: ServiceEditorFieldsProps) {
+  const [addingLevel, setAddingLevel] = useState<0 | 1 | 2 | null>(null);
+  const [newCategoryName, setNewCategoryName] = useState("");
   const selectedCategoryPath = serviceCategoryPath(
     serviceCategories,
     serviceForm.categoryId,
@@ -455,6 +462,68 @@ function ServiceEditorFields({
   const detailCategories = serviceCategories.filter(
     (category) => category.parent_id === subcategoryId,
   );
+  const levelNames = ["Ort", "Kategorie", "Unterkategorie"] as const;
+  const levelParents = [null, rootCategoryId, subcategoryId] as const;
+  async function createCategory(level: 0 | 1 | 2) {
+    const name = newCategoryName.trim();
+    if (!name || !onCreateCategory) return;
+    const created = await onCreateCategory(name, levelParents[level] || null);
+    if (!created) return;
+    setServiceForm((current) => ({ ...current, categoryId: created.id }));
+    setNewCategoryName("");
+    setAddingLevel(null);
+  }
+  function addControl(level: 0 | 1 | 2) {
+    if (!onCreateCategory || (level > 0 && !levelParents[level])) return null;
+    if (addingLevel !== level) {
+      return (
+        <button
+          className="text-button"
+          disabled={controlsDisabled}
+          onClick={() => {
+            setAddingLevel(level);
+            setNewCategoryName("");
+          }}
+          type="button"
+        >
+          + {levelNames[level]} neu anlegen
+        </button>
+      );
+    }
+    return (
+      <span className="service-assets__category-inline-add">
+        <input
+          aria-label={`Name für ${levelNames[level]}`}
+          disabled={controlsDisabled}
+          maxLength={120}
+          onChange={(event) => setNewCategoryName(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              void createCategory(level);
+            }
+          }}
+          placeholder={`Neue/r ${levelNames[level]}`}
+          value={newCategoryName}
+        />
+        <button
+          className="primary-button"
+          disabled={controlsDisabled || !newCategoryName.trim()}
+          onClick={() => void createCategory(level)}
+          type="button"
+        >
+          Anlegen
+        </button>
+        <button
+          disabled={controlsDisabled}
+          onClick={() => setAddingLevel(null)}
+          type="button"
+        >
+          Abbrechen
+        </button>
+      </span>
+    );
+  }
   return (
     <form onSubmit={(event) => void onSubmit(event)}>
       <label>
@@ -562,6 +631,7 @@ function ServiceEditorFields({
                 </option>
               ))}
             </select>
+            {addControl(0)}
           </label>
           <label>
             Kategorie
@@ -586,6 +656,7 @@ function ServiceEditorFields({
                 </option>
               ))}
             </select>
+            {addControl(1)}
           </label>
           <label>
             Unterkategorie
@@ -615,6 +686,7 @@ function ServiceEditorFields({
                 </option>
               ))}
             </select>
+            {addControl(2)}
           </label>
           {rootCategories.length === 0 ? (
             <p>
@@ -2243,6 +2315,44 @@ export function ServiceAssets({
     }
   }
 
+  async function createServiceCategoryInline(
+    name: string,
+    parentId: string | null,
+  ): Promise<ServiceCategory | null> {
+    if (!supportsServiceCategories || !canManageServices) return null;
+    beginAction("service-category:save:new");
+    try {
+      const saved = parseSavedServiceCategory(
+        await requestServiceAssets({
+          type: "manageServiceCategory",
+          tenantId,
+          operation: "create",
+          name,
+          parentId,
+        }),
+      );
+      setServiceCategories((current) =>
+        sortServiceCategories([
+          ...current.filter((category) => category.id !== saved.id),
+          saved,
+        ]),
+      );
+      setSuccess(`„${saved.name}“ wurde angelegt.`);
+      return saved;
+    } catch (nextError) {
+      setForbidden(errorStatus(nextError) === 403);
+      setError(
+        await apiErrorMessage(
+          nextError,
+          "Die Servicekategorie konnte nicht gespeichert werden.",
+        ),
+      );
+      return null;
+    } finally {
+      setPendingAction(null);
+    }
+  }
+
   async function archiveService(service: Service) {
     if (!canArchiveServices(canManageServices, supportsArchivedServices)) {
       return;
@@ -3098,6 +3208,11 @@ export function ServiceAssets({
                           }
                           serviceCategories={serviceCategories}
                           supportsServiceCategories={supportsServiceCategories}
+                          onCreateCategory={
+                            canManageServices
+                              ? createServiceCategoryInline
+                              : undefined
+                          }
                           setServiceForm={setServiceForm}
                         />
                       </section>
@@ -3251,6 +3366,11 @@ export function ServiceAssets({
                       }
                       serviceCategories={serviceCategories}
                       supportsServiceCategories={supportsServiceCategories}
+                      onCreateCategory={
+                        canManageServices
+                          ? createServiceCategoryInline
+                          : undefined
+                      }
                       setServiceForm={setServiceForm}
                     />
                   </section>

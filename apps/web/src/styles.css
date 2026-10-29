@@ -17881,3 +17881,15 @@ body:has(.knowledge-base__editor-backdrop) {
   border-radius: 0;
   background: transparent;
 }
+
+.service-assets__category-inline-add {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.service-assets__category-inline-add input {
+  flex: 1 1 140px;
+  min-width: 0;
+}
