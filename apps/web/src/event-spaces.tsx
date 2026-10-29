@@ -8,7 +8,6 @@ import {
   DoorOpen,
   Mail,
   Plus,
-  RefreshCw,
   UsersRound,
   Wrench,
 } from "lucide-react";
@@ -391,7 +390,7 @@ export function EventSpaces({
       setErrorMessage(
         await functionErrorMessage(
           error,
-          "Die Veranstaltungsräume konnten nicht geladen werden. Bitte versuchen Sie es erneut.",
+          "Die Raumplanung konnte nicht geladen werden. Bitte versuchen Sie es erneut.",
         ),
       );
     } finally {
@@ -925,7 +924,7 @@ export function EventSpaces({
   if (loading && !workspace) {
     return (
       <section className="event-spaces panel" aria-busy="true">
-        <p className="empty-state">Veranstaltungsräume werden geladen …</p>
+        <p className="empty-state">Raumplanung wird geladen …</p>
       </section>
     );
   }
@@ -941,21 +940,22 @@ export function EventSpaces({
       <header className="event-spaces__hero panel">
         <div>
           <p className="eyebrow">Planung statt Ticket</p>
-          <h2 id="event-spaces-heading">Veranstaltungsräume</h2>
+          <h2 id="event-spaces-heading">Raumplanung</h2>
           <p>
             Planen Sie technische Einrichtungen für Aula und Sitzungszimmer. Ein
             Ticket entsteht nur bei einem tatsächlichen Problem.
           </p>
         </div>
         <div className="event-spaces__hero-actions">
-          <button
-            className="secondary-button"
-            disabled={loading}
-            onClick={() => void refresh()}
-            type="button"
-          >
-            <RefreshCw aria-hidden="true" size={16} /> Aktualisieren
-          </button>
+          {canManage ? (
+            <button
+              className="secondary-button"
+              onClick={() => setEditor("room")}
+              type="button"
+            >
+              <DoorOpen aria-hidden="true" size={16} /> Raum anlegen
+            </button>
+          ) : null}
           {canRequest ? (
             <button
               className="primary-button"
@@ -1256,15 +1256,6 @@ export function EventSpaces({
                 Technische Einrichtung planen
               </h3>
             </div>
-            {canManage ? (
-              <button
-                className="text-button"
-                onClick={() => setEditor("room")}
-                type="button"
-              >
-                <DoorOpen aria-hidden="true" size={16} /> Raum anlegen
-              </button>
-            ) : null}
           </div>
           {workspace?.rooms.length ? (
             <form onSubmit={previewRequest}>
@@ -1460,15 +1451,6 @@ export function EventSpaces({
                   Legen Sie zuerst einen Raum an. Danach können Sie technische
                   Einrichtungen planen.
                 </p>
-                {canManage ? (
-                  <button
-                    className="primary-button"
-                    onClick={() => setEditor("room")}
-                    type="button"
-                  >
-                    Raum anlegen
-                  </button>
-                ) : null}
               </div>
             </div>
           )}

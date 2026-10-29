@@ -423,6 +423,10 @@ type ServiceEditorFieldsProps = {
   serviceResponsibleAgentsLoading: boolean;
   serviceCategories: ServiceCategory[];
   supportsServiceCategories: boolean;
+  onCreateCategory?: (
+    name: string,
+    parentId: string | null,
+  ) => Promise<ServiceCategory | null>;
   setServiceForm: Dispatch<SetStateAction<ServiceForm>>;
 };
 
@@ -438,8 +442,11 @@ function ServiceEditorFields({
   serviceResponsibleAgentsLoading,
   serviceCategories,
   supportsServiceCategories,
+  onCreateCategory,
   setServiceForm,
 }: ServiceEditorFieldsProps) {
+  const [addingLevel, setAddingLevel] = useState<0 | 1 | 2 | null>(null);
+  const [newCategoryName, setNewCategoryName] = useState("");
   const selectedCategoryPath = serviceCategoryPath(
     serviceCategories,
     serviceForm.categoryId,
@@ -455,6 +462,68 @@ function ServiceEditorFields({
   const detailCategories = serviceCategories.filter(
     (category) => category.parent_id === subcategoryId,
   );
+  const levelNames = ["Ort", "Kategorie", "Unterkategorie"] as const;
+  const levelParents = [null, rootCategoryId, subcategoryId] as const;
+  async function createCategory(level: 0 | 1 | 2) {
+    const name = newCategoryName.trim();
+    if (!name || !onCreateCategory) return;
+    const created = await onCreateCategory(name, levelParents[level] || null);
+    if (!created) return;
+    setServiceForm((current) => ({ ...current, categoryId: created.id }));
+    setNewCategoryName("");
+    setAddingLevel(null);
+  }
+  function addControl(level: 0 | 1 | 2) {
+    if (!onCreateCategory || (level > 0 && !levelParents[level])) return null;
+    if (addingLevel !== level) {
+      return (
+        <button
+          className="text-button"
+          disabled={controlsDisabled}
+          onClick={() => {
+            setAddingLevel(level);
+            setNewCategoryName("");
+          }}
+          type="button"
+        >
+          + {levelNames[level]} neu anlegen
+        </button>
+      );
+    }
+    return (
+      <span className="service-assets__category-inline-add">
+        <input
+          aria-label={`Name für ${levelNames[level]}`}
+          disabled={controlsDisabled}
+          maxLength={120}
+          onChange={(event) => setNewCategoryName(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              void createCategory(level);
+            }
+          }}
+          placeholder={`Neue/r ${levelNames[level]}`}
+          value={newCategoryName}
+        />
+        <button
+          className="primary-button"
+          disabled={controlsDisabled || !newCategoryName.trim()}
+          onClick={() => void createCategory(level)}
+          type="button"
+        >
+          Anlegen
+        </button>
+        <button
+          disabled={controlsDisabled}
+          onClick={() => setAddingLevel(null)}
+          type="button"
+        >
+          Abbrechen
+        </button>
+      </span>
+    );
+  }
   return (
     <form onSubmit={(event) => void onSubmit(event)}>
       <label>
@@ -539,12 +608,12 @@ function ServiceEditorFields({
           <div>
             <strong>Serviceeinordnung</strong>
             <small>
-              Ordnen Sie den Service bei Bedarf einer Kategorie mit bis zu drei
-              Ebenen zu.
+              Wählen Sie den Ort (z. B. Betriebsweit, Baar, Menzingen) und bei
+              Bedarf eine Kategorie und Unterkategorie.
             </small>
           </div>
           <label>
-            Kategorie
+            Ort
             <select
               disabled={controlsDisabled}
               onChange={(event) =>
@@ -562,9 +631,10 @@ function ServiceEditorFields({
                 </option>
               ))}
             </select>
+            {addControl(0)}
           </label>
           <label>
-            Unterkategorie
+            Kategorie
             <select
               disabled={controlsDisabled || !rootCategoryId}
               onChange={(event) =>
@@ -577,8 +647,8 @@ function ServiceEditorFields({
             >
               <option value="">
                 {rootCategoryId
-                  ? "Keine Unterkategorie"
-                  : "Zuerst Kategorie wählen"}
+                  ? "Keine Kategorie"
+                  : "Zuerst Ort wählen"}
               </option>
               {subcategories.map((category) => (
                 <option key={category.id} value={category.id}>
@@ -586,9 +656,10 @@ function ServiceEditorFields({
                 </option>
               ))}
             </select>
+            {addControl(1)}
           </label>
           <label>
-            Unterunterkategorie
+            Unterkategorie
             <select
               disabled={controlsDisabled || !subcategoryId}
               onChange={(event) =>
@@ -606,8 +677,8 @@ function ServiceEditorFields({
             >
               <option value="">
                 {subcategoryId
-                  ? "Keine Unterunterkategorie"
-                  : "Zuerst Unterkategorie wählen"}
+                  ? "Keine Unterkategorie"
+                  : "Zuerst Kategorie wählen"}
               </option>
               {detailCategories.map((category) => (
                 <option key={category.id} value={category.id}>
@@ -615,10 +686,11 @@ function ServiceEditorFields({
                 </option>
               ))}
             </select>
+            {addControl(2)}
           </label>
           {rootCategories.length === 0 ? (
             <p>
-              Es sind noch keine Servicekategorien angelegt. Sie können die
+              Es sind noch keine Orte und Kategorien angelegt. Sie können die
               Einordnung später ergänzen.
             </p>
           ) : null}
@@ -2243,6 +2315,44 @@ export function ServiceAssets({
     }
   }
 
+  async function createServiceCategoryInline(
+    name: string,
+    parentId: string | null,
+  ): Promise<ServiceCategory | null> {
+    if (!supportsServiceCategories || !canManageServices) return null;
+    beginAction("service-category:save:new");
+    try {
+      const saved = parseSavedServiceCategory(
+        await requestServiceAssets({
+          type: "manageServiceCategory",
+          tenantId,
+          operation: "create",
+          name,
+          parentId,
+        }),
+      );
+      setServiceCategories((current) =>
+        sortServiceCategories([
+          ...current.filter((category) => category.id !== saved.id),
+          saved,
+        ]),
+      );
+      setSuccess(`„${saved.name}“ wurde angelegt.`);
+      return saved;
+    } catch (nextError) {
+      setForbidden(errorStatus(nextError) === 403);
+      setError(
+        await apiErrorMessage(
+          nextError,
+          "Die Servicekategorie konnte nicht gespeichert werden.",
+        ),
+      );
+      return null;
+    } finally {
+      setPendingAction(null);
+    }
+  }
+
   async function archiveService(service: Service) {
     if (!canArchiveServices(canManageServices, supportsArchivedServices)) {
       return;
@@ -2752,8 +2862,8 @@ export function ServiceAssets({
                 type="button"
               >
                 {serviceCategoryManagerOpen
-                  ? "Kategorien schliessen"
-                  : "Kategorien verwalten"}
+                  ? "Orte und Kategorien schliessen"
+                  : "Orte und Kategorien verwalten"}
               </button>
             ) : null}
           </div>
@@ -2768,11 +2878,11 @@ export function ServiceAssets({
                 <div>
                   <p className="eyebrow">Servicehierarchie</p>
                   <h4 id="service-assets-category-manager-title">
-                    Kategorien strukturieren
+                    Orte und Kategorien strukturieren
                   </h4>
                   <p>
-                    Drei Ebenen sind möglich: Kategorie, Unterkategorie und
-                    Unterunterkategorie.
+                    Drei Ebenen sind möglich: Ort (z. B. Betriebsweit, Baar),
+                    Kategorie und Unterkategorie.
                   </p>
                 </div>
                 {serviceCategoryForm.id ? (
@@ -2804,7 +2914,7 @@ export function ServiceAssets({
                   />
                 </label>
                 <label>
-                  Übergeordnete Kategorie
+                  Übergeordnet
                   <select
                     disabled={controlsDisabled}
                     onChange={(event) =>
@@ -2815,7 +2925,7 @@ export function ServiceAssets({
                     }
                     value={serviceCategoryForm.parentId}
                   >
-                    <option value="">Kategorie (oberste Ebene)</option>
+                    <option value="">Ort (oberste Ebene)</option>
                     {serviceCategoryParentOptions.map((category) => (
                       <option key={category.id} value={category.id}>
                         {`${"— ".repeat(
@@ -2854,7 +2964,7 @@ export function ServiceAssets({
               </form>
               {serviceCategories.length === 0 ? (
                 <p className="service-assets__category-manager-empty">
-                  Legen Sie die erste Kategorie an, um Services strukturiert
+                  Legen Sie den ersten Ort an, um Services strukturiert
                   einzuordnen.
                 </p>
               ) : (
@@ -3098,6 +3208,11 @@ export function ServiceAssets({
                           }
                           serviceCategories={serviceCategories}
                           supportsServiceCategories={supportsServiceCategories}
+                          onCreateCategory={
+                            canManageServices
+                              ? createServiceCategoryInline
+                              : undefined
+                          }
                           setServiceForm={setServiceForm}
                         />
                       </section>
@@ -3251,6 +3366,11 @@ export function ServiceAssets({
                       }
                       serviceCategories={serviceCategories}
                       supportsServiceCategories={supportsServiceCategories}
+                      onCreateCategory={
+                        canManageServices
+                          ? createServiceCategoryInline
+                          : undefined
+                      }
                       setServiceForm={setServiceForm}
                     />
                   </section>

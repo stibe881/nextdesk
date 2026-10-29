@@ -185,6 +185,25 @@ function rpcPayload(
 }
 
 /**
+ * A room plan replaces its e-mail ticket. Removal is best effort: if it fails
+ * the plan still exists and the ticket merely stays visible.
+ */
+async function removeSourceTicket(
+  admin: Admin,
+  input: OutboxInput,
+): Promise<void> {
+  try {
+    await admin
+      .from("tickets")
+      .delete()
+      .eq("id", input.ticketId)
+      .eq("tenant_id", input.tenantId);
+  } catch {
+    // Never turn optional cleanup into a failed e-mail delivery.
+  }
+}
+
+/**
  * Runs synchronously after a new email ticket has committed. All failures are
  * isolated from ticket delivery and retained in the private outbox for an
  * explicit later retry; this helper never introduces a scheduler or logs mail
@@ -226,6 +245,7 @@ export async function processEventSpaceEmailTicketIntake(
       payload,
     );
     if (error) throw new Error("event_space_intake_persist_failed");
+    await removeSourceTicket(admin, input);
     return "processed";
   } catch {
     await failEventSpaceEmailTicketIntake(

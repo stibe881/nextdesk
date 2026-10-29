@@ -992,7 +992,7 @@ async function navigationSummary(
     throw new HttpError(
       403,
       "event_space_permission_denied",
-      "Für Veranstaltungsräume fehlt Ihnen die erforderliche Berechtigung.",
+      "Für die Raumplanung fehlt Ihnen die erforderliche Berechtigung.",
     );
   }
   const { count, error } = await admin
@@ -1021,7 +1021,7 @@ async function listWorkspace(
     throw new HttpError(
       403,
       "event_space_permission_denied",
-      "Für Veranstaltungsräume fehlt Ihnen die erforderliche Berechtigung.",
+      "Für die Raumplanung fehlt Ihnen die erforderliche Berechtigung.",
     );
   }
   const from = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();

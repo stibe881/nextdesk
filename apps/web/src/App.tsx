@@ -158,7 +158,7 @@ type Section =
   | "Lager"
   | "Fälle"
   | "Verträge"
-  | "Veranstaltungsräume"
+  | "Raumplanung"
   | "Eintritte"
   | "Wissen"
   | "Berichte"
@@ -282,7 +282,7 @@ const sections: readonly { label: Section; Icon: LucideIcon }[] =
     { label: "Assets", Icon: Boxes },
     { label: "Lager", Icon: Boxes },
     { label: "Systemstatus", Icon: CircleCheck },
-    { label: "Veranstaltungsräume", Icon: CalendarDays },
+    { label: "Raumplanung", Icon: CalendarDays },
     { label: "Eintritte", Icon: ClipboardList },
     { label: "Verträge", Icon: FileText },
     { label: "Berichte", Icon: ChartNoAxesCombined },
@@ -302,7 +302,7 @@ const NAVIGATION_CATEGORIES = [
     id: "navigation-category-operations",
     navigationLabel: "Planung und Betrieb",
     sectionLabels: [
-      "Veranstaltungsräume",
+      "Raumplanung",
       "Eintritte",
       "Verträge",
       "Services",
@@ -2373,7 +2373,7 @@ function AuthenticatedApp() {
     if (serviceStatusAvailable)
       restrictedWorkspaceSections.push("Systemstatus");
     if (eventSpaceNavigationAccess) {
-      restrictedWorkspaceSections.push("Veranstaltungsräume");
+      restrictedWorkspaceSections.push("Raumplanung");
     }
     if (restrictedWorkspaceSections.length > 0) {
       const fallbackSection = restrictedWorkspaceSections[0];
@@ -2563,7 +2563,7 @@ function AuthenticatedApp() {
       (nextSection === "Verträge" && contractsAvailable) ||
       (nextSection === "Berichte" && reportsAvailable) ||
       (nextSection === "Systemstatus" && serviceStatusAvailable) ||
-      (nextSection === "Veranstaltungsräume" && eventSpaceNavigationAccess);
+      (nextSection === "Raumplanung" && eventSpaceNavigationAccess);
     if (
       !canWorkTickets &&
       !nonTicketSectionAllowed &&
@@ -3006,7 +3006,7 @@ function AuthenticatedApp() {
       item.label === "Lager",
   );
   const independentlyAvailableEventSpaceSections = eventSpaceNavigationAccess
-    ? featureSections.filter((item) => item.label === "Veranstaltungsräume")
+    ? featureSections.filter((item) => item.label === "Raumplanung")
     : [];
   const workSections = canWorkTickets
     ? featureSections
@@ -3657,7 +3657,7 @@ function AuthenticatedApp() {
                   <nav aria-labelledby={category.id} className="nav-list">
                     {category.items.map((item) => {
                       const attentionCount =
-                        item.label === "Veranstaltungsräume"
+                        item.label === "Raumplanung"
                           ? eventSpaceAttentionCount
                           : null;
                       const hasAttention =
@@ -3922,7 +3922,7 @@ function AuthenticatedApp() {
                     !canWorkTickets &&
                     !(
                       sectionFromGlobalSearchResult(result) ===
-                        "Veranstaltungsräume" && eventSpaceNavigationAccess
+                        "Raumplanung" && eventSpaceNavigationAccess
                     ) &&
                     !canRequesterOpenSection(
                       sectionFromGlobalSearchResult(result),
@@ -4149,7 +4149,7 @@ function AuthenticatedApp() {
           activeTenant &&
           isFeatureEnabled("inventory.management") ? (
           <Inventory tenantId={activeTenant.id} />
-        ) : section === "Veranstaltungsräume" && activeTenant ? (
+        ) : section === "Raumplanung" && activeTenant ? (
           <EventSpaces
             focusRequestId={
               globalSearchTarget?.resultType === "event_space"
