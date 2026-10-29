@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import {
   CalendarDays,
   Check,
@@ -17,6 +17,12 @@ import {
   swissWallTimeToInstant,
   swissWallValue,
 } from "./lib/event-space-time";
+import {
+  eventSpaceMetricCounts,
+  eventSpaceMetricFilterLabels,
+  matchesEventSpaceMetricFilter,
+  type EventSpaceMetricFilter,
+} from "./lib/event-space-metric-filter";
 import { functionErrorMessage } from "./lib/function-error";
 import { supabase } from "./lib/supabase";
 
@@ -308,6 +314,8 @@ export function EventSpaces({
   const [errorMessage, setErrorMessage] = useState("");
   const [notice, setNotice] = useState("");
   const [view, setView] = useState<View>("calendar");
+  const [metricFilter, setMetricFilter] =
+    useState<EventSpaceMetricFilter | null>(null);
   const [calendarStart, setCalendarStart] = useState(() =>
     startOfDay(new Date()),
   );
@@ -328,6 +336,7 @@ export function EventSpaces({
   const [expandedRequestId, setExpandedRequestId] = useState<string | null>(
     null,
   );
+  const workspaceRef = useRef<HTMLElement | null>(null);
   const [clarificationDrafts, setClarificationDrafts] = useState<
     Record<
       string,
@@ -393,6 +402,7 @@ export function EventSpaces({
     loadWorkspace(0, false, preserveNotice);
 
   useEffect(() => {
+    setMetricFilter(null);
     void refresh();
     // tenantId is the complete, server-scoped workspace identity.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -470,20 +480,30 @@ export function EventSpaces({
     }
     return map;
   }, [workspace?.requests]);
-  const metrics = useMemo(() => {
+  const metrics = useMemo(
+    () => eventSpaceMetricCounts(workspace?.requests ?? [], new Date()),
+    [workspace?.requests],
+  );
+  const filteredRequests = useMemo(() => {
     const requests = workspace?.requests ?? [];
-    return {
-      upcoming: requests.filter(
-        (request) =>
-          new Date(request.endsAt) >= new Date() &&
-          request.status !== "completed",
-      ).length,
-      preparation: requests.filter(
-        (request) => request.status === "in_preparation",
-      ).length,
-      ready: requests.filter((request) => request.status === "ready").length,
-    };
-  }, [workspace?.requests]);
+    if (!metricFilter) return requests;
+    const now = new Date();
+    return requests.filter((request) =>
+      matchesEventSpaceMetricFilter(request, metricFilter, now),
+    );
+  }, [metricFilter, workspace?.requests]);
+
+  function showMetricList(filter: EventSpaceMetricFilter) {
+    setMetricFilter(filter);
+    setView("list");
+    setExpandedRequestId(null);
+    window.requestAnimationFrame(() => {
+      workspaceRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    });
+  }
 
   const updateDraft = <Key extends keyof RequestDraft>(
     key: Key,
@@ -934,21 +954,51 @@ export function EventSpaces({
       </header>
 
       <div className="event-spaces__metrics" aria-label="Planungsübersicht">
-        <article>
+        <button
+          aria-label={`Bevorstehend: ${metrics.upcoming} Raumaufträge. Gefilterte Liste anzeigen.`}
+          aria-pressed={view === "list" && metricFilter === "upcoming"}
+          className={
+            view === "list" && metricFilter === "upcoming"
+              ? "is-selected"
+              : undefined
+          }
+          onClick={() => showMetricList("upcoming")}
+          type="button"
+        >
           <CalendarDays aria-hidden="true" size={18} />
           <span>Bevorstehend</span>
           <strong>{metrics.upcoming}</strong>
-        </article>
-        <article>
+        </button>
+        <button
+          aria-label={`In Vorbereitung: ${metrics.in_preparation} Raumaufträge. Gefilterte Liste anzeigen.`}
+          aria-pressed={view === "list" && metricFilter === "in_preparation"}
+          className={
+            view === "list" && metricFilter === "in_preparation"
+              ? "is-selected"
+              : undefined
+          }
+          onClick={() => showMetricList("in_preparation")}
+          type="button"
+        >
           <Wrench aria-hidden="true" size={18} />
           <span>In Vorbereitung</span>
-          <strong>{metrics.preparation}</strong>
-        </article>
-        <article>
+          <strong>{metrics.in_preparation}</strong>
+        </button>
+        <button
+          aria-label={`Bereit: ${metrics.ready} Raumaufträge. Gefilterte Liste anzeigen.`}
+          aria-pressed={view === "list" && metricFilter === "ready"}
+          className={
+            view === "list" && metricFilter === "ready"
+              ? "is-selected"
+              : undefined
+          }
+          onClick={() => showMetricList("ready")}
+          type="button"
+        >
           <Check aria-hidden="true" size={18} />
           <span>Bereit</span>
           <strong>{metrics.ready}</strong>
-        </article>
+        </button>
       </div>
 
       {canManage && emailIntakes.length ? (
@@ -1563,6 +1613,7 @@ export function EventSpaces({
       <section
         className="event-spaces__workspace panel"
         aria-labelledby="event-space-workspace-heading"
+        ref={workspaceRef}
       >
         <div className="event-spaces__workspace-heading">
           <div>
@@ -1576,7 +1627,10 @@ export function EventSpaces({
           >
             <button
               aria-pressed={view === "calendar"}
-              onClick={() => setView("calendar")}
+              onClick={() => {
+                setMetricFilter(null);
+                setView("calendar");
+              }}
               type="button"
             >
               <CalendarDays aria-hidden="true" size={16} /> Kalender
@@ -1590,6 +1644,21 @@ export function EventSpaces({
             </button>
           </div>
         </div>
+        {view === "list" && metricFilter ? (
+          <div className="event-spaces__active-filter" role="status">
+            <span>
+              Gefiltert: {eventSpaceMetricFilterLabels[metricFilter]} ·{" "}
+              {filteredRequests.length} Raumaufträge
+            </span>
+            <button
+              className="text-button"
+              onClick={() => setMetricFilter(null)}
+              type="button"
+            >
+              Filter entfernen
+            </button>
+          </div>
+        ) : null}
         {view === "calendar" ? (
           <div className="event-spaces__calendar">
             <div className="event-spaces__calendar-controls">
@@ -1672,8 +1741,8 @@ export function EventSpaces({
           </div>
         ) : (
           <div className="event-spaces__request-list">
-            {requests.length ? (
-              requests.map((request) => (
+            {filteredRequests.length ? (
+              filteredRequests.map((request) => (
                 <RequestCard
                   canManage={canManage}
                   expanded={expandedRequestId === request.id}
@@ -1696,8 +1765,9 @@ export function EventSpaces({
               ))
             ) : (
               <p className="empty-state">
-                Es sind noch keine Raumaufträge für die kommenden Monate
-                geplant.
+                {metricFilter
+                  ? `Keine Raumaufträge mit Status «${eventSpaceMetricFilterLabels[metricFilter]}» im sichtbaren Planungszeitraum.`
+                  : "Es sind noch keine Raumaufträge für die kommenden Monate geplant."}
               </p>
             )}
           </div>
