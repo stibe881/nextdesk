@@ -28,14 +28,18 @@ export const EVENT_SPACE_EMAIL_INTAKE_EQUIPMENT_KEYS = [
 ] as const satisfies readonly EventSpaceEquipment[];
 
 const SUBJECT_PATTERN =
-  /^Neuer Auftrag Einrichten \[([^\]\r\n]+)\] für \[([^\]\r\n]+)\]$/u;
+  /^Neuer Auftrag Einrichten\s+([^\r\n]+?)\s+für\s+([^\r\n]+)$/u;
+const LEGACY_BRACKETED_SUBJECT_PART_PATTERN = /^\[([^\[\]\r\n]+)\]$/u;
 const MAX_DESCRIPTION_LENGTH = 32_000;
 
 const FIELD_BY_LABEL = new Map<string, FieldName>([
   ["erstellende person", "organiser"],
+  ["erstellt von", "organiser"],
   ["anlassname", "eventName"],
   ["anlassdatum", "eventDate"],
+  ["anlassdatum (jahr monat tag)", "eventDate"],
   ["beginn", "startTime"],
+  ["beginn anlass zeit", "startTime"],
   ["ort", "location"],
   ["raumreservation", "roomReservation"],
   ["telefonnummer", "contactPhone"],
@@ -92,7 +96,7 @@ type ClockTime = {
 type CivilDateTime = CivilDate & ClockTime;
 
 export type EventSpaceEmailIntakeInput = Readonly<{
-  /** Exact e-mail subject, including the fixed German wording and brackets. */
+  /** Exact e-mail subject with fixed German wording and two variable values. */
   subject: unknown;
   /** Structured form description. Fields use `Label: value` on separate lines. */
   description: unknown;
@@ -473,8 +477,21 @@ export function eventSpaceEmailIntakeSubject(
 ): EventSpaceEmailIntakeSubject | null {
   if (typeof subject !== "string") return null;
   const subjectMatch = SUBJECT_PATTERN.exec(subject);
-  const sourceOrderNumber = subjectMatch ? normaliseText(subjectMatch[1]) : "";
-  const title = subjectMatch ? normaliseText(subjectMatch[2]) : "";
+  const rawOrderNumber = subjectMatch ? normaliseText(subjectMatch[1]) : "";
+  const rawTitle = subjectMatch ? normaliseText(subjectMatch[2]) : "";
+  const legacyOrderNumber = LEGACY_BRACKETED_SUBJECT_PART_PATTERN.exec(
+    rawOrderNumber,
+  )?.[1];
+  const legacyTitle = LEGACY_BRACKETED_SUBJECT_PART_PATTERN.exec(rawTitle)?.[1];
+  if (Boolean(legacyOrderNumber) !== Boolean(legacyTitle)) return null;
+  if (
+    !legacyOrderNumber &&
+    (/[\[\]]/u.test(rawOrderNumber) || /[\[\]]/u.test(rawTitle))
+  ) {
+    return null;
+  }
+  const sourceOrderNumber = normaliseText(legacyOrderNumber ?? rawOrderNumber);
+  const title = normaliseText(legacyTitle ?? rawTitle);
   return sourceOrderNumber &&
     title &&
     isBoundedText(sourceOrderNumber, 1, 80) &&

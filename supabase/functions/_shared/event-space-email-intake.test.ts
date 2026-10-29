@@ -10,8 +10,7 @@ function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
 }
 
-const validSubject =
-  "Neuer Auftrag Einrichten [RAUM-2026-42] für [Team Workshop]";
+const validSubject = "Neuer Auftrag Einrichten RAUM-2026-42 für Team Workshop";
 const validDescription = `Erstellende Person: Ada Beispiel
 Anlassname: Team Workshop
 Anlassdatum: 2026-11-03
@@ -112,6 +111,91 @@ Deno.test(
     );
   },
 );
+
+Deno.test(
+  "akzeptiert das reale Betreffformat und die ursprünglichen Formularetiketten",
+  () => {
+    const result = parseEventSpaceEmailIntake({
+      subject: "Neuer Auftrag Einrichten 276 für Basismodul OM",
+      description: `Erstellt von: Franziska Elmer
+Anlassname: Basismodul OM
+Anlassdatum (Jahr-Monat-Tag): 2026-11-11
+Beginn Anlass Zeit: 14:00
+Ort: A1 09 Aula
+Raumreservation: Ja
+Telefonnummer: 000 000 00 00
+ICT Material: Ja
+Zugang Internet: Ja
+Zugang SOBE Netzwerk: Ja
+Beamer: Ja
+Leinwand: Ja
+Mikrofon: Nein
+Empfangslaptop: Nein`,
+    });
+    assert(
+      result.status === "ready",
+      "Das ursprüngliche Raumformular muss vollständig verarbeitet werden.",
+    );
+    if (result.status !== "ready") return;
+
+    assert(
+      result.request.sourceOrderNumber === "276" &&
+        result.request.title === "Basismodul OM",
+      "Auftragsnummer und Anlassname müssen aus dem Betreff stammen.",
+    );
+    assert(
+      result.request.organiser === "Franziska Elmer",
+      "«Erstellt von» muss als organisierende Person übernommen werden.",
+    );
+    assert(
+      result.request.startAt === "2026-11-11T13:00:00.000Z" &&
+        result.request.endAt === "2026-11-11T13:30:00.000Z",
+      "Die Beginnzeit muss in Europe/Zurich mit fester Dauer verarbeitet werden.",
+    );
+  },
+);
+
+Deno.test(
+  "akzeptiert vollständig geklammerte Altbetreffe weiterhin ohne Klammern in den Daten",
+  () => {
+    const result = parseEventSpaceEmailIntake({
+      subject: "Neuer Auftrag Einrichten [RAUM-2026-42] für [Team Workshop]",
+      description: validDescription,
+    });
+    assert(
+      result.status === "ready",
+      "Der Altbetreff muss weiter gültig sein.",
+    );
+    if (result.status !== "ready") return;
+    assert(
+      result.request.sourceOrderNumber === "RAUM-2026-42" &&
+        result.request.title === "Team Workshop",
+      "Altbetreffklammern dürfen nicht in den gespeicherten Werten bleiben.",
+    );
+  },
+);
+
+Deno.test("weist nur teilweise geklammerte Betreffe zurück", () => {
+  const result = parseEventSpaceEmailIntake({
+    subject: "Neuer Auftrag Einrichten [276] für Basismodul OM",
+    description: validDescription,
+  });
+  assert(
+    clarificationCodes(result).includes("subject_not_supported"),
+    "Gemischte Betreffformate dürfen nicht mehrdeutig verarbeitet werden.",
+  );
+});
+
+Deno.test("weist doppelt geklammerte Altbetreffe zurück", () => {
+  const result = parseEventSpaceEmailIntake({
+    subject: "Neuer Auftrag Einrichten [[276] für [Basismodul OM]",
+    description: validDescription,
+  });
+  assert(
+    clarificationCodes(result).includes("subject_not_supported"),
+    "Nur vollständig und einfach geklammerte Altbetreffe dürfen gültig sein.",
+  );
+});
 
 Deno.test(
   "weist einen Betreff ausserhalb des exakt erwarteten Formats zurück",
