@@ -354,6 +354,21 @@ export async function loadProfileName(): Promise<string | null> {
   return data?.display_name?.trim() || null;
 }
 
+const REFERENCE_TTL_MS = 5 * 60 * 1000;
+const referenceDataCache = new Map<
+  string,
+  {
+    agentDirectoryData: unknown;
+    at: number;
+    priorities: TicketPriorityRecord[];
+    statuses: TicketStatusRecord[];
+  }
+>();
+
+export function clearLiveDashboardReferenceCache(): void {
+  referenceDataCache.clear();
+}
+
 export async function loadLiveDashboard(
   tenant: TenantOption,
   period: Period,
@@ -363,41 +378,65 @@ export async function loadLiveDashboard(
 ): Promise<LiveDashboardSnapshot> {
   const client = requireSupabase();
   const since = startDate(period);
-  const [authResult, statusesResult, prioritiesResult, agentDirectoryResult] =
-    await Promise.all([
-      client.auth.getUser(),
-      client
-        .from("ticket_statuses")
-        .select("id, label, is_closed, sort_order")
-        .eq("tenant_id", tenant.id),
-      client
-        .from("ticket_priorities")
-        .select("id, label, sort_order")
-        .eq("tenant_id", tenant.id),
-      client.functions.invoke("ticket-agent-assignment", {
-        body: {
-          includeAgents: true,
-          ticketIds: [],
-          tenantId: tenant.id,
-          type: "listForTenant",
-        },
-      }),
-    ]);
+  // The user id only drives presentation; every query is authorised
+  // server-side. getSession reads local storage instead of calling the auth
+  // server (getUser) on each reload.
+  const sessionPromise = client.auth.getSession();
+  const cachedReference = referenceDataCache.get(tenant.id);
+  let statuses: TicketStatusRecord[];
+  let priorities: TicketPriorityRecord[];
+  let agentDirectoryData: unknown;
+  if (cachedReference && Date.now() - cachedReference.at < REFERENCE_TTL_MS) {
+    ({ statuses, priorities, agentDirectoryData } = cachedReference);
+  } else {
+    const [statusesResult, prioritiesResult, agentDirectoryResult] =
+      await Promise.all([
+        client
+          .from("ticket_statuses")
+          .select("id, label, is_closed, sort_order")
+          .eq("tenant_id", tenant.id),
+        client
+          .from("ticket_priorities")
+          .select("id, label, sort_order")
+          .eq("tenant_id", tenant.id),
+        client.functions.invoke("ticket-agent-assignment", {
+          body: {
+            includeAgents: true,
+            ticketIds: [],
+            tenantId: tenant.id,
+            type: "listForTenant",
+          },
+        }),
+      ]);
+    if (statusesResult.error) throw statusesResult.error;
+    if (prioritiesResult.error) throw prioritiesResult.error;
+    statuses = (statusesResult.data ?? []) as TicketStatusRecord[];
+    priorities = (prioritiesResult.data ?? []) as TicketPriorityRecord[];
+    agentDirectoryData = agentDirectoryResult.error
+      ? null
+      : agentDirectoryResult.data;
+    // Status, priority and agent lists change rarely; filter and page changes
+    // reuse them instead of repeating three requests (one an edge function).
+    if (!agentDirectoryResult.error) {
+      referenceDataCache.set(tenant.id, {
+        agentDirectoryData,
+        at: Date.now(),
+        priorities,
+        statuses,
+      });
+    }
+  }
   const {
-    data: { user },
+    data: { session },
     error: userError,
-  } = authResult;
+  } = await sessionPromise;
   if (userError) throw userError;
+  const user = session?.user ?? null;
 
-  if (statusesResult.error) throw statusesResult.error;
-  if (prioritiesResult.error) throw prioritiesResult.error;
-
-  const statuses = (statusesResult.data ?? []) as TicketStatusRecord[];
-  const priorities = (prioritiesResult.data ?? []) as TicketPriorityRecord[];
   let departments: DepartmentRecord[] = [];
   let ticketAgents: TicketAgentOption[] = [];
-  if (!agentDirectoryResult.error) {
-    const directory = ticketAgentsFromResponse(agentDirectoryResult.data);
+  if (agentDirectoryData) {
+    const directory = ticketAgentsFromResponse(agentDirectoryData);
     if (directory) {
       ticketAgents = directory.agents;
       departments = directory.departments.map((department) => ({
@@ -407,6 +446,45 @@ export async function loadLiveDashboard(
       }));
     }
   }
+  // The counts do not depend on the ticket page, so they run in parallel
+  // with the list query instead of after it.
+  const closedStatusIds = statuses
+    .filter((status) => status.is_closed)
+    .map((status) => status.id);
+  const countsPromise = Promise.all([
+    client
+      .from("tickets")
+      .select("id", { count: "exact", head: true })
+      .eq("tenant_id", tenant.id),
+    closedStatusIds.length > 0
+      ? client
+          .from("tickets")
+          .select("id", { count: "exact", head: true })
+          .eq("tenant_id", tenant.id)
+          .in("status_id", closedStatusIds)
+      : Promise.resolve({ count: 0, error: null }),
+    user
+      ? client
+          .from("tickets")
+          .select("id", { count: "exact", head: true })
+          .eq("tenant_id", tenant.id)
+          .eq("assigned_agent_id", user.id)
+      : Promise.resolve({ count: 0, error: null }),
+    client
+      .from("tickets")
+      .select("id", { count: "exact", head: true })
+      .eq("tenant_id", tenant.id)
+      .is("assigned_agent_id", null),
+    client
+      .from("ticket_events")
+      .select("event_type, created_at, tickets!inner(tenant_id)")
+      .eq("tickets.tenant_id", tenant.id)
+      .gte("created_at", since)
+      .order("created_at", { ascending: false })
+      .limit(3),
+  ]);
+  // Avoid an unhandled rejection if the list query throws first.
+  countsPromise.catch(() => undefined);
   const ticketsResult = await client.rpc(
     "list_authorized_ticket_list_page",
     ticketListRpcArguments(
@@ -492,47 +570,13 @@ export async function loadLiveDashboard(
     } satisfies DashboardTicket;
   });
 
-  const closedStatusIds = statuses
-    .filter((status) => status.is_closed)
-    .map((status) => status.id);
   const [
     totalCountResult,
     closedCountResult,
     mineCountResult,
     unassignedCountResult,
     eventsResult,
-  ] = await Promise.all([
-    client
-      .from("tickets")
-      .select("id", { count: "exact", head: true })
-      .eq("tenant_id", tenant.id),
-    closedStatusIds.length > 0
-      ? client
-          .from("tickets")
-          .select("id", { count: "exact", head: true })
-          .eq("tenant_id", tenant.id)
-          .in("status_id", closedStatusIds)
-      : Promise.resolve({ count: 0, error: null }),
-    user
-      ? client
-          .from("tickets")
-          .select("id", { count: "exact", head: true })
-          .eq("tenant_id", tenant.id)
-          .eq("assigned_agent_id", user.id)
-      : Promise.resolve({ count: 0, error: null }),
-    client
-      .from("tickets")
-      .select("id", { count: "exact", head: true })
-      .eq("tenant_id", tenant.id)
-      .is("assigned_agent_id", null),
-    client
-      .from("ticket_events")
-      .select("event_type, created_at, tickets!inner(tenant_id)")
-      .eq("tickets.tenant_id", tenant.id)
-      .gte("created_at", since)
-      .order("created_at", { ascending: false })
-      .limit(3),
-  ]);
+  ] = await countsPromise;
 
   if (totalCountResult.error) throw totalCountResult.error;
   if (closedCountResult.error) throw closedCountResult.error;
