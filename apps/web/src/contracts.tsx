@@ -4,11 +4,16 @@ import {
   Archive,
   CalendarClock,
   FileText,
+  Paperclip,
   Plus,
   RefreshCw,
   X,
 } from "lucide-react";
 import { isSupabaseConfigured, supabase } from "./lib/supabase";
+import {
+  RecordAttachments,
+  uploadRecordAttachment,
+} from "./record-attachments";
 
 type ContractStatus = "draft" | "active" | "terminated" | "archived";
 type ContractType = "service" | "license" | "maintenance" | "lease" | "other";
@@ -149,6 +154,8 @@ export function Contracts({ tenantId }: { tenantId: string }) {
   const [editorOpen, setEditorOpen] = useState(false);
   const [form, setForm] = useState<Form>(EMPTY);
   const [pending, setPending] = useState(false);
+  const [queuedFiles, setQueuedFiles] = useState<File[]>([]);
+  const [documentsFor, setDocumentsFor] = useState<Contract | null>(null);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const nameRef = useRef<HTMLInputElement | null>(null);
   const load = async () => {
@@ -227,6 +234,7 @@ export function Contracts({ tenantId }: { tenantId: string }) {
   const close = () => {
     if (pending) return;
     setEditorOpen(false);
+    setQueuedFiles([]);
     setForm(EMPTY);
     window.setTimeout(() => triggerRef.current?.focus(), 0);
   };
@@ -284,6 +292,21 @@ export function Contracts({ tenantId }: { tenantId: string }) {
           ? "Der Vertrag wurde aktualisiert."
           : "Der Vertrag wurde erfasst.",
       );
+      if (queuedFiles.length > 0) {
+        let failed = 0;
+        for (const file of queuedFiles) {
+          try {
+            await uploadRecordAttachment(tenantId, "contract", saved.id, file);
+          } catch {
+            failed += 1;
+          }
+        }
+        if (failed > 0) {
+          setError(
+            `Gespeichert, aber ${failed} Anhang/Anhänge konnten nicht hochgeladen werden. Öffnen Sie «Dokumente», um es erneut zu versuchen.`,
+          );
+        }
+      }
       close();
     } catch (reason) {
       setError(
@@ -498,6 +521,13 @@ export function Contracts({ tenantId }: { tenantId: string }) {
                   <div className="contracts__card-actions">
                     <button
                       className="secondary-button"
+                      onClick={() => setDocumentsFor(contract)}
+                      type="button"
+                    >
+                      <Paperclip size={16} /> Dokumente
+                    </button>
+                    <button
+                      className="secondary-button"
                       disabled={pending || contract.status === "archived"}
                       onClick={(event) => {
                         triggerRef.current = event.currentTarget;
@@ -688,6 +718,15 @@ export function Contracts({ tenantId }: { tenantId: string }) {
                     }
                   />
                 </label>
+                <div className="contracts__notes">
+                  <RecordAttachments
+                    entityId={form.id}
+                    entityType="contract"
+                    onQueuedChange={setQueuedFiles}
+                    queued={queuedFiles}
+                    tenantId={tenantId}
+                  />
+                </div>
                 <div className="form-actions">
                   <button
                     className="secondary-button"
@@ -706,6 +745,48 @@ export function Contracts({ tenantId }: { tenantId: string }) {
                   </button>
                 </div>
               </form>
+            </section>
+          </div>,
+          document.body,
+        )}
+      {documentsFor &&
+        createPortal(
+          <div
+            className="contracts__dialog-backdrop"
+            onMouseDown={(event) => {
+              if (event.target === event.currentTarget) setDocumentsFor(null);
+            }}
+          >
+            <section
+              className="contracts__editor-dialog"
+              aria-label="Dokumente"
+              aria-modal="true"
+              role="dialog"
+            >
+              <header className="panel-heading">
+                <div>
+                  <p className="eyebrow">Dokumente</p>
+                  <h2>{documentsFor.title}</h2>
+                </div>
+                <button
+                  aria-label="Dialog schliessen"
+                  className="icon-button"
+                  onClick={() => setDocumentsFor(null)}
+                  type="button"
+                >
+                  <X size={18} />
+                </button>
+              </header>
+              <div className="contracts__notes">
+                <RecordAttachments
+                  entityId={documentsFor.id}
+                  entityType="contract"
+                  onQueuedChange={() => undefined}
+                  queued={[]}
+                  readOnly={documentsFor.status === "archived"}
+                  tenantId={tenantId}
+                />
+              </div>
             </section>
           </div>,
           document.body,

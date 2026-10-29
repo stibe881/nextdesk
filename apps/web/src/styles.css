@@ -17984,3 +17984,112 @@ html:has(.status-badge) body {
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.95);
 }
+
+/* Anhänge zu Verträgen und Lizenzen */
+.record-attachments {
+  display: grid;
+  gap: 10px;
+}
+
+.record-attachments__label {
+  font-weight: 600;
+}
+
+.record-attachments__dropzone {
+  align-items: center;
+  background: color-mix(in srgb, var(--primary-soft) 40%, var(--surface));
+  border: 2px dashed color-mix(in srgb, var(--primary) 40%, var(--border));
+  border-radius: 14px;
+  color: var(--muted);
+  cursor: pointer;
+  display: grid;
+  gap: 4px;
+  justify-items: center;
+  padding: 22px 16px;
+  text-align: center;
+  transition: background 0.15s, border-color 0.15s, transform 0.15s;
+}
+
+.record-attachments__dropzone svg {
+  color: var(--primary);
+}
+
+.record-attachments__dropzone strong {
+  color: var(--ink);
+}
+
+.record-attachments__dropzone span {
+  font-size: 0.82rem;
+}
+
+.record-attachments__dropzone:hover,
+.record-attachments__dropzone:focus-visible,
+.record-attachments__dropzone.is-dragging {
+  background: color-mix(in srgb, var(--primary-soft) 80%, var(--surface));
+  border-color: var(--primary);
+}
+
+.record-attachments__dropzone.is-dragging {
+  transform: scale(1.01);
+}
+
+.record-attachments__list {
+  display: grid;
+  gap: 8px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.record-attachments__list > li {
+  align-items: center;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  display: flex;
+  gap: 12px;
+  padding: 8px 10px;
+}
+
+.record-attachments__list > li > div {
+  display: grid;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.record-attachments__list strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.record-attachments__list small,
+.record-attachments__hint {
+  color: var(--muted);
+  font-size: 0.78rem;
+  margin: 0;
+}
+
+.record-attachments__thumb,
+.record-attachments__icon {
+  align-items: center;
+  background: var(--surface-subtle);
+  border-radius: 8px;
+  color: var(--primary);
+  display: inline-flex;
+  flex: 0 0 auto;
+  height: 40px;
+  justify-content: center;
+  object-fit: cover;
+  width: 40px;
+}
+
+.record-attachments__list .is-uploading {
+  opacity: 0.7;
+}
+
+.record-attachments__error {
+  color: var(--danger);
+  font-size: 0.82rem;
+  margin: 0;
+}
