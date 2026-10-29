@@ -18093,3 +18093,15 @@ html:has(.status-badge) body {
   font-size: 0.82rem;
   margin: 0;
 }
+
+.contracts__new-type {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.contracts__new-type input {
+  flex: 1 1 160px;
+  min-width: 0;
+}

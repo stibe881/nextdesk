@@ -16,12 +16,7 @@ import {
 } from "./record-attachments";
 
 type LicenseStatus = "draft" | "active" | "terminated" | "archived";
-type LicenseType =
-  | "subscription"
-  | "perpetual"
-  | "volume"
-  | "open_source"
-  | "other";
+type LicenseType = string;
 type License = {
   id: string;
   title: string;
@@ -74,13 +69,16 @@ const statusLabel: Record<LicenseStatus, string> = {
   terminated: "Beendet",
   archived: "Archiviert",
 };
-const typeLabel: Record<LicenseType, string> = {
+const typeLabel: Record<string, string> = {
   subscription: "Abonnement",
   perpetual: "Unbefristet (Kauf)",
   volume: "Volumenlizenz",
   open_source: "Open Source",
   other: "Weitere",
 };
+const typeText = (type: string) =>
+  Object.hasOwn(typeLabel, type) ? (typeLabel[type] ?? type) : type;
+const NEW_TYPE = "__new__";
 const today = () => new Date().toISOString().slice(0, 10);
 const formatDate = (value: string | null) =>
   value
@@ -163,6 +161,8 @@ export function Licenses({ tenantId }: { tenantId: string }) {
   const [editorOpen, setEditorOpen] = useState(false);
   const [form, setForm] = useState<Form>(EMPTY);
   const [pending, setPending] = useState(false);
+  const [addingType, setAddingType] = useState(false);
+  const [newTypeName, setNewTypeName] = useState("");
   const [queuedFiles, setQueuedFiles] = useState<File[]>([]);
   const [documentsFor, setDocumentsFor] = useState<License | null>(null);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
@@ -250,9 +250,38 @@ export function Licenses({ tenantId }: { tenantId: string }) {
     }
     return [...byKey.values()].sort((a, b) => a.localeCompare(b, "de-CH"));
   }, [licenses]);
+  // Built-in types first, then every custom type already in use.
+  const typeOptions = useMemo(() => {
+    const custom = new Map<string, string>();
+    for (const item of licenses) {
+      const name = item.licenseType;
+      if (!Object.hasOwn(typeLabel, name) && !custom.has(name.toLocaleLowerCase("de-CH"))) {
+        custom.set(name.toLocaleLowerCase("de-CH"), name);
+      }
+    }
+    return [
+      ...Object.keys(typeLabel),
+      ...[...custom.values()].sort((a, b) => a.localeCompare(b, "de-CH")),
+    ];
+  }, [licenses]);
+  const applyNewType = () => {
+    const name = newTypeName.trim().replace(/\s+/g, " ");
+    if (name.length < 2) return;
+    // An existing type (any letter case) is reused instead of duplicated.
+    const existing = typeOptions.find(
+      (key) =>
+        typeText(key).toLocaleLowerCase("de-CH") ===
+        name.toLocaleLowerCase("de-CH"),
+    );
+    setForm({ ...form, licenseType: existing ?? name });
+    setAddingType(false);
+    setNewTypeName("");
+  };
   const close = () => {
     if (pending) return;
     setEditorOpen(false);
+    setAddingType(false);
+    setNewTypeName("");
     setQueuedFiles([]);
     setForm(EMPTY);
     window.setTimeout(() => triggerRef.current?.focus(), 0);
@@ -458,9 +487,9 @@ export function Licenses({ tenantId }: { tenantId: string }) {
             onChange={(event) => setType(event.target.value as typeof type)}
           >
             <option value="all">Alle</option>
-            {(Object.keys(typeLabel) as LicenseType[]).map((key) => (
+            {typeOptions.map((key) => (
               <option key={key} value={key}>
-                {typeLabel[key]}
+                {typeText(key)}
               </option>
             ))}
           </select>
@@ -519,7 +548,7 @@ export function Licenses({ tenantId }: { tenantId: string }) {
                       {statusLabel[contract.status]}
                     </span>
                     <span className="contracts__type">
-                      {typeLabel[contract.licenseType]}
+                      {typeText(contract.licenseType)}
                     </span>
                   </div>
                   <dl>
@@ -668,20 +697,58 @@ export function Licenses({ tenantId }: { tenantId: string }) {
                 <label>
                   Art
                   <select
-                    value={form.licenseType}
-                    onChange={(event) =>
-                      setForm({
-                        ...form,
-                        licenseType: event.target.value as LicenseType,
-                      })
-                    }
+                    value={addingType ? NEW_TYPE : form.licenseType}
+                    onChange={(event) => {
+                      if (event.target.value === NEW_TYPE) {
+                        setAddingType(true);
+                        return;
+                      }
+                      setAddingType(false);
+                      setForm({ ...form, licenseType: event.target.value });
+                    }}
                   >
-                    {(Object.keys(typeLabel) as LicenseType[]).map((key) => (
+                    {typeOptions.includes(form.licenseType) ? null : (
+                      <option value={form.licenseType}>{form.licenseType}</option>
+                    )}
+                    {typeOptions.map((key) => (
                       <option key={key} value={key}>
-                        {typeLabel[key]}
+                        {typeText(key)}
                       </option>
                     ))}
+                    <option value={NEW_TYPE}>+ Neue Art hinzufügen …</option>
                   </select>
+                  {addingType ? (
+                    <span className="contracts__new-type">
+                      <input
+                        autoFocus
+                        maxLength={60}
+                        onChange={(event) => setNewTypeName(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            event.preventDefault();
+                            applyNewType();
+                          }
+                        }}
+                        placeholder="Name der neuen Art"
+                        value={newTypeName}
+                      />
+                      <button
+                        className="primary-button"
+                        disabled={newTypeName.trim().length < 2}
+                        onClick={applyNewType}
+                        type="button"
+                      >
+                        Übernehmen
+                      </button>
+                      <button
+                        className="secondary-button"
+                        onClick={() => setAddingType(false)}
+                        type="button"
+                      >
+                        Abbrechen
+                      </button>
+                    </span>
+                  ) : null}
                 </label>
                 <label>
                   Anzahl Lizenzen
