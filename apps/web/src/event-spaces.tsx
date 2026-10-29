@@ -354,11 +354,14 @@ export function EventSpaces({
     offset: number,
     append: boolean,
     preserveNotice = false,
+    silent = false,
   ) => {
     if (!supabase) return;
-    if (append) setLoadingMore(true);
-    else setLoading(true);
-    if (!preserveNotice) setErrorMessage("");
+    if (!silent) {
+      if (append) setLoadingMore(true);
+      else setLoading(true);
+      if (!preserveNotice) setErrorMessage("");
+    }
     try {
       const { data, error } = await supabase.functions.invoke("event-spaces", {
         body: { type: "listWorkspace", tenantId, offset },
@@ -388,20 +391,45 @@ export function EventSpaces({
         };
       });
     } catch (error) {
-      setErrorMessage(
-        await functionErrorMessage(
-          error,
-          "Die Raumplanung konnte nicht geladen werden. Bitte versuchen Sie es erneut.",
-        ),
-      );
+      // A failed background refresh keeps the data on screen and stays quiet.
+      if (!silent) {
+        setErrorMessage(
+          await functionErrorMessage(
+            error,
+            "Die Raumplanung konnte nicht geladen werden. Bitte versuchen Sie es erneut.",
+          ),
+        );
+      }
     } finally {
-      if (append) setLoadingMore(false);
-      else setLoading(false);
+      if (!silent) {
+        if (append) setLoadingMore(false);
+        else setLoading(false);
+      }
     }
   };
 
   const refresh = async (preserveNotice = false) =>
     loadWorkspace(0, false, preserveNotice);
+
+  // New e-mail requests arrive without any action in this window, so reload
+  // quietly while the tab is visible instead of requiring a manual refresh.
+  const busyRef = useRef(false);
+  busyRef.current = pending || loading || loadingMore;
+  useEffect(() => {
+    const reload = () => {
+      if (document.visibilityState !== "visible" || busyRef.current) return;
+      void loadWorkspace(0, false, true, true);
+      onAttentionChanged();
+    };
+    const timer = window.setInterval(reload, 30_000);
+    document.addEventListener("visibilitychange", reload);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", reload);
+    };
+    // loadWorkspace and onAttentionChanged are recreated on every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tenantId]);
 
   useEffect(() => {
     setMetricFilter(null);
