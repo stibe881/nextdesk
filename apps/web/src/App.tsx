@@ -80,7 +80,9 @@ import { GlobalSearch, type GlobalSearchResult } from "./global-search";
 import { ServiceReporting } from "./service-reporting";
 import { ServiceAssets } from "./service-assets";
 import {
+  isPublicServiceStatusBadgeRequested,
   isPublicServiceStatusRequested,
+  PublicServiceStatusBadgePage,
   PublicServiceStatusPage,
   ServiceStatus,
 } from "./service-status";
@@ -5019,6 +5021,10 @@ function AuthenticatedApp() {
 }
 
 export function App() {
+  const publicStatusBadgeId = isPublicServiceStatusBadgeRequested();
+  if (publicStatusBadgeId) {
+    return <PublicServiceStatusBadgePage publicId={publicStatusBadgeId} />;
+  }
   const publicStatusId = isPublicServiceStatusRequested();
   return publicStatusId ? (
     <PublicServiceStatusPage publicId={publicStatusId} />
