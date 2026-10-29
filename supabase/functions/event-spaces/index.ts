@@ -94,6 +94,11 @@ type Action =
     agentId: string | null;
   }
   | {
+    type: "deleteRequest";
+    tenantId: string;
+    requestId: string;
+  }
+  | {
     type: "resolveEmailIntake";
     tenantId: string;
     requestId: string;
@@ -409,6 +414,17 @@ function parseAction(value: unknown): Action | null {
         agentId: typeof value.agentId === "string"
           ? value.agentId.toLowerCase()
           : null,
+      }
+      : null;
+  }
+  if (value.type === "deleteRequest") {
+    return isUuid(value.tenantId) &&
+        isUuid(value.requestId) &&
+        hasOnlyKeys(value, ["type", "tenantId", "requestId"])
+      ? {
+        type: value.type,
+        tenantId: value.tenantId.toLowerCase(),
+        requestId: value.requestId.toLowerCase(),
       }
       : null;
   }
@@ -1567,6 +1583,42 @@ async function assignAgent(
   );
 }
 
+/**
+ * Equipment and tasks are removed by their cascading foreign keys; the
+ * equipment delete trigger also releases any inventory reserved for the plan.
+ */
+async function deleteRequest(
+  admin: AdminClient,
+  actorId: string,
+  tenantId: string,
+  requestId: string,
+) {
+  const { data, error } = await admin
+    .from("event_space_requests")
+    .delete()
+    .eq("tenant_id", tenantId)
+    .eq("id", requestId)
+    .select("id")
+    .maybeSingle();
+  if (error) databaseFailure(error);
+  if (!data) {
+    throw new HttpError(
+      404,
+      "event_space_request_not_found",
+      "Der Raumauftrag ist nicht mehr verfügbar.",
+    );
+  }
+  await audit(
+    admin,
+    tenantId,
+    actorId,
+    "event_spaces.request.deleted",
+    "event_space_request",
+    requestId,
+    {},
+  );
+}
+
 async function resolveEmailIntake(
   admin: AdminClient,
   actorId: string,
@@ -1875,6 +1927,20 @@ const handler = withSupabase(
           action.agentId,
         );
         return json(request, { data: { updated: true } });
+      }
+      if (action.type === "deleteRequest") {
+        await requirePermission(
+          context.supabase,
+          action.tenantId,
+          "event.spaces.manage",
+        );
+        await deleteRequest(
+          context.supabaseAdmin,
+          actorId,
+          action.tenantId,
+          action.requestId,
+        );
+        return json(request, { data: { deleted: true } });
       }
       if (action.type === "resolveEmailIntake") {
         await requirePermission(

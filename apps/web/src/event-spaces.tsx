@@ -757,6 +757,41 @@ export function EventSpaces({
     }
   }
 
+  async function deleteRequest(requestId: string, title: string) {
+    if (!supabase) return;
+    if (
+      !window.confirm(
+        `Raumplanung «${title}» endgültig löschen? Zugehörige Aufgaben und Technikreservationen werden ebenfalls entfernt.`,
+      )
+    ) {
+      return;
+    }
+    setPending(true);
+    setErrorMessage("");
+    setNotice("");
+    try {
+      const { error } = await supabase.functions.invoke("event-spaces", {
+        body: { type: "deleteRequest", tenantId, requestId },
+      });
+      if (error) throw error;
+      setExpandedRequestId((current) =>
+        current === requestId ? null : current,
+      );
+      setNotice("Die Raumplanung wurde gelöscht.");
+      await refresh(true);
+      onAttentionChanged();
+    } catch (error) {
+      setErrorMessage(
+        await functionErrorMessage(
+          error,
+          "Die Raumplanung konnte nicht gelöscht werden. Bitte versuchen Sie es erneut.",
+        ),
+      );
+    } finally {
+      setPending(false);
+    }
+  }
+
   async function assignAgent(requestId: string, agentId: string | null) {
     if (!supabase) return;
     setPending(true);
@@ -1234,6 +1269,14 @@ export function EventSpaces({
                       type="button"
                     >
                       Konfliktfrei planen (30 Min.)
+                    </button>
+                    <button
+                      className="secondary-button"
+                      disabled={pending}
+                      onClick={() => void deleteRequest(item.id, item.title)}
+                      type="button"
+                    >
+                      Löschen
                     </button>
                   </div>
                 </article>
@@ -1766,6 +1809,7 @@ export function EventSpaces({
                   key={request.id}
                   agents={workspace?.agents ?? []}
                   onAssignAgent={assignAgent}
+                  onDeleteRequest={deleteRequest}
                   onChangeRequestStatus={changeRequestStatus}
                   onChangeTaskStatus={changeTaskStatus}
                   onToggle={() =>
@@ -1828,6 +1872,7 @@ function RequestCard({
   onAssignAgent,
   onChangeRequestStatus,
   onChangeTaskStatus,
+  onDeleteRequest,
   onToggle,
   onUpdateRequestDetails,
   people,
@@ -1840,6 +1885,7 @@ function RequestCard({
   expanded: boolean;
   focused: boolean;
   onAssignAgent: (requestId: string, agentId: string | null) => void;
+  onDeleteRequest: (requestId: string, title: string) => Promise<void>;
   onChangeRequestStatus: (
     requestId: string,
     status: RequestStatus,
@@ -2041,6 +2087,13 @@ function RequestCard({
                 {editDraft
                   ? "Bearbeitung schliessen"
                   : "Raumplanung bearbeiten"}
+              </button>
+              <button
+                className="secondary-button"
+                onClick={() => void onDeleteRequest(request.id, request.title)}
+                type="button"
+              >
+                Löschen
               </button>
             </div>
           ) : null}
