@@ -1494,6 +1494,12 @@ export function ServiceAssets({
   const [error, setError] = useState("");
   const [forbidden, setForbidden] = useState(false);
   const [success, setSuccess] = useState("");
+  const [quickEdit, setQuickEdit] = useState<{
+    field: "criticality" | "responsibility";
+    primary: string;
+    secondary: string;
+    serviceId: string;
+  } | null>(null);
   const [serviceResponsibleAgents, setServiceResponsibleAgents] = useState<
     ServiceResponsibleAgent[]
   >([]);
@@ -2317,6 +2323,61 @@ export function ServiceAssets({
     }
   }
 
+  async function quickSaveService(
+    service: Service,
+    patch: Partial<
+      Pick<
+        ServiceForm,
+        "criticality" | "primaryResponsibleId" | "secondaryResponsibleId"
+      >
+    >,
+  ) {
+    if (!canManageServices) return;
+    const primaryResponsibleId =
+      patch.primaryResponsibleId ?? service.primary_responsible_id ?? "";
+    const secondaryResponsibleId = primaryResponsibleId
+      ? (patch.secondaryResponsibleId ?? service.secondary_responsible_id ?? "")
+      : "";
+    beginAction(`service:save:${service.id}`);
+    try {
+      const request: ServiceSaveRequest = {
+        type: "manageService",
+        tenantId,
+        operation: "update",
+        serviceId: service.id,
+        name: service.name,
+        description: service.description,
+        criticality: patch.criticality ?? service.criticality,
+        status: service.status,
+        statusPublic: service.status_public,
+        primaryResponsibleId: primaryResponsibleId || null,
+        secondaryResponsibleId: secondaryResponsibleId || null,
+        ...(supportsServiceCategories
+          ? { categoryId: service.service_category_id }
+          : {}),
+      };
+      const saved = parseSavedService(await requestServiceAssets(request));
+      setServices((current) =>
+        sortByName([
+          ...current.filter((item) => item.id !== saved.id),
+          saved,
+        ]),
+      );
+      setQuickEdit(null);
+      setSuccess(`Der Service „${saved.name}“ wurde gespeichert.`);
+    } catch (nextError) {
+      setForbidden(errorStatus(nextError) === 403);
+      setError(
+        await apiErrorMessage(
+          nextError,
+          "Der Service konnte nicht gespeichert werden.",
+        ),
+      );
+    } finally {
+      setPendingAction(null);
+    }
+  }
+
   async function createServiceCategoryInline(
     name: string,
     parentId: string | null,
@@ -3099,18 +3160,199 @@ export function ServiceAssets({
                       </p>
                     ) : null}
                     <dl className="service-assets__service-facts">
-                      <div>
-                        <dt>Kritikalität</dt>
-                        <dd>{CRITICALITY_LABELS[service.criticality]}</dd>
-                      </div>
-                      {canManageServices && service.primary_responsible_id ? (
-                        <div>
+                      {canManageServices &&
+                      quickEdit?.serviceId === service.id &&
+                      quickEdit.field === "criticality" ? (
+                        <div className="service-assets__service-fact-editor">
+                          <dt>Kritikalität</dt>
+                          <dd>
+                            <select
+                              aria-label="Kritikalität"
+                              autoFocus
+                              disabled={controlsDisabled}
+                              onBlur={() => setQuickEdit(null)}
+                              onChange={(event) =>
+                                void quickSaveService(service, {
+                                  criticality: event.target
+                                    .value as Criticality,
+                                })
+                              }
+                              value={service.criticality}
+                            >
+                              {(
+                                Object.keys(CRITICALITY_LABELS) as Criticality[]
+                              ).map((criticality) => (
+                                <option key={criticality} value={criticality}>
+                                  {CRITICALITY_LABELS[criticality]}
+                                </option>
+                              ))}
+                            </select>
+                          </dd>
+                        </div>
+                      ) : (
+                        <div
+                          aria-label={
+                            canManageServices
+                              ? "Kritikalität ändern"
+                              : undefined
+                          }
+                          className={
+                            canManageServices
+                              ? "service-assets__service-fact--editable"
+                              : undefined
+                          }
+                          onClick={
+                            canManageServices
+                              ? () =>
+                                  setQuickEdit({
+                                    field: "criticality",
+                                    primary: "",
+                                    secondary: "",
+                                    serviceId: service.id,
+                                  })
+                              : undefined
+                          }
+                          onKeyDown={
+                            canManageServices
+                              ? (event) => {
+                                  if (
+                                    event.key === "Enter" ||
+                                    event.key === " "
+                                  ) {
+                                    event.preventDefault();
+                                    setQuickEdit({
+                                      field: "criticality",
+                                      primary: "",
+                                      secondary: "",
+                                      serviceId: service.id,
+                                    });
+                                  }
+                                }
+                              : undefined
+                          }
+                          role={canManageServices ? "button" : undefined}
+                          tabIndex={canManageServices ? 0 : undefined}
+                        >
+                          <dt>Kritikalität</dt>
+                          <dd>{CRITICALITY_LABELS[service.criticality]}</dd>
+                        </div>
+                      )}
+                      {canManageServices &&
+                      quickEdit?.serviceId === service.id &&
+                      quickEdit.field === "responsibility" ? (
+                        <div className="service-assets__service-fact-editor">
                           <dt>Verantwortung</dt>
                           <dd>
-                            {serviceResponsibleAgentNames.get(
-                              service.primary_responsible_id,
-                            ) ?? "Nicht mehr verfügbar"}
-                            {service.secondary_responsible_id
+                            <select
+                              aria-label="Primär verantwortlich"
+                              autoFocus
+                              disabled={
+                                controlsDisabled ||
+                                serviceResponsibleAgentsLoading
+                              }
+                              onChange={(event) =>
+                                setQuickEdit({
+                                  ...quickEdit,
+                                  primary: event.target.value,
+                                  secondary:
+                                    event.target.value === quickEdit.secondary
+                                      ? ""
+                                      : quickEdit.secondary,
+                                })
+                              }
+                              value={quickEdit.primary}
+                            >
+                              <option value="">Nicht zugeordnet</option>
+                              {serviceResponsibleAgents.map((agent) => (
+                                <option key={agent.id} value={agent.id}>
+                                  {agent.displayName}
+                                </option>
+                              ))}
+                            </select>
+                            <select
+                              aria-label="Sekundär verantwortlich"
+                              disabled={
+                                controlsDisabled ||
+                                serviceResponsibleAgentsLoading ||
+                                !quickEdit.primary
+                              }
+                              onChange={(event) =>
+                                setQuickEdit({
+                                  ...quickEdit,
+                                  secondary: event.target.value,
+                                })
+                              }
+                              value={quickEdit.secondary}
+                            >
+                              <option value="">Keine Stellvertretung</option>
+                              {serviceResponsibleAgents
+                                .filter((agent) => agent.id !== quickEdit.primary)
+                                .map((agent) => (
+                                  <option key={agent.id} value={agent.id}>
+                                    {agent.displayName}
+                                  </option>
+                                ))}
+                            </select>
+                            <span className="service-assets__service-fact-actions">
+                              <button
+                                className="primary-button"
+                                disabled={controlsDisabled}
+                                onClick={() =>
+                                  void quickSaveService(service, {
+                                    primaryResponsibleId: quickEdit.primary,
+                                    secondaryResponsibleId: quickEdit.secondary,
+                                  })
+                                }
+                                type="button"
+                              >
+                                Speichern
+                              </button>
+                              <button
+                                disabled={controlsDisabled}
+                                onClick={() => setQuickEdit(null)}
+                                type="button"
+                              >
+                                Abbrechen
+                              </button>
+                            </span>
+                          </dd>
+                        </div>
+                      ) : canManageServices ? (
+                        <div
+                          aria-label="Verantwortung ändern"
+                          className="service-assets__service-fact--editable"
+                          onClick={() =>
+                            setQuickEdit({
+                              field: "responsibility",
+                              primary: service.primary_responsible_id ?? "",
+                              secondary: service.secondary_responsible_id ?? "",
+                              serviceId: service.id,
+                            })
+                          }
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter" || event.key === " ") {
+                              event.preventDefault();
+                              setQuickEdit({
+                                field: "responsibility",
+                                primary: service.primary_responsible_id ?? "",
+                                secondary:
+                                  service.secondary_responsible_id ?? "",
+                                serviceId: service.id,
+                              });
+                            }
+                          }}
+                          role="button"
+                          tabIndex={0}
+                        >
+                          <dt>Verantwortung</dt>
+                          <dd>
+                            {service.primary_responsible_id
+                              ? (serviceResponsibleAgentNames.get(
+                                  service.primary_responsible_id,
+                                ) ?? "Nicht mehr verfügbar")
+                              : "Nicht zugeordnet"}
+                            {service.primary_responsible_id &&
+                            service.secondary_responsible_id
                               ? ` · ${
                                   serviceResponsibleAgentNames.get(
                                     service.secondary_responsible_id,

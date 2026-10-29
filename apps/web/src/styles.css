@@ -17893,3 +17893,22 @@ body:has(.knowledge-base__editor-backdrop) {
   flex: 1 1 140px;
   min-width: 0;
 }
+
+.service-assets__service-fact--editable {
+  cursor: pointer;
+}
+
+.service-assets__service-fact--editable:hover,
+.service-assets__service-fact--editable:focus-visible {
+  border-color: var(--accent, #2563eb);
+}
+
+.service-assets__service-fact-editor dd {
+  display: grid;
+  gap: 6px;
+}
+
+.service-assets__service-fact-actions {
+  display: flex;
+  gap: 8px;
+}
