@@ -1550,6 +1550,10 @@ function AuthenticatedApp() {
     useState<string | null>("navigation-category-workspace");
   const [quickCreateRequest, setQuickCreateRequest] =
     useState<QuickCreateRequest | null>(null);
+  const [
+    serviceMaintenanceCreateRequestId,
+    setServiceMaintenanceCreateRequestId,
+  ] = useState<number | undefined>(undefined);
   const [canWorkTickets, setCanWorkTickets] = useState(false);
   const [eventSpaceAttentionCount, setEventSpaceAttentionCount] = useState<
     number | null
@@ -1684,6 +1688,10 @@ function AuthenticatedApp() {
 
   useEffect(() => {
     setMetricTicketFilter(null);
+  }, [activeTenantId]);
+
+  useEffect(() => {
+    setServiceMaintenanceCreateRequestId(undefined);
   }, [activeTenantId]);
 
   useEffect(() => {
@@ -2553,6 +2561,7 @@ function AuthenticatedApp() {
     const nonTicketSectionAllowed =
       (nextSection === "Verträge" && contractsAvailable) ||
       (nextSection === "Berichte" && reportsAvailable) ||
+      (nextSection === "Systemstatus" && serviceStatusAvailable) ||
       (nextSection === "Veranstaltungsräume" && eventSpaceNavigationAccess);
     if (
       !canWorkTickets &&
@@ -3452,8 +3461,7 @@ function AuthenticatedApp() {
     ? [...workSections, { label: "Einstellungen" as const, Icon: Settings }]
     : workSections;
   const primaryNavigationSections = visibleSections.filter(
-    (item) =>
-      item.label !== "Mein Portal" && item.label !== "Einstellungen",
+    (item) => item.label !== "Mein Portal" && item.label !== "Einstellungen",
   );
   const { workplaceNavigationItem, remainingNavigationSections } =
     splitWorkplaceNavigation(primaryNavigationSections);
@@ -3620,10 +3628,7 @@ function AuthenticatedApp() {
                   hidden={!categoryExpanded}
                   id={panelId}
                 >
-                  <nav
-                    aria-labelledby={category.id}
-                    className="nav-list"
-                  >
+                  <nav aria-labelledby={category.id} className="nav-list">
                     {category.items.map((item) => {
                       const attentionCount =
                         item.label === "Veranstaltungsräume"
@@ -3680,10 +3685,7 @@ function AuthenticatedApp() {
         </div>
         <div className="rail-footer">
           {settingsNavigationItem && (
-            <nav
-              aria-label="Einstellungen"
-              className="rail-footer__settings"
-            >
+            <nav aria-label="Einstellungen" className="rail-footer__settings">
               <button
                 className={
                   section === settingsNavigationItem.label
@@ -4148,12 +4150,30 @@ function AuthenticatedApp() {
           <ServiceAssets
             fixedTab="services"
             key={`service-assets:${activeTenant.id}:services`}
+            onCreateMaintenance={
+              serviceStatusAvailable
+                ? () => {
+                    setServiceMaintenanceCreateRequestId(
+                      (requestId) => (requestId ?? 0) + 1,
+                    );
+                    setSection("Systemstatus");
+                  }
+                : undefined
+            }
             tenantId={activeTenant.id}
           />
         ) : section === "Systemstatus" &&
           activeTenant &&
           serviceStatusAvailable ? (
-          <ServiceStatus tenantId={activeTenant.id} />
+          <ServiceStatus
+            createMaintenanceRequestId={serviceMaintenanceCreateRequestId}
+            onCreateMaintenanceRequestConsumed={(requestId) =>
+              setServiceMaintenanceCreateRequestId((currentRequestId) =>
+                currentRequestId === requestId ? undefined : currentRequestId,
+              )
+            }
+            tenantId={activeTenant.id}
+          />
         ) : section === "Fälle" &&
           activeTenant &&
           isFeatureEnabled("assets.management") ? (

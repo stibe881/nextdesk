@@ -7204,6 +7204,14 @@ body:has(.ticket-detail) {
   gap: 8px;
 }
 
+.service-assets__catalog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
 .service-assets .service-assets__asset-panel {
   display: grid;
   gap: 8px;
@@ -7472,7 +7480,8 @@ body:has(.ticket-detail) {
   background: var(--overlay);
 }
 
-.service-assets__asset-editor-dialog {
+.service-assets__asset-editor-dialog,
+.service-assets__service-editor-dialog {
   display: grid;
   gap: 16px;
   width: min(100%, 760px);
@@ -7485,17 +7494,20 @@ body:has(.ticket-detail) {
   box-shadow: var(--shadow-lg);
 }
 
-.service-assets__asset-editor-dialog .panel-heading {
+.service-assets__asset-editor-dialog .panel-heading,
+.service-assets__service-editor-dialog .panel-heading {
   padding: 0 0 4px;
 }
 
-.service-assets__asset-editor-dialog form {
+.service-assets__asset-editor-dialog form,
+.service-assets__service-editor-dialog form {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
 }
 
-.service-assets__asset-editor-dialog label {
+.service-assets__asset-editor-dialog label,
+.service-assets__service-editor-dialog label {
   display: grid;
   gap: 6px;
   color: var(--ink);
@@ -7503,9 +7515,18 @@ body:has(.ticket-detail) {
   font-weight: 650;
 }
 
-.service-assets__asset-editor-dialog form > :last-child {
+.service-assets__asset-editor-dialog form > :last-child,
+.service-assets__service-editor-dialog form > :last-child {
   grid-column: 1 / -1;
   justify-self: start;
+}
+
+.service-assets__service-editor-dialog {
+  width: min(100%, 860px);
+}
+
+body:has(.service-assets__dialog-backdrop) {
+  overflow: hidden;
 }
 
 .ticket-detail-comments:has(#ticket-affected-items-heading) {
@@ -7529,7 +7550,8 @@ body:has(.ticket-detail) {
 
   .service-assets fieldset,
   .service-assets .panel form,
-  .service-assets__asset-editor-dialog form {
+  .service-assets__asset-editor-dialog form,
+  .service-assets__service-editor-dialog form {
     grid-template-columns: 1fr;
   }
 
@@ -7554,10 +7576,15 @@ body:has(.ticket-detail) {
     padding: 12px;
   }
 
-  .service-assets__asset-editor-dialog {
+  .service-assets__asset-editor-dialog,
+  .service-assets__service-editor-dialog {
     width: 100%;
     max-height: calc(100dvh - 24px);
     padding: 18px;
+  }
+
+  .service-assets__catalog-actions {
+    justify-content: flex-start;
   }
 }
 
@@ -7887,8 +7914,7 @@ body:has(.ticket-detail) {
   transition: transform 160ms ease;
 }
 
-.navigation-cluster__toggle[aria-expanded="true"]
-  .navigation-cluster__chevron {
+.navigation-cluster__toggle[aria-expanded="true"] .navigation-cluster__chevron {
   transform: rotate(180deg);
 }
 

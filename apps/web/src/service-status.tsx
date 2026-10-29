@@ -121,7 +121,12 @@ type PublicStatusPayload = {
   title: string;
 };
 
-export type ServiceStatusProps = { tenantId: string };
+export type ServiceStatusProps = {
+  tenantId: string;
+  createMaintenanceRequestId?: number | undefined;
+  onCreateMaintenanceRequestConsumed?:
+    ((requestId: number) => void) | undefined;
+};
 export type PublicServiceStatusPageProps = { publicId: string };
 
 const MAX_SERVICES = 500;
@@ -771,13 +776,11 @@ function MaintenanceList({
   maintenances,
   services,
   canManagePublication,
-  onCreate,
   onEdit,
 }: {
   maintenances: readonly StatusMaintenance[];
   services: readonly StatusService[];
   canManagePublication: boolean;
-  onCreate: () => void;
   onEdit: (maintenance: StatusMaintenance) => void;
 }) {
   const serviceNames = new Map(
@@ -825,9 +828,6 @@ function MaintenanceList({
             Veröffentlichungen erfolgen nur nach Ihrer expliziten Eingabe.
           </p>
         </div>
-        <button className="primary-button" onClick={onCreate} type="button">
-          Wartung erfassen
-        </button>
       </header>
       {maintenances.length === 0 ? (
         <p className="service-status__empty">
@@ -1287,7 +1287,11 @@ async function copyText(value: string): Promise<void> {
   textarea.remove();
 }
 
-export function ServiceStatus({ tenantId }: ServiceStatusProps) {
+export function ServiceStatus({
+  tenantId,
+  createMaintenanceRequestId,
+  onCreateMaintenanceRequestConsumed,
+}: ServiceStatusProps) {
   const [overview, setOverview] = useState<StatusOverview | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -1298,6 +1302,7 @@ export function ServiceStatus({ tenantId }: ServiceStatusProps) {
   const [publicEnabled, setPublicEnabled] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const lastMaintenanceCreateRequestId = useRef<number | undefined>(undefined);
 
   function applyOverview(next: StatusOverview) {
     setOverview(next);
@@ -1462,6 +1467,23 @@ export function ServiceStatus({ tenantId }: ServiceStatusProps) {
     });
   }
 
+  useEffect(() => {
+    if (
+      createMaintenanceRequestId === undefined ||
+      lastMaintenanceCreateRequestId.current === createMaintenanceRequestId ||
+      !overview
+    ) {
+      return;
+    }
+    lastMaintenanceCreateRequestId.current = createMaintenanceRequestId;
+    openMaintenanceEditor();
+    onCreateMaintenanceRequestConsumed?.(createMaintenanceRequestId);
+  }, [
+    createMaintenanceRequestId,
+    onCreateMaintenanceRequestConsumed,
+    overview,
+  ]);
+
   async function saveMaintenance(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!overview || !maintenanceDraft) return;
@@ -1615,7 +1637,6 @@ export function ServiceStatus({ tenantId }: ServiceStatusProps) {
           <MaintenanceList
             canManagePublication={overview.canManagePublication}
             maintenances={overview.maintenances}
-            onCreate={() => openMaintenanceEditor()}
             onEdit={openMaintenanceEditor}
             services={overview.services}
           />
