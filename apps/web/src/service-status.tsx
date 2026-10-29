@@ -2113,12 +2113,12 @@ export function PublicServiceStatusBadgePage({
   const visual = status === null || status === "unavailable" ? "unavailable" : status;
   return (
     <a
-      className={`status-badge status-badge--${visual}`}
+      className={`embed-status-badge embed-status-badge--${visual}`}
       href={publicPageUrl(publicId)}
       rel="noopener"
       target="_top"
     >
-      <span aria-hidden="true" className="status-badge__dot" />
+      <span aria-hidden="true" className="embed-status-badge__dot" />
       {status === null
         ? "Wird geladen …"
         : status === "unavailable"
