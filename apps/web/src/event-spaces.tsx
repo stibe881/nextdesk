@@ -75,6 +75,8 @@ type RoomRequest = {
   seriesId: string | null;
   seriesIndex: number;
   conflictsAcknowledged: boolean;
+  roomReservationRequested: boolean;
+  phoneNumber: string | null;
   equipment: EquipmentKey[];
   tasks: Task[];
 };
@@ -89,6 +91,8 @@ type ClarificationCase = {
   requestedStartsAt: string | null;
   requestedEndsAt: string | null;
   requestedEquipment: string[];
+  roomReservationRequested: boolean;
+  phoneNumber: string | null;
   reasons: string[];
 };
 type EmailIntakeRecovery = {
@@ -167,6 +171,19 @@ const emailIntakeStateLabels: Record<EmailIntakeRecovery["state"], string> = {
   retrying: "Wird verarbeitet",
 };
 const equipmentLabels = new Map(EQUIPMENT);
+
+/** A placeholder such as "000 000 00 00" is not a usable number. */
+function displayPhoneNumber(value: string | null | undefined): string | null {
+  const trimmed = value?.trim();
+  if (!trimmed) return null;
+  const digits = trimmed.replace(/\D/g, "");
+  return digits.length === 0 || /^0+$/.test(digits) ? null : trimmed;
+}
+
+/** ICT material is not shown for e-mail requests; every other item is. */
+function visibleEmailEquipment<T extends string>(keys: readonly T[]): T[] {
+  return keys.filter((key) => key !== "ict_material");
+}
 
 function defaultDraft(): RequestDraft {
   const nextSwissDay = new Date(Date.now() + 24 * 60 * 60 * 1000);
@@ -1186,6 +1203,33 @@ export function EventSpaces({
                           "Noch nicht zugewiesen"}
                       </dd>
                     </div>
+                    <div>
+                      <dt>Raumreservation</dt>
+                      <dd>
+                        {item.roomReservationRequested
+                          ? "Ja, Raum ist reserviert"
+                          : "Nein, Raum ist noch nicht reserviert"}
+                      </dd>
+                    </div>
+                    {displayPhoneNumber(item.phoneNumber) ? (
+                      <div>
+                        <dt>Telefonnummer</dt>
+                        <dd>{displayPhoneNumber(item.phoneNumber)}</dd>
+                      </div>
+                    ) : null}
+                    {visibleEmailEquipment(item.requestedEquipment).length ? (
+                      <div>
+                        <dt>Technik</dt>
+                        <dd>
+                          {visibleEmailEquipment(item.requestedEquipment)
+                            .map(
+                              (key) =>
+                                equipmentLabels.get(key as EquipmentKey) ?? key,
+                            )
+                            .join(", ")}
+                        </dd>
+                      </div>
+                    ) : null}
                     {item.remarks ? (
                       <div>
                         <dt>Bemerkungen</dt>
@@ -2029,8 +2073,14 @@ function RequestCard({
             <div>
               <span>Technik</span>
               <p className="event-spaces__equipment-tags">
-                {request.equipment.length
-                  ? request.equipment.map((key) => (
+                {(isEmailRequest
+                  ? visibleEmailEquipment(request.equipment)
+                  : request.equipment
+                ).length
+                  ? (isEmailRequest
+                      ? visibleEmailEquipment(request.equipment)
+                      : request.equipment
+                    ).map((key) => (
                       <span key={key}>{equipmentLabels.get(key) ?? key}</span>
                     ))
                   : "Keine besondere Technik"}
@@ -2060,6 +2110,22 @@ function RequestCard({
               <div>
                 <span>Herkunft</span>
                 <strong>E-Mail-Auftrag</strong>
+              </div>
+            ) : null}
+            {isEmailRequest ? (
+              <div>
+                <span>Raumreservation</span>
+                <strong>
+                  {request.roomReservationRequested
+                    ? "Ja, Raum ist reserviert"
+                    : "Nein, noch nicht reserviert"}
+                </strong>
+              </div>
+            ) : null}
+            {isEmailRequest && displayPhoneNumber(request.phoneNumber) ? (
+              <div>
+                <span>Telefonnummer</span>
+                <strong>{displayPhoneNumber(request.phoneNumber)}</strong>
               </div>
             ) : null}
             {request.remarks ? (
