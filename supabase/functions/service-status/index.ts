@@ -1,4 +1,5 @@
 import { type SupabaseContext, withSupabase } from "@supabase/server";
+import { readServiceCategoryPaths, serviceCategoryPath } from "../_shared/service-category-paths.ts";
 
 const ALLOWED_ORIGIN = "https://app.nextdesk.ch";
 const MAX_REQUEST_BYTES = 32 * 1024;
@@ -51,6 +52,7 @@ type Action =
 
 type StatusService = {
   id: string;
+  categoryPath: string[];
   name: string;
   status: ServiceStatus;
   statusPublic: boolean;
@@ -389,7 +391,10 @@ async function requireAssetFeature(
   }
 }
 
-function parseService(value: unknown): StatusService | null {
+function parseService(
+  value: unknown,
+  categoryPaths: ReadonlyMap<string, string[]>,
+): StatusService | null {
   if (!isRecord(value)) return null;
   if (
     !isUuid(value.id) ||
@@ -402,6 +407,7 @@ function parseService(value: unknown): StatusService | null {
   }
   return {
     id: value.id.toLowerCase(),
+    categoryPath: serviceCategoryPath(categoryPaths, value.service_category_id),
     name: value.name.trim(),
     status: value.status,
     statusPublic: value.status_public,
@@ -586,7 +592,7 @@ async function readOverview(
         .maybeSingle(),
       admin
         .from("services")
-        .select("id, name, status, status_public, updated_at")
+        .select("id, name, status, status_public, updated_at, service_category_id")
         .eq("tenant_id", tenantId)
         .eq("active", true)
         .order("name")
@@ -622,8 +628,9 @@ async function readOverview(
     );
   }
 
+  const categoryPaths = await readServiceCategoryPaths(admin, tenantId);
   const services = (servicesResult.data ?? [])
-    .map(parseService)
+    .map((service) => parseService(service, categoryPaths))
     .filter((service): service is StatusService => service !== null);
   if (services.length !== (servicesResult.data ?? []).length) {
     throw new HttpError(

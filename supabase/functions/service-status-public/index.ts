@@ -1,4 +1,5 @@
 import { withSupabase } from "@supabase/server";
+import { readServiceCategoryPaths, serviceCategoryPath } from "../_shared/service-category-paths.ts";
 import { resolveTenantFeatureStates } from "../_shared/tenant-features.ts";
 
 const ALLOWED_ORIGIN = "https://app.nextdesk.ch";
@@ -21,6 +22,7 @@ const PUBLIC_MAINTENANCE_STATES = ["scheduled", "active"] as const;
 type ServiceStatus = (typeof STATUS_VALUES)[number];
 type PublicMaintenanceState = (typeof PUBLIC_MAINTENANCE_STATES)[number];
 type PublicService = {
+  categoryPath: string[];
   displayStatus: ServiceStatus;
   name: string;
   status: ServiceStatus;
@@ -452,7 +454,7 @@ async function readPublicStatus(
     await Promise.all([
       admin
         .from("services")
-        .select("id, name, status, updated_at")
+        .select("id, name, status, updated_at, service_category_id")
         .eq("tenant_id", page.tenant_id)
         .eq("active", true)
         .eq("status_public", true)
@@ -495,6 +497,7 @@ async function readPublicStatus(
     }
     return {
       id: service.id.toLowerCase(),
+      categoryId: service.service_category_id,
       name,
       status: service.status,
       updatedAt: service.updated_at,
@@ -503,8 +506,10 @@ async function readPublicStatus(
   if (serviceRows.some((service: unknown) => service === null)) {
     throw new Error("service_data_invalid");
   }
+  const categoryPaths = await readServiceCategoryPaths(admin, page.tenant_id);
   const services = serviceRows as Array<{
     id: string;
+    categoryId: unknown;
     name: string;
     status: ServiceStatus;
     updatedAt: string;
@@ -543,6 +548,7 @@ async function readPublicStatus(
   }
 
   const publicServices: PublicService[] = services.map((service) => ({
+    categoryPath: serviceCategoryPath(categoryPaths, service.categoryId),
     displayStatus: maintenanceProjection.activeServiceIds.has(service.id)
       ? "maintenance"
       : service.status,

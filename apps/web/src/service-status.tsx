@@ -17,6 +17,7 @@ import {
 type ServiceStatus = ServiceAvailabilityStatus;
 
 type StatusService = {
+  categoryPath: string[];
   id: string;
   name: string;
   status: ServiceStatus;
@@ -106,6 +107,7 @@ type StatusAction =
       serviceIds: string[];
     };
 type PublicService = {
+  categoryPath: string[];
   displayStatus: ServiceStatus;
   history: Array<{ changedAt: string; status: ServiceStatus }>;
   name: string;
@@ -292,6 +294,14 @@ function isSafeHttpsUrl(value: unknown): value is string {
   }
 }
 
+function parseCategoryPath(value: unknown): string[] | null {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.length > 3) return null;
+  return value.every((item) => isString(item, 1, 120))
+    ? value.map((item: string) => item.trim())
+    : null;
+}
+
 function parseService(value: unknown): StatusService | null {
   const id = isRecord(value) ? normalizeUuid(value.id) : null;
   if (
@@ -304,8 +314,11 @@ function parseService(value: unknown): StatusService | null {
   ) {
     return null;
   }
+  const categoryPath = parseCategoryPath(value.categoryPath);
+  if (categoryPath === null) return null;
   return {
     id,
+    categoryPath,
     name: value.name.trim(),
     status: value.status,
     statusPublic: value.statusPublic,
@@ -473,7 +486,10 @@ function parsePublicService(value: unknown): PublicService | null {
     return { changedAt: item.changedAt, status: item.status };
   });
   if (history.some((item) => item === null)) return null;
+  const categoryPath = parseCategoryPath(value.categoryPath);
+  if (categoryPath === null) return null;
   return {
+    categoryPath,
     displayStatus: value.displayStatus,
     history: history as Array<{ changedAt: string; status: ServiceStatus }>,
     name: value.name.trim(),
@@ -767,6 +783,100 @@ function AvailabilityLine({ service }: { service: PublicService }) {
   );
 }
 
+type ServiceGroup = {
+  groups: ServiceGroup[];
+  name: string;
+  services: PublicService[];
+};
+
+/** Groups services by their location/category path; the top level is the location. */
+export function buildServiceGroupTree(
+  services: readonly PublicService[],
+): Pick<ServiceGroup, "groups" | "services"> {
+  const root: Pick<ServiceGroup, "groups" | "services"> = {
+    groups: [],
+    services: [],
+  };
+  for (const service of services) {
+    let node = root;
+    for (const name of service.categoryPath) {
+      let child = node.groups.find((group) => group.name === name);
+      if (!child) {
+        child = { groups: [], name, services: [] };
+        node.groups.push(child);
+      }
+      node = child;
+    }
+    node.services.push(service);
+  }
+  return root;
+}
+
+function groupServices(group: ServiceGroup): PublicService[] {
+  return [...group.services, ...group.groups.flatMap(groupServices)];
+}
+
+function GroupAvailabilityLine({ services }: { services: PublicService[] }) {
+  const days = useMemo(() => {
+    const perService = services.map((service) =>
+      buildServiceStatusHistoryDays(service),
+    );
+    return (perService[0] ?? []).map((_, index) =>
+      perService.reduce<ServiceStatus>(
+        (worst, serviceDays) =>
+          statusSeverity(serviceDays[index] ?? "operational") >
+          statusSeverity(worst)
+            ? (serviceDays[index] as ServiceStatus)
+            : worst,
+        "operational",
+      ),
+    );
+  }, [services]);
+  return (
+    <div className="service-status__availability" aria-hidden="true">
+      <div className="service-status__availability-bars">
+        {days.map((status, index) => (
+          <span
+            className={`service-status__availability-day service-status__availability-day--${status}`}
+            key={index}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ServiceCard({ service }: { service: PublicService }) {
+  return (
+    <article>
+      <div className="service-status__service-heading">
+        <div>
+          <h3>{service.name}</h3>
+          <p>Zuletzt aktualisiert: {dateLabel(service.updatedAt)}</p>
+        </div>
+        <StatusPill status={service.displayStatus} />
+      </div>
+      <AvailabilityLine service={service} />
+    </article>
+  );
+}
+
+function ServiceGroupView({ group }: { group: ServiceGroup }) {
+  const all = useMemo(() => groupServices(group), [group]);
+  return (
+    <details className="service-status__group" open>
+      <summary>{group.name}</summary>
+      <GroupAvailabilityLine services={all} />
+      {group.services.map((service) => (
+        <ServiceCard key={service.name} service={service} />
+      ))}
+      {group.groups.map((child) => (
+        <ServiceGroupView group={child} key={child.name} />
+      ))}
+    </details>
+  );
+}
+
 function StatusPresentation({
   payload,
   publicView = false,
@@ -775,6 +885,10 @@ function StatusPresentation({
   publicView?: boolean;
 }) {
   const currentStatus = payload.overallStatus;
+  const tree = useMemo(
+    () => buildServiceGroupTree(payload.services),
+    [payload.services],
+  );
   return (
     <>
       <section
@@ -806,17 +920,11 @@ function StatusPresentation({
           className="service-status__service-list"
           aria-label="Veröffentlichte Dienste"
         >
-          {payload.services.map((service) => (
-            <article key={service.name}>
-              <div className="service-status__service-heading">
-                <div>
-                  <h3>{service.name}</h3>
-                  <p>Zuletzt aktualisiert: {dateLabel(service.updatedAt)}</p>
-                </div>
-                <StatusPill status={service.displayStatus} />
-              </div>
-              <AvailabilityLine service={service} />
-            </article>
+          {tree.services.map((service) => (
+            <ServiceCard key={service.name} service={service} />
+          ))}
+          {tree.groups.map((group) => (
+            <ServiceGroupView group={group} key={group.name} />
           ))}
         </section>
       )}
@@ -1315,6 +1423,7 @@ function internalToPublicPayload(
   const services = overview.services
     .filter((service) => service.statusPublic)
     .map((service) => ({
+      categoryPath: service.categoryPath,
       displayStatus: maintenanceServiceIds.has(service.id)
         ? "maintenance"
         : service.status,

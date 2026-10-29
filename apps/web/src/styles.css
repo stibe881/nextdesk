@@ -17853,3 +17853,31 @@ body:has(.knowledge-base__editor-backdrop) {
     grid-template-columns: 1fr;
   }
 }
+
+/* Systemstatus: Orte und Kategorien gruppieren die veröffentlichten Dienste. */
+.service-status__group {
+  display: grid;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.service-status__group > summary {
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.service-status__group .service-status__group {
+  margin-left: 8px;
+}
+
+.service-status__group > article {
+  padding: 12px 0 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}

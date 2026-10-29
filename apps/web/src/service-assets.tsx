@@ -539,12 +539,12 @@ function ServiceEditorFields({
           <div>
             <strong>Serviceeinordnung</strong>
             <small>
-              Ordnen Sie den Service bei Bedarf einer Kategorie mit bis zu drei
-              Ebenen zu.
+              Wählen Sie den Ort (z. B. Betriebsweit, Baar, Menzingen) und bei
+              Bedarf eine Kategorie und Unterkategorie.
             </small>
           </div>
           <label>
-            Kategorie
+            Ort
             <select
               disabled={controlsDisabled}
               onChange={(event) =>
@@ -564,7 +564,7 @@ function ServiceEditorFields({
             </select>
           </label>
           <label>
-            Unterkategorie
+            Kategorie
             <select
               disabled={controlsDisabled || !rootCategoryId}
               onChange={(event) =>
@@ -577,8 +577,8 @@ function ServiceEditorFields({
             >
               <option value="">
                 {rootCategoryId
-                  ? "Keine Unterkategorie"
-                  : "Zuerst Kategorie wählen"}
+                  ? "Keine Kategorie"
+                  : "Zuerst Ort wählen"}
               </option>
               {subcategories.map((category) => (
                 <option key={category.id} value={category.id}>
@@ -588,7 +588,7 @@ function ServiceEditorFields({
             </select>
           </label>
           <label>
-            Unterunterkategorie
+            Unterkategorie
             <select
               disabled={controlsDisabled || !subcategoryId}
               onChange={(event) =>
@@ -606,8 +606,8 @@ function ServiceEditorFields({
             >
               <option value="">
                 {subcategoryId
-                  ? "Keine Unterunterkategorie"
-                  : "Zuerst Unterkategorie wählen"}
+                  ? "Keine Unterkategorie"
+                  : "Zuerst Kategorie wählen"}
               </option>
               {detailCategories.map((category) => (
                 <option key={category.id} value={category.id}>
@@ -618,7 +618,7 @@ function ServiceEditorFields({
           </label>
           {rootCategories.length === 0 ? (
             <p>
-              Es sind noch keine Servicekategorien angelegt. Sie können die
+              Es sind noch keine Orte und Kategorien angelegt. Sie können die
               Einordnung später ergänzen.
             </p>
           ) : null}
@@ -2752,8 +2752,8 @@ export function ServiceAssets({
                 type="button"
               >
                 {serviceCategoryManagerOpen
-                  ? "Kategorien schliessen"
-                  : "Kategorien verwalten"}
+                  ? "Orte und Kategorien schliessen"
+                  : "Orte und Kategorien verwalten"}
               </button>
             ) : null}
           </div>
@@ -2768,11 +2768,11 @@ export function ServiceAssets({
                 <div>
                   <p className="eyebrow">Servicehierarchie</p>
                   <h4 id="service-assets-category-manager-title">
-                    Kategorien strukturieren
+                    Orte und Kategorien strukturieren
                   </h4>
                   <p>
-                    Drei Ebenen sind möglich: Kategorie, Unterkategorie und
-                    Unterunterkategorie.
+                    Drei Ebenen sind möglich: Ort (z. B. Betriebsweit, Baar),
+                    Kategorie und Unterkategorie.
                   </p>
                 </div>
                 {serviceCategoryForm.id ? (
@@ -2804,7 +2804,7 @@ export function ServiceAssets({
                   />
                 </label>
                 <label>
-                  Übergeordnete Kategorie
+                  Übergeordnet
                   <select
                     disabled={controlsDisabled}
                     onChange={(event) =>
@@ -2815,7 +2815,7 @@ export function ServiceAssets({
                     }
                     value={serviceCategoryForm.parentId}
                   >
-                    <option value="">Kategorie (oberste Ebene)</option>
+                    <option value="">Ort (oberste Ebene)</option>
                     {serviceCategoryParentOptions.map((category) => (
                       <option key={category.id} value={category.id}>
                         {`${"— ".repeat(
@@ -2854,7 +2854,7 @@ export function ServiceAssets({
               </form>
               {serviceCategories.length === 0 ? (
                 <p className="service-assets__category-manager-empty">
-                  Legen Sie die erste Kategorie an, um Services strukturiert
+                  Legen Sie den ersten Ort an, um Services strukturiert
                   einzuordnen.
                 </p>
               ) : (
