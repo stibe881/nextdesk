@@ -1,9 +1,9 @@
 import {
   EVENT_SPACE_EMAIL_INTAKE_DURATION_MINUTES,
-  eventSpaceEmailIntakeOrganizer,
-  parseEventSpaceEmailIntake,
   type EventSpaceEmailIntakeClarificationCode,
+  eventSpaceEmailIntakeOrganizer,
   type EventSpaceEmailIntakeResult,
+  parseEventSpaceEmailIntake,
 } from "./event-space-email-intake.ts";
 import { eventSpaceEmailIntakeBodyFromStoredTicket } from "./event-space-email-ticket-intake.ts";
 

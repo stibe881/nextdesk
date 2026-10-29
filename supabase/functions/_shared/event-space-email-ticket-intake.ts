@@ -1,8 +1,8 @@
 import {
+  type EventSpaceEmailIntake,
   eventSpaceEmailIntakeOrganizer,
   eventSpaceEmailIntakeSubject,
   parseEventSpaceEmailIntake,
-  type EventSpaceEmailIntake,
 } from "./event-space-email-intake.ts";
 
 type Admin = any;
@@ -17,7 +17,9 @@ type IntakeInput = Readonly<{
 type OutboxInput = Pick<IntakeInput, "tenantId" | "ticketId">;
 
 export type EventSpaceEmailTicketIntakeOutcome =
-  "failed" | "ignored" | "processed";
+  | "failed"
+  | "ignored"
+  | "processed";
 
 type Room = Readonly<{ id: string; name: string }>;
 
@@ -163,8 +165,8 @@ function rpcPayload(
     p_ticket_id: input.ticketId,
     p_order_number: subject.sourceOrderNumber,
     p_title: subject.title,
-    p_organizer:
-      request?.organiser ?? eventSpaceEmailIntakeOrganizer(input.description),
+    p_organizer: request?.organiser ??
+      eventSpaceEmailIntakeOrganizer(input.description),
     p_space_id: null as string | null,
     p_requested_space_text: request?.requestedSpaceText ?? null,
     p_starts_at: request?.startAt ?? null,

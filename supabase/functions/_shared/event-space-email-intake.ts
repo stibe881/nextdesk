@@ -165,14 +165,14 @@ export type EventSpaceEmailIntakeClarification = Readonly<{
 
 export type EventSpaceEmailIntakeResult =
   | Readonly<{
-      status: "ready";
-      request: EventSpaceEmailIntake;
-      clarifications: readonly [];
-    }>
+    status: "ready";
+    request: EventSpaceEmailIntake;
+    clarifications: readonly [];
+  }>
   | Readonly<{
-      status: "needs_clarification";
-      clarifications: readonly EventSpaceEmailIntakeClarification[];
-    }>;
+    status: "needs_clarification";
+    clarifications: readonly EventSpaceEmailIntakeClarification[];
+  }>;
 
 const CLARIFICATION_MESSAGES: Record<
   EventSpaceEmailIntakeClarificationCode,
@@ -355,8 +355,8 @@ function parseDate(value: string): CivilDate | null {
   probe.setUTCFullYear(year, month - 1, day);
   probe.setUTCHours(0, 0, 0, 0);
   return probe.getUTCFullYear() === year &&
-    probe.getUTCMonth() === month - 1 &&
-    probe.getUTCDate() === day
+      probe.getUTCMonth() === month - 1 &&
+      probe.getUTCDate() === day
     ? { year, month, day }
     : null;
 }
@@ -392,9 +392,9 @@ function parseHttpsUrl(value: string): string | null {
   try {
     const url = new URL(unwrapped);
     return url.protocol === "https:" &&
-      url.hostname.length > 0 &&
-      !url.username &&
-      !url.password
+        url.hostname.length > 0 &&
+        !url.username &&
+        !url.password
       ? url.toString()
       : null;
   } catch {
@@ -515,9 +515,9 @@ export function eventSpaceEmailIntakeSubject(
   const sourceOrderNumber = normaliseText(legacyOrderNumber ?? rawOrderNumber);
   const title = normaliseText(legacyTitle ?? rawTitle);
   return sourceOrderNumber &&
-    title &&
-    isBoundedText(sourceOrderNumber, 1, 80) &&
-    isBoundedText(title, 3, 240)
+      title &&
+      isBoundedText(sourceOrderNumber, 1, 80) &&
+      isBoundedText(title, 3, 240)
     ? { sourceOrderNumber, title }
     : null;
 }

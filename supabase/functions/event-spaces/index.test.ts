@@ -28,15 +28,17 @@ Deno.test(
       "Workspace reads must fail closed without a room request or management permission.",
     );
     assert(
-      /await requirePermission\(\s*context\.supabase,\s*action\.tenantId,\s*"event\.spaces\.request"/m.test(
-        source,
-      ),
+      /await requirePermission\(\s*context\.supabase,\s*action\.tenantId,\s*"event\.spaces\.request"/m
+        .test(
+          source,
+        ),
       "Room request creation must be checked server-side.",
     );
     assert(
-      /await requirePermission\(\s*context\.supabase,\s*action\.tenantId,\s*"event\.spaces\.manage"/m.test(
-        source,
-      ),
+      /await requirePermission\(\s*context\.supabase,\s*action\.tenantId,\s*"event\.spaces\.manage"/m
+        .test(
+          source,
+        ),
       "Room and task management must be checked server-side.",
     );
     assert(

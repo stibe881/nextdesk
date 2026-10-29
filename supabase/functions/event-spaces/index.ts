@@ -10,14 +10,14 @@ import {
 } from "../_shared/event-space-email-ticket-intake.ts";
 import {
   eventSpaceConflictSnapshot,
-  isEventSpaceConflictSnapshot,
-  parseEventSpaceEquipment,
-  parseEventSpaceOccurrences,
-  overlaps,
-  summarizeEventSpaceConflicts,
   type EventSpaceEquipment,
   type EventSpaceOccurrence,
   type EventSpaceRecurrence,
+  isEventSpaceConflictSnapshot,
+  overlaps,
+  parseEventSpaceEquipment,
+  parseEventSpaceOccurrences,
+  summarizeEventSpaceConflicts,
 } from "../_shared/event-space-schedule.ts";
 
 const APP_ORIGIN = "https://app.nextdesk.ch";
@@ -53,56 +53,56 @@ type Action =
   | { type: "navigationSummary"; tenantId: string }
   | ({ type: "previewConflicts" } & RequestInput)
   | ({
-      type: "createRequest";
-      confirmConflicts: boolean;
-      conflictSnapshot: string | null;
-    } & RequestInput)
+    type: "createRequest";
+    confirmConflicts: boolean;
+    conflictSnapshot: string | null;
+  } & RequestInput)
   | {
-      type: "createSpace";
-      tenantId: string;
-      name: string;
-      kind: SpaceKind;
-      location: string | null;
-      capacity: number | null;
-    }
+    type: "createSpace";
+    tenantId: string;
+    name: string;
+    kind: SpaceKind;
+    location: string | null;
+    capacity: number | null;
+  }
   | {
-      type: "updateRequestStatus";
-      tenantId: string;
-      requestId: string;
-      status: RequestStatus;
-    }
+    type: "updateRequestStatus";
+    tenantId: string;
+    requestId: string;
+    status: RequestStatus;
+  }
   | {
-      type: "assignResponsible";
-      tenantId: string;
-      requestId: string;
-      responsibleUserId: string;
-    }
+    type: "assignResponsible";
+    tenantId: string;
+    requestId: string;
+    responsibleUserId: string;
+  }
   | {
-      type: "assignAgent";
-      tenantId: string;
-      requestId: string;
-      responsibleUserId: string;
-    }
+    type: "assignAgent";
+    tenantId: string;
+    requestId: string;
+    responsibleUserId: string;
+  }
   | {
-      type: "resolveEmailIntake";
-      tenantId: string;
-      requestId: string;
-      spaceId: string;
-      responsibleUserId: string;
-      startsAt: string;
-      endsAt: string;
-    }
+    type: "resolveEmailIntake";
+    tenantId: string;
+    requestId: string;
+    spaceId: string;
+    responsibleUserId: string;
+    startsAt: string;
+    endsAt: string;
+  }
   | {
-      type: "retryEmailTicketIntake";
-      tenantId: string;
-      ticketId: string;
-    }
+    type: "retryEmailTicketIntake";
+    tenantId: string;
+    ticketId: string;
+  }
   | {
-      type: "updateTaskStatus";
-      tenantId: string;
-      taskId: string;
-      status: TaskStatus;
-    };
+    type: "updateTaskStatus";
+    tenantId: string;
+    taskId: string;
+    status: TaskStatus;
+  };
 
 type Row = Record<string, unknown>;
 type DatabaseError = { code?: string };
@@ -125,9 +125,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function isUuid(value: unknown): value is string {
   return (
     typeof value === "string" &&
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
-      value,
-    )
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+      .test(
+        value,
+      )
   );
 }
 
@@ -158,9 +159,9 @@ function nullableText(
 function optionalPositiveInteger(value: unknown): number | null | undefined {
   if (value === null || value === undefined || value === "") return null;
   return typeof value === "number" &&
-    Number.isInteger(value) &&
-    value >= 0 &&
-    value <= 10000
+      Number.isInteger(value) &&
+      value >= 0 &&
+      value <= 10000
     ? value
     : undefined;
 }
@@ -215,11 +216,11 @@ function parseAction(value: unknown): Action | null {
   if (value.type === "listWorkspace") {
     const offset = value.offset ?? 0;
     return isUuid(value.tenantId) &&
-      Number.isInteger(offset) &&
-      typeof offset === "number" &&
-      offset >= 0 &&
-      offset <= 100_000 &&
-      hasOnlyKeys(value, ["type", "tenantId", "offset"])
+        Number.isInteger(offset) &&
+        typeof offset === "number" &&
+        offset >= 0 &&
+        offset <= 100_000 &&
+        hasOnlyKeys(value, ["type", "tenantId", "offset"])
       ? { type: value.type, tenantId: value.tenantId.toLowerCase(), offset }
       : null;
   }
@@ -230,21 +231,21 @@ function parseAction(value: unknown): Action | null {
   }
   if (value.type === "previewConflicts") {
     return hasOnlyKeys(value, [
-      "type",
-      "tenantId",
-      "spaceId",
-      "title",
-      "organizer",
-      "expectedParticipants",
-      "responsibleUserId",
-      "equipmentKeys",
-      "recurrence",
-      "occurrences",
-    ])
+        "type",
+        "tenantId",
+        "spaceId",
+        "title",
+        "organizer",
+        "expectedParticipants",
+        "responsibleUserId",
+        "equipmentKeys",
+        "recurrence",
+        "occurrences",
+      ])
       ? (() => {
-          const input = parseRequestInput(value);
-          return input ? { type: value.type, ...input } : null;
-        })()
+        const input = parseRequestInput(value);
+        return input ? { type: value.type, ...input } : null;
+      })()
       : null;
   }
   if (value.type === "createRequest") {
@@ -269,18 +270,18 @@ function parseAction(value: unknown): Action | null {
     }
     const input = parseRequestInput(value);
     const conflictSnapshot = isEventSpaceConflictSnapshot(
-      value.conflictSnapshot,
-    )
+        value.conflictSnapshot,
+      )
       ? value.conflictSnapshot
       : null;
     return input
       ? value.confirmConflicts === (conflictSnapshot !== null)
         ? {
-            type: value.type,
-            confirmConflicts: value.confirmConflicts,
-            conflictSnapshot,
-            ...input,
-          }
+          type: value.type,
+          confirmConflicts: value.confirmConflicts,
+          conflictSnapshot,
+          ...input,
+        }
         : null
       : null;
   }
@@ -289,69 +290,80 @@ function parseAction(value: unknown): Action | null {
     const location = nullableText(value.location, 2, 240);
     const capacity = optionalPositiveInteger(value.capacity);
     return isUuid(value.tenantId) &&
-      name !== null &&
-      location !== undefined &&
-      capacity !== undefined &&
-      (value.kind === "meeting_room" ||
-        value.kind === "event_room" ||
-        value.kind === "other") &&
-      hasOnlyKeys(value, [
-        "type",
-        "tenantId",
-        "name",
-        "kind",
-        "location",
-        "capacity",
-      ])
+        name !== null &&
+        location !== undefined &&
+        capacity !== undefined &&
+        (value.kind === "meeting_room" ||
+          value.kind === "event_room" ||
+          value.kind === "other") &&
+        hasOnlyKeys(value, [
+          "type",
+          "tenantId",
+          "name",
+          "kind",
+          "location",
+          "capacity",
+        ])
       ? {
-          type: value.type,
-          tenantId: value.tenantId.toLowerCase(),
-          name,
-          kind: value.kind,
-          location,
-          capacity,
-        }
+        type: value.type,
+        tenantId: value.tenantId.toLowerCase(),
+        name,
+        kind: value.kind,
+        location,
+        capacity,
+      }
       : null;
   }
   if (value.type === "updateRequestStatus") {
     return isUuid(value.tenantId) &&
-      isUuid(value.requestId) &&
-      ["planned", "in_preparation", "ready", "conducted", "completed"].includes(
-        String(value.status),
-      ) &&
-      hasOnlyKeys(value, ["type", "tenantId", "requestId", "status"])
+        isUuid(value.requestId) &&
+        ["planned", "in_preparation", "ready", "conducted", "completed"]
+          .includes(
+            String(value.status),
+          ) &&
+        hasOnlyKeys(value, ["type", "tenantId", "requestId", "status"])
       ? {
-          type: value.type,
-          tenantId: value.tenantId.toLowerCase(),
-          requestId: value.requestId.toLowerCase(),
-          status: value.status as RequestStatus,
-        }
+        type: value.type,
+        tenantId: value.tenantId.toLowerCase(),
+        requestId: value.requestId.toLowerCase(),
+        status: value.status as RequestStatus,
+      }
       : null;
   }
   if (value.type === "assignResponsible") {
     return isUuid(value.tenantId) &&
-      isUuid(value.requestId) &&
-      isUuid(value.responsibleUserId) &&
-      hasOnlyKeys(value, ["type", "tenantId", "requestId", "responsibleUserId"])
+        isUuid(value.requestId) &&
+        isUuid(value.responsibleUserId) &&
+        hasOnlyKeys(value, [
+          "type",
+          "tenantId",
+          "requestId",
+          "responsibleUserId",
+        ])
       ? {
-          type: value.type,
-          tenantId: value.tenantId.toLowerCase(),
-          requestId: value.requestId.toLowerCase(),
-          responsibleUserId: value.responsibleUserId.toLowerCase(),
-        }
+        type: value.type,
+        tenantId: value.tenantId.toLowerCase(),
+        requestId: value.requestId.toLowerCase(),
+        responsibleUserId: value.responsibleUserId.toLowerCase(),
+      }
       : null;
   }
   if (value.type === "assignAgent") {
     return isUuid(value.tenantId) &&
-      isUuid(value.requestId) &&
-      isUuid(value.responsibleUserId) &&
-      hasOnlyKeys(value, ["type", "tenantId", "requestId", "responsibleUserId"])
+        isUuid(value.requestId) &&
+        isUuid(value.responsibleUserId) &&
+        hasOnlyKeys(value, [
+          "type",
+          "tenantId",
+          "requestId",
+          "responsibleUserId",
+        ])
       ? {
-          type: value.type,
-          tenantId: value.tenantId.toLowerCase(),
-          requestId: value.requestId.toLowerCase(),
-          responsibleUserId: value.responsibleUserId.toLowerCase(),
-        }
+        type: value.type,
+        tenantId: value.tenantId.toLowerCase(),
+        requestId: value.requestId.toLowerCase(),
+        responsibleUserId: value.responsibleUserId.toLowerCase(),
+      }
       : null;
   }
   if (value.type === "resolveEmailIntake") {
@@ -360,55 +372,55 @@ function parseAction(value: unknown): Action | null {
       "none",
     );
     return isUuid(value.tenantId) &&
-      isUuid(value.requestId) &&
-      isUuid(value.spaceId) &&
-      isUuid(value.responsibleUserId) &&
-      occurrences?.length === 1 &&
-      Date.parse(occurrences[0]!.endsAt) -
-        Date.parse(occurrences[0]!.startsAt) ===
-        30 * 60 * 1_000 &&
-      hasOnlyKeys(value, [
-        "type",
-        "tenantId",
-        "requestId",
-        "spaceId",
-        "responsibleUserId",
-        "startsAt",
-        "endsAt",
-      ])
+        isUuid(value.requestId) &&
+        isUuid(value.spaceId) &&
+        isUuid(value.responsibleUserId) &&
+        occurrences?.length === 1 &&
+        Date.parse(occurrences[0]!.endsAt) -
+              Date.parse(occurrences[0]!.startsAt) ===
+          30 * 60 * 1_000 &&
+        hasOnlyKeys(value, [
+          "type",
+          "tenantId",
+          "requestId",
+          "spaceId",
+          "responsibleUserId",
+          "startsAt",
+          "endsAt",
+        ])
       ? {
-          type: value.type,
-          tenantId: value.tenantId.toLowerCase(),
-          requestId: value.requestId.toLowerCase(),
-          spaceId: value.spaceId.toLowerCase(),
-          responsibleUserId: value.responsibleUserId.toLowerCase(),
-          startsAt: occurrences[0]!.startsAt,
-          endsAt: occurrences[0]!.endsAt,
-        }
+        type: value.type,
+        tenantId: value.tenantId.toLowerCase(),
+        requestId: value.requestId.toLowerCase(),
+        spaceId: value.spaceId.toLowerCase(),
+        responsibleUserId: value.responsibleUserId.toLowerCase(),
+        startsAt: occurrences[0]!.startsAt,
+        endsAt: occurrences[0]!.endsAt,
+      }
       : null;
   }
   if (value.type === "retryEmailTicketIntake") {
     return isUuid(value.tenantId) &&
-      isUuid(value.ticketId) &&
-      hasOnlyKeys(value, ["type", "tenantId", "ticketId"])
+        isUuid(value.ticketId) &&
+        hasOnlyKeys(value, ["type", "tenantId", "ticketId"])
       ? {
-          type: value.type,
-          tenantId: value.tenantId.toLowerCase(),
-          ticketId: value.ticketId.toLowerCase(),
-        }
+        type: value.type,
+        tenantId: value.tenantId.toLowerCase(),
+        ticketId: value.ticketId.toLowerCase(),
+      }
       : null;
   }
   if (value.type === "updateTaskStatus") {
     return isUuid(value.tenantId) &&
-      isUuid(value.taskId) &&
-      ["open", "in_progress", "completed"].includes(String(value.status)) &&
-      hasOnlyKeys(value, ["type", "tenantId", "taskId", "status"])
+        isUuid(value.taskId) &&
+        ["open", "in_progress", "completed"].includes(String(value.status)) &&
+        hasOnlyKeys(value, ["type", "tenantId", "taskId", "status"])
       ? {
-          type: value.type,
-          tenantId: value.tenantId.toLowerCase(),
-          taskId: value.taskId.toLowerCase(),
-          status: value.status as TaskStatus,
-        }
+        type: value.type,
+        tenantId: value.tenantId.toLowerCase(),
+        taskId: value.taskId.toLowerCase(),
+        status: value.status as TaskStatus,
+      }
       : null;
   }
   return null;
@@ -657,29 +669,29 @@ async function assertAssignableEventSpaceAgent(
   const now = new Date().toISOString();
   const [membershipResult, departmentMembershipsResult, assignmentsResult] =
     await Promise.all([
-    admin
-      .from("tenant_memberships")
-      .select("user_id")
-      .eq("tenant_id", tenantId)
-      .eq("user_id", responsibleUserId)
-      .eq("status", "active")
-      .maybeSingle(),
-    admin
-      .from("department_memberships")
-      .select("department_id")
-      .eq("tenant_id", tenantId)
-      .eq("user_id", responsibleUserId)
-      .eq("status", "active")
-      .limit(1000),
-    admin
-      .from("user_role_assignments")
-      .select(
-        "department_id, roles!user_role_assignments_role_tenant_fk!inner(tenant_id, active, scope, role_permissions!inner(permission_code))",
-      )
-      .eq("tenant_id", tenantId)
-      .eq("user_id", responsibleUserId)
-      .lte("starts_at", now)
-      .or(`expires_at.is.null,expires_at.gt.${now}`),
+      admin
+        .from("tenant_memberships")
+        .select("user_id")
+        .eq("tenant_id", tenantId)
+        .eq("user_id", responsibleUserId)
+        .eq("status", "active")
+        .maybeSingle(),
+      admin
+        .from("department_memberships")
+        .select("department_id")
+        .eq("tenant_id", tenantId)
+        .eq("user_id", responsibleUserId)
+        .eq("status", "active")
+        .limit(1000),
+      admin
+        .from("user_role_assignments")
+        .select(
+          "department_id, roles!user_role_assignments_role_tenant_fk!inner(tenant_id, active, scope, role_permissions!inner(permission_code))",
+        )
+        .eq("tenant_id", tenantId)
+        .eq("user_id", responsibleUserId)
+        .lte("starts_at", now)
+        .or(`expires_at.is.null,expires_at.gt.${now}`),
     ]);
   if (membershipResult.error) databaseFailure(membershipResult.error);
   if (departmentMembershipsResult.error) {
@@ -699,7 +711,7 @@ async function assertAssignableEventSpaceAgent(
       assignment,
       tenantId,
       activeDepartmentIds,
-    ),
+    )
   );
   if (!membershipResult.data || !isAgent) {
     throw new HttpError(
@@ -717,27 +729,27 @@ async function listAssignableEventSpaceAgents(
   const now = new Date().toISOString();
   const [membershipsResult, departmentMembershipsResult, assignmentsResult] =
     await Promise.all([
-    admin
-      .from("tenant_memberships")
-      .select("user_id")
-      .eq("tenant_id", tenantId)
-      .eq("status", "active")
-      .limit(1000),
-    admin
-      .from("department_memberships")
-      .select("user_id, department_id")
-      .eq("tenant_id", tenantId)
-      .eq("status", "active")
-      .limit(2000),
-    admin
-      .from("user_role_assignments")
-      .select(
-        "user_id, department_id, roles!user_role_assignments_role_tenant_fk!inner(tenant_id, active, scope, role_permissions!inner(permission_code))",
-      )
-      .eq("tenant_id", tenantId)
-      .lte("starts_at", now)
-      .or(`expires_at.is.null,expires_at.gt.${now}`)
-      .limit(2000),
+      admin
+        .from("tenant_memberships")
+        .select("user_id")
+        .eq("tenant_id", tenantId)
+        .eq("status", "active")
+        .limit(1000),
+      admin
+        .from("department_memberships")
+        .select("user_id, department_id")
+        .eq("tenant_id", tenantId)
+        .eq("status", "active")
+        .limit(2000),
+      admin
+        .from("user_role_assignments")
+        .select(
+          "user_id, department_id, roles!user_role_assignments_role_tenant_fk!inner(tenant_id, active, scope, role_permissions!inner(permission_code))",
+        )
+        .eq("tenant_id", tenantId)
+        .lte("starts_at", now)
+        .or(`expires_at.is.null,expires_at.gt.${now}`)
+        .limit(2000),
     ]);
   if (membershipsResult.error) databaseFailure(membershipsResult.error);
   if (departmentMembershipsResult.error) {
@@ -757,8 +769,8 @@ async function listAssignableEventSpaceAgents(
     ) {
       continue;
     }
-    const departmentIds =
-      activeDepartmentIdsByUser.get(membership.user_id) ?? new Set<string>();
+    const departmentIds = activeDepartmentIdsByUser.get(membership.user_id) ??
+      new Set<string>();
     departmentIds.add(membership.department_id);
     activeDepartmentIdsByUser.set(membership.user_id, departmentIds);
   }
@@ -776,7 +788,9 @@ async function listAssignableEventSpaceAgents(
       agentIds.add(assignment.user_id);
     }
   }
-  if (agentIds.size === 0) return [] as Array<{ id: string; displayName: string }>;
+  if (agentIds.size === 0) {
+    return [] as Array<{ id: string; displayName: string }>;
+  }
 
   const { data: profiles, error: profilesError } = await admin
     .from("user_profiles")
@@ -795,7 +809,10 @@ async function listAssignableEventSpaceAgents(
       ]),
   );
   return [...agentIds]
-    .map((id) => ({ id, displayName: profileNames.get(id) ?? "Aktive Agent:in" }))
+    .map((id) => ({
+      id,
+      displayName: profileNames.get(id) ?? "Aktive Agent:in",
+    }))
     .sort(
       (first, second) =>
         first.displayName.localeCompare(second.displayName, "de-CH", {
@@ -841,8 +858,8 @@ async function conflictSummary(admin: AdminClient, input: RequestInput) {
       overlaps(occurrence, {
         startsAt: candidate.starts_at,
         endsAt: candidate.ends_at,
-      }),
-    ),
+      })
+    )
   );
   const roomConflictingRequestIds = overlapping
     .filter((candidate) => candidate.space_id === input.spaceId)
@@ -989,25 +1006,25 @@ async function listWorkspace(
       .range(offset, offset + EVENT_SPACE_WORKSPACE_PAGE_SIZE),
     canManage
       ? admin
-          .from("event_space_requests")
-          .select(
-            "id, title, organizer, remarks, responsible_user_id, source_order_number, requested_space_text, requested_starts_at, requested_ends_at, requested_equipment_keys, clarification_reasons",
-          )
-          .eq("tenant_id", tenantId)
-          .eq("status", "clarification_required")
-          .order("created_at", { ascending: false })
-          .limit(100)
+        .from("event_space_requests")
+        .select(
+          "id, title, organizer, remarks, responsible_user_id, source_order_number, requested_space_text, requested_starts_at, requested_ends_at, requested_equipment_keys, clarification_reasons",
+        )
+        .eq("tenant_id", tenantId)
+        .eq("status", "clarification_required")
+        .order("created_at", { ascending: false })
+        .limit(100)
       : Promise.resolve({ data: [], error: null }),
     canManage
       ? admin
-          .from("event_space_ticket_intake_outbox")
-          .select(
-            "ticket_id, status, manual_retry_count, retry_lease_expires_at",
-          )
-          .eq("tenant_id", tenantId)
-          .in("status", ["pending", "failed", "retrying"])
-          .order("created_at")
-          .limit(50)
+        .from("event_space_ticket_intake_outbox")
+        .select(
+          "ticket_id, status, manual_retry_count, retry_lease_expires_at",
+        )
+        .eq("tenant_id", tenantId)
+        .in("status", ["pending", "failed", "retrying"])
+        .order("created_at")
+        .limit(50)
       : Promise.resolve({ data: [], error: null }),
   ]);
   if (roomsResult.error) databaseFailure(roomsResult.error);
@@ -1026,25 +1043,25 @@ async function listWorkspace(
   const requestIds = requestRows.map((row) => String(row.id));
   const [tasksResult, equipmentResult] = requestIds.length
     ? await Promise.all([
-        admin
-          .from("event_space_tasks")
-          .select("id, request_id, title, position, status")
-          .eq("tenant_id", tenantId)
-          .in("request_id", requestIds)
-          .order("position")
-          .limit(EVENT_SPACE_WORKSPACE_PAGE_SIZE * 6),
-        admin
-          .from("event_space_request_equipment")
-          .select("request_id, equipment_key")
-          .eq("tenant_id", tenantId)
-          .in("request_id", requestIds)
-          .order("equipment_key")
-          .limit(EVENT_SPACE_WORKSPACE_PAGE_SIZE * 6),
-      ])
+      admin
+        .from("event_space_tasks")
+        .select("id, request_id, title, position, status")
+        .eq("tenant_id", tenantId)
+        .in("request_id", requestIds)
+        .order("position")
+        .limit(EVENT_SPACE_WORKSPACE_PAGE_SIZE * 6),
+      admin
+        .from("event_space_request_equipment")
+        .select("request_id, equipment_key")
+        .eq("tenant_id", tenantId)
+        .in("request_id", requestIds)
+        .order("equipment_key")
+        .limit(EVENT_SPACE_WORKSPACE_PAGE_SIZE * 6),
+    ])
     : [
-        { data: [], error: null },
-        { data: [], error: null },
-      ];
+      { data: [], error: null },
+      { data: [], error: null },
+    ];
   if (tasksResult.error) databaseFailure(tasksResult.error);
   if (equipmentResult.error) databaseFailure(equipmentResult.error);
 
@@ -1057,10 +1074,10 @@ async function listWorkspace(
   ];
   const { data: profileRows, error: profilesError } = responsibleIds.length
     ? await admin
-        .from("user_profiles")
-        .select("id, display_name")
-        .in("id", responsibleIds)
-        .limit(responsibleIds.length)
+      .from("user_profiles")
+      .select("id, display_name")
+      .in("id", responsibleIds)
+      .limit(responsibleIds.length)
     : { data: [], error: null };
   if (profilesError) databaseFailure(profilesError);
   const responsibleNames = new Map(
@@ -1112,7 +1129,7 @@ async function listWorkspace(
         displayName: responsibleNames.get(id) ?? "Ohne Namen",
       }))
       .sort((first, second) =>
-        first.displayName.localeCompare(second.displayName, "de-CH"),
+        first.displayName.localeCompare(second.displayName, "de-CH")
       );
   } else if (canRequest) {
     if (!responsibleNames.has(actorId)) {
@@ -1139,8 +1156,9 @@ async function listWorkspace(
 
   const tasksByRequest = new Map<string, Array<Record<string, unknown>>>();
   for (const row of tasksResult.data ?? []) {
-    if (typeof row.request_id !== "string" || typeof row.id !== "string")
+    if (typeof row.request_id !== "string" || typeof row.id !== "string") {
       continue;
+    }
     const current = tasksByRequest.get(row.request_id) ?? [];
     current.push({
       id: row.id,
@@ -1154,8 +1172,9 @@ async function listWorkspace(
     if (
       typeof row.request_id !== "string" ||
       typeof row.equipment_key !== "string"
-    )
+    ) {
       continue;
+    }
     const current = equipmentByRequest.get(row.request_id) ?? [];
     current.push(row.equipment_key);
     equipmentByRequest.set(row.request_id, current);
@@ -1171,82 +1190,74 @@ async function listWorkspace(
     },
     clarifications: canManage
       ? (clarificationsResult.data ?? [])
-          .filter((row: Row) => typeof row.id === "string")
-          .map((row: Row) => ({
-            id: String(row.id),
-            title: typeof row.title === "string" ? row.title : "Raumauftrag",
-            organizer: typeof row.organizer === "string" ? row.organizer : null,
-            remarks: typeof row.remarks === "string" ? row.remarks : null,
-            assignedAgent:
-              typeof row.responsible_user_id === "string"
-                ? {
-                    id: row.responsible_user_id,
-                    displayName:
-                      responsibleNames.get(row.responsible_user_id) ??
-                      "Zugewiesene Agent:in",
-                  }
-                : null,
-            sourceOrderNumber:
-              typeof row.source_order_number === "string"
-                ? row.source_order_number
-                : null,
-            requestedSpaceText:
-              typeof row.requested_space_text === "string"
-                ? row.requested_space_text
-                : null,
-            requestedStartsAt:
-              typeof row.requested_starts_at === "string"
-                ? row.requested_starts_at
-                : null,
-            requestedEndsAt:
-              typeof row.requested_ends_at === "string"
-                ? row.requested_ends_at
-                : null,
-            requestedEquipment: Array.isArray(row.requested_equipment_keys)
-              ? row.requested_equipment_keys.filter(
-                  (item): item is string => typeof item === "string",
-                )
-              : [],
-            reasons: Array.isArray(row.clarification_reasons)
-              ? row.clarification_reasons.filter(
-                  (item): item is string => typeof item === "string",
-                )
-              : [],
-          }))
+        .filter((row: Row) => typeof row.id === "string")
+        .map((row: Row) => ({
+          id: String(row.id),
+          title: typeof row.title === "string" ? row.title : "Raumauftrag",
+          organizer: typeof row.organizer === "string" ? row.organizer : null,
+          remarks: typeof row.remarks === "string" ? row.remarks : null,
+          assignedAgent: typeof row.responsible_user_id === "string"
+            ? {
+              id: row.responsible_user_id,
+              displayName: responsibleNames.get(row.responsible_user_id) ??
+                "Zugewiesene Agent:in",
+            }
+            : null,
+          sourceOrderNumber: typeof row.source_order_number === "string"
+            ? row.source_order_number
+            : null,
+          requestedSpaceText: typeof row.requested_space_text === "string"
+            ? row.requested_space_text
+            : null,
+          requestedStartsAt: typeof row.requested_starts_at === "string"
+            ? row.requested_starts_at
+            : null,
+          requestedEndsAt: typeof row.requested_ends_at === "string"
+            ? row.requested_ends_at
+            : null,
+          requestedEquipment: Array.isArray(row.requested_equipment_keys)
+            ? row.requested_equipment_keys.filter(
+              (item): item is string => typeof item === "string",
+            )
+            : [],
+          reasons: Array.isArray(row.clarification_reasons)
+            ? row.clarification_reasons.filter(
+              (item): item is string => typeof item === "string",
+            )
+            : [],
+        }))
       : [],
     emailIntakes: canManage
       ? (emailIntakesResult.data ?? [])
-          .filter(
-            (row: Row) =>
-              typeof row.ticket_id === "string" &&
-              (row.status === "pending" ||
-                row.status === "failed" ||
-                row.status === "retrying") &&
-              Number.isInteger(row.manual_retry_count) &&
-              typeof row.manual_retry_count === "number" &&
-              row.manual_retry_count >= 0 &&
-              row.manual_retry_count <= 3,
-          )
-          .map((row: Row) => {
-            const state = row.status as "pending" | "failed" | "retrying";
-            const retryCount = row.manual_retry_count as number;
-            const leaseExpiresAt =
-              typeof row.retry_lease_expires_at === "string"
-                ? Date.parse(row.retry_lease_expires_at)
-                : Number.NaN;
-            return {
-              ticketId: String(row.ticket_id),
-              state,
-              retryCount,
-              canRetry:
-                ((state === "pending" || state === "failed") &&
-                  retryCount < 3) ||
-                (state === "retrying" &&
-                  retryCount < 3 &&
-                  Number.isFinite(leaseExpiresAt) &&
-                  leaseExpiresAt <= Date.now()),
-            };
-          })
+        .filter(
+          (row: Row) =>
+            typeof row.ticket_id === "string" &&
+            (row.status === "pending" ||
+              row.status === "failed" ||
+              row.status === "retrying") &&
+            Number.isInteger(row.manual_retry_count) &&
+            typeof row.manual_retry_count === "number" &&
+            row.manual_retry_count >= 0 &&
+            row.manual_retry_count <= 3,
+        )
+        .map((row: Row) => {
+          const state = row.status as "pending" | "failed" | "retrying";
+          const retryCount = row.manual_retry_count as number;
+          const leaseExpiresAt = typeof row.retry_lease_expires_at === "string"
+            ? Date.parse(row.retry_lease_expires_at)
+            : Number.NaN;
+          return {
+            ticketId: String(row.ticket_id),
+            state,
+            retryCount,
+            canRetry: ((state === "pending" || state === "failed") &&
+              retryCount < 3) ||
+              (state === "retrying" &&
+                retryCount < 3 &&
+                Number.isFinite(leaseExpiresAt) &&
+                leaseExpiresAt <= Date.now()),
+          };
+        })
       : [],
     requests: requestRows.map((row) => ({
       id: String(row.id),
@@ -1254,19 +1265,18 @@ async function listWorkspace(
       title: typeof row.title === "string" ? row.title : "Raumauftrag",
       organizer: typeof row.organizer === "string" ? row.organizer : null,
       remarks: typeof row.remarks === "string" ? row.remarks : null,
-      expectedParticipants:
-        typeof row.expected_participants === "number"
-          ? row.expected_participants
-          : null,
+      expectedParticipants: typeof row.expected_participants === "number"
+        ? row.expected_participants
+        : null,
       startsAt: String(row.starts_at),
       endsAt: String(row.ends_at),
-      responsibleName:
-        typeof row.responsible_user_id === "string"
-          ? (responsibleNames.get(row.responsible_user_id) ??
-            "Verantwortliche Person")
-          : null,
-      intakeSource:
-        row.intake_source === "email_ticket" ? "email_ticket" : "manual",
+      responsibleName: typeof row.responsible_user_id === "string"
+        ? (responsibleNames.get(row.responsible_user_id) ??
+          "Verantwortliche Person")
+        : null,
+      intakeSource: row.intake_source === "email_ticket"
+        ? "email_ticket"
+        : "manual",
       status: String(row.status),
       recurrence: String(row.recurrence_kind),
       seriesId: typeof row.series_id === "string" ? row.series_id : null,
@@ -1316,16 +1326,15 @@ async function createRequest(
   });
   if (error) databaseFailure(error);
   const result = Array.isArray(data) ? data[0] : data;
-  const createdCount =
-    result && typeof result === "object" ? (result as Row).created_count : null;
-  const roomConflictCount =
-    result && typeof result === "object"
-      ? (result as Row).room_conflict_count
-      : null;
-  const equipmentConflictCount =
-    result && typeof result === "object"
-      ? (result as Row).equipment_conflict_count
-      : null;
+  const createdCount = result && typeof result === "object"
+    ? (result as Row).created_count
+    : null;
+  const roomConflictCount = result && typeof result === "object"
+    ? (result as Row).room_conflict_count
+    : null;
+  const equipmentConflictCount = result && typeof result === "object"
+    ? (result as Row).equipment_conflict_count
+    : null;
   if (
     typeof createdCount !== "number" ||
     typeof roomConflictCount !== "number" ||
@@ -1375,12 +1384,13 @@ async function updateRequestStatus(
     .select("id")
     .maybeSingle();
   if (error) databaseFailure(error);
-  if (!data)
+  if (!data) {
     throw new HttpError(
       404,
       "event_space_request_not_found",
       "Der Raumauftrag ist nicht mehr verfügbar.",
     );
+  }
   await audit(
     admin,
     tenantId,
@@ -1410,12 +1420,13 @@ async function assignResponsible(
     .select("id")
     .maybeSingle();
   if (error) databaseFailure(error);
-  if (!data)
+  if (!data) {
     throw new HttpError(
       404,
       "event_space_request_not_found",
       "Der Raumauftrag ist nicht mehr verfügbar.",
     );
+  }
   await audit(
     admin,
     tenantId,
@@ -1527,41 +1538,38 @@ async function retryEmailTicketIntake(
   );
   if (error) databaseFailure(error);
   const claim = Array.isArray(data) ? data[0] : data;
-  const claimOutcome =
-    claim &&
-    typeof claim === "object" &&
-    typeof (claim as Row).outcome === "string"
-      ? (claim as Row).outcome
-      : null;
+  const claimOutcome = claim &&
+      typeof claim === "object" &&
+      typeof (claim as Row).outcome === "string"
+    ? (claim as Row).outcome
+    : null;
   if (claimOutcome !== "claimed") {
     // A concurrent click, terminal intake or exhausted limit is intentionally
     // indistinguishable to the UI. It exposes no ticket or mail information.
     return { state: "unavailable" as const };
   }
 
-  const retryCount =
-    typeof (claim as Row).retry_count === "number" &&
-    Number.isSafeInteger((claim as Row).retry_count)
-      ? ((claim as Row).retry_count as number)
-      : null;
+  const retryCount = typeof (claim as Row).retry_count === "number" &&
+      Number.isSafeInteger((claim as Row).retry_count)
+    ? ((claim as Row).retry_count as number)
+    : null;
   const ticketSubject = (claim as Row).ticket_subject;
   const sourceDescription = eventSpaceEmailIntakeBodyFromStoredTicket(
     (claim as Row).ticket_description,
   );
-  const outcome =
-    typeof ticketSubject === "string" && sourceDescription
-      ? await processEventSpaceEmailTicketIntake(admin, {
-          tenantId,
-          ticketId,
-          subject: ticketSubject,
-          description: sourceDescription,
-        })
-      : (await failEventSpaceEmailTicketIntake(
-          admin,
-          { tenantId, ticketId },
-          "event_space_intake_source_unavailable",
-        ),
-        "failed" as const);
+  const outcome = typeof ticketSubject === "string" && sourceDescription
+    ? await processEventSpaceEmailTicketIntake(admin, {
+      tenantId,
+      ticketId,
+      subject: ticketSubject,
+      description: sourceDescription,
+    })
+    : (await failEventSpaceEmailTicketIntake(
+      admin,
+      { tenantId, ticketId },
+      "event_space_intake_source_unavailable",
+    ),
+      "failed" as const);
 
   // The transactional claim is already an audit record even if this optional
   // completion record cannot be persisted. A missing audit write must not
@@ -1600,12 +1608,13 @@ async function updateTaskStatus(
     .select("id, request_id")
     .maybeSingle();
   if (error) databaseFailure(error);
-  if (!data)
+  if (!data) {
     throw new HttpError(
       404,
       "event_space_task_not_found",
       "Die Aufgabe ist nicht mehr verfügbar.",
     );
+  }
   await audit(
     admin,
     tenantId,
@@ -1630,12 +1639,13 @@ const handler = withSupabase(
         );
       }
       const action = parseAction(await request.json().catch(() => null));
-      if (!action)
+      if (!action) {
         throw new HttpError(
           400,
           "invalid_request",
           "Die Anfrage enthält ungültige Felder.",
         );
+      }
       if (action.type === "listWorkspace") {
         return json(request, {
           data: await listWorkspace(
@@ -1817,13 +1827,11 @@ const handler = withSupabase(
     } catch (error) {
       return failure(
         request,
-        error instanceof HttpError
-          ? error
-          : new HttpError(
-              500,
-              "event_space_operation_failed",
-              "Die Aktion konnte nicht abgeschlossen werden.",
-            ),
+        error instanceof HttpError ? error : new HttpError(
+          500,
+          "event_space_operation_failed",
+          "Die Aktion konnte nicht abgeschlossen werden.",
+        ),
       );
     }
   },
@@ -1902,7 +1910,7 @@ export default {
       );
     }
     if (request.method === "OPTIONS") {
-      if (origin !== APP_ORIGIN)
+      if (origin !== APP_ORIGIN) {
         return failure(
           request,
           new HttpError(
@@ -1911,9 +1919,10 @@ export default {
             "Dieser Ursprung ist nicht erlaubt.",
           ),
         );
+      }
       return json(request, {}, 204);
     }
-    if (request.method !== "POST")
+    if (request.method !== "POST") {
       return failure(
         request,
         new HttpError(
@@ -1922,6 +1931,7 @@ export default {
           "Nur POST-Anfragen sind erlaubt.",
         ),
       );
+    }
     if (
       request.headers
         .get("content-type")
@@ -1961,13 +1971,11 @@ export default {
     } catch (error) {
       return failure(
         request,
-        error instanceof HttpError
-          ? error
-          : new HttpError(
-              500,
-              "event_space_operation_failed",
-              "Die Aktion konnte nicht abgeschlossen werden.",
-            ),
+        error instanceof HttpError ? error : new HttpError(
+          500,
+          "event_space_operation_failed",
+          "Die Aktion konnte nicht abgeschlossen werden.",
+        ),
       );
     }
   },
