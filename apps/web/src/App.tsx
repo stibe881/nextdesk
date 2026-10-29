@@ -2536,8 +2536,15 @@ function AuthenticatedApp() {
       )
       .subscribe();
 
+    // Realtime depends on the database publication and can drop silently, so a
+    // slow poll and a refresh on returning to the tab keep the list current.
+    const pollTimer = window.setInterval(scheduleDashboardRefresh, 30_000);
+    document.addEventListener("visibilitychange", scheduleDashboardRefresh);
+
     return () => {
       if (refreshTimer !== null) window.clearTimeout(refreshTimer);
+      window.clearInterval(pollTimer);
+      document.removeEventListener("visibilitychange", scheduleDashboardRefresh);
       void realtimeClient.removeChannel(channel);
     };
   }, [activeTenant?.id, session?.user.id]);
