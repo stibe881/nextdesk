@@ -1059,7 +1059,7 @@ async function listWorkspace(
     admin
       .from("event_space_requests")
       .select(
-        "id, space_id, title, organizer, remarks, expected_participants, starts_at, ends_at, responsible_user_id, assigned_agent_id, status, recurrence_kind, series_id, series_index, conflicts_acknowledged, intake_source",
+        "id, space_id, title, organizer, remarks, expected_participants, starts_at, ends_at, responsible_user_id, assigned_agent_id, status, recurrence_kind, series_id, series_index, conflicts_acknowledged, intake_source, room_reservation_requested, phone_number",
       )
       .eq("tenant_id", tenantId)
       .gte("starts_at", from)
@@ -1071,7 +1071,7 @@ async function listWorkspace(
       ? admin
         .from("event_space_requests")
         .select(
-          "id, title, organizer, remarks, assigned_agent_id, source_order_number, requested_space_text, requested_starts_at, requested_ends_at, requested_equipment_keys, clarification_reasons",
+          "id, title, organizer, remarks, assigned_agent_id, source_order_number, requested_space_text, requested_starts_at, requested_ends_at, requested_equipment_keys, clarification_reasons, room_reservation_requested, phone_number",
         )
         .eq("tenant_id", tenantId)
         .eq("status", "clarification_required")
@@ -1278,6 +1278,10 @@ async function listWorkspace(
           requestedEndsAt: typeof row.requested_ends_at === "string"
             ? row.requested_ends_at
             : null,
+          roomReservationRequested: row.room_reservation_requested === true,
+          phoneNumber: typeof row.phone_number === "string"
+            ? row.phone_number
+            : null,
           requestedEquipment: Array.isArray(row.requested_equipment_keys)
             ? row.requested_equipment_keys.filter(
               (item): item is string => typeof item === "string",
@@ -1357,6 +1361,10 @@ async function listWorkspace(
       seriesId: typeof row.series_id === "string" ? row.series_id : null,
       seriesIndex: typeof row.series_index === "number" ? row.series_index : 1,
       conflictsAcknowledged: row.conflicts_acknowledged === true,
+      roomReservationRequested: row.room_reservation_requested === true,
+      phoneNumber: typeof row.phone_number === "string"
+        ? row.phone_number
+        : null,
       equipment: equipmentByRequest.get(String(row.id)) ?? [],
       tasks: tasksByRequest.get(String(row.id)) ?? [],
     })),

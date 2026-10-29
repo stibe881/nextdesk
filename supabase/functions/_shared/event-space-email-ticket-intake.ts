@@ -149,7 +149,63 @@ async function matchingRoomId(
     .eq("tenant_id", tenantId)
     .eq("active", true);
   if (error) throw new Error("event_space_lookup_failed");
-  return eventSpaceEmailIntakeMatchingRoomId(requestedSpaceText, data ?? []);
+  const matched = eventSpaceEmailIntakeMatchingRoomId(
+    requestedSpaceText,
+    data ?? [],
+  );
+  if (matched) return matched;
+  return await createRoomFromRequestedText(admin, tenantId, requestedSpaceText);
+}
+
+/**
+ * An unknown room named in the form is created instead of leaving the request
+ * unresolved. Only a clearly unmatched, non-empty name is created; an
+ * ambiguous match (several rooms fit) stays a clarification case.
+ */
+async function createRoomFromRequestedText(
+  admin: Admin,
+  tenantId: string,
+  requestedSpaceText: string,
+): Promise<string | null> {
+  const name = requestedSpaceText.normalize("NFKC").replace(/\s+/gu, " ").trim();
+  if (name.length < 2 || name.length > 160) return null;
+  const { data: rooms, error: roomsError } = await admin
+    .from("event_spaces")
+    .select("id, name")
+    .eq("tenant_id", tenantId);
+  if (roomsError) throw new Error("event_space_lookup_failed");
+  const requested = normaliseRoomName(name);
+  const similar = (rooms ?? []).some((room: Room) => {
+    const existing = normaliseRoomName(room.name);
+    return (
+      existing === requested ||
+      (existing.length >= 4 && containsWholeRoomName(requested, existing))
+    );
+  });
+  // Existing (possibly inactive or ambiguous) rooms are never duplicated.
+  if (similar) return null;
+  // event_spaces.created_by must be an active member of the tenant.
+  const { data: member, error: memberError } = await admin
+    .from("tenant_memberships")
+    .select("user_id")
+    .eq("tenant_id", tenantId)
+    .eq("status", "active")
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  if (memberError || !member?.user_id) return null;
+  const { data: created, error: createError } = await admin
+    .from("event_spaces")
+    .insert({
+      tenant_id: tenantId,
+      name,
+      kind: requested.includes("aula") ? "event_room" : "meeting_room",
+      created_by: member.user_id,
+    })
+    .select("id")
+    .single();
+  if (createError || !created?.id) return null;
+  return String(created.id);
 }
 
 function rpcPayload(
