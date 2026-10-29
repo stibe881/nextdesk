@@ -1515,6 +1515,10 @@ export function ServiceAssets({
   const [problemTicketsLoading, setProblemTicketsLoading] = useState(false);
   const [ticketSearchLoading, setTicketSearchLoading] = useState(false);
   const requestVersion = useRef(0);
+  // Read through a ref so learning that archiving is supported does not
+  // recreate loadCatalog and trigger a second, identical catalog request.
+  const supportsArchivedServicesRef = useRef(false);
+  supportsArchivedServicesRef.current = supportsArchivedServices;
   const serviceResponsibleAgentsRequestVersion = useRef(0);
   const problemOwnersRequestVersion = useRef(0);
   const problemTicketsRequestVersion = useRef(0);
@@ -1720,7 +1724,7 @@ export function ServiceAssets({
         await requestServiceAssets(
           catalogRequest(
             tenantId,
-            supportsArchivedServices,
+            supportsArchivedServicesRef.current,
             showArchivedServices,
           ),
         ),
@@ -1761,7 +1765,7 @@ export function ServiceAssets({
     } finally {
       if (requestVersion.current === version) setLoading(false);
     }
-  }, [showArchivedServices, supportsArchivedServices, tenantId]);
+  }, [showArchivedServices, tenantId]);
 
   useEffect(() => {
     void loadCatalog();
