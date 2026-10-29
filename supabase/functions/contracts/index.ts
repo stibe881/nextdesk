@@ -407,6 +407,13 @@ async function handler(
             .eq("tenant_id", action.tenantId)
             .select()
             .maybeSingle();
+    if (result.error) {
+      console.error(
+        "contract save failed",
+        result.error.code,
+        result.error.message,
+      );
+    }
     if (result.error)
       throw new HttpError(
         result.error.code === "23505" ? 422 : 503,
@@ -415,7 +422,7 @@ async function handler(
           : "contract_save_failed",
         result.error.code === "23505"
           ? "Die Vertragsnummer wird bereits verwendet."
-          : "Der Vertrag konnte nicht gespeichert werden.",
+          : `Der Vertrag konnte nicht gespeichert werden. (Datenbankfehler ${result.error.code ?? "unbekannt"})`,
       );
     if (!result.data)
       throw new HttpError(

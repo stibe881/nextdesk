@@ -422,6 +422,13 @@ async function handler(
             .eq("tenant_id", action.tenantId)
             .select()
             .maybeSingle();
+    if (result.error) {
+      console.error(
+        "license save failed",
+        result.error.code,
+        result.error.message,
+      );
+    }
     if (result.error)
       throw new HttpError(
         result.error.code === "23505" ? 422 : 503,
@@ -430,7 +437,7 @@ async function handler(
           : "license_save_failed",
         result.error.code === "23505"
           ? "Die Lizenznummer wird bereits verwendet."
-          : "Die Lizenz konnte nicht gespeichert werden.",
+          : `Die Lizenz konnte nicht gespeichert werden. (Datenbankfehler ${result.error.code ?? "unbekannt"})`,
       );
     if (!result.data)
       throw new HttpError(
