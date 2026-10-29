@@ -71,6 +71,7 @@ import {
 } from "./lib/live-dashboard";
 import { acceptTenantInvitations } from "./lib/tenant-invitations";
 import { normalizeQueueSelection, shouldShowQueueTabs } from "./lib/queue-tabs";
+import { collapsedNavigationCategoryAttentionCount } from "./lib/navigation-category-attention";
 import { TicketComposer } from "./ticket-composer";
 import { TicketDetail } from "./ticket-detail";
 import { TenantAdminSettings } from "./tenant-admin-settings";
@@ -3597,6 +3598,14 @@ function AuthenticatedApp() {
           {navigationGroups.map((category) => {
             const categoryExpanded =
               expandedNavigationCategoryId === category.id;
+            const categoryAttentionCount =
+              collapsedNavigationCategoryAttentionCount({
+                categoryExpanded,
+                categoryId: category.id,
+                eventSpaceAttentionCount,
+                eventSpaceNavigationAccess,
+              });
+            const hasCategoryAttention = categoryAttentionCount !== null;
             const panelId = `${category.id}-panel`;
 
             return (
@@ -3605,6 +3614,11 @@ function AuthenticatedApp() {
                   <button
                     aria-controls={panelId}
                     aria-expanded={categoryExpanded}
+                    aria-label={
+                      hasCategoryAttention
+                        ? `${category.navigationLabel} – ${categoryAttentionCount} Raumaufträge benötigen Zuweisung oder Klärung`
+                        : category.navigationLabel
+                    }
                     className="navigation-cluster__toggle"
                     id={category.id}
                     onClick={() =>
@@ -3614,7 +3628,19 @@ function AuthenticatedApp() {
                     }
                     type="button"
                   >
-                    <span>{category.heading}</span>
+                    <span className="navigation-cluster__heading">
+                      <span>{category.heading}</span>
+                      {hasCategoryAttention ? (
+                        <span
+                          aria-hidden="true"
+                          className="navigation-cluster__badge"
+                        >
+                          {categoryAttentionCount > 99
+                            ? "99+"
+                            : categoryAttentionCount}
+                        </span>
+                      ) : null}
+                    </span>
                     <ChevronDown
                       aria-hidden="true"
                       className="navigation-cluster__chevron"
