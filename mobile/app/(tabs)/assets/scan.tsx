@@ -2,6 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { useRouter } from "expo-router";
 import { useCallback, useState } from "react";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   ActivityIndicator,
   Platform,
@@ -34,9 +35,11 @@ export default function AssetScanScreen() {
   const isDarkScheme = useIsDarkScheme();
   const chromeColor = isDarkScheme ? colors.foreground : colors.onPrimary;
   const { width } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const checkingSession = useMobileSessionGuard();
   const { isEnabled, loading: checkingFeatures } = useMobileFeatures();
   const assetsEnabled = isEnabled("assets.management");
+  const inventoryEnabled = isEnabled("inventory.management");
   const [permission, requestPermission] = useCameraPermissions();
   const [manualCode, setManualCode] = useState("");
   const [busy, setBusy] = useState(false);
@@ -91,11 +94,44 @@ export default function AssetScanScreen() {
 
   const cameraAvailable = Platform.OS !== "web" && permission.granted;
 
+  const quickLinks = (
+    <View style={styles.quickLinks}>
+      <Pressable
+        accessibilityLabel="Zu den Assets"
+        accessibilityRole="button"
+        onPress={() => router.replace("/assets" as never)}
+        style={styles.quickLink}
+      >
+        <Ionicons color={colors.onPrimary} name="laptop-outline" size={18} />
+        <Text style={styles.quickLinkText}>Assets</Text>
+      </Pressable>
+      {inventoryEnabled ? (
+        <Pressable
+          accessibilityLabel="Zum Lager"
+          accessibilityRole="button"
+          onPress={() => router.replace("/inventory" as never)}
+          style={styles.quickLink}
+        >
+          <Ionicons color={colors.onPrimary} name="cube-outline" size={18} />
+          <Text style={styles.quickLinkText}>Lager</Text>
+        </Pressable>
+      ) : null}
+    </View>
+  );
+
   return (
     <View style={styles.screen}>
-      <View style={[styles.topbar, wideLayout && styles.topbarWide]}>
+      <View
+        style={[
+          styles.topbar,
+          wideLayout && styles.topbarWide,
+          // Keep the close button below the status bar and Dynamic Island.
+          { paddingTop: insets.top + 8 },
+        ]}
+      >
         <Pressable
           accessibilityLabel="Zurück"
+          hitSlop={12}
           onPress={() => router.back()}
           style={styles.closeButton}
         >
@@ -125,6 +161,7 @@ export default function AssetScanScreen() {
                 QR-Code, Inventar- oder Seriennummer erfassen
               </Text>
             </View>
+            {quickLinks}
           </View>
         ) : (
           <View
@@ -151,6 +188,7 @@ export default function AssetScanScreen() {
                 <Text style={styles.permissionButtonText}>Kamera erlauben</Text>
               </Pressable>
             ) : null}
+            {quickLinks}
           </View>
         )}
 
@@ -273,6 +311,25 @@ const useStyles = makeThemedStyles((c, scheme) => {
       position: "absolute",
       right: 0,
       top: 0,
+    },
+    quickLink: {
+      alignItems: "center",
+      backgroundColor: c.primary,
+      borderRadius: 999,
+      flexDirection: "row",
+      gap: 7,
+      paddingHorizontal: 16,
+      paddingVertical: 11,
+    },
+    quickLinkText: { color: c.onPrimary, fontSize: 14, fontWeight: "800" },
+    quickLinks: {
+      bottom: 14,
+      flexDirection: "row",
+      gap: 10,
+      justifyContent: "space-between",
+      left: 18,
+      position: "absolute",
+      right: 18,
     },
     permissionButton: {
       backgroundColor: c.primary,
