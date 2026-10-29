@@ -30,6 +30,7 @@ import {
   Filter,
   FileWarning,
   FileText,
+  KeyRound,
   LayoutDashboard,
   LogOut,
   MessageSquareText,
@@ -87,6 +88,7 @@ import {
   ServiceStatus,
 } from "./service-status";
 import { Contracts } from "./contracts";
+import { Licenses } from "./licenses";
 import { EventSpaces } from "./event-spaces";
 import { Onboarding } from "./onboarding";
 import { Inventory } from "./inventory";
@@ -160,6 +162,7 @@ type Section =
   | "Lager"
   | "Fälle"
   | "Verträge"
+  | "Lizenzen"
   | "Raumplanung"
   | "Eintritte"
   | "Wissen"
@@ -287,6 +290,7 @@ const sections: readonly { label: Section; Icon: LucideIcon }[] =
     { label: "Raumplanung", Icon: CalendarDays },
     { label: "Eintritte", Icon: ClipboardList },
     { label: "Verträge", Icon: FileText },
+    { label: "Lizenzen", Icon: KeyRound },
     { label: "Berichte", Icon: ChartNoAxesCombined },
     { label: "Arbeitsplatz", Icon: BriefcaseBusiness },
     { label: "Mein Portal", Icon: UserRound },
@@ -303,19 +307,13 @@ const NAVIGATION_CATEGORIES = [
     heading: "PLANUNG & BETRIEB",
     id: "navigation-category-operations",
     navigationLabel: "Planung und Betrieb",
-    sectionLabels: [
-      "Raumplanung",
-      "Eintritte",
-      "Verträge",
-      "Services",
-      "Systemstatus",
-    ],
+    sectionLabels: ["Raumplanung", "Eintritte", "Services", "Systemstatus"],
   },
   {
     heading: "WISSEN & RESSOURCEN",
     id: "navigation-category-resources",
     navigationLabel: "Wissen und Ressourcen",
-    sectionLabels: ["Wissen", "Assets", "Lager"],
+    sectionLabels: ["Wissen", "Assets", "Lager", "Verträge", "Lizenzen"],
   },
 ] as const satisfies readonly {
   heading: string;
@@ -2370,7 +2368,9 @@ function AuthenticatedApp() {
     setSelectedTicketIds(new Set());
     setTicketActionStatus("");
     const restrictedWorkspaceSections: Section[] = [];
-    if (contractsAvailable) restrictedWorkspaceSections.push("Verträge");
+    if (contractsAvailable) {
+      restrictedWorkspaceSections.push("Verträge", "Lizenzen");
+    }
     if (reportsAvailable) restrictedWorkspaceSections.push("Berichte");
     if (serviceStatusAvailable)
       restrictedWorkspaceSections.push("Systemstatus");
@@ -2569,7 +2569,8 @@ function AuthenticatedApp() {
 
   function setSection(nextSection: Section) {
     const nonTicketSectionAllowed =
-      (nextSection === "Verträge" && contractsAvailable) ||
+      ((nextSection === "Verträge" || nextSection === "Lizenzen") &&
+        contractsAvailable) ||
       (nextSection === "Berichte" && reportsAvailable) ||
       (nextSection === "Systemstatus" && serviceStatusAvailable) ||
       (nextSection === "Raumplanung" && eventSpaceNavigationAccess);
@@ -3002,7 +3003,9 @@ function AuthenticatedApp() {
     }
     if (item.label === "Lager") return isFeatureEnabled("inventory.management");
     if (item.label === "Wissen") return isFeatureEnabled("knowledge.base");
-    if (item.label === "Verträge") return contractsAvailable;
+    if (item.label === "Verträge" || item.label === "Lizenzen") {
+      return contractsAvailable;
+    }
     if (item.label === "Berichte") return reportsAvailable;
     return true;
   });
@@ -3010,6 +3013,7 @@ function AuthenticatedApp() {
   const restrictedWorkSections = featureSections.filter(
     (item) =>
       item.label === "Verträge" ||
+      item.label === "Lizenzen" ||
       item.label === "Berichte" ||
       item.label === "Systemstatus" ||
       item.label === "Lager",
@@ -3036,6 +3040,7 @@ function AuthenticatedApp() {
       "Mein Portal": "requester.portal",
       Wissen: "knowledge.base",
       Verträge: "contracts.management",
+      Lizenzen: "contracts.management",
     };
     const featureKey = sectionFeature[section];
     const workplaceUnavailable =
@@ -3048,7 +3053,8 @@ function AuthenticatedApp() {
         isSupabaseConfigured &&
         (workplaceUnavailable || tenantFeatures[featureKey!] !== true)) ||
       serviceStatusUnavailable ||
-      (section === "Verträge" && !contractsAvailable) ||
+      ((section === "Verträge" || section === "Lizenzen") &&
+        !contractsAvailable) ||
       (section === "Berichte" && !reportsAvailable)
     ) {
       setSection("Übersicht");
@@ -4146,6 +4152,8 @@ function AuthenticatedApp() {
           />
         ) : section === "Verträge" && activeTenant && contractsAvailable ? (
           <Contracts tenantId={activeTenant.id} />
+        ) : section === "Lizenzen" && activeTenant && contractsAvailable ? (
+          <Licenses tenantId={activeTenant.id} />
         ) : section === "Assets" &&
           activeTenant &&
           isFeatureEnabled("assets.management") ? (
