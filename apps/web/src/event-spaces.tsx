@@ -9,6 +9,7 @@ import {
   Mail,
   Plus,
   UsersRound,
+  UserX,
   Wrench,
 } from "lucide-react";
 import {
@@ -1017,6 +1018,21 @@ export function EventSpaces({
           <span>Bereit</span>
           <strong>{metrics.ready}</strong>
         </button>
+        <button
+          aria-label={`Nicht zugewiesen: ${metrics.unassigned} Raumaufträge. Gefilterte Liste anzeigen.`}
+          aria-pressed={view === "list" && metricFilter === "unassigned"}
+          className={
+            view === "list" && metricFilter === "unassigned"
+              ? "is-selected"
+              : undefined
+          }
+          onClick={() => showMetricList("unassigned")}
+          type="button"
+        >
+          <UserX aria-hidden="true" size={18} />
+          <span>Nicht zugewiesen</span>
+          <strong>{metrics.unassigned}</strong>
+        </button>
       </div>
 
       {canManage && emailIntakes.length ? (
@@ -1767,7 +1783,7 @@ export function EventSpaces({
             ) : (
               <p className="empty-state">
                 {metricFilter
-                  ? `Keine Raumaufträge mit Status «${eventSpaceMetricFilterLabels[metricFilter]}» im sichtbaren Planungszeitraum.`
+                  ? `Keine Raumaufträge mit Filter «${eventSpaceMetricFilterLabels[metricFilter]}» im sichtbaren Planungszeitraum.`
                   : "Es sind noch keine Raumaufträge für die kommenden Monate geplant."}
               </p>
             )}
