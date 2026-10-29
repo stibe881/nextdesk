@@ -1104,10 +1104,19 @@ export function Inventory({ tenantId }: { tenantId: string }) {
     setLoading(true);
     setMessage("");
     try {
-      const { data, error } = await supabase.functions.invoke<unknown>(
-        "inventory",
-        { body: { tenantId, type: "workspace" } },
-      );
+      // The three follow-up reads do not depend on the workspace response, so
+      // they start together with it instead of one full round trip later.
+      // Denied reads are discarded below according to the workspace
+      // permissions.
+      const workspacePromise = supabase.functions.invoke<unknown>("inventory", {
+        body: { tenantId, type: "workspace" },
+      });
+      const followUps = Promise.allSettled([
+        readOpenReservations(),
+        readActiveCounts(),
+        readSourceReservationRules(),
+      ]);
+      const { data, error } = await workspacePromise;
       if (error) throw error;
       const parsed = parseInventoryWorkspace(data);
       if (!parsed) {
@@ -1115,18 +1124,33 @@ export function Inventory({ tenantId }: { tenantId: string }) {
           "Die Lagerantwort ist unvollständig oder nicht autorisiert.",
         );
       }
-      const [reservations, counts, sourceRules] = await Promise.all([
-        parsed.permissions.canMove
-          ? readOpenReservations()
-          : Promise.resolve([] as OpenReservation[]),
+      const [reservationsResult, countsResult, sourceRulesResult] =
+        await followUps;
+      const unwrap = <T,>(
+        wanted: boolean,
+        result: PromiseSettledResult<T>,
+        empty: T,
+      ): T => {
+        if (!wanted) return empty;
+        if (result.status === "rejected") throw result.reason;
+        return result.value;
+      };
+      const reservations = unwrap(
+        parsed.permissions.canMove,
+        reservationsResult,
+        [] as OpenReservation[],
+      );
+      const counts = unwrap(
         parsed.permissions.canManage ||
-        parsed.permissions.canCloseInventoryCount
-          ? readActiveCounts()
-          : Promise.resolve([] as ActiveInventoryCount[]),
-        parsed.permissions.canManage
-          ? readSourceReservationRules()
-          : Promise.resolve(null),
-      ]);
+          parsed.permissions.canCloseInventoryCount,
+        countsResult,
+        [] as ActiveInventoryCount[],
+      );
+      const sourceRules = unwrap(
+        parsed.permissions.canManage,
+        sourceRulesResult,
+        null as SourceReservationRules | null,
+      );
       setWorkspace(parsed);
       setOpenReservations(reservations);
       setActiveCounts(counts);

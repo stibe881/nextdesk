@@ -1,6 +1,6 @@
 import { type SupabaseContext, withSupabase } from "@supabase/server";
 import { listAssignableTenantSupportAgents } from "../_shared/assignable-agents.ts";
-import { resolveTenantFeatureStates } from "../_shared/tenant-features.ts";
+import { resolveTenantFeatureStatesCached } from "../_shared/tenant-features.ts";
 
 const ALLOWED_ORIGIN = "https://app.nextdesk.ch";
 const MAX_REQUEST_BYTES = 512 * 1024;
@@ -1217,6 +1217,14 @@ const handler = withSupabase(
         );
       }
       const client = context.supabase;
+      // Independent of the membership check, so both run at once; the
+      // membership error still takes precedence.
+      const featureStatesPromise = resolveTenantFeatureStatesCached(
+        context.supabaseAdmin,
+        action.tenantId,
+        ["assets.management"],
+      );
+      featureStatesPromise.catch(() => undefined);
       await requirePermission(
         client,
         "is_active_tenant_member",
@@ -1225,11 +1233,7 @@ const handler = withSupabase(
         },
         "tenant_membership_required",
       );
-      const featureStates = await resolveTenantFeatureStates(
-        context.supabaseAdmin,
-        action.tenantId,
-        ["assets.management"],
-      );
+      const featureStates = await featureStatesPromise;
       if (!featureStates) {
         throw new HttpError(
           503,

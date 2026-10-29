@@ -53,3 +53,34 @@ export async function resolveTenantFeatureStates(
 
   return states;
 }
+
+const FEATURE_CACHE_TTL_MS = 30_000;
+const FEATURE_CACHE_MAX_ENTRIES = 500;
+const featureStateCache = new Map<
+  string,
+  { at: number; states: TenantFeatureStates }
+>();
+
+/**
+ * Same result as resolveTenantFeatureStates, reused for 30 seconds inside one
+ * warm function instance. Switching a module off therefore takes effect within
+ * that window; failed lookups are never cached.
+ */
+export async function resolveTenantFeatureStatesCached(
+  admin: any,
+  tenantId: string,
+  featureKeys: readonly string[],
+): Promise<TenantFeatureStates | null> {
+  const key = `${tenantId}|${[...new Set(featureKeys)].sort().join(",")}`;
+  const cached = featureStateCache.get(key);
+  if (cached && Date.now() - cached.at < FEATURE_CACHE_TTL_MS) {
+    return { ...cached.states };
+  }
+  const states = await resolveTenantFeatureStates(admin, tenantId, featureKeys);
+  if (states === null) return null;
+  if (featureStateCache.size >= FEATURE_CACHE_MAX_ENTRIES) {
+    featureStateCache.clear();
+  }
+  featureStateCache.set(key, { at: Date.now(), states: { ...states } });
+  return states;
+}
