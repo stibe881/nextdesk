@@ -78,17 +78,27 @@ type Action =
     responsibleUserId: string;
   }
   | {
+    type: "updateRequestDetails";
+    tenantId: string;
+    requestId: string;
+    spaceId: string;
+    responsibleUserId: string | null;
+    organizer: string | null;
+    startsAt: string;
+    endsAt: string;
+  }
+  | {
     type: "assignAgent";
     tenantId: string;
     requestId: string;
-    responsibleUserId: string;
+    agentId: string | null;
   }
   | {
     type: "resolveEmailIntake";
     tenantId: string;
     requestId: string;
     spaceId: string;
-    responsibleUserId: string;
+    agentId: string;
     startsAt: string;
     endsAt: string;
   }
@@ -348,21 +358,57 @@ function parseAction(value: unknown): Action | null {
       }
       : null;
   }
-  if (value.type === "assignAgent") {
+  if (value.type === "updateRequestDetails") {
+    const occurrences = parseEventSpaceOccurrences(
+      [{ startsAt: value.startsAt, endsAt: value.endsAt }],
+      "none",
+    );
+    const organizer = nullableText(value.organizer, 2, 160);
+    const responsibleUserId = value.responsibleUserId === null
+      ? null
+      : isUuid(value.responsibleUserId)
+      ? value.responsibleUserId.toLowerCase()
+      : undefined;
     return isUuid(value.tenantId) &&
         isUuid(value.requestId) &&
-        isUuid(value.responsibleUserId) &&
+        isUuid(value.spaceId) &&
+        organizer !== undefined &&
+        responsibleUserId !== undefined &&
+        occurrences?.length === 1 &&
         hasOnlyKeys(value, [
           "type",
           "tenantId",
           "requestId",
+          "spaceId",
           "responsibleUserId",
+          "organizer",
+          "startsAt",
+          "endsAt",
         ])
       ? {
         type: value.type,
         tenantId: value.tenantId.toLowerCase(),
         requestId: value.requestId.toLowerCase(),
-        responsibleUserId: value.responsibleUserId.toLowerCase(),
+        spaceId: value.spaceId.toLowerCase(),
+        responsibleUserId,
+        organizer,
+        startsAt: occurrences[0]!.startsAt,
+        endsAt: occurrences[0]!.endsAt,
+      }
+      : null;
+  }
+  if (value.type === "assignAgent") {
+    return isUuid(value.tenantId) &&
+        isUuid(value.requestId) &&
+        (value.agentId === null || isUuid(value.agentId)) &&
+        hasOnlyKeys(value, ["type", "tenantId", "requestId", "agentId"])
+      ? {
+        type: value.type,
+        tenantId: value.tenantId.toLowerCase(),
+        requestId: value.requestId.toLowerCase(),
+        agentId: typeof value.agentId === "string"
+          ? value.agentId.toLowerCase()
+          : null,
       }
       : null;
   }
@@ -374,7 +420,7 @@ function parseAction(value: unknown): Action | null {
     return isUuid(value.tenantId) &&
         isUuid(value.requestId) &&
         isUuid(value.spaceId) &&
-        isUuid(value.responsibleUserId) &&
+        isUuid(value.agentId) &&
         occurrences?.length === 1 &&
         Date.parse(occurrences[0]!.endsAt) -
               Date.parse(occurrences[0]!.startsAt) ===
@@ -384,7 +430,7 @@ function parseAction(value: unknown): Action | null {
           "tenantId",
           "requestId",
           "spaceId",
-          "responsibleUserId",
+          "agentId",
           "startsAt",
           "endsAt",
         ])
@@ -393,7 +439,7 @@ function parseAction(value: unknown): Action | null {
         tenantId: value.tenantId.toLowerCase(),
         requestId: value.requestId.toLowerCase(),
         spaceId: value.spaceId.toLowerCase(),
-        responsibleUserId: value.responsibleUserId.toLowerCase(),
+        agentId: value.agentId.toLowerCase(),
         startsAt: occurrences[0]!.startsAt,
         endsAt: occurrences[0]!.endsAt,
       }
@@ -637,7 +683,8 @@ function roleAllowsEventSpaceAssignment(role: Row, tenantId: string): boolean {
       (permission) =>
         isRecord(permission) &&
         (permission.permission_code === "ticket.read.assigned" ||
-          permission.permission_code === "ticket.update"),
+          permission.permission_code === "ticket.update" ||
+          permission.permission_code === "tenant.settings.manage"),
     )
   );
 }
@@ -953,7 +1000,7 @@ async function navigationSummary(
     .select("id", { count: "exact", head: true })
     .eq("tenant_id", tenantId)
     .neq("status", "completed")
-    .or("responsible_user_id.is.null,status.eq.clarification_required");
+    .or("assigned_agent_id.is.null,status.eq.clarification_required");
   if (error) databaseFailure(error);
   return { attentionCount: Math.max(0, count ?? 0), canAccess: true };
 }
@@ -996,7 +1043,7 @@ async function listWorkspace(
     admin
       .from("event_space_requests")
       .select(
-        "id, space_id, title, organizer, remarks, expected_participants, starts_at, ends_at, responsible_user_id, status, recurrence_kind, series_id, series_index, conflicts_acknowledged, intake_source",
+        "id, space_id, title, organizer, remarks, expected_participants, starts_at, ends_at, responsible_user_id, assigned_agent_id, status, recurrence_kind, series_id, series_index, conflicts_acknowledged, intake_source",
       )
       .eq("tenant_id", tenantId)
       .gte("starts_at", from)
@@ -1008,7 +1055,7 @@ async function listWorkspace(
       ? admin
         .from("event_space_requests")
         .select(
-          "id, title, organizer, remarks, responsible_user_id, source_order_number, requested_space_text, requested_starts_at, requested_ends_at, requested_equipment_keys, clarification_reasons",
+          "id, title, organizer, remarks, assigned_agent_id, source_order_number, requested_space_text, requested_starts_at, requested_ends_at, requested_equipment_keys, clarification_reasons",
         )
         .eq("tenant_id", tenantId)
         .eq("status", "clarification_required")
@@ -1067,8 +1114,8 @@ async function listWorkspace(
 
   const responsibleIds = [
     ...new Set(
-      [...requestRows, ...(canManage ? clarificationsResult.data ?? [] : [])]
-        .map((row: Row) => row.responsible_user_id)
+      [...requestRows, ...(canManage ? (clarificationsResult.data ?? []) : [])]
+        .flatMap((row: Row) => [row.responsible_user_id, row.assigned_agent_id])
         .filter((id): id is string => typeof id === "string"),
     ),
   ];
@@ -1196,10 +1243,10 @@ async function listWorkspace(
           title: typeof row.title === "string" ? row.title : "Raumauftrag",
           organizer: typeof row.organizer === "string" ? row.organizer : null,
           remarks: typeof row.remarks === "string" ? row.remarks : null,
-          assignedAgent: typeof row.responsible_user_id === "string"
+          assignedAgent: typeof row.assigned_agent_id === "string"
             ? {
-              id: row.responsible_user_id,
-              displayName: responsibleNames.get(row.responsible_user_id) ??
+              id: row.assigned_agent_id,
+              displayName: responsibleNames.get(row.assigned_agent_id) ??
                 "Zugewiesene Agent:in",
             }
             : null,
@@ -1270,9 +1317,21 @@ async function listWorkspace(
         : null,
       startsAt: String(row.starts_at),
       endsAt: String(row.ends_at),
-      responsibleName: typeof row.responsible_user_id === "string"
+      requesterUserId: typeof row.responsible_user_id === "string"
+        ? row.responsible_user_id
+        : null,
+      requesterName: row.intake_source === "email_ticket"
+        ? typeof row.organizer === "string" ? row.organizer : null
+        : typeof row.responsible_user_id === "string"
         ? (responsibleNames.get(row.responsible_user_id) ??
           "Verantwortliche Person")
+        : null,
+      assignedAgent: typeof row.assigned_agent_id === "string"
+        ? {
+          id: row.assigned_agent_id,
+          displayName: responsibleNames.get(row.assigned_agent_id) ??
+            "Zugewiesene Agent:in",
+        }
         : null,
       intakeSource: row.intake_source === "email_ticket"
         ? "email_ticket"
@@ -1295,11 +1354,7 @@ async function createRequest(
   confirmConflicts: boolean,
   conflictSnapshot: string | null,
 ) {
-  await assertResponsibleMember(
-    admin,
-    input.tenantId,
-    input.responsibleUserId,
-  );
+  await assertResponsibleMember(admin, input.tenantId, input.responsibleUserId);
   const preview = await conflictSummary(admin, input);
   if (preview.conflicts.hasConflicts && !confirmConflicts) {
     throw new HttpError(
@@ -1438,24 +1493,58 @@ async function assignResponsible(
   );
 }
 
+async function updateRequestDetails(
+  admin: AdminClient,
+  actorId: string,
+  action: Extract<Action, { type: "updateRequestDetails" }>,
+) {
+  await assertAvailableSpace(admin, action.tenantId, action.spaceId);
+  if (action.responsibleUserId !== null) {
+    await assertResponsibleMember(
+      admin,
+      action.tenantId,
+      action.responsibleUserId,
+    );
+  }
+  const { data, error } = await admin.rpc(
+    "update_event_space_request_details",
+    {
+      p_tenant_id: action.tenantId,
+      p_request_id: action.requestId,
+      p_space_id: action.spaceId,
+      p_responsible_user_id: action.responsibleUserId,
+      p_organizer: action.organizer,
+      p_starts_at: action.startsAt,
+      p_ends_at: action.endsAt,
+      p_actor_id: actorId,
+    },
+  );
+  if (error) databaseFailure(error);
+  const result = Array.isArray(data) ? data[0] : data;
+  if (!result || (result as Row).updated !== true) {
+    throw new HttpError(
+      409,
+      "event_space_clarification_conflict",
+      "Der Raum oder die benötigte Technik ist im gewünschten Zeitraum nicht verfügbar.",
+    );
+  }
+}
+
 async function assignAgent(
   admin: AdminClient,
   actorId: string,
   tenantId: string,
   requestId: string,
-  responsibleUserId: string,
+  agentId: string | null,
 ) {
-  await assertAssignableEventSpaceAgent(
-    admin,
-    tenantId,
-    responsibleUserId,
-  );
+  if (agentId !== null) {
+    await assertAssignableEventSpaceAgent(admin, tenantId, agentId);
+  }
   const { data, error } = await admin
     .from("event_space_requests")
-    .update({ responsible_user_id: responsibleUserId })
+    .update({ assigned_agent_id: agentId })
     .eq("tenant_id", tenantId)
     .eq("id", requestId)
-    .eq("intake_source", "email_ticket")
     .neq("status", "completed")
     .select("id")
     .maybeSingle();
@@ -1464,17 +1553,17 @@ async function assignAgent(
     throw new HttpError(
       404,
       "event_space_request_not_found",
-      "Die E-Mail-Anfrage ist nicht mehr zur Klärung verfügbar.",
+      "Der Raumauftrag ist nicht mehr verfügbar.",
     );
   }
   await audit(
     admin,
     tenantId,
     actorId,
-    "event_spaces.email_ticket.agent_assigned",
+    "event_spaces.request.agent_assignment_changed",
     "event_space_request",
     requestId,
-    { assigned: true },
+    { assigned: agentId !== null },
   );
 }
 
@@ -1484,22 +1573,18 @@ async function resolveEmailIntake(
   tenantId: string,
   requestId: string,
   spaceId: string,
-  responsibleUserId: string,
+  agentId: string,
   startsAt: string,
   endsAt: string,
 ) {
-  await assertAssignableEventSpaceAgent(
-    admin,
-    tenantId,
-    responsibleUserId,
-  );
+  await assertAssignableEventSpaceAgent(admin, tenantId, agentId);
   const { data, error } = await admin.rpc(
     "resolve_event_space_email_ticket_request",
     {
       p_tenant_id: tenantId,
       p_request_id: requestId,
       p_space_id: spaceId,
-      p_responsible_user_id: responsibleUserId,
+      p_responsible_user_id: agentId,
       p_starts_at: startsAt,
       p_ends_at: endsAt,
       p_actor_id: actorId,
@@ -1767,6 +1852,15 @@ const handler = withSupabase(
         );
         return json(request, { data: { updated: true } });
       }
+      if (action.type === "updateRequestDetails") {
+        await requirePermission(
+          context.supabase,
+          action.tenantId,
+          "event.spaces.manage",
+        );
+        await updateRequestDetails(context.supabaseAdmin, actorId, action);
+        return json(request, { data: { updated: true } });
+      }
       if (action.type === "assignAgent") {
         await requirePermission(
           context.supabase,
@@ -1778,7 +1872,7 @@ const handler = withSupabase(
           actorId,
           action.tenantId,
           action.requestId,
-          action.responsibleUserId,
+          action.agentId,
         );
         return json(request, { data: { updated: true } });
       }
@@ -1794,7 +1888,7 @@ const handler = withSupabase(
           action.tenantId,
           action.requestId,
           action.spaceId,
-          action.responsibleUserId,
+          action.agentId,
           action.startsAt,
           action.endsAt,
         );

@@ -66,7 +66,9 @@ type RoomRequest = {
   expectedParticipants: number | null;
   startsAt: string;
   endsAt: string;
-  responsibleName: string | null;
+  requesterUserId: string | null;
+  requesterName: string | null;
+  assignedAgent: Person | null;
   intakeSource: IntakeSource;
   status: RequestStatus;
   recurrence: Recurrence;
@@ -704,47 +706,59 @@ export function EventSpaces({
     }
   }
 
-  async function assignResponsible(
-    requestId: string,
-    responsibleUserId: string,
-  ) {
-    if (!supabase || !responsibleUserId) return;
+  async function updateRequestDetails(input: {
+    requestId: string;
+    spaceId: string;
+    responsibleUserId: string | null;
+    organizer: string | null;
+    startsAt: string;
+    endsAt: string;
+  }): Promise<boolean> {
+    if (!supabase) return false;
+    const startsAt = swissWallTimeToInstant(input.startsAt);
+    const endsAt = swissWallTimeToInstant(input.endsAt);
+    if (!startsAt || !endsAt || endsAt <= startsAt) {
+      setErrorMessage(
+        "Bitte geben Sie einen gültigen Zeitraum in der Zeitzone Europe/Zurich an.",
+      );
+      return false;
+    }
     setPending(true);
     setErrorMessage("");
+    setNotice("");
     try {
       const { error } = await supabase.functions.invoke("event-spaces", {
         body: {
-          type: "assignResponsible",
+          type: "updateRequestDetails",
           tenantId,
-          requestId,
-          responsibleUserId,
+          requestId: input.requestId,
+          spaceId: input.spaceId,
+          responsibleUserId: input.responsibleUserId,
+          organizer: input.organizer,
+          startsAt: startsAt.toISOString(),
+          endsAt: endsAt.toISOString(),
         },
       });
       if (error) throw error;
-      setNotice("Die verantwortliche Person wurde zugewiesen.");
+      setNotice("Die Raumplanungsdetails wurden aktualisiert.");
       await refresh(true);
       onAttentionChanged();
+      return true;
     } catch (error) {
       setErrorMessage(
         await functionErrorMessage(
           error,
-          "Die verantwortliche Person konnte nicht zugewiesen werden. Bitte versuchen Sie es erneut.",
+          "Die Raumplanungsdetails konnten nicht gespeichert werden. Bitte prüfen Sie Raum, Zeitraum und Zuweisungen.",
         ),
       );
+      return false;
     } finally {
       setPending(false);
     }
   }
 
-  async function assignEmailAgent(
-    requestId: string,
-    responsibleUserId: string,
-  ) {
+  async function assignAgent(requestId: string, agentId: string | null) {
     if (!supabase) return;
-    if (!responsibleUserId) {
-      setErrorMessage("Bitte wählen Sie eine Agent:in aus.");
-      return;
-    }
     setPending(true);
     setErrorMessage("");
     setNotice("");
@@ -754,11 +768,15 @@ export function EventSpaces({
           type: "assignAgent",
           tenantId,
           requestId,
-          responsibleUserId,
+          agentId,
         },
       });
       if (error) throw error;
-      setNotice("Die Agent:in wurde der E-Mail-Anfrage zugewiesen.");
+      setNotice(
+        agentId
+          ? "Die Agent:in wurde dem Raumauftrag zugewiesen."
+          : "Die Agent:innenzuweisung wurde aufgehoben.",
+      );
       await refresh(true);
       onAttentionChanged();
     } catch (error) {
@@ -814,7 +832,7 @@ export function EventSpaces({
           tenantId,
           requestId,
           spaceId: draft.spaceId,
-          responsibleUserId: draft.responsibleUserId,
+          agentId: draft.responsibleUserId,
           startsAt: start.toISOString(),
           endsAt: new Date(start.getTime() + 30 * 60 * 1_000).toISOString(),
         },
@@ -1139,7 +1157,7 @@ export function EventSpaces({
                           clarificationDrafts[item.id]?.responsibleUserId
                       }
                       onClick={() =>
-                        void assignEmailAgent(
+                        void assignAgent(
                           item.id,
                           clarificationDrafts[item.id]?.responsibleUserId ?? "",
                         )
@@ -1305,7 +1323,7 @@ export function EventSpaces({
                   />
                 </label>
                 <label>
-                  Verantwortliche Person
+                  Anfragende Person
                   <select
                     required
                     value={requestDraft.responsibleUserId}
@@ -1749,8 +1767,7 @@ export function EventSpaces({
                   focused={focusRequestId === request.id}
                   key={request.id}
                   agents={workspace?.agents ?? []}
-                  onAssignAgent={assignEmailAgent}
-                  onAssignResponsible={assignResponsible}
+                  onAssignAgent={assignAgent}
                   onChangeRequestStatus={changeRequestStatus}
                   onChangeTaskStatus={changeTaskStatus}
                   onToggle={() =>
@@ -1758,9 +1775,11 @@ export function EventSpaces({
                       current === request.id ? null : request.id,
                     )
                   }
+                  onUpdateRequestDetails={updateRequestDetails}
                   people={workspace?.people ?? []}
                   request={request}
                   room={roomsById.get(request.spaceId) ?? null}
+                  rooms={workspace?.rooms ?? []}
                 />
               ))
             ) : (
@@ -1809,31 +1828,83 @@ function RequestCard({
   expanded,
   focused,
   onAssignAgent,
-  onAssignResponsible,
   onChangeRequestStatus,
   onChangeTaskStatus,
   onToggle,
+  onUpdateRequestDetails,
   people,
   request,
   room,
+  rooms,
 }: {
   agents: readonly Person[];
   canManage: boolean;
   expanded: boolean;
   focused: boolean;
-  onAssignAgent: (requestId: string, responsibleUserId: string) => void;
-  onAssignResponsible: (requestId: string, responsibleUserId: string) => void;
+  onAssignAgent: (requestId: string, agentId: string | null) => void;
   onChangeRequestStatus: (
     requestId: string,
     status: RequestStatus,
   ) => Promise<void>;
   onChangeTaskStatus: (task: Task) => Promise<void>;
   onToggle: () => void;
+  onUpdateRequestDetails: (input: {
+    requestId: string;
+    spaceId: string;
+    responsibleUserId: string | null;
+    organizer: string | null;
+    startsAt: string;
+    endsAt: string;
+  }) => Promise<boolean>;
   people: readonly Person[];
   request: RoomRequest;
   room: Room | null;
+  rooms: readonly Room[];
 }) {
+  const [editDraft, setEditDraft] = useState<{
+    spaceId: string;
+    responsibleUserId: string;
+    organizer: string;
+    startsAt: string;
+    endsAt: string;
+  } | null>(null);
   const progress = taskProgress(request.tasks);
+  const isEmailRequest = request.intakeSource === "email_ticket";
+  const requesterLabel = request.requesterName ?? "Nicht hinterlegt";
+  const assignedAgentLabel =
+    request.assignedAgent?.displayName ?? "Noch nicht zugewiesen";
+
+  function openDetailsEditor() {
+    setEditDraft({
+      spaceId: request.spaceId,
+      responsibleUserId: request.requesterUserId ?? "",
+      organizer: request.organizer ?? "",
+      startsAt: swissWallValue(new Date(request.startsAt)),
+      endsAt: swissWallValue(new Date(request.endsAt)),
+    });
+  }
+
+  async function saveDetails(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!editDraft) return;
+    if (isEmailRequest) {
+      if (!editDraft.organizer.trim()) return;
+    } else if (!editDraft.responsibleUserId) {
+      return;
+    }
+    const updated = await onUpdateRequestDetails({
+      requestId: request.id,
+      spaceId: editDraft.spaceId,
+      responsibleUserId: isEmailRequest
+        ? null
+        : editDraft.responsibleUserId || null,
+      organizer: isEmailRequest ? editDraft.organizer : null,
+      startsAt: editDraft.startsAt,
+      endsAt: editDraft.endsAt,
+    });
+    if (updated) setEditDraft(null);
+  }
+
   return (
     <article
       className={`event-spaces__request event-spaces__status--${request.status}${focused ? " global-search-target" : ""}`}
@@ -1856,29 +1927,16 @@ function RequestCard({
             <span className="event-spaces__request-room">
               {room?.name ?? "Raum"}
             </span>
-            {request.intakeSource === "email_ticket" ? (
+            {isEmailRequest ? (
               <span className="event-spaces__email-intake-label">
-                <Mail aria-hidden="true" size={13} />
-                {request.responsibleName
-                  ? "E-Mail-Auftrag"
-                  : "Neue E-Mail-Anfrage"}
+                <Mail aria-hidden="true" size={13} /> E-Mail-Auftrag
               </span>
             ) : null}
           </div>
           <h4>{request.title}</h4>
           <p>
-            {request.intakeSource === "email_ticket"
-              ? request.organizer
-                ? `Auftrag ausgelöst von: ${request.organizer}`
-                : "Auftrag ausgelöst von: Nicht übermittelt"
-              : request.responsibleName
-                ? `Verantwortlich: ${request.responsibleName}`
-                : "Verantwortung noch offen"}
-            {request.intakeSource === "email_ticket"
-              ? request.responsibleName
-                ? ` · Agent:in: ${request.responsibleName}`
-                : " · Agent:in noch offen"
-              : ""}
+            Verantwortliche Person: {requesterLabel} · Agent:in:{" "}
+            {assignedAgentLabel}
             {request.expectedParticipants !== null
               ? ` · ${request.expectedParticipants} Teilnehmende`
               : ""}
@@ -1912,77 +1970,212 @@ function RequestCard({
                 {progress.completed} von {progress.total} erledigt
               </strong>
             </div>
-            {request.intakeSource === "email_ticket" ? (
-              <>
-                <div>
-                  <span>Auftrag ausgelöst von</span>
-                  <strong>{request.organizer ?? "Nicht übermittelt"}</strong>
-                </div>
-                <div>
-                  <span>Herkunft</span>
-                  <strong>E-Mail-Auftrag</strong>
-                </div>
-                {request.remarks ? (
-                  <div>
-                    <span>Bemerkungen</span>
-                    <p>{request.remarks}</p>
-                  </div>
-                ) : null}
-              </>
+            <div>
+              <span>Verantwortliche Person</span>
+              <strong>{requesterLabel}</strong>
+              <small>
+                {isEmailRequest
+                  ? "Aus «Erstellt von» der E-Mail"
+                  : "Anfragende Person"}
+              </small>
+            </div>
+            <div>
+              <span>Zugewiesen an Agent:in</span>
+              <strong>{assignedAgentLabel}</strong>
+              <small>Interne Bearbeitung</small>
+            </div>
+            {isEmailRequest ? (
+              <div>
+                <span>Herkunft</span>
+                <strong>E-Mail-Auftrag</strong>
+              </div>
+            ) : null}
+            {request.remarks ? (
+              <div>
+                <span>Bemerkungen</span>
+                <p>{request.remarks}</p>
+              </div>
             ) : null}
           </div>
-          {canManage && !request.responsibleName ? (
-            <label className="event-spaces__status-control">
-              {request.intakeSource === "email_ticket"
-                ? "Agent:in zuweisen"
-                : "Verantwortliche Person zuweisen"}
-              <select
-                defaultValue=""
-                onChange={(event) => {
-                  const responsibleUserId = event.target.value;
-                  if (!responsibleUserId) return;
-                  if (request.intakeSource === "email_ticket") {
-                    onAssignAgent(request.id, responsibleUserId);
-                  } else {
-                    onAssignResponsible(request.id, responsibleUserId);
-                  }
-                }}
-              >
-                <option disabled value="">
-                  {request.intakeSource === "email_ticket"
-                    ? "Agent:in auswählen …"
-                    : "Person auswählen …"}
-                </option>
-                {(request.intakeSource === "email_ticket"
-                  ? agents
-                  : people
-                ).map((person) => (
-                  <option key={person.id} value={person.id}>
-                    {person.displayName}
-                  </option>
-                ))}
-              </select>
-            </label>
-          ) : null}
           {canManage ? (
-            <label className="event-spaces__status-control">
-              Auftragsstatus
-              <select
-                value={request.status}
-                onChange={(event) =>
-                  void onChangeRequestStatus(
-                    request.id,
-                    event.target.value as RequestStatus,
-                  )
+            <div className="event-spaces__request-controls">
+              <label className="event-spaces__status-control">
+                Zugewiesen an Agent:in
+                <select
+                  value={request.assignedAgent?.id ?? ""}
+                  onChange={(event) =>
+                    onAssignAgent(request.id, event.target.value || null)
+                  }
+                >
+                  <option value="">Nicht zugewiesen</option>
+                  {agents.map((agent) => (
+                    <option key={agent.id} value={agent.id}>
+                      {agent.displayName}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="event-spaces__status-control">
+                Auftragsstatus
+                <select
+                  value={request.status}
+                  onChange={(event) =>
+                    void onChangeRequestStatus(
+                      request.id,
+                      event.target.value as RequestStatus,
+                    )
+                  }
+                >
+                  {Object.entries(statusLabels).map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button
+                className="secondary-button event-spaces__request-edit-toggle"
+                onClick={() =>
+                  editDraft ? setEditDraft(null) : openDetailsEditor()
                 }
+                type="button"
               >
-                {Object.entries(statusLabels).map(([value, label]) => (
-                  <option key={value} value={value}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            </label>
+                {editDraft
+                  ? "Bearbeitung schliessen"
+                  : "Raumplanung bearbeiten"}
+              </button>
+            </div>
+          ) : null}
+          {canManage && editDraft ? (
+            <form
+              className="event-spaces__request-editor"
+              onSubmit={(event) => void saveDetails(event)}
+            >
+              <div>
+                <p className="eyebrow">Raumplanung bearbeiten</p>
+                <h5>{request.title}</h5>
+                <p>
+                  Ändern Sie Raum, Zeitraum und die anfragende Person. Die
+                  Agent:innenzuweisung bleibt davon getrennt.
+                </p>
+              </div>
+              <div className="event-spaces__form-grid">
+                <label>
+                  Raum
+                  <select
+                    required
+                    value={editDraft.spaceId}
+                    onChange={(event) =>
+                      setEditDraft((current) =>
+                        current
+                          ? { ...current, spaceId: event.target.value }
+                          : current,
+                      )
+                    }
+                  >
+                    <option value="">Raum auswählen …</option>
+                    {rooms.map((candidate) => (
+                      <option key={candidate.id} value={candidate.id}>
+                        {candidate.name}
+                        {candidate.location ? ` · ${candidate.location}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Start (Europe/Zurich)
+                  <input
+                    required
+                    type="datetime-local"
+                    value={editDraft.startsAt}
+                    onChange={(event) =>
+                      setEditDraft((current) =>
+                        current
+                          ? { ...current, startsAt: event.target.value }
+                          : current,
+                      )
+                    }
+                  />
+                </label>
+                <label>
+                  Ende (Europe/Zurich)
+                  <input
+                    required
+                    type="datetime-local"
+                    value={editDraft.endsAt}
+                    onChange={(event) =>
+                      setEditDraft((current) =>
+                        current
+                          ? { ...current, endsAt: event.target.value }
+                          : current,
+                      )
+                    }
+                  />
+                </label>
+                {isEmailRequest ? (
+                  <label>
+                    Verantwortliche Person
+                    <input
+                      maxLength={160}
+                      minLength={2}
+                      required
+                      value={editDraft.organizer}
+                      onChange={(event) =>
+                        setEditDraft((current) =>
+                          current
+                            ? { ...current, organizer: event.target.value }
+                            : current,
+                        )
+                      }
+                    />
+                    <small className="event-spaces__field-hint">
+                      Person aus «Erstellt von»; keine interne
+                      Agent:innenzuweisung.
+                    </small>
+                  </label>
+                ) : (
+                  <label>
+                    Verantwortliche Person
+                    <select
+                      required
+                      value={editDraft.responsibleUserId}
+                      onChange={(event) =>
+                        setEditDraft((current) =>
+                          current
+                            ? {
+                                ...current,
+                                responsibleUserId: event.target.value,
+                              }
+                            : current,
+                        )
+                      }
+                    >
+                      <option value="">Person auswählen …</option>
+                      {people.map((person) => (
+                        <option key={person.id} value={person.id}>
+                          {person.displayName}
+                        </option>
+                      ))}
+                    </select>
+                    <small className="event-spaces__field-hint">
+                      Person, die den Auftrag angefragt hat.
+                    </small>
+                  </label>
+                )}
+              </div>
+              <div className="event-spaces__form-actions">
+                <button
+                  className="secondary-button"
+                  onClick={() => setEditDraft(null)}
+                  type="button"
+                >
+                  Abbrechen
+                </button>
+                <button className="primary-button" type="submit">
+                  Änderungen speichern
+                </button>
+              </div>
+            </form>
           ) : null}
           <ol className="event-spaces__tasks">
             {request.tasks.map((task) => (

@@ -107,33 +107,38 @@ Deno.test(
       source.includes('type: "navigationSummary"') &&
         source.includes("attentionCount") &&
         source.includes(
-          "responsible_user_id.is.null,status.eq.clarification_required",
+          "assigned_agent_id.is.null,status.eq.clarification_required",
         ),
-      "The navigation badge must be a server-side aggregate of unassigned or clarification requests.",
+      "The navigation badge must be a server-side aggregate of unassigned agents or clarification requests.",
     );
     assert(
-      source.includes('type: "assignResponsible"') &&
+      source.includes('type: "updateRequestDetails"') &&
+        source.includes('rpc(\n    "update_event_space_request_details"') &&
+        source.includes('type: "assignAgent"') &&
         source.includes('type: "resolveEmailIntake"') &&
         source.includes('"event.spaces.manage"'),
-      "Assignment and clarification resolution must remain manager-protected actions.",
+      "Detail changes, assignment and clarification resolution must remain manager-protected actions.",
     );
     assert(
-      source.includes('type: "assignAgent"') &&
-        source.includes("assertAssignableEventSpaceAgent") &&
-        source.includes("event_spaces.email_ticket.agent_assigned"),
-      "A clarification assignment must use a separate server-authorized agent action with an audit record.",
+      source.includes("assertAssignableEventSpaceAgent") &&
+        source.includes("assigned_agent_id") &&
+        source.includes("event_spaces.request.agent_assignment_changed") &&
+        source.includes('"tenant.settings.manage"'),
+      "An agent assignment must be server-authorized, separately persisted and allow an active tenant administrator.",
     );
     assert(
-      source.includes('.eq("intake_source", "manual")') &&
-        source.includes('.eq("intake_source", "email_ticket")') &&
-        source.includes('.neq("status", "completed")'),
-      "A generic responsible-person assignment must not bypass the server-authorized agent path for e-mail requests.",
+      source.includes("requesterUserId") &&
+        source.includes("requesterName") &&
+        source.includes("assignedAgent") &&
+        source.includes("assigned_agent_id"),
+      "The Edge Function must keep requester and agent payload fields separate.",
     );
     assert(
-      source.includes("organizer, remarks, responsible_user_id") &&
+      source.includes("organizer, remarks, expected_participants") &&
+        source.includes("responsible_user_id, assigned_agent_id") &&
         source.includes("remarks") &&
         source.includes("intake_source"),
-      "Authorized workspace views must receive only the minimal initiator, internal assignment, remark and intake source fields.",
+      "Authorized workspace views must receive only the minimal requester, assignment, remark and intake source fields.",
     );
     assert(
       source.includes('neq("status", "clarification_required")') &&
@@ -165,9 +170,10 @@ Deno.test(
       "The Edge Function may replay a stored body privately but must return only a neutral outcome to the browser.",
     );
     assert(
-      source.includes(
-        'select(\n            "ticket_id, status, manual_retry_count, retry_lease_expires_at",',
-      ) && !source.includes('"ticket_id, subject, description"'),
+      /select\(\s*"ticket_id, status, manual_retry_count, retry_lease_expires_at",/m
+        .test(
+          source,
+        ) && !source.includes('"ticket_id, subject, description"'),
       "Recovery lists must expose outbox state only, without ticket or e-mail content.",
     );
     assert(

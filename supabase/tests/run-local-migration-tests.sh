@@ -116,8 +116,61 @@ insert into public.saved_ticket_views (tenant_id, owner_id, name, visibility, fi
   );
 SQL
   fi
+  if [[ "$(basename "$migration")" == "0145_event_space_assignment_and_details.sql" ]]; then
+    # Preserve the exact pre-0145 shape: older E-mail intake releases stored
+    # their internal agent in responsible_user_id, while manual requests used
+    # the same field for the person who made the request. The migration must
+    # move only the former to assigned_agent_id.
+    psql -v ON_ERROR_STOP=1 <<'SQL'
+insert into public.tenants (id, slug, name) values
+  ('f1460000-0000-4000-8000-000000000001', 'legacy-room-assignment', 'Legacy Room Assignment');
+insert into auth.users (id) values
+  ('f1460000-0000-4000-8000-000000000002'),
+  ('f1460000-0000-4000-8000-000000000003');
+insert into public.user_profiles (id, display_name) values
+  ('f1460000-0000-4000-8000-000000000002', 'Legacy Anfragende'),
+  ('f1460000-0000-4000-8000-000000000003', 'Legacy Agent');
+insert into public.tenant_memberships (tenant_id, user_id, status, joined_at) values
+  ('f1460000-0000-4000-8000-000000000001', 'f1460000-0000-4000-8000-000000000002', 'active', timezone('utc', now())),
+  ('f1460000-0000-4000-8000-000000000001', 'f1460000-0000-4000-8000-000000000003', 'active', timezone('utc', now()));
+insert into public.event_spaces (id, tenant_id, name, kind, created_by) values
+  ('f1460000-0000-4000-8000-000000000010', 'f1460000-0000-4000-8000-000000000001', 'Legacy Raum', 'meeting_room', 'f1460000-0000-4000-8000-000000000002');
+insert into public.event_space_requests (
+  id, tenant_id, space_id, title, organizer, starts_at, ends_at,
+  responsible_user_id, status, intake_source, created_by
+) values (
+  'f1460000-0000-4000-8000-000000000020',
+  'f1460000-0000-4000-8000-000000000001',
+  'f1460000-0000-4000-8000-000000000010',
+  'Legacy E-Mail Auftrag', 'Erstellt von Legacy',
+  timezone('utc', now()) + interval '7 days',
+  timezone('utc', now()) + interval '7 days 30 minutes',
+  'f1460000-0000-4000-8000-000000000003', 'planned', 'email_ticket', null
+), (
+  'f1460000-0000-4000-8000-000000000021',
+  'f1460000-0000-4000-8000-000000000001',
+  'f1460000-0000-4000-8000-000000000010',
+  'Legacy Manuelle Anfrage', null,
+  timezone('utc', now()) + interval '8 days',
+  timezone('utc', now()) + interval '8 days 1 hour',
+  'f1460000-0000-4000-8000-000000000002', 'planned', 'manual',
+  'f1460000-0000-4000-8000-000000000002'
+);
+SQL
+  fi
   psql -v ON_ERROR_STOP=1 -f "$migration" >/dev/null
 done
+
+legacy_room_assignment_upgrade="$(psql -At -c "
+  select string_agg(
+    id::text || ':' || coalesce(responsible_user_id::text, 'null') || ':' ||
+    coalesce(assigned_agent_id::text, 'null') || ':' || coalesce(organizer, 'null'),
+    ',' order by id
+  )
+  from public.event_space_requests
+  where tenant_id = 'f1460000-0000-4000-8000-000000000001'
+" | tr -d '[:space:]')"
+[[ "$legacy_room_assignment_upgrade" == "f1460000-0000-4000-8000-000000000020:null:f1460000-0000-4000-8000-000000000003:ErstelltvonLegacy,f1460000-0000-4000-8000-000000000021:f1460000-0000-4000-8000-000000000002:null:null" ]]
 
 realtime_ticket_tables="$(psql -At -c "
   select string_agg(tablename, ',' order by tablename)
@@ -8500,4 +8553,133 @@ inactive_assignments="$(psql -At -c "
     and not category.active
 " | tr -d '[:space:]')"
 [[ "$inactive_assignments" == "0" ]]
+
+# Room requests distinguish the requester from the internal agent assignment.
+# The service-only detail RPC must retain that separation while checking room,
+# time and agent eligibility inside one transaction.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+insert into public.tenants (id, slug, name) values
+  ('f1450000-0000-4000-8000-000000000001', 'room-assignment', 'Room Assignment');
+insert into auth.users (id) values
+  ('f1450000-0000-4000-8000-000000000002'),
+  ('f1450000-0000-4000-8000-000000000003'),
+  ('f1450000-0000-4000-8000-000000000004');
+insert into public.user_profiles (id, display_name) values
+  ('f1450000-0000-4000-8000-000000000002', 'Anfragende Person'),
+  ('f1450000-0000-4000-8000-000000000003', 'Raumplanungs Agent'),
+  ('f1450000-0000-4000-8000-000000000004', 'Kein Raumplanungs Agent');
+insert into public.tenant_memberships (tenant_id, user_id, status, joined_at) values
+  ('f1450000-0000-4000-8000-000000000001', 'f1450000-0000-4000-8000-000000000002', 'active', timezone('utc', now())),
+  ('f1450000-0000-4000-8000-000000000001', 'f1450000-0000-4000-8000-000000000003', 'active', timezone('utc', now())),
+  ('f1450000-0000-4000-8000-000000000001', 'f1450000-0000-4000-8000-000000000004', 'active', timezone('utc', now()));
+insert into public.roles (id, tenant_id, name, scope) values
+  ('f1450000-0000-4000-8000-000000000005', 'f1450000-0000-4000-8000-000000000001', 'Raumplanungs Agent', 'tenant');
+insert into public.role_permissions (role_id, permission_code) values
+  ('f1450000-0000-4000-8000-000000000005', 'ticket.update');
+insert into public.user_role_assignments (tenant_id, user_id, role_id) values
+  ('f1450000-0000-4000-8000-000000000001', 'f1450000-0000-4000-8000-000000000003', 'f1450000-0000-4000-8000-000000000005');
+insert into public.event_spaces (id, tenant_id, name, kind, created_by) values
+  ('f1450000-0000-4000-8000-000000000010', 'f1450000-0000-4000-8000-000000000001', 'Raum Zuordnung', 'meeting_room', 'f1450000-0000-4000-8000-000000000002');
+insert into public.event_space_requests (
+  id, tenant_id, space_id, title, organizer, starts_at, ends_at,
+  responsible_user_id, status, intake_source, created_by
+) values (
+  'f1450000-0000-4000-8000-000000000020',
+  'f1450000-0000-4000-8000-000000000001',
+  'f1450000-0000-4000-8000-000000000010',
+  'Manuelle Anfragende', null,
+  timezone('utc', now()) + interval '3 days',
+  timezone('utc', now()) + interval '3 days 1 hour',
+  'f1450000-0000-4000-8000-000000000002', 'planned', 'manual',
+  'f1450000-0000-4000-8000-000000000002'
+), (
+  'f1450000-0000-4000-8000-000000000021',
+  'f1450000-0000-4000-8000-000000000001',
+  'f1450000-0000-4000-8000-000000000010',
+  'E-Mail Anfragende', 'Erstellt von E-Mail',
+  timezone('utc', now()) + interval '4 days',
+  timezone('utc', now()) + interval '4 days 30 minutes',
+  null, 'planned', 'email_ticket', null
+);
+do $$
+begin
+  if not public.is_active_event_space_agent(
+    'f1450000-0000-4000-8000-000000000001',
+    'f1450000-0000-4000-8000-000000000003'
+  ) or public.is_active_event_space_agent(
+    'f1450000-0000-4000-8000-000000000001',
+    'f1450000-0000-4000-8000-000000000004'
+  ) then
+    raise exception 'Event-space agent eligibility did not distinguish the valid agent';
+  end if;
+  begin
+    update public.event_space_requests
+    set assigned_agent_id = 'f1450000-0000-4000-8000-000000000004'
+    where id = 'f1450000-0000-4000-8000-000000000020';
+    raise exception 'A non-agent was accepted as a room request assignment';
+  exception when check_violation then
+    null;
+  end;
+end;
+$$;
+update public.event_space_requests
+set assigned_agent_id = 'f1450000-0000-4000-8000-000000000003'
+where id in (
+  'f1450000-0000-4000-8000-000000000020',
+  'f1450000-0000-4000-8000-000000000021'
+);
+set local role service_role;
+do $$
+declare
+  v_updated boolean;
+begin
+  select updated into v_updated
+  from public.update_event_space_request_details(
+    'f1450000-0000-4000-8000-000000000001',
+    'f1450000-0000-4000-8000-000000000020',
+    'f1450000-0000-4000-8000-000000000010',
+    'f1450000-0000-4000-8000-000000000002',
+    null,
+    timezone('utc', now()) + interval '5 days',
+    timezone('utc', now()) + interval '5 days 1 hour',
+    'f1450000-0000-4000-8000-000000000003'
+  );
+  if v_updated is not true then
+    raise exception 'Room detail RPC did not update a conflict-free request';
+  end if;
+end;
+$$;
+reset role;
+do $$
+begin
+  if not exists (
+    select 1 from public.event_space_requests
+    where id = 'f1450000-0000-4000-8000-000000000020'
+      and responsible_user_id = 'f1450000-0000-4000-8000-000000000002'
+      and assigned_agent_id = 'f1450000-0000-4000-8000-000000000003'
+  ) or not exists (
+    select 1 from public.event_space_requests
+    where id = 'f1450000-0000-4000-8000-000000000021'
+      and organizer = 'Erstellt von E-Mail'
+      and responsible_user_id is null
+      and assigned_agent_id = 'f1450000-0000-4000-8000-000000000003'
+  ) then
+    raise exception 'Requester and agent assignment were not stored independently';
+  end if;
+  if has_function_privilege(
+    'authenticated',
+    'public.update_event_space_request_details(uuid, uuid, uuid, uuid, text, timestamptz, timestamptz, uuid)',
+    'execute'
+  ) or not has_function_privilege(
+    'service_role',
+    'public.update_event_space_request_details(uuid, uuid, uuid, uuid, text, timestamptz, timestamptz, uuid)',
+    'execute'
+  ) then
+    raise exception 'Room detail RPC has invalid browser or service role privileges';
+  end if;
+end;
+$$;
+rollback;
+SQL
 echo "PostgreSQL 16 migration and RLS integration checks passed."

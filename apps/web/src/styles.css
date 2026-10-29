@@ -15465,6 +15465,60 @@ body:has(.knowledge-base__editor-backdrop) {
   text-transform: none;
 }
 
+.event-spaces__request-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 12px;
+  margin-top: 19px;
+}
+
+.event-spaces__request-controls .event-spaces__status-control {
+  margin-top: 0;
+}
+
+.event-spaces__request-edit-toggle {
+  margin-bottom: 0;
+}
+
+.event-spaces__request-editor {
+  display: grid;
+  gap: 16px;
+  margin-top: 18px;
+  border: 1px solid color-mix(in srgb, var(--primary) 24%, var(--border));
+  border-radius: 10px;
+  padding: 17px;
+  background: var(--surface);
+}
+
+.event-spaces__request-editor h5,
+.event-spaces__request-editor p {
+  margin: 0;
+}
+
+.event-spaces__request-editor h5 {
+  margin-top: 2px;
+  color: var(--ink);
+  font-size: 16px;
+}
+
+.event-spaces__request-editor > div:first-child > p:last-child {
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.event-spaces__field-hint {
+  display: block;
+  margin-top: 1px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 450;
+  line-height: 1.45;
+  text-transform: none;
+}
+
 .event-spaces__tasks {
   display: grid;
   gap: 6px;
@@ -15615,6 +15669,19 @@ body:has(.knowledge-base__editor-backdrop) {
 
   .event-spaces__request-summary h4 {
     white-space: normal;
+  }
+
+  .event-spaces__request-controls {
+    align-items: stretch;
+  }
+
+  .event-spaces__request-controls .event-spaces__status-control,
+  .event-spaces__request-edit-toggle {
+    width: 100%;
+  }
+
+  .event-spaces__request-editor {
+    padding: 14px;
   }
 
   .event-spaces__calendar-days {
