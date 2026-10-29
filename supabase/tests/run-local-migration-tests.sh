@@ -8157,6 +8157,68 @@ begin
   end;
 end;
 $$;
+
+-- Active services remain visible to active members with Asset Management,
+-- whereas archived services require the separate asset.manage permission.
+grant select on public.services to authenticated;
+insert into public.tenants (id, slug, name) values
+  ('f1420000-0000-4000-8000-000000000001', 'service-archive-rls', 'Service Archive RLS');
+insert into auth.users (id) values
+  ('f1420000-0000-4000-8000-000000000011'),
+  ('f1420000-0000-4000-8000-000000000012');
+insert into public.user_profiles (id, display_name) values
+  ('f1420000-0000-4000-8000-000000000011', 'Service Read Member'),
+  ('f1420000-0000-4000-8000-000000000012', 'Service Manager');
+insert into public.tenant_memberships (tenant_id, user_id, status, joined_at) values
+  ('f1420000-0000-4000-8000-000000000001', 'f1420000-0000-4000-8000-000000000011', 'active', timezone('utc', now())),
+  ('f1420000-0000-4000-8000-000000000001', 'f1420000-0000-4000-8000-000000000012', 'active', timezone('utc', now()));
+update public.tenant_feature_flags
+set enabled = true
+where tenant_id = 'f1420000-0000-4000-8000-000000000001'
+  and feature_key = 'assets.management';
+insert into public.roles (id, tenant_id, name, scope) values
+  ('f1420000-0000-4000-8000-000000000021', 'f1420000-0000-4000-8000-000000000001', 'Service Archive Manager', 'tenant');
+insert into public.role_permissions (role_id, permission_code) values
+  ('f1420000-0000-4000-8000-000000000021', 'asset.manage');
+insert into public.user_role_assignments (tenant_id, user_id, role_id) values
+  ('f1420000-0000-4000-8000-000000000001', 'f1420000-0000-4000-8000-000000000012', 'f1420000-0000-4000-8000-000000000021');
+insert into public.services (id, tenant_id, name, active) values
+  ('f1420000-0000-4000-8000-000000000031', 'f1420000-0000-4000-8000-000000000001', 'Active RLS Service', true),
+  ('f1420000-0000-4000-8000-000000000032', 'f1420000-0000-4000-8000-000000000001', 'Archived RLS Service', false);
+
+set local role authenticated;
+select set_config('request.jwt.claim.sub', 'f1420000-0000-4000-8000-000000000011', true);
+do $$
+begin
+  if not exists (
+    select 1 from public.services
+    where id = 'f1420000-0000-4000-8000-000000000031'
+  ) then
+    raise exception 'Active service was hidden from an active non-manager member';
+  end if;
+  if exists (
+    select 1 from public.services
+    where id = 'f1420000-0000-4000-8000-000000000032'
+  ) then
+    raise exception 'Archived service was exposed to a non-manager member';
+  end if;
+end;
+$$;
+reset role;
+
+set local role authenticated;
+select set_config('request.jwt.claim.sub', 'f1420000-0000-4000-8000-000000000012', true);
+do $$
+begin
+  if (
+    select count(*) from public.services
+    where tenant_id = 'f1420000-0000-4000-8000-000000000001'
+  ) <> 2 then
+    raise exception 'An asset manager could not read both active and archived tenant services';
+  end if;
+end;
+$$;
+reset role;
 rollback;
 SQL
 echo "PostgreSQL 16 migration and RLS integration checks passed."

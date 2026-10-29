@@ -4112,7 +4112,11 @@ function AuthenticatedApp() {
         ) : section === "Assets" &&
           activeTenant &&
           isFeatureEnabled("assets.management") ? (
-          <ServiceAssets fixedTab="assets" tenantId={activeTenant.id} />
+          <ServiceAssets
+            fixedTab="assets"
+            key={`service-assets:${activeTenant.id}:assets`}
+            tenantId={activeTenant.id}
+          />
         ) : section === "Lager" &&
           activeTenant &&
           isFeatureEnabled("inventory.management") ? (
@@ -4141,7 +4145,11 @@ function AuthenticatedApp() {
         ) : section === "Services" &&
           activeTenant &&
           isFeatureEnabled("assets.management") ? (
-          <ServiceAssets fixedTab="services" tenantId={activeTenant.id} />
+          <ServiceAssets
+            fixedTab="services"
+            key={`service-assets:${activeTenant.id}:services`}
+            tenantId={activeTenant.id}
+          />
         ) : section === "Systemstatus" &&
           activeTenant &&
           serviceStatusAvailable ? (
@@ -4156,6 +4164,7 @@ function AuthenticatedApp() {
                 : undefined
             }
             fixedTab="problems"
+            key={`service-assets:${activeTenant.id}:problems`}
             onCreateProblemRequestConsumed={consumeQuickCreateRequest}
             tenantId={activeTenant.id}
           />

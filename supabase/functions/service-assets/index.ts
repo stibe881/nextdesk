@@ -28,12 +28,16 @@ const PROBLEM_TICKET_SUMMARY_SELECT = `tickets!inner(${TICKET_SUMMARY_SELECT})`;
 // allowed field. Immutable IDs, tenant IDs, actors and timestamps are never
 // accepted as writable fields.
 type JsonValue =
-  null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
+  | null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
 type Kind = "service" | "asset" | "problem";
 type ManageType = "manageService" | "manageAsset" | "manageProblem";
-type Operation = "create" | "update" | "archive" | "resolve";
+type Operation = "create" | "update" | "archive" | "restore" | "resolve";
 type Action =
-  | { type: "listCatalog"; tenantId: string }
+  | {
+      type: "listCatalog";
+      tenantId: string;
+      includeArchivedServices: boolean;
+    }
   | { type: "listProblemOwners"; tenantId: string }
   | { type: "listProblemTickets"; tenantId: string; problemId: string }
   | { type: "searchTickets"; tenantId: string; query: string }
@@ -170,7 +174,6 @@ const SERVICE_FIELDS: Record<string, Field> = {
     ]),
   },
   statusPublic: { column: "status_public", validate: boolean },
-  active: { column: "active", validate: boolean },
 };
 const ASSET_FIELDS: Record<string, Field> = {
   name: { column: "name", validate: text(1, 240) },
@@ -255,13 +258,22 @@ const LINKS = {
   },
 } as const;
 
-function parseAction(value: unknown): Action | null {
+export function parseAction(value: unknown): Action | null {
   if (!isRecord(value) || !isUuid(value.tenantId)) return null;
   const tenantId = value.tenantId.toLowerCase();
   if (value.type === "listCatalog") {
-    return hasOnlyKeys(value, ["type", "tenantId"])
-      ? { type: value.type, tenantId }
-      : null;
+    if (
+      !hasOnlyKeys(value, ["type", "tenantId", "includeArchivedServices"]) ||
+      (Object.hasOwn(value, "includeArchivedServices") &&
+        typeof value.includeArchivedServices !== "boolean")
+    ) {
+      return null;
+    }
+    return {
+      type: value.type,
+      tenantId,
+      includeArchivedServices: value.includeArchivedServices === true,
+    };
   }
   if (value.type === "listProblemOwners") {
     return hasOnlyKeys(value, ["type", "tenantId"])
@@ -323,11 +335,12 @@ function parseAction(value: unknown): Action | null {
     operation !== "create" &&
     operation !== "update" &&
     !(value.type !== "manageProblem" && operation === "archive") &&
+    !(value.type === "manageService" && operation === "restore") &&
     !(value.type === "manageProblem" && operation === "resolve")
   )
     return null;
   const fields =
-    operation === "archive"
+    operation === "archive" || operation === "restore"
       ? {}
       : operation === "resolve"
         ? RESOLUTION_FIELDS
@@ -478,6 +491,7 @@ async function readCatalog(
   client: CallerClient,
   tenantId: string,
   resource: { table: string; select: string; key: Kind },
+  active = true,
 ): Promise<Row[]> {
   const rows: Row[] = [];
   for (let from = 0; ; from += PAGE_SIZE) {
@@ -490,7 +504,7 @@ async function readCatalog(
         ? query
             .in("status", ["open", "investigating", "known_error"])
             .order("updated_at", { ascending: false })
-        : query.eq("active", true).order("name");
+        : query.eq("active", active).order("name");
     const { data, error } = await query
       .order("id")
       .range(from, from + PAGE_SIZE - 1)
@@ -830,8 +844,12 @@ async function manageResource(
   // migration's triggers handle timestamps, immutable identity and audit logs.
   const values =
     action.operation === "archive"
-      ? { active: false }
-      : action.operation === "resolve"
+      ? action.type === "manageService"
+        ? { active: false, status_public: false }
+        : { active: false }
+      : action.operation === "restore"
+        ? { active: true }
+        : action.operation === "resolve"
         ? { ...action.values, status: "resolved" }
         : action.values;
   const { data, error } = await resourceClient
@@ -1019,6 +1037,15 @@ const handler = withSupabase(
             "Die Berechtigung konnte nicht geprüft werden.",
           );
         }
+        const archivedServices =
+          action.includeArchivedServices && assetManage.data
+            ? await readCatalog(
+                client,
+                action.tenantId,
+                RESOURCES.manageService,
+                false,
+              )
+            : [];
         const resolvedAssets = assetManage.data
           ? await readIntunePrimaryPersonNames(
               context.supabaseAdmin,
@@ -1030,7 +1057,13 @@ const handler = withSupabase(
               intune_primary_person_name: null,
             }));
         return json(request, {
-          data: { services, assets: resolvedAssets, problems },
+          data: {
+            services,
+            archivedServices,
+            canManageServices: assetManage.data,
+            assets: resolvedAssets,
+            problems,
+          },
         });
       }
       if (action.type === "listProblemOwners") {

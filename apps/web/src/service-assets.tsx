@@ -129,7 +129,11 @@ type ProblemForm = {
 
 type ProblemFormMode = "create" | "edit" | "resolve";
 
-type CatalogRequest = { type: "listCatalog"; tenantId: string };
+type CatalogRequest = {
+  type: "listCatalog";
+  tenantId: string;
+  includeArchivedServices?: boolean;
+};
 type ProblemOwnersRequest = { type: "listProblemOwners"; tenantId: string };
 type ServiceSaveRequest = {
   type: "manageService";
@@ -140,13 +144,18 @@ type ServiceSaveRequest = {
   criticality: Criticality;
   status: ServiceStatus;
   statusPublic: boolean;
-  active: boolean;
   serviceId?: string;
 };
 type ServiceArchiveRequest = {
   type: "manageService";
   tenantId: string;
   operation: "archive";
+  serviceId: string;
+};
+type ServiceRestoreRequest = {
+  type: "manageService";
+  tenantId: string;
+  operation: "restore";
   serviceId: string;
 };
 type AssetSaveRequest = {
@@ -216,6 +225,7 @@ type ServiceAssetsRequest =
   | ProblemOwnersRequest
   | ServiceSaveRequest
   | ServiceArchiveRequest
+  | ServiceRestoreRequest
   | AssetSaveRequest
   | AssetArchiveRequest
   | ProblemSaveRequest
@@ -574,12 +584,18 @@ function parseProblemTicketLink(
 
 function parseCatalog(value: unknown): {
   services: Service[];
+  archivedServices: Service[];
+  canManageServices: boolean;
   assets: Asset[];
   problems: Problem[];
 } {
   const data = responseData(value);
+  const archivedServices = data.archivedServices ?? [];
+  const canManageServices = data.canManageServices ?? false;
   if (
     !Array.isArray(data.services) ||
+    !Array.isArray(archivedServices) ||
+    typeof canManageServices !== "boolean" ||
     !Array.isArray(data.assets) ||
     !Array.isArray(data.problems)
   ) {
@@ -587,10 +603,12 @@ function parseCatalog(value: unknown): {
   }
 
   const services = data.services.map(parseService);
+  const archived = archivedServices.map(parseService);
   const assets = data.assets.map(parseAsset);
   const problems = data.problems.map(parseProblem);
   if (
     services.some((item) => item === null) ||
+    archived.some((item) => item === null) ||
     assets.some((item) => item === null) ||
     problems.some((item) => item === null)
   ) {
@@ -599,6 +617,8 @@ function parseCatalog(value: unknown): {
 
   return {
     services: services as Service[],
+    archivedServices: archived as Service[],
+    canManageServices,
     assets: assets as Asset[],
     problems: problems as Problem[],
   };
@@ -781,6 +801,9 @@ export function ServiceAssets({
       (allowAssets || initialTab !== "assets" ? initialTab : "services"),
   );
   const [services, setServices] = useState<Service[]>([]);
+  const [archivedServices, setArchivedServices] = useState<Service[]>([]);
+  const [canManageServices, setCanManageServices] = useState(false);
+  const [showArchivedServices, setShowArchivedServices] = useState(false);
   const [assets, setAssets] = useState<Asset[]>([]);
   const [problems, setProblems] = useState<Problem[]>([]);
   const [serviceForm, setServiceForm] =
@@ -856,6 +879,16 @@ export function ServiceAssets({
             service.criticality === serviceCriticality),
       ),
     [serviceCriticality, serviceQuery, services],
+  );
+  const filteredArchivedServices = useMemo(
+    () =>
+      archivedServices.filter(
+        (service) =>
+          contains([service.name, service.description], serviceQuery) &&
+          (serviceCriticality === "all" ||
+            service.criticality === serviceCriticality),
+      ),
+    [archivedServices, serviceCriticality, serviceQuery],
   );
   const filteredAssets = useMemo(
     () =>
@@ -940,15 +973,23 @@ export function ServiceAssets({
 
     try {
       const catalog = parseCatalog(
-        await requestServiceAssets({ type: "listCatalog", tenantId }),
+        await requestServiceAssets({
+          type: "listCatalog",
+          tenantId,
+          includeArchivedServices: showArchivedServices,
+        }),
       );
       if (requestVersion.current !== version) return;
       setServices(sortByName(catalog.services));
+      setArchivedServices(sortByName(catalog.archivedServices));
+      setCanManageServices(catalog.canManageServices);
       setAssets(sortByName(catalog.assets));
       setProblems(sortProblems(catalog.problems));
     } catch (nextError) {
       if (requestVersion.current !== version) return;
       setServices([]);
+      setArchivedServices([]);
+      setCanManageServices(false);
       setAssets([]);
       setProblems([]);
       setForbidden(errorStatus(nextError) === 403);
@@ -961,7 +1002,7 @@ export function ServiceAssets({
     } finally {
       if (requestVersion.current === version) setLoading(false);
     }
-  }, [tenantId]);
+  }, [showArchivedServices, tenantId]);
 
   useEffect(() => {
     void loadCatalog();
@@ -1007,6 +1048,9 @@ export function ServiceAssets({
     setProblemMode("create");
     clearProblemTicketState();
     setProblemOwners([]);
+    setArchivedServices([]);
+    setCanManageServices(false);
+    setShowArchivedServices(false);
     setSuccess("");
   }, [tenantId]);
 
@@ -1267,7 +1311,6 @@ export function ServiceAssets({
         criticality: serviceForm.criticality,
         status: serviceForm.status,
         statusPublic: serviceForm.statusPublic,
-        active: true,
       };
       const saved = parseSavedService(await requestServiceAssets(request));
       setServices((current) =>
@@ -1299,7 +1342,7 @@ export function ServiceAssets({
     if (!window.confirm(`Service „${service.name}“ archivieren?`)) return;
     beginAction(`service:archive:${service.id}`);
     try {
-      parseSavedService(
+      const archived = parseSavedService(
         await requestServiceAssets({
           type: "manageService",
           tenantId,
@@ -1310,17 +1353,65 @@ export function ServiceAssets({
       setServices((current) =>
         current.filter((item) => item.id !== service.id),
       );
+      if (showArchivedServices) {
+        setArchivedServices((current) =>
+          sortByName([
+            ...current.filter((item) => item.id !== archived.id),
+            archived,
+          ]),
+        );
+      }
       if (assetForm.serviceId === service.id) {
         setAssetForm((current) => ({ ...current, serviceId: "" }));
       }
       if (serviceForm.id === service.id) resetServiceForm();
-      setSuccess(`Der Service „${service.name}“ wurde archiviert.`);
+      setSuccess(
+        `Der Service „${service.name}“ wurde archiviert und von der öffentlichen Statusseite entfernt.`,
+      );
     } catch (nextError) {
       setForbidden(errorStatus(nextError) === 403);
       setError(
         await apiErrorMessage(
           nextError,
           "Der Service konnte nicht archiviert werden.",
+        ),
+      );
+    } finally {
+      setPendingAction(null);
+    }
+  }
+
+  async function restoreService(service: Service) {
+    if (!window.confirm(`Service „${service.name}“ wiederherstellen?`)) return;
+    beginAction(`service:restore:${service.id}`);
+    try {
+      const restored = parseSavedService(
+        await requestServiceAssets({
+          type: "manageService",
+          tenantId,
+          operation: "restore",
+          serviceId: service.id,
+        } satisfies ServiceRestoreRequest),
+      );
+      if (!restored.active) {
+        throw new Error("Der Service wurde nicht wiederhergestellt.");
+      }
+      setArchivedServices((current) =>
+        current.filter((item) => item.id !== restored.id),
+      );
+      setServices((current) =>
+        sortByName([
+          ...current.filter((item) => item.id !== restored.id),
+          restored,
+        ]),
+      );
+      setSuccess(`Der Service „${restored.name}“ wurde wiederhergestellt.`);
+    } catch (nextError) {
+      setForbidden(errorStatus(nextError) === 403);
+      setError(
+        await apiErrorMessage(
+          nextError,
+          "Der Service konnte nicht wiederhergestellt werden.",
         ),
       );
     } finally {
@@ -1736,6 +1827,19 @@ export function ServiceAssets({
               </select>
             </label>
           </fieldset>
+          {canManageServices ? (
+            <label className="service-assets__archive-toggle">
+              <input
+                checked={showArchivedServices}
+                disabled={controlsDisabled}
+                onChange={(event) =>
+                  setShowArchivedServices(event.target.checked)
+                }
+                type="checkbox"
+              />
+              <span>Archivierte Services anzeigen</span>
+            </label>
+          ) : null}
 
           {services.length === 0 ? (
             <p className="empty-state">
@@ -1774,20 +1878,86 @@ export function ServiceAssets({
                     >
                       Bearbeiten
                     </button>{" "}
-                    <button
-                      disabled={controlsDisabled}
-                      onClick={() => void archiveService(service)}
-                      type="button"
-                    >
-                      {pendingAction === `service:archive:${service.id}`
-                        ? "Wird archiviert …"
-                        : "Archivieren"}
-                    </button>
+                    {canManageServices ? (
+                      <button
+                        disabled={controlsDisabled}
+                        onClick={() => void archiveService(service)}
+                        type="button"
+                      >
+                        {pendingAction === `service:archive:${service.id}`
+                          ? "Wird archiviert …"
+                          : "Archivieren"}
+                      </button>
+                    ) : null}
                   </article>
                 </li>
               ))}
             </ul>
           )}
+
+          {canManageServices && showArchivedServices ? (
+            <section
+              aria-labelledby="service-assets-archived-services-title"
+              className="service-assets__archived panel"
+              id="service-assets-archived-services"
+            >
+              <div className="panel-heading">
+                <div>
+                  <p className="eyebrow">Archiv</p>
+                  <h4 id="service-assets-archived-services-title">
+                    Archivierte Services
+                  </h4>
+                  <p>
+                    Archivierte Services werden nicht als aktiv angeboten. Sie
+                    können bewusst wiederhergestellt werden.
+                  </p>
+                </div>
+              </div>
+              {archivedServices.length === 0 ? (
+                <p className="empty-state">
+                  Für diesen Mandanten sind keine archivierten Services
+                  vorhanden.
+                </p>
+              ) : filteredArchivedServices.length === 0 ? (
+                <p className="empty-state">
+                  Keine archivierten Services entsprechen dem Filter.
+                </p>
+              ) : (
+                <ul aria-label="Archivierte Services">
+                  {filteredArchivedServices.map((service) => (
+                    <li key={service.id}>
+                      <article>
+                        <h5>{service.name}</h5>
+                        <span className="service-assets__archive-state">
+                          Archiviert
+                        </span>
+                        <p>
+                          <strong>
+                            {CRITICALITY_LABELS[service.criticality]}
+                          </strong>
+                          {service.description
+                            ? ` · ${service.description}`
+                            : ""}
+                        </p>
+                        <p>
+                          Zuletzt geändert: {formatDate(service.updated_at)}
+                        </p>
+                        <button
+                          disabled={controlsDisabled}
+                          onClick={() => void restoreService(service)}
+                          type="button"
+                        >
+                          {pendingAction === `service:restore:${service.id}`
+                            ? "Wird wiederhergestellt …"
+                            : "Wiederherstellen"}
+                        </button>
+                      </article>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          ) : null}
 
           <section
             aria-labelledby="service-assets-service-form-title"

@@ -7241,11 +7241,13 @@ body:has(.ticket-detail) {
 }
 
 .service-assets li > article h4,
+.service-assets li > article h5,
 .service-assets li > article p {
   margin: 0;
 }
 
-.service-assets li > article h4 {
+.service-assets li > article h4,
+.service-assets li > article h5 {
   color: var(--ink);
   font-size: 15px;
 }
@@ -7356,6 +7358,41 @@ body:has(.ticket-detail) {
   min-height: 36px;
   padding: 6px 10px;
   font-size: 13px;
+}
+
+.service-assets__archive-toggle {
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  width: fit-content;
+  gap: 9px !important;
+  margin: -4px 0 2px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 9px 11px;
+  background: var(--surface-subtle);
+  color: var(--muted) !important;
+}
+
+.service-assets__archive-toggle input {
+  width: 17px;
+  height: 17px;
+  margin: 0;
+  accent-color: var(--primary);
+}
+
+.service-assets__archived {
+  margin-top: 4px;
+  border-style: dashed !important;
+}
+
+.service-assets__archive-state {
+  justify-self: end;
+  border-radius: 999px;
+  padding: 4px 8px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 750;
 }
 
 .service-assets .panel {
