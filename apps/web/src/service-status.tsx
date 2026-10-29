@@ -716,10 +716,10 @@ function badgeUrl(publicId: string): string | null {
 }
 
 export function sharePointIframeEmbedCode(
-  pageUrl: string,
+  statusBadgeUrl: string,
   title: string,
 ): string {
-  return `<iframe src="${escapeHtmlAttribute(pageUrl)}" title="Systemstatus: ${escapeHtmlAttribute(title)}" loading="lazy" width="100%" height="720" style="border: 0;"></iframe>`;
+  return `<iframe src="${escapeHtmlAttribute(statusBadgeUrl)}" title="Status-Badge: ${escapeHtmlAttribute(title)}" loading="lazy" width="260" height="46" style="border: 0; overflow: hidden;" scrolling="no"></iframe>`;
 }
 
 function StatusPill({ status }: { status: ServiceStatus }) {
@@ -1449,8 +1449,11 @@ export function ServiceStatus({
     pageUrl && currentBadgeUrl
       ? `<a href="${pageUrl}"><img src="${currentBadgeUrl}" alt="Systemstatus von ${escapeHtmlAttribute(overview?.page.title ?? "nextDesk")}"></a>`
       : null;
-  const iframeEmbedCode = pageUrl
-    ? sharePointIframeEmbedCode(pageUrl, overview?.page.title ?? "nextDesk")
+  const iframeEmbedCode = currentBadgeUrl
+    ? sharePointIframeEmbedCode(
+        currentBadgeUrl,
+        overview?.page.title ?? "nextDesk",
+      )
     : null;
 
   async function save(event: FormEvent<HTMLFormElement>) {
@@ -1831,8 +1834,9 @@ export function ServiceStatus({
                 <p>
                   Für den Bild-Webpart verwenden Sie die Bildadresse und
                   verlinken das Badge mit der Statusseite. Für das
-                  Einbetten-Webpart steht der iFrame-Code bereit. nextDesk
-                  verändert keine SharePoint-Seite automatisch.
+                  Einbetten-Webpart zeigt der iFrame ausschliesslich das
+                  kompakte Statusbadge. nextDesk verändert keine
+                  SharePoint-Seite automatisch.
                 </p>
                 <label>
                   Öffentliche Statusseite
@@ -1873,15 +1877,18 @@ export function ServiceStatus({
                   </span>
                 </label>
                 <label>
-                  SharePoint-iFrame-Einbettung
+                  SharePoint-iFrame-Einbettung (Statusbadge)
                   <span className="service-status__copy-row">
                     <textarea readOnly rows={3} value={iframeEmbedCode} />
                     <button
                       onClick={() =>
-                        void copy(iframeEmbedCode, "Der SharePoint-iFrame-Code")
+                        void copy(
+                          iframeEmbedCode,
+                          "Der SharePoint-iFrame-Code für das Statusbadge",
+                        )
                       }
                       type="button"
-                      aria-label="SharePoint-iFrame-Code kopieren"
+                      aria-label="SharePoint-iFrame-Code für das Statusbadge kopieren"
                     >
                       <Copy aria-hidden="true" size={16} />
                     </button>

@@ -117,14 +117,14 @@ describe("HTML-Attribut-Escaping", () => {
     );
   });
 
-  it("erzeugt einen kopierbaren SharePoint-iFrame ohne unsichere Attribute", () => {
+  it("erzeugt einen kompakten SharePoint-iFrame nur für das Statusbadge", () => {
     expect(
       sharePointIframeEmbedCode(
-        "https://app.nextdesk.ch/?system-status=00000000-0000-4000-8000-000000000004&embed=1",
+        "https://status.example/functions/v1/service-status-public?id=00000000-0000-4000-8000-000000000004&format=badge",
         `Status "kritisch" & <script>`,
       ),
     ).toBe(
-      '<iframe src="https://app.nextdesk.ch/?system-status=00000000-0000-4000-8000-000000000004&amp;embed=1" title="Systemstatus: Status &quot;kritisch&quot; &amp; &lt;script&gt;" loading="lazy" width="100%" height="720" style="border: 0;"></iframe>',
+      '<iframe src="https://status.example/functions/v1/service-status-public?id=00000000-0000-4000-8000-000000000004&amp;format=badge" title="Status-Badge: Status &quot;kritisch&quot; &amp; &lt;script&gt;" loading="lazy" width="260" height="46" style="border: 0; overflow: hidden;" scrolling="no"></iframe>',
     );
   });
 });
