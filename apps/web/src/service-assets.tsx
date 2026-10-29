@@ -147,6 +147,25 @@ type CatalogRequest = {
   tenantId: string;
   includeArchivedServices?: boolean;
 };
+
+export function catalogRequest(
+  tenantId: string,
+  supportsArchivedServices: boolean,
+  includeArchivedServices: boolean,
+): CatalogRequest {
+  return {
+    type: "listCatalog",
+    tenantId,
+    ...(supportsArchivedServices ? { includeArchivedServices } : {}),
+  };
+}
+
+export function canArchiveServices(
+  canManageServices: boolean,
+  supportsArchivedServices: boolean,
+): boolean {
+  return canManageServices && supportsArchivedServices;
+}
 type ProblemOwnersRequest = { type: "listProblemOwners"; tenantId: string };
 type ServiceResponsibleAgentsRequest = {
   type: "listServiceResponsibleAgents";
@@ -603,6 +622,15 @@ function isProblemStatus(value: unknown): value is ProblemStatus {
 
 function parseService(value: unknown): Service | null {
   if (!isRecord(value)) return null;
+  const primaryResponsibleId = Object.hasOwn(value, "primary_responsible_id")
+    ? value.primary_responsible_id
+    : null;
+  const secondaryResponsibleId = Object.hasOwn(
+    value,
+    "secondary_responsible_id",
+  )
+    ? value.secondary_responsible_id
+    : null;
   if (
     typeof value.id !== "string" ||
     typeof value.tenant_id !== "string" ||
@@ -611,8 +639,8 @@ function parseService(value: unknown): Service | null {
     !isCriticality(value.criticality) ||
     !isServiceStatus(value.status) ||
     typeof value.status_public !== "boolean" ||
-    !isNullableString(value.primary_responsible_id) ||
-    !isNullableString(value.secondary_responsible_id) ||
+    !isNullableString(primaryResponsibleId) ||
+    !isNullableString(secondaryResponsibleId) ||
     typeof value.active !== "boolean" ||
     typeof value.created_at !== "string" ||
     typeof value.updated_at !== "string"
@@ -627,8 +655,8 @@ function parseService(value: unknown): Service | null {
     criticality: value.criticality,
     status: value.status,
     status_public: value.status_public,
-    primary_responsible_id: value.primary_responsible_id,
-    secondary_responsible_id: value.secondary_responsible_id,
+    primary_responsible_id: primaryResponsibleId,
+    secondary_responsible_id: secondaryResponsibleId,
     active: value.active,
     created_at: value.created_at,
     updated_at: value.updated_at,
@@ -852,15 +880,19 @@ function parseProblemTicketLink(
   }
 }
 
-function parseCatalog(value: unknown): {
+export function parseCatalog(value: unknown): {
   services: Service[];
   archivedServices: Service[];
   canManageServices: boolean;
+  supportsArchivedServices: boolean;
   assets: Asset[];
   problems: Problem[];
 } {
   const data = responseData(value);
-  const archivedServices = data.archivedServices ?? [];
+  const supportsArchivedServices = Object.hasOwn(data, "archivedServices");
+  const archivedServices = supportsArchivedServices
+    ? data.archivedServices
+    : [];
   const canManageServices = data.canManageServices ?? false;
   if (
     !Array.isArray(data.services) ||
@@ -889,6 +921,7 @@ function parseCatalog(value: unknown): {
     services: services as Service[],
     archivedServices: archived as Service[],
     canManageServices,
+    supportsArchivedServices,
     assets: assets as Asset[],
     problems: problems as Problem[],
   };
@@ -1076,6 +1109,8 @@ export function ServiceAssets({
   const [services, setServices] = useState<Service[]>([]);
   const [archivedServices, setArchivedServices] = useState<Service[]>([]);
   const [canManageServices, setCanManageServices] = useState(false);
+  const [supportsArchivedServices, setSupportsArchivedServices] =
+    useState(false);
   const [showArchivedServices, setShowArchivedServices] = useState(false);
   const [assets, setAssets] = useState<Asset[]>([]);
   const [problems, setProblems] = useState<Problem[]>([]);
@@ -1270,16 +1305,20 @@ export function ServiceAssets({
 
     try {
       const catalog = parseCatalog(
-        await requestServiceAssets({
-          type: "listCatalog",
-          tenantId,
-          includeArchivedServices: showArchivedServices,
-        }),
+        await requestServiceAssets(
+          catalogRequest(
+            tenantId,
+            supportsArchivedServices,
+            showArchivedServices,
+          ),
+        ),
       );
       if (requestVersion.current !== version) return;
       setServices(sortByName(catalog.services));
       setArchivedServices(sortByName(catalog.archivedServices));
       setCanManageServices(catalog.canManageServices);
+      setSupportsArchivedServices(catalog.supportsArchivedServices);
+      if (!catalog.supportsArchivedServices) setShowArchivedServices(false);
       setAssets(sortByName(catalog.assets));
       setProblems(sortProblems(catalog.problems));
     } catch (nextError) {
@@ -1287,6 +1326,7 @@ export function ServiceAssets({
       setServices([]);
       setArchivedServices([]);
       setCanManageServices(false);
+      setSupportsArchivedServices(false);
       setAssets([]);
       setProblems([]);
       setForbidden(errorStatus(nextError) === 403);
@@ -1299,7 +1339,7 @@ export function ServiceAssets({
     } finally {
       if (requestVersion.current === version) setLoading(false);
     }
-  }, [showArchivedServices, tenantId]);
+  }, [showArchivedServices, supportsArchivedServices, tenantId]);
 
   useEffect(() => {
     void loadCatalog();
@@ -1388,6 +1428,7 @@ export function ServiceAssets({
     setProblemOwners([]);
     setArchivedServices([]);
     setCanManageServices(false);
+    setSupportsArchivedServices(false);
     setShowArchivedServices(false);
     setSuccess("");
   }, [tenantId]);
@@ -1792,6 +1833,9 @@ export function ServiceAssets({
   }
 
   async function archiveService(service: Service) {
+    if (!canArchiveServices(canManageServices, supportsArchivedServices)) {
+      return;
+    }
     if (!window.confirm(`Service „${service.name}“ archivieren?`)) return;
     const closesCurrentServiceEditor =
       serviceForm.id === service.id || inlineServiceEditorId === service.id;
@@ -2318,7 +2362,7 @@ export function ServiceAssets({
               </select>
             </label>
           </fieldset>
-          {canManageServices ? (
+          {canArchiveServices(canManageServices, supportsArchivedServices) ? (
             <label className="service-assets__archive-toggle">
               <input
                 checked={showArchivedServices}
@@ -2378,19 +2422,24 @@ export function ServiceAssets({
                       </p>
                     ) : null}
                     <p>Zuletzt geändert: {formatDate(service.updated_at)}</p>
-                    <button
-                      aria-expanded={inlineServiceEditorId === service.id}
-                      disabled={controlsDisabled}
-                      onClick={(event) =>
-                        openInlineServiceEditor(service, event.currentTarget)
-                      }
-                      type="button"
-                    >
-                      {inlineServiceEditorId === service.id
-                        ? "Bearbeitung schliessen"
-                        : "Bearbeiten"}
-                    </button>{" "}
                     {canManageServices ? (
+                      <button
+                        aria-expanded={inlineServiceEditorId === service.id}
+                        disabled={controlsDisabled}
+                        onClick={(event) =>
+                          openInlineServiceEditor(service, event.currentTarget)
+                        }
+                        type="button"
+                      >
+                        {inlineServiceEditorId === service.id
+                          ? "Bearbeitung schliessen"
+                          : "Bearbeiten"}
+                      </button>
+                    ) : null}{" "}
+                    {canArchiveServices(
+                      canManageServices,
+                      supportsArchivedServices,
+                    ) ? (
                       <button
                         disabled={controlsDisabled}
                         onClick={() => void archiveService(service)}
@@ -2455,7 +2504,8 @@ export function ServiceAssets({
             </ul>
           )}
 
-          {canManageServices && showArchivedServices ? (
+          {canArchiveServices(canManageServices, supportsArchivedServices) &&
+          showArchivedServices ? (
             <section
               aria-labelledby="service-assets-archived-services-title"
               className="service-assets__archived panel"
