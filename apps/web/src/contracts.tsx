@@ -30,13 +30,23 @@ type Contract = {
   noticePeriodDays: number | null;
   reminderDaysBefore: number | null;
   reminderSentFor: string | null;
+  cancelled: boolean;
+  cancelledOn: string | null;
+  costAmount: number | null;
+  costCurrency: "CHF" | "EUR" | "USD";
+  costPeriod: CostPeriod | null;
+  autoRenew: boolean;
+  renewalMonths: number | null;
+  assetIds: string[];
   responsibleUserId: string | null;
   notes: string | null;
   archivedAt: string | null;
   createdAt: string;
   updatedAt: string;
 };
+type CostPeriod = "one_time" | "monthly" | "quarterly" | "yearly";
 type Person = { id: string; displayName: string };
+type AssetOption = { id: string; name: string; tag: string | null; kind: string | null };
 type Form = {
   id: string | null;
   title: string;
@@ -48,6 +58,14 @@ type Form = {
   endsOn: string;
   noticePeriodDays: string;
   reminderDaysBefore: string;
+  cancelled: boolean;
+  cancelledOn: string;
+  costAmount: string;
+  costCurrency: "CHF" | "EUR" | "USD";
+  costPeriod: CostPeriod | "";
+  autoRenew: boolean;
+  renewalMonths: string;
+  assetIds: string[];
   responsibleUserId: string;
   notes: string;
 };
@@ -62,9 +80,38 @@ const EMPTY: Form = {
   endsOn: "",
   noticePeriodDays: "",
   reminderDaysBefore: "",
+  cancelled: false,
+  cancelledOn: "",
+  costAmount: "",
+  costCurrency: "CHF",
+  costPeriod: "",
+  autoRenew: false,
+  renewalMonths: "",
+  assetIds: [],
   responsibleUserId: "",
   notes: "",
 };
+const costPeriodLabel: Record<CostPeriod, string> = {
+  one_time: "Einmalig",
+  monthly: "Monatlich",
+  quarterly: "Vierteljährlich",
+  yearly: "Jährlich",
+};
+const costPeriodSuffix: Record<CostPeriod, string> = {
+  one_time: "einmalig",
+  monthly: "pro Monat",
+  quarterly: "pro Quartal",
+  yearly: "pro Jahr",
+};
+const formatCost = (contract: Contract) =>
+  contract.costAmount === null
+    ? null
+    : `${new Intl.NumberFormat("de-CH", {
+        style: "currency",
+        currency: contract.costCurrency,
+      }).format(contract.costAmount)}${
+        contract.costPeriod ? ` ${costPeriodSuffix[contract.costPeriod]}` : ""
+      }`;
 const statusLabel: Record<ContractStatus, string> = {
   draft: "Entwurf",
   active: "Aktiv",
@@ -93,6 +140,13 @@ function deadline(
   contract: Contract,
 ): { label: string; tone: "neutral" | "warning" | "danger" } | null {
   if (!contract.endsOn) return null;
+  // A cancelled contract simply runs out; no cancellation warnings.
+  if (contract.cancelled) {
+    return {
+      label: `Gekündigt, endet am ${formatDate(contract.endsOn)}`,
+      tone: "neutral",
+    };
+  }
   const end = new Date(`${contract.endsOn}T12:00:00`);
   const notice =
     contract.noticePeriodDays === null
@@ -129,6 +183,15 @@ function formFor(contract: Contract): Form {
       contract.reminderDaysBefore === null
         ? ""
         : String(contract.reminderDaysBefore),
+    cancelled: contract.cancelled,
+    cancelledOn: contract.cancelledOn ?? "",
+    costAmount: contract.costAmount === null ? "" : String(contract.costAmount),
+    costCurrency: contract.costCurrency,
+    costPeriod: contract.costPeriod ?? "",
+    autoRenew: contract.autoRenew,
+    renewalMonths:
+      contract.renewalMonths === null ? "" : String(contract.renewalMonths),
+    assetIds: contract.assetIds,
     responsibleUserId: contract.responsibleUserId ?? "",
     notes: contract.notes ?? "",
   };
@@ -156,6 +219,8 @@ function parsePeople(value: unknown): Person[] | null {
 export function Contracts({ tenantId }: { tenantId: string }) {
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [people, setPeople] = useState<Person[]>([]);
+  const [assets, setAssets] = useState<AssetOption[]>([]);
+  const [assetSearch, setAssetSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -178,6 +243,16 @@ export function Contracts({ tenantId }: { tenantId: string }) {
     setLoading(true);
     setError("");
     try {
+      // A failed asset list must not block the contracts themselves.
+      const assetsPromise = supabase.functions
+        .invoke("contracts", { body: { type: "listAssets", tenantId } })
+        .then((result) => {
+          const data = result.error ? null : responseData(result.data);
+          return data && Array.isArray(data.assets)
+            ? (data.assets as AssetOption[])
+            : [];
+        })
+        .catch(() => [] as AssetOption[]);
       const [contractsResult, peopleResult] = await Promise.all([
         supabase.functions.invoke("contracts", {
           body: { type: "list", tenantId, includeArchived },
@@ -192,6 +267,7 @@ export function Contracts({ tenantId }: { tenantId: string }) {
       const nextPeople = parsePeople(peopleResult.data);
       if (!nextContracts || !nextPeople) throw new Error("invalid_response");
       setContracts(nextContracts);
+      setAssets(await assetsPromise);
       setPeople(
         nextPeople.sort((a, b) =>
           a.displayName.localeCompare(b.displayName, "de-CH"),
@@ -326,11 +402,34 @@ export function Contracts({ tenantId }: { tenantId: string }) {
           form.reminderDaysBefore === ""
             ? null
             : Number(form.reminderDaysBefore),
+        cancelled: form.cancelled,
+        cancelledOn: form.cancelled ? form.cancelledOn || null : null,
+        costAmount:
+          form.costAmount.trim() === "" ? null : Number(form.costAmount),
+        costCurrency: form.costCurrency,
+        costPeriod: form.costAmount.trim() === "" ? null : form.costPeriod || null,
+        autoRenew: form.autoRenew,
+        renewalMonths: form.autoRenew && form.renewalMonths.trim() !== ""
+          ? Number(form.renewalMonths)
+          : null,
+        assetIds: form.assetIds,
         responsibleUserId: form.responsibleUserId || null,
         notes: form.notes || null,
       };
       if (values.startsOn && values.endsOn && values.endsOn < values.startsOn)
         throw new Error("invalid_dates");
+      if (values.costAmount !== null) {
+        if (!Number.isFinite(values.costAmount) || values.costAmount < 0)
+          throw new Error("invalid_cost");
+        if (!values.costPeriod) throw new Error("cost_period_missing");
+      }
+      if (
+        values.renewalMonths !== null &&
+        (!Number.isInteger(values.renewalMonths) ||
+          values.renewalMonths < 1 ||
+          values.renewalMonths > 120)
+      )
+        throw new Error("invalid_renewal");
       const result = await supabase.functions.invoke("contracts", {
         body: form.id
           ? { type: "update", tenantId, contractId: form.id, values }
@@ -381,7 +480,13 @@ export function Contracts({ tenantId }: { tenantId: string }) {
       close();
     } catch (reason) {
       setError(
-        reason instanceof Error && reason.message === "invalid_dates"
+        reason instanceof Error && reason.message === "invalid_cost"
+          ? "Die Kosten müssen eine Zahl ab 0 sein."
+          : reason instanceof Error && reason.message === "cost_period_missing"
+            ? "Bitte wählen Sie die Kostenperiode."
+            : reason instanceof Error && reason.message === "invalid_renewal"
+              ? "Die Verlängerung muss zwischen 1 und 120 Monaten liegen."
+              : reason instanceof Error && reason.message === "invalid_dates"
           ? "Das Enddatum muss am oder nach dem Startdatum liegen."
           : reason instanceof Error && reason.message === "invalid_notice"
             ? "Die Kündigungsfrist muss zwischen 0 und 3650 Tagen liegen."
@@ -565,12 +670,43 @@ export function Contracts({ tenantId }: { tenantId: string }) {
                     <span className="contracts__type">
                       {typeText(contract.contractType)}
                     </span>
+                    {contract.cancelled ? (
+                      <span className="contracts__type">Gekündigt</span>
+                    ) : null}
+                    {contract.autoRenew ? (
+                      <span className="contracts__type">
+                        Autom. Verlängerung
+                        {contract.renewalMonths
+                          ? ` (${contract.renewalMonths} Mt.)`
+                          : ""}
+                      </span>
+                    ) : null}
                   </div>
                   <dl>
                     <div>
                       <dt>Ende</dt>
                       <dd>{formatDate(contract.endsOn)}</dd>
                     </div>
+                    {formatCost(contract) ? (
+                      <div>
+                        <dt>Kosten</dt>
+                        <dd>{formatCost(contract)}</dd>
+                      </div>
+                    ) : null}
+                    {contract.assetIds.length > 0 ? (
+                      <div>
+                        <dt>Assets</dt>
+                        <dd>
+                          {contract.assetIds
+                            .map(
+                              (id) =>
+                                assets.find((asset) => asset.id === id)?.name ??
+                                "Unbekanntes Asset",
+                            )
+                            .join(", ")}
+                        </dd>
+                      </div>
+                    ) : null}
                     <div>
                       <dt>Verantwortlich</dt>
                       <dd>{person?.displayName ?? "Nicht zugeordnet"}</dd>
@@ -860,6 +996,192 @@ export function Contracts({ tenantId }: { tenantId: string }) {
                     Nur bei aktiven Einträgen mit Ablaufdatum.
                   </small>
                 </label>
+                <label className="contracts__check">
+                  <input
+                    checked={form.cancelled}
+                    onChange={(event) =>
+                      setForm({
+                        ...form,
+                        cancelled: event.target.checked,
+                        cancelledOn: event.target.checked ? form.cancelledOn : "",
+                      })
+                    }
+                    type="checkbox"
+                  />
+                  Bereits gekündigt
+                </label>
+                {form.cancelled ? (
+                  <label>
+                    Gekündigt am
+                    <input
+                      type="date"
+                      value={form.cancelledOn}
+                      onChange={(event) =>
+                        setForm({ ...form, cancelledOn: event.target.value })
+                      }
+                    />
+                  </label>
+                ) : (
+                  <span aria-hidden="true" />
+                )}
+                <label>
+                  Kosten
+                  <input
+                    inputMode="decimal"
+                    min="0"
+                    step="0.01"
+                    type="number"
+                    value={form.costAmount}
+                    onChange={(event) =>
+                      setForm({ ...form, costAmount: event.target.value })
+                    }
+                  />
+                </label>
+                <div className="contracts__cost-row">
+                  <label>
+                    Währung
+                    <select
+                      value={form.costCurrency}
+                      onChange={(event) =>
+                        setForm({
+                          ...form,
+                          costCurrency: event.target.value as Form["costCurrency"],
+                        })
+                      }
+                    >
+                      <option value="CHF">CHF</option>
+                      <option value="EUR">EUR</option>
+                      <option value="USD">USD</option>
+                    </select>
+                  </label>
+                  <label>
+                    Kostenperiode
+                    <select
+                      required={form.costAmount.trim() !== ""}
+                      value={form.costPeriod}
+                      onChange={(event) =>
+                        setForm({
+                          ...form,
+                          costPeriod: event.target.value as Form["costPeriod"],
+                        })
+                      }
+                    >
+                      <option value="">Bitte wählen</option>
+                      {(Object.keys(costPeriodLabel) as CostPeriod[]).map(
+                        (key) => (
+                          <option key={key} value={key}>
+                            {costPeriodLabel[key]}
+                          </option>
+                        ),
+                      )}
+                    </select>
+                  </label>
+                </div>
+                <label className="contracts__check">
+                  <input
+                    checked={form.autoRenew}
+                    onChange={(event) =>
+                      setForm({
+                        ...form,
+                        autoRenew: event.target.checked,
+                        renewalMonths: event.target.checked ? form.renewalMonths : "",
+                      })
+                    }
+                    type="checkbox"
+                  />
+                  Automatische Verlängerung
+                </label>
+                {form.autoRenew ? (
+                  <label>
+                    Verlängerung um (Monate)
+                    <input
+                      inputMode="numeric"
+                      max="120"
+                      min="1"
+                      type="number"
+                      value={form.renewalMonths}
+                      onChange={(event) =>
+                        setForm({ ...form, renewalMonths: event.target.value })
+                      }
+                    />
+                  </label>
+                ) : (
+                  <span aria-hidden="true" />
+                )}
+                <div className="contracts__notes contracts__assets">
+                  <span className="contracts__assets-label">
+                    Verknüpfte Assets
+                  </span>
+                  {form.assetIds.length > 0 ? (
+                    <ul className="contracts__asset-chips">
+                      {form.assetIds.map((id) => (
+                        <li key={id}>
+                          {assets.find((asset) => asset.id === id)?.name ??
+                            "Unbekanntes Asset"}
+                          <button
+                            aria-label="Verknüpfung entfernen"
+                            onClick={() =>
+                              setForm({
+                                ...form,
+                                assetIds: form.assetIds.filter(
+                                  (assetId) => assetId !== id,
+                                ),
+                              })
+                            }
+                            type="button"
+                          >
+                            <X size={12} />
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                  <input
+                    aria-label="Assets suchen"
+                    onChange={(event) => setAssetSearch(event.target.value)}
+                    placeholder={
+                      assets.length === 0
+                        ? "Keine Assets vorhanden"
+                        : "Asset suchen und anklicken …"
+                    }
+                    disabled={assets.length === 0}
+                    value={assetSearch}
+                  />
+                  {assetSearch.trim() ? (
+                    <ul className="contracts__asset-results">
+                      {assets
+                        .filter(
+                          (asset) =>
+                            !form.assetIds.includes(asset.id) &&
+                            `${asset.name} ${asset.tag ?? ""}`
+                              .toLocaleLowerCase("de-CH")
+                              .includes(assetSearch.trim().toLocaleLowerCase("de-CH")),
+                        )
+                        .slice(0, 8)
+                        .map((asset) => (
+                          <li key={asset.id}>
+                            <button
+                              onClick={() => {
+                                setForm({
+                                  ...form,
+                                  assetIds: [...form.assetIds, asset.id],
+                                });
+                                setAssetSearch("");
+                              }}
+                              type="button"
+                            >
+                              <strong>{asset.name}</strong>
+                              {asset.tag || asset.kind ? (
+                                <small>
+                                  {[asset.tag, asset.kind].filter(Boolean).join(" · ")}
+                                </small>
+                              ) : null}
+                            </button>
+                          </li>
+                        ))}
+                    </ul>
+                  ) : null}
+                </div>
                 <label className="contracts__notes">
                   Notiz
                   <textarea

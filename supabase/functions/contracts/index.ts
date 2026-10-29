@@ -21,12 +21,23 @@ type Values = {
   noticePeriodDays: number | null;
   // undefined: not sent (older clients); an update then leaves it unchanged.
   reminderDaysBefore?: number | null;
+  // The fields below are optional so that older clients keep working; an
+  // update leaves anything that was not sent unchanged.
+  cancelled?: boolean;
+  cancelledOn?: string | null;
+  costAmount?: number | null;
+  costCurrency?: "CHF" | "EUR" | "USD";
+  costPeriod?: "one_time" | "monthly" | "quarterly" | "yearly" | null;
+  autoRenew?: boolean;
+  renewalMonths?: number | null;
+  assetIds?: string[];
   responsibleUserId: string | null;
   notes: string | null;
 };
 type Action =
   | { type: "list"; tenantId: string; includeArchived: boolean }
   | { type: "listPeople"; tenantId: string }
+  | { type: "listAssets"; tenantId: string }
   | { type: "create"; tenantId: string; values: Values }
   | { type: "update"; tenantId: string; contractId: string; values: Values }
   | { type: "archive"; tenantId: string; contractId: string };
@@ -84,6 +95,14 @@ function parseValues(value: unknown): Values | null {
         "endsOn",
         "noticePeriodDays",
         "reminderDaysBefore",
+        "cancelled",
+        "cancelledOn",
+        "costAmount",
+        "costCurrency",
+        "costPeriod",
+        "autoRenew",
+        "renewalMonths",
+        "assetIds",
         "responsibleUserId",
         "notes",
       ].includes(key),
@@ -123,7 +142,57 @@ function parseValues(value: unknown): Values | null {
           value.reminderDaysBefore <= 3650
         ? value.reminderDaysBefore
         : undefined;
+  const cancelled = "cancelled" in value ? value.cancelled : undefined;
+  const cancelledOn = "cancelledOn" in value ? optionalDate(value.cancelledOn) : undefined;
+  const costAmount = !("costAmount" in value)
+    ? undefined
+    : value.costAmount === null || value.costAmount === ""
+      ? null
+      : typeof value.costAmount === "number" &&
+          Number.isFinite(value.costAmount) &&
+          value.costAmount >= 0 &&
+          value.costAmount <= 9_999_999_999.99
+        ? Math.round(value.costAmount * 100) / 100
+        : Number.NaN;
+  const costCurrency = "costCurrency" in value ? value.costCurrency : undefined;
+  const costPeriod = !("costPeriod" in value)
+    ? undefined
+    : value.costPeriod === null || value.costPeriod === ""
+      ? null
+      : value.costPeriod;
+  const autoRenew = "autoRenew" in value ? value.autoRenew : undefined;
+  const renewalMonths = !("renewalMonths" in value)
+    ? undefined
+    : value.renewalMonths === null || value.renewalMonths === ""
+      ? null
+      : typeof value.renewalMonths === "number" &&
+          Number.isInteger(value.renewalMonths) &&
+          value.renewalMonths >= 1 &&
+          value.renewalMonths <= 120
+        ? value.renewalMonths
+        : Number.NaN;
+  const assetIds = !("assetIds" in value)
+    ? undefined
+    : Array.isArray(value.assetIds) &&
+        value.assetIds.length <= 100 &&
+        value.assetIds.every(isUuid)
+      ? [...new Set((value.assetIds as string[]).map((id) => id.toLowerCase()))]
+      : null;
   if (
+    (cancelled !== undefined && typeof cancelled !== "boolean") ||
+    cancelledOn === undefined && "cancelledOn" in value ||
+    (cancelledOn && cancelled !== true) ||
+    Number.isNaN(costAmount) ||
+    (costCurrency !== undefined &&
+      !["CHF", "EUR", "USD"].includes(costCurrency as string)) ||
+    (costPeriod !== undefined &&
+      costPeriod !== null &&
+      !["one_time", "monthly", "quarterly", "yearly"].includes(costPeriod as string)) ||
+    (costAmount !== undefined && costAmount !== null && !costPeriod) ||
+    (autoRenew !== undefined && typeof autoRenew !== "boolean") ||
+    Number.isNaN(renewalMonths) ||
+    (renewalMonths !== undefined && renewalMonths !== null && autoRenew !== true) ||
+    assetIds === null ||
     !title ||
     !counterpartyName ||
     referenceNumber === undefined ||
@@ -148,6 +217,14 @@ function parseValues(value: unknown): Values | null {
     endsOn,
     noticePeriodDays,
     ...("reminderDaysBefore" in value ? { reminderDaysBefore } : {}),
+    ...(cancelled !== undefined ? { cancelled: cancelled as boolean } : {}),
+    ...(cancelledOn !== undefined ? { cancelledOn } : {}),
+    ...(costAmount !== undefined ? { costAmount: costAmount as number | null } : {}),
+    ...(costCurrency !== undefined ? { costCurrency: costCurrency as "CHF" | "EUR" | "USD" } : {}),
+    ...(costPeriod !== undefined ? { costPeriod: costPeriod as Values["costPeriod"] } : {}),
+    ...(autoRenew !== undefined ? { autoRenew: autoRenew as boolean } : {}),
+    ...(renewalMonths !== undefined ? { renewalMonths: renewalMonths as number | null } : {}),
+    ...(assetIds !== undefined ? { assetIds: assetIds as string[] } : {}),
     responsibleUserId,
     notes,
   };
@@ -168,6 +245,11 @@ function parseAction(value: unknown): Action | null {
     )
   )
     return { type: "list", tenantId, includeArchived: value.includeArchived };
+  if (
+    value.type === "listAssets" &&
+    Object.keys(value).every((key) => ["type", "tenantId"].includes(key))
+  )
+    return { type: "listAssets", tenantId };
   if (
     value.type === "listPeople" &&
     Object.keys(value).every((key) => ["type", "tenantId"].includes(key))
@@ -300,7 +382,7 @@ async function assertResponsible(
       "Die verantwortliche Person gehört nicht zum aktiven Mandanten.",
     );
 }
-const rowToContract = (row: Row) => ({
+const rowToContract = (row: Row, assetIds: string[] = []) => ({
   id: row.id,
   title: row.title,
   counterpartyName: row.counterparty_name,
@@ -312,12 +394,84 @@ const rowToContract = (row: Row) => ({
   noticePeriodDays: row.notice_period_days,
   reminderDaysBefore: row.reminder_days_before,
   reminderSentFor: row.reminder_sent_for,
+  cancelled: row.cancelled === true,
+  cancelledOn: row.cancelled_on ?? null,
+  costAmount: row.cost_amount === null || row.cost_amount === undefined
+    ? null
+    : Number(row.cost_amount),
+  costCurrency: row.cost_currency ?? "CHF",
+  costPeriod: row.cost_period ?? null,
+  autoRenew: row.auto_renew === true,
+  renewalMonths: row.renewal_months ?? null,
+  assetIds,
   responsibleUserId: row.responsible_user_id,
   notes: row.notes,
   archivedAt: row.archived_at,
   createdAt: row.created_at,
   updatedAt: row.updated_at,
 });
+async function readAssetIds(
+  admin: Admin,
+  tenantId: string,
+  contractIds: string[],
+): Promise<Map<string, string[]>> {
+  const byContract = new Map<string, string[]>();
+  if (contractIds.length === 0) return byContract;
+  const { data, error } = await admin
+    .from("contract_assets")
+    .select("contract_id, asset_id")
+    .eq("tenant_id", tenantId)
+    .in("contract_id", contractIds)
+    .limit(10_000);
+  if (error) {
+    throw new HttpError(503, "contracts_unavailable", "Verknüpfte Assets konnten nicht geladen werden.");
+  }
+  for (const link of data ?? []) {
+    const row = link as Row;
+    const list = byContract.get(String(row.contract_id)) ?? [];
+    list.push(String(row.asset_id));
+    byContract.set(String(row.contract_id), list);
+  }
+  return byContract;
+}
+async function syncAssetLinks(
+  admin: Admin,
+  tenantId: string,
+  contractId: string,
+  assetIds: string[],
+): Promise<void> {
+  if (assetIds.length > 0) {
+    const { data, error } = await admin
+      .from("assets")
+      .select("id")
+      .eq("tenant_id", tenantId)
+      .in("id", assetIds);
+    if (error) {
+      throw new HttpError(503, "contracts_unavailable", "Assets konnten nicht geprüft werden.");
+    }
+    if ((data ?? []).length !== assetIds.length) {
+      throw new HttpError(422, "asset_invalid", "Mindestens ein Asset gehört nicht zu diesem Mandanten.");
+    }
+  }
+  const existing = (await readAssetIds(admin, tenantId, [contractId])).get(contractId) ?? [];
+  const toRemove = existing.filter((id) => !assetIds.includes(id));
+  const toAdd = assetIds.filter((id) => !existing.includes(id));
+  if (toRemove.length > 0) {
+    const { error } = await admin
+      .from("contract_assets")
+      .delete()
+      .eq("tenant_id", tenantId)
+      .eq("contract_id", contractId)
+      .in("asset_id", toRemove);
+    if (error) throw new HttpError(503, "contract_assets_failed", "Die Asset-Verknüpfung konnte nicht gespeichert werden.");
+  }
+  if (toAdd.length > 0) {
+    const { error } = await admin.from("contract_assets").insert(
+      toAdd.map((assetId) => ({ tenant_id: tenantId, contract_id: contractId, asset_id: assetId })),
+    );
+    if (error) throw new HttpError(503, "contract_assets_failed", "Die Asset-Verknüpfung konnte nicht gespeichert werden.");
+  }
+}
 async function handler(
   request: Request,
   context: SupabaseContext,
@@ -327,6 +481,27 @@ async function handler(
   if (!isUuid(actorId) || !action)
     throw new HttpError(400, "invalid_request", "Die Anfrage ist ungültig.");
   await authorize(context.supabaseAdmin, actorId, action.tenantId);
+  if (action.type === "listAssets") {
+    const { data, error } = await context.supabaseAdmin
+      .from("assets")
+      .select("id, name, asset_tag, kind")
+      .eq("tenant_id", action.tenantId)
+      .eq("active", true)
+      .order("name")
+      .limit(2000);
+    if (error)
+      throw new HttpError(503, "contracts_unavailable", "Assets konnten nicht geladen werden.");
+    return reply(request, {
+      data: {
+        assets: (data ?? []).map((item: any) => ({
+          id: item.id,
+          name: item.name,
+          tag: item.asset_tag ?? null,
+          kind: item.kind ?? null,
+        })),
+      },
+    });
+  }
   if (action.type === "listPeople") {
     const { data, error } = await context.supabaseAdmin
       .from("tenant_memberships")
@@ -354,7 +529,7 @@ async function handler(
     let query = context.supabaseAdmin
       .from("contracts")
       .select(
-        "id, title, counterparty_name, reference_number, contract_type, status, starts_on, ends_on, notice_period_days, reminder_days_before, reminder_sent_for, responsible_user_id, notes, archived_at, created_at, updated_at",
+        "id, title, counterparty_name, reference_number, contract_type, status, starts_on, ends_on, notice_period_days, reminder_days_before, reminder_sent_for, cancelled, cancelled_on, cost_amount, cost_currency, cost_period, auto_renew, renewal_months, responsible_user_id, notes, archived_at, created_at, updated_at",
       )
       .eq("tenant_id", action.tenantId)
       .order("ends_on", { ascending: true, nullsFirst: false })
@@ -368,9 +543,16 @@ async function handler(
         "contracts_unavailable",
         "Verträge konnten nicht geladen werden.",
       );
+    const links = await readAssetIds(
+      context.supabaseAdmin,
+      action.tenantId,
+      (data ?? []).map((item) => String((item as Row).id)),
+    );
     return reply(request, {
       data: {
-        contracts: (data ?? []).map((item) => rowToContract(item as Row)),
+        contracts: (data ?? []).map((item) =>
+          rowToContract(item as Row, links.get(String((item as Row).id)) ?? []),
+        ),
       },
     });
   }
@@ -392,6 +574,33 @@ async function handler(
       notice_period_days: action.values.noticePeriodDays,
       ...(action.values.reminderDaysBefore !== undefined
         ? { reminder_days_before: action.values.reminderDaysBefore }
+        : {}),
+      ...(action.values.cancelled !== undefined
+        ? {
+          cancelled: action.values.cancelled,
+          cancelled_on: action.values.cancelled
+            ? (action.values.cancelledOn ?? null)
+            : null,
+        }
+        : {}),
+      ...(action.values.costAmount !== undefined
+        ? {
+          cost_amount: action.values.costAmount,
+          cost_period: action.values.costAmount === null
+            ? null
+            : (action.values.costPeriod ?? null),
+        }
+        : {}),
+      ...(action.values.costCurrency !== undefined
+        ? { cost_currency: action.values.costCurrency }
+        : {}),
+      ...(action.values.autoRenew !== undefined
+        ? {
+          auto_renew: action.values.autoRenew,
+          renewal_months: action.values.autoRenew
+            ? (action.values.renewalMonths ?? null)
+            : null,
+        }
         : {}),
       responsible_user_id: action.values.responsibleUserId,
       notes: action.values.notes,
@@ -434,9 +643,25 @@ async function handler(
         "contract_not_found",
         "Der Vertrag wurde nicht gefunden.",
       );
+    const saved = result.data as Row;
+    if (action.values.assetIds !== undefined) {
+      await syncAssetLinks(
+        context.supabaseAdmin,
+        action.tenantId,
+        String(saved.id),
+        action.values.assetIds,
+      );
+    }
+    const savedLinks = await readAssetIds(context.supabaseAdmin, action.tenantId, [
+      String(saved.id),
+    ]);
     return reply(
       request,
-      { data: { contract: rowToContract(result.data as Row) } },
+      {
+        data: {
+          contract: rowToContract(saved, savedLinks.get(String(saved.id)) ?? []),
+        },
+      },
       action.type === "create" ? 201 : 200,
     );
   }
@@ -459,7 +684,17 @@ async function handler(
       "contract_not_found",
       "Der Vertrag wurde nicht gefunden.",
     );
-  return reply(request, { data: { contract: rowToContract(data as Row) } });
+  const archivedLinks = await readAssetIds(context.supabaseAdmin, action.tenantId, [
+    String((data as Row).id),
+  ]);
+  return reply(request, {
+    data: {
+      contract: rowToContract(
+        data as Row,
+        archivedLinks.get(String((data as Row).id)) ?? [],
+      ),
+    },
+  });
 }
 const secured = withSupabase(
   { auth: "user", cors: "disabled", errors: { detailed: false } },
