@@ -147,6 +147,7 @@ const expectedFiles = [
   "0143_service_responsible_agents.sql",
   "0144_service_category_hierarchy.sql",
   "0145_event_space_assignment_and_details.sql",
+  "0146_reconcile_event_space_assignment_resolution.sql",
 ];
 
 const availableFiles = (await readdir(migrationDirectory))
