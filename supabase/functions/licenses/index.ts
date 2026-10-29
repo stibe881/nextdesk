@@ -20,6 +20,7 @@ type Values = {
   startsOn: string | null;
   endsOn: string | null;
   noticePeriodDays: number | null;
+  reminderDaysBefore: number | null;
   responsibleUserId: string | null;
   notes: string | null;
 };
@@ -83,6 +84,7 @@ function parseValues(value: unknown): Values | null {
         "startsOn",
         "endsOn",
         "noticePeriodDays",
+        "reminderDaysBefore",
         "responsibleUserId",
         "notes",
       ].includes(key),
@@ -121,6 +123,15 @@ function parseValues(value: unknown): Values | null {
           value.quantity <= 1_000_000
         ? value.quantity
         : undefined;
+  const reminderDaysBefore =
+    value.reminderDaysBefore === null || value.reminderDaysBefore === ""
+      ? null
+      : typeof value.reminderDaysBefore === "number" &&
+          Number.isInteger(value.reminderDaysBefore) &&
+          value.reminderDaysBefore >= 1 &&
+          value.reminderDaysBefore <= 3650
+        ? value.reminderDaysBefore
+        : undefined;
   if (
     quantity === undefined ||
     !title ||
@@ -131,6 +142,7 @@ function parseValues(value: unknown): Values | null {
     endsOn === undefined ||
     responsibleUserId === undefined ||
     noticePeriodDays === undefined ||
+    reminderDaysBefore === undefined ||
     customType === null ||
     !["draft", "active", "terminated"].includes(value.status as string) ||
     (startsOn && endsOn && endsOn < startsOn)
@@ -146,6 +158,7 @@ function parseValues(value: unknown): Values | null {
     startsOn,
     endsOn,
     noticePeriodDays,
+    reminderDaysBefore,
     responsibleUserId,
     notes,
   };
@@ -309,6 +322,8 @@ const rowToLicense = (row: Row) => ({
   startsOn: row.starts_on,
   endsOn: row.ends_on,
   noticePeriodDays: row.notice_period_days,
+  reminderDaysBefore: row.reminder_days_before,
+  reminderSentFor: row.reminder_sent_for,
   responsibleUserId: row.responsible_user_id,
   notes: row.notes,
   archivedAt: row.archived_at,
@@ -351,7 +366,7 @@ async function handler(
     let query = context.supabaseAdmin
       .from("licenses")
       .select(
-        "id, title, vendor_name, reference_number, license_type, quantity, status, starts_on, ends_on, notice_period_days, responsible_user_id, notes, archived_at, created_at, updated_at",
+        "id, title, vendor_name, reference_number, license_type, quantity, status, starts_on, ends_on, notice_period_days, reminder_days_before, reminder_sent_for, responsible_user_id, notes, archived_at, created_at, updated_at",
       )
       .eq("tenant_id", action.tenantId)
       .order("ends_on", { ascending: true, nullsFirst: false })
@@ -388,6 +403,7 @@ async function handler(
       starts_on: action.values.startsOn,
       ends_on: action.values.endsOn,
       notice_period_days: action.values.noticePeriodDays,
+      reminder_days_before: action.values.reminderDaysBefore,
       responsible_user_id: action.values.responsibleUserId,
       notes: action.values.notes,
       updated_by: actorId,

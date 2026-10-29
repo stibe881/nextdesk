@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { createPortal } from "react-dom";
 import {
   Archive,
+  Bell,
   CalendarClock,
   FileText,
   Paperclip,
@@ -28,6 +29,8 @@ type License = {
   startsOn: string | null;
   endsOn: string | null;
   noticePeriodDays: number | null;
+  reminderDaysBefore: number | null;
+  reminderSentFor: string | null;
   responsibleUserId: string | null;
   notes: string | null;
   archivedAt: string | null;
@@ -46,6 +49,7 @@ type Form = {
   startsOn: string;
   endsOn: string;
   noticePeriodDays: string;
+  reminderDaysBefore: string;
   responsibleUserId: string;
   notes: string;
 };
@@ -60,6 +64,7 @@ const EMPTY: Form = {
   startsOn: "",
   endsOn: "",
   noticePeriodDays: "",
+  reminderDaysBefore: "",
   responsibleUserId: "",
   notes: "",
 };
@@ -79,6 +84,7 @@ const typeLabel: Record<string, string> = {
 const typeText = (type: string) =>
   Object.hasOwn(typeLabel, type) ? (typeLabel[type] ?? type) : type;
 const NEW_TYPE = "__new__";
+const REMINDER_OPTIONS = [7, 14, 30, 60, 90, 180];
 const today = () => new Date().toISOString().slice(0, 10);
 const formatDate = (value: string | null) =>
   value
@@ -123,6 +129,10 @@ function formFor(contract: License): Form {
       contract.noticePeriodDays === null
         ? ""
         : String(contract.noticePeriodDays),
+    reminderDaysBefore:
+      contract.reminderDaysBefore === null
+        ? ""
+        : String(contract.reminderDaysBefore),
     responsibleUserId: contract.responsibleUserId ?? "",
     notes: contract.notes ?? "",
   };
@@ -324,6 +334,10 @@ export function Licenses({ tenantId }: { tenantId: string }) {
         startsOn: form.startsOn || null,
         endsOn: form.endsOn || null,
         noticePeriodDays: noticeDays,
+        reminderDaysBefore:
+          form.reminderDaysBefore === ""
+            ? null
+            : Number(form.reminderDaysBefore),
         responsibleUserId: form.responsibleUserId || null,
         notes: form.notes || null,
       };
@@ -577,6 +591,15 @@ export function Licenses({ tenantId }: { tenantId: string }) {
                       </dd>
                     </div>
                   </dl>
+                  {contract.reminderDaysBefore !== null && (
+                    <p className="contracts__deadline contracts__deadline--neutral">
+                      <Bell size={16} />{" "}
+                      {contract.reminderSentFor !== null &&
+                      contract.reminderSentFor === contract.endsOn
+                        ? "Erinnerungsticket wurde erstellt"
+                        : `Ticket-Erinnerung ${contract.reminderDaysBefore} Tage vor Ablauf`}
+                    </p>
+                  )}
                   {date && (
                     <p
                       className={`contracts__deadline contracts__deadline--${date.tone}`}
@@ -830,6 +853,32 @@ export function Licenses({ tenantId }: { tenantId: string }) {
                       setForm({ ...form, noticePeriodDays: event.target.value })
                     }
                   />
+                </label>
+                <label>
+                  Erinnerung per Ticket
+                  <select
+                    value={form.reminderDaysBefore}
+                    onChange={(event) =>
+                      setForm({ ...form, reminderDaysBefore: event.target.value })
+                    }
+                  >
+                    <option value="">Keine Erinnerung</option>
+                    {form.reminderDaysBefore !== "" &&
+                    !REMINDER_OPTIONS.includes(Number(form.reminderDaysBefore)) ? (
+                      <option value={form.reminderDaysBefore}>
+                        {form.reminderDaysBefore} Tage vor Ablauf
+                      </option>
+                    ) : null}
+                    {REMINDER_OPTIONS.map((days) => (
+                      <option key={days} value={String(days)}>
+                        {days} Tage vor Ablauf
+                      </option>
+                    ))}
+                  </select>
+                  <small>
+                    Ein Ticket erinnert die verantwortliche Person rechtzeitig.
+                    Nur bei aktiven Einträgen mit Ablaufdatum.
+                  </small>
                 </label>
                 <label className="contracts__notes">
                   Notiz
