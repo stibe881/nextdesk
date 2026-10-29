@@ -249,6 +249,30 @@ async function assertParent(
   }
 }
 
+/**
+ * The private bucket is normally created by the migration. If it is missing
+ * (for example when the migration ran without the storage schema), it is
+ * created here once and the upload link is requested again.
+ */
+async function createUploadUrl(admin: Admin, storageObjectPath: string) {
+  let result = await admin.storage
+    .from(BUCKET)
+    .createSignedUploadUrl(storageObjectPath, { upsert: false });
+  if (result.error && /bucket/i.test(result.error.message ?? "")) {
+    const created = await admin.storage.createBucket(BUCKET, {
+      public: false,
+      fileSizeLimit: MAX_BYTES,
+      allowedMimeTypes: [...CONTENT_TYPES],
+    });
+    if (!created.error || /already exists/i.test(created.error.message ?? "")) {
+      result = await admin.storage
+        .from(BUCKET)
+        .createSignedUploadUrl(storageObjectPath, { upsert: false });
+    }
+  }
+  return result;
+}
+
 const toAttachment = (row: Row) => ({
   id: row.id,
   filename: row.original_filename,
@@ -307,10 +331,9 @@ async function handler(
     }
     const storageObjectPath =
       `${action.tenantId}/${action.entityType}/${action.entityId}/${crypto.randomUUID()}`;
-    const { data, error } = await admin.storage
-      .from(BUCKET)
-      .createSignedUploadUrl(storageObjectPath, { upsert: false });
+    const { data, error } = await createUploadUrl(admin, storageObjectPath);
     if (error || !data?.signedUrl) {
+      console.error("record-attachments: createSignedUploadUrl failed", error?.message);
       throw new HttpError(500, "upload_url_create_failed", "Der Upload konnte nicht vorbereitet werden.");
     }
     return reply(request, {
