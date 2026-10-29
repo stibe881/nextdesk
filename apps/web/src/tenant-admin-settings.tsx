@@ -93,6 +93,12 @@ type TenantSettings = {
   updated_at: string | null;
 };
 
+type SupportContact = {
+  email: string | null;
+  source: "tenant_setting" | "exchange_mailbox" | null;
+  has_multiple_active_exchange_mailboxes: boolean;
+};
+
 type TenantBranding = {
   logo_path?: string | null;
   logo_url?: string | null;
@@ -232,6 +238,7 @@ type TenantDepartment = {
 
 type SettingsData = {
   tenant_settings: TenantSettings | null;
+  support_contact?: SupportContact;
   tenant_branding: TenantBranding | null;
   tenant_sso_configurations: SsoConfiguration[];
   tenant_feature_flags: TenantFeature[];
@@ -2649,7 +2656,22 @@ export function TenantAdminSettings({
                     <div>
                       <dt>Support-E-Mail</dt>
                       <dd>
-                        {realValue(settings.tenant_settings?.support_email)}
+                        {realValue(
+                          settings.support_contact?.email ??
+                            settings.tenant_settings?.support_email,
+                        )}
+                        {settings.support_contact?.source ===
+                        "exchange_mailbox" ? (
+                          <small className="tenant-admin-settings__support-contact-source">
+                            Aktives Exchange-Supportpostfach
+                          </small>
+                        ) : !settings.support_contact?.email &&
+                          settings.support_contact
+                            ?.has_multiple_active_exchange_mailboxes ? (
+                          <small className="tenant-admin-settings__support-contact-source">
+                            Mehrere aktive Exchange-Supportpostfächer vorhanden
+                          </small>
+                        ) : null}
                       </dd>
                     </div>
                     <div>

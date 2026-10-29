@@ -4448,6 +4448,14 @@ body:has(.ticket-detail) {
   font-size: 14px;
 }
 
+.tenant-admin-settings__support-contact-source {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
 .tenant-admin-settings__details a,
 .tenant-admin-settings__logo-url {
   color: var(--primary);

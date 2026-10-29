@@ -1,4 +1,5 @@
 import { withSupabase } from "@supabase/server";
+import { resolveSupportContact } from "../_shared/support-contact.ts";
 
 const ALLOWED_ORIGIN = "https://app.nextdesk.ch";
 const UUID_PATTERN =
@@ -606,6 +607,7 @@ async function handleGetSettings(
     rolesResult,
     entraDirectoryResult,
     trustedEntraTenantResult,
+    activeExchangeMailboxesResult,
   ] = await Promise.all([
     admin
       .from("tenant_settings")
@@ -647,6 +649,13 @@ async function handleGetSettings(
     admin.rpc("trusted_entra_tenant_id_for_tenant", {
       p_tenant_id: tenantId,
     }),
+    admin
+      .from("exchange_mail_channels")
+      .select("mailbox_address")
+      .eq("tenant_id", tenantId)
+      .eq("status", "active")
+      .is("deleted_at", null)
+      .limit(2),
   ]);
 
   if (
@@ -656,7 +665,8 @@ async function handleGetSettings(
     featuresResult.error ||
     rolesResult.error ||
     entraDirectoryResult.error ||
-    trustedEntraTenantResult.error
+    trustedEntraTenantResult.error ||
+    activeExchangeMailboxesResult.error
   ) {
     return json(request, { error: { code: "settings_read_failed" } }, 500);
   }
@@ -666,9 +676,21 @@ async function handleGetSettings(
     string,
     unknown
   > | null;
+  const supportContact = resolveSupportContact(
+    settingsResult.data?.support_email,
+    (activeExchangeMailboxesResult.data ?? []).map(
+      (mailbox: { mailbox_address?: unknown }) => mailbox.mailbox_address,
+    ),
+  );
   return json(request, {
     data: {
       tenant_settings: settingsResult.data ?? null,
+      support_contact: {
+        email: supportContact.email,
+        source: supportContact.source,
+        has_multiple_active_exchange_mailboxes:
+          supportContact.hasMultipleActiveExchangeMailboxes,
+      },
       tenant_branding: brandingResult.data
         ? {
             ...brandingResult.data,
