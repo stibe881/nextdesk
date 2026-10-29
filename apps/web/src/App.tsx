@@ -297,12 +297,6 @@ const NAVIGATION_CATEGORIES = [
     sectionLabels: ["Übersicht", "Tickets", "Fälle", "Berichte"],
   },
   {
-    heading: "WISSEN & RESSOURCEN",
-    id: "navigation-category-resources",
-    navigationLabel: "Wissen und Ressourcen",
-    sectionLabels: ["Wissen", "Assets", "Lager"],
-  },
-  {
     heading: "PLANUNG & BETRIEB",
     id: "navigation-category-operations",
     navigationLabel: "Planung und Betrieb",
@@ -313,6 +307,12 @@ const NAVIGATION_CATEGORIES = [
       "Services",
       "Systemstatus",
     ],
+  },
+  {
+    heading: "WISSEN & RESSOURCEN",
+    id: "navigation-category-resources",
+    navigationLabel: "Wissen und Ressourcen",
+    sectionLabels: ["Wissen", "Assets", "Lager"],
   },
 ] as const satisfies readonly {
   heading: string;
