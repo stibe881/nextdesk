@@ -809,8 +809,8 @@ export function EventSpaces({
       if (error) throw error;
       setNotice(
         agentId
-          ? "Die Agent:in wurde dem Raumauftrag zugewiesen."
-          : "Die Agent:innenzuweisung wurde aufgehoben.",
+          ? "Die Bearbeitung wurde zugewiesen."
+          : "Die Zuweisung wurde aufgehoben.",
       );
       await refresh(true);
       onAttentionChanged();
@@ -1152,7 +1152,7 @@ export function EventSpaces({
                       </dd>
                     </div>
                     <div>
-                      <dt>Interne Agent:in</dt>
+                      <dt>Bearbeitung durch</dt>
                       <dd>
                         {item.assignedAgent?.displayName ??
                           "Noch nicht zugewiesen"}
@@ -1178,7 +1178,7 @@ export function EventSpaces({
                   </p>
                   <div className="event-spaces__clarification-actions">
                     <label>
-                      Agent:in
+                      Bearbeitung durch
                       <select
                         value={
                           clarificationDrafts[item.id]?.responsibleUserId ?? ""
@@ -1191,7 +1191,7 @@ export function EventSpaces({
                           )
                         }
                       >
-                        <option value="">Agent:in auswählen …</option>
+                        <option value="">Person auswählen …</option>
                         {workspace?.agents.map((agent) => (
                           <option key={agent.id} value={agent.id}>
                             {agent.displayName}
@@ -1216,8 +1216,8 @@ export function EventSpaces({
                       type="button"
                     >
                       {item.assignedAgent
-                        ? "Agent:in ändern"
-                        : "Agent:in zuweisen"}
+                        ? "Person ändern"
+                        : "Person zuweisen"}
                     </button>
                     <label>
                       Beginn (Europe/Zurich)
@@ -2024,9 +2024,9 @@ function RequestCard({
               </small>
             </div>
             <div>
-              <span>Zugewiesen an Agent:in</span>
+              <span>Bearbeitung durch</span>
               <strong>{assignedAgentLabel}</strong>
-              <small>Interne Bearbeitung</small>
+              <small>Zuständig für die Umsetzung</small>
             </div>
             {isEmailRequest ? (
               <div>
@@ -2044,7 +2044,7 @@ function RequestCard({
           {canManage ? (
             <div className="event-spaces__request-controls">
               <label className="event-spaces__status-control">
-                Zugewiesen an Agent:in
+                Bearbeitung durch
                 <select
                   value={request.assignedAgent?.id ?? ""}
                   onChange={(event) =>
