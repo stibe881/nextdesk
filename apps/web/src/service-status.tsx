@@ -731,6 +731,13 @@ function badgeUrl(publicId: string): string | null {
   }
 }
 
+/** Page URL for iframes: Supabase forces downloads for function responses. */
+function badgePageUrl(publicId: string): string {
+  const url = new URL(import.meta.env.BASE_URL, window.location.origin);
+  url.searchParams.set("system-status-badge", publicId);
+  return url.toString();
+}
+
 export function sharePointIframeEmbedCode(
   statusBadgeUrl: string,
   title: string,
@@ -1558,9 +1565,9 @@ export function ServiceStatus({
     pageUrl && currentBadgeUrl
       ? `<a href="${pageUrl}"><img src="${currentBadgeUrl}" alt="Systemstatus von ${escapeHtmlAttribute(overview?.page.title ?? "nextDesk")}"></a>`
       : null;
-  const iframeEmbedCode = currentBadgeUrl
+  const iframeEmbedCode = overview?.page.publicId
     ? sharePointIframeEmbedCode(
-        currentBadgeUrl,
+        badgePageUrl(overview.page.publicId),
         overview?.page.title ?? "nextDesk",
       )
     : null;
@@ -2043,6 +2050,82 @@ export function isPublicServiceStatusRequested(): string | null {
     "system-status",
   );
   return isUuid(value) ? value.toLowerCase() : null;
+}
+
+export function isPublicServiceStatusBadgeRequested(): string | null {
+  const value = new URLSearchParams(window.location.search).get(
+    "system-status-badge",
+  );
+  return isUuid(value) ? value.toLowerCase() : null;
+}
+
+const BADGE_LABELS: Record<ServiceStatus, string> = {
+  operational: "Alle Dienste verfügbar",
+  maintenance: "Dienste werden gewartet",
+  degraded: "Dienste beeinträchtigt",
+  partial_outage: "Teilweiser Dienstausfall",
+  major_outage: "Schwerwiegender Ausfall",
+};
+
+/** Compact, embeddable status badge (served from the app origin for iframes). */
+export function PublicServiceStatusBadgePage({
+  publicId,
+}: PublicServiceStatusPageProps) {
+  const [status, setStatus] = useState<ServiceStatus | null | "unavailable">(
+    null,
+  );
+  useEffect(() => {
+    const abortController = new AbortController();
+    async function load() {
+      try {
+        const base = import.meta.env.VITE_SUPABASE_URL;
+        if (!base) throw new Error("missing_configuration");
+        const url = new URL("/functions/v1/service-status-public", base);
+        url.searchParams.set("id", publicId);
+        const response = await fetch(url, {
+          headers: { Accept: "application/json" },
+          signal: abortController.signal,
+        });
+        if (!response.ok) throw new Error("status_page_unavailable");
+        const next = parsePublicServiceStatus(await response.json());
+        if (!abortController.signal.aborted) {
+          setStatus(
+            displayOverallStatus(
+              next.services.map((service) => ({
+                displayStatus: service.displayStatus,
+                status: service.status,
+              })),
+            ),
+          );
+        }
+      } catch {
+        if (!abortController.signal.aborted) setStatus("unavailable");
+      }
+    }
+    void load();
+    const timer = window.setInterval(() => void load(), 60_000);
+    return () => {
+      abortController.abort();
+      window.clearInterval(timer);
+    };
+  }, [publicId]);
+
+  const visual = status === null || status === "unavailable" ? "unavailable" : status;
+  return (
+    <a
+      className={`status-badge status-badge--${visual}`}
+      href={publicPageUrl(publicId)}
+      rel="noopener"
+      target="_top"
+    >
+      <span aria-hidden="true" className="status-badge__dot" />
+      {status === null
+        ? "Wird geladen …"
+        : status === "unavailable"
+          ? "Systemstatus nicht verfügbar"
+          : BADGE_LABELS[status]}
+    </a>
+  );
 }
 
 export function PublicServiceStatusPage({

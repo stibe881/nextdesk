@@ -17912,3 +17912,39 @@ body:has(.knowledge-base__editor-backdrop) {
   display: flex;
   gap: 8px;
 }
+
+/* Einbettbares Status-Badge (iframe, z. B. SharePoint). */
+html:has(.status-badge),
+html:has(.status-badge) body {
+  margin: 0;
+  background: transparent;
+  overflow: hidden;
+}
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  box-sizing: border-box;
+  height: 40px;
+  padding: 0 16px;
+  border-radius: 6px;
+  color: #fff;
+  font: 700 14px/1 Arial, Helvetica, sans-serif;
+  text-decoration: none;
+  white-space: nowrap;
+  background: #31a85a;
+}
+
+.status-badge--maintenance { background: #2563eb; }
+.status-badge--degraded,
+.status-badge--partial_outage { background: #d97706; }
+.status-badge--major_outage { background: #dc2626; }
+.status-badge--unavailable { background: #475569; }
+
+.status-badge__dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.95);
+}
