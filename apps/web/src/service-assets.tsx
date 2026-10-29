@@ -423,10 +423,12 @@ type ServiceEditorFieldsProps = {
   serviceResponsibleAgentsLoading: boolean;
   serviceCategories: ServiceCategory[];
   supportsServiceCategories: boolean;
-  onCreateCategory?: (
-    name: string,
-    parentId: string | null,
-  ) => Promise<ServiceCategory | null>;
+  onCreateCategory?:
+    | ((
+        name: string,
+        parentId: string | null,
+      ) => Promise<ServiceCategory | null>)
+    | undefined;
   setServiceForm: Dispatch<SetStateAction<ServiceForm>>;
 };
 
