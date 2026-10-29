@@ -89,3 +89,50 @@ Deno.test("Service-Restore akzeptiert nur die exklusive Id-Operation", () => {
     throw new Error("A service restore must not accept writable fields.");
   }
 });
+Deno.test(
+  "Serviceverantwortlichkeiten bleiben eine strikt geprüfte, mandantenfeste Agent:innenauswahl",
+  async () => {
+    const source = await Deno.readTextFile(
+      new URL("./index.ts", import.meta.url),
+    );
+    const migration = await Deno.readTextFile(
+      new URL(
+        "../../migrations/0143_service_responsible_agents.sql",
+        import.meta.url,
+      ),
+    );
+
+    for (
+      const required of [
+        'type: "listServiceResponsibleAgents"',
+        "listAssignableTenantSupportAgents",
+        "ensureServiceResponsibleAgents",
+        'p_permission_code: "asset.manage"',
+        'column: "primary_responsible_id"',
+        'column: "secondary_responsible_id"',
+      ]
+    ) {
+      if (!source.includes(required)) {
+        throw new Error(`Missing service responsible boundary: ${required}`);
+      }
+    }
+    for (
+      const required of [
+        "services_primary_responsible_tenant_fk",
+        "services_secondary_responsible_tenant_fk",
+        "services_secondary_responsible_requires_primary",
+        "services_responsible_agents_distinct",
+        "validate_service_responsible_agents",
+        "is_active_service_responsible",
+        "ticket.read.assigned",
+        "ticket.update",
+      ]
+    ) {
+      if (!migration.includes(required)) {
+        throw new Error(
+          `Missing service responsible database boundary: ${required}`,
+        );
+      }
+    }
+  },
+);

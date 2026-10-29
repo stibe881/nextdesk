@@ -1,5 +1,8 @@
 import { readableTicketDepartments } from "../_shared/readable-ticket-departments.ts";
-import { listAssignableAgentsForDepartments } from "../_shared/assignable-agents.ts";
+import {
+  listAssignableAgentsForDepartments,
+  listAssignableTenantSupportAgents,
+} from "../_shared/assignable-agents.ts";
 
 Deno.test(
   "agent directory exposes only departments with positive ticket.read.department access",
@@ -157,6 +160,108 @@ Deno.test(
     if (JSON.stringify(idsFor(departmentB)) !== JSON.stringify([tenantAgent])) {
       throw new Error(
         "A department-scoped role must never leak into a different department.",
+      );
+    }
+  },
+);
+Deno.test(
+  "service responsible directory exposes only active and currently effective ticket agents",
+  async () => {
+    const tenantId = "30000000-0000-4000-8000-000000000001";
+    const departmentA = "10000000-0000-4000-8000-000000000001";
+    const departmentB = "10000000-0000-4000-8000-000000000002";
+    const tenantAgent = "20000000-0000-4000-8000-000000000001";
+    const departmentAgent = "20000000-0000-4000-8000-000000000002";
+    const noDepartmentAgent = "20000000-0000-4000-8000-000000000003";
+    const mismatchedDepartmentAgent = "20000000-0000-4000-8000-000000000004";
+    const queryResult = (table: string) => {
+      const data = {
+        tenant_memberships: [
+          { user_id: tenantAgent },
+          { user_id: departmentAgent },
+          { user_id: noDepartmentAgent },
+          { user_id: mismatchedDepartmentAgent },
+        ],
+        department_memberships: [
+          { department_id: departmentA, user_id: tenantAgent },
+          { department_id: departmentA, user_id: departmentAgent },
+          { department_id: departmentB, user_id: mismatchedDepartmentAgent },
+        ],
+        user_role_assignments: [
+          {
+            user_id: tenantAgent,
+            department_id: null,
+            roles: {
+              active: true,
+              role_permissions: [{ permission_code: "ticket.update" }],
+              scope: "tenant",
+              tenant_id: tenantId,
+            },
+          },
+          {
+            user_id: departmentAgent,
+            department_id: departmentA,
+            roles: {
+              active: true,
+              role_permissions: [{ permission_code: "ticket.read.assigned" }],
+              scope: "department",
+              tenant_id: tenantId,
+            },
+          },
+          {
+            user_id: noDepartmentAgent,
+            department_id: null,
+            roles: {
+              active: true,
+              role_permissions: [{ permission_code: "ticket.update" }],
+              scope: "tenant",
+              tenant_id: tenantId,
+            },
+          },
+          {
+            user_id: mismatchedDepartmentAgent,
+            department_id: departmentA,
+            roles: {
+              active: true,
+              role_permissions: [{ permission_code: "ticket.update" }],
+              scope: "department",
+              tenant_id: tenantId,
+            },
+          },
+        ],
+        user_profiles: [
+          { id: tenantAgent, display_name: "Tenant Agent" },
+          { id: departmentAgent, display_name: "Abteilung A" },
+          { id: noDepartmentAgent, display_name: "Ohne Abteilung" },
+          { id: mismatchedDepartmentAgent, display_name: "Falsche Abteilung" },
+        ],
+      }[table] ?? [];
+      let builder: any;
+      builder = new Proxy(
+        {},
+        {
+          get: (_target, property) => {
+            if (property === "then") {
+              return (resolve: (value: unknown) => unknown) =>
+                resolve({ data, error: null });
+            }
+            return () => builder;
+          },
+        },
+      );
+      return builder;
+    };
+
+    const result = await listAssignableTenantSupportAgents(
+      { from: queryResult },
+      tenantId,
+    );
+    if (result.error) throw new Error("Agent:innenverzeichnis schlug fehl.");
+    const agentIds = result.agents.map((agent) => agent.id).sort();
+    const expected = [tenantAgent, departmentAgent].sort();
+    if (JSON.stringify(agentIds) !== JSON.stringify(expected)) {
+      throw new Error(
+        "Die Serviceauswahl enthält nicht ausschliesslich wirksame Ticket-Agent:innen.",
       );
     }
   },

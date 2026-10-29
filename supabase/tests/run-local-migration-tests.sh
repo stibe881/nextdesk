@@ -8219,6 +8219,69 @@ begin
 end;
 $$;
 reset role;
+
+-- Serviceverantwortliche dürfen nur aktuell wirksame Ticket-Agent:innen des
+-- eigenen Mandanten sein. Der Trigger bleibt auch bei service_role aktiv.
+insert into auth.users (id) values
+  ('f1430000-0000-4000-8000-000000000011'),
+  ('f1430000-0000-4000-8000-000000000012');
+insert into public.user_profiles (id, display_name) values
+  ('f1430000-0000-4000-8000-000000000011', 'Service Agent'),
+  ('f1430000-0000-4000-8000-000000000012', 'Kein Service Agent');
+insert into public.tenant_memberships (tenant_id, user_id, status, joined_at) values
+  ('f1420000-0000-4000-8000-000000000001', 'f1430000-0000-4000-8000-000000000011', 'active', timezone('utc', now())),
+  ('f1420000-0000-4000-8000-000000000001', 'f1430000-0000-4000-8000-000000000012', 'active', timezone('utc', now()));
+insert into public.departments (id, tenant_id, key, name) values
+  ('f1430000-0000-4000-8000-000000000021', 'f1420000-0000-4000-8000-000000000001', 'service', 'Service');
+insert into public.department_memberships (department_id, tenant_id, user_id, status) values
+  ('f1430000-0000-4000-8000-000000000021', 'f1420000-0000-4000-8000-000000000001', 'f1430000-0000-4000-8000-000000000011', 'active');
+insert into public.roles (id, tenant_id, name, scope) values
+  ('f1430000-0000-4000-8000-000000000031', 'f1420000-0000-4000-8000-000000000001', 'Service Responsible Agent', 'tenant');
+insert into public.role_permissions (role_id, permission_code) values
+  ('f1430000-0000-4000-8000-000000000031', 'ticket.update');
+insert into public.user_role_assignments (tenant_id, user_id, role_id) values
+  ('f1420000-0000-4000-8000-000000000001', 'f1430000-0000-4000-8000-000000000011', 'f1430000-0000-4000-8000-000000000031');
+insert into public.services (id, tenant_id, name, primary_responsible_id) values
+  ('f1430000-0000-4000-8000-000000000041', 'f1420000-0000-4000-8000-000000000001', 'Responsible Service', 'f1430000-0000-4000-8000-000000000011');
+do $$
+begin
+  begin
+    insert into public.services (tenant_id, name, primary_responsible_id)
+    values (
+      'f1420000-0000-4000-8000-000000000001',
+      'Invalid Responsible Service',
+      'f1430000-0000-4000-8000-000000000012'
+    );
+    raise exception 'A non-agent was accepted as service responsible';
+  exception when check_violation then
+    null;
+  end;
+
+  begin
+    update public.services
+    set secondary_responsible_id = 'f1430000-0000-4000-8000-000000000011'
+    where id = 'f1430000-0000-4000-8000-000000000041';
+    raise exception 'The same agent was accepted as primary and secondary responsible';
+  exception when check_violation then
+    null;
+  end;
+end;
+$$;
+delete from public.tenant_memberships
+where tenant_id = 'f1420000-0000-4000-8000-000000000001'
+  and user_id = 'f1430000-0000-4000-8000-000000000011';
+do $$
+begin
+  if exists (
+    select 1
+    from public.services
+    where id = 'f1430000-0000-4000-8000-000000000041'
+      and primary_responsible_id is not null
+  ) then
+    raise exception 'Deleting a membership did not clear the service responsible';
+  end if;
+end;
+$$;
 rollback;
 SQL
 echo "PostgreSQL 16 migration and RLS integration checks passed."

@@ -40,6 +40,8 @@ type Service = {
   criticality: Criticality;
   status: ServiceStatus;
   status_public: boolean;
+  primary_responsible_id: string | null;
+  secondary_responsible_id: string | null;
   active: boolean;
   created_at: string;
   updated_at: string;
@@ -92,6 +94,11 @@ type ProblemOwner = {
   displayName: string;
 };
 
+type ServiceResponsibleAgent = {
+  id: string;
+  displayName: string;
+};
+
 type ServiceForm = {
   id: string | null;
   name: string;
@@ -99,6 +106,8 @@ type ServiceForm = {
   criticality: Criticality;
   status: ServiceStatus;
   statusPublic: boolean;
+  primaryResponsibleId: string;
+  secondaryResponsibleId: string;
 };
 
 type AssetForm = {
@@ -135,6 +144,10 @@ type CatalogRequest = {
   includeArchivedServices?: boolean;
 };
 type ProblemOwnersRequest = { type: "listProblemOwners"; tenantId: string };
+type ServiceResponsibleAgentsRequest = {
+  type: "listServiceResponsibleAgents";
+  tenantId: string;
+};
 type ServiceSaveRequest = {
   type: "manageService";
   tenantId: string;
@@ -144,6 +157,8 @@ type ServiceSaveRequest = {
   criticality: Criticality;
   status: ServiceStatus;
   statusPublic: boolean;
+  primaryResponsibleId: string | null;
+  secondaryResponsibleId: string | null;
   serviceId?: string;
 };
 type ServiceArchiveRequest = {
@@ -223,6 +238,7 @@ type ProblemTicketLinkRequest = {
 type ServiceAssetsRequest =
   | CatalogRequest
   | ProblemOwnersRequest
+  | ServiceResponsibleAgentsRequest
   | ServiceSaveRequest
   | ServiceArchiveRequest
   | ServiceRestoreRequest
@@ -241,6 +257,8 @@ const EMPTY_SERVICE_FORM: ServiceForm = {
   criticality: "medium",
   status: "operational",
   statusPublic: false,
+  primaryResponsibleId: "",
+  secondaryResponsibleId: "",
 };
 
 const EMPTY_ASSET_FORM: AssetForm = {
@@ -378,6 +396,8 @@ function parseService(value: unknown): Service | null {
     !isCriticality(value.criticality) ||
     !isServiceStatus(value.status) ||
     typeof value.status_public !== "boolean" ||
+    !isNullableString(value.primary_responsible_id) ||
+    !isNullableString(value.secondary_responsible_id) ||
     typeof value.active !== "boolean" ||
     typeof value.created_at !== "string" ||
     typeof value.updated_at !== "string"
@@ -392,6 +412,8 @@ function parseService(value: unknown): Service | null {
     criticality: value.criticality,
     status: value.status,
     status_public: value.status_public,
+    primary_responsible_id: value.primary_responsible_id,
+    secondary_responsible_id: value.secondary_responsible_id,
     active: value.active,
     created_at: value.created_at,
     updated_at: value.updated_at,
@@ -515,6 +537,21 @@ function parseProblemOwner(value: unknown): ProblemOwner | null {
   return { id: value.id, displayName: value.displayName };
 }
 
+function parseServiceResponsibleAgent(
+  value: unknown,
+): ServiceResponsibleAgent | null {
+  if (
+    !isRecord(value) ||
+    typeof value.id !== "string" ||
+    !value.id.trim() ||
+    typeof value.displayName !== "string" ||
+    !value.displayName.trim()
+  ) {
+    return null;
+  }
+  return { id: value.id, displayName: value.displayName };
+}
+
 function responseData(value: unknown): Record<string, unknown> {
   if (!isRecord(value) || !isRecord(value.data)) {
     throw new Error("Die Serverantwort hat ein unerwartetes Format.");
@@ -556,6 +593,24 @@ function parseProblemOwners(value: unknown): ProblemOwner[] {
   const options = parsed as ProblemOwner[];
   if (new Set(options.map((owner) => owner.id)).size !== options.length) {
     throw new Error("Die Liste der verantwortlichen Personen ist ungültig.");
+  }
+  return options;
+}
+
+function parseServiceResponsibleAgents(
+  value: unknown,
+): ServiceResponsibleAgent[] {
+  const agents = responseData(value).agents;
+  if (!Array.isArray(agents)) {
+    throw new Error("Die Liste der Service-Agent:innen ist unvollständig.");
+  }
+  const parsed = agents.map(parseServiceResponsibleAgent);
+  if (parsed.some((agent) => agent === null)) {
+    throw new Error("Die Liste der Service-Agent:innen ist unvollständig.");
+  }
+  const options = parsed as ServiceResponsibleAgent[];
+  if (new Set(options.map((agent) => agent.id)).size !== options.length) {
+    throw new Error("Die Liste der Service-Agent:innen ist ungültig.");
   }
   return options;
 }
@@ -755,6 +810,8 @@ function serviceDraft(service: Service): ServiceForm {
     criticality: service.criticality,
     status: service.status,
     statusPublic: service.status_public,
+    primaryResponsibleId: service.primary_responsible_id ?? "",
+    secondaryResponsibleId: service.secondary_responsible_id ?? "",
   };
 }
 
@@ -829,6 +886,11 @@ export function ServiceAssets({
   const [error, setError] = useState("");
   const [forbidden, setForbidden] = useState(false);
   const [success, setSuccess] = useState("");
+  const [serviceResponsibleAgents, setServiceResponsibleAgents] = useState<
+    ServiceResponsibleAgent[]
+  >([]);
+  const [serviceResponsibleAgentsLoading, setServiceResponsibleAgentsLoading] =
+    useState(false);
   const [problemOwners, setProblemOwners] = useState<ProblemOwner[]>([]);
   const [problemOwnersLoading, setProblemOwnersLoading] = useState(false);
   const [problemTickets, setProblemTickets] = useState<TicketReference[]>([]);
@@ -839,6 +901,7 @@ export function ServiceAssets({
   const [problemTicketsLoading, setProblemTicketsLoading] = useState(false);
   const [ticketSearchLoading, setTicketSearchLoading] = useState(false);
   const requestVersion = useRef(0);
+  const serviceResponsibleAgentsRequestVersion = useRef(0);
   const problemOwnersRequestVersion = useRef(0);
   const problemTicketsRequestVersion = useRef(0);
   const ticketSearchRequestVersion = useRef(0);
@@ -855,6 +918,13 @@ export function ServiceAssets({
   const problemOwnerNames = useMemo(
     () => new Map(problemOwners.map((owner) => [owner.id, owner.displayName])),
     [problemOwners],
+  );
+  const serviceResponsibleAgentNames = useMemo(
+    () =>
+      new Map(
+        serviceResponsibleAgents.map((agent) => [agent.id, agent.displayName]),
+      ),
+    [serviceResponsibleAgents],
   );
   const assetStatuses = useMemo(
     () =>
@@ -1012,6 +1082,42 @@ export function ServiceAssets({
   }, [loadCatalog]);
 
   useEffect(() => {
+    const version = serviceResponsibleAgentsRequestVersion.current + 1;
+    serviceResponsibleAgentsRequestVersion.current = version;
+    if (!canManageServices) {
+      setServiceResponsibleAgents([]);
+      setServiceResponsibleAgentsLoading(false);
+      return;
+    }
+    setServiceResponsibleAgents([]);
+    setServiceResponsibleAgentsLoading(true);
+    void (async () => {
+      try {
+        const agents = parseServiceResponsibleAgents(
+          await requestServiceAssets({
+            type: "listServiceResponsibleAgents",
+            tenantId,
+          }),
+        );
+        if (serviceResponsibleAgentsRequestVersion.current !== version) return;
+        setServiceResponsibleAgents(agents);
+      } catch {
+        if (serviceResponsibleAgentsRequestVersion.current !== version) return;
+        // The server remains authoritative. An unavailable directory leaves
+        // the optional selection empty and any write is revalidated server-side.
+        setServiceResponsibleAgents([]);
+      } finally {
+        if (serviceResponsibleAgentsRequestVersion.current === version) {
+          setServiceResponsibleAgentsLoading(false);
+        }
+      }
+    })();
+    return () => {
+      serviceResponsibleAgentsRequestVersion.current += 1;
+    };
+  }, [canManageServices, tenantId]);
+
+  useEffect(() => {
     const version = problemOwnersRequestVersion.current + 1;
     problemOwnersRequestVersion.current = version;
     setProblemOwners([]);
@@ -1047,6 +1153,8 @@ export function ServiceAssets({
     setProblemForm(EMPTY_PROBLEM_FORM);
     setProblemMode("create");
     clearProblemTicketState();
+    setServiceResponsibleAgents([]);
+    setServiceResponsibleAgentsLoading(false);
     setProblemOwners([]);
     setArchivedServices([]);
     setCanManageServices(false);
@@ -1311,6 +1419,8 @@ export function ServiceAssets({
         criticality: serviceForm.criticality,
         status: serviceForm.status,
         statusPublic: serviceForm.statusPublic,
+        primaryResponsibleId: serviceForm.primaryResponsibleId || null,
+        secondaryResponsibleId: serviceForm.secondaryResponsibleId || null,
       };
       const saved = parseSavedService(await requestServiceAssets(request));
       setServices((current) =>
@@ -1866,6 +1976,21 @@ export function ServiceAssets({
                       <strong>{CRITICALITY_LABELS[service.criticality]}</strong>
                       {service.description ? ` · ${service.description}` : ""}
                     </p>
+                    {canManageServices && service.primary_responsible_id ? (
+                      <p>
+                        Primär verantwortlich:{" "}
+                        {serviceResponsibleAgentNames.get(
+                          service.primary_responsible_id,
+                        ) ?? "Nicht mehr verfügbar"}
+                        {service.secondary_responsible_id
+                          ? ` · Sekundär: ${
+                              serviceResponsibleAgentNames.get(
+                                service.secondary_responsible_id,
+                              ) ?? "Nicht mehr verfügbar"
+                            }`
+                          : ""}
+                      </p>
+                    ) : null}
                     <p>Zuletzt geändert: {formatDate(service.updated_at)}</p>
                     <button
                       disabled={controlsDisabled}
@@ -2045,6 +2170,83 @@ export function ServiceAssets({
                   rows={3}
                   value={serviceForm.description}
                 />
+              </label>
+              <label>
+                Primär verantwortliche Agent:in (optional)
+                <select
+                  disabled={controlsDisabled || serviceResponsibleAgentsLoading}
+                  onChange={(event) =>
+                    setServiceForm((current) => ({
+                      ...current,
+                      primaryResponsibleId: event.target.value,
+                      secondaryResponsibleId:
+                        event.target.value === current.secondaryResponsibleId
+                          ? ""
+                          : current.secondaryResponsibleId,
+                    }))
+                  }
+                  value={serviceForm.primaryResponsibleId}
+                >
+                  <option value="">Nicht zugeordnet</option>
+                  {serviceForm.primaryResponsibleId &&
+                  !serviceResponsibleAgentNames.has(
+                    serviceForm.primaryResponsibleId,
+                  ) ? (
+                    <option value={serviceForm.primaryResponsibleId}>
+                      Nicht mehr verfügbar
+                    </option>
+                  ) : null}
+                  {serviceResponsibleAgents
+                    .filter(
+                      (agent) =>
+                        agent.id !== serviceForm.secondaryResponsibleId,
+                    )
+                    .map((agent) => (
+                      <option key={agent.id} value={agent.id}>
+                        {agent.displayName}
+                      </option>
+                    ))}
+                </select>
+              </label>
+              <label>
+                Sekundär verantwortliche Agent:in (optional)
+                <select
+                  disabled={
+                    controlsDisabled ||
+                    serviceResponsibleAgentsLoading ||
+                    !serviceForm.primaryResponsibleId
+                  }
+                  onChange={(event) =>
+                    setServiceForm((current) => ({
+                      ...current,
+                      secondaryResponsibleId: event.target.value,
+                    }))
+                  }
+                  value={serviceForm.secondaryResponsibleId}
+                >
+                  <option value="">Nicht zugeordnet</option>
+                  {serviceForm.secondaryResponsibleId &&
+                  !serviceResponsibleAgentNames.has(
+                    serviceForm.secondaryResponsibleId,
+                  ) ? (
+                    <option value={serviceForm.secondaryResponsibleId}>
+                      Nicht mehr verfügbar
+                    </option>
+                  ) : null}
+                  {serviceResponsibleAgents
+                    .filter(
+                      (agent) => agent.id !== serviceForm.primaryResponsibleId,
+                    )
+                    .map((agent) => (
+                      <option key={agent.id} value={agent.id}>
+                        {agent.displayName}
+                      </option>
+                    ))}
+                </select>
+                <small>
+                  Nur aktuell berechtigte interne Agent:innen stehen zur
+                  Auswahl.
+                </small>
               </label>
               <label className="service-assets__status-public-toggle">
                 <input

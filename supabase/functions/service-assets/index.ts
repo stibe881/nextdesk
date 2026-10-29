@@ -1,4 +1,5 @@
 import { type SupabaseContext, withSupabase } from "@supabase/server";
+import { listAssignableTenantSupportAgents } from "../_shared/assignable-agents.ts";
 import { resolveTenantFeatureStates } from "../_shared/tenant-features.ts";
 
 const ALLOWED_ORIGIN = "https://app.nextdesk.ch";
@@ -14,7 +15,7 @@ const INTUNE_PRIMARY_PERSON_LOOKUP_PAGE_SIZE = 100;
 const MAX_CATALOG_ROWS = 10_000;
 const MAX_TICKET_SEARCH_RESULTS = 30;
 const SERVICE_SELECT =
-  "id, tenant_id, name, description, criticality, status, status_public, active, created_at, updated_at";
+  "id, tenant_id, name, description, criticality, status, status_public, primary_responsible_id, secondary_responsible_id, active, created_at, updated_at";
 const ASSET_SELECT =
   "id, tenant_id, service_id, name, asset_tag, inventory_number, serial_number, manufacturer, model, operating_system, kind, status, customer_organization_id, metadata, active, created_at, updated_at";
 const PROBLEM_SELECT =
@@ -38,6 +39,7 @@ type Action =
       tenantId: string;
       includeArchivedServices: boolean;
     }
+  | { type: "listServiceResponsibleAgents"; tenantId: string }
   | { type: "listProblemOwners"; tenantId: string }
   | { type: "listProblemTickets"; tenantId: string; problemId: string }
   | { type: "searchTickets"; tenantId: string; query: string }
@@ -174,6 +176,14 @@ const SERVICE_FIELDS: Record<string, Field> = {
     ]),
   },
   statusPublic: { column: "status_public", validate: boolean },
+  primaryResponsibleId: {
+    column: "primary_responsible_id",
+    validate: nullable(uuid),
+  },
+  secondaryResponsibleId: {
+    column: "secondary_responsible_id",
+    validate: nullable(uuid),
+  },
 };
 const ASSET_FIELDS: Record<string, Field> = {
   name: { column: "name", validate: text(1, 240) },
@@ -276,6 +286,11 @@ export function parseAction(value: unknown): Action | null {
     };
   }
   if (value.type === "listProblemOwners") {
+    return hasOnlyKeys(value, ["type", "tenantId"])
+      ? { type: value.type, tenantId }
+      : null;
+  }
+  if (value.type === "listServiceResponsibleAgents") {
     return hasOnlyKeys(value, ["type", "tenantId"])
       ? { type: value.type, tenantId }
       : null;
@@ -696,6 +711,68 @@ async function requireReadableProblem(
   }
 }
 
+async function ensureServiceResponsibleAgents(
+  admin: AdminClient,
+  tenantId: string,
+  values: Record<string, JsonValue>,
+): Promise<void> {
+  const primary = values.primary_responsible_id;
+  const secondary = values.secondary_responsible_id;
+  if (primary === undefined && secondary === undefined) return;
+  const selectedIds = [primary, secondary].flatMap((value) =>
+    isUuid(value) ? [value.toLowerCase()] : [],
+  );
+  if (new Set(selectedIds).size !== selectedIds.length) {
+    throw new HttpError(
+      422,
+      "invalid_service_responsible",
+      "Die Serviceverantwortlichkeiten sind ungültig.",
+    );
+  }
+  const result = await listAssignableTenantSupportAgents(admin, tenantId);
+  if (result.error) {
+    throw new HttpError(
+      503,
+      "service_responsible_lookup_failed",
+      "Die Liste der verantwortlichen Agent:innen konnte nicht sicher geprüft werden.",
+    );
+  }
+  const allowedIds = new Set(result.agents.map((agent) => agent.id));
+  if (selectedIds.some((id) => !allowedIds.has(id))) {
+    throw new HttpError(
+      422,
+      "invalid_service_responsible",
+      "Die Serviceverantwortlichkeiten sind ungültig.",
+    );
+  }
+}
+
+async function listServiceResponsibleAgents(
+  request: Request,
+  client: CallerClient,
+  admin: AdminClient,
+  action: Extract<Action, { type: "listServiceResponsibleAgents" }>,
+): Promise<Response> {
+  await requirePermission(
+    client,
+    "has_tenant_permission",
+    {
+      p_tenant_id: action.tenantId,
+      p_permission_code: "asset.manage",
+    },
+    "asset_manage_required",
+  );
+  const result = await listAssignableTenantSupportAgents(admin, action.tenantId);
+  if (result.error) {
+    throw new HttpError(
+      503,
+      "service_responsible_lookup_failed",
+      "Die Liste der verantwortlichen Agent:innen konnte nicht sicher gelesen werden.",
+    );
+  }
+  return json(request, { data: { agents: result.agents } });
+}
+
 async function listProblemOwners(
   request: Request,
   client: CallerClient,
@@ -803,6 +880,7 @@ async function searchTickets(
 async function manageResource(
   request: Request,
   client: CallerClient,
+  admin: AdminClient,
   actorId: string,
   action: Extract<Action, { type: ManageType }>,
 ): Promise<Response> {
@@ -816,6 +894,12 @@ async function manageResource(
     "asset_manage_required",
   );
   const resource = RESOURCES[action.type];
+  if (
+    action.type === "manageService" &&
+    (action.operation === "create" || action.operation === "update")
+  ) {
+    await ensureServiceResponsibleAgents(admin, action.tenantId, action.values);
+  }
   // The resource is selected from a finite, server-owned table map. Avoid
   // expanding PostgREST's full table-union here; values were strictly parsed
   // above and the same tenant filters are applied in every mutation branch.
@@ -1074,6 +1158,14 @@ const handler = withSupabase(
           action,
         );
       }
+      if (action.type === "listServiceResponsibleAgents") {
+        return await listServiceResponsibleAgents(
+          request,
+          client,
+          context.supabaseAdmin,
+          action,
+        );
+      }
       if (action.type === "listProblemTickets") {
         return await listProblemTickets(request, client, action);
       }
@@ -1081,7 +1173,13 @@ const handler = withSupabase(
         return await searchTickets(request, client, action);
       }
       if ("operation" in action) {
-        return await manageResource(request, client, actorId, action);
+        return await manageResource(
+          request,
+          client,
+          context.supabaseAdmin,
+          actorId,
+          action,
+        );
       }
       return await mutateTicketLink(request, client, actorId, action);
     } catch (error) {
