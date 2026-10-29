@@ -461,6 +461,8 @@ function corsHeaders(request: Request): Headers {
       "Access-Control-Allow-Headers",
       "authorization, apikey, content-type, x-client-info",
     );
+    // Lets the browser reuse the preflight instead of adding a round trip.
+    headers.set("Access-Control-Max-Age", "7200");
   }
   return headers;
 }
