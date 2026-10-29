@@ -4,8 +4,11 @@ import {
   useMemo,
   useRef,
   useState,
+  type Dispatch,
   type FormEvent,
   type KeyboardEvent,
+  type RefObject,
+  type SetStateAction,
 } from "react";
 import { createPortal } from "react-dom";
 import { supabase } from "./lib/supabase";
@@ -315,6 +318,217 @@ const EDITABLE_PROBLEM_STATUSES: EditableProblemStatus[] = [
   "investigating",
   "known_error",
 ];
+
+type ServiceEditorFieldsProps = {
+  controlsDisabled: boolean;
+  nameInputRef: RefObject<HTMLInputElement | null>;
+  onCancel: () => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void | Promise<void>;
+  pendingAction: string | null;
+  serviceForm: ServiceForm;
+  serviceResponsibleAgentNames: ReadonlyMap<string, string>;
+  serviceResponsibleAgents: ServiceResponsibleAgent[];
+  serviceResponsibleAgentsLoading: boolean;
+  setServiceForm: Dispatch<SetStateAction<ServiceForm>>;
+};
+
+function ServiceEditorFields({
+  controlsDisabled,
+  nameInputRef,
+  onCancel,
+  onSubmit,
+  pendingAction,
+  serviceForm,
+  serviceResponsibleAgentNames,
+  serviceResponsibleAgents,
+  serviceResponsibleAgentsLoading,
+  setServiceForm,
+}: ServiceEditorFieldsProps) {
+  return (
+    <form onSubmit={(event) => void onSubmit(event)}>
+      <label>
+        Name
+        <input
+          disabled={controlsDisabled}
+          maxLength={240}
+          onChange={(event) =>
+            setServiceForm((current) => ({
+              ...current,
+              name: event.target.value,
+            }))
+          }
+          required
+          ref={nameInputRef}
+          value={serviceForm.name}
+        />
+      </label>
+      <label>
+        Kritikalität
+        <select
+          disabled={controlsDisabled}
+          onChange={(event) =>
+            setServiceForm((current) => ({
+              ...current,
+              criticality: event.target.value as Criticality,
+            }))
+          }
+          value={serviceForm.criticality}
+        >
+          {(Object.keys(CRITICALITY_LABELS) as Criticality[]).map(
+            (criticality) => (
+              <option key={criticality} value={criticality}>
+                {CRITICALITY_LABELS[criticality]}
+              </option>
+            ),
+          )}
+        </select>
+      </label>
+      <label>
+        Betriebszustand
+        <select
+          disabled={controlsDisabled}
+          onChange={(event) =>
+            setServiceForm((current) => ({
+              ...current,
+              status: event.target.value as ServiceStatus,
+            }))
+          }
+          value={serviceForm.status}
+        >
+          {(Object.keys(SERVICE_STATUS_LABELS) as ServiceStatus[]).map(
+            (status) => (
+              <option key={status} value={status}>
+                {SERVICE_STATUS_LABELS[status]}
+              </option>
+            ),
+          )}
+        </select>
+      </label>
+      <label>
+        Beschreibung (optional)
+        <textarea
+          disabled={controlsDisabled}
+          maxLength={50000}
+          onChange={(event) =>
+            setServiceForm((current) => ({
+              ...current,
+              description: event.target.value,
+            }))
+          }
+          rows={3}
+          value={serviceForm.description}
+        />
+      </label>
+      <label>
+        Primär verantwortliche Agent:in (optional)
+        <select
+          disabled={controlsDisabled || serviceResponsibleAgentsLoading}
+          onChange={(event) =>
+            setServiceForm((current) => ({
+              ...current,
+              primaryResponsibleId: event.target.value,
+              secondaryResponsibleId:
+                event.target.value === current.secondaryResponsibleId
+                  ? ""
+                  : current.secondaryResponsibleId,
+            }))
+          }
+          value={serviceForm.primaryResponsibleId}
+        >
+          <option value="">Nicht zugeordnet</option>
+          {serviceForm.primaryResponsibleId &&
+          !serviceResponsibleAgentNames.has(
+            serviceForm.primaryResponsibleId,
+          ) ? (
+            <option value={serviceForm.primaryResponsibleId}>
+              Nicht mehr verfügbar
+            </option>
+          ) : null}
+          {serviceResponsibleAgents
+            .filter((agent) => agent.id !== serviceForm.secondaryResponsibleId)
+            .map((agent) => (
+              <option key={agent.id} value={agent.id}>
+                {agent.displayName}
+              </option>
+            ))}
+        </select>
+      </label>
+      <label>
+        Sekundär verantwortliche Agent:in (optional)
+        <select
+          disabled={
+            controlsDisabled ||
+            serviceResponsibleAgentsLoading ||
+            !serviceForm.primaryResponsibleId
+          }
+          onChange={(event) =>
+            setServiceForm((current) => ({
+              ...current,
+              secondaryResponsibleId: event.target.value,
+            }))
+          }
+          value={serviceForm.secondaryResponsibleId}
+        >
+          <option value="">Nicht zugeordnet</option>
+          {serviceForm.secondaryResponsibleId &&
+          !serviceResponsibleAgentNames.has(
+            serviceForm.secondaryResponsibleId,
+          ) ? (
+            <option value={serviceForm.secondaryResponsibleId}>
+              Nicht mehr verfügbar
+            </option>
+          ) : null}
+          {serviceResponsibleAgents
+            .filter((agent) => agent.id !== serviceForm.primaryResponsibleId)
+            .map((agent) => (
+              <option key={agent.id} value={agent.id}>
+                {agent.displayName}
+              </option>
+            ))}
+        </select>
+        <small>
+          Nur aktuell berechtigte interne Agent:innen stehen zur Auswahl.
+        </small>
+      </label>
+      <label className="service-assets__status-public-toggle">
+        <input
+          checked={serviceForm.statusPublic}
+          disabled={controlsDisabled}
+          onChange={(event) =>
+            setServiceForm((current) => ({
+              ...current,
+              statusPublic: event.target.checked,
+            }))
+          }
+          type="checkbox"
+        />
+        <span>
+          <strong>Auf öffentlicher Statusseite anzeigen</strong>
+          <small>
+            Der Service erscheint erst nach bewusster Freigabe der Statusseite
+            unter Systemstatus.
+          </small>
+        </span>
+      </label>
+      <p>
+        <button
+          className="primary-button"
+          disabled={controlsDisabled}
+          type="submit"
+        >
+          {pendingAction?.startsWith("service:save:")
+            ? "Wird gespeichert …"
+            : serviceForm.id
+              ? "Änderungen speichern"
+              : "Service anlegen"}
+        </button>{" "}
+        <button disabled={controlsDisabled} onClick={onCancel} type="button">
+          Abbrechen
+        </button>
+      </p>
+    </form>
+  );
+}
 
 const CATALOG_PAGE_COPY: Readonly<
   Record<CatalogTab, { eyebrow: string; title: string; description: string }>
@@ -873,6 +1087,9 @@ export function ServiceAssets({
   const [problemMode, setProblemMode] = useState<ProblemFormMode>("create");
   const [assetEditorOpen, setAssetEditorOpen] = useState(false);
   const [serviceEditorOpen, setServiceEditorOpen] = useState(false);
+  const [inlineServiceEditorId, setInlineServiceEditorId] = useState<
+    string | null
+  >(null);
   const [serviceQuery, setServiceQuery] = useState("");
   const [serviceCriticality, setServiceCriticality] = useState<
     "all" | Criticality
@@ -917,6 +1134,9 @@ export function ServiceAssets({
   const serviceNameInputRef = useRef<HTMLInputElement | null>(null);
   const serviceEditorTriggerRef = useRef<HTMLElement | null>(null);
   const serviceCreateButtonRef = useRef<HTMLButtonElement | null>(null);
+  const archivedServiceRestoreButtonRefs = useRef(
+    new Map<string, HTMLButtonElement>(),
+  );
 
   const serviceNames = useMemo(
     () => new Map(services.map((service) => [service.id, service.name])),
@@ -1155,6 +1375,7 @@ export function ServiceAssets({
   useEffect(() => {
     setServiceForm(EMPTY_SERVICE_FORM);
     setServiceEditorOpen(false);
+    setInlineServiceEditorId(null);
     serviceEditorTriggerRef.current = null;
     setAssetForm(EMPTY_ASSET_FORM);
     setAssetEditorOpen(false);
@@ -1172,6 +1393,20 @@ export function ServiceAssets({
   }, [tenantId]);
 
   useEffect(() => {
+    if (
+      !inlineServiceEditorId ||
+      filteredServices.some((service) => service.id === inlineServiceEditorId)
+    ) {
+      return;
+    }
+    setServiceForm(EMPTY_SERVICE_FORM);
+    setInlineServiceEditorId(null);
+    serviceEditorTriggerRef.current = null;
+    setError("");
+    setForbidden(false);
+  }, [filteredServices, inlineServiceEditorId]);
+
+  useEffect(() => {
     if (!assetEditorOpen) return;
     const focusTimer = window.setTimeout(() => {
       assetNameInputRef.current?.focus();
@@ -1186,6 +1421,14 @@ export function ServiceAssets({
     }, 0);
     return () => window.clearTimeout(focusTimer);
   }, [serviceEditorOpen]);
+
+  useEffect(() => {
+    if (!inlineServiceEditorId) return;
+    const focusTimer = window.setTimeout(() => {
+      serviceNameInputRef.current?.focus();
+    }, 0);
+    return () => window.clearTimeout(focusTimer);
+  }, [inlineServiceEditorId]);
 
   useEffect(() => {
     const problemId = problemForm.id;
@@ -1286,21 +1529,29 @@ export function ServiceAssets({
   function resetServiceForm() {
     setServiceForm(EMPTY_SERVICE_FORM);
     setServiceEditorOpen(false);
+    setInlineServiceEditorId(null);
     setError("");
     setSuccess("");
     restoreServiceEditorFocus();
   }
 
-  function restoreServiceEditorFocus() {
+  function restoreServiceEditorFocus(archivedServiceId?: string) {
     const trigger = serviceEditorTriggerRef.current;
     serviceEditorTriggerRef.current = null;
     window.setTimeout(() => {
+      const archiveTrigger = archivedServiceId
+        ? archivedServiceRestoreButtonRefs.current.get(archivedServiceId)
+        : null;
+      const archiveTriggerIsUsable =
+        archiveTrigger?.isConnected && !archiveTrigger.disabled;
       const triggerIsUsable =
         trigger?.isConnected &&
         !(trigger instanceof HTMLButtonElement && trigger.disabled);
       const fallback = serviceCreateButtonRef.current;
       const fallbackIsUsable = fallback?.isConnected && !fallback.disabled;
-      if (triggerIsUsable) {
+      if (archiveTriggerIsUsable) {
+        archiveTrigger.focus();
+      } else if (triggerIsUsable) {
         trigger.focus();
       } else if (fallbackIsUsable) {
         fallback.focus();
@@ -1308,16 +1559,30 @@ export function ServiceAssets({
     }, 0);
   }
 
-  function openServiceEditor(service?: Service, trigger?: HTMLElement) {
+  function openServiceEditor(trigger?: HTMLElement) {
     serviceEditorTriggerRef.current =
       trigger ??
       (document.activeElement instanceof HTMLElement
         ? document.activeElement
         : null);
-    setServiceForm(service ? serviceDraft(service) : EMPTY_SERVICE_FORM);
+    setInlineServiceEditorId(null);
+    setServiceForm(EMPTY_SERVICE_FORM);
     setError("");
     setSuccess("");
     setServiceEditorOpen(true);
+  }
+
+  function openInlineServiceEditor(service: Service, trigger: HTMLElement) {
+    if (inlineServiceEditorId === service.id) {
+      resetServiceForm();
+      return;
+    }
+    serviceEditorTriggerRef.current = trigger;
+    setServiceEditorOpen(false);
+    setInlineServiceEditorId(service.id);
+    setServiceForm(serviceDraft(service));
+    setError("");
+    setSuccess("");
   }
 
   function handleServiceEditorKeyDown(event: KeyboardEvent<HTMLElement>) {
@@ -1528,6 +1793,8 @@ export function ServiceAssets({
 
   async function archiveService(service: Service) {
     if (!window.confirm(`Service „${service.name}“ archivieren?`)) return;
+    const closesCurrentServiceEditor =
+      serviceForm.id === service.id || inlineServiceEditorId === service.id;
     beginAction(`service:archive:${service.id}`);
     try {
       const archived = parseSavedService(
@@ -1552,7 +1819,14 @@ export function ServiceAssets({
       if (assetForm.serviceId === service.id) {
         setAssetForm((current) => ({ ...current, serviceId: "" }));
       }
-      if (serviceForm.id === service.id) resetServiceForm();
+      if (closesCurrentServiceEditor) {
+        setServiceForm(EMPTY_SERVICE_FORM);
+        setServiceEditorOpen(false);
+        setInlineServiceEditorId(null);
+        restoreServiceEditorFocus(
+          showArchivedServices ? archived.id : undefined,
+        );
+      }
       setSuccess(
         `Der Service „${service.name}“ wurde archiviert und von der öffentlichen Statusseite entfernt.`,
       );
@@ -1900,9 +2174,7 @@ export function ServiceAssets({
                 <button
                   className="primary-button"
                   disabled={controlsDisabled}
-                  onClick={(event) =>
-                    openServiceEditor(undefined, event.currentTarget)
-                  }
+                  onClick={(event) => openServiceEditor(event.currentTarget)}
                   ref={serviceCreateButtonRef}
                   type="button"
                 >
@@ -1933,7 +2205,7 @@ export function ServiceAssets({
         )}
       </div>
 
-      {error && !serviceEditorOpen ? (
+      {error && !serviceEditorOpen && !inlineServiceEditorId ? (
         <p role="alert">
           <strong>{forbidden ? "Zugriff verweigert: " : "Hinweis: "}</strong>
           {error}
@@ -2073,7 +2345,12 @@ export function ServiceAssets({
             <ul aria-label="Aktive Services">
               {filteredServices.map((service) => (
                 <li key={service.id}>
-                  <article>
+                  <article
+                    className="service-assets__service-card"
+                    data-editing={
+                      inlineServiceEditorId === service.id || undefined
+                    }
+                  >
                     <h4>{service.name}</h4>
                     <span
                       className={`service-assets__service-status service-assets__service-status--${service.status}`}
@@ -2102,13 +2379,16 @@ export function ServiceAssets({
                     ) : null}
                     <p>Zuletzt geändert: {formatDate(service.updated_at)}</p>
                     <button
+                      aria-expanded={inlineServiceEditorId === service.id}
                       disabled={controlsDisabled}
                       onClick={(event) =>
-                        openServiceEditor(service, event.currentTarget)
+                        openInlineServiceEditor(service, event.currentTarget)
                       }
                       type="button"
                     >
-                      Bearbeiten
+                      {inlineServiceEditorId === service.id
+                        ? "Bearbeitung schliessen"
+                        : "Bearbeiten"}
                     </button>{" "}
                     {canManageServices ? (
                       <button
@@ -2120,6 +2400,54 @@ export function ServiceAssets({
                           ? "Wird archiviert …"
                           : "Archivieren"}
                       </button>
+                    ) : null}
+                    {inlineServiceEditorId === service.id ? (
+                      <section
+                        aria-labelledby={`service-assets-inline-editor-${service.id}`}
+                        className="service-assets__service-inline-editor"
+                      >
+                        <div className="service-assets__service-inline-editor-heading">
+                          <div>
+                            <p className="eyebrow">Service bearbeiten</p>
+                            <h5
+                              id={`service-assets-inline-editor-${service.id}`}
+                            >
+                              {service.name}
+                            </h5>
+                          </div>
+                          <button
+                            disabled={controlsDisabled}
+                            onClick={resetServiceForm}
+                            type="button"
+                          >
+                            Schliessen
+                          </button>
+                        </div>
+                        {error ? (
+                          <p role="alert">
+                            <strong>
+                              {forbidden ? "Zugriff verweigert: " : "Hinweis: "}
+                            </strong>
+                            {error}
+                          </p>
+                        ) : null}
+                        <ServiceEditorFields
+                          controlsDisabled={controlsDisabled}
+                          nameInputRef={serviceNameInputRef}
+                          onCancel={resetServiceForm}
+                          onSubmit={saveService}
+                          pendingAction={pendingAction}
+                          serviceForm={serviceForm}
+                          serviceResponsibleAgentNames={
+                            serviceResponsibleAgentNames
+                          }
+                          serviceResponsibleAgents={serviceResponsibleAgents}
+                          serviceResponsibleAgentsLoading={
+                            serviceResponsibleAgentsLoading
+                          }
+                          setServiceForm={setServiceForm}
+                        />
+                      </section>
                     ) : null}
                   </article>
                 </li>
@@ -2177,6 +2505,18 @@ export function ServiceAssets({
                         <button
                           disabled={controlsDisabled}
                           onClick={() => void restoreService(service)}
+                          ref={(element) => {
+                            if (element) {
+                              archivedServiceRestoreButtonRefs.current.set(
+                                service.id,
+                                element,
+                              );
+                            } else {
+                              archivedServiceRestoreButtonRefs.current.delete(
+                                service.id,
+                              );
+                            }
+                          }}
                           type="button"
                         >
                           {pendingAction === `service:restore:${service.id}`
@@ -2241,204 +2581,22 @@ export function ServiceAssets({
                         {error}
                       </p>
                     ) : null}
-                    <form onSubmit={(event) => void saveService(event)}>
-                      <label>
-                        Name
-                        <input
-                          disabled={controlsDisabled}
-                          maxLength={240}
-                          onChange={(event) =>
-                            setServiceForm((current) => ({
-                              ...current,
-                              name: event.target.value,
-                            }))
-                          }
-                          required
-                          ref={serviceNameInputRef}
-                          value={serviceForm.name}
-                        />
-                      </label>
-                      <label>
-                        Kritikalität
-                        <select
-                          disabled={controlsDisabled}
-                          onChange={(event) =>
-                            setServiceForm((current) => ({
-                              ...current,
-                              criticality: event.target.value as Criticality,
-                            }))
-                          }
-                          value={serviceForm.criticality}
-                        >
-                          {(
-                            Object.keys(CRITICALITY_LABELS) as Criticality[]
-                          ).map((criticality) => (
-                            <option key={criticality} value={criticality}>
-                              {CRITICALITY_LABELS[criticality]}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <label>
-                        Betriebszustand
-                        <select
-                          disabled={controlsDisabled}
-                          onChange={(event) =>
-                            setServiceForm((current) => ({
-                              ...current,
-                              status: event.target.value as ServiceStatus,
-                            }))
-                          }
-                          value={serviceForm.status}
-                        >
-                          {(
-                            Object.keys(
-                              SERVICE_STATUS_LABELS,
-                            ) as ServiceStatus[]
-                          ).map((status) => (
-                            <option key={status} value={status}>
-                              {SERVICE_STATUS_LABELS[status]}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <label>
-                        Beschreibung (optional)
-                        <textarea
-                          disabled={controlsDisabled}
-                          maxLength={50000}
-                          onChange={(event) =>
-                            setServiceForm((current) => ({
-                              ...current,
-                              description: event.target.value,
-                            }))
-                          }
-                          rows={3}
-                          value={serviceForm.description}
-                        />
-                      </label>
-                      <label>
-                        Primär verantwortliche Agent:in (optional)
-                        <select
-                          disabled={
-                            controlsDisabled || serviceResponsibleAgentsLoading
-                          }
-                          onChange={(event) =>
-                            setServiceForm((current) => ({
-                              ...current,
-                              primaryResponsibleId: event.target.value,
-                              secondaryResponsibleId:
-                                event.target.value ===
-                                current.secondaryResponsibleId
-                                  ? ""
-                                  : current.secondaryResponsibleId,
-                            }))
-                          }
-                          value={serviceForm.primaryResponsibleId}
-                        >
-                          <option value="">Nicht zugeordnet</option>
-                          {serviceForm.primaryResponsibleId &&
-                          !serviceResponsibleAgentNames.has(
-                            serviceForm.primaryResponsibleId,
-                          ) ? (
-                            <option value={serviceForm.primaryResponsibleId}>
-                              Nicht mehr verfügbar
-                            </option>
-                          ) : null}
-                          {serviceResponsibleAgents
-                            .filter(
-                              (agent) =>
-                                agent.id !== serviceForm.secondaryResponsibleId,
-                            )
-                            .map((agent) => (
-                              <option key={agent.id} value={agent.id}>
-                                {agent.displayName}
-                              </option>
-                            ))}
-                        </select>
-                      </label>
-                      <label>
-                        Sekundär verantwortliche Agent:in (optional)
-                        <select
-                          disabled={
-                            controlsDisabled ||
-                            serviceResponsibleAgentsLoading ||
-                            !serviceForm.primaryResponsibleId
-                          }
-                          onChange={(event) =>
-                            setServiceForm((current) => ({
-                              ...current,
-                              secondaryResponsibleId: event.target.value,
-                            }))
-                          }
-                          value={serviceForm.secondaryResponsibleId}
-                        >
-                          <option value="">Nicht zugeordnet</option>
-                          {serviceForm.secondaryResponsibleId &&
-                          !serviceResponsibleAgentNames.has(
-                            serviceForm.secondaryResponsibleId,
-                          ) ? (
-                            <option value={serviceForm.secondaryResponsibleId}>
-                              Nicht mehr verfügbar
-                            </option>
-                          ) : null}
-                          {serviceResponsibleAgents
-                            .filter(
-                              (agent) =>
-                                agent.id !== serviceForm.primaryResponsibleId,
-                            )
-                            .map((agent) => (
-                              <option key={agent.id} value={agent.id}>
-                                {agent.displayName}
-                              </option>
-                            ))}
-                        </select>
-                        <small>
-                          Nur aktuell berechtigte interne Agent:innen stehen zur
-                          Auswahl.
-                        </small>
-                      </label>
-                      <label className="service-assets__status-public-toggle">
-                        <input
-                          checked={serviceForm.statusPublic}
-                          disabled={controlsDisabled}
-                          onChange={(event) =>
-                            setServiceForm((current) => ({
-                              ...current,
-                              statusPublic: event.target.checked,
-                            }))
-                          }
-                          type="checkbox"
-                        />
-                        <span>
-                          <strong>Auf öffentlicher Statusseite anzeigen</strong>
-                          <small>
-                            Der Service erscheint erst nach bewusster Freigabe
-                            der Statusseite unter Systemstatus.
-                          </small>
-                        </span>
-                      </label>
-                      <p>
-                        <button
-                          className="primary-button"
-                          disabled={controlsDisabled}
-                          type="submit"
-                        >
-                          {pendingAction?.startsWith("service:save:")
-                            ? "Wird gespeichert …"
-                            : serviceForm.id
-                              ? "Änderungen speichern"
-                              : "Service anlegen"}
-                        </button>{" "}
-                        <button
-                          disabled={controlsDisabled}
-                          onClick={resetServiceForm}
-                          type="button"
-                        >
-                          Abbrechen
-                        </button>
-                      </p>
-                    </form>
+                    <ServiceEditorFields
+                      controlsDisabled={controlsDisabled}
+                      nameInputRef={serviceNameInputRef}
+                      onCancel={resetServiceForm}
+                      onSubmit={saveService}
+                      pendingAction={pendingAction}
+                      serviceForm={serviceForm}
+                      serviceResponsibleAgentNames={
+                        serviceResponsibleAgentNames
+                      }
+                      serviceResponsibleAgents={serviceResponsibleAgents}
+                      serviceResponsibleAgentsLoading={
+                        serviceResponsibleAgentsLoading
+                      }
+                      setServiceForm={setServiceForm}
+                    />
                   </section>
                 </div>,
                 document.body,

@@ -7277,6 +7277,50 @@ body:has(.ticket-detail) {
   padding: 20px;
 }
 
+.service-assets__service-card[data-editing] {
+  row-gap: 10px;
+}
+
+.service-assets__service-inline-editor {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 18px;
+  margin-top: 6px;
+  border-top: 1px solid var(--border);
+  padding-top: 20px;
+}
+
+.service-assets__service-inline-editor-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.service-assets__service-inline-editor-heading > div {
+  display: grid;
+  gap: 4px;
+}
+
+.service-assets__service-inline-editor-heading h5 {
+  font-size: 17px;
+}
+
+.service-assets__service-inline-editor form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 18px;
+  row-gap: 20px;
+}
+
+.service-assets__service-inline-editor form > p {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 4px 0 0;
+}
+
 .service-assets li > article h4,
 .service-assets li > article h5,
 .service-assets li > article p {
@@ -7551,7 +7595,8 @@ body:has(.service-assets__dialog-backdrop) {
   .service-assets fieldset,
   .service-assets .panel form,
   .service-assets__asset-editor-dialog form,
-  .service-assets__service-editor-dialog form {
+  .service-assets__service-editor-dialog form,
+  .service-assets__service-inline-editor form {
     grid-template-columns: 1fr;
   }
 
