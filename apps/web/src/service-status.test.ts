@@ -7,6 +7,7 @@ import {
   nextMaintenanceTransition,
   parsePublicServiceStatus,
   parseStatusOverview,
+  sharePointIframeEmbedCode,
 } from "./service-status";
 
 const SERVICE_ID = "00000000-0000-4000-8000-000000000001";
@@ -113,6 +114,17 @@ describe("HTML-Attribut-Escaping", () => {
       escapeHtmlAttribute(`Status "kritisch" & <img src=x onerror='alert(1)'>`),
     ).toBe(
       "Status &quot;kritisch&quot; &amp; &lt;img src=x onerror=&#39;alert(1)&#39;&gt;",
+    );
+  });
+
+  it("erzeugt einen kopierbaren SharePoint-iFrame ohne unsichere Attribute", () => {
+    expect(
+      sharePointIframeEmbedCode(
+        "https://app.nextdesk.ch/?system-status=00000000-0000-4000-8000-000000000004&embed=1",
+        `Status "kritisch" & <script>`,
+      ),
+    ).toBe(
+      '<iframe src="https://app.nextdesk.ch/?system-status=00000000-0000-4000-8000-000000000004&amp;embed=1" title="Systemstatus: Status &quot;kritisch&quot; &amp; &lt;script&gt;" loading="lazy" width="100%" height="720" style="border: 0;"></iframe>',
     );
   });
 });
