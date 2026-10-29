@@ -441,3 +441,24 @@ Deno.test(
     );
   },
 );
+
+Deno.test(
+  "übernimmt die Zeile «Link zum Auftrag» auch ohne Doppelpunkt nach der Bezeichnung",
+  () => {
+    const result = parseEventSpaceEmailIntake({
+      subject: validSubject,
+      description: descriptionWith(
+        validDescription,
+        "Link zum Auftrag: <https://example.sharepoint.com/:x:/r/sites/Team/auftrag>",
+        "Link zum Auftrag https://example.sharepoint.com/sites/Team/_layouts/15/listform.aspx?PageType=4&ID=277",
+      ),
+    });
+    assert(result.status === "ready", "Die Mail muss vollständig gelesen werden.");
+    if (result.status !== "ready") return;
+    assert(
+      result.request.orderUrl ===
+        "https://example.sharepoint.com/sites/Team/_layouts/15/listform.aspx?PageType=4&ID=277",
+      "Der Auftragslink muss übernommen werden.",
+    );
+  },
+);
