@@ -1,3 +1,5 @@
+import * as ImageManipulator from "expo-image-manipulator";
+
 import { invokeNextDesk, requireNextDesk } from "@/lib/nextdesk-client";
 
 const ATTACHMENT_BUCKET = "ticket-attachments";
@@ -159,4 +161,41 @@ export async function openMobileTicketAttachment(input: {
     throw new Error("Der sichere Download-Link ist ungültig.");
   }
   return data.signedUrl;
+}
+
+const MAX_PHOTO_EDGE = 2560;
+
+/**
+ * Bereitet ein ausgewähltes Foto auf (entfernt Metadaten, verkleinert, JPEG)
+ * und lädt es zu einem bestehenden Ticket hoch.
+ */
+export async function uploadPickedPhoto(input: {
+  height?: number;
+  index: number;
+  tenantId: string;
+  ticketId: string;
+  uri: string;
+  width?: number;
+}): Promise<void> {
+  const width = input.width ?? 0;
+  const height = input.height ?? 0;
+  const actions: ImageManipulator.Action[] =
+    width <= MAX_PHOTO_EDGE && height <= MAX_PHOTO_EDGE
+      ? []
+      : width >= height
+        ? [{ resize: { width: MAX_PHOTO_EDGE } }]
+        : [{ resize: { height: MAX_PHOTO_EDGE } }];
+  const image = await ImageManipulator.manipulateAsync(input.uri, actions, {
+    compress: 0.84,
+    format: ImageManipulator.SaveFormat.JPEG,
+  });
+  const response = await fetch(image.uri);
+  if (!response.ok) throw new Error("Das Foto konnte nicht gelesen werden.");
+  const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+  await uploadMobileTicketPhoto({
+    tenantId: input.tenantId,
+    ticketId: input.ticketId,
+    filename: `nextdesk-foto-${stamp}${input.index > 0 ? `-${input.index + 1}` : ""}.jpg`,
+    bytes: await response.arrayBuffer(),
+  });
 }

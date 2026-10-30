@@ -188,6 +188,62 @@ export default function AssetDetailScreen() {
           </View>
         </View>
 
+        <View style={styles.actionRow}>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() =>
+              router.push({
+                pathname: "/ticket/new",
+                params: {
+                  subject: `${asset.name}: `,
+                  description: [
+                    `Gerät: ${asset.name}`,
+                    asset.inventoryNumber
+                      ? `Inventarnummer: ${asset.inventoryNumber}`
+                      : null,
+                    asset.assetTag ? `Asset-Tag: ${asset.assetTag}` : null,
+                    asset.serialNumber
+                      ? `Seriennummer: ${asset.serialNumber}`
+                      : null,
+                    location?.name ? `Standort: ${location.name}` : null,
+                    "",
+                    "Problem:",
+                  ]
+                    .filter((line) => line !== null)
+                    .join("\n"),
+                },
+              })
+            }
+            style={[styles.actionButton, { backgroundColor: colors.primary }]}
+          >
+            <Ionicons
+              color={colors.onPrimary}
+              name="add-circle-outline"
+              size={20}
+            />
+            <Text style={[styles.actionText, { color: colors.onPrimary }]}>
+              Ticket zu diesem Gerät
+            </Text>
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => router.replace("/assets/scan" as never)}
+            style={[
+              styles.actionButton,
+              { backgroundColor: colors.primarySoft },
+            ]}
+          >
+            <Ionicons
+              color={colors.primaryText}
+              name="scan-outline"
+              size={20}
+            />
+            <Text style={[styles.actionText, { color: colors.primaryText }]}>
+              Weiter scannen
+            </Text>
+          </Pressable>
+        </View>
+
         <InfoCard
           rows={[
             ["Inventarnummer", valueOrDash(asset.inventoryNumber)],
@@ -253,6 +309,18 @@ function InfoCard({ title, rows }: { title: string; rows: string[][] }) {
 }
 
 const useStyles = makeThemedStyles((c) => ({
+  actionButton: {
+    alignItems: "center",
+    borderRadius: 14,
+    flex: 1,
+    flexDirection: "row",
+    gap: 8,
+    justifyContent: "center",
+    minHeight: 48,
+    paddingHorizontal: 12,
+  },
+  actionRow: { flexDirection: "row", gap: 10 },
+  actionText: { fontSize: 13, fontWeight: "800" },
   assetName: {
     color: c.foreground,
     fontSize: 23,
