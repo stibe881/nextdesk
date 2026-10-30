@@ -94,6 +94,7 @@ import { EventSpaces } from "./event-spaces";
 import { Onboarding } from "./onboarding";
 import { Inventory } from "./inventory";
 import { PersonalSettings } from "./personal-settings";
+import { ApprovalInboxCard } from "./approval-inbox";
 import { ExperienceWorkspace, MyDayCard } from "./experience-workspace";
 import {
   activeIncidentNoticesFromResponse,
@@ -4698,6 +4699,15 @@ function AuthenticatedApp() {
               </article>
 
               <aside className="side-stack">
+                {activeTenant && isFeatureEnabled("ticketing.detail") && (
+                  <ApprovalInboxCard
+                    onOpenTicket={(ticketId) => {
+                      setSection("Tickets");
+                      setSelectedTicketId(ticketId);
+                    }}
+                    tenantId={activeTenant.id}
+                  />
+                )}
                 {activeTenant && agentWorkbenchEnabled && (
                   <AgentMetricsCard
                     onOpenTickets={openMetricTickets}

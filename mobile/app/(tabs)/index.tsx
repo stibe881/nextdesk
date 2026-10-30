@@ -13,6 +13,7 @@ import {
 } from "react-native";
 
 import { GlobalSearch } from "@/components/global-search";
+import { ApprovalInboxCard } from "@/components/approval-inbox-card";
 import { IncidentBanner } from "@/components/incident-banner";
 import { useMobileFeatures } from "@/components/mobile-feature-gate";
 import { useMobileNetworkStatus } from "@/components/offline-status";
@@ -1237,6 +1238,9 @@ export default function HomeScreen() {
           style={[styles.auxiliaryGrid, isWide && styles.auxiliaryGridWide]}
         >
           <View style={styles.auxiliaryColumn}>
+            <ApprovalInboxCard
+              tenantId={tenantContextMismatch ? null : tenantId}
+            />
             {mentionsAvailableForTenant ? (
               <View
                 style={[
@@ -1343,7 +1347,7 @@ export default function HomeScreen() {
               >
                 <SectionTitle
                   icon="checkbox-outline"
-                  title="Freigabe-Eingang"
+                  title="Meine Freigabeanfragen"
                   subtitle={`${visibleApprovals.length} offene Anfrage${visibleApprovals.length === 1 ? "" : "n"}`}
                 />
                 {visibleApprovals.length === 0 ? (
