@@ -18,6 +18,7 @@ import { IncidentBanner } from "@/components/incident-banner";
 import { useMobileFeatures } from "@/components/mobile-feature-gate";
 import { useMobileNetworkStatus } from "@/components/offline-status";
 import { ScreenContainer } from "@/components/screen-container";
+import { UndoToast } from "@/components/undo-toast";
 import {
   TicketPriorityText,
   TicketStatusBadge,
@@ -49,10 +50,11 @@ import {
   setFavoriteTicket,
 } from "@/lib/mobile-private-state";
 import {
-  deleteMobileTicket,
+  assignTicketToMe,
   dueToday,
   followUpTitle,
 } from "@/lib/mobile-ticket-actions";
+import { useUndoableDelete } from "@/lib/use-undoable-delete";
 import { saveFollowUp } from "@/lib/nextdesk-experience";
 import {
   loadMobileDashboard,
@@ -530,20 +532,39 @@ export default function HomeScreen() {
     }
   }
 
-  async function deleteTicket(ticket: MobileTicket) {
-    setActionMessage("");
-    try {
-      await deleteMobileTicket(ticket.id);
+  const undoDelete = useUndoableDelete({
+    onDeleted: (ticket) => {
       setTickets((current) => current.filter((item) => item.id !== ticket.id));
       setExtraTickets((current) =>
         current.filter((item) => item.id !== ticket.id),
       );
-      setActionMessage(`«${ticket.ticketNumber}» wurde gelöscht.`);
+    },
+    onFailed: (failure) => setActionMessage(failure),
+  });
+
+  function deleteTicket(ticket: MobileTicket) {
+    setActionMessage("");
+    undoDelete.schedule(ticket);
+  }
+
+  async function assignToMe(ticket: MobileTicket) {
+    if (!favoriteState) return;
+    setActionMessage("");
+    try {
+      await assignTicketToMe(ticket.id, favoriteState.userId);
+      setTickets((current) =>
+        current.map((item) =>
+          item.id === ticket.id
+            ? { ...item, assignedToCurrentUser: true, unassigned: false }
+            : item,
+        ),
+      );
+      setActionMessage(`«${ticket.ticketNumber}» wurde dir zugewiesen.`);
     } catch (nextError) {
       setActionMessage(
         nextError instanceof Error
           ? nextError.message
-          : "Das Ticket konnte nicht gelöscht werden.",
+          : "Das Ticket konnte nicht zugewiesen werden.",
       );
     }
   }
@@ -659,7 +680,7 @@ export default function HomeScreen() {
         if (focusLoadInFlight.current === key) focusLoadInFlight.current = "";
       });
   }, [missingFocusIds, tenantId]);
-  const visibleTickets = (() => {
+  const scopedTickets = (() => {
     if (isFocusScope(ticketScope)) {
       const byId = new Map(
         [...extraTickets, ...tickets].map((ticket) => [ticket.id, ticket]),
@@ -685,6 +706,9 @@ export default function HomeScreen() {
       return true;
     });
   })();
+  const visibleTickets = scopedTickets.filter(
+    (ticket) => !undoDelete.hiddenIds.has(ticket.id),
+  );
   const canOpenFocus = Boolean(visibleAgentMetrics?.ticketIds);
   const selectFocusScope = (scope: FocusScope) => {
     if (ticketScope === scope) {
@@ -1104,6 +1128,21 @@ export default function HomeScreen() {
                 ? "Du hast noch kein Ticket geöffnet."
                 : "Keine passenden Tickets vorhanden."}
             </Text>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() =>
+                ticketScope === "all"
+                  ? router.push("/(tabs)/tickets")
+                  : setTicketScope("all")
+              }
+              style={[styles.emptyAction, { borderColor: colors.border }]}
+            >
+              <Text style={[styles.all, tokenStyles.primaryText]}>
+                {ticketScope === "all"
+                  ? "Alle Tickets ansehen"
+                  : "Filter zurücksetzen"}
+              </Text>
+            </Pressable>
           </View>
         ) : (
           <View style={styles.list}>
@@ -1111,7 +1150,14 @@ export default function HomeScreen() {
               .slice(0, isFocusScope(ticketScope) ? 100 : 10)
               .map((ticket) => (
                 <TicketSwipeActions
+                  canAssign={
+                    !isOffline &&
+                    !checkingFeatures &&
+                    favoriteState?.tenantId === tenantId &&
+                    !ticket.assignedToCurrentUser
+                  }
                   canDelete={!isOffline && !checkingFeatures}
+                  onAssign={() => void assignToMe(ticket)}
                   canFavorite={favoriteState?.tenantId === tenantId}
                   canFollowUp={
                     workspaceEnabled && !isOffline && !checkingFeatures
@@ -1119,10 +1165,9 @@ export default function HomeScreen() {
                   enabled
                   favorite={favoriteIds.includes(ticket.id)}
                   key={ticket.id}
-                  onDelete={() => void deleteTicket(ticket)}
+                  onDelete={() => deleteTicket(ticket)}
                   onFavorite={() => void toggleFavorite(ticket)}
                   onFollowUp={() => void createFollowUp(ticket)}
-                  ticketNumber={ticket.ticketNumber}
                 >
                   <Pressable
                     accessibilityRole="button"
@@ -1446,6 +1491,12 @@ export default function HomeScreen() {
           </View>
         </View>
       </ScrollView>
+      {undoDelete.lastDeleted ? (
+        <UndoToast
+          message={`«${undoDelete.lastDeleted.ticketNumber}» gelöscht`}
+          onUndo={() => undoDelete.undo(undoDelete.lastDeleted!)}
+        />
+      ) : null}
     </ScreenContainer>
   );
 }
@@ -1660,6 +1711,15 @@ const useStyles = makeThemedStyles(() => ({
     textAlign: "center",
   },
   emptyCardText: { fontSize: 13, lineHeight: 19 },
+  emptyAction: {
+    alignItems: "center",
+    alignSelf: "flex-start",
+    borderRadius: 12,
+    borderWidth: 1,
+    minHeight: 40,
+    justifyContent: "center",
+    paddingHorizontal: 14,
+  },
   emptyList: { borderRadius: 18, borderWidth: 1, padding: 18 },
   emptyText: { fontSize: 13, textAlign: "center" },
   errorBox: { borderRadius: 14, borderWidth: 1, gap: 7, padding: 13 },

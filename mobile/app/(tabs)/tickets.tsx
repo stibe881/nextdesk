@@ -3,6 +3,7 @@ import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useMemo, useRef, useState } from "react";
 import {
   ActionSheetIOS,
+  Alert,
   Platform,
   Pressable,
   RefreshControl,
@@ -19,6 +20,7 @@ import {
   TicketStatusBadge,
 } from "@/components/ticket-status-badge";
 import { TicketSwipeActions } from "@/components/ticket-swipe-actions";
+import { UndoToast } from "@/components/undo-toast";
 import { useMobileFeatures } from "@/components/mobile-feature-gate";
 import { useMobileNetworkStatus } from "@/components/offline-status";
 import {
@@ -26,10 +28,18 @@ import {
   saveFollowUp,
 } from "@/lib/nextdesk-experience";
 import {
-  deleteMobileTicket,
+  assignTicketsToMe,
+  assignTicketToMe,
+  BULK_STATUS_OPTIONS,
+  bulkDeleteTickets,
+  bulkSetTicketStatus,
   dueToday,
   followUpTitle,
+  listSavedTicketViews,
+  type BulkStatusKey,
+  type SavedTicketView,
 } from "@/lib/mobile-ticket-actions";
+import { useUndoableDelete } from "@/lib/use-undoable-delete";
 import { isNextDeskConfigured, nextDesk } from "@/lib/nextdesk-client";
 import { loadMobileDashboard, type MobileTicket } from "@/lib/nextdesk-tickets";
 import {
@@ -40,7 +50,13 @@ import {
 import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
 import { useThemeContext } from "@/lib/theme-provider";
 
-type TicketScope = "all" | "mine" | "favorites" | "open" | "resolved";
+type TicketScope =
+  | "all"
+  | "mine"
+  | "favorites"
+  | "open"
+  | "resolved"
+  | "unassigned";
 
 const scopes: { key: TicketScope; label: string }[] = [
   { key: "all", label: "Alle" },
@@ -48,6 +64,7 @@ const scopes: { key: TicketScope; label: string }[] = [
   { key: "favorites", label: "Favoriten" },
   { key: "open", label: "Offen" },
   { key: "resolved", label: "Gelöst" },
+  { key: "unassigned", label: "Nicht zugewiesen" },
 ];
 
 function offlineCacheTimestamp(value: string): string {
@@ -122,6 +139,19 @@ export default function TicketsScreen() {
     null,
   );
   const latestLoad = useRef(0);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
+  const [statusPickerOpen, setStatusPickerOpen] = useState(false);
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [savedViews, setSavedViews] = useState<SavedTicketView[]>([]);
+  const [activeViewId, setActiveViewId] = useState<string | null>(null);
+  const undoDelete = useUndoableDelete({
+    onDeleted: (ticket) =>
+      setTickets((current) => current.filter((item) => item.id !== ticket.id)),
+    onFailed: (failure) => setError(failure),
+  });
   const isWide = width >= 760;
 
   const load = useCallback(async () => {
@@ -162,6 +192,13 @@ export default function TicketsScreen() {
       setCurrentUserId(result.userId);
       setFavoriteIds(favorites);
       setOfflineCacheAt(result.isOfflineCache ? result.cachedAt : null);
+      if (!result.isOfflineCache) {
+        void listSavedTicketViews()
+          .then((views) => {
+            if (loadId === latestLoad.current) setSavedViews(views);
+          })
+          .catch(() => undefined);
+      }
     } catch (nextError) {
       if (loadId !== latestLoad.current) return;
       setOfflineCacheAt(null);
@@ -246,20 +283,143 @@ export default function TicketsScreen() {
     }
   }
 
-  async function deleteTicket(ticket: MobileTicket) {
+  function deleteTicket(ticket: MobileTicket) {
+    setError("");
+    setMessage("");
+    undoDelete.schedule(ticket);
+  }
+
+  async function assignToMe(ticket: MobileTicket) {
+    if (!currentUserId) return;
     setError("");
     setMessage("");
     try {
-      await deleteMobileTicket(ticket.id);
-      setTickets((current) => current.filter((item) => item.id !== ticket.id));
-      setMessage(`«${ticket.ticketNumber}» wurde gelöscht.`);
+      await assignTicketToMe(ticket.id, currentUserId);
+      setTickets((current) =>
+        current.map((item) =>
+          item.id === ticket.id
+            ? { ...item, assignedToCurrentUser: true, unassigned: false }
+            : item,
+        ),
+      );
+      setMessage(`«${ticket.ticketNumber}» wurde dir zugewiesen.`);
     } catch (nextError) {
       setError(
         nextError instanceof Error
           ? nextError.message
-          : "Das Ticket konnte nicht gelöscht werden.",
+          : "Das Ticket konnte nicht zugewiesen werden.",
       );
     }
+  }
+
+  function toggleSelection(ticketId: string) {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (next.has(ticketId)) next.delete(ticketId);
+      else next.add(ticketId);
+      return next;
+    });
+  }
+
+  function leaveSelection() {
+    setSelectionMode(false);
+    setSelectedIds(new Set());
+    setStatusPickerOpen(false);
+  }
+
+  async function runBulk(
+    action: () => Promise<string>,
+    failureMessage: string,
+  ) {
+    setBulkBusy(true);
+    setError("");
+    setMessage("");
+    try {
+      const summary = await action();
+      leaveSelection();
+      setMessage(summary);
+      void load();
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : failureMessage);
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
+  function bulkAssign() {
+    if (!currentUserId || selectedIds.size === 0) return;
+    const ids = [...selectedIds];
+    void runBulk(async () => {
+      const result = await assignTicketsToMe(ids, currentUserId);
+      if (result.succeeded === 0) {
+        throw new Error("Die Tickets konnten nicht zugewiesen werden.");
+      }
+      return result.failed > 0
+        ? `${result.succeeded} Tickets zugewiesen, ${result.failed} nicht möglich.`
+        : `${result.succeeded} Tickets wurden dir zugewiesen.`;
+    }, "Die Tickets konnten nicht zugewiesen werden.");
+  }
+
+  function bulkStatus(statusKey: BulkStatusKey, label: string) {
+    if (selectedIds.size === 0) return;
+    const ids = [...selectedIds];
+    const apply = () =>
+      void runBulk(async () => {
+        await bulkSetTicketStatus(ids, statusKey);
+        return `${ids.length} Tickets auf «${label}» gesetzt.`;
+      }, "Der Status konnte nicht geändert werden.");
+    setStatusPickerOpen(false);
+    if (statusKey === "resolved" || statusKey === "closed") {
+      Alert.alert(
+        `${ids.length} Tickets auf «${label}» setzen?`,
+        "Die Anfragenden werden entsprechend informiert.",
+        [
+          { style: "cancel", text: "Abbrechen" },
+          { onPress: apply, text: "Bestätigen" },
+        ],
+      );
+    } else {
+      apply();
+    }
+  }
+
+  function bulkDelete() {
+    if (selectedIds.size === 0) return;
+    const ids = [...selectedIds];
+    Alert.alert(
+      `${ids.length} Tickets löschen?`,
+      "Sie werden endgültig gelöscht. Das kann nicht rückgängig gemacht werden.",
+      [
+        { style: "cancel", text: "Abbrechen" },
+        {
+          onPress: () =>
+            void runBulk(async () => {
+              await bulkDeleteTickets(ids);
+              return `${ids.length} Tickets wurden gelöscht.`;
+            }, "Die Tickets konnten nicht gelöscht werden."),
+          style: "destructive",
+          text: "Löschen",
+        },
+      ],
+    );
+  }
+
+  function applySavedView(view: SavedTicketView) {
+    if (activeViewId === view.id) {
+      setActiveViewId(null);
+      setScope("all");
+      setQuery("");
+      return;
+    }
+    setActiveViewId(view.id);
+    setQuery(view.filters.query);
+    if (view.filters.agent === "mine") setScope("mine");
+    else if (view.filters.agent === "unassigned") setScope("unassigned");
+    else if (view.filters.ticketScope === "mine") setScope("mine");
+    else if (view.filters.ticketScope === "unassigned") setScope("unassigned");
+    else if (view.filters.ticketScope === "open") setScope("open");
+    else if (view.filters.ticketScope === "closed") setScope("resolved");
+    else setScope("all");
   }
 
   function openTicketActions(ticket: MobileTicket) {
@@ -292,16 +452,19 @@ export default function TicketsScreen() {
 
   const normalizedQuery = query.trim().toLocaleLowerCase("de-CH");
   const visibleTickets = tickets.filter((ticket) => {
+    if (undoDelete.hiddenIds.has(ticket.id)) return false;
     const matchesScope =
       scope === "mine"
         ? ticket.assignedToCurrentUser
         : scope === "favorites"
           ? favoriteIds.includes(ticket.id)
-          : scope === "open"
-            ? !ticket.resolved
-            : scope === "resolved"
-              ? ticket.resolved
-              : true;
+          : scope === "unassigned"
+            ? ticket.unassigned && !ticket.resolved
+            : scope === "open"
+              ? !ticket.resolved
+              : scope === "resolved"
+                ? ticket.resolved
+                : true;
     if (!matchesScope || !normalizedQuery) return matchesScope;
     return [
       ticket.ticketNumber,
@@ -421,7 +584,10 @@ export default function TicketsScreen() {
               accessibilityRole="button"
               accessibilityState={{ selected: scope === option.key }}
               key={option.key}
-              onPress={() => setScope(option.key)}
+              onPress={() => {
+                setActiveViewId(null);
+                setScope(option.key);
+              }}
               style={[
                 styles.filter,
                 tokenStyles.card,
@@ -440,6 +606,41 @@ export default function TicketsScreen() {
             </Pressable>
           ))}
         </ScrollView>
+
+        {savedViews.length > 0 ? (
+          <ScrollView
+            contentContainerStyle={styles.filters}
+            horizontal
+            showsHorizontalScrollIndicator={false}
+          >
+            <Text style={[styles.viewsLabel, tokenStyles.muted]}>
+              Ansichten
+            </Text>
+            {savedViews.map((view) => (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityState={{ selected: activeViewId === view.id }}
+                key={view.id}
+                onPress={() => applySavedView(view)}
+                style={[
+                  styles.filter,
+                  tokenStyles.card,
+                  activeViewId === view.id && tokenStyles.primary,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.filterText,
+                    tokenStyles.muted,
+                    activeViewId === view.id && tokenStyles.onPrimary,
+                  ]}
+                >
+                  {view.name}
+                </Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+        ) : null}
 
         <View style={[styles.searchWrap, tokenStyles.control]}>
           <Ionicons color={colors.muted} name="search-outline" size={20} />
@@ -560,11 +761,24 @@ export default function TicketsScreen() {
             workspaceEnabled &&
             workspaceAvailable ? (
               <Text style={[styles.gestureHint, tokenStyles.muted]}>
-                Nach rechts wischen: Favorit oder Wiedervorlage. Nach links:
-                löschen.
+                Nach rechts wischen: zuweisen, Favorit oder Wiedervorlage. Nach
+                links: löschen.
               </Text>
             ) : null}
           </View>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityState={{ selected: selectionMode }}
+            disabled={visibleTickets.length === 0 || Boolean(offlineCacheAt)}
+            hitSlop={8}
+            onPress={() =>
+              selectionMode ? leaveSelection() : setSelectionMode(true)
+            }
+          >
+            <Text style={[styles.selectToggle, { color: colors.primaryText }]}>
+              {selectionMode ? "Fertig" : "Auswählen"}
+            </Text>
+          </Pressable>
           <Text
             accessibilityLabel={`${visibleTickets.length} Tickets`}
             style={[
@@ -586,8 +800,40 @@ export default function TicketsScreen() {
               Keine passenden Tickets
             </Text>
             <Text style={[styles.emptyText, tokenStyles.muted]}>
-              Passe den Filter an oder erfasse ein neues Ticket.
+              {scope !== "all" || query
+                ? "Mit diesem Filter gibt es keine Treffer."
+                : "Hier ist noch nichts. Erfasse das erste Ticket."}
             </Text>
+            <View style={styles.emptyActions}>
+              {scope !== "all" || query ? (
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => {
+                    setScope("all");
+                    setQuery("");
+                    setActiveViewId(null);
+                  }}
+                  style={[styles.emptyButton, tokenStyles.control]}
+                >
+                  <Text
+                    style={[styles.emptyButtonText, tokenStyles.foreground]}
+                  >
+                    Filter zurücksetzen
+                  </Text>
+                </Pressable>
+              ) : null}
+              {!offlineCacheAt && !isOffline ? (
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => router.push("/ticket/new")}
+                  style={[styles.emptyButton, tokenStyles.primary]}
+                >
+                  <Text style={[styles.emptyButtonText, tokenStyles.onPrimary]}>
+                    Ticket erfassen
+                  </Text>
+                </Pressable>
+              ) : null}
+            </View>
           </View>
         ) : (
           <View style={styles.list}>
@@ -606,12 +852,26 @@ export default function TicketsScreen() {
                   densityStyle={densityStyles.ticket}
                   favorite={favoriteIds.includes(ticket.id)}
                   key={ticket.id}
+                  canAssign={
+                    !actionsDisabled &&
+                    !isOffline &&
+                    !offlineCacheAt &&
+                    !ticket.assignedToCurrentUser
+                  }
                   canDelete={!isOffline && !offlineCacheAt && !checkingFeatures}
+                  onAssign={() => void assignToMe(ticket)}
                   onCreateFollowUp={() => void createFollowUp(ticket)}
-                  onDelete={() => void deleteTicket(ticket)}
+                  onDelete={() => deleteTicket(ticket)}
+                  onToggleSelect={() => toggleSelection(ticket.id)}
+                  selected={selectedIds.has(ticket.id)}
+                  selectionMode={selectionMode}
                   onFavorite={() => void toggleFavorite(ticket)}
                   onLongPress={() => openTicketActions(ticket)}
                   onPress={() => {
+                    if (selectionMode) {
+                      toggleSelection(ticket.id);
+                      return;
+                    }
                     if (
                       offlineCacheAt ||
                       checkingFeatures ||
@@ -629,73 +889,212 @@ export default function TicketsScreen() {
                     checkingFeatures ||
                     !ticketDetailsEnabled
                   }
-                  swipeEnabled={!reducedMotion}
+                  swipeEnabled={!reducedMotion && !selectionMode}
                   ticket={ticket}
                 />
               );
             })}
+            {selectionMode ? <View style={styles.selectionSpacer} /> : null}
           </View>
         )}
       </ScrollView>
+      {selectionMode ? (
+        <View
+          style={[
+            styles.selectionBar,
+            { backgroundColor: colors.surface, borderColor: colors.border },
+          ]}
+        >
+          {statusPickerOpen ? (
+            <View style={styles.statusPicker}>
+              {BULK_STATUS_OPTIONS.map((option) => (
+                <Pressable
+                  accessibilityRole="button"
+                  key={option.key}
+                  onPress={() => bulkStatus(option.key, option.label)}
+                  style={[styles.filter, tokenStyles.control]}
+                >
+                  <Text style={[styles.filterText, tokenStyles.foreground]}>
+                    {option.label}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          ) : null}
+          <View style={styles.selectionRow}>
+            <Text style={[styles.selectionCount, tokenStyles.foreground]}>
+              {selectedIds.size} ausgewählt
+            </Text>
+            {bulkBusy ? (
+              <Text style={[styles.selectionHint, tokenStyles.muted]}>
+                Wird ausgeführt …
+              </Text>
+            ) : (
+              <View style={styles.selectionActions}>
+                <Pressable
+                  accessibilityLabel="Ausgewählte Tickets mir zuweisen"
+                  accessibilityRole="button"
+                  disabled={selectedIds.size === 0}
+                  onPress={bulkAssign}
+                  style={styles.selectionAction}
+                >
+                  <Ionicons
+                    color={colors.primaryText}
+                    name="person-add-outline"
+                    size={20}
+                  />
+                  <Text
+                    style={[styles.selectionActionText, tokenStyles.foreground]}
+                  >
+                    Mir
+                  </Text>
+                </Pressable>
+                <Pressable
+                  accessibilityLabel="Status der ausgewählten Tickets ändern"
+                  accessibilityRole="button"
+                  disabled={selectedIds.size === 0}
+                  onPress={() => setStatusPickerOpen((open) => !open)}
+                  style={styles.selectionAction}
+                >
+                  <Ionicons
+                    color={colors.primaryText}
+                    name="swap-horizontal-outline"
+                    size={20}
+                  />
+                  <Text
+                    style={[styles.selectionActionText, tokenStyles.foreground]}
+                  >
+                    Status
+                  </Text>
+                </Pressable>
+                <Pressable
+                  accessibilityLabel="Ausgewählte Tickets löschen"
+                  accessibilityRole="button"
+                  disabled={selectedIds.size === 0}
+                  onPress={bulkDelete}
+                  style={styles.selectionAction}
+                >
+                  <Ionicons
+                    color={colors.error}
+                    name="trash-outline"
+                    size={20}
+                  />
+                  <Text
+                    style={[
+                      styles.selectionActionText,
+                      { color: colors.error },
+                    ]}
+                  >
+                    Löschen
+                  </Text>
+                </Pressable>
+              </View>
+            )}
+          </View>
+        </View>
+      ) : null}
+      {undoDelete.lastDeleted ? (
+        <UndoToast
+          message={`«${undoDelete.lastDeleted.ticketNumber}» gelöscht`}
+          onUndo={() => undoDelete.undo(undoDelete.lastDeleted!)}
+        />
+      ) : null}
     </ScreenContainer>
   );
 }
 
 function SwipeableTicketRow({
   actionsDisabled,
+  canAssign,
   canCreateFollowUp,
   canDelete,
-  onDelete,
   densityStyle,
   favorite,
+  onAssign,
   onCreateFollowUp,
+  onDelete,
   onFavorite,
   onLongPress,
   onPress,
+  onToggleSelect,
   openDisabled,
+  selected,
+  selectionMode,
   swipeEnabled,
   ticket,
 }: {
   actionsDisabled: boolean;
+  canAssign: boolean;
   canCreateFollowUp: boolean;
   canDelete: boolean;
   densityStyle: { padding: number };
   favorite: boolean;
+  onAssign: () => void;
   onCreateFollowUp: () => void;
   onDelete: () => void;
   onFavorite: () => void;
   onLongPress: () => void;
   onPress: () => void;
+  onToggleSelect: () => void;
   openDisabled: boolean;
+  selected: boolean;
+  selectionMode: boolean;
   swipeEnabled: boolean;
   ticket: MobileTicket;
 }) {
+  const colors = useAppColors();
+  const styles = useStyles();
   const actionsAvailable = !actionsDisabled;
 
   return (
     <TicketSwipeActions
+      canAssign={actionsAvailable && canAssign}
       canDelete={actionsAvailable && canDelete}
       canFavorite={actionsAvailable}
       canFollowUp={actionsAvailable && canCreateFollowUp}
       enabled={swipeEnabled}
       favorite={favorite}
+      onAssign={onAssign}
       onDelete={onDelete}
       onFavorite={onFavorite}
       onFollowUp={onCreateFollowUp}
-      ticketNumber={ticket.ticketNumber}
     >
-      <TicketRow
-        actionsDisabled={actionsDisabled}
-        canCreateFollowUp={canCreateFollowUp}
-        densityStyle={densityStyle}
-        favorite={favorite}
-        onCreateFollowUp={onCreateFollowUp}
-        onFavorite={onFavorite}
-        onLongPress={onLongPress}
-        onPress={onPress}
-        openDisabled={openDisabled}
-        ticket={ticket}
-      />
+      <View style={styles.selectableRow}>
+        {selectionMode ? (
+          <Pressable
+            accessibilityLabel={`${ticket.ticketNumber} auswählen`}
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: selected }}
+            hitSlop={8}
+            onPress={onToggleSelect}
+            style={[
+              styles.checkbox,
+              {
+                backgroundColor: selected ? colors.primary : "transparent",
+                borderColor: selected ? colors.primary : colors.borderStrong,
+              },
+            ]}
+          >
+            {selected ? (
+              <Ionicons color={colors.onPrimary} name="checkmark" size={16} />
+            ) : null}
+          </Pressable>
+        ) : null}
+        <View style={styles.selectableBody}>
+          <TicketRow
+            actionsDisabled={actionsDisabled}
+            canCreateFollowUp={canCreateFollowUp}
+            densityStyle={densityStyle}
+            favorite={favorite}
+            onCreateFollowUp={onCreateFollowUp}
+            onFavorite={onFavorite}
+            onLongPress={onLongPress}
+            onPress={onPress}
+            openDisabled={openDisabled}
+            ticket={ticket}
+          />
+        </View>
+      </View>
     </TicketSwipeActions>
   );
 }
@@ -809,6 +1208,57 @@ function TicketRow({
 }
 
 const useStyles = makeThemedStyles((c) => ({
+  checkbox: {
+    alignItems: "center",
+    borderRadius: 8,
+    borderWidth: 2,
+    height: 26,
+    justifyContent: "center",
+    width: 26,
+  },
+  emptyActions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+    marginTop: 6,
+  },
+  emptyButton: {
+    alignItems: "center",
+    borderRadius: 12,
+    borderWidth: 1,
+    justifyContent: "center",
+    minHeight: 40,
+    paddingHorizontal: 16,
+  },
+  emptyButtonText: { fontSize: 13, fontWeight: "800" },
+  selectableBody: { flex: 1 },
+  selectableRow: { alignItems: "center", flexDirection: "row", gap: 10 },
+  selectToggle: { fontSize: 14, fontWeight: "800" },
+  selectionAction: { alignItems: "center", gap: 2, minWidth: 56 },
+  selectionActions: { flexDirection: "row", gap: 6 },
+  selectionActionText: { fontSize: 11, fontWeight: "800" },
+  selectionBar: {
+    borderRadius: 18,
+    borderWidth: 1,
+    bottom: 10,
+    gap: 10,
+    left: 14,
+    padding: 12,
+    position: "absolute",
+    right: 14,
+  },
+  selectionCount: { flex: 1, fontSize: 14, fontWeight: "800" },
+  selectionHint: { fontSize: 13 },
+  selectionRow: { alignItems: "center", flexDirection: "row", gap: 10 },
+  selectionSpacer: { height: 96 },
+  statusPicker: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  viewsLabel: {
+    alignSelf: "center",
+    fontSize: 11,
+    fontWeight: "800",
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
+  },
   addButton: {
     alignItems: "center",
     borderRadius: 17,

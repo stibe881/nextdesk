@@ -1,36 +1,38 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useRef, type ReactNode } from "react";
-import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import Swipeable from "react-native-gesture-handler/Swipeable";
 
 import { useAppColors } from "@/lib/themed-styles";
 
 /**
- * Wischaktionen für Ticketzeilen: nach rechts wischen für Favorit und
- * Wiedervorlage, nach links wischen zum Löschen (mit Rückfrage).
+ * Wischaktionen für Ticketzeilen: nach rechts wischen für Zuweisen, Favorit
+ * und Wiedervorlage, nach links wischen zum Löschen (mit Rückgängig-Frist).
  */
 export function TicketSwipeActions({
+  canAssign = false,
   canDelete,
   canFavorite,
   canFollowUp,
   children,
   enabled,
   favorite,
+  onAssign,
   onDelete,
   onFavorite,
   onFollowUp,
-  ticketNumber,
 }: {
+  canAssign?: boolean;
   canDelete: boolean;
   canFavorite: boolean;
   canFollowUp: boolean;
   children: ReactNode;
   enabled: boolean;
   favorite: boolean;
+  onAssign?: () => void;
   onDelete: () => void;
   onFavorite: () => void;
   onFollowUp: () => void;
-  ticketNumber: string;
 }) {
   const colors = useAppColors();
   const swipeable = useRef<Swipeable>(null);
@@ -40,19 +42,12 @@ export function TicketSwipeActions({
     action();
   };
 
-  const confirmDelete = () => {
+  const deleteNow = () => {
     swipeable.current?.close();
-    Alert.alert(
-      "Ticket löschen?",
-      `«${ticketNumber}» wird endgültig gelöscht. Das kann nicht rückgängig gemacht werden.`,
-      [
-        { style: "cancel", text: "Abbrechen" },
-        { onPress: onDelete, style: "destructive", text: "Löschen" },
-      ],
-    );
+    onDelete();
   };
 
-  const hasLeft = canFavorite || canFollowUp;
+  const hasLeft = canAssign || canFavorite || canFollowUp;
 
   return (
     <Swipeable
@@ -64,6 +59,23 @@ export function TicketSwipeActions({
       renderLeftActions={() =>
         hasLeft ? (
           <View style={styles.group}>
+            {canAssign && onAssign ? (
+              <Pressable
+                accessibilityLabel="Ticket mir zuweisen"
+                accessibilityRole="button"
+                onPress={() => closeAndRun(onAssign)}
+                style={[styles.action, { backgroundColor: colors.foreground }]}
+              >
+                <Ionicons
+                  color={colors.background}
+                  name="person-add-outline"
+                  size={20}
+                />
+                <Text style={[styles.text, { color: colors.background }]}>
+                  Mir zuweisen
+                </Text>
+              </Pressable>
+            ) : null}
             {canFavorite ? (
               <Pressable
                 accessibilityLabel={
@@ -113,7 +125,7 @@ export function TicketSwipeActions({
           <Pressable
             accessibilityLabel="Ticket löschen"
             accessibilityRole="button"
-            onPress={confirmDelete}
+            onPress={deleteNow}
             style={[styles.action, { backgroundColor: colors.error }]}
           >
             <Ionicons color="#ffffff" name="trash-outline" size={20} />
@@ -134,7 +146,7 @@ const styles = StyleSheet.create({
     gap: 4,
     justifyContent: "center",
     marginVertical: 1,
-    minWidth: 96,
+    minWidth: 88,
     paddingHorizontal: 12,
   },
   group: { flexDirection: "row", gap: 6, paddingRight: 6 },
