@@ -758,8 +758,8 @@ function TicketRow({
         accessibilityActions={accessibilityActions}
         accessibilityHint={
           Platform.OS === "ios"
-            ? "Für Schnellaktionen lange drücken oder die Aktionstasten verwenden."
-            : "Schnellaktionen sind über die Aktionstasten verfügbar."
+            ? "Für Schnellaktionen lange drücken oder nach rechts bzw. links wischen."
+            : "Schnellaktionen sind über die Aktionen des Eintrags verfügbar."
         }
         accessibilityLabel={`${ticket.ticketNumber}: ${ticket.subject}. Status: ${ticket.status}. ${favorite ? "Favorit." : "Kein Favorit."}`}
         accessibilityRole="button"
@@ -842,60 +842,11 @@ function TicketRow({
           <Ionicons color={colors.subtle} name="chevron-forward" size={18} />
         </View>
       </Pressable>
-      <View style={[styles.ticketActions, { borderColor: colors.border }]}>
-        <Pressable
-          accessibilityLabel={
-            favorite ? "Aus Favoriten entfernen" : "Zu Favoriten hinzufügen"
-          }
-          accessibilityRole="button"
-          accessibilityState={{ disabled: actionsDisabled }}
-          disabled={actionsDisabled}
-          hitSlop={5}
-          onPress={onFavorite}
-          style={styles.ticketActionButton}
-        >
-          <Ionicons
-            color={colors.warning}
-            name={favorite ? "star" : "star-outline"}
-            size={18}
-          />
-          <Text style={[styles.ticketActionText, { color: colors.foreground }]}>
-            Favorit
-          </Text>
-        </Pressable>
-        <Pressable
-          accessibilityLabel="Wiedervorlage für heute setzen"
-          accessibilityRole="button"
-          accessibilityState={{ disabled: !canCreateFollowUp }}
-          disabled={!canCreateFollowUp}
-          hitSlop={5}
-          onPress={onCreateFollowUp}
-          style={[
-            styles.ticketActionButton,
-            !canCreateFollowUp && styles.actionMuted,
-          ]}
-        >
-          <Ionicons
-            color={canCreateFollowUp ? colors.primaryText : colors.muted}
-            name="calendar-outline"
-            size={18}
-          />
-          <Text
-            style={[
-              styles.ticketActionText,
-              { color: canCreateFollowUp ? colors.foreground : colors.muted },
-            ]}
-          >
-            Heute
-          </Text>
-        </Pressable>
-      </View>
     </View>
   );
 }
 
 const useStyles = makeThemedStyles((c) => ({
-  actionMuted: { opacity: 0.45 },
   addButton: {
     alignItems: "center",
     borderRadius: 17,
@@ -1037,19 +988,6 @@ const useStyles = makeThemedStyles((c) => ({
     borderWidth: 1,
     flexDirection: "row",
     overflow: "hidden",
-  },
-  ticketActionButton: {
-    alignItems: "center",
-    gap: 2,
-    justifyContent: "center",
-    minHeight: 44,
-    minWidth: 57,
-    paddingHorizontal: 6,
-  },
-  ticketActionText: { fontSize: 9, fontWeight: "800" },
-  ticketActions: {
-    borderLeftWidth: 1,
-    justifyContent: "center",
   },
   ticketCopy: { flex: 1, gap: 3 },
   ticketMeta: { fontSize: 11 },
