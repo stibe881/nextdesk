@@ -585,7 +585,9 @@ const useStyles = makeThemedStyles((c) => ({
   groupAuthor: { fontSize: 11, fontWeight: "700", maxWidth: "80%" },
   groupAuthorIncoming: { color: c.info, marginLeft: 36 },
   groupAuthorOutgoing: { color: c.muted, marginRight: 4 },
-  bubbleWrap: { gap: 2, maxWidth: "100%" },
+  // Full width gives the percentage max width of the bubble a fixed reference;
+  // a shrink-wrapped wrapper made long messages wrap too late and get clipped.
+  bubbleWrap: { gap: 2, width: "100%" },
   bubbleRow: { alignItems: "flex-end", flexDirection: "row", gap: 6 },
   bubbleRowOutgoing: { justifyContent: "flex-end" },
   avatar: {
@@ -600,6 +602,7 @@ const useStyles = makeThemedStyles((c) => ({
   avatarText: { color: c.info, fontSize: 10, fontWeight: "900" },
   bubble: {
     borderRadius: 18,
+    flexShrink: 1,
     maxWidth: "80%",
     paddingBottom: 6,
     paddingHorizontal: 12,
