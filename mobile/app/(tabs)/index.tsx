@@ -1353,8 +1353,20 @@ export default function HomeScreen() {
                 ) : (
                   <View style={styles.compactList}>
                     {visibleApprovals.slice(0, 3).map((approval) => (
-                      <View
+                      <Pressable
+                        accessibilityHint="Öffnet das zugehörige Ticket"
+                        accessibilityRole="button"
+                        accessibilityState={{
+                          disabled: checkingFeatures || !ticketDetailsEnabled,
+                        }}
+                        disabled={checkingFeatures || !ticketDetailsEnabled}
                         key={approval.id}
+                        onPress={() =>
+                          router.push({
+                            pathname: "/ticket/[id]",
+                            params: { id: approval.ticket_id },
+                          })
+                        }
                         style={[
                           styles.compactListRow,
                           { borderColor: colors.border },
@@ -1382,7 +1394,12 @@ export default function HomeScreen() {
                         >
                           {approval.required_approvals} nötig
                         </Text>
-                      </View>
+                        <Ionicons
+                          color={colors.subtle}
+                          name="chevron-forward"
+                          size={16}
+                        />
+                      </Pressable>
                     ))}
                   </View>
                 )}
