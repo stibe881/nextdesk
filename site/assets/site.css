@@ -193,6 +193,8 @@ footer.site li { margin: 7px 0; }
 footer.site a { color: var(--text); font-size: 15px; text-decoration: none; }
 footer.site a:hover { color: var(--indigo); text-decoration: underline; }
 footer.site .about p { color: var(--muted); font-size: 15px; margin: 12px 0 0; max-width: 320px; }
+.footer-bottom .made-by { align-items: center; display: inline-flex; gap: 10px; }
+.footer-bottom .made-by img { height: 28px; width: auto; }
 .footer-bottom { border-top: 1px solid var(--border); color: var(--muted); display: flex; flex-wrap: wrap; font-size: 14px; gap: 8px 24px; justify-content: space-between; margin-top: 40px; padding-top: 24px; }
 
 @media (max-width: 920px) {
