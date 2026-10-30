@@ -3,77 +3,199 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>nextDesk – Service Desk für Schulen und Organisationen</title>
-  <meta name="description" content="nextDesk bündelt Tickets, Wissen, Assets, Lager, Raumplanung sowie Verträge und Lizenzen. Web-App und iPhone-App.">
+  <title>nextDesk – Der Service Desk für Schulen und Organisationen</title>
+  <meta name="description" content="nextDesk bündelt Tickets, Wissen, Assets, Lager, Raumplanung sowie Verträge und Lizenzen. Als Web-App und als App für das iPhone.">
+  <meta name="theme-color" content="#4338ca">
+  <link rel="canonical" href="https://nextdesk.ch/">
   <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="nextDesk – Der Service Desk für Schulen und Organisationen">
+  <meta property="og:description" content="nextDesk bündelt Tickets, Wissen, Assets, Lager, Raumplanung sowie Verträge und Lizenzen. Als Web-App und als App für das iPhone.">
+  <meta property="og:url" content="https://nextdesk.ch/">
+  <meta property="og:image" content="https://nextdesk.ch/assets/screens/tickets-erfassen.webp">
   <link rel="stylesheet" href="assets/site.css">
 </head>
 <body>
   <a class="skip" href="#inhalt">Zum Inhalt</a>
   <header class="site">
     <div class="wrap">
-      <a class="brand" href="index.html"><span class="brand-mark" aria-hidden="true">n</span>nextDesk</a>
-      <nav class="site" aria-label="Hauptnavigation"><ul><li><a href="index.html" aria-current="page">Start</a></li><li><a href="support.html">Support</a></li><li><a href="datenschutz.html">Datenschutz</a></li><li><a href="impressum.html">Impressum</a></li></ul></nav>
+      <a class="brand" href="index.html"><img src="assets/logo.png" alt="" width="36" height="36">nextDesk</a>
+      <nav class="site" aria-label="Hauptnavigation">
+        <ul>
+          <li><a href="index.html#funktionen">Funktionen</a></li>
+          <li class="keep"><a href="support.html">Support</a></li>
+          <li><a href="datenschutz.html">Datenschutz</a></li>
+          <li class="keep"><a class="nav-cta" href="https://app.nextdesk.ch">Zur Web-App</a></li>
+        </ul>
+      </nav>
     </div>
   </header>
   <main id="inhalt">
-    <div class="wrap">
-      <section class="hero">
-        <p class="eyebrow">Service Desk für Schulen und Organisationen</p>
-        <h1>Der Service Desk, der Ihre IT im Alltag entlastet.</h1>
-        <p class="lead">nextDesk bündelt Tickets, Wissen, Geräte, Lager, Raumplanung sowie Verträge und Lizenzen an einem Ort, im Browser und als App für das iPhone.</p>
-        <div class="actions">
-          <a class="button" href="https://app.nextdesk.ch">Zur Web-App</a>
-          <a class="button secondary" href="support.html">Hilfe und Support</a>
+    <section class="hero">
+      <div class="wrap">
+        <div>
+          <p class="eyebrow">Service Desk für Schulen und Organisationen</p>
+          <h1>Ihre IT im Griff. <span class="grad">Von überall.</span></h1>
+          <p class="lead">nextDesk bündelt Tickets, Wissen, Geräte, Lager, Raumplanung sowie Verträge und Lizenzen an einem Ort, im Browser und als App für das iPhone.</p>
+          <div class="actions">
+            <a class="button" href="https://app.nextdesk.ch">Zur Web-App</a>
+            <a class="button secondary" href="#app">Die App ansehen</a>
+          </div>
+          <p class="trust">Entwickelt von Gross ICT · Anmeldung mit dem Konto Ihrer Organisation</p>
         </div>
-      </section>
+        <div class="stage" aria-hidden="true">
+          <img class="phone p1" src="assets/screens/scanner-phone.webp" alt="" width="520" height="1030" loading="eager">
+          <img class="phone p3" src="assets/screens/wissen-phone.webp" alt="" width="520" height="1050" loading="eager">
+          <img class="phone p2" src="assets/screens/tickets-liste-phone.webp" alt="" width="520" height="1050" loading="eager">
+        </div>
+      </div>
+    </section>
 
-      <section aria-labelledby="funktionen">
-        <h2 id="funktionen">Was nextDesk kann</h2>
+    <section class="block alt" id="funktionen" aria-labelledby="funktionen-titel">
+      <div class="wrap">
+        <div class="head">
+          <p class="eyebrow">Funktionen</p>
+          <h2 id="funktionen-titel">Alles, was Ihr Service Desk braucht</h2>
+          <p>Ein System statt vieler Listen und Postfächer. Jede Funktion arbeitet mit den anderen zusammen.</p>
+        </div>
         <div class="grid">
-          <div class="card"><h3>Tickets</h3><p>Anfragen erfassen, zuweisen, beantworten und nachverfolgen, mit Fristen, Kommentaren, internen Notizen und Anhängen.</p></div>
-          <div class="card"><h3>Wissen</h3><p>Anleitungen und Antworten in einer durchsuchbaren Wissensdatenbank, damit sich viele Fragen von selbst lösen.</p></div>
-          <div class="card"><h3>Assets und Lager</h3><p>Geräte per QR-Code scannen, Bestände, Reservationen und Inventuren im Blick behalten.</p></div>
-          <div class="card"><h3>Raumplanung</h3><p>Technische Einrichtung für Aula und Sitzungszimmer planen. Anfragen per E-Mail werden automatisch übernommen.</p></div>
-          <div class="card"><h3>Verträge und Lizenzen</h3><p>Laufzeiten, Kosten, Kündigungsfristen und Dokumente erfassen. Rechtzeitig vor Ablauf erinnert ein Ticket.</p></div>
-          <div class="card"><h3>Systemstatus</h3><p>Eine öffentliche Statusseite zeigt, welche Dienste verfügbar sind, auch als Baustein für Ihr Intranet.</p></div>
+          <div class="card"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 9a3 3 0 0 0 0 6v3a1 1 0 0 0 1 1h16a1 1 0 0 0 1-1v-3a3 3 0 0 1 0-6V6a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1z"/><path d="M13 5v2M13 17v2M13 11v2"/></svg></span><h3>Tickets</h3><p>Anfragen erfassen, zuweisen, beantworten und nachverfolgen, mit Fristen, Kommentaren, internen Notizen und Anhängen.</p></div>
+          <div class="card"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v16H6.5A2.5 2.5 0 0 0 4 21.5z"/><path d="M4 5.5v16"/><path d="M9 8h7M9 12h5"/></svg></span><h3>Wissen</h3><p>Anleitungen und Antworten in einer durchsuchbaren Wissensdatenbank, damit sich viele Fragen von selbst lösen.</p></div>
+          <div class="card"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2"/><path d="M7 12h10"/></svg></span><h3>Assets und Lager</h3><p>Geräte per QR-Code scannen, Bestände, Reservationen und Inventuren im Blick behalten.</p></div>
+          <div class="card"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 11h18"/></svg></span><h3>Raumplanung</h3><p>Technische Einrichtung für Aula und Sitzungszimmer planen. Anfragen per E-Mail werden automatisch übernommen.</p></div>
+          <div class="card"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/></svg></span><h3>Verträge und Lizenzen</h3><p>Laufzeiten, Kosten, Kündigungsfristen und Dokumente erfassen. Rechtzeitig vor Ablauf erinnert ein Ticket.</p></div>
+          <div class="card"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg></span><h3>Systemstatus</h3><p>Eine öffentliche Statusseite zeigt, welche Dienste verfügbar sind, auch als Baustein für Ihr Intranet.</p></div>
         </div>
-      </section>
+      </div>
+    </section>
 
-      <section aria-labelledby="app">
-        <h2 id="app">Die App für unterwegs</h2>
-        <div class="prose">
-          <p>Mit der nextDesk-App für das iPhone erfassen und bearbeiten Sie Tickets, schlagen Wissen nach, scannen Geräte und prüfen das Lager, auch vor Ort. Die Anmeldung erfolgt mit dem Konto Ihrer Organisation. Auf Wunsch schützt Face ID die Sitzung auf dem Gerät.</p>
-          <p class="notice">nextDesk ist für Organisationen gedacht, die nextDesk einsetzen. Ein Konto erhalten Sie von Ihrer IT. Hilfe zur Anmeldung finden Sie auf der <a href="support.html">Supportseite</a>.</p>
+    <section class="block" aria-label="Einblicke">
+      <div class="wrap">
+        <div class="feature">
+          <div>
+            <p class="eyebrow">Tickets</p>
+            <h2>Anfragen, die niemand vergisst</h2>
+            <p class="lead">Jede Meldung landet an einem Ort, mit klarem Status und klarer Verantwortung. Ihr Team sieht auf einen Blick, was offen, fällig oder noch nicht zugewiesen ist.</p>
+            <ul>
+              <li>Tickets in Sekunden erfassen, auch mit Fotos</li>
+              <li>Zuweisen, antworten und intern Notizen austauschen</li>
+              <li>Favoriten und Filter für den schnellen Zugriff</li>
+            </ul>
+          </div>
+          <div class="feature-media"><img src="assets/screens/tickets-liste-phone.webp" alt="Ticketliste in der nextDesk-App mit Status und Filtern" width="520" height="1050" loading="lazy"></div>
         </div>
-      </section>
 
-      <section aria-labelledby="sicher">
-        <h2 id="sicher">Sicher und nachvollziehbar</h2>
-        <div class="prose">
-          <ul>
-            <li>Jede Organisation arbeitet in ihrem eigenen, getrennten Bereich.</li>
-            <li>Rollen und Berechtigungen bestimmen, wer was sieht und ändert.</li>
-            <li>Änderungen an wichtigen Daten werden protokolliert.</li>
-          </ul>
+        <div class="feature flip">
+          <div>
+            <p class="eyebrow">Wissen</p>
+            <h2>Antworten finden, bevor ein Ticket nötig ist</h2>
+            <p class="lead">Ihre IT-Anleitungen stehen im Wissensspeicher bereit, intern oder für alle. Wer Hilfe sucht, findet sie in der App, ohne zu warten.</p>
+            <ul>
+              <li>Durchsuchbare Artikel mit Kategorien</li>
+              <li>Interne und öffentliche Inhalte getrennt</li>
+              <li>Aktualisierungsdatum immer sichtbar</li>
+            </ul>
+          </div>
+          <div class="feature-media"><img src="assets/screens/wissen-phone.webp" alt="Wissensartikel in der nextDesk-App" width="520" height="1050" loading="lazy"></div>
         </div>
-      </section>
 
-      <section aria-labelledby="kontakt">
-        <h2 id="kontakt">Kontakt</h2>
-        <p>Fragen zu nextDesk? Schreiben Sie uns an <a href="mailto:support@gross-ict.ch">support@gross-ict.ch</a>.</p>
-      </section>
-    </div>
+        <div class="feature">
+          <div>
+            <p class="eyebrow">Assets und Lager</p>
+            <h2>Geräte scannen, Bestände prüfen</h2>
+            <p class="lead">Halten Sie die Kamera auf den QR-Code oder Barcode. Sofort sehen Sie Gerät, Zustand und Standort. Im Lager behalten Sie Bestände und Reservationen im Blick.</p>
+            <ul>
+              <li>QR-Code, Barcode oder Inventarnummer</li>
+              <li>Direkt zu Assets und Lager wechseln</li>
+              <li>Bestände und Reservationen im Lager</li>
+            </ul>
+          </div>
+          <div class="feature-media"><img src="assets/screens/scanner-phone.webp" alt="Asset-Scanner der nextDesk-App mit Schnellzugriff auf Assets und Lager" width="520" height="1030" loading="lazy"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="block alt" id="app" aria-labelledby="app-titel">
+      <div class="wrap">
+        <div class="head">
+          <p class="eyebrow">Die App</p>
+          <h2 id="app-titel">nextDesk für das iPhone</h2>
+          <p>Tickets, Wissen, Geräte und Lager auch unterwegs. Auf Wunsch schützt Face ID die Sitzung auf dem Gerät.</p>
+        </div>
+        <div class="gallery" role="list">
+          <figure role="listitem"><img src="assets/screens/tickets-erfassen.webp" alt="Startseite der App mit «Heute im Fokus» und Tickets" width="460" height="1000" loading="lazy"><figcaption>Startseite mit Überblick</figcaption></figure>
+          <figure role="listitem"><img src="assets/screens/tickets-liste.webp" alt="Ticketliste mit Status und Favoriten" width="460" height="1000" loading="lazy"><figcaption>Tickets verfolgen</figcaption></figure>
+          <figure role="listitem"><img src="assets/screens/wissen.webp" alt="Wissensartikel mit Anleitung" width="460" height="1000" loading="lazy"><figcaption>Antworten finden</figcaption></figure>
+          <figure role="listitem"><img src="assets/screens/scanner.webp" alt="Scanner für Assets mit Schnellzugriff" width="460" height="1000" loading="lazy"><figcaption>Geräte scannen</figcaption></figure>
+          <figure role="listitem"><img src="assets/screens/assets.webp" alt="Asset-Liste mit Suche" width="460" height="1000" loading="lazy"><figcaption>Assets und Lager</figcaption></figure>
+        </div>
+      </div>
+    </section>
+
+    <section class="block" aria-labelledby="sicher-titel">
+      <div class="wrap">
+        <div class="head">
+          <p class="eyebrow">Sicherheit</p>
+          <h2 id="sicher-titel">Sicher und nachvollziehbar</h2>
+          <p>Ihre Daten bleiben bei Ihrer Organisation. nextDesk trennt, schützt und protokolliert.</p>
+        </div>
+        <div class="stats">
+          <div class="card"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/></svg></span><h3>Getrennte Bereiche</h3><p>Jede Organisation arbeitet in einem eigenen, getrennten Bereich. Daten sind nicht untereinander sichtbar.</p></div>
+          <div class="card"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg></span><h3>Rollen und Rechte</h3><p>Berechtigungen bestimmen, wer was sieht und ändert. Anmeldung mit dem Konto Ihrer Organisation, in der App optional mit Face ID.</p></div>
+          <div class="card"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4h14v16H5z"/><path d="M9 9h6M9 13h6M9 17h3"/></svg></span><h3>Protokoll</h3><p>Wichtige Änderungen werden festgehalten, damit nachvollziehbar bleibt, wer was wann getan hat.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="block" style="padding-top:0" aria-labelledby="cta-titel">
+      <div class="wrap">
+        <div class="cta">
+          <h2 id="cta-titel">Fragen zu nextDesk?</h2>
+          <p>Wir helfen gern bei Fragen zur Anmeldung, zur App oder zum Einsatz in Ihrer Organisation.</p>
+          <div class="actions">
+            <a class="button" href="support.html">Zum Support</a>
+            <a class="button secondary" href="mailto:support@gross-ict.ch">support@gross-ict.ch</a>
+          </div>
+        </div>
+      </div>
+    </section>
   </main>
   <footer class="site">
     <div class="wrap">
-      <span>© 2026 Gross ICT · nextDesk</span>
-      <ul>
-        <li><a href="support.html">Support</a></li>
-        <li><a href="datenschutz.html">Datenschutz</a></li>
-        <li><a href="impressum.html">Impressum</a></li>
-        <li><a href="https://app.nextdesk.ch">Zur Web-App</a></li>
-      </ul>
+      <div class="footer-grid">
+        <div class="about">
+          <a class="brand" href="index.html"><img src="assets/logo.png" alt="" width="36" height="36">nextDesk</a>
+          <p>Der Service Desk für Schulen, Vereine und Organisationen. Entwickelt von Gross ICT in Zell LU.</p>
+        </div>
+        <div>
+          <h4>Produkt</h4>
+          <ul>
+            <li><a href="index.html#funktionen">Funktionen</a></li>
+            <li><a href="index.html#app">Die App</a></li>
+            <li><a href="https://app.nextdesk.ch">Zur Web-App</a></li>
+          </ul>
+        </div>
+        <div>
+          <h4>Hilfe</h4>
+          <ul>
+            <li><a href="support.html">Support</a></li>
+            <li><a href="support.html#faq">Häufige Fragen</a></li>
+            <li><a href="mailto:support@gross-ict.ch">support@gross-ict.ch</a></li>
+          </ul>
+        </div>
+        <div>
+          <h4>Rechtliches</h4>
+          <ul>
+            <li><a href="datenschutz.html">Datenschutz</a></li>
+            <li><a href="impressum.html">Impressum</a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <span>© 2026 Gross ICT · Neuhushof 3 · 6144 Zell LU</span>
+        <span>nextDesk ist ein Produkt von Gross ICT.</span>
+      </div>
     </div>
   </footer>
 </body>
