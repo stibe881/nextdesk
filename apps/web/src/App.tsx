@@ -87,6 +87,7 @@ import {
   PublicServiceStatusPage,
   ServiceStatus,
 } from "./service-status";
+import { IMPRINT_URL, PRIVACY_URL, SUPPORT_URL } from "./lib/site-links";
 import { Contracts } from "./contracts";
 import { Licenses } from "./licenses";
 import { EventSpaces } from "./event-spaces";
@@ -1061,7 +1062,7 @@ function AccessShell({ children }: { children: ReactNode }) {
         </div>
         <nav aria-label="Zugangsbereiche">
           <span>PLATTFORM</span>
-          <a href="https://gross-ict.ch/support">SUPPORT</a>
+          <a href={SUPPORT_URL}>SUPPORT</a>
         </nav>
       </header>
       <div className="access-overlay" aria-hidden="true" />
@@ -1081,6 +1082,11 @@ function AccessShell({ children }: { children: ReactNode }) {
       <footer className="access-footer">
         <span>NEXTDESK · BETRIEBEN VON</span>
         <img alt="Gross ICT" src="/assets/gross-ict-footer-logo.png" />
+        <nav aria-label="Rechtliches und Support" className="access-footer-links">
+          <a href={SUPPORT_URL}>Support</a>
+          <a href={PRIVACY_URL}>Datenschutz</a>
+          <a href={IMPRINT_URL}>Impressum</a>
+        </nav>
       </footer>
     </main>
   );

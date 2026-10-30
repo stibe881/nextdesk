@@ -13,6 +13,7 @@ import {
   Text,
   TextInput,
   View,
+  Linking,
 } from "react-native";
 
 import { getMyAvailability, setMyAvailability } from "@/lib/nextdesk-portal";
@@ -42,6 +43,12 @@ import {
   setDeviceProtectionPreference,
 } from "@/lib/mobile-private-state";
 import { unregisterPushDeviceBeforeSignOut } from "@/lib/push-notifications";
+import {
+  IMPRINT_URL,
+  PRIVACY_URL,
+  SUPPORT_EMAIL,
+  SUPPORT_URL,
+} from "@/lib/site-links";
 
 const themeOptions: { label: string; value: ThemePreference }[] = [
   { label: "Hell", value: "light" },
@@ -1035,6 +1042,29 @@ export default function SettingsScreen() {
             </View>
           )}
 
+          <View style={styles.helpCard}>
+            <Text style={styles.helpTitle}>Hilfe und Rechtliches</Text>
+            {(
+              [
+                ["Support", SUPPORT_URL, "help-circle-outline"],
+                ["Datenschutz", PRIVACY_URL, "shield-checkmark-outline"],
+                ["Impressum", IMPRINT_URL, "document-text-outline"],
+              ] as const
+            ).map(([label, url, icon]) => (
+              <Pressable
+                accessibilityRole="link"
+                key={label}
+                onPress={() => void Linking.openURL(url).catch(() => undefined)}
+                style={styles.helpRow}
+              >
+                <Ionicons color={colors.primaryText} name={icon} size={19} />
+                <Text style={styles.helpRowText}>{label}</Text>
+                <Ionicons color={colors.subtle} name="open-outline" size={16} />
+              </Pressable>
+            ))}
+            <Text style={styles.helpMail}>{SUPPORT_EMAIL}</Text>
+          </View>
+
           <Pressable
             accessibilityRole="button"
             onPress={() => void signOut()}
@@ -1290,6 +1320,28 @@ const useStyles = makeThemedStyles((c) => ({
     paddingVertical: 3,
   },
   clearCacheText: { color: c.info, fontSize: 12, fontWeight: "900" },
+  helpCard: {
+    backgroundColor: c.surface,
+    borderColor: c.border,
+    borderRadius: 19,
+    borderWidth: 1,
+    gap: 4,
+    padding: 16,
+  },
+  helpMail: { color: c.muted, fontSize: 12, marginTop: 4 },
+  helpRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 10,
+    paddingVertical: 9,
+  },
+  helpRowText: {
+    color: c.foreground,
+    flex: 1,
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  helpTitle: { color: c.foreground, fontSize: 15, fontWeight: "900" },
   signOutButton: {
     alignItems: "center",
     backgroundColor: c.errorSoft,

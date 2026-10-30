@@ -19,6 +19,7 @@ import {
   requireNextDesk,
 } from "@/lib/nextdesk-client";
 import { withTimeout } from "@/lib/pkce";
+import { IMPRINT_URL, PRIVACY_URL, SUPPORT_URL } from "@/lib/site-links";
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -337,7 +338,9 @@ export default function AuthScreen() {
           onPress={() => setPasswordMode((current) => !current)}
         >
           <Text style={styles.passwordToggle}>
-            {passwordMode ? "Passwort-Anmeldung ausblenden" : "Mit Passwort anmelden"}
+            {passwordMode
+              ? "Passwort-Anmeldung ausblenden"
+              : "Mit Passwort anmelden"}
           </Text>
         </Pressable>
         {passwordMode ? (
@@ -380,6 +383,24 @@ export default function AuthScreen() {
               {displayedMessage}
             </Text>
           ) : null}
+        </View>
+        <View style={styles.legalRow}>
+          {(
+            [
+              ["Support", SUPPORT_URL],
+              ["Datenschutz", PRIVACY_URL],
+              ["Impressum", IMPRINT_URL],
+            ] as const
+          ).map(([label, url]) => (
+            <Pressable
+              accessibilityRole="link"
+              hitSlop={8}
+              key={label}
+              onPress={() => void Linking.openURL(url).catch(() => undefined)}
+            >
+              <Text style={styles.legalLink}>{label}</Text>
+            </Pressable>
+          ))}
         </View>
         {APP_VERSION_LABEL ? (
           <Text style={styles.version}>{APP_VERSION_LABEL}</Text>
@@ -456,6 +477,19 @@ const useStyles = makeThemedStyles((c) => ({
   },
   messageSlot: { marginTop: 2, minHeight: 58 },
   message: { color: c.text, fontSize: 13, lineHeight: 19 },
+  legalRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 18,
+    justifyContent: "center",
+    marginTop: 4,
+  },
+  legalLink: {
+    color: c.primaryText,
+    fontSize: 13,
+    fontWeight: "700",
+    textDecorationLine: "underline",
+  },
   version: { color: c.subtle, fontSize: 11, textAlign: "center" },
   pressed: { opacity: 0.82 },
   disabled: { opacity: 0.55 },
