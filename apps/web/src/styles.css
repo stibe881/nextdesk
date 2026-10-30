@@ -18221,3 +18221,12 @@ html:has(.embed-status-badge) body {
   overscroll-behavior: contain;
   padding-right: 6px;
 }
+
+.ticket-detail-primary .ticket-conversation + .ticket-comment-form {
+  margin-top: 20px;
+  gap: 14px;
+}
+
+.ticket-detail-primary .ticket-comment-form > label {
+  margin-top: 4px;
+}
