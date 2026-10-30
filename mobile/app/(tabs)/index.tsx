@@ -17,6 +17,7 @@ import { IncidentBanner } from "@/components/incident-banner";
 import { useMobileFeatures } from "@/components/mobile-feature-gate";
 import { useMobileNetworkStatus } from "@/components/offline-status";
 import { ScreenContainer } from "@/components/screen-container";
+import { TicketSwipeActions } from "@/components/ticket-swipe-actions";
 import {
   getMyMetrics,
   isNextDeskPortalUnavailableError,
@@ -37,7 +38,17 @@ import {
   nextDesk,
   type MobileTenant,
 } from "@/lib/nextdesk-client";
-import { listRecentTicketIds } from "@/lib/mobile-private-state";
+import {
+  listFavoriteTicketIds,
+  listRecentTicketIds,
+  setFavoriteTicket,
+} from "@/lib/mobile-private-state";
+import {
+  deleteMobileTicket,
+  dueToday,
+  followUpTitle,
+} from "@/lib/mobile-ticket-actions";
+import { saveFollowUp } from "@/lib/nextdesk-experience";
 import {
   loadMobileDashboard,
   loadMobileTicketsByIds,
@@ -48,7 +59,12 @@ import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
 import { useThemeContext } from "@/lib/theme-provider";
 import { loadTenantBranding, type TenantBranding } from "@/lib/tenant-branding";
 
-type FocusScope = "assigned" | "solvedToday" | "firstResponse" | "slaDue";
+type FocusScope =
+  | "assigned"
+  | "solvedToday"
+  | "firstResponse"
+  | "resolution"
+  | "slaDue";
 type TicketScope = "all" | "mine" | "open" | "unassigned" | FocusScope;
 
 const ticketScopeLabels: Record<Exclude<TicketScope, "all">, string> = {
@@ -58,6 +74,7 @@ const ticketScopeLabels: Record<Exclude<TicketScope, "all">, string> = {
   assigned: "Mir zugewiesen",
   solvedToday: "Heute gelöst",
   firstResponse: "Mit erster Antwort",
+  resolution: "Von mir gelöst",
   slaDue: "Antwort oder Lösung fällig",
 };
 
@@ -66,8 +83,19 @@ function isFocusScope(scope: TicketScope): scope is FocusScope {
     scope === "assigned" ||
     scope === "solvedToday" ||
     scope === "firstResponse" ||
+    scope === "resolution" ||
     scope === "slaDue"
   );
+}
+
+/** Kurze Dauer für Kennzahlen, z. B. "45 Min.", "3,5 Std." oder "2,1 Tg.". */
+function formatDuration(minutes: number | null | undefined): string {
+  if (minutes === null || minutes === undefined || !Number.isFinite(minutes))
+    return "—";
+  if (minutes < 120) return `${Math.max(0, Math.round(minutes))} Min.`;
+  const hours = minutes / 60;
+  if (hours < 48) return `${hours.toFixed(1).replace(".", ",")} Std.`;
+  return `${(hours / 24).toFixed(1).replace(".", ",")} Tg.`;
 }
 
 function formatDateTime(value: string): string {
@@ -112,7 +140,7 @@ const NO_TICKET_IDS: string[] = [];
 export default function HomeScreen() {
   const router = useRouter();
   const { width } = useWindowDimensions();
-  const { recoveryEpoch } = useMobileNetworkStatus();
+  const { isOffline, recoveryEpoch } = useMobileNetworkStatus();
   const {
     error: featureError,
     isEnabled,
@@ -415,6 +443,12 @@ export default function HomeScreen() {
     ids: string[];
     tenantId: string;
   } | null>(null);
+  const [favoriteState, setFavoriteState] = useState<{
+    ids: string[];
+    tenantId: string;
+    userId: string;
+  } | null>(null);
+  const [actionMessage, setActionMessage] = useState("");
   useFocusEffect(
     useCallback(() => {
       if (!tenantId) return;
@@ -423,7 +457,11 @@ export default function HomeScreen() {
         try {
           const userId = await getMobileUserId();
           const ids = await listRecentTicketIds({ userId, tenantId });
-          if (!cancelled) setRecentTicketState({ ids, tenantId });
+          const favorites = await listFavoriteTicketIds({ userId, tenantId });
+          if (!cancelled) {
+            setRecentTicketState({ ids, tenantId });
+            setFavoriteState({ ids: favorites, tenantId, userId });
+          }
         } catch {
           if (!cancelled) setRecentTicketState({ ids: [], tenantId });
         }
@@ -437,6 +475,73 @@ export default function HomeScreen() {
     recentTicketState && recentTicketState.tenantId === tenantId
       ? recentTicketState.ids
       : NO_TICKET_IDS;
+  const favoriteIds =
+    favoriteState && favoriteState.tenantId === tenantId
+      ? favoriteState.ids
+      : NO_TICKET_IDS;
+  const workspaceEnabled = isEnabled("experience.workspace");
+
+  async function toggleFavorite(ticket: MobileTicket) {
+    if (!favoriteState || favoriteState.tenantId !== tenantId) return;
+    const nextFavorite = !favoriteIds.includes(ticket.id);
+    setActionMessage("");
+    try {
+      const ids = await setFavoriteTicket({
+        favorite: nextFavorite,
+        tenantId: favoriteState.tenantId,
+        ticketId: ticket.id,
+        userId: favoriteState.userId,
+      });
+      setFavoriteState({ ...favoriteState, ids });
+      setActionMessage(
+        nextFavorite
+          ? `«${ticket.ticketNumber}» wurde zu Favoriten hinzugefügt.`
+          : `«${ticket.ticketNumber}» wurde aus Favoriten entfernt.`,
+      );
+    } catch {
+      setActionMessage("Der Favorit konnte nicht gespeichert werden.");
+    }
+  }
+
+  async function createFollowUp(ticket: MobileTicket) {
+    setActionMessage("");
+    try {
+      await saveFollowUp({
+        description: null,
+        dueAt: dueToday(),
+        priority: "normal",
+        ticketId: ticket.id,
+        title: followUpTitle(ticket),
+      });
+      setActionMessage(
+        `Wiedervorlage für «${ticket.ticketNumber}» für heute gesetzt.`,
+      );
+    } catch (nextError) {
+      setActionMessage(
+        nextError instanceof Error
+          ? nextError.message
+          : "Die Wiedervorlage konnte nicht gesetzt werden.",
+      );
+    }
+  }
+
+  async function deleteTicket(ticket: MobileTicket) {
+    setActionMessage("");
+    try {
+      await deleteMobileTicket(ticket.id);
+      setTickets((current) => current.filter((item) => item.id !== ticket.id));
+      setExtraTickets((current) =>
+        current.filter((item) => item.id !== ticket.id),
+      );
+      setActionMessage(`«${ticket.ticketNumber}» wurde gelöscht.`);
+    } catch (nextError) {
+      setActionMessage(
+        nextError instanceof Error
+          ? nextError.message
+          : "Das Ticket konnte nicht gelöscht werden.",
+      );
+    }
+  }
 
   const activeBranding =
     branding && branding.tenantId === brandingTenantId ? branding.value : null;
@@ -764,63 +869,76 @@ export default function HomeScreen() {
             HEUTE IM FOKUS
           </Text>
           {metricsAvailableForTenant && visibleAgentMetrics ? (
-            <View style={styles.heroKpis}>
-              <HeroKpi
-                disabled={!canOpenFocus}
-                label="Mir zugewiesen"
-                onPress={() => selectFocusScope("assigned")}
-                selected={ticketScope === "assigned"}
-                value={String(visibleAgentMetrics.open)}
-              />
-              <View
-                style={[
-                  styles.heroKpiDivider,
-                  { backgroundColor: colors.onPrimary },
-                ]}
-              />
-              <HeroKpi
-                disabled={!canOpenFocus}
-                label="Heute gelöst"
-                onPress={() => selectFocusScope("solvedToday")}
-                selected={ticketScope === "solvedToday"}
-                value={String(visibleAgentMetrics.solvedToday)}
-              />
-              <View
-                style={[
-                  styles.heroKpiDivider,
-                  { backgroundColor: colors.onPrimary },
-                ]}
-              />
-              <HeroKpi
-                disabled={!canOpenFocus}
-                label="Erste Antwort"
-                onPress={() => selectFocusScope("firstResponse")}
-                selected={ticketScope === "firstResponse"}
-                value={
-                  visibleAgentMetrics.medianFirstResponseMinutes === null
-                    ? "—"
-                    : `${visibleAgentMetrics.medianFirstResponseMinutes} Min.`
-                }
-              />
-              <View
-                style={[
-                  styles.heroKpiDivider,
-                  { backgroundColor: colors.onPrimary },
-                ]}
-              />
-              <HeroKpi
-                disabled={
-                  !canOpenFocus || !visibleAgentMetrics.ticketIds?.slaDue
-                }
-                label="Fällig"
-                onPress={() => selectFocusScope("slaDue")}
-                selected={ticketScope === "slaDue"}
-                value={
-                  visibleAgentMetrics.slaDue === undefined
-                    ? "—"
-                    : String(visibleAgentMetrics.slaDue)
-                }
-              />
+            <View style={styles.heroKpiRows}>
+              <View style={styles.heroKpis}>
+                <HeroKpi
+                  disabled={!canOpenFocus}
+                  label="Mir zugewiesen"
+                  onPress={() => selectFocusScope("assigned")}
+                  selected={ticketScope === "assigned"}
+                  value={String(visibleAgentMetrics.open)}
+                />
+                <View
+                  style={[
+                    styles.heroKpiDivider,
+                    { backgroundColor: colors.onPrimary },
+                  ]}
+                />
+                <HeroKpi
+                  disabled={!canOpenFocus}
+                  label="Heute gelöst"
+                  onPress={() => selectFocusScope("solvedToday")}
+                  selected={ticketScope === "solvedToday"}
+                  value={String(visibleAgentMetrics.solvedToday)}
+                />
+                <View
+                  style={[
+                    styles.heroKpiDivider,
+                    { backgroundColor: colors.onPrimary },
+                  ]}
+                />
+                <HeroKpi
+                  disabled={
+                    !canOpenFocus || !visibleAgentMetrics.ticketIds?.slaDue
+                  }
+                  label="Fällig"
+                  onPress={() => selectFocusScope("slaDue")}
+                  selected={ticketScope === "slaDue"}
+                  value={
+                    visibleAgentMetrics.slaDue === undefined
+                      ? "—"
+                      : String(visibleAgentMetrics.slaDue)
+                  }
+                />
+              </View>
+              <View style={styles.heroKpis}>
+                <HeroKpi
+                  disabled={!canOpenFocus}
+                  label="Erste Antwort (Median)"
+                  onPress={() => selectFocusScope("firstResponse")}
+                  selected={ticketScope === "firstResponse"}
+                  value={formatDuration(
+                    visibleAgentMetrics.medianFirstResponseMinutes,
+                  )}
+                />
+                <View
+                  style={[
+                    styles.heroKpiDivider,
+                    { backgroundColor: colors.onPrimary },
+                  ]}
+                />
+                <HeroKpi
+                  disabled={
+                    !canOpenFocus || !visibleAgentMetrics.ticketIds?.resolution
+                  }
+                  label="Lösungszeit (Median)"
+                  onPress={() => selectFocusScope("resolution")}
+                  selected={ticketScope === "resolution"}
+                  value={formatDuration(
+                    visibleAgentMetrics.medianResolutionMinutes,
+                  )}
+                />
+              </View>
             </View>
           ) : (
             <>
@@ -945,9 +1063,11 @@ export default function HomeScreen() {
                 ? "Die fünf Tickets, die du zuletzt geöffnet hast"
                 : focusLoading
                   ? "Passende Tickets werden geladen …"
-                  : ticketScope === "firstResponse"
-                    ? `${visibleTickets.length} Tickets · Grundlage der ersten Antwortzeit`
-                    : `${visibleTickets.length} passende Vorgänge`}
+                  : ticketScope === "resolution"
+                    ? `${visibleTickets.length} Tickets · Grundlage deiner Lösungszeit`
+                    : ticketScope === "firstResponse"
+                      ? `${visibleTickets.length} Tickets · Grundlage der ersten Antwortzeit`
+                      : `${visibleTickets.length} passende Vorgänge`}
             </Text>
           </View>
           <Pressable
@@ -964,6 +1084,14 @@ export default function HomeScreen() {
           </Pressable>
         </View>
 
+        {actionMessage ? (
+          <Text
+            accessibilityLiveRegion="polite"
+            style={[styles.sectionSub, tokenStyles.muted]}
+          >
+            {actionMessage}
+          </Text>
+        ) : null}
         {visibleTickets.length === 0 ? (
           <View style={[styles.emptyList, tokenStyles.card]}>
             <Text style={[styles.emptyText, tokenStyles.muted]}>
@@ -977,92 +1105,108 @@ export default function HomeScreen() {
             {visibleTickets
               .slice(0, isFocusScope(ticketScope) ? 100 : 10)
               .map((ticket) => (
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityState={{
-                    disabled: checkingFeatures || !ticketDetailsEnabled,
-                  }}
-                  disabled={checkingFeatures || !ticketDetailsEnabled}
-                  key={ticket.id}
-                  onPress={() =>
-                    router.push({
-                      pathname: "/ticket/[id]",
-                      params: { id: ticket.id },
-                    })
+                <TicketSwipeActions
+                  canDelete={!isOffline && !checkingFeatures}
+                  canFavorite={favoriteState?.tenantId === tenantId}
+                  canFollowUp={
+                    workspaceEnabled && !isOffline && !checkingFeatures
                   }
-                  style={[
-                    styles.ticket,
-                    tokenStyles.card,
-                    (checkingFeatures || !ticketDetailsEnabled) &&
-                      styles.ticketDisabled,
-                  ]}
+                  enabled
+                  favorite={favoriteIds.includes(ticket.id)}
+                  key={ticket.id}
+                  onDelete={() => void deleteTicket(ticket)}
+                  onFavorite={() => void toggleFavorite(ticket)}
+                  onFollowUp={() => void createFollowUp(ticket)}
+                  ticketNumber={ticket.ticketNumber}
                 >
-                  <View
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityState={{
+                      disabled: checkingFeatures || !ticketDetailsEnabled,
+                    }}
+                    disabled={checkingFeatures || !ticketDetailsEnabled}
+                    onPress={() =>
+                      router.push({
+                        pathname: "/ticket/[id]",
+                        params: { id: ticket.id },
+                      })
+                    }
                     style={[
-                      styles.ticketMark,
-                      {
-                        backgroundColor: ticket.resolved
-                          ? colors.success
-                          : colors.primary,
-                      },
+                      styles.ticket,
+                      tokenStyles.card,
+                      (checkingFeatures || !ticketDetailsEnabled) &&
+                        styles.ticketDisabled,
                     ]}
-                  />
-                  <View style={styles.ticketContent}>
-                    <Text style={[styles.ticketId, tokenStyles.muted]}>
-                      {ticket.ticketNumber}
-                    </Text>
-                    <Text
-                      numberOfLines={1}
-                      style={[styles.ticketTitle, tokenStyles.foreground]}
-                    >
-                      {ticket.subject}
-                    </Text>
-                    <Text style={[styles.ticketMeta, tokenStyles.muted]}>
-                      {ticket.priority}
-                    </Text>
-                  </View>
-                  <View style={styles.ticketRight}>
+                  >
                     <View
-                      accessibilityLabel={`Status: ${ticket.status}`}
                       style={[
-                        styles.status,
+                        styles.ticketMark,
                         {
                           backgroundColor: ticket.resolved
-                            ? colors.successSoft
-                            : colors.primarySoft,
+                            ? colors.success
+                            : colors.primary,
                         },
                       ]}
-                    >
-                      <Ionicons
-                        color={
-                          ticket.resolved ? colors.success : colors.primaryText
-                        }
-                        name={
-                          ticket.resolved
-                            ? "checkmark-circle-outline"
-                            : "time-outline"
-                        }
-                        size={13}
-                      />
+                    />
+                    <View style={styles.ticketContent}>
+                      <Text style={[styles.ticketId, tokenStyles.muted]}>
+                        {ticket.ticketNumber}
+                      </Text>
                       <Text
-                        style={{
-                          color: ticket.resolved
-                            ? colors.success
-                            : colors.primaryText,
-                          fontSize: 10,
-                          fontWeight: "800",
-                        }}
+                        numberOfLines={1}
+                        style={[styles.ticketTitle, tokenStyles.foreground]}
                       >
-                        {ticket.status}
+                        {ticket.subject}
+                      </Text>
+                      <Text style={[styles.ticketMeta, tokenStyles.muted]}>
+                        {ticket.priority}
                       </Text>
                     </View>
-                    <Ionicons
-                      color={colors.subtle}
-                      name="chevron-forward"
-                      size={18}
-                    />
-                  </View>
-                </Pressable>
+                    <View style={styles.ticketRight}>
+                      <View
+                        accessibilityLabel={`Status: ${ticket.status}`}
+                        style={[
+                          styles.status,
+                          {
+                            backgroundColor: ticket.resolved
+                              ? colors.successSoft
+                              : colors.primarySoft,
+                          },
+                        ]}
+                      >
+                        <Ionicons
+                          color={
+                            ticket.resolved
+                              ? colors.success
+                              : colors.primaryText
+                          }
+                          name={
+                            ticket.resolved
+                              ? "checkmark-circle-outline"
+                              : "time-outline"
+                          }
+                          size={13}
+                        />
+                        <Text
+                          style={{
+                            color: ticket.resolved
+                              ? colors.success
+                              : colors.primaryText,
+                            fontSize: 10,
+                            fontWeight: "800",
+                          }}
+                        >
+                          {ticket.status}
+                        </Text>
+                      </View>
+                      <Ionicons
+                        color={colors.subtle}
+                        name="chevron-forward"
+                        size={18}
+                      />
+                    </View>
+                  </Pressable>
+                </TicketSwipeActions>
               ))}
             {visibleTickets.length > 10 ? (
               <Pressable
@@ -1209,8 +1353,20 @@ export default function HomeScreen() {
                 ) : (
                   <View style={styles.compactList}>
                     {visibleApprovals.slice(0, 3).map((approval) => (
-                      <View
+                      <Pressable
+                        accessibilityHint="Öffnet das zugehörige Ticket"
+                        accessibilityRole="button"
+                        accessibilityState={{
+                          disabled: checkingFeatures || !ticketDetailsEnabled,
+                        }}
+                        disabled={checkingFeatures || !ticketDetailsEnabled}
                         key={approval.id}
+                        onPress={() =>
+                          router.push({
+                            pathname: "/ticket/[id]",
+                            params: { id: approval.ticket_id },
+                          })
+                        }
                         style={[
                           styles.compactListRow,
                           { borderColor: colors.border },
@@ -1238,13 +1394,18 @@ export default function HomeScreen() {
                         >
                           {approval.required_approvals} nötig
                         </Text>
-                      </View>
+                        <Ionicons
+                          color={colors.subtle}
+                          name="chevron-forward"
+                          size={16}
+                        />
+                      </Pressable>
                     ))}
                   </View>
                 )}
               </View>
             ) : null}
-            {devicesAvailableForTenant ? (
+            {devicesAvailableForTenant && !agentWorkbenchEnabled ? (
               <View
                 style={[
                   styles.card,
@@ -1582,6 +1743,7 @@ const useStyles = makeThemedStyles(() => ({
     lineHeight: 13,
     opacity: 0.76,
   },
+  heroKpiRows: { gap: 12 },
   heroKpis: {
     alignItems: "stretch",
     flexDirection: "row",

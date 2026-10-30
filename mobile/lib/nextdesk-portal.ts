@@ -33,6 +33,8 @@ export type AgentMetricTicketIds = {
   solvedToday: string[];
   firstResponse: string[];
   dueFollowUps: string[];
+  /** Von mir gelöste Tickets (Grundlage der Lösungszeit); fehlt bei älteren Serverständen. */
+  resolution?: string[];
   /** Offene Tickets mit erreichter Antwort- oder Lösungsfrist; fehlt bei älteren Serverständen. */
   slaDue?: string[];
 };
@@ -41,6 +43,8 @@ export type AgentMetrics = {
   open: number;
   solvedToday: number;
   medianFirstResponseMinutes: number | null;
+  /** Fehlt bei älteren Serverständen. */
+  medianResolutionMinutes?: number | null;
   dueFollowUps: number;
   /** Anzahl offener Tickets mit erreichter Antwort- oder Lösungsfrist. */
   slaDue?: number;
@@ -72,12 +76,14 @@ function parseMetricTicketIds(
   if (!assigned || !solvedToday || !firstResponse || !dueFollowUps)
     return undefined;
   const slaDue = parseMetricTicketIdList(record.slaDue);
+  const resolution = parseMetricTicketIdList(record.resolution);
   return {
     assigned,
     solvedToday,
     firstResponse,
     dueFollowUps,
     ...(slaDue ? { slaDue } : {}),
+    ...(resolution ? { resolution } : {}),
   };
 }
 
