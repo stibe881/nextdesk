@@ -1083,7 +1083,10 @@ function AccessShell({ children }: { children: ReactNode }) {
       <footer className="access-footer">
         <span>NEXTDESK · BETRIEBEN VON</span>
         <img alt="Gross ICT" src="/assets/gross-ict-footer-logo.png" />
-        <nav aria-label="Rechtliches und Support" className="access-footer-links">
+        <nav
+          aria-label="Rechtliches und Support"
+          className="access-footer-links"
+        >
           <a href={SUPPORT_URL}>Support</a>
           <a href={PRIVACY_URL}>Datenschutz</a>
           <a href={IMPRINT_URL}>Impressum</a>
@@ -2607,7 +2610,10 @@ function AuthenticatedApp() {
     return () => {
       if (refreshTimer !== null) window.clearTimeout(refreshTimer);
       window.clearInterval(pollTimer);
-      document.removeEventListener("visibilitychange", scheduleDashboardRefresh);
+      document.removeEventListener(
+        "visibilitychange",
+        scheduleDashboardRefresh,
+      );
       void realtimeClient.removeChannel(channel);
     };
   }, [activeTenant?.id, session?.user.id]);
@@ -3999,8 +4005,8 @@ function AuthenticatedApp() {
                   if (
                     !canWorkTickets &&
                     !(
-                      sectionFromGlobalSearchResult(result) ===
-                        "Raumplanung" && eventSpaceNavigationAccess
+                      sectionFromGlobalSearchResult(result) === "Raumplanung" &&
+                      eventSpaceNavigationAccess
                     ) &&
                     !canRequesterOpenSection(
                       sectionFromGlobalSearchResult(result),
