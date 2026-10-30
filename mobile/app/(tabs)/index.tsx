@@ -1356,7 +1356,7 @@ export default function HomeScreen() {
                 )}
               </View>
             ) : null}
-            {devicesAvailableForTenant ? (
+            {devicesAvailableForTenant && !agentWorkbenchEnabled ? (
               <View
                 style={[
                   styles.card,
