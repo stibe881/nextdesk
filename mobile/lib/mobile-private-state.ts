@@ -45,6 +45,8 @@ type PrivateState = {
   favorites: Record<string, string[]>;
   /** Zuletzt geöffnete Ticket-IDs pro Mandant, neueste zuerst. */
   recentTickets?: Record<string, string[]>;
+  /** Zuletzt verwendete Suchbegriffe der globalen Suche pro Mandant. */
+  recentSearches?: Record<string, string[]>;
   ticketCache?: TicketCacheDescriptor;
 };
 
@@ -83,6 +85,12 @@ function parseState(value: string | null): PrivateState {
       !Array.isArray(parsed.recentTickets)
         ? parsed.recentTickets
         : {};
+    const recentSearches =
+      parsed.recentSearches &&
+      typeof parsed.recentSearches === "object" &&
+      !Array.isArray(parsed.recentSearches)
+        ? parsed.recentSearches
+        : {};
     const candidate = parsed.ticketCache;
     const ticketCache =
       candidate &&
@@ -103,6 +111,7 @@ function parseState(value: string | null): PrivateState {
       drafts,
       favorites,
       recentTickets,
+      recentSearches,
       ticketCache,
     };
   } catch {
@@ -164,6 +173,7 @@ export async function clearMobileWorkingData(userId: string): Promise<void> {
   state.drafts = {};
   state.favorites = {};
   state.recentTickets = {};
+  state.recentSearches = {};
   await removeTicketCacheChunks(userId);
   state.ticketCache = undefined;
   await writeState(userId, state);
@@ -472,4 +482,47 @@ export async function loadOfflineTicketListCache(input: {
     await writeState(input.userId, state);
     return null;
   }
+}
+
+const MAX_RECENT_SEARCHES = 5;
+
+/** Zuletzt verwendete Suchbegriffe (neueste zuerst), nur auf diesem Gerät. */
+export async function listRecentSearches(input: {
+  userId: string;
+  tenantId: string;
+}): Promise<string[]> {
+  const state = await readState(input.userId);
+  const terms = state.recentSearches?.[input.tenantId];
+  return Array.isArray(terms)
+    ? terms.filter((term): term is string => typeof term === "string")
+    : [];
+}
+
+export async function recordRecentSearch(input: {
+  userId: string;
+  tenantId: string;
+  term: string;
+}): Promise<void> {
+  const term = input.term.trim().slice(0, 80);
+  if (Array.from(term).length < 2) return;
+  const state = await readState(input.userId);
+  const recent = state.recentSearches ?? {};
+  recent[input.tenantId] = [
+    term,
+    ...(recent[input.tenantId] ?? []).filter(
+      (entry) =>
+        entry.toLocaleLowerCase("de-CH") !== term.toLocaleLowerCase("de-CH"),
+    ),
+  ].slice(0, MAX_RECENT_SEARCHES);
+  state.recentSearches = recent;
+  await writeState(input.userId, state);
+}
+
+export async function clearRecentSearches(input: {
+  userId: string;
+  tenantId: string;
+}): Promise<void> {
+  const state = await readState(input.userId);
+  if (state.recentSearches) delete state.recentSearches[input.tenantId];
+  await writeState(input.userId, state);
 }

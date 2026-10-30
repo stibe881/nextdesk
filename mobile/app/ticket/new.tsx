@@ -1,8 +1,11 @@
 import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
+import { Image } from "expo-image";
+import * as ImagePicker from "expo-image-picker";
+import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   findNodeHandle,
   Pressable,
   ScrollView,
@@ -19,7 +22,17 @@ import {
   hapticSelection,
   hapticSuccess,
 } from "@/lib/mobile-haptics";
-import { loadCurrentTenant, type MobileTenant } from "@/lib/nextdesk-client";
+import {
+  clearLocalTicketDraft,
+  loadLocalTicketDraft,
+  saveLocalTicketDraft,
+} from "@/lib/mobile-private-state";
+import { uploadPickedPhoto } from "@/lib/mobile-ticket-attachments";
+import {
+  getMobileUserId,
+  loadCurrentTenant,
+  type MobileTenant,
+} from "@/lib/nextdesk-client";
 import {
   createMobileTicket,
   loadTicketFormOptions,
@@ -28,7 +41,20 @@ import {
 } from "@/lib/nextdesk-tickets";
 import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
 
+const NEW_TICKET_DRAFT_ID = "new-ticket";
+const MAX_NEW_TICKET_PHOTOS = 5;
+
 export default function NewTicketScreen() {
+  // Vorbelegung, z. B. aus einem gescannten Gerät.
+  const params = useLocalSearchParams<{
+    description?: string;
+    subject?: string;
+  }>();
+  const [initialPrefill] = useState(() => ({
+    description:
+      typeof params.description === "string" ? params.description : "",
+    subject: typeof params.subject === "string" ? params.subject : "",
+  }));
   const { isOffline } = useMobileNetworkStatus();
   const [tenant, setTenant] = useState<MobileTenant | null>(null);
   const [options, setOptions] = useState<TicketFormOptions | null>(null);
@@ -40,6 +66,8 @@ export default function NewTicketScreen() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [photos, setPhotos] = useState<ImagePicker.ImagePickerAsset[]>([]);
+  const draftReady = useRef(false);
   const scrollViewRef = useRef<ScrollView>(null);
   const subjectInputRef = useRef<TextInput>(null);
   const descriptionInputRef = useRef<TextInput>(null);
@@ -57,6 +85,34 @@ export default function NewTicketScreen() {
         setDepartmentId(formOptions.departments[0]?.id ?? "");
         setPriorityKey(formOptions.priorities[0]?.key ?? "");
         setRequester(formOptions.currentRequester);
+        if (initialPrefill.subject || initialPrefill.description) {
+          setSubject(initialPrefill.subject);
+          setDescription(initialPrefill.description);
+        } else {
+          // Ein zuvor begonnener Entwurf wird wiederhergestellt.
+          try {
+            const userId = await getMobileUserId();
+            const draft = await loadLocalTicketDraft({
+              userId,
+              tenantId: currentTenant.id,
+              ticketId: NEW_TICKET_DRAFT_ID,
+              visibility: "internal",
+            });
+            if (draft) {
+              const parsed: unknown = JSON.parse(draft.body);
+              if (typeof parsed === "object" && parsed !== null) {
+                const record = parsed as Record<string, unknown>;
+                if (typeof record.subject === "string")
+                  setSubject(record.subject);
+                if (typeof record.description === "string")
+                  setDescription(record.description);
+              }
+            }
+          } catch {
+            // Ohne lesbaren Entwurf startet das Formular leer.
+          }
+        }
+        draftReady.current = true;
       } catch (nextError) {
         setError(
           nextError instanceof Error
@@ -67,7 +123,7 @@ export default function NewTicketScreen() {
         setLoading(false);
       }
     })();
-  }, [isOffline]);
+  }, [initialPrefill, isOffline]);
 
   const selectedDepartment = useMemo(
     () =>
@@ -77,6 +133,31 @@ export default function NewTicketScreen() {
     [departmentId, options],
   );
   const selectedRequester = requester ?? options?.currentRequester ?? null;
+
+  // Entwurf automatisch sichern, damit eine Unterbrechung nichts kostet.
+  useEffect(() => {
+    if (!draftReady.current || !tenant) return;
+    const timer = setTimeout(() => {
+      void (async () => {
+        try {
+          const userId = await getMobileUserId();
+          await saveLocalTicketDraft({
+            userId,
+            tenantId: tenant.id,
+            ticketId: NEW_TICKET_DRAFT_ID,
+            visibility: "internal",
+            body:
+              subject.trim() || description.trim()
+                ? JSON.stringify({ subject, description })
+                : "",
+          });
+        } catch {
+          // Der Entwurf ist eine Komfortfunktion und darf nie stören.
+        }
+      })();
+    }, 700);
+    return () => clearTimeout(timer);
+  }, [description, subject, tenant]);
 
   if (isOffline) {
     return (
@@ -123,6 +204,49 @@ export default function NewTicketScreen() {
     });
   }
 
+  async function addPhoto(source: "camera" | "library") {
+    if (photos.length >= MAX_NEW_TICKET_PHOTOS) return;
+    hapticSelection();
+    try {
+      if (source === "camera") {
+        const permission = await ImagePicker.requestCameraPermissionsAsync();
+        if (!permission.granted) {
+          setError("Bitte erlaube den Kamerazugriff, um ein Foto aufzunehmen.");
+          return;
+        }
+        const result = await ImagePicker.launchCameraAsync({
+          allowsEditing: false,
+          cameraType: ImagePicker.CameraType.back,
+          exif: false,
+          mediaTypes: ["images"],
+          quality: 1,
+        });
+        if (!result.canceled) {
+          setPhotos((current) =>
+            [...current, ...result.assets].slice(0, MAX_NEW_TICKET_PHOTOS),
+          );
+        }
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        allowsEditing: false,
+        allowsMultipleSelection: true,
+        exif: false,
+        mediaTypes: ["images"],
+        orderedSelection: true,
+        quality: 1,
+        selectionLimit: MAX_NEW_TICKET_PHOTOS - photos.length,
+      });
+      if (!result.canceled) {
+        setPhotos((current) =>
+          [...current, ...result.assets].slice(0, MAX_NEW_TICKET_PHOTOS),
+        );
+      }
+    } catch {
+      setError("Das Foto konnte nicht ausgewählt werden.");
+    }
+  }
+
   async function createTicket() {
     if (isOffline) {
       hapticError();
@@ -137,11 +261,6 @@ export default function NewTicketScreen() {
     if (cleanSubject.length < 3) {
       hapticError();
       setError("Bitte geben Sie einen Betreff mit mindestens 3 Zeichen ein.");
-      return;
-    }
-    if (!cleanDescription) {
-      hapticError();
-      setError("Bitte beschreiben Sie Ihr Anliegen.");
       return;
     }
     if (!departmentId || !priorityKey) {
@@ -163,13 +282,44 @@ export default function NewTicketScreen() {
         priorityKey,
         requesterContactId: selectedRequester.id,
         subject: cleanSubject,
-        description: cleanDescription,
+        // Die Beschreibung ist optional; ohne sie dient der Betreff als Text.
+        description: cleanDescription || cleanSubject,
       });
+      let failedPhotos = 0;
+      for (const [index, photo] of photos.entries()) {
+        try {
+          await uploadPickedPhoto({
+            height: photo.height,
+            index,
+            tenantId: tenant.id,
+            ticketId: ticket.ticketId,
+            uri: photo.uri,
+            width: photo.width,
+          });
+        } catch {
+          failedPhotos += 1;
+        }
+      }
+      try {
+        await clearLocalTicketDraft({
+          userId: await getMobileUserId(),
+          tenantId: tenant.id,
+          ticketId: NEW_TICKET_DRAFT_ID,
+        });
+      } catch {
+        // Ein übrig gebliebener Entwurf wird beim nächsten Speichern ersetzt.
+      }
       router.replace({
         pathname: "/ticket/[id]",
         params: { id: ticket.ticketId },
       });
       hapticSuccess();
+      if (failedPhotos > 0) {
+        Alert.alert(
+          "Fotos nicht hochgeladen",
+          `${failedPhotos} Foto${failedPhotos === 1 ? "" : "s"} konnte${failedPhotos === 1 ? "" : "n"} nicht hochgeladen werden. Du kannst sie im Ticket erneut hinzufügen.`,
+        );
+      }
     } catch (nextError) {
       hapticError();
       setError(
@@ -243,7 +393,7 @@ export default function NewTicketScreen() {
               value={subject}
             />
 
-            <FieldLabel label="BESCHREIBUNG" />
+            <FieldLabel label="BESCHREIBUNG (OPTIONAL)" />
             <TextInput
               autoCapitalize="sentences"
               multiline
@@ -258,6 +408,63 @@ export default function NewTicketScreen() {
               textAlignVertical="top"
               value={description}
             />
+
+            <FieldLabel label="FOTOS (OPTIONAL)" />
+            <View style={styles.photoActions}>
+              <Pressable
+                accessibilityRole="button"
+                disabled={photos.length >= MAX_NEW_TICKET_PHOTOS}
+                onPress={() => void addPhoto("camera")}
+                style={styles.photoButton}
+              >
+                <Ionicons
+                  color={colors.primaryText}
+                  name="camera-outline"
+                  size={20}
+                />
+                <Text style={styles.photoButtonText}>Foto aufnehmen</Text>
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                disabled={photos.length >= MAX_NEW_TICKET_PHOTOS}
+                onPress={() => void addPhoto("library")}
+                style={styles.photoButton}
+              >
+                <Ionicons
+                  color={colors.primaryText}
+                  name="images-outline"
+                  size={20}
+                />
+                <Text style={styles.photoButtonText}>Aus Mediathek</Text>
+              </Pressable>
+            </View>
+            {photos.length > 0 ? (
+              <View style={styles.photoRow}>
+                {photos.map((photo, index) => (
+                  <View key={`${photo.uri}-${index}`} style={styles.photoThumb}>
+                    <Image
+                      accessibilityLabel={`Foto ${index + 1}`}
+                      contentFit="cover"
+                      source={{ uri: photo.uri }}
+                      style={styles.photoImage}
+                    />
+                    <Pressable
+                      accessibilityLabel={`Foto ${index + 1} entfernen`}
+                      accessibilityRole="button"
+                      hitSlop={8}
+                      onPress={() =>
+                        setPhotos((current) =>
+                          current.filter((_, position) => position !== index),
+                        )
+                      }
+                      style={styles.photoRemove}
+                    >
+                      <Ionicons color="#ffffff" name="close" size={14} />
+                    </Pressable>
+                  </View>
+                ))}
+              </View>
+            ) : null}
 
             <FieldLabel label="ABTEILUNG" />
             <View style={styles.choiceList}>
@@ -360,6 +567,33 @@ function FieldLabel({ label }: { label: string }) {
 }
 
 const useStyles = makeThemedStyles((c) => ({
+  photoActions: { flexDirection: "row", gap: 10 },
+  photoButton: {
+    alignItems: "center",
+    backgroundColor: c.primarySoft,
+    borderRadius: 14,
+    flex: 1,
+    flexDirection: "row",
+    gap: 8,
+    justifyContent: "center",
+    minHeight: 46,
+    paddingHorizontal: 12,
+  },
+  photoButtonText: { color: c.primaryText, fontSize: 13, fontWeight: "800" },
+  photoImage: { borderRadius: 12, height: "100%", width: "100%" },
+  photoRemove: {
+    alignItems: "center",
+    backgroundColor: "rgba(0,0,0,0.6)",
+    borderRadius: 11,
+    height: 22,
+    justifyContent: "center",
+    position: "absolute",
+    right: 4,
+    top: 4,
+    width: 22,
+  },
+  photoRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  photoThumb: { height: 76, width: 76 },
   content: { gap: 16, paddingTop: 14, paddingBottom: 320 },
   offlineGuard: {
     alignItems: "center",
