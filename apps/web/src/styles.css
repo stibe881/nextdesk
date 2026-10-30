@@ -18214,3 +18214,10 @@ html:has(.embed-status-badge) body {
 .access-toggle:hover:not(:disabled) {
   opacity: 1;
 }
+
+.ticket-detail-primary > .ticket-conversation {
+  max-height: min(62vh, 680px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 6px;
+}
