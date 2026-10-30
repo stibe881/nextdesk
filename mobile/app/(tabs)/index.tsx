@@ -17,6 +17,7 @@ import { IncidentBanner } from "@/components/incident-banner";
 import { useMobileFeatures } from "@/components/mobile-feature-gate";
 import { useMobileNetworkStatus } from "@/components/offline-status";
 import { ScreenContainer } from "@/components/screen-container";
+import { TicketSwipeActions } from "@/components/ticket-swipe-actions";
 import {
   getMyMetrics,
   isNextDeskPortalUnavailableError,
@@ -37,7 +38,17 @@ import {
   nextDesk,
   type MobileTenant,
 } from "@/lib/nextdesk-client";
-import { listRecentTicketIds } from "@/lib/mobile-private-state";
+import {
+  listFavoriteTicketIds,
+  listRecentTicketIds,
+  setFavoriteTicket,
+} from "@/lib/mobile-private-state";
+import {
+  deleteMobileTicket,
+  dueToday,
+  followUpTitle,
+} from "@/lib/mobile-ticket-actions";
+import { saveFollowUp } from "@/lib/nextdesk-experience";
 import {
   loadMobileDashboard,
   loadMobileTicketsByIds,
@@ -112,7 +123,7 @@ const NO_TICKET_IDS: string[] = [];
 export default function HomeScreen() {
   const router = useRouter();
   const { width } = useWindowDimensions();
-  const { recoveryEpoch } = useMobileNetworkStatus();
+  const { isOffline, recoveryEpoch } = useMobileNetworkStatus();
   const {
     error: featureError,
     isEnabled,
@@ -415,6 +426,12 @@ export default function HomeScreen() {
     ids: string[];
     tenantId: string;
   } | null>(null);
+  const [favoriteState, setFavoriteState] = useState<{
+    ids: string[];
+    tenantId: string;
+    userId: string;
+  } | null>(null);
+  const [actionMessage, setActionMessage] = useState("");
   useFocusEffect(
     useCallback(() => {
       if (!tenantId) return;
@@ -423,7 +440,11 @@ export default function HomeScreen() {
         try {
           const userId = await getMobileUserId();
           const ids = await listRecentTicketIds({ userId, tenantId });
-          if (!cancelled) setRecentTicketState({ ids, tenantId });
+          const favorites = await listFavoriteTicketIds({ userId, tenantId });
+          if (!cancelled) {
+            setRecentTicketState({ ids, tenantId });
+            setFavoriteState({ ids: favorites, tenantId, userId });
+          }
         } catch {
           if (!cancelled) setRecentTicketState({ ids: [], tenantId });
         }
@@ -437,6 +458,73 @@ export default function HomeScreen() {
     recentTicketState && recentTicketState.tenantId === tenantId
       ? recentTicketState.ids
       : NO_TICKET_IDS;
+  const favoriteIds =
+    favoriteState && favoriteState.tenantId === tenantId
+      ? favoriteState.ids
+      : NO_TICKET_IDS;
+  const workspaceEnabled = isEnabled("experience.workspace");
+
+  async function toggleFavorite(ticket: MobileTicket) {
+    if (!favoriteState || favoriteState.tenantId !== tenantId) return;
+    const nextFavorite = !favoriteIds.includes(ticket.id);
+    setActionMessage("");
+    try {
+      const ids = await setFavoriteTicket({
+        favorite: nextFavorite,
+        tenantId: favoriteState.tenantId,
+        ticketId: ticket.id,
+        userId: favoriteState.userId,
+      });
+      setFavoriteState({ ...favoriteState, ids });
+      setActionMessage(
+        nextFavorite
+          ? `«${ticket.ticketNumber}» wurde zu Favoriten hinzugefügt.`
+          : `«${ticket.ticketNumber}» wurde aus Favoriten entfernt.`,
+      );
+    } catch {
+      setActionMessage("Der Favorit konnte nicht gespeichert werden.");
+    }
+  }
+
+  async function createFollowUp(ticket: MobileTicket) {
+    setActionMessage("");
+    try {
+      await saveFollowUp({
+        description: null,
+        dueAt: dueToday(),
+        priority: "normal",
+        ticketId: ticket.id,
+        title: followUpTitle(ticket),
+      });
+      setActionMessage(
+        `Wiedervorlage für «${ticket.ticketNumber}» für heute gesetzt.`,
+      );
+    } catch (nextError) {
+      setActionMessage(
+        nextError instanceof Error
+          ? nextError.message
+          : "Die Wiedervorlage konnte nicht gesetzt werden.",
+      );
+    }
+  }
+
+  async function deleteTicket(ticket: MobileTicket) {
+    setActionMessage("");
+    try {
+      await deleteMobileTicket(ticket.id);
+      setTickets((current) => current.filter((item) => item.id !== ticket.id));
+      setExtraTickets((current) =>
+        current.filter((item) => item.id !== ticket.id),
+      );
+      setActionMessage(`«${ticket.ticketNumber}» wurde gelöscht.`);
+    } catch (nextError) {
+      setActionMessage(
+        nextError instanceof Error
+          ? nextError.message
+          : "Das Ticket konnte nicht gelöscht werden.",
+      );
+    }
+  }
 
   const activeBranding =
     branding && branding.tenantId === brandingTenantId ? branding.value : null;
@@ -964,6 +1052,14 @@ export default function HomeScreen() {
           </Pressable>
         </View>
 
+        {actionMessage ? (
+          <Text
+            accessibilityLiveRegion="polite"
+            style={[styles.sectionSub, tokenStyles.muted]}
+          >
+            {actionMessage}
+          </Text>
+        ) : null}
         {visibleTickets.length === 0 ? (
           <View style={[styles.emptyList, tokenStyles.card]}>
             <Text style={[styles.emptyText, tokenStyles.muted]}>
@@ -977,92 +1073,108 @@ export default function HomeScreen() {
             {visibleTickets
               .slice(0, isFocusScope(ticketScope) ? 100 : 10)
               .map((ticket) => (
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityState={{
-                    disabled: checkingFeatures || !ticketDetailsEnabled,
-                  }}
-                  disabled={checkingFeatures || !ticketDetailsEnabled}
-                  key={ticket.id}
-                  onPress={() =>
-                    router.push({
-                      pathname: "/ticket/[id]",
-                      params: { id: ticket.id },
-                    })
+                <TicketSwipeActions
+                  canDelete={!isOffline && !checkingFeatures}
+                  canFavorite={favoriteState?.tenantId === tenantId}
+                  canFollowUp={
+                    workspaceEnabled && !isOffline && !checkingFeatures
                   }
-                  style={[
-                    styles.ticket,
-                    tokenStyles.card,
-                    (checkingFeatures || !ticketDetailsEnabled) &&
-                      styles.ticketDisabled,
-                  ]}
+                  enabled
+                  favorite={favoriteIds.includes(ticket.id)}
+                  key={ticket.id}
+                  onDelete={() => void deleteTicket(ticket)}
+                  onFavorite={() => void toggleFavorite(ticket)}
+                  onFollowUp={() => void createFollowUp(ticket)}
+                  ticketNumber={ticket.ticketNumber}
                 >
-                  <View
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityState={{
+                      disabled: checkingFeatures || !ticketDetailsEnabled,
+                    }}
+                    disabled={checkingFeatures || !ticketDetailsEnabled}
+                    onPress={() =>
+                      router.push({
+                        pathname: "/ticket/[id]",
+                        params: { id: ticket.id },
+                      })
+                    }
                     style={[
-                      styles.ticketMark,
-                      {
-                        backgroundColor: ticket.resolved
-                          ? colors.success
-                          : colors.primary,
-                      },
+                      styles.ticket,
+                      tokenStyles.card,
+                      (checkingFeatures || !ticketDetailsEnabled) &&
+                        styles.ticketDisabled,
                     ]}
-                  />
-                  <View style={styles.ticketContent}>
-                    <Text style={[styles.ticketId, tokenStyles.muted]}>
-                      {ticket.ticketNumber}
-                    </Text>
-                    <Text
-                      numberOfLines={1}
-                      style={[styles.ticketTitle, tokenStyles.foreground]}
-                    >
-                      {ticket.subject}
-                    </Text>
-                    <Text style={[styles.ticketMeta, tokenStyles.muted]}>
-                      {ticket.priority}
-                    </Text>
-                  </View>
-                  <View style={styles.ticketRight}>
+                  >
                     <View
-                      accessibilityLabel={`Status: ${ticket.status}`}
                       style={[
-                        styles.status,
+                        styles.ticketMark,
                         {
                           backgroundColor: ticket.resolved
-                            ? colors.successSoft
-                            : colors.primarySoft,
+                            ? colors.success
+                            : colors.primary,
                         },
                       ]}
-                    >
-                      <Ionicons
-                        color={
-                          ticket.resolved ? colors.success : colors.primaryText
-                        }
-                        name={
-                          ticket.resolved
-                            ? "checkmark-circle-outline"
-                            : "time-outline"
-                        }
-                        size={13}
-                      />
+                    />
+                    <View style={styles.ticketContent}>
+                      <Text style={[styles.ticketId, tokenStyles.muted]}>
+                        {ticket.ticketNumber}
+                      </Text>
                       <Text
-                        style={{
-                          color: ticket.resolved
-                            ? colors.success
-                            : colors.primaryText,
-                          fontSize: 10,
-                          fontWeight: "800",
-                        }}
+                        numberOfLines={1}
+                        style={[styles.ticketTitle, tokenStyles.foreground]}
                       >
-                        {ticket.status}
+                        {ticket.subject}
+                      </Text>
+                      <Text style={[styles.ticketMeta, tokenStyles.muted]}>
+                        {ticket.priority}
                       </Text>
                     </View>
-                    <Ionicons
-                      color={colors.subtle}
-                      name="chevron-forward"
-                      size={18}
-                    />
-                  </View>
-                </Pressable>
+                    <View style={styles.ticketRight}>
+                      <View
+                        accessibilityLabel={`Status: ${ticket.status}`}
+                        style={[
+                          styles.status,
+                          {
+                            backgroundColor: ticket.resolved
+                              ? colors.successSoft
+                              : colors.primarySoft,
+                          },
+                        ]}
+                      >
+                        <Ionicons
+                          color={
+                            ticket.resolved
+                              ? colors.success
+                              : colors.primaryText
+                          }
+                          name={
+                            ticket.resolved
+                              ? "checkmark-circle-outline"
+                              : "time-outline"
+                          }
+                          size={13}
+                        />
+                        <Text
+                          style={{
+                            color: ticket.resolved
+                              ? colors.success
+                              : colors.primaryText,
+                            fontSize: 10,
+                            fontWeight: "800",
+                          }}
+                        >
+                          {ticket.status}
+                        </Text>
+                      </View>
+                      <Ionicons
+                        color={colors.subtle}
+                        name="chevron-forward"
+                        size={18}
+                      />
+                    </View>
+                  </Pressable>
+                </TicketSwipeActions>
               ))}
             {visibleTickets.length > 10 ? (
               <Pressable

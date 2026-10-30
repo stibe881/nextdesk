@@ -12,15 +12,20 @@ import {
   useWindowDimensions,
   View,
 } from "react-native";
-import Swipeable from "react-native-gesture-handler/Swipeable";
 
 import { ScreenContainer } from "@/components/screen-container";
+import { TicketSwipeActions } from "@/components/ticket-swipe-actions";
 import { useMobileFeatures } from "@/components/mobile-feature-gate";
 import { useMobileNetworkStatus } from "@/components/offline-status";
 import {
   isExperienceUnavailableError,
   saveFollowUp,
 } from "@/lib/nextdesk-experience";
+import {
+  deleteMobileTicket,
+  dueToday,
+  followUpTitle,
+} from "@/lib/mobile-ticket-actions";
 import { isNextDeskConfigured, nextDesk } from "@/lib/nextdesk-client";
 import { loadMobileDashboard, type MobileTicket } from "@/lib/nextdesk-tickets";
 import {
@@ -50,20 +55,6 @@ function offlineCacheTimestamp(value: string): string {
     minute: "2-digit",
     month: "short",
   }).format(timestamp);
-}
-
-function followUpTitle(ticket: MobileTicket): string {
-  return (
-    Array.from(`${ticket.ticketNumber}: ${ticket.subject}`.trim())
-      .slice(0, 240)
-      .join("") || "Ticket-Wiedervorlage"
-  );
-}
-
-function dueToday(): string {
-  const due = new Date();
-  due.setHours(23, 59, 59, 999);
-  return due.toISOString();
 }
 
 export default function TicketsScreen() {
@@ -248,6 +239,22 @@ export default function TicketsScreen() {
       );
     } finally {
       setCreatingFollowUpFor(null);
+    }
+  }
+
+  async function deleteTicket(ticket: MobileTicket) {
+    setError("");
+    setMessage("");
+    try {
+      await deleteMobileTicket(ticket.id);
+      setTickets((current) => current.filter((item) => item.id !== ticket.id));
+      setMessage(`«${ticket.ticketNumber}» wurde gelöscht.`);
+    } catch (nextError) {
+      setError(
+        nextError instanceof Error
+          ? nextError.message
+          : "Das Ticket konnte nicht gelöscht werden.",
+      );
     }
   }
 
@@ -549,7 +556,8 @@ export default function TicketsScreen() {
             workspaceEnabled &&
             workspaceAvailable ? (
               <Text style={[styles.gestureHint, tokenStyles.muted]}>
-                Nach rechts oder links wischen für schnelle Aktionen.
+                Nach rechts wischen: Favorit oder Wiedervorlage. Nach links:
+                löschen.
               </Text>
             ) : null}
           </View>
@@ -594,7 +602,9 @@ export default function TicketsScreen() {
                   densityStyle={densityStyles.ticket}
                   favorite={favoriteIds.includes(ticket.id)}
                   key={ticket.id}
+                  canDelete={!isOffline && !offlineCacheAt && !checkingFeatures}
                   onCreateFollowUp={() => void createFollowUp(ticket)}
+                  onDelete={() => void deleteTicket(ticket)}
                   onFavorite={() => void toggleFavorite(ticket)}
                   onLongPress={() => openTicketActions(ticket)}
                   onPress={() => {
@@ -630,6 +640,8 @@ export default function TicketsScreen() {
 function SwipeableTicketRow({
   actionsDisabled,
   canCreateFollowUp,
+  canDelete,
+  onDelete,
   densityStyle,
   favorite,
   onCreateFollowUp,
@@ -642,9 +654,11 @@ function SwipeableTicketRow({
 }: {
   actionsDisabled: boolean;
   canCreateFollowUp: boolean;
+  canDelete: boolean;
   densityStyle: { padding: number };
   favorite: boolean;
   onCreateFollowUp: () => void;
+  onDelete: () => void;
   onFavorite: () => void;
   onLongPress: () => void;
   onPress: () => void;
@@ -652,69 +666,19 @@ function SwipeableTicketRow({
   swipeEnabled: boolean;
   ticket: MobileTicket;
 }) {
-  const colors = useAppColors();
-  const styles = useStyles();
-  const swipeable = useRef<Swipeable>(null);
   const actionsAvailable = !actionsDisabled;
-  const followUpAvailable = actionsAvailable && canCreateFollowUp;
-
-  const closeAndRun = (action: () => void) => {
-    swipeable.current?.close();
-    action();
-  };
 
   return (
-    <Swipeable
-      enabled={actionsAvailable && swipeEnabled}
-      friction={2}
-      overshootLeft={false}
-      overshootRight={false}
-      ref={swipeable}
-      renderLeftActions={() => (
-        <Pressable
-          accessibilityLabel={
-            favorite ? "Aus Favoriten entfernen" : "Zu Favoriten hinzufügen"
-          }
-          accessibilityRole="button"
-          onPress={() => closeAndRun(onFavorite)}
-          style={[
-            styles.swipeAction,
-            { backgroundColor: colors.warningStrong },
-          ]}
-        >
-          <Ionicons
-            color={colors.onWarningStrong}
-            name={favorite ? "star-outline" : "star"}
-            size={20}
-          />
-          <Text
-            style={[styles.swipeActionText, { color: colors.onWarningStrong }]}
-          >
-            {favorite ? "Entfernen" : "Favorit"}
-          </Text>
-        </Pressable>
-      )}
-      renderRightActions={() =>
-        followUpAvailable ? (
-          <Pressable
-            accessibilityLabel="Wiedervorlage für heute setzen"
-            accessibilityRole="button"
-            onPress={() => closeAndRun(onCreateFollowUp)}
-            style={[styles.swipeAction, { backgroundColor: colors.primary }]}
-          >
-            <Ionicons
-              color={colors.onPrimary}
-              name="calendar-outline"
-              size={20}
-            />
-            <Text style={[styles.swipeActionText, { color: colors.onPrimary }]}>
-              Wiedervorlage
-            </Text>
-          </Pressable>
-        ) : (
-          <View />
-        )
-      }
+    <TicketSwipeActions
+      canDelete={actionsAvailable && canDelete}
+      canFavorite={actionsAvailable}
+      canFollowUp={actionsAvailable && canCreateFollowUp}
+      enabled={swipeEnabled}
+      favorite={favorite}
+      onDelete={onDelete}
+      onFavorite={onFavorite}
+      onFollowUp={onCreateFollowUp}
+      ticketNumber={ticket.ticketNumber}
     >
       <TicketRow
         actionsDisabled={actionsDisabled}
@@ -728,7 +692,7 @@ function SwipeableTicketRow({
         openDisabled={openDisabled}
         ticket={ticket}
       />
-    </Swipeable>
+    </TicketSwipeActions>
   );
 }
 
@@ -1067,16 +1031,6 @@ const useStyles = makeThemedStyles((c) => ({
   statusResolved: { backgroundColor: c.successSoft },
   statusText: { fontSize: 10, fontWeight: "900" },
   subtitle: { fontSize: 13, marginTop: 3 },
-  swipeAction: {
-    alignItems: "center",
-    borderRadius: 18,
-    gap: 4,
-    justifyContent: "center",
-    marginVertical: 1,
-    minWidth: 112,
-    paddingHorizontal: 12,
-  },
-  swipeActionText: { fontSize: 11, fontWeight: "900" },
   ticket: {
     alignItems: "stretch",
     borderRadius: 18,
