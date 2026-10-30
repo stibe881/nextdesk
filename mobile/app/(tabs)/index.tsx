@@ -32,10 +32,12 @@ import {
   type PortalIncidentNotice,
 } from "@/lib/nextdesk-portal";
 import {
+  getMobileUserId,
   isNextDeskConfigured,
   nextDesk,
   type MobileTenant,
 } from "@/lib/nextdesk-client";
+import { listRecentTicketIds } from "@/lib/mobile-private-state";
 import {
   loadMobileDashboard,
   loadMobileTicketsByIds,
@@ -104,6 +106,8 @@ function compactDeviceDetail(device: PortalDevice): string | null {
 function firstReason(value: string): string {
   return value.trim() || "Freigabe ausstehend";
 }
+
+const NO_TICKET_IDS: string[] = [];
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -406,6 +410,34 @@ export default function HomeScreen() {
     }, [brandingTenantId, loadBranding, recoveryEpoch]),
   );
 
+  // Zuletzt geöffnete Tickets dieses Kontos (nur IDs, lokal gespeichert).
+  const [recentTicketState, setRecentTicketState] = useState<{
+    ids: string[];
+    tenantId: string;
+  } | null>(null);
+  useFocusEffect(
+    useCallback(() => {
+      if (!tenantId) return;
+      let cancelled = false;
+      void (async () => {
+        try {
+          const userId = await getMobileUserId();
+          const ids = await listRecentTicketIds({ userId, tenantId });
+          if (!cancelled) setRecentTicketState({ ids, tenantId });
+        } catch {
+          if (!cancelled) setRecentTicketState({ ids: [], tenantId });
+        }
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }, [tenantId]),
+  );
+  const recentTicketIds =
+    recentTicketState && recentTicketState.tenantId === tenantId
+      ? recentTicketState.ids
+      : NO_TICKET_IDS;
+
   const activeBranding =
     branding && branding.tenantId === brandingTenantId ? branding.value : null;
   const configuredLogoUrl = activeBranding?.logoUrl ?? null;
@@ -463,8 +495,11 @@ export default function HomeScreen() {
     () =>
       isFocusScope(ticketScope)
         ? (visibleAgentMetrics?.ticketIds?.[ticketScope] ?? [])
-        : [],
-    [ticketScope, visibleAgentMetrics],
+        : ticketScope === "all"
+          ? // Zuletzt geöffnete Tickets, die nicht in der Liste stehen, werden nachgeladen.
+            recentTicketIds.slice(0, 5)
+          : [],
+    [recentTicketIds, ticketScope, visibleAgentMetrics],
   );
   const missingFocusIds = useMemo(() => {
     const known = new Set([
@@ -522,6 +557,16 @@ export default function HomeScreen() {
       return focusTicketIds
         .map((id) => byId.get(id))
         .filter((ticket): ticket is MobileTicket => ticket !== undefined);
+    }
+    if (ticketScope === "all") {
+      // Ohne Filter nur die fünf zuletzt geöffneten Tickets.
+      const byId = new Map(
+        [...extraTickets, ...tickets].map((ticket) => [ticket.id, ticket]),
+      );
+      return recentTicketIds
+        .map((id) => byId.get(id))
+        .filter((ticket): ticket is MobileTicket => ticket !== undefined)
+        .slice(0, 5);
     }
     return tickets.filter((ticket) => {
       if (ticketScope === "mine") return ticket.assignedToCurrentUser;
@@ -892,12 +937,12 @@ export default function HomeScreen() {
           <View>
             <Text style={[styles.sectionTitle, tokenStyles.foreground]}>
               {ticketScope === "all"
-                ? "Aktuelle Tickets"
+                ? "Zuletzt geöffnet"
                 : ticketScopeLabels[ticketScope]}
             </Text>
             <Text style={[styles.sectionSub, tokenStyles.muted]}>
               {ticketScope === "all"
-                ? "Deine zuletzt bearbeiteten Vorgänge"
+                ? "Die fünf Tickets, die du zuletzt geöffnet hast"
                 : focusLoading
                   ? "Passende Tickets werden geladen …"
                   : ticketScope === "firstResponse"
@@ -922,7 +967,9 @@ export default function HomeScreen() {
         {visibleTickets.length === 0 ? (
           <View style={[styles.emptyList, tokenStyles.card]}>
             <Text style={[styles.emptyText, tokenStyles.muted]}>
-              Keine passenden Tickets vorhanden.
+              {ticketScope === "all"
+                ? "Du hast noch kein Ticket geöffnet."
+                : "Keine passenden Tickets vorhanden."}
             </Text>
           </View>
         ) : (

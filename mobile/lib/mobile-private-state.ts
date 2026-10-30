@@ -43,6 +43,8 @@ type PrivateState = {
   deviceProtection?: boolean;
   drafts: Record<string, LocalTicketDraft>;
   favorites: Record<string, string[]>;
+  /** Zuletzt geöffnete Ticket-IDs pro Mandant, neueste zuerst. */
+  recentTickets?: Record<string, string[]>;
   ticketCache?: TicketCacheDescriptor;
 };
 
@@ -75,6 +77,12 @@ function parseState(value: string | null): PrivateState {
       !Array.isArray(parsed.favorites)
         ? parsed.favorites
         : {};
+    const recentTickets =
+      parsed.recentTickets &&
+      typeof parsed.recentTickets === "object" &&
+      !Array.isArray(parsed.recentTickets)
+        ? parsed.recentTickets
+        : {};
     const candidate = parsed.ticketCache;
     const ticketCache =
       candidate &&
@@ -94,6 +102,7 @@ function parseState(value: string | null): PrivateState {
           : undefined,
       drafts,
       favorites,
+      recentTickets,
       ticketCache,
     };
   } catch {
@@ -154,6 +163,7 @@ export async function clearMobileWorkingData(userId: string): Promise<void> {
   const state = await readState(userId);
   state.drafts = {};
   state.favorites = {};
+  state.recentTickets = {};
   await removeTicketCacheChunks(userId);
   state.ticketCache = undefined;
   await writeState(userId, state);
@@ -255,6 +265,36 @@ export async function clearLocalTicketDraft(input: {
     : (["internal", "external"] as const)) {
     delete state.drafts[draftKey(input.tenantId, input.ticketId, visibility)];
   }
+  await writeState(input.userId, state);
+}
+
+const MAX_RECENT_TICKETS = 20;
+
+/** Ticket-IDs, die dieses Konto zuletzt geöffnet hat (neueste zuerst). */
+export async function listRecentTicketIds(input: {
+  userId: string;
+  tenantId: string;
+}): Promise<string[]> {
+  const state = await readState(input.userId);
+  const ids = state.recentTickets?.[input.tenantId];
+  return Array.isArray(ids)
+    ? ids.filter((id): id is string => typeof id === "string")
+    : [];
+}
+
+/** Merkt sich, dass ein Ticket geöffnet wurde. Es werden nur IDs gespeichert. */
+export async function recordRecentTicket(input: {
+  userId: string;
+  tenantId: string;
+  ticketId: string;
+}): Promise<void> {
+  const state = await readState(input.userId);
+  const recent = state.recentTickets ?? {};
+  recent[input.tenantId] = [
+    input.ticketId,
+    ...(recent[input.tenantId] ?? []).filter((id) => id !== input.ticketId),
+  ].slice(0, MAX_RECENT_TICKETS);
+  state.recentTickets = recent;
   await writeState(input.userId, state);
 }
 
