@@ -34,6 +34,11 @@ function WorkspaceGate({
             : "nextDesk wird geladen …"}
         </Text>
         {error ? (
+          <Text style={[styles.gateDetail, { color: colors.subtle }]}>
+            {error}
+          </Text>
+        ) : null}
+        {error ? (
           <Pressable
             accessibilityRole="button"
             onPress={onRetry}
@@ -116,6 +121,7 @@ const styles = StyleSheet.create({
     gap: 14,
     justifyContent: "center",
   },
+  gateDetail: { fontSize: 12, textAlign: "center" },
   gateText: { fontSize: 14, textAlign: "center" },
   overlay: {
     bottom: 0,
