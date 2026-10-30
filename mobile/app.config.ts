@@ -34,7 +34,8 @@ const env = {
     "https://files.manuscdn.com/user_upload_by_module/session_file/310519663166174123/iJmIGyxNgxjtJGVS.png",
   scheme: schemeFromBundleId,
   iosBundleId: bundleId,
-  androidPackage: bundleId,
+  // Google Play verlangt eine eigene Paket-ID; sie weicht bewusst von der iOS-Bundle-ID ab.
+  androidPackage: "ch.nextdesk.grossict",
 };
 
 // Expo serializes this browser-safe subset into native and web bundles. The server-only
