@@ -14,6 +14,10 @@ import {
 } from "react-native";
 
 import { ScreenContainer } from "@/components/screen-container";
+import {
+  TicketPriorityText,
+  TicketStatusBadge,
+} from "@/components/ticket-status-badge";
 import { TicketSwipeActions } from "@/components/ticket-swipe-actions";
 import { useMobileFeatures } from "@/components/mobile-feature-gate";
 import { useMobileNetworkStatus } from "@/components/offline-status";
@@ -726,11 +730,6 @@ function TicketRow({
     : ticket.status === "Neu"
       ? styles.markNew
       : styles.markActive;
-  const statusTone = ticket.resolved
-    ? styles.statusResolved
-    : ticket.status === "Neu"
-      ? styles.statusNew
-      : styles.statusActive;
   const accessibilityActions = [
     {
       label: favorite ? "Aus Favoriten entfernen" : "Zu Favoriten hinzufügen",
@@ -790,9 +789,7 @@ function TicketRow({
           >
             {ticket.subject}
           </Text>
-          <Text style={[styles.ticketMeta, { color: colors.muted }]}>
-            {ticket.priority}
-          </Text>
+          <TicketPriorityText priority={ticket.priority} />
         </View>
         <View style={styles.ticketState}>
           {favorite ? (
@@ -803,42 +800,7 @@ function TicketRow({
               </Text>
             </View>
           ) : null}
-          <View
-            accessibilityLabel={`Status: ${ticket.status}`}
-            style={[styles.status, statusTone]}
-          >
-            <Ionicons
-              color={
-                ticket.resolved
-                  ? colors.success
-                  : ticket.status === "Neu"
-                    ? colors.info
-                    : colors.primaryText
-              }
-              name={
-                ticket.resolved
-                  ? "checkmark-circle-outline"
-                  : ticket.status === "Neu"
-                    ? "sparkles-outline"
-                    : "time-outline"
-              }
-              size={14}
-            />
-            <Text
-              style={[
-                styles.statusText,
-                {
-                  color: ticket.resolved
-                    ? colors.success
-                    : ticket.status === "Neu"
-                      ? colors.info
-                      : colors.primaryText,
-                },
-              ]}
-            >
-              {ticket.status}
-            </Text>
-          </View>
+          <TicketStatusBadge ticket={ticket} />
           <Ionicons color={colors.subtle} name="chevron-forward" size={18} />
         </View>
       </Pressable>

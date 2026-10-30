@@ -18,6 +18,10 @@ import { IncidentBanner } from "@/components/incident-banner";
 import { useMobileFeatures } from "@/components/mobile-feature-gate";
 import { useMobileNetworkStatus } from "@/components/offline-status";
 import { ScreenContainer } from "@/components/screen-container";
+import {
+  TicketPriorityText,
+  TicketStatusBadge,
+} from "@/components/ticket-status-badge";
 import { TicketSwipeActions } from "@/components/ticket-swipe-actions";
 import {
   getMyMetrics,
@@ -1159,47 +1163,10 @@ export default function HomeScreen() {
                       >
                         {ticket.subject}
                       </Text>
-                      <Text style={[styles.ticketMeta, tokenStyles.muted]}>
-                        {ticket.priority}
-                      </Text>
+                      <TicketPriorityText priority={ticket.priority} />
                     </View>
                     <View style={styles.ticketRight}>
-                      <View
-                        accessibilityLabel={`Status: ${ticket.status}`}
-                        style={[
-                          styles.status,
-                          {
-                            backgroundColor: ticket.resolved
-                              ? colors.successSoft
-                              : colors.primarySoft,
-                          },
-                        ]}
-                      >
-                        <Ionicons
-                          color={
-                            ticket.resolved
-                              ? colors.success
-                              : colors.primaryText
-                          }
-                          name={
-                            ticket.resolved
-                              ? "checkmark-circle-outline"
-                              : "time-outline"
-                          }
-                          size={13}
-                        />
-                        <Text
-                          style={{
-                            color: ticket.resolved
-                              ? colors.success
-                              : colors.primaryText,
-                            fontSize: 10,
-                            fontWeight: "800",
-                          }}
-                        >
-                          {ticket.status}
-                        </Text>
-                      </View>
+                      <TicketStatusBadge ticket={ticket} />
                       <Ionicons
                         color={colors.subtle}
                         name="chevron-forward"
