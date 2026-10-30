@@ -416,13 +416,9 @@ export default function HomeScreen() {
       : null;
   const brandName = activeBranding?.portalName ?? "nextDesk";
   const hasCustomName = Boolean(activeBranding?.portalName);
-  // Der Mandantenname bleibt als Unterzeile, ausser der Portalname enthält ihn.
-  const showTenantLine =
-    !tenant ||
-    !hasCustomName ||
-    !brandName
-      .toLocaleLowerCase("de-CH")
-      .includes(tenant.name.toLocaleLowerCase("de-CH"));
+  // Nur anzeigen, was unter Einstellungen > Design hinterlegt ist: Logo und
+  // Portalname. Ohne eigenes Logo bleibt "nextDesk" als Wortmarke bestehen.
+  const showBrandText = hasCustomName || !customLogoUrl;
 
   useEffect(() => {
     if (!configuredLogoUrl) return;
@@ -679,27 +675,21 @@ export default function HomeScreen() {
                   style={styles.brandLogo}
                 />
               )}
-              <Text
-                adjustsFontSizeToFit
-                minimumFontScale={0.8}
-                numberOfLines={hasCustomName ? 2 : 1}
-                style={[
-                  styles.brand,
-                  hasCustomName && styles.brandCustom,
-                  tokenStyles.foreground,
-                ]}
-              >
-                {brandName}
-              </Text>
+              {showBrandText ? (
+                <Text
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.8}
+                  numberOfLines={hasCustomName ? 2 : 1}
+                  style={[
+                    styles.brand,
+                    hasCustomName && styles.brandCustom,
+                    tokenStyles.foreground,
+                  ]}
+                >
+                  {brandName}
+                </Text>
+              ) : null}
             </View>
-            {showTenantLine ? (
-              <Text
-                numberOfLines={1}
-                style={[styles.greeting, tokenStyles.muted]}
-              >
-                {tenant?.name ?? "Dein Arbeitsbereich"}
-              </Text>
-            ) : null}
           </View>
           <Pressable
             accessibilityLabel="Persönliche Einstellungen öffnen"
@@ -1495,7 +1485,6 @@ const useStyles = makeThemedStyles(() => ({
   emptyText: { fontSize: 13, textAlign: "center" },
   errorBox: { borderRadius: 14, borderWidth: 1, gap: 7, padding: 13 },
   errorText: { fontSize: 13, lineHeight: 18 },
-  greeting: { fontSize: 13, marginTop: 2 },
   header: {
     alignItems: "center",
     flexDirection: "row",
