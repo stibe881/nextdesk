@@ -1058,11 +1058,16 @@ async function myMetrics(
   action: Action,
   actorId: string,
 ): Promise<Response> {
-  const [rows, statuses] = await Promise.all([
+  // Erste Antwort und Lösung zählen nur für die Person, die sie ausgeführt hat.
+  // Sie werden über deren eigene Ticket-Ereignisse der letzten 30 Tage erkannt.
+  const sinceIso = new Date(
+    Date.now() - 30 * 24 * 60 * 60 * 1000,
+  ).toISOString();
+  const [rows, statuses, ownEvents] = await Promise.all([
     admin
       .from("tickets")
       .select(
-        "id, assigned_team_id, status_id, created_at, first_responded_at, resolved_at, response_due_at, resolution_due_at",
+        "id, assigned_agent_id, assigned_team_id, status_id, created_at, first_responded_at, resolved_at, response_due_at, resolution_due_at",
       )
       .eq("tenant_id", action.tenantId)
       .eq("assigned_agent_id", actorId)
@@ -1073,9 +1078,80 @@ async function myMetrics(
       .select("id, is_closed")
       .eq("tenant_id", action.tenantId)
       .limit(500),
+    admin
+      .from("ticket_events")
+      .select("ticket_id, event_type, payload, created_at")
+      .eq("actor_id", actorId)
+      .in("event_type", [
+        "ticket.closed",
+        "ticket.bulk_status_updated",
+        "comment.external_added",
+        "ticket.knowledge.sent",
+      ])
+      .gte("created_at", sinceIso)
+      .order("created_at", { ascending: false })
+      .limit(2000),
   ]);
   if (rows.error) db(rows.error);
   if (statuses.error) db(statuses.error);
+  if (ownEvents.error) db(ownEvents.error);
+  const closeEventTimes = new Map<string, number[]>();
+  const responseEventTimes = new Map<string, number[]>();
+  const pushEventTime = (
+    target: Map<string, number[]>,
+    ticketId: string,
+    createdAt: unknown,
+  ) => {
+    const time = typeof createdAt === "string" ? Date.parse(createdAt) : NaN;
+    if (!Number.isFinite(time)) return;
+    target.set(ticketId, [...(target.get(ticketId) ?? []), time]);
+  };
+  for (const event of ownEvents.data ?? []) {
+    if (!isUuid(event.ticket_id)) continue;
+    if (event.event_type === "ticket.closed") {
+      pushEventTime(closeEventTimes, event.ticket_id, event.created_at);
+    } else if (event.event_type === "ticket.bulk_status_updated") {
+      if (isRecord(event.payload) && event.payload.confirmedClose === true)
+        pushEventTime(closeEventTimes, event.ticket_id, event.created_at);
+    } else {
+      pushEventTime(responseEventTimes, event.ticket_id, event.created_at);
+    }
+  }
+  // Tickets, die nicht mir zugewiesen sind, aber von mir gelöst oder
+  // beantwortet wurden.
+  const assignedRowIds = new Set(
+    (rows.data ?? []).map((entry) => String(entry.id)),
+  );
+  const extraTicketIds = [
+    ...new Set([...closeEventTimes.keys(), ...responseEventTimes.keys()]),
+  ]
+    .filter((id) => !assignedRowIds.has(id))
+    .slice(0, 300);
+  let extraRows: NonNullable<typeof rows.data> = [];
+  if (extraTicketIds.length > 0) {
+    const extra = await admin
+      .from("tickets")
+      .select(
+        "id, assigned_agent_id, assigned_team_id, status_id, created_at, first_responded_at, resolved_at, response_due_at, resolution_due_at",
+      )
+      .eq("tenant_id", action.tenantId)
+      .in("id", extraTicketIds);
+    if (extra.error) db(extra.error);
+    extraRows = extra.data ?? [];
+  }
+  // Zeitpunkte, die weniger als zwei Minuten auseinanderliegen, gehören zur
+  // selben Aktion (Ereignis und Ticketfeld werden in einer Anfrage geschrieben).
+  const matchesOwnEvent = (
+    events: Map<string, number[]>,
+    ticketId: string,
+    at: unknown,
+  ) => {
+    const target = typeof at === "string" ? Date.parse(at) : NaN;
+    if (!Number.isFinite(target)) return false;
+    return (events.get(ticketId) ?? []).some(
+      (time) => Math.abs(time - target) <= 120_000,
+    );
+  };
   // Dieselbe Regel wie die Ticketlisten in Web und App: Ein Ticket ist offen,
   // solange sein Status nicht als abgeschlossen markiert ist.
   const closedStatusIds = new Set(
@@ -1092,6 +1168,8 @@ async function myMetrics(
     }).format(value);
   const today = zurichDate(new Date());
   const responseMinutes: number[] = [];
+  const resolutionMinutes: number[] = [];
+  const resolutionIds: string[] = [];
   // Ticket-IDs je Kennzahl, damit Web und App beim Antippen genau die
   // gezählten Tickets anzeigen können (neueste zuerst, begrenzt).
   const maxIds = 100;
@@ -1112,7 +1190,7 @@ async function myMetrics(
   let solvedToday = 0;
   const readableRows = (
     await Promise.all(
-      (rows.data ?? []).map(async (entry) => {
+      [...(rows.data ?? []), ...extraRows].map(async (entry) => {
         if (!isUuid(entry.id)) return null;
         const { data: readable, error } = await client.rpc("can_read_ticket", {
           p_ticket_id: entry.id,
@@ -1123,7 +1201,8 @@ async function myMetrics(
   ).filter((entry): entry is NonNullable<typeof entry> => entry !== null);
   for (const entry of readableRows) {
     const closed = closedStatusIds.has(entry.status_id);
-    if (!closed) {
+    const assignedToMe = entry.assigned_agent_id === actorId;
+    if (!closed && assignedToMe) {
       open += 1;
       if (assignedIds.length < maxIds) assignedIds.push(entry.id);
       const responseDue =
@@ -1140,17 +1219,31 @@ async function myMetrics(
       if (dues.length > 0)
         slaDueEntries.push({ id: entry.id, dueAt: Math.min(...dues) });
     }
+    const resolvedByMe =
+      closed && matchesOwnEvent(closeEventTimes, entry.id, entry.resolved_at);
     if (
       closed &&
       typeof entry.resolved_at === "string" &&
+      (assignedToMe || resolvedByMe) &&
       zurichDate(new Date(entry.resolved_at)) === today
     ) {
       solvedToday += 1;
       if (solvedTodayIds.length < maxIds) solvedTodayIds.push(entry.id);
     }
     if (
+      resolvedByMe &&
       typeof entry.created_at === "string" &&
-      typeof entry.first_responded_at === "string"
+      typeof entry.resolved_at === "string"
+    ) {
+      resolutionMinutes.push(
+        (Date.parse(entry.resolved_at) - Date.parse(entry.created_at)) / 60000,
+      );
+      if (resolutionIds.length < maxIds) resolutionIds.push(entry.id);
+    }
+    if (
+      typeof entry.created_at === "string" &&
+      typeof entry.first_responded_at === "string" &&
+      matchesOwnEvent(responseEventTimes, entry.id, entry.first_responded_at)
     ) {
       responseMinutes.push(
         (Date.parse(entry.first_responded_at) - Date.parse(entry.created_at)) /
@@ -1162,6 +1255,10 @@ async function myMetrics(
   responseMinutes.sort((a, b) => a - b);
   const median = responseMinutes.length
     ? responseMinutes[Math.floor(responseMinutes.length / 2)]
+    : null;
+  resolutionMinutes.sort((a, b) => a - b);
+  const medianResolution = resolutionMinutes.length
+    ? resolutionMinutes[Math.floor(resolutionMinutes.length / 2)]
     : null;
   // Am längsten überfällige Tickets zuerst.
   slaDueEntries.sort((a, b) => a.dueAt - b.dueAt);
@@ -1194,6 +1291,7 @@ async function myMetrics(
         open,
         solvedToday,
         medianFirstResponseMinutes: median,
+        medianResolutionMinutes: medianResolution,
         // Bleibt für ältere App-Versionen erhalten (fällige Wiedervorlagen).
         dueFollowUps: dueTicketIds.length,
         slaDue: slaDueEntries.length,
@@ -1201,6 +1299,7 @@ async function myMetrics(
           assigned: assignedIds,
           solvedToday: solvedTodayIds,
           firstResponse: firstResponseIds,
+          resolution: resolutionIds,
           dueFollowUps: dueTicketIds,
           slaDue: slaDueIds,
         },

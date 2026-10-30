@@ -85,6 +85,8 @@ type Person = {
 type Metrics = {
   dueFollowUps: number;
   medianFirstResponseMinutes: number | null;
+  /** Fehlt bei älteren Serverständen. */
+  medianResolutionMinutes?: number | null;
   open: number;
   solvedToday: number;
   /** Fehlt bei älteren Serverständen. */
@@ -96,6 +98,7 @@ type MetricTicketIds = {
   assigned: string[];
   dueFollowUps: string[];
   firstResponse: string[];
+  resolution?: string[];
   slaDue?: string[];
   solvedToday: string[];
 };
@@ -165,6 +168,9 @@ function metricTicketIdsFromValue(value: unknown): MetricTicketIds | null {
   }
   const slaDue = value.slaDue;
   if (Array.isArray(slaDue) && slaDue.every(isUuid)) ticketIds.slaDue = slaDue;
+  const resolution = value.resolution;
+  if (Array.isArray(resolution) && resolution.every(isUuid))
+    ticketIds.resolution = resolution;
 
   return ticketIds as MetricTicketIds;
 }
@@ -1320,6 +1326,16 @@ function IncidentsPanel({
   );
 }
 
+/** Kurze Dauer für Kennzahlen, z. B. "45 Min.", "3,5 Std." oder "2,1 Tg.". */
+function formatMetricDuration(minutes: number | null | undefined): string {
+  if (minutes === null || minutes === undefined || !Number.isFinite(minutes))
+    return "–";
+  if (minutes < 120) return `${Math.max(0, Math.round(minutes))} Min.`;
+  const hours = minutes / 60;
+  if (hours < 48) return `${hours.toFixed(1).replace(".", ",")} Std.`;
+  return `${(hours / 24).toFixed(1).replace(".", ",")} Tg.`;
+}
+
 export function AgentMetricsCard({
   onOpenTickets,
   tenantId,
@@ -1357,6 +1373,10 @@ export function AgentMetricsCard({
           open: raw.open,
           solvedToday: raw.solvedToday,
           ...(typeof raw.slaDue === "number" ? { slaDue: raw.slaDue } : {}),
+          ...(typeof raw.medianResolutionMinutes === "number" ||
+          raw.medianResolutionMinutes === null
+            ? { medianResolutionMinutes: raw.medianResolutionMinutes }
+            : {}),
           ...(ticketIds ? { ticketIds } : {}),
         });
         setState("ready");
@@ -1371,11 +1391,10 @@ export function AgentMetricsCard({
     };
   }, [tenantId]);
 
-  const responseTime =
-    metrics?.medianFirstResponseMinutes === null ||
-    metrics?.medianFirstResponseMinutes === undefined
-      ? "–"
-      : `${Math.round(metrics.medianFirstResponseMinutes)} Min.`;
+  const responseTime = formatMetricDuration(
+    metrics?.medianFirstResponseMinutes,
+  );
+  const resolutionTime = formatMetricDuration(metrics?.medianResolutionMinutes);
 
   return (
     <article
@@ -1465,6 +1484,28 @@ export function AgentMetricsCard({
                 </button>
               ) : (
                 responseTime
+              )}
+            </dd>
+          </div>
+          <div>
+            <dt>Median Lösungszeit</dt>
+            <dd>
+              {onOpenTickets && metrics.ticketIds?.resolution ? (
+                <button
+                  aria-label={`Median Lösungszeit: ${resolutionTime} – passende Tickets anzeigen`}
+                  className="workbench-metrics__value-button"
+                  onClick={() =>
+                    onOpenTickets({
+                      label: "Von mir gelöst",
+                      ticketIds: metrics.ticketIds?.resolution ?? [],
+                    })
+                  }
+                  type="button"
+                >
+                  {resolutionTime}
+                </button>
+              ) : (
+                resolutionTime
               )}
             </dd>
           </div>

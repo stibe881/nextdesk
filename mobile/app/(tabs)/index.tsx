@@ -59,7 +59,12 @@ import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
 import { useThemeContext } from "@/lib/theme-provider";
 import { loadTenantBranding, type TenantBranding } from "@/lib/tenant-branding";
 
-type FocusScope = "assigned" | "solvedToday" | "firstResponse" | "slaDue";
+type FocusScope =
+  | "assigned"
+  | "solvedToday"
+  | "firstResponse"
+  | "resolution"
+  | "slaDue";
 type TicketScope = "all" | "mine" | "open" | "unassigned" | FocusScope;
 
 const ticketScopeLabels: Record<Exclude<TicketScope, "all">, string> = {
@@ -69,6 +74,7 @@ const ticketScopeLabels: Record<Exclude<TicketScope, "all">, string> = {
   assigned: "Mir zugewiesen",
   solvedToday: "Heute gelöst",
   firstResponse: "Mit erster Antwort",
+  resolution: "Von mir gelöst",
   slaDue: "Antwort oder Lösung fällig",
 };
 
@@ -77,8 +83,19 @@ function isFocusScope(scope: TicketScope): scope is FocusScope {
     scope === "assigned" ||
     scope === "solvedToday" ||
     scope === "firstResponse" ||
+    scope === "resolution" ||
     scope === "slaDue"
   );
+}
+
+/** Kurze Dauer für Kennzahlen, z. B. "45 Min.", "3,5 Std." oder "2,1 Tg.". */
+function formatDuration(minutes: number | null | undefined): string {
+  if (minutes === null || minutes === undefined || !Number.isFinite(minutes))
+    return "—";
+  if (minutes < 120) return `${Math.max(0, Math.round(minutes))} Min.`;
+  const hours = minutes / 60;
+  if (hours < 48) return `${hours.toFixed(1).replace(".", ",")} Std.`;
+  return `${(hours / 24).toFixed(1).replace(".", ",")} Tg.`;
 }
 
 function formatDateTime(value: string): string {
@@ -852,63 +869,76 @@ export default function HomeScreen() {
             HEUTE IM FOKUS
           </Text>
           {metricsAvailableForTenant && visibleAgentMetrics ? (
-            <View style={styles.heroKpis}>
-              <HeroKpi
-                disabled={!canOpenFocus}
-                label="Mir zugewiesen"
-                onPress={() => selectFocusScope("assigned")}
-                selected={ticketScope === "assigned"}
-                value={String(visibleAgentMetrics.open)}
-              />
-              <View
-                style={[
-                  styles.heroKpiDivider,
-                  { backgroundColor: colors.onPrimary },
-                ]}
-              />
-              <HeroKpi
-                disabled={!canOpenFocus}
-                label="Heute gelöst"
-                onPress={() => selectFocusScope("solvedToday")}
-                selected={ticketScope === "solvedToday"}
-                value={String(visibleAgentMetrics.solvedToday)}
-              />
-              <View
-                style={[
-                  styles.heroKpiDivider,
-                  { backgroundColor: colors.onPrimary },
-                ]}
-              />
-              <HeroKpi
-                disabled={!canOpenFocus}
-                label="Erste Antwort"
-                onPress={() => selectFocusScope("firstResponse")}
-                selected={ticketScope === "firstResponse"}
-                value={
-                  visibleAgentMetrics.medianFirstResponseMinutes === null
-                    ? "—"
-                    : `${visibleAgentMetrics.medianFirstResponseMinutes} Min.`
-                }
-              />
-              <View
-                style={[
-                  styles.heroKpiDivider,
-                  { backgroundColor: colors.onPrimary },
-                ]}
-              />
-              <HeroKpi
-                disabled={
-                  !canOpenFocus || !visibleAgentMetrics.ticketIds?.slaDue
-                }
-                label="Fällig"
-                onPress={() => selectFocusScope("slaDue")}
-                selected={ticketScope === "slaDue"}
-                value={
-                  visibleAgentMetrics.slaDue === undefined
-                    ? "—"
-                    : String(visibleAgentMetrics.slaDue)
-                }
-              />
+            <View style={styles.heroKpiRows}>
+              <View style={styles.heroKpis}>
+                <HeroKpi
+                  disabled={!canOpenFocus}
+                  label="Mir zugewiesen"
+                  onPress={() => selectFocusScope("assigned")}
+                  selected={ticketScope === "assigned"}
+                  value={String(visibleAgentMetrics.open)}
+                />
+                <View
+                  style={[
+                    styles.heroKpiDivider,
+                    { backgroundColor: colors.onPrimary },
+                  ]}
+                />
+                <HeroKpi
+                  disabled={!canOpenFocus}
+                  label="Heute gelöst"
+                  onPress={() => selectFocusScope("solvedToday")}
+                  selected={ticketScope === "solvedToday"}
+                  value={String(visibleAgentMetrics.solvedToday)}
+                />
+                <View
+                  style={[
+                    styles.heroKpiDivider,
+                    { backgroundColor: colors.onPrimary },
+                  ]}
+                />
+                <HeroKpi
+                  disabled={
+                    !canOpenFocus || !visibleAgentMetrics.ticketIds?.slaDue
+                  }
+                  label="Fällig"
+                  onPress={() => selectFocusScope("slaDue")}
+                  selected={ticketScope === "slaDue"}
+                  value={
+                    visibleAgentMetrics.slaDue === undefined
+                      ? "—"
+                      : String(visibleAgentMetrics.slaDue)
+                  }
+                />
+              </View>
+              <View style={styles.heroKpis}>
+                <HeroKpi
+                  disabled={!canOpenFocus}
+                  label="Erste Antwort (Median)"
+                  onPress={() => selectFocusScope("firstResponse")}
+                  selected={ticketScope === "firstResponse"}
+                  value={formatDuration(
+                    visibleAgentMetrics.medianFirstResponseMinutes,
+                  )}
+                />
+                <View
+                  style={[
+                    styles.heroKpiDivider,
+                    { backgroundColor: colors.onPrimary },
+                  ]}
+                />
+                <HeroKpi
+                  disabled={
+                    !canOpenFocus || !visibleAgentMetrics.ticketIds?.resolution
+                  }
+                  label="Lösungszeit (Median)"
+                  onPress={() => selectFocusScope("resolution")}
+                  selected={ticketScope === "resolution"}
+                  value={formatDuration(
+                    visibleAgentMetrics.medianResolutionMinutes,
+                  )}
+                />
+              </View>
             </View>
           ) : (
             <>
@@ -1033,9 +1063,11 @@ export default function HomeScreen() {
                 ? "Die fünf Tickets, die du zuletzt geöffnet hast"
                 : focusLoading
                   ? "Passende Tickets werden geladen …"
-                  : ticketScope === "firstResponse"
-                    ? `${visibleTickets.length} Tickets · Grundlage der ersten Antwortzeit`
-                    : `${visibleTickets.length} passende Vorgänge`}
+                  : ticketScope === "resolution"
+                    ? `${visibleTickets.length} Tickets · Grundlage deiner Lösungszeit`
+                    : ticketScope === "firstResponse"
+                      ? `${visibleTickets.length} Tickets · Grundlage der ersten Antwortzeit`
+                      : `${visibleTickets.length} passende Vorgänge`}
             </Text>
           </View>
           <Pressable
@@ -1694,6 +1726,7 @@ const useStyles = makeThemedStyles(() => ({
     lineHeight: 13,
     opacity: 0.76,
   },
+  heroKpiRows: { gap: 12 },
   heroKpis: {
     alignItems: "stretch",
     flexDirection: "row",
