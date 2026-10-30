@@ -665,6 +665,11 @@ type TicketDetailData = {
   canTrackTime: boolean;
 };
 
+/** Lange Unterhaltungen scrollen im Fenster; es startet bei der neuesten Nachricht. */
+function scrollConversationToLatest(element: HTMLOListElement | null) {
+  if (element) element.scrollTop = element.scrollHeight;
+}
+
 function ticketCommentRevision(comments: readonly TicketComment[]): string {
   return comments
     .map(
@@ -6497,7 +6502,11 @@ export function TicketDetail({
         {detail.comments.length === 0 ? (
           <p className="empty-state">Noch keine Nachrichten vorhanden.</p>
         ) : (
-          <ol className="ticket-comment-list ticket-conversation">
+          <ol
+            className="ticket-comment-list ticket-conversation"
+            key={detail.comments.length}
+            ref={scrollConversationToLatest}
+          >
             {chronologicalTicketComments(detail.comments).map((item) => {
               const requesterName = detail.requesterContact?.displayName
                 ?.trim()
