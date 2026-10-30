@@ -69,9 +69,21 @@ export function MobileFeatureProvider({ children }: PropsWithChildren) {
   const [error, setError] = useState<string | null>(null);
   const [switchingTenant, setSwitchingTenant] = useState(false);
   const refreshRequest = useRef(0);
+  // Zuletzt vollständig bestätigter Arbeitsbereich, für stille Aktualisierungen.
+  const confirmedTenant = useRef<{ at: number; id: string } | null>(null);
   const tenantSwitchInFlight = useRef(false);
 
-  const refresh = useCallback(async () => {
+  /**
+   * Aktualisiert Mandant und Freigaben. Eine stille Aktualisierung (z. B. beim
+   * Zurückkehren in die App) lässt den zuletzt bestätigten Stand sichtbar, bis
+   * die neue Antwort vorliegt. Weicht sie ab oder schlägt sie fehl, wird der
+   * Arbeitsbereich wie bisher sofort gesperrt.
+   */
+  const refresh = useCallback(async (options?: { silent?: boolean }) => {
+    const silent =
+      options?.silent === true &&
+      confirmedTenant.current !== null &&
+      Date.now() - confirmedTenant.current.at < 10 * 60 * 1000;
     if (tenantSwitchInFlight.current) return;
     const requestId = refreshRequest.current + 1;
     refreshRequest.current = requestId;
@@ -89,10 +101,12 @@ export function MobileFeatureProvider({ children }: PropsWithChildren) {
     // kein zuvor geladener Mandantenkontext sichtbar bleiben – auch nicht,
     // während die Session noch abgefragt wird.
     if (!stillCurrent()) return;
-    setLoading(true);
-    setFlags(null);
-    setTenantId(null);
-    setError(null);
+    if (!silent) {
+      setLoading(true);
+      setFlags(null);
+      setTenantId(null);
+      setError(null);
+    }
     try {
       const {
         data: { session },
@@ -121,11 +135,18 @@ export function MobileFeatureProvider({ children }: PropsWithChildren) {
       if (!stillCurrent()) return;
       const nextFlags = await loadMobileFeatureFlags(tenant.id);
       if (!stillCurrent()) return;
+      if (silent && confirmedTenant.current?.id !== tenant.id) {
+        // Anderer Arbeitsbereich als bisher: erst nach neuer Bestätigung zeigen.
+        setFlags(null);
+        setTenantId(null);
+      }
+      confirmedTenant.current = { at: Date.now(), id: tenant.id };
       setTenantId(tenant.id);
       setFlags(nextFlags);
       setLastConfirmedTenantId(tenant.id);
     } catch (nextError) {
       if (!stillCurrent()) return;
+      confirmedTenant.current = null;
       setFlags(null);
       setTenantId(null);
       setError(
@@ -162,6 +183,7 @@ export function MobileFeatureProvider({ children }: PropsWithChildren) {
       const nextFlags = await loadMobileFeatureFlags(tenant.id);
       if (!stillCurrent())
         throw new Error("Der Arbeitsbereichswechsel wurde abgebrochen.");
+      confirmedTenant.current = { at: Date.now(), id: tenant.id };
       setTenantId(tenant.id);
       setFlags(nextFlags);
       setLastConfirmedTenantId(tenant.id);
@@ -189,6 +211,7 @@ export function MobileFeatureProvider({ children }: PropsWithChildren) {
       // Eine Datenabfrage hat eine nicht mehr zulässige gespeicherte Auswahl
       // erkannt. Der gesamte Arbeitsbereich wird sofort fail-closed gesperrt.
       refreshRequest.current += 1;
+      confirmedTenant.current = null;
       setFlags(null);
       setTenantId(null);
       setError(message);
@@ -216,6 +239,7 @@ export function MobileFeatureProvider({ children }: PropsWithChildren) {
         setFlags(null);
         setTenantId(null);
         setLastConfirmedTenantId(null);
+        confirmedTenant.current = null;
         setError(null);
         setLoading(false);
         return;
@@ -228,7 +252,7 @@ export function MobileFeatureProvider({ children }: PropsWithChildren) {
       "change",
       (state) => {
         if (active && state === "active") {
-          void refresh().catch(() => undefined);
+          void refresh({ silent: true }).catch(() => undefined);
         }
       },
     );
