@@ -50,6 +50,11 @@ export default function NewTicketScreen() {
     description?: string;
     subject?: string;
   }>();
+  const [initialPrefill] = useState(() => ({
+    description:
+      typeof params.description === "string" ? params.description : "",
+    subject: typeof params.subject === "string" ? params.subject : "",
+  }));
   const { isOffline } = useMobileNetworkStatus();
   const [tenant, setTenant] = useState<MobileTenant | null>(null);
   const [options, setOptions] = useState<TicketFormOptions | null>(null);
@@ -80,13 +85,9 @@ export default function NewTicketScreen() {
         setDepartmentId(formOptions.departments[0]?.id ?? "");
         setPriorityKey(formOptions.priorities[0]?.key ?? "");
         setRequester(formOptions.currentRequester);
-        const prefillSubject =
-          typeof params.subject === "string" ? params.subject : "";
-        const prefillDescription =
-          typeof params.description === "string" ? params.description : "";
-        if (prefillSubject || prefillDescription) {
-          setSubject(prefillSubject);
-          setDescription(prefillDescription);
+        if (initialPrefill.subject || initialPrefill.description) {
+          setSubject(initialPrefill.subject);
+          setDescription(initialPrefill.description);
         } else {
           // Ein zuvor begonnener Entwurf wird wiederhergestellt.
           try {
@@ -122,7 +123,7 @@ export default function NewTicketScreen() {
         setLoading(false);
       }
     })();
-  }, [isOffline]);
+  }, [initialPrefill, isOffline]);
 
   const selectedDepartment = useMemo(
     () =>

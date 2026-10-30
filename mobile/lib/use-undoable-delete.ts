@@ -25,7 +25,9 @@ export function useUndoableDelete(options: {
     >(),
   );
   const callbacks = useRef(options);
-  callbacks.current = options;
+  useEffect(() => {
+    callbacks.current = options;
+  });
 
   const unhide = useCallback((id: string) => {
     setHiddenIds((current) => {
