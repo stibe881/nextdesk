@@ -18197,3 +18197,20 @@ html:has(.embed-status-badge) body {
   text-decoration: underline;
   text-underline-offset: 3px;
 }
+
+.access-toggle {
+  background: none;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  margin-top: 4px;
+  opacity: 0.8;
+  padding: 6px 0;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.access-toggle:hover:not(:disabled) {
+  opacity: 1;
+}

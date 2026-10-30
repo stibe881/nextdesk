@@ -1098,6 +1098,27 @@ function SignInScreen() {
     "idle" | "sending" | "sso" | "sent" | "error"
   >("idle");
   const [message, setMessage] = useState("");
+  const [passwordMode, setPasswordMode] = useState(false);
+  const [password, setPassword] = useState("");
+
+  async function signInWithPassword(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!supabase) return;
+    setStatus("sending");
+    setMessage("");
+    const { error } = await supabase.auth.signInWithPassword({
+      email: email.trim(),
+      password,
+    });
+    if (error) {
+      setStatus("error");
+      setMessage(
+        "Die Anmeldung war nicht möglich. Bitte prüfen Sie E-Mail-Adresse und Passwort.",
+      );
+      return;
+    }
+    setPassword("");
+  }
 
   async function requestGrossIctSso() {
     if (!supabase) return;
@@ -1168,7 +1189,10 @@ function SignInScreen() {
       <div className="access-divider">
         <span>ODER MIT E-MAIL</span>
       </div>
-      <form className="access-form" onSubmit={requestMagicLink}>
+      <form
+        className="access-form"
+        onSubmit={passwordMode ? signInWithPassword : requestMagicLink}
+      >
         <label>
           Arbeitsadresse
           <input
@@ -1184,6 +1208,19 @@ function SignInScreen() {
             value={email}
           />
         </label>
+        {passwordMode ? (
+          <label>
+            Passwort
+            <input
+              autoComplete="current-password"
+              disabled={status === "sending" || status === "sso"}
+              onChange={(event) => setPassword(event.target.value)}
+              required
+              type="password"
+              value={password}
+            />
+          </label>
+        ) : null}
         <button
           className="email-access-button"
           disabled={
@@ -1192,8 +1229,27 @@ function SignInScreen() {
           type="submit"
         >
           {status === "sending"
-            ? "Link wird vorbereitet …"
-            : "Anmeldelink senden"}
+            ? passwordMode
+              ? "Anmeldung läuft …"
+              : "Link wird vorbereitet …"
+            : passwordMode
+              ? "Anmelden"
+              : "Anmeldelink senden"}
+        </button>
+        <button
+          className="access-toggle"
+          disabled={status === "sending" || status === "sso"}
+          onClick={() => {
+            setPasswordMode((current) => !current);
+            setPassword("");
+            setStatus("idle");
+            setMessage("");
+          }}
+          type="button"
+        >
+          {passwordMode
+            ? "Stattdessen Anmeldelink per E-Mail"
+            : "Mit Passwort anmelden"}
         </button>
       </form>
       {message && <p className={`access-message ${status}`}>{message}</p>}
