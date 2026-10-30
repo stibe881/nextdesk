@@ -57,6 +57,7 @@ import { useThemeContext } from "@/lib/theme-provider";
 import {
   clearLocalTicketDraft,
   listFavoriteTicketIds,
+  recordRecentTicket,
   loadLocalTicketDraft,
   saveLocalTicketDraft,
   setFavoriteTicket,
@@ -419,6 +420,12 @@ export default function TicketDetailScreen() {
         setCurrentUserId(userId);
         setTicket(detail);
         if (syncEditor) {
+          // Für "Zuletzt geöffnet" auf der Startseite; ein Fehler ist unkritisch.
+          void recordRecentTicket({
+            userId,
+            tenantId: currentTenant.id,
+            ticketId: detail.id,
+          }).catch(() => undefined);
           const initialVisibility = detail.canWriteInternalNotes
             ? "internal"
             : "external";

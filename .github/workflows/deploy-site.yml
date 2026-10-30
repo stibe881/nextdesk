@@ -1,0 +1,77 @@
+name: Deploy nextDesk website to Hetzner
+
+# Veröffentlicht den Ordner `site/` (Start, Support, Datenschutz, Impressum)
+# auf https://nextdesk.ch. Die Web-App unter app.nextdesk.ch wird davon nicht
+# berührt: Sie hat ein eigenes Verzeichnis (HETZNER_WEB_ROOT).
+
+on:
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: Auslöser des Deploys
+        required: false
+        default: Manual deployment
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hetzner-site-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Upload static website
+    runs-on: ubuntu-latest
+    environment:
+      name: hetzner-production
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Check the website files
+        run: |
+          for file in index.html support.html datenschutz.html impressum.html assets/site.css; do
+            test -s "site/$file"
+          done
+      - name: Configure SSH
+        env:
+          HETZNER_SSH_HOST: ${{ vars.HETZNER_SSH_HOST }}
+          HETZNER_SSH_PORT: ${{ vars.HETZNER_SSH_PORT || '222' }}
+          HETZNER_SSH_USER: ${{ vars.HETZNER_SSH_USER }}
+          HETZNER_SITE_ROOT: ${{ vars.HETZNER_SITE_ROOT }}
+          HETZNER_WEB_ROOT: ${{ vars.HETZNER_WEB_ROOT }}
+          HETZNER_SSH_KNOWN_HOSTS: ${{ secrets.HETZNER_SSH_KNOWN_HOSTS }}
+          HETZNER_SSH_PRIVATE_KEY: ${{ secrets.HETZNER_SSH_PRIVATE_KEY }}
+        run: |
+          test -n "$HETZNER_SSH_HOST"
+          test -n "$HETZNER_SSH_USER"
+          test -n "$HETZNER_SITE_ROOT"
+          test -n "$HETZNER_SSH_KNOWN_HOSTS"
+          test -n "$HETZNER_SSH_PRIVATE_KEY"
+          # Schutz: Die Webseite darf nie in das Verzeichnis der Web-App
+          # hochgeladen werden, denn rsync --delete würde die App entfernen.
+          if [ "$HETZNER_SITE_ROOT" = "$HETZNER_WEB_ROOT" ]; then
+            echo "HETZNER_SITE_ROOT darf nicht gleich HETZNER_WEB_ROOT sein." >&2
+            exit 1
+          fi
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$HETZNER_SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$HETZNER_SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          remote_site_root=$(printf '%q' "$HETZNER_SITE_ROOT")
+          ssh -i ~/.ssh/id_ed25519 -p "$HETZNER_SSH_PORT" -o BatchMode=yes "$HETZNER_SSH_USER@$HETZNER_SSH_HOST" "mkdir -p -- $remote_site_root"
+
+      - name: Upload website
+        env:
+          HETZNER_SSH_HOST: ${{ vars.HETZNER_SSH_HOST }}
+          HETZNER_SSH_PORT: ${{ vars.HETZNER_SSH_PORT || '222' }}
+          HETZNER_SSH_USER: ${{ vars.HETZNER_SSH_USER }}
+          HETZNER_SITE_ROOT: ${{ vars.HETZNER_SITE_ROOT }}
+        run: |
+          # .well-known und cgi-bin gehören dem Hosting (Zertifikate usw.)
+          # und bleiben beim Löschen alter Dateien unberührt.
+          rsync --archive --delete \
+            --exclude '.well-known/' --exclude 'cgi-bin/' \
+            -e "ssh -i ~/.ssh/id_ed25519 -p $HETZNER_SSH_PORT -o BatchMode=yes" \
+            site/ "$HETZNER_SSH_USER@$HETZNER_SSH_HOST:$HETZNER_SITE_ROOT/"

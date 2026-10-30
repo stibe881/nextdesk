@@ -19,6 +19,7 @@ import {
   requireNextDesk,
 } from "@/lib/nextdesk-client";
 import { withTimeout } from "@/lib/pkce";
+import { IMPRINT_URL, PRIVACY_URL, SUPPORT_URL } from "@/lib/site-links";
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -64,7 +65,11 @@ export default function AuthScreen() {
   const { authError } = useLocalSearchParams<{ authError?: string }>();
   const [email, setEmail] = useState("");
   const [message, setMessage] = useState("");
-  const [pending, setPending] = useState<"magic" | "sso" | null>(null);
+  const [password, setPassword] = useState("");
+  const [passwordMode, setPasswordMode] = useState(false);
+  const [pending, setPending] = useState<"magic" | "password" | "sso" | null>(
+    null,
+  );
   // Synchronous guard: a single tap may report both onPressOut and onPress.
   const ssoStartingRef = useRef(false);
   const magicStartingRef = useRef(false);
@@ -222,6 +227,37 @@ export default function AuthScreen() {
     }
   }
 
+  // Anmeldung mit E-Mail und Passwort, z. B. für das Testkonto der App-Prüfung.
+  async function signInWithPassword() {
+    const address = email.trim().toLowerCase();
+    if (!address.includes("@") || !password) {
+      setMessage("Bitte geben Sie E-Mail-Adresse und Passwort ein.");
+      return;
+    }
+    setPending("password");
+    setMessage("");
+    try {
+      const client = requireNextDesk();
+      const { error } = await client.auth.signInWithPassword({
+        email: address,
+        password,
+      });
+      if (error) throw error;
+      const {
+        data: { session },
+      } = await client.auth.getSession();
+      if (!session) throw new Error("session_not_saved");
+      setPassword("");
+      router.replace("/");
+    } catch {
+      setMessage(
+        "Die Anmeldung war nicht möglich. Bitte prüfen Sie E-Mail-Adresse und Passwort.",
+      );
+    } finally {
+      setPending(null);
+    }
+  }
+
   return (
     <ScreenContainer className="px-5">
       <View style={styles.content}>
@@ -294,6 +330,52 @@ export default function AuthScreen() {
               : "Anmeldelink senden"}
           </Text>
         </Pressable>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityState={{ expanded: passwordMode }}
+          disabled={pending !== null}
+          hitSlop={8}
+          onPress={() => setPasswordMode((current) => !current)}
+        >
+          <Text style={styles.passwordToggle}>
+            {passwordMode
+              ? "Passwort-Anmeldung ausblenden"
+              : "Mit Passwort anmelden"}
+          </Text>
+        </Pressable>
+        {passwordMode ? (
+          <>
+            <TextInput
+              autoCapitalize="none"
+              autoComplete="current-password"
+              autoCorrect={false}
+              onChangeText={setPassword}
+              onSubmitEditing={() => void signInWithPassword()}
+              placeholder="Passwort"
+              placeholderTextColor={colors.subtle}
+              returnKeyType="go"
+              secureTextEntry
+              style={styles.input}
+              textContentType="password"
+              value={password}
+            />
+            <Pressable
+              accessibilityRole="button"
+              disabled={pending !== null}
+              hitSlop={8}
+              onPress={() => void signInWithPassword()}
+              style={({ pressed }) => [
+                styles.ssoButton,
+                pressed && styles.pressed,
+                pending !== null && styles.disabled,
+              ]}
+            >
+              <Text style={styles.ssoButtonText}>
+                {pending === "password" ? "Anmeldung läuft …" : "ANMELDEN"}
+              </Text>
+            </Pressable>
+          </>
+        ) : null}
         {/* Fixed slot: status text must not shift the buttons during a tap. */}
         <View style={styles.messageSlot}>
           {displayedMessage ? (
@@ -301,6 +383,24 @@ export default function AuthScreen() {
               {displayedMessage}
             </Text>
           ) : null}
+        </View>
+        <View style={styles.legalRow}>
+          {(
+            [
+              ["Support", SUPPORT_URL],
+              ["Datenschutz", PRIVACY_URL],
+              ["Impressum", IMPRINT_URL],
+            ] as const
+          ).map(([label, url]) => (
+            <Pressable
+              accessibilityRole="link"
+              hitSlop={8}
+              key={label}
+              onPress={() => void Linking.openURL(url).catch(() => undefined)}
+            >
+              <Text style={styles.legalLink}>{label}</Text>
+            </Pressable>
+          ))}
         </View>
         {APP_VERSION_LABEL ? (
           <Text style={styles.version}>{APP_VERSION_LABEL}</Text>
@@ -369,8 +469,27 @@ const useStyles = makeThemedStyles((c) => ({
     paddingHorizontal: 18,
   },
   magicButtonText: { color: c.primaryText, fontSize: 14, fontWeight: "800" },
+  passwordToggle: {
+    color: c.primaryText,
+    fontSize: 13,
+    fontWeight: "700",
+    textAlign: "center",
+  },
   messageSlot: { marginTop: 2, minHeight: 58 },
   message: { color: c.text, fontSize: 13, lineHeight: 19 },
+  legalRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 18,
+    justifyContent: "center",
+    marginTop: 4,
+  },
+  legalLink: {
+    color: c.primaryText,
+    fontSize: 13,
+    fontWeight: "700",
+    textDecorationLine: "underline",
+  },
   version: { color: c.subtle, fontSize: 11, textAlign: "center" },
   pressed: { opacity: 0.82 },
   disabled: { opacity: 0.55 },

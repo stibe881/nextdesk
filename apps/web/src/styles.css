@@ -18183,3 +18183,17 @@ html:has(.embed-status-badge) body {
 .contracts__asset-results small {
   color: var(--muted);
 }
+
+.access-footer-links {
+  display: flex;
+  flex-basis: 100%;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  justify-content: center;
+}
+
+.access-footer-links a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
