@@ -5,96 +5,133 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Support – nextDesk</title>
   <meta name="description" content="Hilfe zu nextDesk und zur nextDesk-App: Kontakt, Anmeldung, Tickets, Scanner und häufige Fragen.">
+  <meta name="theme-color" content="#4338ca">
+  <link rel="canonical" href="https://nextdesk.ch/support.html">
   <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Support – nextDesk">
+  <meta property="og:description" content="Hilfe zu nextDesk und zur nextDesk-App: Kontakt, Anmeldung, Tickets, Scanner und häufige Fragen.">
+  <meta property="og:url" content="https://nextdesk.ch/support.html">
+  <meta property="og:image" content="https://nextdesk.ch/assets/screens/tickets-erfassen.webp">
   <link rel="stylesheet" href="assets/site.css">
 </head>
 <body>
   <a class="skip" href="#inhalt">Zum Inhalt</a>
   <header class="site">
     <div class="wrap">
-      <a class="brand" href="index.html"><span class="brand-mark" aria-hidden="true">n</span>nextDesk</a>
-      <nav class="site" aria-label="Hauptnavigation"><ul><li><a href="index.html">Start</a></li><li><a href="support.html" aria-current="page">Support</a></li><li><a href="datenschutz.html">Datenschutz</a></li><li><a href="impressum.html">Impressum</a></li></ul></nav>
+      <a class="brand" href="index.html"><img src="assets/logo.png" alt="" width="36" height="36">nextDesk</a>
+      <nav class="site" aria-label="Hauptnavigation">
+        <ul>
+          <li><a href="index.html#funktionen">Funktionen</a></li>
+          <li class="keep"><a href="support.html" aria-current="page">Support</a></li>
+          <li><a href="datenschutz.html">Datenschutz</a></li>
+          <li class="keep"><a class="nav-cta" href="https://app.nextdesk.ch">Zur Web-App</a></li>
+        </ul>
+      </nav>
     </div>
   </header>
+  <section class="page-hero">
+    <div class="wrap">
+      <p class="eyebrow">Support</p>
+      <h1>Wie können wir helfen?</h1>
+      <p class="lead">Hilfe zu nextDesk und zur nextDesk-App: Kontakt, Anmeldung und Antworten auf häufige Fragen.</p>
+    </div>
+  </section>
   <main class="page" id="inhalt">
-    <div class="wrap prose">
-      <h1>Support</h1>
-      <p class="lead">Hier finden Sie Hilfe zu nextDesk und zur nextDesk-App.</p>
+    <div class="wrap">
+      <div class="contact-grid">
+        <a class="card" href="mailto:support@gross-ict.ch"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg></span><h3>E-Mail</h3><p>Schreiben Sie uns, wir melden uns so rasch wie möglich.</p><p class="link">support@gross-ict.ch</p></a>
+        <a class="card" href="#faq"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.4-1 .9-1 1.7M12 17h.01"/></svg></span><h3>Häufige Fragen</h3><p>Anmeldung, Tickets, Scanner, Mitteilungen und Datenschutz.</p><p class="link">Zu den Antworten</p></a>
+        <a class="card" href="https://app.nextdesk.ch"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="7" y="2" width="10" height="20" rx="2.5"/><path d="M11 18h2"/></svg></span><h3>Web-App</h3><p>Melden Sie sich im Browser mit dem Konto Ihrer Organisation an.</p><p class="link">app.nextdesk.ch</p></a>
+      </div>
 
-      <section aria-labelledby="kontakt">
-        <h2 id="kontakt">Kontakt</h2>
-        <p>Schreiben Sie uns an <a href="mailto:support@gross-ict.ch">support@gross-ict.ch</a>. Bitte nennen Sie Ihre Organisation, beschreiben Sie das Problem kurz und geben Sie, wenn möglich, die Version der App an (steht unten auf dem Anmeldebildschirm).</p>
+      <div class="prose">
+        <h2 id="kontakt">So erreichen Sie uns</h2>
+        <p>Bitte nennen Sie Ihre Organisation, beschreiben Sie das Problem kurz und geben Sie, wenn möglich, die Version der App an (sie steht unten auf dem Anmeldebildschirm).</p>
         <p class="notice"><strong>Wichtig:</strong> Fragen zu Ihrem eigenen Zugang, zu Passwörtern, zu Berechtigungen oder zu Tickets Ihrer Organisation beantwortet die IT-Abteilung Ihrer Organisation. Wir haben ohne Auftrag Ihrer Organisation keinen Einblick in deren Daten.</p>
-      </section>
 
-      <section aria-labelledby="faq">
         <h2 id="faq">Häufige Fragen</h2>
-
         <details>
           <summary>Wie melde ich mich an?</summary>
           <p>Wählen Sie «Mit SSO anmelden» und melden Sie sich mit dem Konto Ihrer Organisation an (Microsoft). Alternativ können Sie sich einen Anmeldelink per E-Mail senden lassen. Wenn Ihre Organisation ein Passwort vergeben hat, tippen Sie auf «Mit Passwort anmelden».</p>
         </details>
-
         <details>
           <summary>Ich habe keinen Zugang. Wie bekomme ich ein Konto?</summary>
           <p>nextDesk-Konten erstellt die IT Ihrer Organisation. Wenden Sie sich bitte an sie. Wir können im Auftrag der Organisation helfen, geben aber ohne deren Freigabe keinen Zugang heraus.</p>
         </details>
-
         <details>
           <summary>Der Anmeldelink funktioniert nicht.</summary>
           <p>Öffnen Sie den Link auf demselben Gerät, auf dem Sie ihn angefordert haben, und prüfen Sie, ob die E-Mail im Spam-Ordner gelandet ist. Links sind nur kurz gültig. Fordern Sie bei Bedarf einen neuen an.</p>
         </details>
-
         <details>
           <summary>Wie erfasse ich ein Ticket?</summary>
           <p>In der App tippen Sie auf der Startseite auf «Ticket erfassen», beschreiben das Anliegen und hängen bei Bedarf Fotos oder Dateien an. In der Web-App nutzen Sie die Schaltfläche «+» oben.</p>
         </details>
-
         <details>
           <summary>Wie scanne ich ein Gerät?</summary>
           <p>Öffnen Sie in der App den Reiter «Scan» und halten Sie die Kamera auf den QR-Code oder Barcode des Geräts. Alternativ geben Sie die Inventar- oder Seriennummer von Hand ein. Die Kamera wird nur zum Scannen verwendet.</p>
         </details>
-
         <details>
           <summary>Ich bekomme keine Benachrichtigungen.</summary>
           <p>Prüfen Sie in den iPhone-Einstellungen unter «Mitteilungen» → «nextDesk», ob Mitteilungen erlaubt sind, und ob Ihre Organisation Benachrichtigungen aktiviert hat.</p>
         </details>
-
         <details>
           <summary>Wie schütze ich meine Sitzung auf dem Gerät?</summary>
           <p>In den Einstellungen der App können Sie den Geräteschutz mit Face ID aktivieren. Face ID wird nur lokal auf Ihrem Gerät ausgewertet.</p>
         </details>
-
         <details>
           <summary>Wie lösche ich meine Daten oder mein Konto?</summary>
           <p>Ihr Konto und Ihre Daten gehören zu Ihrer Organisation. Eine Löschung beauftragen Sie bei deren IT-Abteilung. Wir unterstützen sie dabei. Details stehen in der <a href="datenschutz.html">Datenschutzerklärung</a>.</p>
         </details>
-
         <details>
           <summary>Ist der Dienst gestört?</summary>
           <p>Die Verfügbarkeit der Dienste Ihrer Organisation sehen Sie auf deren Statusseite, sofern sie diese eingerichtet hat. Bei einer allgemeinen Störung von nextDesk informieren wir Sie über die Kontaktadresse.</p>
         </details>
-      </section>
 
-      <section aria-labelledby="weiter">
-        <h2 id="weiter">Weitere Informationen</h2>
+        <h2>Weitere Informationen</h2>
         <ul>
           <li><a href="datenschutz.html">Datenschutzerklärung</a></li>
           <li><a href="impressum.html">Impressum</a></li>
-          <li><a href="https://app.nextdesk.ch">Zur Web-App</a></li>
         </ul>
-      </section>
+      </div>
     </div>
   </main>
   <footer class="site">
     <div class="wrap">
-      <span>© 2026 Gross ICT · nextDesk</span>
-      <ul>
-        <li><a href="support.html">Support</a></li>
-        <li><a href="datenschutz.html">Datenschutz</a></li>
-        <li><a href="impressum.html">Impressum</a></li>
-        <li><a href="https://app.nextdesk.ch">Zur Web-App</a></li>
-      </ul>
+      <div class="footer-grid">
+        <div class="about">
+          <a class="brand" href="index.html"><img src="assets/logo.png" alt="" width="36" height="36">nextDesk</a>
+          <p>Der Service Desk für Schulen, Vereine und Organisationen. Entwickelt von Gross ICT in Zell LU.</p>
+        </div>
+        <div>
+          <h4>Produkt</h4>
+          <ul>
+            <li><a href="index.html#funktionen">Funktionen</a></li>
+            <li><a href="index.html#app">Die App</a></li>
+            <li><a href="https://app.nextdesk.ch">Zur Web-App</a></li>
+          </ul>
+        </div>
+        <div>
+          <h4>Hilfe</h4>
+          <ul>
+            <li><a href="support.html">Support</a></li>
+            <li><a href="support.html#faq">Häufige Fragen</a></li>
+            <li><a href="mailto:support@gross-ict.ch">support@gross-ict.ch</a></li>
+          </ul>
+        </div>
+        <div>
+          <h4>Rechtliches</h4>
+          <ul>
+            <li><a href="datenschutz.html">Datenschutz</a></li>
+            <li><a href="impressum.html">Impressum</a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <span>© 2026 Gross ICT · Neuhushof 3 · 6144 Zell LU</span>
+        <span>nextDesk ist ein Produkt von Gross ICT.</span>
+      </div>
     </div>
   </footer>
 </body>
