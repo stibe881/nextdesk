@@ -1139,6 +1139,11 @@ function SignInScreen() {
         // Profile claims are the authoritative source for the visible Entra
         // name. E-Mail remains necessary for tenant-domain routing.
         scopes: "openid profile email",
+        // Bei einer Verbindungsanfrage (z. B. Gemini-Connector) lässt
+        // Microsoft das Konto wählen, statt still das Browserkonto zu nehmen.
+        ...(pendingOAuthAuthorizationId()
+          ? { queryParams: { prompt: "select_account" } }
+          : {}),
       },
     });
     if (error) {
