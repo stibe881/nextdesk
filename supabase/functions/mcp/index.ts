@@ -768,6 +768,15 @@ async function handler(request: Request): Promise<Response> {
       resource_name: "nextDesk",
     });
   }
+  // MCP-Clients wie die Gemini CLI fragen zuerst per HEAD oder GET, ob eine
+  // Anmeldung nötig ist, und lesen den Hinweis auf die OAuth-Metadaten aus der
+  // 401-Antwort.
+  if (
+    (request.method === "HEAD" || request.method === "GET") &&
+    !request.headers.get("authorization")
+  ) {
+    return unauthorized(config);
+  }
   if (request.method === "OPTIONS") return new Response(null, { status: 204 });
   if (request.method !== "POST") {
     return jsonResponse({ error: "method_not_allowed" }, 405, {
