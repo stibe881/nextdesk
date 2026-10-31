@@ -164,3 +164,8 @@ verify_jwt = false
 
 [functions.exchange-mail-connect]
 verify_jwt = false
+
+# Öffentlich erreichbar, damit MCP-Clients die OAuth-Metadaten finden. Jede
+# Aktion verlangt ein gültiges Zugriffstoken; die Funktion prüft es selbst.
+[functions.mcp]
+verify_jwt = false
