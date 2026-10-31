@@ -3,6 +3,8 @@ import { supabase } from "./lib/supabase";
 
 const STORAGE_KEY = "nextdesk:oauth-authorization-id";
 const CONSENT_PATH = "/oauth/consent";
+// Eine Anfrage des Auth-Servers ist nur kurz gültig; ältere Merkzettel verfallen.
+const MAX_AGE_MS = 15 * 60 * 1000;
 
 /**
  * Der Supabase-Auth-Server leitet Anwendungen wie den nextDesk-Connector auf
@@ -16,7 +18,10 @@ export function captureOAuthAuthorizationId(): void {
       "authorization_id",
     );
     if (id && /^[A-Za-z0-9_-]{8,200}$/.test(id)) {
-      window.sessionStorage.setItem(STORAGE_KEY, id);
+      window.sessionStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({ id, savedAt: Date.now() }),
+      );
     }
   } catch {
     // Ohne Speicherzugriff läuft der normale Anmeldeweg weiter.
@@ -25,7 +30,19 @@ export function captureOAuthAuthorizationId(): void {
 
 export function pendingOAuthAuthorizationId(): string | null {
   try {
-    return window.sessionStorage.getItem(STORAGE_KEY);
+    const raw = window.sessionStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    const stored: unknown = JSON.parse(raw);
+    if (
+      isRecord(stored) &&
+      typeof stored.id === "string" &&
+      typeof stored.savedAt === "number" &&
+      Date.now() - stored.savedAt < MAX_AGE_MS
+    ) {
+      return stored.id;
+    }
+    window.sessionStorage.removeItem(STORAGE_KEY);
+    return null;
   } catch {
     return null;
   }
@@ -204,6 +221,18 @@ export function OAuthConsentScreen({
         </>
       )}
       {error && <p className="access-message error">{error}</p>}
+      {error && !details && (
+        <button
+          className="email-access-button"
+          onClick={() => {
+            clearPendingOAuthAuthorizationId();
+            window.location.assign("/");
+          }}
+          type="button"
+        >
+          Zur nextDesk-App
+        </button>
+      )}
     </Shell>
   );
 }
