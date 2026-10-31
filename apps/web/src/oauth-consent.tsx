@@ -119,6 +119,15 @@ export function OAuthConsentScreen({
     };
   }, [authorizationId]);
 
+  // Meldet das aktuelle Konto ab. Die Anfrage bleibt gemerkt, nach der neuen
+  // Anmeldung erscheint diese Seite wieder.
+  async function switchAccount() {
+    if (!supabase) return;
+    setBusy(true);
+    await supabase.auth.signOut();
+    window.location.reload();
+  }
+
   async function decide(approve: boolean) {
     if (!supabase) return;
     setBusy(true);
@@ -183,6 +192,14 @@ export function OAuthConsentScreen({
             type="button"
           >
             Ablehnen
+          </button>
+          <button
+            className="access-toggle"
+            disabled={busy}
+            onClick={() => void switchAccount()}
+            type="button"
+          >
+            Anderes Konto verwenden
           </button>
         </>
       )}
