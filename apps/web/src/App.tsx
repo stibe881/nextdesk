@@ -95,6 +95,10 @@ import { Onboarding } from "./onboarding";
 import { Inventory } from "./inventory";
 import { PersonalSettings } from "./personal-settings";
 import { ApprovalInboxCard } from "./approval-inbox";
+import {
+  OAuthConsentScreen,
+  pendingOAuthAuthorizationId,
+} from "./oauth-consent";
 import { ExperienceWorkspace, MyDayCard } from "./experience-workspace";
 import {
   activeIncidentNoticesFromResponse,
@@ -1575,6 +1579,7 @@ function AuthenticatedApp() {
     [],
   );
   const [savedTicketViewsLoading, setSavedTicketViewsLoading] = useState(false);
+  const [oauthAuthorizationId] = useState(() => pendingOAuthAuthorizationId());
   const [session, setSession] = useState<Session | null | undefined>(
     isSupabaseConfigured ? undefined : null,
   );
@@ -3578,6 +3583,15 @@ function AuthenticatedApp() {
   }
   if (isSupabaseConfigured && session === null) {
     return <SignInScreen />;
+  }
+  if (isSupabaseConfigured && session && oauthAuthorizationId) {
+    return (
+      <OAuthConsentScreen
+        authorizationId={oauthAuthorizationId}
+        Shell={AccessShell}
+        userLabel={session.user.email ?? "angemeldete Person"}
+      />
+    );
   }
   if (isSupabaseConfigured && tenantLoading) {
     return <LoadingScreen message="Mandantenkontext wird geladen." />;
