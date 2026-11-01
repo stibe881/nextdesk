@@ -1027,6 +1027,7 @@ function notificationPresentation(
         const shopTitles: Record<string, string> = {
           "shop.order.approval_requested": "Freigabe für Bestellung",
           "shop.order.submitted": "Neue Bestellung",
+          "shop.order.placed_for_you": "Bestellung für dich erfasst",
           "shop.order.approved": "Bestellung freigegeben",
           "shop.order.in_progress": "Bestellung in Bearbeitung",
           "shop.order.ready": "Bereit zur Abholung",

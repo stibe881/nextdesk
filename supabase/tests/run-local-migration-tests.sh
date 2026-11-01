@@ -8957,6 +8957,30 @@ begin
   exception when invalid_parameter_value then null;
   end;
 
+  -- 5. An agent orders for an employee; the employee's manager approves.
+  begin
+    perform public.shop_submit_order_for(v_employee, v_tenant, v_manager, gen_random_uuid(),
+      jsonb_build_array(jsonb_build_object('catalog_item_id', v_cat_cable, 'quantity', 1)),
+      'pickup', null, null, null, null, null);
+    raise exception 'An employee ordered for somebody else';
+  exception when insufficient_privilege then null;
+  end;
+  v_order := public.shop_submit_order_for(v_owner, v_tenant, v_employee, gen_random_uuid(),
+    jsonb_build_array(jsonb_build_object('catalog_item_id', v_cat_headset, 'quantity', 1)),
+    'desk', 'Büro 2.14', null, null, null, 'Telefonisch bestellt');
+  if not exists (
+    select 1 from public.shop_orders
+    where id = v_order and requester_id = v_employee and placed_by = v_owner
+      and status = 'pending_approval' and approver_id = v_manager
+  ) then
+    raise exception 'Order on behalf was not stored for the employee';
+  end if;
+  if not exists (select 1 from public.ticket_notifications
+                 where user_id = v_employee and kind = 'shop.order.placed_for_you') then
+    raise exception 'Employee was not told about the order on behalf';
+  end if;
+  v_status := public.shop_update_order(v_employee, v_tenant, v_order, 'cancel', '{}'::jsonb);
+
   -- Shop orders never create tickets.
   if exists (select 1 from public.tickets where tenant_id = v_tenant) then
     raise exception 'A shop order created a ticket';

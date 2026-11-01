@@ -23,7 +23,7 @@ type Row = Record<string, unknown>;
 const IMAGE_BUCKET = "inventory-item-images";
 const IMAGE_TTL_SECONDS = 60 * 60;
 const ORDER_SELECT =
-  "id, order_number, requester_id, status, approver_id, approved_by, approved_at, handled_by, delivery_method, delivery_location, needed_by, loan_from, loan_until, comment, decision_reason, issued_at, returned_at, closed_at, created_at, updated_at";
+  "id, order_number, requester_id, placed_by, status, approver_id, approved_by, approved_at, handled_by, delivery_method, delivery_location, needed_by, loan_from, loan_until, comment, decision_reason, issued_at, returned_at, closed_at, created_at, updated_at";
 const UPDATE_ACTIONS = new Set([
   "approve",
   "reject_approval",
@@ -126,6 +126,13 @@ function databaseError(error: { code?: string; message?: string }): HttpError {
       "Ein Artikel ist nicht mehr im Shop verfügbar.",
     );
   }
+  if (message.startsWith("The requester is not an active member")) {
+    return new HttpError(
+      400,
+      "requester_invalid",
+      "Diese Person ist kein aktives Mitglied des Arbeitsbereichs.",
+    );
+  }
   if (message.startsWith("The shop is not enabled")) {
     return new HttpError(
       403,
@@ -220,11 +227,15 @@ async function names(admin: Admin, ids: (string | null | undefined)[]) {
   const unique = [...new Set(ids.filter((id): id is string => isUuid(id)))];
   const result = new Map<string, string>();
   if (unique.length === 0) return result;
-  const { data } = await admin
-    .from("user_profiles")
-    .select("id, display_name")
-    .in("id", unique);
-  for (const row of (data ?? []) as Row[]) {
+  const rows: Row[] = [];
+  for (let index = 0; index < unique.length; index += 150) {
+    const { data } = await admin
+      .from("user_profiles")
+      .select("id, display_name")
+      .in("id", unique.slice(index, index + 150));
+    rows.push(...((data ?? []) as Row[]));
+  }
+  for (const row of rows) {
     if (typeof row.id === "string") {
       result.set(
         row.id,
@@ -234,8 +245,8 @@ async function names(admin: Admin, ids: (string | null | undefined)[]) {
       );
     }
   }
-  for (const id of unique) {
-    if (result.has(id)) continue;
+  // Fallback for people without a profile name (bounded to keep it fast).
+  for (const id of unique.filter((id) => !result.has(id)).slice(0, 100)) {
     const { data: user } = await admin.auth.admin.getUserById(id);
     const metadataName = user?.user?.user_metadata?.full_name;
     result.set(
@@ -356,6 +367,9 @@ function orderSummary(
     overdue: row.status === "loaned" && loanUntil !== null && loanUntil < today,
     requesterId: row.requester_id,
     requesterName: people.get(String(row.requester_id)) ?? null,
+    placedByName: row.placed_by
+      ? (people.get(String(row.placed_by)) ?? null)
+      : null,
     approverName: row.approver_id
       ? (people.get(String(row.approver_id)) ?? null)
       : null,
@@ -373,6 +387,43 @@ function orderSummary(
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
+}
+
+/** Active members an agent can order for, sorted by name. */
+async function listRequesters(admin: Admin, tenantId: string) {
+  const { data, error } = await admin
+    .from("tenant_memberships")
+    .select("user_id")
+    .eq("tenant_id", tenantId)
+    .eq("status", "active")
+    .limit(2000);
+  if (error) throw databaseError(error);
+  const ids = ((data ?? []) as Row[])
+    .map((row) => row.user_id)
+    .filter((id): id is string => isUuid(id));
+  const [people, { data: directory }] = await Promise.all([
+    names(admin, ids),
+    ids.length > 0
+      ? admin
+          .from("tenant_member_directory")
+          .select("user_id, job_title")
+          .eq("tenant_id", tenantId)
+          .in("user_id", ids)
+      : Promise.resolve({ data: [] }),
+  ]);
+  const titles = new Map<string, string>();
+  for (const row of (directory ?? []) as Row[]) {
+    if (typeof row.user_id === "string" && typeof row.job_title === "string") {
+      titles.set(row.user_id, row.job_title);
+    }
+  }
+  return ids
+    .map((id) => ({
+      id,
+      name: people.get(id) ?? "Unbekannte Person",
+      jobTitle: titles.get(id) ?? null,
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name, "de"));
 }
 
 async function listOrders(
@@ -424,7 +475,13 @@ async function listOrders(
   const people = await names(
     admin,
     rows.flatMap(
-      (row) => [row.requester_id, row.approver_id, row.handled_by] as string[],
+      (row) =>
+        [
+          row.requester_id,
+          row.placed_by,
+          row.approver_id,
+          row.handled_by,
+        ] as string[],
     ),
   );
   return rows.map((row) => {
@@ -495,6 +552,7 @@ async function getOrder(
   );
   const people = await names(admin, [
     row.requester_id,
+    row.placed_by,
     row.approver_id,
     row.approved_by,
     row.handled_by,
@@ -867,9 +925,22 @@ const securedHandler = withSupabase(
               "Bitte den Warenkorb prüfen.",
             );
           }
-          const { data, error } = await admin.rpc("shop_submit_order", {
+          // Agents may order on behalf of an employee.
+          const requesterId =
+            isUuid(body.requesterId) && body.requesterId !== actorId
+              ? body.requesterId.toLowerCase()
+              : actorId;
+          if (requesterId !== actorId && !access.canFulfill) {
+            throw new HttpError(
+              403,
+              "forbidden",
+              "Nur Agenten können für andere Personen bestellen.",
+            );
+          }
+          const { data, error } = await admin.rpc("shop_submit_order_for", {
             p_actor_id: actorId,
             p_tenant_id: tenantId,
+            p_requester_id: requesterId,
             p_client_request_id: body.clientRequestId,
             p_lines: lines,
             p_delivery_method:
@@ -882,6 +953,18 @@ const securedHandler = withSupabase(
           });
           if (error) throw databaseError(error);
           return json(request, { data: { orderId: data } }, 201);
+        }
+        case "listRequesters": {
+          if (!access.canFulfill) {
+            throw new HttpError(
+              403,
+              "forbidden",
+              "Für diese Aktion fehlt die Berechtigung.",
+            );
+          }
+          return json(request, {
+            data: { people: await listRequesters(admin, tenantId) },
+          });
         }
         case "listOrders": {
           const scope =

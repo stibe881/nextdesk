@@ -173,9 +173,14 @@ export default function ShopOrderScreen() {
 
             <View style={styles.card}>
               <Text style={styles.cardMeta}>
-                Bestellt von {order.requesterName ?? "–"} am{" "}
-                {formatDate(order.createdAt)}
+                {order.placedByName ? "Bestellt für" : "Bestellt von"}{" "}
+                {order.requesterName ?? "–"} am {formatDate(order.createdAt)}
               </Text>
+              {order.placedByName ? (
+                <Text style={styles.cardMeta}>
+                  Erfasst von {order.placedByName}
+                </Text>
+              ) : null}
               <Text style={styles.cardMeta}>
                 {order.deliveryMethod === "desk"
                   ? `Lieferung an: ${order.deliveryLocation ?? "–"}`
