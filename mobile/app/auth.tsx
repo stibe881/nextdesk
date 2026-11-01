@@ -3,7 +3,14 @@ import * as WebBrowser from "expo-web-browser";
 import * as Linking from "expo-linking";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useRef, useState } from "react";
-import { Platform, Pressable, Text, TextInput, View } from "react-native";
+import {
+  Image,
+  Platform,
+  Pressable,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
 
 import { ScreenContainer } from "@/components/screen-container";
 import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
@@ -261,9 +268,12 @@ export default function AuthScreen() {
   return (
     <ScreenContainer className="px-5">
       <View style={styles.content}>
-        <View style={styles.logoMark}>
-          <Text style={styles.logoLetter}>n</Text>
-        </View>
+        <Image
+          accessibilityLabel="nextDesk Logo"
+          resizeMode="contain"
+          source={require("@/assets/images/icon.png")}
+          style={styles.logo}
+        />
         <Text style={styles.brand}>nextDesk</Text>
         <Text style={styles.title}>
           Melde dich an, um deine Tickets zu bearbeiten.
@@ -412,15 +422,9 @@ export default function AuthScreen() {
 
 const useStyles = makeThemedStyles((c) => ({
   content: { flex: 1, gap: 15, justifyContent: "center", paddingBottom: 36 },
-  logoMark: {
-    alignItems: "center",
-    backgroundColor: c.primary,
-    borderRadius: 18,
-    height: 52,
-    justifyContent: "center",
-    width: 52,
-  },
-  logoLetter: { color: c.onPrimary, fontSize: 28, fontWeight: "900" },
+  // The logo artwork has generous built-in padding; the negative margin keeps
+  // the visible mark aligned with the text column.
+  logo: { height: 80, marginLeft: -12, width: 80 },
   brand: {
     color: c.foreground,
     fontSize: 30,
