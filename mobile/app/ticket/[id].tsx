@@ -1572,6 +1572,15 @@ export default function TicketDetailScreen() {
                 >
                   {status.label}
                 </Text>
+                {ticket.canUpdate ? (
+                  <Ionicons
+                    color={
+                      status.is_closed ? colors.success : colors.primaryText
+                    }
+                    name="chevron-down"
+                    size={14}
+                  />
+                ) : null}
               </Pressable>
             ) : null}
           </View>
@@ -1665,6 +1674,39 @@ export default function TicketDetailScreen() {
                 </Pressable>
               ) : null}
             </View>
+
+            <View style={styles.detailsDivider} />
+            <Pressable
+              accessibilityHint={
+                ticket.canUpdate
+                  ? "Antippen, um den Status zu ändern."
+                  : undefined
+              }
+              accessibilityLabel="Status"
+              accessibilityRole={ticket.canUpdate ? "button" : undefined}
+              disabled={!ticket.canUpdate || saving}
+              onPress={() => {
+                hapticSelection();
+                setSelection("status");
+              }}
+              style={styles.detailsValueRow}
+            >
+              <View>
+                <Text style={[styles.cardLabel, tokenStyles.muted]}>
+                  STATUS
+                </Text>
+                <Text style={styles.detailsValue}>
+                  {status?.label ?? "Unbekannt"}
+                </Text>
+              </View>
+              {ticket.canUpdate ? (
+                <Ionicons
+                  color={colors.primaryText}
+                  name="chevron-forward"
+                  size={18}
+                />
+              ) : null}
+            </Pressable>
 
             <View style={styles.detailsDivider} />
             <Pressable
