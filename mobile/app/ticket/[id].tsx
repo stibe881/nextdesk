@@ -667,6 +667,31 @@ export default function TicketDetailScreen() {
     };
   }, [canUseAgentWorkbench, ticket]);
 
+  // Name of the assigned agent, resolved from the assignable agents.
+  const [assigneeName, setAssigneeName] = useState<string | null>(null);
+  const assignedAgentId = ticket?.assignedAgentId ?? null;
+  const ticketIdForAssignee = ticket?.id ?? null;
+  useEffect(() => {
+    if (!ticketIdForAssignee || !assignedAgentId || !canUseAgentWorkbench) {
+      return;
+    }
+    let active = true;
+    void loadAssignableAgents(ticketIdForAssignee)
+      .then((result) => {
+        if (!active) return;
+        const agent = result.agents.find(
+          (candidate) => candidate.userId === assignedAgentId,
+        );
+        setAssigneeName(agent?.displayName?.trim() || "Agent");
+      })
+      .catch(() => {
+        if (active) setAssigneeName("Agent");
+      });
+    return () => {
+      active = false;
+    };
+  }, [assignedAgentId, canUseAgentWorkbench, ticketIdForAssignee]);
+
   function openReopenSheet() {
     setReopenReason("");
     setReopenError("");
@@ -1674,6 +1699,39 @@ export default function TicketDetailScreen() {
                 </Pressable>
               ) : null}
             </View>
+
+            {canUseAgentWorkbench ? (
+              <>
+                <View style={styles.detailsDivider} />
+                <Pressable
+                  accessibilityHint="Antippen, um einen Agenten zuzuweisen."
+                  accessibilityLabel="Zugewiesen an"
+                  accessibilityRole="button"
+                  disabled={assignableAgentsLoading || assigningAgent}
+                  onPress={() => {
+                    hapticSelection();
+                    void openAgentPicker();
+                  }}
+                  style={styles.detailsValueRow}
+                >
+                  <View>
+                    <Text style={[styles.cardLabel, tokenStyles.muted]}>
+                      ZUGEWIESEN AN
+                    </Text>
+                    <Text style={styles.detailsValue}>
+                      {ticket.assignedAgentId
+                        ? (assigneeName ?? "Wird geladen …")
+                        : "Niemand"}
+                    </Text>
+                  </View>
+                  <Ionicons
+                    color={colors.primaryText}
+                    name="chevron-forward"
+                    size={18}
+                  />
+                </Pressable>
+              </>
+            ) : null}
 
             <View style={styles.detailsDivider} />
             <Pressable
