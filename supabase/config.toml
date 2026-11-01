@@ -169,3 +169,7 @@ verify_jwt = false
 # Aktion verlangt ein gültiges Zugriffstoken; die Funktion prüft es selbst.
 [functions.mcp]
 verify_jwt = false
+
+# OAuth-Vermittler für Gemini-Connectors; die Funktion prüft Zugangsdaten selbst.
+[functions.oauth-proxy]
+verify_jwt = false
