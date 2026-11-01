@@ -218,7 +218,9 @@ export default function AuthScreen() {
       await beginNextDeskMagicLink();
       const { error } = await requireNextDesk().auth.signInWithOtp({
         email: address,
-        options: { emailRedirectTo: redirectTo },
+        // nextDesk accounts are provisioned by an organisation (invitation or
+        // SSO). The app must never create a new account from a typed address.
+        options: { emailRedirectTo: redirectTo, shouldCreateUser: false },
       });
       if (error) throw error;
       setMessage(
