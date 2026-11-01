@@ -12,6 +12,7 @@ export default function TabLayout() {
   const { isEnabled, loading, needsWorkspace } = useMobileFeatures();
   const knowledgeVisible = !loading && isEnabled("knowledge.base");
   const scanVisible = !loading && isEnabled("assets.management");
+  const shopVisible = !loading && isEnabled("self_service.shop");
 
   // Fachliche Reihenfolge ohne Home: Tickets, Services | Home | Wissen, Scan.
   // Die Leiste verteilt die sichtbaren Einträge gleichmässig um das zentrierte Home.
@@ -29,6 +30,14 @@ export default function TabLayout() {
       activeIcon: "cube",
     },
   ];
+  if (shopVisible) {
+    tabItems.push({
+      name: "shop",
+      label: "Shop",
+      icon: "bag-handle-outline",
+      activeIcon: "bag-handle",
+    });
+  }
   if (knowledgeVisible) {
     tabItems.push({
       name: "knowledge",
@@ -59,6 +68,10 @@ export default function TabLayout() {
         <Tabs.Screen name="services" options={{ title: "Services" }} />
         <Tabs.Screen name="assets" options={{ href: null }} />
         <Tabs.Screen name="inventory" options={{ href: null }} />
+        <Tabs.Screen
+          name="shop"
+          options={{ href: shopVisible ? undefined : null, title: "Shop" }}
+        />
         <Tabs.Screen name="index" options={{ title: "Home" }} />
         <Tabs.Screen
           name="knowledge"

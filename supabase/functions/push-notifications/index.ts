@@ -21,6 +21,7 @@ const ALL_CATEGORIES = [
   "follow_up",
   "contract_deadline",
   "inventory_low_stock",
+  "shop",
 ] as const;
 const AGENT_CATEGORIES = [
   "assigned",
@@ -31,7 +32,12 @@ const AGENT_CATEGORIES = [
   "approval",
   "follow_up",
 ] as const;
-const REQUESTER_CATEGORIES = ["support_reply", "resolved", "approval"] as const;
+const REQUESTER_CATEGORIES = [
+  "support_reply",
+  "resolved",
+  "approval",
+  "shop",
+] as const;
 
 type Category = (typeof ALL_CATEGORIES)[number];
 type DeliveryMode = "immediate" | "summary" | "off";

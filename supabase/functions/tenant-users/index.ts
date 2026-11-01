@@ -34,6 +34,12 @@ type Action =
   | ({ type: "updatePerson"; tenantId: string; userId: string } & PersonPayload)
   | { type: "getMyTicketAccess"; tenantId: string }
   | { type: "removeUser"; tenantId: string; userId: string }
+  | {
+      type: "setManager";
+      tenantId: string;
+      userId: string;
+      managerUserId: string | null;
+    }
   | { type: "revokeInvitation"; tenantId: string; invitationId: string };
 
 type Membership = {
@@ -44,6 +50,7 @@ type Membership = {
 
 type DirectoryProfile = {
   user_id: string;
+  manager_user_id?: string | null;
   department_id: string | null;
   job_title: string | null;
   offer: string | null;
@@ -51,6 +58,7 @@ type DirectoryProfile = {
 
 type EntraDirectoryPerson = EntraPersonnelRecord & {
   entra_object_id: string;
+  manager_entra_object_id?: string | null;
   display_name: string;
   agent_requested: boolean;
   agent_department_id: string | null;
@@ -177,6 +185,19 @@ function parseAction(value: unknown): Action | null {
       entraObjectId: value.entraObjectId,
       departmentId: normalizedDepartmentId,
       enabled: value.enabled,
+    };
+  }
+  if (
+    value.type === "setManager" &&
+    isUuid(value.tenantId) &&
+    isUuid(value.userId) &&
+    (value.managerUserId === null || isUuid(value.managerUserId))
+  ) {
+    return {
+      type: value.type,
+      tenantId: value.tenantId,
+      userId: value.userId,
+      managerUserId: value.managerUserId as string | null,
     };
   }
   if (
@@ -568,13 +589,13 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         .limit(500),
       context.supabaseAdmin
         .from("tenant_member_directory")
-        .select("user_id, department_id, job_title, offer")
+        .select("user_id, manager_user_id, department_id, job_title, offer")
         .eq("tenant_id", action.tenantId)
         .limit(500),
       context.supabaseAdmin
         .from("tenant_entra_directory_people")
         .select(
-          "entra_object_id, email, display_name, job_title, source_department_name, account_enabled, inactive_at, local_user_id, agent_requested, agent_department_id, agent_role_assignment_id, last_synced_at",
+          "entra_object_id, email, display_name, job_title, source_department_name, account_enabled, inactive_at, local_user_id, manager_entra_object_id, agent_requested, agent_department_id, agent_role_assignment_id, last_synced_at",
         )
         .eq("tenant_id", action.tenantId)
         .order("display_name", { ascending: true })
@@ -671,6 +692,33 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         .filter((membership) => membership.status === "active")
         .map((membership) => membership.user_id),
     );
+    // Effective manager: manual entry first, otherwise the Entra manager.
+    const managerFor = (userId: string) => {
+      const manualManagerId = directories.get(userId)?.manager_user_id ?? null;
+      if (manualManagerId) {
+        return {
+          managerUserId: manualManagerId,
+          managerName: null as string | null,
+          managerSource: "manual" as const,
+        };
+      }
+      const person = entraPeople.find(
+        (candidate) => candidate.local_user_id === userId,
+      );
+      const manager = person?.manager_entra_object_id
+        ? entraPeople.find(
+            (candidate) =>
+              candidate.entra_object_id === person.manager_entra_object_id,
+          )
+        : undefined;
+      return manager
+        ? {
+            managerUserId: manager.local_user_id ?? null,
+            managerName: manager.display_name as string | null,
+            managerSource: "entra" as const,
+          }
+        : { managerUserId: null, managerName: null, managerSource: null };
+    };
     const members = await Promise.all(
       memberships.map(async (membership) => {
         const [authResult, profileResult] = await Promise.all([
@@ -713,9 +761,23 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
           offerSource: entraPerson?.source_department_name ? "entra" : "manual",
           isAgent: access.isAgent,
           isTenantAdmin: access.isTenantAdmin,
+          ...managerFor(membership.user_id),
         };
       }),
     );
+    // Manual managers are members of the same workspace: resolve their names.
+    const memberNames = new Map(
+      members.map((member: any) => [
+        member.id,
+        member.displayName ?? member.email,
+      ]),
+    );
+    for (const member of members as any[]) {
+      if (member.managerSource === "manual" && member.managerUserId) {
+        member.managerName =
+          memberNames.get(member.managerUserId) ?? "Unbekannte Person";
+      }
+    }
     const invitations = (invitationsResult.data ?? []).map(
       (invitation: any) => ({
         id: invitation.id,
@@ -981,6 +1043,58 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     targetTenantId,
   );
   if (denied) return denied;
+
+  if (action.type === "setManager") {
+    if (action.managerUserId === action.userId) {
+      return json(request, { error: { code: "manager_self_reference" } }, 422);
+    }
+    const memberIds = [action.userId, action.managerUserId].filter(
+      (id): id is string => typeof id === "string",
+    );
+    const { data: activeMembers, error: memberError } =
+      await context.supabaseAdmin
+        .from("tenant_memberships")
+        .select("user_id")
+        .eq("tenant_id", action.tenantId)
+        .eq("status", "active")
+        .in("user_id", memberIds);
+    if (memberError || (activeMembers ?? []).length !== memberIds.length) {
+      return json(
+        request,
+        { error: { code: "person_not_active_member" } },
+        422,
+      );
+    }
+    const { error: managerError } = await context.supabaseAdmin
+      .from("tenant_member_directory")
+      .upsert(
+        {
+          tenant_id: action.tenantId,
+          user_id: action.userId,
+          manager_user_id: action.managerUserId,
+        },
+        { onConflict: "tenant_id,user_id" },
+      );
+    if (managerError) {
+      return json(
+        request,
+        { error: { code: "person_profile_update_failed" } },
+        422,
+      );
+    }
+    if (
+      !(await writeAudit(
+        context.supabaseAdmin,
+        action.tenantId,
+        actorId,
+        "tenant.user.manager_updated",
+        action.userId,
+        { managerUserId: action.managerUserId },
+      ))
+    )
+      return json(request, { error: { code: "audit_log_failed" } }, 500);
+    return json(request, { data: { updated: true } });
+  }
 
   if (action.type === "setEntraAgentAccess") {
     const { data, error: requestError } = await context.supabaseAdmin.rpc(

@@ -24,6 +24,7 @@ if (Platform.OS === "ios") {
 type PushNavigationData = {
   tenantId: string;
   ticketId?: string;
+  orderId?: string;
   notificationId?: string;
   kind?: string;
 };
@@ -42,6 +43,9 @@ function parsePushNavigationData(value: unknown): PushNavigationData | null {
     tenantId: nestedBody.tenantId,
     ...(typeof nestedBody.ticketId === "string" && nestedBody.ticketId
       ? { ticketId: nestedBody.ticketId }
+      : {}),
+    ...(typeof nestedBody.orderId === "string" && nestedBody.orderId
+      ? { orderId: nestedBody.orderId }
       : {}),
     ...(typeof nestedBody.notificationId === "string" &&
     nestedBody.notificationId
@@ -104,6 +108,11 @@ export function PushNotificationBridge() {
             pathname: "/ticket/[id]",
             params: { id: data.ticketId },
           });
+        } else if (data.kind === "shop" && data.orderId) {
+          router.push({
+            pathname: "/shop/order/[id]",
+            params: { id: data.orderId },
+          } as never);
         } else if (data.kind === "summary") {
           router.push("/tickets");
         } else {

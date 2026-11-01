@@ -44,6 +44,10 @@ const inventoryMigrationPath = new URL(
   "../supabase/migrations/0115_inventory_foundation_part_01.sql",
   import.meta.url,
 );
+const shopMigrationPath = new URL(
+  "../supabase/migrations/0154_self_service_shop.sql",
+  import.meta.url,
+);
 const catalog = await readFile(catalogPath, "utf8");
 const migrations = await Promise.all([
   readFile(baseMigrationPath, "utf8"),
@@ -56,6 +60,7 @@ const migrations = await Promise.all([
   readFile(onboardingMigrationPath, "utf8"),
   readFile(contractsMigrationPath, "utf8"),
   readFile(inventoryMigrationPath, "utf8"),
+  readFile(shopMigrationPath, "utf8"),
 ]);
 const migration = migrations.join("\n");
 

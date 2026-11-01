@@ -358,7 +358,9 @@ export function MobileFeatureUnavailableScreen({
       ? "Asset-Management"
       : feature === "knowledge.base"
         ? "Wissensdatenbank"
-        : "Ticketdetail";
+        : feature === "self_service.shop"
+          ? "Shop"
+          : "Ticketdetail";
   return (
     <ScreenContainer className="px-5">
       <View style={styles.centered}>

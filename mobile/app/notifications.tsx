@@ -94,6 +94,11 @@ const CATEGORY_DETAILS: readonly {
     label: "SLA-Hinweise",
     description: "Wenn eine SLA-Frist Aufmerksamkeit braucht.",
   },
+  {
+    key: "shop",
+    label: "Shop",
+    description: "Freigaben, Bereitstellung und Status deiner Bestellungen.",
+  },
 ];
 
 const HOURS = Array.from({ length: 24 }, (_, hour) => hour);

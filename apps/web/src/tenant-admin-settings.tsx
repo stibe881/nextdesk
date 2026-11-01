@@ -196,6 +196,9 @@ type TenantDirectoryMember = {
   offerSource: "entra" | "manual";
   isAgent: boolean;
   isTenantAdmin: boolean;
+  managerUserId?: string | null;
+  managerName?: string | null;
+  managerSource?: "entra" | "manual" | null;
 };
 
 type TenantInvitation = {
@@ -335,6 +338,12 @@ type TenantUsersRequest =
     }
   | ({ type: "updatePerson"; tenantId: string; userId: string } & PersonForm)
   | { type: "removeUser"; tenantId: string; userId: string }
+  | {
+      type: "setManager";
+      tenantId: string;
+      userId: string;
+      managerUserId: string | null;
+    }
   | {
       type: "revokeInvitation";
       tenantId: string;
@@ -1206,6 +1215,8 @@ export function TenantAdminSettings({
     useState<PersonForm>(emptyPersonForm);
   const [editingPerson, setEditingPerson] =
     useState<TenantDirectoryMember | null>(null);
+  // Manual manager ("" = none, i.e. the Entra manager applies).
+  const [managerDraft, setManagerDraft] = useState("");
   const [personEditForm, setPersonEditForm] =
     useState<PersonForm>(emptyPersonForm);
   const [editingEntraAgent, setEditingEntraAgent] = useState<string | null>(
@@ -2051,6 +2062,18 @@ export function TenantAdminSettings({
         userId: editingPerson.id,
         ...personEditForm,
       });
+      const currentManual =
+        editingPerson.managerSource === "manual"
+          ? (editingPerson.managerUserId ?? "")
+          : "";
+      if (managerDraft !== currentManual) {
+        await tenantUsersRequest<{ updated: boolean }>({
+          type: "setManager",
+          tenantId,
+          userId: editingPerson.id,
+          managerUserId: managerDraft || null,
+        });
+      }
       setEditingPerson(null);
       setPersonEditForm(emptyPersonForm);
       await loadData();
@@ -4254,6 +4277,14 @@ export function TenantAdminSettings({
                               {member.jobTitle ? (
                                 <span>Funktion: {member.jobTitle}</span>
                               ) : null}
+                              {member.managerName ? (
+                                <span>
+                                  Vorgesetzt: {member.managerName}
+                                  {member.managerSource === "entra"
+                                    ? " (Entra)"
+                                    : ""}
+                                </span>
+                              ) : null}
                               {member.isTenantAdmin ? (
                                 <span>Mandantenadmin</span>
                               ) : member.isAgent ? (
@@ -4270,6 +4301,11 @@ export function TenantAdminSettings({
                               onClick={() => {
                                 setEditingPerson(isEditing ? null : member);
                                 setPersonEditForm(personFormFromMember(member));
+                                setManagerDraft(
+                                  member.managerSource === "manual"
+                                    ? (member.managerUserId ?? "")
+                                    : "",
+                                );
                               }}
                             >
                               {isEditing
@@ -4304,6 +4340,38 @@ export function TenantAdminSettings({
                                     }))
                                   }
                                 />
+                              </label>
+                              <label>
+                                Vorgesetzte Person
+                                <select
+                                  value={managerDraft}
+                                  disabled={saving !== null}
+                                  onChange={(event) =>
+                                    setManagerDraft(event.target.value)
+                                  }
+                                >
+                                  <option value="">
+                                    {member.managerSource === "entra" &&
+                                    member.managerName
+                                      ? `Aus Entra: ${member.managerName}`
+                                      : "Keine bzw. aus Entra übernehmen"}
+                                  </option>
+                                  {userDirectory.members
+                                    .filter(
+                                      (candidate) =>
+                                        candidate.id !== member.id &&
+                                        candidate.status === "active",
+                                    )
+                                    .map((candidate) => (
+                                      <option
+                                        key={candidate.id}
+                                        value={candidate.id}
+                                      >
+                                        {candidate.displayName?.trim() ||
+                                          candidate.email}
+                                      </option>
+                                    ))}
+                                </select>
                               </label>
                               <label>
                                 Ticketzugriffsbereich

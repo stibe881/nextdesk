@@ -8811,4 +8811,164 @@ end;
 $$;
 rollback;
 SQL
+# Self-service shop: ordering, approval by the manager, reservation, hand-out
+# out of the inventory ledger and loan returns.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_owner constant uuid := 'f1540000-0000-4000-8000-000000000001';
+  v_employee constant uuid := 'f1540000-0000-4000-8000-000000000002';
+  v_manager constant uuid := 'f1540000-0000-4000-8000-000000000003';
+  v_tenant uuid;
+  v_requester_role uuid;
+  v_location uuid;
+  v_cable uuid;
+  v_beamer uuid;
+  v_cat_cable uuid;
+  v_cat_headset uuid;
+  v_cat_beamer uuid;
+  v_order uuid;
+  v_status text;
+  v_physical numeric;
+  v_reserved numeric;
+begin
+  insert into auth.users (id) values (v_owner), (v_employee), (v_manager);
+  v_tenant := public.provision_personal_workspace(v_owner, 'owner@shop.example', 'Shop Test');
+  select id into v_requester_role from public.roles where tenant_id = v_tenant and name = 'Requester';
+  insert into public.user_profiles (id, display_name) values (v_employee, 'Erika Muster'), (v_manager, 'Chef Muster');
+  insert into public.tenant_memberships (tenant_id, user_id, status, joined_at)
+  values (v_tenant, v_employee, 'active', now()), (v_tenant, v_manager, 'active', now());
+  insert into public.user_role_assignments (tenant_id, user_id, role_id, assigned_by)
+  values (v_tenant, v_employee, v_requester_role, v_owner), (v_tenant, v_manager, v_requester_role, v_owner);
+  insert into public.tenant_member_directory (tenant_id, user_id, manager_user_id)
+  values (v_tenant, v_employee, v_manager);
+
+  if not public.shop_has_permission(v_employee, v_tenant, 'shop.order')
+     or public.shop_has_permission(v_employee, v_tenant, 'shop.fulfill')
+     or not public.shop_has_permission(v_owner, v_tenant, 'shop.fulfill') then
+    raise exception 'Default shop permissions are wrong';
+  end if;
+  if public.shop_effective_manager(v_tenant, v_employee) is distinct from v_manager then
+    raise exception 'Manual manager was not resolved';
+  end if;
+
+  if not public.shop_feature_enabled(v_tenant) then
+    raise exception 'The shop must be active by default for new workspaces';
+  end if;
+  update public.tenant_feature_flags set enabled = true
+  where tenant_id = v_tenant and feature_key = 'inventory.management';
+
+  insert into public.inventory_locations (tenant_id, code, name) values (v_tenant, 'lager', 'Lager')
+  returning id into v_location;
+  insert into public.inventory_items (tenant_id, article_number, name)
+  values (v_tenant, 'usb-c-kabel', 'USB-C-Kabel') returning id into v_cable;
+  insert into public.inventory_items (tenant_id, article_number, name)
+  values (v_tenant, 'beamer', 'Beamer') returning id into v_beamer;
+  perform public.inventory_apply_event(v_tenant, v_owner, gen_random_uuid(), 'movement_receipt',
+    jsonb_build_array(
+      jsonb_build_object('item_id', v_cable, 'location_id', v_location, 'physical_delta', 3, 'reserved_delta', 0),
+      jsonb_build_object('item_id', v_beamer, 'location_id', v_location, 'physical_delta', 1, 'reserved_delta', 0)
+    ), null, null);
+
+  insert into public.shop_catalog_items (tenant_id, inventory_item_id, name, kind)
+  values (v_tenant, v_cable, 'USB-C-Kabel', 'order') returning id into v_cat_cable;
+  insert into public.shop_catalog_items (tenant_id, name, kind, requires_approval)
+  values (v_tenant, 'Headset', 'order', true) returning id into v_cat_headset;
+  insert into public.shop_catalog_items (tenant_id, inventory_item_id, name, kind, max_loan_days)
+  values (v_tenant, v_beamer, 'Beamer', 'loan', 14) returning id into v_cat_beamer;
+
+  -- 1. Simple order: reserved immediately, booked out at hand-out.
+  v_order := public.shop_submit_order(v_employee, v_tenant, gen_random_uuid(),
+    jsonb_build_array(jsonb_build_object('catalog_item_id', v_cat_cable, 'quantity', 2)),
+    'pickup', null, null, null, null, 'Für das Büro');
+  select physical_quantity, reserved_quantity into v_physical, v_reserved
+  from public.inventory_stock_balances where tenant_id = v_tenant and item_id = v_cable;
+  if v_physical <> 3 or v_reserved <> 2 then
+    raise exception 'Order did not reserve stock: % / %', v_physical, v_reserved;
+  end if;
+  begin
+    perform public.shop_update_order(v_employee, v_tenant, v_order, 'issue', '{}'::jsonb);
+    raise exception 'An employee could hand out an order';
+  exception when insufficient_privilege then null;
+  end;
+  v_status := public.shop_update_order(v_owner, v_tenant, v_order, 'accept', '{}'::jsonb);
+  v_status := public.shop_update_order(v_owner, v_tenant, v_order, 'issue', '{}'::jsonb);
+  select physical_quantity, reserved_quantity into v_physical, v_reserved
+  from public.inventory_stock_balances where tenant_id = v_tenant and item_id = v_cable;
+  if v_status <> 'issued' or v_physical <> 1 or v_reserved <> 0 then
+    raise exception 'Hand-out did not book stock: % % %', v_status, v_physical, v_reserved;
+  end if;
+
+  -- 2. Not enough stock: backorder, cancellation releases nothing wrongly.
+  v_order := public.shop_submit_order(v_employee, v_tenant, gen_random_uuid(),
+    jsonb_build_array(jsonb_build_object('catalog_item_id', v_cat_cable, 'quantity', 4)),
+    'desk', 'Büro 2.14', null, null, null, null);
+  if not exists (select 1 from public.shop_order_lines where order_id = v_order and status = 'backorder') then
+    raise exception 'Missing stock did not produce a backorder';
+  end if;
+  v_status := public.shop_update_order(v_employee, v_tenant, v_order, 'cancel', '{}'::jsonb);
+
+  -- 3. Approval by the manager.
+  v_order := public.shop_submit_order(v_employee, v_tenant, gen_random_uuid(),
+    jsonb_build_array(jsonb_build_object('catalog_item_id', v_cat_headset, 'quantity', 1)),
+    'pickup', null, null, null, null, null);
+  if not exists (select 1 from public.shop_orders where id = v_order and status = 'pending_approval' and approver_id = v_manager) then
+    raise exception 'Approval was not requested from the manager';
+  end if;
+  if not exists (select 1 from public.ticket_notifications where user_id = v_manager and kind = 'shop.order.approval_requested') then
+    raise exception 'Manager was not notified';
+  end if;
+  begin
+    perform public.shop_update_order(v_owner, v_tenant, v_order, 'approve', '{}'::jsonb);
+    raise exception 'Somebody else than the manager approved';
+  exception when insufficient_privilege then null;
+  end;
+  v_status := public.shop_update_order(v_manager, v_tenant, v_order, 'approve', '{}'::jsonb);
+  if v_status <> 'submitted' then
+    raise exception 'Approval did not release the order';
+  end if;
+  v_status := public.shop_update_order(v_owner, v_tenant, v_order, 'issue', '{}'::jsonb);
+  if v_status <> 'issued' then
+    raise exception 'Free item could not be handed out';
+  end if;
+
+  -- 4. Loan: out and back in.
+  v_order := public.shop_submit_order(v_employee, v_tenant, gen_random_uuid(),
+    jsonb_build_array(jsonb_build_object('catalog_item_id', v_cat_beamer, 'quantity', 1)),
+    'pickup', null, null, current_date, current_date + 2, null);
+  v_status := public.shop_update_order(v_owner, v_tenant, v_order, 'issue', '{}'::jsonb);
+  select physical_quantity into v_physical from public.inventory_stock_balances
+  where tenant_id = v_tenant and item_id = v_beamer;
+  if v_status <> 'loaned' or v_physical <> 0 then
+    raise exception 'Loan was not booked out';
+  end if;
+  v_status := public.shop_update_order(v_owner, v_tenant, v_order, 'return', '{}'::jsonb);
+  select physical_quantity into v_physical from public.inventory_stock_balances
+  where tenant_id = v_tenant and item_id = v_beamer;
+  if v_status <> 'returned' or v_physical <> 1 then
+    raise exception 'Loan return was not booked in';
+  end if;
+  begin
+    perform public.shop_submit_order(v_employee, v_tenant, gen_random_uuid(),
+      jsonb_build_array(jsonb_build_object('catalog_item_id', v_cat_beamer, 'quantity', 1)),
+      'pickup', null, null, current_date, current_date + 30, null);
+    raise exception 'A too long loan was accepted';
+  exception when invalid_parameter_value then null;
+  end;
+
+  -- Shop orders never create tickets.
+  if exists (select 1 from public.tickets where tenant_id = v_tenant) then
+    raise exception 'A shop order created a ticket';
+  end if;
+
+  -- The personal workspace including all shop data can still be deleted.
+  perform public.delete_user_account(v_owner);
+  if exists (select 1 from public.shop_orders where tenant_id = v_tenant) then
+    raise exception 'Shop data survived the workspace deletion';
+  end if;
+end;
+$$;
+rollback;
+SQL
 echo "PostgreSQL 16 migration and RLS integration checks passed."

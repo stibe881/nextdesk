@@ -1,6 +1,7 @@
 import { withSupabase } from "@supabase/server";
 import {
   graphAccessToken,
+  graphManagerId,
   graphUsers,
   testEntraDirectoryConnection,
   type GraphUser,
@@ -358,6 +359,36 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       );
       if (error || nonNegativeInteger(imported) !== batch.length) {
         throw new Error("directory_sync_failed");
+      }
+    }
+
+    // Managers (Graph "manager") drive approvals in the self-service shop.
+    // They are stored after the fenced people import so that both ends of a
+    // manager relation exist.
+    const managerPairs = graphPeople
+      .filter(
+        (graphPerson) =>
+          objectIds.has(String(graphPerson.id).toLowerCase()) ||
+          objectIds.has(String(graphPerson.id)),
+      )
+      .map((graphPerson) => ({
+        entra_object_id: String(graphPerson.id),
+        manager_entra_object_id: graphManagerId(graphPerson),
+      }));
+    for (let offset = 0; offset < managerPairs.length; offset += 500) {
+      const { error: managerError } = await context.supabaseAdmin.rpc(
+        "apply_entra_directory_managers",
+        {
+          p_tenant_id: action.tenantId,
+          p_pairs: managerPairs.slice(offset, offset + 500),
+        },
+      );
+      if (managerError) {
+        // Missing managers must not fail the directory import itself.
+        console.error("Entra manager import failed", {
+          code: managerError.code,
+        });
+        break;
       }
     }
 

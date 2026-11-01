@@ -24,6 +24,7 @@ export const PUSH_CATEGORIES = [
   "escalation",
   "follow_up",
   "sla",
+  "shop",
 ] as const;
 
 export type PushCategory = (typeof PUSH_CATEGORIES)[number];

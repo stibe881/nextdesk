@@ -14,6 +14,7 @@ export type ApnsPayloadKind =
   | "follow_up"
   | "contract_deadline"
   | "inventory_low_stock"
+  | "shop"
   | "summary"
   | "test";
 
@@ -26,6 +27,9 @@ export type ApnsPayloadInput = {
   ticketNumber?: string;
   subject?: string | null;
   summaryCount?: number;
+  shopEvent?: string;
+  orderId?: string;
+  orderNumber?: string;
 };
 
 type ApnsConfiguration = {
@@ -218,6 +222,58 @@ function alertFor(input: ApnsPayloadInput): { title: string; body: string } {
         title: "Vertragsfrist",
         body: "Eine Vertragsfrist erfordert deine Aufmerksamkeit.",
       };
+    case "shop": {
+      const number = input.orderNumber ? ` ${input.orderNumber}` : "";
+      switch (input.shopEvent) {
+        case "approval_requested":
+          return {
+            title: "Freigabe für Bestellung",
+            body: `Bestellung${number} wartet auf deine Freigabe.`,
+          };
+        case "submitted":
+          return {
+            title: "Neue Bestellung",
+            body: `Bestellung${number} ist eingegangen.`,
+          };
+        case "approved":
+          return {
+            title: "Bestellung freigegeben",
+            body: `Bestellung${number} wurde freigegeben.`,
+          };
+        case "in_progress":
+          return {
+            title: "Bestellung in Bearbeitung",
+            body: `Bestellung${number} wird vorbereitet.`,
+          };
+        case "ready":
+          return {
+            title: "Bereit zur Abholung",
+            body: `Bestellung${number} liegt für dich bereit.`,
+          };
+        case "issued":
+          return {
+            title: "Bestellung ausgegeben",
+            body: `Bestellung${number} wurde ausgegeben.`,
+          };
+        case "returned":
+          return {
+            title: "Rückgabe bestätigt",
+            body: `Die Ausleihe${number} wurde zurückgenommen.`,
+          };
+        case "rejected":
+          return {
+            title: "Bestellung abgelehnt",
+            body: `Bestellung${number} wurde abgelehnt.`,
+          };
+        case "cancelled":
+          return {
+            title: "Bestellung storniert",
+            body: `Bestellung${number} wurde storniert.`,
+          };
+        default:
+          return { title: "Shop", body: `Neuigkeit zu Bestellung${number}.` };
+      }
+    }
     case "inventory_low_stock":
       return {
         title: "Lagerunterbestand",
@@ -257,6 +313,9 @@ export function buildApnsPayload(
   }
   if (input.contractId && input.kind === "contract_deadline") {
     data.contractId = input.contractId;
+  }
+  if (input.kind === "shop" && input.orderId) {
+    data.orderId = input.orderId;
   }
   const aps: Record<string, unknown> = {
     alert,
