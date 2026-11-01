@@ -132,18 +132,6 @@ export default function ServicesScreen() {
                   />
                 </Pressable>
               ) : null}
-              <View style={styles.infoCard}>
-                <Ionicons
-                  color={colors.primaryText}
-                  name="information-circle-outline"
-                  size={20}
-                />
-                <Text style={styles.infoText}>
-                  Services werden mandantenbezogen verwaltet. Weitere
-                  Servicekataloge erscheinen hier, sobald sie für deinen
-                  Mandanten freigegeben sind.
-                </Text>
-              </View>
             </View>
           </View>
         </View>
@@ -251,13 +239,4 @@ const useStyles = makeThemedStyles((c) => ({
   },
   actionTitle: { color: c.text, fontSize: 14, fontWeight: "800" },
   actionText: { color: c.muted, fontSize: 12, lineHeight: 17, marginTop: 3 },
-  infoCard: {
-    alignItems: "flex-start",
-    backgroundColor: c.primarySoft,
-    borderRadius: 18,
-    flexDirection: "row",
-    gap: 10,
-    padding: 15,
-  },
-  infoText: { color: c.primaryText, flex: 1, fontSize: 12, lineHeight: 18 },
 }));
