@@ -109,8 +109,8 @@ export function RegisterForm({ onCancel }: { onCancel: () => void }) {
     <View style={styles.wrap}>
       <Text style={styles.heading}>Konto erstellen</Text>
       <Text style={styles.copy}>
-        Kostenlos registrieren – auch ohne Firma. Du erhältst deinen eigenen
-        Arbeitsbereich und kannst Teammitglieder einladen.
+        Auch ohne Firma: Du erhältst deinen eigenen Arbeitsbereich und kannst
+        Teammitglieder zur Zusammenarbeit einladen.
       </Text>
       <TextInput
         accessibilityLabel="Name"

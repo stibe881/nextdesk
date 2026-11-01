@@ -31,7 +31,7 @@ jobs:
         uses: actions/checkout@v4
       - name: Check the website files
         run: |
-          for file in index.html support.html datenschutz.html impressum.html assets/site.css; do
+          for file in index.html support.html datenschutz.html impressum.html konto-loeschen.html assets/site.css; do
             test -s "site/$file"
           done
       - name: Configure SSH

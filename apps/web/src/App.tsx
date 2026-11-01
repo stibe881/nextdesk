@@ -1222,7 +1222,7 @@ function SignInScreen() {
   if (registerMode) {
     return (
       <AccessShell>
-        <p className="eyebrow">KOSTENLOS REGISTRIEREN</p>
+        <p className="eyebrow">KONTO ERSTELLEN</p>
         <h2>
           Ihr eigener
           <br />
