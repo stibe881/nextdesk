@@ -42,12 +42,19 @@ export type OrderStatus =
   | "rejected"
   | "cancelled";
 
+export type ShopPerson = {
+  id: string;
+  name: string;
+  jobTitle: string | null;
+};
+
 export type OrderSummary = {
   id: string;
   orderNumber: string;
   status: OrderStatus;
   overdue: boolean;
   requesterName: string | null;
+  placedByName?: string | null;
   itemsLabel?: string;
   loanUntil: string | null;
   createdAt: string;
@@ -114,6 +121,10 @@ export const shopApi = {
     call<{ items: CatalogItem[] }>({ type: "listCatalog", tenantId }).then(
       (data) => data.items,
     ),
+  people: (tenantId: string) =>
+    call<{ people: ShopPerson[] }>({ type: "listRequesters", tenantId }).then(
+      (data) => data.people,
+    ),
   submit: (tenantId: string, order: Record<string, unknown>) =>
     call<{ orderId: string }>({ type: "submitOrder", tenantId, ...order }),
   orders: (
@@ -167,6 +178,7 @@ export const STOCK_LABEL: Record<StockLevel, string> = {
 
 export const EVENT_LABEL: Record<string, string> = {
   submitted: "Bestellung aufgegeben",
+  placed_on_behalf: "Im Auftrag erfasst",
   approval_requested: "Freigabe angefragt",
   approved: "Freigegeben",
   approval_rejected: "Freigabe abgelehnt",

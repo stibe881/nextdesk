@@ -230,6 +230,11 @@ function alertFor(input: ApnsPayloadInput): { title: string; body: string } {
             title: "Freigabe für Bestellung",
             body: `Bestellung${number} wartet auf deine Freigabe.`,
           };
+        case "placed_for_you":
+          return {
+            title: "Bestellung für dich erfasst",
+            body: `Der Support hat Bestellung${number} für dich erfasst.`,
+          };
         case "submitted":
           return {
             title: "Neue Bestellung",

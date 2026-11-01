@@ -20,6 +20,7 @@ import {
   shopApi,
   shopCart,
   useShopCart,
+  type ShopPerson,
 } from "@/lib/shop";
 import { useAppColors } from "@/lib/themed-styles";
 
@@ -49,12 +50,47 @@ export default function ShopCartScreen() {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   const [requestId, setRequestId] = useState(newRequestId);
+  // Agents can place the order for an employee.
+  const [canOrderForOthers, setCanOrderForOthers] = useState(false);
+  const [people, setPeople] = useState<ShopPerson[] | null>(null);
+  const [personQuery, setPersonQuery] = useState("");
+  const [requester, setRequester] = useState<ShopPerson | null>(null);
+  const [choosingPerson, setChoosingPerson] = useState(false);
+  const forOther = requester !== null;
 
   useEffect(() => {
     void loadCurrentTenant()
-      .then((tenant) => setTenantId(tenant.id))
+      .then((tenant) => {
+        setTenantId(tenant.id);
+        return shopApi.context(tenant.id);
+      })
+      .then((context) => setCanOrderForOthers(context.canFulfill))
       .catch(() => setError("Der Arbeitsbereich konnte nicht geladen werden."));
   }, []);
+
+  useEffect(() => {
+    if (!choosingPerson || !tenantId || people !== null) return;
+    let active = true;
+    shopApi
+      .people(tenantId)
+      .then((next) => active && setPeople(next))
+      .catch(() => active && setPeople([]));
+    return () => {
+      active = false;
+    };
+  }, [choosingPerson, people, tenantId]);
+
+  const normalizedQuery = personQuery.trim().toLocaleLowerCase("de");
+  const matchingPeople = (people ?? [])
+    .filter(
+      (person) =>
+        !normalizedQuery ||
+        person.name.toLocaleLowerCase("de").includes(normalizedQuery) ||
+        (person.jobTitle ?? "")
+          .toLocaleLowerCase("de")
+          .includes(normalizedQuery),
+    )
+    .slice(0, 8);
 
   const loanItems = cart.filter((line) => line.item.kind === "loan");
   const hasLoan = loanItems.length > 0;
@@ -78,6 +114,7 @@ export default function ShopCartScreen() {
     try {
       const result = await shopApi.submit(tenantId, {
         clientRequestId: requestId,
+        ...(requester ? { requesterId: requester.id } : {}),
         lines: cart.map((line) => ({
           catalogItemId: line.item.id,
           quantity: line.quantity,
@@ -91,6 +128,7 @@ export default function ShopCartScreen() {
       });
       shopCart.clear();
       setRequestId(newRequestId());
+      setRequester(null);
       router.replace({
         pathname: "/shop/order/[id]",
         params: { id: result.orderId },
@@ -181,6 +219,85 @@ export default function ShopCartScreen() {
 
           {cart.length > 0 ? (
             <>
+              {canOrderForOthers ? (
+                <View style={{ gap: 8 }}>
+                  <Text style={styles.label}>Bestellen für</Text>
+                  <View style={styles.segments}>
+                    <Pressable
+                      accessibilityRole="radio"
+                      accessibilityState={{
+                        checked: !forOther && !choosingPerson,
+                      }}
+                      onPress={() => {
+                        setRequester(null);
+                        setChoosingPerson(false);
+                      }}
+                      style={[
+                        styles.choice,
+                        !forOther && !choosingPerson && styles.choiceActive,
+                      ]}
+                    >
+                      <Text style={styles.choiceText}>Mich selbst</Text>
+                    </Pressable>
+                    <Pressable
+                      accessibilityRole="radio"
+                      accessibilityState={{
+                        checked: forOther || choosingPerson,
+                      }}
+                      onPress={() => setChoosingPerson(true)}
+                      style={[
+                        styles.choice,
+                        (forOther || choosingPerson) && styles.choiceActive,
+                      ]}
+                    >
+                      <Text style={styles.choiceText}>
+                        {requester ? requester.name : "Andere Person"}
+                      </Text>
+                    </Pressable>
+                  </View>
+                  {choosingPerson ? (
+                    <View style={{ gap: 6 }}>
+                      <TextInput
+                        accessibilityLabel="Person suchen"
+                        autoCorrect={false}
+                        onChangeText={setPersonQuery}
+                        placeholder="Name suchen"
+                        placeholderTextColor={colors.subtle}
+                        style={styles.input}
+                        value={personQuery}
+                      />
+                      {people === null ? (
+                        <Text style={styles.cardMeta}>Wird geladen …</Text>
+                      ) : matchingPeople.length === 0 ? (
+                        <Text style={styles.cardMeta}>
+                          Keine Person gefunden.
+                        </Text>
+                      ) : (
+                        matchingPeople.map((person) => (
+                          <Pressable
+                            accessibilityRole="button"
+                            key={person.id}
+                            onPress={() => {
+                              setRequester(person);
+                              setChoosingPerson(false);
+                              setPersonQuery("");
+                            }}
+                            style={styles.card}
+                          >
+                            <Text style={styles.cardTitle}>{person.name}</Text>
+                            {person.jobTitle ? (
+                              <Text style={styles.cardMeta}>
+                                {person.jobTitle}
+                              </Text>
+                            ) : null}
+                          </Pressable>
+                        ))
+                      )}
+                    </View>
+                  ) : null}
+                </View>
+              ) : null}
+
               {hasLoan ? (
                 <View style={{ gap: 8 }}>
                   <Text style={styles.label}>Ausleihdauer ab heute</Text>
@@ -214,7 +331,12 @@ export default function ShopCartScreen() {
                 {(
                   [
                     ["pickup", "Abholung beim Support"],
-                    ["desk", "An meinen Arbeitsplatz"],
+                    [
+                      "desk",
+                      forOther
+                        ? "An den Arbeitsplatz"
+                        : "An meinen Arbeitsplatz",
+                    ],
                   ] as const
                 ).map(([value, label]) => (
                   <Pressable
@@ -258,15 +380,16 @@ export default function ShopCartScreen() {
 
               {needsApproval ? (
                 <Text style={styles.hint}>
-                  Mindestens ein Artikel braucht die Freigabe deiner
-                  vorgesetzten Person.
+                  {forOther
+                    ? "Mindestens ein Artikel braucht die Freigabe der vorgesetzten Person der bestellenden Person."
+                    : "Mindestens ein Artikel braucht die Freigabe deiner vorgesetzten Person."}
                 </Text>
               ) : null}
               {error ? <Text style={styles.error}>{error}</Text> : null}
               <Pressable
                 accessibilityRole="button"
                 accessibilityState={{ busy: pending, disabled: pending }}
-                disabled={pending}
+                disabled={pending || (choosingPerson && !requester)}
                 onPress={() => void submit()}
                 style={({ pressed }) => [
                   styles.primary,
@@ -279,7 +402,9 @@ export default function ShopCartScreen() {
                     ? "Wird bestellt …"
                     : needsApproval
                       ? "Zur Freigabe senden"
-                      : "Jetzt bestellen"}
+                      : forOther
+                        ? `Für ${requester.name} bestellen`
+                        : "Jetzt bestellen"}
                 </Text>
               </Pressable>
             </>

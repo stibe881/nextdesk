@@ -29,6 +29,7 @@ import {
   type OrderDetail,
   type OrderSummary,
   type ShopContext,
+  type ShopPerson,
 } from "./lib/shop";
 
 type Tab = "catalog" | "mine" | "approvals" | "orders" | "manage";
@@ -140,11 +141,12 @@ export function Shop({ tenantId }: { tenantId: string }) {
         <CatalogView
           cart={cart}
           canOrder={context.canOrder}
+          canOrderForOthers={context.canFulfill}
           onCartChange={setCart}
-          onOrdered={(orderId) => {
+          onOrdered={(orderId, forOther) => {
             setCart([]);
             refresh();
-            setTab("mine");
+            setTab(forOther ? "orders" : "mine");
             setOpenOrderId(orderId);
           }}
           tenantId={tenantId}
@@ -178,14 +180,16 @@ function CatalogView({
   tenantId,
   cart,
   canOrder,
+  canOrderForOthers,
   onCartChange,
   onOrdered,
 }: {
   tenantId: string;
   cart: CartLine[];
   canOrder: boolean;
+  canOrderForOthers: boolean;
   onCartChange: (cart: CartLine[]) => void;
-  onOrdered: (orderId: string) => void;
+  onOrdered: (orderId: string, forOther: boolean) => void;
 }) {
   const [items, setItems] = useState<CatalogItem[] | null>(null);
   const [error, setError] = useState("");
@@ -331,6 +335,7 @@ function CatalogView({
         )}
       </div>
       <CartPanel
+        canOrderForOthers={canOrderForOthers}
         cart={cart}
         onCartChange={onCartChange}
         onOrdered={onOrdered}
@@ -343,14 +348,20 @@ function CatalogView({
 function CartPanel({
   tenantId,
   cart,
+  canOrderForOthers,
   onCartChange,
   onOrdered,
 }: {
   tenantId: string;
   cart: CartLine[];
+  canOrderForOthers: boolean;
   onCartChange: (cart: CartLine[]) => void;
-  onOrdered: (orderId: string) => void;
+  onOrdered: (orderId: string, forOther: boolean) => void;
 }) {
+  // Agents can place the order for an employee ("" = for myself).
+  const [requesterId, setRequesterId] = useState("");
+  const [people, setPeople] = useState<ShopPerson[] | null>(null);
+  const forOther = canOrderForOthers && requesterId !== "";
   const [deliveryMethod, setDeliveryMethod] = useState<"pickup" | "desk">(
     "pickup",
   );
@@ -365,6 +376,18 @@ function CartPanel({
   const hasLoan = cart.some((line) => line.item.kind === "loan");
   const needsApproval = cart.some((line) => line.item.requiresApproval);
 
+  useEffect(() => {
+    if (!canOrderForOthers || cart.length === 0 || people !== null) return;
+    let active = true;
+    shopApi
+      .people(tenantId)
+      .then((next) => active && setPeople(next))
+      .catch(() => active && setPeople([]));
+    return () => {
+      active = false;
+    };
+  }, [canOrderForOthers, cart.length, people, tenantId]);
+
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (cart.length === 0) return;
@@ -373,6 +396,7 @@ function CartPanel({
     try {
       const result = await shopApi.submit(tenantId, {
         clientRequestId: requestId,
+        ...(forOther ? { requesterId } : {}),
         lines: cart.map((line) => ({
           catalogItemId: line.item.id,
           quantity: line.quantity,
@@ -388,7 +412,8 @@ function CartPanel({
       setComment("");
       setNeededBy("");
       setLoanUntil("");
-      onOrdered(result.orderId);
+      setRequesterId("");
+      onOrdered(result.orderId, forOther);
     } catch (nextError) {
       setError(
         nextError instanceof Error
@@ -412,6 +437,24 @@ function CartPanel({
           className="shop__cart-form"
           onSubmit={(event) => void submit(event)}
         >
+          {canOrderForOthers ? (
+            <label>
+              Bestellen für
+              <select
+                onChange={(event) => setRequesterId(event.target.value)}
+                value={requesterId}
+              >
+                <option value="">Mich selbst</option>
+                {(people ?? []).map((person) => (
+                  <option key={person.id} value={person.id}>
+                    {person.jobTitle
+                      ? `${person.name} – ${person.jobTitle}`
+                      : person.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
           <ul className="shop__cart-lines">
             {cart.map((line) => (
               <li key={line.item.id}>
@@ -508,7 +551,7 @@ function CartPanel({
                 onChange={() => setDeliveryMethod("desk")}
                 type="radio"
               />
-              An meinen Arbeitsplatz
+              {forOther ? "An den Arbeitsplatz" : "An meinen Arbeitsplatz"}
             </label>
           </fieldset>
           {deliveryMethod === "desk" ? (
@@ -545,8 +588,9 @@ function CartPanel({
           </label>
           {needsApproval ? (
             <p className="shop__hint">
-              Mindestens ein Artikel braucht die Freigabe deiner vorgesetzten
-              Person.
+              {forOther
+                ? "Mindestens ein Artikel braucht die Freigabe der vorgesetzten Person der bestellenden Person."
+                : "Mindestens ein Artikel braucht die Freigabe deiner vorgesetzten Person."}
             </p>
           ) : null}
           {error ? (
@@ -559,7 +603,9 @@ function CartPanel({
               ? "Wird bestellt …"
               : needsApproval
                 ? "Zur Freigabe senden"
-                : "Jetzt bestellen"}
+                : forOther
+                  ? "Für diese Person bestellen"
+                  : "Jetzt bestellen"}
           </button>
         </form>
       )}
@@ -791,9 +837,15 @@ function OrderDialog({
             </p>
             <dl className="shop__facts">
               <div>
-                <dt>Bestellt von</dt>
+                <dt>{order.placedByName ? "Bestellt für" : "Bestellt von"}</dt>
                 <dd>{order.requesterName ?? "–"}</dd>
               </div>
+              {order.placedByName ? (
+                <div>
+                  <dt>Erfasst von</dt>
+                  <dd>{order.placedByName}</dd>
+                </div>
+              ) : null}
               <div>
                 <dt>Bestellt am</dt>
                 <dd>{formatDate(order.createdAt)}</dd>

@@ -26,6 +26,8 @@ Mitarbeitende bestellen Zubehör oder leihen Geräte aus – ohne Ticket. Agente
 
 Ablehnen und Stornieren geben Reservierungen frei. Bestellungen erzeugen nie ein Ticket.
 
+**Im Auftrag bestellen:** Agenten (shop.fulfill) können im Warenkorb unter „Bestellen für“ eine andere Person des Arbeitsbereichs wählen, z. B. bei telefonischen Bestellungen. Die Bestellung gehört dann dieser Person (erscheint in ihren Bestellungen, sie erhält einen Hinweis), „Erfasst von“ zeigt den Agenten. Freigaben gehen an die vorgesetzte Person der bestellenden Person.
+
 ## Vorgesetzte
 
 - Werden beim Entra-Abgleich übernommen (Microsoft Graph `manager`).

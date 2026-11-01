@@ -57,6 +57,7 @@ export type OrderSummary = {
   overdue: boolean;
   requesterId: string;
   requesterName: string | null;
+  placedByName: string | null;
   approverName: string | null;
   handledByName: string | null;
   deliveryMethod: "pickup" | "desk";
@@ -70,6 +71,12 @@ export type OrderSummary = {
   itemsLabel?: string;
   createdAt: string;
   updatedAt: string;
+};
+
+export type ShopPerson = {
+  id: string;
+  name: string;
+  jobTitle: string | null;
 };
 
 export type OrderLine = {
@@ -160,6 +167,10 @@ export const shopApi = {
     }).then((data) => data.items),
   saveItem: (tenantId: string, item: Record<string, unknown>) =>
     call<{ id: string }>({ type: "saveCatalogItem", tenantId, item }),
+  people: (tenantId: string) =>
+    call<{ people: ShopPerson[] }>({ type: "listRequesters", tenantId }).then(
+      (data) => data.people,
+    ),
   submit: (tenantId: string, order: Record<string, unknown>) =>
     call<{ orderId: string }>({ type: "submitOrder", tenantId, ...order }),
   orders: (
@@ -213,6 +224,7 @@ export const STOCK_LABEL: Record<StockLevel, string> = {
 
 export const EVENT_LABEL: Record<string, string> = {
   submitted: "Bestellung aufgegeben",
+  placed_on_behalf: "Im Auftrag erfasst",
   approval_requested: "Freigabe angefragt",
   approved: "Freigegeben",
   approval_rejected: "Freigabe abgelehnt",
