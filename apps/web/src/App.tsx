@@ -70,6 +70,7 @@ import {
   type TicketFilterCatalog,
   type TenantOption,
 } from "./lib/live-dashboard";
+import { createPersonalWorkspace, deleteAccount } from "./lib/account";
 import { acceptTenantInvitations } from "./lib/tenant-invitations";
 import { normalizeQueueSelection, shouldShowQueueTabs } from "./lib/queue-tabs";
 import { collapsedNavigationCategoryAttentionCount } from "./lib/navigation-category-attention";
@@ -1108,6 +1109,47 @@ function SignInScreen() {
   const [message, setMessage] = useState("");
   const [passwordMode, setPasswordMode] = useState(false);
   const [password, setPassword] = useState("");
+  const [registerMode, setRegisterMode] = useState(false);
+  const [fullName, setFullName] = useState("");
+
+  async function register(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!supabase) return;
+    const name = fullName.trim().replace(/\s+/g, " ");
+    if (name.length < 2) {
+      setStatus("error");
+      setMessage("Bitte geben Sie Ihren Namen ein.");
+      return;
+    }
+    if (password.length < 8) {
+      setStatus("error");
+      setMessage("Das Passwort muss mindestens 8 Zeichen lang sein.");
+      return;
+    }
+    setStatus("sending");
+    setMessage("");
+    const { data, error } = await supabase.auth.signUp({
+      email: email.trim().toLowerCase(),
+      password,
+      options: {
+        data: { full_name: name },
+        emailRedirectTo: appRedirectUrl(),
+      },
+    });
+    if (error) {
+      setStatus("error");
+      setMessage(
+        "Das Konto konnte nicht erstellt werden. Bitte prüfen Sie Ihre Angaben und versuchen Sie es erneut.",
+      );
+      return;
+    }
+    setPassword("");
+    if (data.session) return;
+    setStatus("sent");
+    setMessage(
+      "Fast geschafft: Wir haben Ihnen eine E-Mail gesendet. Bestätigen Sie Ihre Adresse über den Link und erstellen Sie danach Ihren Arbeitsbereich. Ist die Adresse bereits registriert, melden Sie sich mit Ihrem Passwort an.",
+    );
+  }
 
   async function signInWithPassword(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -1177,6 +1219,87 @@ function SignInScreen() {
     );
   }
 
+  if (registerMode) {
+    return (
+      <AccessShell>
+        <p className="eyebrow">KONTO ERSTELLEN</p>
+        <h2>
+          Ihr eigener
+          <br />
+          Arbeitsbereich.
+        </h2>
+        <p className="access-lead">
+          Auch ohne Firma: Erstellen Sie ein Konto, verwalten Sie Ihre Tickets
+          und laden Sie Teammitglieder zur Zusammenarbeit ein.
+        </p>
+        <form className="access-form" onSubmit={register}>
+          <label>
+            Name
+            <input
+              autoComplete="name"
+              disabled={status === "sending" || status === "sent"}
+              onChange={(event) => setFullName(event.target.value)}
+              required
+              type="text"
+              value={fullName}
+            />
+          </label>
+          <label>
+            E-Mail-Adresse
+            <input
+              autoComplete="email"
+              disabled={status === "sending" || status === "sent"}
+              inputMode="email"
+              onChange={(event) => setEmail(event.target.value)}
+              placeholder="name@beispiel.ch"
+              required
+              type="email"
+              value={email}
+            />
+          </label>
+          <label>
+            Passwort (mindestens 8 Zeichen)
+            <input
+              autoComplete="new-password"
+              disabled={status === "sending" || status === "sent"}
+              minLength={8}
+              onChange={(event) => setPassword(event.target.value)}
+              required
+              type="password"
+              value={password}
+            />
+          </label>
+          <button
+            className="email-access-button"
+            disabled={status === "sending" || status === "sent"}
+            type="submit"
+          >
+            {status === "sending" ? "Konto wird erstellt …" : "Konto erstellen"}
+          </button>
+          <p className="access-legal">
+            Mit der Registrierung akzeptieren Sie die{" "}
+            <a href={PRIVACY_URL}>Datenschutzerklärung</a>. Ihr Konto können Sie
+            jederzeit in den persönlichen Einstellungen löschen.
+          </p>
+          <button
+            className="access-toggle"
+            disabled={status === "sending"}
+            onClick={() => {
+              setRegisterMode(false);
+              setPassword("");
+              setStatus("idle");
+              setMessage("");
+            }}
+            type="button"
+          >
+            Bereits registriert? Anmelden
+          </button>
+        </form>
+        {message && <p className={`access-message ${status}`}>{message}</p>}
+      </AccessShell>
+    );
+  }
+
   return (
     <AccessShell>
       <p className="eyebrow">KUNDEN-LOGIN</p>
@@ -1186,9 +1309,9 @@ function SignInScreen() {
         Servicezentrale.
       </h2>
       <p className="access-lead">
-        Eigentümer und Kundinnen und Kunden melden sich über ihr jeweiliges
-        Unternehmens-SSO an. Ihr Zugang wird danach automatisch dem richtigen
-        Mandanten zugeordnet.
+        Organisationen melden sich über ihr Unternehmens-SSO an und werden
+        automatisch dem richtigen Mandanten zugeordnet. Einzelpersonen und
+        kleine Teams melden sich mit E-Mail an oder erstellen ein Konto.
       </p>
       <button
         className="gross-sso-button"
@@ -1264,6 +1387,19 @@ function SignInScreen() {
             ? "Stattdessen Anmeldelink per E-Mail"
             : "Mit Passwort anmelden"}
         </button>
+        <button
+          className="access-toggle access-register"
+          disabled={status === "sending" || status === "sso"}
+          onClick={() => {
+            setRegisterMode(true);
+            setPassword("");
+            setStatus("idle");
+            setMessage("");
+          }}
+          type="button"
+        >
+          Neu bei nextDesk? Konto erstellen
+        </button>
       </form>
       {message && <p className={`access-message ${status}`}>{message}</p>}
     </AccessShell>
@@ -1281,18 +1417,108 @@ function LoadingScreen({ message }: { message: string }) {
 }
 
 function NoMembershipScreen({ onSignOut }: { onSignOut: () => void }) {
+  const [name, setName] = useState("");
+  const [state, setState] = useState<"idle" | "saving" | "deleting">("idle");
+  const [message, setMessage] = useState("");
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const trimmed = name.trim().replace(/\s+/g, " ");
+    if (trimmed.length < 2) {
+      setMessage(
+        "Bitte geben Sie einen Namen mit mindestens zwei Zeichen ein.",
+      );
+      return;
+    }
+    setState("saving");
+    setMessage("");
+    try {
+      await createPersonalWorkspace(trimmed);
+      // Reload so the regular, server-confirmed tenant selection runs.
+      window.location.reload();
+    } catch (error) {
+      setState("idle");
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Der Arbeitsbereich konnte nicht erstellt werden.",
+      );
+    }
+  }
+
+  async function removeAccount() {
+    if (
+      !window.confirm(
+        "Konto endgültig löschen? Ihr Konto und Ihre persönlichen Daten werden unwiderruflich gelöscht.",
+      )
+    )
+      return;
+    setState("deleting");
+    setMessage("");
+    try {
+      await deleteAccount();
+      window.location.reload();
+    } catch (error) {
+      setState("idle");
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Das Konto konnte nicht gelöscht werden.",
+      );
+    }
+  }
+
   return (
     <AccessShell>
-      <p className="eyebrow">ANMELDUNG BESTÄTIGT</p>
-      <h1>Portalzugang wird geprüft.</h1>
-      <p>
-        Ihre Sitzung ist aktiv, aber es ist noch keine aktive
-        Mandantenmitgliedschaft vorhanden. Für das Eigentümerportal benötigen
-        Sie die Gross-ICT-SSO-Anmeldung und einen verifizierten MFA-Zugang.
+      <p className="eyebrow">WILLKOMMEN BEI NEXTDESK</p>
+      <h2>Arbeitsbereich erstellen.</h2>
+      <p className="access-lead">
+        Ihr Konto gehört noch zu keiner Organisation. Erstellen Sie Ihren
+        eigenen Arbeitsbereich, um Tickets zu erfassen und zu bearbeiten.
+        Teammitglieder laden Sie danach unter Einstellungen → Benutzer ein.
+        Wurden Sie von einem Team eingeladen, öffnen Sie den Link aus der
+        Einladungs-E-Mail.
       </p>
-      <button className="secondary-button" onClick={onSignOut} type="button">
-        Abmelden
-      </button>
+      <form className="access-form" onSubmit={submit}>
+        <label>
+          Name des Arbeitsbereichs
+          <input
+            disabled={state !== "idle"}
+            maxLength={160}
+            onChange={(event) => setName(event.target.value)}
+            placeholder="z. B. Muster IT oder Max Muster"
+            required
+            type="text"
+            value={name}
+          />
+        </label>
+        <button
+          className="email-access-button"
+          disabled={state !== "idle"}
+          type="submit"
+        >
+          {state === "saving"
+            ? "Arbeitsbereich wird erstellt …"
+            : "Arbeitsbereich erstellen"}
+        </button>
+        <button
+          className="access-toggle"
+          disabled={state !== "idle"}
+          onClick={onSignOut}
+          type="button"
+        >
+          Abmelden
+        </button>
+        <button
+          className="access-toggle access-danger"
+          disabled={state !== "idle"}
+          onClick={() => void removeAccount()}
+          type="button"
+        >
+          {state === "deleting" ? "Konto wird gelöscht …" : "Konto löschen"}
+        </button>
+      </form>
+      {message && <p className="access-message error">{message}</p>}
     </AccessShell>
   );
 }

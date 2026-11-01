@@ -3,8 +3,16 @@ import * as WebBrowser from "expo-web-browser";
 import * as Linking from "expo-linking";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useRef, useState } from "react";
-import { Platform, Pressable, Text, TextInput, View } from "react-native";
+import {
+  Image,
+  Platform,
+  Pressable,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
 
+import { RegisterForm } from "@/components/register-form";
 import { ScreenContainer } from "@/components/screen-container";
 import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
 import {
@@ -62,7 +70,11 @@ export default function AuthScreen() {
   const router = useRouter();
   const colors = useAppColors();
   const styles = useStyles();
-  const { authError } = useLocalSearchParams<{ authError?: string }>();
+  const { accountDeleted, authError } = useLocalSearchParams<{
+    accountDeleted?: string;
+    authError?: string;
+  }>();
+  const [registering, setRegistering] = useState(false);
   const [email, setEmail] = useState("");
   const [message, setMessage] = useState("");
   const [password, setPassword] = useState("");
@@ -78,7 +90,9 @@ export default function AuthScreen() {
     message ||
     (pending === null && typeof authError === "string"
       ? nextDeskAuthFailureMessage(authError)
-      : "");
+      : accountDeleted === "1"
+        ? "Dein Konto wurde gelöscht."
+        : "");
 
   async function continueWithSso() {
     setPending("sso");
@@ -211,7 +225,9 @@ export default function AuthScreen() {
       await beginNextDeskMagicLink();
       const { error } = await requireNextDesk().auth.signInWithOtp({
         email: address,
-        options: { emailRedirectTo: redirectTo },
+        // nextDesk accounts are provisioned by an organisation (invitation or
+        // SSO). The app must never create a new account from a typed address.
+        options: { emailRedirectTo: redirectTo, shouldCreateUser: false },
       });
       if (error) throw error;
       setMessage(
@@ -261,109 +277,42 @@ export default function AuthScreen() {
   return (
     <ScreenContainer className="px-5">
       <View style={styles.content}>
-        <View style={styles.logoMark}>
-          <Text style={styles.logoLetter}>n</Text>
-        </View>
+        <Image
+          accessibilityLabel="nextDesk Logo"
+          resizeMode="contain"
+          source={require("@/assets/images/icon.png")}
+          style={styles.logo}
+        />
         <Text style={styles.brand}>nextDesk</Text>
         <Text style={styles.title}>
-          Melde dich an, um deine Tickets zu bearbeiten.
+          {registering
+            ? "Tickets und Aufgaben für dich und dein Team."
+            : "Melde dich an, um deine Tickets zu bearbeiten."}
         </Text>
 
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Mit SSO anmelden"
-          accessibilityState={{
-            busy: pending === "sso",
-            disabled: pending !== null,
-          }}
-          disabled={pending !== null}
-          hitSlop={8}
-          pressRetentionOffset={RELIABLE_PRESS_RETENTION}
-          onPress={startSsoOnce}
-          // On iOS a tap must never be lost: if the system cancels the press
-          // before onPress, the release still starts the sign-in exactly once.
-          onPressOut={Platform.OS === "web" ? undefined : startSsoOnce}
-          style={({ pressed }) => [
-            styles.ssoButton,
-            pressed && styles.pressed,
-            pending !== null && styles.disabled,
-          ]}
-        >
-          <Text style={styles.ssoButtonText}>
-            {pending === "sso" ? "SSO wird geöffnet …" : "MIT SSO ANMELDEN"}
-          </Text>
-        </Pressable>
-
-        <View style={styles.divider}>
-          <View style={styles.line} />
-          <Text style={styles.dividerText}>oder mit E-Mail</Text>
-          <View style={styles.line} />
-        </View>
-
-        <TextInput
-          autoCapitalize="none"
-          autoComplete="email"
-          keyboardType="email-address"
-          onChangeText={setEmail}
-          placeholder="name@unternehmen.ch"
-          placeholderTextColor={colors.subtle}
-          style={styles.input}
-          textContentType="emailAddress"
-          value={email}
-        />
-        <Pressable
-          accessibilityRole="button"
-          disabled={pending !== null}
-          hitSlop={8}
-          pressRetentionOffset={RELIABLE_PRESS_RETENTION}
-          onPress={startMagicLinkOnce}
-          onPressOut={Platform.OS === "web" ? undefined : startMagicLinkOnce}
-          style={({ pressed }) => [
-            styles.magicButton,
-            pressed && styles.pressed,
-            pending !== null && styles.disabled,
-          ]}
-        >
-          <Text style={styles.magicButtonText}>
-            {pending === "magic"
-              ? "Link wird versendet …"
-              : "Anmeldelink senden"}
-          </Text>
-        </Pressable>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityState={{ expanded: passwordMode }}
-          disabled={pending !== null}
-          hitSlop={8}
-          onPress={() => setPasswordMode((current) => !current)}
-        >
-          <Text style={styles.passwordToggle}>
-            {passwordMode
-              ? "Passwort-Anmeldung ausblenden"
-              : "Mit Passwort anmelden"}
-          </Text>
-        </Pressable>
-        {passwordMode ? (
+        {registering ? (
+          <RegisterForm
+            onCancel={() => {
+              setRegistering(false);
+              setMessage("");
+            }}
+          />
+        ) : (
           <>
-            <TextInput
-              autoCapitalize="none"
-              autoComplete="current-password"
-              autoCorrect={false}
-              onChangeText={setPassword}
-              onSubmitEditing={() => void signInWithPassword()}
-              placeholder="Passwort"
-              placeholderTextColor={colors.subtle}
-              returnKeyType="go"
-              secureTextEntry
-              style={styles.input}
-              textContentType="password"
-              value={password}
-            />
             <Pressable
               accessibilityRole="button"
+              accessibilityLabel="Mit SSO anmelden"
+              accessibilityState={{
+                busy: pending === "sso",
+                disabled: pending !== null,
+              }}
               disabled={pending !== null}
               hitSlop={8}
-              onPress={() => void signInWithPassword()}
+              pressRetentionOffset={RELIABLE_PRESS_RETENTION}
+              onPress={startSsoOnce}
+              // On iOS a tap must never be lost: if the system cancels the press
+              // before onPress, the release still starts the sign-in exactly once.
+              onPressOut={Platform.OS === "web" ? undefined : startSsoOnce}
               style={({ pressed }) => [
                 styles.ssoButton,
                 pressed && styles.pressed,
@@ -371,11 +320,111 @@ export default function AuthScreen() {
               ]}
             >
               <Text style={styles.ssoButtonText}>
-                {pending === "password" ? "Anmeldung läuft …" : "ANMELDEN"}
+                {pending === "sso" ? "SSO wird geöffnet …" : "MIT SSO ANMELDEN"}
+              </Text>
+            </Pressable>
+
+            <View style={styles.divider}>
+              <View style={styles.line} />
+              <Text style={styles.dividerText}>oder mit E-Mail</Text>
+              <View style={styles.line} />
+            </View>
+
+            <TextInput
+              autoCapitalize="none"
+              autoComplete="email"
+              keyboardType="email-address"
+              onChangeText={setEmail}
+              placeholder="name@unternehmen.ch"
+              placeholderTextColor={colors.subtle}
+              style={styles.input}
+              textContentType="emailAddress"
+              value={email}
+            />
+            <Pressable
+              accessibilityRole="button"
+              disabled={pending !== null}
+              hitSlop={8}
+              pressRetentionOffset={RELIABLE_PRESS_RETENTION}
+              onPress={startMagicLinkOnce}
+              onPressOut={
+                Platform.OS === "web" ? undefined : startMagicLinkOnce
+              }
+              style={({ pressed }) => [
+                styles.magicButton,
+                pressed && styles.pressed,
+                pending !== null && styles.disabled,
+              ]}
+            >
+              <Text style={styles.magicButtonText}>
+                {pending === "magic"
+                  ? "Link wird versendet …"
+                  : "Anmeldelink senden"}
+              </Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityState={{ expanded: passwordMode }}
+              disabled={pending !== null}
+              hitSlop={8}
+              onPress={() => setPasswordMode((current) => !current)}
+            >
+              <Text style={styles.passwordToggle}>
+                {passwordMode
+                  ? "Passwort-Anmeldung ausblenden"
+                  : "Mit Passwort anmelden"}
+              </Text>
+            </Pressable>
+            {passwordMode ? (
+              <>
+                <TextInput
+                  autoCapitalize="none"
+                  autoComplete="current-password"
+                  autoCorrect={false}
+                  onChangeText={setPassword}
+                  onSubmitEditing={() => void signInWithPassword()}
+                  placeholder="Passwort"
+                  placeholderTextColor={colors.subtle}
+                  returnKeyType="go"
+                  secureTextEntry
+                  style={styles.input}
+                  textContentType="password"
+                  value={password}
+                />
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={pending !== null}
+                  hitSlop={8}
+                  onPress={() => void signInWithPassword()}
+                  style={({ pressed }) => [
+                    styles.ssoButton,
+                    pressed && styles.pressed,
+                    pending !== null && styles.disabled,
+                  ]}
+                >
+                  <Text style={styles.ssoButtonText}>
+                    {pending === "password" ? "Anmeldung läuft …" : "ANMELDEN"}
+                  </Text>
+                </Pressable>
+              </>
+            ) : null}
+            <Pressable
+              accessibilityRole="button"
+              disabled={pending !== null}
+              hitSlop={8}
+              onPress={() => {
+                setRegistering(true);
+                setMessage("");
+              }}
+              style={styles.registerLink}
+            >
+              <Text style={styles.registerText}>
+                Neu bei nextDesk?{" "}
+                <Text style={styles.registerTextStrong}>Konto erstellen</Text>
               </Text>
             </Pressable>
           </>
-        ) : null}
+        )}
         {/* Fixed slot: status text must not shift the buttons during a tap. */}
         <View style={styles.messageSlot}>
           {displayedMessage ? (
@@ -412,15 +461,9 @@ export default function AuthScreen() {
 
 const useStyles = makeThemedStyles((c) => ({
   content: { flex: 1, gap: 15, justifyContent: "center", paddingBottom: 36 },
-  logoMark: {
-    alignItems: "center",
-    backgroundColor: c.primary,
-    borderRadius: 18,
-    height: 52,
-    justifyContent: "center",
-    width: 52,
-  },
-  logoLetter: { color: c.onPrimary, fontSize: 28, fontWeight: "900" },
+  // The logo artwork has generous built-in padding; the negative margin keeps
+  // the visible mark aligned with the text column.
+  logo: { height: 80, marginLeft: -12, width: 80 },
   brand: {
     color: c.foreground,
     fontSize: 30,
@@ -475,6 +518,9 @@ const useStyles = makeThemedStyles((c) => ({
     fontWeight: "700",
     textAlign: "center",
   },
+  registerLink: { alignItems: "center", marginTop: 4 },
+  registerText: { color: c.muted, fontSize: 14, textAlign: "center" },
+  registerTextStrong: { color: c.primaryText, fontWeight: "800" },
   messageSlot: { marginTop: 2, minHeight: 58 },
   message: { color: c.text, fontSize: 13, lineHeight: 19 },
   legalRow: {

@@ -8682,4 +8682,133 @@ end;
 $$;
 rollback;
 SQL
+# Personal workspaces: self-service provisioning, SSO exclusion and complete
+# account deletion including a fully populated workspace.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_owner constant uuid := 'f1530000-0000-4000-8000-000000000001';
+  v_tenant uuid;
+  v_ticket_status uuid;
+  v_ticket_priority uuid;
+  v_department uuid;
+  v_result jsonb;
+  v_leftover text;
+  v_table record;
+  v_found boolean;
+begin
+  insert into auth.users (id) values (v_owner);
+
+  begin
+    perform public.provision_personal_workspace(v_owner, 'solo@example.ch', ' ');
+    raise exception 'A blank workspace name was accepted';
+  exception when sqlstate '22023' then null;
+  end;
+
+  v_tenant := public.provision_personal_workspace(v_owner, 'solo@example.ch', '  Mein   Team ');
+  if not exists (
+    select 1 from public.tenants
+    where id = v_tenant and workspace_kind = 'personal'
+      and owner_user_id = v_owner and name = 'Mein Team'
+  ) then
+    raise exception 'Personal workspace was not stored with its owner';
+  end if;
+  if not exists (
+    select 1 from public.tenant_memberships
+    where tenant_id = v_tenant and user_id = v_owner and status = 'active'
+  ) then
+    raise exception 'Owner is not an active member of the personal workspace';
+  end if;
+  if not exists (
+    select 1
+    from public.user_role_assignments assignment
+    join public.role_permissions permission on permission.role_id = assignment.role_id
+    where assignment.tenant_id = v_tenant and assignment.user_id = v_owner
+      and permission.permission_code = 'user.manage'
+  ) then
+    raise exception 'Owner cannot manage team members';
+  end if;
+
+  begin
+    perform public.provision_personal_workspace(v_owner, 'solo@example.ch', 'Zweites Team');
+    raise exception 'A second personal workspace was accepted';
+  exception when unique_violation then null;
+  end;
+
+  begin
+    insert into public.tenant_sso_allowed_domains (tenant_id, domain)
+    values (v_tenant, 'example.ch');
+    raise exception 'SSO domain routing was accepted for a personal workspace';
+  exception when insufficient_privilege then null;
+  end;
+
+  select id into v_department from public.departments where tenant_id = v_tenant limit 1;
+  select id into v_ticket_status from public.ticket_statuses where tenant_id = v_tenant order by sort_order limit 1;
+  select id into v_ticket_priority from public.ticket_priorities where tenant_id = v_tenant limit 1;
+  insert into public.tickets (tenant_id, department_id, ticket_number, subject, description, status_id, priority_id, requester_id)
+  values (v_tenant, v_department, 'P-2026-000001', 'Drucker', 'Druckt nicht', v_ticket_status, v_ticket_priority, v_owner);
+
+  v_result := public.delete_user_account(v_owner);
+  if (v_result ->> 'profileDeleted')::boolean is not true
+    or jsonb_array_length(v_result -> 'purgedWorkspaceIds') <> 1 then
+    raise exception 'Account deletion result is incomplete: %', v_result;
+  end if;
+  if exists (select 1 from public.tenants where id = v_tenant)
+    or exists (select 1 from public.tickets where tenant_id = v_tenant)
+    or exists (select 1 from public.user_profiles where id = v_owner) then
+    raise exception 'Personal workspace data survived the account deletion';
+  end if;
+
+  -- A person referenced by another organisation's records is anonymised and
+  -- loses every access instead of breaking that organisation's history.
+  v_result := public.delete_user_account('00000000-0000-4000-8000-000000000003');
+  if (v_result ->> 'profileDeleted')::boolean then
+    raise exception 'Expected anonymisation for a referenced requester';
+  end if;
+  if exists (
+    select 1 from public.tenant_memberships
+    where user_id = '00000000-0000-4000-8000-000000000003' and status <> 'removed'
+  ) or exists (
+    select 1 from public.user_role_assignments
+    where user_id = '00000000-0000-4000-8000-000000000003'
+  ) then
+    raise exception 'Anonymised account kept workspace access';
+  end if;
+
+  -- Purge stress test: the most heavily seeded test tenant is treated as a
+  -- personal workspace and must disappear completely.
+  update public.tenants
+     set workspace_kind = 'personal', owner_user_id = '00000000-0000-4000-8000-000000000001'
+   where id = '10000000-0000-4000-8000-000000000001';
+  perform public.purge_personal_workspace('10000000-0000-4000-8000-000000000001');
+  for v_table in
+    select namespace.nspname, class.relname
+    from pg_class class
+    join pg_namespace namespace on namespace.oid = class.relnamespace
+    join pg_attribute attribute on attribute.attrelid = class.oid and attribute.attname = 'tenant_id'
+    where namespace.nspname not like 'pg\_%' and namespace.nspname not in ('information_schema', 'auth')
+      and class.relkind = 'r'
+  loop
+    execute format('select exists (select 1 from %I.%I where tenant_id = $1)', v_table.nspname, v_table.relname)
+      into v_found using '10000000-0000-4000-8000-000000000001'::uuid;
+    if v_found then
+      v_leftover := concat_ws(', ', v_leftover, v_table.nspname || '.' || v_table.relname);
+    end if;
+  end loop;
+  if v_leftover is not null or exists (
+    select 1 from public.tenants where id = '10000000-0000-4000-8000-000000000001'
+  ) then
+    raise exception 'Workspace purge left rows in: %', v_leftover;
+  end if;
+
+  if has_function_privilege('authenticated', 'public.delete_user_account(uuid)', 'execute')
+    or has_function_privilege('authenticated', 'public.provision_personal_workspace(uuid, text, text)', 'execute')
+    or has_function_privilege('authenticated', 'public.purge_personal_workspace(uuid)', 'execute') then
+    raise exception 'Account functions must not be callable from the browser';
+  end if;
+end;
+$$;
+rollback;
+SQL
 echo "PostgreSQL 16 migration and RLS integration checks passed."

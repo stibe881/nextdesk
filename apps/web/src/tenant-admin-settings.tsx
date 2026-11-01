@@ -1157,6 +1157,28 @@ export function TenantAdminSettings({
   onFeaturesUpdated,
 }: TenantAdminSettingsProps) {
   const [settings, setSettings] = useState<SettingsData | null>(null);
+  // Personal (self-registered) workspaces have no SSO or directory sync.
+  const [personalWorkspace, setPersonalWorkspace] = useState(false);
+  useEffect(() => {
+    let active = true;
+    if (!supabase) return;
+    void supabase
+      .from("tenants")
+      .select("workspace_kind")
+      .eq("id", tenantId)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (active) {
+          setPersonalWorkspace(
+            (data as { workspace_kind?: unknown } | null)?.workspace_kind ===
+              "personal",
+          );
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [tenantId]);
   const [userDirectory, setUserDirectory] = useState<TenantUserDirectory>({
     members: [],
     invitations: [],
@@ -2504,6 +2526,7 @@ export function TenantAdminSettings({
       },
     ];
     return functions.filter((item) => {
+      if (personalWorkspace && item.key === "sso") return false;
       const matchesQuery =
         !query ||
         [item.name, item.description, item.key].some((value) =>
@@ -2515,7 +2538,13 @@ export function TenantAdminSettings({
         (featureFilter === "inactive" && item.tone === "inactive");
       return matchesQuery && matchesFilter;
     });
-  }, [featureFilter, featureQuery, ssoForm.enabled, ssoForm.enforceSso]);
+  }, [
+    featureFilter,
+    featureQuery,
+    personalWorkspace,
+    ssoForm.enabled,
+    ssoForm.enforceSso,
+  ]);
 
   const featureStatusCounts = useMemo(() => {
     const features = settings?.tenant_feature_flags ?? [];
@@ -2523,7 +2552,7 @@ export function TenantAdminSettings({
       all:
         features.filter(
           (feature) => feature.feature_key !== "webhooks.outbound",
-        ).length + 1,
+        ).length + (personalWorkspace ? 0 : 1),
       active:
         features.filter(
           (feature) =>
@@ -2535,9 +2564,9 @@ export function TenantAdminSettings({
           (feature) =>
             feature.feature_key !== "webhooks.outbound" &&
             !isTenantFeatureActive(feature),
-        ).length + (ssoForm.enabled ? 0 : 1),
+        ).length + (ssoForm.enabled || personalWorkspace ? 0 : 1),
     };
-  }, [settings?.tenant_feature_flags, ssoForm.enabled]);
+  }, [personalWorkspace, settings?.tenant_feature_flags, ssoForm.enabled]);
 
   const visibleFeatureCount = featureGroups.reduce(
     (count, group) => count + group.features.length,

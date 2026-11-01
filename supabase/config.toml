@@ -3,6 +3,9 @@ project_id = "nextdesk"
 [functions.create-tenant]
 verify_jwt = true
 
+[functions.account]
+verify_jwt = true
+
 [functions.invite-tenant-member]
 verify_jwt = true
 

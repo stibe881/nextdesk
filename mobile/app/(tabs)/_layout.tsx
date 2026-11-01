@@ -1,5 +1,6 @@
 import { Tabs } from "expo-router";
 
+import { CreateWorkspaceScreen } from "@/components/create-workspace-screen";
 import { useMobileFeatures } from "@/components/mobile-feature-gate";
 import {
   NextDeskTabBar,
@@ -8,7 +9,7 @@ import {
 import { PushCheckInPrompt } from "@/components/push-checkin-prompt";
 
 export default function TabLayout() {
-  const { isEnabled, loading } = useMobileFeatures();
+  const { isEnabled, loading, needsWorkspace } = useMobileFeatures();
   const knowledgeVisible = !loading && isEnabled("knowledge.base");
   const scanVisible = !loading && isEnabled("assets.management");
 
@@ -44,6 +45,8 @@ export default function TabLayout() {
       activeIcon: "scan",
     });
   }
+
+  if (needsWorkspace) return <CreateWorkspaceScreen />;
 
   return (
     <>

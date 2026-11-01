@@ -357,9 +357,16 @@ export async function createNativeNextDeskOAuthUrl(
   return authorizationUrl.toString();
 }
 
-export async function beginNextDeskMagicLink(): Promise<void> {
+/**
+ * Binds an e-mail link (sign-in link or registration confirmation) to this
+ * device. Registration confirmations may be opened much later, so the caller
+ * can extend the validity.
+ */
+export async function beginNextDeskMagicLink(
+  ttlMs: number = AUTH_TRANSACTION_TTL_MS,
+): Promise<void> {
   const transaction: AuthTransaction = {
-    expiresAt: Date.now() + AUTH_TRANSACTION_TTL_MS,
+    expiresAt: Date.now() + ttlMs,
     kind: "magic",
   };
   await mobileSecureStorage.setItem(
