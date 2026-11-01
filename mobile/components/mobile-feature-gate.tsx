@@ -19,6 +19,7 @@ import {
 } from "react-native";
 
 import { ScreenContainer } from "@/components/screen-container";
+import { acceptPendingInvitations, hasActiveMembership } from "@/lib/account";
 import {
   loadMobileFeatureFlags,
   type MobileFeatureFlags,
@@ -40,6 +41,8 @@ type MobileFeatureState = {
   flags: MobileFeatureFlags | null;
   lastConfirmedTenantId: string | null;
   loading: boolean;
+  /** Signed in, but not yet a member of any workspace. */
+  needsWorkspace: boolean;
   refresh: () => Promise<void>;
   switchTenant: (tenantId: string) => Promise<MobileTenant>;
   switchingTenant: boolean;
@@ -51,6 +54,7 @@ const MobileFeatureContext = createContext<MobileFeatureState>({
   flags: null,
   lastConfirmedTenantId: null,
   loading: true,
+  needsWorkspace: false,
   refresh: async () => undefined,
   switchTenant: async () => {
     throw new Error("Der Arbeitsbereich kann derzeit nicht gewechselt werden.");
@@ -68,6 +72,7 @@ export function MobileFeatureProvider({ children }: PropsWithChildren) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [switchingTenant, setSwitchingTenant] = useState(false);
+  const [needsWorkspace, setNeedsWorkspace] = useState(false);
   const refreshRequest = useRef(0);
   // Zuletzt vollständig bestätigter Arbeitsbereich, für stille Aktualisierungen.
   const confirmedTenant = useRef<{ at: number; id: string } | null>(null);
@@ -113,6 +118,23 @@ export function MobileFeatureProvider({ children }: PropsWithChildren) {
       } = await nextDesk.auth.getSession();
       if (!stillCurrent()) return;
       if (!session?.user.id) return;
+      // Self-registered people start without a workspace. Open invitations are
+      // activated first; otherwise the app offers to create a workspace.
+      if (!(await hasActiveMembership())) {
+        const accepted = await acceptPendingInvitations();
+        if (!stillCurrent()) return;
+        if (accepted === 0 || !(await hasActiveMembership())) {
+          if (!stillCurrent()) return;
+          confirmedTenant.current = null;
+          setFlags(null);
+          setTenantId(null);
+          setError(null);
+          setNeedsWorkspace(true);
+          return;
+        }
+      }
+      if (!stillCurrent()) return;
+      setNeedsWorkspace(false);
       let tenant: MobileTenant | null = null;
       for (let attempt = 0; attempt < 2; attempt += 1) {
         try {
@@ -236,6 +258,7 @@ export function MobileFeatureProvider({ children }: PropsWithChildren) {
       if (!active) return;
       if (event === "SIGNED_OUT") {
         refreshRequest.current += 1;
+        setNeedsWorkspace(false);
         setFlags(null);
         setTenantId(null);
         setLastConfirmedTenantId(null);
@@ -270,6 +293,7 @@ export function MobileFeatureProvider({ children }: PropsWithChildren) {
       flags,
       lastConfirmedTenantId,
       loading,
+      needsWorkspace,
       refresh,
       switchTenant,
       switchingTenant,
@@ -280,6 +304,7 @@ export function MobileFeatureProvider({ children }: PropsWithChildren) {
       flags,
       lastConfirmedTenantId,
       loading,
+      needsWorkspace,
       refresh,
       switchTenant,
       switchingTenant,

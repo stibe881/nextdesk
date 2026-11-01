@@ -17,7 +17,9 @@ import {
 } from "react-native";
 
 import { getMyAvailability, setMyAvailability } from "@/lib/nextdesk-portal";
+import { DeleteAccountButton } from "@/components/delete-account-button";
 import { ScreenContainer } from "@/components/screen-container";
+import { TeamMembersCard } from "@/components/team-members-card";
 import {
   type DensityPreference,
   type MotionPreference,
@@ -1042,6 +1044,8 @@ export default function SettingsScreen() {
             </View>
           )}
 
+          <TeamMembersCard tenantId={confirmedTenantId} />
+
           <View style={styles.helpCard}>
             <Text style={styles.helpTitle}>Hilfe und Rechtliches</Text>
             {(
@@ -1079,6 +1083,8 @@ export default function SettingsScreen() {
             <Ionicons color={colors.error} name="log-out-outline" size={19} />
             <Text style={styles.signOutText}>Abmelden</Text>
           </Pressable>
+
+          <DeleteAccountButton />
         </ScrollView>
 
         <Modal
