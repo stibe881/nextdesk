@@ -8853,8 +8853,11 @@ begin
     raise exception 'Manual manager was not resolved';
   end if;
 
+  if not public.shop_feature_enabled(v_tenant) then
+    raise exception 'The shop must be active by default for new workspaces';
+  end if;
   update public.tenant_feature_flags set enabled = true
-  where tenant_id = v_tenant and feature_key in ('self_service.shop', 'inventory.management');
+  where tenant_id = v_tenant and feature_key = 'inventory.management';
 
   insert into public.inventory_locations (tenant_id, code, name) values (v_tenant, 'lager', 'Lager')
   returning id into v_location;

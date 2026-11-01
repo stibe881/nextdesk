@@ -4,7 +4,7 @@ Mitarbeitende bestellen Zubehör oder leihen Geräte aus – ohne Ticket. Agente
 
 ## Aktivierung
 
-- Funktionsschalter **`self_service.shop`** („Shop“) pro Mandant in den Einstellungen → Funktionen.
+- Funktionsschalter **`self_service.shop`** („Shop“) ist standardmässig **aktiv** und lässt sich pro Mandant in den Einstellungen → Funktionen ausschalten.
 - Für Lagerbuchungen zusätzlich **Bestandsverwaltung** (`inventory.management`) aktivieren und Lagerartikel erfassen.
 
 ## Rollen

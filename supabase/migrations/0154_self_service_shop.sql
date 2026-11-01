@@ -17,7 +17,7 @@ values (
   'Shop',
   'Interner Katalog, aus dem Mitarbeitende Zubehör bestellen oder Geräte ausleihen. Bestellungen buchen automatisch aus dem Lager.',
   'assets',
-  false
+  true
 )
 on conflict (key) do update
 set name = excluded.name,
@@ -25,8 +25,9 @@ set name = excluded.name,
     category = excluded.category,
     default_enabled = excluded.default_enabled;
 
+-- The shop is active by default, also for existing workspaces.
 insert into public.tenant_feature_flags (tenant_id, feature_key, enabled)
-select tenant.id, 'self_service.shop', false
+select tenant.id, 'self_service.shop', true
 from public.tenants as tenant
 on conflict (tenant_id, feature_key) do nothing;
 
