@@ -153,11 +153,7 @@ const securedHandler = withSupabase(
       const { data: user, error: userError } =
         await admin.auth.admin.getUserById(actorId);
       if (userError || !user.user?.email) {
-        return json(
-          request,
-          { error: { code: "account_lookup_failed" } },
-          500,
-        );
+        return json(request, { error: { code: "account_lookup_failed" } }, 500);
       }
       const { data: tenantId, error } = await admin.rpc(
         "provision_personal_workspace",
@@ -219,10 +215,7 @@ const securedHandler = withSupabase(
       : [];
     for (const tenantId of purged) {
       try {
-        await removeWorkspaceFiles(
-          admin as unknown as StorageClient,
-          tenantId,
-        );
+        await removeWorkspaceFiles(admin as unknown as StorageClient, tenantId);
       } catch {
         console.error("Workspace file removal failed");
       }

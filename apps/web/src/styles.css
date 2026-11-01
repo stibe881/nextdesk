@@ -18279,3 +18279,23 @@ html:has(.embed-status-badge) body {
   color: var(--muted);
   font-size: 13px;
 }
+
+.access-register {
+  font-weight: 700;
+  opacity: 1;
+}
+.access-danger {
+  color: #c62828;
+}
+.access-legal {
+  font-size: 12px;
+  line-height: 1.5;
+  margin: 0;
+  opacity: 0.8;
+}
+.access-legal a {
+  color: inherit;
+}
+.personal-settings__delete {
+  margin-top: 12px;
+}

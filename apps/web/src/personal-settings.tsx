@@ -14,6 +14,7 @@ import {
 import { useEffect, useState, type FormEvent } from "react";
 import type { User } from "@supabase/supabase-js";
 
+import { deleteAccount } from "./lib/account";
 import { supabase } from "./lib/supabase";
 import {
   checkIn,
@@ -950,6 +951,68 @@ export function PersonalSettings({
           Abmelden
         </button>
       </article>
+
+      <DeleteAccountPanel />
     </section>
+  );
+}
+
+/**
+ * Account deletion (also offered in the iOS app). Deletes the login, the
+ * personal workspace owned by the person and all its data.
+ */
+function DeleteAccountPanel() {
+  const [state, setState] = useState<"idle" | "deleting">("idle");
+  const [message, setMessage] = useState("");
+
+  async function removeAccount() {
+    if (
+      !window.confirm(
+        "Konto endgültig löschen?\n\nIhr Konto und Ihre persönlichen Daten werden unwiderruflich gelöscht. Besitzen Sie einen eigenen Arbeitsbereich, wird er mit allen Tickets, Dateien und Einträgen ebenfalls gelöscht. Arbeitsbereiche von Organisationen bleiben bestehen; Sie verlieren nur Ihren Zugriff.",
+      )
+    )
+      return;
+    setState("deleting");
+    setMessage("");
+    try {
+      await deleteAccount();
+      window.location.assign("/");
+    } catch (error) {
+      setState("idle");
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Das Konto konnte nicht gelöscht werden.",
+      );
+    }
+  }
+
+  return (
+    <article className="personal-settings__signout personal-settings__delete">
+      <div>
+        <strong>Konto löschen</strong>
+        <span>
+          Löscht Ihr Konto, Ihren eigenen Arbeitsbereich und alle darin
+          gespeicherten Daten unwiderruflich.
+        </span>
+        {message && (
+          <span
+            className="personal-settings__notice personal-settings__notice--error"
+            role="alert"
+          >
+            {message}
+          </span>
+        )}
+      </div>
+      <button
+        className="personal-settings__signout-button"
+        disabled={state === "deleting"}
+        onClick={() => void removeAccount()}
+        type="button"
+      >
+        <Trash2 aria-hidden="true" size={17} strokeWidth={1.9} />
+        {state === "deleting" ? "Wird gelöscht …" : "Konto löschen"}
+      </button>
+    </article>
   );
 }
