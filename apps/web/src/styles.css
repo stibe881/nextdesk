@@ -18299,3 +18299,324 @@ html:has(.embed-status-badge) body {
 .personal-settings__delete {
   margin-top: 12px;
 }
+
+/* Self-service shop */
+.shop {
+  display: grid;
+  gap: 18px;
+}
+.shop__tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 8px;
+}
+.shop__tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  padding: 7px 14px;
+  background: none;
+  color: var(--ink-muted);
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+}
+.shop__tab--active {
+  border-color: var(--border);
+  background: var(--surface);
+  color: var(--ink);
+}
+.shop__count {
+  border-radius: 999px;
+  padding: 1px 7px;
+  background: var(--accent, #4338ca);
+  color: #fff;
+  font-size: 12px;
+}
+.shop__layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 18px;
+  align-items: start;
+}
+.shop__filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.shop__search {
+  display: flex;
+  flex: 1;
+  min-width: 220px;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  padding: 0 10px;
+  background: var(--surface);
+}
+.shop__search input {
+  flex: 1;
+  border: 0;
+  padding: 9px 0;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  outline: none;
+}
+.shop__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.shop__card {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  gap: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  padding: 14px;
+  background: var(--surface);
+}
+.shop__image {
+  display: grid;
+  place-items: center;
+  height: 120px;
+  border-radius: calc(var(--radius-card) - 4px);
+  background: var(--surface-subtle);
+  color: var(--ink-muted);
+  overflow: hidden;
+}
+.shop__image img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.shop__card h2 {
+  margin: 0;
+  font-size: 16px;
+}
+.shop__category {
+  margin: 0;
+  color: var(--ink-muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.shop__description {
+  margin: 4px 0 0;
+  color: var(--ink-muted);
+  font-size: 14px;
+}
+.shop__badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.shop__badge,
+.shop__stock,
+.shop__status {
+  display: inline-block;
+  border-radius: 999px;
+  padding: 3px 9px;
+  background: var(--surface-subtle);
+  color: var(--ink-muted);
+  font-size: 12px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+.shop__badge--approval {
+  background: #fef3c7;
+  color: #92400e;
+}
+.shop__stock--in_stock,
+.shop__status--issued,
+.shop__status--returned {
+  background: #dcfce7;
+  color: #166534;
+}
+.shop__stock--low,
+.shop__status--pending_approval {
+  background: #fef3c7;
+  color: #92400e;
+}
+.shop__stock--out_of_stock,
+.shop__status--rejected,
+.shop__status--overdue {
+  background: #fee2e2;
+  color: #991b1b;
+}
+.shop__status--submitted,
+.shop__status--in_progress,
+.shop__status--ready,
+.shop__status--loaned {
+  background: #e0e7ff;
+  color: #3730a3;
+}
+.shop__cart {
+  position: sticky;
+  top: 16px;
+  display: grid;
+  gap: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  padding: 16px;
+  background: var(--surface);
+}
+.shop__cart h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 16px;
+}
+.shop__cart-form,
+.shop__manage,
+.shop__note {
+  display: grid;
+  gap: 10px;
+}
+.shop__cart-form label,
+.shop__dialog label,
+.shop__note label {
+  display: grid;
+  gap: 5px;
+  font-size: 13px;
+  font-weight: 650;
+}
+.shop__cart-lines,
+.shop__lines,
+.shop__timeline,
+.shop__order-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.shop__cart-lines li,
+.shop__lines li {
+  display: grid;
+  gap: 6px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 8px;
+}
+.shop__cart-lines li {
+  grid-template-columns: 1fr auto;
+  align-items: center;
+}
+.shop__qty {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.shop__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.shop__row > * {
+  flex: 1;
+  min-width: 140px;
+}
+.shop__delivery {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  padding: 10px;
+}
+.shop__delivery label,
+.shop__check {
+  display: flex !important;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500 !important;
+}
+.shop__hint {
+  margin: 0;
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: #fef3c7;
+  color: #92400e;
+  font-size: 13px;
+}
+.shop__muted {
+  color: var(--ink-muted);
+  font-size: 13px;
+}
+.shop__order-row {
+  display: grid;
+  grid-template-columns: 130px minmax(0, 1fr) auto auto auto;
+  gap: 12px;
+  align-items: center;
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  padding: 12px 14px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.shop__order-number {
+  font-weight: 700;
+}
+.shop__order-items {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.shop__dialog {
+  display: grid;
+  gap: 12px;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+.shop__dialog h3 {
+  margin: 6px 0 0;
+  font-size: 15px;
+}
+.shop__facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 10px;
+  margin: 0;
+}
+.shop__facts dt {
+  color: var(--ink-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+.shop__facts dd {
+  margin: 2px 0 0;
+}
+.shop__actions {
+  flex-wrap: wrap;
+}
+.shop__timeline li p {
+  margin: 4px 0 0;
+}
+@media (max-width: 900px) {
+  .shop__layout {
+    grid-template-columns: 1fr;
+  }
+  .shop__cart {
+    position: static;
+  }
+  .shop__order-row {
+    grid-template-columns: 1fr auto;
+  }
+}

@@ -42,6 +42,7 @@ import {
   Ticket,
   UserRound,
   Boxes,
+  ShoppingBag,
   X,
   type LucideIcon,
 } from "lucide-react";
@@ -94,6 +95,7 @@ import { Licenses } from "./licenses";
 import { EventSpaces } from "./event-spaces";
 import { Onboarding } from "./onboarding";
 import { Inventory } from "./inventory";
+import { Shop } from "./shop";
 import { PersonalSettings } from "./personal-settings";
 import { ApprovalInboxCard } from "./approval-inbox";
 import {
@@ -160,6 +162,7 @@ import { appRedirectUrl, isSupabaseConfigured, supabase } from "./lib/supabase";
 type Section =
   | "Übersicht"
   | "Tickets"
+  | "Shop"
   | "Arbeitsplatz"
   | "Erwähnungen"
   | "Mein Portal"
@@ -288,6 +291,7 @@ const sections: readonly { label: Section; Icon: LucideIcon }[] =
   workplaceFirstNavigation([
     { label: "Übersicht", Icon: LayoutDashboard },
     { label: "Tickets", Icon: Ticket },
+    { label: "Shop", Icon: ShoppingBag },
     { label: "Fälle", Icon: FileWarning },
     { label: "Wissen", Icon: BookOpen },
     { label: "Services", Icon: MonitorCog },
@@ -308,7 +312,7 @@ const NAVIGATION_CATEGORIES = [
     heading: "ARBEITSBEREICH",
     id: "navigation-category-workspace",
     navigationLabel: "Arbeitsbereich",
-    sectionLabels: ["Übersicht", "Tickets", "Fälle", "Berichte"],
+    sectionLabels: ["Übersicht", "Tickets", "Shop", "Fälle", "Berichte"],
   },
   {
     heading: "PLANUNG & BETRIEB",
@@ -1017,6 +1021,27 @@ function notificationPresentation(
         title: "Ticket eskaliert",
       };
     default:
+      if (notification.kind.startsWith("shop.order.")) {
+        const orderNumber =
+          notificationPayloadText(notification, "orderNumber", 40) ?? "";
+        const shopTitles: Record<string, string> = {
+          "shop.order.approval_requested": "Freigabe für Bestellung",
+          "shop.order.submitted": "Neue Bestellung",
+          "shop.order.approved": "Bestellung freigegeben",
+          "shop.order.in_progress": "Bestellung in Bearbeitung",
+          "shop.order.ready": "Bereit zur Abholung",
+          "shop.order.issued": "Bestellung ausgegeben",
+          "shop.order.returned": "Rückgabe bestätigt",
+          "shop.order.rejected": "Bestellung abgelehnt",
+          "shop.order.cancelled": "Bestellung storniert",
+          "shop.order.note": "Nachricht zur Bestellung",
+        };
+        return {
+          description: `Shop · Bestellung ${orderNumber}`.trim(),
+          Icon: ShoppingBag,
+          title: shopTitles[notification.kind] ?? "Shop",
+        };
+      }
       if (notification.kind.startsWith("ticket.sla.")) {
         return {
           description: `Für ${ticketLabel} ist eine SLA-Frist betroffen.`,
@@ -2681,7 +2706,13 @@ function AuthenticatedApp() {
     }
     if (restrictedWorkspaceSections.length > 0) {
       const fallbackSection = restrictedWorkspaceSections[0];
-      if (fallbackSection && !restrictedWorkspaceSections.includes(section)) {
+      const shopOpen =
+        section === "Shop" && tenantFeatures["self_service.shop"] === true;
+      if (
+        fallbackSection &&
+        !shopOpen &&
+        !restrictedWorkspaceSections.includes(section)
+      ) {
         setSection(fallbackSection);
       }
       return;
@@ -2697,6 +2728,7 @@ function AuthenticatedApp() {
     requesterPortalEnabled,
     section,
     serviceStatusAvailable,
+    tenantFeatures,
     tenantFeaturesLoading,
     ticketAccessLoading,
   ]);
@@ -2923,6 +2955,9 @@ function AuthenticatedApp() {
     if (ticketId) {
       setSection("Tickets");
       setSelectedTicketId(ticketId);
+      setNotificationPanelOpen(false);
+    } else if (notification.kind.startsWith("shop.order.")) {
+      setSection("Shop");
       setNotificationPanelOpen(false);
     }
   }
@@ -3307,6 +3342,7 @@ function AuthenticatedApp() {
       return isFeatureEnabled("assets.management");
     }
     if (item.label === "Lager") return isFeatureEnabled("inventory.management");
+    if (item.label === "Shop") return isFeatureEnabled("self_service.shop");
     if (item.label === "Wissen") return isFeatureEnabled("knowledge.base");
     if (item.label === "Verträge" || item.label === "Lizenzen") {
       return contractsAvailable;
@@ -3326,11 +3362,17 @@ function AuthenticatedApp() {
   const independentlyAvailableEventSpaceSections = eventSpaceNavigationAccess
     ? featureSections.filter((item) => item.label === "Raumplanung")
     : [];
+  // The shop is open to everybody, also next to restricted work sections.
+  const shopSections = featureSections.filter((item) => item.label === "Shop");
   const workSections = canWorkTickets
     ? featureSections
     : [...restrictedWorkSections, ...independentlyAvailableEventSpaceSections]
           .length > 0
-      ? [...restrictedWorkSections, ...independentlyAvailableEventSpaceSections]
+      ? [
+          ...restrictedWorkSections,
+          ...independentlyAvailableEventSpaceSections,
+          ...shopSections,
+        ]
       : requesterSections;
 
   useEffect(() => {
@@ -3339,6 +3381,7 @@ function AuthenticatedApp() {
       Fälle: "assets.management",
       Assets: "assets.management",
       Lager: "inventory.management",
+      Shop: "self_service.shop",
       Systemstatus: "assets.management",
       Berichte: "reporting.service",
       Services: "assets.management",
@@ -4480,6 +4523,10 @@ function AuthenticatedApp() {
           activeTenant &&
           isFeatureEnabled("inventory.management") ? (
           <Inventory tenantId={activeTenant.id} />
+        ) : section === "Shop" &&
+          activeTenant &&
+          isFeatureEnabled("self_service.shop") ? (
+          <Shop key={activeTenant.id} tenantId={activeTenant.id} />
         ) : section === "Raumplanung" && activeTenant ? (
           <EventSpaces
             focusRequestId={

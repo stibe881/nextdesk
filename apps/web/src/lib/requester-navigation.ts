@@ -1,6 +1,7 @@
 export const REQUESTER_NAVIGATION_SECTIONS = [
   "Übersicht",
   "Tickets",
+  "Shop",
   "Mein Portal",
 ] as const;
 
@@ -21,6 +22,7 @@ export function canRequesterOpenSection(
   return (
     section === "Übersicht" ||
     section === "Tickets" ||
+    section === "Shop" ||
     (section === "Mein Portal" && requesterPortalEnabled)
   );
 }

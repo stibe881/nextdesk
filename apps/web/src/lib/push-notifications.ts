@@ -37,6 +37,10 @@ export const pushCategoryMeta = {
     description: "Wenn ein Ticket als gelöst markiert wird",
     label: "Ticketlösungen",
   },
+  shop: {
+    description: "Freigaben, Bereitstellung und Status Ihrer Bestellungen",
+    label: "Shop",
+  },
   sla: {
     description: "Hinweise zu betroffenen SLA-Fristen",
     label: "SLA-Hinweise",
