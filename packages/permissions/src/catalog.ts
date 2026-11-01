@@ -43,6 +43,9 @@ export const permissionCodes = [
   "inventory.move",
   "inventory.adjust",
   "inventory.count.close",
+  "shop.order",
+  "shop.fulfill",
+  "shop.manage",
   "tenant.settings.manage",
   "platform.tenants.manage",
   "platform.support_access.request",
@@ -51,6 +54,8 @@ export const permissionCodes = [
 export type PermissionCode = (typeof permissionCodes)[number];
 
 export const sensitivePermissions: readonly PermissionCode[] = [
+  "shop.fulfill",
+  "shop.manage",
   "ticket.export",
   "ticket.delete",
   "ticket.sla.manage",
