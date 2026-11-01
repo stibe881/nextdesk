@@ -68,6 +68,7 @@ function category(
   | "follow_up"
   | "contract_deadline"
   | "inventory_low_stock"
+  | "shop"
   | null {
   if (kind === "ticket.assigned") return "assigned";
   if (kind === "ticket.requester_reply") return "requester_reply";
@@ -84,6 +85,7 @@ function category(
   if (kind === "ticket.follow_up_due") return "follow_up";
   if (kind === "contract.deadline") return "contract_deadline";
   if (kind === "inventory.low_stock") return "inventory_low_stock";
+  if (kind.startsWith("shop.order.")) return "shop";
   return kind.startsWith("ticket.sla.") ? "sla" : null;
 }
 
@@ -217,6 +219,17 @@ export async function ticketNotificationRecipientAuthorized(
 ): Promise<boolean> {
   if (row.source_type !== "ticket") return true;
   if (!row.ticket_id) {
+    if (row.kind.startsWith("shop.order.")) {
+      // Shop notifications go only to active members of the workspace.
+      const { data: membership } = await admin
+        .from("tenant_memberships")
+        .select("user_id")
+        .eq("tenant_id", row.tenant_id)
+        .eq("user_id", row.user_id)
+        .eq("status", "active")
+        .maybeSingle();
+      return Boolean(membership);
+    }
     if (row.kind !== "inventory.low_stock") return false;
     const { data, error } = await admin.rpc(
       "inventory_low_stock_delivery_authorized",
@@ -272,7 +285,27 @@ async function deliverSingle(admin: any, row: ClaimRow): Promise<void> {
     await completeForDeliveries(admin, row, []);
     return;
   }
+  let shop: { shopEvent: string; orderId?: string; orderNumber?: string } | {} =
+    {};
+  if (preferenceCategory === "shop" && row.notification_id) {
+    const { data: notification } = await admin
+      .from("ticket_notifications")
+      .select("payload")
+      .eq("id", row.notification_id)
+      .maybeSingle();
+    const payload = notification?.payload ?? {};
+    shop = {
+      shopEvent: row.kind.slice("shop.order.".length),
+      ...(typeof payload.orderId === "string"
+        ? { orderId: payload.orderId }
+        : {}),
+      ...(typeof payload.orderNumber === "string"
+        ? { orderNumber: payload.orderNumber }
+        : {}),
+    };
+  }
   const payload = buildApnsPayload({
+    ...shop,
     kind: payloadKind(row.kind, preferenceCategory),
     tenantId: row.tenant_id,
     notificationId: row.notification_id ?? row.outbox_id,

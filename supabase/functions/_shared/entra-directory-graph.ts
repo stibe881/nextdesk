@@ -16,6 +16,7 @@ export const DIRECTORY_GRAPH_FIELDS = [
 ].join(",");
 
 export type GraphUser = {
+  manager?: unknown;
   id?: unknown;
   displayName?: unknown;
   mail?: unknown;
@@ -124,7 +125,7 @@ export async function graphUsers(
   let next: string | null =
     `${GRAPH_ORIGIN}/v1.0/users?$select=${encodeURIComponent(
       DIRECTORY_GRAPH_FIELDS,
-    )}&$top=999`;
+    )}&$expand=${encodeURIComponent("manager($select=id)")}&$top=999`;
 
   for (let page = 0; next && page < 100; page += 1) {
     let url: URL;
@@ -173,4 +174,11 @@ export async function graphUsers(
 
   if (next) throw new EntraDirectoryGraphError();
   return users;
+}
+
+/** Entra object id of the person's manager, if Graph delivered one. */
+export function graphManagerId(user: GraphUser): string | null {
+  const manager = user.manager;
+  if (!isRecord(manager) || typeof manager.id !== "string") return null;
+  return isUuid(manager.id) ? manager.id.toLowerCase() : null;
 }
