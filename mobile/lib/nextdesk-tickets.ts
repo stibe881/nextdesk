@@ -82,6 +82,7 @@ export type MobileTicketDetail = {
   requesterId: string | null;
   requesterName: string | null;
   requesterContact: TicketRequester | null;
+  assignedAgentId: string | null;
   resolvedAt: string | null;
   subcategoryId: string | null;
   statusId: string;
@@ -648,6 +649,10 @@ export async function loadMobileTicketDetail(
       typeof record.requester_id === "string" ? record.requester_id : null,
     requesterName: requesterContact?.displayName ?? null,
     requesterContact,
+    assignedAgentId:
+      typeof record.assigned_agent_id === "string"
+        ? record.assigned_agent_id
+        : null,
     resolvedAt:
       typeof record.resolved_at === "string" ? record.resolved_at : null,
     subcategoryId:
