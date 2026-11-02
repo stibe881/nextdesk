@@ -330,6 +330,22 @@ async function ensureTenantRole(
   return !createError;
 }
 
+async function hasActiveRoleAssignment(
+  admin: any,
+  tenantId: string,
+  userId: string,
+): Promise<boolean> {
+  const { data, error } = await admin
+    .from("user_role_assignments")
+    .select("id")
+    .eq("tenant_id", tenantId)
+    .eq("user_id", userId)
+    .or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`)
+    .limit(1);
+  // On a lookup error assume roles exist; never grant access on uncertainty.
+  return error ? true : Array.isArray(data) && data.length > 0;
+}
+
 async function ensureSupportAgentRole(
   admin: any,
   tenantId: string,
@@ -681,6 +697,31 @@ async function provisionSsoPerson(
       await admin
         .from("user_profiles")
         .upsert({ id: userId, display_name: ssoDisplayName });
+    }
+    // A first sign-in can fail after the membership claim but before the
+    // Requester role was assigned. Every later sign-in takes this branch, so
+    // without this repair the person would stay a member without any access.
+    if (!(await hasActiveRoleAssignment(admin, tenantId, userId))) {
+      await admin.from("tenant_member_directory").upsert(
+        {
+          tenant_id: tenantId,
+          user_id: userId,
+          job_title: directoryLink.jobTitle,
+          offer: directoryLink.offer,
+        },
+        { onConflict: "tenant_id,user_id", ignoreDuplicates: true },
+      );
+      if (
+        !(await ensureTenantRole(
+          admin,
+          tenantId,
+          userId,
+          REQUESTER_ROLE,
+          userId,
+        ))
+      ) {
+        return "failed";
+      }
     }
     await initialiseEntraRequesterProfile(
       admin,
