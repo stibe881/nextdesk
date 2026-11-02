@@ -705,6 +705,10 @@ const handler = withSupabase(
 
 export default {
   async fetch(request: Request): Promise<Response> {
+    // Browser preflights carry no Authorization header; answer them before
+    // the authenticated handler so they are not rejected with 401.
+    if (request.method === "OPTIONS")
+      return new Response(null, { status: 204, headers: headers(request) });
     return handler(request);
   },
 };

@@ -261,6 +261,15 @@ const handler = withSupabase(
 
 export default {
   fetch(request: Request): Response | Promise<Response> {
+    // Browser preflights carry no Authorization header; answer them before
+    // the authenticated handler so they are not rejected with 401.
+    if (request.method === "OPTIONS") {
+      const origin = request.headers.get("origin");
+      if (origin !== null && origin !== APP_ORIGIN) {
+        return json(request, { error: { code: "origin_not_allowed" } }, 403);
+      }
+      return new Response(null, { status: 204, headers: corsHeaders(request) });
+    }
     return handler(request);
   },
 };
