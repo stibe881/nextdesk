@@ -255,6 +255,10 @@ export default function AssetDetailScreen() {
         />
         <InfoCard
           rows={[
+            [
+              "Primäre Person",
+              valueOrDash(integration?.primary_person_name as string | null),
+            ],
             ["Hersteller", valueOrDash(asset.manufacturer)],
             ["Modell", valueOrDash(asset.model)],
             ["Typ", valueOrDash(asset.kind)],

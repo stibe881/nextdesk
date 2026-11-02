@@ -443,6 +443,33 @@ async function assetById(
   return asAsset(data);
 }
 
+/** Display name of the Intune primary user (Entra directory), if linked. */
+async function intunePrimaryPersonName(
+  admin: AdminClient,
+  tenantId: string,
+  assetId: string,
+): Promise<string | null> {
+  const { data: link, error } = await admin
+    .from("asset_intune_primary_person_links")
+    .select("entra_object_id")
+    .eq("tenant_id", tenantId)
+    .eq("asset_id", assetId)
+    .limit(1)
+    .maybeSingle();
+  if (error || !link?.entra_object_id) return null;
+  const { data: person } = await admin
+    .from("tenant_entra_directory_people")
+    .select("display_name")
+    .eq("tenant_id", tenantId)
+    .eq("entra_object_id", link.entra_object_id)
+    .eq("account_enabled", true)
+    .is("inactive_at", null)
+    .maybeSingle();
+  const name =
+    typeof person?.display_name === "string" ? person.display_name.trim() : "";
+  return name || null;
+}
+
 async function getAsset(
   request: Request,
   client: CallerClient,
@@ -513,6 +540,7 @@ async function getAsset(
   const [
     { data: assignments, error: assignmentError },
     { data: lifecycle, error: lifecycleError },
+    primaryPersonName,
   ] = await Promise.all([
     admin
       .from("asset_assignments")
@@ -528,6 +556,7 @@ async function getAsset(
       .eq("asset_id", action.assetId)
       .order("occurred_at", { ascending: false })
       .limit(30),
+    intunePrimaryPersonName(admin, action.tenantId, action.assetId),
   ]);
   if (assignmentError) databaseFailure(assignmentError);
   if (lifecycleError) databaseFailure(lifecycleError);
@@ -541,6 +570,7 @@ async function getAsset(
       location,
       tickets: tickets ?? [],
       integration: {
+        primary_person_name: primaryPersonName,
         compliance_state: managerAsset.intune_compliance_state,
         is_encrypted: managerAsset.intune_encrypted,
         last_sync_at: managerAsset.intune_last_sync_at,
