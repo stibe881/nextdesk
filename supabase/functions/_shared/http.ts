@@ -1,12 +1,17 @@
 export type JsonObject = Record<string, unknown>;
 
+// The production web app is always allowed; CORS_ALLOWED_ORIGINS may add
+// further origins (e.g. staging). Without it, browsers blocked every call.
+const APP_ORIGIN = "https://app.nextdesk.ch";
+
 function configuredOrigins(): Set<string> {
-  return new Set(
-    (Deno.env.get("CORS_ALLOWED_ORIGINS") ?? "")
+  return new Set([
+    APP_ORIGIN,
+    ...(Deno.env.get("CORS_ALLOWED_ORIGINS") ?? "")
       .split(",")
       .map((origin) => origin.trim())
       .filter(Boolean),
-  );
+  ]);
 }
 
 export function corsHeaders(request: Request): HeadersInit {

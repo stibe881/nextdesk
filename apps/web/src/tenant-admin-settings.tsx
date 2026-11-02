@@ -3600,10 +3600,6 @@ export function TenantAdminSettings({
                                             ) : null}
                                           </>
                                         )}
-                                        <details className="tenant-admin-settings__feature-technical">
-                                          <summary>Technische Details</summary>
-                                          <code>{feature.feature_key}</code>
-                                        </details>
                                       </div>
                                     ) : null}
                                   </li>
