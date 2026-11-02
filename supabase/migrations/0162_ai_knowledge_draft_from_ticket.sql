@@ -38,22 +38,26 @@ returns table(request_id uuid)
 language plpgsql
 security definer
 set search_path to 'pg_catalog', 'public', 'pg_temp'
-as $function$
+as $$
 declare
   v_approval public.tenant_ai_provider_approvals%rowtype;
   v_article_visibility public.knowledge_articles.visibility%type;
   v_request_count integer;
   v_now timestamptz := timezone('utc', now());
-  v_ticket_article boolean :=
-    p_object_type = 'ticket' and p_purpose = 'knowledge_article_draft';
+  -- Ticket-based knowledge drafts may send more text than other purposes.
+  v_max_input integer := 1200;
 begin
+  if p_object_type = 'ticket' and p_purpose = 'knowledge_article_draft' then
+    v_max_input := 12000;
+  end if;
+
   if p_tenant_id is null
     or p_actor_id is null
     or p_provider_key not in ('nextdesk-managed', 'anthropic')
     or p_purpose not in ('general_draft', 'ticket_reply_draft', 'knowledge_article_draft')
     or p_object_type not in ('none', 'ticket', 'knowledge_article')
     or p_input_character_count < 1
-    or p_input_character_count > case when v_ticket_article then 12000 else 1200 end
+    or p_input_character_count > v_max_input
     or p_max_output_tokens not between 16 and 1024
     or p_max_cost_cents not between 1 and 50
     or p_external_article_content is null
@@ -140,6 +144,6 @@ begin
 
   return next;
 end;
-$function$;
+$$;
 
 commit;
