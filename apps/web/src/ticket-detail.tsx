@@ -5559,10 +5559,9 @@ export function TicketDetail({
       commentBody,
       activeCommentImageAttachments.length,
     );
-    const mentionRecipients =
-      commentVisibility === "internal"
-        ? mentionedUserIds.filter((userId) => userId !== currentUserId)
-        : [];
+    const mentionRecipients = detail?.canUseInternalNotes
+      ? mentionedUserIds.filter((userId) => userId !== currentUserId)
+      : [];
     if (!body) {
       setError("Bitte geben Sie einen Kommentar ein.");
       return;
@@ -5611,7 +5610,7 @@ export function TicketDetail({
         const savedComment = [...updatedDetail.comments]
           .filter(
             (item) =>
-              item.visibility === "internal" &&
+              item.visibility === commentVisibility &&
               item.body === body &&
               Date.parse(item.created_at) >= submittedAt - 15_000,
           )
@@ -5621,7 +5620,9 @@ export function TicketDetail({
           )[0];
         if (!savedComment) {
           setCommentNotice(
-            "Die interne Notiz wurde gespeichert. Erwähnungen konnten nicht sicher zugeordnet werden.",
+            commentVisibility === "internal"
+              ? "Die interne Notiz wurde gespeichert. Erwähnungen konnten nicht sicher zugeordnet werden."
+              : "Die Nachricht wurde gesendet. Die Benachrichtigungen konnten nicht sicher zugeordnet werden.",
           );
         } else {
           const mentionResponse = asRecord(
@@ -5638,7 +5639,11 @@ export function TicketDetail({
             throw new Error("Die Erwähnungen konnten nicht bestätigt werden.");
           }
           setMentionedUserIds([]);
-          setCommentNotice("Interne Notiz und Erwähnungen wurden gespeichert.");
+          setCommentNotice(
+            commentVisibility === "internal"
+              ? "Interne Notiz und Erwähnungen wurden gespeichert."
+              : "Nachricht gesendet und weitere Personen benachrichtigt.",
+          );
         }
       } else if (commentVisibility === "internal") {
         setMentionedUserIds([]);
@@ -6761,11 +6766,11 @@ export function TicketDetail({
           )}
           <TicketMentionPicker
             disabled={busy}
-            enabled={
-              commentVisibility === "internal" && detail.canUseInternalNotes
-            }
+            enabled={detail.canUseInternalNotes}
+            notifyOnly={commentVisibility !== "internal"}
             onChange={setMentionedUserIds}
             onInsertMention={(displayName) =>
+              commentVisibility === "internal" &&
               setCommentDrafts((current) => {
                 const internalNote = ticketCommentDraftForMode(
                   current,

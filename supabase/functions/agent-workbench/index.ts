@@ -551,7 +551,7 @@ async function createMentions(
     throw new HttpError(
       400,
       "invalid_request",
-      "Interne Notiz und mindestens eine erwähnte Person sind erforderlich.",
+      "Eine Nachricht und mindestens eine zu benachrichtigende Person sind erforderlich.",
     );
   const comment = await admin
     .from("ticket_comments")
@@ -562,12 +562,13 @@ async function createMentions(
   if (
     !comment.data ||
     comment.data.ticket_id !== info.id ||
-    comment.data.visibility !== "internal"
+    (comment.data.visibility !== "internal" &&
+      comment.data.visibility !== "external")
   )
     throw new HttpError(
       422,
-      "internal_comment_required",
-      "Erwähnungen sind nur in einer internen Notiz möglich.",
+      "comment_required",
+      "Die Nachricht gehört nicht zu diesem Ticket.",
     );
   const people = [
     ...new Set(
