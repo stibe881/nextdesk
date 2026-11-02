@@ -47,6 +47,17 @@ import { AiGovernancePanel } from "./ai-governance-panel";
 import { ExchangeMailSettings } from "./exchange-mail-settings";
 import { SlaManagement } from "./sla-management";
 
+/**
+ * The technical role keys stay unchanged (they are referenced by database
+ * policies); only the label shown to people differs.
+ */
+const ROLE_LABELS: Record<string, string> = {
+  "Tenant administrator": "Administrator",
+};
+function roleLabel(name: string): string {
+  return ROLE_LABELS[name] ?? name;
+}
+
 export type TenantAdminSettingsProps = {
   tenantId: string;
   onClose: () => void;
@@ -2395,7 +2406,7 @@ export function TenantAdminSettings({
       });
       await loadData();
       setSuccess(
-        `Die Rolle „${role.name}“ wurde ${role.active ? "deaktiviert" : "aktiviert"}.`,
+        `Die Rolle „${roleLabel(role.name)}“ wurde ${role.active ? "deaktiviert" : "aktiviert"}.`,
       );
     } catch (nextError) {
       setError(
@@ -2452,7 +2463,7 @@ export function TenantAdminSettings({
         assignment,
       ]);
       setRoleAssignmentForm((current) => ({ ...current, roleId: "" }));
-      setSuccess(`Die Rolle „${role.name}“ wurde ${person.email} zugewiesen.`);
+      setSuccess(`Die Rolle „${roleLabel(role.name)}“ wurde ${person.email} zugewiesen.`);
     } catch (nextError) {
       setError(
         messageFromError(
@@ -4819,7 +4830,7 @@ export function TenantAdminSettings({
                           <option value="">Rolle auswählen</option>
                           {assignableRoles.map((role) => (
                             <option key={role.id} value={role.id}>
-                              {role.name}
+                              {roleLabel(role.name)}
                             </option>
                           ))}
                         </select>
@@ -4877,7 +4888,7 @@ export function TenantAdminSettings({
                             </span>
                             <div className="tenant-admin-settings__role-chips">
                               {person.roleNames.map((roleName) => (
-                                <span key={roleName}>{roleName}</span>
+                                <span key={roleName}>{roleLabel(roleName)}</span>
                               ))}
                             </div>
                           </div>
@@ -4916,7 +4927,7 @@ export function TenantAdminSettings({
                                   >
                                     {saving === target
                                       ? "Wird entzogen …"
-                                      : `«${assignment.roleName}» entziehen`}
+                                      : `«${roleLabel(assignment.roleName)}» entziehen`}
                                   </button>
                                 );
                               })}
@@ -4952,7 +4963,7 @@ export function TenantAdminSettings({
                               <div className="tenant-admin-settings__role-card-main">
                                 <div className="tenant-admin-settings__role-card-heading">
                                   <div>
-                                    <strong>{role.name}</strong>
+                                    <strong>{roleLabel(role.name)}</strong>
                                     <span>{roleScopeLabel(role.scope)}</span>
                                   </div>
                                   <div className="tenant-admin-settings__role-chips">
@@ -5184,7 +5195,7 @@ export function TenantAdminSettings({
                               <span className="tenant-admin-settings__access-label">
                                 Rolle
                               </span>
-                              <strong>{assignment.roleName}</strong>
+                              <strong>{roleLabel(assignment.roleName)}</strong>
                               <span>
                                 Zugewiesen:{" "}
                                 {formatDate(assignment.starts_at) ??
@@ -5233,7 +5244,7 @@ export function TenantAdminSettings({
           >
             <h2 id="revoke-role-dialog-title">Rollenzuweisung entziehen?</h2>
             <p id="revoke-role-dialog-description">
-              Die Zuweisung der Rolle „{assignmentPendingRevocation.roleName}“
+              Die Zuweisung der Rolle „{roleLabel(assignmentPendingRevocation.roleName)}“
               an{" "}
               {assignmentPendingRevocation.user.displayName?.trim() ||
                 assignmentPendingRevocation.user.email ||
