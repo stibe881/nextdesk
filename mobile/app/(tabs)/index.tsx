@@ -65,6 +65,7 @@ import {
 } from "@/lib/nextdesk-tickets";
 import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
 import { useThemeContext } from "@/lib/theme-provider";
+import { loadOwnProfilePhotoUrl } from "@/lib/nextdesk-assets-photo";
 import { loadTenantBranding, type TenantBranding } from "@/lib/tenant-branding";
 
 type FocusScope =
@@ -203,6 +204,20 @@ export default function HomeScreen() {
   const tenantEpoch = useRef(0);
   const supplementaryRequest = useRef(0);
   const tenantId = tenant?.id ?? null;
+  const [profilePhoto, setProfilePhoto] = useState<{
+    tenantId: string;
+    url: string;
+  } | null>(null);
+  useEffect(() => {
+    if (!tenantId) return;
+    let cancelled = false;
+    void loadOwnProfilePhotoUrl(tenantId).then((url) => {
+      if (!cancelled && url) setProfilePhoto({ tenantId, url });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [tenantId]);
   // Nach einem Mandantenwechsel kann dieser Tab noch kurz den vorherigen
   // Dashboard-Stand halten. Bis der neue Stand geladen ist, wird nichts aus
   // dem alten Mandanten angezeigt.
@@ -877,11 +892,19 @@ export default function HomeScreen() {
             onPress={() => router.push("/settings")}
             style={[styles.avatar, { backgroundColor: colors.primarySoft }]}
           >
-            <Ionicons
-              color={colors.primaryText}
-              name="person-circle-outline"
-              size={23}
-            />
+            {profilePhoto && profilePhoto.tenantId === tenantId ? (
+              <Image
+                accessibilityIgnoresInvertColors
+                source={{ uri: profilePhoto.url }}
+                style={styles.avatarPhoto}
+              />
+            ) : (
+              <Ionicons
+                color={colors.primaryText}
+                name="person-circle-outline"
+                size={23}
+              />
+            )}
           </Pressable>
         </View>
 
@@ -1650,8 +1673,10 @@ const useStyles = makeThemedStyles(() => ({
     borderRadius: 21,
     height: 42,
     justifyContent: "center",
+    overflow: "hidden",
     width: 42,
   },
+  avatarPhoto: { height: 42, width: 42 },
   brand: {
     flexShrink: 1,
     fontSize: 28,

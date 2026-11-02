@@ -210,7 +210,7 @@ function firstClaim(value: unknown): SyncClaim | null {
   return isRecord(candidate) ? (candidate as SyncClaim) : null;
 }
 
-const PHOTOS_PER_RUN = 400;
+const PHOTOS_PER_RUN = 500;
 const PHOTO_CONCURRENCY = 8;
 
 // Holt die Profilfotos nach dem Import. Fehler hier lassen den Abgleich nie

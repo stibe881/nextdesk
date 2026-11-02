@@ -1339,14 +1339,34 @@ const handler = withSupabase(
       }
       if (action.type === "ownPhoto") {
         // Nur das eigene Profilfoto der angemeldeten Person im eigenen Mandanten.
-        const own = await context.supabaseAdmin
+        // Die Person wird über die verknüpfte Benutzer-ID gefunden, sonst über
+        // die bestätigte Anmelde-Adresse (die Verknüpfung entsteht erst nach
+        // dem ersten Entra-SSO-Login).
+        const columns = "photo_path";
+        let own = await context.supabaseAdmin
           .from("tenant_entra_directory_people")
-          .select("photo_path")
+          .select(columns)
           .eq("tenant_id", action.tenantId)
           .eq("local_user_id", actorId)
           .eq("account_enabled", true)
           .is("inactive_at", null)
           .maybeSingle();
+        if (!own.error && !own.data) {
+          const authUser = await context.supabaseAdmin.auth.admin.getUserById(
+            actorId,
+          );
+          const email = authUser.data.user?.email?.trim().toLowerCase();
+          if (email) {
+            own = await context.supabaseAdmin
+              .from("tenant_entra_directory_people")
+              .select(columns)
+              .eq("tenant_id", action.tenantId)
+              .eq("email", email)
+              .eq("account_enabled", true)
+              .is("inactive_at", null)
+              .maybeSingle();
+          }
+        }
         const ownPath =
           !own.error &&
           validString(own.data?.photo_path) &&
