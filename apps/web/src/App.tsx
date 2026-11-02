@@ -2257,6 +2257,29 @@ function AuthenticatedApp() {
     () => tenants.find((tenant) => tenant.id === activeTenantId) ?? null,
     [activeTenantId, tenants],
   );
+  // Eigenes Profilfoto aus Entra (nur wenn vorhanden; sonst Initialen).
+  const [operatorPhotoUrl, setOperatorPhotoUrl] = useState<string | null>(null);
+  useEffect(() => {
+    setOperatorPhotoUrl(null);
+    if (!supabase || !session || !activeTenant) return;
+    let active = true;
+    void supabase.functions
+      .invoke("service-assets", {
+        body: { type: "ownPhoto", tenantId: activeTenant.id },
+      })
+      .then(({ data, error }) => {
+        if (!active || error) return;
+        const url = (data as { data?: { photoUrl?: unknown } } | null)?.data
+          ?.photoUrl;
+        if (typeof url === "string" && url.startsWith("https://")) {
+          setOperatorPhotoUrl(url);
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, [activeTenant?.id, session]);
   const experienceWorkspaceEnabled =
     isSupabaseConfigured && tenantFeatures["experience.workspace"] === true;
   const requesterPortalEnabled =
@@ -4232,7 +4255,18 @@ function AuthenticatedApp() {
               ref={personalSettingsTriggerRef}
               type="button"
             >
-              <span className="operator-avatar">{initials(operatorName)}</span>
+              <span className="operator-avatar">
+                {operatorPhotoUrl ? (
+                  <img
+                    alt=""
+                    className="operator-avatar__photo"
+                    referrerPolicy="no-referrer"
+                    src={operatorPhotoUrl}
+                  />
+                ) : (
+                  initials(operatorName)
+                )}
+              </span>
               <span className="operator-profile-copy">
                 <strong>{operatorName}</strong>
                 <small>

@@ -182,3 +182,38 @@ export function graphManagerId(user: GraphUser): string | null {
   if (!isRecord(manager) || typeof manager.id !== "string") return null;
   return isUuid(manager.id) ? manager.id.toLowerCase() : null;
 }
+
+/**
+ * Lädt das kleine Profilfoto (96x96) einer Person. `null` heisst: kein Foto
+ * hinterlegt. Andere Fehler werden als Fehler weitergegeben.
+ */
+export async function graphUserPhoto(
+  token: string,
+  entraObjectId: string,
+  fetcher: FetchLike = fetch,
+): Promise<{ bytes: Uint8Array; contentType: string } | null> {
+  if (!isUuid(entraObjectId)) throw new EntraDirectoryGraphError();
+  let response: Response;
+  try {
+    response = await fetcher(
+      `${GRAPH_ORIGIN}/v1.0/users/${entraObjectId}/photos/96x96/$value`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+        redirect: "error",
+        signal: timeoutSignal(),
+      },
+    );
+  } catch {
+    throw new EntraDirectoryGraphError();
+  }
+  if (response.status === 404) return null;
+  if (!response.ok) throw new EntraDirectoryGraphError();
+  const contentType = (response.headers.get("content-type") ?? "")
+    .split(";")[0]
+    .trim()
+    .toLowerCase();
+  if (contentType !== "image/jpeg" && contentType !== "image/png") return null;
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  if (bytes.length === 0 || bytes.length > 262_144) return null;
+  return { bytes, contentType };
+}
