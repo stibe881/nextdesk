@@ -18601,3 +18601,125 @@ html:has(.embed-status-badge) body {
     grid-template-columns: 1fr auto;
   }
 }
+
+/* Shop: up to five photos per article */
+.shop__image-field {
+  display: grid;
+  gap: 8px;
+}
+
+.shop__image-label {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.shop__image-gallery {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.shop__image-thumb {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 96px;
+  height: 76px;
+  overflow: hidden;
+  border-radius: var(--radius);
+  background: var(--surface-subtle);
+  color: var(--ink-muted);
+}
+
+.shop__image-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.shop__image-remove {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 999px;
+  background: rgb(15 23 42 / 70%);
+  color: #fff;
+  cursor: pointer;
+}
+
+.shop__dialog .shop__image-add {
+  display: grid;
+  gap: 2px;
+  align-content: center;
+  justify-items: center;
+  border: 1px dashed var(--border, #cbd5e1);
+  font-size: 11px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.shop__image-add input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
+
+/* Catalog card: browse several photos */
+.shop__image--gallery {
+  position: relative;
+}
+
+.shop__gallery-nav {
+  position: absolute;
+  top: 50%;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  transform: translateY(-50%);
+  border: 0;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 85%);
+  color: var(--text);
+  box-shadow: 0 1px 4px rgb(15 23 42 / 18%);
+  cursor: pointer;
+}
+
+.shop__gallery-nav--prev {
+  left: 6px;
+}
+
+.shop__gallery-nav--next {
+  right: 6px;
+}
+
+.shop__gallery-dots {
+  position: absolute;
+  bottom: 6px;
+  left: 50%;
+  display: flex;
+  gap: 5px;
+  transform: translateX(-50%);
+}
+
+.shop__gallery-dot {
+  width: 7px;
+  height: 7px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: rgb(15 23 42 / 25%);
+  cursor: pointer;
+}
+
+.shop__gallery-dot--active {
+  background: var(--primary, #2563eb);
+}

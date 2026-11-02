@@ -1,4 +1,6 @@
 import {
+  ChevronLeft,
+  ChevronRight,
   Minus,
   PackageCheck,
   Pencil,
@@ -176,6 +178,66 @@ export function Shop({ tenantId }: { tenantId: string }) {
   );
 }
 
+/** Cover photo with browsing when an article has several photos. */
+function ShopImageGallery({ item }: { item: CatalogItem }) {
+  const urls =
+    item.imageUrls && item.imageUrls.length > 0
+      ? item.imageUrls
+      : item.imageUrl
+        ? [item.imageUrl]
+        : [];
+  const [index, setIndex] = useState(0);
+  const current = Math.min(index, Math.max(0, urls.length - 1));
+  if (urls.length === 0) {
+    return (
+      <div className="shop__image" aria-hidden="true">
+        <PackageCheck size={34} strokeWidth={1.5} />
+      </div>
+    );
+  }
+  return (
+    <div className="shop__image shop__image--gallery">
+      <img alt={`${item.name}, Foto ${current + 1}`} src={urls[current]} />
+      {urls.length > 1 ? (
+        <>
+          <button
+            aria-label="Vorheriges Foto"
+            className="shop__gallery-nav shop__gallery-nav--prev"
+            onClick={() => setIndex((current - 1 + urls.length) % urls.length)}
+            type="button"
+          >
+            <ChevronLeft size={16} />
+          </button>
+          <button
+            aria-label="Nächstes Foto"
+            className="shop__gallery-nav shop__gallery-nav--next"
+            onClick={() => setIndex((current + 1) % urls.length)}
+            type="button"
+          >
+            <ChevronRight size={16} />
+          </button>
+          <div className="shop__gallery-dots">
+            {urls.map((url, dotIndex) => (
+              <button
+                aria-label={`Foto ${dotIndex + 1} anzeigen`}
+                aria-pressed={dotIndex === current}
+                className={
+                  dotIndex === current
+                    ? "shop__gallery-dot shop__gallery-dot--active"
+                    : "shop__gallery-dot"
+                }
+                key={url}
+                onClick={() => setIndex(dotIndex)}
+                type="button"
+              />
+            ))}
+          </div>
+        </>
+      ) : null}
+    </div>
+  );
+}
+
 function CatalogView({
   tenantId,
   cart,
@@ -283,13 +345,7 @@ function CatalogView({
           <ul className="shop__grid">
             {visible.map((item) => (
               <li className="shop__card" key={item.id}>
-                <div className="shop__image" aria-hidden="true">
-                  {item.imageUrl ? (
-                    <img alt="" src={item.imageUrl} />
-                  ) : (
-                    <PackageCheck size={34} strokeWidth={1.5} />
-                  )}
-                </div>
+                <ShopImageGallery item={item} />
                 <div className="shop__card-body">
                   <p className="shop__category">{item.category}</p>
                   <h2>{item.name}</h2>
@@ -1123,7 +1179,32 @@ type Draft = {
   inventoryItemId: string;
   active: boolean;
   sortOrder: number;
+  /** Saved photos that stay. */
+  images: { id: string; url: string }[];
+  /** Saved photos to delete on save. */
+  removedImageIds: string[];
+  /** New photos to upload on save. */
+  newFiles: File[];
+  /** Inventory photo shown when the article has no own photos. */
+  fallbackImageUrl: string | null;
 };
+
+const MAX_IMAGES = 5;
+const IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
+const MAX_IMAGE_BYTES = 3 * 1024 * 1024;
+
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = String(reader.result ?? "");
+      resolve(result.slice(result.indexOf(",") + 1));
+    };
+    reader.onerror = () =>
+      reject(new Error("Das Foto konnte nicht gelesen werden."));
+    reader.readAsDataURL(file);
+  });
+}
 
 const EMPTY_DRAFT: Draft = {
   name: "",
@@ -1136,6 +1217,10 @@ const EMPTY_DRAFT: Draft = {
   inventoryItemId: "",
   active: true,
   sortOrder: 0,
+  images: [],
+  removedImageIds: [],
+  newFiles: [],
+  fallbackImageUrl: null,
 };
 
 function CatalogManager({ tenantId }: { tenantId: string }) {
@@ -1167,7 +1252,7 @@ function CatalogManager({ tenantId }: { tenantId: string }) {
     setPending(true);
     setError("");
     try {
-      await shopApi.saveItem(tenantId, {
+      const saved = await shopApi.saveItem(tenantId, {
         id: draft.id,
         name: draft.name.trim(),
         description: draft.description.trim() || null,
@@ -1183,6 +1268,15 @@ function CatalogManager({ tenantId }: { tenantId: string }) {
         active: draft.active,
         sortOrder: draft.sortOrder,
       });
+      for (const imageId of draft.removedImageIds) {
+        await shopApi.removeImage(tenantId, saved.id, imageId);
+      }
+      for (const file of draft.newFiles) {
+        await shopApi.addImage(tenantId, saved.id, {
+          data: await fileToBase64(file),
+          contentType: file.type,
+        });
+      }
       setNotice(
         draft.id ? "Artikel gespeichert." : "Artikel ist jetzt im Shop.",
       );
@@ -1197,6 +1291,45 @@ function CatalogManager({ tenantId }: { tenantId: string }) {
     } finally {
       setPending(false);
     }
+  };
+
+  const newFiles = draft?.newFiles;
+  const newFilePreviews = useMemo(
+    () => (newFiles ?? []).map((file) => URL.createObjectURL(file)),
+    [newFiles],
+  );
+  useEffect(
+    () => () => {
+      for (const url of newFilePreviews) URL.revokeObjectURL(url);
+    },
+    [newFilePreviews],
+  );
+  const imageCount = draft ? draft.images.length + draft.newFiles.length : 0;
+
+  const addFiles = (files: File[]) => {
+    if (!draft) return;
+    const free = MAX_IMAGES - imageCount;
+    const valid: File[] = [];
+    for (const file of files) {
+      if (!IMAGE_TYPES.includes(file.type)) {
+        setError("Bitte Fotos im Format JPG, PNG oder WebP wählen.");
+        return;
+      }
+      if (file.size > MAX_IMAGE_BYTES) {
+        setError("Ein Foto darf höchstens 3 MB gross sein.");
+        return;
+      }
+      valid.push(file);
+    }
+    if (valid.length > free) {
+      setError(`Pro Artikel sind höchstens ${MAX_IMAGES} Fotos möglich.`);
+    } else {
+      setError("");
+    }
+    setDraft({
+      ...draft,
+      newFiles: [...draft.newFiles, ...valid.slice(0, free)],
+    });
   };
 
   const fromInventory =
@@ -1281,6 +1414,11 @@ function CatalogManager({ tenantId }: { tenantId: string }) {
                       inventoryItemId: item.inventoryItemId ?? "",
                       active: item.active,
                       sortOrder: item.sortOrder,
+                      images: item.images ?? [],
+                      removedImageIds: [],
+                      newFiles: [],
+                      fallbackImageUrl:
+                        (item.images ?? []).length === 0 ? item.imageUrl : null,
                     })
                   }
                   type="button"
@@ -1346,6 +1484,83 @@ function CatalogManager({ tenantId }: { tenantId: string }) {
                 ))}
               </select>
             </label>
+            <div className="shop__image-field">
+              <span className="shop__image-label">
+                Fotos ({imageCount}/{MAX_IMAGES})
+              </span>
+              <div className="shop__image-gallery">
+                {draft.images.map((image, index) => (
+                  <div className="shop__image-thumb" key={image.id}>
+                    <img alt={`Foto ${index + 1}`} src={image.url} />
+                    <button
+                      aria-label={`Foto ${index + 1} entfernen`}
+                      className="shop__image-remove"
+                      onClick={() =>
+                        setDraft({
+                          ...draft,
+                          images: draft.images.filter(
+                            (candidate) => candidate.id !== image.id,
+                          ),
+                          removedImageIds: [...draft.removedImageIds, image.id],
+                        })
+                      }
+                      type="button"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                ))}
+                {draft.newFiles.map((file, index) => (
+                  <div
+                    className="shop__image-thumb"
+                    key={`${file.name}-${index}`}
+                  >
+                    <img
+                      alt={`Neues Foto ${index + 1}`}
+                      src={newFilePreviews[index]}
+                    />
+                    <button
+                      aria-label={`Neues Foto ${index + 1} entfernen`}
+                      className="shop__image-remove"
+                      onClick={() =>
+                        setDraft({
+                          ...draft,
+                          newFiles: draft.newFiles.filter(
+                            (_, fileIndex) => fileIndex !== index,
+                          ),
+                        })
+                      }
+                      type="button"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                ))}
+                {imageCount < MAX_IMAGES ? (
+                  <label className="shop__image-thumb shop__image-add">
+                    <Plus aria-hidden="true" size={20} />
+                    <span>Foto hinzufügen</span>
+                    <input
+                      accept={IMAGE_TYPES.join(",")}
+                      multiple
+                      onChange={(event) => {
+                        const files = Array.from(event.target.files ?? []);
+                        event.target.value = "";
+                        addFiles(files);
+                      }}
+                      type="file"
+                    />
+                  </label>
+                ) : null}
+              </div>
+              <span className="shop__muted">
+                Bis zu {MAX_IMAGES} Fotos (JPG, PNG oder WebP, je max. 3 MB).
+                Das erste Foto ist das Titelbild.
+                {imageCount === 0 && draft.fallbackImageUrl
+                  ? " Ohne eigene Fotos wird das Bild des Lagerartikels gezeigt."
+                  : ""}
+              </span>
+            </div>
             <label>
               Name im Shop
               <input

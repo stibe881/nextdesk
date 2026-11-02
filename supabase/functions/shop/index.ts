@@ -22,6 +22,12 @@ type Row = Record<string, unknown>;
 
 const IMAGE_BUCKET = "inventory-item-images";
 const IMAGE_TTL_SECONDS = 60 * 60;
+const MAX_IMAGE_BYTES = 3 * 1024 * 1024;
+const IMAGE_TYPES: Record<string, string> = {
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp",
+};
 const ORDER_SELECT =
   "id, order_number, requester_id, placed_by, status, approver_id, approved_by, approved_at, handled_by, delivery_method, delivery_location, needed_by, loan_from, loan_until, comment, decision_reason, issued_at, returned_at, closed_at, created_at, updated_at";
 const UPDATE_ACTIONS = new Set([
@@ -276,6 +282,176 @@ async function availability(admin: Admin, tenantId: string, itemIds: string[]) {
   return result;
 }
 
+/** Signed URLs for the shop's own article photos (path → URL). */
+async function signedPaths(admin: Admin, paths: string[]) {
+  const result = new Map<string, string>();
+  if (paths.length === 0) return result;
+  const { data: signed } = await admin.storage
+    .from(IMAGE_BUCKET)
+    .createSignedUrls(paths, IMAGE_TTL_SECONDS);
+  paths.forEach((path, index) => {
+    const url = signed?.[index]?.signedUrl;
+    if (typeof url === "string") result.set(path, url);
+  });
+  return result;
+}
+
+function decodeImage(value: unknown): {
+  bytes: Uint8Array;
+  contentType: string;
+} {
+  if (
+    !isRecord(value) ||
+    typeof value.contentType !== "string" ||
+    !IMAGE_TYPES[value.contentType] ||
+    typeof value.data !== "string"
+  ) {
+    throw new HttpError(
+      400,
+      "image_invalid",
+      "Bitte ein Foto im Format JPG, PNG oder WebP wählen.",
+    );
+  }
+  let bytes: Uint8Array;
+  try {
+    const binary = atob(value.data);
+    bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+  } catch {
+    throw new HttpError(400, "image_invalid", "Das Foto ist beschädigt.");
+  }
+  if (bytes.length === 0 || bytes.length > MAX_IMAGE_BYTES) {
+    throw new HttpError(
+      400,
+      "image_too_large",
+      "Das Foto darf höchstens 3 MB gross sein.",
+    );
+  }
+  // The file content must match the declared type.
+  const jpeg = bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+  const png =
+    bytes[0] === 0x89 &&
+    bytes[1] === 0x50 &&
+    bytes[2] === 0x4e &&
+    bytes[3] === 0x47;
+  const webp =
+    String.fromCharCode(...bytes.slice(0, 4)) === "RIFF" &&
+    String.fromCharCode(...bytes.slice(8, 12)) === "WEBP";
+  const matches =
+    (value.contentType === "image/jpeg" && jpeg) ||
+    (value.contentType === "image/png" && png) ||
+    (value.contentType === "image/webp" && webp);
+  if (!matches) {
+    throw new HttpError(
+      400,
+      "image_invalid",
+      "Bitte ein Foto im Format JPG, PNG oder WebP wählen.",
+    );
+  }
+  return { bytes, contentType: value.contentType };
+}
+
+const MAX_IMAGES = 5;
+
+/** File name (without extension) identifies a photo towards the apps. */
+function imageId(path: string): string {
+  return path.slice(path.lastIndexOf("/") + 1).replace(/\.[a-z]+$/, "");
+}
+
+async function catalogItemPaths(
+  admin: Admin,
+  tenantId: string,
+  itemId: string,
+): Promise<string[]> {
+  const { data: item, error } = await admin
+    .from("shop_catalog_items")
+    .select("id, image_paths")
+    .eq("tenant_id", tenantId)
+    .eq("id", itemId)
+    .maybeSingle();
+  if (error) throw databaseError(error);
+  if (!item) {
+    throw new HttpError(404, "not_found", "Der Artikel wurde nicht gefunden.");
+  }
+  const paths = (item as Row).image_paths;
+  return Array.isArray(paths)
+    ? paths.filter((path): path is string => typeof path === "string")
+    : [];
+}
+
+async function savePaths(
+  admin: Admin,
+  tenantId: string,
+  itemId: string,
+  paths: string[],
+) {
+  const { error } = await admin
+    .from("shop_catalog_items")
+    .update({ image_paths: paths, updated_at: new Date().toISOString() })
+    .eq("tenant_id", tenantId)
+    .eq("id", itemId);
+  if (error) throw databaseError(error);
+}
+
+/** Adds one photo (max. 5 per article). */
+async function addCatalogItemImage(
+  admin: Admin,
+  tenantId: string,
+  actorId: string,
+  itemId: string,
+  image: unknown,
+) {
+  const paths = await catalogItemPaths(admin, tenantId, itemId);
+  if (paths.length >= MAX_IMAGES) {
+    throw new HttpError(
+      409,
+      "too_many_images",
+      `Pro Artikel sind höchstens ${MAX_IMAGES} Fotos möglich.`,
+    );
+  }
+  const { bytes, contentType } = decodeImage(image);
+  const path = `${tenantId}/shop/${itemId}/${crypto.randomUUID()}.${IMAGE_TYPES[contentType]}`;
+  const { error: uploadError } = await admin.storage
+    .from(IMAGE_BUCKET)
+    .upload(path, bytes, { contentType, upsert: false });
+  if (uploadError) {
+    console.error("Shop image upload failed");
+    throw new HttpError(
+      500,
+      "image_upload_failed",
+      "Das Foto konnte nicht gespeichert werden.",
+    );
+  }
+  try {
+    await savePaths(admin, tenantId, itemId, [...paths, path]);
+  } catch (error) {
+    await admin.storage.from(IMAGE_BUCKET).remove([path]);
+    throw error;
+  }
+  await audit(admin, tenantId, actorId, "shop.catalog.image_added", itemId);
+  return imageId(path);
+}
+
+/** Removes one photo by its id. */
+async function removeCatalogItemImage(
+  admin: Admin,
+  tenantId: string,
+  actorId: string,
+  itemId: string,
+  id: string,
+) {
+  const paths = await catalogItemPaths(admin, tenantId, itemId);
+  const target = paths.find((path) => imageId(path) === id);
+  if (!target) return;
+  await savePaths(
+    admin,
+    tenantId,
+    itemId,
+    paths.filter((path) => path !== target),
+  );
+  await admin.storage.from(IMAGE_BUCKET).remove([target]);
+  await audit(admin, tenantId, actorId, "shop.catalog.image_removed", itemId);
+}
+
 async function imageUrls(admin: Admin, tenantId: string, itemIds: string[]) {
   const result = new Map<string, string>();
   if (itemIds.length === 0) return result;
@@ -314,7 +490,7 @@ async function listCatalog(
   let query = admin
     .from("shop_catalog_items")
     .select(
-      "id, inventory_item_id, name, description, category, kind, requires_approval, max_quantity, max_loan_days, active, sort_order",
+      "id, inventory_item_id, image_paths, name, description, category, kind, requires_approval, max_quantity, max_loan_days, active, sort_order",
     )
     .eq("tenant_id", tenantId)
     .order("category")
@@ -327,9 +503,17 @@ async function listCatalog(
   const itemIds = rows
     .map((row) => row.inventory_item_id)
     .filter((id): id is string => isUuid(id));
-  const [stock, images] = await Promise.all([
+  const pathsOf = (row: Row): string[] =>
+    Array.isArray(row.image_paths)
+      ? row.image_paths.filter(
+          (path): path is string => typeof path === "string",
+        )
+      : [];
+  const ownPaths = rows.flatMap(pathsOf);
+  const [stock, images, ownImages] = await Promise.all([
     availability(admin, tenantId, itemIds),
     imageUrls(admin, tenantId, itemIds),
+    signedPaths(admin, ownPaths),
   ]);
   return rows.map((row) => {
     const itemId = isUuid(row.inventory_item_id) ? row.inventory_item_id : null;
@@ -346,7 +530,23 @@ async function listCatalog(
       active: row.active === true,
       sortOrder: row.sort_order,
       inventoryItemId: itemId,
-      imageUrl: itemId ? (images.get(itemId) ?? null) : null,
+      // The shop's own photos win over the inventory photo.
+      ...(() => {
+        const own = pathsOf(row).flatMap((path) => {
+          const url = ownImages.get(path);
+          return url ? [{ id: imageId(path), url }] : [];
+        });
+        const fallback = itemId ? (images.get(itemId) ?? null) : null;
+        return {
+          images: own,
+          imageUrls: own.length
+            ? own.map((image) => image.url)
+            : fallback
+              ? [fallback]
+              : [],
+          imageUrl: own[0]?.url ?? fallback,
+        };
+      })(),
       stockLevel: stockLevel(available, itemId !== null),
       availableQuantity: exact && itemId ? (available ?? 0) : null,
     };
@@ -871,6 +1071,42 @@ const securedHandler = withSupabase(
           }
           const id = await saveCatalogItem(admin, tenantId, actorId, body.item);
           return json(request, { data: { id } });
+        }
+        case "addCatalogItemImage":
+        case "removeCatalogItemImage": {
+          if (!access.canManage || !isUuid(body.itemId)) {
+            throw new HttpError(
+              403,
+              "forbidden",
+              "Für diese Aktion fehlt die Berechtigung.",
+            );
+          }
+          const itemId = body.itemId.toLowerCase();
+          if (body.type === "addCatalogItemImage") {
+            const imageIdValue = await addCatalogItemImage(
+              admin,
+              tenantId,
+              actorId,
+              itemId,
+              body.image,
+            );
+            return json(request, { data: { id: imageIdValue } }, 201);
+          }
+          if (!isUuid(body.imageId)) {
+            throw new HttpError(
+              400,
+              "invalid_request",
+              "Das Foto ist ungültig.",
+            );
+          }
+          await removeCatalogItemImage(
+            admin,
+            tenantId,
+            actorId,
+            itemId,
+            body.imageId.toLowerCase(),
+          );
+          return json(request, { data: { removed: true } });
         }
         case "listInventoryItems": {
           if (!access.canManage) {
