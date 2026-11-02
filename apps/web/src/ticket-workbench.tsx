@@ -133,6 +133,8 @@ type TicketMentionPickerProps = {
   selectedIds: readonly string[];
   onChange: (personIds: string[]) => void;
   onInsertMention: (displayName: string) => void;
+  /** Bei Antworten an Kunden: nur benachrichtigen, nichts in den Text einfügen. */
+  notifyOnly?: boolean;
 };
 
 type DraftOptions = {
@@ -630,6 +632,7 @@ export function TicketMentionPicker({
   selectedIds,
   onChange,
   onInsertMention,
+  notifyOnly = false,
 }: TicketMentionPickerProps) {
   const [expanded, setExpanded] = useState(false);
   const selected = useMemo(() => new Set(selectedIds), [selectedIds]);
@@ -643,7 +646,7 @@ export function TicketMentionPicker({
   return (
     <section
       className="ticket-workbench__mentions"
-      aria-label="Personen erwähnen"
+      aria-label={notifyOnly ? "Personen benachrichtigen" : "Personen erwähnen"}
     >
       <button
         aria-expanded={expanded}
@@ -653,14 +656,18 @@ export function TicketMentionPicker({
         type="button"
       >
         <MessageSquareMore aria-hidden="true" size={16} />
-        Personen mit @ erwähnen{selected.size > 0 ? ` (${selected.size})` : ""}
+        {notifyOnly
+          ? "Weitere Personen benachrichtigen"
+          : "Personen mit @ erwähnen"}
+        {selected.size > 0 ? ` (${selected.size})` : ""}
         <ChevronDown aria-hidden="true" size={15} />
       </button>
       {expanded && (
         <div className="ticket-workbench__mention-picker">
           <p>
-            Erwähnungen werden erst nach dem Speichern dieser internen Notiz an
-            ausgewählte aktive Mandantenpersonen angelegt.
+            {notifyOnly
+              ? "Die ausgewählten Personen werden erst nach dem Senden dieser Nachricht benachrichtigt. Die anfragende Person sieht davon nichts."
+              : "Erwähnungen werden erst nach dem Speichern dieser internen Notiz an ausgewählte aktive Mandantenpersonen angelegt."}
           </p>
           <ul>
             {people.map((person) => {
@@ -677,7 +684,8 @@ export function TicketMentionPicker({
                             ? selectedIds.filter((id) => id !== person.id)
                             : [...selectedIds, person.id],
                         );
-                        if (!checked) onInsertMention(person.displayName);
+                        if (!checked && !notifyOnly)
+                          onInsertMention(person.displayName);
                       }}
                       type="checkbox"
                     />
