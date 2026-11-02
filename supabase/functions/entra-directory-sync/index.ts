@@ -371,8 +371,12 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
 
   const startedAt = claim.started_at;
   const syncGeneration = claim.sync_generation;
+  // Nur technische Kennzeichen (Phase, Fehlercode), nie Daten des Anbieters.
+  let stage = "token";
+  let failureCode = "";
   try {
     const accessToken = await graphAccessToken(claim.entra_tenant_id);
+    stage = "users";
     const graphPeople = await graphUsers(accessToken, fetch, async () => {
       const { data: renewed, error: renewError } =
         await context.supabaseAdmin.rpc("renew_entra_directory_sync_run", {
@@ -386,6 +390,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         throw new Error("directory_sync_failed");
       }
     });
+    stage = "import";
     const objectIds = new Set<string>();
     const emails = new Set<string>();
     const people: DirectoryPerson[] = [];
@@ -418,6 +423,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         },
       );
       if (error || nonNegativeInteger(imported) !== batch.length) {
+        failureCode = typeof error?.code === "string" ? error.code : "count";
         throw new Error("directory_sync_failed");
       }
     }
@@ -452,6 +458,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       }
     }
 
+    stage = "finalize";
     const { data: requesterProfileSyncData, error: requesterProfileSyncError } =
       await context.supabaseAdmin.rpc(
         "finalize_fenced_entra_directory_sync_run",
@@ -466,6 +473,10 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         },
       );
     if (requesterProfileSyncError) {
+      failureCode =
+        typeof requesterProfileSyncError.code === "string"
+          ? requesterProfileSyncError.code
+          : "unknown";
       throw new Error("directory_sync_failed");
     }
     const requesterProfileSync = requesterProfileSyncResult(
@@ -493,12 +504,21 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       },
     });
   } catch {
+    console.error("Entra directory sync failed", { stage, failureCode });
     await context.supabaseAdmin.rpc("fail_entra_directory_sync_run", {
       p_actor_id: actorId,
       p_tenant_id: action.tenantId,
       p_run_id: runId,
       p_sync_generation: syncGeneration,
     });
+    // Kennzeichen der Phase für die Fehlersuche; keine Providerdetails.
+    await context.supabaseAdmin
+      .from("tenant_entra_directory_sync_configurations")
+      .update({
+        last_sync_error: `directory_sync_failed:${stage}${failureCode ? `:${failureCode}` : ""}`,
+      })
+      .eq("tenant_id", action.tenantId)
+      .eq("sync_generation", syncGeneration);
     return response(request, { error: { code: "directory_sync_failed" } }, 502);
   }
 });
