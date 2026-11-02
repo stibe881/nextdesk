@@ -74,6 +74,10 @@ export type OrderDetail = OrderSummary & {
   lines: {
     id: string;
     itemName: string;
+    /** Internal, only sent to agents. */
+    articleNumber?: string | null;
+    /** Internal, only sent to agents. */
+    supplierUrl?: string | null;
     kind: "order" | "loan";
     quantity: number;
     status: string;
