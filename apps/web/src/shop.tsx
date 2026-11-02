@@ -109,20 +109,14 @@ export function Shop({ tenantId }: { tenantId: string }) {
   ];
 
   return (
-    <section className="shop" aria-labelledby="shop-heading">
-      <header className="page-heading">
-        <div>
-          <p className="eyebrow">Selbstbedienung</p>
-          <h1 id="shop-heading">Shop</h1>
-          <p>
-            Zubehör bestellen oder Geräte ausleihen. Der Support stellt die
-            Bestellung bereit und bucht sie aus dem Lager.
-            {context.managerName
-              ? ` Freigaben gehen an ${context.managerName}.`
-              : ""}
-          </p>
-        </div>
-      </header>
+    <section className="shop" aria-label="Shop">
+      <p className="shop-intro">
+        Zubehör bestellen oder Geräte ausleihen. Der Support stellt die
+        Bestellung bereit und bucht sie aus dem Lager.
+        {context.managerName
+          ? ` Freigaben gehen an ${context.managerName}.`
+          : ""}
+      </p>
       <nav className="shop__tabs" aria-label="Shop-Bereiche">
         {tabs.map(([key, label, count]) => (
           <button
