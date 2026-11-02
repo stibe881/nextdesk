@@ -1,5 +1,5 @@
 Deno.test(
-  "Service assets resolves Intune primary people only server-side for asset management",
+  "Service assets resolves Intune primary people only server-side for everyone who can read the catalog",
   async () => {
     const source = await Deno.readTextFile(
       new URL("./index.ts", import.meta.url),
