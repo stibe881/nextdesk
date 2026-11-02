@@ -18855,3 +18855,31 @@ html:has(.embed-status-badge) body {
   color: var(--primary);
   font-weight: 650;
 }
+
+/* Shop order: cover photo left of each line */
+.shop__lines li {
+  grid-template-columns: 56px minmax(0, 1fr);
+  column-gap: 12px;
+}
+
+.shop__lines li > :not(.shop__line-thumb) {
+  grid-column: 2;
+}
+
+.shop__line-thumb {
+  grid-row: 1 / span 3;
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  overflow: hidden;
+  border-radius: var(--radius);
+  background: var(--surface-subtle);
+  color: var(--ink-muted);
+}
+
+.shop__line-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}

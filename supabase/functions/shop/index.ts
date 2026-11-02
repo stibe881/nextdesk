@@ -767,19 +767,53 @@ async function getOrder(
     ...eventRows.map((event) => event.actor_id),
   ] as string[]);
 
-  // Internal article details (article number, supplier link) for agents.
+  // Article details per line: cover photo for everyone, article number and
+  // supplier link only for agents.
   const articleDetails = new Map<string, Row>();
+  const lineImages = new Map<string, string>();
   const catalogIds = lineRows
     .map((line) => line.catalog_item_id)
     .filter((id): id is string => isUuid(id));
-  if (canFulfill && catalogIds.length > 0) {
+  if (catalogIds.length > 0) {
     const { data: catalogRows } = await admin
       .from("shop_catalog_items")
-      .select("id, article_number, supplier_url")
+      .select(
+        "id, inventory_item_id, image_paths, article_number, supplier_url",
+      )
       .eq("tenant_id", tenantId)
       .in("id", catalogIds);
-    for (const catalogRow of (catalogRows ?? []) as Row[]) {
+    const rows = (catalogRows ?? []) as Row[];
+    for (const catalogRow of rows) {
       articleDetails.set(String(catalogRow.id), catalogRow);
+    }
+    const coverPaths = rows.flatMap((catalogRow) =>
+      Array.isArray(catalogRow.image_paths) &&
+      typeof catalogRow.image_paths[0] === "string"
+        ? [catalogRow.image_paths[0] as string]
+        : [],
+    );
+    const inventoryIds = rows
+      .filter(
+        (catalogRow) =>
+          !(
+            Array.isArray(catalogRow.image_paths) &&
+            catalogRow.image_paths.length > 0
+          ) && isUuid(catalogRow.inventory_item_id),
+      )
+      .map((catalogRow) => catalogRow.inventory_item_id as string);
+    const [covers, inventoryCovers] = await Promise.all([
+      signedPaths(admin, coverPaths),
+      imageUrls(admin, tenantId, inventoryIds),
+    ]);
+    for (const catalogRow of rows) {
+      const cover =
+        Array.isArray(catalogRow.image_paths) &&
+        typeof catalogRow.image_paths[0] === "string"
+          ? covers.get(catalogRow.image_paths[0] as string)
+          : isUuid(catalogRow.inventory_item_id)
+            ? inventoryCovers.get(catalogRow.inventory_item_id)
+            : undefined;
+      if (cover) lineImages.set(String(catalogRow.id), cover);
     }
   }
 
@@ -860,6 +894,7 @@ async function getOrder(
       inventoryItemId: line.inventory_item_id,
       locationId: line.location_id,
       serialUnitId: line.serial_unit_id,
+      imageUrl: lineImages.get(String(line.catalog_item_id)) ?? null,
       ...(canFulfill
         ? {
             articleNumber:

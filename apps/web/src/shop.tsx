@@ -952,7 +952,14 @@ function OrderDialog({
             <ul className="shop__lines">
               {order.lines.map((line) => (
                 <li key={line.id}>
-                  <div>
+                  <div className="shop__line-thumb" aria-hidden="true">
+                    {line.imageUrl ? (
+                      <img alt="" src={line.imageUrl} />
+                    ) : (
+                      <PackageCheck size={20} strokeWidth={1.5} />
+                    )}
+                  </div>
+                  <div className="shop__line-body">
                     <strong>
                       {line.quantity}× {line.itemName}
                     </strong>

@@ -74,6 +74,8 @@ export type OrderDetail = OrderSummary & {
   lines: {
     id: string;
     itemName: string;
+    /** Cover photo of the article, if any. */
+    imageUrl?: string | null;
     /** Internal, only sent to agents. */
     articleNumber?: string | null;
     /** Internal, only sent to agents. */
