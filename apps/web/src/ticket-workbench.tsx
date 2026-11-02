@@ -668,6 +668,7 @@ export function TicketCopyRecipients({
       return;
     }
     let active = true;
+    setHint("");
     setSearching(true);
     const timer = window.setTimeout(() => {
       invokeWorkbench("agent-workbench", {
@@ -787,6 +788,7 @@ export function TicketCopyRecipients({
             />
             <button
               className="secondary-button"
+              style={{ whiteSpace: "nowrap" }}
               disabled={disabled || !typedEmail}
               onClick={() =>
                 typedEmail && add({ email: typedEmail, displayName: null })
@@ -802,6 +804,7 @@ export function TicketCopyRecipients({
             </p>
           )}
           {!searching &&
+            !hint &&
             trimmed.length >= 2 &&
             !typedEmail &&
             results.length === 0 && <p>Keine passende Person gefunden.</p>}
