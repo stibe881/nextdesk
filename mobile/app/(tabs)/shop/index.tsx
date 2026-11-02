@@ -4,12 +4,14 @@ import { useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Image,
+  Modal,
   Pressable,
   RefreshControl,
   ScrollView,
   Text,
   TextInput,
   View,
+  useWindowDimensions,
 } from "react-native";
 
 import {
@@ -53,6 +55,12 @@ export default function ShopScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
   const cart = useShopCart(tenantId);
+  const [gallery, setGallery] = useState<{
+    name: string;
+    urls: string[];
+  } | null>(null);
+  const [galleryIndex, setGalleryIndex] = useState(0);
+  const { width: screenWidth } = useWindowDimensions();
   const cartCount = cart.reduce((sum, line) => sum + line.quantity, 0);
 
   const load = useCallback(
@@ -228,7 +236,22 @@ export default function ShopScreen() {
             {visibleItems.map((item) => (
               <View key={item.id} style={styles.card}>
                 <View style={styles.cardRow}>
-                  <View style={styles.image}>
+                  <Pressable
+                    accessibilityLabel={`Fotos von ${item.name} anzeigen`}
+                    accessibilityRole="imagebutton"
+                    disabled={!item.imageUrl}
+                    onPress={() => {
+                      const urls = item.imageUrls?.length
+                        ? item.imageUrls
+                        : item.imageUrl
+                          ? [item.imageUrl]
+                          : [];
+                      if (urls.length === 0) return;
+                      setGalleryIndex(0);
+                      setGallery({ name: item.name, urls });
+                    }}
+                    style={styles.image}
+                  >
                     {item.imageUrl ? (
                       <Image
                         accessibilityIgnoresInvertColors
@@ -243,7 +266,30 @@ export default function ShopScreen() {
                         size={28}
                       />
                     )}
-                  </View>
+                    {(item.imageUrls?.length ?? 0) > 1 ? (
+                      <View
+                        style={{
+                          position: "absolute",
+                          right: 4,
+                          bottom: 4,
+                          borderRadius: 999,
+                          paddingHorizontal: 6,
+                          paddingVertical: 1,
+                          backgroundColor: "rgba(15,23,42,0.7)",
+                        }}
+                      >
+                        <Text
+                          style={{
+                            color: "#fff",
+                            fontSize: 10,
+                            fontWeight: "700",
+                          }}
+                        >
+                          {item.imageUrls?.length}
+                        </Text>
+                      </View>
+                    ) : null}
+                  </Pressable>
                   <View style={{ flex: 1, gap: 2 }}>
                     <Text style={styles.category}>{item.category}</Text>
                     <Text style={styles.cardTitle}>{item.name}</Text>
@@ -372,6 +418,72 @@ export default function ShopScreen() {
           <Ionicons color={colors.onPrimary} name="arrow-forward" size={20} />
         </Pressable>
       ) : null}
+      <Modal
+        animationType="fade"
+        onRequestClose={() => setGallery(null)}
+        transparent
+        visible={gallery !== null}
+      >
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: "rgba(0,0,0,0.92)",
+            justifyContent: "center",
+          }}
+        >
+          <Pressable
+            accessibilityLabel="Fotos schliessen"
+            accessibilityRole="button"
+            onPress={() => setGallery(null)}
+            style={{
+              position: "absolute",
+              top: 56,
+              right: 20,
+              zIndex: 2,
+              padding: 6,
+            }}
+          >
+            <Ionicons color="#fff" name="close" size={28} />
+          </Pressable>
+          {gallery ? (
+            <>
+              <ScrollView
+                horizontal
+                onMomentumScrollEnd={(event) =>
+                  setGalleryIndex(
+                    Math.round(event.nativeEvent.contentOffset.x / screenWidth),
+                  )
+                }
+                pagingEnabled
+                showsHorizontalScrollIndicator={false}
+              >
+                {gallery.urls.map((url, index) => (
+                  <Image
+                    accessibilityIgnoresInvertColors
+                    accessibilityLabel={`${gallery.name}, Foto ${index + 1}`}
+                    key={url}
+                    resizeMode="contain"
+                    source={{ uri: url }}
+                    style={{ width: screenWidth, height: screenWidth }}
+                  />
+                ))}
+              </ScrollView>
+              {gallery.urls.length > 1 ? (
+                <Text
+                  style={{
+                    color: "#fff",
+                    textAlign: "center",
+                    marginTop: 16,
+                    fontWeight: "600",
+                  }}
+                >
+                  {galleryIndex + 1} / {gallery.urls.length}
+                </Text>
+              ) : null}
+            </>
+          ) : null}
+        </View>
+      </Modal>
     </ScreenContainer>
   );
 }

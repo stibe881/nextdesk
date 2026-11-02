@@ -27,6 +27,8 @@ export type CatalogItem = {
   maxLoanDays: number | null;
   inventoryItemId: string | null;
   imageUrl: string | null;
+  /** All photos of the article (max. 5). */
+  imageUrls?: string[];
   stockLevel: StockLevel;
   availableQuantity: number | null;
 };

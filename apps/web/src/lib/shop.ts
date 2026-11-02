@@ -27,7 +27,10 @@ export type CatalogItem = {
   sortOrder: number;
   inventoryItemId: string | null;
   imageUrl: string | null;
-  hasOwnImage?: boolean;
+  /** All photos to show (own photos, else the inventory photo). */
+  imageUrls?: string[];
+  /** The shop's own photos (max. 5), editable by agents. */
+  images?: { id: string; url: string }[];
   stockLevel: StockLevel;
   availableQuantity: number | null;
 };
@@ -172,16 +175,23 @@ export const shopApi = {
     call<{ people: ShopPerson[] }>({ type: "listRequesters", tenantId }).then(
       (data) => data.people,
     ),
-  setImage: (
+  addImage: (
     tenantId: string,
     itemId: string,
-    image: { data: string; contentType: string } | null,
+    image: { data: string; contentType: string },
   ) =>
-    call<{ saved: true }>({
-      type: "setCatalogItemImage",
+    call<{ id: string }>({
+      type: "addCatalogItemImage",
       tenantId,
       itemId,
       image,
+    }),
+  removeImage: (tenantId: string, itemId: string, imageId: string) =>
+    call<{ removed: true }>({
+      type: "removeCatalogItemImage",
+      tenantId,
+      itemId,
+      imageId,
     }),
   submit: (tenantId: string, order: Record<string, unknown>) =>
     call<{ orderId: string }>({ type: "submitOrder", tenantId, ...order }),

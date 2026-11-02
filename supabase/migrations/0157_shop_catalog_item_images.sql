@@ -2,11 +2,11 @@ begin;
 
 set local search_path = pg_catalog, public;
 
--- Own photo for a shop article, stored in the private bucket
--- inventory-item-images below <tenantId>/shop/<itemId>/. Without it the shop
--- shows the photo of the linked inventory item.
+-- Own photos for a shop article (max. 5), stored in the private bucket
+-- inventory-item-images below <tenantId>/shop/<itemId>/. The first photo is
+-- the cover. Without own photos the shop shows the linked inventory photo.
 alter table public.shop_catalog_items
-  add column if not exists image_path text
-    check (image_path is null or char_length(image_path) between 10 and 300);
+  add column if not exists image_paths text[] not null default '{}'::text[]
+    check (cardinality(image_paths) <= 5);
 
 commit;
