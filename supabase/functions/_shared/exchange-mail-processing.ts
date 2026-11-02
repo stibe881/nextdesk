@@ -16,6 +16,7 @@ import {
   type CustomerTicketEmailKind,
 } from "./customer-ticket-email-template.ts";
 import { processEventSpaceEmailTicketIntake } from "./event-space-email-ticket-intake.ts";
+import { processOnboardingEmailTicketIntake } from "./onboarding-email-intake.ts";
 import { resolveTenantFeatureStates } from "./tenant-features.ts";
 
 const SERVICE_EMAIL = "exchange-mail-service@app.nextdesk.ch";
@@ -1401,6 +1402,16 @@ export async function processInboundMessage(
       }
       if (hasInlineMedia)
         await updateInlineMediaStatus(admin, message, "completed");
+    }
+    if (kind === "new_ticket") {
+      // Eintrittsmeldung der Personal-App (PDF): ersetzt das Ticket durch einen
+      // Eintritt mit Checkliste. Wirft nie; bei Fehlern bleibt das Ticket.
+      await processOnboardingEmailTicketIntake(admin, {
+        tenantId: channel.tenant_id,
+        ticketId,
+        ticketNumber,
+        attachments: inboundAttachments,
+      });
     }
     await audit(
       admin,

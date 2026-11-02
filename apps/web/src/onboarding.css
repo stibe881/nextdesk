@@ -300,3 +300,25 @@
     white-space: normal;
   }
 }
+
+.onboarding__details {
+  margin-top: 12px;
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+}
+
+.onboarding__details summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.onboarding__details dl {
+  display: grid;
+  gap: 8px 18px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  margin: 10px 0 0;
+}
+
+.onboarding__details dd {
+  white-space: pre-line;
+}

@@ -427,7 +427,7 @@ async function listWorkspace(
   let entriesQuery = admin
     .from("onboarding_entries")
     .select(
-      "id, employee_name, starts_on, organisation_unit, location, manager_user_id, ict_responsible_user_id, created_by, template_id",
+      "id, employee_name, starts_on, organisation_unit, location, manager_user_id, ict_responsible_user_id, created_by, template_id, source, details, source_ticket_number",
     )
     .eq("tenant_id", tenantId)
     .order("starts_on")
@@ -446,7 +446,7 @@ async function listWorkspace(
     const { data: focusedEntry, error: focusedEntryError } = await admin
       .from("onboarding_entries")
       .select(
-        "id, employee_name, starts_on, organisation_unit, location, manager_user_id, ict_responsible_user_id, created_by, template_id",
+        "id, employee_name, starts_on, organisation_unit, location, manager_user_id, ict_responsible_user_id, created_by, template_id, source, details, source_ticket_number",
       )
       .eq("tenant_id", tenantId)
       .eq("id", focusEntryId)
@@ -558,6 +558,17 @@ async function listWorkspace(
         peopleResult.names.get(String(entry.ict_responsible_user_id)) ??
         "ICT-Verantwortung",
       templateId: String(entry.template_id),
+      source: entry.source === "email" ? "email" : "manual",
+      sourceTicketNumber:
+        typeof entry.source_ticket_number === "string"
+          ? entry.source_ticket_number
+          : null,
+      details:
+        typeof entry.details === "object" &&
+        entry.details !== null &&
+        !Array.isArray(entry.details)
+          ? entry.details
+          : {},
       tasks: (tasksByEntry.get(String(entry.id)) ?? []).map((task) => ({
         id: String(task.id),
         title: String(task.title),
