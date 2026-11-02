@@ -1,8 +1,10 @@
+import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Image,
   Linking,
   Pressable,
   ScrollView,
@@ -213,36 +215,58 @@ export default function ShopOrderScreen() {
             <Text style={styles.label}>Artikel</Text>
             {order.lines.map((line) => (
               <View key={line.id} style={styles.card}>
-                <Text style={styles.cardTitle}>
-                  {line.quantity}× {line.itemName}
-                </Text>
-                {line.articleNumber ? (
-                  <Text style={styles.cardMeta}>
-                    Art.-Nr. {line.articleNumber}
-                  </Text>
-                ) : null}
-                {line.supplierUrl ? (
-                  <Pressable
-                    accessibilityRole="link"
-                    onPress={() => void Linking.openURL(line.supplierUrl!)}
-                  >
-                    <Text style={[styles.cardMeta, { color: colors.primary }]}>
-                      Beim Lieferanten ansehen ›
+                <View style={styles.cardRow}>
+                  <View style={styles.image}>
+                    {line.imageUrl ? (
+                      <Image
+                        accessibilityIgnoresInvertColors
+                        resizeMode="contain"
+                        source={{ uri: line.imageUrl }}
+                        style={styles.imageFill}
+                      />
+                    ) : (
+                      <Ionicons
+                        color={colors.muted}
+                        name="cube-outline"
+                        size={26}
+                      />
+                    )}
+                  </View>
+                  <View style={{ flex: 1, gap: 2 }}>
+                    <Text style={styles.cardTitle}>
+                      {line.quantity}× {line.itemName}
                     </Text>
-                  </Pressable>
-                ) : null}
-                <Text style={styles.cardMeta}>
-                  {line.kind === "loan" ? "Ausleihe" : "Bestellung"}
-                  {line.status === "reserved"
-                    ? " · reserviert"
-                    : line.status === "backorder"
-                      ? " · nicht an Lager"
-                      : line.status === "issued"
-                        ? " · ausgegeben"
-                        : line.status === "returned"
-                          ? " · zurück"
-                          : ""}
-                </Text>
+                    {line.articleNumber ? (
+                      <Text style={styles.cardMeta}>
+                        Art.-Nr. {line.articleNumber}
+                      </Text>
+                    ) : null}
+                    {line.supplierUrl ? (
+                      <Pressable
+                        accessibilityRole="link"
+                        onPress={() => void Linking.openURL(line.supplierUrl!)}
+                      >
+                        <Text
+                          style={[styles.cardMeta, { color: colors.primary }]}
+                        >
+                          Beim Lieferanten ansehen ›
+                        </Text>
+                      </Pressable>
+                    ) : null}
+                    <Text style={styles.cardMeta}>
+                      {line.kind === "loan" ? "Ausleihe" : "Bestellung"}
+                      {line.status === "reserved"
+                        ? " · reserviert"
+                        : line.status === "backorder"
+                          ? " · nicht an Lager"
+                          : line.status === "issued"
+                            ? " · ausgegeben"
+                            : line.status === "returned"
+                              ? " · zurück"
+                              : ""}
+                    </Text>
+                  </View>
+                </View>
                 {canHandOut &&
                 line.stock?.trackingMode === "serial" &&
                 line.status !== "issued" ? (
@@ -331,6 +355,7 @@ export default function ShopOrderScreen() {
                   />
                 ) : null}
                 {process &&
+                order.deliveryMethod === "pickup" &&
                 (status === "submitted" || status === "in_progress") ? (
                   <ActionButton
                     disabled={pending}

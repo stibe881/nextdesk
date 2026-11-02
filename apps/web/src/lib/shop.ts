@@ -102,6 +102,8 @@ export type OrderLine = {
   status:
     "open" | "reserved" | "backorder" | "issued" | "returned" | "cancelled";
   inventoryItemId: string | null;
+  /** Cover photo of the article, if any. */
+  imageUrl?: string | null;
   /** Internal, only sent to agents. */
   articleNumber?: string | null;
   /** Internal, only sent to agents. */
