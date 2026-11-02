@@ -14,6 +14,7 @@ import {
 
 import { GlobalSearch } from "@/components/global-search";
 import { ApprovalInboxCard } from "@/components/approval-inbox-card";
+import { OnboardingHomeCard } from "@/components/onboarding-home-card";
 import { IncidentBanner } from "@/components/incident-banner";
 import { useMobileFeatures } from "@/components/mobile-feature-gate";
 import { useMobileNetworkStatus } from "@/components/offline-status";
@@ -1251,6 +1252,9 @@ export default function HomeScreen() {
         >
           <View style={styles.auxiliaryColumn}>
             <ApprovalInboxCard
+              tenantId={tenantContextMismatch ? null : tenantId}
+            />
+            <OnboardingHomeCard
               tenantId={tenantContextMismatch ? null : tenantId}
             />
             {mentionsAvailableForTenant ? (

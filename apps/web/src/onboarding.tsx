@@ -34,6 +34,9 @@ type Entry = {
   managerName: string;
   ictResponsibleName: string;
   templateId: string;
+  source?: "email" | "manual";
+  sourceTicketNumber?: string | null;
+  details?: Record<string, unknown>;
   tasks: Task[];
 };
 type Workspace = {
@@ -75,6 +78,59 @@ function dateLabel(value: string) {
     month: "long",
     year: "numeric",
   }).format(new Date(`${value}T00:00:00Z`));
+}
+const detailText = (value: unknown): string | null =>
+  typeof value === "string" && value.trim() ? value.trim() : null;
+const yesNo = (value: unknown): string | null =>
+  typeof value === "boolean" ? (value ? "Ja" : "Nein") : null;
+
+/** Angaben aus der Eintrittsmeldung der Personal-App als Beschriftung/Wert. */
+function entryDetailRows(
+  details: Record<string, unknown> | undefined,
+): { label: string; value: string }[] {
+  if (!details) return [];
+  const functions = Array.isArray(details.functions)
+    ? (details.functions as Record<string, unknown>[])
+    : [];
+  const rows: { label: string; value: string | null }[] = [
+    { label: "Ausgefüllt von", value: detailText(details.filledBy) },
+    { label: "Berufsbezeichnung", value: detailText(details.jobTitle) },
+    { label: "Vorgesetzte Person", value: detailText(details.supervisor) },
+    { label: "Geschlecht", value: detailText(details.gender) },
+    ...functions.map((entry, index) => ({
+      label: `Funktion ${index + 1}`,
+      value:
+        [entry.offer, entry.team, entry.role, entry.special]
+          .map(detailText)
+          .filter(Boolean)
+          .join(" · ") || null,
+    })),
+    {
+      label: "Anstellung",
+      value:
+        details.fixedTerm === true
+          ? `befristet${detailText(details.endDate) ? ` bis ${dateLabel(String(details.endDate))}` : ""}`
+          : details.fixedTerm === false
+            ? "unbefristet"
+            : null,
+    },
+    { label: "Raum", value: detailText(details.room) },
+    { label: "Schlüssel", value: yesNo(details.needsKey) },
+    { label: "ICT-Ausstattung", value: detailText(details.ictEquipment) },
+    { label: "ICT-Zugänge", value: detailText(details.ictAccess) },
+    { label: "Gruppenpostfächer", value: detailText(details.groupMailboxes) },
+    {
+      label: "Doppelname",
+      value:
+        details.doubleName === true
+          ? (detailText(details.aliasName) ?? "Ja")
+          : null,
+    },
+    { label: "Bemerkung", value: detailText(details.remarks) },
+  ];
+  return rows.filter(
+    (row): row is { label: string; value: string } => row.value !== null,
+  );
 }
 function progress(tasks: Task[]) {
   const done = tasks.filter((task) => task.status === "completed").length;
@@ -597,6 +653,24 @@ export function Onboarding({
                       <dd>{entry.ictResponsibleName}</dd>
                     </div>
                   </dl>
+                  {entry.source === "email" ? (
+                    <details className="onboarding__details">
+                      <summary>
+                        Angaben aus der Eintrittsmeldung
+                        {entry.sourceTicketNumber
+                          ? ` (E-Mail ${entry.sourceTicketNumber})`
+                          : ""}
+                      </summary>
+                      <dl>
+                        {entryDetailRows(entry.details).map((row) => (
+                          <div key={row.label}>
+                            <dt>{row.label}</dt>
+                            <dd>{row.value}</dd>
+                          </div>
+                        ))}
+                      </dl>
+                    </details>
+                  ) : null}
                   <div className="onboarding__tasks">
                     {entry.tasks.map((task) => (
                       <div
