@@ -3,6 +3,7 @@ import { useCallback, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Linking,
   Pressable,
   ScrollView,
   Text,
@@ -215,6 +216,21 @@ export default function ShopOrderScreen() {
                 <Text style={styles.cardTitle}>
                   {line.quantity}× {line.itemName}
                 </Text>
+                {line.articleNumber ? (
+                  <Text style={styles.cardMeta}>
+                    Art.-Nr. {line.articleNumber}
+                  </Text>
+                ) : null}
+                {line.supplierUrl ? (
+                  <Pressable
+                    accessibilityRole="link"
+                    onPress={() => void Linking.openURL(line.supplierUrl!)}
+                  >
+                    <Text style={[styles.cardMeta, { color: colors.primary }]}>
+                      Beim Lieferanten ansehen ›
+                    </Text>
+                  </Pressable>
+                ) : null}
                 <Text style={styles.cardMeta}>
                   {line.kind === "loan" ? "Ausleihe" : "Bestellung"}
                   {line.status === "reserved"

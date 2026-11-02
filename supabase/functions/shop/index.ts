@@ -490,7 +490,7 @@ async function listCatalog(
   let query = admin
     .from("shop_catalog_items")
     .select(
-      "id, inventory_item_id, image_paths, name, description, category, kind, requires_approval, max_quantity, max_loan_days, active, sort_order",
+      "id, inventory_item_id, image_paths, name, description, category, category_id, article_number, supplier_url, kind, requires_approval, max_quantity, max_loan_days, active, sort_order",
     )
     .eq("tenant_id", tenantId)
     .order("category")
@@ -523,6 +523,14 @@ async function listCatalog(
       name: row.name,
       description: row.description,
       category: row.category,
+      categoryId: row.category_id ?? null,
+      // Internal details are only sent to agents (exact = may process/manage).
+      ...(exact
+        ? {
+            articleNumber: row.article_number ?? null,
+            supplierUrl: row.supplier_url ?? null,
+          }
+        : {}),
       kind: row.kind,
       requiresApproval: row.requires_approval === true,
       maxQuantity: row.max_quantity,
@@ -759,6 +767,22 @@ async function getOrder(
     ...eventRows.map((event) => event.actor_id),
   ] as string[]);
 
+  // Internal article details (article number, supplier link) for agents.
+  const articleDetails = new Map<string, Row>();
+  const catalogIds = lineRows
+    .map((line) => line.catalog_item_id)
+    .filter((id): id is string => isUuid(id));
+  if (canFulfill && catalogIds.length > 0) {
+    const { data: catalogRows } = await admin
+      .from("shop_catalog_items")
+      .select("id, article_number, supplier_url")
+      .eq("tenant_id", tenantId)
+      .in("id", catalogIds);
+    for (const catalogRow of (catalogRows ?? []) as Row[]) {
+      articleDetails.set(String(catalogRow.id), catalogRow);
+    }
+  }
+
   // Stock options for agents: locations with free stock and free serial units.
   const options = new Map<string, unknown>();
   const itemIds = lineRows
@@ -836,6 +860,16 @@ async function getOrder(
       inventoryItemId: line.inventory_item_id,
       locationId: line.location_id,
       serialUnitId: line.serial_unit_id,
+      ...(canFulfill
+        ? {
+            articleNumber:
+              articleDetails.get(String(line.catalog_item_id))
+                ?.article_number ?? null,
+            supplierUrl:
+              articleDetails.get(String(line.catalog_item_id))?.supplier_url ??
+              null,
+          }
+        : {}),
       stock: isUuid(line.inventory_item_id)
         ? (options.get(line.inventory_item_id) ?? null)
         : null,
@@ -863,6 +897,188 @@ async function getOrder(
   };
 }
 
+/** Supplier links must be plain http(s) URLs. */
+function supplierLink(value: unknown): string | null {
+  const link = text(value, 1000);
+  if (!link) return null;
+  try {
+    const url = new URL(link);
+    return url.protocol === "https:" || url.protocol === "http:"
+      ? url.toString()
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function categoryName(value: unknown): string | null {
+  const name = text(value, 80);
+  return name && Array.from(name).length >= 2
+    ? name.replace(/\s+/g, " ")
+    : null;
+}
+
+async function listCategories(admin: Admin, tenantId: string) {
+  const [{ data, error }, { data: items }] = await Promise.all([
+    admin
+      .from("shop_categories")
+      .select("id, name, sort_order")
+      .eq("tenant_id", tenantId)
+      .order("sort_order")
+      .order("name"),
+    admin
+      .from("shop_catalog_items")
+      .select("category_id")
+      .eq("tenant_id", tenantId),
+  ]);
+  if (error) throw databaseError(error);
+  const counts = new Map<string, number>();
+  for (const item of (items ?? []) as Row[]) {
+    if (typeof item.category_id === "string") {
+      counts.set(item.category_id, (counts.get(item.category_id) ?? 0) + 1);
+    }
+  }
+  return ((data ?? []) as Row[]).map((row) => ({
+    id: row.id,
+    name: row.name,
+    itemCount: counts.get(String(row.id)) ?? 0,
+  }));
+}
+
+/** Finds a category by name (case-insensitive) or creates it. */
+async function ensureCategory(
+  admin: Admin,
+  tenantId: string,
+  actorId: string,
+  name: string,
+): Promise<{ id: string; name: string }> {
+  const { data: existing, error } = await admin
+    .from("shop_categories")
+    .select("id, name")
+    .eq("tenant_id", tenantId)
+    .ilike(
+      "name",
+      name.replace(/[\\%_]/g, (match) => `\\${match}`),
+    );
+  if (error) throw databaseError(error);
+  const match = ((existing ?? []) as Row[]).find(
+    (row) => String(row.name).toLowerCase() === name.toLowerCase(),
+  );
+  if (match) return { id: String(match.id), name: String(match.name) };
+  const { data: created, error: insertError } = await admin
+    .from("shop_categories")
+    .insert({ tenant_id: tenantId, name, created_by: actorId })
+    .select("id, name")
+    .single();
+  if (insertError) {
+    if (insertError.code === "23505") {
+      return ensureCategory(admin, tenantId, actorId, name);
+    }
+    throw databaseError(insertError);
+  }
+  return { id: String(created.id), name: String(created.name) };
+}
+
+/** Category of an article: an existing id or a (new) name. */
+async function resolveCategory(
+  admin: Admin,
+  tenantId: string,
+  actorId: string,
+  input: Row,
+): Promise<{ id: string; name: string }> {
+  if (isUuid(input.categoryId)) {
+    const { data, error } = await admin
+      .from("shop_categories")
+      .select("id, name")
+      .eq("tenant_id", tenantId)
+      .eq("id", input.categoryId)
+      .maybeSingle();
+    if (error) throw databaseError(error);
+    if (!data) {
+      throw new HttpError(
+        400,
+        "category_unknown",
+        "Die Kategorie wurde nicht gefunden.",
+      );
+    }
+    return { id: String(data.id), name: String(data.name) };
+  }
+  const name = categoryName(input.category) ?? "Allgemein";
+  return ensureCategory(admin, tenantId, actorId, name);
+}
+
+async function saveCategory(
+  admin: Admin,
+  tenantId: string,
+  actorId: string,
+  input: Row,
+) {
+  const name = categoryName(input.name);
+  if (!name) {
+    throw new HttpError(
+      400,
+      "invalid_request",
+      "Der Kategoriename muss 2 bis 80 Zeichen lang sein.",
+    );
+  }
+  if (!isUuid(input.id)) {
+    return ensureCategory(admin, tenantId, actorId, name);
+  }
+  const { data, error } = await admin
+    .from("shop_categories")
+    .update({ name })
+    .eq("tenant_id", tenantId)
+    .eq("id", input.id)
+    .select("id, name")
+    .maybeSingle();
+  if (error) {
+    if (error.code === "23505") {
+      throw new HttpError(
+        409,
+        "category_exists",
+        "Eine Kategorie mit diesem Namen gibt es bereits.",
+      );
+    }
+    throw databaseError(error);
+  }
+  if (!data) {
+    throw new HttpError(
+      404,
+      "not_found",
+      "Die Kategorie wurde nicht gefunden.",
+    );
+  }
+  // Keep the denormalised name on the articles in sync.
+  await admin
+    .from("shop_catalog_items")
+    .update({ category: name })
+    .eq("tenant_id", tenantId)
+    .eq("category_id", input.id);
+  return { id: String(data.id), name: String(data.name) };
+}
+
+async function deleteCategory(admin: Admin, tenantId: string, id: string) {
+  const { count, error } = await admin
+    .from("shop_catalog_items")
+    .select("id", { count: "exact", head: true })
+    .eq("tenant_id", tenantId)
+    .eq("category_id", id);
+  if (error) throw databaseError(error);
+  if ((count ?? 0) > 0) {
+    throw new HttpError(
+      409,
+      "category_in_use",
+      "Die Kategorie wird noch von Artikeln verwendet.",
+    );
+  }
+  const { error: deleteError } = await admin
+    .from("shop_categories")
+    .delete()
+    .eq("tenant_id", tenantId)
+    .eq("id", id);
+  if (deleteError) throw databaseError(deleteError);
+}
+
 async function saveCatalogItem(
   admin: Admin,
   tenantId: string,
@@ -870,7 +1086,19 @@ async function saveCatalogItem(
   input: Row,
 ) {
   const name = text(input.name, 160);
-  const category = text(input.category, 80) ?? "Allgemein";
+  const category = await resolveCategory(admin, tenantId, actorId, input);
+  const articleNumber =
+    input.articleNumber === null ||
+    input.articleNumber === undefined ||
+    input.articleNumber === ""
+      ? null
+      : text(input.articleNumber, 80);
+  const supplierUrl =
+    input.supplierUrl === null ||
+    input.supplierUrl === undefined ||
+    input.supplierUrl === ""
+      ? null
+      : supplierLink(input.supplierUrl);
   const description =
     input.description === null ||
     input.description === undefined ||
@@ -893,7 +1121,8 @@ async function saveCatalogItem(
   if (
     !name ||
     Array.from(name).length < 2 ||
-    Array.from(category).length < 2 ||
+    (articleNumber === null && input.articleNumber) ||
+    (supplierUrl === null && input.supplierUrl) ||
     (description === null && input.description) ||
     !kind ||
     maxQuantity === null ||
@@ -929,7 +1158,10 @@ async function saveCatalogItem(
     tenant_id: tenantId,
     name,
     description,
-    category,
+    category: category.name,
+    category_id: category.id,
+    article_number: articleNumber,
+    supplier_url: supplierUrl,
     kind,
     requires_approval: input.requiresApproval,
     max_quantity: maxQuantity,
@@ -1071,6 +1303,39 @@ const securedHandler = withSupabase(
           }
           const id = await saveCatalogItem(admin, tenantId, actorId, body.item);
           return json(request, { data: { id } });
+        }
+        case "listCategories": {
+          return json(request, {
+            data: { categories: await listCategories(admin, tenantId) },
+          });
+        }
+        case "saveCategory":
+        case "deleteCategory": {
+          if (!access.canManage) {
+            throw new HttpError(
+              403,
+              "forbidden",
+              "Für diese Aktion fehlt die Berechtigung.",
+            );
+          }
+          if (body.type === "saveCategory") {
+            const category = await saveCategory(
+              admin,
+              tenantId,
+              actorId,
+              isRecord(body.category) ? body.category : {},
+            );
+            return json(request, { data: { category } });
+          }
+          if (!isUuid(body.categoryId)) {
+            throw new HttpError(
+              400,
+              "invalid_request",
+              "Die Kategorie ist ungültig.",
+            );
+          }
+          await deleteCategory(admin, tenantId, body.categoryId.toLowerCase());
+          return json(request, { data: { deleted: true } });
         }
         case "addCatalogItemImage":
         case "removeCatalogItemImage": {

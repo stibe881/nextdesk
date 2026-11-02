@@ -19,6 +19,11 @@ export type CatalogItem = {
   name: string;
   description: string | null;
   category: string;
+  categoryId?: string | null;
+  /** Internal, only sent to agents. */
+  articleNumber?: string | null;
+  /** Internal, only sent to agents. */
+  supplierUrl?: string | null;
   kind: ItemKind;
   requiresApproval: boolean;
   maxQuantity: number;
@@ -33,6 +38,12 @@ export type CatalogItem = {
   images?: { id: string; url: string }[];
   stockLevel: StockLevel;
   availableQuantity: number | null;
+};
+
+export type ShopCategory = {
+  id: string;
+  name: string;
+  itemCount: number;
 };
 
 export type InventoryOption = {
@@ -91,6 +102,10 @@ export type OrderLine = {
   status:
     "open" | "reserved" | "backorder" | "issued" | "returned" | "cancelled";
   inventoryItemId: string | null;
+  /** Internal, only sent to agents. */
+  articleNumber?: string | null;
+  /** Internal, only sent to agents. */
+  supplierUrl?: string | null;
   locationId: string | null;
   serialUnitId: string | null;
   stock: {
@@ -175,6 +190,19 @@ export const shopApi = {
     call<{ people: ShopPerson[] }>({ type: "listRequesters", tenantId }).then(
       (data) => data.people,
     ),
+  categories: (tenantId: string) =>
+    call<{ categories: ShopCategory[] }>({
+      type: "listCategories",
+      tenantId,
+    }).then((data) => data.categories),
+  saveCategory: (tenantId: string, category: { id?: string; name: string }) =>
+    call<{ category: { id: string; name: string } }>({
+      type: "saveCategory",
+      tenantId,
+      category,
+    }).then((data) => data.category),
+  deleteCategory: (tenantId: string, categoryId: string) =>
+    call<{ deleted: true }>({ type: "deleteCategory", tenantId, categoryId }),
   addImage: (
     tenantId: string,
     itemId: string,

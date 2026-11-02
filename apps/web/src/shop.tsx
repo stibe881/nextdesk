@@ -32,6 +32,7 @@ import {
   type OrderDetail,
   type OrderSummary,
   type ShopContext,
+  type ShopCategory,
   type ShopPerson,
 } from "./lib/shop";
 
@@ -955,6 +956,23 @@ function OrderDialog({
                     <strong>
                       {line.quantity}× {line.itemName}
                     </strong>
+                    {line.articleNumber || line.supplierUrl ? (
+                      <span className="shop__line-internal">
+                        {line.articleNumber
+                          ? `Art.-Nr. ${line.articleNumber}`
+                          : null}
+                        {line.articleNumber && line.supplierUrl ? " · " : null}
+                        {line.supplierUrl ? (
+                          <a
+                            href={line.supplierUrl}
+                            rel="noopener noreferrer"
+                            target="_blank"
+                          >
+                            Beim Lieferanten ansehen
+                          </a>
+                        ) : null}
+                      </span>
+                    ) : null}
                     <span className="shop__muted">
                       {line.kind === "loan" ? " · Ausleihe" : ""}
                       {line.status === "reserved"
@@ -1167,6 +1185,11 @@ type Draft = {
   name: string;
   description: string;
   category: string;
+  categoryId: string;
+  /** Name of a category to create on save ("" = none). */
+  newCategory: string;
+  articleNumber: string;
+  supplierUrl: string;
   kind: "order" | "loan";
   requiresApproval: boolean;
   maxQuantity: number;
@@ -1268,7 +1291,11 @@ function fileToBase64(file: File): Promise<string> {
 const EMPTY_DRAFT: Draft = {
   name: "",
   description: "",
-  category: "Zubehör",
+  category: "",
+  categoryId: "",
+  newCategory: "",
+  articleNumber: "",
+  supplierUrl: "",
   kind: "order",
   requiresApproval: false,
   maxQuantity: 2,
@@ -1290,12 +1317,58 @@ function CatalogManager({ tenantId }: { tenantId: string }) {
   const [notice, setNotice] = useState("");
   const [pending, setPending] = useState(false);
 
+  const [categories, setCategories] = useState<ShopCategory[]>([]);
+  const [categoryDraft, setCategoryDraft] = useState<{
+    id?: string;
+    name: string;
+  } | null>(null);
+
   const load = useCallback(() => {
     shopApi
       .catalog(tenantId, true)
       .then(setItems)
       .catch((nextError: Error) => setError(nextError.message));
+    shopApi
+      .categories(tenantId)
+      .then(setCategories)
+      .catch(() => setCategories([]));
   }, [tenantId]);
+
+  const saveCategoryDraft = async () => {
+    if (!categoryDraft) return;
+    setError("");
+    try {
+      await shopApi.saveCategory(tenantId, {
+        ...(categoryDraft.id ? { id: categoryDraft.id } : {}),
+        name: categoryDraft.name.trim(),
+      });
+      setCategoryDraft(null);
+      setNotice("Kategorie gespeichert.");
+      load();
+    } catch (nextError) {
+      setError(
+        nextError instanceof Error
+          ? nextError.message
+          : "Die Kategorie konnte nicht gespeichert werden.",
+      );
+    }
+  };
+
+  const removeCategory = async (category: ShopCategory) => {
+    if (!window.confirm(`Kategorie «${category.name}» löschen?`)) return;
+    setError("");
+    try {
+      await shopApi.deleteCategory(tenantId, category.id);
+      setNotice("Kategorie gelöscht.");
+      load();
+    } catch (nextError) {
+      setError(
+        nextError instanceof Error
+          ? nextError.message
+          : "Die Kategorie konnte nicht gelöscht werden.",
+      );
+    }
+  };
 
   useEffect(() => {
     load();
@@ -1311,11 +1384,22 @@ function CatalogManager({ tenantId }: { tenantId: string }) {
     setPending(true);
     setError("");
     try {
+      let categoryId = draft.categoryId;
+      if (draft.newCategory.trim()) {
+        const created = await shopApi.saveCategory(tenantId, {
+          name: draft.newCategory.trim(),
+        });
+        categoryId = created.id;
+      }
       const saved = await shopApi.saveItem(tenantId, {
         id: draft.id,
         name: draft.name.trim(),
         description: draft.description.trim() || null,
-        category: draft.category.trim() || "Allgemein",
+        ...(categoryId && categoryId !== "__new__"
+          ? { categoryId }
+          : { category: "Allgemein" }),
+        articleNumber: draft.articleNumber.trim() || null,
+        supplierUrl: draft.supplierUrl.trim() || null,
         kind: draft.kind,
         requiresApproval: draft.requiresApproval,
         maxQuantity: draft.maxQuantity,
@@ -1442,7 +1526,89 @@ function CatalogManager({ tenantId }: { tenantId: string }) {
         >
           <Plus aria-hidden="true" size={16} /> Artikel hinzufügen
         </button>
+        <button
+          className="secondary-button"
+          onClick={() => setCategoryDraft({ name: "" })}
+          type="button"
+        >
+          <Plus aria-hidden="true" size={16} /> Kategorie hinzufügen
+        </button>
       </div>
+      <section className="shop__categories" aria-label="Kategorien">
+        <h3>Kategorien</h3>
+        {categoryDraft ? (
+          <form
+            className="shop__category-form"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void saveCategoryDraft();
+            }}
+          >
+            <input
+              aria-label="Name der Kategorie"
+              autoFocus
+              maxLength={80}
+              minLength={2}
+              onChange={(event) =>
+                setCategoryDraft({ ...categoryDraft, name: event.target.value })
+              }
+              placeholder="Name der Kategorie"
+              required
+              value={categoryDraft.name}
+            />
+            <button className="primary-button" type="submit">
+              Speichern
+            </button>
+            <button
+              className="secondary-button"
+              onClick={() => setCategoryDraft(null)}
+              type="button"
+            >
+              Abbrechen
+            </button>
+          </form>
+        ) : null}
+        {categories.length === 0 ? (
+          <p className="shop__muted">Noch keine Kategorien.</p>
+        ) : (
+          <ul className="shop__category-list">
+            {categories.map((category) => (
+              <li key={category.id}>
+                <span>{category.name}</span>
+                <span className="shop__muted">
+                  {category.itemCount === 1
+                    ? "1 Artikel"
+                    : `${category.itemCount} Artikel`}
+                </span>
+                <button
+                  aria-label={`Kategorie ${category.name} umbenennen`}
+                  className="icon-button"
+                  onClick={() =>
+                    setCategoryDraft({ id: category.id, name: category.name })
+                  }
+                  type="button"
+                >
+                  <Pencil size={15} />
+                </button>
+                <button
+                  aria-label={`Kategorie ${category.name} löschen`}
+                  className="icon-button"
+                  disabled={category.itemCount > 0}
+                  onClick={() => void removeCategory(category)}
+                  title={
+                    category.itemCount > 0
+                      ? "Nur leere Kategorien können gelöscht werden."
+                      : undefined
+                  }
+                  type="button"
+                >
+                  <Trash2 size={15} />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
       {notice ? (
         <p className="form-success" role="status">
           {notice}
@@ -1490,6 +1656,10 @@ function CatalogManager({ tenantId }: { tenantId: string }) {
                       name: item.name,
                       description: item.description ?? "",
                       category: item.category,
+                      categoryId: item.categoryId ?? "",
+                      newCategory: "",
+                      articleNumber: item.articleNumber ?? "",
+                      supplierUrl: item.supplierUrl ?? "",
                       kind: item.kind,
                       requiresApproval: item.requiresApproval,
                       maxQuantity: item.maxQuantity,
@@ -1710,17 +1880,78 @@ function CatalogManager({ tenantId }: { tenantId: string }) {
                 value={draft.name}
               />
             </label>
-            <label>
-              Kategorie
-              <input
-                maxLength={80}
-                onChange={(event) =>
-                  setDraft({ ...draft, category: event.target.value })
-                }
-                placeholder="z. B. Kabel & Adapter"
-                value={draft.category}
-              />
-            </label>
+            <div className="shop__row">
+              <label>
+                Kategorie
+                <select
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    setDraft(
+                      value === "__new__"
+                        ? { ...draft, categoryId: "__new__", newCategory: "" }
+                        : { ...draft, categoryId: value, newCategory: "" },
+                    );
+                  }}
+                  required
+                  value={draft.categoryId}
+                >
+                  <option disabled value="">
+                    Kategorie wählen …
+                  </option>
+                  {categories.map((category) => (
+                    <option key={category.id} value={category.id}>
+                      {category.name}
+                    </option>
+                  ))}
+                  <option value="__new__">+ Neue Kategorie …</option>
+                </select>
+              </label>
+              {draft.categoryId === "__new__" ? (
+                <label>
+                  Name der neuen Kategorie
+                  <input
+                    autoFocus
+                    maxLength={80}
+                    minLength={2}
+                    onChange={(event) =>
+                      setDraft({ ...draft, newCategory: event.target.value })
+                    }
+                    placeholder="z. B. Kabel & Adapter"
+                    required
+                    value={draft.newCategory}
+                  />
+                </label>
+              ) : null}
+            </div>
+            <div className="shop__row">
+              <label>
+                Artikelnummer (intern)
+                <input
+                  maxLength={80}
+                  onChange={(event) =>
+                    setDraft({ ...draft, articleNumber: event.target.value })
+                  }
+                  placeholder="z. B. LOG-MX-VERT"
+                  value={draft.articleNumber}
+                />
+              </label>
+              <label>
+                Link zum Lieferanten (intern)
+                <input
+                  maxLength={1000}
+                  onChange={(event) =>
+                    setDraft({ ...draft, supplierUrl: event.target.value })
+                  }
+                  placeholder="https://…"
+                  type="url"
+                  value={draft.supplierUrl}
+                />
+              </label>
+            </div>
+            <p className="shop__muted shop__internal-hint">
+              Artikelnummer und Lieferanten-Link sehen nur Agenten – im Shop und
+              in Bestellungen von Mitarbeitenden werden sie nicht angezeigt.
+            </p>
             <label>
               Beschreibung
               <textarea

@@ -18793,3 +18793,65 @@ html:has(.embed-status-badge) body {
 .shop__gallery-dot--active {
   background: var(--primary, #2563eb);
 }
+
+/* Shop: categories and internal article details */
+.shop__categories {
+  display: grid;
+  gap: 8px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+}
+
+.shop__categories h3 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.shop__category-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.shop__category-form input {
+  flex: 1 1 200px;
+}
+
+.shop__category-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.shop__category-list li {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px 4px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.shop__internal-hint {
+  margin: -4px 0 0;
+  font-size: 12px;
+}
+
+.shop__line-internal {
+  display: block;
+  margin-top: 2px;
+  color: var(--ink-muted);
+  font-size: 12px;
+}
+
+.shop__line-internal a {
+  color: var(--primary);
+  font-weight: 650;
+}

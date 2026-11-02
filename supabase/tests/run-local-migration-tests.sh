@@ -8981,6 +8981,28 @@ begin
   end if;
   v_status := public.shop_update_order(v_employee, v_tenant, v_order, 'cancel', '{}'::jsonb);
 
+  -- 6. Managed categories and internal article details.
+  declare
+    v_category uuid;
+  begin
+    insert into public.shop_categories (tenant_id, name) values (v_tenant, 'Kabel & Adapter')
+    returning id into v_category;
+    begin
+      insert into public.shop_categories (tenant_id, name) values (v_tenant, 'kabel & adapter');
+      raise exception 'A duplicate category name was accepted';
+    exception when unique_violation then null;
+    end;
+    update public.shop_catalog_items
+       set category_id = v_category, category = 'Kabel & Adapter',
+           article_number = 'USB-C-1M', supplier_url = 'https://shop.example/usb-c'
+     where id = v_cat_cable;
+    begin
+      update public.shop_catalog_items set supplier_url = 'javascript:alert(1)' where id = v_cat_cable;
+      raise exception 'An invalid supplier link was accepted';
+    exception when check_violation then null;
+    end;
+  end;
+
   -- Shop orders never create tickets.
   if exists (select 1 from public.tickets where tenant_id = v_tenant) then
     raise exception 'A shop order created a ticket';
