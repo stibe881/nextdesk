@@ -1123,7 +1123,27 @@ type Draft = {
   inventoryItemId: string;
   active: boolean;
   sortOrder: number;
+  imageUrl: string | null;
+  hasOwnImage: boolean;
+  imageFile: File | null;
+  removeImage: boolean;
 };
+
+const IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
+const MAX_IMAGE_BYTES = 3 * 1024 * 1024;
+
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = String(reader.result ?? "");
+      resolve(result.slice(result.indexOf(",") + 1));
+    };
+    reader.onerror = () =>
+      reject(new Error("Das Foto konnte nicht gelesen werden."));
+    reader.readAsDataURL(file);
+  });
+}
 
 const EMPTY_DRAFT: Draft = {
   name: "",
@@ -1136,6 +1156,10 @@ const EMPTY_DRAFT: Draft = {
   inventoryItemId: "",
   active: true,
   sortOrder: 0,
+  imageUrl: null,
+  hasOwnImage: false,
+  imageFile: null,
+  removeImage: false,
 };
 
 function CatalogManager({ tenantId }: { tenantId: string }) {
@@ -1167,7 +1191,7 @@ function CatalogManager({ tenantId }: { tenantId: string }) {
     setPending(true);
     setError("");
     try {
-      await shopApi.saveItem(tenantId, {
+      const saved = await shopApi.saveItem(tenantId, {
         id: draft.id,
         name: draft.name.trim(),
         description: draft.description.trim() || null,
@@ -1183,6 +1207,14 @@ function CatalogManager({ tenantId }: { tenantId: string }) {
         active: draft.active,
         sortOrder: draft.sortOrder,
       });
+      if (draft.imageFile) {
+        await shopApi.setImage(tenantId, saved.id, {
+          data: await fileToBase64(draft.imageFile),
+          contentType: draft.imageFile.type,
+        });
+      } else if (draft.removeImage && draft.hasOwnImage) {
+        await shopApi.setImage(tenantId, saved.id, null);
+      }
       setNotice(
         draft.id ? "Artikel gespeichert." : "Artikel ist jetzt im Shop.",
       );
@@ -1198,6 +1230,22 @@ function CatalogManager({ tenantId }: { tenantId: string }) {
       setPending(false);
     }
   };
+
+  const imageFile = draft?.imageFile ?? null;
+  const filePreview = useMemo(
+    () => (imageFile ? URL.createObjectURL(imageFile) : null),
+    [imageFile],
+  );
+  useEffect(
+    () => () => {
+      if (filePreview) URL.revokeObjectURL(filePreview);
+    },
+    [filePreview],
+  );
+  const imagePreview = draft
+    ? (filePreview ??
+      (draft.removeImage && draft.hasOwnImage ? null : draft.imageUrl))
+    : null;
 
   const fromInventory =
     (option: InventoryOption | undefined) =>
@@ -1281,6 +1329,10 @@ function CatalogManager({ tenantId }: { tenantId: string }) {
                       inventoryItemId: item.inventoryItemId ?? "",
                       active: item.active,
                       sortOrder: item.sortOrder,
+                      imageUrl: item.imageUrl,
+                      hasOwnImage: item.hasOwnImage === true,
+                      imageFile: null,
+                      removeImage: false,
                     })
                   }
                   type="button"
@@ -1346,6 +1398,70 @@ function CatalogManager({ tenantId }: { tenantId: string }) {
                 ))}
               </select>
             </label>
+            <div className="shop__image-field">
+              <span className="shop__image-label">Foto</span>
+              <div className="shop__image-editor">
+                <div className="shop__image-preview">
+                  {imagePreview ? (
+                    <img alt="Vorschau" src={imagePreview} />
+                  ) : (
+                    <PackageCheck aria-hidden="true" size={28} />
+                  )}
+                </div>
+                <div className="shop__image-actions">
+                  <label className="secondary-button shop__image-upload">
+                    {imagePreview ? "Foto ersetzen" : "Foto hinzufügen"}
+                    <input
+                      accept={IMAGE_TYPES.join(",")}
+                      onChange={(event) => {
+                        const file = event.target.files?.[0] ?? null;
+                        event.target.value = "";
+                        if (!file) return;
+                        if (!IMAGE_TYPES.includes(file.type)) {
+                          setError(
+                            "Bitte ein Foto im Format JPG, PNG oder WebP wählen.",
+                          );
+                          return;
+                        }
+                        if (file.size > MAX_IMAGE_BYTES) {
+                          setError("Das Foto darf höchstens 3 MB gross sein.");
+                          return;
+                        }
+                        setError("");
+                        setDraft({
+                          ...draft,
+                          imageFile: file,
+                          removeImage: false,
+                        });
+                      }}
+                      type="file"
+                    />
+                  </label>
+                  {draft.imageFile ||
+                  (draft.hasOwnImage && !draft.removeImage) ? (
+                    <button
+                      className="secondary-button"
+                      onClick={() =>
+                        setDraft({
+                          ...draft,
+                          imageFile: null,
+                          removeImage: true,
+                        })
+                      }
+                      type="button"
+                    >
+                      Foto entfernen
+                    </button>
+                  ) : null}
+                  <span className="shop__muted">
+                    JPG, PNG oder WebP, max. 3 MB.
+                    {draft.inventoryItemId && !draft.hasOwnImage
+                      ? " Ohne eigenes Foto wird das Bild des Lagerartikels gezeigt."
+                      : ""}
+                  </span>
+                </div>
+              </div>
+            </div>
             <label>
               Name im Shop
               <input

@@ -27,6 +27,7 @@ export type CatalogItem = {
   sortOrder: number;
   inventoryItemId: string | null;
   imageUrl: string | null;
+  hasOwnImage?: boolean;
   stockLevel: StockLevel;
   availableQuantity: number | null;
 };
@@ -171,6 +172,17 @@ export const shopApi = {
     call<{ people: ShopPerson[] }>({ type: "listRequesters", tenantId }).then(
       (data) => data.people,
     ),
+  setImage: (
+    tenantId: string,
+    itemId: string,
+    image: { data: string; contentType: string } | null,
+  ) =>
+    call<{ saved: true }>({
+      type: "setCatalogItemImage",
+      tenantId,
+      itemId,
+      image,
+    }),
   submit: (tenantId: string, order: Record<string, unknown>) =>
     call<{ orderId: string }>({ type: "submitOrder", tenantId, ...order }),
   orders: (

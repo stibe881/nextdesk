@@ -18601,3 +18601,59 @@ html:has(.embed-status-badge) body {
     grid-template-columns: 1fr auto;
   }
 }
+
+/* Shop: own article photo in the catalog editor */
+.shop__image-field {
+  display: grid;
+  gap: 6px;
+}
+
+.shop__image-label {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.shop__image-editor {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.shop__image-preview {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 120px;
+  height: 90px;
+  overflow: hidden;
+  border-radius: var(--radius);
+  background: var(--surface-subtle);
+  color: var(--ink-muted);
+}
+
+.shop__image-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.shop__image-actions {
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+}
+
+.shop__dialog .shop__image-upload {
+  position: relative;
+  display: inline-flex;
+  cursor: pointer;
+}
+
+.shop__image-upload input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
