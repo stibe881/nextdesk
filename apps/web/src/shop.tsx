@@ -1,6 +1,7 @@
 import {
   ChevronLeft,
   ChevronRight,
+  ImagePlus,
   Minus,
   PackageCheck,
   Pencil,
@@ -1193,6 +1194,70 @@ const MAX_IMAGES = 5;
 const IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
 const MAX_IMAGE_BYTES = 3 * 1024 * 1024;
 
+const MAX_IMAGE_EDGE = 1600;
+
+function loadImage(file: File): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const image = new Image();
+    image.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve(image);
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("unreadable"));
+    };
+    image.src = url;
+  });
+}
+
+/**
+ * Makes any photo the browser can read upload-ready: large or unusual images
+ * (e.g. phone photos, HEIC on Safari) are scaled to max. 1600 px and saved
+ * as JPEG, so they stay well below the 3 MB limit.
+ */
+async function prepareImage(file: File): Promise<File> {
+  if (!file.type.startsWith("image/") && file.type !== "") {
+    throw new Error(`«${file.name}» ist kein Foto.`);
+  }
+  let image: HTMLImageElement;
+  try {
+    image = await loadImage(file);
+  } catch {
+    throw new Error(
+      `«${file.name}» kann nicht gelesen werden. Bitte JPG, PNG oder WebP verwenden.`,
+    );
+  }
+  const scale = Math.min(
+    1,
+    MAX_IMAGE_EDGE / Math.max(image.naturalWidth, image.naturalHeight),
+  );
+  if (
+    scale === 1 &&
+    IMAGE_TYPES.includes(file.type) &&
+    file.size <= MAX_IMAGE_BYTES
+  ) {
+    return file;
+  }
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+  canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("Das Foto konnte nicht verarbeitet werden.");
+  context.fillStyle = "#ffffff";
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.drawImage(image, 0, 0, canvas.width, canvas.height);
+  const blob = await new Promise<Blob | null>((resolve) =>
+    canvas.toBlob(resolve, "image/jpeg", 0.85),
+  );
+  if (!blob || blob.size > MAX_IMAGE_BYTES) {
+    throw new Error(`«${file.name}» ist zu gross.`);
+  }
+  const name = file.name.replace(/\.[^.]+$/, "") || "foto";
+  return new File([blob], `${name}.jpg`, { type: "image/jpeg" });
+}
+
 function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -1306,30 +1371,50 @@ function CatalogManager({ tenantId }: { tenantId: string }) {
   );
   const imageCount = draft ? draft.images.length + draft.newFiles.length : 0;
 
-  const addFiles = (files: File[]) => {
-    if (!draft) return;
+  const [photoError, setPhotoError] = useState("");
+  const [preparingPhotos, setPreparingPhotos] = useState(false);
+  const [dragActive, setDragActive] = useState(false);
+
+  const addFiles = async (files: File[]) => {
+    if (!draft || files.length === 0) return;
     const free = MAX_IMAGES - imageCount;
-    const valid: File[] = [];
-    for (const file of files) {
-      if (!IMAGE_TYPES.includes(file.type)) {
-        setError("Bitte Fotos im Format JPG, PNG oder WebP wählen.");
-        return;
-      }
-      if (file.size > MAX_IMAGE_BYTES) {
-        setError("Ein Foto darf höchstens 3 MB gross sein.");
-        return;
-      }
-      valid.push(file);
+    if (free <= 0) {
+      setPhotoError(`Pro Artikel sind höchstens ${MAX_IMAGES} Fotos möglich.`);
+      return;
     }
-    if (valid.length > free) {
-      setError(`Pro Artikel sind höchstens ${MAX_IMAGES} Fotos möglich.`);
-    } else {
-      setError("");
+    setPhotoError("");
+    setPreparingPhotos(true);
+    const prepared: File[] = [];
+    const problems: string[] = [];
+    for (const file of files.slice(0, free)) {
+      try {
+        prepared.push(await prepareImage(file));
+      } catch (nextError) {
+        problems.push(
+          nextError instanceof Error
+            ? nextError.message
+            : "Ein Foto konnte nicht verarbeitet werden.",
+        );
+      }
     }
-    setDraft({
-      ...draft,
-      newFiles: [...draft.newFiles, ...valid.slice(0, free)],
-    });
+    if (files.length > free) {
+      problems.push(
+        `Pro Artikel sind höchstens ${MAX_IMAGES} Fotos möglich – ${files.length - free} wurden nicht übernommen.`,
+      );
+    }
+    setPhotoError(problems.join(" "));
+    setPreparingPhotos(false);
+    setDraft((current) =>
+      current
+        ? {
+            ...current,
+            newFiles: [...current.newFiles, ...prepared].slice(
+              0,
+              MAX_IMAGES - current.images.length,
+            ),
+          }
+        : current,
+    );
   };
 
   const fromInventory =
@@ -1354,7 +1439,11 @@ function CatalogManager({ tenantId }: { tenantId: string }) {
       <div className="contracts__actions">
         <button
           className="primary-button"
-          onClick={() => setDraft({ ...EMPTY_DRAFT })}
+          onClick={() => {
+            setPhotoError("");
+            setError("");
+            setDraft({ ...EMPTY_DRAFT });
+          }}
           type="button"
         >
           <Plus aria-hidden="true" size={16} /> Artikel hinzufügen
@@ -1399,7 +1488,9 @@ function CatalogManager({ tenantId }: { tenantId: string }) {
                 <button
                   aria-label={`${item.name} bearbeiten`}
                   className="icon-button"
-                  onClick={() =>
+                  onClick={() => {
+                    setPhotoError("");
+                    setError("");
                     setDraft({
                       id: item.id,
                       name: item.name,
@@ -1419,8 +1510,8 @@ function CatalogManager({ tenantId }: { tenantId: string }) {
                       newFiles: [],
                       fallbackImageUrl:
                         (item.images ?? []).length === 0 ? item.imageUrl : null,
-                    })
-                  }
+                    });
+                  }}
                   type="button"
                 >
                   <Pencil size={16} />
@@ -1442,6 +1533,9 @@ function CatalogManager({ tenantId }: { tenantId: string }) {
             aria-modal="true"
             className="contracts__editor-dialog shop__dialog"
             onClick={(event) => event.stopPropagation()}
+            // A photo dropped next to the drop zone must not open in the tab.
+            onDragOver={(event) => event.preventDefault()}
+            onDrop={(event) => event.preventDefault()}
             onSubmit={(event) => void save(event)}
             role="dialog"
           >
@@ -1488,74 +1582,123 @@ function CatalogManager({ tenantId }: { tenantId: string }) {
               <span className="shop__image-label">
                 Fotos ({imageCount}/{MAX_IMAGES})
               </span>
-              <div className="shop__image-gallery">
-                {draft.images.map((image, index) => (
-                  <div className="shop__image-thumb" key={image.id}>
-                    <img alt={`Foto ${index + 1}`} src={image.url} />
-                    <button
-                      aria-label={`Foto ${index + 1} entfernen`}
-                      className="shop__image-remove"
-                      onClick={() =>
-                        setDraft({
-                          ...draft,
-                          images: draft.images.filter(
-                            (candidate) => candidate.id !== image.id,
-                          ),
-                          removedImageIds: [...draft.removedImageIds, image.id],
-                        })
-                      }
-                      type="button"
+              {imageCount < MAX_IMAGES ? (
+                <label
+                  className={`shop__dropzone${dragActive ? " shop__dropzone--active" : ""}`}
+                  onDragEnter={(event) => {
+                    event.preventDefault();
+                    setDragActive(true);
+                  }}
+                  onDragLeave={(event) => {
+                    if (
+                      !event.currentTarget.contains(
+                        event.relatedTarget as Node | null,
+                      )
+                    ) {
+                      setDragActive(false);
+                    }
+                  }}
+                  onDragOver={(event) => {
+                    event.preventDefault();
+                    event.dataTransfer.dropEffect = "copy";
+                  }}
+                  onDrop={(event) => {
+                    event.preventDefault();
+                    setDragActive(false);
+                    void addFiles(Array.from(event.dataTransfer.files));
+                  }}
+                >
+                  <ImagePlus aria-hidden="true" size={26} />
+                  <strong>
+                    {preparingPhotos
+                      ? "Fotos werden vorbereitet …"
+                      : "Fotos hierher ziehen"}
+                  </strong>
+                  <span>
+                    oder <u>vom Computer auswählen</u>
+                  </span>
+                  <input
+                    accept="image/*"
+                    disabled={preparingPhotos}
+                    multiple
+                    onChange={(event) => {
+                      const files = Array.from(event.target.files ?? []);
+                      event.target.value = "";
+                      void addFiles(files);
+                    }}
+                    type="file"
+                  />
+                </label>
+              ) : null}
+              {photoError ? (
+                <p className="form-error" role="alert">
+                  {photoError}
+                </p>
+              ) : null}
+              {imageCount > 0 ? (
+                <div className="shop__image-gallery">
+                  {draft.images.map((image, index) => (
+                    <div className="shop__image-thumb" key={image.id}>
+                      <img alt={`Foto ${index + 1}`} src={image.url} />
+                      {index === 0 ? (
+                        <span className="shop__image-cover">Titelbild</span>
+                      ) : null}
+                      <button
+                        aria-label={`Foto ${index + 1} entfernen`}
+                        className="shop__image-remove"
+                        onClick={() =>
+                          setDraft({
+                            ...draft,
+                            images: draft.images.filter(
+                              (candidate) => candidate.id !== image.id,
+                            ),
+                            removedImageIds: [
+                              ...draft.removedImageIds,
+                              image.id,
+                            ],
+                          })
+                        }
+                        type="button"
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                  ))}
+                  {draft.newFiles.map((file, index) => (
+                    <div
+                      className="shop__image-thumb shop__image-thumb--new"
+                      key={`${file.name}-${index}`}
                     >
-                      <X size={14} />
-                    </button>
-                  </div>
-                ))}
-                {draft.newFiles.map((file, index) => (
-                  <div
-                    className="shop__image-thumb"
-                    key={`${file.name}-${index}`}
-                  >
-                    <img
-                      alt={`Neues Foto ${index + 1}`}
-                      src={newFilePreviews[index]}
-                    />
-                    <button
-                      aria-label={`Neues Foto ${index + 1} entfernen`}
-                      className="shop__image-remove"
-                      onClick={() =>
-                        setDraft({
-                          ...draft,
-                          newFiles: draft.newFiles.filter(
-                            (_, fileIndex) => fileIndex !== index,
-                          ),
-                        })
-                      }
-                      type="button"
-                    >
-                      <X size={14} />
-                    </button>
-                  </div>
-                ))}
-                {imageCount < MAX_IMAGES ? (
-                  <label className="shop__image-thumb shop__image-add">
-                    <Plus aria-hidden="true" size={20} />
-                    <span>Foto hinzufügen</span>
-                    <input
-                      accept={IMAGE_TYPES.join(",")}
-                      multiple
-                      onChange={(event) => {
-                        const files = Array.from(event.target.files ?? []);
-                        event.target.value = "";
-                        addFiles(files);
-                      }}
-                      type="file"
-                    />
-                  </label>
-                ) : null}
-              </div>
+                      <img
+                        alt={`Neues Foto ${index + 1}`}
+                        src={newFilePreviews[index]}
+                      />
+                      {draft.images.length === 0 && index === 0 ? (
+                        <span className="shop__image-cover">Titelbild</span>
+                      ) : null}
+                      <button
+                        aria-label={`Neues Foto ${index + 1} entfernen`}
+                        className="shop__image-remove"
+                        onClick={() =>
+                          setDraft({
+                            ...draft,
+                            newFiles: draft.newFiles.filter(
+                              (_, fileIndex) => fileIndex !== index,
+                            ),
+                          })
+                        }
+                        type="button"
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
               <span className="shop__muted">
-                Bis zu {MAX_IMAGES} Fotos (JPG, PNG oder WebP, je max. 3 MB).
-                Das erste Foto ist das Titelbild.
+                Bis zu {MAX_IMAGES} Fotos. Grosse Fotos werden automatisch
+                verkleinert. Das erste Foto ist das Titelbild; neue Fotos werden
+                beim Speichern hochgeladen.
                 {imageCount === 0 && draft.fallbackImageUrl
                   ? " Ohne eigene Fotos wird das Bild des Lagerartikels gezeigt."
                   : ""}
@@ -1663,6 +1806,11 @@ function CatalogManager({ tenantId }: { tenantId: string }) {
               />
               Im Shop sichtbar
             </label>
+            {error ? (
+              <p className="form-error" role="alert">
+                {error}
+              </p>
+            ) : null}
             <div className="form-actions">
               <button
                 className="secondary-button"
@@ -1673,7 +1821,7 @@ function CatalogManager({ tenantId }: { tenantId: string }) {
               </button>
               <button
                 className="primary-button"
-                disabled={pending}
+                disabled={pending || preparingPhotos}
                 type="submit"
               >
                 {pending ? "Speichert …" : "Speichern"}

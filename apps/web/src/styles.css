@@ -18653,6 +18653,68 @@ html:has(.embed-status-badge) body {
   cursor: pointer;
 }
 
+.shop__dialog .shop__dropzone {
+  position: relative;
+  display: grid;
+  gap: 4px;
+  justify-items: center;
+  padding: 22px 16px;
+  border: 2px dashed var(--border);
+  border-radius: calc(var(--radius) + 4px);
+  background: var(--surface-subtle);
+  color: var(--ink-muted);
+  font-size: 13px;
+  font-weight: 500;
+  text-align: center;
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    background-color 0.15s ease;
+}
+
+.shop__dropzone strong {
+  color: var(--text);
+  font-size: 14px;
+}
+
+.shop__dropzone u {
+  color: var(--primary);
+  text-decoration: none;
+  font-weight: 650;
+}
+
+.shop__dropzone:hover,
+.shop__dropzone:focus-within,
+.shop__dropzone--active {
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 8%, transparent);
+}
+
+.shop__dropzone input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
+
+.shop__image-cover {
+  position: absolute;
+  left: 4px;
+  bottom: 4px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgb(15 23 42 / 70%);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.shop__image-thumb--new {
+  outline: 2px solid color-mix(in srgb, var(--primary) 45%, transparent);
+  outline-offset: -2px;
+}
+
 .shop__dialog .shop__image-add {
   display: grid;
   gap: 2px;
