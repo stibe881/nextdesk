@@ -526,7 +526,6 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       return (
         role?.active === true &&
         role.scope === "tenant" &&
-        (role.name === TENANT_ADMINISTRATOR_ROLE || role.name === "Verträge") &&
         (role.role_permissions ?? []).some(
           (permission) => permission.permission_code === "contracts.manage",
         )
