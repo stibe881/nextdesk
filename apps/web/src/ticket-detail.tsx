@@ -24,6 +24,7 @@ import {
   Save,
   Search,
   Send,
+  Sparkles,
   Star,
   FolderTree,
   UsersRound,
@@ -698,6 +699,8 @@ type TicketDetailProps = {
   ticketId: string;
   onClose: () => void;
   onChanged: () => void;
+  /** Opens a knowledge article (e.g. a freshly generated AI draft). */
+  onOpenKnowledgeArticle?: (articleId: string) => void;
 };
 
 const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
@@ -2771,6 +2774,62 @@ function knowledgeErrorMessage(
   return messages[action];
 }
 
+const AI_TICKET_DRAFT_ERRORS: Record<string, string> = {
+  article_manage_denied:
+    "Für einen Wissensartikel fehlt Ihnen die Berechtigung zur Wissensverwaltung.",
+  ai_feature_disabled: "Die KI-Unterstützung ist für diesen Mandanten nicht aktiviert.",
+  ai_provider_not_approved:
+    "Die KI-Unterstützung ist für diesen Mandanten noch nicht freigegeben.",
+  ai_purpose_not_approved:
+    "Die KI-Unterstützung für Wissensartikel ist noch nicht freigegeben.",
+  ai_budget_exceeded:
+    "Das stündliche KI-Kontingent ist erreicht. Bitte versuchen Sie es später erneut.",
+  ai_provider_rate_limited:
+    "Der KI-Dienst ist gerade ausgelastet. Bitte versuchen Sie es in einer Minute erneut.",
+  ai_provider_not_configured: "Die KI-Anbindung ist noch nicht eingerichtet.",
+  ticket_not_found: "Das Ticket ist nicht mehr verfügbar.",
+};
+
+async function requestAiTicketDraft(
+  tenantId: string,
+  ticketId: string,
+): Promise<{ articleId: string; linkedToTicket: boolean }> {
+  if (!supabase) throw new Error("Supabase ist nicht konfiguriert.");
+  const { data, error } = await supabase.functions.invoke("ai-assist", {
+    body: { type: "draftArticleFromTicket", tenantId, ticketId },
+  });
+  if (error) {
+    let code = "";
+    const context = (error as { context?: unknown }).context;
+    if (context instanceof Response) {
+      try {
+        const body = (await context.clone().json()) as {
+          error?: { code?: unknown };
+        };
+        code = typeof body.error?.code === "string" ? body.error.code : "";
+      } catch {
+        code = "";
+      }
+    }
+    throw new Error(
+      AI_TICKET_DRAFT_ERRORS[code] ??
+        "Der KI-Entwurf konnte nicht erstellt werden. Bitte versuchen Sie es erneut.",
+    );
+  }
+  const result = (data as { data?: unknown } | null)?.data;
+  if (
+    typeof result !== "object" ||
+    result === null ||
+    typeof (result as { articleId?: unknown }).articleId !== "string"
+  ) {
+    throw new Error("Die Antwort des KI-Entwurfs ist unvollständig.");
+  }
+  return {
+    articleId: (result as { articleId: string }).articleId,
+    linkedToTicket: (result as { linkedToTicket?: unknown }).linkedToTicket === true,
+  };
+}
+
 function KnowledgeSection({
   tenantId,
   ticketId,
@@ -2779,13 +2838,17 @@ function KnowledgeSection({
   refreshToken,
   onChanged,
   onSent,
+  onOpenArticle,
 }: KnowledgeReference & {
   canUpdate: boolean;
   canUseInternalNotes: boolean;
   refreshToken: string;
   onChanged: () => void;
   onSent: () => Promise<boolean>;
+  onOpenArticle?: ((articleId: string) => void) | undefined;
 }) {
+  const [aiDraftPending, setAiDraftPending] = useState(false);
+  const [aiDraft, setAiDraft] = useState<{ articleId: string } | null>(null);
   const [links, setLinks] = useState<KnowledgeLink[]>([]);
   const [listLoading, setListLoading] = useState(true);
   const [listError, setListError] = useState("");
@@ -3358,6 +3421,72 @@ function KnowledgeSection({
               })}
             </ul>
           )}
+          {canUpdate && canUseInternalNotes && (
+            <div className="ticket-knowledge-ai">
+              <div>
+                <strong>Wissensartikel mit KI erstellen</strong>
+                <p className="data-caption">
+                  Die KI analysiert Betreff, Beschreibung und Verlauf und
+                  legt daraus einen internen Entwurf an. Namen und
+                  Kontaktdaten werden vorher entfernt. Der Entwurf wird nicht
+                  veröffentlicht: Prüfen, bearbeiten und veröffentlichen Sie
+                  ihn anschliessend in der Wissensdatenbank.
+                </p>
+              </div>
+              <div className="ticket-detail-actions">
+                <button
+                  className="secondary-button"
+                  type="button"
+                  disabled={aiDraftPending || knowledgeBusy}
+                  onClick={async () => {
+                    setAiDraftPending(true);
+                    setActionError("");
+                    setNotice("");
+                    try {
+                      const created = await requestAiTicketDraft(
+                        tenantId,
+                        ticketId,
+                      );
+                      setAiDraft({ articleId: created.articleId });
+                      setNotice(
+                        created.linkedToTicket
+                          ? "Der KI-Entwurf wurde in der Wissensdatenbank angelegt und intern an dieses Ticket angehängt."
+                          : "Der KI-Entwurf wurde in der Wissensdatenbank angelegt.",
+                      );
+                      void loadLinks();
+                      onChanged();
+                    } catch (error) {
+                      setActionError(
+                        error instanceof Error
+                          ? error.message
+                          : "Der KI-Entwurf konnte nicht erstellt werden.",
+                      );
+                    } finally {
+                      setAiDraftPending(false);
+                    }
+                  }}
+                >
+                  {aiDraftPending ? (
+                    <LoaderCircle aria-hidden="true" size={16} />
+                  ) : (
+                    <Sparkles aria-hidden="true" size={16} />
+                  )}
+                  {aiDraftPending
+                    ? "KI erstellt Entwurf …"
+                    : "Entwurf mit KI erstellen"}
+                </button>
+                {aiDraft && onOpenArticle && (
+                  <button
+                    className="primary-button"
+                    type="button"
+                    onClick={() => onOpenArticle(aiDraft.articleId)}
+                  >
+                    Entwurf prüfen und veröffentlichen
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
           <form
             className="ticket-comment-form"
             aria-labelledby="ticket-knowledge-create-heading"
@@ -3513,6 +3642,7 @@ export function TicketDetail({
   ticketId,
   onClose,
   onChanged,
+  onOpenKnowledgeArticle,
 }: TicketDetailProps) {
   const [detail, setDetail] = useState<TicketDetailData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -7661,6 +7791,7 @@ export function TicketDetail({
               refreshToken={`${detail.ticket.id}:${detail.canUpdate}:${detail.canUseInternalNotes}`}
               onChanged={onChanged}
               onSent={async () => (await loadTicket()) !== null}
+              onOpenArticle={onOpenKnowledgeArticle}
             />
 
             <section
