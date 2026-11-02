@@ -206,6 +206,19 @@ export async function generateKnowledgeDraft(input: {
       signal: controller.signal,
     });
     if (!response.ok) {
+      // Status and error type only; never the prompt or provider message.
+      let errorType: string | null = null;
+      try {
+        const body = (await response.json()) as { error?: { type?: unknown } };
+        errorType =
+          typeof body?.error?.type === "string" ? body.error.type : null;
+      } catch {
+        errorType = null;
+      }
+      console.error("anthropic_request_failed", {
+        status: response.status,
+        errorType,
+      });
       throw new AnthropicKnowledgeDraftError(
         classifyAnthropicResponseStatus(response.status),
         "Die KI-Aufbereitung ist im Moment nicht verfügbar.",
@@ -214,6 +227,9 @@ export async function generateKnowledgeDraft(input: {
     return parseKnowledgeDraft((await response.json()) as AnthropicResponse);
   } catch (error) {
     if (error instanceof AnthropicKnowledgeDraftError) throw error;
+    console.error("anthropic_request_error", {
+      name: error instanceof Error ? error.name : typeof error,
+    });
     throw new AnthropicKnowledgeDraftError(
       "ai_provider_request_failed",
       "Die KI-Aufbereitung ist im Moment nicht verfügbar.",
