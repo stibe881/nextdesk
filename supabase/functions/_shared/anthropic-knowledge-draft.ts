@@ -177,6 +177,25 @@ export function createKnowledgeDraftRequest(
   return request;
 }
 
+async function providerErrorMessage(response: Response): Promise<{
+  type: string | null;
+  message: string | null;
+}> {
+  try {
+    const body = (await response.json()) as {
+      error?: { type?: unknown; message?: unknown };
+    };
+    return {
+      type: typeof body?.error?.type === "string" ? body.error.type : null,
+      message: typeof body?.error?.message === "string"
+        ? body.error.message.slice(0, 200)
+        : null,
+    };
+  } catch {
+    return { type: null, message: null };
+  }
+}
+
 export async function generateKnowledgeDraft(input: {
   apiKey: string;
   model: string;
@@ -220,43 +239,23 @@ export async function generateKnowledgeDraft(input: {
     if (response.status === 400) {
       // Some models do not support structured outputs: retry once with a
       // plain JSON instruction; the answer is validated the same way.
-      let firstMessage: string | null = null;
-      try {
-        const body = (await response.json()) as { error?: { message?: unknown } };
-        firstMessage = typeof body?.error?.message === "string"
-          ? body.error.message.slice(0, 200)
-          : null;
-      } catch {
-        firstMessage = null;
-      }
+      const first = await providerErrorMessage(response);
       console.error("anthropic_structured_output_rejected", {
         status: 400,
-        errorMessage: firstMessage,
+        model,
+        errorMessage: first.message,
       });
       response = await send(false);
     }
     if (!response.ok) {
       // The provider message describes the request problem (e.g. billing or
       // an invalid parameter) and never echoes the prompt; keep it short.
-      let errorType: string | null = null;
-      let errorMessage: string | null = null;
-      try {
-        const body = (await response.json()) as {
-          error?: { type?: unknown; message?: unknown };
-        };
-        errorType = typeof body?.error?.type === "string"
-          ? body.error.type
-          : null;
-        errorMessage = typeof body?.error?.message === "string"
-          ? body.error.message.slice(0, 200)
-          : null;
-      } catch {
-        errorType = null;
-      }
+      const detail = await providerErrorMessage(response);
       console.error("anthropic_request_failed", {
         status: response.status,
-        errorType,
-        errorMessage,
+        model,
+        errorType: detail.type,
+        errorMessage: detail.message,
       });
       throw new AnthropicKnowledgeDraftError(
         classifyAnthropicResponseStatus(response.status),
