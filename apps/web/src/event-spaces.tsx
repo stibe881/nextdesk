@@ -313,10 +313,9 @@ function parseConflictPreview(value: unknown): ConflictPreview | null {
     : null;
 }
 
+/** Clicking a task ticks it off; clicking a completed task reopens it. */
 function nextTaskStatus(status: TaskStatus): TaskStatus {
-  if (status === "open") return "in_progress";
-  if (status === "in_progress") return "completed";
-  return "open";
+  return status === "completed" ? "open" : "completed";
 }
 
 export function EventSpaces({
@@ -2343,7 +2342,7 @@ function RequestCard({
                 key={task.id}
               >
                 <button
-                  aria-label={`${task.title}: Status ${taskStatusLabels[task.status]}. ${canManage ? "Status weiterführen" : ""}`}
+                  aria-label={`${task.title}: Status ${taskStatusLabels[task.status]}. ${canManage ? (task.status === "completed" ? "Wieder öffnen" : "Als erledigt markieren") : ""}`}
                   disabled={!canManage}
                   onClick={() => void onChangeTaskStatus(task)}
                   type="button"
