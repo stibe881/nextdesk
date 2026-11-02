@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -52,32 +52,35 @@ export default function AssetsScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
+  // Der Suchtext liegt zusätzlich in einer Referenz: Würde `load` bei jedem
+  // Tastendruck neu erzeugt, liefe der Fokus-Effekt erneut, ersetzte die
+  // Ansicht durch den Ladekreis und schlösse so die Tastatur.
+  const queryRef = useRef("");
+  const loadedOnce = useRef(false);
 
-  const load = useCallback(
-    async (search = query, pull = false) => {
-      setError("");
-      if (pull) {
-        setRefreshing(true);
-      } else {
-        setLoading(true);
-      }
-      try {
-        const tenant = await loadCurrentTenant();
-        setAssets(await listMobileAssets(tenant.id, search));
-      } catch (nextError) {
-        setAssets([]);
-        setError(
-          nextError instanceof Error
-            ? nextError.message
-            : "Assets konnten nicht geladen werden.",
-        );
-      } finally {
-        setLoading(false);
-        setRefreshing(false);
-      }
-    },
-    [query],
-  );
+  const load = useCallback(async (search = queryRef.current, pull = false) => {
+    setError("");
+    if (pull) {
+      setRefreshing(true);
+    } else if (!loadedOnce.current) {
+      setLoading(true);
+    }
+    try {
+      const tenant = await loadCurrentTenant();
+      setAssets(await listMobileAssets(tenant.id, search));
+      loadedOnce.current = true;
+    } catch (nextError) {
+      setAssets([]);
+      setError(
+        nextError instanceof Error
+          ? nextError.message
+          : "Assets konnten nicht geladen werden.",
+      );
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
@@ -152,7 +155,10 @@ export default function AssetsScreen() {
             accessibilityLabel="Assets durchsuchen"
             autoCapitalize="none"
             clearButtonMode="while-editing"
-            onChangeText={setQuery}
+            onChangeText={(value) => {
+              queryRef.current = value;
+              setQuery(value);
+            }}
             onSubmitEditing={() => void load(query)}
             placeholder="Name, Inventar- oder Seriennummer"
             placeholderTextColor={colors.subtle}
