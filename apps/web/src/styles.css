@@ -18370,15 +18370,21 @@ html:has(.embed-status-badge) body {
 .shop__image {
   display: grid;
   place-items: center;
-  height: 120px;
+  height: 160px;
   border-radius: calc(var(--radius-card) - 4px);
   background: var(--surface-subtle);
   color: var(--ink-muted);
   overflow: hidden;
 }
+.shop__image {
+  position: relative;
+}
+/* Absolute so large photos never stretch the grid cell and get cropped. */
 .shop__image img {
-  width: 100%;
-  height: 100%;
+  position: absolute;
+  inset: 8px;
+  width: calc(100% - 16px);
+  height: calc(100% - 16px);
   object-fit: contain;
 }
 .shop__card h2 {
@@ -18741,6 +18747,7 @@ html:has(.embed-status-badge) body {
 
 .shop__gallery-nav {
   position: absolute;
+  z-index: 1;
   top: 50%;
   display: grid;
   place-items: center;
@@ -18765,6 +18772,7 @@ html:has(.embed-status-badge) body {
 
 .shop__gallery-dots {
   position: absolute;
+  z-index: 1;
   bottom: 6px;
   left: 50%;
   display: flex;
