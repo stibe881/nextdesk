@@ -12,6 +12,7 @@ const ACTIONS = [
   "listMentions",
   "markMentionRead",
   "createMentions",
+  "searchRecipients",
   "listDelegations",
   "listDelegationAgents",
   "saveDelegation",
@@ -612,6 +613,73 @@ async function createMentions(
     { commentId: action.commentId, count: people.length },
   );
   return reply(request, { data: { mentions: result.data ?? [] } }, 201);
+}
+async function searchRecipients(
+  request: Request,
+  client: Client,
+  admin: Admin,
+  action: Action,
+): Promise<Response> {
+  const info = await ticket(admin, action.tenantId, action.ticketId);
+  await ticketPermission(client, info, "ticket.internal_notes.read");
+  const query = text(action.query, 2, 80);
+  if (!query)
+    throw new HttpError(
+      400,
+      "invalid_request",
+      "Bitte mindestens zwei Zeichen eingeben.",
+    );
+  const pattern = `%${query.replaceAll(/[%_,()\\]/g, " ").trim()}%`;
+  const [people, contacts] = await Promise.all([
+    admin
+      .from("tenant_entra_directory_people")
+      .select("display_name, email, job_title")
+      .eq("tenant_id", action.tenantId)
+      .eq("account_enabled", true)
+      .is("inactive_at", null)
+      .or(`display_name.ilike.${pattern},email.ilike.${pattern}`)
+      .order("display_name")
+      .limit(10),
+    admin
+      .from("ticket_requesters")
+      .select("display_name, email")
+      .eq("tenant_id", action.tenantId)
+      .not("email", "is", null)
+      .or(`display_name.ilike.${pattern},email.ilike.${pattern}`)
+      .order("display_name")
+      .limit(10),
+  ]);
+  if (people.error) db(people.error);
+  if (contacts.error) db(contacts.error);
+  const seen = new Set<string>();
+  const recipients: {
+    displayName: string;
+    email: string;
+    jobTitle: string | null;
+  }[] = [];
+  for (const entry of [
+    ...(people.data ?? []).map((row) => ({
+      displayName: row.display_name,
+      email: row.email,
+      jobTitle: row.job_title ?? null,
+    })),
+    ...(contacts.data ?? []).map((row) => ({
+      displayName: row.display_name,
+      email: row.email,
+      jobTitle: null,
+    })),
+  ]) {
+    if (
+      typeof entry.email !== "string" ||
+      typeof entry.displayName !== "string"
+    )
+      continue;
+    const key = entry.email.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    recipients.push({ ...entry, email: key });
+  }
+  return reply(request, { data: { recipients: recipients.slice(0, 12) } });
 }
 async function listDelegations(
   request: Request,
@@ -1772,6 +1840,8 @@ const handler = withSupabase(
         return await markMentionRead(request, admin, action, actorId);
       if (action.type === "createMentions")
         return await createMentions(request, client, admin, action, actorId);
+      if (action.type === "searchRecipients")
+        return await searchRecipients(request, client, admin, action);
       if (action.type === "listDelegations")
         return await listDelegations(request, client, admin, action, actorId);
       if (action.type === "listDelegationAgents")

@@ -67,7 +67,9 @@ import {
 import "./ticket-experience.css";
 import { TicketPdfRecord } from "./ticket-pdf-record";
 import {
+  TicketCopyRecipients,
   TicketMentionPicker,
+  type CopyRecipient,
   TicketWorkbench,
   useTicketReplyDraft,
 } from "./ticket-workbench";
@@ -204,6 +206,7 @@ type AddCommentAction = {
   body: string;
   visibility: CommentVisibility;
   attachmentIds?: string[];
+  copyEmails?: string[];
 };
 
 type ToggleWatchAction = {
@@ -3542,6 +3545,7 @@ export function TicketDetail({
   const [commentVisibility, setCommentVisibility] =
     useState<CommentVisibility>("internal");
   const [mentionedUserIds, setMentionedUserIds] = useState<string[]>([]);
+  const [copyRecipients, setCopyRecipients] = useState<CopyRecipient[]>([]);
   const [commentNotice, setCommentNotice] = useState("");
   const [undoChange, setUndoChange] = useState<UndoChange | null>(null);
   const [isWorkspaceOpen, setIsWorkspaceOpen] = useState(false);
@@ -5577,6 +5581,7 @@ export function TicketDetail({
     const submittedAt = Date.now();
     const uploadedAttachments: TicketAttachment[] = [];
     let commentSaved = false;
+    let copyNotice = "";
     try {
       if (activeCommentImageAttachments.length > 0) {
         setPendingAttachmentAction("upload");
@@ -5588,15 +5593,27 @@ export function TicketDetail({
         setPendingAttachmentAction(null);
       }
       const attachmentIds = ticketCommentAttachmentIds(uploadedAttachments);
-      await invokeTicketOperation({
+      const sendResult = await invokeTicketOperation({
         type: "addComment",
         tenantId,
         ticketId,
         body,
         visibility: commentVisibility,
         ...(attachmentIds.length > 0 ? { attachmentIds } : {}),
+        ...(commentVisibility === "external" && copyRecipients.length > 0
+          ? { copyEmails: copyRecipients.map((entry) => entry.email) }
+          : {}),
       });
       commentSaved = true;
+      if (commentVisibility === "external" && copyRecipients.length > 0) {
+        const copies = asRecord(asRecord(sendResult)?.data);
+        setCopyRecipients([]);
+        copyNotice =
+          copies?.copiesFailed === true || copies?.copiesQueued === 0
+            ? "Die Antwort wurde gesendet, die Kopien konnten aber nicht versendet werden. Bitte prüfe den E-Mail-Kanal."
+            : `Antwort gesendet und ${copies?.copiesQueued ?? copyRecipients.length} Kopie(n) per E-Mail versendet.`;
+        setCommentNotice(copyNotice);
+      }
       setCommentDrafts((current) =>
         updateTicketCommentDraft(current, commentVisibility, ""),
       );
@@ -5649,6 +5666,7 @@ export function TicketDetail({
         setMentionedUserIds([]);
         setCommentNotice("Interne Notiz wurde gespeichert.");
       }
+      if (copyNotice) setCommentNotice(copyNotice);
     } catch (nextError) {
       if (!commentSaved && uploadedAttachments.length > 0) {
         await Promise.allSettled(
@@ -6794,6 +6812,15 @@ export function TicketDetail({
               }))}
             selectedIds={mentionedUserIds}
           />
+          {commentVisibility === "external" && detail.canUseInternalNotes ? (
+            <TicketCopyRecipients
+              disabled={busy}
+              onChange={setCopyRecipients}
+              selected={copyRecipients}
+              tenantId={tenantId}
+              ticketId={ticketId}
+            />
+          ) : null}
           <p
             className={`ticket-comment-visibility-hint ${commentVisibility}`}
             id="ticket-comment-visibility-hint"
