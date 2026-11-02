@@ -597,14 +597,12 @@ export function ServiceReporting({
     <section
       className="service-reporting"
       aria-busy={isLoading}
-      aria-labelledby={headingId}
+      aria-label="Berichte"
       style={reportStyle}
     >
       <style>{serviceReportingStyles}</style>
       <header className="service-reporting__header">
         <div>
-          <p className="service-reporting__eyebrow">Servicequalität</p>
-          <h1 id={headingId}>Berichte</h1>
           <p className="service-reporting__intro">
             Kennzahlen des aktuellen Mandanten mit Vergleich zur unmittelbar
             vorhergehenden Periode.

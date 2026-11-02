@@ -46,7 +46,12 @@ type Contract = {
 };
 type CostPeriod = "one_time" | "monthly" | "quarterly" | "yearly";
 type Person = { id: string; displayName: string };
-type AssetOption = { id: string; name: string; tag: string | null; kind: string | null };
+type AssetOption = {
+  id: string;
+  name: string;
+  tag: string | null;
+  kind: string | null;
+};
 type Form = {
   id: string | null;
   title: string;
@@ -337,7 +342,10 @@ export function Contracts({ tenantId }: { tenantId: string }) {
     const custom = new Map<string, string>();
     for (const item of contracts) {
       const name = item.contractType;
-      if (!Object.hasOwn(typeLabel, name) && !custom.has(name.toLocaleLowerCase("de-CH"))) {
+      if (
+        !Object.hasOwn(typeLabel, name) &&
+        !custom.has(name.toLocaleLowerCase("de-CH"))
+      ) {
         custom.set(name.toLocaleLowerCase("de-CH"), name);
       }
     }
@@ -407,11 +415,13 @@ export function Contracts({ tenantId }: { tenantId: string }) {
         costAmount:
           form.costAmount.trim() === "" ? null : Number(form.costAmount),
         costCurrency: form.costCurrency,
-        costPeriod: form.costAmount.trim() === "" ? null : form.costPeriod || null,
+        costPeriod:
+          form.costAmount.trim() === "" ? null : form.costPeriod || null,
         autoRenew: form.autoRenew,
-        renewalMonths: form.autoRenew && form.renewalMonths.trim() !== ""
-          ? Number(form.renewalMonths)
-          : null,
+        renewalMonths:
+          form.autoRenew && form.renewalMonths.trim() !== ""
+            ? Number(form.renewalMonths)
+            : null,
         assetIds: form.assetIds,
         responsibleUserId: form.responsibleUserId || null,
         notes: form.notes || null,
@@ -487,12 +497,13 @@ export function Contracts({ tenantId }: { tenantId: string }) {
             : reason instanceof Error && reason.message === "invalid_renewal"
               ? "Die Verlängerung muss zwischen 1 und 120 Monaten liegen."
               : reason instanceof Error && reason.message === "invalid_dates"
-          ? "Das Enddatum muss am oder nach dem Startdatum liegen."
-          : reason instanceof Error && reason.message === "invalid_notice"
-            ? "Die Kündigungsfrist muss zwischen 0 und 3650 Tagen liegen."
-            : reason instanceof Error && reason.message.startsWith("server:")
-              ? reason.message.slice(7)
-              : "Der Vertrag konnte nicht gespeichert werden.",
+                ? "Das Enddatum muss am oder nach dem Startdatum liegen."
+                : reason instanceof Error && reason.message === "invalid_notice"
+                  ? "Die Kündigungsfrist muss zwischen 0 und 3650 Tagen liegen."
+                  : reason instanceof Error &&
+                      reason.message.startsWith("server:")
+                    ? reason.message.slice(7)
+                    : "Der Vertrag konnte nicht gespeichert werden.",
       );
     } finally {
       setPending(false);
@@ -537,11 +548,9 @@ export function Contracts({ tenantId }: { tenantId: string }) {
       </section>
     );
   return (
-    <section className="contracts" aria-labelledby="contracts-heading">
+    <section className="contracts" aria-label="Verträge">
       <header className="page-heading">
         <div>
-          <p className="eyebrow">Mandantenverwaltung</p>
-          <h1 id="contracts-heading">Verträge</h1>
           <p>
             Fristen, Kündigungszeitpunkte und Verantwortlichkeiten an einem Ort.
           </p>
@@ -860,7 +869,9 @@ export function Contracts({ tenantId }: { tenantId: string }) {
                     }}
                   >
                     {typeOptions.includes(form.contractType) ? null : (
-                      <option value={form.contractType}>{form.contractType}</option>
+                      <option value={form.contractType}>
+                        {form.contractType}
+                      </option>
                     )}
                     {typeOptions.map((key) => (
                       <option key={key} value={key}>
@@ -975,12 +986,17 @@ export function Contracts({ tenantId }: { tenantId: string }) {
                   <select
                     value={form.reminderDaysBefore}
                     onChange={(event) =>
-                      setForm({ ...form, reminderDaysBefore: event.target.value })
+                      setForm({
+                        ...form,
+                        reminderDaysBefore: event.target.value,
+                      })
                     }
                   >
                     <option value="">Keine Erinnerung</option>
                     {form.reminderDaysBefore !== "" &&
-                    !REMINDER_OPTIONS.includes(Number(form.reminderDaysBefore)) ? (
+                    !REMINDER_OPTIONS.includes(
+                      Number(form.reminderDaysBefore),
+                    ) ? (
                       <option value={form.reminderDaysBefore}>
                         {form.reminderDaysBefore} Tage vor Ablauf
                       </option>
@@ -1003,7 +1019,9 @@ export function Contracts({ tenantId }: { tenantId: string }) {
                       setForm({
                         ...form,
                         cancelled: event.target.checked,
-                        cancelledOn: event.target.checked ? form.cancelledOn : "",
+                        cancelledOn: event.target.checked
+                          ? form.cancelledOn
+                          : "",
                       })
                     }
                     type="checkbox"
@@ -1045,7 +1063,8 @@ export function Contracts({ tenantId }: { tenantId: string }) {
                       onChange={(event) =>
                         setForm({
                           ...form,
-                          costCurrency: event.target.value as Form["costCurrency"],
+                          costCurrency: event.target
+                            .value as Form["costCurrency"],
                         })
                       }
                     >
@@ -1084,7 +1103,9 @@ export function Contracts({ tenantId }: { tenantId: string }) {
                       setForm({
                         ...form,
                         autoRenew: event.target.checked,
-                        renewalMonths: event.target.checked ? form.renewalMonths : "",
+                        renewalMonths: event.target.checked
+                          ? form.renewalMonths
+                          : "",
                       })
                     }
                     type="checkbox"
@@ -1155,7 +1176,9 @@ export function Contracts({ tenantId }: { tenantId: string }) {
                             !form.assetIds.includes(asset.id) &&
                             `${asset.name} ${asset.tag ?? ""}`
                               .toLocaleLowerCase("de-CH")
-                              .includes(assetSearch.trim().toLocaleLowerCase("de-CH")),
+                              .includes(
+                                assetSearch.trim().toLocaleLowerCase("de-CH"),
+                              ),
                         )
                         .slice(0, 8)
                         .map((asset) => (
@@ -1173,7 +1196,9 @@ export function Contracts({ tenantId }: { tenantId: string }) {
                               <strong>{asset.name}</strong>
                               {asset.tag || asset.kind ? (
                                 <small>
-                                  {[asset.tag, asset.kind].filter(Boolean).join(" · ")}
+                                  {[asset.tag, asset.kind]
+                                    .filter(Boolean)
+                                    .join(" · ")}
                                 </small>
                               ) : null}
                             </button>

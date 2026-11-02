@@ -648,9 +648,7 @@ function ServiceEditorFields({
               value={subcategoryId}
             >
               <option value="">
-                {rootCategoryId
-                  ? "Keine Kategorie"
-                  : "Zuerst Ort wählen"}
+                {rootCategoryId ? "Keine Kategorie" : "Zuerst Ort wählen"}
               </option>
               {subcategories.map((category) => (
                 <option key={category.id} value={category.id}>
@@ -2362,10 +2360,7 @@ export function ServiceAssets({
       };
       const saved = parseSavedService(await requestServiceAssets(request));
       setServices((current) =>
-        sortByName([
-          ...current.filter((item) => item.id !== saved.id),
-          saved,
-        ]),
+        sortByName([...current.filter((item) => item.id !== saved.id), saved]),
       );
       setQuickEdit(null);
       setSuccess(`Der Service „${saved.name}“ wurde gespeichert.`);
@@ -2790,10 +2785,17 @@ export function ServiceAssets({
     >
       <div className="panel-heading">
         <div>
-          <p className="eyebrow">{pageCopy?.eyebrow ?? "Servicekatalog"}</p>
-          <h2 id="service-assets-title">
-            {pageCopy?.title ?? "Services, Assets und Fälle"}
-          </h2>
+          {pageCopy ? (
+            // Der Seitentitel steht bereits in der Kopfzeile der App.
+            <h2 className="sr-only" id="service-assets-title">
+              {pageCopy.title}
+            </h2>
+          ) : (
+            <>
+              <p className="eyebrow">Servicekatalog</p>
+              <h2 id="service-assets-title">Services, Assets und Fälle</h2>
+            </>
+          )}
           <p>
             {pageCopy?.description ??
               "Verwalten Sie den aktuellen Katalog dieses Mandanten. Archivierte und gelöste Einträge werden von der API nicht mehr im Katalog angezeigt."}
@@ -2914,7 +2916,7 @@ export function ServiceAssets({
         >
           <div className="panel-heading">
             <div>
-              <h3>Services</h3>
+              {!fixedTab ? <h3>Services</h3> : null}
               <p>{activeCount} passende Services</p>
             </div>
             {canManageServices && supportsServiceCategories ? (
@@ -3290,7 +3292,9 @@ export function ServiceAssets({
                             >
                               <option value="">Keine Stellvertretung</option>
                               {serviceResponsibleAgents
-                                .filter((agent) => agent.id !== quickEdit.primary)
+                                .filter(
+                                  (agent) => agent.id !== quickEdit.primary,
+                                )
                                 .map((agent) => (
                                   <option key={agent.id} value={agent.id}>
                                     {agent.displayName}
@@ -3645,7 +3649,7 @@ export function ServiceAssets({
         >
           <div className="panel-heading">
             <div>
-              <h3>Assets</h3>
+              {!fixedTab ? <h3>Assets</h3> : null}
               <p>{activeCount} passende Assets</p>
             </div>
             <button
@@ -4057,7 +4061,7 @@ export function ServiceAssets({
         >
           <div className="panel-heading">
             <div>
-              <h3>Fälle</h3>
+              {!fixedTab ? <h3>Fälle</h3> : null}
               <p>{activeCount} passende offene Fälle</p>
             </div>
           </div>

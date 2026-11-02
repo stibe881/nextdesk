@@ -2621,14 +2621,9 @@ export function TenantAdminSettings({
   }, [activeArea, slaManagementEnabled]);
 
   return (
-    <section
-      className="tenant-admin-settings"
-      aria-labelledby="tenant-settings-title"
-    >
+    <section className="tenant-admin-settings" aria-label="Einstellungen">
       <header className="tenant-admin-settings__header">
         <div>
-          <p className="tenant-admin-settings__eyebrow">Mandantenverwaltung</p>
-          <h1 id="tenant-settings-title">Einstellungen</h1>
           <p className="tenant-admin-settings__tenant-id">
             Verwalten Sie Zugänge, Erscheinungsbild und Berechtigungen dieses
             Mandanten.
