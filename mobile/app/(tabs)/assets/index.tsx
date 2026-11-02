@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -57,6 +57,8 @@ export default function AssetsScreen() {
   // Ansicht durch den Ladekreis und schlösse so die Tastatur.
   const queryRef = useRef("");
   const loadedOnce = useRef(false);
+  // Nur die Antwort der jüngsten Suche zählt (schnelles Tippen).
+  const loadSequence = useRef(0);
 
   const load = useCallback(async (search = queryRef.current, pull = false) => {
     setError("");
@@ -65,11 +67,15 @@ export default function AssetsScreen() {
     } else if (!loadedOnce.current) {
       setLoading(true);
     }
+    const sequence = ++loadSequence.current;
     try {
       const tenant = await loadCurrentTenant();
-      setAssets(await listMobileAssets(tenant.id, search));
+      const found = await listMobileAssets(tenant.id, search);
+      if (sequence !== loadSequence.current) return;
+      setAssets(found);
       loadedOnce.current = true;
     } catch (nextError) {
+      if (sequence !== loadSequence.current) return;
       setAssets([]);
       setError(
         nextError instanceof Error
@@ -88,6 +94,19 @@ export default function AssetsScreen() {
       if (!checkingSession && !checkingFeatures && assetsEnabled) void load();
     }, [assetsEnabled, checkingFeatures, checkingSession, load, recoveryEpoch]),
   );
+
+  // Während des Tippens laufend suchen (kurz verzögert, damit nicht jeder
+  // Buchstabe eine Anfrage auslöst).
+  const firstQuery = useRef(true);
+  useEffect(() => {
+    if (firstQuery.current) {
+      firstQuery.current = false;
+      return;
+    }
+    if (checkingSession || checkingFeatures || !assetsEnabled) return;
+    const timer = setTimeout(() => void load(query), 250);
+    return () => clearTimeout(timer);
+  }, [assetsEnabled, checkingFeatures, checkingSession, load, query]);
 
   const description = useMemo(
     () =>
