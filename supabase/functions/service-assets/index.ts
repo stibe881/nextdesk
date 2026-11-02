@@ -1276,16 +1276,14 @@ const handler = withSupabase(
               false,
             )
             : [];
-        const resolvedAssets = assetManage.data
-          ? await readIntunePrimaryPersonNames(
-            context.supabaseAdmin,
-            action.tenantId,
-            assets,
-          )
-          : assets.map((asset) => ({
-            ...asset,
-            intune_primary_person_name: null,
-          }));
+        // Die primäre Person wird allen gezeigt, die den Asset-Katalog lesen
+        // dürfen (die Zeilen oben wurden mit der Sitzung der Person gelesen).
+        // Aufgelöst wird weiterhin nur serverseitig und nur der Anzeigename.
+        const resolvedAssets = await readIntunePrimaryPersonNames(
+          context.supabaseAdmin,
+          action.tenantId,
+          assets,
+        );
         return json(request, {
           data: {
             services,
