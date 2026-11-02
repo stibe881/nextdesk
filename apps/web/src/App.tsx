@@ -15,6 +15,7 @@ import {
   ArrowDown,
   ArrowLeft,
   ArrowRight,
+  CheckCircle2,
   ArrowUp,
   BadgeCheck,
   Bell,
@@ -1877,6 +1878,15 @@ function AuthenticatedApp() {
     string | null
   >(null);
   const [ticketComposerOpen, setTicketComposerOpen] = useState(false);
+  const [createdTicketToast, setCreatedTicketToast] = useState<{
+    ticketId: string;
+    ticketNumber: string;
+  } | null>(null);
+  useEffect(() => {
+    if (!createdTicketToast) return;
+    const timer = window.setTimeout(() => setCreatedTicketToast(null), 3000);
+    return () => window.clearTimeout(timer);
+  }, [createdTicketToast]);
   const [quickCreateMenuOpen, setQuickCreateMenuOpen] = useState(false);
   const [expandedNavigationCategoryId, setExpandedNavigationCategoryId] =
     useState<string | null>("navigation-category-workspace");
@@ -5462,17 +5472,36 @@ function AuthenticatedApp() {
             </button>
             <TicketComposer
               currentUserId={session?.user.id ?? null}
-              onCreated={(ticketId) => {
+              onCreated={(ticketId, ticketNumber) => {
                 setTicketPage(0);
                 setDashboardRevision((value) => value + 1);
                 setTicketComposerOpen(false);
                 setSection("Tickets");
                 setSelectedTicketId(ticketId);
+                setCreatedTicketToast({ ticketId, ticketNumber });
               }}
               tenantId={activeTenant.id}
             />
           </div>
         </div>
+      )}
+      {createdTicketToast && (
+        <aside className="ticket-success-toast" aria-live="polite">
+          <CheckCircle2 aria-hidden="true" size={24} strokeWidth={1.8} />
+          <div>
+            <strong>Ticket erstellt</strong>
+            <span>{createdTicketToast.ticketNumber}</span>
+          </div>
+          <span aria-hidden="true" />
+          <button
+            aria-label="Bestätigung schliessen"
+            className="ticket-toast-dismiss"
+            onClick={() => setCreatedTicketToast(null)}
+            type="button"
+          >
+            <X aria-hidden="true" size={16} strokeWidth={1.8} />
+          </button>
+        </aside>
       )}
       {activeTenant &&
         selectedTicketId &&
