@@ -1279,6 +1279,7 @@ const securedHandler = withSupabase(
             { count: approvals },
             { count: openOrders },
             { data: managerLabel },
+            { count: newOrders },
           ] = await Promise.all([
             (() => {
               let query = admin
@@ -1303,12 +1304,21 @@ const securedHandler = withSupabase(
               p_tenant_id: tenantId,
               p_user_id: actorId,
             }),
+            // New orders nobody has taken on yet (navigation badge).
+            access.canFulfill
+              ? admin
+                  .from("shop_orders")
+                  .select("id", { count: "exact", head: true })
+                  .eq("tenant_id", tenantId)
+                  .eq("status", "submitted")
+              : Promise.resolve({ count: 0 }),
           ]);
           return json(request, {
             data: {
               ...access,
               pendingApprovals: approvals ?? 0,
               openOrders: openOrders ?? 0,
+              newOrders: newOrders ?? 0,
               managerName:
                 typeof managerLabel === "string" ? managerLabel : null,
             },

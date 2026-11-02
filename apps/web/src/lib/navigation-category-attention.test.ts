@@ -1,49 +1,44 @@
 import { describe, expect, it } from "vitest";
 
-import { collapsedNavigationCategoryAttentionCount } from "./navigation-category-attention";
+import {
+  collapsedNavigationCategoryAttentionCount,
+  navigationItemAttentionCount,
+} from "./navigation-category-attention";
 
 describe("collapsedNavigationCategoryAttentionCount", () => {
-  const eligibleInput = {
-    categoryExpanded: false,
-    categoryId: "navigation-category-operations",
-    eventSpaceAttentionCount: 3,
-    eventSpaceNavigationAccess: true,
-  };
-
-  it("zeigt den Raumplanungszähler nur am geschlossenen Betriebsbereich", () => {
-    expect(collapsedNavigationCategoryAttentionCount(eligibleInput)).toBe(3);
+  it("summiert die Zähler der Menüpunkte einer geschlossenen Kategorie", () => {
+    expect(
+      collapsedNavigationCategoryAttentionCount({
+        categoryExpanded: false,
+        itemCounts: [3, null, 2],
+      }),
+    ).toBe(5);
   });
 
   it("blendet den zusammengefassten Zähler beim geöffneten Bereich aus", () => {
     expect(
       collapsedNavigationCategoryAttentionCount({
-        ...eligibleInput,
         categoryExpanded: true,
+        itemCounts: [3],
       }),
     ).toBeNull();
   });
 
-  it("zeigt keinen Zähler ohne serverseitig bestätigten Raumplanungszugriff", () => {
+  it("zeigt keinen Zähler ohne positive Werte", () => {
     expect(
       collapsedNavigationCategoryAttentionCount({
-        ...eligibleInput,
-        eventSpaceNavigationAccess: false,
+        categoryExpanded: false,
+        itemCounts: [0, null, undefined, -1, Number.NaN],
       }),
     ).toBeNull();
   });
+});
 
-  it("zeigt keinen Zähler für andere Kategorien oder nicht positive Werte", () => {
-    expect(
-      collapsedNavigationCategoryAttentionCount({
-        ...eligibleInput,
-        categoryId: "navigation-category-resources",
-      }),
-    ).toBeNull();
-    expect(
-      collapsedNavigationCategoryAttentionCount({
-        ...eligibleInput,
-        eventSpaceAttentionCount: 0,
-      }),
-    ).toBeNull();
+describe("navigationItemAttentionCount", () => {
+  it("zeigt nur positive ganze Zahlen", () => {
+    expect(navigationItemAttentionCount(4)).toBe(4);
+    expect(navigationItemAttentionCount(0)).toBeNull();
+    expect(navigationItemAttentionCount(null)).toBeNull();
+    expect(navigationItemAttentionCount(1.5)).toBeNull();
   });
 });

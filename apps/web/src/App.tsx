@@ -74,7 +74,10 @@ import {
 import { createPersonalWorkspace, deleteAccount } from "./lib/account";
 import { acceptTenantInvitations } from "./lib/tenant-invitations";
 import { normalizeQueueSelection, shouldShowQueueTabs } from "./lib/queue-tabs";
-import { collapsedNavigationCategoryAttentionCount } from "./lib/navigation-category-attention";
+import {
+  collapsedNavigationCategoryAttentionCount,
+  navigationItemAttentionCount,
+} from "./lib/navigation-category-attention";
 import { TicketComposer } from "./ticket-composer";
 import { TicketDetail } from "./ticket-detail";
 import { TenantAdminSettings } from "./tenant-admin-settings";
@@ -1891,6 +1894,14 @@ function AuthenticatedApp() {
     useState(false);
   const [eventSpaceAttentionRevision, setEventSpaceAttentionRevision] =
     useState(0);
+  // Navigation badges for new shop orders and untouched onboarding entries.
+  const [shopAttentionCount, setShopAttentionCount] = useState<number | null>(
+    null,
+  );
+  const [onboardingAttentionCount, setOnboardingAttentionCount] = useState<
+    number | null
+  >(null);
+  const [navigationAttentionTick, setNavigationAttentionTick] = useState(0);
   const [canManageContracts, setCanManageContracts] = useState(false);
   const [canManageServiceStatus, setCanManageServiceStatus] = useState(false);
   const [canReadReports, setCanReadReports] = useState(false);
@@ -2529,6 +2540,64 @@ function AuthenticatedApp() {
       mounted = false;
     };
   }, [activeTenant?.id, eventSpaceAttentionRevision, session?.user.id]);
+
+  // Refresh the menu badges every minute and whenever the section changes.
+  useEffect(() => {
+    const timer = window.setInterval(
+      () => setNavigationAttentionTick((tick) => tick + 1),
+      60_000,
+    );
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    if (!supabase || !session || !activeTenant) {
+      setShopAttentionCount(null);
+      setOnboardingAttentionCount(null);
+      return;
+    }
+    let mounted = true;
+    const tenantId = activeTenant.id;
+    const readCount = (data: unknown, key: string): number | null => {
+      const payload =
+        data && typeof data === "object"
+          ? (data as { data?: Record<string, unknown> }).data
+          : null;
+      const value = payload?.[key];
+      return typeof value === "number" && Number.isSafeInteger(value)
+        ? value
+        : null;
+    };
+    void supabase.functions
+      .invoke("shop", { body: { type: "getContext", tenantId } })
+      .then(({ data, error }) => {
+        if (!mounted) return;
+        if (error) {
+          setShopAttentionCount(null);
+          return;
+        }
+        const canFulfill =
+          data && typeof data === "object"
+            ? (data as { data?: { canFulfill?: unknown } }).data?.canFulfill
+            : false;
+        setShopAttentionCount(
+          canFulfill === true ? readCount(data, "newOrders") : null,
+        );
+      })
+      .catch(() => mounted && setShopAttentionCount(null));
+    void supabase.functions
+      .invoke("onboarding", { body: { type: "navigationSummary", tenantId } })
+      .then(({ data, error }) => {
+        if (!mounted) return;
+        setOnboardingAttentionCount(
+          error ? null : readCount(data, "attentionCount"),
+        );
+      })
+      .catch(() => mounted && setOnboardingAttentionCount(null));
+    return () => {
+      mounted = false;
+    };
+  }, [activeTenant?.id, navigationAttentionTick, section, session?.user.id]);
 
   useEffect(() => {
     if (!isSupabaseConfigured || !supabase || !session || !activeTenant) {
@@ -3844,6 +3913,24 @@ function AuthenticatedApp() {
   const navigationItemsBySection = new Map(
     remainingNavigationSections.map((item) => [item.label, item]),
   );
+  const navigationAttentionFor = (label: Section): number | null =>
+    navigationItemAttentionCount(
+      label === "Raumplanung"
+        ? eventSpaceNavigationAccess
+          ? eventSpaceAttentionCount
+          : null
+        : label === "Shop"
+          ? shopAttentionCount
+          : label === "Eintritte"
+            ? onboardingAttentionCount
+            : null,
+    );
+  const navigationAttentionDescription = (label: Section): string =>
+    label === "Raumplanung"
+      ? "Raumaufträge benötigen Zuweisung oder Klärung"
+      : label === "Shop"
+        ? "neue Bestellungen warten auf Bearbeitung"
+        : "Eintritte sind noch nicht in Bearbeitung";
   const navigationGroups = NAVIGATION_CATEGORIES.map((category) => ({
     ...category,
     items: category.sectionLabels.flatMap((label) => {
@@ -3976,9 +4063,9 @@ function AuthenticatedApp() {
             const categoryAttentionCount =
               collapsedNavigationCategoryAttentionCount({
                 categoryExpanded,
-                categoryId: category.id,
-                eventSpaceAttentionCount,
-                eventSpaceNavigationAccess,
+                itemCounts: category.items.map((item) =>
+                  navigationAttentionFor(item.label),
+                ),
               });
             const hasCategoryAttention = categoryAttentionCount !== null;
             const panelId = `${category.id}-panel`;
@@ -3991,7 +4078,7 @@ function AuthenticatedApp() {
                     aria-expanded={categoryExpanded}
                     aria-label={
                       hasCategoryAttention
-                        ? `${category.navigationLabel} – ${categoryAttentionCount} Raumaufträge benötigen Zuweisung oder Klärung`
+                        ? `${category.navigationLabel} – ${categoryAttentionCount} offene Einträge`
                         : category.navigationLabel
                     }
                     className="navigation-cluster__toggle"
@@ -4031,13 +4118,8 @@ function AuthenticatedApp() {
                 >
                   <nav aria-labelledby={category.id} className="nav-list">
                     {category.items.map((item) => {
-                      const attentionCount =
-                        item.label === "Raumplanung"
-                          ? eventSpaceAttentionCount
-                          : null;
-                      const hasAttention =
-                        typeof attentionCount === "number" &&
-                        attentionCount > 0;
+                      const attentionCount = navigationAttentionFor(item.label);
+                      const hasAttention = attentionCount !== null;
                       const label = sectionDisplayLabel(item.label);
                       return (
                         <button
@@ -4046,7 +4128,7 @@ function AuthenticatedApp() {
                           }
                           aria-label={
                             hasAttention
-                              ? `${label} – ${attentionCount} Raumaufträge benötigen Zuweisung oder Klärung`
+                              ? `${label} – ${attentionCount} ${navigationAttentionDescription(item.label)}`
                               : label
                           }
                           className={
@@ -4061,20 +4143,20 @@ function AuthenticatedApp() {
                           }}
                           type="button"
                         >
-                          {hasAttention ? (
-                            <span
-                              aria-hidden="true"
-                              className="nav-item__badge nav-item__badge--leading"
-                            >
-                              {attentionCount > 99 ? "99+" : attentionCount}
-                            </span>
-                          ) : null}
                           <item.Icon
                             aria-hidden="true"
                             size={18}
                             strokeWidth={1.8}
                           />
                           <span className="nav-item__label">{label}</span>
+                          {hasAttention ? (
+                            <span
+                              aria-hidden="true"
+                              className="nav-item__badge nav-item__badge--trailing"
+                            >
+                              {attentionCount > 99 ? "99+" : attentionCount}
+                            </span>
+                          ) : null}
                         </button>
                       );
                     })}
