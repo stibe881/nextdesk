@@ -94,6 +94,8 @@ type InboundAttachment = {
 export function customerTicketEmailKindForOutbound(
   messageKind: string | null,
 ): CustomerTicketEmailKind | null {
+  // Kopien einer Antwort an weitere Personen sehen aus wie die Antwort selbst.
+  if (messageKind === "ticket_copy") return "agent_reply";
   if (
     messageKind === "agent_reply" ||
     messageKind === "acknowledgement" ||

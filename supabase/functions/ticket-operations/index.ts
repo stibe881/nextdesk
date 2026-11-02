@@ -73,6 +73,7 @@ type Action =
       body: string;
       visibility: "internal" | "external";
       attachmentIds: string[];
+      copyEmails: string[];
     }
   | {
       type: "saveDraft";
@@ -256,12 +257,26 @@ function parseAction(value: unknown): Action | null {
       "body",
       "visibility",
       "attachmentIds",
+      "copyEmails",
     ]) &&
     typeof value.body === "string" &&
     (value.visibility === "internal" || value.visibility === "external")
   ) {
     const attachmentIds = parseCommentAttachmentIds(value.attachmentIds);
     if (!attachmentIds) return null;
+    const rawCopies = value.copyEmails === undefined ? [] : value.copyEmails;
+    if (
+      !Array.isArray(rawCopies) ||
+      rawCopies.length > 10 ||
+      !rawCopies.every(
+        (entry) =>
+          typeof entry === "string" &&
+          entry.length <= 254 &&
+          /^[^@\s,;<>]+@[^@\s,;<>]+\.[^@\s,;<>]+$/.test(entry.trim()),
+      ) ||
+      (value.visibility === "internal" && rawCopies.length > 0)
+    )
+      return null;
     return {
       type: value.type,
       tenantId: value.tenantId,
@@ -269,6 +284,7 @@ function parseAction(value: unknown): Action | null {
       body: value.body.trim(),
       visibility: value.visibility,
       attachmentIds,
+      copyEmails: rawCopies.map((entry) => entry.trim().toLowerCase()),
     };
   }
   if (
@@ -2550,7 +2566,27 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         }
       }
     }
-    return response(request, { data: { created: true } }, 201);
+    let copiesQueued = 0;
+    let copiesFailed = false;
+    if (action.visibility === "external" && action.copyEmails.length > 0) {
+      const copies = await context.supabaseAdmin.rpc(
+        "enqueue_ticket_comment_copies",
+        {
+          p_tenant_id: ticket.tenant_id,
+          p_ticket_id: ticket.id,
+          p_comment_id: comment.id,
+          p_actor_id: actorId,
+          p_emails: action.copyEmails,
+        },
+      );
+      if (copies.error || typeof copies.data !== "number") copiesFailed = true;
+      else copiesQueued = copies.data;
+    }
+    return response(
+      request,
+      { data: { created: true, copiesQueued, copiesFailed } },
+      201,
+    );
   }
 
   if (action.type === "toggleWatch") {

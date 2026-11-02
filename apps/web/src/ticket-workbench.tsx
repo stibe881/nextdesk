@@ -625,6 +625,209 @@ export function useTicketReplyDraft({
   };
 }
 
+export type CopyRecipient = { email: string; displayName: string | null };
+
+const copyEmailPattern = /^[^@\s,;<>]+@[^@\s,;<>]+\.[^@\s,;<>]+$/;
+
+/**
+ * Weitere Empfänger einer Antwort an die anfragende Person: Mitarbeitende aus
+ * dem Verzeichnis (Entra) oder beliebige E-Mail-Adressen. Sie erhalten eine
+ * Kopie der Nachricht per E-Mail.
+ */
+export function TicketCopyRecipients({
+  disabled,
+  onChange,
+  selected,
+  tenantId,
+  ticketId,
+}: {
+  disabled: boolean;
+  onChange: (recipients: CopyRecipient[]) => void;
+  selected: readonly CopyRecipient[];
+  tenantId: string;
+  ticketId: string;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<CopyRecipient[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [hint, setHint] = useState("");
+  const trimmed = query.trim();
+  const typedEmail = copyEmailPattern.test(trimmed)
+    ? trimmed.toLowerCase()
+    : null;
+  const selectedEmails = useMemo(
+    () => new Set(selected.map((entry) => entry.email)),
+    [selected],
+  );
+
+  useEffect(() => {
+    if (!expanded || trimmed.length < 2 || typedEmail) {
+      setResults([]);
+      setSearching(false);
+      return;
+    }
+    let active = true;
+    setSearching(true);
+    const timer = window.setTimeout(() => {
+      invokeWorkbench("agent-workbench", {
+        type: "searchRecipients",
+        tenantId,
+        ticketId,
+        query: trimmed,
+      })
+        .then((value) => {
+          if (!active) return;
+          const rows = asRecord(asRecord(value)?.data)?.recipients;
+          const next: CopyRecipient[] = [];
+          if (Array.isArray(rows)) {
+            for (const row of rows) {
+              const record = asRecord(row);
+              if (
+                typeof record?.email === "string" &&
+                typeof record.displayName === "string"
+              )
+                next.push({
+                  email: record.email.toLowerCase(),
+                  displayName: record.displayName,
+                });
+            }
+          }
+          setResults(next);
+        })
+        .catch(() => {
+          if (active) {
+            setResults([]);
+            setHint("Die Suche ist gerade nicht verfügbar.");
+          }
+        })
+        .finally(() => {
+          if (active) setSearching(false);
+        });
+    }, 300);
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [expanded, trimmed, typedEmail, tenantId, ticketId]);
+
+  function add(recipient: CopyRecipient) {
+    setHint("");
+    if (selectedEmails.has(recipient.email)) return;
+    if (selected.length >= 10) {
+      setHint("Es sind höchstens 10 weitere Empfänger möglich.");
+      return;
+    }
+    onChange([...selected, recipient]);
+    setQuery("");
+    setResults([]);
+  }
+
+  return (
+    <section
+      aria-label="Kopie per E-Mail"
+      className="ticket-workbench__mentions"
+    >
+      <button
+        aria-expanded={expanded}
+        className="text-button ticket-workbench__mention-toggle"
+        disabled={disabled}
+        onClick={() => setExpanded((current) => !current)}
+        type="button"
+      >
+        <MessageSquareMore aria-hidden="true" size={16} />
+        Kopie per E-Mail senden
+        {selected.length > 0 ? ` (${selected.length})` : ""}
+        <ChevronDown aria-hidden="true" size={15} />
+      </button>
+      {selected.length > 0 && (
+        <ul className="ticket-workbench__copy-chips">
+          {selected.map((entry) => (
+            <li key={entry.email}>
+              <span>{entry.displayName ?? entry.email}</span>
+              {entry.displayName && <small>{entry.email}</small>}
+              <button
+                aria-label={`${entry.email} entfernen`}
+                disabled={disabled}
+                onClick={() =>
+                  onChange(
+                    selected.filter((item) => item.email !== entry.email),
+                  )
+                }
+                type="button"
+              >
+                <X aria-hidden="true" size={13} />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {expanded && (
+        <div className="ticket-workbench__mention-picker">
+          <p>
+            Die Personen erhalten die Nachricht nach dem Senden zusätzlich per
+            E-Mail. Suche nach Mitarbeitenden oder gib eine E-Mail-Adresse ein.
+          </p>
+          <div className="ticket-workbench__copy-input">
+            <input
+              aria-label="Mitarbeitende suchen oder E-Mail-Adresse eingeben"
+              autoComplete="off"
+              disabled={disabled}
+              maxLength={254}
+              onChange={(event) => setQuery(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  if (typedEmail) add({ email: typedEmail, displayName: null });
+                }
+              }}
+              placeholder="Name oder E-Mail-Adresse"
+              type="text"
+              value={query}
+            />
+            <button
+              className="secondary-button"
+              disabled={disabled || !typedEmail}
+              onClick={() =>
+                typedEmail && add({ email: typedEmail, displayName: null })
+              }
+              type="button"
+            >
+              Hinzufügen
+            </button>
+          </div>
+          {searching && (
+            <p aria-busy="true" role="status">
+              Suche …
+            </p>
+          )}
+          {!searching &&
+            trimmed.length >= 2 &&
+            !typedEmail &&
+            results.length === 0 && <p>Keine passende Person gefunden.</p>}
+          {results.length > 0 && (
+            <ul className="ticket-workbench__copy-results">
+              {results.map((person) => (
+                <li key={person.email}>
+                  <button
+                    disabled={disabled || selectedEmails.has(person.email)}
+                    onClick={() => add(person)}
+                    type="button"
+                  >
+                    <strong>{person.displayName}</strong>
+                    <small>{person.email}</small>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          {hint && <p role="status">{hint}</p>}
+        </div>
+      )}
+    </section>
+  );
+}
+
 export function TicketMentionPicker({
   disabled,
   enabled,

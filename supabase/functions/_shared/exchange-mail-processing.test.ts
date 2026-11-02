@@ -9,6 +9,7 @@ Deno.test(
   () => {
     const expected = new Map([
       ["agent_reply", "agent_reply"],
+      ["ticket_copy", "agent_reply"],
       ["acknowledgement", "acknowledgement"],
       ["resolution", "resolution"],
       ["test", "test"],
