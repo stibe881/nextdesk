@@ -355,6 +355,7 @@ export default function ShopOrderScreen() {
                   />
                 ) : null}
                 {process &&
+                order.deliveryMethod === "pickup" &&
                 (status === "submitted" || status === "in_progress") ? (
                   <ActionButton
                     disabled={pending}

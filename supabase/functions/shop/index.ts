@@ -1563,6 +1563,22 @@ const securedHandler = withSupabase(
                   : null,
               }))
             : [];
+          if (body.action === "ready") {
+            // "Ready for pickup" only exists when the person picks it up.
+            const { data: target } = await admin
+              .from("shop_orders")
+              .select("delivery_method")
+              .eq("tenant_id", tenantId)
+              .eq("id", body.orderId)
+              .maybeSingle();
+            if (target && target.delivery_method !== "pickup") {
+              throw new HttpError(
+                409,
+                "not_pickup",
+                "Diese Bestellung wird an den Arbeitsplatz geliefert, nicht abgeholt.",
+              );
+            }
+          }
           const { data, error } = await admin.rpc("shop_update_order", {
             p_actor_id: actorId,
             p_tenant_id: tenantId,

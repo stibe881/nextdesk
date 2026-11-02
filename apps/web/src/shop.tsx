@@ -1077,6 +1077,7 @@ function OrderDialog({
                 </button>
               ) : null}
               {process &&
+              order.deliveryMethod === "pickup" &&
               (status === "submitted" || status === "in_progress") ? (
                 <button
                   className="secondary-button"
