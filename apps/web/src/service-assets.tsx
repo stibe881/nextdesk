@@ -77,6 +77,7 @@ type Asset = {
   status: string;
   customer_organization_id: string | null;
   intune_primary_person_name: string | null;
+  intune_primary_person_photo_url?: string | null;
   metadata: { [key: string]: JsonValue };
   active: boolean;
   created_at: string;
@@ -993,6 +994,11 @@ function parseAsset(value: unknown): Asset | null {
     )
       ? value.intune_primary_person_name
       : null,
+    intune_primary_person_photo_url:
+      typeof value.intune_primary_person_photo_url === "string" &&
+      value.intune_primary_person_photo_url.startsWith("https://")
+        ? value.intune_primary_person_photo_url
+        : null,
     metadata: value.metadata as { [key: string]: JsonValue },
     active: value.active,
     created_at: value.created_at,
@@ -1594,6 +1600,13 @@ export function ServiceAssets({
     return (
       assets.find((asset) => asset.id === assetForm.id)
         ?.intune_primary_person_name ?? null
+    );
+  }, [assetForm.id, assets]);
+  const editedAssetPrimaryPhoto = useMemo(() => {
+    if (!assetForm.id) return null;
+    return (
+      assets.find((asset) => asset.id === assetForm.id)
+        ?.intune_primary_person_photo_url ?? null
     );
   }, [assetForm.id, assets]);
   const filteredServices = useMemo(
@@ -2564,6 +2577,9 @@ export function ServiceAssets({
               current.find((asset) => asset.id === saved.id)
                 ?.intune_primary_person_name ??
               saved.intune_primary_person_name,
+            intune_primary_person_photo_url:
+              current.find((asset) => asset.id === saved.id)
+                ?.intune_primary_person_photo_url ?? null,
           },
         ]),
       );
@@ -3747,7 +3763,17 @@ export function ServiceAssets({
                           aria-hidden="true"
                           className="service-assets__primary-person-avatar"
                         >
-                          {personInitials(asset.intune_primary_person_name)}
+                          {asset.intune_primary_person_photo_url ? (
+                            <img
+                              alt=""
+                              className="service-assets__primary-person-photo"
+                              loading="lazy"
+                              referrerPolicy="no-referrer"
+                              src={asset.intune_primary_person_photo_url}
+                            />
+                          ) : (
+                            personInitials(asset.intune_primary_person_name)
+                          )}
                         </span>
                         <span className="service-assets__primary-person-copy">
                           <small>Primäre Person</small>
@@ -3843,9 +3869,18 @@ export function ServiceAssets({
                           aria-hidden="true"
                           className="service-assets__primary-person-avatar"
                         >
-                          {editedAssetPrimaryPerson
-                            ? personInitials(editedAssetPrimaryPerson)
-                            : "—"}
+                          {editedAssetPrimaryPhoto ? (
+                            <img
+                              alt=""
+                              className="service-assets__primary-person-photo"
+                              referrerPolicy="no-referrer"
+                              src={editedAssetPrimaryPhoto}
+                            />
+                          ) : editedAssetPrimaryPerson ? (
+                            personInitials(editedAssetPrimaryPerson)
+                          ) : (
+                            "—"
+                          )}
                         </span>
                         <span className="service-assets__primary-person-copy">
                           <small>Primäre Person</small>

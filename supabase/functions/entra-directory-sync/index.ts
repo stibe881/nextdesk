@@ -2,6 +2,7 @@ import { withSupabase } from "@supabase/server";
 import {
   graphAccessToken,
   graphManagerId,
+  graphUserPhoto,
   graphUsers,
   testEntraDirectoryConnection,
   type GraphUser,
@@ -209,6 +210,65 @@ function firstClaim(value: unknown): SyncClaim | null {
   return isRecord(candidate) ? (candidate as SyncClaim) : null;
 }
 
+const PHOTOS_PER_RUN = 400;
+const PHOTO_CONCURRENCY = 8;
+
+// Holt die Profilfotos nach dem Import. Fehler hier lassen den Abgleich nie
+// scheitern; ein Foto wird bei Fehlern beim nächsten Lauf erneut versucht.
+async function syncProfilePhotos(
+  admin: any,
+  tenantId: string,
+  accessToken: string,
+): Promise<number> {
+  const { data, error } = await admin.rpc("entra_directory_photo_candidates", {
+    p_tenant_id: tenantId,
+    p_limit: PHOTOS_PER_RUN,
+  });
+  if (error || !Array.isArray(data)) return 0;
+  const ids = data
+    .map((row: unknown) =>
+      isRecord(row) && isUuid(row.entra_object_id)
+        ? row.entra_object_id.toLowerCase()
+        : null,
+    )
+    .filter((id: string | null): id is string => id !== null);
+  let stored = 0;
+  let cursor = 0;
+  const worker = async () => {
+    while (cursor < ids.length) {
+      const objectId = ids[cursor++];
+      try {
+        const photo = await graphUserPhoto(accessToken, objectId);
+        let path: string | null = null;
+        if (photo) {
+          const extension = photo.contentType === "image/png" ? "png" : "jpg";
+          path = `${tenantId}/${objectId}.${extension}`;
+          const upload = await admin.storage
+            .from("entra-avatars")
+            .upload(path, photo.bytes, {
+              contentType: photo.contentType,
+              upsert: true,
+            });
+          if (upload.error) continue;
+          stored += 1;
+        }
+        await admin
+          .from("tenant_entra_directory_people")
+          .update({
+            photo_path: path,
+            photo_checked_at: new Date().toISOString(),
+          })
+          .eq("tenant_id", tenantId)
+          .eq("entra_object_id", objectId);
+      } catch {
+        // Beim nächsten Lauf erneut versuchen.
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: PHOTO_CONCURRENCY }, worker));
+  return stored;
+}
+
 const handler = withSupabase({ auth: "user" }, async (request, context) => {
   if (request.method !== "POST") {
     return response(request, { error: { code: "method_not_allowed" } }, 405);
@@ -411,6 +471,16 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     const requesterProfileSync = requesterProfileSyncResult(
       requesterProfileSyncData,
     );
+    let photosStored = 0;
+    try {
+      photosStored = await syncProfilePhotos(
+        context.supabaseAdmin,
+        action.tenantId,
+        accessToken,
+      );
+    } catch {
+      photosStored = 0;
+    }
 
     return response(request, {
       data: {
@@ -419,6 +489,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         skipped: graphPeople.length - people.length,
         requesterContactsCreated: requesterProfileSync.contactsCreated,
         requesterProfilesInitialized: requesterProfileSync.profilesInitialized,
+        photosStored,
       },
     });
   } catch {

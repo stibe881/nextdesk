@@ -43,6 +43,7 @@ type Action =
     includeArchivedServices: boolean;
   }
   | { type: "listServiceResponsibleAgents"; tenantId: string }
+  | { type: "ownPhoto"; tenantId: string }
   | { type: "listProblemOwners"; tenantId: string }
   | { type: "listProblemTickets"; tenantId: string; problemId: string }
   | { type: "searchTickets"; tenantId: string; query: string }
@@ -304,6 +305,11 @@ export function parseAction(value: unknown): Action | null {
     };
   }
   if (value.type === "listProblemOwners") {
+    return hasOnlyKeys(value, ["type", "tenantId"])
+      ? { type: value.type, tenantId }
+      : null;
+  }
+  if (value.type === "ownPhoto") {
     return hasOnlyKeys(value, ["type", "tenantId"])
       ? { type: value.type, tenantId }
       : null;
@@ -619,6 +625,7 @@ async function readIntunePrimaryPersonNames(
     return assets.map((asset) => ({
       ...asset,
       intune_primary_person_name: null,
+      intune_primary_person_photo_url: null,
     }));
   }
 
@@ -664,10 +671,11 @@ async function readIntunePrimaryPersonNames(
     ),
   ];
   const namesByPersonId = new Map<string, string>();
+  const photoPathByPersonId = new Map<string, string>();
   for (let index = 0; index < personIds.length; index += PAGE_SIZE) {
     const { data, error } = await admin
       .from("tenant_entra_directory_people")
-      .select("entra_object_id, display_name")
+      .select("entra_object_id, display_name, photo_path")
       .eq("tenant_id", tenantId)
       .eq("account_enabled", true)
       .is("inactive_at", null)
@@ -681,20 +689,46 @@ async function readIntunePrimaryPersonNames(
         person.display_name.trim()
       ) {
         namesByPersonId.set(person.entra_object_id, person.display_name.trim());
+        if (
+          validString(person.photo_path) &&
+          person.photo_path.startsWith(`${tenantId}/`)
+        ) {
+          photoPathByPersonId.set(person.entra_object_id, person.photo_path);
+        }
+      }
+    }
+  }
+
+  const signedByPath = new Map<string, string>();
+  const photoPaths = [...new Set(photoPathByPersonId.values())];
+  if (photoPaths.length > 0) {
+    const signed = await admin.storage
+      .from("entra-avatars")
+      .createSignedUrls(photoPaths, 3600);
+    for (const entry of signed.data ?? []) {
+      if (entry.path && entry.signedUrl) {
+        signedByPath.set(entry.path, entry.signedUrl);
       }
     }
   }
 
   const personByAssetId = new Map<string, string>();
+  const photoByAssetId = new Map<string, string>();
   for (const link of links) {
     if (!isUuid(link.asset_id) || !isUuid(link.entra_object_id)) continue;
     const displayName = namesByPersonId.get(link.entra_object_id);
     if (displayName) personByAssetId.set(link.asset_id, displayName);
+    const photoPath = photoPathByPersonId.get(link.entra_object_id);
+    const photoUrl = photoPath ? signedByPath.get(photoPath) : undefined;
+    if (displayName && photoUrl) photoByAssetId.set(link.asset_id, photoUrl);
   }
   return assets.map((asset) => ({
     ...asset,
     intune_primary_person_name: isUuid(asset.id)
       ? (personByAssetId.get(asset.id) ?? null)
+      : null,
+    intune_primary_person_photo_url: isUuid(asset.id)
+      ? (photoByAssetId.get(asset.id) ?? null)
       : null,
   }));
 }
@@ -1302,6 +1336,31 @@ const handler = withSupabase(
           context.supabaseAdmin,
           action,
         );
+      }
+      if (action.type === "ownPhoto") {
+        // Nur das eigene Profilfoto der angemeldeten Person im eigenen Mandanten.
+        const own = await context.supabaseAdmin
+          .from("tenant_entra_directory_people")
+          .select("photo_path")
+          .eq("tenant_id", action.tenantId)
+          .eq("local_user_id", actorId)
+          .eq("account_enabled", true)
+          .is("inactive_at", null)
+          .maybeSingle();
+        const ownPath =
+          !own.error &&
+          validString(own.data?.photo_path) &&
+          own.data.photo_path.startsWith(`${action.tenantId}/`)
+            ? own.data.photo_path
+            : null;
+        const signed = ownPath
+          ? await context.supabaseAdmin.storage
+              .from("entra-avatars")
+              .createSignedUrl(ownPath, 3600)
+          : null;
+        return json(request, {
+          data: { photoUrl: signed?.data?.signedUrl ?? null },
+        });
       }
       if (action.type === "listServiceResponsibleAgents") {
         return await listServiceResponsibleAgents(
