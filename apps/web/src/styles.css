@@ -8449,6 +8449,8 @@ body:has(.service-assets__dialog-backdrop) {
 
 .metric-card--active {
   border-color: var(--primary);
+  border-top: 3px solid var(--primary);
+  padding-top: 18px;
   box-shadow:
     0 0 0 3px var(--primary-soft),
     var(--shadow-sm);

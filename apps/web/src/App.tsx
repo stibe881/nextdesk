@@ -464,8 +464,8 @@ function TicketScopeMetricTiles({
   selectedScope: TicketScope | null;
   trends: DashboardMetricTrends;
 }) {
-  const className = (scope: TicketScope, emphasis = false) =>
-    `metric-card metric-button${emphasis ? " emphasis" : ""}${
+  const className = (scope: TicketScope) =>
+    `metric-card metric-button${
       selectedScope === scope ? " metric-card--active" : ""
     }`;
 
@@ -476,7 +476,7 @@ function TicketScopeMetricTiles({
     >
       <button
         aria-pressed={selectedScope === "mine"}
-        className={className("mine", true)}
+        className={className("mine")}
         disabled={loading}
         onClick={() => onOpenScope("mine")}
         type="button"
