@@ -111,8 +111,12 @@ function deadline(
     return { label: "Kündigung fällig", tone: "danger" };
   if (noticeDays !== null && noticeDays <= 30)
     return { label: `Kündigung in ${noticeDays} Tagen`, tone: "warning" };
-  if (days <= 30) return { label: `Läuft in ${days} Tagen ab`, tone: "warning" };
-  return { label: `Läuft am ${formatDate(contract.endsOn)} ab`, tone: "neutral" };
+  if (days <= 30)
+    return { label: `Läuft in ${days} Tagen ab`, tone: "warning" };
+  return {
+    label: `Läuft am ${formatDate(contract.endsOn)} ab`,
+    tone: "neutral",
+  };
 }
 function formFor(contract: License): Form {
   return {
@@ -265,7 +269,10 @@ export function Licenses({ tenantId }: { tenantId: string }) {
     const custom = new Map<string, string>();
     for (const item of licenses) {
       const name = item.licenseType;
-      if (!Object.hasOwn(typeLabel, name) && !custom.has(name.toLocaleLowerCase("de-CH"))) {
+      if (
+        !Object.hasOwn(typeLabel, name) &&
+        !custom.has(name.toLocaleLowerCase("de-CH"))
+      ) {
         custom.set(name.toLocaleLowerCase("de-CH"), name);
       }
     }
@@ -398,10 +405,10 @@ export function Licenses({ tenantId }: { tenantId: string }) {
           : reason instanceof Error && reason.message === "invalid_quantity"
             ? "Die Anzahl muss eine ganze Zahl zwischen 1 und 1 000 000 sein."
             : reason instanceof Error && reason.message === "invalid_notice"
-            ? "Die Kündigungsfrist muss zwischen 0 und 3650 Tagen liegen."
-            : reason instanceof Error && reason.message.startsWith("server:")
-              ? reason.message.slice(7)
-              : "Die Lizenz konnte nicht gespeichert werden.",
+              ? "Die Kündigungsfrist muss zwischen 0 und 3650 Tagen liegen."
+              : reason instanceof Error && reason.message.startsWith("server:")
+                ? reason.message.slice(7)
+                : "Die Lizenz konnte nicht gespeichert werden.",
       );
     } finally {
       setPending(false);
@@ -446,13 +453,12 @@ export function Licenses({ tenantId }: { tenantId: string }) {
       </section>
     );
   return (
-    <section className="licenses" aria-labelledby="licenses-heading">
+    <section className="licenses" aria-label="Lizenzen">
       <header className="page-heading">
         <div>
-          <p className="eyebrow">Mandantenverwaltung</p>
-          <h1 id="licenses-heading">Lizenzen</h1>
           <p>
-            Laufzeiten, Verlängerungen und Verantwortlichkeiten Ihrer Lizenzen an einem Ort.
+            Laufzeiten, Verlängerungen und Verantwortlichkeiten Ihrer Lizenzen
+            an einem Ort.
           </p>
         </div>
         <div className="contracts__actions">
@@ -746,7 +752,9 @@ export function Licenses({ tenantId }: { tenantId: string }) {
                     }}
                   >
                     {typeOptions.includes(form.licenseType) ? null : (
-                      <option value={form.licenseType}>{form.licenseType}</option>
+                      <option value={form.licenseType}>
+                        {form.licenseType}
+                      </option>
                     )}
                     {typeOptions.map((key) => (
                       <option key={key} value={key}>
@@ -874,12 +882,17 @@ export function Licenses({ tenantId }: { tenantId: string }) {
                   <select
                     value={form.reminderDaysBefore}
                     onChange={(event) =>
-                      setForm({ ...form, reminderDaysBefore: event.target.value })
+                      setForm({
+                        ...form,
+                        reminderDaysBefore: event.target.value,
+                      })
                     }
                   >
                     <option value="">Keine Erinnerung</option>
                     {form.reminderDaysBefore !== "" &&
-                    !REMINDER_OPTIONS.includes(Number(form.reminderDaysBefore)) ? (
+                    !REMINDER_OPTIONS.includes(
+                      Number(form.reminderDaysBefore),
+                    ) ? (
                       <option value={form.reminderDaysBefore}>
                         {form.reminderDaysBefore} Tage vor Ablauf
                       </option>
