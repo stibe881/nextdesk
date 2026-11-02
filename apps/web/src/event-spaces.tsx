@@ -540,6 +540,20 @@ export function EventSpaces({
     );
   }, [metricFilter, workspace?.requests]);
 
+  // Ein Klick im Kalender öffnet den Auftrag wie in der Listenansicht.
+  function openRequestFromCalendar(requestId: string) {
+    setMetricFilter(null);
+    setView("list");
+    setExpandedRequestId(requestId);
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        document
+          .getElementById(`event-space-request-${requestId}`)
+          ?.scrollIntoView({ behavior: "smooth", block: "center" });
+      });
+    });
+  }
+
   function showMetricList(filter: EventSpaceMetricFilter) {
     setMetricFilter(filter);
     setView("list");
@@ -1847,7 +1861,7 @@ export function EventSpaces({
                         <button
                           className={`event-spaces__calendar-item event-spaces__status--${request.status}`}
                           key={request.id}
-                          onClick={() => setExpandedRequestId(request.id)}
+                          onClick={() => openRequestFromCalendar(request.id)}
                           type="button"
                         >
                           <time>{timeLabel(request.startsAt)}</time>

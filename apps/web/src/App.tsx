@@ -312,7 +312,7 @@ const NAVIGATION_CATEGORIES = [
     heading: "ARBEITSBEREICH",
     id: "navigation-category-workspace",
     navigationLabel: "Arbeitsbereich",
-    sectionLabels: ["Übersicht", "Tickets", "Shop", "Fälle", "Berichte"],
+    sectionLabels: ["Tickets", "Shop", "Fälle", "Berichte"],
   },
   {
     heading: "PLANUNG & BETRIEB",
@@ -3830,6 +3830,11 @@ function AuthenticatedApp() {
   );
   const { workplaceNavigationItem, remainingNavigationSections } =
     splitWorkplaceNavigation(primaryNavigationSections);
+  // Übersicht und Arbeitsplatz stehen als primäre Einträge über den Kategorien.
+  const primaryNavigationItems = [
+    remainingNavigationSections.find((item) => item.label === "Übersicht"),
+    workplaceNavigationItem,
+  ].filter((item): item is NonNullable<typeof item> => Boolean(item));
   const portalNavigationItem = visibleSections.find(
     (item) => item.label === "Mein Portal",
   );
@@ -3941,30 +3946,27 @@ function AuthenticatedApp() {
           />
           {workspaceBrandName ? <span>{workspaceBrandName}</span> : null}
         </div>
-        {workplaceNavigationItem && (
+        {primaryNavigationItems.length > 0 && (
           <nav
-            aria-label="Arbeitsplatz"
+            aria-label="Übersicht und Arbeitsplatz"
             className="workplace-primary-navigation"
           >
-            <button
-              className={
-                section === workplaceNavigationItem.label
-                  ? "nav-item active"
-                  : "nav-item"
-              }
-              onClick={() => {
-                setPersonalSettingsOpen(false);
-                setSection(workplaceNavigationItem.label);
-              }}
-              type="button"
-            >
-              <workplaceNavigationItem.Icon
-                aria-hidden="true"
-                size={18}
-                strokeWidth={1.8}
-              />
-              {sectionDisplayLabel(workplaceNavigationItem.label)}
-            </button>
+            {primaryNavigationItems.map((item) => (
+              <button
+                className={
+                  section === item.label ? "nav-item active" : "nav-item"
+                }
+                key={item.label}
+                onClick={() => {
+                  setPersonalSettingsOpen(false);
+                  setSection(item.label);
+                }}
+                type="button"
+              >
+                <item.Icon aria-hidden="true" size={18} strokeWidth={1.8} />
+                {sectionDisplayLabel(item.label)}
+              </button>
+            ))}
           </nav>
         )}
         <div className="navigation-categories">

@@ -8129,6 +8129,8 @@ body:has(.service-assets__dialog-backdrop) {
 }
 
 .workplace-primary-navigation {
+  display: grid;
+  gap: 0;
   padding: 0 0 2px;
 }
 
