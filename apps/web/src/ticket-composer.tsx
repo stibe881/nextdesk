@@ -588,7 +588,7 @@ export function TicketComposer({
 }: {
   currentUserId: string | null;
   tenantId: string;
-  onCreated: (ticketId: string) => void;
+  onCreated: (ticketId: string, ticketNumber: string) => void;
 }) {
   const [options, setOptions] = useState<OptionsResponse>(EMPTY_OPTIONS);
   const [optionsTenantId, setOptionsTenantId] = useState<string | null>(null);
@@ -643,6 +643,11 @@ export function TicketComposer({
     ticketId: string;
     ticketNumber: string;
   } | null>(null);
+  useEffect(() => {
+    if (!confirmation) return;
+    const timer = window.setTimeout(() => setConfirmation(null), 3000);
+    return () => window.clearTimeout(timer);
+  }, [confirmation]);
   const [watcherLookup, setWatcherLookup] = useState<WatcherLookup | null>(
     null,
   );
@@ -1522,11 +1527,12 @@ export function TicketComposer({
         if (requesterAssignmentError) throw requesterAssignmentError;
       }
       if (requesterScopeRef.current !== requestId) return;
-      const expectation = await expectationPromise;
       setSubject("");
       setDescription("");
       setTemplateId("");
-      setConfirmation({ ...created, expectation });
+      // Close the composer and open the new ticket right away; the parent
+      // shows a short-lived confirmation.
+      onCreated(created.ticketId, created.ticketNumber);
     } catch (requestError: unknown) {
       const message = await requesterErrorMessage(
         requestError,
@@ -2302,7 +2308,9 @@ export function TicketComposer({
           </div>
           <button
             className="ticket-toast-open"
-            onClick={() => onCreated(confirmation.ticketId)}
+            onClick={() =>
+              onCreated(confirmation.ticketId, confirmation.ticketNumber)
+            }
             type="button"
           >
             Öffnen

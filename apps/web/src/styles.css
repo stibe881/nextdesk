@@ -18883,3 +18883,11 @@ html:has(.embed-status-badge) body {
   height: 100%;
   object-fit: contain;
 }
+
+/* Menu item attention badge on the right (Shop, Raumplanung, Eintritte). */
+.nav-item__badge--trailing {
+  display: inline-flex;
+  min-width: 20px;
+  justify-content: center;
+  margin-left: auto;
+}

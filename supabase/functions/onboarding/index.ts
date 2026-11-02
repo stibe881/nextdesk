@@ -8,6 +8,7 @@ type Admin = SupabaseContext["supabaseAdmin"];
 type Row = Record<string, unknown>;
 type TaskStatus = "open" | "in_progress" | "blocked" | "completed";
 type Action =
+  | { type: "navigationSummary"; tenantId: string }
   | { type: "listWorkspace"; tenantId: string; focusEntryId?: string }
   | {
       type: "createEntry";
@@ -93,6 +94,11 @@ function onlyKeys(value: Row, keys: string[]) {
 }
 function parseAction(value: unknown): Action | null {
   if (!isRecord(value) || typeof value.type !== "string") return null;
+  if (value.type === "navigationSummary") {
+    return isUuid(value.tenantId) && onlyKeys(value, ["type", "tenantId"])
+      ? { type: value.type, tenantId: value.tenantId.toLowerCase() }
+      : null;
+  }
   if (value.type === "listWorkspace") {
     return isUuid(value.tenantId) &&
       (value.focusEntryId === undefined || isUuid(value.focusEntryId)) &&
@@ -401,6 +407,48 @@ async function peopleForTenant(admin: Admin, tenantId: string) {
       .sort((a, b) => a.displayName.localeCompare(b.displayName, "de-CH")),
   };
 }
+/**
+ * Number of upcoming entries nobody has started on yet (all tasks still
+ * open). Only people who manage onboarding see the badge.
+ */
+async function navigationSummary(
+  client: Client,
+  admin: Admin,
+  tenantId: string,
+) {
+  await requireMembership(client, tenantId);
+  if (!(await hasPermission(client, tenantId, "onboarding.manage"))) {
+    return { attentionCount: 0, canAccess: false };
+  }
+  const today = new Date().toISOString().slice(0, 10);
+  const { data: entries, error } = await admin
+    .from("onboarding_entries")
+    .select("id")
+    .eq("tenant_id", tenantId)
+    .gte("starts_on", today)
+    .limit(500);
+  if (error) databaseFailure(error);
+  const ids = (entries ?? [])
+    .map((row: Row) => row.id)
+    .filter((id): id is string => typeof id === "string");
+  if (ids.length === 0) return { attentionCount: 0, canAccess: true };
+  const { data: started, error: tasksError } = await admin
+    .from("onboarding_tasks")
+    .select("entry_id")
+    .eq("tenant_id", tenantId)
+    .in("entry_id", ids)
+    .neq("status", "open")
+    .limit(5000);
+  if (tasksError) databaseFailure(tasksError);
+  const startedIds = new Set(
+    (started ?? []).map((row: Row) => String(row.entry_id)),
+  );
+  return {
+    attentionCount: ids.filter((id) => !startedIds.has(id)).length,
+    canAccess: true,
+  };
+}
+
 async function listWorkspace(
   client: Client,
   admin: Admin,
@@ -768,6 +816,14 @@ const handler = withSupabase(
           "invalid_request",
           "Die Anfrage enthält ungültige Felder.",
         );
+      if (action.type === "navigationSummary")
+        return json(request, {
+          data: await navigationSummary(
+            context.supabase,
+            context.supabaseAdmin,
+            action.tenantId,
+          ),
+        });
       if (action.type === "listWorkspace")
         return json(request, {
           data: await listWorkspace(

@@ -1,26 +1,28 @@
 /**
- * Der Bereich «Planung & Betrieb» erhält nur dann einen zusammengefassten
- * Raumplanungsbadge, wenn er geschlossen ist. Der Wert stammt bereits aus dem
- * serverautorisierten Raumplanungs-Workspace und begründet im Browser keine
- * zusätzliche Berechtigung.
+ * A collapsed navigation category shows the sum of the attention badges of
+ * its menu items (e.g. Raumplanung, Eintritte, Shop). The single counts come
+ * from server-authorised summaries; the browser grants no extra access.
  */
 export function collapsedNavigationCategoryAttentionCount(input: {
   categoryExpanded: boolean;
-  categoryId: string;
-  eventSpaceAttentionCount: number | null;
-  eventSpaceNavigationAccess: boolean;
+  itemCounts: readonly (number | null | undefined)[];
 }): number | null {
-  const attentionCount = input.eventSpaceAttentionCount;
-  if (
-    input.categoryId !== "navigation-category-operations" ||
-    input.categoryExpanded ||
-    !input.eventSpaceNavigationAccess ||
-    attentionCount === null ||
-    !Number.isSafeInteger(attentionCount) ||
-    attentionCount <= 0
-  ) {
-    return null;
-  }
+  if (input.categoryExpanded) return null;
+  const total = input.itemCounts.reduce<number>(
+    (sum, count) =>
+      typeof count === "number" && Number.isSafeInteger(count) && count > 0
+        ? sum + count
+        : sum,
+    0,
+  );
+  return total > 0 ? total : null;
+}
 
-  return attentionCount;
+/** A single menu item badge: only positive, safe integers are shown. */
+export function navigationItemAttentionCount(
+  count: number | null | undefined,
+): number | null {
+  return typeof count === "number" && Number.isSafeInteger(count) && count > 0
+    ? count
+    : null;
 }
