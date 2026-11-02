@@ -14027,27 +14027,6 @@ body:has(.ticket-list-filter-panel) {
   line-height: 1.55;
 }
 
-.tenant-admin-settings__feature-technical {
-  color: var(--muted);
-  font-size: 12px;
-}
-
-.tenant-admin-settings__feature-technical summary {
-  cursor: pointer;
-  font-weight: 650;
-}
-
-.tenant-admin-settings__feature-technical code {
-  display: block;
-  width: fit-content;
-  max-width: 100%;
-  margin-top: 8px;
-  overflow-wrap: anywhere;
-  border-radius: 6px;
-  padding: 5px 7px;
-  background: var(--surface);
-  color: var(--text);
-}
 
 .tenant-admin-settings__feature-group--operational {
   margin-top: 2px;
