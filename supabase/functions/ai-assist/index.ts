@@ -2,6 +2,7 @@ import { type SupabaseContext, withSupabase } from "@supabase/server";
 import {
   AnthropicKnowledgeDraftError,
   generateKnowledgeDraft,
+  TICKET_ARTICLE_INSTRUCTIONS,
 } from "../_shared/anthropic-knowledge-draft.ts";
 import {
   AI_PROVIDER_KEY,
@@ -19,6 +20,9 @@ import {
 const APP_ORIGIN = "https://app.nextdesk.ch";
 const KNOWLEDGE_MANAGE_PERMISSION = "knowledge.manage";
 const MAX_REQUEST_BYTES = 12 * 1024;
+/** Upper bound for the ticket text sent to the provider (see migration 0162). */
+const MAX_TICKET_INPUT_CHARACTERS = 12_000;
+const MAX_TICKET_COMMENTS = 80;
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -38,6 +42,7 @@ type Action =
       enabled: boolean;
       allowExternalArticleContent: boolean;
     }
+  | { type: "draftArticleFromTicket"; tenantId: string; ticketId: string }
   | {
       type: "prepareKnowledgeArticle";
       tenantId: string;
@@ -129,6 +134,13 @@ function parseAction(value: unknown): Action | null {
       enabled: value.enabled,
       allowExternalArticleContent: value.allowExternalArticleContent,
     };
+  }
+  if (
+    value.type === "draftArticleFromTicket" &&
+    hasOnlyKeys(value, ["type", "tenantId", "ticketId"]) &&
+    isUuid(value.ticketId)
+  ) {
+    return { type: value.type, tenantId, ticketId: value.ticketId.toLowerCase() };
   }
   if (
     value.type === "prepareKnowledgeArticle" &&
@@ -355,6 +367,261 @@ function anthropicConfiguration(): { apiKey: string; model: string } | null {
   return apiKey && model ? { apiKey, model } : null;
 }
 
+/** Removes contact data and secret-like lines before text leaves nextDesk. */
+function redactTicketText(value: string): string {
+  const secretLike =
+    /(?:authorization\s*:\s*bearer|api[ _-]?key\s*[=:]|passw(?:or)?t\s*[=:]|password\s*[=:]|-----begin [a-z ]*private key-----|(?:sk|pk)_[a-z0-9_-]{16,})/i;
+  return Array.from(value)
+    .filter((character) => !isUnsafeControlCharacter(character))
+    .join("")
+    .normalize("NFC")
+    .replace(/\r\n?/g, "\n")
+    .split("\n")
+    .map((line) => (secretLike.test(line) ? "[entfernt: vertraulicher Inhalt]" : line))
+    .join("\n")
+    .replace(/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g, "[E-Mail]")
+    .replace(/(?:\+|00)\d[\d\s/-]{7,}\d|\b0\d{2}[\s/-]?\d{3}[\s/-]?\d{2}[\s/-]?\d{2}\b/g, "[Telefon]")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function clip(value: string, maximum: number): string {
+  const characters = Array.from(value);
+  return characters.length <= maximum
+    ? value
+    : `${characters.slice(0, maximum).join("")} …`;
+}
+
+/**
+ * Reads the ticket with the caller's own client, so row-level security decides
+ * what the person may see (e.g. internal notes). Newest history wins when the
+ * text has to be shortened.
+ */
+async function ticketSourceText(
+  client: SupabaseContext["supabase"],
+  tenantId: string,
+  ticketId: string,
+): Promise<string | null | "not_found"> {
+  const { data: ticket, error } = await client
+    .from("tickets")
+    .select("id, subject, description")
+    .eq("tenant_id", tenantId)
+    .eq("id", ticketId)
+    .maybeSingle();
+  if (error) return null;
+  if (!ticket) return "not_found";
+  const { data: comments, error: commentsError } = await client
+    .from("ticket_comments")
+    .select("visibility, body, created_at")
+    .eq("ticket_id", ticketId)
+    .order("created_at", { ascending: false })
+    .limit(MAX_TICKET_COMMENTS);
+  if (commentsError) return null;
+
+  const header = clip(
+    redactTicketText(
+      [
+        `Betreff: ${typeof ticket.subject === "string" ? ticket.subject : ""}`,
+        "",
+        "Beschreibung:",
+        typeof ticket.description === "string" ? ticket.description : "",
+      ].join("\n"),
+    ),
+    4_000,
+  );
+  let budget = MAX_TICKET_INPUT_CHARACTERS - Array.from(header).length - 40;
+  const history: string[] = [];
+  for (const comment of (comments ?? []) as Row[]) {
+    if (typeof comment.body !== "string" || !comment.body.trim()) continue;
+    const label = comment.visibility === "internal" ? "Interne Notiz" : "Antwort";
+    const entry = `[${label}] ${clip(redactTicketText(comment.body), 2_000)}`;
+    const size = Array.from(entry).length + 2;
+    if (size > budget) break;
+    budget -= size;
+    history.unshift(entry);
+  }
+  const text = history.length
+    ? `${header}\n\nVerlauf (älteste zuerst):\n\n${history.join("\n\n")}`
+    : header;
+  return clip(text, MAX_TICKET_INPUT_CHARACTERS);
+}
+
+function articleSlug(title: string): string {
+  const base = title
+    .normalize("NFKD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 180);
+  return `${base || "article"}-${crypto.randomUUID().slice(0, 8)}`;
+}
+
+async function draftArticleFromTicket(
+  request: Request,
+  client: SupabaseContext["supabase"],
+  admin: AdminClient,
+  actorId: string,
+  action: Extract<Action, { type: "draftArticleFromTicket" }>,
+  policy: Parameters<typeof validateAiPurpose>[0],
+): Promise<Response> {
+  const purposeFailure = validateAiPurpose(policy, "knowledge_article_draft");
+  if (purposeFailure)
+    return response(
+      request,
+      { error: { code: purposeFailure.code } },
+      purposeFailure.status,
+    );
+  const budgetFailure = validateAiBudget(
+    policy,
+    MAX_OUTPUT_TOKENS,
+    MAX_COST_CENTS,
+  );
+  if (budgetFailure)
+    return response(
+      request,
+      { error: { code: budgetFailure.code } },
+      budgetFailure.status,
+    );
+  const provider = anthropicConfiguration();
+  if (!provider)
+    return response(
+      request,
+      { error: { code: "ai_provider_not_configured" } },
+      503,
+    );
+
+  const source = await ticketSourceText(client, action.tenantId, action.ticketId);
+  if (source === null)
+    return response(request, { error: { code: "ticket_read_failed" } }, 503);
+  if (source === "not_found")
+    return response(request, { error: { code: "ticket_not_found" } }, 404);
+
+  const queued = await queueMinimalAiDraftRequest(admin, {
+    tenantId: action.tenantId,
+    actorId,
+    purpose: "knowledge_article_draft",
+    object: { type: "ticket", id: action.ticketId } as AiDraftObject,
+    inputCharacterCount: Math.max(1, Array.from(source).length),
+    maxOutputTokens: MAX_OUTPUT_TOKENS,
+    maxCostCents: MAX_COST_CENTS,
+    externalArticleContent: false,
+  });
+  if (!queued.ok)
+    return response(request, { error: { code: queued.code } }, queued.status);
+  await writeAudit(
+    admin,
+    action.tenantId,
+    actorId,
+    "knowledge.article.ai_ticket_draft_requested",
+    { provider: AI_PROVIDER_KEY, request_id: queued.requestId },
+  );
+
+  let draft: { title: string; bodyMarkdown: string };
+  try {
+    draft = await generateKnowledgeDraft({
+      ...provider,
+      rawContent: source,
+      maxTokens: MAX_OUTPUT_TOKENS,
+      extraInstructions: TICKET_ARTICLE_INSTRUCTIONS,
+    });
+  } catch (error) {
+    const code =
+      error instanceof AnthropicKnowledgeDraftError
+        ? error.code
+        : "ai_provider_request_failed";
+    await writeAudit(
+      admin,
+      action.tenantId,
+      actorId,
+      "knowledge.article.ai_draft_failed",
+      {
+        provider: AI_PROVIDER_KEY,
+        request_id: queued.requestId,
+        failure_code: code,
+      },
+    );
+    return response(request, { error: { code } }, 503);
+  }
+
+  // Always an internal draft: a person has to review, edit and publish it.
+  const now = new Date().toISOString();
+  const { data: article, error: articleError } = await admin
+    .from("knowledge_articles")
+    .insert({
+      tenant_id: action.tenantId,
+      title: draft.title,
+      slug: articleSlug(draft.title),
+      visibility: "internal",
+      status: "draft",
+      current_revision: 1,
+      created_by: actorId,
+      updated_at: now,
+    })
+    .select("id, title")
+    .single();
+  if (articleError || !article)
+    return response(request, { error: { code: "article_create_failed" } }, 422);
+  const { error: revisionError } = await admin
+    .from("knowledge_article_revisions")
+    .insert({
+      article_id: article.id,
+      revision: 1,
+      title_snapshot: draft.title,
+      body: draft.bodyMarkdown,
+      author_id: actorId,
+    });
+  if (revisionError) {
+    await admin
+      .from("knowledge_articles")
+      .delete()
+      .eq("tenant_id", action.tenantId)
+      .eq("id", article.id);
+    return response(
+      request,
+      { error: { code: "article_revision_create_failed" } },
+      500,
+    );
+  }
+  await admin.from("audit_logs").insert({
+    tenant_id: action.tenantId,
+    actor_id: actorId,
+    action: "knowledge.article.created",
+    entity_type: "knowledge_article",
+    entity_id: article.id,
+    severity: "info",
+    metadata: {
+      source: "ai_ticket_draft",
+      ticket_id: action.ticketId,
+      request_id: queued.requestId,
+    },
+  });
+
+  // Link the draft to the ticket as internal knowledge (caller's own rights).
+  const { error: linkError } = await client.rpc("ticket_knowledge_mutate", {
+    p_action: "attach",
+    p_tenant_id: action.tenantId,
+    p_ticket_id: action.ticketId,
+    p_article_id: article.id,
+    p_visibility: "internal",
+    p_title: null,
+    p_body_markdown: null,
+  });
+
+  return response(
+    request,
+    {
+      data: {
+        articleId: article.id,
+        title: article.title,
+        linkedToTicket: !linkError,
+      },
+    },
+    201,
+  );
+}
+
 const handler = withSupabase(
   { auth: "user", cors: "disabled", errors: { detailed: false } },
   async (request, context) => {
@@ -478,6 +745,16 @@ const handler = withSupabase(
         request,
         { error: { code: governance.code } },
         governance.status,
+      );
+    }
+    if (action.type === "draftArticleFromTicket") {
+      return await draftArticleFromTicket(
+        request,
+        context.supabase,
+        admin,
+        actorId,
+        action,
+        governance.policy,
       );
     }
     if (

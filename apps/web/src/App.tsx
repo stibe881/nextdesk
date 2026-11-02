@@ -1878,6 +1878,9 @@ function AuthenticatedApp() {
     string | null
   >(null);
   const [ticketComposerOpen, setTicketComposerOpen] = useState(false);
+  const [knowledgeFocusArticleId, setKnowledgeFocusArticleId] = useState<
+    string | undefined
+  >(undefined);
   const [createdTicketToast, setCreatedTicketToast] = useState<{
     ticketId: string;
     ticketNumber: string;
@@ -4631,7 +4634,7 @@ function AuthenticatedApp() {
             focusArticleId={
               globalSearchTarget?.resultType === "knowledge"
                 ? globalSearchTarget.entityId
-                : undefined
+                : knowledgeFocusArticleId
             }
             onCreateArticleRequestConsumed={consumeQuickCreateRequest}
             tenantId={activeTenant.id}
@@ -5545,6 +5548,12 @@ function AuthenticatedApp() {
             currentUserId={session?.user.id ?? null}
             onChanged={() => setDashboardRevision((value) => value + 1)}
             onClose={() => setSelectedTicketId(null)}
+            onOpenKnowledgeArticle={(articleId) => {
+              setSelectedTicketId(null);
+              setGlobalSearchTarget(null);
+              setKnowledgeFocusArticleId(articleId);
+              setSection("Wissen");
+            }}
             tenantId={activeTenant.id}
             ticketId={selectedTicketId}
           />

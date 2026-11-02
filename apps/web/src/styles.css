@@ -18912,3 +18912,21 @@ html:has(.embed-status-badge) body {
   height: 100%;
   object-fit: cover;
 }
+
+.ticket-knowledge-ai {
+  display: grid;
+  gap: 10px;
+  margin: 12px 0;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface-muted, var(--surface));
+}
+
+.ticket-knowledge-ai strong {
+  font-size: 14px;
+}
+
+.ticket-knowledge-ai .data-caption {
+  margin: 4px 0 0;
+}
