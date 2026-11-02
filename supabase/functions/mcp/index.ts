@@ -10,6 +10,14 @@ const SUPPORTED_PROTOCOLS = ["2025-06-18", "2025-03-26", "2024-11-05"] as const;
 const MAX_BODY_BYTES = 64 * 1024;
 const REQUEST_TIMEOUT_MS = 15_000;
 const SERVER_INFO = { name: "nextdesk", version: "1.0.0" } as const;
+const STATUS_KEYS = [
+  "new",
+  "in_progress",
+  "waiting",
+  "waiting_customer",
+  "resolved",
+  "closed",
+];
 const CONNECTOR_NOTE = "Erfasst über den nextDesk-Connector.";
 
 type Json = Record<string, unknown>;
@@ -609,6 +617,145 @@ const TOOLS: Tool[] = [
       return textResult({ added: true });
     },
   },
+  {
+    name: "update_ticket_status",
+    description:
+      "Ändert den Status eines Ticketauftrags. Für resolved (gelöst) und closed (geschlossen) muss die Person vorher ausdrücklich zugestimmt haben; setze dann confirm auf true. Anfragende werden dabei von nextDesk informiert.",
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      title: "Ticketstatus ändern",
+    },
+    inputSchema: {
+      type: "object",
+      properties: {
+        workspace: WORKSPACE_PROPERTY,
+        ticket: { type: "string", description: "Ticketnummer oder ID." },
+        status: { type: "string", enum: STATUS_KEYS },
+        confirm: {
+          type: "boolean",
+          description:
+            "Nur true, wenn die Person das Lösen oder Schliessen ausdrücklich bestätigt hat.",
+        },
+      },
+      required: ["ticket", "status"],
+      additionalProperties: false,
+    },
+    run: async (config, session, args) => {
+      const workspace = await resolveWorkspace(config, session, args.workspace);
+      const status = typeof args.status === "string" ? args.status : "";
+      if (!STATUS_KEYS.includes(status)) {
+        throw new ToolError(
+          `Ungültiger Status. Erlaubt: ${STATUS_KEYS.join(", ")}.`,
+        );
+      }
+      const closing = status === "resolved" || status === "closed";
+      if (closing && args.confirm !== true) {
+        throw new ToolError(
+          "Das Lösen oder Schliessen braucht die ausdrückliche Bestätigung der Person. Frage nach und wiederhole den Aufruf danach mit confirm=true.",
+        );
+      }
+      const ticketId = await ticketIdFromReference(
+        config,
+        session,
+        workspace,
+        args.ticket,
+      );
+      await callFunction(config, session, "ticket-operations", {
+        type: "updateTicket",
+        tenantId: workspace.id,
+        ticketId,
+        statusKey: status,
+        ...(closing ? { confirmClose: true } : {}),
+      });
+      return textResult({ updated: true, status });
+    },
+  },
+  {
+    name: "assign_ticket_to_me",
+    description:
+      "Weist ein Ticket dir selbst (der angemeldeten Person) zu. Das Zuweisen an andere Personen ist nicht möglich.",
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      title: "Ticket mir zuweisen",
+    },
+    inputSchema: {
+      type: "object",
+      properties: {
+        workspace: WORKSPACE_PROPERTY,
+        ticket: { type: "string", description: "Ticketnummer oder ID." },
+      },
+      required: ["ticket"],
+      additionalProperties: false,
+    },
+    run: async (config, session, args) => {
+      const workspace = await resolveWorkspace(config, session, args.workspace);
+      const ticketId = await ticketIdFromReference(
+        config,
+        session,
+        workspace,
+        args.ticket,
+      );
+      await callFunction(config, session, "ticket-operations", {
+        type: "updateTicket",
+        tenantId: workspace.id,
+        ticketId,
+        assignedAgentId: session.userId,
+      });
+      return textResult({ assigned: true });
+    },
+  },
+  {
+    name: "reply_to_ticket",
+    description:
+      "Antwortet im Ticket an die anfragende Person. Der Text ist für sie sichtbar und wird ihr in der Regel per E-Mail zugestellt. Zeige der Person den Text vorher und setze confirm erst nach ihrer ausdrücklichen Zustimmung auf true. Für interne Hinweise add_internal_note verwenden.",
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      title: "Auf Ticket antworten",
+    },
+    inputSchema: {
+      type: "object",
+      properties: {
+        workspace: WORKSPACE_PROPERTY,
+        ticket: { type: "string", description: "Ticketnummer oder ID." },
+        text: { type: "string", minLength: 1, maxLength: 8000 },
+        confirm: {
+          type: "boolean",
+          description:
+            "Nur true, wenn die Person den Wortlaut ausdrücklich freigegeben hat.",
+        },
+      },
+      required: ["ticket", "text", "confirm"],
+      additionalProperties: false,
+    },
+    run: async (config, session, args) => {
+      if (args.confirm !== true) {
+        throw new ToolError(
+          "Die Antwort ist für die anfragende Person sichtbar. Zeige der Person den Text, frage nach und wiederhole den Aufruf danach mit confirm=true.",
+        );
+      }
+      const workspace = await resolveWorkspace(config, session, args.workspace);
+      const text = str(args.text, 1, 8000);
+      if (!text)
+        throw new ToolError('"text" muss 1 bis 8000 Zeichen lang sein.');
+      const ticketId = await ticketIdFromReference(
+        config,
+        session,
+        workspace,
+        args.ticket,
+      );
+      await callFunction(config, session, "ticket-operations", {
+        type: "addComment",
+        tenantId: workspace.id,
+        ticketId,
+        body: text,
+        visibility: "external",
+      });
+      return textResult({ replied: true });
+    },
+  },
 ];
 
 // ---------------------------------------------------------------- JSON-RPC
@@ -652,7 +799,7 @@ export async function handleMessage(
       capabilities: { tools: { listChanged: false } },
       serverInfo: SERVER_INFO,
       instructions:
-        "Greift als angemeldete Person auf nextDesk zu. Lesen ist frei, Ticket erfassen und Notizen schreiben nur nach Rückfrage bei der Person.",
+        "Greift als angemeldete Person auf nextDesk zu. Lesen ist frei. Schreibaktionen (Ticket erfassen, Notiz, Status, Zuweisen, Antworten) nur nach Rückfrage bei der Person; Antworten, Lösen und Schliessen verlangen ausdrückliche Bestätigung.",
     });
   }
   if (method === "ping") return isNotification ? null : rpcResult(id, {});
