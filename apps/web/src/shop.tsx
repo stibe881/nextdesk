@@ -331,22 +331,35 @@ function CatalogView({
     );
   });
 
+  // Gewählte Optionen je Artikel (werden beim Hinzufügen mit eingelegt).
+  const [chosenOptions, setChosenOptions] = useState<Record<string, string[]>>(
+    {},
+  );
+  const itemsById = useMemo(
+    () => new Map((items ?? []).map((entry) => [entry.id, entry])),
+    [items],
+  );
+
   const add = (item: CatalogItem) => {
-    const existing = cart.find((line) => line.item.id === item.id);
-    if (existing) {
-      onCartChange(
-        cart.map((line) =>
-          line.item.id === item.id
-            ? {
-                ...line,
-                quantity: Math.min(item.maxQuantity, line.quantity + 1),
-              }
-            : line,
-        ),
-      );
-    } else {
-      onCartChange([...cart, { item, quantity: 1 }]);
+    const extras = (chosenOptions[item.id] ?? [])
+      .map((id) => itemsById.get(id))
+      .filter((entry): entry is CatalogItem => Boolean(entry));
+    let next = cart;
+    for (const entry of [item, ...extras]) {
+      const existing = next.find((line) => line.item.id === entry.id);
+      next = existing
+        ? next.map((line) =>
+            line.item.id === entry.id
+              ? {
+                  ...line,
+                  quantity: Math.min(entry.maxQuantity, line.quantity + 1),
+                }
+              : line,
+          )
+        : [...next, { item: entry, quantity: 1 }];
     }
+    onCartChange(next);
+    setChosenOptions((current) => ({ ...current, [item.id]: [] }));
   };
 
   return (
@@ -420,6 +433,44 @@ function CatalogView({
                     ) : null}
                   </div>
                 </div>
+                {(item.optionItemIds ?? []).some((id) => itemsById.has(id)) ? (
+                  <fieldset className="shop__options">
+                    <legend>Dazu bestellen</legend>
+                    {(item.optionItemIds ?? []).map((id) => {
+                      const option = itemsById.get(id);
+                      if (!option) return null;
+                      const selected = (chosenOptions[item.id] ?? []).includes(
+                        id,
+                      );
+                      return (
+                        <label key={id}>
+                          <input
+                            checked={selected}
+                            disabled={!canOrder}
+                            onChange={() =>
+                              setChosenOptions((current) => {
+                                const list = current[item.id] ?? [];
+                                return {
+                                  ...current,
+                                  [item.id]: selected
+                                    ? list.filter((entry) => entry !== id)
+                                    : [...list, id],
+                                };
+                              })
+                            }
+                            type="checkbox"
+                          />
+                          <span>
+                            {option.name}
+                            {option.stockLevel === "out_of_stock" ? (
+                              <small> · {STOCK_LABEL.out_of_stock}</small>
+                            ) : null}
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </fieldset>
+                ) : null}
                 <button
                   className="secondary-button"
                   disabled={!canOrder}
@@ -428,6 +479,9 @@ function CatalogView({
                 >
                   <Plus aria-hidden="true" size={16} />
                   {item.kind === "loan" ? "Ausleihen" : "In den Warenkorb"}
+                  {(chosenOptions[item.id] ?? []).length > 0
+                    ? ` (+${(chosenOptions[item.id] ?? []).length})`
+                    : ""}
                 </button>
               </li>
             ))}
@@ -1251,6 +1305,8 @@ type Draft = {
   maxQuantity: number;
   maxLoanDays: string;
   inventoryItemId: string;
+  /** Artikel, die dazu bestellt werden können (Optionen). */
+  optionItemIds: string[];
   active: boolean;
   sortOrder: number;
   /** Saved photos that stay. */
@@ -1357,6 +1413,7 @@ const EMPTY_DRAFT: Draft = {
   maxQuantity: 2,
   maxLoanDays: "14",
   inventoryItemId: "",
+  optionItemIds: [],
   active: true,
   sortOrder: 0,
   images: [],
@@ -1464,6 +1521,7 @@ function CatalogManager({ tenantId }: { tenantId: string }) {
             ? Number(draft.maxLoanDays)
             : null,
         inventoryItemId: draft.inventoryItemId || null,
+        optionItemIds: draft.optionItemIds,
         active: draft.active,
         sortOrder: draft.sortOrder,
       });
@@ -1723,6 +1781,7 @@ function CatalogManager({ tenantId }: { tenantId: string }) {
                         ? String(item.maxLoanDays)
                         : "",
                       inventoryItemId: item.inventoryItemId ?? "",
+                      optionItemIds: item.optionItemIds ?? [],
                       active: item.active,
                       sortOrder: item.sortOrder,
                       images: item.images ?? [],
@@ -1936,6 +1995,53 @@ function CatalogManager({ tenantId }: { tenantId: string }) {
                 value={draft.name}
               />
             </label>
+            <fieldset className="shop__options-editor">
+              <legend>Optionen (dazu bestellbar)</legend>
+              <p className="shop__hint">
+                Diese Artikel werden beim Bestellen dieses Artikels zur Auswahl
+                angeboten, z. B. die Ladestation beim Headset. Sie bleiben
+                zusätzlich einzeln bestellbar.
+              </p>
+              {(items ?? []).filter((other) => other.id !== draft.id).length ===
+              0 ? (
+                <p className="shop__hint">
+                  Es gibt noch keine weiteren Artikel.
+                </p>
+              ) : (
+                <ul>
+                  {(items ?? [])
+                    .filter((other) => other.id !== draft.id)
+                    .map((other) => {
+                      const checked = draft.optionItemIds.includes(other.id);
+                      return (
+                        <li key={other.id}>
+                          <label>
+                            <input
+                              checked={checked}
+                              disabled={
+                                !checked && draft.optionItemIds.length >= 10
+                              }
+                              onChange={() =>
+                                setDraft({
+                                  ...draft,
+                                  optionItemIds: checked
+                                    ? draft.optionItemIds.filter(
+                                        (id) => id !== other.id,
+                                      )
+                                    : [...draft.optionItemIds, other.id],
+                                })
+                              }
+                              type="checkbox"
+                            />
+                            {other.name}
+                            {!other.active ? " (ausgeblendet)" : ""}
+                          </label>
+                        </li>
+                      );
+                    })}
+                </ul>
+              )}
+            </fieldset>
             <div className="shop__row">
               <label>
                 Kategorie
