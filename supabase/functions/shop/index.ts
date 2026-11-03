@@ -1686,14 +1686,11 @@ const securedHandler = withSupabase(
               "Bitte den Warenkorb prüfen.",
             );
           }
-          const reason = text(body.reason, 500);
-          if (!reason || Array.from(reason).length < 3) {
-            throw new HttpError(
-              400,
-              "reason_required",
-              "Bitte den Grund der Bestellung angeben.",
-            );
-          }
+          // Der Grund ist Pflicht, ausser es werden nur Artikel zum Ausleihen
+          // bestellt (dort ist er freiwillig).
+          const reasonText = text(body.reason, 500);
+          const reason =
+            reasonText && Array.from(reasonText).length >= 3 ? reasonText : null;
           // Ausleihartikel mit eigenem Bestand: nicht mehr ausleihen als frei.
           {
             const wanted = new Map<string, number>();
@@ -1709,7 +1706,18 @@ const securedHandler = withSupabase(
               .select("id, name, kind, inventory_item_id, loan_quantity")
               .eq("tenant_id", tenantId)
               .in("id", [...wanted.keys()]);
-            const limited = ((stocked ?? []) as Row[]).filter(
+            const stockedRows = (stocked ?? []) as Row[];
+            const onlyLoans =
+              stockedRows.length > 0 &&
+              stockedRows.every((row) => row.kind === "loan");
+            if (!reason && !onlyLoans) {
+              throw new HttpError(
+                400,
+                "reason_required",
+                "Bitte den Grund der Bestellung angeben.",
+              );
+            }
+            const limited = stockedRows.filter(
               (row) =>
                 row.kind === "loan" &&
                 row.inventory_item_id === null &&
@@ -1764,7 +1772,7 @@ const securedHandler = withSupabase(
           if (error) throw databaseError(error);
           // Der Grund wird nach dem Anlegen an der Bestellung gespeichert. Ein
           // Fehler hier macht die bereits angelegte Bestellung nicht ungültig.
-          if (isUuid(data)) {
+          if (isUuid(data) && reason) {
             const { error: reasonError } = await admin
               .from("shop_orders")
               .update({ reason })
