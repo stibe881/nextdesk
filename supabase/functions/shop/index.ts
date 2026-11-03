@@ -352,6 +352,30 @@ function decodeImage(value: unknown): {
 
 const MAX_IMAGES = 5;
 
+/** Technische Angaben eines Artikels (Schlüssel → Freitext). */
+const SPEC_KEYS = [
+  "scope",
+  "usage",
+  "compatibility",
+  "equipment",
+  "connectivity",
+  "properties",
+] as const;
+
+function cleanSpecifications(value: unknown): Record<string, string> | null {
+  if (value === undefined || value === null) return {};
+  if (!isRecord(value)) return null;
+  const result: Record<string, string> = {};
+  for (const key of SPEC_KEYS) {
+    const entry = value[key];
+    if (entry === undefined || entry === null || entry === "") continue;
+    const clean = text(entry, 2000);
+    if (!clean) return null;
+    result[key] = clean;
+  }
+  return result;
+}
+
 /** File name (without extension) identifies a photo towards the apps. */
 function imageId(path: string): string {
   return path.slice(path.lastIndexOf("/") + 1).replace(/\.[a-z]+$/, "");
@@ -490,7 +514,7 @@ async function listCatalog(
   let query = admin
     .from("shop_catalog_items")
     .select(
-      "id, inventory_item_id, image_paths, name, description, category, category_id, article_number, supplier_url, kind, requires_approval, max_quantity, max_loan_days, active, sort_order, option_item_ids",
+      "id, inventory_item_id, image_paths, name, description, category, category_id, article_number, supplier_url, kind, requires_approval, max_quantity, max_loan_days, active, sort_order, option_item_ids, specifications",
     )
     .eq("tenant_id", tenantId)
     .order("category")
@@ -543,6 +567,7 @@ async function listCatalog(
         ? row.option_item_ids
         : []
       ).filter((id): id is string => isUuid(id) && listedIds.has(id)),
+      specifications: cleanSpecifications(row.specifications) ?? {},
       inventoryItemId: itemId,
       // The shop's own photos win over the inventory photo.
       ...(() => {
@@ -1166,6 +1191,14 @@ async function saveCatalogItem(
   const optionItemIds = Array.isArray(rawOptions)
     ? [...new Set(rawOptions.filter((id): id is string => isUuid(id)))]
     : null;
+  const specifications = cleanSpecifications(input.specifications);
+  if (specifications === null) {
+    throw new HttpError(
+      400,
+      "invalid_request",
+      "Die technischen Angaben sind ungültig (höchstens 2000 Zeichen je Feld).",
+    );
+  }
   if (
     optionItemIds === null ||
     (Array.isArray(rawOptions) && optionItemIds.length !== new Set(rawOptions).size) ||
@@ -1243,6 +1276,7 @@ async function saveCatalogItem(
     max_loan_days: kind === "loan" ? maxLoanDays : null,
     inventory_item_id: inventoryItemId,
     option_item_ids: optionItemIds,
+    specifications,
     active: input.active,
     sort_order: int(input.sortOrder, -1000, 1000) ?? 0,
     updated_at: new Date().toISOString(),
