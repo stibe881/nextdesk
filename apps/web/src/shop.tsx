@@ -2132,29 +2132,6 @@ function CatalogManager({ tenantId }: { tenantId: string }) {
                 <X size={18} />
               </button>
             </header>
-            <label>
-              Lagerartikel (optional)
-              <select
-                onChange={(event) =>
-                  setDraft(
-                    fromInventory(
-                      inventory.find(
-                        (option) => option.id === event.target.value,
-                      ),
-                    ),
-                  )
-                }
-                value={draft.inventoryItemId}
-              >
-                <option value="">Kein Lagerartikel – wird beschafft</option>
-                {inventory.map((option) => (
-                  <option key={option.id} value={option.id}>
-                    {option.name} ({option.articleNumber})
-                    {option.trackingMode === "serial" ? " · Seriennummern" : ""}
-                  </option>
-                ))}
-              </select>
-            </label>
             <div className="shop__image-field">
               <span className="shop__image-label">
                 Fotos ({imageCount}/{MAX_IMAGES})
@@ -2481,6 +2458,29 @@ function CatalogManager({ tenantId }: { tenantId: string }) {
                 </label>
               ) : null}
             </div>
+            <label>
+              Lagerartikel (optional)
+              <select
+                onChange={(event) =>
+                  setDraft(
+                    fromInventory(
+                      inventory.find(
+                        (option) => option.id === event.target.value,
+                      ),
+                    ),
+                  )
+                }
+                value={draft.inventoryItemId}
+              >
+                <option value="">Kein Lagerartikel – wird beschafft</option>
+                {inventory.map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.name} ({option.articleNumber})
+                    {option.trackingMode === "serial" ? " · Seriennummern" : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
             <label className="shop__check">
               <input
                 checked={draft.requiresApproval}
