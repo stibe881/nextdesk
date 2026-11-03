@@ -41,6 +41,8 @@ export type CatalogItem = {
   requiresApproval: boolean;
   maxQuantity: number;
   maxLoanDays: number | null;
+  /** Eigener Ausleihbestand (nur Ausleihartikel ohne Lageranbindung). */
+  loanQuantity?: number | null;
   active: boolean;
   sortOrder: number;
   inventoryItemId: string | null;
