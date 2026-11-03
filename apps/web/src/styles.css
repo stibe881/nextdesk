@@ -18431,9 +18431,10 @@ html:has(.embed-status-badge) body {
   padding: 0;
   font-size: 13px;
 }
+/* Kennzeichnungen immer untereinander, linksbündig: überall gleich dargestellt. */
 .shop__badges {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  justify-items: start;
   gap: 6px;
   margin-top: 8px;
 }
