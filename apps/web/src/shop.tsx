@@ -1744,7 +1744,7 @@ function CatalogManager({ tenantId }: { tenantId: string }) {
         <ul className="shop__order-list">
           {items.map((item) => (
             <li key={item.id}>
-              <div className="shop__order-row">
+              <div className="shop__order-row shop__order-row--article">
                 <span className="shop__order-number">{item.name}</span>
                 <span className="shop__muted">{item.category}</span>
                 <span className="shop__muted">
