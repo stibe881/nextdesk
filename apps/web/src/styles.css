@@ -18587,6 +18587,10 @@ html:has(.embed-status-badge) body {
 .shop__order-number {
   font-weight: 700;
 }
+/* Artikelliste: Name und Kategorie bekommen Platz, die Angaben rechts nehmen nur, was sie brauchen. */
+.shop__order-row--article {
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) auto auto auto;
+}
 .shop__order-items {
   overflow: hidden;
   text-overflow: ellipsis;
