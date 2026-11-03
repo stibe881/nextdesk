@@ -71,6 +71,8 @@ export type OrderDetail = OrderSummary & {
   loanFrom: string | null;
   comment: string | null;
   decisionReason: string | null;
+  /** Grund der Bestellung (ältere Bestellungen: leer). */
+  reason?: string | null;
   lines: {
     id: string;
     itemName: string;

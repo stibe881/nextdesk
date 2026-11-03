@@ -46,6 +46,7 @@ export default function ShopCartScreen() {
   );
   const [deliveryLocation, setDeliveryLocation] = useState("");
   const [loanDays, setLoanDays] = useState(1);
+  const [reason, setReason] = useState("");
   const [comment, setComment] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
@@ -109,6 +110,10 @@ export default function ShopCartScreen() {
       setError("Bitte Arbeitsplatz oder Raum angeben.");
       return;
     }
+    if (reason.trim().length < 3) {
+      setError("Bitte den Grund der Bestellung angeben.");
+      return;
+    }
     setPending(true);
     setError("");
     try {
@@ -124,6 +129,7 @@ export default function ShopCartScreen() {
           deliveryMethod === "desk" ? deliveryLocation.trim() : null,
         loanFrom: hasLoan ? addDays(0) : null,
         loanUntil: hasLoan ? addDays(Math.max(0, loanDays - 1)) : null,
+        reason: reason.trim(),
         comment: comment.trim() || null,
       });
       shopCart.clear();
@@ -366,6 +372,20 @@ export default function ShopCartScreen() {
               </View>
 
               <View style={{ gap: 8 }}>
+                <Text style={styles.label}>Grund der Bestellung</Text>
+                <TextInput
+                  accessibilityLabel="Grund der Bestellung"
+                  maxLength={500}
+                  multiline
+                  onChangeText={setReason}
+                  placeholder="Wozu wird der Artikel benötigt?"
+                  placeholderTextColor={colors.subtle}
+                  style={[styles.input, { minHeight: 64, paddingTop: 10 }]}
+                  value={reason}
+                />
+              </View>
+
+              <View style={{ gap: 8 }}>
                 <Text style={styles.label}>Bemerkung (optional)</Text>
                 <TextInput
                   accessibilityLabel="Bemerkung"
@@ -389,7 +409,11 @@ export default function ShopCartScreen() {
               <Pressable
                 accessibilityRole="button"
                 accessibilityState={{ busy: pending, disabled: pending }}
-                disabled={pending || (choosingPerson && !requester)}
+                disabled={
+                  pending ||
+                  (choosingPerson && !requester) ||
+                  reason.trim().length < 3
+                }
                 onPress={() => void submit()}
                 style={({ pressed }) => [
                   styles.primary,

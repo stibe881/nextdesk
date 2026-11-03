@@ -29,7 +29,7 @@ const IMAGE_TYPES: Record<string, string> = {
   "image/webp": "webp",
 };
 const ORDER_SELECT =
-  "id, order_number, requester_id, placed_by, status, approver_id, approved_by, approved_at, handled_by, delivery_method, delivery_location, needed_by, loan_from, loan_until, comment, decision_reason, issued_at, returned_at, closed_at, created_at, updated_at";
+  "id, order_number, reason, requester_id, placed_by, status, approver_id, approved_by, approved_at, handled_by, delivery_method, delivery_location, needed_by, loan_from, loan_until, comment, decision_reason, issued_at, returned_at, closed_at, created_at, updated_at";
 const UPDATE_ACTIONS = new Set([
   "approve",
   "reject_approval",
@@ -622,6 +622,7 @@ function orderSummary(
     loanUntil,
     comment: row.comment,
     decisionReason: row.decision_reason,
+    reason: typeof row.reason === "string" ? row.reason : null,
     lineCount,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -1546,6 +1547,14 @@ const securedHandler = withSupabase(
               "Bitte den Warenkorb prüfen.",
             );
           }
+          const reason = text(body.reason, 500);
+          if (!reason || Array.from(reason).length < 3) {
+            throw new HttpError(
+              400,
+              "reason_required",
+              "Bitte den Grund der Bestellung angeben.",
+            );
+          }
           // Agents may order on behalf of an employee.
           const requesterId =
             isUuid(body.requesterId) && body.requesterId !== actorId
@@ -1573,6 +1582,16 @@ const securedHandler = withSupabase(
             p_comment: text(body.comment, 2000),
           });
           if (error) throw databaseError(error);
+          // Der Grund wird nach dem Anlegen an der Bestellung gespeichert. Ein
+          // Fehler hier macht die bereits angelegte Bestellung nicht ungültig.
+          if (isUuid(data)) {
+            const { error: reasonError } = await admin
+              .from("shop_orders")
+              .update({ reason })
+              .eq("tenant_id", tenantId)
+              .eq("id", data);
+            if (reasonError) console.error("Shop order reason not saved");
+          }
           return json(request, { data: { orderId: data } }, 201);
         }
         case "listRequesters": {

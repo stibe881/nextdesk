@@ -96,6 +96,8 @@ export type OrderSummary = {
   loanUntil: string | null;
   comment: string | null;
   decisionReason: string | null;
+  /** Grund der Bestellung (ältere Bestellungen: leer). */
+  reason?: string | null;
   lineCount: number;
   itemsLabel?: string;
   createdAt: string;
