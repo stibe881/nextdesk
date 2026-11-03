@@ -659,6 +659,7 @@ function CartPanel({
   const [neededBy, setNeededBy] = useState("");
   const [loanFrom, setLoanFrom] = useState(todayIso());
   const [loanUntil, setLoanUntil] = useState("");
+  const [reason, setReason] = useState("");
   const [comment, setComment] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
@@ -696,9 +697,11 @@ function CartPanel({
         neededBy: neededBy || null,
         loanFrom: hasLoan ? loanFrom : null,
         loanUntil: hasLoan ? loanUntil : null,
+        reason: reason.trim(),
         comment: comment || null,
       });
       setRequestId(newRequestId());
+      setReason("");
       setComment("");
       setNeededBy("");
       setLoanUntil("");
@@ -868,6 +871,18 @@ function CartPanel({
             </label>
           ) : null}
           <label>
+            Grund der Bestellung
+            <textarea
+              maxLength={500}
+              minLength={3}
+              onChange={(event) => setReason(event.target.value)}
+              placeholder="Wozu wird der Artikel benötigt?"
+              required
+              rows={2}
+              value={reason}
+            />
+          </label>
+          <label>
             Bemerkung (optional)
             <textarea
               maxLength={2000}
@@ -888,7 +903,11 @@ function CartPanel({
               {error}
             </p>
           ) : null}
-          <button className="primary-button" disabled={pending} type="submit">
+          <button
+            className="primary-button"
+            disabled={pending || reason.trim().length < 3}
+            type="submit"
+          >
             {pending
               ? "Wird bestellt …"
               : needsApproval
@@ -1176,6 +1195,12 @@ function OrderDialog({
                 <div>
                   <dt>Begründung</dt>
                   <dd>{order.decisionReason}</dd>
+                </div>
+              ) : null}
+              {order.reason ? (
+                <div>
+                  <dt>Grund der Bestellung</dt>
+                  <dd>{order.reason}</dd>
                 </div>
               ) : null}
               {order.comment ? (

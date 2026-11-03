@@ -207,6 +207,11 @@ export default function ShopOrderScreen() {
                   Begründung: {order.decisionReason}
                 </Text>
               ) : null}
+              {order.reason ? (
+                <Text style={styles.cardMeta}>
+                  Grund der Bestellung: {order.reason}
+                </Text>
+              ) : null}
               {order.comment ? (
                 <Text style={styles.cardMeta}>Bemerkung: {order.comment}</Text>
               ) : null}
