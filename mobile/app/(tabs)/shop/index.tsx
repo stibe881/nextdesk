@@ -60,8 +60,66 @@ export default function ShopScreen() {
     urls: string[];
   } | null>(null);
   const [galleryIndex, setGalleryIndex] = useState(0);
+  const [detail, setDetail] = useState<CatalogItem | null>(null);
   const { width: screenWidth } = useWindowDimensions();
   const cartCount = cart.reduce((sum, line) => sum + line.quantity, 0);
+
+  const photosOf = (item: CatalogItem): string[] =>
+    item.imageUrls?.length
+      ? item.imageUrls
+      : item.imageUrl
+        ? [item.imageUrl]
+        : [];
+
+  const renderBadges = (item: CatalogItem) => (
+    <View style={styles.badges}>
+      <Text
+        style={[
+          styles.badge,
+          item.stockLevel === "in_stock"
+            ? styles.badgeGood
+            : item.stockLevel === "low"
+              ? styles.badgeWarn
+              : item.stockLevel === "out_of_stock"
+                ? styles.badgeBad
+                : null,
+        ]}
+      >
+        {STOCK_LABEL[item.stockLevel]}
+        {item.availableQuantity !== null ? ` (${item.availableQuantity})` : ""}
+      </Text>
+      {item.kind === "loan" ? (
+        <Text style={[styles.badge, styles.badgeInfo]}>
+          Ausleihe
+          {item.maxLoanDays ? ` · max. ${item.maxLoanDays} Tage` : ""}
+        </Text>
+      ) : null}
+      {item.requiresApproval ? (
+        <Text style={[styles.badge, styles.badgeWarn]}>Mit Freigabe</Text>
+      ) : null}
+    </View>
+  );
+
+  const renderAddButton = (item: CatalogItem, onAdded?: () => void) => (
+    <Pressable
+      accessibilityRole="button"
+      disabled={!context?.canOrder || !tenantId}
+      onPress={() => {
+        if (!tenantId) return;
+        shopCart.add(tenantId, item);
+        onAdded?.();
+      }}
+      style={({ pressed }) => [
+        styles.secondary,
+        pressed && styles.pressed,
+        !context?.canOrder && styles.disabled,
+      ]}
+    >
+      <Text style={styles.secondaryText}>
+        {item.kind === "loan" ? "Ausleihen" : "In den Warenkorb"}
+      </Text>
+    </Pressable>
+  );
 
   const load = useCallback(
     async (pull = false, nextView: ShopView = view) => {
@@ -237,19 +295,9 @@ export default function ShopScreen() {
               <View key={item.id} style={styles.card}>
                 <View style={styles.cardRow}>
                   <Pressable
-                    accessibilityLabel={`Fotos von ${item.name} anzeigen`}
-                    accessibilityRole="imagebutton"
-                    disabled={!item.imageUrl}
-                    onPress={() => {
-                      const urls = item.imageUrls?.length
-                        ? item.imageUrls
-                        : item.imageUrl
-                          ? [item.imageUrl]
-                          : [];
-                      if (urls.length === 0) return;
-                      setGalleryIndex(0);
-                      setGallery({ name: item.name, urls });
-                    }}
+                    accessibilityLabel={`Details zu ${item.name} anzeigen`}
+                    accessibilityRole="button"
+                    onPress={() => setDetail(item)}
                     style={styles.image}
                   >
                     {item.imageUrl ? (
@@ -290,7 +338,15 @@ export default function ShopScreen() {
                       </View>
                     ) : null}
                   </Pressable>
-                  <View style={{ flex: 1, gap: 2 }}>
+                  <Pressable
+                    accessibilityHint="Öffnet die Artikeldetails"
+                    accessibilityRole="button"
+                    onPress={() => setDetail(item)}
+                    style={({ pressed }) => [
+                      { flex: 1, gap: 2 },
+                      pressed && styles.pressed,
+                    ]}
+                  >
                     <Text style={styles.category}>{item.category}</Text>
                     <Text style={styles.cardTitle}>{item.name}</Text>
                     {item.description ? (
@@ -298,54 +354,13 @@ export default function ShopScreen() {
                         {item.description}
                       </Text>
                     ) : null}
-                  </View>
-                </View>
-                <View style={styles.badges}>
-                  <Text
-                    style={[
-                      styles.badge,
-                      item.stockLevel === "in_stock"
-                        ? styles.badgeGood
-                        : item.stockLevel === "low"
-                          ? styles.badgeWarn
-                          : item.stockLevel === "out_of_stock"
-                            ? styles.badgeBad
-                            : null,
-                    ]}
-                  >
-                    {STOCK_LABEL[item.stockLevel]}
-                    {item.availableQuantity !== null
-                      ? ` (${item.availableQuantity})`
-                      : ""}
-                  </Text>
-                  {item.kind === "loan" ? (
-                    <Text style={[styles.badge, styles.badgeInfo]}>
-                      Ausleihe
-                      {item.maxLoanDays
-                        ? ` · max. ${item.maxLoanDays} Tage`
-                        : ""}
+                    <Text style={[styles.cardMeta, { color: colors.primaryText }]}>
+                      Details ansehen
                     </Text>
-                  ) : null}
-                  {item.requiresApproval ? (
-                    <Text style={[styles.badge, styles.badgeWarn]}>
-                      Mit Freigabe
-                    </Text>
-                  ) : null}
+                  </Pressable>
                 </View>
-                <Pressable
-                  accessibilityRole="button"
-                  disabled={!context?.canOrder || !tenantId}
-                  onPress={() => tenantId && shopCart.add(tenantId, item)}
-                  style={({ pressed }) => [
-                    styles.secondary,
-                    pressed && styles.pressed,
-                    !context?.canOrder && styles.disabled,
-                  ]}
-                >
-                  <Text style={styles.secondaryText}>
-                    {item.kind === "loan" ? "Ausleihen" : "In den Warenkorb"}
-                  </Text>
-                </Pressable>
+                {renderBadges(item)}
+                {renderAddButton(item)}
               </View>
             ))}
           </>
@@ -418,6 +433,101 @@ export default function ShopScreen() {
           <Ionicons color={colors.onPrimary} name="arrow-forward" size={20} />
         </Pressable>
       ) : null}
+      <Modal
+        animationType="slide"
+        onRequestClose={() => setDetail(null)}
+        presentationStyle="pageSheet"
+        visible={detail !== null}
+      >
+        {detail ? (
+          <View style={{ flex: 1, backgroundColor: colors.background }}>
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
+                paddingHorizontal: 20,
+                paddingTop: 16,
+                paddingBottom: 8,
+              }}
+            >
+              <Text style={styles.category}>{detail.category}</Text>
+              <Pressable
+                accessibilityLabel="Details schliessen"
+                accessibilityRole="button"
+                hitSlop={12}
+                onPress={() => setDetail(null)}
+              >
+                <Ionicons color={colors.text} name="close" size={26} />
+              </Pressable>
+            </View>
+            <ScrollView
+              contentContainerStyle={{
+                paddingHorizontal: 20,
+                paddingBottom: 40,
+                gap: 14,
+              }}
+            >
+              {photosOf(detail).length ? (
+                <ScrollView
+                  horizontal
+                  pagingEnabled
+                  showsHorizontalScrollIndicator={false}
+                  style={{ marginHorizontal: -20 }}
+                >
+                  {photosOf(detail).map((url, index) => (
+                    <Pressable
+                      accessibilityLabel={`${detail.name}, Foto ${index + 1} gross anzeigen`}
+                      accessibilityRole="imagebutton"
+                      key={url}
+                      onPress={() => {
+                        const urls = photosOf(detail);
+                        setGalleryIndex(index);
+                        setDetail(null);
+                        setGallery({ name: detail.name, urls });
+                      }}
+                      style={{
+                        width: screenWidth,
+                        height: Math.min(screenWidth * 0.8, 340),
+                        paddingHorizontal: 20,
+                      }}
+                    >
+                      <Image
+                        accessibilityIgnoresInvertColors
+                        resizeMode="contain"
+                        source={{ uri: url }}
+                        style={{ flex: 1, borderRadius: 12 }}
+                      />
+                    </Pressable>
+                  ))}
+                </ScrollView>
+              ) : null}
+              {photosOf(detail).length > 1 ? (
+                <Text style={[styles.cardMeta, { textAlign: "center" }]}>
+                  {photosOf(detail).length} Fotos · zum Blättern wischen
+                </Text>
+              ) : null}
+              <Text style={[styles.cardTitle, { fontSize: 22 }]}>
+                {detail.name}
+              </Text>
+              {renderBadges(detail)}
+              {detail.description ? (
+                <Text style={[styles.cardMeta, { fontSize: 16, lineHeight: 23 }]}>
+                  {detail.description}
+                </Text>
+              ) : (
+                <Text style={styles.cardMeta}>Keine Beschreibung vorhanden.</Text>
+              )}
+              {detail.kind === "order" && detail.maxQuantity > 1 ? (
+                <Text style={styles.cardMeta}>
+                  Höchstens {detail.maxQuantity} Stück pro Bestellung.
+                </Text>
+              ) : null}
+              {renderAddButton(detail, () => setDetail(null))}
+            </ScrollView>
+          </View>
+        ) : null}
+      </Modal>
       <Modal
         animationType="fade"
         onRequestClose={() => setGallery(null)}
