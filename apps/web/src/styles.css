@@ -19006,10 +19006,7 @@ html:has(.embed-status-badge) body {
 .shop__options-editor .shop__search {
   margin: 2px 0;
 }
-.shop__options-editor ul {
-  max-height: 220px;
-  overflow-y: auto;
-}
+
 
 /* Foto passt fast zum 4:3-Feld: Feld ganz ausfüllen. */
 .shop__image img.shop__image-fill {
