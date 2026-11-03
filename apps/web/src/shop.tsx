@@ -1883,11 +1883,10 @@ function CatalogManager({ tenantId }: { tenantId: string }) {
           draft.kind === "loan" && draft.maxLoanDays
             ? Number(draft.maxLoanDays)
             : null,
-        inventoryItemId: draft.inventoryItemId || null,
-        loanQuantity:
-          draft.kind === "loan" && !draft.inventoryItemId
-            ? Number(draft.loanQuantity)
-            : null,
+        // Ausleihartikel haben keinen Lagerartikel, sondern eine eigene Anzahl.
+        inventoryItemId:
+          draft.kind === "loan" ? null : draft.inventoryItemId || null,
+        loanQuantity: draft.kind === "loan" ? Number(draft.loanQuantity) : null,
         optionItemIds: draft.optionItemIds,
         active: draft.active,
         sortOrder: draft.sortOrder,
@@ -2509,7 +2508,7 @@ function CatalogManager({ tenantId }: { tenantId: string }) {
                   value={draft.maxQuantity}
                 />
               </label>
-              {draft.kind === "loan" && !draft.inventoryItemId ? (
+              {draft.kind === "loan" ? (
                 <label>
                   Anzahl zum Ausleihen
                   <input
@@ -2540,29 +2539,33 @@ function CatalogManager({ tenantId }: { tenantId: string }) {
                 </label>
               ) : null}
             </div>
-            <label>
-              Lagerartikel (optional)
-              <select
-                onChange={(event) =>
-                  setDraft(
-                    fromInventory(
-                      inventory.find(
-                        (option) => option.id === event.target.value,
+            {draft.kind !== "loan" ? (
+              <label>
+                Lagerartikel (optional)
+                <select
+                  onChange={(event) =>
+                    setDraft(
+                      fromInventory(
+                        inventory.find(
+                          (option) => option.id === event.target.value,
+                        ),
                       ),
-                    ),
-                  )
-                }
-                value={draft.inventoryItemId}
-              >
-                <option value="">Kein Lagerartikel – wird beschafft</option>
-                {inventory.map((option) => (
-                  <option key={option.id} value={option.id}>
-                    {option.name} ({option.articleNumber})
-                    {option.trackingMode === "serial" ? " · Seriennummern" : ""}
-                  </option>
-                ))}
-              </select>
-            </label>
+                    )
+                  }
+                  value={draft.inventoryItemId}
+                >
+                  <option value="">Kein Lagerartikel – wird beschafft</option>
+                  {inventory.map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {option.name} ({option.articleNumber})
+                      {option.trackingMode === "serial"
+                        ? " · Seriennummern"
+                        : ""}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
             <label className="shop__check">
               <input
                 checked={draft.requiresApproval}
