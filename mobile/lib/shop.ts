@@ -124,12 +124,22 @@ async function call<T>(body: Record<string, unknown>): Promise<T> {
   return response.data;
 }
 
+/** Artikel immer alphabetisch nach Name (Gross-/Kleinschreibung egal). */
+export function sortCatalogByName<T extends { name: string }>(items: T[]): T[] {
+  return [...items].sort((left, right) =>
+    left.name.localeCompare(right.name, "de", {
+      numeric: true,
+      sensitivity: "base",
+    }),
+  );
+}
+
 export const shopApi = {
   context: (tenantId: string) =>
     call<ShopContext>({ type: "getContext", tenantId }),
   catalog: (tenantId: string) =>
     call<{ items: CatalogItem[] }>({ type: "listCatalog", tenantId }).then(
-      (data) => data.items,
+      (data) => sortCatalogByName(data.items),
     ),
   people: (tenantId: string) =>
     call<{ people: ShopPerson[] }>({ type: "listRequesters", tenantId }).then(
