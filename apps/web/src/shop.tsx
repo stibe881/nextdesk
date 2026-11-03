@@ -14,8 +14,11 @@ import {
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
+  useRef,
   useState,
+  type CSSProperties,
   type FormEvent,
 } from "react";
 
@@ -174,6 +177,48 @@ export function Shop({ tenantId }: { tenantId: string }) {
   );
 }
 
+/** Beschreibung auf wenige Zeilen gekürzt, bei Bedarf aufklappbar. */
+function ShopDescription({ text }: { text: string }) {
+  const ref = useRef<HTMLParagraphElement>(null);
+  const [expanded, setExpanded] = useState(false);
+  const [truncated, setTruncated] = useState(false);
+
+  useLayoutEffect(() => {
+    const node = ref.current;
+    if (!node) return;
+    const measure = () => {
+      // Nur im gekürzten Zustand messen; aufgeklappt bleibt der Knopf stehen.
+      if (!expanded) setTruncated(node.scrollHeight > node.clientHeight + 1);
+    };
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [text, expanded]);
+
+  return (
+    <>
+      <p
+        className={`shop__description${expanded ? "" : " shop__description--clamped"}`}
+        ref={ref}
+      >
+        {text}
+      </p>
+      {truncated || expanded ? (
+        <button
+          aria-expanded={expanded}
+          className="text-button shop__description-toggle"
+          onClick={() => setExpanded((current) => !current)}
+          type="button"
+        >
+          {expanded ? "Weniger anzeigen" : "Mehr anzeigen …"}
+        </button>
+      ) : null}
+    </>
+  );
+}
+
 /** Cover photo with browsing when an article has several photos. */
 function ShopImageGallery({ item }: { item: CatalogItem }) {
   const urls =
@@ -192,7 +237,10 @@ function ShopImageGallery({ item }: { item: CatalogItem }) {
     );
   }
   return (
-    <div className="shop__image shop__image--gallery">
+    <div
+      className="shop__image shop__image--gallery"
+      style={{ "--shop-image": `url("${urls[current]}")` } as CSSProperties}
+    >
       <img alt={`${item.name}, Foto ${current + 1}`} src={urls[current]} />
       {urls.length > 1 ? (
         <>
@@ -346,7 +394,7 @@ function CatalogView({
                   <p className="shop__category">{item.category}</p>
                   <h2>{item.name}</h2>
                   {item.description ? (
-                    <p className="shop__description">{item.description}</p>
+                    <ShopDescription text={item.description} />
                   ) : null}
                   <div className="shop__badges">
                     <span

@@ -18372,7 +18372,7 @@ html:has(.embed-status-badge) body {
 .shop__image {
   display: grid;
   place-items: center;
-  height: 160px;
+  aspect-ratio: 4 / 3;
   border-radius: calc(var(--radius-card) - 4px);
   background: var(--surface-subtle);
   color: var(--ink-muted);
@@ -18381,12 +18381,22 @@ html:has(.embed-status-badge) body {
 .shop__image {
   position: relative;
 }
+/* Das Feld ist immer ausgefüllt: derselbe Artikel erscheint weichgezeichnet
+   als Hintergrund, das Foto selbst bleibt vollständig sichtbar (contain). */
+.shop__image::before {
+  content: "";
+  position: absolute;
+  inset: -24px;
+  background: var(--shop-image) center / cover no-repeat;
+  filter: blur(22px) saturate(1.1);
+  opacity: 0.55;
+}
 /* Absolute so large photos never stretch the grid cell and get cropped. */
 .shop__image img {
   position: absolute;
-  inset: 8px;
-  width: calc(100% - 16px);
-  height: calc(100% - 16px);
+  inset: 6px;
+  width: calc(100% - 12px);
+  height: calc(100% - 12px);
   object-fit: contain;
 }
 .shop__card h2 {
@@ -18405,6 +18415,19 @@ html:has(.embed-status-badge) body {
   margin: 4px 0 0;
   color: var(--ink-muted);
   font-size: 14px;
+}
+.shop__description--clamped {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+}
+.shop__description-toggle {
+  display: block;
+  margin-top: 2px;
+  padding: 0;
+  font-size: 13px;
 }
 .shop__badges {
   display: flex;
