@@ -2159,15 +2159,23 @@ function CatalogManager({ tenantId }: { tenantId: string }) {
                 <span className="shop__muted">
                   {itemCategories(item).join(", ")}
                 </span>
-                <span className="shop__muted">
+                <span
+                  className={`shop__badge shop__kind shop__kind--${item.kind}`}
+                >
                   {item.kind === "loan" ? "Ausleihe" : "Bestellung"}
-                  {item.requiresApproval ? " · mit Freigabe" : ""}
-                  {item.inventoryItemId
-                    ? ` · Lager: ${item.availableQuantity ?? 0} frei`
-                    : item.loanQuantity !== null &&
-                        item.loanQuantity !== undefined
-                      ? ` · ${item.availableQuantity ?? 0} von ${item.loanQuantity} frei`
-                      : " · ohne Lager"}
+                </span>
+                <span className="shop__muted">
+                  {[
+                    item.inventoryItemId
+                      ? `Lager: ${item.availableQuantity ?? 0} frei`
+                      : item.loanQuantity !== null &&
+                          item.loanQuantity !== undefined
+                        ? `${item.availableQuantity ?? 0} von ${item.loanQuantity} frei`
+                        : "ohne Lager",
+                    item.requiresApproval ? "mit Freigabe" : null,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
                 </span>
                 <span
                   className={`shop__status shop__status--${item.active ? "issued" : "cancelled"}`}
