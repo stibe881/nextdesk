@@ -39,7 +39,25 @@ import {
 } from "./lib/shop";
 
 type Tab = "catalog" | "mine" | "approvals" | "orders" | "manage";
-type CartLine = { item: CatalogItem; quantity: number };
+type CartLine = {
+  item: CatalogItem;
+  quantity: number;
+  /** Nur Ausleihartikel: Zeitraum pro Artikel (Pflicht). */
+  loanFrom?: string | undefined;
+  loanUntil?: string | undefined;
+};
+
+/** Letzter erlaubter Rückgabetag (Beginn + Höchstdauer − 1), sonst nichts. */
+function addDaysIso(
+  from: string | undefined,
+  maxDays: number | null,
+): string | undefined {
+  if (!from || !maxDays) return undefined;
+  const date = new Date(`${from}T00:00:00Z`);
+  if (Number.isNaN(date.valueOf())) return undefined;
+  date.setUTCDate(date.getUTCDate() + maxDays - 1);
+  return date.toISOString().slice(0, 10);
+}
 
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
@@ -505,7 +523,14 @@ function CatalogView({
                 }
               : line,
           )
-        : [...next, { item: entry, quantity: 1 }];
+        : [
+            ...next,
+            {
+              item: entry,
+              quantity: 1,
+              ...(entry.kind === "loan" ? { loanFrom: todayIso() } : {}),
+            },
+          ];
     }
     onCartChange(next);
     setChosenOptions((current) => ({ ...current, [item.id]: [] }));
@@ -676,8 +701,6 @@ function CartPanel({
   );
   const [deliveryLocation, setDeliveryLocation] = useState("");
   const [neededBy, setNeededBy] = useState("");
-  const [loanFrom, setLoanFrom] = useState(todayIso());
-  const [loanUntil, setLoanUntil] = useState("");
   const [reason, setReason] = useState("");
   const [comment, setComment] = useState("");
   const [pending, setPending] = useState(false);
@@ -712,12 +735,13 @@ function CartPanel({
         lines: cart.map((line) => ({
           catalogItemId: line.item.id,
           quantity: line.quantity,
+          ...(line.item.kind === "loan"
+            ? { loanFrom: line.loanFrom, loanUntil: line.loanUntil }
+            : {}),
         })),
         deliveryMethod,
         deliveryLocation: deliveryMethod === "desk" ? deliveryLocation : null,
         neededBy: neededBy || null,
-        loanFrom: hasLoan ? loanFrom : null,
-        loanUntil: hasLoan ? loanUntil : null,
         reason: reason.trim() || null,
         comment: comment || null,
       });
@@ -725,7 +749,6 @@ function CartPanel({
       setReason("");
       setComment("");
       setNeededBy("");
-      setLoanUntil("");
       setRequesterId("");
       onOrdered(result.orderId, forOther);
     } catch (nextError) {
@@ -820,33 +843,61 @@ function CartPanel({
                     <Plus size={15} />
                   </button>
                 </div>
+                {line.item.kind === "loan" ? (
+                  <div className="shop__loan-dates">
+                    <label>
+                      Ausleihe ab
+                      <input
+                        min={todayIso()}
+                        onChange={(event) =>
+                          onCartChange(
+                            cart.map((candidate) =>
+                              candidate.item.id === line.item.id
+                                ? {
+                                    ...candidate,
+                                    loanFrom: event.target.value,
+                                    loanUntil:
+                                      candidate.loanUntil &&
+                                      candidate.loanUntil < event.target.value
+                                        ? ""
+                                        : candidate.loanUntil,
+                                  }
+                                : candidate,
+                            ),
+                          )
+                        }
+                        required
+                        type="date"
+                        value={line.loanFrom ?? ""}
+                      />
+                    </label>
+                    <label>
+                      Rückgabe bis
+                      <input
+                        max={addDaysIso(line.loanFrom, line.item.maxLoanDays)}
+                        min={line.loanFrom || todayIso()}
+                        onChange={(event) =>
+                          onCartChange(
+                            cart.map((candidate) =>
+                              candidate.item.id === line.item.id
+                                ? {
+                                    ...candidate,
+                                    loanUntil: event.target.value,
+                                  }
+                                : candidate,
+                            ),
+                          )
+                        }
+                        required
+                        type="date"
+                        value={line.loanUntil ?? ""}
+                      />
+                    </label>
+                  </div>
+                ) : null}
               </li>
             ))}
           </ul>
-          {hasLoan ? (
-            <div className="shop__row">
-              <label>
-                Ausleihe ab
-                <input
-                  min={todayIso()}
-                  onChange={(event) => setLoanFrom(event.target.value)}
-                  required
-                  type="date"
-                  value={loanFrom}
-                />
-              </label>
-              <label>
-                Rückgabe bis
-                <input
-                  min={loanFrom || todayIso()}
-                  onChange={(event) => setLoanUntil(event.target.value)}
-                  required
-                  type="date"
-                  value={loanUntil}
-                />
-              </label>
-            </div>
-          ) : null}
           <fieldset className="shop__delivery">
             <legend>Übergabe</legend>
             <label>
@@ -931,6 +982,11 @@ function CartPanel({
             disabled={
               pending ||
               (reasonRequired && reason.trim().length < 3) ||
+              cart.some(
+                (line) =>
+                  line.item.kind === "loan" &&
+                  (!line.loanFrom || !line.loanUntil),
+              ) ||
               (!reasonRequired &&
                 reason.trim().length > 0 &&
                 reason.trim().length < 3)
@@ -1255,6 +1311,12 @@ function OrderDialog({
                     <strong>
                       {line.quantity}× {line.itemName}
                     </strong>
+                    {line.loanFrom && line.loanUntil ? (
+                      <span className="shop__line-internal">
+                        Ausleihe {formatDate(line.loanFrom)} –{" "}
+                        {formatDate(line.loanUntil)}
+                      </span>
+                    ) : null}
                     {line.articleNumber || line.supplierUrl ? (
                       <span className="shop__line-internal">
                         {line.articleNumber

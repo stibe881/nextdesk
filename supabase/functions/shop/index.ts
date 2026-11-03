@@ -850,7 +850,7 @@ async function getOrder(
     admin
       .from("shop_order_lines")
       .select(
-        "id, catalog_item_id, inventory_item_id, item_name, kind, quantity, status, location_id, serial_unit_id, issued_at, returned_at",
+        "id, catalog_item_id, inventory_item_id, item_name, kind, quantity, status, location_id, serial_unit_id, issued_at, returned_at, loan_from, loan_until",
       )
       .eq("order_id", orderId)
       .order("created_at"),
@@ -997,6 +997,8 @@ async function getOrder(
       kind: line.kind,
       quantity: line.quantity,
       status: line.status,
+      loanFrom: line.loan_from ?? null,
+      loanUntil: line.loan_until ?? null,
       inventoryItemId: line.inventory_item_id,
       locationId: line.location_id,
       serialUnitId: line.serial_unit_id,
@@ -1674,6 +1676,10 @@ const securedHandler = withSupabase(
               ? line.catalogItemId
               : null,
             quantity: int(line.quantity, 1, 100),
+            // Zeitraum pro Ausleihartikel (ältere Clients senden ihn für die
+            // ganze Bestellung, siehe loanFrom/loanUntil unten).
+            loan_from: isoDate(line.loanFrom),
+            loan_until: isoDate(line.loanUntil),
           }));
           if (
             lines.length === 0 ||
@@ -1716,6 +1722,22 @@ const securedHandler = withSupabase(
                 "reason_required",
                 "Bitte den Grund der Bestellung angeben.",
               );
+            }
+            // Ausleihe ab / Rückgabe bis sind für jeden Ausleihartikel Pflicht.
+            for (const row of stockedRows) {
+              if (row.kind !== "loan") continue;
+              const line = lines.find(
+                (candidate) => candidate.catalog_item_id === row.id,
+              );
+              const from = line?.loan_from ?? isoDate(body.loanFrom);
+              const until = line?.loan_until ?? isoDate(body.loanUntil);
+              if (!from || !until) {
+                throw new HttpError(
+                  400,
+                  "loan_period_required",
+                  `Bitte für «${row.name}» Ausleihe ab und Rückgabe bis angeben.`,
+                );
+              }
             }
             const limited = stockedRows.filter(
               (row) =>
