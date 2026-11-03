@@ -29,6 +29,7 @@ import {
   formatDate,
   newRequestId,
   shopApi,
+  SPEC_FIELDS,
   type CatalogItem,
   type InventoryOption,
   type OrderAction,
@@ -423,6 +424,21 @@ function CatalogView({
                   <h2>{item.name}</h2>
                   {item.description ? (
                     <ShopDescription text={item.description} />
+                  ) : null}
+                  {SPEC_FIELDS.some(({ key }) => item.specifications?.[key]) ? (
+                    <details className="shop__specs">
+                      <summary>Technische Angaben</summary>
+                      <dl>
+                        {SPEC_FIELDS.filter(
+                          ({ key }) => item.specifications?.[key],
+                        ).map(({ key, label }) => (
+                          <div key={key}>
+                            <dt>{label}</dt>
+                            <dd>{item.specifications?.[key]}</dd>
+                          </div>
+                        ))}
+                      </dl>
+                    </details>
                   ) : null}
                   <div className="shop__badges">
                     <span
@@ -1309,6 +1325,8 @@ type Draft = {
   id?: string;
   name: string;
   description: string;
+  /** Technische Angaben (Schlüssel siehe SPEC_FIELDS). */
+  specifications: Record<string, string>;
   category: string;
   categoryId: string;
   /** Name of a category to create on save ("" = none). */
@@ -1418,6 +1436,7 @@ function fileToBase64(file: File): Promise<string> {
 const EMPTY_DRAFT: Draft = {
   name: "",
   description: "",
+  specifications: {},
   category: "",
   categoryId: "",
   newCategory: "",
@@ -1604,6 +1623,12 @@ function CatalogManager({ tenantId }: { tenantId: string }) {
         id: draft.id,
         name: draft.name.trim(),
         description: draft.description.trim() || null,
+        specifications: Object.fromEntries(
+          SPEC_FIELDS.flatMap(({ key }) => {
+            const value = (draft.specifications[key] ?? "").trim();
+            return value ? [[key, value]] : [];
+          }),
+        ),
         ...(categoryId && categoryId !== "__new__"
           ? { categoryId }
           : { category: "Allgemein" }),
@@ -1850,6 +1875,7 @@ function CatalogManager({ tenantId }: { tenantId: string }) {
                     id: item.id,
                     name: item.name,
                     description: item.description ?? "",
+                    specifications: { ...(item.specifications ?? {}) },
                     category: item.category,
                     categoryId: item.categoryId ?? "",
                     newCategory: "",
@@ -2180,6 +2206,32 @@ function CatalogManager({ tenantId }: { tenantId: string }) {
                 value={draft.description}
               />
             </label>
+            <fieldset className="shop__options-editor shop__specs-editor">
+              <legend>Technische Angaben (optional)</legend>
+              <p className="shop__options-hint">
+                Erscheinen im Shop unter «Technische Angaben». Eine Zeile pro
+                Punkt ist am übersichtlichsten.
+              </p>
+              {SPEC_FIELDS.map(({ key, label }) => (
+                <label key={key}>
+                  {label}
+                  <textarea
+                    maxLength={2000}
+                    onChange={(event) =>
+                      setDraft({
+                        ...draft,
+                        specifications: {
+                          ...draft.specifications,
+                          [key]: event.target.value,
+                        },
+                      })
+                    }
+                    rows={2}
+                    value={draft.specifications[key] ?? ""}
+                  />
+                </label>
+              ))}
+            </fieldset>
             <div className="shop__row">
               <label>
                 Art

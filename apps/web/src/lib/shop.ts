@@ -11,6 +11,16 @@ export type ShopContext = {
   managerName: string | null;
 };
 
+/** Technische Angaben eines Artikels: Schlüssel und Bezeichnung. */
+export const SPEC_FIELDS = [
+  { key: "scope", label: "Lieferumfang" },
+  { key: "usage", label: "Anwendungsbereich" },
+  { key: "compatibility", label: "Kompatibilität" },
+  { key: "equipment", label: "Ausstattung" },
+  { key: "connectivity", label: "Konnektivität" },
+  { key: "properties", label: "Eigenschaften" },
+] as const;
+
 export type StockLevel = "in_stock" | "low" | "out_of_stock" | "on_request";
 export type ItemKind = "order" | "loan";
 
@@ -31,6 +41,8 @@ export type CatalogItem = {
   active: boolean;
   sortOrder: number;
   inventoryItemId: string | null;
+  /** Technische Angaben (Lieferumfang, Anwendungsbereich, …). */
+  specifications?: Record<string, string>;
   /** Artikel, die beim Bestellen dieses Artikels dazugewählt werden können. */
   optionItemIds?: string[];
   imageUrl: string | null;

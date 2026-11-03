@@ -19015,3 +19015,34 @@ html:has(.embed-status-badge) body {
 .shop__image img.shop__image-fill {
   object-fit: cover;
 }
+
+.shop__specs-editor label {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+}
+.shop__specs {
+  margin-top: 6px;
+  font-size: 13px;
+}
+.shop__specs summary {
+  cursor: pointer;
+  color: var(--primary);
+  font-weight: 700;
+}
+.shop__specs dl {
+  display: grid;
+  gap: 8px;
+  margin: 8px 0 0;
+}
+.shop__specs dt {
+  color: var(--ink-muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.shop__specs dd {
+  margin: 2px 0 0;
+  white-space: pre-line;
+}
