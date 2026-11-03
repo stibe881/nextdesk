@@ -446,6 +446,7 @@ function CatalogView({
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("all");
+  const [loanOnly, setLoanOnly] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -469,6 +470,7 @@ function CatalogView({
     const needle = query.trim().toLocaleLowerCase("de-CH");
     return (
       (category === "all" || itemCategories(item).includes(category)) &&
+      (!loanOnly || item.kind === "loan") &&
       (!needle ||
         `${item.name} ${item.description ?? ""} ${itemCategories(item).join(" ")}`
           .toLocaleLowerCase("de-CH")
@@ -535,6 +537,14 @@ function CatalogView({
               </option>
             ))}
           </select>
+          <label className="shop__check shop__filter-check">
+            <input
+              checked={loanOnly}
+              onChange={(event) => setLoanOnly(event.target.checked)}
+              type="checkbox"
+            />
+            Nur Ausleihartikel
+          </label>
         </div>
         {error ? <p className="form-error">{error}</p> : null}
         {items === null ? (
@@ -2404,7 +2414,7 @@ function CatalogManager({ tenantId }: { tenantId: string }) {
                 </label>
               ))}
             </fieldset>
-            <div className="shop__row">
+            <div className="shop__row shop__row--grid">
               <label>
                 Art
                 <select
