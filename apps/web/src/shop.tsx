@@ -675,6 +675,8 @@ function CartPanel({
   const [requestId, setRequestId] = useState(newRequestId);
   const hasLoan = cart.some((line) => line.item.kind === "loan");
   const needsApproval = cart.some((line) => line.item.requiresApproval);
+  // Der Grund ist nur Pflicht, wenn etwas anderes als Ausleihen bestellt wird.
+  const reasonRequired = cart.some((line) => line.item.kind !== "loan");
 
   useEffect(() => {
     if (!canOrderForOthers || cart.length === 0 || people !== null) return;
@@ -706,7 +708,7 @@ function CartPanel({
         neededBy: neededBy || null,
         loanFrom: hasLoan ? loanFrom : null,
         loanUntil: hasLoan ? loanUntil : null,
-        reason: reason.trim(),
+        reason: reason.trim() || null,
         comment: comment || null,
       });
       setRequestId(newRequestId());
@@ -880,13 +882,15 @@ function CartPanel({
             </label>
           ) : null}
           <label>
-            Grund der Bestellung
+            {reasonRequired
+              ? "Grund der Bestellung"
+              : "Grund der Bestellung (optional)"}
             <textarea
               maxLength={500}
-              minLength={3}
+              minLength={reasonRequired ? 3 : undefined}
               onChange={(event) => setReason(event.target.value)}
               placeholder="Wozu wird der Artikel benötigt?"
-              required
+              required={reasonRequired}
               rows={2}
               value={reason}
             />
@@ -914,7 +918,13 @@ function CartPanel({
           ) : null}
           <button
             className="primary-button"
-            disabled={pending || reason.trim().length < 3}
+            disabled={
+              pending ||
+              (reasonRequired && reason.trim().length < 3) ||
+              (!reasonRequired &&
+                reason.trim().length > 0 &&
+                reason.trim().length < 3)
+            }
             type="submit"
           >
             {pending

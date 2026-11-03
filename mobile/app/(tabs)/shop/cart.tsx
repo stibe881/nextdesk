@@ -103,6 +103,10 @@ export default function ShopCartScreen() {
     (days) => days <= maxLoanDays,
   );
   const needsApproval = cart.some((line) => line.item.requiresApproval);
+  // Der Grund ist nur Pflicht, wenn etwas anderes als Ausleihen bestellt wird.
+  const reasonRequired = cart.some((line) => line.item.kind !== "loan");
+  const reasonInvalid =
+    reason.trim().length < 3 && (reasonRequired || reason.trim().length > 0);
 
   async function submit() {
     if (!tenantId || cart.length === 0) return;
@@ -110,7 +114,7 @@ export default function ShopCartScreen() {
       setError("Bitte Arbeitsplatz oder Raum angeben.");
       return;
     }
-    if (reason.trim().length < 3) {
+    if (reasonInvalid) {
       setError("Bitte den Grund der Bestellung angeben.");
       return;
     }
@@ -129,7 +133,7 @@ export default function ShopCartScreen() {
           deliveryMethod === "desk" ? deliveryLocation.trim() : null,
         loanFrom: hasLoan ? addDays(0) : null,
         loanUntil: hasLoan ? addDays(Math.max(0, loanDays - 1)) : null,
-        reason: reason.trim(),
+        reason: reason.trim() || null,
         comment: comment.trim() || null,
       });
       shopCart.clear();
@@ -372,7 +376,11 @@ export default function ShopCartScreen() {
               </View>
 
               <View style={{ gap: 8 }}>
-                <Text style={styles.label}>Grund der Bestellung</Text>
+                <Text style={styles.label}>
+                  {reasonRequired
+                    ? "Grund der Bestellung"
+                    : "Grund der Bestellung (optional)"}
+                </Text>
                 <TextInput
                   accessibilityLabel="Grund der Bestellung"
                   maxLength={500}
@@ -410,9 +418,7 @@ export default function ShopCartScreen() {
                 accessibilityRole="button"
                 accessibilityState={{ busy: pending, disabled: pending }}
                 disabled={
-                  pending ||
-                  (choosingPerson && !requester) ||
-                  reason.trim().length < 3
+                  pending || (choosingPerson && !requester) || reasonInvalid
                 }
                 onPress={() => void submit()}
                 style={({ pressed }) => [
