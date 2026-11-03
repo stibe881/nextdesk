@@ -319,7 +319,6 @@ function ShopItemDialog({
               onClick={onAdd}
               type="button"
             >
-              <Plus aria-hidden="true" size={16} />
               {item.kind === "loan" ? "Ausleihen" : "In den Warenkorb"}
               {chosen.length > 0 ? ` (+${chosen.length})` : ""}
             </button>
@@ -590,12 +589,11 @@ function CatalogView({
                     Details
                   </button>
                   <button
-                    className="secondary-button"
+                    className="primary-button"
                     disabled={!canOrder}
                     onClick={() => add(item)}
                     type="button"
                   >
-                    <Plus aria-hidden="true" size={16} />
                     {item.kind === "loan" ? "Ausleihen" : "In den Warenkorb"}
                     {(chosenOptions[item.id] ?? []).length > 0
                       ? ` (+${(chosenOptions[item.id] ?? []).length})`

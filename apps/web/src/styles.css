@@ -19056,8 +19056,21 @@ html:has(.embed-status-badge) body {
 }
 .shop__card-actions {
   display: grid;
-  grid-template-columns: auto 1fr;
+  grid-template-columns: auto minmax(0, 1fr);
   gap: 8px;
+}
+/* Beide Knöpfe gleich hoch, einzeilig, mittig beschriftet. */
+.shop__card-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  padding: 0 14px;
+  overflow: hidden;
+  font-size: 14px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Artikelseite */
