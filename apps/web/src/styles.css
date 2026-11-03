@@ -18855,8 +18855,8 @@ html:has(.embed-status-badge) body {
 }
 
 .shop__category-list {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   gap: 8px;
   margin: 0;
   padding: 0;
@@ -18864,14 +18864,53 @@ html:has(.embed-status-badge) body {
 }
 
 .shop__category-list li {
-  display: inline-flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
   align-items: center;
-  gap: 8px;
-  padding: 4px 6px 4px 12px;
+  gap: 6px;
+  min-height: 44px;
+  padding: 6px 8px 6px 12px;
   border: 1px solid var(--border);
-  border-radius: 999px;
-  font-size: 13px;
+  border-radius: 10px;
+  background: var(--surface-subtle);
+  font-size: 14px;
   font-weight: 650;
+}
+
+.shop__category-list li > span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Anzahl als ruhiges Kennzeichen, Symbole klein und ohne Rahmen */
+.shop__category-list .shop__muted {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--surface);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.shop__category-list .icon-button {
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  min-height: 0;
+  padding: 0;
+  border-color: transparent;
+  background: transparent;
+}
+
+.shop__category-list .icon-button:hover:not(:disabled) {
+  border-color: var(--border);
+  background: var(--surface);
+}
+
+.shop__category-list .icon-button:disabled {
+  opacity: 0.35;
 }
 
 .shop__internal-hint {
