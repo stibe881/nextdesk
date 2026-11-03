@@ -505,6 +505,28 @@ function stockLevel(available: number | undefined, linked: boolean) {
   return available <= 2 ? "low" : "in_stock";
 }
 
+/** Aktuell ausgeliehene oder reservierte Stücke je Katalogartikel. */
+async function borrowedQuantities(
+  admin: Admin,
+  tenantId: string,
+  itemIds: string[],
+) {
+  const result = new Map<string, number>();
+  if (itemIds.length === 0) return result;
+  const { data } = await admin
+    .from("shop_order_lines")
+    .select("catalog_item_id, quantity")
+    .eq("tenant_id", tenantId)
+    .eq("kind", "loan")
+    .in("status", ["open", "reserved", "issued"])
+    .in("catalog_item_id", itemIds);
+  for (const row of (data ?? []) as Row[]) {
+    const id = String(row.catalog_item_id);
+    result.set(id, (result.get(id) ?? 0) + Number(row.quantity));
+  }
+  return result;
+}
+
 async function listCatalog(
   admin: Admin,
   tenantId: string,
@@ -514,7 +536,7 @@ async function listCatalog(
   let query = admin
     .from("shop_catalog_items")
     .select(
-      "id, inventory_item_id, image_paths, name, description, category, category_id, article_number, supplier_url, kind, requires_approval, max_quantity, max_loan_days, active, sort_order, option_item_ids, specifications, category_ids",
+      "id, inventory_item_id, image_paths, name, description, category, category_id, article_number, supplier_url, kind, requires_approval, max_quantity, max_loan_days, active, sort_order, option_item_ids, specifications, category_ids, loan_quantity",
     )
     .eq("tenant_id", tenantId)
     .order("category")
@@ -534,12 +556,23 @@ async function listCatalog(
         )
       : [];
   const ownPaths = rows.flatMap(pathsOf);
-  const [stock, images, ownImages, { data: categoryRows }] = await Promise.all([
-    availability(admin, tenantId, itemIds),
-    imageUrls(admin, tenantId, itemIds),
-    signedPaths(admin, ownPaths),
-    admin.from("shop_categories").select("id, name").eq("tenant_id", tenantId),
-  ]);
+  // Ausleihartikel mit eigenem Bestand (ohne Lageranbindung).
+  const ownStockIds = rows
+    .filter(
+      (row) =>
+        row.kind === "loan" &&
+        row.inventory_item_id === null &&
+        typeof row.loan_quantity === "number",
+    )
+    .map((row) => String(row.id));
+  const [stock, images, ownImages, { data: categoryRows }, borrowed] =
+    await Promise.all([
+      availability(admin, tenantId, itemIds),
+      imageUrls(admin, tenantId, itemIds),
+      signedPaths(admin, ownPaths),
+      admin.from("shop_categories").select("id, name").eq("tenant_id", tenantId),
+      borrowedQuantities(admin, tenantId, ownStockIds),
+    ]);
   const categoryNameById = new Map<string, string>(
     ((categoryRows ?? []) as Row[]).map((row) => [
       String(row.id),
@@ -549,7 +582,18 @@ async function listCatalog(
   const listedIds = new Set(rows.map((row) => String(row.id)));
   return rows.map((row) => {
     const itemId = isUuid(row.inventory_item_id) ? row.inventory_item_id : null;
-    const available = itemId ? stock.get(itemId) : undefined;
+    const ownStock =
+      row.kind === "loan" &&
+      itemId === null &&
+      typeof row.loan_quantity === "number";
+    const available = ownStock
+      ? Math.max(
+          0,
+          (row.loan_quantity as number) - (borrowed.get(String(row.id)) ?? 0),
+        )
+      : itemId
+        ? stock.get(itemId)
+        : undefined;
     return {
       id: row.id,
       name: row.name,
@@ -610,8 +654,14 @@ async function listCatalog(
           imageUrl: own[0]?.url ?? fallback,
         };
       })(),
-      stockLevel: stockLevel(available, itemId !== null),
-      availableQuantity: exact && itemId ? (available ?? 0) : null,
+      loanQuantity: ownStock ? row.loan_quantity : null,
+      stockLevel: stockLevel(available, itemId !== null || ownStock),
+      // Eigener Ausleihbestand ist für alle sichtbar, Lagerbestand nur für Agenten.
+      availableQuantity: ownStock
+        ? (available ?? 0)
+        : exact && itemId
+          ? (available ?? 0)
+          : null,
     };
   });
 }
@@ -1259,6 +1309,26 @@ async function saveCatalogItem(
   const optionItemIds = Array.isArray(rawOptions)
     ? [...new Set(rawOptions.filter((id): id is string => isUuid(id)))]
     : null;
+  const loanQuantity =
+    kind === "loan" &&
+    inventoryItemId === null &&
+    input.loanQuantity !== undefined &&
+    input.loanQuantity !== null
+      ? int(input.loanQuantity, 0, 10000)
+      : null;
+  if (
+    kind === "loan" &&
+    inventoryItemId === null &&
+    (input.loanQuantity === undefined ||
+      input.loanQuantity === null ||
+      loanQuantity === null)
+  ) {
+    throw new HttpError(
+      400,
+      "loan_quantity_required",
+      "Bitte angeben, wie viele Stück zum Ausleihen vorhanden sind.",
+    );
+  }
   const specifications = cleanSpecifications(input.specifications);
   if (specifications === null) {
     throw new HttpError(
@@ -1345,6 +1415,7 @@ async function saveCatalogItem(
     max_loan_days: kind === "loan" ? maxLoanDays : null,
     inventory_item_id: inventoryItemId,
     option_item_ids: optionItemIds,
+    loan_quantity: loanQuantity,
     specifications,
     active: input.active,
     sort_order: int(input.sortOrder, -1000, 1000) ?? 0,
@@ -1622,6 +1693,47 @@ const securedHandler = withSupabase(
               "reason_required",
               "Bitte den Grund der Bestellung angeben.",
             );
+          }
+          // Ausleihartikel mit eigenem Bestand: nicht mehr ausleihen als frei.
+          {
+            const wanted = new Map<string, number>();
+            for (const line of lines) {
+              wanted.set(
+                line.catalog_item_id as string,
+                (wanted.get(line.catalog_item_id as string) ?? 0) +
+                  (line.quantity as number),
+              );
+            }
+            const { data: stocked } = await admin
+              .from("shop_catalog_items")
+              .select("id, name, kind, inventory_item_id, loan_quantity")
+              .eq("tenant_id", tenantId)
+              .in("id", [...wanted.keys()]);
+            const limited = ((stocked ?? []) as Row[]).filter(
+              (row) =>
+                row.kind === "loan" &&
+                row.inventory_item_id === null &&
+                typeof row.loan_quantity === "number",
+            );
+            const borrowed = await borrowedQuantities(
+              admin,
+              tenantId,
+              limited.map((row) => String(row.id)),
+            );
+            for (const row of limited) {
+              const free = Math.max(
+                0,
+                (row.loan_quantity as number) -
+                  (borrowed.get(String(row.id)) ?? 0),
+              );
+              if ((wanted.get(String(row.id)) ?? 0) > free) {
+                throw new HttpError(
+                  409,
+                  "insufficient_stock",
+                  `Für «${row.name}» sind nur noch ${free} Stück zum Ausleihen frei.`,
+                );
+              }
+            }
           }
           // Agents may order on behalf of an employee.
           const requesterId =

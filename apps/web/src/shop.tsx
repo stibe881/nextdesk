@@ -1477,6 +1477,8 @@ type Draft = {
   requiresApproval: boolean;
   maxQuantity: number;
   maxLoanDays: string;
+  /** Anzahl Stück zum Ausleihen (ohne Lageranbindung). */
+  loanQuantity: string;
   inventoryItemId: string;
   /** Artikel, die dazu bestellt werden können (Optionen). */
   optionItemIds: string[];
@@ -1586,6 +1588,7 @@ const EMPTY_DRAFT: Draft = {
   requiresApproval: false,
   maxQuantity: 2,
   maxLoanDays: "14",
+  loanQuantity: "",
   inventoryItemId: "",
   optionItemIds: [],
   active: true,
@@ -1799,6 +1802,10 @@ function CatalogManager({ tenantId }: { tenantId: string }) {
             ? Number(draft.maxLoanDays)
             : null,
         inventoryItemId: draft.inventoryItemId || null,
+        loanQuantity:
+          draft.kind === "loan" && !draft.inventoryItemId
+            ? Number(draft.loanQuantity)
+            : null,
         optionItemIds: draft.optionItemIds,
         active: draft.active,
         sortOrder: draft.sortOrder,
@@ -2050,6 +2057,11 @@ function CatalogManager({ tenantId }: { tenantId: string }) {
                       ? String(item.maxLoanDays)
                       : "",
                     inventoryItemId: item.inventoryItemId ?? "",
+                    loanQuantity:
+                      item.loanQuantity !== null &&
+                      item.loanQuantity !== undefined
+                        ? String(item.loanQuantity)
+                        : "",
                     optionItemIds: item.optionItemIds ?? [],
                     active: item.active,
                     sortOrder: item.sortOrder,
@@ -2071,7 +2083,10 @@ function CatalogManager({ tenantId }: { tenantId: string }) {
                   {item.requiresApproval ? " · mit Freigabe" : ""}
                   {item.inventoryItemId
                     ? ` · Lager: ${item.availableQuantity ?? 0} frei`
-                    : " · ohne Lager"}
+                    : item.loanQuantity !== null &&
+                        item.loanQuantity !== undefined
+                      ? ` · ${item.availableQuantity ?? 0} von ${item.loanQuantity} frei`
+                      : " · ohne Lager"}
                 </span>
                 <span
                   className={`shop__status shop__status--${item.active ? "issued" : "cancelled"}`}
@@ -2435,6 +2450,22 @@ function CatalogManager({ tenantId }: { tenantId: string }) {
                   value={draft.maxQuantity}
                 />
               </label>
+              {draft.kind === "loan" && !draft.inventoryItemId ? (
+                <label>
+                  Anzahl zum Ausleihen
+                  <input
+                    max={10000}
+                    min={0}
+                    onChange={(event) =>
+                      setDraft({ ...draft, loanQuantity: event.target.value })
+                    }
+                    placeholder="z. B. 5"
+                    required
+                    type="number"
+                    value={draft.loanQuantity}
+                  />
+                </label>
+              ) : null}
               {draft.kind === "loan" ? (
                 <label>
                   Max. Ausleihdauer (Tage)
