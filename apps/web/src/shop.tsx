@@ -176,6 +176,13 @@ export function Shop({ tenantId }: { tenantId: string }) {
   );
 }
 
+/** Namen aller Kategorien eines Artikels. */
+function itemCategories(item: CatalogItem): string[] {
+  return item.categoryNames && item.categoryNames.length > 0
+    ? item.categoryNames
+    : [item.category];
+}
+
 /** Lager-, Ausleih- und Freigabe-Hinweise eines Artikels. */
 function ShopBadges({ item }: { item: CatalogItem }) {
   return (
@@ -287,7 +294,7 @@ function ShopItemDialog({
       >
         <header className="panel-heading">
           <div>
-            <p className="eyebrow">{item.category}</p>
+            <p className="eyebrow">{itemCategories(item).join(" · ")}</p>
             <h2 id="shop-item-title">{item.name}</h2>
           </div>
           <button
@@ -453,17 +460,17 @@ function CatalogView({
 
   const categories = useMemo(
     () =>
-      [...new Set((items ?? []).map((item) => item.category))].sort((a, b) =>
-        a.localeCompare(b, "de-CH"),
+      [...new Set((items ?? []).flatMap((item) => itemCategories(item)))].sort(
+        (a, b) => a.localeCompare(b, "de-CH"),
       ),
     [items],
   );
   const visible = (items ?? []).filter((item) => {
     const needle = query.trim().toLocaleLowerCase("de-CH");
     return (
-      (category === "all" || item.category === category) &&
+      (category === "all" || itemCategories(item).includes(category)) &&
       (!needle ||
-        `${item.name} ${item.description ?? ""} ${item.category}`
+        `${item.name} ${item.description ?? ""} ${itemCategories(item).join(" ")}`
           .toLocaleLowerCase("de-CH")
           .includes(needle))
     );
@@ -559,7 +566,9 @@ function CatalogView({
               >
                 <ShopImageGallery item={item} />
                 <div className="shop__card-body">
-                  <p className="shop__category">{item.category}</p>
+                  <p className="shop__category">
+                    {itemCategories(item).join(" · ")}
+                  </p>
                   <h2>{item.name}</h2>
                   {item.description ? (
                     <p className="shop__description shop__description--clamped">
@@ -1458,7 +1467,8 @@ type Draft = {
   /** Technische Angaben (Schlüssel siehe SPEC_FIELDS). */
   specifications: Record<string, string>;
   category: string;
-  categoryId: string;
+  /** Gewählte Kategorien (die erste ist die Hauptkategorie). */
+  categoryIds: string[];
   /** Name of a category to create on save ("" = none). */
   newCategory: string;
   articleNumber: string;
@@ -1568,7 +1578,7 @@ const EMPTY_DRAFT: Draft = {
   description: "",
   specifications: {},
   category: "",
-  categoryId: "",
+  categoryIds: [],
   newCategory: "",
   articleNumber: "",
   supplierUrl: "",
@@ -1601,7 +1611,7 @@ function OptionsEditor({
   const matches = (
     needle
       ? candidates.filter((other) =>
-          `${other.name} ${other.category} ${other.articleNumber ?? ""}`
+          `${other.name} ${itemCategories(other).join(" ")} ${other.articleNumber ?? ""}`
             .toLocaleLowerCase("de-CH")
             .includes(needle),
         )
@@ -1758,12 +1768,15 @@ function CatalogManager({ tenantId }: { tenantId: string }) {
     setPending(true);
     setError("");
     try {
-      let categoryId = draft.categoryId;
+      const categoryIds = [...draft.categoryIds];
       if (draft.newCategory.trim()) {
         const created = await shopApi.saveCategory(tenantId, {
           name: draft.newCategory.trim(),
         });
-        categoryId = created.id;
+        if (!categoryIds.includes(created.id)) categoryIds.push(created.id);
+      }
+      if (categoryIds.length === 0) {
+        throw new Error("Bitte mindestens eine Kategorie wählen.");
       }
       const saved = await shopApi.saveItem(tenantId, {
         id: draft.id,
@@ -1775,9 +1788,7 @@ function CatalogManager({ tenantId }: { tenantId: string }) {
             return value ? [[key, value]] : [];
           }),
         ),
-        ...(categoryId && categoryId !== "__new__"
-          ? { categoryId }
-          : { category: "Allgemein" }),
+        categoryIds,
         articleNumber: draft.articleNumber.trim() || null,
         supplierUrl: draft.supplierUrl.trim() || null,
         kind: draft.kind,
@@ -2023,7 +2034,12 @@ function CatalogManager({ tenantId }: { tenantId: string }) {
                     description: item.description ?? "",
                     specifications: { ...(item.specifications ?? {}) },
                     category: item.category,
-                    categoryId: item.categoryId ?? "",
+                    categoryIds:
+                      item.categoryIds && item.categoryIds.length > 0
+                        ? item.categoryIds
+                        : item.categoryId
+                          ? [item.categoryId]
+                          : [],
                     newCategory: "",
                     articleNumber: item.articleNumber ?? "",
                     supplierUrl: item.supplierUrl ?? "",
@@ -2047,7 +2063,9 @@ function CatalogManager({ tenantId }: { tenantId: string }) {
                 type="button"
               >
                 <span className="shop__order-number">{item.name}</span>
-                <span className="shop__muted">{item.category}</span>
+                <span className="shop__muted">
+                  {itemCategories(item).join(", ")}
+                </span>
                 <span className="shop__muted">
                   {item.kind === "loan" ? "Ausleihe" : "Bestellung"}
                   {item.requiresApproval ? " · mit Freigabe" : ""}
@@ -2269,49 +2287,55 @@ function CatalogManager({ tenantId }: { tenantId: string }) {
               }
               selected={draft.optionItemIds}
             />
-            <div className="shop__row">
-              <label>
-                Kategorie
-                <select
-                  onChange={(event) => {
-                    const value = event.target.value;
-                    setDraft(
-                      value === "__new__"
-                        ? { ...draft, categoryId: "__new__", newCategory: "" }
-                        : { ...draft, categoryId: value, newCategory: "" },
-                    );
-                  }}
-                  required
-                  value={draft.categoryId}
-                >
-                  <option disabled value="">
-                    Kategorie wählen …
-                  </option>
-                  {categories.map((category) => (
-                    <option key={category.id} value={category.id}>
-                      {category.name}
-                    </option>
-                  ))}
-                  <option value="__new__">+ Neue Kategorie …</option>
-                </select>
+            <fieldset className="shop__options-editor">
+              <legend>
+                Kategorien
+                {draft.categoryIds.length > 0
+                  ? ` · ${draft.categoryIds.length} gewählt`
+                  : ""}
+              </legend>
+              <ul>
+                {categories.map((entry) => {
+                  const checked = draft.categoryIds.includes(entry.id);
+                  return (
+                    <li key={entry.id}>
+                      <label>
+                        <input
+                          checked={checked}
+                          onChange={() =>
+                            setDraft({
+                              ...draft,
+                              categoryIds: checked
+                                ? draft.categoryIds.filter(
+                                    (id) => id !== entry.id,
+                                  )
+                                : [...draft.categoryIds, entry.id],
+                            })
+                          }
+                          type="checkbox"
+                        />
+                        {entry.name}
+                      </label>
+                    </li>
+                  );
+                })}
+              </ul>
+              <label className="shop__stacked-label">
+                Neue Kategorie hinzufügen (optional)
+                <input
+                  maxLength={80}
+                  minLength={2}
+                  onChange={(event) =>
+                    setDraft({ ...draft, newCategory: event.target.value })
+                  }
+                  placeholder="z. B. Kabel & Adapter"
+                  value={draft.newCategory}
+                />
               </label>
-              {draft.categoryId === "__new__" ? (
-                <label>
-                  Name der neuen Kategorie
-                  <input
-                    autoFocus
-                    maxLength={80}
-                    minLength={2}
-                    onChange={(event) =>
-                      setDraft({ ...draft, newCategory: event.target.value })
-                    }
-                    placeholder="z. B. Kabel & Adapter"
-                    required
-                    value={draft.newCategory}
-                  />
-                </label>
-              ) : null}
-            </div>
+              <p className="shop__options-hint">
+                Die erste gewählte Kategorie ist die Hauptkategorie.
+              </p>
+            </fieldset>
             <div className="shop__row">
               <label>
                 Artikelnummer (intern)

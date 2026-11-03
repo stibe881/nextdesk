@@ -514,7 +514,7 @@ async function listCatalog(
   let query = admin
     .from("shop_catalog_items")
     .select(
-      "id, inventory_item_id, image_paths, name, description, category, category_id, article_number, supplier_url, kind, requires_approval, max_quantity, max_loan_days, active, sort_order, option_item_ids, specifications",
+      "id, inventory_item_id, image_paths, name, description, category, category_id, article_number, supplier_url, kind, requires_approval, max_quantity, max_loan_days, active, sort_order, option_item_ids, specifications, category_ids",
     )
     .eq("tenant_id", tenantId)
     .order("category")
@@ -534,11 +534,18 @@ async function listCatalog(
         )
       : [];
   const ownPaths = rows.flatMap(pathsOf);
-  const [stock, images, ownImages] = await Promise.all([
+  const [stock, images, ownImages, { data: categoryRows }] = await Promise.all([
     availability(admin, tenantId, itemIds),
     imageUrls(admin, tenantId, itemIds),
     signedPaths(admin, ownPaths),
+    admin.from("shop_categories").select("id, name").eq("tenant_id", tenantId),
   ]);
+  const categoryNameById = new Map<string, string>(
+    ((categoryRows ?? []) as Row[]).map((row) => [
+      String(row.id),
+      String(row.name),
+    ]),
+  );
   const listedIds = new Set(rows.map((row) => String(row.id)));
   return rows.map((row) => {
     const itemId = isUuid(row.inventory_item_id) ? row.inventory_item_id : null;
@@ -549,6 +556,23 @@ async function listCatalog(
       description: row.description,
       category: row.category,
       categoryId: row.category_id ?? null,
+      ...(() => {
+        const ids = (
+          Array.isArray(row.category_ids) && row.category_ids.length > 0
+            ? row.category_ids
+            : isUuid(row.category_id)
+              ? [row.category_id]
+              : []
+        ).filter((id): id is string => isUuid(id));
+        const names = ids.flatMap((id) => {
+          const name = categoryNameById.get(id);
+          return name ? [name] : [];
+        });
+        return {
+          categoryIds: ids,
+          categoryNames: names.length > 0 ? names : [String(row.category)],
+        };
+      })(),
       // Internal details are only sent to agents (exact = may process/manage).
       ...(exact
         ? {
@@ -995,15 +1019,18 @@ async function listCategories(admin: Admin, tenantId: string) {
       .order("name"),
     admin
       .from("shop_catalog_items")
-      .select("category_id")
+      .select("category_id, category_ids")
       .eq("tenant_id", tenantId),
   ]);
   if (error) throw databaseError(error);
   const counts = new Map<string, number>();
   for (const item of (items ?? []) as Row[]) {
-    if (typeof item.category_id === "string") {
-      counts.set(item.category_id, (counts.get(item.category_id) ?? 0) + 1);
-    }
+    const ids = new Set<string>(
+      (Array.isArray(item.category_ids) ? item.category_ids : [])
+        .filter((id): id is string => typeof id === "string"),
+    );
+    if (typeof item.category_id === "string") ids.add(item.category_id);
+    for (const id of ids) counts.set(id, (counts.get(id) ?? 0) + 1);
   }
   return ((data ?? []) as Row[]).map((row) => ({
     id: row.id,
@@ -1074,6 +1101,45 @@ async function resolveCategory(
   return ensureCategory(admin, tenantId, actorId, name);
 }
 
+/** Alle Kategorien eines Artikels (die erste ist die Hauptkategorie). */
+async function resolveCategories(
+  admin: Admin,
+  tenantId: string,
+  actorId: string,
+  input: Row,
+): Promise<{ id: string; name: string }[]> {
+  if (Array.isArray(input.categoryIds) && input.categoryIds.length > 0) {
+    const ids = [
+      ...new Set(input.categoryIds.filter((id): id is string => isUuid(id))),
+    ];
+    if (ids.length !== input.categoryIds.length || ids.length > 10) {
+      throw new HttpError(
+        400,
+        "category_unknown",
+        "Die Kategorien sind ungültig.",
+      );
+    }
+    const { data, error } = await admin
+      .from("shop_categories")
+      .select("id, name")
+      .eq("tenant_id", tenantId)
+      .in("id", ids);
+    if (error) throw databaseError(error);
+    const byId = new Map<string, string>(
+      ((data ?? []) as Row[]).map((row) => [String(row.id), String(row.name)]),
+    );
+    if (ids.some((id) => !byId.has(id))) {
+      throw new HttpError(
+        400,
+        "category_unknown",
+        "Eine Kategorie wurde nicht gefunden.",
+      );
+    }
+    return ids.map((id) => ({ id, name: byId.get(id) as string }));
+  }
+  return [await resolveCategory(admin, tenantId, actorId, input)];
+}
+
 async function saveCategory(
   admin: Admin,
   tenantId: string,
@@ -1129,7 +1195,7 @@ async function deleteCategory(admin: Admin, tenantId: string, id: string) {
     .from("shop_catalog_items")
     .select("id", { count: "exact", head: true })
     .eq("tenant_id", tenantId)
-    .eq("category_id", id);
+    .or(`category_id.eq.${id},category_ids.cs.{${id}}`);
   if (error) throw databaseError(error);
   if ((count ?? 0) > 0) {
     throw new HttpError(
@@ -1153,7 +1219,8 @@ async function saveCatalogItem(
   input: Row,
 ) {
   const name = text(input.name, 160);
-  const category = await resolveCategory(admin, tenantId, actorId, input);
+  const categories = await resolveCategories(admin, tenantId, actorId, input);
+  const category = categories[0];
   const articleNumber =
     input.articleNumber === null ||
     input.articleNumber === undefined ||
@@ -1269,6 +1336,7 @@ async function saveCatalogItem(
     description,
     category: category.name,
     category_id: category.id,
+    category_ids: categories.map((entry) => entry.id),
     article_number: articleNumber,
     supplier_url: supplierUrl,
     kind,

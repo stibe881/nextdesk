@@ -19122,3 +19122,9 @@ html:has(.embed-status-badge) body {
     grid-template-columns: 1fr;
   }
 }
+
+.shop__options-editor label.shop__stacked-label {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+}
