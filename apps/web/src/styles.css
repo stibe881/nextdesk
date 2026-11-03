@@ -18543,6 +18543,21 @@ html:has(.embed-status-badge) body {
   flex: 1;
   min-width: 140px;
 }
+/* Felder in gleich breiten Spalten, Eingabefelder bündig auf einer Linie. */
+.shop__row--grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 14px;
+  align-items: end;
+}
+.shop__row--grid > * {
+  min-width: 0;
+}
+@media (max-width: 520px) {
+  .shop__row--grid {
+    grid-template-columns: 1fr;
+  }
+}
 .shop__delivery {
   display: grid;
   gap: 6px;
@@ -19173,4 +19188,14 @@ html:has(.embed-status-badge) body {
   flex-direction: column;
   align-items: stretch;
   gap: 4px;
+}
+
+.shop__filters .shop__filter-check {
+  display: flex;
+  flex: 1 1 100%;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
 }
