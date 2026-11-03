@@ -490,7 +490,7 @@ async function listCatalog(
   let query = admin
     .from("shop_catalog_items")
     .select(
-      "id, inventory_item_id, image_paths, name, description, category, category_id, article_number, supplier_url, kind, requires_approval, max_quantity, max_loan_days, active, sort_order",
+      "id, inventory_item_id, image_paths, name, description, category, category_id, article_number, supplier_url, kind, requires_approval, max_quantity, max_loan_days, active, sort_order, option_item_ids",
     )
     .eq("tenant_id", tenantId)
     .order("category")
@@ -515,6 +515,7 @@ async function listCatalog(
     imageUrls(admin, tenantId, itemIds),
     signedPaths(admin, ownPaths),
   ]);
+  const listedIds = new Set(rows.map((row) => String(row.id)));
   return rows.map((row) => {
     const itemId = isUuid(row.inventory_item_id) ? row.inventory_item_id : null;
     const available = itemId ? stock.get(itemId) : undefined;
@@ -537,6 +538,11 @@ async function listCatalog(
       maxLoanDays: row.max_loan_days,
       active: row.active === true,
       sortOrder: row.sort_order,
+      // Optionen nur, soweit sie in dieser Liste stehen (im Shop: aktive).
+      optionItemIds: (Array.isArray(row.option_item_ids)
+        ? row.option_item_ids
+        : []
+      ).filter((id): id is string => isUuid(id) && listedIds.has(id)),
       inventoryItemId: itemId,
       // The shop's own photos win over the inventory photo.
       ...(() => {
@@ -1153,6 +1159,40 @@ async function saveCatalogItem(
       : isUuid(input.inventoryItemId)
         ? input.inventoryItemId
         : undefined;
+  const rawOptions =
+    input.optionItemIds === undefined || input.optionItemIds === null
+      ? []
+      : input.optionItemIds;
+  const optionItemIds = Array.isArray(rawOptions)
+    ? [...new Set(rawOptions.filter((id): id is string => isUuid(id)))]
+    : null;
+  if (
+    optionItemIds === null ||
+    (Array.isArray(rawOptions) && optionItemIds.length !== new Set(rawOptions).size) ||
+    optionItemIds.length > 10 ||
+    (isUuid(input.id) && optionItemIds.includes(input.id))
+  ) {
+    throw new HttpError(
+      400,
+      "invalid_request",
+      "Die Optionen des Artikels sind ungültig.",
+    );
+  }
+  if (optionItemIds.length > 0) {
+    const { data: found, error: optionError } = await admin
+      .from("shop_catalog_items")
+      .select("id")
+      .eq("tenant_id", tenantId)
+      .in("id", optionItemIds);
+    if (optionError) throw databaseError(optionError);
+    if ((found ?? []).length !== optionItemIds.length) {
+      throw new HttpError(
+        400,
+        "option_item_unknown",
+        "Eine gewählte Option wurde nicht gefunden.",
+      );
+    }
+  }
   if (
     !name ||
     Array.from(name).length < 2 ||
@@ -1202,6 +1242,7 @@ async function saveCatalogItem(
     max_quantity: maxQuantity,
     max_loan_days: kind === "loan" ? maxLoanDays : null,
     inventory_item_id: inventoryItemId,
+    option_item_ids: optionItemIds,
     active: input.active,
     sort_order: int(input.sortOrder, -1000, 1000) ?? 0,
     updated_at: new Date().toISOString(),

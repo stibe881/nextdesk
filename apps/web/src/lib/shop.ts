@@ -31,6 +31,8 @@ export type CatalogItem = {
   active: boolean;
   sortOrder: number;
   inventoryItemId: string | null;
+  /** Artikel, die beim Bestellen dieses Artikels dazugewählt werden können. */
+  optionItemIds?: string[];
   imageUrl: string | null;
   /** All photos to show (own photos, else the inventory photo). */
   imageUrls?: string[];

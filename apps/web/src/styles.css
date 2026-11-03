@@ -18362,7 +18362,8 @@ html:has(.embed-status-badge) body {
 }
 .shop__card {
   display: grid;
-  grid-template-rows: auto 1fr auto;
+  grid-template-rows: auto 1fr;
+  grid-auto-rows: auto;
   gap: 10px;
   border: 1px solid var(--border);
   border-radius: var(--radius-card);
@@ -18372,7 +18373,7 @@ html:has(.embed-status-badge) body {
 .shop__image {
   display: grid;
   place-items: center;
-  height: 160px;
+  aspect-ratio: 4 / 3;
   border-radius: calc(var(--radius-card) - 4px);
   background: var(--surface-subtle);
   color: var(--ink-muted);
@@ -18381,12 +18382,22 @@ html:has(.embed-status-badge) body {
 .shop__image {
   position: relative;
 }
+/* Das Feld ist immer ausgefüllt: derselbe Artikel erscheint weichgezeichnet
+   als Hintergrund, das Foto selbst bleibt vollständig sichtbar (contain). */
+.shop__image::before {
+  content: "";
+  position: absolute;
+  inset: -24px;
+  background: var(--shop-image) center / cover no-repeat;
+  filter: blur(22px) saturate(1.1);
+  opacity: 0.55;
+}
 /* Absolute so large photos never stretch the grid cell and get cropped. */
 .shop__image img {
   position: absolute;
-  inset: 8px;
-  width: calc(100% - 16px);
-  height: calc(100% - 16px);
+  inset: 6px;
+  width: calc(100% - 12px);
+  height: calc(100% - 12px);
   object-fit: contain;
 }
 .shop__card h2 {
@@ -18405,6 +18416,19 @@ html:has(.embed-status-badge) body {
   margin: 4px 0 0;
   color: var(--ink-muted);
   font-size: 14px;
+}
+.shop__description--clamped {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+}
+.shop__description-toggle {
+  display: block;
+  margin-top: 2px;
+  padding: 0;
+  font-size: 13px;
 }
 .shop__badges {
   display: flex;
@@ -18929,4 +18953,43 @@ html:has(.embed-status-badge) body {
 
 .ticket-knowledge-ai .data-caption {
   margin: 4px 0 0;
+}
+
+.shop__options,
+.shop__options-editor {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px 10px;
+}
+.shop__options legend,
+.shop__options-editor legend {
+  padding: 0 4px;
+  color: var(--ink-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+.shop__options label,
+.shop__options-editor label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+.shop__options small {
+  color: var(--ink-muted);
+}
+.shop__options-editor ul {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.shop__hint {
+  margin: 0;
+  color: var(--ink-muted);
+  font-size: 13px;
 }
