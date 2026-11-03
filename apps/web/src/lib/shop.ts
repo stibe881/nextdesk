@@ -30,6 +30,9 @@ export type CatalogItem = {
   description: string | null;
   category: string;
   categoryId?: string | null;
+  /** Alle Kategorien des Artikels (die erste ist die Hauptkategorie). */
+  categoryIds?: string[];
+  categoryNames?: string[];
   /** Internal, only sent to agents. */
   articleNumber?: string | null;
   /** Internal, only sent to agents. */
