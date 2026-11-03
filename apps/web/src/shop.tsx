@@ -1598,13 +1598,23 @@ function OptionsEditor({
 }) {
   const [query, setQuery] = useState("");
   const needle = query.trim().toLocaleLowerCase("de-CH");
-  const visible = needle
-    ? candidates.filter((other) =>
-        `${other.name} ${other.category} ${other.articleNumber ?? ""}`
-          .toLocaleLowerCase("de-CH")
-          .includes(needle),
-      )
-    : candidates;
+  const matches = (
+    needle
+      ? candidates.filter((other) =>
+          `${other.name} ${other.category} ${other.articleNumber ?? ""}`
+            .toLocaleLowerCase("de-CH")
+            .includes(needle),
+        )
+      : candidates
+  )
+    // Bereits gewählte Artikel zuerst, damit sie nicht verschwinden.
+    .sort(
+      (left, right) =>
+        Number(selected.includes(right.id)) -
+        Number(selected.includes(left.id)),
+    );
+  // Es werden höchstens fünf Artikel gezeigt; die Suche grenzt den Rest ein.
+  const visible = matches.slice(0, 5);
   return (
     <fieldset className="shop__options-editor">
       <legend>
@@ -1661,6 +1671,12 @@ function OptionsEditor({
               })}
             </ul>
           )}
+          {matches.length > visible.length ? (
+            <p className="shop__options-hint">
+              {matches.length - visible.length} weitere Artikel – Suche
+              eingrenzen, um sie zu finden.
+            </p>
+          ) : null}
         </>
       )}
     </fieldset>
