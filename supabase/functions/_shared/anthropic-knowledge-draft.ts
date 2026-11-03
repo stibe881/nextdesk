@@ -157,8 +157,21 @@ export function createKnowledgeDraftRequest(
       },
     ],
   };
-  if (!structured) return request;
+  // Drafting needs no extended reasoning, and thinking tokens would eat into
+  // the small output budget and truncate the JSON. Claude Sonnet 5.5 turns
+  // thinking off with "between_tools"; other models get the lowest effort.
+  const outputConfig: Record<string, unknown> = {};
+  if (model.startsWith("claude-sonnet-5-5")) {
+    request.thinking = { type: "between_tools" };
+  } else {
+    outputConfig.effort = "low";
+  }
+  if (!structured) {
+    if (Object.keys(outputConfig).length) request.output_config = outputConfig;
+    return request;
+  }
   request.output_config = {
+    ...outputConfig,
     format: {
       type: "json_schema",
       schema: {
@@ -175,6 +188,25 @@ export function createKnowledgeDraftRequest(
     },
   };
   return request;
+}
+
+async function providerErrorMessage(response: Response): Promise<{
+  type: string | null;
+  message: string | null;
+}> {
+  try {
+    const body = (await response.json()) as {
+      error?: { type?: unknown; message?: unknown };
+    };
+    return {
+      type: typeof body?.error?.type === "string" ? body.error.type : null,
+      message: typeof body?.error?.message === "string"
+        ? body.error.message.slice(0, 200)
+        : null,
+    };
+  } catch {
+    return { type: null, message: null };
+  }
 }
 
 export async function generateKnowledgeDraft(input: {
@@ -220,31 +252,43 @@ export async function generateKnowledgeDraft(input: {
     if (response.status === 400) {
       // Some models do not support structured outputs: retry once with a
       // plain JSON instruction; the answer is validated the same way.
-      console.error("anthropic_structured_output_rejected", { status: 400 });
-      await response.body?.cancel();
+      const first = await providerErrorMessage(response);
+      console.error("anthropic_structured_output_rejected", {
+        status: 400,
+        model,
+        errorMessage: first.message,
+      });
       response = await send(false);
     }
     if (!response.ok) {
-      // Status and error type only; never the prompt or provider message.
-      let errorType: string | null = null;
-      try {
-        const body = (await response.json()) as { error?: { type?: unknown } };
-        errorType = typeof body?.error?.type === "string"
-          ? body.error.type
-          : null;
-      } catch {
-        errorType = null;
-      }
+      // The provider message describes the request problem (e.g. billing or
+      // an invalid parameter) and never echoes the prompt; keep it short.
+      const detail = await providerErrorMessage(response);
       console.error("anthropic_request_failed", {
         status: response.status,
-        errorType,
+        model,
+        errorType: detail.type,
+        errorMessage: detail.message,
       });
       throw new AnthropicKnowledgeDraftError(
         classifyAnthropicResponseStatus(response.status),
         "Die KI-Aufbereitung ist im Moment nicht verfügbar.",
       );
     }
-    return parseKnowledgeDraft((await response.json()) as AnthropicResponse);
+    const payload = (await response.json()) as AnthropicResponse & {
+      stop_reason?: unknown;
+    };
+    try {
+      return parseKnowledgeDraft(payload);
+    } catch (error) {
+      console.error("anthropic_response_unusable", {
+        model,
+        stopReason: typeof payload?.stop_reason === "string"
+          ? payload.stop_reason
+          : null,
+      });
+      throw error;
+    }
   } catch (error) {
     if (error instanceof AnthropicKnowledgeDraftError) throw error;
     console.error("anthropic_request_error", {
