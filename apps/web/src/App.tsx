@@ -79,6 +79,7 @@ import {
   collapsedNavigationCategoryAttentionCount,
   navigationItemAttentionCount,
 } from "./lib/navigation-category-attention";
+import { timeOfDayGreeting } from "./lib/greeting";
 import { TicketComposer } from "./ticket-composer";
 import { TicketDetail } from "./ticket-detail";
 import { TenantAdminSettings } from "./tenant-admin-settings";
@@ -3319,6 +3320,15 @@ function AuthenticatedApp() {
   ]);
 
   const greetingName = operatorName.split(" ")[0] || operatorName;
+  const [greeting, setGreeting] = useState(() => timeOfDayGreeting());
+  useEffect(() => {
+    // Keep the greeting right when the page stays open across the day.
+    const timer = window.setInterval(
+      () => setGreeting(timeOfDayGreeting()),
+      5 * 60_000,
+    );
+    return () => window.clearInterval(timer);
+  }, []);
   const queueCount = (queueKey: string) =>
     view.tickets.filter((ticket) => ticket.queue === queueKey).length;
   const openTicketScope = (scope: TicketScope) => {
@@ -4314,7 +4324,7 @@ function AuthenticatedApp() {
               {personalSettingsOpen
                 ? "Persönliche Einstellungen"
                 : section === "Übersicht"
-                  ? `Guten Morgen, ${greetingName}.`
+                  ? `${greeting}, ${greetingName}.`
                   : section}
             </h1>
           </div>
