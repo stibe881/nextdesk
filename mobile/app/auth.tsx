@@ -143,10 +143,16 @@ export default function AuthScreen() {
           NATIVE_SSO_OPEN_TIMEOUT_MS,
         );
       });
-      const result = await Promise.race([
-        WebBrowser.openAuthSessionAsync(providerUrl, redirectTo),
-        timeoutResult,
-      ]);
+      // The timeout and Safari fallback below only exist for an iOS sheet
+      // that never appears. On Android the Custom Tab stays open while the
+      // person signs in, so the session is awaited without a timer (closing
+      // it after 8 seconds would end the sign-in midway).
+      const result = await (Platform.OS === "android"
+        ? WebBrowser.openAuthSessionAsync(providerUrl, redirectTo)
+        : Promise.race([
+            WebBrowser.openAuthSessionAsync(providerUrl, redirectTo),
+            timeoutResult,
+          ]));
       if (timeout) clearTimeout(timeout);
       if (result.type === "success") {
         // ASWebAuthenticationSession returns the callback directly and does not
@@ -160,7 +166,7 @@ export default function AuthScreen() {
         // without showing the sheet. Fall back only in that case to Safari;
         // the existing PKCE transaction and root deep-link handler complete
         // the return journey safely.
-        if (Date.now() - startedAt < 1_500) {
+        if (Platform.OS === "ios" && Date.now() - startedAt < 1_500) {
           setMessage("Die Anmeldung wird in Safari geöffnet …");
           await openNativeSsoInSafari(providerUrl);
           setMessage(
@@ -170,7 +176,12 @@ export default function AuthScreen() {
           setMessage("Die SSO-Anmeldung wurde abgebrochen.");
         }
       } else if (result.type === "timeout") {
-        WebBrowser.dismissAuthSession();
+        try {
+          // iOS only; not available on Android.
+          WebBrowser.dismissAuthSession();
+        } catch {
+          // Nothing to close.
+        }
         setMessage("Die Anmeldung wird in Safari geöffnet …");
         await openNativeSsoInSafari(providerUrl);
         setMessage(
