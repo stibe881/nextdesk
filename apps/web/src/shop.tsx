@@ -1994,14 +1994,14 @@ function CatalogManager({ tenantId }: { tenantId: string }) {
             </label>
             <fieldset className="shop__options-editor">
               <legend>Optionen (dazu bestellbar)</legend>
-              <p className="shop__hint">
+              <p className="shop__options-hint">
                 Diese Artikel werden beim Bestellen dieses Artikels zur Auswahl
                 angeboten, z. B. die Ladestation beim Headset. Sie bleiben
                 zusätzlich einzeln bestellbar.
               </p>
               {(items ?? []).filter((other) => other.id !== draft.id).length ===
               0 ? (
-                <p className="shop__hint">
+                <p className="shop__options-hint">
                   Es gibt noch keine weiteren Artikel.
                 </p>
               ) : (
