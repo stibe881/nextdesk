@@ -18389,15 +18389,16 @@ html:has(.embed-status-badge) body {
   position: absolute;
   inset: -24px;
   background: var(--shop-image) center / cover no-repeat;
-  filter: blur(22px) saturate(1.1);
-  opacity: 0.55;
+  filter: blur(18px);
 }
-/* Absolute so large photos never stretch the grid cell and get cropped. */
+/* Absolute so large photos never stretch the grid cell and get cropped. Das
+   Foto reicht bis an den Rand; was das Seitenverhältnis übrig lässt, füllt
+   der weichgezeichnete Hintergrund in denselben Farben. */
 .shop__image img {
   position: absolute;
-  inset: 6px;
-  width: calc(100% - 12px);
-  height: calc(100% - 12px);
+  inset: 0;
+  width: 100%;
+  height: 100%;
   object-fit: contain;
 }
 .shop__card h2 {
@@ -19000,4 +19001,17 @@ html:has(.embed-status-badge) body {
   margin: 0;
   color: var(--ink-muted);
   font-size: 13px;
+}
+
+.shop__options-editor .shop__search {
+  margin: 2px 0;
+}
+.shop__options-editor ul {
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+/* Foto passt fast zum 4:3-Feld: Feld ganz ausfüllen. */
+.shop__image img.shop__image-fill {
+  object-fit: cover;
 }

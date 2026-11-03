@@ -228,6 +228,7 @@ function ShopImageGallery({ item }: { item: CatalogItem }) {
         ? [item.imageUrl]
         : [];
   const [index, setIndex] = useState(0);
+  const [coverFit, setCoverFit] = useState(false);
   const current = Math.min(index, Math.max(0, urls.length - 1));
   if (urls.length === 0) {
     return (
@@ -241,7 +242,21 @@ function ShopImageGallery({ item }: { item: CatalogItem }) {
       className="shop__image shop__image--gallery"
       style={{ "--shop-image": `url("${urls[current]}")` } as CSSProperties}
     >
-      <img alt={`${item.name}, Foto ${current + 1}`} src={urls[current]} />
+      <img
+        alt={`${item.name}, Foto ${current + 1}`}
+        className={coverFit ? "shop__image-fill" : undefined}
+        onLoad={(event) => {
+          // Fast quadratische oder 4:3-Fotos füllen das Feld ganz aus (ein
+          // kleiner Rand wird beschnitten); breite oder hohe Fotos bleiben
+          // vollständig sichtbar, der Rest wird weichgezeichnet gefüllt.
+          const { naturalWidth, naturalHeight } = event.currentTarget;
+          if (naturalWidth > 0 && naturalHeight > 0) {
+            const ratio = naturalWidth / naturalHeight / (4 / 3);
+            setCoverFit(ratio >= 0.85 && ratio <= 1.2);
+          }
+        }}
+        src={urls[current]}
+      />
       {urls.length > 1 ? (
         <>
           <button
@@ -1422,6 +1437,87 @@ const EMPTY_DRAFT: Draft = {
   fallbackImageUrl: null,
 };
 
+/** Optionen eines Artikels wählen, mit Suche über alle Artikel. */
+function OptionsEditor({
+  candidates,
+  onChange,
+  selected,
+}: {
+  candidates: CatalogItem[];
+  onChange: (ids: string[]) => void;
+  selected: string[];
+}) {
+  const [query, setQuery] = useState("");
+  const needle = query.trim().toLocaleLowerCase("de-CH");
+  const visible = needle
+    ? candidates.filter((other) =>
+        `${other.name} ${other.category} ${other.articleNumber ?? ""}`
+          .toLocaleLowerCase("de-CH")
+          .includes(needle),
+      )
+    : candidates;
+  return (
+    <fieldset className="shop__options-editor">
+      <legend>
+        Optionen (dazu bestellbar)
+        {selected.length > 0 ? ` · ${selected.length} gewählt` : ""}
+      </legend>
+      <p className="shop__options-hint">
+        Diese Artikel werden beim Bestellen dieses Artikels zur Auswahl
+        angeboten, z. B. die Ladestation beim Headset. Sie bleiben zusätzlich
+        einzeln bestellbar.
+      </p>
+      {candidates.length === 0 ? (
+        <p className="shop__options-hint">
+          Es gibt noch keine weiteren Artikel.
+        </p>
+      ) : (
+        <>
+          <label className="shop__search">
+            <Search aria-hidden="true" size={16} />
+            <input
+              aria-label="Artikel für Optionen suchen"
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Artikel suchen …"
+              type="search"
+              value={query}
+            />
+          </label>
+          {visible.length === 0 ? (
+            <p className="shop__options-hint">Keine Artikel gefunden.</p>
+          ) : (
+            <ul>
+              {visible.map((other) => {
+                const checked = selected.includes(other.id);
+                return (
+                  <li key={other.id}>
+                    <label>
+                      <input
+                        checked={checked}
+                        disabled={!checked && selected.length >= 10}
+                        onChange={() =>
+                          onChange(
+                            checked
+                              ? selected.filter((id) => id !== other.id)
+                              : [...selected, other.id],
+                          )
+                        }
+                        type="checkbox"
+                      />
+                      {other.name}
+                      {!other.active ? " (ausgeblendet)" : ""}
+                    </label>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </>
+      )}
+    </fieldset>
+  );
+}
+
 function CatalogManager({ tenantId }: { tenantId: string }) {
   const [items, setItems] = useState<CatalogItem[] | null>(null);
   const [inventory, setInventory] = useState<InventoryOption[]>([]);
@@ -1992,53 +2088,15 @@ function CatalogManager({ tenantId }: { tenantId: string }) {
                 value={draft.name}
               />
             </label>
-            <fieldset className="shop__options-editor">
-              <legend>Optionen (dazu bestellbar)</legend>
-              <p className="shop__options-hint">
-                Diese Artikel werden beim Bestellen dieses Artikels zur Auswahl
-                angeboten, z. B. die Ladestation beim Headset. Sie bleiben
-                zusätzlich einzeln bestellbar.
-              </p>
-              {(items ?? []).filter((other) => other.id !== draft.id).length ===
-              0 ? (
-                <p className="shop__options-hint">
-                  Es gibt noch keine weiteren Artikel.
-                </p>
-              ) : (
-                <ul>
-                  {(items ?? [])
-                    .filter((other) => other.id !== draft.id)
-                    .map((other) => {
-                      const checked = draft.optionItemIds.includes(other.id);
-                      return (
-                        <li key={other.id}>
-                          <label>
-                            <input
-                              checked={checked}
-                              disabled={
-                                !checked && draft.optionItemIds.length >= 10
-                              }
-                              onChange={() =>
-                                setDraft({
-                                  ...draft,
-                                  optionItemIds: checked
-                                    ? draft.optionItemIds.filter(
-                                        (id) => id !== other.id,
-                                      )
-                                    : [...draft.optionItemIds, other.id],
-                                })
-                              }
-                              type="checkbox"
-                            />
-                            {other.name}
-                            {!other.active ? " (ausgeblendet)" : ""}
-                          </label>
-                        </li>
-                      );
-                    })}
-                </ul>
+            <OptionsEditor
+              candidates={(items ?? []).filter(
+                (other) => other.id !== draft.id,
               )}
-            </fieldset>
+              onChange={(optionItemIds) =>
+                setDraft({ ...draft, optionItemIds })
+              }
+              selected={draft.optionItemIds}
+            />
             <div className="shop__row">
               <label>
                 Kategorie
