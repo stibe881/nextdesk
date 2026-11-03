@@ -18605,10 +18605,18 @@ html:has(.embed-status-badge) body {
 }
 /* Artikelliste: Name und Kategorie bekommen Platz, die Angaben rechts nehmen nur, was sie brauchen. */
 .shop__order-row--article > :nth-child(3) {
-  text-align: right;
+  justify-self: start;
 }
 .shop__order-row--article > :nth-child(4) {
+  text-align: right;
+}
+.shop__order-row--article > :nth-child(5) {
   justify-self: end;
+}
+/* Art des Artikels: Ausleihe farbig, Bestellung ruhig */
+.shop__kind--loan {
+  background: var(--primary-soft);
+  color: var(--primary);
 }
 .shop__order-row--article:hover,
 .shop__order-row--article:focus-visible {
@@ -18616,7 +18624,7 @@ html:has(.embed-status-badge) body {
 }
 .shop__order-row--article {
   /* Feste Breiten rechts, damit alle Zeilen ihre Spalten auf gleicher Höhe haben. */
-  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) 250px 96px;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) 100px 210px 96px;
 }
 .shop__order-items {
   overflow: hidden;
