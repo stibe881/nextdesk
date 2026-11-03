@@ -1744,7 +1744,40 @@ function CatalogManager({ tenantId }: { tenantId: string }) {
         <ul className="shop__order-list">
           {items.map((item) => (
             <li key={item.id}>
-              <div className="shop__order-row shop__order-row--article">
+              <button
+                aria-label={`${item.name} bearbeiten`}
+                className="shop__order-row shop__order-row--article"
+                onClick={() => {
+                  setPhotoError("");
+                  setError("");
+                  setDraft({
+                    id: item.id,
+                    name: item.name,
+                    description: item.description ?? "",
+                    category: item.category,
+                    categoryId: item.categoryId ?? "",
+                    newCategory: "",
+                    articleNumber: item.articleNumber ?? "",
+                    supplierUrl: item.supplierUrl ?? "",
+                    kind: item.kind,
+                    requiresApproval: item.requiresApproval,
+                    maxQuantity: item.maxQuantity,
+                    maxLoanDays: item.maxLoanDays
+                      ? String(item.maxLoanDays)
+                      : "",
+                    inventoryItemId: item.inventoryItemId ?? "",
+                    optionItemIds: item.optionItemIds ?? [],
+                    active: item.active,
+                    sortOrder: item.sortOrder,
+                    images: item.images ?? [],
+                    removedImageIds: [],
+                    newFiles: [],
+                    fallbackImageUrl:
+                      (item.images ?? []).length === 0 ? item.imageUrl : null,
+                  });
+                }}
+                type="button"
+              >
                 <span className="shop__order-number">{item.name}</span>
                 <span className="shop__muted">{item.category}</span>
                 <span className="shop__muted">
@@ -1759,43 +1792,7 @@ function CatalogManager({ tenantId }: { tenantId: string }) {
                 >
                   {item.active ? "Im Shop" : "Ausgeblendet"}
                 </span>
-                <button
-                  aria-label={`${item.name} bearbeiten`}
-                  className="icon-button"
-                  onClick={() => {
-                    setPhotoError("");
-                    setError("");
-                    setDraft({
-                      id: item.id,
-                      name: item.name,
-                      description: item.description ?? "",
-                      category: item.category,
-                      categoryId: item.categoryId ?? "",
-                      newCategory: "",
-                      articleNumber: item.articleNumber ?? "",
-                      supplierUrl: item.supplierUrl ?? "",
-                      kind: item.kind,
-                      requiresApproval: item.requiresApproval,
-                      maxQuantity: item.maxQuantity,
-                      maxLoanDays: item.maxLoanDays
-                        ? String(item.maxLoanDays)
-                        : "",
-                      inventoryItemId: item.inventoryItemId ?? "",
-                      optionItemIds: item.optionItemIds ?? [],
-                      active: item.active,
-                      sortOrder: item.sortOrder,
-                      images: item.images ?? [],
-                      removedImageIds: [],
-                      newFiles: [],
-                      fallbackImageUrl:
-                        (item.images ?? []).length === 0 ? item.imageUrl : null,
-                    });
-                  }}
-                  type="button"
-                >
-                  <Pencil size={16} />
-                </button>
-              </div>
+              </button>
             </li>
           ))}
         </ul>

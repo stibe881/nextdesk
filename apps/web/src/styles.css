@@ -18588,8 +18588,12 @@ html:has(.embed-status-badge) body {
   font-weight: 700;
 }
 /* Artikelliste: Name und Kategorie bekommen Platz, die Angaben rechts nehmen nur, was sie brauchen. */
+.shop__order-row--article:hover,
+.shop__order-row--article:focus-visible {
+  border-color: var(--primary);
+}
 .shop__order-row--article {
-  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) auto auto auto;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) auto auto;
 }
 .shop__order-items {
   overflow: hidden;
