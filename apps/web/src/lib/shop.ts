@@ -123,6 +123,9 @@ export type OrderLine = {
   status:
     "open" | "reserved" | "backorder" | "issued" | "returned" | "cancelled";
   inventoryItemId: string | null;
+  /** Zeitraum dieses Ausleihartikels. */
+  loanFrom?: string | null;
+  loanUntil?: string | null;
   /** Cover photo of the article, if any. */
   imageUrl?: string | null;
   /** Internal, only sent to agents. */

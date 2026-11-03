@@ -19199,3 +19199,23 @@ html:has(.embed-status-badge) body {
   font-size: 14px;
   font-weight: 600;
 }
+
+/* Zeitraum direkt beim Ausleihartikel im Warenkorb */
+.shop__cart-lines li {
+  grid-template-columns: 1fr auto;
+}
+.shop__loan-dates {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding: 8px;
+  border-radius: 10px;
+  background: var(--surface-subtle);
+}
+.shop__loan-dates label {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 650;
+}
