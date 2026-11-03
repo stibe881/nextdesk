@@ -14,9 +14,7 @@ import {
 import {
   useCallback,
   useEffect,
-  useLayoutEffect,
   useMemo,
-  useRef,
   useState,
   type CSSProperties,
   type FormEvent,
@@ -178,45 +176,170 @@ export function Shop({ tenantId }: { tenantId: string }) {
   );
 }
 
-/** Beschreibung auf wenige Zeilen gekürzt, bei Bedarf aufklappbar. */
-function ShopDescription({ text }: { text: string }) {
-  const ref = useRef<HTMLParagraphElement>(null);
-  const [expanded, setExpanded] = useState(false);
-  const [truncated, setTruncated] = useState(false);
-
-  useLayoutEffect(() => {
-    const node = ref.current;
-    if (!node) return;
-    const measure = () => {
-      // Nur im gekürzten Zustand messen; aufgeklappt bleibt der Knopf stehen.
-      if (!expanded) setTruncated(node.scrollHeight > node.clientHeight + 1);
-    };
-    measure();
-    if (typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(measure);
-    observer.observe(node);
-    return () => observer.disconnect();
-  }, [text, expanded]);
-
+/** Lager-, Ausleih- und Freigabe-Hinweise eines Artikels. */
+function ShopBadges({ item }: { item: CatalogItem }) {
   return (
-    <>
-      <p
-        className={`shop__description${expanded ? "" : " shop__description--clamped"}`}
-        ref={ref}
-      >
-        {text}
-      </p>
-      {truncated || expanded ? (
-        <button
-          aria-expanded={expanded}
-          className="text-button shop__description-toggle"
-          onClick={() => setExpanded((current) => !current)}
-          type="button"
-        >
-          {expanded ? "Weniger anzeigen" : "Mehr anzeigen …"}
-        </button>
+    <div className="shop__badges">
+      <span className={`shop__stock shop__stock--${item.stockLevel}`}>
+        {STOCK_LABEL[item.stockLevel]}
+        {item.availableQuantity !== null ? ` (${item.availableQuantity})` : ""}
+      </span>
+      {item.kind === "loan" ? (
+        <span className="shop__badge">
+          Ausleihe
+          {item.maxLoanDays ? ` · max. ${item.maxLoanDays} Tage` : ""}
+        </span>
       ) : null}
-    </>
+      {item.requiresApproval ? (
+        <span className="shop__badge shop__badge--approval">Mit Freigabe</span>
+      ) : null}
+    </div>
+  );
+}
+
+/** «Dazu bestellen»: Optionen eines Artikels, die mit eingelegt werden. */
+function ShopOptionsPicker({
+  canOrder,
+  chosen,
+  item,
+  itemsById,
+  onChange,
+}: {
+  canOrder: boolean;
+  chosen: string[];
+  item: CatalogItem;
+  itemsById: Map<string, CatalogItem>;
+  onChange: (ids: string[]) => void;
+}) {
+  if (!(item.optionItemIds ?? []).some((id) => itemsById.has(id))) return null;
+  return (
+    <fieldset className="shop__options">
+      <legend>Dazu bestellen</legend>
+      {(item.optionItemIds ?? []).map((id) => {
+        const option = itemsById.get(id);
+        if (!option) return null;
+        const selected = chosen.includes(id);
+        return (
+          <label key={id}>
+            <input
+              checked={selected}
+              disabled={!canOrder}
+              onChange={() =>
+                onChange(
+                  selected
+                    ? chosen.filter((entry) => entry !== id)
+                    : [...chosen, id],
+                )
+              }
+              type="checkbox"
+            />
+            <span>
+              {option.name}
+              {option.stockLevel === "out_of_stock" ? (
+                <small> · {STOCK_LABEL.out_of_stock}</small>
+              ) : null}
+            </span>
+          </label>
+        );
+      })}
+    </fieldset>
+  );
+}
+
+/** Artikelseite wie in einem Online-Shop: Fotos, alle Angaben, Bestellen. */
+function ShopItemDialog({
+  canOrder,
+  chosen,
+  item,
+  itemsById,
+  onAdd,
+  onChangeOptions,
+  onClose,
+}: {
+  canOrder: boolean;
+  chosen: string[];
+  item: CatalogItem;
+  itemsById: Map<string, CatalogItem>;
+  onAdd: () => void;
+  onChangeOptions: (ids: string[]) => void;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+  const specs = SPEC_FIELDS.filter(({ key }) => item.specifications?.[key]);
+  return (
+    <div
+      className="contracts__dialog-backdrop"
+      onClick={onClose}
+      role="presentation"
+    >
+      <div
+        aria-labelledby="shop-item-title"
+        aria-modal="true"
+        className="contracts__editor-dialog shop__item-dialog"
+        onClick={(event) => event.stopPropagation()}
+        role="dialog"
+      >
+        <header className="panel-heading">
+          <div>
+            <p className="eyebrow">{item.category}</p>
+            <h2 id="shop-item-title">{item.name}</h2>
+          </div>
+          <button
+            aria-label="Schliessen"
+            className="icon-button"
+            onClick={onClose}
+            type="button"
+          >
+            <X size={18} />
+          </button>
+        </header>
+        <div className="shop__item-layout">
+          <ShopImageGallery item={item} />
+          <div className="shop__item-info">
+            <ShopBadges item={item} />
+            {item.description ? (
+              <p className="shop__item-description">{item.description}</p>
+            ) : null}
+            <ShopOptionsPicker
+              canOrder={canOrder}
+              chosen={chosen}
+              item={item}
+              itemsById={itemsById}
+              onChange={onChangeOptions}
+            />
+            <button
+              className="primary-button"
+              disabled={!canOrder}
+              onClick={onAdd}
+              type="button"
+            >
+              <Plus aria-hidden="true" size={16} />
+              {item.kind === "loan" ? "Ausleihen" : "In den Warenkorb"}
+              {chosen.length > 0 ? ` (+${chosen.length})` : ""}
+            </button>
+          </div>
+        </div>
+        {specs.length > 0 ? (
+          <section aria-label="Technische Angaben" className="shop__item-specs">
+            <h3>Technische Angaben</h3>
+            <dl>
+              {specs.map(({ key, label }) => (
+                <div key={key}>
+                  <dt>{label}</dt>
+                  <dd>{item.specifications?.[key]}</dd>
+                </div>
+              ))}
+            </dl>
+          </section>
+        ) : null}
+      </div>
+    </div>
   );
 }
 
@@ -355,6 +478,8 @@ function CatalogView({
     () => new Map((items ?? []).map((entry) => [entry.id, entry])),
     [items],
   );
+  const [detailId, setDetailId] = useState<string | null>(null);
+  const detailItem = detailId ? (itemsById.get(detailId) ?? null) : null;
 
   const add = (item: CatalogItem) => {
     const extras = (chosenOptions[item.id] ?? [])
@@ -417,103 +542,66 @@ function CatalogView({
         ) : (
           <ul className="shop__grid">
             {visible.map((item) => (
-              <li className="shop__card" key={item.id}>
+              <li
+                className="shop__card shop__card--clickable"
+                key={item.id}
+                onClick={(event) => {
+                  // Klick auf die Kachel öffnet den Artikel; Bedienelemente
+                  // innerhalb der Kachel behalten ihre eigene Funktion.
+                  if (
+                    (event.target as HTMLElement).closest(
+                      "button, input, label, a, summary, details",
+                    )
+                  ) {
+                    return;
+                  }
+                  setDetailId(item.id);
+                }}
+              >
                 <ShopImageGallery item={item} />
                 <div className="shop__card-body">
                   <p className="shop__category">{item.category}</p>
                   <h2>{item.name}</h2>
                   {item.description ? (
-                    <ShopDescription text={item.description} />
+                    <p className="shop__description shop__description--clamped">
+                      {item.description}
+                    </p>
                   ) : null}
-                  {SPEC_FIELDS.some(({ key }) => item.specifications?.[key]) ? (
-                    <details className="shop__specs">
-                      <summary>Technische Angaben</summary>
-                      <dl>
-                        {SPEC_FIELDS.filter(
-                          ({ key }) => item.specifications?.[key],
-                        ).map(({ key, label }) => (
-                          <div key={key}>
-                            <dt>{label}</dt>
-                            <dd>{item.specifications?.[key]}</dd>
-                          </div>
-                        ))}
-                      </dl>
-                    </details>
-                  ) : null}
-                  <div className="shop__badges">
-                    <span
-                      className={`shop__stock shop__stock--${item.stockLevel}`}
-                    >
-                      {STOCK_LABEL[item.stockLevel]}
-                      {item.availableQuantity !== null
-                        ? ` (${item.availableQuantity})`
-                        : ""}
-                    </span>
-                    {item.kind === "loan" ? (
-                      <span className="shop__badge">
-                        Ausleihe
-                        {item.maxLoanDays
-                          ? ` · max. ${item.maxLoanDays} Tage`
-                          : ""}
-                      </span>
-                    ) : null}
-                    {item.requiresApproval ? (
-                      <span className="shop__badge shop__badge--approval">
-                        Mit Freigabe
-                      </span>
-                    ) : null}
-                  </div>
+                  <ShopBadges item={item} />
                 </div>
-                {(item.optionItemIds ?? []).some((id) => itemsById.has(id)) ? (
-                  <fieldset className="shop__options">
-                    <legend>Dazu bestellen</legend>
-                    {(item.optionItemIds ?? []).map((id) => {
-                      const option = itemsById.get(id);
-                      if (!option) return null;
-                      const selected = (chosenOptions[item.id] ?? []).includes(
-                        id,
-                      );
-                      return (
-                        <label key={id}>
-                          <input
-                            checked={selected}
-                            disabled={!canOrder}
-                            onChange={() =>
-                              setChosenOptions((current) => {
-                                const list = current[item.id] ?? [];
-                                return {
-                                  ...current,
-                                  [item.id]: selected
-                                    ? list.filter((entry) => entry !== id)
-                                    : [...list, id],
-                                };
-                              })
-                            }
-                            type="checkbox"
-                          />
-                          <span>
-                            {option.name}
-                            {option.stockLevel === "out_of_stock" ? (
-                              <small> · {STOCK_LABEL.out_of_stock}</small>
-                            ) : null}
-                          </span>
-                        </label>
-                      );
-                    })}
-                  </fieldset>
-                ) : null}
-                <button
-                  className="secondary-button"
-                  disabled={!canOrder}
-                  onClick={() => add(item)}
-                  type="button"
-                >
-                  <Plus aria-hidden="true" size={16} />
-                  {item.kind === "loan" ? "Ausleihen" : "In den Warenkorb"}
-                  {(chosenOptions[item.id] ?? []).length > 0
-                    ? ` (+${(chosenOptions[item.id] ?? []).length})`
-                    : ""}
-                </button>
+                <ShopOptionsPicker
+                  canOrder={canOrder}
+                  chosen={chosenOptions[item.id] ?? []}
+                  item={item}
+                  itemsById={itemsById}
+                  onChange={(ids) =>
+                    setChosenOptions((current) => ({
+                      ...current,
+                      [item.id]: ids,
+                    }))
+                  }
+                />
+                <div className="shop__card-actions">
+                  <button
+                    className="secondary-button"
+                    onClick={() => setDetailId(item.id)}
+                    type="button"
+                  >
+                    Details
+                  </button>
+                  <button
+                    className="secondary-button"
+                    disabled={!canOrder}
+                    onClick={() => add(item)}
+                    type="button"
+                  >
+                    <Plus aria-hidden="true" size={16} />
+                    {item.kind === "loan" ? "Ausleihen" : "In den Warenkorb"}
+                    {(chosenOptions[item.id] ?? []).length > 0
+                      ? ` (+${(chosenOptions[item.id] ?? []).length})`
+                      : ""}
+                  </button>
+                </div>
               </li>
             ))}
           </ul>
@@ -526,6 +614,25 @@ function CatalogView({
         onOrdered={onOrdered}
         tenantId={tenantId}
       />
+      {detailItem ? (
+        <ShopItemDialog
+          canOrder={canOrder}
+          chosen={chosenOptions[detailItem.id] ?? []}
+          item={detailItem}
+          itemsById={itemsById}
+          onAdd={() => {
+            add(detailItem);
+            setDetailId(null);
+          }}
+          onChangeOptions={(ids) =>
+            setChosenOptions((current) => ({
+              ...current,
+              [detailItem.id]: ids,
+            }))
+          }
+          onClose={() => setDetailId(null)}
+        />
+      ) : null}
     </div>
   );
 }
