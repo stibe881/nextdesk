@@ -4213,33 +4213,36 @@ function AuthenticatedApp() {
               </section>
             );
           })}
-          {reportsNavigationItem ? (
-            <nav aria-label="Berichte" className="workplace-primary-navigation">
-              <button
-                aria-current={
-                  section === reportsNavigationItem.label ? "page" : undefined
-                }
-                className={
-                  section === reportsNavigationItem.label
-                    ? "nav-item active"
-                    : "nav-item"
-                }
-                onClick={() => {
-                  setPersonalSettingsOpen(false);
-                  setSection(reportsNavigationItem.label);
-                }}
-                type="button"
-              >
-                <reportsNavigationItem.Icon
-                  aria-hidden="true"
-                  size={18}
-                  strokeWidth={1.8}
-                />
-                {sectionDisplayLabel(reportsNavigationItem.label)}
-              </button>
-            </nav>
-          ) : null}
         </div>
+        {reportsNavigationItem ? (
+          <nav
+            aria-label="Berichte"
+            className="workplace-primary-navigation rail-reports-navigation"
+          >
+            <button
+              aria-current={
+                section === reportsNavigationItem.label ? "page" : undefined
+              }
+              className={
+                section === reportsNavigationItem.label
+                  ? "nav-item active"
+                  : "nav-item"
+              }
+              onClick={() => {
+                setPersonalSettingsOpen(false);
+                setSection(reportsNavigationItem.label);
+              }}
+              type="button"
+            >
+              <reportsNavigationItem.Icon
+                aria-hidden="true"
+                size={18}
+                strokeWidth={1.8}
+              />
+              {sectionDisplayLabel(reportsNavigationItem.label)}
+            </button>
+          </nav>
+        ) : null}
         <div className="rail-footer">
           {settingsNavigationItem && (
             <nav aria-label="Einstellungen" className="rail-footer__settings">

@@ -1146,6 +1146,15 @@ time,
   display: grid;
 }
 
+/* Berichte sits directly above the footer divider. */
+.rail-reports-navigation {
+  margin-top: auto;
+}
+
+.rail-reports-navigation + .rail-footer {
+  margin-top: 0;
+}
+
 .rail-footer__settings {
   display: grid;
 }
