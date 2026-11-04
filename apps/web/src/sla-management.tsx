@@ -1026,7 +1026,7 @@ export function SlaManagement({
                 )}
                 {options.priorities.map((priority) => (
                   <option key={priority.key} value={priority.key}>
-                    {priority.label} ({priority.key})
+                    {priority.label}
                   </option>
                 ))}
               </select>
@@ -1051,7 +1051,7 @@ export function SlaManagement({
                 )}
                 {options.departments.map((department) => (
                   <option key={department.id} value={department.id}>
-                    {department.name} ({department.key})
+                    {department.name}
                   </option>
                 ))}
               </select>

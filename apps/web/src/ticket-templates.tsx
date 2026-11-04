@@ -964,7 +964,7 @@ export function TicketTemplates({ tenantId }: { tenantId: string }) {
               <option value="">Keine Prioritätsvorgabe</option>
               {options.priorities.map((priority) => (
                 <option key={priority.key} value={priority.key}>
-                  {priority.label} ({priority.key})
+                  {priority.label}
                 </option>
               ))}
             </select>
