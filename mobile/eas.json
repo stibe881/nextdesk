@@ -9,6 +9,12 @@
       "ios": {
         "resourceClass": "m-medium"
       }
+    },
+    "preview": {
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      }
     }
   },
   "submit": {
