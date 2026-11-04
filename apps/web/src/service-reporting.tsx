@@ -7,6 +7,11 @@ import {
   type CSSProperties,
 } from "react";
 import { functionErrorMessage } from "./lib/function-error";
+import {
+  PREDEFINED_REPORTS,
+  PredefinedReports,
+  type PredefinedReportKey,
+} from "./service-report-dashboards";
 import { supabase } from "./lib/supabase";
 
 export type ServiceReportingBranding = {
@@ -442,6 +447,10 @@ const serviceReportingStyles = `
   .service-reporting h2 { font-size: 17px; letter-spacing: -.02em; }
   .service-reporting__intro, .service-reporting__period, .service-reporting__detail, .service-reporting__empty, .service-reporting__state p, .service-reporting__masthead-copy p { color: var(--muted); font-size: 13px; line-height: 1.5; margin: 7px 0 0; }
   .service-reporting__toolbar { justify-content: flex-end; }
+  .service-reporting__views { display: flex; flex-wrap: wrap; gap: 4px; border-bottom: 1px solid var(--border); }
+  .service-reporting__views button { appearance: none; border: 0; border-bottom: 3px solid transparent; background: transparent; color: var(--muted); cursor: pointer; font: inherit; font-size: 13px; font-weight: 700; margin-bottom: -1px; padding: 9px 12px; }
+  .service-reporting__views button[aria-selected="true"] { border-bottom-color: var(--report-primary); color: var(--report-primary); }
+  .service-reporting__views button:focus-visible { outline: 3px solid color-mix(in srgb, var(--report-primary) 28%, transparent); outline-offset: 2px; }
   .service-reporting__period-switcher { background: var(--surface-subtle); border: 1px solid var(--border); border-radius: 10px; display: inline-flex; flex-wrap: wrap; gap: 3px; padding: 3px; }
   .service-reporting__period-button, .service-reporting__toolbar-button { appearance: none; border: 1px solid transparent; border-radius: 7px; color: var(--text); cursor: pointer; font: inherit; font-size: 12px; font-weight: 700; min-height: 34px; padding: 7px 10px; }
   .service-reporting__period-button { background: transparent; }
@@ -532,6 +541,8 @@ export function ServiceReporting({
     distribution: true,
     time: true,
   });
+  const [view, setView] = useState<"metrics" | PredefinedReportKey>("overview");
+  const [refreshKey, setRefreshKey] = useState(0);
   const requestVersion = useRef(0);
   const reportStyle = {
     "--report-primary": branding.primaryColor,
@@ -540,6 +551,10 @@ export function ServiceReporting({
   } as CSSProperties;
 
   const loadReport = useCallback(async () => {
+    if (view !== "metrics") {
+      setRefreshKey((current) => current + 1);
+      return;
+    }
     const version = requestVersion.current + 1;
     requestVersion.current = version;
     setLoadState("loading");
@@ -563,9 +578,10 @@ export function ServiceReporting({
         status === 403 ? "forbidden" : status === 503 ? "unavailable" : "error",
       );
     }
-  }, [endsOn, period, startsOn, tenantId]);
+  }, [endsOn, period, startsOn, tenantId, view]);
 
   useEffect(() => {
+    if (view !== "metrics") return;
     void loadReport();
     return () => {
       requestVersion.current += 1;
@@ -601,11 +617,37 @@ export function ServiceReporting({
       style={reportStyle}
     >
       <style>{serviceReportingStyles}</style>
+      <nav
+        className="service-reporting__views"
+        aria-label="Bericht auswählen"
+        role="tablist"
+      >
+        {PREDEFINED_REPORTS.map((entry) => (
+          <button
+            aria-selected={view === entry.key}
+            key={entry.key}
+            onClick={() => setView(entry.key)}
+            role="tab"
+            type="button"
+          >
+            {entry.label}
+          </button>
+        ))}
+        <button
+          aria-selected={view === "metrics"}
+          onClick={() => setView("metrics")}
+          role="tab"
+          type="button"
+        >
+          Kennzahlen
+        </button>
+      </nav>
       <header className="service-reporting__header">
         <div>
           <p className="service-reporting__intro">
-            Kennzahlen des aktuellen Mandanten mit Vergleich zur unmittelbar
-            vorhergehenden Periode.
+            {view === "metrics"
+              ? "Kennzahlen des aktuellen Mandanten mit Vergleich zur unmittelbar vorhergehenden Periode."
+              : "Vordefinierte Berichte mit Vergleich zur unmittelbar vorhergehenden Periode. Jeder Bericht lässt sich als PDF exportieren."}
           </p>
         </div>
         <div className="service-reporting__toolbar">
@@ -644,16 +686,18 @@ export function ServiceReporting({
           >
             {isLoading ? "Wird geladen …" : "Aktualisieren"}
           </button>
-          <button
-            className="service-reporting__toolbar-button"
-            disabled={isLoading}
-            onClick={() => setBuilderOpen((current) => !current)}
-            type="button"
-          >
-            {builderOpen
-              ? "Zusammenstellung schliessen"
-              : "Bericht zusammenstellen"}
-          </button>
+          {view === "metrics" ? (
+            <button
+              className="service-reporting__toolbar-button"
+              disabled={isLoading}
+              onClick={() => setBuilderOpen((current) => !current)}
+              type="button"
+            >
+              {builderOpen
+                ? "Zusammenstellung schliessen"
+                : "Bericht zusammenstellen"}
+            </button>
+          ) : null}
         </div>
       </header>
 
@@ -704,7 +748,19 @@ export function ServiceReporting({
         </form>
       ) : null}
 
-      {builderOpen ? (
+      {view !== "metrics" ? (
+        <PredefinedReports
+          branding={{ logoUrl: branding.logoUrl, name: branding.name }}
+          endsOn={endsOn}
+          period={period}
+          refreshKey={refreshKey}
+          report={view}
+          startsOn={startsOn}
+          tenantId={tenantId}
+        />
+      ) : null}
+
+      {view === "metrics" && builderOpen ? (
         <section
           className="service-reporting__builder"
           aria-labelledby={`${headingId}-builder`}
@@ -763,13 +819,13 @@ export function ServiceReporting({
         </section>
       ) : null}
 
-      {isLoading ? (
+      {view === "metrics" && isLoading ? (
         <section className="service-reporting__state" aria-live="polite">
           <h2>Bericht wird geladen</h2>
           <p>Die aktuellen Kennzahlen werden abgerufen.</p>
         </section>
       ) : null}
-      {loadState === "forbidden" ? (
+      {view === "metrics" && loadState === "forbidden" ? (
         <section className="service-reporting__state" role="alert">
           <h2>Kein Zugriff auf Berichte</h2>
           <p>
@@ -778,7 +834,7 @@ export function ServiceReporting({
           </p>
         </section>
       ) : null}
-      {loadState === "unavailable" ? (
+      {view === "metrics" && loadState === "unavailable" ? (
         <section className="service-reporting__state" role="alert">
           <h2>Bericht derzeit nicht verfügbar</h2>
           <p>
@@ -787,7 +843,7 @@ export function ServiceReporting({
           </p>
         </section>
       ) : null}
-      {loadState === "error" ? (
+      {view === "metrics" && loadState === "error" ? (
         <section className="service-reporting__state" role="alert">
           <h2>Bericht konnte nicht geladen werden</h2>
           <p>
@@ -796,7 +852,7 @@ export function ServiceReporting({
         </section>
       ) : null}
 
-      {report && !isLoading ? (
+      {view === "metrics" && report && !isLoading ? (
         <>
           <section
             className="service-reporting__masthead"
