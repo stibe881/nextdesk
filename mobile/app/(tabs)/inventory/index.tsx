@@ -3,6 +3,9 @@ import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -20,6 +23,10 @@ import {
 import { useMobileNetworkStatus } from "@/components/offline-status";
 import {
   loadMobileInventory,
+  newInventoryRequestId,
+  parseReceiptQuantity,
+  postMobileInventoryReceipt,
+  type MobileInventoryItem,
   type MobileInventoryOverview,
 } from "@/lib/inventory";
 import { loadCurrentTenant } from "@/lib/nextdesk-client";
@@ -45,6 +52,18 @@ export default function InventoryScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
+  const [tenantId, setTenantId] = useState<string | null>(null);
+  const [receiptItem, setReceiptItem] = useState<MobileInventoryItem | null>(
+    null,
+  );
+  const [receiptQuantity, setReceiptQuantity] = useState("1");
+  const [receiptLocationId, setReceiptLocationId] = useState<string | null>(
+    null,
+  );
+  const [receiptRequestId, setReceiptRequestId] = useState("");
+  const [receiptSaving, setReceiptSaving] = useState(false);
+  const [receiptError, setReceiptError] = useState("");
+  const [notice, setNotice] = useState("");
 
   const load = useCallback(async (pull = false) => {
     setError("");
@@ -55,6 +74,7 @@ export default function InventoryScreen() {
     }
     try {
       const tenant = await loadCurrentTenant();
+      setTenantId(tenant.id);
       setOverview(await loadMobileInventory(tenant.id));
     } catch (nextError) {
       setOverview(null);
@@ -75,7 +95,13 @@ export default function InventoryScreen() {
       if (!checkingSession && !checkingFeatures && inventoryEnabled) {
         void load();
       }
-    }, [checkingFeatures, checkingSession, inventoryEnabled, load, recoveryEpoch]),
+    }, [
+      checkingFeatures,
+      checkingSession,
+      inventoryEnabled,
+      load,
+      recoveryEpoch,
+    ]),
   );
 
   const lowStock = useMemo(
@@ -92,6 +118,66 @@ export default function InventoryScreen() {
           .includes(needle),
     );
   }, [overview, query]);
+
+  const canReceive = overview?.canMove === true;
+  const locations = overview?.locations ?? [];
+
+  const openReceipt = (item: MobileInventoryItem) => {
+    setNotice("");
+    setReceiptError("");
+    setReceiptQuantity("1");
+    // Preselect the item's single storage location; otherwise the only one.
+    const matching = locations.find(
+      (entry) => entry.name === item.locationName,
+    );
+    setReceiptLocationId(
+      matching?.id ?? (locations.length === 1 ? locations[0].id : null),
+    );
+    setReceiptRequestId(newInventoryRequestId());
+    setReceiptItem(item);
+  };
+
+  const closeReceipt = () => {
+    if (receiptSaving) return;
+    setReceiptItem(null);
+  };
+
+  const submitReceipt = async () => {
+    if (!receiptItem || !tenantId || receiptSaving) return;
+    const quantity = parseReceiptQuantity(receiptQuantity);
+    if (quantity === null) {
+      setReceiptError("Bitte gib eine gültige Menge grösser als 0 ein.");
+      return;
+    }
+    if (!receiptLocationId) {
+      setReceiptError("Bitte wähle einen Lagerort.");
+      return;
+    }
+    setReceiptSaving(true);
+    setReceiptError("");
+    try {
+      await postMobileInventoryReceipt({
+        tenantId,
+        itemId: receiptItem.id,
+        locationId: receiptLocationId,
+        quantity,
+        clientRequestId: receiptRequestId,
+      });
+      setNotice(
+        `${quantityFormat.format(quantity)} ${receiptItem.unit} «${receiptItem.name}» eingebucht.`,
+      );
+      setReceiptItem(null);
+      void load(true);
+    } catch (nextError) {
+      setReceiptError(
+        nextError instanceof Error
+          ? nextError.message
+          : "Der Wareneingang konnte nicht gebucht werden.",
+      );
+    } finally {
+      setReceiptSaving(false);
+    }
+  };
 
   if (checkingSession || checkingFeatures) {
     return <MobileFeatureLoadingScreen />;
@@ -191,6 +277,23 @@ export default function InventoryScreen() {
           />
         </View>
 
+        {canReceive ? (
+          <Text style={styles.hint}>
+            Tippe auf einen Artikel, um einen Wareneingang einzubuchen.
+          </Text>
+        ) : null}
+
+        {notice ? (
+          <View style={styles.noticeCard}>
+            <Ionicons
+              color={colors.primaryText}
+              name="checkmark-circle-outline"
+              size={19}
+            />
+            <Text style={styles.noticeText}>{notice}</Text>
+          </View>
+        ) : null}
+
         {error ? (
           <View style={styles.errorCard}>
             <Ionicons
@@ -204,7 +307,21 @@ export default function InventoryScreen() {
 
         <View style={styles.list}>
           {items.map((item) => (
-            <View key={item.id} style={styles.itemCard}>
+            <Pressable
+              accessibilityHint={
+                canReceive
+                  ? "Öffnet den Wareneingang für diesen Artikel"
+                  : undefined
+              }
+              accessibilityRole={canReceive ? "button" : undefined}
+              disabled={!canReceive}
+              key={item.id}
+              onPress={() => openReceipt(item)}
+              style={({ pressed }) => [
+                styles.itemCard,
+                pressed && styles.pressed,
+              ]}
+            >
               <View style={styles.itemIcon}>
                 <Ionicons
                   color={colors.primaryText}
@@ -229,16 +346,14 @@ export default function InventoryScreen() {
                 <Text style={styles.quantityValue}>
                   {quantityFormat.format(item.availableQuantity)}
                 </Text>
-                <Text style={styles.quantityUnit}>
-                  {item.unit} verfügbar
-                </Text>
+                <Text style={styles.quantityUnit}>{item.unit} verfügbar</Text>
                 {item.reservedQuantity > 0 ? (
                   <Text style={styles.quantityUnit}>
                     {quantityFormat.format(item.reservedQuantity)} reserviert
                   </Text>
                 ) : null}
               </View>
-            </View>
+            </Pressable>
           ))}
           {!error && items.length === 0 ? (
             <View style={styles.emptyCard}>
@@ -256,6 +371,171 @@ export default function InventoryScreen() {
           ) : null}
         </View>
       </ScrollView>
+      <Modal
+        animationType="slide"
+        onRequestClose={closeReceipt}
+        presentationStyle="pageSheet"
+        visible={receiptItem !== null}
+      >
+        {receiptItem ? (
+          <KeyboardAvoidingView
+            behavior={Platform.OS === "ios" ? "padding" : undefined}
+            style={styles.sheet}
+          >
+            <View style={styles.sheetHeader}>
+              <Text style={styles.eyebrow}>WARENEINGANG</Text>
+              <Pressable
+                accessibilityLabel="Wareneingang schliessen"
+                accessibilityRole="button"
+                hitSlop={12}
+                onPress={closeReceipt}
+              >
+                <Ionicons color={colors.text} name="close" size={26} />
+              </Pressable>
+            </View>
+            <ScrollView
+              contentContainerStyle={styles.sheetContent}
+              keyboardShouldPersistTaps="handled"
+            >
+              <View>
+                <Text style={styles.sheetTitle}>{receiptItem.name}</Text>
+                <Text style={styles.itemMeta}>
+                  {[
+                    receiptItem.articleNumber,
+                    `${quantityFormat.format(receiptItem.physicalQuantity)} ${receiptItem.unit} an Lager`,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </Text>
+              </View>
+
+              {receiptItem.serialTracked ? (
+                <View style={styles.errorCard}>
+                  <Ionicons
+                    color={colors.error}
+                    name="information-circle-outline"
+                    size={19}
+                  />
+                  <Text style={styles.errorText}>
+                    Dieser Artikel wird mit Seriennummern geführt. Bitte buche
+                    ihn in der Webversion ein.
+                  </Text>
+                </View>
+              ) : (
+                <>
+                  <View style={styles.field}>
+                    <Text style={styles.fieldLabel}>
+                      Menge ({receiptItem.unit})
+                    </Text>
+                    <View style={styles.quantityRow}>
+                      <Pressable
+                        accessibilityLabel="Menge verringern"
+                        accessibilityRole="button"
+                        onPress={() => {
+                          const current =
+                            parseReceiptQuantity(receiptQuantity) ?? 1;
+                          setReceiptQuantity(String(Math.max(1, current - 1)));
+                        }}
+                        style={styles.stepButton}
+                      >
+                        <Ionicons color={colors.text} name="remove" size={22} />
+                      </Pressable>
+                      <TextInput
+                        accessibilityLabel="Menge"
+                        keyboardType="decimal-pad"
+                        onChangeText={setReceiptQuantity}
+                        selectTextOnFocus
+                        style={styles.quantityInput}
+                        value={receiptQuantity}
+                      />
+                      <Pressable
+                        accessibilityLabel="Menge erhöhen"
+                        accessibilityRole="button"
+                        onPress={() => {
+                          const current =
+                            parseReceiptQuantity(receiptQuantity) ?? 0;
+                          setReceiptQuantity(String(current + 1));
+                        }}
+                        style={styles.stepButton}
+                      >
+                        <Ionicons color={colors.text} name="add" size={22} />
+                      </Pressable>
+                    </View>
+                  </View>
+
+                  <View style={styles.field}>
+                    <Text style={styles.fieldLabel}>Lagerort</Text>
+                    {locations.length === 0 ? (
+                      <Text style={styles.itemMeta}>
+                        Es ist noch kein Lagerort erfasst. Lege ihn in der
+                        Webversion an.
+                      </Text>
+                    ) : (
+                      <View style={styles.locationList}>
+                        {locations.map((location) => {
+                          const selected = location.id === receiptLocationId;
+                          return (
+                            <Pressable
+                              accessibilityRole="radio"
+                              accessibilityState={{ selected }}
+                              key={location.id}
+                              onPress={() => setReceiptLocationId(location.id)}
+                              style={[
+                                styles.locationChip,
+                                selected && styles.locationChipSelected,
+                              ]}
+                            >
+                              <Text
+                                style={[
+                                  styles.locationChipText,
+                                  selected && styles.locationChipTextSelected,
+                                ]}
+                              >
+                                {location.code
+                                  ? `${location.name} (${location.code})`
+                                  : location.name}
+                              </Text>
+                            </Pressable>
+                          );
+                        })}
+                      </View>
+                    )}
+                  </View>
+
+                  {receiptError ? (
+                    <View style={styles.errorCard}>
+                      <Ionicons
+                        color={colors.error}
+                        name="alert-circle-outline"
+                        size={19}
+                      />
+                      <Text style={styles.errorText}>{receiptError}</Text>
+                    </View>
+                  ) : null}
+
+                  <Pressable
+                    accessibilityRole="button"
+                    disabled={receiptSaving || locations.length === 0}
+                    onPress={() => void submitReceipt()}
+                    style={({ pressed }) => [
+                      styles.primaryButton,
+                      (receiptSaving || locations.length === 0) &&
+                        styles.disabled,
+                      pressed && styles.pressed,
+                    ]}
+                  >
+                    {receiptSaving ? (
+                      <ActivityIndicator color={colors.onPrimary} />
+                    ) : (
+                      <Text style={styles.primaryButtonText}>Einbuchen</Text>
+                    )}
+                  </Pressable>
+                </>
+              )}
+            </ScrollView>
+          </KeyboardAvoidingView>
+        ) : null}
+      </Modal>
     </ScreenContainer>
   );
 }
@@ -293,6 +573,75 @@ const useStyles = makeThemedStyles((c) => ({
     padding: 13,
   },
   errorText: { color: c.error, flex: 1, fontSize: 12, lineHeight: 18 },
+  disabled: { opacity: 0.5 },
+  field: { gap: 8 },
+  fieldLabel: { color: c.foreground, fontSize: 13, fontWeight: "800" },
+  hint: { color: c.muted, fontSize: 12, marginTop: -6 },
+  locationChip: {
+    backgroundColor: c.surface,
+    borderColor: c.borderStrong,
+    borderRadius: 14,
+    borderWidth: 1,
+    paddingHorizontal: 13,
+    paddingVertical: 9,
+  },
+  locationChipSelected: { backgroundColor: c.primary, borderColor: c.primary },
+  locationChipText: { color: c.text, fontSize: 13, fontWeight: "700" },
+  locationChipTextSelected: { color: c.onPrimary },
+  locationList: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  noticeCard: {
+    alignItems: "flex-start",
+    backgroundColor: c.primarySoft,
+    borderRadius: 16,
+    flexDirection: "row",
+    gap: 9,
+    padding: 13,
+  },
+  noticeText: { color: c.primaryText, flex: 1, fontSize: 12, lineHeight: 18 },
+  pressed: { opacity: 0.75 },
+  primaryButton: {
+    alignItems: "center",
+    backgroundColor: c.primary,
+    borderRadius: 16,
+    justifyContent: "center",
+    minHeight: 52,
+    marginTop: 4,
+  },
+  primaryButtonText: { color: c.onPrimary, fontSize: 16, fontWeight: "800" },
+  quantityInput: {
+    backgroundColor: c.surface,
+    borderColor: c.borderStrong,
+    borderRadius: 14,
+    borderWidth: 1,
+    color: c.foreground,
+    flex: 1,
+    fontSize: 20,
+    fontWeight: "800",
+    paddingVertical: 10,
+    textAlign: "center",
+  },
+  quantityRow: { alignItems: "center", flexDirection: "row", gap: 10 },
+  sheet: { backgroundColor: c.background, flex: 1 },
+  sheetContent: { gap: 20, paddingBottom: 40, paddingHorizontal: 20 },
+  sheetHeader: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    paddingBottom: 8,
+    paddingHorizontal: 20,
+    paddingTop: 16,
+  },
+  sheetTitle: { color: c.foreground, fontSize: 24, fontWeight: "900" },
+  stepButton: {
+    alignItems: "center",
+    backgroundColor: c.surface,
+    borderColor: c.borderStrong,
+    borderRadius: 14,
+    borderWidth: 1,
+    height: 48,
+    justifyContent: "center",
+    width: 48,
+  },
   eyebrow: {
     color: c.muted,
     fontSize: 11,

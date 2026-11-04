@@ -1,3 +1,5 @@
+import * as Crypto from "expo-crypto";
+
 import { invokeNextDesk } from "@/lib/nextdesk-client";
 
 type RecordValue = Record<string, unknown>;
@@ -7,6 +9,7 @@ export type MobileInventoryItem = {
   name: string;
   articleNumber: string | null;
   unit: string;
+  serialTracked: boolean;
   physicalQuantity: number;
   reservedQuantity: number;
   availableQuantity: number;
@@ -15,8 +18,16 @@ export type MobileInventoryItem = {
   active: boolean;
 };
 
+export type MobileInventoryLocation = {
+  id: string;
+  name: string;
+  code: string | null;
+};
+
 export type MobileInventoryOverview = {
   items: MobileInventoryItem[];
+  locations: MobileInventoryLocation[];
+  canMove: boolean;
   lowStockIds: string[];
   criticalItemCount: number;
   openReservationCount: number;
@@ -47,6 +58,7 @@ function parseItem(value: unknown): MobileInventoryItem | null {
     articleNumber:
       typeof value.articleNumber === "string" ? value.articleNumber : null,
     unit: typeof value.unit === "string" ? value.unit : "Stk",
+    serialTracked: value.trackingMode === "serial",
     physicalQuantity: count(value.physicalQuantity),
     reservedQuantity: count(value.reservedQuantity),
     availableQuantity: count(value.availableQuantity),
@@ -86,11 +98,60 @@ export async function loadMobileInventory(
       })
     : [];
   const summary = isRecord(data.summary) ? data.summary : {};
+  const locations = Array.isArray(data.locations)
+    ? data.locations
+        .flatMap((entry): MobileInventoryLocation[] =>
+          isRecord(entry) &&
+          typeof entry.id === "string" &&
+          typeof entry.name === "string" &&
+          entry.active !== false
+            ? [
+                {
+                  id: entry.id,
+                  name: entry.name,
+                  code: typeof entry.code === "string" ? entry.code : null,
+                },
+              ]
+            : [],
+        )
+        .sort((left, right) => left.name.localeCompare(right.name, "de-CH"))
+    : [];
+  const permissions = isRecord(data.permissions) ? data.permissions : {};
   return {
     items,
+    locations,
+    canMove: permissions.canMove === true,
     lowStockIds,
     criticalItemCount: count(summary.criticalItemCount),
     openReservationCount: count(summary.openReservationCount),
     activeCountSessionCount: count(summary.activeCountSessionCount),
   };
 }
+
+export function newInventoryRequestId(): string {
+  return Crypto.randomUUID();
+}
+
+/**
+ * Books a goods receipt. The request id stays the same for retries of one
+ * booking so a lost response can never book the quantity twice.
+ */
+export async function postMobileInventoryReceipt(input: {
+  tenantId: string;
+  itemId: string;
+  locationId: string;
+  quantity: number;
+  clientRequestId: string;
+}): Promise<void> {
+  await invokeNextDesk<unknown>("inventory", {
+    type: "postMovement",
+    tenantId: input.tenantId,
+    movementType: "receipt",
+    itemId: input.itemId,
+    toLocationId: input.locationId,
+    quantity: input.quantity,
+    clientRequestId: input.clientRequestId,
+  });
+}
+
+export { parseReceiptQuantity } from "./inventory-quantity";
