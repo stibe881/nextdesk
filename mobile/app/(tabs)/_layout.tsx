@@ -14,7 +14,7 @@ export default function TabLayout() {
   const scanVisible = !loading && isEnabled("assets.management");
   const shopVisible = !loading && isEnabled("self_service.shop");
 
-  // Fachliche Reihenfolge ohne Home: Tickets, Services | Home | Wissen, Scan.
+  // Fachliche Reihenfolge ohne Home: Tickets, Shop | Home | Wissen, Scan.
   // Die Leiste verteilt die sichtbaren Einträge gleichmässig um das zentrierte Home.
   const tabItems: NextDeskTabItem[] = [
     {
@@ -22,12 +22,6 @@ export default function TabLayout() {
       label: "Tickets",
       icon: "ticket-outline",
       activeIcon: "ticket",
-    },
-    {
-      name: "services",
-      label: "Services",
-      icon: "cube-outline",
-      activeIcon: "cube",
     },
   ];
   if (shopVisible) {
@@ -65,7 +59,7 @@ export default function TabLayout() {
         tabBar={(props) => <NextDeskTabBar {...props} items={tabItems} />}
       >
         <Tabs.Screen name="tickets" options={{ title: "Tickets" }} />
-        <Tabs.Screen name="services" options={{ title: "Services" }} />
+        <Tabs.Screen name="services" options={{ href: null }} />
         <Tabs.Screen name="assets" options={{ href: null }} />
         <Tabs.Screen name="inventory" options={{ href: null }} />
         <Tabs.Screen
