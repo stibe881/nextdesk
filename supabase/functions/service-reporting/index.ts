@@ -539,7 +539,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       context.supabaseAdmin
         .from("tickets")
         .select(
-          "id, assigned_team_id, created_at, first_responded_at, resolved_at, status:ticket_statuses(key, label, is_closed), priority:ticket_priorities(key, label), department:departments(id, name)",
+          "id, assigned_team_id, created_at, first_responded_at, resolved_at, status:ticket_statuses!tickets_status_tenant_fk(key, label, is_closed), priority:ticket_priorities!tickets_priority_tenant_fk(key, label), department:departments!tickets_department_tenant_fk(id, name)",
         )
         .eq("tenant_id", action.tenantId)
         .gte("created_at", since)
@@ -586,7 +586,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     ),
     context.supabaseAdmin
       .from("team_memberships")
-      .select("team_id, teams!inner(active, department_id)")
+      .select("team_id, teams!team_memberships_team_tenant_fk!inner(active, department_id)")
       .eq("tenant_id", action.tenantId)
       .eq("user_id", actorId),
     context.supabaseAdmin
