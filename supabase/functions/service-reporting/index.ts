@@ -1,13 +1,22 @@
 import { withSupabase } from "@supabase/server";
 import { resolveTenantFeatureStates } from "../_shared/tenant-features.ts";
+import {
+  buildInsights,
+  type InsightComment,
+  type InsightRating,
+  type InsightTicket,
+} from "./insights.ts";
 
 type Period = "7d" | "30d" | "90d" | "custom";
 type Action = {
-  type: "getReport";
+  type: "getReport" | "getInsights";
   tenantId: string;
   period: Period;
   startsOn?: string;
   endsOn?: string;
+  /** Only for getInsights: narrow to one agent group (team) or agent. */
+  teamId?: string;
+  agentId?: string;
 };
 type PeriodRange = {
   key: Period;
@@ -287,12 +296,26 @@ function hasOnlyKeys(value: Record<string, unknown>, keys: string[]): boolean {
 function parseAction(value: unknown): Action | null {
   if (
     !isRecord(value) ||
-    !hasOnlyKeys(value, ["type", "tenantId", "period", "startsOn", "endsOn"]) ||
-    value.type !== "getReport" ||
+    !hasOnlyKeys(value, [
+      "type",
+      "tenantId",
+      "period",
+      "startsOn",
+      "endsOn",
+      "teamId",
+      "agentId",
+    ]) ||
+    (value.type !== "getReport" && value.type !== "getInsights") ||
     !isUuid(value.tenantId) ||
     !isPeriod(value.period)
   ) {
     return null;
+  }
+  const filters: Pick<Action, "teamId" | "agentId"> = {};
+  for (const key of ["teamId", "agentId"] as const) {
+    if (value[key] === undefined) continue;
+    if (value.type !== "getInsights" || !isUuid(value[key])) return null;
+    filters[key] = (value[key] as string).toLowerCase();
   }
 
   if (value.period === "custom") {
@@ -303,10 +326,16 @@ function parseAction(value: unknown): Action | null {
       period: value.period,
       startsOn: value.startsOn,
       endsOn: value.endsOn,
+      ...filters,
     };
   }
   if (value.startsOn !== undefined || value.endsOn !== undefined) return null;
-  return { type: value.type, tenantId: value.tenantId, period: value.period };
+  return {
+    type: value.type,
+    tenantId: value.tenantId,
+    period: value.period,
+    ...filters,
+  };
 }
 
 function one<T>(value: unknown): T | null {
@@ -449,6 +478,248 @@ async function fetchAll<T>(
   }
 }
 
+const ID_CHUNK = 150;
+
+function chunks<T>(values: T[], size: number): T[][] {
+  const result: T[][] = [];
+  for (let index = 0; index < values.length; index += size) {
+    result.push(values.slice(index, index + size));
+  }
+  return result;
+}
+
+/** Teams whose tickets the caller may include, as in getReport. */
+async function readableTeamIds(
+  admin: any,
+  tenantId: string,
+  actorId: string,
+): Promise<Set<string> | null> {
+  const [teams, departments] = await Promise.all([
+    admin
+      .from("team_memberships")
+      .select(
+        "team_id, teams!team_memberships_team_tenant_fk!inner(active, department_id)",
+      )
+      .eq("tenant_id", tenantId)
+      .eq("user_id", actorId),
+    admin
+      .from("department_memberships")
+      .select("department_id")
+      .eq("tenant_id", tenantId)
+      .eq("user_id", actorId)
+      .eq("status", "active"),
+  ]);
+  if (teams.error || departments.error) return null;
+  const activeDepartmentIds = new Set(
+    (departments.data ?? []).flatMap((membership: any) =>
+      isUuid(membership.department_id) ? [membership.department_id] : [],
+    ),
+  );
+  return new Set(
+    (teams.data ?? []).flatMap((membership: any) => {
+      const team = one<{ active?: unknown; department_id?: unknown }>(
+        membership.teams,
+      );
+      return isUuid(membership.team_id) &&
+        team?.active === true &&
+        isUuid(team.department_id) &&
+        activeDepartmentIds.has(team.department_id)
+        ? [membership.team_id]
+        : [];
+    }),
+  );
+}
+
+async function insightsResponse(
+  request: Request,
+  admin: any,
+  actorId: string,
+  action: Action,
+  ranges: { current: PeriodRange; previous: PeriodRange },
+): Promise<Response> {
+  const since = ranges.previous.startsAt;
+  const until = ranges.current.endsAt;
+  const [ticketsResult, teamIds] = await Promise.all([
+    // Every ticket that existed and was not yet resolved at some point of the
+    // two periods: needed for the open backlog and the resolution metrics.
+    fetchAll<any>((from, to) =>
+      admin
+        .from("tickets")
+        .select(
+          "id, assigned_team_id, assigned_agent_id, requester_id, source, created_at, first_responded_at, resolved_at, response_due_at, resolution_due_at",
+        )
+        .eq("tenant_id", action.tenantId)
+        .lte("created_at", until)
+        .or(`resolved_at.is.null,resolved_at.gte.${since}`)
+        .order("created_at", { ascending: true })
+        .range(from, to),
+    ),
+    readableTeamIds(admin, action.tenantId, actorId),
+  ]);
+  if (ticketsResult.error) {
+    if (ticketsResult.error.code === "reporting_result_limit_exceeded") {
+      return response(
+        request,
+        { error: { code: "reporting_result_limit_exceeded" } },
+        413,
+      );
+    }
+    return reportingError(request, ticketsResult.error);
+  }
+  if (!teamIds) {
+    return response(
+      request,
+      { error: { code: "reporting_query_failed" } },
+      500,
+    );
+  }
+
+  const visible: InsightTicket[] = (ticketsResult.data ?? [])
+    .filter(
+      (row: any) =>
+        row.assigned_team_id === null || teamIds.has(row.assigned_team_id),
+    )
+    .map((row: any) => ({
+      id: row.id,
+      assignedTeamId: row.assigned_team_id ?? null,
+      assignedAgentId: row.assigned_agent_id ?? null,
+      requesterId: row.requester_id ?? null,
+      source: typeof row.source === "string" ? row.source : null,
+      createdAt: row.created_at,
+      firstRespondedAt: row.first_responded_at ?? null,
+      resolvedAt: row.resolved_at ?? null,
+      responseDueAt: row.response_due_at ?? null,
+      resolutionDueAt: row.resolution_due_at ?? null,
+    }));
+  const tickets = visible.filter(
+    (ticket) =>
+      (!action.teamId || ticket.assignedTeamId === action.teamId) &&
+      (!action.agentId || ticket.assignedAgentId === action.agentId),
+  );
+
+  const ids = tickets.map((ticket) => ticket.id);
+  const agentIds = [
+    ...new Set(
+      visible.flatMap((ticket) =>
+        ticket.assignedAgentId ? [ticket.assignedAgentId] : [],
+      ),
+    ),
+  ];
+  const [commentPages, ratingPages, teams, profiles] = await Promise.all([
+    Promise.all(
+      chunks(ids, ID_CHUNK).map((part) =>
+        fetchAll<any>((from, to) =>
+          admin
+            .from("ticket_comments")
+            .select("id, ticket_id, author_id, visibility, created_at")
+            .in("ticket_id", part)
+            .lte("created_at", until)
+            .order("id", { ascending: true })
+            .range(from, to),
+        ),
+      ),
+    ),
+    Promise.all(
+      chunks(ids, ID_CHUNK).map((part) =>
+        admin
+          .from("ticket_satisfaction")
+          .select("ticket_id, score, submitted_at")
+          .in("ticket_id", part)
+          .gte("submitted_at", since)
+          .lte("submitted_at", until),
+      ),
+    ),
+    admin.from("teams").select("id, name").eq("tenant_id", action.tenantId),
+    agentIds.length
+      ? admin
+          .from("user_profiles")
+          .select("id, display_name")
+          .in("id", agentIds)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+  const failed = [...commentPages, ...ratingPages, teams, profiles].find(
+    (page: any) => page.error,
+  );
+  if (failed) {
+    const error = (failed as any).error;
+    if (error?.code === "reporting_result_limit_exceeded") {
+      return response(
+        request,
+        { error: { code: "reporting_result_limit_exceeded" } },
+        413,
+      );
+    }
+    return reportingError(request, error);
+  }
+
+  const comments: InsightComment[] = commentPages.flatMap((page: any) =>
+    (page.data ?? []).map((row: any) => ({
+      ticketId: row.ticket_id,
+      authorId: row.author_id ?? null,
+      external: row.visibility === "external",
+      createdAt: row.created_at,
+    })),
+  );
+  const ratings: InsightRating[] = ratingPages.flatMap((page: any) =>
+    (page.data ?? []).flatMap((row: any) =>
+      typeof row.score === "number" && typeof row.submitted_at === "string"
+        ? [
+            {
+              ticketId: row.ticket_id,
+              score: row.score,
+              submittedAt: row.submitted_at,
+            },
+          ]
+        : [],
+    ),
+  );
+  const teamNames = new Map<string, string>(
+    (teams.data ?? []).map((team: any) => [team.id, team.name]),
+  );
+  const agentNames = new Map<string, string>(
+    (profiles.data ?? []).map((profile: any) => [
+      profile.id,
+      profile.display_name || "Unbekannter Agent",
+    ]),
+  );
+
+  const visibleTeamIds = [
+    ...new Set(
+      visible.flatMap((ticket) =>
+        ticket.assignedTeamId ? [ticket.assignedTeamId] : [],
+      ),
+    ),
+  ];
+  const byName = (a: { name: string }, b: { name: string }) =>
+    a.name.localeCompare(b.name, "de-CH");
+  return response(request, {
+    data: {
+      period: ranges.current,
+      comparisonPeriod: ranges.previous,
+      filters: {
+        teams: visibleTeamIds
+          .map((id) => ({ id, name: teamNames.get(id) ?? "Unbekanntes Team" }))
+          .sort(byName),
+        agents: agentIds
+          .map((id) => ({
+            id,
+            name: agentNames.get(id) ?? "Unbekannter Agent",
+          }))
+          .sort(byName),
+      },
+      ...buildInsights({
+        current: ranges.current,
+        previous: ranges.previous,
+        tickets,
+        comments,
+        ratings,
+        teamNames,
+        agentNames,
+      }),
+    },
+  });
+}
+
 const handler = withSupabase({ auth: "user" }, async (request, context) => {
   if (request.method !== "POST") {
     return response(request, { error: { code: "method_not_allowed" } }, 405);
@@ -527,6 +798,13 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
   const since = ranges.previous.startsAt;
   const until = ranges.current.endsAt;
 
+  if (action.type === "getInsights") {
+    return insightsResponse(request, context.supabaseAdmin, actorId, action, {
+      current: ranges.current,
+      previous: ranges.previous,
+    });
+  }
+
   const [
     ticketsResult,
     timeEntriesResult,
@@ -586,7 +864,9 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     ),
     context.supabaseAdmin
       .from("team_memberships")
-      .select("team_id, teams!team_memberships_team_tenant_fk!inner(active, department_id)")
+      .select(
+        "team_id, teams!team_memberships_team_tenant_fk!inner(active, department_id)",
+      )
       .eq("tenant_id", action.tenantId)
       .eq("user_id", actorId),
     context.supabaseAdmin
