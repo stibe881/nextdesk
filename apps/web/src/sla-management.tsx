@@ -1052,6 +1052,255 @@ export function SlaManagement({
     !options.priorities.some((priority) => priority.key === draft.priorityKey);
   const Heading = headingLevel;
 
+  const ruleForm = (
+    <form className="sla-management__form" onSubmit={saveRule}>
+      <label>
+        Name der Regel
+        <input
+          value={draft.name}
+          onChange={(event) =>
+            setDraft((current) => ({
+              ...current,
+              name: event.target.value,
+            }))
+          }
+          maxLength={160}
+          required
+          disabled={saving !== null}
+        />
+      </label>
+      <label className="sla-management__wide">
+        Definition & Auswirkung (Impact)
+        <textarea
+          value={draft.description}
+          onChange={(event) =>
+            setDraft((current) => ({
+              ...current,
+              description: event.target.value,
+            }))
+          }
+          maxLength={2000}
+          rows={3}
+          placeholder="Wann gilt diese Priorität? Z. B. Totalausfall eines geschäftskritischen Systems, kein Workaround möglich."
+          disabled={saving !== null}
+        />
+      </label>
+      <label>
+        Priorität
+        <select
+          value={draft.priorityKey}
+          onChange={(event) =>
+            setDraft((current) => ({
+              ...current,
+              priorityKey: event.target.value,
+            }))
+          }
+          required
+          disabled={saving !== null || options.priorities.length === 0}
+        >
+          <option value="">Priorität wählen</option>
+          {missingSelectedPriority && (
+            <option value={draft.priorityKey}>
+              {draft.priorityKey} (nicht mehr verfügbar)
+            </option>
+          )}
+          {options.priorities.map((priority) => (
+            <option key={priority.key} value={priority.key}>
+              {priority.label}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        Abteilung
+        <select
+          value={draft.departmentId}
+          onChange={(event) =>
+            setDraft((current) => ({
+              ...current,
+              departmentId: event.target.value,
+            }))
+          }
+          disabled={saving !== null}
+        >
+          <option value="">Mandantenweit</option>
+          {missingSelectedDepartment && (
+            <option value={draft.departmentId}>
+              {draft.departmentId} (nicht mehr aktiv)
+            </option>
+          )}
+          {options.departments.map((department) => (
+            <option key={department.id} value={department.id}>
+              {department.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        Servicezeit
+        <select
+          value={draft.serviceMode}
+          onChange={(event) =>
+            setDraft((current) => ({
+              ...current,
+              serviceMode: event.target.value as ServiceMode,
+            }))
+          }
+          disabled={saving !== null}
+        >
+          {SERVICE_MODE_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </label>
+      {draft.serviceMode !== "always" ? (
+        <div className="sla-management__wide sla-management__service-hours">
+          <fieldset className="sla-management__weekdays">
+            <legend>Wochentage</legend>
+            {WEEKDAYS.map((day) => (
+              <label className="sla-management__checkbox" key={day.value}>
+                <input
+                  type="checkbox"
+                  checked={draft.weekdays.includes(day.value)}
+                  onChange={(event) =>
+                    setDraft((current) => ({
+                      ...current,
+                      weekdays: event.target.checked
+                        ? [...current.weekdays, day.value]
+                        : current.weekdays.filter(
+                            (value) => value !== day.value,
+                          ),
+                    }))
+                  }
+                  disabled={saving !== null}
+                />
+                {day.label}
+              </label>
+            ))}
+          </fieldset>
+          <label>
+            Von
+            <input
+              type="time"
+              value={draft.serviceStart}
+              onChange={(event) =>
+                setDraft((current) => ({
+                  ...current,
+                  serviceStart: event.target.value,
+                }))
+              }
+              required
+              disabled={saving !== null}
+            />
+          </label>
+          <label>
+            Bis
+            <input
+              type="time"
+              value={draft.serviceEnd}
+              onChange={(event) =>
+                setDraft((current) => ({
+                  ...current,
+                  serviceEnd: event.target.value,
+                }))
+              }
+              required
+              disabled={saving !== null}
+            />
+          </label>
+        </div>
+      ) : null}
+      <label>
+        Reaktionszeit in Minuten
+        <input
+          type="number"
+          inputMode="numeric"
+          min="1"
+          max={MAX_SLA_MINUTES}
+          step="1"
+          value={draft.responseMinutes}
+          onChange={(event) =>
+            setDraft((current) => ({
+              ...current,
+              responseMinutes: event.target.value,
+            }))
+          }
+          required
+          disabled={saving !== null}
+        />
+      </label>
+      <label>
+        Lösungszeit in Minuten
+        <input
+          type="number"
+          inputMode="numeric"
+          min="1"
+          max={MAX_SLA_MINUTES}
+          step="1"
+          value={draft.resolutionMinutes}
+          onChange={(event) =>
+            setDraft((current) => ({
+              ...current,
+              resolutionMinutes: event.target.value,
+            }))
+          }
+          required
+          disabled={saving !== null}
+        />
+      </label>
+      <label className="sla-management__checkbox">
+        <input
+          type="checkbox"
+          checked={draft.active}
+          onChange={(event) =>
+            setDraft((current) => ({
+              ...current,
+              active: event.target.checked,
+            }))
+          }
+          disabled={saving !== null}
+        />
+        Regel aktiv
+      </label>
+      <p className="sla-management__form-help">
+        {draft.serviceMode === "always"
+          ? "Reaktions- und Lösungszeit laufen rund um die Uhr."
+          : "Reaktions- und Lösungszeit zählen nur innerhalb der Servicezeit (z. B. 1 Arbeitstag = 8 Std. = 480 Minuten)."}{" "}
+        {Number(draft.responseMinutes) > 0
+          ? `Reaktion: ${formatMinutes(Number(draft.responseMinutes))}.`
+          : ""}{" "}
+        {Number(draft.resolutionMinutes) > 0
+          ? `Lösung: ${formatMinutes(Number(draft.resolutionMinutes))}.`
+          : ""}
+      </p>
+      <p className="sla-management__form-help">
+        Eine mandantenweite Regel kann nur von Personen mit mandantenweiter
+        SLA-Berechtigung gespeichert werden.
+      </p>
+      <div className="sla-management__form-actions">
+        <button
+          className="sla-management__button"
+          type="button"
+          onClick={cancelEditing}
+          disabled={saving !== null}
+        >
+          Abbrechen
+        </button>
+        <button
+          className="sla-management__button sla-management__button--primary"
+          type="submit"
+          disabled={saving !== null || options.priorities.length === 0}
+        >
+          {saving === "create" || saving === "update"
+            ? "Wird gespeichert …"
+            : "Speichern"}
+        </button>
+      </div>
+    </form>
+  );
+
   return (
     <section
       className="sla-management"
@@ -1097,7 +1346,7 @@ export function SlaManagement({
           Person.
         </p>
       )}
-      {error && !readForbidden && (
+      {error && !readForbidden && !(isFormVisible && editingRuleId) && (
         <p
           className="sla-management__message sla-management__message--error"
           role="alert"
@@ -1114,262 +1363,15 @@ export function SlaManagement({
         </p>
       )}
 
-      {!readForbidden && isFormVisible && (
+      {!readForbidden && isFormVisible && editingRuleId === null && (
         <section
           className="sla-management__panel"
           aria-labelledby="sla-rule-form-heading"
         >
           <div className="sla-management__heading-row">
-            <h2 id="sla-rule-form-heading">
-              {editingRuleId ? "SLA-Regel bearbeiten" : "SLA-Regel erstellen"}
-            </h2>
+            <h2 id="sla-rule-form-heading">SLA-Regel erstellen</h2>
           </div>
-          <form className="sla-management__form" onSubmit={saveRule}>
-            <label>
-              Name der Regel
-              <input
-                value={draft.name}
-                onChange={(event) =>
-                  setDraft((current) => ({
-                    ...current,
-                    name: event.target.value,
-                  }))
-                }
-                maxLength={160}
-                required
-                disabled={saving !== null}
-              />
-            </label>
-            <label className="sla-management__wide">
-              Definition & Auswirkung (Impact)
-              <textarea
-                value={draft.description}
-                onChange={(event) =>
-                  setDraft((current) => ({
-                    ...current,
-                    description: event.target.value,
-                  }))
-                }
-                maxLength={2000}
-                rows={3}
-                placeholder="Wann gilt diese Priorität? Z. B. Totalausfall eines geschäftskritischen Systems, kein Workaround möglich."
-                disabled={saving !== null}
-              />
-            </label>
-            <label>
-              Priorität
-              <select
-                value={draft.priorityKey}
-                onChange={(event) =>
-                  setDraft((current) => ({
-                    ...current,
-                    priorityKey: event.target.value,
-                  }))
-                }
-                required
-                disabled={saving !== null || options.priorities.length === 0}
-              >
-                <option value="">Priorität wählen</option>
-                {missingSelectedPriority && (
-                  <option value={draft.priorityKey}>
-                    {draft.priorityKey} (nicht mehr verfügbar)
-                  </option>
-                )}
-                {options.priorities.map((priority) => (
-                  <option key={priority.key} value={priority.key}>
-                    {priority.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Abteilung
-              <select
-                value={draft.departmentId}
-                onChange={(event) =>
-                  setDraft((current) => ({
-                    ...current,
-                    departmentId: event.target.value,
-                  }))
-                }
-                disabled={saving !== null}
-              >
-                <option value="">Mandantenweit</option>
-                {missingSelectedDepartment && (
-                  <option value={draft.departmentId}>
-                    {draft.departmentId} (nicht mehr aktiv)
-                  </option>
-                )}
-                {options.departments.map((department) => (
-                  <option key={department.id} value={department.id}>
-                    {department.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Servicezeit
-              <select
-                value={draft.serviceMode}
-                onChange={(event) =>
-                  setDraft((current) => ({
-                    ...current,
-                    serviceMode: event.target.value as ServiceMode,
-                  }))
-                }
-                disabled={saving !== null}
-              >
-                {SERVICE_MODE_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            {draft.serviceMode !== "always" ? (
-              <div className="sla-management__wide sla-management__service-hours">
-                <fieldset className="sla-management__weekdays">
-                  <legend>Wochentage</legend>
-                  {WEEKDAYS.map((day) => (
-                    <label className="sla-management__checkbox" key={day.value}>
-                      <input
-                        type="checkbox"
-                        checked={draft.weekdays.includes(day.value)}
-                        onChange={(event) =>
-                          setDraft((current) => ({
-                            ...current,
-                            weekdays: event.target.checked
-                              ? [...current.weekdays, day.value]
-                              : current.weekdays.filter(
-                                  (value) => value !== day.value,
-                                ),
-                          }))
-                        }
-                        disabled={saving !== null}
-                      />
-                      {day.label}
-                    </label>
-                  ))}
-                </fieldset>
-                <label>
-                  Von
-                  <input
-                    type="time"
-                    value={draft.serviceStart}
-                    onChange={(event) =>
-                      setDraft((current) => ({
-                        ...current,
-                        serviceStart: event.target.value,
-                      }))
-                    }
-                    required
-                    disabled={saving !== null}
-                  />
-                </label>
-                <label>
-                  Bis
-                  <input
-                    type="time"
-                    value={draft.serviceEnd}
-                    onChange={(event) =>
-                      setDraft((current) => ({
-                        ...current,
-                        serviceEnd: event.target.value,
-                      }))
-                    }
-                    required
-                    disabled={saving !== null}
-                  />
-                </label>
-              </div>
-            ) : null}
-            <label>
-              Reaktionszeit in Minuten
-              <input
-                type="number"
-                inputMode="numeric"
-                min="1"
-                max={MAX_SLA_MINUTES}
-                step="1"
-                value={draft.responseMinutes}
-                onChange={(event) =>
-                  setDraft((current) => ({
-                    ...current,
-                    responseMinutes: event.target.value,
-                  }))
-                }
-                required
-                disabled={saving !== null}
-              />
-            </label>
-            <label>
-              Lösungszeit in Minuten
-              <input
-                type="number"
-                inputMode="numeric"
-                min="1"
-                max={MAX_SLA_MINUTES}
-                step="1"
-                value={draft.resolutionMinutes}
-                onChange={(event) =>
-                  setDraft((current) => ({
-                    ...current,
-                    resolutionMinutes: event.target.value,
-                  }))
-                }
-                required
-                disabled={saving !== null}
-              />
-            </label>
-            <label className="sla-management__checkbox">
-              <input
-                type="checkbox"
-                checked={draft.active}
-                onChange={(event) =>
-                  setDraft((current) => ({
-                    ...current,
-                    active: event.target.checked,
-                  }))
-                }
-                disabled={saving !== null}
-              />
-              Regel aktiv
-            </label>
-            <p className="sla-management__form-help">
-              {draft.serviceMode === "always"
-                ? "Reaktions- und Lösungszeit laufen rund um die Uhr."
-                : "Reaktions- und Lösungszeit zählen nur innerhalb der Servicezeit (z. B. 1 Arbeitstag = 8 Std. = 480 Minuten)."}{" "}
-              {Number(draft.responseMinutes) > 0
-                ? `Reaktion: ${formatMinutes(Number(draft.responseMinutes))}.`
-                : ""}{" "}
-              {Number(draft.resolutionMinutes) > 0
-                ? `Lösung: ${formatMinutes(Number(draft.resolutionMinutes))}.`
-                : ""}
-            </p>
-            <p className="sla-management__form-help">
-              Eine mandantenweite Regel kann nur von Personen mit
-              mandantenweiter SLA-Berechtigung gespeichert werden.
-            </p>
-            <div className="sla-management__form-actions">
-              <button
-                className="sla-management__button"
-                type="button"
-                onClick={cancelEditing}
-                disabled={saving !== null}
-              >
-                Abbrechen
-              </button>
-              <button
-                className="sla-management__button sla-management__button--primary"
-                type="submit"
-                disabled={saving !== null || options.priorities.length === 0}
-              >
-                {saving === "create" || saving === "update"
-                  ? "Wird gespeichert …"
-                  : "Speichern"}
-              </button>
-            </div>
-          </form>
+          {ruleForm}
         </section>
       )}
 
@@ -1398,63 +1400,92 @@ export function SlaManagement({
                   className={`sla-management__rule${rule.active ? "" : " sla-management__rule--inactive"}`}
                   key={rule.id}
                 >
-                  <div className="sla-management__heading-row">
-                    <h3 className="sla-management__rule-title">{rule.name}</h3>
-                    <span
-                      className={`sla-management__badge${rule.active ? "" : " sla-management__badge--muted"}`}
-                    >
-                      {rule.active ? "Aktiv" : "Archiviert"}
-                    </span>
-                  </div>
-                  <p className="sla-management__meta">
-                    <span>
-                      Priorität:{" "}
-                      {prioritiesByKey.get(rule.priorityKey) ??
-                        rule.priorityKey}
-                    </span>
-                    <span>
-                      Abteilung:{" "}
-                      {rule.departmentId
-                        ? (departmentsById.get(rule.departmentId) ??
-                          rule.departmentId)
-                        : "Mandantenweit"}
-                    </span>
-                    <span>Reaktion: {formatMinutes(rule.responseMinutes)}</span>
-                    <span>Lösung: {formatMinutes(rule.resolutionMinutes)}</span>
-                    <span>
-                      Servicezeit: {serviceHoursLabel(rule.serviceHours)}
-                    </span>
-                  </p>
-                  {rule.description ? (
-                    <p className="sla-management__reason">{rule.description}</p>
-                  ) : null}
-                  <p className="sla-management__meta">
-                    Zuletzt geändert:{" "}
-                    {formatDate(rule.updatedAt ?? rule.createdAt)}
-                  </p>
-                  {!manageForbidden && (
-                    <div className="sla-management__rule-actions">
-                      <button
-                        className="sla-management__button"
-                        type="button"
-                        onClick={() => startEdit(rule)}
-                        disabled={saving !== null}
-                      >
-                        Bearbeiten
-                      </button>
-                      {rule.active && (
-                        <button
-                          className="sla-management__button sla-management__button--danger"
-                          type="button"
-                          onClick={() => void archiveRule(rule)}
-                          disabled={saving !== null}
+                  {isFormVisible && editingRuleId === rule.id ? (
+                    <>
+                      <div className="sla-management__heading-row">
+                        <h3 className="sla-management__rule-title">
+                          {rule.name} bearbeiten
+                        </h3>
+                      </div>
+                      {error ? (
+                        <p
+                          className="sla-management__message sla-management__message--error"
+                          role="alert"
                         >
-                          {saving === "archive"
-                            ? "Wird archiviert …"
-                            : "Archivieren"}
-                        </button>
+                          {error}
+                        </p>
+                      ) : null}
+                      {ruleForm}
+                    </>
+                  ) : (
+                    <>
+                      <div className="sla-management__heading-row">
+                        <h3 className="sla-management__rule-title">
+                          {rule.name}
+                        </h3>
+                        <span
+                          className={`sla-management__badge${rule.active ? "" : " sla-management__badge--muted"}`}
+                        >
+                          {rule.active ? "Aktiv" : "Archiviert"}
+                        </span>
+                      </div>
+                      <p className="sla-management__meta">
+                        <span>
+                          Priorität:{" "}
+                          {prioritiesByKey.get(rule.priorityKey) ??
+                            rule.priorityKey}
+                        </span>
+                        <span>
+                          Abteilung:{" "}
+                          {rule.departmentId
+                            ? (departmentsById.get(rule.departmentId) ??
+                              rule.departmentId)
+                            : "Mandantenweit"}
+                        </span>
+                        <span>
+                          Reaktion: {formatMinutes(rule.responseMinutes)}
+                        </span>
+                        <span>
+                          Lösung: {formatMinutes(rule.resolutionMinutes)}
+                        </span>
+                        <span>
+                          Servicezeit: {serviceHoursLabel(rule.serviceHours)}
+                        </span>
+                      </p>
+                      {rule.description ? (
+                        <p className="sla-management__reason">
+                          {rule.description}
+                        </p>
+                      ) : null}
+                      <p className="sla-management__meta">
+                        Zuletzt geändert:{" "}
+                        {formatDate(rule.updatedAt ?? rule.createdAt)}
+                      </p>
+                      {!manageForbidden && (
+                        <div className="sla-management__rule-actions">
+                          <button
+                            className="sla-management__button"
+                            type="button"
+                            onClick={() => startEdit(rule)}
+                            disabled={saving !== null}
+                          >
+                            Bearbeiten
+                          </button>
+                          {rule.active && (
+                            <button
+                              className="sla-management__button sla-management__button--danger"
+                              type="button"
+                              onClick={() => void archiveRule(rule)}
+                              disabled={saving !== null}
+                            >
+                              {saving === "archive"
+                                ? "Wird archiviert …"
+                                : "Archivieren"}
+                            </button>
+                          )}
+                        </div>
                       )}
-                    </div>
+                    </>
                   )}
                 </li>
               ))}
