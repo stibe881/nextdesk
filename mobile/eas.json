@@ -9,12 +9,22 @@
       "ios": {
         "resourceClass": "m-medium"
       }
+    },
+    "preview": {
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      }
     }
   },
   "submit": {
     "production": {
       "ios": {
         "ascAppId": "6823887895"
+      },
+      "android": {
+        "track": "internal",
+        "releaseStatus": "draft"
       }
     }
   }

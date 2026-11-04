@@ -20,16 +20,82 @@ const webStorage: AsyncKeyValueStorage = {
   },
 };
 
+/**
+ * Android's SecureStore is only reliable for values up to ~2 KB per entry.
+ * An Entra (Microsoft) session carries provider tokens and is several KB, so
+ * storing it in one entry failed right after SSO sign-in. Larger values are
+ * split into numbered chunks; a small header entry records the chunk count.
+ */
+const CHUNK_SIZE = 1_800;
+const CHUNK_HEADER = "nextdesk-chunks:";
+
+const secureOptions = {
+  keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
+};
+
+function chunkKey(baseKey: string, index: number): string {
+  return `${baseKey}.chunk${index}`;
+}
+
+function chunkCount(header: string | null): number {
+  if (!header?.startsWith(CHUNK_HEADER)) return 0;
+  const count = Number(header.slice(CHUNK_HEADER.length));
+  return Number.isInteger(count) && count > 0 && count < 1_000 ? count : 0;
+}
+
+async function removeChunks(baseKey: string, count: number): Promise<void> {
+  for (let index = 0; index < count; index += 1) {
+    await SecureStore.deleteItemAsync(chunkKey(baseKey, index));
+  }
+}
+
 const nativeStorage: AsyncKeyValueStorage = {
   // Every key is normalised to the Keychain-safe character set first; the
   // readable app namespaces ("nextdesk:mobile:…") are otherwise rejected.
-  getItem: (key) => SecureStore.getItemAsync(toSecureStoreKey(key)),
-  setItem: async (key, value) => {
-    await SecureStore.setItemAsync(toSecureStoreKey(key), value, {
-      keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
-    });
+  getItem: async (key) => {
+    const baseKey = toSecureStoreKey(key);
+    const stored = await SecureStore.getItemAsync(baseKey);
+    const count = chunkCount(stored);
+    if (count === 0) return stored;
+    const parts: string[] = [];
+    for (let index = 0; index < count; index += 1) {
+      const part = await SecureStore.getItemAsync(chunkKey(baseKey, index));
+      if (part === null) return null;
+      parts.push(part);
+    }
+    return parts.join("");
   },
-  removeItem: (key) => SecureStore.deleteItemAsync(toSecureStoreKey(key)),
+  setItem: async (key, value) => {
+    const baseKey = toSecureStoreKey(key);
+    const previousCount = chunkCount(await SecureStore.getItemAsync(baseKey));
+    if (value.length <= CHUNK_SIZE) {
+      await SecureStore.setItemAsync(baseKey, value, secureOptions);
+      await removeChunks(baseKey, previousCount);
+      return;
+    }
+    const count = Math.ceil(value.length / CHUNK_SIZE);
+    for (let index = 0; index < count; index += 1) {
+      await SecureStore.setItemAsync(
+        chunkKey(baseKey, index),
+        value.slice(index * CHUNK_SIZE, (index + 1) * CHUNK_SIZE),
+        secureOptions,
+      );
+    }
+    await SecureStore.setItemAsync(
+      baseKey,
+      `${CHUNK_HEADER}${count}`,
+      secureOptions,
+    );
+    for (let index = count; index < previousCount; index += 1) {
+      await SecureStore.deleteItemAsync(chunkKey(baseKey, index));
+    }
+  },
+  removeItem: async (key) => {
+    const baseKey = toSecureStoreKey(key);
+    const count = chunkCount(await SecureStore.getItemAsync(baseKey));
+    await SecureStore.deleteItemAsync(baseKey);
+    await removeChunks(baseKey, count);
+  },
 };
 
 /**
