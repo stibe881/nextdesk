@@ -317,7 +317,7 @@ const NAVIGATION_CATEGORIES = [
     heading: "ARBEITSBEREICH",
     id: "navigation-category-workspace",
     navigationLabel: "Arbeitsbereich",
-    sectionLabels: ["Tickets", "Shop", "Fälle", "Berichte"],
+    sectionLabels: ["Tickets", "Shop", "Fälle"],
   },
   {
     heading: "PLANUNG & BETRIEB",
@@ -3977,6 +3977,8 @@ function AuthenticatedApp() {
       : label === "Shop"
         ? "neue Bestellungen warten auf Bearbeitung"
         : "Eintritte sind noch nicht in Bearbeitung";
+  // Berichte stands on its own below the categories.
+  const reportsNavigationItem = navigationItemsBySection.get("Berichte");
   const navigationGroups = NAVIGATION_CATEGORIES.map((category) => ({
     ...category,
     items: category.sectionLabels.flatMap((label) => {
@@ -4211,6 +4213,32 @@ function AuthenticatedApp() {
               </section>
             );
           })}
+          {reportsNavigationItem ? (
+            <nav aria-label="Berichte" className="workplace-primary-navigation">
+              <button
+                aria-current={
+                  section === reportsNavigationItem.label ? "page" : undefined
+                }
+                className={
+                  section === reportsNavigationItem.label
+                    ? "nav-item active"
+                    : "nav-item"
+                }
+                onClick={() => {
+                  setPersonalSettingsOpen(false);
+                  setSection(reportsNavigationItem.label);
+                }}
+                type="button"
+              >
+                <reportsNavigationItem.Icon
+                  aria-hidden="true"
+                  size={18}
+                  strokeWidth={1.8}
+                />
+                {sectionDisplayLabel(reportsNavigationItem.label)}
+              </button>
+            </nav>
+          ) : null}
         </div>
         <div className="rail-footer">
           {settingsNavigationItem && (
