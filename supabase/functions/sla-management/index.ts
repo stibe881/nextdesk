@@ -15,7 +15,17 @@ const DEFAULT_SERVICE_HOURS = {
   end: "17:00",
 };
 const SLA_RULE_SELECT =
-  "id, sla_profile_id, priority_key, response_minutes, resolution_minutes, ticket_sla_profiles!inner(id, tenant_id, name, active, service_hours, created_at, updated_at)";
+  "id, sla_profile_id, priority_key, response_minutes, resolution_minutes, ticket_sla_profiles!inner(id, tenant_id, name, description, active, service_hours, created_at, updated_at)";
+const SERVICE_MODES = ["always", "business", "extended"] as const;
+const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+type ServiceMode = (typeof SERVICE_MODES)[number];
+type ServiceHours = {
+  mode: ServiceMode;
+  weekdays: number[];
+  start: string;
+  end: string;
+};
 
 type Action =
   | { type: "listRules"; tenantId: string }
@@ -24,6 +34,8 @@ type Action =
       tenantId: string;
       ruleId?: string;
       name: string;
+      description?: string | null;
+      serviceHours?: ServiceHours;
       priorityKey: string;
       departmentId: string | null;
       responseMinutes: number;
@@ -42,6 +54,7 @@ type SlaProfile = {
   id: string;
   tenant_id: string;
   name: string;
+  description?: string | null;
   active: boolean;
   service_hours: unknown;
   created_at?: string;
@@ -107,6 +120,73 @@ function parseOptionalPriorityKey(
   return textInRange(value.priorityKey, 1, 63) ?? undefined;
 }
 
+function parseServiceHours(value: unknown): ServiceHours | null {
+  if (
+    !isRecord(value) ||
+    !hasOnlyKeys(value, ["mode", "weekdays", "start", "end"]) ||
+    !SERVICE_MODES.includes(value.mode as ServiceMode) ||
+    !Array.isArray(value.weekdays) ||
+    typeof value.start !== "string" ||
+    typeof value.end !== "string" ||
+    !TIME_PATTERN.test(value.start) ||
+    !TIME_PATTERN.test(value.end)
+  ) {
+    return null;
+  }
+  const weekdays = [
+    ...new Set(
+      value.weekdays.filter(
+        (day): day is number =>
+          typeof day === "number" &&
+          Number.isInteger(day) &&
+          day >= 1 &&
+          day <= 7,
+      ),
+    ),
+  ].sort((a, b) => a - b);
+  if (weekdays.length !== value.weekdays.length) return null;
+  if (
+    value.mode !== "always" &&
+    (weekdays.length === 0 || value.end <= value.start)
+  ) {
+    return null;
+  }
+  return {
+    mode: value.mode as ServiceMode,
+    weekdays,
+    start: value.start,
+    end: value.end,
+  };
+}
+
+/** Service hours as stored on a profile; profiles without a mode are 24/7. */
+function serviceHoursFromProfile(value: unknown): ServiceHours {
+  const record = isRecord(value) ? value : {};
+  const weekdays = Array.isArray(record.weekdays)
+    ? record.weekdays.filter(
+        (day): day is number =>
+          typeof day === "number" &&
+          Number.isInteger(day) &&
+          day >= 1 &&
+          day <= 7,
+      )
+    : DEFAULT_SERVICE_HOURS.weekdays;
+  return {
+    mode: SERVICE_MODES.includes(record.mode as ServiceMode)
+      ? (record.mode as ServiceMode)
+      : "always",
+    weekdays,
+    start:
+      typeof record.start === "string" && TIME_PATTERN.test(record.start)
+        ? record.start
+        : DEFAULT_SERVICE_HOURS.start,
+    end:
+      typeof record.end === "string" && TIME_PATTERN.test(record.end)
+        ? record.end
+        : DEFAULT_SERVICE_HOURS.end,
+  };
+}
+
 function parseAction(value: unknown): Action | null {
   if (
     !isRecord(value) ||
@@ -159,6 +239,8 @@ function parseAction(value: unknown): Action | null {
       "tenantId",
       "ruleId",
       "name",
+      "description",
+      "serviceHours",
       "priorityKey",
       "departmentId",
       "responseMinutes",
@@ -170,12 +252,25 @@ function parseAction(value: unknown): Action | null {
   }
 
   const name = textInRange(value.name, 1, 160);
+  const description =
+    value.description === undefined || value.description === null
+      ? null
+      : typeof value.description === "string" &&
+          value.description.trim().length <= 2000
+        ? value.description.trim() || null
+        : undefined;
+  const serviceHours =
+    value.serviceHours === undefined
+      ? undefined
+      : parseServiceHours(value.serviceHours);
   const priorityKey = parseOptionalPriorityKey(value);
   const departmentId = parseOptionalDepartmentId(value);
   const hasPriorityKey = "priorityKey" in value;
   const hasDepartmentId = "departmentId" in value;
   if (
     name === null ||
+    description === undefined ||
+    serviceHours === null ||
     (hasPriorityKey && priorityKey === undefined) ||
     (hasDepartmentId && departmentId === undefined) ||
     !isMinutes(value.responseMinutes) ||
@@ -191,6 +286,8 @@ function parseAction(value: unknown): Action | null {
     tenantId: value.tenantId,
     ...(isUuid(value.ruleId) ? { ruleId: value.ruleId } : {}),
     name,
+    ...("description" in value ? { description } : {}),
+    ...(serviceHours ? { serviceHours } : {}),
     // A missing priority uses the tenant's standard priority, which is still
     // resolved and validated against ticket_priorities below.
     priorityKey: priorityKey ?? DEFAULT_PRIORITY_KEY,
@@ -357,10 +454,14 @@ function departmentIdFromServiceHours(serviceHours: unknown): string | null {
 function serviceHoursForDepartment(
   currentServiceHours: unknown,
   departmentId: string | null,
+  override?: ServiceHours,
 ): Record<string, unknown> {
-  const serviceHours: Record<string, unknown> = isRecord(currentServiceHours)
-    ? { ...currentServiceHours }
-    : { ...DEFAULT_SERVICE_HOURS };
+  const serviceHours: Record<string, unknown> = {
+    ...(isRecord(currentServiceHours)
+      ? currentServiceHours
+      : DEFAULT_SERVICE_HOURS),
+    ...(override ?? {}),
+  };
   delete serviceHours.department_id;
   if (departmentId !== null) serviceHours.department_id = departmentId;
   return serviceHours;
@@ -372,6 +473,8 @@ function normalizeRule(rule: SlaRule) {
   return {
     id: rule.id,
     name: profile.name,
+    description: profile.description ?? null,
+    serviceHours: serviceHoursFromProfile(profile.service_hours),
     priorityKey: rule.priority_key,
     departmentId: departmentIdFromServiceHours(profile.service_hours),
     responseMinutes: rule.response_minutes,
@@ -536,8 +639,13 @@ async function saveRule(
       .insert({
         tenant_id: action.tenantId,
         name: action.name,
+        description: action.description ?? null,
         active: action.active,
-        service_hours: serviceHoursForDepartment(null, action.departmentId),
+        service_hours: serviceHoursForDepartment(
+          null,
+          action.departmentId,
+          action.serviceHours,
+        ),
       })
       .select("id")
       .single();
@@ -632,10 +740,14 @@ async function saveRule(
     .from("ticket_sla_profiles")
     .update({
       name: action.name,
+      ...(action.description !== undefined
+        ? { description: action.description }
+        : {}),
       active: action.active,
       service_hours: serviceHoursForDepartment(
         existingProfile.service_hours,
         action.departmentId,
+        action.serviceHours,
       ),
       updated_at: new Date().toISOString(),
     })

@@ -14,9 +14,20 @@ export type SlaManagementProps = {
   headingLevel?: "h1" | "h2";
 };
 
+type ServiceMode = "always" | "business" | "extended";
+
+type ServiceHours = {
+  mode: ServiceMode;
+  weekdays: number[];
+  start: string;
+  end: string;
+};
+
 type SlaRule = {
   id: string;
   name: string;
+  description: string | null;
+  serviceHours: ServiceHours;
   priorityKey: string;
   departmentId: string | null;
   responseMinutes: number;
@@ -74,6 +85,11 @@ type FormOptions = {
 
 type RuleDraft = {
   name: string;
+  description: string;
+  serviceMode: ServiceMode;
+  weekdays: number[];
+  serviceStart: string;
+  serviceEnd: string;
   priorityKey: string;
   departmentId: string;
   responseMinutes: string;
@@ -105,6 +121,8 @@ type ListEscalationsAction = {
 type SaveRuleFields = {
   tenantId: string;
   name: string;
+  description: string | null;
+  serviceHours: ServiceHours;
   priorityKey: string;
   departmentId: string | null;
   responseMinutes: number;
@@ -145,9 +163,70 @@ const MAX_SLA_MINUTES = 525600;
 const ESCALATION_LIMIT = 50;
 const EMPTY_OPTIONS: FormOptions = { departments: [], priorities: [] };
 
+const SERVICE_MODE_OPTIONS: { value: ServiceMode; label: string }[] = [
+  { value: "always", label: "24/7 oder Bereitschaft" },
+  { value: "business", label: "Geschäftszeiten" },
+  { value: "extended", label: "Geschäftszeiten (teilweise verlängert)" },
+];
+const WEEKDAYS = [
+  { value: 1, label: "Mo" },
+  { value: 2, label: "Di" },
+  { value: 3, label: "Mi" },
+  { value: 4, label: "Do" },
+  { value: 5, label: "Fr" },
+  { value: 6, label: "Sa" },
+  { value: 7, label: "So" },
+];
+const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+function serviceHoursLabel(hours: ServiceHours): string {
+  const mode =
+    SERVICE_MODE_OPTIONS.find((option) => option.value === hours.mode)?.label ??
+    "24/7 oder Bereitschaft";
+  if (hours.mode === "always") return mode;
+  const days = WEEKDAYS.filter((day) => hours.weekdays.includes(day.value))
+    .map((day) => day.label)
+    .join(", ");
+  return `${mode}: ${days}, ${hours.start}–${hours.end} Uhr`;
+}
+
+function parseServiceHours(value: unknown): ServiceHours {
+  const record = isRecord(value) ? value : {};
+  const mode =
+    record.mode === "business" || record.mode === "extended"
+      ? record.mode
+      : "always";
+  const weekdays = Array.isArray(record.weekdays)
+    ? record.weekdays.filter(
+        (day): day is number =>
+          typeof day === "number" &&
+          Number.isInteger(day) &&
+          day >= 1 &&
+          day <= 7,
+      )
+    : [1, 2, 3, 4, 5];
+  return {
+    mode,
+    weekdays,
+    start:
+      typeof record.start === "string" && TIME_PATTERN.test(record.start)
+        ? record.start
+        : "08:00",
+    end:
+      typeof record.end === "string" && TIME_PATTERN.test(record.end)
+        ? record.end
+        : "17:00",
+  };
+}
+
 function emptyDraft(): RuleDraft {
   return {
     name: "",
+    description: "",
+    serviceMode: "business",
+    weekdays: [1, 2, 3, 4, 5],
+    serviceStart: "08:00",
+    serviceEnd: "17:00",
     priorityKey: "",
     departmentId: "",
     responseMinutes: "",
@@ -191,6 +270,9 @@ function parseSlaRule(value: unknown): SlaRule | null {
   return {
     id: value.id,
     name: value.name,
+    description:
+      typeof value.description === "string" ? value.description : null,
+    serviceHours: parseServiceHours(value.serviceHours),
     priorityKey: value.priorityKey,
     departmentId: value.departmentId,
     responseMinutes: value.responseMinutes,
@@ -504,6 +586,21 @@ function validationError(draft: RuleDraft): string | null {
   if (draft.departmentId && !isUuid(draft.departmentId)) {
     return "Bitte wählen Sie eine gültige Abteilung aus.";
   }
+  if (draft.description.trim().length > 2000) {
+    return "Die Definition darf höchstens 2000 Zeichen lang sein.";
+  }
+  if (draft.serviceMode !== "always") {
+    if (draft.weekdays.length === 0) {
+      return "Bitte wählen Sie mindestens einen Wochentag für die Servicezeit.";
+    }
+    if (
+      !TIME_PATTERN.test(draft.serviceStart) ||
+      !TIME_PATTERN.test(draft.serviceEnd) ||
+      draft.serviceEnd <= draft.serviceStart
+    ) {
+      return "Bitte geben Sie eine gültige Servicezeit an (Ende nach Beginn).";
+    }
+  }
 
   const responseMinutes = Number(draft.responseMinutes);
   const resolutionMinutes = Number(draft.resolutionMinutes);
@@ -527,6 +624,11 @@ function validationError(draft: RuleDraft): string | null {
 function draftFromRule(rule: SlaRule): RuleDraft {
   return {
     name: rule.name,
+    description: rule.description ?? "",
+    serviceMode: rule.serviceHours.mode,
+    weekdays: rule.serviceHours.weekdays,
+    serviceStart: rule.serviceHours.start,
+    serviceEnd: rule.serviceHours.end,
     priorityKey: rule.priorityKey,
     departmentId: rule.departmentId ?? "",
     responseMinutes: String(rule.responseMinutes),
@@ -631,7 +733,31 @@ const slaManagementStyles = `
     letter-spacing: .05em;
     text-transform: uppercase;
   }
+  .sla-management__wide { grid-column: 1 / -1; }
+  .sla-management__service-hours {
+    display: grid;
+    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr);
+    gap: 14px;
+    align-items: end;
+  }
+  .sla-management__weekdays {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin: 0;
+    border: 0;
+    padding: 0;
+  }
+  .sla-management__weekdays legend {
+    margin-bottom: 6px;
+    color: #294858;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: .05em;
+    text-transform: uppercase;
+  }
   .sla-management__form input,
+  .sla-management__form textarea,
   .sla-management__form select {
     width: 100%;
     box-sizing: border-box;
@@ -701,6 +827,8 @@ const slaManagementStyles = `
   .sla-management__notice { margin: 10px 0 0; color: #687b84; font-size: 12px; }
   @media (max-width: 680px) {
     .sla-management__form { grid-template-columns: 1fr; }
+    .sla-management__service-hours { grid-template-columns: 1fr 1fr; }
+    .sla-management__weekdays { grid-column: 1 / -1; }
     .sla-management__form-actions { grid-column: auto; justify-content: flex-start; }
     .sla-management__panel { padding: 15px; }
   }
@@ -829,6 +957,13 @@ export function SlaManagement({
     const fields: SaveRuleFields = {
       tenantId,
       name: draft.name.trim(),
+      description: draft.description.trim() || null,
+      serviceHours: {
+        mode: draft.serviceMode,
+        weekdays: [...draft.weekdays].sort((a, b) => a - b),
+        start: draft.serviceStart,
+        end: draft.serviceEnd,
+      },
       priorityKey: draft.priorityKey.trim(),
       departmentId: draft.departmentId || null,
       responseMinutes: Number(draft.responseMinutes),
@@ -1005,6 +1140,22 @@ export function SlaManagement({
                 disabled={saving !== null}
               />
             </label>
+            <label className="sla-management__wide">
+              Definition & Auswirkung (Impact)
+              <textarea
+                value={draft.description}
+                onChange={(event) =>
+                  setDraft((current) => ({
+                    ...current,
+                    description: event.target.value,
+                  }))
+                }
+                maxLength={2000}
+                rows={3}
+                placeholder="Wann gilt diese Priorität? Z. B. Totalausfall eines geschäftskritischen Systems, kein Workaround möglich."
+                disabled={saving !== null}
+              />
+            </label>
             <label>
               Priorität
               <select
@@ -1026,7 +1177,7 @@ export function SlaManagement({
                 )}
                 {options.priorities.map((priority) => (
                   <option key={priority.key} value={priority.key}>
-                    {priority.label} ({priority.key})
+                    {priority.label}
                   </option>
                 ))}
               </select>
@@ -1051,11 +1202,87 @@ export function SlaManagement({
                 )}
                 {options.departments.map((department) => (
                   <option key={department.id} value={department.id}>
-                    {department.name} ({department.key})
+                    {department.name}
                   </option>
                 ))}
               </select>
             </label>
+            <label>
+              Servicezeit
+              <select
+                value={draft.serviceMode}
+                onChange={(event) =>
+                  setDraft((current) => ({
+                    ...current,
+                    serviceMode: event.target.value as ServiceMode,
+                  }))
+                }
+                disabled={saving !== null}
+              >
+                {SERVICE_MODE_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {draft.serviceMode !== "always" ? (
+              <div className="sla-management__wide sla-management__service-hours">
+                <fieldset className="sla-management__weekdays">
+                  <legend>Wochentage</legend>
+                  {WEEKDAYS.map((day) => (
+                    <label className="sla-management__checkbox" key={day.value}>
+                      <input
+                        type="checkbox"
+                        checked={draft.weekdays.includes(day.value)}
+                        onChange={(event) =>
+                          setDraft((current) => ({
+                            ...current,
+                            weekdays: event.target.checked
+                              ? [...current.weekdays, day.value]
+                              : current.weekdays.filter(
+                                  (value) => value !== day.value,
+                                ),
+                          }))
+                        }
+                        disabled={saving !== null}
+                      />
+                      {day.label}
+                    </label>
+                  ))}
+                </fieldset>
+                <label>
+                  Von
+                  <input
+                    type="time"
+                    value={draft.serviceStart}
+                    onChange={(event) =>
+                      setDraft((current) => ({
+                        ...current,
+                        serviceStart: event.target.value,
+                      }))
+                    }
+                    required
+                    disabled={saving !== null}
+                  />
+                </label>
+                <label>
+                  Bis
+                  <input
+                    type="time"
+                    value={draft.serviceEnd}
+                    onChange={(event) =>
+                      setDraft((current) => ({
+                        ...current,
+                        serviceEnd: event.target.value,
+                      }))
+                    }
+                    required
+                    disabled={saving !== null}
+                  />
+                </label>
+              </div>
+            ) : null}
             <label>
               Reaktionszeit in Minuten
               <input
@@ -1108,6 +1335,17 @@ export function SlaManagement({
               />
               Regel aktiv
             </label>
+            <p className="sla-management__form-help">
+              {draft.serviceMode === "always"
+                ? "Reaktions- und Lösungszeit laufen rund um die Uhr."
+                : "Reaktions- und Lösungszeit zählen nur innerhalb der Servicezeit (z. B. 1 Arbeitstag = 8 Std. = 480 Minuten)."}{" "}
+              {Number(draft.responseMinutes) > 0
+                ? `Reaktion: ${formatMinutes(Number(draft.responseMinutes))}.`
+                : ""}{" "}
+              {Number(draft.resolutionMinutes) > 0
+                ? `Lösung: ${formatMinutes(Number(draft.resolutionMinutes))}.`
+                : ""}
+            </p>
             <p className="sla-management__form-help">
               Eine mandantenweite Regel kann nur von Personen mit
               mandantenweiter SLA-Berechtigung gespeichert werden.
@@ -1183,7 +1421,13 @@ export function SlaManagement({
                     </span>
                     <span>Reaktion: {formatMinutes(rule.responseMinutes)}</span>
                     <span>Lösung: {formatMinutes(rule.resolutionMinutes)}</span>
+                    <span>
+                      Servicezeit: {serviceHoursLabel(rule.serviceHours)}
+                    </span>
                   </p>
+                  {rule.description ? (
+                    <p className="sla-management__reason">{rule.description}</p>
+                  ) : null}
                   <p className="sla-management__meta">
                     Zuletzt geändert:{" "}
                     {formatDate(rule.updatedAt ?? rule.createdAt)}
