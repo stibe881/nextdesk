@@ -20,10 +20,19 @@ export default function AuthCallbackScreen() {
   const [message, setMessage] = useState("Anmeldung wird abgeschlossen …");
 
   useEffect(() => {
+    // Native apps receive this route through the deep link that the browser
+    // hands back after SSO. React Native defines `window` but no
+    // `window.location`, so the code exchange is left to the root deep-link
+    // handler; the session navigator leaves this screen once signed in.
+    const isBrowser =
+      typeof window !== "undefined" && typeof window.location?.href === "string";
+    if (!isBrowser) {
+      const fallback = setTimeout(() => router.replace("/auth"), 20_000);
+      return () => clearTimeout(fallback);
+    }
     // A Manus preview is still a browser even when it is presented inside a
     // mobile shell. `Platform.OS` can therefore be native-looking there; the
     // browser global is the reliable capability check for an HTTPS callback.
-    if (typeof window === "undefined") return;
     if (window.opener && !window.opener.closed) {
       window.opener.postMessage(
         { type: WEB_SSO_CALLBACK_MESSAGE, callbackUrl: window.location.href },
