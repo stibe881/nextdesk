@@ -9,6 +9,11 @@ verify_jwt = true
 [functions.shop]
 verify_jwt = true
 
+# Users authenticate inside the function; the periodic wake-up uses a shared
+# secret header instead of a JWT.
+[functions.service-tasks]
+verify_jwt = false
+
 [functions.invite-tenant-member]
 verify_jwt = true
 

@@ -15,6 +15,7 @@ export type ApnsPayloadKind =
   | "contract_deadline"
   | "inventory_low_stock"
   | "shop"
+  | "service_task"
   | "summary"
   | "test";
 
@@ -30,6 +31,9 @@ export type ApnsPayloadInput = {
   shopEvent?: string;
   orderId?: string;
   orderNumber?: string;
+  serviceTaskEvent?: string;
+  serviceTaskTitle?: string;
+  occurrenceId?: string;
 };
 
 type ApnsConfiguration = {
@@ -279,6 +283,19 @@ function alertFor(input: ApnsPayloadInput): { title: string; body: string } {
           return { title: "Shop", body: `Neuigkeit zu Bestellung${number}.` };
       }
     }
+    case "service_task": {
+      const title =
+        input.serviceTaskTitle?.trim().slice(0, 80) || "Eine Serviceaufgabe";
+      return input.serviceTaskEvent === "overdue"
+        ? {
+            title: "Serviceaufgabe überfällig",
+            body: `${title} ist überfällig.`,
+          }
+        : {
+            title: "Serviceaufgabe heute fällig",
+            body: `${title} ist heute fällig.`,
+          };
+    }
     case "inventory_low_stock":
       return {
         title: "Lagerunterbestand",
@@ -321,6 +338,9 @@ export function buildApnsPayload(
   }
   if (input.kind === "shop" && input.orderId) {
     data.orderId = input.orderId;
+  }
+  if (input.kind === "service_task" && input.occurrenceId) {
+    data.occurrenceId = input.occurrenceId;
   }
   const aps: Record<string, unknown> = {
     alert,
