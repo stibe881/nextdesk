@@ -58,6 +58,10 @@ import {
   shouldLoadTicketCatalog,
 } from "./lib/ticket-catalog-search";
 import { supabase } from "./lib/supabase";
+import {
+  EmailSignatureFrame,
+  splitPlainTextSignature,
+} from "./email-signature-frame";
 import { TicketApprovals } from "./ticket-approvals";
 import { TicketComparison } from "./ticket-comparison";
 import { TicketCustomFields } from "./ticket-custom-fields";
@@ -2777,7 +2781,8 @@ function knowledgeErrorMessage(
 const AI_TICKET_DRAFT_ERRORS: Record<string, string> = {
   article_manage_denied:
     "Für einen Wissensartikel fehlt Ihnen die Berechtigung zur Wissensverwaltung.",
-  ai_feature_disabled: "Die KI-Unterstützung ist für diesen Mandanten nicht aktiviert.",
+  ai_feature_disabled:
+    "Die KI-Unterstützung ist für diesen Mandanten nicht aktiviert.",
   ai_provider_not_approved:
     "Die KI-Unterstützung ist für diesen Mandanten noch nicht freigegeben.",
   ai_purpose_not_approved:
@@ -2826,7 +2831,8 @@ async function requestAiTicketDraft(
   }
   return {
     articleId: (result as { articleId: string }).articleId,
-    linkedToTicket: (result as { linkedToTicket?: unknown }).linkedToTicket === true,
+    linkedToTicket:
+      (result as { linkedToTicket?: unknown }).linkedToTicket === true,
   };
 }
 
@@ -3426,11 +3432,11 @@ function KnowledgeSection({
               <div>
                 <strong>Wissensartikel mit KI erstellen</strong>
                 <p className="data-caption">
-                  Die KI analysiert Betreff, Beschreibung und Verlauf und
-                  legt daraus einen internen Entwurf an. Namen und
-                  Kontaktdaten werden vorher entfernt. Der Entwurf wird nicht
-                  veröffentlicht: Prüfen, bearbeiten und veröffentlichen Sie
-                  ihn anschliessend in der Wissensdatenbank.
+                  Die KI analysiert Betreff, Beschreibung und Verlauf und legt
+                  daraus einen internen Entwurf an. Namen und Kontaktdaten
+                  werden vorher entfernt. Der Entwurf wird nicht veröffentlicht:
+                  Prüfen, bearbeiten und veröffentlichen Sie ihn anschliessend
+                  in der Wissensdatenbank.
                 </p>
               </div>
               <div className="ticket-detail-actions">
@@ -3723,8 +3729,34 @@ export function TicketDetail({
     Record<string, TicketInlineImage>
   >({});
   const [inlineImagesLoading, setInlineImagesLoading] = useState(false);
+  const [emailSignatureHtml, setEmailSignatureHtml] = useState<string | null>(
+    null,
+  );
   const [selectedAttachmentFile, setSelectedAttachmentFile] =
     useState<File | null>(null);
+
+  useEffect(() => {
+    // The signature of an e-mail ticket is read directly under RLS
+    // (can_read_ticket); a missing row simply means "no HTML signature".
+    let active = true;
+    setEmailSignatureHtml(null);
+    if (!supabase) return;
+    void supabase
+      .from("ticket_email_signatures")
+      .select("html")
+      .eq("ticket_id", ticketId)
+      .maybeSingle()
+      .then(({ data, error: signatureError }) => {
+        if (!active || signatureError) return;
+        const html = (data as { html?: unknown } | null)?.html;
+        setEmailSignatureHtml(
+          typeof html === "string" && html.trim() ? html : null,
+        );
+      });
+    return () => {
+      active = false;
+    };
+  }, [ticketId]);
   const [commentImageAttachments, setCommentImageAttachments] = useState<
     Record<CommentVisibility, QueuedCommentImage[]>
   >({
@@ -6630,11 +6662,18 @@ export function TicketDetail({
         </div>
         <div className="ticket-detail-description">
           <TicketTextWithInlineImages
-            body={detail.ticket.description}
+            body={
+              emailSignatureHtml
+                ? splitPlainTextSignature(detail.ticket.description).message
+                : detail.ticket.description
+            }
             imagesByAttachmentId={inlineImagesByAttachmentId}
             loading={inlineImagesLoading}
             onImageError={refreshInlineImageAfterError}
           />
+          {emailSignatureHtml ? (
+            <EmailSignatureFrame html={emailSignatureHtml} />
+          ) : null}
         </div>
       </section>
 

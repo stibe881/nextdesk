@@ -8,7 +8,10 @@ import {
   prepareInboundBodyWithInlineMarkers,
   resolveInboundInlineMarkers,
 } from "./exchange-inline-media.ts";
-import { normalizeInboundEmailText } from "./exchange-inbound-text.ts";
+import {
+  corporateSignatureAnchors,
+  normalizeInboundEmailText,
+} from "./exchange-inbound-text.ts";
 import {
   normalizeCustomerTicketEmailBranding,
   renderCustomerTicketEmail,
@@ -1143,6 +1146,75 @@ async function enqueueAcknowledgement(
   });
 }
 
+/**
+ * Stores the sanitised HTML signature of a new e-mail ticket. Best effort: the
+ * module is loaded lazily and every failure is swallowed, so a problem with a
+ * signature can never block or retry the ticket itself.
+ */
+async function storeEmailSignature(
+  admin: Admin,
+  input: {
+    channel: Channel;
+    graphMessageId: string;
+    tenantId: string;
+    ticketId: string;
+    text: string | null;
+    attachments: InboundAttachment[];
+  },
+): Promise<void> {
+  if (!input.text) return;
+  try {
+    // Only fetch the HTML body when the text shows a corporate signature.
+    if (!corporateSignatureAnchors(input.text)) return;
+    const mailbox = graphMailboxIdentifier(
+      input.channel.mailbox_object_id,
+      input.channel.mailbox_address,
+    );
+    const response = await graphRequestForChannel<Row>(
+      admin,
+      input.channel,
+      `/users/${mailbox}/messages/${encodeURIComponent(input.graphMessageId)}?$select=uniqueBody,body`,
+      { headers: { Prefer: 'outlook.body-content-type="html"' } },
+    );
+    const graphBody = response.data;
+    const sourceHtml = record(graphBody.uniqueBody)
+      ? asString(graphBody.uniqueBody.content)
+      : record(graphBody.body)
+        ? asString(graphBody.body.content)
+        : null;
+    if (!sourceHtml) return;
+    const { extractEmailSignatureHtml } =
+      await import("./email-signature-html.ts");
+    const html = await extractEmailSignatureHtml({
+      html: sourceHtml,
+      text: input.text,
+      inlineImages: input.attachments.flatMap((attachment) =>
+        attachment.contentId
+          ? [
+              {
+                contentId: attachment.contentId,
+                contentType: attachment.contentType,
+                bytes: attachment.bytes,
+              },
+            ]
+          : [],
+      ),
+    });
+    if (!html) return;
+    const { error } = await admin.from("ticket_email_signatures").upsert({
+      ticket_id: input.ticketId,
+      tenant_id: input.tenantId,
+      html,
+    });
+    if (error) console.error("email_signature_store_failed", error.code);
+  } catch (error) {
+    console.error(
+      "email_signature_extract_failed",
+      error instanceof Error ? error.name : typeof error,
+    );
+  }
+}
+
 export async function processInboundMessage(
   admin: Admin,
   rawMessage: Message,
@@ -1339,6 +1411,20 @@ export async function processInboundMessage(
         ticketId,
         subject: subject(graph.subject),
         description: body,
+      });
+    }
+    if (kind === "new_ticket") {
+      await storeEmailSignature(admin, {
+        channel,
+        graphMessageId: message.graph_message_id,
+        tenantId: channel.tenant_id,
+        ticketId,
+        text: record(graph.uniqueBody)
+          ? asString(graph.uniqueBody.content)
+          : record(graph.body)
+            ? asString(graph.body.content)
+            : null,
+        attachments: inboundAttachments,
       });
     }
     if (inboundAttachments.length > 0) {
