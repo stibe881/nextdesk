@@ -780,7 +780,7 @@ function CorporateDesignPreview({
     { Icon: LayoutDashboard, label: "Übersicht" },
     { Icon: Ticket, label: "Tickets" },
     { Icon: BriefcaseBusiness, label: "Arbeitsplatz" },
-    { Icon: Box, label: "Services" },
+    { Icon: Box, label: "Dienste" },
     { Icon: Box, label: "Assets" },
     { Icon: BookOpen, label: "Wissensdatenbank" },
     { Icon: UserRound, label: "Mein Portal" },

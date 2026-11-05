@@ -783,7 +783,7 @@ function ServiceEditorFields({
         <span>
           <strong>Auf öffentlicher Statusseite anzeigen</strong>
           <small>
-            Der Service erscheint erst nach bewusster Freigabe der Statusseite
+            Der Dienst erscheint erst nach bewusster Freigabe der Statusseite
             unter Systemstatus.
           </small>
         </span>
@@ -798,7 +798,7 @@ function ServiceEditorFields({
             ? "Wird gespeichert …"
             : serviceForm.id
               ? "Änderungen speichern"
-              : "Service anlegen"}
+              : "Dienst anlegen"}
         </button>{" "}
         <button disabled={controlsDisabled} onClick={onCancel} type="button">
           Abbrechen
@@ -812,16 +812,16 @@ const CATALOG_PAGE_COPY: Readonly<
   Record<CatalogTab, { eyebrow: string; title: string; description: string }>
 > = {
   services: {
-    eyebrow: "Servicekatalog",
-    title: "Services",
+    eyebrow: "Dienstkatalog",
+    title: "Dienste",
     description:
-      "Verwalten Sie die aktiven Services dieses Mandanten und ihre Kritikalität.",
+      "Verwalten Sie die aktiven Dienste dieses Mandanten und ihre Kritikalität.",
   },
   assets: {
     eyebrow: "Asset Management",
     title: "Assets",
     description:
-      "Verwalten Sie die aktiven Assets dieses Mandanten und ihre Zuordnung zu Services.",
+      "Verwalten Sie die aktiven Assets dieses Mandanten und ihre Zuordnung zu Diensten.",
   },
   problems: {
     eyebrow: "Fallmanagement",
@@ -1233,7 +1233,7 @@ export function parseCatalog(value: unknown): {
 
 function parseSavedService(value: unknown): Service {
   const service = parseService(responseData(value).service);
-  if (!service) throw new Error("Der gespeicherte Service ist unvollständig.");
+  if (!service) throw new Error("Der gespeicherte Dienst ist unvollständig.");
   return service;
 }
 
@@ -2260,15 +2260,15 @@ export function ServiceAssets({
       resetServiceForm();
       setSuccess(
         editing
-          ? `Der Service „${saved.name}“ wurde gespeichert.`
-          : `Der Service „${saved.name}“ wurde angelegt.`,
+          ? `Der Dienst „${saved.name}“ wurde gespeichert.`
+          : `Der Dienst „${saved.name}“ wurde angelegt.`,
       );
     } catch (nextError) {
       setForbidden(errorStatus(nextError) === 403);
       setError(
         await apiErrorMessage(
           nextError,
-          "Der Service konnte nicht gespeichert werden.",
+          "Der Dienst konnte nicht gespeichert werden.",
         ),
       );
     } finally {
@@ -2376,13 +2376,13 @@ export function ServiceAssets({
         sortByName([...current.filter((item) => item.id !== saved.id), saved]),
       );
       setQuickEdit(null);
-      setSuccess(`Der Service „${saved.name}“ wurde gespeichert.`);
+      setSuccess(`Der Dienst „${saved.name}“ wurde gespeichert.`);
     } catch (nextError) {
       setForbidden(errorStatus(nextError) === 403);
       setError(
         await apiErrorMessage(
           nextError,
-          "Der Service konnte nicht gespeichert werden.",
+          "Der Dienst konnte nicht gespeichert werden.",
         ),
       );
     } finally {
@@ -2432,7 +2432,7 @@ export function ServiceAssets({
     if (!canArchiveServices(canManageServices, supportsArchivedServices)) {
       return;
     }
-    if (!window.confirm(`Service „${service.name}“ archivieren?`)) return;
+    if (!window.confirm(`Dienst „${service.name}“ archivieren?`)) return;
     const closesCurrentServiceEditor =
       serviceForm.id === service.id || inlineServiceEditorId === service.id;
     beginAction(`service:archive:${service.id}`);
@@ -2468,14 +2468,14 @@ export function ServiceAssets({
         );
       }
       setSuccess(
-        `Der Service „${service.name}“ wurde archiviert und von der öffentlichen Statusseite entfernt.`,
+        `Der Dienst „${service.name}“ wurde archiviert und von der öffentlichen Statusseite entfernt.`,
       );
     } catch (nextError) {
       setForbidden(errorStatus(nextError) === 403);
       setError(
         await apiErrorMessage(
           nextError,
-          "Der Service konnte nicht archiviert werden.",
+          "Der Dienst konnte nicht archiviert werden.",
         ),
       );
     } finally {
@@ -2484,7 +2484,7 @@ export function ServiceAssets({
   }
 
   async function restoreService(service: Service) {
-    if (!window.confirm(`Service „${service.name}“ wiederherstellen?`)) return;
+    if (!window.confirm(`Dienst „${service.name}“ wiederherstellen?`)) return;
     beginAction(`service:restore:${service.id}`);
     try {
       const restored = parseSavedService(
@@ -2496,7 +2496,7 @@ export function ServiceAssets({
         } satisfies ServiceRestoreRequest),
       );
       if (!restored.active) {
-        throw new Error("Der Service wurde nicht wiederhergestellt.");
+        throw new Error("Der Dienst wurde nicht wiederhergestellt.");
       }
       setArchivedServices((current) =>
         current.filter((item) => item.id !== restored.id),
@@ -2507,13 +2507,13 @@ export function ServiceAssets({
           restored,
         ]),
       );
-      setSuccess(`Der Service „${restored.name}“ wurde wiederhergestellt.`);
+      setSuccess(`Der Dienst „${restored.name}“ wurde wiederhergestellt.`);
     } catch (nextError) {
       setForbidden(errorStatus(nextError) === 403);
       setError(
         await apiErrorMessage(
           nextError,
-          "Der Service konnte nicht wiederhergestellt werden.",
+          "Der Dienst konnte nicht wiederhergestellt werden.",
         ),
       );
     } finally {
@@ -2809,7 +2809,7 @@ export function ServiceAssets({
           ) : (
             <>
               <p className="eyebrow">Servicekatalog</p>
-              <h2 id="service-assets-title">Services, Assets und Fälle</h2>
+              <h2 id="service-assets-title">Dienste, Assets und Fälle</h2>
             </>
           )}
           <p>
@@ -2828,7 +2828,7 @@ export function ServiceAssets({
                   ref={serviceCreateButtonRef}
                   type="button"
                 >
-                  Service erstellen
+                  Dienst erstellen
                 </button>
               ) : null}
               {onCreateMaintenance ? (
@@ -2932,8 +2932,8 @@ export function ServiceAssets({
         >
           <div className="panel-heading">
             <div>
-              {!fixedTab ? <h3>Services</h3> : null}
-              <p>{activeCount} passende Services</p>
+              {!fixedTab ? <h3>Dienste</h3> : null}
+              <p>{activeCount} passende Dienste</p>
             </div>
             {canManageServices && supportsServiceCategories ? (
               <button
@@ -3082,7 +3082,7 @@ export function ServiceAssets({
             </section>
           ) : null}
           <fieldset disabled={controlsDisabled}>
-            <legend>Services filtern</legend>
+            <legend>Dienste filtern</legend>
             <label>
               Suche
               <input
@@ -3123,21 +3123,21 @@ export function ServiceAssets({
                 }
                 type="checkbox"
               />
-              <span>Archivierte Services anzeigen</span>
+              <span>Archivierte Dienste anzeigen</span>
             </label>
           ) : null}
 
           {services.length === 0 ? (
             <p className="empty-state">
               Für diesen Mandanten sind noch keine aktiven Services vorhanden.
-              Erstellen Sie den ersten Service über die Kopfaktion.
+              Erstellen Sie den ersten Dienst über die Kopfaktion.
             </p>
           ) : filteredServices.length === 0 ? (
             <p className="empty-state">
               Keine Services entsprechen dem Filter.
             </p>
           ) : (
-            <ul aria-label="Aktive Services">
+            <ul aria-label="Aktive Dienste">
               {filteredServices.map((service) => (
                 <li key={service.id}>
                   <article
@@ -3437,7 +3437,7 @@ export function ServiceAssets({
                       >
                         <div className="service-assets__service-inline-editor-heading">
                           <div>
-                            <p className="eyebrow">Service bearbeiten</p>
+                            <p className="eyebrow">Dienst bearbeiten</p>
                             <h5
                               id={`service-assets-inline-editor-${service.id}`}
                             >
@@ -3520,7 +3520,7 @@ export function ServiceAssets({
                   Keine archivierten Services entsprechen dem Filter.
                 </p>
               ) : (
-                <ul aria-label="Archivierte Services">
+                <ul aria-label="Archivierte Dienste">
                   {filteredArchivedServices.map((service) => (
                     <li key={service.id}>
                       <article>
@@ -3592,13 +3592,13 @@ export function ServiceAssets({
                       <div>
                         <p className="eyebrow">
                           {serviceForm.id
-                            ? "Service bearbeiten"
-                            : "Neuer Service"}
+                            ? "Dienst bearbeiten"
+                            : "Neuer Dienst"}
                         </p>
                         <h3 id="service-assets-service-form-title">
                           {serviceForm.id
-                            ? "Service aktualisieren"
-                            : "Service anlegen"}
+                            ? "Dienst aktualisieren"
+                            : "Dienst anlegen"}
                         </h3>
                       </div>
                       <button
@@ -3692,13 +3692,13 @@ export function ServiceAssets({
               />
             </label>
             <label>
-              Service
+              Dienst
               <select
                 onChange={(event) => setAssetServiceFilter(event.target.value)}
                 value={assetServiceFilter}
               >
-                <option value="all">Alle Services</option>
-                <option value="unassigned">Ohne Service</option>
+                <option value="all">Alle Dienste</option>
+                <option value="unassigned">Ohne Dienst</option>
                 {services.map((service) => (
                   <option key={service.id} value={service.id}>
                     {service.name}
@@ -3751,7 +3751,7 @@ export function ServiceAssets({
                       <p>Seriennummer: {asset.serial_number}</p>
                     ) : null}
                     <p>
-                      Service:{" "}
+                      Dienst:{" "}
                       {asset.service_id
                         ? (serviceNames.get(asset.service_id) ??
                           "Nicht im aktiven Katalog")
@@ -3917,7 +3917,7 @@ export function ServiceAssets({
                         />
                       </label>
                       <label>
-                        Zugehöriger Service (optional)
+                        Zugehöriger Dienst (optional)
                         <select
                           disabled={controlsDisabled}
                           onChange={(event) =>

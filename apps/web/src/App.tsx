@@ -327,13 +327,13 @@ const NAVIGATION_CATEGORIES = [
     heading: "PLANUNG & BETRIEB",
     id: "navigation-category-operations",
     navigationLabel: "Planung und Betrieb",
-    sectionLabels: [
-      "Raumplanung",
-      "Eintritte",
-      "Serviceaufgaben",
-      "Services",
-      "Systemstatus",
-    ],
+    sectionLabels: ["Raumplanung", "Eintritte", "Serviceaufgaben"],
+  },
+  {
+    heading: "DIENSTE & ÜBERWACHUNG",
+    id: "navigation-category-services",
+    navigationLabel: "Dienste und Überwachung",
+    sectionLabels: ["Services", "Systemstatus"],
   },
   {
     heading: "WISSEN & RESSOURCEN",
@@ -688,7 +688,13 @@ function isSection(value: unknown): value is Section {
 }
 
 function sectionDisplayLabel(section: Section): string {
+  if (section === "Services") return "Dienste";
   return section === "Wissen" ? "Wissensdatenbank" : section;
+}
+
+/** Page title in the top bar; internal section keys stay stable. */
+function sectionPageTitle(section: Section): string {
+  return section === "Services" ? "Dienste" : section;
 }
 
 function sectionFromGlobalSearchResult(result: GlobalSearchResult): Section {
@@ -4406,14 +4412,18 @@ function AuthenticatedApp() {
           <div>
             <p className="eyebrow">
               Operations /{" "}
-              <span>{personalSettingsOpen ? "Mein Konto" : section}</span>
+              <span>
+                {personalSettingsOpen
+                  ? "Mein Konto"
+                  : sectionPageTitle(section)}
+              </span>
             </p>
             <h1>
               {personalSettingsOpen
                 ? "Persönliche Einstellungen"
                 : section === "Übersicht"
                   ? `${greeting}, ${greetingName}.`
-                  : section}
+                  : sectionPageTitle(section)}
             </h1>
           </div>
           <div className="topbar-actions">
