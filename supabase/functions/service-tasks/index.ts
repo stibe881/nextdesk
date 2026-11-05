@@ -6,7 +6,10 @@ import {
   noContent,
   parseJsonObject,
 } from "../_shared/http.ts";
-import { resolveTenantFeatureStates } from "../_shared/tenant-features.ts";
+import {
+  resolveTenantFeatureStates,
+  resolveUserFeatureStates,
+} from "../_shared/tenant-features.ts";
 import {
   addDays,
   describeRule,
@@ -1158,7 +1161,13 @@ const userHandler = withSupabase(
       }
       const tenantId = body.tenantId.toLowerCase();
       const admin = context.supabaseAdmin;
-      if (!(await featureEnabled(admin, tenantId))) {
+      const personal = await resolveUserFeatureStates(
+        admin,
+        tenantId,
+        actorId,
+        [FEATURE],
+      );
+      if (personal?.[FEATURE] !== true) {
         return json(request, { error: { code: "feature_disabled" } }, 403);
       }
       const rights = await access(admin, actorId, tenantId);

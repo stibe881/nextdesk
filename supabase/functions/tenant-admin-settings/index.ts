@@ -1,5 +1,6 @@
 import { withSupabase } from "@supabase/server";
 import { resolveSupportContact } from "../_shared/support-contact.ts";
+import { DEPARTMENT_SCOPED_FEATURES } from "../_shared/tenant-features.ts";
 
 const ALLOWED_ORIGIN = "https://app.nextdesk.ch";
 const UUID_PATTERN =
@@ -86,6 +87,14 @@ type Action =
   | { type: "listUsers"; tenantId: string }
   | { type: "listRoles"; tenantId: string }
   | { type: "listDepartments"; tenantId: string }
+  | { type: "listDepartmentModules"; tenantId: string }
+  | {
+      type: "setDepartmentModule";
+      tenantId: string;
+      departmentId: string;
+      featureKey: string;
+      enabled: boolean;
+    }
   | { type: "saveDepartment"; tenantId: string; id?: string; name: string }
   | { type: "archiveDepartment"; tenantId: string; id: string };
 
@@ -289,15 +298,23 @@ function parseAction(value: unknown): Action | null {
   if (!isRecord(value) || typeof value.type !== "string") return null;
 
   if (
-    ["getSettings", "listUsers", "listRoles", "listDepartments"].includes(
-      value.type,
-    ) &&
+    [
+      "getSettings",
+      "listUsers",
+      "listRoles",
+      "listDepartments",
+      "listDepartmentModules",
+    ].includes(value.type) &&
     hasOnlyKeys(value, new Set(["type", "tenantId"])) &&
     isUuid(value.tenantId)
   ) {
     return {
       type: value.type as
-        "getSettings" | "listUsers" | "listRoles" | "listDepartments",
+        | "getSettings"
+        | "listUsers"
+        | "listRoles"
+        | "listDepartments"
+        | "listDepartmentModules",
       tenantId: value.tenantId,
     };
   }
@@ -397,6 +414,29 @@ function parseAction(value: unknown): Action | null {
       tenantId: value.tenantId,
       featureKey: value.featureKey,
       pilotEndDate: value.pilotEndDate,
+    };
+  }
+
+  if (
+    value.type === "setDepartmentModule" &&
+    hasOnlyKeys(
+      value,
+      new Set(["type", "tenantId", "departmentId", "featureKey", "enabled"]),
+    ) &&
+    isUuid(value.tenantId) &&
+    isUuid(value.departmentId) &&
+    typeof value.featureKey === "string" &&
+    (DEPARTMENT_SCOPED_FEATURES as readonly string[]).includes(
+      value.featureKey,
+    ) &&
+    typeof value.enabled === "boolean"
+  ) {
+    return {
+      type: "setDepartmentModule",
+      tenantId: value.tenantId,
+      departmentId: value.departmentId.toLowerCase(),
+      featureKey: value.featureKey,
+      enabled: value.enabled,
     };
   }
 
@@ -846,6 +886,138 @@ async function handleListDepartments(
   if (error)
     return json(request, { error: { code: "department_list_failed" } }, 500);
   return json(request, { data: { departments: data ?? [] } });
+}
+
+/** Matrix of department-scoped modules per active department. */
+async function handleListDepartmentModules(
+  admin: any,
+  request: Request,
+  tenantId: string,
+): Promise<Response> {
+  const keys = [...DEPARTMENT_SCOPED_FEATURES];
+  const [departments, catalog, tenantFlags, departmentFlags] =
+    await Promise.all([
+      admin
+        .from("departments")
+        .select("id, name")
+        .eq("tenant_id", tenantId)
+        .eq("active", true)
+        .order("name", { ascending: true })
+        .limit(200),
+      admin
+        .from("feature_catalog")
+        .select("key, name, description")
+        .in("key", keys),
+      admin
+        .from("tenant_feature_flags")
+        .select("feature_key, enabled, pilot_ends_at")
+        .eq("tenant_id", tenantId)
+        .in("feature_key", keys),
+      admin
+        .from("department_feature_flags")
+        .select("department_id, feature_key, enabled")
+        .eq("tenant_id", tenantId),
+    ]);
+  if (
+    departments.error ||
+    catalog.error ||
+    tenantFlags.error ||
+    departmentFlags.error
+  ) {
+    return json(request, { error: { code: "department_modules_failed" } }, 500);
+  }
+  const now = Date.now();
+  const tenantEnabled = new Map<string, boolean>(
+    (tenantFlags.data ?? []).map((flag: any) => [
+      flag.feature_key,
+      flag.enabled === true &&
+        (!flag.pilot_ends_at || Date.parse(flag.pilot_ends_at) > now),
+    ]),
+  );
+  const disabled = new Set(
+    (departmentFlags.data ?? [])
+      .filter((flag: any) => flag.enabled === false)
+      .map((flag: any) => `${flag.department_id}|${flag.feature_key}`),
+  );
+  const order = new Map(keys.map((key, index) => [key, index]));
+  return json(request, {
+    data: {
+      modules: (catalog.data ?? [])
+        .map((entry: any) => ({
+          key: entry.key,
+          name: entry.name,
+          description: entry.description,
+          tenantEnabled: tenantEnabled.get(entry.key) === true,
+        }))
+        .sort(
+          (a: any, b: any) =>
+            (order.get(a.key) ?? 99) - (order.get(b.key) ?? 99),
+        ),
+      departments: (departments.data ?? []).map((department: any) => ({
+        id: department.id,
+        name: department.name,
+        modules: Object.fromEntries(
+          keys.map((key) => [key, !disabled.has(`${department.id}|${key}`)]),
+        ),
+      })),
+    },
+  });
+}
+
+async function handleSetDepartmentModule(
+  admin: any,
+  request: Request,
+  action: Extract<Action, { type: "setDepartmentModule" }>,
+  actorId: string,
+): Promise<Response> {
+  const { data: department, error: departmentError } = await admin
+    .from("departments")
+    .select("id")
+    .eq("tenant_id", action.tenantId)
+    .eq("id", action.departmentId)
+    .eq("active", true)
+    .maybeSingle();
+  if (departmentError) {
+    return json(request, { error: { code: "department_lookup_failed" } }, 500);
+  }
+  if (!department) {
+    return json(request, { error: { code: "department_not_found" } }, 404);
+  }
+  const { error } = await admin.from("department_feature_flags").upsert(
+    {
+      tenant_id: action.tenantId,
+      department_id: action.departmentId,
+      feature_key: action.featureKey,
+      enabled: action.enabled,
+      updated_by: actorId,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "department_id,feature_key" },
+  );
+  if (error) {
+    return json(
+      request,
+      { error: { code: "department_module_update_failed" } },
+      422,
+    );
+  }
+  if (
+    !(await writeAudit(
+      admin,
+      action.tenantId,
+      actorId,
+      "department.feature.toggled",
+      "department_feature_flag",
+      {
+        department_id: action.departmentId,
+        feature_key: action.featureKey,
+        enabled: action.enabled,
+      },
+    ))
+  ) {
+    return json(request, { error: { code: "audit_log_write_failed" } }, 500);
+  }
+  return json(request, { data: { updated: true } });
 }
 
 async function handleSaveDepartment(
@@ -1430,6 +1602,21 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       context.supabaseAdmin,
       request,
       action.tenantId,
+    );
+  }
+  if (action.type === "listDepartmentModules") {
+    return handleListDepartmentModules(
+      context.supabaseAdmin,
+      request,
+      action.tenantId,
+    );
+  }
+  if (action.type === "setDepartmentModule") {
+    return handleSetDepartmentModule(
+      context.supabaseAdmin,
+      request,
+      action,
+      actorId,
     );
   }
   if (action.type === "saveDepartment") {

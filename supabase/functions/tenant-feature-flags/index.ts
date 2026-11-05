@@ -1,4 +1,5 @@
 import { withSupabase } from "@supabase/server";
+import { DEPARTMENT_SCOPED_FEATURES } from "../_shared/tenant-features.ts";
 
 const APP_ORIGIN = "https://app.nextdesk.ch";
 const UUID_PATTERN =
@@ -176,7 +177,35 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       pilotEndsAt: row.pilot_ends_at,
     }));
 
-  return response(request, { data: { features } });
+  // Department-scoped modules: visible only when on for one of the person's
+  // departments. `tenantEnabled` keeps the plain tenant switch for settings.
+  const scopedKeys = features
+    .map((feature) => feature.key)
+    .filter((key) =>
+      (DEPARTMENT_SCOPED_FEATURES as readonly string[]).includes(key),
+    );
+  let personal: Record<string, unknown> = {};
+  if (scopedKeys.length) {
+    const { data: states, error: statesError } =
+      await context.supabaseAdmin.rpc("user_feature_states", {
+        p_tenant_id: body.tenantId,
+        p_user_id: userId,
+        p_feature_keys: scopedKeys,
+      });
+    if (statesError || typeof states !== "object" || states === null) {
+      return response(request, { error: { code: "feature_list_failed" } }, 500);
+    }
+    personal = states as Record<string, unknown>;
+  }
+  const effective = features.map((feature) => ({
+    ...feature,
+    tenantEnabled: feature.enabled,
+    enabled: scopedKeys.includes(feature.key)
+      ? feature.enabled && personal[feature.key] === true
+      : feature.enabled,
+  }));
+
+  return response(request, { data: { features: effective } });
 });
 
 export default {

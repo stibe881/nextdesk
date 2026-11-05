@@ -1,5 +1,8 @@
 import { type SupabaseContext, withSupabase } from "@supabase/server";
-import { resolveTenantFeatureStatesCached } from "../_shared/tenant-features.ts";
+import {
+  resolveTenantFeatureStatesCached,
+  resolveUserFeatureStates,
+} from "../_shared/tenant-features.ts";
 
 const ALLOWED_ORIGIN = "https://app.nextdesk.ch";
 const FEATURE = "inventory.management";
@@ -1171,9 +1174,11 @@ async function canIncludeAssetCandidates(
   admin: AdminClient,
   tenantId: string,
 ): Promise<boolean> {
-  const featureStates = await resolveTenantFeatureStatesCached(admin, tenantId, [
-    ASSET_FEATURE,
-  ]);
+  const featureStates = await resolveTenantFeatureStatesCached(
+    admin,
+    tenantId,
+    [ASSET_FEATURE],
+  );
   if (featureStates === null) {
     throw new HttpError(
       503,
@@ -1284,10 +1289,11 @@ async function requireEnabledInventory(
   client: CallerClient,
   admin: AdminClient,
   tenantId: string,
+  actorId: string,
 ): Promise<void> {
   // The feature lookup does not depend on the membership check, so both run
   // at once; the membership error still takes precedence.
-  const statesPromise = resolveTenantFeatureStatesCached(admin, tenantId, [
+  const statesPromise = resolveUserFeatureStates(admin, tenantId, actorId, [
     FEATURE,
   ]);
   statesPromise.catch(() => undefined);
@@ -4139,6 +4145,7 @@ const securedHandler = withSupabase(
         context.supabase,
         context.supabaseAdmin,
         action.tenantId,
+        actorId,
       );
       if (action.type === "workspace") {
         return await workspace(
