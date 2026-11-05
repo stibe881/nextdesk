@@ -1,5 +1,11 @@
 import { type SupabaseContext, withSupabase } from "@supabase/server";
 import { listAssignableTenantSupportAgents } from "../_shared/assignable-agents.ts";
+import {
+  type DepartmentScope,
+  loadDepartmentScope,
+  resolveRecordDepartment,
+  scopeDepartmentOptions,
+} from "../_shared/department-scope.ts";
 import { resolveUserFeatureStates } from "../_shared/tenant-features.ts";
 
 const ALLOWED_ORIGIN = "https://app.nextdesk.ch";
@@ -15,21 +21,22 @@ const INTUNE_PRIMARY_PERSON_LOOKUP_PAGE_SIZE = 100;
 const MAX_CATALOG_ROWS = 10_000;
 const MAX_TICKET_SEARCH_RESULTS = 30;
 const SERVICE_SELECT =
-  "id, tenant_id, name, description, criticality, status, status_public, primary_responsible_id, secondary_responsible_id, service_category_id, active, created_at, updated_at";
+  "id, tenant_id, name, description, criticality, status, status_public, primary_responsible_id, secondary_responsible_id, service_category_id, department_id, active, created_at, updated_at";
 const SERVICE_CATEGORY_SELECT =
   "id, tenant_id, name, parent_id, active, created_at, updated_at";
 const ASSET_SELECT =
-  "id, tenant_id, service_id, name, asset_tag, inventory_number, serial_number, manufacturer, model, operating_system, kind, status, customer_organization_id, metadata, active, created_at, updated_at";
+  "id, tenant_id, service_id, name, asset_tag, inventory_number, serial_number, manufacturer, model, operating_system, kind, status, customer_organization_id, department_id, metadata, active, created_at, updated_at";
 const PROBLEM_SELECT =
-  "id, tenant_id, title, description, status, workaround, root_cause, owner_id, created_by, created_at, updated_at";
+  "id, tenant_id, title, description, status, workaround, root_cause, owner_id, department_id, created_by, created_at, updated_at";
 const TICKET_SUMMARY_SELECT =
   "id, ticket_number, subject, status:ticket_statuses!inner(label)";
 const PROBLEM_TICKET_SUMMARY_SELECT = `tickets!inner(${TICKET_SUMMARY_SELECT})`;
 
 // Requests use `type`; update/archive/resolve require serviceId, assetId or
 // problemId, respectively. Updates are partial, but must change at least one
-// allowed field. Immutable IDs, tenant IDs, actors and timestamps are never
-// accepted as writable fields.
+// allowed field (or the department). Create and update accept an optional
+// departmentId, resolved against the caller's department scope. Immutable
+// IDs, tenant IDs, actors and timestamps are never accepted as writable fields.
 type JsonValue = null | boolean | number | string | JsonValue[] | {
   [key: string]: JsonValue;
 };
@@ -61,6 +68,8 @@ type Action =
     operation: Operation;
     id?: string;
     values: Record<string, JsonValue>;
+    /** Requested department (create/update only); undefined when absent. */
+    departmentId?: string | null;
   }
   | {
     type: "linkTicket" | "unlinkTicket";
@@ -430,6 +439,9 @@ export function parseAction(value: unknown): Action | null {
     : resource.fields;
   const allowedKeys = ["type", "tenantId", "operation", ...Object.keys(fields)];
   if (operation !== "create") allowedKeys.push(resource.idKey);
+  if (operation === "create" || operation === "update") {
+    allowedKeys.push("departmentId");
+  }
   if (!hasOnlyKeys(value, allowedKeys)) return null;
   const id = operation === "create" ? undefined : value[resource.idKey];
   if (operation !== "create" && !isUuid(id)) return null;
@@ -443,13 +455,26 @@ export function parseAction(value: unknown): Action | null {
     if (validated === INVALID) return null;
     values[field.column] = validated;
   }
-  if (operation === "update" && Object.keys(values).length === 0) return null;
+  let departmentId: string | null | undefined;
+  if (Object.hasOwn(value, "departmentId")) {
+    const validated = nullable(uuid)(value.departmentId);
+    if (validated !== null && typeof validated !== "string") return null;
+    departmentId = validated;
+  }
+  if (
+    operation === "update" &&
+    Object.keys(values).length === 0 &&
+    departmentId === undefined
+  ) {
+    return null;
+  }
   return {
     type: value.type,
     tenantId,
     operation,
     ...(typeof id === "string" ? { id: id.toLowerCase() } : {}),
     values,
+    ...(departmentId !== undefined ? { departmentId } : {}),
   };
 }
 
@@ -572,6 +597,41 @@ async function requirePermission(
   }
 }
 
+async function requireDepartmentScope(
+  admin: AdminClient,
+  tenantId: string,
+  actorId: string,
+): Promise<DepartmentScope> {
+  const scope = await loadDepartmentScope(
+    admin,
+    tenantId,
+    actorId,
+    "assets.management",
+  );
+  if (!scope) {
+    throw new HttpError(
+      503,
+      "department_scope_lookup_failed",
+      "Die Abteilungen konnten nicht geprüft werden.",
+    );
+  }
+  return scope;
+}
+
+function recordDepartment(
+  scope: DepartmentScope,
+  requested: string | null | undefined,
+): string | null {
+  const resolved = resolveRecordDepartment(scope, requested);
+  if ("error" in resolved) {
+    throw new HttpError(422, "invalid_department", resolved.error);
+  }
+  return resolved.departmentId;
+}
+
+// Services, assets and problems are read with the caller's client: the
+// restrictive RLS policy `<table>_department_scope` (migration 0177) limits
+// them to the caller's departments for assets.management.
 async function readCatalog(
   client: CallerClient,
   tenantId: string,
@@ -1069,6 +1129,17 @@ async function manageResource(
     "asset_manage_required",
   );
   const resource = RESOURCES[action.type];
+  const departmentValues: { department_id?: string | null } = {};
+  if (
+    action.operation === "create" ||
+    (action.operation === "update" && action.departmentId !== undefined)
+  ) {
+    const scope = await requireDepartmentScope(admin, action.tenantId, actorId);
+    departmentValues.department_id = recordDepartment(
+      scope,
+      action.departmentId,
+    );
+  }
   if (
     action.type === "manageService" &&
     (action.operation === "create" || action.operation === "update")
@@ -1084,6 +1155,7 @@ async function manageResource(
     const { data, error } = await resourceClient
       .insert({
         ...action.values,
+        ...departmentValues,
         tenant_id: action.tenantId,
         ...(resource.key === "problem" ? { created_by: actorId } : {}),
       })
@@ -1100,8 +1172,10 @@ async function manageResource(
     return json(request, { data: { [resource.key]: data } }, 201);
   }
   // Tenant and row filters are mandatory even though the caller's RLS also
-  // protects every write. Constraints enforce cross-tenant references and the
-  // migration's triggers handle timestamps, immutable identity and audit logs.
+  // protects every write; records outside the caller's departments are not
+  // visible to the update and end in a 404. Constraints enforce cross-tenant
+  // references and the migration's triggers handle timestamps, immutable
+  // identity and audit logs.
   const values = action.operation === "archive"
     ? action.type === "manageService"
       ? { active: false, status_public: false }
@@ -1110,7 +1184,7 @@ async function manageResource(
     ? { active: true }
     : action.operation === "resolve"
     ? { ...action.values, status: "resolved" }
-    : action.values;
+    : { ...action.values, ...departmentValues };
   const { data, error } = await resourceClient
     .update(values)
     .eq("tenant_id", action.tenantId)
@@ -1284,17 +1358,24 @@ const handler = withSupabase(
         );
       }
       if (action.type === "listCatalog") {
-        const [services, assets, problems, serviceCategories, assetManage] =
-          await Promise.all([
-            readCatalog(client, action.tenantId, RESOURCES.manageService),
-            readCatalog(client, action.tenantId, RESOURCES.manageAsset),
-            readCatalog(client, action.tenantId, RESOURCES.manageProblem),
-            readCatalog(client, action.tenantId, SERVICE_CATEGORY_RESOURCE),
-            client.rpc("has_tenant_permission", {
-              p_tenant_id: action.tenantId,
-              p_permission_code: "asset.manage",
-            }),
-          ]);
+        const [
+          services,
+          assets,
+          problems,
+          serviceCategories,
+          assetManage,
+          scope,
+        ] = await Promise.all([
+          readCatalog(client, action.tenantId, RESOURCES.manageService),
+          readCatalog(client, action.tenantId, RESOURCES.manageAsset),
+          readCatalog(client, action.tenantId, RESOURCES.manageProblem),
+          readCatalog(client, action.tenantId, SERVICE_CATEGORY_RESOURCE),
+          client.rpc("has_tenant_permission", {
+            p_tenant_id: action.tenantId,
+            p_permission_code: "asset.manage",
+          }),
+          requireDepartmentScope(context.supabaseAdmin, action.tenantId, actorId),
+        ]);
         if (assetManage.error || typeof assetManage.data !== "boolean") {
           throw new HttpError(
             503,
@@ -1314,11 +1395,14 @@ const handler = withSupabase(
         // Die primäre Person wird allen gezeigt, die den Asset-Katalog lesen
         // dürfen (die Zeilen oben wurden mit der Sitzung der Person gelesen).
         // Aufgelöst wird weiterhin nur serverseitig und nur der Anzeigename.
-        const resolvedAssets = await readIntunePrimaryPersonNames(
-          context.supabaseAdmin,
-          action.tenantId,
-          assets,
-        );
+        const [resolvedAssets, departments] = await Promise.all([
+          readIntunePrimaryPersonNames(
+            context.supabaseAdmin,
+            action.tenantId,
+            assets,
+          ),
+          scopeDepartmentOptions(context.supabaseAdmin, action.tenantId, scope),
+        ]);
         return json(request, {
           data: {
             services,
@@ -1327,6 +1411,7 @@ const handler = withSupabase(
             serviceCategories,
             assets: resolvedAssets,
             problems,
+            departments,
           },
         });
       }

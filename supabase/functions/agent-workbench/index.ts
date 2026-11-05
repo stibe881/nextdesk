@@ -1,5 +1,14 @@
 import { type SupabaseContext, withSupabase } from "@supabase/server";
-import { resolveTenantFeatureStates } from "../_shared/tenant-features.ts";
+import {
+  resolveTenantFeatureStates,
+  resolveUserFeatureStates,
+} from "../_shared/tenant-features.ts";
+import {
+  applyDepartmentScope,
+  type DepartmentScope,
+  loadDepartmentScope,
+  resolveRecordDepartment,
+} from "../_shared/department-scope.ts";
 import { listAssignableAgents } from "../_shared/assignable-agents.ts";
 
 const ALLOWED_ORIGIN = "https://app.nextdesk.ch";
@@ -1393,11 +1402,45 @@ function requesterAvailability(preferences: unknown): string | null {
     );
   return availability;
 }
+// Assets of the ticket are limited to the agent's departments for
+// assets.management (like the RLS policy of migration 0177: nothing is scoped
+// while the module is off for the whole tenant).
+async function assetDepartmentScope(
+  admin: Admin,
+  tenantId: string,
+  actorId: string,
+): Promise<DepartmentScope> {
+  const flags = await resolveTenantFeatureStates(admin, tenantId, [
+    "assets.management",
+  ]);
+  if (!flags)
+    throw new HttpError(
+      503,
+      "tenant_feature_lookup_failed",
+      "Die Funktionsfreigabe konnte nicht geprüft werden.",
+    );
+  if (flags["assets.management"] !== true)
+    return { departments: [], scoped: false };
+  const scope = await loadDepartmentScope(
+    admin,
+    tenantId,
+    actorId,
+    "assets.management",
+  );
+  if (!scope)
+    throw new HttpError(
+      503,
+      "department_scope_lookup_failed",
+      "Die Abteilungen konnten nicht geprüft werden.",
+    );
+  return scope;
+}
 async function ticketContext(
   request: Request,
   client: Client,
   admin: Admin,
   action: Action,
+  actorId: string,
 ): Promise<Response> {
   const info = await ticket(admin, action.tenantId, action.ticketId);
   await rpcTrue(
@@ -1434,16 +1477,22 @@ async function ticketContext(
       ),
     )
   ).filter((candidate) => candidate !== null);
-  const assetIds = (links.data ?? [])
+  const linkedAssetIds = (links.data ?? [])
     .map((entry) => entry.asset_id)
     .filter(isUuid);
-  const assets = assetIds.length
-    ? await admin
-        .from("assets")
-        .select("id, name, asset_tag, lifecycle_state")
-        .eq("tenant_id", action.tenantId)
-        .in("id", assetIds)
+  const assets = linkedAssetIds.length
+    ? await applyDepartmentScope(
+        admin
+          .from("assets")
+          .select("id, name, asset_tag, lifecycle_state")
+          .eq("tenant_id", action.tenantId)
+          .in("id", linkedAssetIds),
+        await assetDepartmentScope(admin, action.tenantId, actorId),
+      )
     : { data: [], error: null };
+  const assetIds = (assets.data ?? [])
+    .map((entry: { id?: unknown }) => entry.id)
+    .filter(isUuid);
   const history = assetIds.length
     ? await admin
         .from("asset_lifecycle_events")
@@ -1541,9 +1590,10 @@ async function knowledgeDraftFromTicket(
   action: Action,
   actorId: string,
 ): Promise<Response> {
-  const knowledgeFlags = await resolveTenantFeatureStates(
+  const knowledgeFlags = await resolveUserFeatureStates(
     admin,
     action.tenantId,
+    actorId,
     ["knowledge.base"],
   );
   if (!knowledgeFlags)
@@ -1573,6 +1623,32 @@ async function knowledgeDraftFromTicket(
       "invalid_request",
       "Titel und Inhalt für den Wissensentwurf sind ungültig.",
     );
+  // The draft belongs to one of the agent's departments: the requested one,
+  // else the ticket's department (when it is one of the agent's), else the
+  // agent's only department.
+  const knowledgeScope = await loadDepartmentScope(
+    admin,
+    action.tenantId,
+    actorId,
+    "knowledge.base",
+  );
+  if (!knowledgeScope)
+    throw new HttpError(
+      503,
+      "department_scope_lookup_failed",
+      "Die Abteilungen konnten nicht geprüft werden.",
+    );
+  const ticketDepartment =
+    typeof info.department_id === "string" &&
+    knowledgeScope.departments.includes(info.department_id)
+      ? info.department_id
+      : undefined;
+  const department = resolveRecordDepartment(
+    knowledgeScope,
+    action.departmentId ?? ticketDepartment,
+  );
+  if ("error" in department)
+    throw new HttpError(422, "invalid_data", department.error);
   const slug = `ticket-${String(info.ticket_number ?? info.id)
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
@@ -1581,6 +1657,7 @@ async function knowledgeDraftFromTicket(
     .from("knowledge_articles")
     .insert({
       tenant_id: action.tenantId,
+      department_id: department.departmentId,
       title,
       slug,
       visibility: "internal",
@@ -1590,7 +1667,7 @@ async function knowledgeDraftFromTicket(
       review_requested_at: new Date().toISOString(),
       review_requested_by: actorId,
     })
-    .select("id, title, slug, status, current_revision")
+    .select("id, title, slug, status, department_id, current_revision")
     .single();
   if (article.error) db(article.error);
   const revision = await admin.from("knowledge_article_revisions").insert({
@@ -1859,7 +1936,7 @@ const handler = withSupabase(
       if (action.type === "myMetrics")
         return await myMetrics(request, client, admin, action, actorId);
       if (action.type === "ticketContext")
-        return await ticketContext(request, client, admin, action);
+        return await ticketContext(request, client, admin, action, actorId);
       if (action.type === "knowledgeDraftFromTicket")
         return await knowledgeDraftFromTicket(
           request,

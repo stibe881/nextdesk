@@ -1789,7 +1789,22 @@ function parseLinkedCatalogItems(
   parser: (item: unknown) => LinkedCatalogItem | null,
 ): LinkedCatalogItem[] | null {
   if (!Array.isArray(value)) return null;
-  const items = value.map(parser);
+  // Linked records of another department are not readable (department
+  // scope, migration 0177): the embed comes back as null. Skip those links
+  // instead of failing the whole ticket view.
+  const items = value
+    .filter(
+      (link) =>
+        !(
+          typeof link === "object" &&
+          link !== null &&
+          (["services", "assets", "problems"] as const).some(
+            (key) =>
+              key in link && (link as Record<string, unknown>)[key] === null,
+          )
+        ),
+    )
+    .map(parser);
   return items.every((item): item is LinkedCatalogItem => item !== null)
     ? items
     : null;
@@ -2629,7 +2644,12 @@ function parseKnowledgeLinkState(value: unknown): KnowledgeLinkState | null {
 
 function parseKnowledgeLinks(value: unknown): KnowledgeLink[] | null {
   const data = parseKnowledgeData(value);
-  if (!data || !hasOnlyKeys(data, ["links"]) || !Array.isArray(data.links))
+  // imageUrls: signed URLs for kb-image references (knowledge article images).
+  if (
+    !data ||
+    !hasOnlyKeys(data, ["links", "imageUrls"]) ||
+    !Array.isArray(data.links)
+  )
     return null;
   const links: KnowledgeLink[] = [];
   const seen = new Set<string>();
@@ -2673,7 +2693,7 @@ function parseKnowledgeSearch(value: unknown): KnowledgeArticle[] | null {
   const data = parseKnowledgeData(value);
   if (
     !data ||
-    !hasOnlyKeys(data, ["articles"]) ||
+    !hasOnlyKeys(data, ["articles", "imageUrls"]) ||
     !Array.isArray(data.articles) ||
     data.articles.length > 30
   )

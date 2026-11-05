@@ -5,6 +5,7 @@ export type KnowledgeArticleSaveRequest = {
   title: string;
   bodyMarkdown: string;
   visibility: "internal" | "external";
+  departmentId?: string;
 };
 
 type KnowledgeArticleSaveInput = Omit<KnowledgeArticleSaveRequest, "type">;
@@ -12,6 +13,7 @@ type KnowledgeArticleSaveInput = Omit<KnowledgeArticleSaveRequest, "type">;
 export function buildKnowledgeArticleSaveRequest({
   articleId,
   bodyMarkdown,
+  departmentId,
   tenantId,
   title,
   visibility,
@@ -23,5 +25,6 @@ export function buildKnowledgeArticleSaveRequest({
     title,
     bodyMarkdown,
     visibility,
+    ...(departmentId ? { departmentId } : {}),
   };
 }

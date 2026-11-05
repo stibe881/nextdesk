@@ -9,7 +9,11 @@ export type ShopContext = {
   pendingApprovals: number;
   openOrders: number;
   managerName: string | null;
+  /** Eigene Abteilungen, denen Artikel zugeordnet werden können. */
+  departments?: ShopDepartment[];
 };
+
+export type ShopDepartment = { id: string; name: string };
 
 /** Technische Angaben eines Artikels: Schlüssel und Bezeichnung. */
 export const SPEC_FIELDS = [
@@ -46,6 +50,10 @@ export type CatalogItem = {
   active: boolean;
   sortOrder: number;
   inventoryItemId: string | null;
+  /** Abteilung des Artikels (null: für alle Abteilungen). */
+  departmentId?: string | null;
+  /** Darf die Person den Artikel bearbeiten (eigene Abteilung)? */
+  canEdit?: boolean;
   /** Technische Angaben (Lieferumfang, Anwendungsbereich, …). */
   specifications?: Record<string, string>;
   /** Artikel, die beim Bestellen dieses Artikels dazugewählt werden können. */

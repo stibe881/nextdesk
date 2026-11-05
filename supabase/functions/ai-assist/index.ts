@@ -16,9 +16,15 @@ import {
   validateAiBudget,
   validateAiPurpose,
 } from "../_shared/ai-governance.ts";
+import {
+  departmentVisible,
+  loadDepartmentScope,
+  resolveRecordDepartment,
+} from "../_shared/department-scope.ts";
 
 const APP_ORIGIN = "https://app.nextdesk.ch";
 const KNOWLEDGE_MANAGE_PERMISSION = "knowledge.manage";
+const KNOWLEDGE_FEATURE = "knowledge.base";
 const MAX_REQUEST_BYTES = 12 * 1024;
 /** Upper bound for the ticket text sent to the provider (see migration 0162). */
 const MAX_TICKET_INPUT_CHARACTERS = 12_000;
@@ -498,6 +504,45 @@ async function draftArticleFromTicket(
   if (source === "not_found")
     return response(request, { error: { code: "ticket_not_found" } }, 404);
 
+  // The draft goes to the ticket's department when it is one of the agent's
+  // knowledge departments, otherwise to the agent's only department. This is
+  // settled before the provider is called.
+  const scope = await loadDepartmentScope(
+    admin,
+    action.tenantId,
+    actorId,
+    KNOWLEDGE_FEATURE,
+  );
+  const { data: ticketRow, error: ticketError } = await admin
+    .from("tickets")
+    .select("department_id")
+    .eq("tenant_id", action.tenantId)
+    .eq("id", action.ticketId)
+    .maybeSingle();
+  if (!scope || ticketError)
+    return response(
+      request,
+      { error: { code: "department_scope_lookup_failed" } },
+      503,
+    );
+  const ticketDepartment =
+    typeof ticketRow?.department_id === "string" &&
+    scope.departments.includes(ticketRow.department_id)
+      ? ticketRow.department_id
+      : undefined;
+  const department = resolveRecordDepartment(scope, ticketDepartment);
+  if ("error" in department)
+    return response(
+      request,
+      {
+        error: {
+          code: "article_department_required",
+          message: department.error,
+        },
+      },
+      422,
+    );
+
   const queued = await queueMinimalAiDraftRequest(admin, {
     tenantId: action.tenantId,
     actorId,
@@ -551,6 +596,7 @@ async function draftArticleFromTicket(
     .from("knowledge_articles")
     .insert({
       tenant_id: action.tenantId,
+      department_id: department.departmentId,
       title: draft.title,
       slug: articleSlug(draft.title),
       visibility: "internal",
@@ -766,6 +812,29 @@ const handler = withSupabase(
         { error: { code: "ai_external_article_content_not_approved" } },
         403,
       );
+    }
+    if (action.articleId) {
+      // Only articles of the agent's knowledge departments may be referenced.
+      const scope = await loadDepartmentScope(
+        admin,
+        action.tenantId,
+        actorId,
+        KNOWLEDGE_FEATURE,
+      );
+      const { data: article, error: articleError } = await admin
+        .from("knowledge_articles")
+        .select("id, department_id")
+        .eq("tenant_id", action.tenantId)
+        .eq("id", action.articleId)
+        .maybeSingle();
+      if (!scope || articleError)
+        return response(
+          request,
+          { error: { code: "department_scope_lookup_failed" } },
+          503,
+        );
+      if (!article || !departmentVisible(scope, article.department_id))
+        return response(request, { error: { code: "article_not_found" } }, 404);
     }
     const purpose: AiPurpose = action.articleId
       ? "knowledge_article_draft"

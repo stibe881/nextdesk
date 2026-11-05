@@ -15,6 +15,12 @@ import {
   RecordAttachments,
   uploadRecordAttachment,
 } from "./record-attachments";
+import {
+  departmentLabel,
+  initialDepartmentId,
+  parseDepartmentOptions,
+  type DepartmentOption,
+} from "./lib/contract-departments";
 
 type LicenseStatus = "draft" | "active" | "terminated" | "archived";
 type LicenseType = string;
@@ -31,6 +37,7 @@ type License = {
   noticePeriodDays: number | null;
   reminderDaysBefore: number | null;
   reminderSentFor: string | null;
+  departmentId: string | null;
   responsibleUserId: string | null;
   notes: string | null;
   archivedAt: string | null;
@@ -50,6 +57,7 @@ type Form = {
   endsOn: string;
   noticePeriodDays: string;
   reminderDaysBefore: string;
+  departmentId: string;
   responsibleUserId: string;
   notes: string;
 };
@@ -65,6 +73,7 @@ const EMPTY: Form = {
   endsOn: "",
   noticePeriodDays: "",
   reminderDaysBefore: "",
+  departmentId: "",
   responsibleUserId: "",
   notes: "",
 };
@@ -137,6 +146,7 @@ function formFor(contract: License): Form {
       contract.reminderDaysBefore === null
         ? ""
         : String(contract.reminderDaysBefore),
+    departmentId: contract.departmentId ?? "",
     responsibleUserId: contract.responsibleUserId ?? "",
     notes: contract.notes ?? "",
   };
@@ -164,6 +174,7 @@ function parsePeople(value: unknown): Person[] | null {
 export function Licenses({ tenantId }: { tenantId: string }) {
   const [licenses, setLicenses] = useState<License[]>([]);
   const [people, setPeople] = useState<Person[]>([]);
+  const [departments, setDepartments] = useState<DepartmentOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -200,6 +211,7 @@ export function Licenses({ tenantId }: { tenantId: string }) {
       const nextPeople = parsePeople(peopleResult.data);
       if (!nextLicenses || !nextPeople) throw new Error("invalid_response");
       setLicenses(nextLicenses);
+      setDepartments(parseDepartmentOptions(responseData(licensesResult.data)));
       setPeople(
         nextPeople.sort((a, b) =>
           a.displayName.localeCompare(b.displayName, "de-CH"),
@@ -306,7 +318,11 @@ export function Licenses({ tenantId }: { tenantId: string }) {
   const open = (contract?: License) => {
     setNotice("");
     setError("");
-    setForm(contract ? formFor(contract) : EMPTY);
+    const initial = contract ? formFor(contract) : EMPTY;
+    setForm({
+      ...initial,
+      departmentId: initialDepartmentId(initial.departmentId, departments),
+    });
     setEditorOpen(true);
   };
   const save = async (event: FormEvent) => {
@@ -345,6 +361,7 @@ export function Licenses({ tenantId }: { tenantId: string }) {
           form.reminderDaysBefore === ""
             ? null
             : Number(form.reminderDaysBefore),
+        departmentId: form.departmentId || null,
         responsibleUserId: form.responsibleUserId || null,
         notes: form.notes || null,
       };
@@ -599,6 +616,14 @@ export function Licenses({ tenantId }: { tenantId: string }) {
                           : contract.quantity.toLocaleString("de-CH")}
                       </dd>
                     </div>
+                    {departmentLabel(contract.departmentId, departments) ? (
+                      <div>
+                        <dt>Abteilung</dt>
+                        <dd>
+                          {departmentLabel(contract.departmentId, departments)}
+                        </dd>
+                      </div>
+                    ) : null}
                     <div>
                       <dt>Verantwortlich</dt>
                       <dd>{person?.displayName ?? "Nicht zugeordnet"}</dd>
@@ -825,6 +850,27 @@ export function Licenses({ tenantId }: { tenantId: string }) {
                     <option value="terminated">Beendet</option>
                   </select>
                 </label>
+                {departments.length > 1 ? (
+                  <label>
+                    Abteilung
+                    <select
+                      required
+                      value={form.departmentId}
+                      onChange={(event) =>
+                        setForm({ ...form, departmentId: event.target.value })
+                      }
+                    >
+                      <option disabled value="">
+                        Abteilung wählen
+                      </option>
+                      {departments.map((department) => (
+                        <option key={department.id} value={department.id}>
+                          {department.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : null}
                 <label>
                   Verantwortliche Person
                   <select

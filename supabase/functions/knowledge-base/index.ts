@@ -1,15 +1,39 @@
 import { withSupabase } from "@supabase/server";
 import { resolveUserFeatureStates } from "../_shared/tenant-features.ts";
+import {
+  applyDepartmentScope,
+  type DepartmentScope,
+  departmentVisible,
+  loadDepartmentScope,
+  resolveRecordDepartment,
+  scopeDepartmentOptions,
+} from "../_shared/department-scope.ts";
 
 const ALLOWED_ORIGIN = "https://app.nextdesk.ch";
 const KNOWLEDGE_MANAGE_PERMISSION = "knowledge.manage";
 const KNOWLEDGE_READ_PERMISSION = "knowledge.read";
 const KNOWLEDGE_PUBLISH_PERMISSION = "knowledge.publish";
+const KNOWLEDGE_FEATURE = "knowledge.base";
 const MAX_TITLE_LENGTH = 240;
 const MAX_BODY_LENGTH = 100_000;
 const MAX_QUERY_LENGTH = 120;
+/** Request bodies: article texts stay well below 1 MB; images up to 5 MB. */
+const MAX_REQUEST_BYTES = 1024 * 1024;
+const MAX_IMAGE_REQUEST_BYTES = 7 * 1024 * 1024;
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+const IMAGE_BUCKET = "knowledge-article-images";
+const IMAGE_URL_TTL_SECONDS = 60 * 60;
+const MAX_RESOLVED_IMAGES = 300;
+const IMAGE_EXTENSIONS: Record<string, string> = {
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp",
+  "image/gif": "gif",
+};
+const IMAGE_REFERENCE =
+  /kb-image:([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/gi;
 const ARTICLE_SELECT =
-  "id, title, slug, visibility, status, current_revision, published_revision, review_requested_at, published_at, created_at, updated_at";
+  "id, title, slug, visibility, status, department_id, current_revision, published_revision, review_requested_at, published_at, created_at, updated_at";
 const REVISION_SELECT =
   "id, article_id, revision, title_snapshot, body, summary, created_at";
 
@@ -52,8 +76,18 @@ type Action =
       title: string;
       bodyMarkdown: string;
       visibility: Visibility;
+      departmentId?: string;
     }
-  | { type: "archiveArticle"; tenantId: string; articleId: string };
+  | { type: "archiveArticle"; tenantId: string; articleId: string }
+  | { type: "deleteArticle"; tenantId: string; articleId: string }
+  | { type: "deleteCollection"; tenantId: string; collectionId: string }
+  | {
+      type: "uploadArticleImage";
+      tenantId: string;
+      fileName: string;
+      contentType: string;
+      data: string;
+    };
 
 type AuthorizationResult =
   { ok: true } | { ok: false; status: 403 | 500; code: string };
@@ -61,6 +95,7 @@ type AuthorizationResult =
 type ArticleAuditData = {
   title: string;
   visibility: Visibility;
+  departmentId: string | null;
   status: string;
   currentRevision: number | null;
   bodyLength: number;
@@ -197,18 +232,51 @@ function parseAction(value: unknown): Action | null {
     };
   }
 
-  if (value.type === "archiveArticle" && isUuid(value.articleId))
+  if (
+    (value.type === "archiveArticle" || value.type === "deleteArticle") &&
+    isUuid(value.articleId)
+  )
     return {
       type: value.type,
       tenantId: value.tenantId,
       articleId: value.articleId,
     };
 
+  if (value.type === "deleteCollection" && isUuid(value.collectionId))
+    return {
+      type: value.type,
+      tenantId: value.tenantId,
+      collectionId: value.collectionId,
+    };
+
+  if (value.type === "uploadArticleImage") {
+    const fileName = requiredText(value.fileName, 1, 200);
+    if (
+      fileName === null ||
+      typeof value.contentType !== "string" ||
+      !IMAGE_EXTENSIONS[value.contentType] ||
+      typeof value.data !== "string" ||
+      value.data.length === 0 ||
+      value.data.length > Math.ceil(MAX_IMAGE_BYTES / 3) * 4 ||
+      !/^[A-Za-z0-9+/]+={0,2}$/.test(value.data)
+    )
+      return null;
+    return {
+      type: value.type,
+      tenantId: value.tenantId,
+      fileName,
+      contentType: value.contentType,
+      data: value.data,
+    };
+  }
+
   if (value.type === "saveArticle") {
     const article = optionalUuid(value.articleId);
+    const department = optionalUuid(value.departmentId);
     const title = requiredText(value.title, 3, MAX_TITLE_LENGTH);
     if (
       !article.valid ||
+      !department.valid ||
       title === null ||
       typeof value.bodyMarkdown !== "string" ||
       value.bodyMarkdown.length > MAX_BODY_LENGTH ||
@@ -225,6 +293,9 @@ function parseAction(value: unknown): Action | null {
       title,
       bodyMarkdown: value.bodyMarkdown,
       visibility: value.visibility,
+      ...(typeof department.value === "string"
+        ? { departmentId: department.value.toLowerCase() }
+        : {}),
     };
   }
 
@@ -354,6 +425,8 @@ function auditData(article: any, revision: any | null): ArticleAuditData {
   return {
     title: typeof article.title === "string" ? article.title : "",
     visibility: article.visibility === "external" ? "external" : "internal",
+    departmentId:
+      typeof article.department_id === "string" ? article.department_id : null,
     status: typeof article.status === "string" ? article.status : "",
     currentRevision:
       typeof article.current_revision === "number"
@@ -507,13 +580,234 @@ async function fetchArticleCollectionIds(
   return { data: byArticle, error: false };
 }
 
+/**
+ * Departments whose published external articles requesters and customers may
+ * read: every active department of the tenant where the knowledge module is
+ * on. Requesters are not limited to their own departments (and customers have
+ * none), so the portal keeps showing the help of all departments.
+ */
+async function publishedKnowledgeScope(
+  admin: any,
+  tenantId: string,
+): Promise<DepartmentScope | null> {
+  const [departments, disabled] = await Promise.all([
+    admin
+      .from("departments")
+      .select("id")
+      .eq("tenant_id", tenantId)
+      .eq("active", true),
+    admin
+      .from("department_feature_flags")
+      .select("department_id")
+      .eq("tenant_id", tenantId)
+      .eq("feature_key", KNOWLEDGE_FEATURE)
+      .eq("enabled", false),
+  ]);
+  if (departments.error || disabled.error) return null;
+  const off = new Set(
+    (disabled.data ?? []).map((row: any) => String(row.department_id)),
+  );
+  return {
+    scoped: true,
+    departments: (departments.data ?? [])
+      .map((row: any) => String(row.id))
+      .filter((id: string) => !off.has(id)),
+  };
+}
+
+/**
+ * Reads the JSON body with a hard size bound (also for chunked requests).
+ * Image uploads may be larger than all other actions.
+ */
+async function readRequestBody(
+  request: Request,
+): Promise<{ value: unknown; tooLarge: boolean }> {
+  const contentLength = request.headers.get("content-length");
+  if (
+    contentLength !== null &&
+    (!/^\d+$/.test(contentLength) ||
+      Number(contentLength) > MAX_IMAGE_REQUEST_BYTES)
+  )
+    return { value: null, tooLarge: true };
+  if (!request.body) return { value: null, tooLarge: false };
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let bytes = 0;
+  try {
+    while (true) {
+      const chunk = await reader.read();
+      if (chunk.done) break;
+      bytes += chunk.value.byteLength;
+      if (bytes > MAX_IMAGE_REQUEST_BYTES) {
+        await reader.cancel();
+        return { value: null, tooLarge: true };
+      }
+      chunks.push(chunk.value);
+    }
+  } catch {
+    return { value: null, tooLarge: false };
+  }
+  const body = new Uint8Array(bytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    body.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  let value: unknown;
+  try {
+    value = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(body));
+  } catch {
+    return { value: null, tooLarge: false };
+  }
+  // Only image uploads may use the larger bound.
+  if (
+    bytes > MAX_REQUEST_BYTES &&
+    !(isRecord(value) && value.type === "uploadArticleImage")
+  )
+    return { value: null, tooLarge: true };
+  return { value, tooLarge: false };
+}
+
+/** Decodes an uploaded image and checks that its content matches the type. */
+function decodeArticleImage(
+  data: string,
+  contentType: string,
+): Uint8Array | null {
+  let bytes: Uint8Array;
+  try {
+    const binary = atob(data);
+    bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+  } catch {
+    return null;
+  }
+  if (bytes.length === 0 || bytes.length > MAX_IMAGE_BYTES) return null;
+  const ascii = (start: number, end: number) =>
+    String.fromCharCode(...bytes.slice(start, end));
+  const matches =
+    (contentType === "image/jpeg" &&
+      bytes[0] === 0xff &&
+      bytes[1] === 0xd8 &&
+      bytes[2] === 0xff) ||
+    (contentType === "image/png" &&
+      bytes[0] === 0x89 &&
+      ascii(1, 4) === "PNG" &&
+      bytes[4] === 0x0d &&
+      bytes[5] === 0x0a) ||
+    (contentType === "image/webp" &&
+      ascii(0, 4) === "RIFF" &&
+      ascii(8, 12) === "WEBP") ||
+    (contentType === "image/gif" &&
+      (ascii(0, 6) === "GIF87a" || ascii(0, 6) === "GIF89a"));
+  return matches ? bytes : null;
+}
+
+/** Alternative text for an uploaded image, safe inside Markdown brackets. */
+function imageAltText(fileName: string): string {
+  const alt = fileName
+    .replace(/\.[^.]+$/, "")
+    .replace(/[\[\]()\\!*_`<>#\r\n\t]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 100);
+  return alt || "Bild";
+}
+
+/** Image identifiers referenced as kb-image:<id> in Markdown texts. */
+function referencedImageIds(bodies: unknown[]): string[] {
+  const ids = new Set<string>();
+  for (const body of bodies) {
+    if (typeof body !== "string") continue;
+    for (const match of body.matchAll(IMAGE_REFERENCE)) {
+      ids.add(match[1].toLowerCase());
+      if (ids.size >= MAX_RESOLVED_IMAGES) return [...ids];
+    }
+  }
+  return [...ids];
+}
+
+/**
+ * Short-lived signed URLs for the kb-image references of the given Markdown
+ * texts (id → URL). Only images of the same tenant are resolved; the stored
+ * Markdown stays unchanged.
+ */
+async function resolveImageUrls(
+  admin: any,
+  tenantId: string,
+  bodies: unknown[],
+): Promise<Record<string, string>> {
+  const ids = referencedImageIds(bodies);
+  const urls: Record<string, string> = {};
+  if (ids.length === 0) return urls;
+  const { data, error } = await admin
+    .from("knowledge_article_images")
+    .select("id, storage_path")
+    .eq("tenant_id", tenantId)
+    .in("id", ids);
+  if (error || !Array.isArray(data) || data.length === 0) return urls;
+  const paths = data.map((row: any) => String(row.storage_path));
+  const { data: signed } = await admin.storage
+    .from(IMAGE_BUCKET)
+    .createSignedUrls(paths, IMAGE_URL_TTL_SECONDS);
+  data.forEach((row: any, index: number) => {
+    const url = signed?.[index]?.signedUrl;
+    if (typeof url === "string") urls[String(row.id)] = url;
+  });
+  return urls;
+}
+
+/**
+ * Removes the images of a deleted article that no other article of the
+ * tenant references in any revision. Best effort: a failure leaves the
+ * (harmless, private) files in place.
+ */
+async function removeUnreferencedImages(
+  admin: any,
+  tenantId: string,
+  imageIds: string[],
+): Promise<void> {
+  if (imageIds.length === 0) return;
+  const { data: images, error } = await admin
+    .from("knowledge_article_images")
+    .select("id, storage_path")
+    .eq("tenant_id", tenantId)
+    .in("id", imageIds);
+  if (error || !Array.isArray(images)) return;
+  const unused: { id: string; storage_path: string }[] = [];
+  for (const image of images) {
+    const { data: users, error: usageError } = await admin
+      .from("knowledge_article_revisions")
+      .select("id, knowledge_articles!inner(tenant_id)")
+      .eq("knowledge_articles.tenant_id", tenantId)
+      .like("body", `%kb-image:${image.id}%`)
+      .limit(1);
+    if (!usageError && Array.isArray(users) && users.length === 0)
+      unused.push(image);
+  }
+  if (unused.length === 0) return;
+  const { error: storageError } = await admin.storage
+    .from(IMAGE_BUCKET)
+    .remove(unused.map((image) => image.storage_path));
+  if (storageError) return;
+  await admin
+    .from("knowledge_article_images")
+    .delete()
+    .eq("tenant_id", tenantId)
+    .in(
+      "id",
+      unused.map((image) => image.id),
+    );
+}
+
 const handler = withSupabase({ auth: "user" }, async (request, context) => {
   const originDenied = denyDisallowedOrigin(request);
   if (originDenied) return originDenied;
   if (request.method !== "POST")
     return json(request, { error: { code: "method_not_allowed" } }, 405);
 
-  const action = parseAction(await request.json().catch(() => null));
+  const body = await readRequestBody(request);
+  if (body.tooLarge)
+    return json(request, { error: { code: "payload_too_large" } }, 413);
+  const action = parseAction(body.value);
   const actorId = context.userClaims?.id;
   if (!action || typeof actorId !== "string")
     return json(request, { error: { code: "invalid_request" } }, 400);
@@ -522,7 +816,10 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
   const mutation =
     action.type === "saveArticle" ||
     action.type === "archiveArticle" ||
+    action.type === "deleteArticle" ||
+    action.type === "uploadArticleImage" ||
     action.type === "createCollection" ||
+    action.type === "deleteCollection" ||
     action.type === "updateCollection" ||
     action.type === "setArticleCollections" ||
     action.type === "requestReview" ||
@@ -562,6 +859,24 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       { error: { code: "knowledge_feature_disabled" } },
       403,
     );
+
+  // Agents and members see and edit the articles of their departments (plus
+  // articles without a department); collections stay shared.
+  let agentScope: DepartmentScope | null | undefined;
+  const loadAgentScope = async (): Promise<DepartmentScope | null> => {
+    if (agentScope === undefined)
+      agentScope = await loadDepartmentScope(
+        admin,
+        action.tenantId,
+        actorId,
+        KNOWLEDGE_FEATURE,
+      );
+    return agentScope;
+  };
+  const scopeFailed = () =>
+    json(request, { error: { code: "department_scope_lookup_failed" } }, 503);
+  const articleNotFound = () =>
+    json(request, { error: { code: "article_not_found" } }, 404);
 
   if (action.type === "listCollections") {
     const canReadInternal = await hasTenantPermission(
@@ -624,6 +939,139 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     return json(request, { data: { collection } }, 201);
   }
 
+  if (action.type === "deleteCollection") {
+    // A category goes with its subcategories (the parent key is ON DELETE
+    // RESTRICT, so children first). Articles stay; only their assignments
+    // to the deleted collections disappear (cascade).
+    const { data: collection, error: collectionError } = await admin
+      .from("knowledge_collections")
+      .select("id, name, parent_id")
+      .eq("tenant_id", action.tenantId)
+      .eq("id", action.collectionId)
+      .maybeSingle();
+    if (collectionError)
+      return json(
+        request,
+        { error: { code: "collection_delete_failed" } },
+        500,
+      );
+    if (!collection)
+      return json(request, { error: { code: "collection_not_found" } }, 404);
+    const { data: children, error: childrenError } = await admin
+      .from("knowledge_collections")
+      .select("id")
+      .eq("tenant_id", action.tenantId)
+      .eq("parent_id", collection.id);
+    if (childrenError)
+      return json(
+        request,
+        { error: { code: "collection_delete_failed" } },
+        500,
+      );
+    const childIds = (children ?? []).map((child: any) => String(child.id));
+    const allIds = [...childIds, String(collection.id)];
+    const { count: assignmentCount, error: countError } = await admin
+      .from("knowledge_article_collections")
+      .select("article_id", { count: "exact", head: true })
+      .eq("tenant_id", action.tenantId)
+      .in("collection_id", allIds);
+    if (countError)
+      return json(
+        request,
+        { error: { code: "collection_delete_failed" } },
+        500,
+      );
+    if (childIds.length) {
+      const { error: childDeleteError } = await admin
+        .from("knowledge_collections")
+        .delete()
+        .eq("tenant_id", action.tenantId)
+        .in("id", childIds);
+      if (childDeleteError)
+        return json(
+          request,
+          { error: { code: "collection_delete_failed" } },
+          500,
+        );
+    }
+    const { error: deleteError } = await admin
+      .from("knowledge_collections")
+      .delete()
+      .eq("tenant_id", action.tenantId)
+      .eq("id", collection.id);
+    if (deleteError)
+      return json(
+        request,
+        { error: { code: "collection_delete_failed" } },
+        500,
+      );
+    await admin.from("audit_logs").insert({
+      tenant_id: action.tenantId,
+      actor_id: actorId,
+      action: "knowledge.collection.deleted",
+      entity_type: "knowledge_collection",
+      entity_id: collection.id,
+      severity: "info",
+      before_data: {
+        name: collection.name,
+        parentId: collection.parent_id ?? null,
+      },
+      after_data: null,
+      metadata: {
+        collectionId: collection.id,
+        deletedSubcategoryIds: childIds,
+        removedAssignments: assignmentCount ?? 0,
+      },
+    });
+    return json(request, {
+      data: {
+        collectionId: collection.id,
+        deletedCollectionIds: allIds,
+        removedAssignments: assignmentCount ?? 0,
+      },
+    });
+  }
+
+  if (action.type === "uploadArticleImage") {
+    const bytes = decodeArticleImage(action.data, action.contentType);
+    if (!bytes) return json(request, { error: { code: "image_invalid" } }, 422);
+    const id = crypto.randomUUID();
+    const path = `${action.tenantId}/${id}.${IMAGE_EXTENSIONS[action.contentType]}`;
+    const { error: uploadError } = await admin.storage
+      .from(IMAGE_BUCKET)
+      .upload(path, bytes, { contentType: action.contentType, upsert: false });
+    if (uploadError)
+      return json(request, { error: { code: "image_upload_failed" } }, 500);
+    const { error: insertError } = await admin
+      .from("knowledge_article_images")
+      .insert({
+        id,
+        tenant_id: action.tenantId,
+        storage_path: path,
+        content_type: action.contentType,
+        byte_size: bytes.length,
+        uploaded_by: actorId,
+      });
+    if (insertError) {
+      await admin.storage.from(IMAGE_BUCKET).remove([path]);
+      return json(request, { error: { code: "image_upload_failed" } }, 500);
+    }
+    const { data: signed } = await admin.storage
+      .from(IMAGE_BUCKET)
+      .createSignedUrl(path, IMAGE_URL_TTL_SECONDS);
+    return json(
+      request,
+      {
+        data: {
+          id,
+          markdown: `![${imageAltText(action.fileName)}](kb-image:${id})`,
+          url: typeof signed?.signedUrl === "string" ? signed.signedUrl : null,
+        },
+      },
+      201,
+    );
+  }
+
   if (action.type === "updateCollection") {
     const { data, error } = await admin.rpc("rename_knowledge_collection", {
       p_tenant_id: action.tenantId,
@@ -671,16 +1119,18 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     );
     if (permitted !== true)
       return json(request, { error: { code: "article_manage_denied" } }, 403);
+    const scope = await loadAgentScope();
+    if (!scope) return scopeFailed();
     const { data: article, error: articleError } = await admin
       .from("knowledge_articles")
-      .select("id")
+      .select("id, department_id")
       .eq("tenant_id", action.tenantId)
       .eq("id", action.articleId)
       .maybeSingle();
     if (articleError)
       return json(request, { error: { code: "article_read_failed" } }, 500);
-    if (!article)
-      return json(request, { error: { code: "article_not_found" } }, 404);
+    if (!article || !departmentVisible(scope, article.department_id))
+      return articleNotFound();
     const { data, error } = await admin
       .from("knowledge_article_revisions")
       .select("id, article_id, revision, summary, created_at")
@@ -697,6 +1147,18 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
   }
 
   if (action.type === "setArticleCollections") {
+    const scope = await loadAgentScope();
+    if (!scope) return scopeFailed();
+    const { data: target, error: targetError } = await admin
+      .from("knowledge_articles")
+      .select("id, department_id")
+      .eq("tenant_id", action.tenantId)
+      .eq("id", action.articleId)
+      .maybeSingle();
+    if (targetError)
+      return json(request, { error: { code: "article_read_failed" } }, 500);
+    if (!target || !departmentVisible(scope, target.department_id))
+      return articleNotFound();
     const { data, error } = await admin.rpc(
       "replace_knowledge_article_collections",
       {
@@ -737,6 +1199,10 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       .maybeSingle();
     if (articleError)
       return json(request, { error: { code: "article_read_failed" } }, 500);
+    const scope = await loadAgentScope();
+    if (!scope) return scopeFailed();
+    if (article && !departmentVisible(scope, article.department_id))
+      return articleNotFound();
     if (!article)
       return json(
         request,
@@ -808,6 +1274,10 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       .maybeSingle();
     if (articleError)
       return json(request, { error: { code: "article_read_failed" } }, 500);
+    const scope = await loadAgentScope();
+    if (!scope) return scopeFailed();
+    if (article && !departmentVisible(scope, article.department_id))
+      return articleNotFound();
     if (!article)
       return json(request, { error: { code: "article_not_in_review" } }, 409);
     const now = new Date().toISOString();
@@ -891,7 +1361,17 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         500,
       );
 
+    // Internal readers see their departments; requesters and customers read
+    // the published external articles of every department with the module.
+    const readScope = canReadInternal
+      ? await loadAgentScope()
+      : await publishedKnowledgeScope(admin, action.tenantId);
+    if (!readScope) return scopeFailed();
+
     if (action.type === "listArticles") {
+      const departments = canReadInternal
+        ? await scopeDepartmentOptions(admin, action.tenantId, readScope)
+        : [];
       const ranks = new Map<string, number>();
       let matchingArticleIds: string[] | null = null;
       if (action.query) {
@@ -919,7 +1399,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         }
         matchingArticleIds = [...ranks.keys()];
         if (matchingArticleIds.length === 0) {
-          return json(request, { data: { articles: [] } });
+          return json(request, { data: { articles: [], departments } });
         }
       }
 
@@ -930,6 +1410,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         .neq("status", "archived")
         .order("updated_at", { ascending: false })
         .limit(200);
+      query = applyDepartmentScope(query, readScope);
       if (!canReadInternal) {
         query = applyExternalArticleScope(query, organizationIds);
       }
@@ -983,6 +1464,12 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
               ? revisionResponse(revisions.data.get(article.id))
               : null,
           })),
+          departments,
+          imageUrls: await resolveImageUrls(
+            admin,
+            action.tenantId,
+            [...revisions.data.values()].map((revision: any) => revision.body),
+          ),
         },
       });
     }
@@ -999,8 +1486,8 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     const { data: article, error } = await query.maybeSingle();
     if (error)
       return json(request, { error: { code: "article_read_failed" } }, 500);
-    if (!article)
-      return json(request, { error: { code: "article_not_found" } }, 404);
+    if (!article || !departmentVisible(readScope, article.department_id))
+      return articleNotFound();
 
     const articleCollections = canReadInternal
       ? await fetchArticleCollectionIds(admin, action.tenantId, [article.id])
@@ -1046,18 +1533,32 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
           articleCollections.data.get(article.id) ?? [],
         ),
         revision: revisionResponse(revision.data),
+        imageUrls: await resolveImageUrls(admin, action.tenantId, [
+          revision.data.body,
+        ]),
       },
     });
   }
 
   if (action.type === "saveArticle") {
     const updatedAt = new Date().toISOString();
+    const scope = await loadAgentScope();
+    if (!scope) return scopeFailed();
+    const departmentFailure = (message: string) =>
+      json(
+        request,
+        { error: { code: "article_department_invalid", message } },
+        422,
+      );
 
     if (!action.articleId) {
+      const department = resolveRecordDepartment(scope, action.departmentId);
+      if ("error" in department) return departmentFailure(department.error);
       const { data: article, error } = await admin
         .from("knowledge_articles")
         .insert({
           tenant_id: action.tenantId,
+          department_id: department.departmentId,
           title: action.title,
           slug: createSlug(action.title),
           visibility: action.visibility,
@@ -1107,7 +1608,19 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         ))
       )
         return json(request, { error: { code: "article_audit_failed" } }, 500);
-      return json(request, { data: { article, revision } }, 201);
+      return json(
+        request,
+        {
+          data: {
+            article,
+            revision,
+            imageUrls: await resolveImageUrls(admin, action.tenantId, [
+              revision.body,
+            ]),
+          },
+        },
+        201,
+      );
     }
 
     const { data: existing, error: existingError } = await admin
@@ -1119,8 +1632,19 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       .maybeSingle();
     if (existingError)
       return json(request, { error: { code: "article_read_failed" } }, 500);
-    if (!existing)
-      return json(request, { error: { code: "article_not_found" } }, 404);
+    if (!existing || !departmentVisible(scope, existing.department_id))
+      return articleNotFound();
+
+    // Editing may move the article to another department of the caller.
+    let departmentChange: { department_id: string | null } | null = null;
+    if (
+      action.departmentId !== undefined &&
+      action.departmentId !== existing.department_id
+    ) {
+      const department = resolveRecordDepartment(scope, action.departmentId);
+      if ("error" in department) return departmentFailure(department.error);
+      departmentChange = { department_id: department.departmentId };
+    }
 
     const previousRevision = await fetchCurrentRevision(admin, existing);
     if (previousRevision.error)
@@ -1160,6 +1684,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       .update({
         title: action.title,
         visibility: action.visibility,
+        ...(departmentChange ?? {}),
         current_revision: nextRevision,
         // A previous published revision remains readable to customers. The new
         // text always returns to a draft and requires a fresh review.
@@ -1192,9 +1717,73 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       ))
     )
       return json(request, { error: { code: "article_audit_failed" } }, 500);
-    return json(request, { data: { article, revision } });
+    return json(request, {
+      data: {
+        article,
+        revision,
+        imageUrls: await resolveImageUrls(admin, action.tenantId, [
+          revision.body,
+        ]),
+      },
+    });
   }
 
+  if (action.type === "deleteArticle") {
+    // Hard delete: revisions, reviews, collection and ticket links cascade.
+    const scope = await loadAgentScope();
+    if (!scope) return scopeFailed();
+    const { data: existing, error: existingError } = await admin
+      .from("knowledge_articles")
+      .select(ARTICLE_SELECT)
+      .eq("tenant_id", action.tenantId)
+      .eq("id", action.articleId)
+      .maybeSingle();
+    if (existingError)
+      return json(request, { error: { code: "article_read_failed" } }, 500);
+    if (!existing || !departmentVisible(scope, existing.department_id))
+      return articleNotFound();
+    const { data: revisions, error: revisionsError } = await admin
+      .from("knowledge_article_revisions")
+      .select("body")
+      .eq("article_id", existing.id);
+    if (revisionsError)
+      return json(
+        request,
+        { error: { code: "article_revision_read_failed" } },
+        500,
+      );
+    const imageIds = referencedImageIds(
+      (revisions ?? []).map((revision: any) => revision.body),
+    );
+    const { data: deleted, error: deleteError } = await admin
+      .from("knowledge_articles")
+      .delete()
+      .eq("tenant_id", action.tenantId)
+      .eq("id", existing.id)
+      .select("id")
+      .maybeSingle();
+    if (deleteError)
+      return json(request, { error: { code: "article_delete_failed" } }, 500);
+    if (!deleted) return articleNotFound();
+    // Images that no other article uses are removed as well.
+    await removeUnreferencedImages(admin, action.tenantId, imageIds);
+    if (
+      !(await writeAudit(
+        admin,
+        action.tenantId,
+        actorId,
+        "knowledge.article.deleted",
+        existing.id,
+        auditData(existing, null),
+        null,
+      ))
+    )
+      return json(request, { error: { code: "article_audit_failed" } }, 500);
+    return json(request, { data: { articleId: existing.id, deleted: true } });
+  }
+
+  const archiveScope = await loadAgentScope();
+  if (!archiveScope) return scopeFailed();
   const { data: existing, error: existingError } = await admin
     .from("knowledge_articles")
     .select(ARTICLE_SELECT)
@@ -1204,8 +1793,8 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     .maybeSingle();
   if (existingError)
     return json(request, { error: { code: "article_read_failed" } }, 500);
-  if (!existing)
-    return json(request, { error: { code: "article_not_found" } }, 404);
+  if (!existing || !departmentVisible(archiveScope, existing.department_id))
+    return articleNotFound();
 
   const existingRevision = await fetchCurrentRevision(admin, existing);
   if (existingRevision.error)

@@ -1,4 +1,5 @@
 import { type SupabaseContext, withSupabase } from "@supabase/server";
+import { resolveUserFeatureStates } from "../_shared/tenant-features.ts";
 
 const APP_ORIGIN = "https://app.nextdesk.ch";
 const MAX_REQUEST_BYTES = 48 * 1024;
@@ -815,6 +816,18 @@ const handler = withSupabase(
           400,
           "invalid_request",
           "Die Anfrage enthält ungültige Felder.",
+        );
+      const moduleStates = await resolveUserFeatureStates(
+        context.supabaseAdmin,
+        action.tenantId,
+        actorId,
+        ["onboarding.entries"],
+      );
+      if (moduleStates?.["onboarding.entries"] !== true)
+        throw new HttpError(
+          403,
+          "onboarding_feature_disabled",
+          "Die Eintritte sind für dich nicht eingeschaltet.",
         );
       if (action.type === "navigationSummary")
         return json(request, {

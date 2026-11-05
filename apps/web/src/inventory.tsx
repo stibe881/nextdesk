@@ -48,6 +48,8 @@ export type InventoryItemSummary = {
   active: boolean;
   articleNumber: string | null;
   availableQuantity: number;
+  /** Department of the item; null for items shared by all departments. */
+  departmentId: string | null;
   hasPrimaryImage: boolean;
   id: string;
   locationName: string | null;
@@ -155,7 +157,11 @@ type InventoryMutationReceipt = {
   id: string;
 };
 
+export type InventoryDepartment = { id: string; name: string };
+
 export type InventoryWorkspace = {
+  /** Departments the user may assign to new items. */
+  departments: readonly InventoryDepartment[];
   items: readonly InventoryItemSummary[];
   locations: readonly InventoryLocation[];
   lowStockItems: readonly InventoryItemSummary[];
@@ -217,6 +223,7 @@ type InventoryAction =
         trackingMode: "quantity";
         minimumStock: number;
         targetStock: number;
+        departmentId?: string;
       };
       clientRequestId: string;
     }
@@ -343,7 +350,14 @@ function parseItem(value: unknown): InventoryItemSummary | null {
       "targetQuantity",
       "locationName",
       "active",
+      "departmentId",
     ])
+  )
+    return null;
+  if (
+    value.departmentId !== undefined &&
+    value.departmentId !== null &&
+    !isUuid(value.departmentId)
   )
     return null;
   const physicalQuantity = nonnegativeNumber(value.physicalQuantity);
@@ -372,6 +386,8 @@ function parseItem(value: unknown): InventoryItemSummary | null {
     active: value.active,
     articleNumber: nullableText(value.articleNumber),
     availableQuantity,
+    departmentId:
+      typeof value.departmentId === "string" ? value.departmentId : null,
     hasPrimaryImage: value.hasPrimaryImage,
     id: value.id,
     locationName: nullableText(value.locationName),
@@ -383,6 +399,15 @@ function parseItem(value: unknown): InventoryItemSummary | null {
     trackingMode: value.trackingMode,
     unit: value.unit,
   };
+}
+
+function parseDepartment(value: unknown): InventoryDepartment | null {
+  if (!isRecord(value) || !hasOnlyKeys(value, ["id", "name"])) return null;
+  return isUuid(value.id) &&
+    typeof value.name === "string" &&
+    value.name.length > 0
+    ? { id: value.id, name: value.name }
+    : null;
 }
 
 function parseLocation(value: unknown): InventoryLocation | null {
@@ -912,6 +937,7 @@ export function parseInventoryWorkspace(
       "recentEvents",
       "recentEventsHasMore",
       "lowStockItems",
+      "departments",
     ])
   )
     return null;
@@ -951,8 +977,14 @@ export function parseInventoryWorkspace(
   const locations = parseList(data.locations, parseLocation);
   const recentEvents = parseList(data.recentEvents, parseEvent);
   const lowStockItems = parseList(data.lowStockItems, parseItem);
-  if (!items || !locations || !recentEvents || !lowStockItems) return null;
+  const departments =
+    data.departments === undefined
+      ? []
+      : parseList(data.departments, parseDepartment);
+  if (!items || !locations || !recentEvents || !lowStockItems || !departments)
+    return null;
   return {
+    departments,
     items,
     locations,
     lowStockItems,
@@ -1306,6 +1338,7 @@ export function Inventory({ tenantId }: { tenantId: string }) {
           {activeSection === "Artikel" ? (
             <InventoryItems
               canManage={workspace.permissions.canManage}
+              departments={workspace.departments}
               items={currentItems}
               onChanged={onChanged}
               onImagesChanged={load}
@@ -1435,17 +1468,24 @@ function InventoryOverview({ workspace }: { workspace: InventoryWorkspace }) {
 
 function InventoryItems({
   canManage,
+  departments,
   items,
   onChanged,
   onImagesChanged,
   tenantId,
 }: {
   canManage: boolean;
+  departments: readonly InventoryDepartment[];
   items: readonly InventoryItemSummary[];
   onChanged: InventoryChangedHandler;
   onImagesChanged: () => Promise<boolean>;
   tenantId: string;
 }) {
+  // Die Abteilung wird nur gezeigt, wenn mehrere zur Auswahl stehen.
+  const showDepartment = departments.length > 1;
+  const departmentNames = new Map(
+    departments.map((department) => [department.id, department.name]),
+  );
   // Shop-Verknüpfung: welcher Lagerartikel im Shop angeboten wird.
   const [shop, setShop] = useState<{
     canManage: boolean;
@@ -1516,7 +1556,11 @@ function InventoryItems({
         ) : null}
       </div>
       {canManage ? (
-        <InventoryItemCreateForm onChanged={onChanged} tenantId={tenantId} />
+        <InventoryItemCreateForm
+          departments={departments}
+          onChanged={onChanged}
+          tenantId={tenantId}
+        />
       ) : null}
       {shopNotice ? (
         <p className="form-success" role="status">
@@ -1535,6 +1579,7 @@ function InventoryItems({
               <tr>
                 <th>Artikel</th>
                 <th>Bild</th>
+                {showDepartment ? <th>Abteilung</th> : null}
                 <th>Lagerort</th>
                 <th>Physisch</th>
                 <th>Reserviert</th>
@@ -1563,6 +1608,14 @@ function InventoryItems({
                       tenantId={tenantId}
                     />
                   </td>
+                  {showDepartment ? (
+                    <td>
+                      {item.departmentId
+                        ? (departmentNames.get(item.departmentId) ??
+                          "Andere Abteilung")
+                        : "Alle Abteilungen"}
+                    </td>
+                  ) : null}
                   <td>{item.locationName ?? "Nicht zugeordnet"}</td>
                   <td>{quantity(item.physicalQuantity, item.unit)}</td>
                   <td>{quantity(item.reservedQuantity, item.unit)}</td>
@@ -2778,12 +2831,18 @@ function InventoryLocationCreateForm({
 }
 
 function InventoryItemCreateForm({
+  departments,
   onChanged,
   tenantId,
 }: {
+  departments: readonly InventoryDepartment[];
   onChanged: InventoryChangedHandler;
   tenantId: string;
 }) {
+  // Eine Abteilung ist nur zu wählen, wenn mehrere in Frage kommen; bei
+  // einer einzigen setzt der Server sie selbst.
+  const chooseDepartment = departments.length > 1;
+  const [departmentId, setDepartmentId] = useState("");
   const [articleNumber, setArticleNumber] = useState("");
   const [name, setName] = useState("");
   const [category, setCategory] = useState("");
@@ -2802,7 +2861,8 @@ function InventoryItemCreateForm({
     minimumStock !== "" &&
     targetStock !== "" &&
     Number.isFinite(minimumStockNumber) &&
-    Number.isFinite(targetStockNumber);
+    Number.isFinite(targetStockNumber) &&
+    (!chooseDepartment || departmentId !== "");
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -2821,6 +2881,7 @@ function InventoryItemCreateForm({
           trackingMode: "quantity",
           minimumStock: minimumStockNumber,
           targetStock: targetStockNumber,
+          ...(chooseDepartment && departmentId ? { departmentId } : {}),
         },
         clientRequestId: clientRequest.requestId(),
       },
@@ -2835,6 +2896,7 @@ function InventoryItemCreateForm({
       setUnit("stk");
       setMinimumStock("0");
       setTargetStock("0");
+      setDepartmentId("");
     }
   };
 
@@ -2872,6 +2934,23 @@ function InventoryItemCreateForm({
             value={category}
           />
         </label>
+        {chooseDepartment ? (
+          <label>
+            Abteilung
+            <select
+              onChange={(event) => setDepartmentId(event.target.value)}
+              required
+              value={departmentId}
+            >
+              <option value="">Bitte wählen</option>
+              {departments.map((department) => (
+                <option key={department.id} value={department.id}>
+                  {department.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
         <label>
           Einheit
           <input
