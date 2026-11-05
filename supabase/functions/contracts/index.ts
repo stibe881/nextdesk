@@ -1,5 +1,13 @@
 import { type SupabaseContext, withSupabase } from "@supabase/server";
 import { resolveUserFeatureStates } from "../_shared/tenant-features.ts";
+import {
+  applyDepartmentScope,
+  type DepartmentScope,
+  departmentVisible,
+  loadDepartmentScope,
+  scopeDepartmentOptions,
+} from "../_shared/department-scope.ts";
+import { departmentForSave, parseDepartmentInput } from "./department-input.ts";
 
 const ORIGIN = "https://app.nextdesk.ch";
 const UUID =
@@ -31,6 +39,8 @@ type Values = {
   autoRenew?: boolean;
   renewalMonths?: number | null;
   assetIds?: string[];
+  // undefined: not sent (older clients); an update keeps the department.
+  departmentId?: string | null;
   responsibleUserId: string | null;
   notes: string | null;
 };
@@ -103,6 +113,7 @@ function parseValues(value: unknown): Values | null {
         "autoRenew",
         "renewalMonths",
         "assetIds",
+        "departmentId",
         "responsibleUserId",
         "notes",
       ].includes(key),
@@ -178,7 +189,9 @@ function parseValues(value: unknown): Values | null {
         value.assetIds.every(isUuid)
       ? [...new Set((value.assetIds as string[]).map((id) => id.toLowerCase()))]
       : null;
+  const departmentId = parseDepartmentInput(value);
   if (
+    departmentId === false ||
     (cancelled !== undefined && typeof cancelled !== "boolean") ||
     cancelledOn === undefined && "cancelledOn" in value ||
     (cancelledOn && cancelled !== true) ||
@@ -225,6 +238,7 @@ function parseValues(value: unknown): Values | null {
     ...(autoRenew !== undefined ? { autoRenew: autoRenew as boolean } : {}),
     ...(renewalMonths !== undefined ? { renewalMonths: renewalMonths as number | null } : {}),
     ...(assetIds !== undefined ? { assetIds: assetIds as string[] } : {}),
+    ...(departmentId !== undefined ? { departmentId } : {}),
     responsibleUserId,
     notes,
   };
@@ -404,6 +418,7 @@ const rowToContract = (row: Row, assetIds: string[] = []) => ({
   autoRenew: row.auto_renew === true,
   renewalMonths: row.renewal_months ?? null,
   assetIds,
+  departmentId: row.department_id ?? null,
   responsibleUserId: row.responsible_user_id,
   notes: row.notes,
   archivedAt: row.archived_at,
@@ -472,6 +487,35 @@ async function syncAssetLinks(
     if (error) throw new HttpError(503, "contract_assets_failed", "Die Asset-Verknüpfung konnte nicht gespeichert werden.");
   }
 }
+// The contract's department, or a 404 when it is missing or outside the
+// caller's departments.
+async function visibleContractDepartment(
+  admin: Admin,
+  tenantId: string,
+  contractId: string,
+  scope: DepartmentScope,
+): Promise<string | null> {
+  const { data, error } = await admin
+    .from("contracts")
+    .select("id, department_id")
+    .eq("tenant_id", tenantId)
+    .eq("id", contractId)
+    .maybeSingle();
+  if (error)
+    throw new HttpError(
+      503,
+      "contracts_unavailable",
+      "Der Vertrag konnte nicht geladen werden.",
+    );
+  if (!data || !departmentVisible(scope, (data as Row).department_id))
+    throw new HttpError(
+      404,
+      "contract_not_found",
+      "Der Vertrag wurde nicht gefunden.",
+    );
+  const departmentId = (data as Row).department_id;
+  return departmentId ? String(departmentId) : null;
+}
 async function handler(
   request: Request,
   context: SupabaseContext,
@@ -481,6 +525,18 @@ async function handler(
   if (!isUuid(actorId) || !action)
     throw new HttpError(400, "invalid_request", "Die Anfrage ist ungültig.");
   await authorize(context.supabaseAdmin, actorId, action.tenantId);
+  const scope = await loadDepartmentScope(
+    context.supabaseAdmin,
+    action.tenantId,
+    actorId,
+    "contracts.management",
+  );
+  if (!scope)
+    throw new HttpError(
+      503,
+      "contracts_unavailable",
+      "Die Abteilungen konnten nicht geprüft werden.",
+    );
   if (action.type === "listAssets") {
     const { data, error } = await context.supabaseAdmin
       .from("assets")
@@ -529,14 +585,18 @@ async function handler(
     let query = context.supabaseAdmin
       .from("contracts")
       .select(
-        "id, title, counterparty_name, reference_number, contract_type, status, starts_on, ends_on, notice_period_days, reminder_days_before, reminder_sent_for, cancelled, cancelled_on, cost_amount, cost_currency, cost_period, auto_renew, renewal_months, responsible_user_id, notes, archived_at, created_at, updated_at",
+        "id, title, counterparty_name, reference_number, contract_type, status, starts_on, ends_on, notice_period_days, reminder_days_before, reminder_sent_for, cancelled, cancelled_on, cost_amount, cost_currency, cost_period, auto_renew, renewal_months, department_id, responsible_user_id, notes, archived_at, created_at, updated_at",
       )
       .eq("tenant_id", action.tenantId)
       .order("ends_on", { ascending: true, nullsFirst: false })
       .order("title")
       .limit(1000);
     if (!action.includeArchived) query = query.neq("status", "archived");
-    const { data, error } = await query;
+    query = applyDepartmentScope(query, scope);
+    const [{ data, error }, departments] = await Promise.all([
+      query,
+      scopeDepartmentOptions(context.supabaseAdmin, action.tenantId, scope),
+    ]);
     if (error)
       throw new HttpError(
         503,
@@ -553,10 +613,27 @@ async function handler(
         contracts: (data ?? []).map((item) =>
           rowToContract(item as Row, links.get(String((item as Row).id)) ?? []),
         ),
+        departments,
       },
     });
   }
   if (action.type === "create" || action.type === "update") {
+    const existingDepartment =
+      action.type === "update"
+        ? await visibleContractDepartment(
+            context.supabaseAdmin,
+            action.tenantId,
+            action.contractId,
+            scope,
+          )
+        : undefined;
+    const department = departmentForSave(
+      scope,
+      action.values.departmentId,
+      existingDepartment,
+    );
+    if ("error" in department)
+      throw new HttpError(422, "department_invalid", department.error);
     await assertResponsible(
       context.supabaseAdmin,
       action.tenantId,
@@ -601,6 +678,9 @@ async function handler(
             ? (action.values.renewalMonths ?? null)
             : null,
         }
+        : {}),
+      ...("departmentId" in department
+        ? { department_id: department.departmentId }
         : {}),
       responsible_user_id: action.values.responsibleUserId,
       notes: action.values.notes,
@@ -665,6 +745,12 @@ async function handler(
       action.type === "create" ? 201 : 200,
     );
   }
+  await visibleContractDepartment(
+    context.supabaseAdmin,
+    action.tenantId,
+    action.contractId,
+    scope,
+  );
   const { data, error } = await context.supabaseAdmin
     .from("contracts")
     .update({ status: "archived", archived_by: actorId, updated_by: actorId })
