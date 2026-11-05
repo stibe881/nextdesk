@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 
 import { functionErrorMessage } from "./lib/function-error";
+import { shopApi } from "./lib/shop";
 import { supabase } from "./lib/supabase";
 
 type TrackingMode = "quantity" | "serial";
@@ -1445,6 +1446,58 @@ function InventoryItems({
   onImagesChanged: () => Promise<boolean>;
   tenantId: string;
 }) {
+  // Shop-Verknüpfung: welcher Lagerartikel im Shop angeboten wird.
+  const [shop, setShop] = useState<{
+    canManage: boolean;
+    linked: Map<string, { name: string; active: boolean }>;
+  } | null>(null);
+  const [shopNotice, setShopNotice] = useState("");
+  const [shopError, setShopError] = useState("");
+  const [offering, setOffering] = useState<string | null>(null);
+  const loadShop = useCallback(async () => {
+    try {
+      const context = await shopApi.context(tenantId);
+      const catalog = await shopApi.catalog(tenantId, context.canManage);
+      const linked = new Map<string, { name: string; active: boolean }>();
+      for (const entry of catalog) {
+        if (entry.inventoryItemId) {
+          linked.set(entry.inventoryItemId, {
+            name: entry.name,
+            active: entry.active,
+          });
+        }
+      }
+      setShop({ canManage: context.canManage, linked });
+    } catch {
+      // Ohne Shop-Modul bleibt die Spalte leer.
+      setShop(null);
+    }
+  }, [tenantId]);
+  useEffect(() => {
+    void loadShop();
+  }, [loadShop]);
+  const offer = async (item: InventoryItemSummary) => {
+    setOffering(item.id);
+    setShopError("");
+    setShopNotice("");
+    try {
+      const result = await shopApi.offerInventoryItem(tenantId, item.id);
+      setShopNotice(
+        result.created
+          ? `«${item.name}» ist jetzt im Shop.`
+          : `«${item.name}» war schon im Shop.`,
+      );
+      await loadShop();
+    } catch (nextError) {
+      setShopError(
+        nextError instanceof Error
+          ? nextError.message
+          : "Der Artikel konnte nicht in den Shop übernommen werden.",
+      );
+    } finally {
+      setOffering(null);
+    }
+  };
   return (
     <section className="inventory__panel panel">
       <div className="panel-heading">
@@ -1465,6 +1518,16 @@ function InventoryItems({
       {canManage ? (
         <InventoryItemCreateForm onChanged={onChanged} tenantId={tenantId} />
       ) : null}
+      {shopNotice ? (
+        <p className="form-success" role="status">
+          {shopNotice}
+        </p>
+      ) : null}
+      {shopError ? (
+        <p className="form-error" role="alert">
+          {shopError}
+        </p>
+      ) : null}
       {items.length ? (
         <div className="inventory__table-wrap">
           <table className="inventory__table">
@@ -1477,6 +1540,7 @@ function InventoryItems({
                 <th>Reserviert</th>
                 <th>Verfügbar</th>
                 <th>Mindestbestand</th>
+                {shop ? <th>Shop</th> : null}
               </tr>
             </thead>
             <tbody>
@@ -1512,6 +1576,32 @@ function InventoryItems({
                     {quantity(item.availableQuantity, item.unit)}
                   </td>
                   <td>{quantity(item.minQuantity, item.unit)}</td>
+                  {shop ? (
+                    <td>
+                      {shop.linked.has(item.id) ? (
+                        <span
+                          className={`inventory__shop-badge${shop.linked.get(item.id)?.active ? "" : " inventory__shop-badge--hidden"}`}
+                        >
+                          {shop.linked.get(item.id)?.active
+                            ? "Im Shop"
+                            : "Im Shop · ausgeblendet"}
+                        </span>
+                      ) : shop.canManage ? (
+                        <button
+                          className="secondary-button inventory__shop-offer"
+                          disabled={offering !== null}
+                          onClick={() => void offer(item)}
+                          type="button"
+                        >
+                          {offering === item.id
+                            ? "Wird übernommen …"
+                            : "Im Shop anbieten"}
+                        </button>
+                      ) : (
+                        <span className="inventory__muted">–</span>
+                      )}
+                    </td>
+                  ) : null}
                 </tr>
               ))}
             </tbody>
@@ -1824,10 +1914,7 @@ function InventoryLocations({
         <div>
           <span className="eyebrow">LAGERORTE</span>
           <h2>Orte und Fächer</h2>
-          <p>
-            Lagerorte sind unabhängig von Assetstandorten und
-            Raumplanung.
-          </p>
+          <p>Lagerorte sind unabhängig von Assetstandorten und Raumplanung.</p>
         </div>
         <MapPin aria-hidden="true" size={21} />
       </div>

@@ -1396,12 +1396,14 @@ async function saveCatalogItem(
     input.maxLoanDays === null || input.maxLoanDays === undefined
       ? null
       : int(input.maxLoanDays, 1, 365);
-  const inventoryItemId =
+  let inventoryItemId =
     input.inventoryItemId === null || input.inventoryItemId === undefined
       ? null
       : isUuid(input.inventoryItemId)
         ? input.inventoryItemId
         : undefined;
+  const createInventoryItem =
+    input.createInventoryItem === true && inventoryItemId === null;
   const rawOptions =
     input.optionItemIds === undefined || input.optionItemIds === null
       ? []
@@ -1501,6 +1503,13 @@ async function saveCatalogItem(
       );
     }
   }
+  if (createInventoryItem && name) {
+    inventoryItemId = await ensureInventoryItem(admin, tenantId, {
+      name,
+      articleNumber,
+      category: category.name,
+    });
+  }
   const values = {
     tenant_id: tenantId,
     name,
@@ -1548,6 +1557,110 @@ async function saveCatalogItem(
   if (error) throw databaseError(error);
   await audit(admin, tenantId, actorId, "shop.catalog.created", data.id);
   return data.id;
+}
+
+/**
+ * Stock article for a shop article: reuses the stock article with the same
+ * article number, otherwise creates one. Returns its id.
+ */
+async function ensureInventoryItem(
+  admin: Admin,
+  tenantId: string,
+  input: { name: string; articleNumber: string | null; category: string },
+): Promise<string> {
+  const normalized = input.articleNumber
+    ? input.articleNumber.trim().toLowerCase()
+    : "";
+  const validNumber = /^[a-z0-9][a-z0-9._/-]{0,159}$/u.test(normalized)
+    ? normalized
+    : null;
+  if (validNumber) {
+    const { data: existing, error } = await admin
+      .from("inventory_items")
+      .select("id")
+      .eq("tenant_id", tenantId)
+      .eq("article_number", validNumber)
+      .maybeSingle();
+    if (error) throw databaseError(error);
+    if (existing) return String((existing as Row).id);
+  }
+  const articleNumber =
+    validNumber ?? `shop-${crypto.randomUUID().slice(0, 8)}`;
+  const { data, error } = await admin
+    .from("inventory_items")
+    .insert({
+      tenant_id: tenantId,
+      article_number: articleNumber,
+      name: input.name.slice(0, 240),
+      category: input.category.slice(0, 120),
+    })
+    .select("id")
+    .single();
+  if (error) throw databaseError(error);
+  return String((data as Row).id);
+}
+
+/** Offers a stock article in the shop (or returns the shop article it has). */
+async function offerInventoryItem(
+  admin: Admin,
+  tenantId: string,
+  actorId: string,
+  inventoryItemId: string,
+): Promise<{ id: string; created: boolean }> {
+  const { data: stock, error } = await admin
+    .from("inventory_items")
+    .select("id, name, article_number, category, tracking_mode")
+    .eq("tenant_id", tenantId)
+    .eq("id", inventoryItemId)
+    .maybeSingle();
+  if (error) throw databaseError(error);
+  if (!stock) {
+    throw new HttpError(
+      404,
+      "inventory_item_unknown",
+      "Der Lagerartikel wurde nicht gefunden.",
+    );
+  }
+  const { data: linked, error: linkedError } = await admin
+    .from("shop_catalog_items")
+    .select("id")
+    .eq("tenant_id", tenantId)
+    .eq("inventory_item_id", inventoryItemId)
+    .limit(1)
+    .maybeSingle();
+  if (linkedError) throw databaseError(linkedError);
+  if (linked) return { id: String((linked as Row).id), created: false };
+  const row = stock as Row;
+  const stockCategory = categoryName(row.category);
+  const category = await ensureCategory(
+    admin,
+    tenantId,
+    actorId,
+    stockCategory && stockCategory.toLowerCase() !== "general"
+      ? stockCategory
+      : "Allgemein",
+  );
+  const name = String(row.name).slice(0, 160).trim();
+  const { data, error: insertError } = await admin
+    .from("shop_catalog_items")
+    .insert({
+      tenant_id: tenantId,
+      name: Array.from(name).length >= 2 ? name : `Artikel ${name}`,
+      category: category.name,
+      category_id: category.id,
+      category_ids: [category.id],
+      article_number: row.article_number,
+      kind: row.tracking_mode === "serial" ? "loan" : "order",
+      max_loan_days: row.tracking_mode === "serial" ? 30 : null,
+      inventory_item_id: inventoryItemId,
+      created_by: actorId,
+    })
+    .select("id")
+    .single();
+  if (insertError) throw databaseError(insertError);
+  const id = String((data as Row).id);
+  await audit(admin, tenantId, actorId, "shop.catalog.created", id);
+  return { id, created: true };
 }
 
 async function audit(
@@ -1664,6 +1777,23 @@ const securedHandler = withSupabase(
           }
           const id = await saveCatalogItem(admin, tenantId, actorId, body.item);
           return json(request, { data: { id } });
+        }
+        case "offerInventoryItem": {
+          if (!access.canManage || !isUuid(body.inventoryItemId)) {
+            throw new HttpError(
+              403,
+              "forbidden",
+              "Für diese Aktion fehlt die Berechtigung.",
+            );
+          }
+          return json(request, {
+            data: await offerInventoryItem(
+              admin,
+              tenantId,
+              actorId,
+              body.inventoryItemId.toLowerCase(),
+            ),
+          });
         }
         case "deleteCatalogItem": {
           if (!access.canManage || !isUuid(body.itemId)) {

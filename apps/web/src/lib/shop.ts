@@ -239,6 +239,12 @@ export const shopApi = {
     }).then((data) => data.category),
   deleteCategory: (tenantId: string, categoryId: string) =>
     call<{ deleted: true }>({ type: "deleteCategory", tenantId, categoryId }),
+  offerInventoryItem: (tenantId: string, inventoryItemId: string) =>
+    call<{ id: string; created: boolean }>({
+      type: "offerInventoryItem",
+      tenantId,
+      inventoryItemId,
+    }),
   deleteItem: (tenantId: string, itemId: string) =>
     call<{ deleted: true }>({ type: "deleteCatalogItem", tenantId, itemId }),
   addImage: (
