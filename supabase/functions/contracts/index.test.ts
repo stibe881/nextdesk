@@ -19,14 +19,23 @@ Deno.test(
       }
     }
 
-    for (const forbidden of [
-      'type: "delete"',
-      ".delete()",
-      "notes: old.notes",
-    ]) {
+    for (const forbidden of ['type: "delete"', "notes: old.notes"]) {
       if (source.includes(forbidden)) {
         throw new Error(
           `The contract endpoint contains a forbidden destructive or audit-sensitive path: ${forbidden}`,
+        );
+      }
+    }
+
+    // Contracts are archived, never deleted. The only allowed delete removes
+    // asset links (contract_assets, migration 0152) of a contract.
+    const deletes = [...source.matchAll(/\.delete\(\)/g)];
+    for (const match of deletes) {
+      const before = source.slice(0, match.index);
+      const table = [...before.matchAll(/\.from\("([a-z_]+)"\)/g)].at(-1)?.[1];
+      if (table !== "contract_assets") {
+        throw new Error(
+          `The contract endpoint deletes from a table other than contract_assets: ${table}`,
         );
       }
     }
@@ -37,7 +46,7 @@ Deno.test(
       authorizeStart,
     );
     const featureCheck = source.indexOf(
-      "resolveTenantFeatureStates(admin, tenantId",
+      "resolveUserFeatureStates(admin, tenantId, actorId",
       authorizeStart,
     );
     if (

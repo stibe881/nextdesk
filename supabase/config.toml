@@ -187,3 +187,6 @@ verify_jwt = false
 # OAuth-Vermittler für Gemini-Connectors; die Funktion prüft Zugangsdaten selbst.
 [functions.oauth-proxy]
 verify_jwt = false
+
+[functions.health]
+verify_jwt = false

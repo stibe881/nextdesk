@@ -9094,4 +9094,201 @@ end;
 $$;
 rollback;
 SQL
+# Department follow-ups (0187): a new inventory item gets its department in
+# the create command itself, an edit keeps or changes it on request only, and
+# expiry reminder tickets go to the department of the contract or license
+# (falling back to the ICT department).
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_owner constant uuid := 'f1870000-0000-4000-8000-000000000001';
+  v_tenant uuid;
+  v_ict uuid;
+  v_facility uuid;
+  v_inactive uuid;
+  v_item uuid;
+  v_again uuid;
+  v_department uuid;
+  v_contract uuid;
+  v_contract_ict uuid;
+  v_license uuid;
+  v_ticket uuid;
+  v_created integer;
+begin
+  insert into auth.users (id) values (v_owner);
+  v_tenant := public.provision_personal_workspace(v_owner, 'abteilung@example.ch', 'Abteilungsteam');
+  select id into v_ict from public.departments where tenant_id = v_tenant and kind = 'ict' limit 1;
+  if v_ict is null then
+    insert into public.departments (tenant_id, key, name, kind)
+    values (v_tenant, 'ict', 'ICT', 'ict') returning id into v_ict;
+  end if;
+  insert into public.departments (tenant_id, key, name, kind)
+  values (v_tenant, 'facility', 'Facility', 'custom') returning id into v_facility;
+  insert into public.departments (tenant_id, key, name, kind, active)
+  values (v_tenant, 'archiv', 'Archiv', 'custom', false) returning id into v_inactive;
+
+  -- 1. Inventory items.
+  if has_function_privilege('authenticated',
+       'public.upsert_inventory_item(uuid, uuid, uuid, uuid, text, text, text, text, text, numeric, numeric, text, text, text, text, boolean, uuid, boolean)',
+       'execute')
+     or not has_function_privilege('service_role',
+       'public.upsert_inventory_item(uuid, uuid, uuid, uuid, text, text, text, text, text, numeric, numeric, text, text, text, text, boolean, uuid, boolean)',
+       'execute')
+     or to_regprocedure('public.upsert_inventory_item(uuid, uuid, uuid, uuid, text, text, text, text, text, numeric, numeric, text, text, text, text, boolean)') is not null then
+    raise exception 'upsert_inventory_item grants or overloads are wrong';
+  end if;
+  v_item := public.upsert_inventory_item(
+    p_actor_id => v_owner, p_tenant_id => v_tenant,
+    p_client_request_id => 'f1870000-0000-4000-8000-000000000101', p_item_id => null,
+    p_article_number => 'dock-1', p_name => 'Dockingstation', p_category => 'Zubehör',
+    p_unit => 'stk', p_tracking_mode => 'quantity', p_minimum_quantity => 1,
+    p_target_quantity => 2, p_manufacturer => null, p_model => null, p_supplier => null,
+    p_note => null, p_active => true, p_department_id => v_facility, p_set_department => true);
+  select department_id into v_department from public.inventory_items where id = v_item;
+  if v_department is distinct from v_facility then
+    raise exception 'A new inventory item did not get its department';
+  end if;
+  -- Retrying the same request returns the same item.
+  v_again := public.upsert_inventory_item(
+    p_actor_id => v_owner, p_tenant_id => v_tenant,
+    p_client_request_id => 'f1870000-0000-4000-8000-000000000101', p_item_id => null,
+    p_article_number => 'dock-1', p_name => 'Dockingstation', p_category => 'Zubehör',
+    p_unit => 'stk', p_tracking_mode => 'quantity', p_minimum_quantity => 1,
+    p_target_quantity => 2, p_manufacturer => null, p_model => null, p_supplier => null,
+    p_note => null, p_active => true, p_department_id => v_ict, p_set_department => true);
+  if v_again <> v_item then
+    raise exception 'Retrying the item create returned another item';
+  end if;
+  -- An edit with the old parameters keeps the department.
+  perform public.upsert_inventory_item(
+    p_actor_id => v_owner, p_tenant_id => v_tenant,
+    p_client_request_id => 'f1870000-0000-4000-8000-000000000102', p_item_id => v_item,
+    p_article_number => 'dock-1', p_name => 'Dockingstation USB-C', p_category => 'Zubehör',
+    p_unit => 'stk', p_tracking_mode => 'quantity', p_minimum_quantity => 1,
+    p_target_quantity => 2, p_manufacturer => null, p_model => null, p_supplier => null,
+    p_note => null, p_active => true);
+  select department_id into v_department from public.inventory_items where id = v_item;
+  if v_department is distinct from v_facility then
+    raise exception 'An edit without department changed the department';
+  end if;
+  -- A requested change moves the item.
+  perform public.upsert_inventory_item(
+    p_actor_id => v_owner, p_tenant_id => v_tenant,
+    p_client_request_id => 'f1870000-0000-4000-8000-000000000103', p_item_id => v_item,
+    p_article_number => 'dock-1', p_name => 'Dockingstation USB-C', p_category => 'Zubehör',
+    p_unit => 'stk', p_tracking_mode => 'quantity', p_minimum_quantity => 1,
+    p_target_quantity => 2, p_manufacturer => null, p_model => null, p_supplier => null,
+    p_note => null, p_active => true, p_department_id => v_ict, p_set_department => true);
+  select department_id into v_department from public.inventory_items where id = v_item;
+  if v_department is distinct from v_ict then
+    raise exception 'The department change of an inventory item was not stored';
+  end if;
+  if not exists (
+    select 1 from public.audit_logs
+    where entity_id = v_item and action = 'inventory.item.upserted'
+      and metadata ->> 'department_changed' = 'true'
+  ) then
+    raise exception 'The department change was not audited';
+  end if;
+  -- Inactive or foreign departments are rejected.
+  begin
+    perform public.upsert_inventory_item(
+      p_actor_id => v_owner, p_tenant_id => v_tenant,
+      p_client_request_id => 'f1870000-0000-4000-8000-000000000104', p_item_id => v_item,
+      p_article_number => 'dock-1', p_name => 'Dockingstation USB-C', p_category => 'Zubehör',
+      p_unit => 'stk', p_tracking_mode => 'quantity', p_minimum_quantity => 1,
+      p_target_quantity => 2, p_manufacturer => null, p_model => null, p_supplier => null,
+      p_note => null, p_active => true, p_department_id => v_inactive, p_set_department => true);
+    raise exception 'An inactive department was accepted';
+  exception when invalid_parameter_value then null;
+  end;
+  begin
+    perform public.upsert_inventory_item(
+      p_actor_id => v_owner, p_tenant_id => v_tenant,
+      p_client_request_id => 'f1870000-0000-4000-8000-000000000105', p_item_id => null,
+      p_article_number => 'dock-2', p_name => 'Dockingstation 2', p_category => 'Zubehör',
+      p_unit => 'stk', p_tracking_mode => 'quantity', p_minimum_quantity => 1,
+      p_target_quantity => 2, p_manufacturer => null, p_model => null, p_supplier => null,
+      p_note => null, p_active => true, p_department_id => gen_random_uuid(), p_set_department => true);
+    raise exception 'A foreign department was accepted';
+  exception when invalid_parameter_value then null;
+  end;
+  -- Shared items (without department) can still be kept shared.
+  perform public.upsert_inventory_item(
+    p_actor_id => v_owner, p_tenant_id => v_tenant,
+    p_client_request_id => 'f1870000-0000-4000-8000-000000000106', p_item_id => v_item,
+    p_article_number => 'dock-1', p_name => 'Dockingstation USB-C', p_category => 'Zubehör',
+    p_unit => 'stk', p_tracking_mode => 'quantity', p_minimum_quantity => 1,
+    p_target_quantity => 2, p_manufacturer => null, p_model => null, p_supplier => null,
+    p_note => null, p_active => true, p_department_id => null, p_set_department => true);
+  select department_id into v_department from public.inventory_items where id = v_item;
+  if v_department is not null then
+    raise exception 'An item could not be shared with all departments';
+  end if;
+
+  -- 2. Expiry reminder tickets.
+  if to_regprocedure('public.create_expiry_reminder_ticket(uuid, uuid, text, text)') is not null
+     or has_function_privilege('authenticated',
+       'public.create_expiry_reminder_ticket(uuid, uuid, text, text, uuid)', 'execute') then
+    raise exception 'create_expiry_reminder_ticket overloads or grants are wrong';
+  end if;
+  v_ticket := public.create_expiry_reminder_ticket(v_tenant, v_owner, 'Alte Erinnerung', 'Ohne Abteilung');
+  if (select department_id from public.tickets where id = v_ticket) is distinct from v_ict then
+    raise exception 'A reminder without department did not go to ICT';
+  end if;
+  v_ticket := public.create_expiry_reminder_ticket(v_tenant, v_owner, 'Inaktiv', 'Inaktive Abteilung', v_inactive);
+  if (select department_id from public.tickets where id = v_ticket) is distinct from v_ict then
+    raise exception 'A reminder for an inactive department did not go to ICT';
+  end if;
+
+  insert into public.tenant_feature_flags (tenant_id, feature_key, enabled)
+  values (v_tenant, 'contracts.management', true)
+  on conflict (tenant_id, feature_key) do update set enabled = true, pilot_ends_at = null;
+  insert into public.contracts (
+    tenant_id, title, counterparty_name, status, ends_on, reminder_days_before,
+    created_by, updated_by, department_id
+  ) values (
+    v_tenant, 'Reinigungsvertrag', 'Putz AG', 'active', current_date + 10, 30,
+    v_owner, v_owner, v_facility
+  ) returning id into v_contract;
+  insert into public.contracts (
+    tenant_id, title, counterparty_name, status, ends_on, reminder_days_before,
+    created_by, updated_by, department_id
+  ) values (
+    v_tenant, 'Supportvertrag', 'Support AG', 'active', current_date + 10, 30,
+    v_owner, v_owner, null
+  ) returning id into v_contract_ict;
+  insert into public.licenses (
+    tenant_id, title, vendor_name, status, ends_on, reminder_days_before,
+    created_by, updated_by, department_id
+  ) values (
+    v_tenant, 'Gebäudeleitsystem', 'Haustech AG', 'active', current_date + 10, 30,
+    v_owner, v_owner, v_facility
+  ) returning id into v_license;
+
+  v_created := public.create_due_expiry_reminders();
+  if v_created <> 3 then
+    raise exception 'create_due_expiry_reminders created % tickets instead of 3', v_created;
+  end if;
+  if (select ticket.department_id from public.contracts item
+      join public.tickets ticket on ticket.id = item.reminder_ticket_id
+      where item.id = v_contract) is distinct from v_facility
+     or (select ticket.department_id from public.licenses item
+         join public.tickets ticket on ticket.id = item.reminder_ticket_id
+         where item.id = v_license) is distinct from v_facility then
+    raise exception 'Reminder tickets did not go to the department of the record';
+  end if;
+  if (select ticket.department_id from public.contracts item
+      join public.tickets ticket on ticket.id = item.reminder_ticket_id
+      where item.id = v_contract_ict) is distinct from v_ict then
+    raise exception 'A reminder for a record without department did not go to ICT';
+  end if;
+  if public.create_due_expiry_reminders() <> 0 then
+    raise exception 'Reminders were created twice';
+  end if;
+end;
+$$;
+rollback;
+SQL
 echo "PostgreSQL 16 migration and RLS integration checks passed."

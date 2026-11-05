@@ -16,6 +16,11 @@ import {
 
 import { RequesterPicker } from "@/components/requester-picker";
 import { ScreenContainer } from "@/components/screen-container";
+import {
+  ClassificationSuggestionButton,
+  TicketSuggestionList,
+  useMobileTicketSuggestions,
+} from "@/components/ticket-suggestions";
 import { useMobileNetworkStatus } from "@/components/offline-status";
 import {
   hapticError,
@@ -28,6 +33,10 @@ import {
   saveLocalTicketDraft,
 } from "@/lib/mobile-private-state";
 import { uploadPickedPhoto } from "@/lib/mobile-ticket-attachments";
+import {
+  resolveSuggestionMode,
+  type SuggestionMode,
+} from "@/lib/mobile-ticket-suggestions";
 import {
   getMobileUserId,
   loadCurrentTenant,
@@ -159,6 +168,52 @@ export default function NewTicketScreen() {
     return () => clearTimeout(timer);
   }, [description, subject, tenant]);
 
+  // Agent suggestions when the person may assign agents in the department,
+  // as in the web composer; the server falls back to the requester view.
+  const [resolvedMode, setResolvedMode] = useState<{
+    key: string;
+    mode: SuggestionMode;
+  } | null>(null);
+  const modeKey = tenant && departmentId ? `${tenant.id}:${departmentId}` : "";
+  useEffect(() => {
+    if (!tenant || !departmentId || isOffline) return;
+    let active = true;
+    const key = `${tenant.id}:${departmentId}`;
+    void resolveSuggestionMode(tenant.id, departmentId).then((mode) => {
+      if (active) setResolvedMode({ key, mode });
+    });
+    return () => {
+      active = false;
+    };
+  }, [departmentId, isOffline, tenant]);
+  const suggestionMode: SuggestionMode =
+    modeKey && resolvedMode?.key === modeKey ? resolvedMode.mode : "requester";
+  const suggestions = useMobileTicketSuggestions({
+    description,
+    enabled: !loading && !saving && !isOffline && options !== null,
+    mode: suggestionMode,
+    subject,
+    tenantId: tenant?.id ?? null,
+  });
+  const classification =
+    suggestions?.mode === "agent" ? suggestions.classification : null;
+  const departmentSuggestion =
+    classification?.department &&
+    classification.department.id !== departmentId &&
+    options?.departments.some(
+      (department) => department.id === classification.department?.id,
+    )
+      ? classification.department
+      : null;
+  const prioritySuggestion =
+    classification?.priority &&
+    classification.priority.key !== priorityKey &&
+    options?.priorities.some(
+      (priority) => priority.key === classification.priority?.key,
+    )
+      ? classification.priority
+      : null;
+
   if (isOffline) {
     return (
       <ScreenContainer className="px-5">
@@ -245,6 +300,27 @@ export default function NewTicketScreen() {
     } catch {
       setError("Das Foto konnte nicht ausgewählt werden.");
     }
+  }
+
+  async function finishWithArticle() {
+    // "Hat mein Problem gelöst": no ticket is created, the draft is cleared.
+    if (tenant) {
+      try {
+        await clearLocalTicketDraft({
+          userId: await getMobileUserId(),
+          tenantId: tenant.id,
+          ticketId: NEW_TICKET_DRAFT_ID,
+        });
+      } catch {
+        // Ein übrig gebliebener Entwurf wird beim nächsten Speichern ersetzt.
+      }
+    }
+    hapticSuccess();
+    router.back();
+    Alert.alert(
+      "Schön, dass es geklappt hat",
+      "Es wurde kein Ticket erstellt. Danke für deine Rückmeldung.",
+    );
   }
 
   async function createTicket() {
@@ -409,6 +485,25 @@ export default function NewTicketScreen() {
               value={description}
             />
 
+            {tenant ? (
+              <TicketSuggestionList
+                disabled={saving}
+                onDeflected={() => void finishWithArticle()}
+                onOpenArticle={(articleId) =>
+                  router.push(`/knowledge/${articleId}` as never)
+                }
+                onOpenTicket={(ticketId) =>
+                  router.push({
+                    pathname: "/ticket/[id]",
+                    params: { id: ticketId },
+                  })
+                }
+                subject={subject}
+                suggestions={suggestions}
+                tenantId={tenant.id}
+              />
+            ) : null}
+
             <FieldLabel label="FOTOS (OPTIONAL)" />
             <View style={styles.photoActions}>
               <Pressable
@@ -500,6 +595,13 @@ export default function NewTicketScreen() {
                 Bearbeitende Abteilung: {selectedDepartment.name}
               </Text>
             ) : null}
+            {departmentSuggestion ? (
+              <ClassificationSuggestionButton
+                disabled={saving}
+                onApply={() => setDepartmentId(departmentSuggestion.id)}
+                vote={departmentSuggestion}
+              />
+            ) : null}
 
             <FieldLabel label="PRIORITÄT" />
             <View style={styles.choiceList}>
@@ -530,6 +632,13 @@ export default function NewTicketScreen() {
                 </Pressable>
               ))}
             </View>
+            {prioritySuggestion ? (
+              <ClassificationSuggestionButton
+                disabled={saving}
+                onApply={() => setPriorityKey(prioritySuggestion.key)}
+                vote={prioritySuggestion}
+              />
+            ) : null}
           </View>
         ) : null}
 

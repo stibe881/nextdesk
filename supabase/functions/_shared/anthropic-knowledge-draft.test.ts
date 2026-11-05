@@ -71,7 +71,8 @@ Deno.test(
 Deno.test(
   "Anthropic request stays server-side and does not expose its key",
   async () => {
-    let captured: Request | null = null;
+    // Assigned inside the fetcher callback, so it must not narrow to null.
+    let captured = null as Request | null;
     const draft = await generateKnowledgeDraft({
       apiKey: "server-secret",
       model: "configured-model",

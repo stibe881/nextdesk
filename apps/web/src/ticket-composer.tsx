@@ -10,6 +10,12 @@ import {
 } from "lucide-react";
 import { supabase } from "./lib/supabase";
 import {
+  clearTicketComposerDraft,
+  readTicketComposerDraft,
+  writeTicketComposerDraft,
+  type TicketComposerDraft,
+} from "./lib/ticket-composer-draft";
+import {
   ClassificationSuggestion,
   TicketSuggestionPanel,
   useTicketSuggestions,
@@ -592,10 +598,16 @@ export function TicketComposer({
   currentUserId: string | null;
   tenantId: string;
   onCreated: (ticketId: string, ticketNumber: string) => void;
-  /** Opens an article in the knowledge base (closes the composer). */
-  onOpenKnowledgeArticle?: ((articleId: string) => void) | undefined;
-  /** Opens an existing ticket (closes the composer). */
-  onOpenTicket?: ((ticketId: string, ticketNumber: string) => void) | undefined;
+  /**
+   * Opens an article in the knowledge base (closes the composer). The draft
+   * is kept in sessionStorage first; `draftKept` says whether there was one.
+   */
+  onOpenKnowledgeArticle?:
+    ((articleId: string, draftKept: boolean) => void) | undefined;
+  /** Opens an existing ticket (closes the composer, keeps the draft). */
+  onOpenTicket?:
+    | ((ticketId: string, ticketNumber: string, draftKept: boolean) => void)
+    | undefined;
 }) {
   const [options, setOptions] = useState<OptionsResponse>(EMPTY_OPTIONS);
   const [optionsTenantId, setOptionsTenantId] = useState<string | null>(null);
@@ -640,6 +652,10 @@ export function TicketComposer({
   const [subject, setSubject] = useState("");
   const [description, setDescription] = useState("");
   const [deflectionNotice, setDeflectionNotice] = useState(false);
+  const [draftRestored, setDraftRestored] = useState(false);
+  // Stored draft fields that wait for their options (department-dependent
+  // categories, templates, agents, the requester permission) to load.
+  const draftRestoreRef = useRef<TicketComposerDraft | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [confirmation, setConfirmation] = useState<{
@@ -697,6 +713,11 @@ export function TicketComposer({
   useEffect(() => {
     if (!supabase) return;
     let mounted = true;
+    const storedDraft = readTicketComposerDraft(currentUserId, tenantId);
+    draftRestoreRef.current = storedDraft;
+    setDraftRestored(storedDraft !== null);
+    setSubject(storedDraft?.subject ?? "");
+    setDescription(storedDraft?.description ?? "");
     setLoading(true);
     setError("");
     setFieldErrors({});
@@ -730,6 +751,31 @@ export function TicketComposer({
         setOptions({ ...parsedOptions, currentRequester });
         setSelectedRequester(currentRequester);
         const contextDepartmentId = parsedOptions.requesterContext.departmentId;
+        const restoredDepartmentId = draftRestoreRef.current?.departmentId;
+        const restoredPriorityKey = draftRestoreRef.current?.priorityKey;
+        if (
+          restoredPriorityKey &&
+          parsedOptions.priorities.some(
+            (item) => item.key === restoredPriorityKey,
+          )
+        ) {
+          setPriorityKey(restoredPriorityKey);
+        } else {
+          setPriorityKey(
+            parsedOptions.priorities.some((item) => item.key === "normal")
+              ? "normal"
+              : (parsedOptions.priorities[0]?.key ?? ""),
+          );
+        }
+        if (
+          restoredDepartmentId &&
+          parsedOptions.departments.some(
+            (department) => department.id === restoredDepartmentId,
+          )
+        ) {
+          setDepartmentId(restoredDepartmentId);
+          return;
+        }
         setDepartmentId(
           parsedOptions.requesterContext.isInternal &&
             contextDepartmentId &&
@@ -738,11 +784,6 @@ export function TicketComposer({
             )
             ? contextDepartmentId
             : (parsedOptions.departments[0]?.id ?? ""),
-        );
-        setPriorityKey(
-          parsedOptions.priorities.some((item) => item.key === "normal")
-            ? "normal"
-            : (parsedOptions.priorities[0]?.key ?? ""),
         );
       })
       .catch(() => {
@@ -758,7 +799,7 @@ export function TicketComposer({
     return () => {
       mounted = false;
     };
-  }, [tenantId]);
+  }, [tenantId, currentUserId]);
 
   useEffect(() => {
     const requestId = ++watcherRequestRef.current;
@@ -888,9 +929,12 @@ export function TicketComposer({
         parseRequesters(data);
         if (requesterScopeRef.current !== requestId) return;
         setRequesterManagement({ tenantId, allowed: true, error: "" });
+        const restoredRequester = consumeDraftField("requester");
+        if (restoredRequester) setSelectedRequester(restoredRequester);
       })
       .catch((requestError: unknown) => {
         if (requesterScopeRef.current !== requestId) return;
+        consumeDraftField("requester");
         setRequesterManagement({
           tenantId,
           allowed: false,
@@ -1012,9 +1056,19 @@ export function TicketComposer({
         if (!mounted) return;
         setAssignableAgents(agents);
         setAgentLookupAllowed(true);
+        const restoredAgentId = consumeDraftField(
+          "assignedAgentId",
+          departmentId,
+        );
+        if (
+          restoredAgentId &&
+          agents.some((agent) => agent.id === restoredAgentId)
+        )
+          setAssignedAgentId(restoredAgentId);
       })
       .catch(() => {
         if (!mounted) return;
+        consumeDraftField("assignedAgentId", departmentId);
         setAssignableAgents([]);
         setAgentLookupAllowed(false);
       });
@@ -1057,6 +1111,32 @@ export function TicketComposer({
           categories,
           error: "",
         });
+        const restoredSubcategoryId = consumeDraftField(
+          "subcategoryId",
+          departmentId,
+        );
+        const restoredCategoryId = consumeDraftField(
+          "categoryId",
+          departmentId,
+        );
+        if (
+          restoredCategoryId &&
+          categories.some(
+            (category) =>
+              category.id === restoredCategoryId && category.parentId === null,
+          )
+        ) {
+          setCategoryId(restoredCategoryId);
+          if (
+            restoredSubcategoryId &&
+            categories.some(
+              (category) =>
+                category.id === restoredSubcategoryId &&
+                category.parentId === restoredCategoryId,
+            )
+          )
+            setSubcategoryId(restoredSubcategoryId);
+        }
       })
       .catch(() => {
         if (categoryRequestRef.current !== requestId) return;
@@ -1105,6 +1185,15 @@ export function TicketComposer({
           templates,
           error: "",
         });
+        const restoredTemplateId = consumeDraftField(
+          "templateId",
+          departmentId,
+        );
+        if (
+          restoredTemplateId &&
+          templates.some((template) => template.id === restoredTemplateId)
+        )
+          setTemplateId(restoredTemplateId);
       })
       .catch(() => {
         if (templateRequestRef.current !== requestId) return;
@@ -1122,6 +1211,33 @@ export function TicketComposer({
       ++templateRequestRef.current;
     };
   }, [departmentId, tenantId, loading, optionsTenantId]);
+
+  /**
+   * Takes a stored draft field once its options are loaded. Department
+   * dependent fields only apply to the department they were chosen in.
+   */
+  function consumeDraftField<
+    Field extends
+      | "assignedAgentId"
+      | "categoryId"
+      | "subcategoryId"
+      | "templateId"
+      | "requester",
+  >(field: Field, forDepartmentId?: string): TicketComposerDraft[Field] | null {
+    const pending = draftRestoreRef.current;
+    if (!pending) return null;
+    if (
+      forDepartmentId !== undefined &&
+      pending.departmentId !== forDepartmentId
+    )
+      return null;
+    const value = pending[field];
+    draftRestoreRef.current = {
+      ...pending,
+      [field]: field === "requester" ? null : "",
+    };
+    return value || null;
+  }
 
   function openDepartmentSelection() {
     setDepartmentSelectionOpen(true);
@@ -1490,6 +1606,9 @@ export function TicketComposer({
         );
         if (agentAssignmentError) {
           const expectation = await expectationPromise;
+          clearTicketComposerDraft(currentUserId, tenantId);
+          draftRestoreRef.current = null;
+          setDraftRestored(false);
           setConfirmation({ ...created, expectation });
           setSubject("");
           setDescription("");
@@ -1513,6 +1632,9 @@ export function TicketComposer({
           });
         if (requesterAssignmentError) throw requesterAssignmentError;
       }
+      // The ticket exists: the stored draft is done, whatever happens next.
+      clearTicketComposerDraft(currentUserId, tenantId);
+      draftRestoreRef.current = null;
       if (requesterScopeRef.current !== requestId) return;
       setSubject("");
       setDescription("");
@@ -1620,6 +1742,27 @@ export function TicketComposer({
     subject: draftSubject,
     tenantId,
   });
+  // Keep the draft (without attachments) in sessionStorage while typing, so
+  // opening a suggestion and coming back restores it.
+  useEffect(() => {
+    if (!formReady || saving) return;
+    writeTicketComposerDraft(currentUserId, tenantId, currentDraft());
+    // currentDraft reads exactly the values listed here.
+  }, [
+    formReady,
+    saving,
+    currentUserId,
+    tenantId,
+    subject,
+    description,
+    departmentId,
+    priorityKey,
+    categoryId,
+    subcategoryId,
+    templateId,
+    assignedAgentId,
+    currentSelectedRequester,
+  ]);
   const classification =
     suggestions?.mode === "agent" ? suggestions.classification : null;
   const departmentSuggestion =
@@ -1652,8 +1795,71 @@ export function TicketComposer({
       ? classification.priority
       : null;
 
+  function currentDraft(): TicketComposerDraft {
+    // Fields still waiting for their options keep their stored value.
+    const pending = draftRestoreRef.current;
+    const pendingHere =
+      pending && pending.departmentId === departmentId ? pending : null;
+    const ownRequesterId = options.currentRequester?.id;
+    return {
+      subject,
+      description,
+      departmentId,
+      priorityKey,
+      categoryId: categoryId || pendingHere?.categoryId || "",
+      subcategoryId: categoryId
+        ? subcategoryId
+        : pendingHere?.subcategoryId || "",
+      templateId: templateId || pendingHere?.templateId || "",
+      assignedAgentId: assignedAgentId || pendingHere?.assignedAgentId || "",
+      requester:
+        currentSelectedRequester &&
+        currentSelectedRequester.id !== ownRequesterId
+          ? {
+              id: currentSelectedRequester.id,
+              displayName: currentSelectedRequester.displayName,
+            }
+          : (pending?.requester ?? null),
+    };
+  }
+
+  /** Stores the draft before a suggestion closes the composer. */
+  function keepDraft(): boolean {
+    return formReady
+      ? writeTicketComposerDraft(currentUserId, tenantId, currentDraft())
+      : readTicketComposerDraft(currentUserId, tenantId) !== null;
+  }
+
+  function discardDraft() {
+    clearTicketComposerDraft(currentUserId, tenantId);
+    draftRestoreRef.current = null;
+    setDraftRestored(false);
+    clearSuggestions();
+    setSubject("");
+    setDescription("");
+    setTemplateId("");
+    setCategoryId("");
+    setSubcategoryId("");
+    setAssignedAgentId("");
+    setFieldErrors({});
+    setError("");
+    if (canManageRequesters && options.currentRequester)
+      setSelectedRequester(options.currentRequester);
+  }
+
+  const openSuggestedTicket = onOpenTicket
+    ? (ticketId: string, ticketNumber: string) =>
+        onOpenTicket(ticketId, ticketNumber, keepDraft())
+    : undefined;
+  const openSuggestedArticle = onOpenKnowledgeArticle
+    ? (articleId: string) => onOpenKnowledgeArticle(articleId, keepDraft())
+    : undefined;
+
   function finishWithArticle() {
     // "Hat mein Problem gelöst": no ticket is created, the draft is cleared.
+    clearTicketComposerDraft(currentUserId, tenantId);
+    draftRestoreRef.current = null;
+    setDraftRestored(false);
     clearSuggestions();
     setSubject("");
     setDescription("");
@@ -1689,6 +1895,19 @@ export function TicketComposer({
               einordnen und anschliessend erstellen. Pflichtfelder sind mit
               einem Stern markiert.
             </p>
+            {draftRestored && (
+              <p className="data-caption" role="status">
+                Ihr gespeicherter Entwurf wurde wiederhergestellt.{" "}
+                <button
+                  className="text-button"
+                  disabled={saving}
+                  onClick={discardDraft}
+                  type="button"
+                >
+                  Entwurf verwerfen
+                </button>
+              </p>
+            )}
           </section>
           <div className="ticket-compose-description ticket-compose-requester">
             <label>
@@ -2347,8 +2566,8 @@ export function TicketComposer({
           <TicketSuggestionPanel
             disabled={saving}
             onDeflected={finishWithArticle}
-            onOpenKnowledgeArticle={onOpenKnowledgeArticle}
-            onOpenTicket={onOpenTicket}
+            onOpenKnowledgeArticle={openSuggestedArticle}
+            onOpenTicket={openSuggestedTicket}
             subject={draftSubject}
             suggestions={suggestions}
             tenantId={tenantId}

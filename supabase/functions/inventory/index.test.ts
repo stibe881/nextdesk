@@ -2,6 +2,7 @@ import {
   corsHeaders,
   inspectInventoryItemImage,
   INVENTORY_RPC_NAMES,
+  itemDepartmentChange,
   movementRpcParameters,
   movementRpcPayload,
   parseAction,
@@ -23,6 +24,8 @@ const EVENT_ID = "00000000-0000-4000-8000-000000000004";
 const EVENT_LINE_ID = "00000000-0000-4000-8000-000000000005";
 const REQUEST_ID = "00000000-0000-4000-8000-000000000006";
 const COUNT_ID = "00000000-0000-4000-8000-000000000007";
+const DEPARTMENT_A = "00000000-0000-4000-8000-0000000000a1";
+const DEPARTMENT_B = "00000000-0000-4000-8000-0000000000b2";
 
 function assert(
   condition: unknown,
@@ -229,6 +232,8 @@ Deno.test(
         p_supplier: null,
         p_note: null,
         p_active: true,
+        p_department_id: null,
+        p_set_department: false,
       },
     );
     assertEquals(recordCountLineRpcParameters(TENANT_ID, countLineAction), {
@@ -1375,5 +1380,167 @@ Deno.test(
     assertEquals(denied.get("Access-Control-Allow-Origin"), null);
     assertEquals(denied.get("Access-Control-Allow-Methods"), null);
     assertEquals(denied.get("Vary"), "Origin");
+  },
+);
+
+Deno.test(
+  "item commands carry the department in the create and on request in edits",
+  () => {
+    const scope = { departments: [DEPARTMENT_A, DEPARTMENT_B], scoped: true };
+    const single = { departments: [DEPARTMENT_A], scoped: true };
+    const createValues = {
+      articleNumber: "adp-1",
+      name: "Adapter",
+      category: "Zubehör",
+      unit: "each",
+      trackingMode: "quantity",
+      minimumStock: 0,
+      targetStock: 1,
+    };
+    const create = parseAction({
+      type: "manageItem",
+      tenantId: TENANT_ID,
+      operation: "create",
+      values: { ...createValues, departmentId: DEPARTMENT_B.toUpperCase() },
+      clientRequestId: REQUEST_ID,
+    });
+    const createWithout = parseAction({
+      type: "manageItem",
+      tenantId: TENANT_ID,
+      operation: "create",
+      values: createValues,
+      clientRequestId: REQUEST_ID,
+    });
+    const update = parseAction({
+      type: "manageItem",
+      tenantId: TENANT_ID,
+      operation: "update",
+      itemId: ITEM_ID,
+      values: { departmentId: DEPARTMENT_B },
+      clientRequestId: REQUEST_ID,
+    });
+    const rename = parseAction({
+      type: "manageItem",
+      tenantId: TENANT_ID,
+      operation: "update",
+      itemId: ITEM_ID,
+      values: { name: "Adapter USB-C" },
+      clientRequestId: REQUEST_ID,
+    });
+    const unshare = parseAction({
+      type: "manageItem",
+      tenantId: TENANT_ID,
+      operation: "update",
+      itemId: ITEM_ID,
+      values: { departmentId: null },
+      clientRequestId: REQUEST_ID,
+    });
+    const archive = parseAction({
+      type: "manageItem",
+      tenantId: TENANT_ID,
+      operation: "archive",
+      itemId: ITEM_ID,
+      clientRequestId: REQUEST_ID,
+    });
+    for (const action of [
+      create,
+      createWithout,
+      update,
+      rename,
+      unshare,
+      archive,
+    ]) {
+      if (!action || action.type !== "manageItem") {
+        throw new Error("The item command fixtures must parse.");
+      }
+    }
+    const asItem = (action: typeof create) =>
+      action as Extract<NonNullable<typeof create>, { type: "manageItem" }>;
+
+    assertEquals(itemDepartmentChange(scope, asItem(create)), {
+      departmentId: DEPARTMENT_B,
+    });
+    assertEquals(itemDepartmentChange(single, asItem(createWithout)), {
+      departmentId: DEPARTMENT_A,
+    });
+    assertEquals(
+      itemDepartmentChange(
+        { departments: [], scoped: true },
+        asItem(createWithout),
+      ),
+      {
+        departmentId: null,
+      },
+    );
+    assertEquals(itemDepartmentChange(scope, asItem(update)), {
+      departmentId: DEPARTMENT_B,
+    });
+    assert(
+      itemDepartmentChange(scope, asItem(rename)) === undefined,
+      "an edit without department keeps the department of the item",
+    );
+    assert(
+      itemDepartmentChange(scope, asItem(archive)) === undefined,
+      "archiving keeps the department of the item",
+    );
+    for (const [label, run] of [
+      [
+        "several departments need a choice",
+        () => itemDepartmentChange(scope, asItem(createWithout)),
+      ],
+      [
+        "an edit cannot leave the caller's departments",
+        () => itemDepartmentChange(single, asItem(update)),
+      ],
+      [
+        "an edit names the target department",
+        () => itemDepartmentChange(scope, asItem(unshare)),
+      ],
+    ] as const) {
+      let status: unknown = null;
+      try {
+        run();
+      } catch (error) {
+        status = (error as { status?: unknown }).status;
+      }
+      assertEquals(status, 422, label);
+    }
+
+    const item = {
+      articleNumber: "adp-1",
+      name: "Adapter",
+      category: "Zubehör",
+      unit: "each",
+      trackingMode: "quantity" as const,
+      minimumStock: 0,
+      targetStock: 1,
+      manufacturer: null,
+      model: null,
+      supplier: null,
+      privateNote: null,
+      active: true,
+    };
+    const moved = upsertItemRpcParameters(
+      TENANT_ID,
+      TENANT_ID,
+      REQUEST_ID,
+      ITEM_ID,
+      item,
+      {
+        departmentId: DEPARTMENT_B,
+      },
+    );
+    assertEquals(
+      [moved.p_department_id, moved.p_set_department],
+      [DEPARTMENT_B, true],
+    );
+    const kept = upsertItemRpcParameters(
+      TENANT_ID,
+      TENANT_ID,
+      REQUEST_ID,
+      ITEM_ID,
+      item,
+    );
+    assertEquals([kept.p_department_id, kept.p_set_department], [null, false]);
   },
 );

@@ -145,7 +145,9 @@ Deno.test(
     const pages: Array<Array<Record<string, unknown>>> = [];
     await readIntuneManagedDevices(
       token,
-      async (devices) => pages.push(devices),
+      async (devices) => {
+        pages.push(devices);
+      },
       fakeFetch,
     );
     if (pages[0]?.[0]?.primary_user_object_id !== null) {
