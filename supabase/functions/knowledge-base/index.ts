@@ -1,15 +1,24 @@
 import { withSupabase } from "@supabase/server";
 import { resolveUserFeatureStates } from "../_shared/tenant-features.ts";
+import {
+  applyDepartmentScope,
+  type DepartmentScope,
+  departmentVisible,
+  loadDepartmentScope,
+  resolveRecordDepartment,
+  scopeDepartmentOptions,
+} from "../_shared/department-scope.ts";
 
 const ALLOWED_ORIGIN = "https://app.nextdesk.ch";
 const KNOWLEDGE_MANAGE_PERMISSION = "knowledge.manage";
 const KNOWLEDGE_READ_PERMISSION = "knowledge.read";
 const KNOWLEDGE_PUBLISH_PERMISSION = "knowledge.publish";
+const KNOWLEDGE_FEATURE = "knowledge.base";
 const MAX_TITLE_LENGTH = 240;
 const MAX_BODY_LENGTH = 100_000;
 const MAX_QUERY_LENGTH = 120;
 const ARTICLE_SELECT =
-  "id, title, slug, visibility, status, current_revision, published_revision, review_requested_at, published_at, created_at, updated_at";
+  "id, title, slug, visibility, status, department_id, current_revision, published_revision, review_requested_at, published_at, created_at, updated_at";
 const REVISION_SELECT =
   "id, article_id, revision, title_snapshot, body, summary, created_at";
 
@@ -52,6 +61,7 @@ type Action =
       title: string;
       bodyMarkdown: string;
       visibility: Visibility;
+      departmentId?: string;
     }
   | { type: "archiveArticle"; tenantId: string; articleId: string };
 
@@ -61,6 +71,7 @@ type AuthorizationResult =
 type ArticleAuditData = {
   title: string;
   visibility: Visibility;
+  departmentId: string | null;
   status: string;
   currentRevision: number | null;
   bodyLength: number;
@@ -206,9 +217,11 @@ function parseAction(value: unknown): Action | null {
 
   if (value.type === "saveArticle") {
     const article = optionalUuid(value.articleId);
+    const department = optionalUuid(value.departmentId);
     const title = requiredText(value.title, 3, MAX_TITLE_LENGTH);
     if (
       !article.valid ||
+      !department.valid ||
       title === null ||
       typeof value.bodyMarkdown !== "string" ||
       value.bodyMarkdown.length > MAX_BODY_LENGTH ||
@@ -225,6 +238,9 @@ function parseAction(value: unknown): Action | null {
       title,
       bodyMarkdown: value.bodyMarkdown,
       visibility: value.visibility,
+      ...(typeof department.value === "string"
+        ? { departmentId: department.value.toLowerCase() }
+        : {}),
     };
   }
 
@@ -354,6 +370,8 @@ function auditData(article: any, revision: any | null): ArticleAuditData {
   return {
     title: typeof article.title === "string" ? article.title : "",
     visibility: article.visibility === "external" ? "external" : "internal",
+    departmentId:
+      typeof article.department_id === "string" ? article.department_id : null,
     status: typeof article.status === "string" ? article.status : "",
     currentRevision:
       typeof article.current_revision === "number"
@@ -507,6 +525,41 @@ async function fetchArticleCollectionIds(
   return { data: byArticle, error: false };
 }
 
+/**
+ * Departments whose published external articles requesters and customers may
+ * read: every active department of the tenant where the knowledge module is
+ * on. Requesters are not limited to their own departments (and customers have
+ * none), so the portal keeps showing the help of all departments.
+ */
+async function publishedKnowledgeScope(
+  admin: any,
+  tenantId: string,
+): Promise<DepartmentScope | null> {
+  const [departments, disabled] = await Promise.all([
+    admin
+      .from("departments")
+      .select("id")
+      .eq("tenant_id", tenantId)
+      .eq("active", true),
+    admin
+      .from("department_feature_flags")
+      .select("department_id")
+      .eq("tenant_id", tenantId)
+      .eq("feature_key", KNOWLEDGE_FEATURE)
+      .eq("enabled", false),
+  ]);
+  if (departments.error || disabled.error) return null;
+  const off = new Set(
+    (disabled.data ?? []).map((row: any) => String(row.department_id)),
+  );
+  return {
+    scoped: true,
+    departments: (departments.data ?? [])
+      .map((row: any) => String(row.id))
+      .filter((id: string) => !off.has(id)),
+  };
+}
+
 const handler = withSupabase({ auth: "user" }, async (request, context) => {
   const originDenied = denyDisallowedOrigin(request);
   if (originDenied) return originDenied;
@@ -562,6 +615,24 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       { error: { code: "knowledge_feature_disabled" } },
       403,
     );
+
+  // Agents and members see and edit the articles of their departments (plus
+  // articles without a department); collections stay shared.
+  let agentScope: DepartmentScope | null | undefined;
+  const loadAgentScope = async (): Promise<DepartmentScope | null> => {
+    if (agentScope === undefined)
+      agentScope = await loadDepartmentScope(
+        admin,
+        action.tenantId,
+        actorId,
+        KNOWLEDGE_FEATURE,
+      );
+    return agentScope;
+  };
+  const scopeFailed = () =>
+    json(request, { error: { code: "department_scope_lookup_failed" } }, 503);
+  const articleNotFound = () =>
+    json(request, { error: { code: "article_not_found" } }, 404);
 
   if (action.type === "listCollections") {
     const canReadInternal = await hasTenantPermission(
@@ -671,16 +742,18 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     );
     if (permitted !== true)
       return json(request, { error: { code: "article_manage_denied" } }, 403);
+    const scope = await loadAgentScope();
+    if (!scope) return scopeFailed();
     const { data: article, error: articleError } = await admin
       .from("knowledge_articles")
-      .select("id")
+      .select("id, department_id")
       .eq("tenant_id", action.tenantId)
       .eq("id", action.articleId)
       .maybeSingle();
     if (articleError)
       return json(request, { error: { code: "article_read_failed" } }, 500);
-    if (!article)
-      return json(request, { error: { code: "article_not_found" } }, 404);
+    if (!article || !departmentVisible(scope, article.department_id))
+      return articleNotFound();
     const { data, error } = await admin
       .from("knowledge_article_revisions")
       .select("id, article_id, revision, summary, created_at")
@@ -697,6 +770,18 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
   }
 
   if (action.type === "setArticleCollections") {
+    const scope = await loadAgentScope();
+    if (!scope) return scopeFailed();
+    const { data: target, error: targetError } = await admin
+      .from("knowledge_articles")
+      .select("id, department_id")
+      .eq("tenant_id", action.tenantId)
+      .eq("id", action.articleId)
+      .maybeSingle();
+    if (targetError)
+      return json(request, { error: { code: "article_read_failed" } }, 500);
+    if (!target || !departmentVisible(scope, target.department_id))
+      return articleNotFound();
     const { data, error } = await admin.rpc(
       "replace_knowledge_article_collections",
       {
@@ -737,6 +822,10 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       .maybeSingle();
     if (articleError)
       return json(request, { error: { code: "article_read_failed" } }, 500);
+    const scope = await loadAgentScope();
+    if (!scope) return scopeFailed();
+    if (article && !departmentVisible(scope, article.department_id))
+      return articleNotFound();
     if (!article)
       return json(
         request,
@@ -808,6 +897,10 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       .maybeSingle();
     if (articleError)
       return json(request, { error: { code: "article_read_failed" } }, 500);
+    const scope = await loadAgentScope();
+    if (!scope) return scopeFailed();
+    if (article && !departmentVisible(scope, article.department_id))
+      return articleNotFound();
     if (!article)
       return json(request, { error: { code: "article_not_in_review" } }, 409);
     const now = new Date().toISOString();
@@ -891,7 +984,17 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         500,
       );
 
+    // Internal readers see their departments; requesters and customers read
+    // the published external articles of every department with the module.
+    const readScope = canReadInternal
+      ? await loadAgentScope()
+      : await publishedKnowledgeScope(admin, action.tenantId);
+    if (!readScope) return scopeFailed();
+
     if (action.type === "listArticles") {
+      const departments = canReadInternal
+        ? await scopeDepartmentOptions(admin, action.tenantId, readScope)
+        : [];
       const ranks = new Map<string, number>();
       let matchingArticleIds: string[] | null = null;
       if (action.query) {
@@ -919,7 +1022,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         }
         matchingArticleIds = [...ranks.keys()];
         if (matchingArticleIds.length === 0) {
-          return json(request, { data: { articles: [] } });
+          return json(request, { data: { articles: [], departments } });
         }
       }
 
@@ -930,6 +1033,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         .neq("status", "archived")
         .order("updated_at", { ascending: false })
         .limit(200);
+      query = applyDepartmentScope(query, readScope);
       if (!canReadInternal) {
         query = applyExternalArticleScope(query, organizationIds);
       }
@@ -983,6 +1087,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
               ? revisionResponse(revisions.data.get(article.id))
               : null,
           })),
+          departments,
         },
       });
     }
@@ -999,8 +1104,8 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     const { data: article, error } = await query.maybeSingle();
     if (error)
       return json(request, { error: { code: "article_read_failed" } }, 500);
-    if (!article)
-      return json(request, { error: { code: "article_not_found" } }, 404);
+    if (!article || !departmentVisible(readScope, article.department_id))
+      return articleNotFound();
 
     const articleCollections = canReadInternal
       ? await fetchArticleCollectionIds(admin, action.tenantId, [article.id])
@@ -1052,12 +1157,23 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
 
   if (action.type === "saveArticle") {
     const updatedAt = new Date().toISOString();
+    const scope = await loadAgentScope();
+    if (!scope) return scopeFailed();
+    const departmentFailure = (message: string) =>
+      json(
+        request,
+        { error: { code: "article_department_invalid", message } },
+        422,
+      );
 
     if (!action.articleId) {
+      const department = resolveRecordDepartment(scope, action.departmentId);
+      if ("error" in department) return departmentFailure(department.error);
       const { data: article, error } = await admin
         .from("knowledge_articles")
         .insert({
           tenant_id: action.tenantId,
+          department_id: department.departmentId,
           title: action.title,
           slug: createSlug(action.title),
           visibility: action.visibility,
@@ -1119,8 +1235,19 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       .maybeSingle();
     if (existingError)
       return json(request, { error: { code: "article_read_failed" } }, 500);
-    if (!existing)
-      return json(request, { error: { code: "article_not_found" } }, 404);
+    if (!existing || !departmentVisible(scope, existing.department_id))
+      return articleNotFound();
+
+    // Editing may move the article to another department of the caller.
+    let departmentChange: { department_id: string | null } | null = null;
+    if (
+      action.departmentId !== undefined &&
+      action.departmentId !== existing.department_id
+    ) {
+      const department = resolveRecordDepartment(scope, action.departmentId);
+      if ("error" in department) return departmentFailure(department.error);
+      departmentChange = { department_id: department.departmentId };
+    }
 
     const previousRevision = await fetchCurrentRevision(admin, existing);
     if (previousRevision.error)
@@ -1160,6 +1287,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       .update({
         title: action.title,
         visibility: action.visibility,
+        ...(departmentChange ?? {}),
         current_revision: nextRevision,
         // A previous published revision remains readable to customers. The new
         // text always returns to a draft and requires a fresh review.
@@ -1195,6 +1323,8 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     return json(request, { data: { article, revision } });
   }
 
+  const archiveScope = await loadAgentScope();
+  if (!archiveScope) return scopeFailed();
   const { data: existing, error: existingError } = await admin
     .from("knowledge_articles")
     .select(ARTICLE_SELECT)
@@ -1204,8 +1334,8 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     .maybeSingle();
   if (existingError)
     return json(request, { error: { code: "article_read_failed" } }, 500);
-  if (!existing)
-    return json(request, { error: { code: "article_not_found" } }, 404);
+  if (!existing || !departmentVisible(archiveScope, existing.department_id))
+    return articleNotFound();
 
   const existingRevision = await fetchCurrentRevision(admin, existing);
   if (existingRevision.error)

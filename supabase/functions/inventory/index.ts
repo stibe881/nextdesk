@@ -3,6 +3,14 @@ import {
   resolveTenantFeatureStatesCached,
   resolveUserFeatureStates,
 } from "../_shared/tenant-features.ts";
+import {
+  applyDepartmentScope,
+  type DepartmentScope,
+  departmentVisible,
+  loadDepartmentScope,
+  resolveRecordDepartment,
+  scopeDepartmentOptions,
+} from "../_shared/department-scope.ts";
 
 const ALLOWED_ORIGIN = "https://app.nextdesk.ch";
 const FEATURE = "inventory.management";
@@ -99,7 +107,11 @@ export type WorkspaceItem = {
   targetQuantity: number;
   locationName: string | null;
   active: boolean;
+  /** Department of the item; null for items shared by all departments. */
+  departmentId: string | null;
 };
+
+export type WorkspaceDepartment = { id: string; name: string };
 
 export type WorkspaceLocation = {
   id: string;
@@ -130,6 +142,8 @@ export type InventoryWorkspace = {
   recentEvents: RecentEvent[];
   recentEventsHasMore: boolean;
   lowStockItems: WorkspaceItem[];
+  /** Departments the caller may assign to new items (picker options). */
+  departments: WorkspaceDepartment[];
 };
 
 export type OpenReservation = {
@@ -170,6 +184,8 @@ type ItemValues = {
   supplier?: string | null;
   privateNote?: string | null;
   active?: boolean;
+  /** Requested department; only accepted on create (resolved against the scope). */
+  departmentId?: string | null;
 };
 
 type LocationValues = {
@@ -544,6 +560,7 @@ function parseItemValues(value: unknown): ItemValues | null {
     "supplier",
     "privateNote",
     "active",
+    "departmentId",
   ] as const;
   // Inventory identifiers deliberately have no Edge command in migration 0068.
   // Barcode, QR and location assignment therefore cannot cross this boundary.
@@ -601,6 +618,15 @@ function parseItemValues(value: unknown): ItemValues | null {
   if (Object.hasOwn(value, "active")) {
     if (typeof value.active !== "boolean") return null;
     result.active = value.active;
+  }
+  if (Object.hasOwn(value, "departmentId")) {
+    if (value.departmentId === null || value.departmentId === "") {
+      result.departmentId = null;
+    } else if (isUuid(value.departmentId)) {
+      result.departmentId = value.departmentId.toLowerCase();
+    } else {
+      return null;
+    }
   }
   return result;
 }
@@ -687,6 +713,14 @@ function parseManageAction(
       ? parseItemValues(value.values)
       : parseLocationValues(value.values);
   if (!values || Object.keys(values).length === 0) return null;
+  if (
+    type === "manageItem" &&
+    operation !== "create" &&
+    Object.hasOwn(values, "departmentId")
+  ) {
+    // The department of an existing item is not changed through this command.
+    return null;
+  }
   if (
     operation === "create" &&
     (type === "manageItem"
@@ -1414,6 +1448,7 @@ type ItemSeed = {
   minQuantity: number;
   targetQuantity: number;
   active: boolean;
+  departmentId: string | null;
 };
 
 type BalanceSeed = {
@@ -1443,9 +1478,14 @@ function workspaceItemSeed(value: unknown): ItemSeed | typeof INVALID {
   const unit = requiredText(value.unit, 1, 32);
   const minQuantity = sourceNumber(value.minimum_quantity, true);
   const targetQuantity = sourceNumber(value.target_quantity, true);
+  const departmentId =
+    value.department_id === null || value.department_id === undefined
+      ? null
+      : requiredUuid(value.department_id);
   if (
     id === INVALID ||
     name === INVALID ||
+    departmentId === INVALID ||
     articleNumber === INVALID ||
     unit === INVALID ||
     minQuantity === INVALID ||
@@ -1465,6 +1505,7 @@ function workspaceItemSeed(value: unknown): ItemSeed | typeof INVALID {
     minQuantity,
     targetQuantity,
     active: value.active,
+    departmentId,
   };
 }
 
@@ -1740,6 +1781,11 @@ export function toWorkspaceContract(
     primaryImageSeed,
     MAX_ITEMS,
   );
+  const departments = safeArray(
+    value.departments ?? [],
+    lookupNamedResource,
+    MAX_LOCATIONS,
+  );
   const recentEventsHasMore = value.recentEventsHasMore;
   const openReservationCount = sourceCount(value.openReservationCount);
   const activeCountSessionCount = sourceCount(value.activeCountSessionCount);
@@ -1750,6 +1796,7 @@ export function toWorkspaceContract(
     events === INVALID ||
     eventLines === INVALID ||
     primaryImages === INVALID ||
+    departments === INVALID ||
     openReservationCount === INVALID ||
     activeCountSessionCount === INVALID ||
     typeof recentEventsHasMore !== "boolean"
@@ -1821,6 +1868,7 @@ export function toWorkspaceContract(
         ? (locationById.get(locationId)?.name ?? null)
         : null,
       active: item.active,
+      departmentId: item.departmentId,
     };
   });
   const lowStockItems = publicItems.filter(
@@ -1872,6 +1920,7 @@ export function toWorkspaceContract(
     recentEvents,
     recentEventsHasMore,
     lowStockItems,
+    departments,
   };
 }
 
@@ -2061,6 +2110,7 @@ async function workspace(
   request: Request,
   client: CallerClient,
   admin: AdminClient,
+  scope: DepartmentScope,
   action: Extract<Action, { type: "workspace" }>,
 ): Promise<Response> {
   const states = await workspacePermissions(client, action.tenantId);
@@ -2081,16 +2131,20 @@ async function workspace(
     itemCount,
     locationCount,
     balanceCount,
-    openReservationCount,
+    openReservationRows,
     activeCountSessionCount,
+    departments,
   ] = await Promise.all([
     serviceRows(
-      admin
-        .from("inventory_items")
-        .select(
-          "id,name,article_number,unit,tracking_mode,minimum_quantity,target_quantity,active",
-        )
-        .eq("tenant_id", action.tenantId)
+      applyDepartmentScope(
+        admin
+          .from("inventory_items")
+          .select(
+            "id,name,article_number,unit,tracking_mode,minimum_quantity,target_quantity,active,department_id",
+          )
+          .eq("tenant_id", action.tenantId),
+        scope,
+      )
         .order("name", { ascending: true })
         .limit(MAX_ITEMS + 1),
     ),
@@ -2127,13 +2181,16 @@ async function workspace(
         .limit(MAX_ITEMS + 1),
     ),
     serviceCount(
-      admin
-        .from("inventory_items")
-        .select("id", {
-          count: "exact",
-          head: true,
-        })
-        .eq("tenant_id", action.tenantId),
+      applyDepartmentScope(
+        admin
+          .from("inventory_items")
+          .select("id", {
+            count: "exact",
+            head: true,
+          })
+          .eq("tenant_id", action.tenantId),
+        scope,
+      ),
     ),
     serviceCount(
       admin
@@ -2153,15 +2210,15 @@ async function workspace(
         })
         .eq("tenant_id", action.tenantId),
     ),
-    serviceCount(
+    // Reservation rows (only the item) so the summary counts only
+    // reservations of items in the caller's departments.
+    serviceRows(
       admin
         .from("inventory_reservations")
-        .select("id", {
-          count: "exact",
-          head: true,
-        })
+        .select("item_id")
         .eq("tenant_id", action.tenantId)
-        .eq("status", "open"),
+        .eq("status", "open")
+        .limit(MAX_RESERVATIONS + 1),
     ),
     serviceCount(
       admin
@@ -2173,6 +2230,7 @@ async function workspace(
         .eq("tenant_id", action.tenantId)
         .in("status", ["draft", "counting"]),
     ),
+    scopeDepartmentOptions(admin, action.tenantId, scope),
   ]);
   if (
     itemCount > MAX_ITEMS ||
@@ -2182,7 +2240,7 @@ async function workspace(
     balanceCount > MAX_BALANCES ||
     balances.length > MAX_BALANCES ||
     primaryImageRows.length > MAX_ITEMS ||
-    openReservationCount > MAX_RESERVATIONS ||
+    openReservationRows.length > MAX_RESERVATIONS ||
     activeCountSessionCount > MAX_ACTIVE_COUNTS
   ) {
     throw new HttpError(
@@ -2217,17 +2275,29 @@ async function workspace(
             .limit(MAX_EVENT_LINES + 1),
         );
   const recentEventLinesHasMore = eventLines.length > MAX_EVENT_LINES;
+  // Balances, history, images and reservations are kept only for the items
+  // in the caller's departments (the item query above is scoped).
+  const visibleItemIds = new Set(
+    items.flatMap((item) =>
+      isRecord(item) && isUuid(item.id) ? [item.id.toLowerCase()] : [],
+    ),
+  );
+  const ofVisibleItem = (row: unknown) =>
+    isRecord(row) &&
+    isUuid(row.item_id) &&
+    visibleItemIds.has(row.item_id.toLowerCase());
   const data = toWorkspaceContract(
     {
       items: items.slice(0, MAX_ITEMS),
       locations: locations.slice(0, MAX_LOCATIONS),
-      balances: balances.slice(0, MAX_BALANCES),
+      balances: balances.slice(0, MAX_BALANCES).filter(ofVisibleItem),
       events,
-      eventLines: eventLines.slice(0, MAX_EVENT_LINES),
-      primaryImages: primaryImageRows,
+      eventLines: eventLines.slice(0, MAX_EVENT_LINES).filter(ofVisibleItem),
+      primaryImages: primaryImageRows.filter(ofVisibleItem),
       recentEventsHasMore: recentEventsHasMore || recentEventLinesHasMore,
-      openReservationCount,
+      openReservationCount: openReservationRows.filter(ofVisibleItem).length,
       activeCountSessionCount,
+      departments,
     },
     permissions,
   );
@@ -2244,6 +2314,7 @@ async function workspace(
 async function listOpenReservations(
   request: Request,
   admin: AdminClient,
+  scope: DepartmentScope,
   action: Extract<Action, { type: "listOpenReservations" }>,
 ): Promise<Response> {
   const reservationCount = await serviceCount(
@@ -2263,7 +2334,7 @@ async function listOpenReservations(
       "Die Lagerdaten können nicht sicher vollständig geladen werden.",
     );
   }
-  const reservations = await serviceRows(
+  const reservationRows = await serviceRows(
     admin
       .from("inventory_reservations")
       .select("id,item_id,location_id,quantity,created_at")
@@ -2272,7 +2343,7 @@ async function listOpenReservations(
       .order("created_at", { ascending: true })
       .limit(MAX_RESERVATIONS + 1),
   );
-  if (reservations.length > MAX_RESERVATIONS) {
+  if (reservationRows.length > MAX_RESERVATIONS) {
     throw new HttpError(
       422,
       "inventory_list_limit_exceeded",
@@ -2280,7 +2351,7 @@ async function listOpenReservations(
     );
   }
   const seeds: ReservationSeed[] = [];
-  for (const reservation of reservations) {
+  for (const reservation of reservationRows) {
     const seed = reservationSeed(reservation);
     if (seed === INVALID) {
       throw new HttpError(
@@ -2292,29 +2363,41 @@ async function listOpenReservations(
     seeds.push(seed);
   }
   const itemIds = [...new Set(seeds.map((seed) => seed.itemId))];
-  const locationIds = [...new Set(seeds.map((seed) => seed.locationId))];
-  const [items, locations] = await Promise.all([
+  const items =
     itemIds.length === 0
-      ? Promise.resolve([] as unknown[])
-      : serviceRows(
-          admin
-            .from("inventory_items")
-            .select("id,name")
-            .eq("tenant_id", action.tenantId)
-            .in("id", itemIds)
-            .limit(MAX_RESERVATIONS),
-        ),
+      ? ([] as unknown[])
+      : await serviceRows(
+          applyDepartmentScope(
+            admin
+              .from("inventory_items")
+              .select("id,name")
+              .eq("tenant_id", action.tenantId)
+              .in("id", itemIds),
+            scope,
+          ).limit(MAX_RESERVATIONS),
+        );
+  // Only reservations of items in the caller's departments are listed.
+  const visibleItemIds = new Set(
+    items.flatMap((item) =>
+      isRecord(item) && isUuid(item.id) ? [item.id.toLowerCase()] : [],
+    ),
+  );
+  const reservations = reservationRows.filter((_row, index) =>
+    visibleItemIds.has(seeds[index].itemId),
+  );
+  const visibleSeeds = seeds.filter((seed) => visibleItemIds.has(seed.itemId));
+  const locationIds = [...new Set(visibleSeeds.map((seed) => seed.locationId))];
+  const locations =
     locationIds.length === 0
-      ? Promise.resolve([] as unknown[])
-      : serviceRows(
+      ? ([] as unknown[])
+      : await serviceRows(
           admin
             .from("inventory_locations")
             .select("id,name")
             .eq("tenant_id", action.tenantId)
             .in("id", locationIds)
             .limit(MAX_RESERVATIONS),
-        ),
-  ]);
+        );
   const data = toOpenReservationsContract({ reservations, items, locations });
   if (!data) {
     throw new HttpError(
@@ -2748,6 +2831,7 @@ async function lookupCode(
   request: Request,
   client: CallerClient,
   admin: AdminClient,
+  scope: DepartmentScope,
   action: Extract<Action, { type: "lookupCode" }>,
 ): Promise<Response> {
   await requirePermission(client, action.tenantId, "inventory.read");
@@ -2767,12 +2851,14 @@ async function lookupCode(
           .limit(MAX_LOOKUP_CANDIDATES + 1),
       ),
       serviceRows(
-        admin
-          .from("inventory_items")
-          .select("id")
-          .eq("tenant_id", action.tenantId)
-          .eq("article_number", action.code)
-          .limit(MAX_LOOKUP_CANDIDATES + 1),
+        applyDepartmentScope(
+          admin
+            .from("inventory_items")
+            .select("id")
+            .eq("tenant_id", action.tenantId)
+            .eq("article_number", action.code),
+          scope,
+        ).limit(MAX_LOOKUP_CANDIDATES + 1),
       ),
       serviceRows(
         admin
@@ -2818,12 +2904,15 @@ async function lookupCode(
     itemIds.length === 0
       ? Promise.resolve([] as unknown[])
       : serviceRows(
-          admin
-            .from("inventory_items")
-            .select("id,name")
-            .eq("tenant_id", action.tenantId)
-            .in("id", itemIds)
-            .limit(MAX_LOOKUP_CANDIDATES),
+          // Items of other departments are left out of the scan result.
+          applyDepartmentScope(
+            admin
+              .from("inventory_items")
+              .select("id,name")
+              .eq("tenant_id", action.tenantId)
+              .in("id", itemIds),
+            scope,
+          ).limit(MAX_LOOKUP_CANDIDATES),
         ),
     !includeAssetCandidates || assetIds.length === 0
       ? Promise.resolve([] as unknown[])
@@ -2841,7 +2930,8 @@ async function lookupCode(
   if (
     !itemCandidates ||
     !assetCandidates ||
-    itemCandidates.length !== itemIds.length ||
+    itemCandidates.length > itemIds.length ||
+    itemCandidates.some((candidate) => !itemIds.includes(candidate.id)) ||
     assetCandidates.length !== assetIds.length
   ) {
     throw new HttpError(
@@ -3093,9 +3183,21 @@ async function manage(
   request: Request,
   admin: AdminClient,
   actorId: string,
+  scope: DepartmentScope,
   action: Extract<Action, { type: "manageItem" | "manageLocation" }>,
 ): Promise<Response> {
   if (action.type === "manageItem") {
+    let departmentId: string | null = null;
+    if (action.operation === "create") {
+      const resolved = resolveRecordDepartment(
+        scope,
+        action.values?.departmentId,
+      );
+      if ("error" in resolved) {
+        throw new HttpError(422, "invalid_department", resolved.error);
+      }
+      departmentId = resolved.departmentId;
+    }
     const existing =
       action.operation === "create"
         ? undefined
@@ -3133,6 +3235,24 @@ async function manage(
         item,
       ),
     );
+    if (action.operation === "create") {
+      // The item command has no department parameter, so the department is
+      // set right after the (idempotent) create.
+      const receipt = mutationReceipt(raw);
+      if (!isUuid(receipt.id)) {
+        throw new HttpError(
+          503,
+          "inventory_contract_invalid",
+          "Der Artikel konnte nicht sicher gespeichert werden.",
+        );
+      }
+      const assigned = await admin
+        .from("inventory_items")
+        .update({ department_id: departmentId })
+        .eq("tenant_id", action.tenantId)
+        .eq("id", receipt.id);
+      if (assigned.error) databaseFailure(assigned.error);
+    }
     return json(
       request,
       { data: mutationReceipt(raw) },
@@ -3740,6 +3860,124 @@ function storedObjectMetadataMatches(
   );
 }
 
+/**
+ * Rejects an item outside the caller's departments as not found, so that
+ * items of other departments are neither changed nor revealed.
+ */
+async function requireVisibleItem(
+  admin: AdminClient,
+  tenantId: string,
+  itemId: string,
+  scope: DepartmentScope,
+): Promise<void> {
+  const result = await admin
+    .from("inventory_items")
+    .select("id,department_id")
+    .eq("tenant_id", tenantId)
+    .eq("id", itemId)
+    .maybeSingle();
+  if (result.error) databaseFailure(result.error);
+  if (
+    !isRecord(result.data) ||
+    requiredUuid(result.data.id) !== itemId ||
+    !departmentVisible(scope, result.data.department_id)
+  ) {
+    throw new HttpError(404, "not_found", "Der Artikel wurde nicht gefunden.");
+  }
+}
+
+/** Same as requireVisibleItem, for the item of a reservation. */
+async function requireVisibleReservation(
+  admin: AdminClient,
+  tenantId: string,
+  reservationId: string,
+  scope: DepartmentScope,
+): Promise<void> {
+  const result = await admin
+    .from("inventory_reservations")
+    .select("item_id")
+    .eq("tenant_id", tenantId)
+    .eq("id", reservationId)
+    .maybeSingle();
+  if (result.error) databaseFailure(result.error);
+  // A missing reservation is reported by the command itself.
+  if (!isRecord(result.data)) return;
+  const itemId = requiredUuid(result.data.item_id);
+  if (itemId === INVALID) {
+    throw new HttpError(
+      503,
+      "inventory_contract_invalid",
+      "Die Reservation konnte nicht sicher verarbeitet werden.",
+    );
+  }
+  try {
+    await requireVisibleItem(admin, tenantId, itemId, scope);
+  } catch (error) {
+    if (error instanceof HttpError && error.status === 404) {
+      throw new HttpError(
+        404,
+        "not_found",
+        "Die Reservation wurde nicht gefunden.",
+      );
+    }
+    throw error;
+  }
+}
+
+/** Department check for every command that targets one existing item. */
+async function requireActionInScope(
+  admin: AdminClient,
+  scope: DepartmentScope,
+  action: Action,
+): Promise<void> {
+  switch (action.type) {
+    case "createUpload":
+    case "completeUpload":
+    case "createDownloadUrl":
+    case "delete":
+    case "reserve":
+    case "recordCountLine":
+      return await requireVisibleItem(
+        admin,
+        action.tenantId,
+        action.itemId,
+        scope,
+      );
+    case "manageItem":
+      return action.itemId
+        ? await requireVisibleItem(admin, action.tenantId, action.itemId, scope)
+        : undefined;
+    case "postMovement":
+      if (action.reservationId) {
+        return await requireVisibleReservation(
+          admin,
+          action.tenantId,
+          action.reservationId,
+          scope,
+        );
+      }
+      return action.itemId
+        ? await requireVisibleItem(admin, action.tenantId, action.itemId, scope)
+        : undefined;
+    case "releaseReservation":
+      return await requireVisibleReservation(
+        admin,
+        action.tenantId,
+        action.reservationId,
+        scope,
+      );
+    case "manageSourceReservationRule":
+      return await requireVisibleItem(
+        admin,
+        action.tenantId,
+        action.values.itemId,
+        scope,
+      );
+    default:
+      return;
+  }
+}
+
 async function inventoryItemExists(
   admin: AdminClient,
   tenantId: string,
@@ -4147,11 +4385,25 @@ const securedHandler = withSupabase(
         action.tenantId,
         actorId,
       );
+      const scope = await loadDepartmentScope(
+        context.supabaseAdmin,
+        action.tenantId,
+        actorId.toLowerCase(),
+        FEATURE,
+      );
+      if (!scope) {
+        throw new HttpError(
+          503,
+          "department_scope_lookup_failed",
+          "Die Abteilungen konnten nicht geprüft werden.",
+        );
+      }
       if (action.type === "workspace") {
         return await workspace(
           request,
           context.supabase,
           context.supabaseAdmin,
+          scope,
           action,
         );
       }
@@ -4164,6 +4416,7 @@ const securedHandler = withSupabase(
         return await listOpenReservations(
           request,
           context.supabaseAdmin,
+          scope,
           action,
         );
       }
@@ -4190,6 +4443,7 @@ const securedHandler = withSupabase(
           action.tenantId,
           action.values.sourceKind,
         );
+        await requireActionInScope(context.supabaseAdmin, scope, action);
         return await manageSourceReservationRule(
           request,
           context.supabaseAdmin,
@@ -4201,6 +4455,7 @@ const securedHandler = withSupabase(
           request,
           context.supabase,
           context.supabaseAdmin,
+          scope,
           action,
         );
       }
@@ -4210,6 +4465,7 @@ const securedHandler = withSupabase(
           action.tenantId,
           "inventory.manage",
         );
+        await requireActionInScope(context.supabaseAdmin, scope, action);
         return action.type === "createUpload"
           ? await createInventoryItemImageUpload(
               request,
@@ -4230,6 +4486,7 @@ const securedHandler = withSupabase(
           action.tenantId,
           "inventory.read",
         );
+        await requireActionInScope(context.supabaseAdmin, scope, action);
         return await createInventoryItemImageDownloadUrl(
           request,
           context.supabaseAdmin,
@@ -4242,6 +4499,7 @@ const securedHandler = withSupabase(
           action.tenantId,
           "inventory.manage",
         );
+        await requireActionInScope(context.supabaseAdmin, scope, action);
         return await deleteInventoryItemImage(
           request,
           context.supabaseAdmin,
@@ -4254,10 +4512,12 @@ const securedHandler = withSupabase(
           action.tenantId,
           "inventory.manage",
         );
+        await requireActionInScope(context.supabaseAdmin, scope, action);
         return await manage(
           request,
           context.supabaseAdmin,
           actorId.toLowerCase(),
+          scope,
           action,
         );
       }
@@ -4267,6 +4527,7 @@ const securedHandler = withSupabase(
           action.tenantId,
           MOVEMENT_PERMISSIONS[action.movementType],
         );
+        await requireActionInScope(context.supabaseAdmin, scope, action);
         return await postMovement(
           request,
           context.supabaseAdmin,
@@ -4280,6 +4541,7 @@ const securedHandler = withSupabase(
           action.tenantId,
           "inventory.move",
         );
+        await requireActionInScope(context.supabaseAdmin, scope, action);
         return action.type === "reserve"
           ? await reserve(
               request,
@@ -4300,6 +4562,7 @@ const securedHandler = withSupabase(
           action.tenantId,
           "inventory.manage",
         );
+        await requireActionInScope(context.supabaseAdmin, scope, action);
         return action.type === "startCount"
           ? await startCount(
               request,

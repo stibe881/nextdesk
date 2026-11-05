@@ -1072,6 +1072,7 @@ Deno.test(
 
     // Both clients require this exact data object once it is wrapped as {data}.
     assertEquals(sortedKeys(workspace), [
+      "departments",
       "items",
       "locations",
       "lowStockItems",
@@ -1096,6 +1097,7 @@ Deno.test(
       "active",
       "articleNumber",
       "availableQuantity",
+      "departmentId",
       "hasPrimaryImage",
       "id",
       "locationName",
@@ -1144,6 +1146,7 @@ Deno.test(
           targetQuantity: 12,
           locationName: "Hauptlager",
           active: true,
+          departmentId: null,
         },
       ],
       locations: [
@@ -1181,8 +1184,10 @@ Deno.test(
           targetQuantity: 12,
           locationName: "Hauptlager",
           active: true,
+          departmentId: null,
         },
       ],
+      departments: [],
     });
     const serialized = JSON.stringify({ data: workspace });
     for (const forbidden of [

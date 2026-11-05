@@ -162,3 +162,46 @@ Deno.test(
     );
   },
 );
+
+Deno.test(
+  "knowledge articles stay within the reader's departments, except published help",
+  () => {
+    assert(
+      source.includes("applyDepartmentScope(query, readScope)") &&
+        source.includes("!departmentVisible(readScope, article.department_id)"),
+      "Article lists and single reads must apply the department scope.",
+    );
+    assert(
+      source.includes("? await loadAgentScope()") &&
+        source.includes(
+          ": await publishedKnowledgeScope(admin, action.tenantId)",
+        ) &&
+        source.includes('.eq("feature_key", KNOWLEDGE_FEATURE)') &&
+        source.includes('.eq("enabled", false)'),
+      "Requesters must keep the published articles of every department with the module.",
+    );
+    assert(
+      source.includes("resolveRecordDepartment(scope, action.departmentId)") &&
+        source.includes("department_id: department.departmentId") &&
+        source.includes('code: "article_department_invalid"'),
+      "New and moved articles must get a department of the caller's scope.",
+    );
+    for (const guard of [
+      "departmentVisible(scope, article.department_id)",
+      "departmentVisible(scope, target.department_id)",
+      "departmentVisible(scope, existing.department_id)",
+      "departmentVisible(archiveScope, existing.department_id)",
+    ]) {
+      assert(
+        source.includes(guard),
+        `Mutations and revision reads must check the department (${guard}).`,
+      );
+    }
+    assert(
+      source.includes(
+        "scopeDepartmentOptions(admin, action.tenantId, readScope)",
+      ),
+      "The article list must return the department options of the reader.",
+    );
+  },
+);

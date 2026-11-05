@@ -10,6 +10,13 @@ import {
   noContent,
   parseJsonObject,
 } from "../_shared/http.ts";
+import {
+  applyDepartmentScope,
+  type DepartmentScope,
+  departmentVisible,
+  resolveRecordDepartment,
+  scopeDepartmentOptions,
+} from "../_shared/department-scope.ts";
 
 /**
  * Self-service shop.
@@ -249,7 +256,151 @@ async function requireShop(admin: Admin, actorId: string, tenantId: string) {
     canOrder,
     canFulfill: canFulfill && ownDepartment,
     canManage: canManage && ownDepartment,
+    // Own departments with the shop on: managers edit the articles of these
+    // departments, agents handle the orders of their articles.
+    scope: { departments: personal ?? [], scoped: true } as DepartmentScope,
   };
+}
+
+/**
+ * Departments whose articles employees see: active departments in which the
+ * shop is not switched off.
+ */
+async function shopDepartments(
+  admin: Admin,
+  tenantId: string,
+): Promise<Set<string>> {
+  const [{ data: departments, error }, { data: disabled, error: flagError }] =
+    await Promise.all([
+      admin
+        .from("departments")
+        .select("id")
+        .eq("tenant_id", tenantId)
+        .eq("active", true),
+      admin
+        .from("department_feature_flags")
+        .select("department_id")
+        .eq("tenant_id", tenantId)
+        .eq("feature_key", SHOP_FEATURE)
+        .eq("enabled", false),
+    ]);
+  if (error) throw databaseError(error);
+  if (flagError) throw databaseError(flagError);
+  const off = new Set(
+    ((disabled ?? []) as Row[]).map((row) => String(row.department_id)),
+  );
+  return new Set(
+    ((departments ?? []) as Row[])
+      .map((row) => String(row.id))
+      .filter((id) => !off.has(id)),
+  );
+}
+
+/**
+ * Loads an article a manager wants to change. Articles of other departments
+ * are reported as not found. Returns the article's department.
+ */
+async function requireEditableCatalogItem(
+  admin: Admin,
+  tenantId: string,
+  itemId: string,
+  scope: DepartmentScope,
+): Promise<string | null> {
+  const { data, error } = await admin
+    .from("shop_catalog_items")
+    .select("id, department_id")
+    .eq("tenant_id", tenantId)
+    .eq("id", itemId)
+    .maybeSingle();
+  if (error) throw databaseError(error);
+  if (!data || !departmentVisible(scope, (data as Row).department_id)) {
+    throw new HttpError(404, "not_found", "Der Artikel wurde nicht gefunden.");
+  }
+  const department = (data as Row).department_id;
+  return isUuid(department) ? department : null;
+}
+
+/** Department per catalog article (null: article for all departments). */
+async function catalogDepartments(
+  admin: Admin,
+  tenantId: string,
+  ids: unknown[],
+): Promise<Map<string, string | null>> {
+  const unique = [...new Set(ids.filter((id): id is string => isUuid(id)))];
+  const result = new Map<string, string | null>();
+  for (let index = 0; index < unique.length; index += 150) {
+    const { data, error } = await admin
+      .from("shop_catalog_items")
+      .select("id, department_id")
+      .eq("tenant_id", tenantId)
+      .in("id", unique.slice(index, index + 150));
+    if (error) throw databaseError(error);
+    for (const row of (data ?? []) as Row[]) {
+      result.set(
+        String(row.id),
+        isUuid(row.department_id) ? row.department_id : null,
+      );
+    }
+  }
+  return result;
+}
+
+/**
+ * An agent handles an order when at least one line is an article of their
+ * departments or an article without department (also a deleted article).
+ */
+function handlesLines(
+  scope: DepartmentScope,
+  lines: Row[],
+  departments: Map<string, string | null>,
+): boolean {
+  if (lines.length === 0) return true;
+  return lines.some((line) => {
+    if (!isUuid(line.catalog_item_id)) return true;
+    return departmentVisible(
+      scope,
+      departments.get(line.catalog_item_id) ?? null,
+    );
+  });
+}
+
+/** Keeps the orders (with embedded shop_order_lines) an agent handles. */
+async function handledOrders(
+  admin: Admin,
+  tenantId: string,
+  scope: DepartmentScope,
+  rows: Row[],
+): Promise<Row[]> {
+  const linesOf = (row: Row): Row[] =>
+    Array.isArray(row.shop_order_lines) ? (row.shop_order_lines as Row[]) : [];
+  const departments = await catalogDepartments(
+    admin,
+    tenantId,
+    rows.flatMap((row) => linesOf(row).map((line) => line.catalog_item_id)),
+  );
+  return rows.filter((row) => handlesLines(scope, linesOf(row), departments));
+}
+
+/** True when the agent handles the order (see handlesLines). */
+async function handlesOrder(
+  admin: Admin,
+  tenantId: string,
+  scope: DepartmentScope,
+  orderId: string,
+): Promise<boolean> {
+  const { data, error } = await admin
+    .from("shop_order_lines")
+    .select("catalog_item_id")
+    .eq("tenant_id", tenantId)
+    .eq("order_id", orderId);
+  if (error) throw databaseError(error);
+  const lines = (data ?? []) as Row[];
+  const departments = await catalogDepartments(
+    admin,
+    tenantId,
+    lines.map((line) => line.catalog_item_id),
+  );
+  return handlesLines(scope, lines, departments);
 }
 
 async function names(admin: Admin, ids: (string | null | undefined)[]) {
@@ -555,20 +706,27 @@ async function listCatalog(
   tenantId: string,
   includeInactive: boolean,
   exact: boolean,
+  editor: { canManage: boolean; scope: DepartmentScope },
 ) {
   let query = admin
     .from("shop_catalog_items")
     .select(
-      "id, inventory_item_id, image_paths, name, description, category, category_id, article_number, supplier_url, kind, requires_approval, max_quantity, max_loan_days, active, sort_order, option_item_ids, specifications, category_ids, loan_quantity",
+      "id, inventory_item_id, image_paths, name, description, category, category_id, article_number, supplier_url, kind, requires_approval, max_quantity, max_loan_days, active, sort_order, option_item_ids, specifications, category_ids, loan_quantity, department_id",
     )
     .eq("tenant_id", tenantId)
     .order("category")
     .order("sort_order")
     .order("name");
   if (!includeInactive) query = query.eq("active", true);
-  const { data, error } = await query;
+  const [{ data, error }, shopOn] = await Promise.all([
+    query,
+    shopDepartments(admin, tenantId),
+  ]);
   if (error) throw databaseError(error);
-  const rows = (data ?? []) as Row[];
+  // Articles of departments in which the shop is off are not offered.
+  const rows = ((data ?? []) as Row[]).filter(
+    (row) => !isUuid(row.department_id) || shopOn.has(row.department_id),
+  );
   const itemIds = rows
     .map((row) => row.inventory_item_id)
     .filter((id): id is string => isUuid(id));
@@ -663,6 +821,10 @@ async function listCatalog(
       ).filter((id): id is string => isUuid(id) && listedIds.has(id)),
       specifications: cleanSpecifications(row.specifications) ?? {},
       inventoryItemId: itemId,
+      departmentId: isUuid(row.department_id) ? row.department_id : null,
+      // Managers edit only the articles of their own departments.
+      canEdit:
+        editor.canManage && departmentVisible(editor.scope, row.department_id),
       // The shop's own photos win over the inventory photo.
       ...(() => {
         const own = pathsOf(row).flatMap((path) => {
@@ -773,13 +935,19 @@ async function listOrders(
   scope: string,
   canFulfill: boolean,
   status: string | null,
+  departments: DepartmentScope,
 ) {
+  // All orders (agents): only those with articles of the agent's departments,
+  // so more rows are read and filtered down to 200.
+  const filterByDepartment = scope !== "mine" && scope !== "approvals";
   let query = admin
     .from("shop_orders")
-    .select(`${ORDER_SELECT}, shop_order_lines(item_name, quantity, kind)`)
+    .select(
+      `${ORDER_SELECT}, shop_order_lines(item_name, quantity, kind, catalog_item_id)`,
+    )
     .eq("tenant_id", tenantId)
     .order("created_at", { ascending: false })
-    .limit(200);
+    .limit(filterByDepartment ? 1000 : 200);
   if (scope === "mine") {
     query = query.eq("requester_id", actorId);
   } else if (scope === "approvals") {
@@ -811,7 +979,11 @@ async function listOrders(
   }
   const { data, error } = await query;
   if (error) throw databaseError(error);
-  const rows = (data ?? []) as Row[];
+  const rows = filterByDepartment
+    ? (
+        await handledOrders(admin, tenantId, departments, (data ?? []) as Row[])
+      ).slice(0, 200)
+    : ((data ?? []) as Row[]);
   const people = await names(
     admin,
     rows.flatMap(
@@ -842,7 +1014,8 @@ async function getOrder(
   tenantId: string,
   actorId: string,
   orderId: string,
-  canFulfill: boolean,
+  canFulfillAny: boolean,
+  departments: DepartmentScope,
 ) {
   const { data: order, error } = await admin
     .from("shop_orders")
@@ -858,11 +1031,17 @@ async function getOrder(
       "Die Bestellung wurde nicht gefunden.",
     );
   const row = order as Row;
+  // Agents process only orders with articles of their departments; approving
+  // stays as before.
+  const canFulfill =
+    canFulfillAny &&
+    (await handlesOrder(admin, tenantId, departments, orderId));
   const isRequester = row.requester_id === actorId;
   const isApprover =
     row.status === "pending_approval" &&
     !isRequester &&
-    (row.approver_id === actorId || (row.approver_id === null && canFulfill));
+    (row.approver_id === actorId ||
+      (row.approver_id === null && canFulfillAny));
   const wasApprover = row.approver_id === actorId;
   if (!isRequester && !canFulfill && !isApprover && !wasApprover) {
     throw new HttpError(
@@ -1367,7 +1546,38 @@ async function saveCatalogItem(
   tenantId: string,
   actorId: string,
   input: Row,
+  scope: DepartmentScope,
 ) {
+  // Department: required choice for new articles (when there are several),
+  // optional change for existing ones; always one of the own departments.
+  let departmentId: string | null;
+  if (isUuid(input.id)) {
+    const current = await requireEditableCatalogItem(
+      admin,
+      tenantId,
+      input.id,
+      scope,
+    );
+    if (
+      input.departmentId === undefined ||
+      input.departmentId === null ||
+      input.departmentId === ""
+    ) {
+      departmentId = current;
+    } else {
+      const resolved = resolveRecordDepartment(scope, input.departmentId);
+      if ("error" in resolved) {
+        throw new HttpError(422, "invalid_department", resolved.error);
+      }
+      departmentId = resolved.departmentId;
+    }
+  } else {
+    const resolved = resolveRecordDepartment(scope, input.departmentId);
+    if ("error" in resolved) {
+      throw new HttpError(422, "invalid_department", resolved.error);
+    }
+    departmentId = resolved.departmentId;
+  }
   const name = text(input.name, 160);
   const categories = await resolveCategories(admin, tenantId, actorId, input);
   const category = categories[0];
@@ -1508,6 +1718,7 @@ async function saveCatalogItem(
       name,
       articleNumber,
       category: category.name,
+      departmentId,
     });
   }
   const values = {
@@ -1529,6 +1740,7 @@ async function saveCatalogItem(
     specifications,
     active: input.active,
     sort_order: int(input.sortOrder, -1000, 1000) ?? 0,
+    department_id: departmentId,
     updated_at: new Date().toISOString(),
   };
   if (isUuid(input.id)) {
@@ -1566,7 +1778,12 @@ async function saveCatalogItem(
 async function ensureInventoryItem(
   admin: Admin,
   tenantId: string,
-  input: { name: string; articleNumber: string | null; category: string },
+  input: {
+    name: string;
+    articleNumber: string | null;
+    category: string;
+    departmentId: string | null;
+  },
 ): Promise<string> {
   const normalized = input.articleNumber
     ? input.articleNumber.trim().toLowerCase()
@@ -1593,6 +1810,8 @@ async function ensureInventoryItem(
       article_number: articleNumber,
       name: input.name.slice(0, 240),
       category: input.category.slice(0, 120),
+      // A new stock article belongs to the department of the shop article.
+      department_id: input.departmentId,
     })
     .select("id")
     .single();
@@ -1606,15 +1825,17 @@ async function offerInventoryItem(
   tenantId: string,
   actorId: string,
   inventoryItemId: string,
+  scope: DepartmentScope,
 ): Promise<{ id: string; created: boolean }> {
   const { data: stock, error } = await admin
     .from("inventory_items")
-    .select("id, name, article_number, category, tracking_mode")
+    .select("id, name, article_number, category, tracking_mode, department_id")
     .eq("tenant_id", tenantId)
     .eq("id", inventoryItemId)
     .maybeSingle();
   if (error) throw databaseError(error);
-  if (!stock) {
+  // Only stock articles of the own departments (or without department).
+  if (!stock || !departmentVisible(scope, (stock as Row).department_id)) {
     throw new HttpError(
       404,
       "inventory_item_unknown",
@@ -1641,6 +1862,13 @@ async function offerInventoryItem(
       : "Allgemein",
   );
   const name = String(row.name).slice(0, 160).trim();
+  // The shop article takes the department of the stock article; without one,
+  // the manager's only department (several: for all departments).
+  const departmentId = isUuid(row.department_id)
+    ? row.department_id
+    : scope.departments.length === 1
+      ? (scope.departments[0] ?? null)
+      : null;
   const { data, error: insertError } = await admin
     .from("shop_catalog_items")
     .insert({
@@ -1653,6 +1881,7 @@ async function offerInventoryItem(
       kind: row.tracking_mode === "serial" ? "loan" : "order",
       max_loan_days: row.tracking_mode === "serial" ? 30 : null,
       inventory_item_id: inventoryItemId,
+      department_id: departmentId,
       created_by: actorId,
     })
     .select("id")
@@ -1704,11 +1933,12 @@ const securedHandler = withSupabase(
 
       switch (body.type) {
         case "getContext": {
+          const { scope, ...permissions } = access;
           const [
             { count: approvals },
-            { count: openOrders },
+            agentOrders,
             { data: managerLabel },
-            { count: newOrders },
+            departments,
           ] = await Promise.all([
             (() => {
               let query = admin
@@ -1722,32 +1952,43 @@ const securedHandler = withSupabase(
                 : query.eq("approver_id", actorId);
               return query;
             })(),
+            // Open orders with articles of the agent's departments.
             access.canFulfill
-              ? admin
-                  .from("shop_orders")
-                  .select("id", { count: "exact", head: true })
-                  .eq("tenant_id", tenantId)
-                  .in("status", ["submitted", "in_progress", "ready"])
-              : Promise.resolve({ count: 0 }),
+              ? (async () => {
+                  const { data, error } = await admin
+                    .from("shop_orders")
+                    .select("id, status, shop_order_lines(catalog_item_id)")
+                    .eq("tenant_id", tenantId)
+                    .in("status", ["submitted", "in_progress", "ready"])
+                    .limit(2000);
+                  if (error) throw databaseError(error);
+                  return await handledOrders(
+                    admin,
+                    tenantId,
+                    scope,
+                    (data ?? []) as Row[],
+                  );
+                })()
+              : Promise.resolve([] as Row[]),
             admin.rpc("shop_manager_label", {
               p_tenant_id: tenantId,
               p_user_id: actorId,
             }),
-            // New orders nobody has taken on yet (navigation badge).
-            access.canFulfill
-              ? admin
-                  .from("shop_orders")
-                  .select("id", { count: "exact", head: true })
-                  .eq("tenant_id", tenantId)
-                  .eq("status", "submitted")
-              : Promise.resolve({ count: 0 }),
+            // Department choice for the article editor.
+            access.canManage
+              ? scopeDepartmentOptions(admin, tenantId, scope)
+              : Promise.resolve([]),
           ]);
           return json(request, {
             data: {
-              ...access,
+              ...permissions,
+              departments,
               pendingApprovals: approvals ?? 0,
-              openOrders: openOrders ?? 0,
-              newOrders: newOrders ?? 0,
+              openOrders: agentOrders.length,
+              // New orders nobody has taken on yet (navigation badge).
+              newOrders: agentOrders.filter(
+                (order) => order.status === "submitted",
+              ).length,
               managerName:
                 typeof managerLabel === "string" ? managerLabel : null,
             },
@@ -1763,6 +2004,7 @@ const securedHandler = withSupabase(
                 tenantId,
                 includeInactive,
                 access.canFulfill || access.canManage,
+                access,
               ),
             },
           });
@@ -1775,7 +2017,13 @@ const securedHandler = withSupabase(
               "Für diese Aktion fehlt die Berechtigung.",
             );
           }
-          const id = await saveCatalogItem(admin, tenantId, actorId, body.item);
+          const id = await saveCatalogItem(
+            admin,
+            tenantId,
+            actorId,
+            body.item,
+            access.scope,
+          );
           return json(request, { data: { id } });
         }
         case "offerInventoryItem": {
@@ -1792,6 +2040,7 @@ const securedHandler = withSupabase(
               tenantId,
               actorId,
               body.inventoryItemId.toLowerCase(),
+              access.scope,
             ),
           });
         }
@@ -1803,6 +2052,12 @@ const securedHandler = withSupabase(
               "Für diese Aktion fehlt die Berechtigung.",
             );
           }
+          await requireEditableCatalogItem(
+            admin,
+            tenantId,
+            body.itemId.toLowerCase(),
+            access.scope,
+          );
           await deleteCatalogItem(
             admin,
             tenantId,
@@ -1854,6 +2109,12 @@ const securedHandler = withSupabase(
             );
           }
           const itemId = body.itemId.toLowerCase();
+          await requireEditableCatalogItem(
+            admin,
+            tenantId,
+            itemId,
+            access.scope,
+          );
           if (body.type === "addCatalogItemImage") {
             const imageIdValue = await addCatalogItemImage(
               admin,
@@ -1888,11 +2149,15 @@ const securedHandler = withSupabase(
               "Für diese Aktion fehlt die Berechtigung.",
             );
           }
-          const { data, error } = await admin
-            .from("inventory_items")
-            .select("id, article_number, name, tracking_mode, category")
-            .eq("tenant_id", tenantId)
-            .eq("active", true)
+          // Stock articles of the own departments (or without department).
+          const { data, error } = await applyDepartmentScope(
+            admin
+              .from("inventory_items")
+              .select("id, article_number, name, tracking_mode, category")
+              .eq("tenant_id", tenantId)
+              .eq("active", true),
+            access.scope,
+          )
             .order("name")
             .limit(1000);
           if (error) throw databaseError(error);
@@ -1954,12 +2219,30 @@ const securedHandler = withSupabase(
                   (line.quantity as number),
               );
             }
-            const { data: stocked } = await admin
-              .from("shop_catalog_items")
-              .select("id, name, kind, inventory_item_id, loan_quantity")
-              .eq("tenant_id", tenantId)
-              .in("id", [...wanted.keys()]);
+            const [{ data: stocked }, shopOn] = await Promise.all([
+              admin
+                .from("shop_catalog_items")
+                .select(
+                  "id, name, kind, inventory_item_id, loan_quantity, department_id",
+                )
+                .eq("tenant_id", tenantId)
+                .in("id", [...wanted.keys()]),
+              shopDepartments(admin, tenantId),
+            ]);
             const stockedRows = (stocked ?? []) as Row[];
+            // Articles of departments in which the shop is off cannot be
+            // ordered (they are not shown in the catalog either).
+            const unavailable = stockedRows.find(
+              (row) =>
+                isUuid(row.department_id) && !shopOn.has(row.department_id),
+            );
+            if (unavailable) {
+              throw new HttpError(
+                409,
+                "item_unavailable",
+                `«${unavailable.name}» kann zurzeit nicht bestellt werden.`,
+              );
+            }
             const onlyLoans =
               stockedRows.length > 0 &&
               stockedRows.every((row) => row.kind === "loan");
@@ -2079,6 +2362,7 @@ const securedHandler = withSupabase(
                 scope,
                 access.canFulfill,
                 status,
+                access.scope,
               ),
             },
           });
@@ -2099,6 +2383,7 @@ const securedHandler = withSupabase(
                 actorId,
                 body.orderId,
                 access.canFulfill,
+                access.scope,
               ),
             },
           });
@@ -2124,6 +2409,35 @@ const securedHandler = withSupabase(
                   : null,
               }))
             : [];
+          // Agents process only orders with articles of their departments.
+          // Approving and the requester's own cancel or note stay open.
+          if (
+            access.canFulfill &&
+            body.action !== "approve" &&
+            body.action !== "reject_approval"
+          ) {
+            const { data: target, error: targetError } = await admin
+              .from("shop_orders")
+              .select("requester_id")
+              .eq("tenant_id", tenantId)
+              .eq("id", body.orderId)
+              .maybeSingle();
+            if (targetError) throw databaseError(targetError);
+            const ownRequest =
+              target?.requester_id === actorId &&
+              (body.action === "cancel" || body.action === "note");
+            if (
+              target &&
+              !ownRequest &&
+              !(await handlesOrder(admin, tenantId, access.scope, body.orderId))
+            ) {
+              throw new HttpError(
+                404,
+                "not_found",
+                "Die Bestellung wurde nicht gefunden.",
+              );
+            }
+          }
           if (body.action === "ready") {
             // "Ready for pickup" only exists when the person picks it up.
             const { data: target } = await admin

@@ -37,6 +37,7 @@ import {
   type OrderSummary,
   type ShopContext,
   type ShopCategory,
+  type ShopDepartment,
   type ShopPerson,
 } from "./lib/shop";
 
@@ -176,6 +177,7 @@ export function Shop({ tenantId }: { tenantId: string }) {
           canOrder={context.canOrder}
           canOrderForOthers={context.canFulfill}
           canManage={context.canManage}
+          departments={context.departments ?? []}
           onCartChange={setCart}
           onOrdered={(orderId, forOther) => {
             setCart([]);
@@ -488,6 +490,7 @@ function CatalogView({
   canOrder,
   canOrderForOthers,
   canManage,
+  departments,
   onCartChange,
   onOrdered,
 }: {
@@ -496,6 +499,7 @@ function CatalogView({
   canOrder: boolean;
   canOrderForOthers: boolean;
   canManage: boolean;
+  departments: ShopDepartment[];
   onCartChange: (cart: CartLine[]) => void;
   onOrdered: (orderId: string, forOther: boolean) => void;
 }) {
@@ -774,7 +778,7 @@ function CatalogView({
                     <ShopBadges item={item} />
                   </div>
                   <div className="shop__catalog-row-actions">
-                    {canManage ? (
+                    {canManage && item.canEdit !== false ? (
                       <>
                         <button
                           aria-label={`${item.name} bearbeiten`}
@@ -834,7 +838,7 @@ function CatalogView({
                   {!item.active ? (
                     <span className="shop__hidden-badge">Ausgeblendet</span>
                   ) : null}
-                  {canManage ? (
+                  {canManage && item.canEdit !== false ? (
                     <div className="shop__card-tools">
                       <button
                         aria-label={`${item.name} bearbeiten`}
@@ -934,7 +938,7 @@ function CatalogView({
           }
           onClose={() => setDetailId(null)}
           onEdit={
-            canManage
+            canManage && detailItem.canEdit !== false
               ? () => {
                   setDetailId(null);
                   openEditor({ kind: "edit", item: detailItem });
@@ -945,6 +949,7 @@ function CatalogView({
       ) : null}
       {canManage ? (
         <CatalogEditor
+          departments={departments}
           onDone={(message) => {
             setEditorRequest(null);
             if (message) {
@@ -1855,6 +1860,8 @@ type Draft = {
   newFiles: File[];
   /** Inventory photo shown when the article has no own photos. */
   fallbackImageUrl: string | null;
+  /** Abteilung des Artikels ("" = noch nicht gewählt bzw. für alle). */
+  departmentId: string;
 };
 
 const MAX_IMAGES = 5;
@@ -1962,6 +1969,7 @@ const EMPTY_DRAFT: Draft = {
   removedImageIds: [],
   newFiles: [],
   fallbackImageUrl: null,
+  departmentId: "",
 };
 
 /** Optionen eines Artikels wählen, mit Suche über alle Artikel. */
@@ -2099,6 +2107,7 @@ function draftFromItem(item: CatalogItem): Draft {
     removedImageIds: [],
     newFiles: [],
     fallbackImageUrl: (item.images ?? []).length === 0 ? item.imageUrl : null,
+    departmentId: item.departmentId ?? "",
   };
 }
 
@@ -2108,13 +2117,17 @@ function draftFromItem(item: CatalogItem): Draft {
  */
 function CatalogEditor({
   tenantId,
+  departments,
   request,
   onDone,
 }: {
   tenantId: string;
+  /** Eigene Abteilungen; eine Auswahl erscheint erst ab zwei. */
+  departments: ShopDepartment[];
   request: EditorRequest | null;
   onDone: (message: string | null) => void;
 }) {
+  const chooseDepartment = departments.length > 1;
   const [items, setItems] = useState<CatalogItem[] | null>(null);
   const [inventory, setInventory] = useState<InventoryOption[]>([]);
   const [draft, setDraft] = useState<Draft | null>(null);
@@ -2287,6 +2300,11 @@ function CatalogEditor({
         optionItemIds: draft.optionItemIds,
         active: draft.active,
         sortOrder: draft.sortOrder,
+        // Ohne Auswahl bestimmt der Server die Abteilung (die einzige eigene
+        // bzw. bei bestehenden Artikeln die bisherige).
+        ...(chooseDepartment && draft.departmentId
+          ? { departmentId: draft.departmentId }
+          : {}),
       });
       for (const imageId of draft.removedImageIds) {
         await shopApi.removeImage(tenantId, saved.id, imageId);
@@ -2810,6 +2828,29 @@ function CatalogEditor({
                 </label>
               ))}
             </fieldset>
+            {chooseDepartment ? (
+              <label>
+                Abteilung
+                <select
+                  onChange={(event) =>
+                    setDraft({ ...draft, departmentId: event.target.value })
+                  }
+                  required={!draft.id}
+                  value={draft.departmentId}
+                >
+                  {!draft.id ? (
+                    <option value="">Bitte wählen</option>
+                  ) : draft.departmentId === "" ? (
+                    <option value="">Alle Abteilungen</option>
+                  ) : null}
+                  {departments.map((department) => (
+                    <option key={department.id} value={department.id}>
+                      {department.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
             <div className="shop__row shop__row--grid">
               <label>
                 Art

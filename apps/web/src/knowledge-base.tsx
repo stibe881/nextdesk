@@ -23,6 +23,13 @@ import {
   visibleKnowledgeArticleRevision,
 } from "./lib/knowledge-collection-presentation";
 import {
+  initialKnowledgeDepartmentId,
+  knowledgeDepartmentLabel,
+  parseKnowledgeArticleDepartmentId,
+  parseKnowledgeDepartments,
+  type KnowledgeDepartment,
+} from "./lib/knowledge-departments";
+import {
   knowledgeEditorDialogTabIndex,
   shouldCloseKnowledgeEditor,
 } from "./lib/knowledge-editor-dialog";
@@ -56,6 +63,7 @@ type KnowledgeArticle = {
   slug: string;
   visibility: ArticleVisibility;
   status: ArticleStatus;
+  departmentId: string | null;
   currentRevision: number | null;
   publishedRevision: number | null;
   reviewRequestedAt: string | null;
@@ -79,6 +87,11 @@ type ArticleListItem = {
   revision: KnowledgeArticleRevision | null;
 };
 
+type ArticleList = {
+  articles: ArticleListItem[];
+  departments: KnowledgeDepartment[];
+};
+
 type ArticleDetail = {
   article: KnowledgeArticle;
   revision: KnowledgeArticleRevision;
@@ -89,6 +102,7 @@ type ArticleDraft = {
   bodyMarkdown: string;
   visibility: ArticleVisibility;
   status: EditableArticleStatus;
+  departmentId: string | null;
 };
 type ReviewRequest = {
   type: "requestReview";
@@ -176,6 +190,7 @@ const EMPTY_DRAFT: ArticleDraft = {
   bodyMarkdown: "",
   visibility: "internal",
   status: "draft",
+  departmentId: null,
 };
 
 const statusLabels: Record<ArticleStatus, string> = {
@@ -631,7 +646,9 @@ function parseCollection(value: unknown): KnowledgeCollection | null {
 function parseArticle(value: unknown): KnowledgeArticle | null {
   if (!isRecord(value)) return null;
   const collectionIds = parseCollectionIds(value.collection_ids);
+  const department = parseKnowledgeArticleDepartmentId(value.department_id);
   if (
+    !department.valid ||
     typeof value.id !== "string" ||
     typeof value.title !== "string" ||
     typeof value.slug !== "string" ||
@@ -652,6 +669,7 @@ function parseArticle(value: unknown): KnowledgeArticle | null {
     slug: value.slug,
     visibility: value.visibility,
     status: value.status,
+    departmentId: department.departmentId,
     currentRevision: value.current_revision,
     publishedRevision:
       typeof value.published_revision === "number"
@@ -708,9 +726,10 @@ function parseArticleDetail(value: unknown): ArticleDetail {
   return { article, revision };
 }
 
-function parseArticleList(value: unknown): ArticleListItem[] {
+function parseArticleList(value: unknown): ArticleList {
   const data = responseData(value);
-  if (!Array.isArray(data.articles)) {
+  const departments = parseKnowledgeDepartments(data.departments);
+  if (!Array.isArray(data.articles) || departments === null) {
     throw new KnowledgeBaseRequestError(
       "Die Artikelliste ist unvollständig oder ungültig.",
     );
@@ -733,7 +752,7 @@ function parseArticleList(value: unknown): ArticleListItem[] {
     }
     articles.push({ article, revision });
   }
-  return articles;
+  return { articles, departments };
 }
 
 function parseCollectionList(value: unknown): KnowledgeCollection[] {
@@ -893,6 +912,7 @@ function draftFromDetail(detail: ArticleDetail): ArticleDraft {
     visibility: detail.article.visibility,
     status:
       detail.article.status === "archived" ? "draft" : detail.article.status,
+    departmentId: detail.article.departmentId,
   };
 }
 
@@ -936,6 +956,7 @@ export function KnowledgeBase({
   tenantId,
 }: KnowledgeBaseProps) {
   const [articles, setArticles] = useState<ArticleListItem[]>([]);
+  const [departments, setDepartments] = useState<KnowledgeDepartment[]>([]);
   const [searchInput, setSearchInput] = useState("");
   const [activeQuery, setActiveQuery] = useState("");
   const [articleListFilter, setArticleListFilter] =
@@ -1102,7 +1123,7 @@ export function KnowledgeBase({
       setError("");
 
       try {
-        const nextArticles = await invokeKnowledgeBase(
+        const nextList = await invokeKnowledgeBase(
           {
             type: "listArticles",
             tenantId,
@@ -1111,7 +1132,8 @@ export function KnowledgeBase({
           parseArticleList,
         );
         if (listRequestVersion.current !== requestVersion) return;
-        setArticles(nextArticles);
+        setArticles(nextList.articles);
+        setDepartments(nextList.departments);
       } catch (nextError) {
         if (listRequestVersion.current === requestVersion) {
           setArticles([]);
@@ -1350,7 +1372,10 @@ export function KnowledgeBase({
         ? document.activeElement
         : null;
     setEditingArticleId(null);
-    setDraft(EMPTY_DRAFT);
+    setDraft({
+      ...EMPTY_DRAFT,
+      departmentId: initialKnowledgeDepartmentId(null, departments),
+    });
     setRawContent("");
     setSelectedCategoryId("");
     setSelectedSubcategoryId("");
@@ -1799,6 +1824,12 @@ export function KnowledgeBase({
       setSuccess("");
       return;
     }
+    const chooseDepartment = departments.length > 1;
+    if (chooseDepartment && !draft.departmentId) {
+      setError("Bitte wählen Sie eine Abteilung.");
+      setSuccess("");
+      return;
+    }
 
     const isEditing = editingArticleId !== null;
     const collectionIds = selectedCollectionIds;
@@ -1816,6 +1847,11 @@ export function KnowledgeBase({
           title,
           bodyMarkdown: draft.bodyMarkdown,
           visibility: draft.visibility,
+          // Only a real choice is sent; with one department the server
+          // assigns it to new articles and keeps it on edits.
+          ...(chooseDepartment && draft.departmentId
+            ? { departmentId: draft.departmentId }
+            : {}),
         }),
         parseArticleDetail,
       );
@@ -2038,6 +2074,10 @@ export function KnowledgeBase({
   const detailCollectionPaths = detailArticle
     ? formatKnowledgeCollectionPaths(detailArticle.collectionIds, collections)
     : [];
+  const detailDepartmentLabel = knowledgeDepartmentLabel(
+    detailArticle?.departmentId ?? null,
+    departments,
+  );
   const detailRevision = detailArticle
     ? visibleKnowledgeArticleRevision(detailArticle, selected?.revision)
     : null;
@@ -2245,6 +2285,10 @@ export function KnowledgeBase({
                   aria-label="Wissensartikel"
                 >
                   {visibleArticles.map(({ article, revision }) => {
+                    const departmentLabel = knowledgeDepartmentLabel(
+                      article.departmentId,
+                      departments,
+                    );
                     const collectionPaths = formatKnowledgeCollectionPaths(
                       article.collectionIds,
                       collections,
@@ -2277,6 +2321,11 @@ export function KnowledgeBase({
                               >
                                 {visibilityLabels[article.visibility]}
                               </span>
+                              {departmentLabel ? (
+                                <span className="knowledge-base__badge">
+                                  {departmentLabel}
+                                </span>
+                              ) : null}
                             </span>
                             {visibleRevision !== null ? (
                               <span className="knowledge-base__article-version">
@@ -2334,6 +2383,11 @@ export function KnowledgeBase({
                         >
                           {visibilityLabels[detailArticle.visibility]}
                         </span>
+                        {detailDepartmentLabel ? (
+                          <span className="knowledge-base__badge">
+                            {detailDepartmentLabel}
+                          </span>
+                        ) : null}
                         {detailRevision !== null ? (
                           <span className="knowledge-base__detail-version">
                             Version {detailRevision}
@@ -2532,6 +2586,32 @@ export function KnowledgeBase({
                   <option value="external">Extern</option>
                 </select>
               </label>
+
+              {departments.length > 1 ? (
+                <label>
+                  Abteilung
+                  <select
+                    disabled={isBusy}
+                    onChange={(event) =>
+                      setDraft((current) => ({
+                        ...current,
+                        departmentId: event.target.value || null,
+                      }))
+                    }
+                    required
+                    value={draft.departmentId ?? ""}
+                  >
+                    <option disabled value="">
+                      Abteilung wählen
+                    </option>
+                    {departments.map((department) => (
+                      <option key={department.id} value={department.id}>
+                        {department.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
 
               <p className="knowledge-base__hint">
                 Speichern erstellt immer einen Entwurf; für externe Artikel
