@@ -618,6 +618,25 @@ async function applyRequestedEntraAgentAccess(
   return (data as { applied?: unknown } | null)?.applied === true;
 }
 
+/** Logs why a sign-in could not be provisioned (no personal data). */
+function logProvisionFailure(
+  step: string,
+  tenantId: string,
+  userId: string,
+  detail?: { code?: unknown; message?: unknown } | null,
+) {
+  console.error("sso_person_provision_step_failed", {
+    step,
+    tenantId,
+    userId,
+    code: typeof detail?.code === "string" ? detail.code : undefined,
+    message:
+      typeof detail?.message === "string"
+        ? detail.message.slice(0, 300)
+        : undefined,
+  });
+}
+
 async function provisionSsoPerson(
   admin: any,
   user: any,
@@ -654,11 +673,24 @@ async function provisionSsoPerson(
   const claimedMembership = Array.isArray(membershipClaim)
     ? membershipClaim[0]
     : membershipClaim;
-  if (membershipClaimError || !isRecord(claimedMembership)) return "failed";
+  if (membershipClaimError || !isRecord(claimedMembership)) {
+    logProvisionFailure(
+      "membership_claim",
+      tenantId,
+      userId,
+      membershipClaimError,
+    );
+    return "failed";
+  }
   const membershipStatus = claimedMembership.status;
   const wasActive = claimedMembership.was_active === true;
   if (membershipStatus === "removed") return "removed";
-  if (membershipStatus !== "active") return "failed";
+  if (membershipStatus !== "active") {
+    logProvisionFailure("membership_not_active", tenantId, userId, {
+      code: String(membershipStatus),
+    });
+    return "failed";
+  }
 
   let directoryLink: EntraDirectoryLink = {
     status: "not_found",
@@ -673,14 +705,18 @@ async function provisionSsoPerson(
     email,
     entraObjectId,
   );
-  if (directoryLink.status === "conflict") return "failed";
-  if (directoryLink.status === "failed" && !wasActive) {
+  if (directoryLink.status === "conflict") {
+    logProvisionFailure("entra_directory_conflict", tenantId, userId);
     return "failed";
   }
   if (directoryLink.status === "failed") {
-    // Directory enrichment must not lock out a person who is already an active,
-    // verified member of this tenant. The SSO tenant and domain checks above
-    // remain mandatory; the next successful sign-in can retry the enrichment.
+    // Directory enrichment (linking the Entra directory entry, job title,
+    // department) must never lock a person out: the SSO tenant and domain
+    // checks above are the authorisation, and the membership is already
+    // claimed. Every first sign-in of a new employee previously stopped here
+    // when the enrichment failed, leaving a member without any role. The next
+    // successful sign-in retries the enrichment.
+    logProvisionFailure("entra_directory_link", tenantId, userId);
     directoryLink = {
       status: "not_found",
       department: null,
@@ -720,6 +756,7 @@ async function provisionSsoPerson(
           userId,
         ))
       ) {
+        logProvisionFailure("role_repair", tenantId, userId);
         return "failed";
       }
     }
@@ -758,12 +795,11 @@ async function provisionSsoPerson(
     const { error: profileError } = await admin
       .from("user_profiles")
       .upsert({ id: userId, display_name: displayName });
-    if (profileError) return "failed";
-  } else {
-    const { error: profileError } = await admin.from("user_profiles").upsert({
-      id: userId,
-    });
-    if (profileError) return "failed";
+    // The minimal profile already exists (created before the claim), so a
+    // failed name refresh must not block the first sign-in.
+    if (profileError) {
+      logProvisionFailure("profile_refresh", tenantId, userId, profileError);
+    }
   }
 
   const invitationAgentDepartmentId = invitation?.wants_agent
@@ -783,25 +819,36 @@ async function provisionSsoPerson(
         onConflict: "tenant_id,user_id",
       },
     );
+  if (directoryError) {
+    // The person directory entry is enrichment; the role below grants access.
+    logProvisionFailure("member_directory", tenantId, userId, directoryError);
+  }
   const invitedRole = invitation?.role_name?.trim() || REQUESTER_ROLE;
   if (
-    directoryError ||
     !(await ensureTenantRole(
       admin,
       tenantId,
       userId,
       invitedRole,
       invitation?.invited_by ?? userId,
-    )) ||
-    (invitationAgentDepartmentId !== null &&
-      !(await ensureSupportAgentRole(
-        admin,
-        tenantId,
-        userId,
-        invitationAgentDepartmentId,
-        invitation?.invited_by ?? userId,
-      )))
+    ))
   ) {
+    logProvisionFailure("role_assignment", tenantId, userId, {
+      code: invitedRole,
+    });
+    return "failed";
+  }
+  if (
+    invitationAgentDepartmentId !== null &&
+    !(await ensureSupportAgentRole(
+      admin,
+      tenantId,
+      userId,
+      invitationAgentDepartmentId,
+      invitation?.invited_by ?? userId,
+    ))
+  ) {
+    logProvisionFailure("agent_role_assignment", tenantId, userId);
     return "failed";
   }
 
@@ -828,6 +875,7 @@ async function provisionSsoPerson(
       !Array.isArray(acceptedInvitation) ||
       acceptedInvitation.length !== 1
     ) {
+      logProvisionFailure("invitation_accept", tenantId, userId);
       return "failed";
     }
 
