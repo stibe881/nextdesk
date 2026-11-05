@@ -1787,6 +1787,12 @@ function CatalogManager({ tenantId }: { tenantId: string }) {
   const [pending, setPending] = useState(false);
 
   const [categories, setCategories] = useState<ShopCategory[]>([]);
+  const [search, setSearch] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState<string>("all");
+  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "hidden">(
+    "all",
+  );
+  const [manageCategories, setManageCategories] = useState(false);
   const [categoryDraft, setCategoryDraft] = useState<{
     id?: string;
     name: string;
@@ -1992,9 +1998,58 @@ function CatalogManager({ tenantId }: { tenantId: string }) {
             }
           : { ...current, inventoryItemId: "" };
 
+  const needle = search.trim().toLocaleLowerCase("de-CH");
+  const visibleItems = (items ?? []).filter((item) => {
+    if (statusFilter === "active" && !item.active) return false;
+    if (statusFilter === "hidden" && item.active) return false;
+    if (categoryFilter !== "all") {
+      const ids =
+        item.categoryIds && item.categoryIds.length > 0
+          ? item.categoryIds
+          : item.categoryId
+            ? [item.categoryId]
+            : [];
+      if (!ids.includes(categoryFilter)) return false;
+    }
+    if (!needle) return true;
+    return [item.name, item.articleNumber ?? "", ...itemCategories(item)]
+      .join(" ")
+      .toLocaleLowerCase("de-CH")
+      .includes(needle);
+  });
+
   return (
     <div className="shop__manage">
-      <div className="contracts__actions">
+      <div className="shop__manage-toolbar">
+        <label className="shop__search">
+          <Search aria-hidden="true" size={16} />
+          <input
+            aria-label="Artikel suchen"
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Name, Artikelnummer oder Kategorie suchen"
+            type="search"
+            value={search}
+          />
+        </label>
+        <select
+          aria-label="Status"
+          onChange={(event) =>
+            setStatusFilter(event.target.value as "all" | "active" | "hidden")
+          }
+          value={statusFilter}
+        >
+          <option value="all">Alle Status</option>
+          <option value="active">Im Shop</option>
+          <option value="hidden">Ausgeblendet</option>
+        </select>
+        <button
+          aria-pressed={manageCategories}
+          className="secondary-button"
+          onClick={() => setManageCategories((current) => !current)}
+          type="button"
+        >
+          <Pencil aria-hidden="true" size={15} /> Kategorien
+        </button>
         <button
           className="primary-button"
           onClick={() => {
@@ -2006,89 +2061,127 @@ function CatalogManager({ tenantId }: { tenantId: string }) {
         >
           <Plus aria-hidden="true" size={16} /> Artikel hinzufügen
         </button>
+      </div>
+      <div
+        aria-label="Nach Kategorie filtern"
+        className="shop__filter-chips"
+        role="group"
+      >
         <button
-          className="secondary-button"
-          onClick={() => setCategoryDraft({ name: "" })}
+          aria-pressed={categoryFilter === "all"}
+          className="shop__filter-chip"
+          onClick={() => setCategoryFilter("all")}
           type="button"
         >
-          <Plus aria-hidden="true" size={16} /> Kategorie hinzufügen
+          Alle
+          <span>{items?.length ?? 0}</span>
         </button>
-      </div>
-      <section className="shop__categories" aria-label="Kategorien">
-        <h3>Kategorien</h3>
-        {categoryDraft ? (
-          <form
-            className="shop__category-form"
-            onSubmit={(event) => {
-              event.preventDefault();
-              void saveCategoryDraft();
-            }}
+        {categories.map((category) => (
+          <button
+            aria-pressed={categoryFilter === category.id}
+            className="shop__filter-chip"
+            key={category.id}
+            onClick={() =>
+              setCategoryFilter((current) =>
+                current === category.id ? "all" : category.id,
+              )
+            }
+            type="button"
           >
-            <input
-              aria-label="Name der Kategorie"
-              autoFocus
-              maxLength={80}
-              minLength={2}
-              onChange={(event) =>
-                setCategoryDraft({ ...categoryDraft, name: event.target.value })
-              }
-              placeholder="Name der Kategorie"
-              required
-              value={categoryDraft.name}
-            />
-            <button className="primary-button" type="submit">
-              Speichern
-            </button>
+            {category.name}
+            <span>{category.itemCount}</span>
+          </button>
+        ))}
+      </div>
+      {manageCategories || categoryDraft ? (
+        <section className="shop__categories" aria-label="Kategorien">
+          <div className="shop__categories-head">
+            <h3>Kategorien verwalten</h3>
             <button
               className="secondary-button"
-              onClick={() => setCategoryDraft(null)}
+              onClick={() => setCategoryDraft({ name: "" })}
               type="button"
             >
-              Abbrechen
+              <Plus aria-hidden="true" size={16} /> Kategorie hinzufügen
             </button>
-          </form>
-        ) : null}
-        {categories.length === 0 ? (
-          <p className="shop__muted">Noch keine Kategorien.</p>
-        ) : (
-          <ul className="shop__category-list">
-            {categories.map((category) => (
-              <li key={category.id}>
-                <span>{category.name}</span>
-                <span className="shop__muted">
-                  {category.itemCount === 1
-                    ? "1 Artikel"
-                    : `${category.itemCount} Artikel`}
-                </span>
-                <button
-                  aria-label={`Kategorie ${category.name} umbenennen`}
-                  className="icon-button"
-                  onClick={() =>
-                    setCategoryDraft({ id: category.id, name: category.name })
-                  }
-                  type="button"
-                >
-                  <Pencil size={15} />
-                </button>
-                <button
-                  aria-label={`Kategorie ${category.name} löschen`}
-                  className="icon-button"
-                  disabled={category.itemCount > 0}
-                  onClick={() => void removeCategory(category)}
-                  title={
-                    category.itemCount > 0
-                      ? "Nur leere Kategorien können gelöscht werden."
-                      : undefined
-                  }
-                  type="button"
-                >
-                  <Trash2 size={15} />
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+          </div>
+          {categoryDraft ? (
+            <form
+              className="shop__category-form"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void saveCategoryDraft();
+              }}
+            >
+              <input
+                aria-label="Name der Kategorie"
+                autoFocus
+                maxLength={80}
+                minLength={2}
+                onChange={(event) =>
+                  setCategoryDraft({
+                    ...categoryDraft,
+                    name: event.target.value,
+                  })
+                }
+                placeholder="Name der Kategorie"
+                required
+                value={categoryDraft.name}
+              />
+              <button className="primary-button" type="submit">
+                Speichern
+              </button>
+              <button
+                className="secondary-button"
+                onClick={() => setCategoryDraft(null)}
+                type="button"
+              >
+                Abbrechen
+              </button>
+            </form>
+          ) : null}
+          {categories.length === 0 ? (
+            <p className="shop__muted">Noch keine Kategorien.</p>
+          ) : (
+            <ul className="shop__category-list">
+              {categories.map((category) => (
+                <li key={category.id}>
+                  <span>{category.name}</span>
+                  <span className="shop__muted">
+                    {category.itemCount === 1
+                      ? "1 Artikel"
+                      : `${category.itemCount} Artikel`}
+                  </span>
+                  <button
+                    aria-label={`Kategorie ${category.name} umbenennen`}
+                    className="icon-button"
+                    onClick={() =>
+                      setCategoryDraft({ id: category.id, name: category.name })
+                    }
+                    type="button"
+                  >
+                    <Pencil size={15} />
+                  </button>
+                  <button
+                    aria-label={`Kategorie ${category.name} löschen`}
+                    className="icon-button"
+                    disabled={category.itemCount > 0}
+                    onClick={() => void removeCategory(category)}
+                    title={
+                      category.itemCount > 0
+                        ? "Nur leere Kategorien können gelöscht werden."
+                        : undefined
+                    }
+                    type="button"
+                  >
+                    <Trash2 size={15} />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      ) : null}
       {notice ? (
         <p className="form-success" role="status">
           {notice}
@@ -2106,9 +2199,11 @@ function CatalogManager({ tenantId }: { tenantId: string }) {
           Noch keine Artikel. Füge Artikel aus dem Lager oder freie Artikel
           hinzu.
         </p>
+      ) : visibleItems.length === 0 ? (
+        <p className="empty-state">Keine Artikel gefunden.</p>
       ) : (
         <ul className="shop__order-list">
-          {items.map((item) => (
+          {visibleItems.map((item) => (
             <li key={item.id}>
               <button
                 aria-label={`${item.name} bearbeiten`}

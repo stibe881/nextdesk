@@ -19473,3 +19473,88 @@ html:has(.embed-status-badge) body {
   font-weight: 500;
   font-variant-numeric: tabular-nums;
 }
+
+/* Artikelverwaltung: Suche, Filter-Chips und Kategorienverwaltung */
+.shop__manage-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.shop__manage-toolbar .shop__search {
+  min-height: 42px;
+}
+
+.shop__manage-toolbar select {
+  width: auto;
+  min-width: 150px;
+}
+
+.shop__filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.shop__filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 5px 8px 5px 14px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.shop__filter-chip span {
+  display: inline-grid;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--surface-subtle);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.shop__filter-chip[aria-pressed="true"],
+.shop__filter-chip[aria-pressed="true"]:hover:not(:disabled) {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: var(--on-primary);
+}
+
+.shop__filter-chip[aria-pressed="true"] span {
+  background: rgb(255 255 255 / 22%);
+  color: var(--on-primary);
+}
+
+.shop__categories-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.shop__categories-head h3 {
+  margin: 0;
+}
+
+@media (max-width: 640px) {
+  .shop__manage-toolbar > * {
+    flex: 1 1 100%;
+  }
+
+  .shop__manage-toolbar select {
+    width: 100%;
+  }
+}
