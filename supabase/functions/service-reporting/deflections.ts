@@ -2,10 +2,10 @@
 //
 // A deflection belongs to the department of its knowledge article
 // (knowledge_articles.department_id, migration 0177). Like the ticket KPIs of
-// the report, which only include tickets of teams in the caller's departments
-// (and tickets without team), the count only includes deflections of articles
-// in the caller's active departments plus articles without department, which
-// are shared by all departments.
+// the report, which only include tickets of the caller's readable teams (and
+// tickets without team), the count only includes deflections of articles in
+// the departments of those teams plus articles without department, which are
+// shared by all departments.
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
