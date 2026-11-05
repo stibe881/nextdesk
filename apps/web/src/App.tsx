@@ -330,16 +330,16 @@ const NAVIGATION_CATEGORIES = [
     sectionLabels: ["Raumplanung", "Eintritte", "Serviceaufgaben"],
   },
   {
-    heading: "DIENSTE & ÜBERWACHUNG",
-    id: "navigation-category-services",
-    navigationLabel: "Dienste und Überwachung",
-    sectionLabels: ["Services", "Systemstatus"],
-  },
-  {
     heading: "WISSEN & RESSOURCEN",
     id: "navigation-category-resources",
     navigationLabel: "Wissen und Ressourcen",
     sectionLabels: ["Wissen", "Assets", "Lager", "Verträge", "Lizenzen"],
+  },
+  {
+    heading: "DIENSTE & ÜBERWACHUNG",
+    id: "navigation-category-services",
+    navigationLabel: "Dienste und Überwachung",
+    sectionLabels: ["Services", "Systemstatus"],
   },
 ] as const satisfies readonly {
   heading: string;
