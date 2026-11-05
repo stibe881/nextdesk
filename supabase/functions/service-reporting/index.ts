@@ -1,5 +1,6 @@
 import { withSupabase } from "@supabase/server";
 import { resolveUserFeatureStates } from "../_shared/tenant-features.ts";
+import { deflectionArticleFilter } from "./deflections.ts";
 import {
   buildInsights,
   type InsightComment,
@@ -1087,14 +1088,20 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
   };
 
   // Tickets that were not created because a knowledge article solved the
-  // problem ("Hat mein Problem gelöst" while creating a ticket). Optional: a
-  // failed count does not fail the report.
+  // problem ("Hat mein Problem gelöst" while creating a ticket). Scoped like
+  // the ticket KPIs: only articles of the caller's departments and articles
+  // without department. Optional: a failed count does not fail the report.
+  const deflectionFilter = deflectionArticleFilter(activeDepartmentIds);
   const deflectedCount = async (range: PeriodRange) => {
     const { count, error } = await context.supabaseAdmin
       .from("knowledge_article_outcomes")
-      .select("id", { count: "exact", head: true })
+      .select("id, knowledge_articles!inner(department_id)", {
+        count: "exact",
+        head: true,
+      })
       .eq("tenant_id", action.tenantId)
       .eq("kind", "deflected")
+      .or(deflectionFilter, { referencedTable: "knowledge_articles" })
       .gte("created_at", range.startsAt)
       .lte("created_at", range.endsAt);
     return error || typeof count !== "number" ? null : count;

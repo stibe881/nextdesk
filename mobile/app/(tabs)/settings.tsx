@@ -564,7 +564,7 @@ export default function SettingsScreen() {
               Mandanten.
             </Text>
             <Pressable
-              accessibilityHint="Öffnet die Auswahl Ihrer aktiven Arbeitsbereiche."
+              accessibilityHint="Öffnet die Auswahl deiner aktiven Arbeitsbereiche."
               accessibilityLabel={`Arbeitsbereich: ${currentTenant?.name ?? "wird geladen"}`}
               accessibilityRole="button"
               disabled={tenants.length < 2}
@@ -584,7 +584,7 @@ export default function SettingsScreen() {
                 </Text>
                 <Text style={[styles.tenantControlHint, tokenStyles.muted]}>
                   {tenants.length < 2
-                    ? "Ihr einziger aktiver Mandant"
+                    ? "Dein einziger aktiver Mandant"
                     : "Antippen zum Wechseln"}
                 </Text>
               </View>
@@ -748,8 +748,8 @@ export default function SettingsScreen() {
                 </Text>
               </View>
               <Text style={[styles.cardHint, tokenStyles.muted]}>
-                Schützt Ihre geöffnete nextDesk-Sitzung nach der Rückkehr in die
-                App mit Face ID, Touch ID oder Gerätecode.
+                Schützt deine geöffnete nextDesk-Sitzung nach der Rückkehr in
+                die App mit Face ID, Touch ID oder Gerätecode.
               </Text>
               <Pressable
                 accessibilityHint="Die Änderung wird mit Face ID, Touch ID oder Gerätecode bestätigt."
@@ -927,7 +927,7 @@ export default function SettingsScreen() {
                   <Pressable
                     accessibilityHint={
                       option.value === "system"
-                        ? "Folgt der Bedienungshilfe Ihres Geräts."
+                        ? "Folgt der Bedienungshilfe deines Geräts."
                         : "Reduziert Bewegungen in dieser App."
                     }
                     accessibilityRole="button"

@@ -158,6 +158,54 @@ insert into public.event_space_requests (
 );
 SQL
   fi
+  if [[ "$(basename "$migration")" == "0188_followup_fixes.sql" ]]; then
+    # Requester comments sent before 0186 still contain the internal image
+    # references. 0188 must rewrite only the sent comments that still need it.
+    psql -v ON_ERROR_STOP=1 <<'SQL'
+do $$
+declare
+  v_owner constant uuid := 'f1880000-0000-4000-8000-000000000001';
+  v_tenant uuid;
+  v_status uuid;
+  v_priority uuid;
+  v_department uuid;
+  v_article constant uuid := 'f1880000-0000-4000-8000-000000000101';
+  v_ticket constant uuid := 'f1880000-0000-4000-8000-000000000201';
+begin
+  insert into auth.users (id) values (v_owner);
+  v_tenant := public.provision_personal_workspace(v_owner, 'altkommentar@example.ch', 'Altkommentare');
+  select id into v_department from public.departments where tenant_id = v_tenant limit 1;
+  select id into v_status from public.ticket_statuses where tenant_id = v_tenant and not is_closed order by sort_order limit 1;
+  select id into v_priority from public.ticket_priorities where tenant_id = v_tenant limit 1;
+  insert into public.knowledge_articles (id, tenant_id, title, slug, visibility, status, current_revision)
+  values (v_article, v_tenant, 'Drucker verbinden', 'drucker-verbinden', 'external', 'published', 1);
+  insert into public.tickets (id, tenant_id, department_id, ticket_number, subject, description, status_id, priority_id, requester_id)
+  values (v_ticket, v_tenant, v_department, 'A-2026-000001', 'Drucker', 'Drucker offline', v_status, v_priority, v_owner);
+  insert into public.ticket_comments (id, ticket_id, author_id, visibility, body, created_at, updated_at) values
+    -- Sent before 0186: rewritten.
+    ('f1880000-0000-4000-8000-000000000301', v_ticket, v_owner, 'external',
+     E'Schritt 1\n\n![Menü](kb-image:0a1b2c3d-1111-4222-8333-444455556666)\n',
+     '2026-01-01 08:00:00+00', '2026-01-01 08:00:00+00'),
+    -- Not sent from the knowledge base: unchanged.
+    ('f1880000-0000-4000-8000-000000000302', v_ticket, v_owner, 'external',
+     'Eigener Text ![Bild](kb-image:0a1b2c3d-1111-4222-8333-444455556666)',
+     '2026-01-01 08:00:00+00', '2026-01-01 08:00:00+00'),
+    -- Sent with the portal note already appended: unchanged.
+    ('f1880000-0000-4000-8000-000000000303', v_ticket, v_owner, 'external',
+     public.knowledge_article_requester_comment('Drucker verbinden', 'Ohne Bild')
+       || ' kb-image:0a1b2c3d-1111-4222-8333-444455556666',
+     '2026-01-01 08:00:00+00', '2026-01-01 08:00:00+00');
+  insert into public.ticket_events (ticket_id, actor_id, event_type, payload) values
+    (v_ticket, v_owner, 'ticket.knowledge.sent', jsonb_build_object(
+      'article_id', v_article, 'revision', 1,
+      'comment_id', 'f1880000-0000-4000-8000-000000000301', 'visibility', 'external')),
+    (v_ticket, v_owner, 'ticket.knowledge.sent', jsonb_build_object(
+      'article_id', v_article, 'revision', 1,
+      'comment_id', 'f1880000-0000-4000-8000-000000000303', 'visibility', 'external'));
+end;
+$$;
+SQL
+  fi
   psql -v ON_ERROR_STOP=1 -f "$migration" >/dev/null
 done
 
@@ -9286,6 +9334,229 @@ begin
   end if;
   if public.create_due_expiry_reminders() <> 0 then
     raise exception 'Reminders were created twice';
+  end if;
+end;
+$$;
+rollback;
+SQL
+# Knowledge follow-ups (0186): a comment sent to the requester replaces the
+# internal image references and points to the article in the portal, and a
+# category is deleted together with its subcategories in one transaction.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+insert into public.role_permissions (role_id, permission_code) values
+  ('16600000-0000-4000-8000-000000000002', 'knowledge.publish')
+  on conflict do nothing;
+set local "request.jwt.claim.sub" = '00000000-0000-4000-8000-000000000002';
+set local role authenticated;
+do $$
+declare
+  v_result jsonb;
+  v_article uuid;
+  v_body text;
+begin
+  v_result := public.ticket_knowledge_mutate('createAndAttach',
+    '10000000-0000-4000-8000-000000000001', '17000000-0000-4000-8000-000000000001',
+    null, 'external', 'VPN einrichten',
+    E'Schritt 1\n\n![Menü](kb-image:0a1b2c3d-1111-4222-8333-444455556666)\n');
+  v_article := (v_result->'link'->>'articleId')::uuid;
+  v_result := public.ticket_knowledge_mutate('sendToRequester',
+    '10000000-0000-4000-8000-000000000001', '17000000-0000-4000-8000-000000000001', v_article);
+  select body into v_body from public.ticket_comments where id = (v_result->>'commentId')::uuid;
+  if v_body like '%kb-image:%' or v_body not like '%[Bild: Menü – im Wissensartikel «VPN einrichten» ansehen]%'
+    or v_body not like '%im Bereich «Wissen»%' then
+    raise exception 'Unexpected requester comment: %', v_body;
+  end if;
+  raise notice 'comment: %', v_body;
+end;
+$$;
+reset role;
+rollback;
+
+begin;
+do $$
+declare
+  v_tenant uuid := '10000000-0000-4000-8000-000000000001';
+  v_root uuid := gen_random_uuid();
+  v_child1 uuid := gen_random_uuid();
+  v_child2 uuid := gen_random_uuid();
+  v_other uuid := gen_random_uuid();
+  v_article uuid;
+  r record;
+begin
+  insert into public.knowledge_collections (id, tenant_id, name, slug, parent_id, active) values
+    (v_root, v_tenant, 'Wurzel 186', 'wurzel-186', null, true),
+    (v_other, v_tenant, 'Andere 186', 'andere-186', null, true);
+  insert into public.knowledge_collections (id, tenant_id, name, slug, parent_id, active) values
+    (v_child1, v_tenant, 'Kind 1', 'kind-1-186', v_root, true),
+    (v_child2, v_tenant, 'Kind 2', 'kind-2-186', v_root, true);
+  select id into v_article from public.knowledge_articles where tenant_id = v_tenant limit 1;
+  insert into public.knowledge_article_collections (tenant_id, article_id, collection_id) values
+    (v_tenant, v_article, v_child1), (v_tenant, v_article, v_root), (v_tenant, v_article, v_other);
+  select * into r from public.delete_knowledge_collection(v_tenant, v_root, null);
+  if r.collection_id <> v_root or r.deleted_subcategories <> 2 or r.removed_assignments <> 2
+    or cardinality(r.deleted_collection_ids) <> 3 then
+    raise exception 'Unexpected delete result %', row_to_json(r);
+  end if;
+  if exists (select 1 from public.knowledge_collections where id in (v_root, v_child1, v_child2))
+    or not exists (select 1 from public.knowledge_collections where id = v_other)
+    or not exists (select 1 from public.knowledge_articles where id = v_article)
+    or (select count(*) from public.knowledge_article_collections where article_id = v_article) <> 1
+    or not exists (select 1 from public.audit_logs where entity_id = v_root and action = 'knowledge.collection.deleted') then
+    raise exception 'Category subtree was not deleted atomically';
+  end if;
+  begin
+    perform public.delete_knowledge_collection(v_tenant, v_root, null);
+    raise exception 'Deleting a missing collection succeeded';
+  exception when no_data_found then null;
+  end;
+  if has_function_privilege('authenticated', 'public.delete_knowledge_collection(uuid, uuid, uuid)', 'execute')
+    or not has_function_privilege('service_role', 'public.delete_knowledge_collection(uuid, uuid, uuid)', 'execute') then
+    raise exception 'delete_knowledge_collection grants are wrong';
+  end if;
+end;
+$$;
+rollback;
+SQL
+# Follow-up fixes (0188): the requester comments sent before 0186 are
+# rewritten once (keeping their timestamps); other comments stay unchanged and
+# a replay of the migration changes nothing.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+do $$
+declare
+  v_body text;
+  v_updated timestamptz;
+begin
+  select body, updated_at into v_body, v_updated
+  from public.ticket_comments where id = 'f1880000-0000-4000-8000-000000000301';
+  if v_body like '%kb-image:%'
+     or v_body not like '%[Bild: Menü – im Wissensartikel «Drucker verbinden» ansehen]%'
+     or v_body not like '%im Bereich «Wissen»%' then
+    raise exception 'A requester comment sent before 0186 was not rewritten: %', v_body;
+  end if;
+  if v_updated <> '2026-01-01 08:00:00+00' then
+    raise exception 'Rewriting a requester comment changed its timestamp';
+  end if;
+  if (select body from public.ticket_comments where id = 'f1880000-0000-4000-8000-000000000302')
+       <> 'Eigener Text ![Bild](kb-image:0a1b2c3d-1111-4222-8333-444455556666)'
+     or (select body from public.ticket_comments where id = 'f1880000-0000-4000-8000-000000000303')
+       not like '%» mit allen Bildern finden Sie im Portal% kb-image:0a1b2c3d-1111-4222-8333-444455556666' then
+    raise exception 'A comment that does not need the rewrite was changed';
+  end if;
+  if not exists (
+    select 1 from pg_trigger
+    where tgrelid = 'public.ticket_comments'::regclass
+      and tgname = 'ticket_comments_updated_at' and tgenabled = 'O'
+  ) then
+    raise exception 'The updated_at trigger of ticket_comments was not enabled again';
+  end if;
+end;
+$$;
+SQL
+legacy_requester_comments_before="$(psql -At -c "
+  select string_agg(id::text || ':' || md5(body) || ':' || updated_at::text, ',' order by id)
+  from public.ticket_comments
+  where id::text like 'f1880000-%'
+" | tr -d '\n')"
+psql -v ON_ERROR_STOP=1 -f "$ROOT_DIR/supabase/migrations/0188_followup_fixes.sql" >/dev/null
+legacy_requester_comments_after="$(psql -At -c "
+  select string_agg(id::text || ':' || md5(body) || ':' || updated_at::text, ',' order by id)
+  from public.ticket_comments
+  where id::text like 'f1880000-%'
+" | tr -d '\n')"
+[[ "$legacy_requester_comments_before" == "$legacy_requester_comments_after" ]]
+# Incident clusters (0189): one call clusters the recent readable tickets of
+# the signed-in person with the word-overlap rule of recent_similar_tickets,
+# without duplicate clusters, the largest first and at most p_limit.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_owner constant uuid := 'f1890000-0000-4000-8000-000000000001';
+  v_stranger constant uuid := 'f1890000-0000-4000-8000-000000000002';
+  v_tenant uuid;
+  v_open uuid;
+  v_priority uuid;
+  v_department uuid;
+  v_vpn uuid[];
+  v_count integer;
+  v_first record;
+  v_index integer;
+begin
+  if has_function_privilege('anon', 'public.recent_incident_clusters(uuid, timestamptz, integer, integer)', 'execute')
+     or not has_function_privilege('authenticated', 'public.recent_incident_clusters(uuid, timestamptz, integer, integer)', 'execute')
+     or not has_function_privilege('service_role', 'public.recent_incident_clusters(uuid, timestamptz, integer, integer)', 'execute') then
+    raise exception 'recent_incident_clusters grants are wrong';
+  end if;
+  insert into auth.users (id) values (v_owner), (v_stranger);
+  v_tenant := public.provision_personal_workspace(v_owner, 'stoerfall@example.ch', 'Störfallteam');
+  select id into v_department from public.departments where tenant_id = v_tenant limit 1;
+  select id into v_open from public.ticket_statuses where tenant_id = v_tenant and not is_closed order by sort_order limit 1;
+  select id into v_priority from public.ticket_priorities where tenant_id = v_tenant limit 1;
+
+  for v_index in 1..6 loop
+    insert into public.tickets (tenant_id, department_id, ticket_number, subject, description, status_id, priority_id, requester_id, created_at)
+    values (v_tenant, v_department, 'S-2026-0000' || v_index, 'VPN Verbindung bricht ab', 'Das VPN trennt die Verbindung im Homeoffice', v_open, v_priority, v_owner, now() - (v_index || ' minutes')::interval)
+    returning array_append(coalesce(v_vpn, array[]::uuid[]), id) into v_vpn;
+  end loop;
+  for v_index in 1..5 loop
+    insert into public.tickets (tenant_id, department_id, ticket_number, subject, description, status_id, priority_id, requester_id, created_at)
+    values (v_tenant, v_department, 'S-2026-0001' || v_index, 'Drucker druckt nicht', 'Der Drucker im Büro druckt keine Seiten', v_open, v_priority, v_owner, now() - ((10 + v_index) || ' minutes')::interval);
+  end loop;
+  insert into public.tickets (tenant_id, department_id, ticket_number, subject, description, status_id, priority_id, requester_id, created_at)
+  values
+    (v_tenant, v_department, 'S-2026-00021', 'Passwort vergessen', 'Anmeldung klappt nicht', v_open, v_priority, v_owner, now()),
+    (v_tenant, v_department, 'S-2026-00022', 'Monitor flackert', 'Bildschirm flackert', v_open, v_priority, v_owner, now()),
+    -- Outside the window: no member.
+    (v_tenant, v_department, 'S-2026-00023', 'VPN Verbindung bricht ab', 'VPN trennt die Verbindung', v_open, v_priority, v_owner, now() - interval '5 hours');
+
+  perform set_config('request.jwt.claim.sub', v_owner::text, true);
+  select count(*) into v_count from public.recent_incident_clusters(v_tenant, now() - interval '2 hours');
+  if v_count <> 2 then
+    raise exception 'recent_incident_clusters returned % clusters instead of two', v_count;
+  end if;
+  select * into v_first from public.recent_incident_clusters(v_tenant, now() - interval '2 hours') limit 1;
+  if v_first.ticket_count <> 6 or v_first.subject <> 'VPN Verbindung bricht ab'
+     or cardinality(v_first.ticket_ids) <> 6
+     or not (v_first.ticket_ids @> v_vpn and v_vpn @> v_first.ticket_ids)
+     or jsonb_array_length(v_first.tickets) <> 6
+     or v_first.ticket_id <> v_first.ticket_ids[1] then
+    raise exception 'The largest incident cluster is wrong: %', row_to_json(v_first);
+  end if;
+  -- No ticket is part of two clusters.
+  select count(*) - count(distinct member) into v_count
+  from public.recent_incident_clusters(v_tenant, now() - interval '2 hours') clusters,
+    unnest(clusters.ticket_ids) member;
+  if v_count <> 0 then
+    raise exception 'recent_incident_clusters returned duplicate members';
+  end if;
+  select count(*) into v_count from public.recent_incident_clusters(v_tenant, now() - interval '2 hours', 5, 1);
+  if v_count <> 1 then
+    raise exception 'recent_incident_clusters ignored p_limit';
+  end if;
+  select count(*) into v_count from public.recent_incident_clusters(v_tenant, now() - interval '2 hours', 6, 3);
+  if v_count <> 1 then
+    raise exception 'recent_incident_clusters ignored p_min_size (% clusters)', v_count;
+  end if;
+  select count(*) into v_count from public.recent_incident_clusters(v_tenant, now() - interval '2 hours', 7, 3);
+  if v_count <> 0 then
+    raise exception 'recent_incident_clusters reported a cluster below p_min_size';
+  end if;
+  -- Merged tickets are no members.
+  update public.tickets set merged_into_ticket_id = v_vpn[1] where id = v_vpn[6];
+  select ticket_count into v_count from public.recent_incident_clusters(v_tenant, now() - interval '2 hours')
+  where subject = 'VPN Verbindung bricht ab';
+  if v_count is distinct from 5 then
+    raise exception 'A merged ticket was counted in a cluster (% members)', v_count;
+  end if;
+
+  perform set_config('request.jwt.claim.sub', v_stranger::text, true);
+  if exists (select 1 from public.recent_incident_clusters(v_tenant, now() - interval '2 hours')) then
+    raise exception 'recent_incident_clusters answered a person outside the tenant';
+  end if;
+  perform set_config('request.jwt.claim.sub', '', true);
+  if exists (select 1 from public.recent_incident_clusters(v_tenant, now() - interval '2 hours')) then
+    raise exception 'recent_incident_clusters answered without a signed-in person';
   end if;
 end;
 $$;

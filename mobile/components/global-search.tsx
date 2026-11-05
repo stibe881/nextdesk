@@ -239,7 +239,7 @@ export function GlobalSearch({
   return (
     <>
       <Pressable
-        accessibilityHint="Durchsucht freigegebene Tickets, Assets und Wissensartikel in Ihrem aktuellen Mandanten."
+        accessibilityHint="Durchsucht freigegebene Tickets, Assets und Wissensartikel in deinem aktuellen Mandanten."
         accessibilityLabel="Globale Suche öffnen"
         accessibilityRole="button"
         onPress={openSearch}
@@ -467,7 +467,7 @@ export function GlobalSearch({
                   articles.length === 0 ? (
                     <Text style={styles.note}>
                       {assetSearchUnavailable
-                        ? "Keine passenden Tickets gefunden. Assetergebnisse stehen für Ihre Rolle nicht zur Verfügung."
+                        ? "Keine passenden Tickets gefunden. Assetergebnisse stehen für deine Rolle nicht zur Verfügung."
                         : "Keine passenden Tickets, Assets oder Wissensartikel gefunden."}
                     </Text>
                   ) : null}

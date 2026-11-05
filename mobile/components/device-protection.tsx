@@ -142,16 +142,14 @@ export function DeviceProtection() {
         setLockState("unlocked");
       } else if (result.error === "timeout") {
         setMessage(
-          "Die Entsperrung hat nicht geantwortet. Bitte tippen Sie erneut auf «Jetzt entsperren».",
+          "Die Entsperrung hat nicht geantwortet. Bitte tippe erneut auf «Jetzt entsperren».",
         );
       } else {
-        setMessage(
-          "Entsperren Sie nextDesk mit Face ID, Touch ID oder Gerätecode.",
-        );
+        setMessage("Entsperre nextDesk mit Face ID, Touch ID oder Gerätecode.");
       }
     } catch {
       setMessage(
-        "Der Geräteschutz konnte nicht gestartet werden. Bitte versuchen Sie es erneut.",
+        "Der Geräteschutz konnte nicht gestartet werden. Bitte versuche es erneut.",
       );
     } finally {
       checkingRef.current = false;
@@ -228,7 +226,7 @@ export function DeviceProtection() {
           <Text style={styles.copy}>
             {lockState === "checking-session"
               ? "Vertrauliche Arbeitsdaten werden erst nach der Sicherheitsprüfung angezeigt."
-              : "Entsperren Sie Ihre aktuelle Sitzung, bevor vertrauliche Ticket- und Assetdaten angezeigt werden."}
+              : "Entsperre deine aktuelle Sitzung, bevor vertrauliche Ticket- und Assetdaten angezeigt werden."}
           </Text>
           {message ? <Text style={styles.message}>{message}</Text> : null}
           {lockState === "checking-session" ? (

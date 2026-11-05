@@ -1,5 +1,6 @@
 import {
   corsHeaders,
+  createItemDepartment,
   inspectInventoryItemImage,
   INVENTORY_RPC_NAMES,
   itemDepartmentChange,
@@ -1542,5 +1543,92 @@ Deno.test(
       item,
     );
     assertEquals([kept.p_department_id, kept.p_set_department], [null, false]);
+  },
+);
+
+Deno.test(
+  "a create with an existing article number stays in the caller's departments",
+  () => {
+    const scope = { departments: [DEPARTMENT_A], scoped: true };
+    const values = {
+      articleNumber: "adp-1",
+      name: "Adapter",
+      category: "Zubehör",
+      unit: "each",
+      trackingMode: "quantity",
+      minimumStock: 0,
+      targetStock: 1,
+    };
+    const parse = (extra: Record<string, unknown>) => {
+      const action = parseAction({
+        type: "manageItem",
+        tenantId: TENANT_ID,
+        operation: "create",
+        values: { ...values, ...extra },
+        clientRequestId: REQUEST_ID,
+      });
+      if (!action || action.type !== "manageItem") {
+        throw new Error("The item command fixtures must parse.");
+      }
+      return action;
+    };
+    const implicit = parse({});
+    const explicit = parse({ departmentId: DEPARTMENT_A });
+    const resolved = itemDepartmentChange(scope, implicit);
+    assertEquals(resolved, { departmentId: DEPARTMENT_A });
+
+    // A new article number: the department of the create.
+    assertEquals(createItemDepartment(scope, implicit, resolved, null), {
+      departmentId: DEPARTMENT_A,
+    });
+    // An existing item inside the scope keeps its department ...
+    assert(
+      createItemDepartment(scope, implicit, resolved, {
+        departmentId: null,
+      }) === undefined,
+      "a shared item is not moved into the caller's department",
+    );
+    assert(
+      createItemDepartment(scope, implicit, resolved, {
+        departmentId: DEPARTMENT_A,
+      }) === undefined,
+      "an item of the caller's department keeps its department",
+    );
+    // ... unless the caller explicitly names one.
+    assertEquals(
+      createItemDepartment(
+        scope,
+        explicit,
+        itemDepartmentChange(scope, explicit),
+        { departmentId: null },
+      ),
+      { departmentId: DEPARTMENT_A },
+    );
+    // An item of another department is not taken over.
+    for (const action of [implicit, explicit]) {
+      let error: { status?: unknown; message?: unknown } | null = null;
+      try {
+        createItemDepartment(scope, action, resolved, {
+          departmentId: DEPARTMENT_B,
+        });
+      } catch (caught) {
+        error = caught as { status?: unknown; message?: unknown };
+      }
+      assertEquals(error?.status, 409);
+      assertEquals(
+        error?.message,
+        "Die Artikelnummer ist bereits in einer anderen Abteilung vergeben.",
+      );
+    }
+    // Without department scoping every item is visible.
+    assert(
+      createItemDepartment(
+        { departments: [], scoped: false },
+        implicit,
+        resolved,
+        { departmentId: DEPARTMENT_B },
+      ) === undefined,
+      "an unscoped tenant keeps today's behaviour",
+    );
   },
 );

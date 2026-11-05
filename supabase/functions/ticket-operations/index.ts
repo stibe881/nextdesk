@@ -6,6 +6,7 @@ import {
 import { resolveTenantFeatureStates } from "../_shared/tenant-features.ts";
 import {
   clusterRecentTickets,
+  createIncidentOverviewCache,
   INCIDENT_MIN_TICKETS,
   INCIDENT_WINDOW_HOURS,
   similarityText,
@@ -122,6 +123,10 @@ type Action =
       note?: string;
       startedAt?: string;
     };
+
+// Incident hint of the ticket list: one overview per tenant and person is
+// reused for a minute (see createIncidentOverviewCache).
+const incidentOverviewCache = createIncidentOverviewCache();
 
 const originHeaders = (request: Request) => ({
   "Access-Control-Allow-Origin":
@@ -1293,6 +1298,11 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       return response(request, {
         data: { windowHours: INCIDENT_WINDOW_HOURS, incidents: [] },
       });
+    const cached = incidentOverviewCache.get(action.tenantId, actorId);
+    if (cached)
+      return response(request, {
+        data: { windowHours: INCIDENT_WINDOW_HOURS, incidents: cached },
+      });
     const since = new Date(
       Date.now() - INCIDENT_WINDOW_HOURS * 60 * 60 * 1000,
     ).toISOString();
@@ -1307,6 +1317,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         { error: { code: "incident_detection_failed" } },
         503,
       );
+    incidentOverviewCache.set(action.tenantId, actorId, incidents);
     return response(request, {
       data: { windowHours: INCIDENT_WINDOW_HOURS, incidents },
     });

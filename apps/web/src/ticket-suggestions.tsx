@@ -1,9 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { BookOpen, CheckCircle2, Lightbulb, Ticket } from "lucide-react";
-import ReactMarkdown from "react-markdown";
 import { supabase } from "./lib/supabase";
+import { KnowledgeMarkdown } from "./knowledge-markdown";
 import {
-  knowledgeImageUrlTransform,
   parseKnowledgeImageUrls,
   type KnowledgeImageUrls,
 } from "./lib/knowledge-images";
@@ -130,38 +129,6 @@ function parseArticleView(value: unknown): ArticleView {
     };
   }
   return { status: "error" };
-}
-
-function ArticleBody({
-  body,
-  imageUrls,
-}: {
-  body: string;
-  imageUrls: KnowledgeImageUrls;
-}) {
-  const urlTransform = useMemo(
-    () => knowledgeImageUrlTransform(imageUrls),
-    [imageUrls],
-  );
-  return (
-    <div className="ticket-suggestions__article-body">
-      <ReactMarkdown
-        components={{
-          img: ({ src, alt }) =>
-            typeof src === "string" && src ? (
-              <img alt={alt ?? ""} loading="lazy" src={src} />
-            ) : (
-              <span className="ticket-suggestions__muted">
-                {alt ? `Bild «${alt}» nicht verfügbar` : "Bild nicht verfügbar"}
-              </span>
-            ),
-        }}
-        urlTransform={urlTransform}
-      >
-        {body}
-      </ReactMarkdown>
-    </div>
-  );
 }
 
 function ticketLabel(ticket: SuggestedTicket): string {
@@ -326,10 +293,12 @@ export function TicketSuggestionPanel({
                   {open && (
                     <div id={`ticket-suggestion-article-${article.id}`}>
                       {view?.status === "ready" ? (
-                        <ArticleBody
-                          body={view.body}
-                          imageUrls={view.imageUrls}
-                        />
+                        <div className="knowledge-markdown ticket-suggestions__article-body">
+                          <KnowledgeMarkdown
+                            body={view.body}
+                            imageUrls={view.imageUrls}
+                          />
+                        </div>
                       ) : view?.status === "error" ? (
                         <p className="ticket-suggestions__muted" role="status">
                           Der Artikel konnte nicht geladen werden.

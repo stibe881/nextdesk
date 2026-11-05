@@ -113,7 +113,7 @@ export default function KnowledgeScreen() {
           <Text style={styles.eyebrow}>WISSEN</Text>
           <Text style={styles.title}>Wissen</Text>
           <Text style={styles.subtitle}>
-            Durchsuchen Sie freigegebene Anleitungen, Lösungen und Hinweise.
+            Durchsuche freigegebene Anleitungen, Lösungen und Hinweise.
           </Text>
         </View>
 
@@ -171,7 +171,7 @@ export default function KnowledgeScreen() {
             </Text>
             <Text style={styles.emptyCopy}>
               {query
-                ? "Passen Sie Ihren Suchbegriff an oder versuchen Sie eine andere Formulierung."
+                ? "Passe deinen Suchbegriff an oder versuche eine andere Formulierung."
                 : "Freigegebene Artikel erscheinen hier automatisch."}
             </Text>
           </View>
