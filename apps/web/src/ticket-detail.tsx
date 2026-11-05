@@ -2644,7 +2644,12 @@ function parseKnowledgeLinkState(value: unknown): KnowledgeLinkState | null {
 
 function parseKnowledgeLinks(value: unknown): KnowledgeLink[] | null {
   const data = parseKnowledgeData(value);
-  if (!data || !hasOnlyKeys(data, ["links"]) || !Array.isArray(data.links))
+  // imageUrls: signed URLs for kb-image references (knowledge article images).
+  if (
+    !data ||
+    !hasOnlyKeys(data, ["links", "imageUrls"]) ||
+    !Array.isArray(data.links)
+  )
     return null;
   const links: KnowledgeLink[] = [];
   const seen = new Set<string>();
@@ -2688,7 +2693,7 @@ function parseKnowledgeSearch(value: unknown): KnowledgeArticle[] | null {
   const data = parseKnowledgeData(value);
   if (
     !data ||
-    !hasOnlyKeys(data, ["articles"]) ||
+    !hasOnlyKeys(data, ["articles", "imageUrls"]) ||
     !Array.isArray(data.articles) ||
     data.articles.length > 30
   )

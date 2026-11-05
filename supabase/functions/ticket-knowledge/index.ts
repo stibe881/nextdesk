@@ -285,6 +285,49 @@ async function visibleArticleIds(
   );
 }
 
+const IMAGE_BUCKET = "knowledge-article-images";
+const IMAGE_URL_TTL_SECONDS = 60 * 60;
+const MAX_RESOLVED_IMAGES = 300;
+const IMAGE_REFERENCE =
+  /kb-image:([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/gi;
+
+/**
+ * Short-lived signed URLs (id → URL) for kb-image references of the same
+ * tenant, as in knowledge-base. The stored Markdown stays unchanged.
+ */
+async function resolveImageUrls(
+  admin: Admin,
+  tenantId: string,
+  bodies: unknown[],
+): Promise<Record<string, string>> {
+  const ids = new Set<string>();
+  for (const body of bodies) {
+    if (typeof body !== "string") continue;
+    for (const match of body.matchAll(IMAGE_REFERENCE)) {
+      if (ids.size < MAX_RESOLVED_IMAGES) ids.add(match[1].toLowerCase());
+    }
+  }
+  const urls: Record<string, string> = {};
+  if (ids.size === 0) return urls;
+  const { data, error: failure } = await admin
+    .from("knowledge_article_images")
+    .select("id, storage_path")
+    .eq("tenant_id", tenantId)
+    .in("id", [...ids]);
+  if (failure || !Array.isArray(data) || data.length === 0) return urls;
+  const { data: signed } = await admin.storage
+    .from(IMAGE_BUCKET)
+    .createSignedUrls(
+      data.map((row: Record<string, unknown>) => String(row.storage_path)),
+      IMAGE_URL_TTL_SECONDS,
+    );
+  data.forEach((row: Record<string, unknown>, index: number) => {
+    const url = signed?.[index]?.signedUrl;
+    if (typeof url === "string") urls[String(row.id)] = url;
+  });
+  return urls;
+}
+
 const handler = withSupabase(
   { auth: "user", errors: { detailed: false } },
   async (request, context) => {
@@ -388,10 +431,25 @@ const handler = withSupabase(
         scope,
       );
       if (!visible) return error(request, "ticket_knowledge_failed", 500);
+      const shown = entries.filter((entry) => visible.has(entryId(entry)));
       return json(request, {
         data: {
           ...data,
-          [key]: entries.filter((entry) => visible.has(entryId(entry))),
+          [key]: shown,
+          // Signed URLs for the kb-image references in the article texts.
+          imageUrls: await resolveImageUrls(
+            admin,
+            action.tenantId,
+            shown.map((entry) =>
+              isRecord(entry)
+                ? action.type === "list"
+                  ? isRecord(entry.article)
+                    ? entry.article.body
+                    : null
+                  : entry.body
+                : null,
+            ),
+          ),
         },
       });
     }
