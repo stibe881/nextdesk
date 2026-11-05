@@ -47,9 +47,15 @@ type Service = {
   primary_responsible_id: string | null;
   secondary_responsible_id: string | null;
   service_category_id: string | null;
+  department_id: string | null;
   active: boolean;
   created_at: string;
   updated_at: string;
+};
+
+type DepartmentOption = {
+  id: string;
+  name: string;
 };
 
 type ServiceCategory = {
@@ -76,6 +82,7 @@ type Asset = {
   kind: string;
   status: string;
   customer_organization_id: string | null;
+  department_id: string | null;
   intune_primary_person_name: string | null;
   intune_primary_person_photo_url?: string | null;
   metadata: { [key: string]: JsonValue };
@@ -93,6 +100,7 @@ type Problem = {
   workaround: string | null;
   root_cause: string | null;
   owner_id: string | null;
+  department_id: string | null;
   created_by: string;
   created_at: string;
   updated_at: string;
@@ -125,6 +133,7 @@ type ServiceForm = {
   primaryResponsibleId: string;
   secondaryResponsibleId: string;
   categoryId: string;
+  departmentId: string;
 };
 
 type ServiceCategoryForm = {
@@ -147,6 +156,7 @@ type AssetForm = {
   status: string;
   customerOrganizationId: string;
   metadata: string;
+  departmentId: string;
 };
 
 type ProblemForm = {
@@ -157,6 +167,7 @@ type ProblemForm = {
   workaround: string;
   rootCause: string;
   ownerId: string;
+  departmentId: string;
 };
 
 type ProblemFormMode = "create" | "edit" | "resolve";
@@ -202,6 +213,7 @@ type ServiceSaveRequest = {
   primaryResponsibleId: string | null;
   secondaryResponsibleId: string | null;
   categoryId?: string | null;
+  departmentId?: string;
   serviceId?: string;
 };
 type ServiceCategorySaveRequest = {
@@ -241,6 +253,7 @@ type AssetSaveRequest = {
   customerOrganizationId: string | null;
   metadata: { [key: string]: JsonValue };
   active: boolean;
+  departmentId?: string;
   assetId?: string;
 };
 type AssetArchiveRequest = {
@@ -259,6 +272,7 @@ type ProblemSaveRequest = {
   workaround: string | null;
   rootCause: string | null;
   ownerId: string | null;
+  departmentId?: string;
   problemId?: string;
 };
 type ProblemResolveRequest = {
@@ -312,6 +326,7 @@ const EMPTY_SERVICE_FORM: ServiceForm = {
   primaryResponsibleId: "",
   secondaryResponsibleId: "",
   categoryId: "",
+  departmentId: "",
 };
 
 const EMPTY_SERVICE_CATEGORY_FORM: ServiceCategoryForm = {
@@ -334,6 +349,7 @@ const EMPTY_ASSET_FORM: AssetForm = {
   status: "active",
   customerOrganizationId: "",
   metadata: "{}",
+  departmentId: "",
 };
 
 const EMPTY_PROBLEM_FORM: ProblemForm = {
@@ -344,6 +360,7 @@ const EMPTY_PROBLEM_FORM: ProblemForm = {
   workaround: "",
   rootCause: "",
   ownerId: "",
+  departmentId: "",
 };
 
 const CRITICALITY_LABELS: Record<Criticality, string> = {
@@ -414,6 +431,7 @@ function serviceCategoryDepth(
 
 type ServiceEditorFieldsProps = {
   controlsDisabled: boolean;
+  departments: readonly DepartmentOption[];
   nameInputRef: RefObject<HTMLInputElement | null>;
   onCancel: () => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void | Promise<void>;
@@ -435,6 +453,7 @@ type ServiceEditorFieldsProps = {
 
 function ServiceEditorFields({
   controlsDisabled,
+  departments,
   nameInputRef,
   onCancel,
   onSubmit,
@@ -545,6 +564,15 @@ function ServiceEditorFields({
           value={serviceForm.name}
         />
       </label>
+      <DepartmentField
+        departments={departments}
+        disabled={controlsDisabled}
+        onChange={(departmentId) =>
+          setServiceForm((current) => ({ ...current, departmentId }))
+        }
+        required={serviceForm.id === null}
+        value={serviceForm.departmentId}
+      />
       <label>
         Kritikalität
         <select
@@ -879,8 +907,29 @@ function isProblemStatus(value: unknown): value is ProblemStatus {
   );
 }
 
+// Older functions do not send department_id yet; a missing field means "no
+// department".
+function optionalDepartmentId(value: Record<string, unknown>): unknown {
+  return Object.hasOwn(value, "department_id") ? value.department_id : null;
+}
+
+function parseDepartmentOption(value: unknown): DepartmentOption | null {
+  if (
+    !isRecord(value) ||
+    !Object.keys(value).every((key) => key === "id" || key === "name") ||
+    typeof value.id !== "string" ||
+    !value.id.trim() ||
+    typeof value.name !== "string" ||
+    !value.name.trim()
+  ) {
+    return null;
+  }
+  return { id: value.id, name: value.name };
+}
+
 function parseService(value: unknown): Service | null {
   if (!isRecord(value)) return null;
+  const departmentId = optionalDepartmentId(value);
   const primaryResponsibleId = Object.hasOwn(value, "primary_responsible_id")
     ? value.primary_responsible_id
     : null;
@@ -904,6 +953,7 @@ function parseService(value: unknown): Service | null {
     !isNullableString(primaryResponsibleId) ||
     !isNullableString(secondaryResponsibleId) ||
     !isNullableString(serviceCategoryId) ||
+    !isNullableString(departmentId) ||
     typeof value.active !== "boolean" ||
     typeof value.created_at !== "string" ||
     typeof value.updated_at !== "string"
@@ -921,6 +971,7 @@ function parseService(value: unknown): Service | null {
     primary_responsible_id: primaryResponsibleId,
     secondary_responsible_id: secondaryResponsibleId,
     service_category_id: serviceCategoryId,
+    department_id: departmentId,
     active: value.active,
     created_at: value.created_at,
     updated_at: value.updated_at,
@@ -953,6 +1004,7 @@ function parseServiceCategory(value: unknown): ServiceCategory | null {
 
 function parseAsset(value: unknown): Asset | null {
   if (!isRecord(value) || !isRecord(value.metadata)) return null;
+  const departmentId = optionalDepartmentId(value);
   if (
     typeof value.id !== "string" ||
     typeof value.tenant_id !== "string" ||
@@ -967,6 +1019,7 @@ function parseAsset(value: unknown): Asset | null {
     typeof value.kind !== "string" ||
     typeof value.status !== "string" ||
     !isNullableString(value.customer_organization_id) ||
+    !isNullableString(departmentId) ||
     (Object.hasOwn(value, "intune_primary_person_name") &&
       !isNullableString(value.intune_primary_person_name)) ||
     typeof value.active !== "boolean" ||
@@ -989,6 +1042,7 @@ function parseAsset(value: unknown): Asset | null {
     kind: value.kind,
     status: value.status,
     customer_organization_id: value.customer_organization_id,
+    department_id: departmentId,
     intune_primary_person_name: isNullableString(
       value.intune_primary_person_name,
     )
@@ -1008,6 +1062,7 @@ function parseAsset(value: unknown): Asset | null {
 
 function parseProblem(value: unknown): Problem | null {
   if (!isRecord(value)) return null;
+  const departmentId = optionalDepartmentId(value);
   if (
     typeof value.id !== "string" ||
     typeof value.tenant_id !== "string" ||
@@ -1017,6 +1072,7 @@ function parseProblem(value: unknown): Problem | null {
     !isNullableString(value.workaround) ||
     !isNullableString(value.root_cause) ||
     !isNullableString(value.owner_id) ||
+    !isNullableString(departmentId) ||
     typeof value.created_by !== "string" ||
     typeof value.created_at !== "string" ||
     typeof value.updated_at !== "string"
@@ -1032,6 +1088,7 @@ function parseProblem(value: unknown): Problem | null {
     workaround: value.workaround,
     root_cause: value.root_cause,
     owner_id: value.owner_id,
+    department_id: departmentId,
     created_by: value.created_by,
     created_at: value.created_at,
     updated_at: value.updated_at,
@@ -1182,8 +1239,12 @@ export function parseCatalog(value: unknown): {
   supportsServiceCategories: boolean;
   assets: Asset[];
   problems: Problem[];
+  departments: DepartmentOption[];
 } {
   const data = responseData(value);
+  const departmentValues = Object.hasOwn(data, "departments")
+    ? data.departments
+    : [];
   const supportsArchivedServices = Object.hasOwn(data, "archivedServices");
   const archivedServices = supportsArchivedServices
     ? data.archivedServices
@@ -1199,7 +1260,8 @@ export function parseCatalog(value: unknown): {
     !Array.isArray(serviceCategories) ||
     typeof canManageServices !== "boolean" ||
     !Array.isArray(data.assets) ||
-    !Array.isArray(data.problems)
+    !Array.isArray(data.problems) ||
+    !Array.isArray(departmentValues)
   ) {
     throw new Error("Der Katalog ist unvollständig.");
   }
@@ -1209,12 +1271,15 @@ export function parseCatalog(value: unknown): {
   const categories = serviceCategories.map(parseServiceCategory);
   const assets = data.assets.map(parseAsset);
   const problems = data.problems.map(parseProblem);
+  const departments = departmentValues.map(parseDepartmentOption);
   if (
     services.some((item) => item === null) ||
     archived.some((item) => item === null) ||
     categories.some((item) => item === null) ||
     assets.some((item) => item === null) ||
-    problems.some((item) => item === null)
+    problems.some((item) => item === null) ||
+    departments.some((item) => item === null) ||
+    new Set(departments.map((item) => item?.id)).size !== departments.length
   ) {
     throw new Error("Der Katalog enthält ungültige Einträge.");
   }
@@ -1228,7 +1293,73 @@ export function parseCatalog(value: unknown): {
     supportsServiceCategories,
     assets: assets as Asset[],
     problems: problems as Problem[],
+    departments: departments as DepartmentOption[],
   };
+}
+
+/**
+ * Department for a save request: only sent when the person can choose (more
+ * than one department) and a department is selected; otherwise the server
+ * uses the person's only department or keeps the existing one.
+ */
+export function departmentRequestValue(
+  departments: readonly DepartmentOption[],
+  departmentId: string,
+): { departmentId?: string } {
+  return departments.length > 1 && departmentId ? { departmentId } : {};
+}
+
+/** Department name for lists, only when more than one department exists. */
+export function departmentLabel(
+  departments: readonly DepartmentOption[],
+  departmentId: string | null,
+): string | null {
+  if (departments.length <= 1 || !departmentId) return null;
+  return (
+    departments.find((department) => department.id === departmentId)?.name ??
+    null
+  );
+}
+
+type DepartmentFieldProps = {
+  departments: readonly DepartmentOption[];
+  disabled: boolean;
+  onChange: (departmentId: string) => void;
+  required: boolean;
+  value: string;
+};
+
+function DepartmentField({
+  departments,
+  disabled,
+  onChange,
+  required,
+  value,
+}: DepartmentFieldProps) {
+  if (departments.length <= 1) return null;
+  return (
+    <label>
+      Abteilung
+      <select
+        disabled={disabled}
+        onChange={(event) => onChange(event.target.value)}
+        required={required}
+        value={value}
+      >
+        <option disabled value="">
+          Abteilung wählen
+        </option>
+        {value && !departments.some((department) => department.id === value) ? (
+          <option value={value}>Nicht mehr verfügbar</option>
+        ) : null}
+        {departments.map((department) => (
+          <option key={department.id} value={department.id}>
+            {department.name}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
 }
 
 function parseSavedService(value: unknown): Service {
@@ -1408,6 +1539,7 @@ function serviceDraft(service: Service): ServiceForm {
     primaryResponsibleId: service.primary_responsible_id ?? "",
     secondaryResponsibleId: service.secondary_responsible_id ?? "",
     categoryId: service.service_category_id ?? "",
+    departmentId: service.department_id ?? "",
   };
 }
 
@@ -1426,6 +1558,7 @@ function assetDraft(asset: Asset): AssetForm {
     status: asset.status,
     customerOrganizationId: asset.customer_organization_id ?? "",
     metadata: JSON.stringify(asset.metadata, null, 2),
+    departmentId: asset.department_id ?? "",
   };
 }
 
@@ -1438,6 +1571,7 @@ function problemDraft(problem: Problem): ProblemForm {
     workaround: problem.workaround ?? "",
     rootCause: problem.root_cause ?? "",
     ownerId: problem.owner_id ?? "",
+    departmentId: problem.department_id ?? "",
   };
 }
 
@@ -1471,6 +1605,7 @@ export function ServiceAssets({
   const [showArchivedServices, setShowArchivedServices] = useState(false);
   const [assets, setAssets] = useState<Asset[]>([]);
   const [problems, setProblems] = useState<Problem[]>([]);
+  const [departments, setDepartments] = useState<DepartmentOption[]>([]);
   const [serviceForm, setServiceForm] =
     useState<ServiceForm>(EMPTY_SERVICE_FORM);
   const [assetForm, setAssetForm] = useState<AssetForm>(EMPTY_ASSET_FORM);
@@ -1754,6 +1889,7 @@ export function ServiceAssets({
       }
       setAssets(sortByName(catalog.assets));
       setProblems(sortProblems(catalog.problems));
+      setDepartments(catalog.departments);
     } catch (nextError) {
       if (requestVersion.current !== version) return;
       setServices([]);
@@ -1766,6 +1902,7 @@ export function ServiceAssets({
       setServiceCategoryForm(EMPTY_SERVICE_CATEGORY_FORM);
       setAssets([]);
       setProblems([]);
+      setDepartments([]);
       setForbidden(errorStatus(nextError) === 403);
       setError(
         await apiErrorMessage(
@@ -2249,6 +2386,7 @@ export function ServiceAssets({
         ...(supportsServiceCategories
           ? { categoryId: serviceForm.categoryId || null }
           : {}),
+        ...departmentRequestValue(departments, serviceForm.departmentId),
       };
       const saved = parseSavedService(await requestServiceAssets(request));
       setServices((current) =>
@@ -2566,6 +2704,7 @@ export function ServiceAssets({
         customerOrganizationId: optionalText(assetForm.customerOrganizationId),
         metadata,
         active: true,
+        ...departmentRequestValue(departments, assetForm.departmentId),
       };
       const saved = parseSavedAsset(await requestServiceAssets(request));
       setAssets((current) =>
@@ -2756,6 +2895,7 @@ export function ServiceAssets({
         workaround: optionalText(problemForm.workaround),
         rootCause: optionalText(problemForm.rootCause),
         ownerId: optionalText(problemForm.ownerId),
+        ...departmentRequestValue(departments, problemForm.departmentId),
       };
       const saved = parseSavedProblem(await requestServiceAssets(request));
       setProblems((current) =>
@@ -3156,6 +3296,18 @@ export function ServiceAssets({
                         </span>
                         <div>
                           <h4>{service.name}</h4>
+                          {departmentLabel(
+                            departments,
+                            service.department_id,
+                          ) ? (
+                            <p className="service-assets__service-category">
+                              Abteilung:{" "}
+                              {departmentLabel(
+                                departments,
+                                service.department_id,
+                              )}
+                            </p>
+                          ) : null}
                           {service.service_category_id ? (
                             <p className="service-assets__service-category">
                               {serviceCategoryLabels.get(
@@ -3462,6 +3614,7 @@ export function ServiceAssets({
                         ) : null}
                         <ServiceEditorFields
                           controlsDisabled={controlsDisabled}
+                          departments={departments}
                           nameInputRef={serviceNameInputRef}
                           onCancel={resetServiceForm}
                           onSubmit={saveService}
@@ -3620,6 +3773,7 @@ export function ServiceAssets({
                     ) : null}
                     <ServiceEditorFields
                       controlsDisabled={controlsDisabled}
+                      departments={departments}
                       nameInputRef={serviceNameInputRef}
                       onCancel={resetServiceForm}
                       onSubmit={saveService}
@@ -3757,6 +3911,12 @@ export function ServiceAssets({
                           "Nicht im aktiven Katalog")
                         : "Nicht zugeordnet"}
                     </p>
+                    {departmentLabel(departments, asset.department_id) ? (
+                      <p>
+                        Abteilung:{" "}
+                        {departmentLabel(departments, asset.department_id)}
+                      </p>
+                    ) : null}
                     {asset.intune_primary_person_name ? (
                       <div className="service-assets__primary-person">
                         <span
@@ -3916,6 +4076,18 @@ export function ServiceAssets({
                           value={assetForm.name}
                         />
                       </label>
+                      <DepartmentField
+                        departments={departments}
+                        disabled={controlsDisabled}
+                        onChange={(departmentId) =>
+                          setAssetForm((current) => ({
+                            ...current,
+                            departmentId,
+                          }))
+                        }
+                        required={assetForm.id === null}
+                        value={assetForm.departmentId}
+                      />
                       <label>
                         Zugehöriger Dienst (optional)
                         <select
@@ -4161,6 +4333,12 @@ export function ServiceAssets({
                           "Nicht mehr aktiv"}
                       </p>
                     ) : null}
+                    {departmentLabel(departments, problem.department_id) ? (
+                      <p>
+                        Abteilung:{" "}
+                        {departmentLabel(departments, problem.department_id)}
+                      </p>
+                    ) : null}
                     <p>Zuletzt geändert: {formatDate(problem.updated_at)}</p>
                     <button
                       disabled={controlsDisabled}
@@ -4235,6 +4413,18 @@ export function ServiceAssets({
                       value={problemForm.title}
                     />
                   </label>
+                  <DepartmentField
+                    departments={departments}
+                    disabled={controlsDisabled}
+                    onChange={(departmentId) =>
+                      setProblemForm((current) => ({
+                        ...current,
+                        departmentId,
+                      }))
+                    }
+                    required={problemMode === "create"}
+                    value={problemForm.departmentId}
+                  />
                   <label>
                     Status
                     <select

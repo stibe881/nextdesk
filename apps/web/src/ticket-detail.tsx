@@ -1789,7 +1789,22 @@ function parseLinkedCatalogItems(
   parser: (item: unknown) => LinkedCatalogItem | null,
 ): LinkedCatalogItem[] | null {
   if (!Array.isArray(value)) return null;
-  const items = value.map(parser);
+  // Linked records of another department are not readable (department
+  // scope, migration 0177): the embed comes back as null. Skip those links
+  // instead of failing the whole ticket view.
+  const items = value
+    .filter(
+      (link) =>
+        !(
+          typeof link === "object" &&
+          link !== null &&
+          (["services", "assets", "problems"] as const).some(
+            (key) =>
+              key in link && (link as Record<string, unknown>)[key] === null,
+          )
+        ),
+    )
+    .map(parser);
   return items.every((item): item is LinkedCatalogItem => item !== null)
     ? items
     : null;

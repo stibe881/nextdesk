@@ -201,6 +201,60 @@ async function renewFence(
   if (renewed.error) databaseFailure(renewed.error);
 }
 
+const ASSET_DEPARTMENT_BATCH_SIZE = 100;
+
+// Assets created by a synchronize run (in the database function, without a
+// department) go to the tenant's ICT department. Only links created during
+// this run and only assets still without a department are touched, so
+// existing linked assets keep their department. Best effort: the run has
+// already succeeded, and assets without a department stay visible to everyone
+// with the module.
+async function assignNewAssetsToIctDepartment(
+  admin: AdminClient,
+  tenantId: string,
+  completedRun: Row,
+): Promise<void> {
+  if (
+    typeof completedRun.assets_created !== "number" ||
+    completedRun.assets_created <= 0 ||
+    typeof completedRun.started_at !== "string"
+  ) {
+    return;
+  }
+  try {
+    const { data: department } = await admin
+      .from("departments")
+      .select("id")
+      .eq("tenant_id", tenantId)
+      .eq("kind", "ict")
+      .limit(1)
+      .maybeSingle();
+    if (!isUuid(department?.id)) return;
+    const { data: links } = await admin
+      .from("asset_intune_asset_links")
+      .select("asset_id")
+      .eq("tenant_id", tenantId)
+      .gte("created_at", completedRun.started_at);
+    const assetIds = ((links ?? []) as Row[]).flatMap((link) =>
+      isUuid(link.asset_id) ? [link.asset_id] : [],
+    );
+    for (
+      let index = 0;
+      index < assetIds.length;
+      index += ASSET_DEPARTMENT_BATCH_SIZE
+    ) {
+      await admin
+        .from("assets")
+        .update({ department_id: department.id })
+        .eq("tenant_id", tenantId)
+        .is("department_id", null)
+        .in("id", assetIds.slice(index, index + ASSET_DEPARTMENT_BATCH_SIZE));
+    }
+  } catch {
+    // The synchronized assets remain without a department.
+  }
+}
+
 async function run(
   request: Request,
   admin: AdminClient,
@@ -344,6 +398,13 @@ async function run(
       Array.isArray(completed.data) ? completed.data[0] : null,
       "intune_manual_sync_service_unavailable",
     );
+    if (action.mode === "synchronize") {
+      await assignNewAssetsToIctDepartment(
+        admin,
+        action.tenantId,
+        completedRun,
+      );
+    }
     return response(request, { data: { run: completedRun, reused: false } });
   } catch (error) {
     const resultCode =

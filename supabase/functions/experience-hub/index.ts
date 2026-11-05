@@ -833,12 +833,24 @@ async function resolveFollowUp(
   });
 }
 
+/**
+ * Requester-facing service catalog: all active services of the tenant, also
+ * those of other departments (the department scope of migration 0177 only
+ * limits agents' own work). Read with the service role after membership and
+ * portal checks; empty while the asset module is off, as before.
+ */
 async function listServiceCatalog(
   request: Request,
-  client: CallerClient,
+  admin: CallerClient,
   tenantId: string,
 ): Promise<Response> {
-  const { data, error } = await client
+  const moduleStates = await resolveTenantFeatureStates(admin, tenantId, [
+    "assets.management",
+  ]);
+  if (moduleStates?.["assets.management"] !== true) {
+    return json(request, { data: { services: [] } });
+  }
+  const { data, error } = await admin
     .from("services")
     .select("id, name, description, criticality")
     .eq("tenant_id", tenantId)
@@ -1186,7 +1198,11 @@ const handler = withSupabase(
         return await resolveFollowUp(request, client, action, actorId);
       }
       if (action.type === "listServiceCatalog") {
-        return await listServiceCatalog(request, client, action.tenantId);
+        return await listServiceCatalog(
+          request,
+          context.supabaseAdmin,
+          action.tenantId,
+        );
       }
       if (action.type === "listResolutionConfirmations") {
         return await listResolutionConfirmations(

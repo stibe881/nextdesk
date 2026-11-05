@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   canArchiveServices,
   catalogRequest,
+  departmentLabel,
+  departmentRequestValue,
   parseCatalog,
   sortServiceCategories,
 } from "./service-assets";
@@ -146,5 +148,65 @@ describe("Servicekatalog-Compatibility", () => {
         (category) => category.id,
       ),
     ).toEqual([otherRoot.id, root.id, child.id, detail.id]);
+  });
+});
+
+describe("Abteilungen im Servicekatalog", () => {
+  const ICT = { id: "00000000-0000-4000-8000-0000000000a1", name: "ICT" };
+  const HR = { id: "00000000-0000-4000-8000-0000000000a2", name: "HR" };
+
+  it("liest Abteilungsoptionen und die Abteilung jedes Eintrags", () => {
+    const catalog = parseCatalog({
+      data: {
+        ...legacyCatalogResponse().data,
+        services: [{ ...SERVICE, department_id: ICT.id }],
+        departments: [ICT, HR],
+      },
+    });
+
+    expect(catalog.departments).toEqual([ICT, HR]);
+    expect(catalog.services[0]?.department_id).toBe(ICT.id);
+  });
+
+  it("behandelt ältere Antworten ohne Abteilungen als abteilungslos", () => {
+    const catalog = parseCatalog(legacyCatalogResponse());
+
+    expect(catalog.departments).toEqual([]);
+    expect(catalog.services[0]?.department_id).toBeNull();
+  });
+
+  it("weist unbekannte Felder und doppelte Abteilungsoptionen zurück", () => {
+    expect(() =>
+      parseCatalog({
+        data: {
+          ...legacyCatalogResponse().data,
+          departments: [{ ...ICT, kind: "ict" }],
+        },
+      }),
+    ).toThrow();
+    expect(() =>
+      parseCatalog({
+        data: { ...legacyCatalogResponse().data, departments: [ICT, ICT] },
+      }),
+    ).toThrow();
+    expect(() =>
+      parseCatalog({
+        data: {
+          ...legacyCatalogResponse().data,
+          services: [{ ...SERVICE, department_id: 7 }],
+        },
+      }),
+    ).toThrow();
+  });
+
+  it("sendet und zeigt die Abteilung nur bei mehr als einer Option", () => {
+    expect(departmentRequestValue([ICT], ICT.id)).toEqual({});
+    expect(departmentRequestValue([ICT, HR], "")).toEqual({});
+    expect(departmentRequestValue([ICT, HR], HR.id)).toEqual({
+      departmentId: HR.id,
+    });
+    expect(departmentLabel([ICT], ICT.id)).toBeNull();
+    expect(departmentLabel([ICT, HR], HR.id)).toBe("HR");
+    expect(departmentLabel([ICT, HR], null)).toBeNull();
   });
 });
