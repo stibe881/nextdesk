@@ -75,6 +75,18 @@ type KnowledgeCollection = {
   active: boolean;
 };
 
+/** How often an article helped (internal readers only). */
+type KnowledgeArticleOutcomes = {
+  windowDays: number;
+  resolvedRecent: number;
+  deflectedRecent: number;
+  notHelpfulRecent: number;
+  resolvedTotal: number;
+  deflectedTotal: number;
+  notHelpfulTotal: number;
+  needsRevision: boolean;
+};
+
 type KnowledgeArticle = {
   id: string;
   title: string;
@@ -89,6 +101,7 @@ type KnowledgeArticle = {
   createdAt: string;
   updatedAt: string;
   collectionIds: string[];
+  outcomes: KnowledgeArticleOutcomes | null;
 };
 
 type KnowledgeArticleRevision = {
@@ -717,6 +730,32 @@ function parseCollection(value: unknown): KnowledgeCollection | null {
   };
 }
 
+function parseOutcomes(value: unknown): KnowledgeArticleOutcomes | null {
+  if (!isRecord(value)) return null;
+  const count = (field: unknown) =>
+    typeof field === "number" && Number.isInteger(field) && field >= 0
+      ? field
+      : 0;
+  return {
+    windowDays: count(value.windowDays) || 90,
+    resolvedRecent: count(value.resolvedRecent),
+    deflectedRecent: count(value.deflectedRecent),
+    notHelpfulRecent: count(value.notHelpfulRecent),
+    resolvedTotal: count(value.resolvedTotal),
+    deflectedTotal: count(value.deflectedTotal),
+    notHelpfulTotal: count(value.notHelpfulTotal),
+    needsRevision: value.needsRevision === true,
+  };
+}
+
+function formatOutcomes(
+  resolved: number,
+  deflected: number,
+  notHelpful: number,
+): string {
+  return `Hat ${resolved} ${resolved === 1 ? "Ticket" : "Tickets"} gelöst · ${deflected} ${deflected === 1 ? "Ticket" : "Tickets"} vermieden · ${notHelpful}× nicht hilfreich`;
+}
+
 function parseArticle(value: unknown): KnowledgeArticle | null {
   if (!isRecord(value)) return null;
   const collectionIds = parseCollectionIds(value.collection_ids);
@@ -754,6 +793,7 @@ function parseArticle(value: unknown): KnowledgeArticle | null {
     createdAt: value.created_at,
     updatedAt: value.updated_at,
     collectionIds,
+    outcomes: parseOutcomes(value.outcomes),
   };
 }
 
@@ -2346,6 +2386,7 @@ export function KnowledgeBase({
               article: {
                 ...article,
                 collectionIds: current.article.collectionIds,
+                outcomes: article.outcomes ?? current.article.outcomes,
               },
             }
           : current,
@@ -2358,6 +2399,7 @@ export function KnowledgeBase({
                 article: {
                   ...article,
                   collectionIds: item.article.collectionIds,
+                  outcomes: article.outcomes ?? item.article.outcomes,
                 },
               }
             : item,
@@ -2398,6 +2440,7 @@ export function KnowledgeBase({
               article: {
                 ...article,
                 collectionIds: current.article.collectionIds,
+                outcomes: article.outcomes ?? current.article.outcomes,
               },
             }
           : current,
@@ -2410,6 +2453,7 @@ export function KnowledgeBase({
                 article: {
                   ...article,
                   collectionIds: item.article.collectionIds,
+                  outcomes: article.outcomes ?? item.article.outcomes,
                 },
               }
             : item,
@@ -2691,6 +2735,14 @@ export function KnowledgeBase({
                                   {departmentLabel}
                                 </span>
                               ) : null}
+                              {article.outcomes?.needsRevision ? (
+                                <span
+                                  className="knowledge-base__badge knowledge-base__badge--review"
+                                  title={`In den letzten ${article.outcomes.windowDays} Tagen ${article.outcomes.notHelpfulRecent}× als nicht hilfreich markiert und kein Ticket gelöst oder vermieden`}
+                                >
+                                  Überarbeiten?
+                                </span>
+                              ) : null}
                             </span>
                             {visibleRevision !== null ? (
                               <span className="knowledge-base__article-version">
@@ -2768,6 +2820,34 @@ export function KnowledgeBase({
                           </span>
                         ) : null}
                       </p>
+                      {detailArticle.outcomes ? (
+                        <p
+                          aria-label="Wirkung des Artikels"
+                          className="knowledge-base__meta"
+                        >
+                          <span>
+                            Letzte {detailArticle.outcomes.windowDays} Tage:{" "}
+                            {formatOutcomes(
+                              detailArticle.outcomes.resolvedRecent,
+                              detailArticle.outcomes.deflectedRecent,
+                              detailArticle.outcomes.notHelpfulRecent,
+                            )}
+                          </span>
+                          <span>
+                            Insgesamt:{" "}
+                            {formatOutcomes(
+                              detailArticle.outcomes.resolvedTotal,
+                              detailArticle.outcomes.deflectedTotal,
+                              detailArticle.outcomes.notHelpfulTotal,
+                            )}
+                          </span>
+                          {detailArticle.outcomes.needsRevision ? (
+                            <span className="knowledge-base__badge knowledge-base__badge--review">
+                              Überarbeiten?
+                            </span>
+                          ) : null}
+                        </p>
+                      ) : null}
                       {detailCollectionPaths.length > 0 ? (
                         <p className="knowledge-base__detail-collections">
                           <FolderOpen

@@ -158,6 +158,9 @@ verify_jwt = true
 [functions.ticket-knowledge]
 verify_jwt = true
 
+[functions.ticket-suggestions]
+verify_jwt = true
+
 [functions.push-notifications]
 verify_jwt = true
 

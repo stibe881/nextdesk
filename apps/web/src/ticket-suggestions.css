@@ -1,0 +1,144 @@
+/* Suggestions while a ticket is being created (ticket-suggestions.tsx). */
+.ticket-suggestions {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--primary);
+  border-radius: var(--radius);
+  background: var(--surface-subtle);
+}
+
+.ticket-suggestions__heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--primary);
+}
+
+.ticket-suggestions h3 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.ticket-suggestions__list,
+.ticket-suggestions__solved ul {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ticket-suggestions__article {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.ticket-suggestions__article > strong {
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.ticket-suggestions__article p {
+  margin: 0;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.ticket-suggestions__article-body {
+  max-height: 360px;
+  overflow: auto;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.ticket-suggestions__article-body img {
+  max-width: 100%;
+  height: auto;
+}
+
+.ticket-suggestions__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+}
+
+.ticket-suggestions__actions button {
+  gap: 6px;
+}
+
+.ticket-suggestions__badge {
+  justify-self: start;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--primary-soft);
+  color: var(--primary);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.ticket-suggestions__muted {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.ticket-suggestions__duplicate {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
+.ticket-suggestions__duplicate p {
+  flex: 1 1 240px;
+  margin: 0;
+  font-size: 13px;
+}
+
+.ticket-suggestions__solved {
+  display: grid;
+  gap: 8px;
+}
+
+.ticket-suggestions__solved button {
+  text-align: left;
+}
+
+.ticket-suggestions__classification {
+  justify-self: start;
+  margin-top: 4px;
+  font-size: 12px;
+  text-align: left;
+}
+
+.ticket-suggestions-confirmation {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  background: var(--success-soft);
+  color: var(--success);
+  font-size: 13px;
+}
+
+.ticket-compose-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}

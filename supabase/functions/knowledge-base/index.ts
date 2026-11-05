@@ -8,6 +8,11 @@ import {
   resolveRecordDepartment,
   scopeDepartmentOptions,
 } from "../_shared/department-scope.ts";
+import {
+  applyExternalArticleScope,
+  customerOrganizationIds,
+  publishedKnowledgeScope,
+} from "../_shared/knowledge-visibility.ts";
 
 const ALLOWED_ORIGIN = "https://app.nextdesk.ch";
 const KNOWLEDGE_MANAGE_PERMISSION = "knowledge.manage";
@@ -503,38 +508,6 @@ async function fetchLatestRevisions(
   return { data: newestByArticle, error: false };
 }
 
-async function customerOrganizationIds(
-  admin: any,
-  userId: string,
-  tenantId: string,
-): Promise<string[] | null> {
-  const { data, error } = await admin
-    .from("customer_memberships")
-    .select("customer_organization_id, customer_organizations!inner(id)")
-    .eq("user_id", userId)
-    .eq("access", "company")
-    .eq("customer_organizations.tenant_id", tenantId)
-    .eq("customer_organizations.active", true);
-  if (error) return null;
-  return (data ?? [])
-    .map((membership: any) => membership.customer_organization_id)
-    .filter(
-      (id: unknown): id is string => typeof id === "string" && isUuid(id),
-    );
-}
-
-function applyExternalArticleScope(query: any, organizationIds: string[]): any {
-  const scope = ["customer_organization_id.is.null"];
-  if (organizationIds.length) {
-    scope.push(`customer_organization_id.in.(${organizationIds.join(",")})`);
-  }
-  return query
-    .eq("visibility", "external")
-    .neq("status", "archived")
-    .not("published_revision", "is", null)
-    .or(scope.join(","));
-}
-
 function articleResponse(
   article: any,
   revision: any | null,
@@ -546,6 +519,80 @@ function articleResponse(
       ? revision.title_snapshot
       : article.title;
   return { ...article, title, collection_ids: collectionIds };
+}
+
+const OUTCOME_WINDOW_DAYS = 90;
+const NEEDS_REVISION_NOT_HELPFUL = 3;
+
+type ArticleOutcomes = {
+  windowDays: number;
+  resolvedRecent: number;
+  deflectedRecent: number;
+  notHelpfulRecent: number;
+  resolvedTotal: number;
+  deflectedTotal: number;
+  notHelpfulTotal: number;
+  needsRevision: boolean;
+};
+
+function outcomeCount(value: unknown): number {
+  return typeof value === "number" && Number.isInteger(value) && value > 0
+    ? value
+    : 0;
+}
+
+/**
+ * How often each article helped (knowledge_article_outcomes, migration 0184),
+ * for internal readers only and only for articles already filtered by the
+ * reader's visibility. A missing table or function yields no counts.
+ */
+async function fetchArticleOutcomes(
+  admin: any,
+  tenantId: string,
+  articles: any[],
+): Promise<Map<string, ArticleOutcomes>> {
+  const result = new Map<string, ArticleOutcomes>();
+  const articleIds = articles
+    .map((article: any) => article?.id)
+    .filter((id: unknown) => isUuid(id));
+  if (articleIds.length === 0) return result;
+  const since = new Date(
+    Date.now() - OUTCOME_WINDOW_DAYS * 24 * 60 * 60 * 1000,
+  ).toISOString();
+  const { data, error } = await admin.rpc("knowledge_article_outcome_counts", {
+    p_tenant_id: tenantId,
+    p_article_ids: articleIds,
+    p_since: since,
+  });
+  const rows = new Map<string, any>();
+  if (!error && Array.isArray(data)) {
+    for (const row of data) {
+      if (isRecord(row) && isUuid(row.article_id))
+        rows.set(row.article_id, row);
+    }
+  }
+  for (const article of articles) {
+    if (!isUuid(article?.id)) continue;
+    const row = rows.get(article.id) ?? {};
+    const outcomes = {
+      windowDays: OUTCOME_WINDOW_DAYS,
+      resolvedRecent: outcomeCount(row.resolved_recent),
+      deflectedRecent: outcomeCount(row.deflected_recent),
+      notHelpfulRecent: outcomeCount(row.not_helpful_recent),
+      resolvedTotal: outcomeCount(row.resolved_total),
+      deflectedTotal: outcomeCount(row.deflected_total),
+      notHelpfulTotal: outcomeCount(row.not_helpful_total),
+    };
+    result.set(article.id, {
+      ...outcomes,
+      needsRevision:
+        article.status === "published" &&
+        outcomes.notHelpfulRecent >= NEEDS_REVISION_NOT_HELPFUL &&
+        outcomes.resolvedRecent === 0 &&
+        outcomes.deflectedRecent === 0,
+    });
+  }
+  return result;
 }
 
 function revisionResponse(revision: any): Record<string, unknown> {
@@ -578,41 +625,6 @@ async function fetchArticleCollectionIds(
     ]);
   }
   return { data: byArticle, error: false };
-}
-
-/**
- * Departments whose published external articles requesters and customers may
- * read: every active department of the tenant where the knowledge module is
- * on. Requesters are not limited to their own departments (and customers have
- * none), so the portal keeps showing the help of all departments.
- */
-async function publishedKnowledgeScope(
-  admin: any,
-  tenantId: string,
-): Promise<DepartmentScope | null> {
-  const [departments, disabled] = await Promise.all([
-    admin
-      .from("departments")
-      .select("id")
-      .eq("tenant_id", tenantId)
-      .eq("active", true),
-    admin
-      .from("department_feature_flags")
-      .select("department_id")
-      .eq("tenant_id", tenantId)
-      .eq("feature_key", KNOWLEDGE_FEATURE)
-      .eq("enabled", false),
-  ]);
-  if (departments.error || disabled.error) return null;
-  const off = new Set(
-    (disabled.data ?? []).map((row: any) => String(row.department_id)),
-  );
-  return {
-    scoped: true,
-    departments: (departments.data ?? [])
-      .map((row: any) => String(row.id))
-      .filter((id: string) => !off.has(id)),
-  };
 }
 
 /**
@@ -1451,6 +1463,9 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
           { error: { code: "collection_assignment_read_failed" } },
           500,
         );
+      const outcomes = canReadInternal
+        ? await fetchArticleOutcomes(admin, action.tenantId, articles)
+        : new Map<string, ArticleOutcomes>();
       return json(request, {
         data: {
           articles: articles.map((article: any) => ({
@@ -1460,6 +1475,9 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
               canReadInternal,
               articleCollections.data.get(article.id) ?? [],
             ),
+            ...(outcomes.has(article.id)
+              ? { outcomes: outcomes.get(article.id) }
+              : {}),
             revision: revisions.data.has(article.id)
               ? revisionResponse(revisions.data.get(article.id))
               : null,
@@ -1524,14 +1542,22 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         { error: { code: "article_revision_not_found" } },
         500,
       );
+    const outcomes = canReadInternal
+      ? await fetchArticleOutcomes(admin, action.tenantId, [article])
+      : new Map<string, ArticleOutcomes>();
     return json(request, {
       data: {
-        article: articleResponse(
-          article,
-          revision.data,
-          canReadInternal,
-          articleCollections.data.get(article.id) ?? [],
-        ),
+        article: {
+          ...articleResponse(
+            article,
+            revision.data,
+            canReadInternal,
+            articleCollections.data.get(article.id) ?? [],
+          ),
+          ...(outcomes.has(article.id)
+            ? { outcomes: outcomes.get(article.id) }
+            : {}),
+        },
         revision: revisionResponse(revision.data),
         imageUrls: await resolveImageUrls(admin, action.tenantId, [
           revision.data.body,

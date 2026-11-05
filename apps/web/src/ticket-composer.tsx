@@ -10,9 +10,10 @@ import {
 } from "lucide-react";
 import { supabase } from "./lib/supabase";
 import {
-  SelfServiceCatalog,
-  type ServiceCatalogItem,
-} from "./self-service-catalog";
+  ClassificationSuggestion,
+  TicketSuggestionPanel,
+  useTicketSuggestions,
+} from "./ticket-suggestions";
 
 type Department = { id: string; key: string; name: string; kind: string };
 type Priority = { key: string; label: string; sort_order: number };
@@ -585,10 +586,16 @@ export function TicketComposer({
   currentUserId,
   tenantId,
   onCreated,
+  onOpenKnowledgeArticle,
+  onOpenTicket,
 }: {
   currentUserId: string | null;
   tenantId: string;
   onCreated: (ticketId: string, ticketNumber: string) => void;
+  /** Opens an article in the knowledge base (closes the composer). */
+  onOpenKnowledgeArticle?: ((articleId: string) => void) | undefined;
+  /** Opens an existing ticket (closes the composer). */
+  onOpenTicket?: ((ticketId: string, ticketNumber: string) => void) | undefined;
 }) {
   const [options, setOptions] = useState<OptionsResponse>(EMPTY_OPTIONS);
   const [optionsTenantId, setOptionsTenantId] = useState<string | null>(null);
@@ -632,10 +639,7 @@ export function TicketComposer({
   const [priorityKey, setPriorityKey] = useState("normal");
   const [subject, setSubject] = useState("");
   const [description, setDescription] = useState("");
-  const [selectedServiceId, setSelectedServiceId] = useState<string | null>(
-    null,
-  );
-  const [showServiceCatalog, setShowServiceCatalog] = useState(true);
+  const [deflectionNotice, setDeflectionNotice] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [confirmation, setConfirmation] = useState<{
@@ -705,8 +709,7 @@ export function TicketComposer({
     setCategoryDraft(null);
     setTemplateLookup(null);
     setTemplateId("");
-    setSelectedServiceId(null);
-    setShowServiceCatalog(true);
+    setDeflectionNotice(false);
     setAssignableAgents([]);
     setAssignedAgentId("");
     setAgentLookupAllowed(false);
@@ -1138,22 +1141,6 @@ export function TicketComposer({
     setCategoryDraft(null);
     setCategorySaving(false);
     setCategoryError("");
-  }
-
-  function selectCatalogService(service: ServiceCatalogItem) {
-    if (saving) return;
-    setSelectedServiceId(service.id);
-    setSubject((current) => current.trim() || service.name);
-    const matchingCategory = rootCategories.find(
-      (category) =>
-        category.name.trim().localeCompare(service.name.trim(), "de-CH", {
-          sensitivity: "base",
-        }) === 0,
-    );
-    if (matchingCategory) {
-      setCategoryId(matchingCategory.id);
-      setSubcategoryId("");
-    }
   }
 
   function selectRequester(requester: RequesterContact) {
@@ -1623,6 +1610,58 @@ export function TicketComposer({
           !selectedWatchers.some((selected) => selected.id === person.id),
       )
     : [];
+  const draftSubject = selectedTemplatePreview?.subject ?? subject;
+  const draftDescription = selectedTemplatePreview?.description ?? description;
+  const { suggestions, clear: clearSuggestions } = useTicketSuggestions({
+    description: draftDescription,
+    enabled: formReady && !saving,
+    // The server falls back to the requester view without ticket work rights.
+    mode: agentLookupAllowed ? "agent" : "requester",
+    subject: draftSubject,
+    tenantId,
+  });
+  const classification =
+    suggestions?.mode === "agent" ? suggestions.classification : null;
+  const departmentSuggestion =
+    classification?.department &&
+    classification.department.id !== departmentId &&
+    options.departments.some(
+      (department) => department.id === classification.department?.id,
+    )
+      ? classification.department
+      : null;
+  const categorySuggestion =
+    classification?.category &&
+    classification.category.departmentId === departmentId &&
+    classification.category.id !== selectedCategory?.id &&
+    rootCategories.some(
+      (category) => category.id === classification.category?.id,
+    )
+      ? classification.category
+      : null;
+  const priorityFixedByTemplate =
+    selectedTemplate?.priorityKey !== null &&
+    selectedTemplate?.priorityKey !== undefined;
+  const prioritySuggestion =
+    classification?.priority &&
+    !priorityFixedByTemplate &&
+    classification.priority.key !== effectivePriorityKey &&
+    options.priorities.some(
+      (priority) => priority.key === classification.priority?.key,
+    )
+      ? classification.priority
+      : null;
+
+  function finishWithArticle() {
+    // "Hat mein Problem gelöst": no ticket is created, the draft is cleared.
+    clearSuggestions();
+    setSubject("");
+    setDescription("");
+    setTemplateId("");
+    setFieldErrors({});
+    setError("");
+    setDeflectionNotice(true);
+  }
 
   return (
     <section className="ticket-compose panel" aria-label="Ticket erfassen">
@@ -1641,18 +1680,6 @@ export function TicketComposer({
           noValidate
           onSubmit={createTicket}
         >
-          {showServiceCatalog ? (
-            <SelfServiceCatalog
-              disabled={saving}
-              onSelect={selectCatalogService}
-              onSkip={() => {
-                setSelectedServiceId(null);
-                setShowServiceCatalog(false);
-              }}
-              selectedServiceId={selectedServiceId}
-              tenantId={tenantId}
-            />
-          ) : null}
           <section
             aria-label="Schritte für die Ticketerfassung"
             className="ticket-compose-description"
@@ -1886,6 +1913,21 @@ export function TicketComposer({
               </p>
             )}
           </div>
+          {deflectionNotice && (
+            <p
+              className="ticket-suggestions-confirmation ticket-compose-description"
+              role="status"
+            >
+              <CheckCircle2 aria-hidden="true" size={18} strokeWidth={1.8} />
+              Schön, dass es geklappt hat – es wurde kein Ticket erstellt.
+            </p>
+          )}
+          <p className="ticket-compose-hint ticket-compose-description">
+            <strong>Für eine schnelle Lösung:</strong> Nennen Sie im Betreff das
+            Ziel, beschreiben Sie den Fehler und seit wann er auftritt. Ergänzen
+            Sie bereits versuchte Schritte sowie Meldungen oder Auswirkungen –
+            aber keine Passwörter, Schlüssel oder andere Geheimnisse.
+          </p>
           <label className="ticket-compose-subject">
             Betreff
             <input
@@ -1901,6 +1943,7 @@ export function TicketComposer({
               minLength={3}
               onChange={(event) => {
                 setSubject(event.target.value);
+                setDeflectionNotice(false);
                 setFieldErrors((current) => {
                   const { subject: _subject, ...next } = current;
                   return next;
@@ -1973,6 +2016,16 @@ export function TicketComposer({
               >
                 Zuordnung anpassen
               </button>
+            )}
+            {departmentSuggestion && (
+              <ClassificationSuggestion
+                disabled={saving}
+                onApply={() => {
+                  setDepartmentSelectionOpen(true);
+                  changeDepartment(departmentSuggestion.id);
+                }}
+                vote={departmentSuggestion}
+              />
             )}
             <div className="ticket-compose-description ticket-compose-template">
               <label>
@@ -2073,6 +2126,19 @@ export function TicketComposer({
                       </option>
                     ))}
                   </select>
+                  {categorySuggestion && (
+                    <ClassificationSuggestion
+                      disabled={
+                        saving || categorySaving || categoryDraft !== null
+                      }
+                      onApply={() => {
+                        setCategoryId(categorySuggestion.id);
+                        setSubcategoryId("");
+                        setCategoryError("");
+                      }}
+                      vote={categorySuggestion}
+                    />
+                  )}
                 </label>
                 {selectedCategory && (
                   <label>
@@ -2215,8 +2281,7 @@ export function TicketComposer({
                 disabled={
                   saving ||
                   options.priorities.length === 0 ||
-                  (selectedTemplate?.priorityKey !== null &&
-                    selectedTemplate?.priorityKey !== undefined)
+                  priorityFixedByTemplate
                 }
                 onChange={(event) => setPriorityKey(event.target.value)}
                 required
@@ -2228,6 +2293,13 @@ export function TicketComposer({
                   </option>
                 ))}
               </select>
+              {prioritySuggestion && (
+                <ClassificationSuggestion
+                  disabled={saving}
+                  onApply={() => setPriorityKey(prioritySuggestion.key)}
+                  vote={prioritySuggestion}
+                />
+              )}
             </label>
             <p className="ticket-compose-description data-caption" role="note">
               <Clock3 aria-hidden="true" size={16} strokeWidth={2} /> Die
@@ -2250,6 +2322,7 @@ export function TicketComposer({
               minLength={1}
               onChange={(event) => {
                 setDescription(event.target.value);
+                setDeflectionNotice(false);
                 setFieldErrors((current) => {
                   const { description: _description, ...next } = current;
                   return next;
@@ -2271,6 +2344,15 @@ export function TicketComposer({
               </span>
             )}
           </label>
+          <TicketSuggestionPanel
+            disabled={saving}
+            onDeflected={finishWithArticle}
+            onOpenKnowledgeArticle={onOpenKnowledgeArticle}
+            onOpenTicket={onOpenTicket}
+            subject={draftSubject}
+            suggestions={suggestions}
+            tenantId={tenantId}
+          />
           <button
             className="primary-button"
             disabled={

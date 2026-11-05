@@ -7,6 +7,7 @@ import {
   loadDepartmentScope,
   resolveRecordDepartment,
 } from "../_shared/department-scope.ts";
+import { publishedKnowledgeScope } from "../_shared/knowledge-visibility.ts";
 
 const ALLOWED_ORIGIN = "https://app.nextdesk.ch";
 const MAX_REQUEST_BYTES = 420 * 1024;
@@ -226,42 +227,6 @@ function rpcError(request: Request, code: unknown): Response {
 
 // deno-lint-ignore no-explicit-any
 type Admin = any;
-
-/**
- * Departments whose published external articles requesters may read: every
- * active department of the tenant where the knowledge module is on (the same
- * rule as the portal in knowledge-base).
- */
-async function publishedKnowledgeScope(
-  admin: Admin,
-  tenantId: string,
-): Promise<DepartmentScope | null> {
-  const [departments, disabled] = await Promise.all([
-    admin
-      .from("departments")
-      .select("id")
-      .eq("tenant_id", tenantId)
-      .eq("active", true),
-    admin
-      .from("department_feature_flags")
-      .select("department_id")
-      .eq("tenant_id", tenantId)
-      .eq("feature_key", KNOWLEDGE_FEATURE)
-      .eq("enabled", false),
-  ]);
-  if (departments.error || disabled.error) return null;
-  const off = new Set(
-    (disabled.data ?? []).map((row: Record<string, unknown>) =>
-      String(row.department_id),
-    ),
-  );
-  return {
-    scoped: true,
-    departments: (departments.data ?? [])
-      .map((row: Record<string, unknown>) => String(row.id))
-      .filter((id: string) => !off.has(id)),
-  };
-}
 
 /** Identifiers among `ids` whose articles are visible in the scope. */
 async function visibleArticleIds(

@@ -9017,4 +9017,81 @@ end;
 $$;
 rollback;
 SQL
+# Learning from solutions (0185): closing a ticket records "resolved"
+# outcomes for its linked articles once, the counts aggregate per article and
+# recent_similar_tickets finds the readable tickets of the last hours only.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_owner constant uuid := 'f1850000-0000-4000-8000-000000000001';
+  v_tenant uuid;
+  v_open uuid;
+  v_closed uuid;
+  v_priority uuid;
+  v_department uuid;
+  v_article constant uuid := 'f1850000-0000-4000-8000-000000000101';
+  v_ticket constant uuid := 'f1850000-0000-4000-8000-000000000201';
+  v_count integer;
+begin
+  insert into auth.users (id) values (v_owner);
+  v_tenant := public.provision_personal_workspace(v_owner, 'loesung@example.ch', 'Lösungsteam');
+  select id into v_department from public.departments where tenant_id = v_tenant limit 1;
+  select id into v_open from public.ticket_statuses where tenant_id = v_tenant and not is_closed order by sort_order limit 1;
+  select id into v_closed from public.ticket_statuses where tenant_id = v_tenant and is_closed order by sort_order limit 1;
+  select id into v_priority from public.ticket_priorities where tenant_id = v_tenant limit 1;
+  if v_open is null or v_closed is null then
+    raise exception 'Personal workspace statuses are missing';
+  end if;
+
+  insert into public.knowledge_articles (id, tenant_id, title, slug, visibility, status, current_revision)
+  values (v_article, v_tenant, 'VPN neu verbinden', 'vpn-neu-verbinden', 'internal', 'published', 1);
+  insert into public.tickets (id, tenant_id, department_id, ticket_number, subject, description, status_id, priority_id, requester_id)
+  values (v_ticket, v_tenant, v_department, 'L-2026-000001', 'VPN Verbindung bricht ab', 'Das VPN trennt sich ständig im Homeoffice', v_open, v_priority, v_owner);
+  insert into public.ticket_knowledge_links (ticket_id, article_id) values (v_ticket, v_article);
+
+  update public.tickets set status_id = v_closed, closed_at = now() where id = v_ticket;
+  update public.tickets set status_id = v_open, closed_at = null where id = v_ticket;
+  update public.tickets set status_id = v_closed, closed_at = now() where id = v_ticket;
+  select count(*) into v_count from public.knowledge_article_outcomes
+  where article_id = v_article and ticket_id = v_ticket and kind = 'resolved';
+  if v_count <> 1 then
+    raise exception 'Closing a ticket recorded % resolved outcomes instead of one', v_count;
+  end if;
+
+  insert into public.knowledge_article_outcomes (tenant_id, article_id, kind, created_at)
+  values
+    (v_tenant, v_article, 'not_helpful', now()),
+    (v_tenant, v_article, 'not_helpful', now() - interval '120 days'),
+    (v_tenant, v_article, 'deflected', now() - interval '120 days');
+  if not exists (
+    select 1 from public.knowledge_article_outcome_counts(v_tenant, array[v_article], now() - interval '90 days')
+    where article_id = v_article and resolved_recent = 1 and not_helpful_recent = 1
+      and deflected_recent = 0 and resolved_total = 1 and not_helpful_total = 2
+      and deflected_total = 1
+  ) then
+    raise exception 'Knowledge article outcome counts are wrong';
+  end if;
+
+  insert into public.tickets (tenant_id, department_id, ticket_number, subject, description, status_id, priority_id, requester_id, created_at)
+  values
+    (v_tenant, v_department, 'L-2026-000002', 'VPN Verbindung getrennt', 'VPN trennt Verbindung', v_open, v_priority, v_owner, now()),
+    (v_tenant, v_department, 'L-2026-000003', 'VPN Verbindung langsam', 'VPN seit heute langsam', v_open, v_priority, v_owner, now() - interval '5 hours'),
+    (v_tenant, v_department, 'L-2026-000004', 'Drucker Verbindung', 'Drucker offline', v_open, v_priority, v_owner, now());
+  perform set_config('request.jwt.claim.sub', v_owner::text, true);
+  select count(*) into v_count
+  from public.recent_similar_tickets(v_tenant, 'VPN Verbindung bricht ab', now() - interval '2 hours', v_ticket, 50);
+  if v_count <> 1 then
+    raise exception 'recent_similar_tickets returned % tickets instead of one', v_count;
+  end if;
+  perform set_config('request.jwt.claim.sub', '', true);
+  select count(*) into v_count
+  from public.recent_similar_tickets(v_tenant, 'VPN Verbindung bricht ab', now() - interval '2 hours', v_ticket, 50);
+  if v_count <> 0 then
+    raise exception 'recent_similar_tickets answered without a signed-in person';
+  end if;
+end;
+$$;
+rollback;
+SQL
 echo "PostgreSQL 16 migration and RLS integration checks passed."
