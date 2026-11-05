@@ -938,7 +938,7 @@ export function ServiceReporting({
                       report.comparison.deflectedTickets,
                       formatNumber,
                     )}
-                    detail="Mit einem Artikel Ihrer Abteilungen oder aller Abteilungen gelöst, kein Ticket erstellt"
+                    detail="Mit einem Artikel aus den Abteilungen Ihrer Teams oder ohne Abteilung gelöst, kein Ticket erstellt"
                     label="Vermiedene Tickets (Wissensdatenbank)"
                     value={formatNumber(report.deflectedTickets)}
                   />

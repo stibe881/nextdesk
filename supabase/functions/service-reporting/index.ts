@@ -910,17 +910,24 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       isUuid(membership.department_id) ? [membership.department_id] : [],
     ),
   );
+  // Departments of the readable teams: the knowledge deflection count below
+  // uses exactly the same basis as the ticket KPIs (tickets of readable teams).
+  const readableTeamDepartmentIds = new Set<string>();
   const readableTeamIds = new Set(
     (teamMembershipsResult.data ?? []).flatMap((membership: any) => {
       const team = one<{ active?: unknown; department_id?: unknown }>(
         membership.teams,
       );
-      return isUuid(membership.team_id) &&
+      if (
+        isUuid(membership.team_id) &&
         team?.active === true &&
         isUuid(team.department_id) &&
         activeDepartmentIds.has(team.department_id)
-        ? [membership.team_id]
-        : [];
+      ) {
+        readableTeamDepartmentIds.add(team.department_id);
+        return [membership.team_id];
+      }
+      return [];
     }),
   );
   const canIncludeTeam = (teamId: unknown) =>
@@ -1089,9 +1096,11 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
 
   // Tickets that were not created because a knowledge article solved the
   // problem ("Hat mein Problem gelöst" while creating a ticket). Scoped like
-  // the ticket KPIs: only articles of the caller's departments and articles
-  // without department. Optional: a failed count does not fail the report.
-  const deflectionFilter = deflectionArticleFilter(activeDepartmentIds);
+  // the ticket KPIs: tickets count for readable teams (plus tickets without
+  // team), deflections for articles of those teams' departments (plus
+  // articles without department). Optional: a failed count does not fail
+  // the report.
+  const deflectionFilter = deflectionArticleFilter(readableTeamDepartmentIds);
   const deflectedCount = async (range: PeriodRange) => {
     const { count, error } = await context.supabaseAdmin
       .from("knowledge_article_outcomes")
