@@ -2155,7 +2155,14 @@ function CatalogManager({ tenantId }: { tenantId: string }) {
                 }}
                 type="button"
               >
-                <span className="shop__order-number">{item.name}</span>
+                <span className="shop__article-title">
+                  <span className="shop__order-number">{item.name}</span>
+                  {item.articleNumber ? (
+                    <small className="shop__article-number">
+                      Art.-Nr. {item.articleNumber}
+                    </small>
+                  ) : null}
+                </span>
                 <span className="shop__muted">
                   {itemCategories(item).join(", ")}
                 </span>
