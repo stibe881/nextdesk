@@ -270,13 +270,16 @@ function displayableSignatureLine(value: string): string | null {
   return withoutLinks;
 }
 
-/**
- * Keeps a clearly identifiable corporate signature visible, but separates it
- * from the actual message and removes technical image filenames and raw link
- * lists. CID markers remain untouched for the private inline-media pipeline.
- */
-function formatCorporateSignature(value: string): string {
-  const lines = value.split("\n");
+type SignatureLocation = {
+  /** Index of the farewell line ("Liebe Grüsse"). */
+  farewellIndex: number;
+  /** Index of the closing line (usually the sender's name). */
+  closingIndex: number;
+  /** First line of a personal postscript after the signature, if any. */
+  postscriptIndex: number | null;
+};
+
+function locateCorporateSignature(lines: string[]): SignatureLocation | null {
   for (
     let farewellIndex = 0;
     farewellIndex < lines.length;
@@ -315,26 +318,72 @@ function formatCorporateSignature(value: string): string {
         signatureDetected = true;
       }
     }
-    if (!signatureDetected) continue;
-
-    const signatureLines = lines
-      .slice(closingIndex + 1, postscriptIndex ?? lines.length)
-      .map(displayableSignatureLine)
-      .filter((line): line is string => line !== null);
-    if (!signatureLines.length) return value;
-    return [
-      ...lines.slice(0, closingIndex + 1),
-      "",
-      "E-Mail-Signatur",
-      ...signatureLines,
-      ...(postscriptIndex === null
-        ? []
-        : ["", ...lines.slice(postscriptIndex)]),
-    ]
-      .join("\n")
-      .trimEnd();
+    if (signatureDetected) {
+      return { farewellIndex, closingIndex, postscriptIndex };
+    }
   }
-  return value;
+  return null;
+}
+
+/**
+ * Keeps a clearly identifiable corporate signature visible, but separates it
+ * from the actual message and removes technical image filenames and raw link
+ * lists. CID markers remain untouched for the private inline-media pipeline.
+ */
+function formatCorporateSignature(value: string): string {
+  const lines = value.split("\n");
+  const location = locateCorporateSignature(lines);
+  if (!location) return value;
+  const { closingIndex, postscriptIndex } = location;
+  const signatureLines = lines
+    .slice(closingIndex + 1, postscriptIndex ?? lines.length)
+    .map(displayableSignatureLine)
+    .filter((line): line is string => line !== null);
+  if (!signatureLines.length) return value;
+  return [
+    ...lines.slice(0, closingIndex + 1),
+    "",
+    "E-Mail-Signatur",
+    ...signatureLines,
+    ...(postscriptIndex === null ? [] : ["", ...lines.slice(postscriptIndex)]),
+  ]
+    .join("\n")
+    .trimEnd();
+}
+
+/**
+ * Text anchors of a detected corporate signature in the original e-mail: the
+ * farewell/closing lines before it and the first visible signature line. Used
+ * to cut the signature out of the HTML body; null when no signature is found.
+ */
+export function corporateSignatureAnchors(
+  value: unknown,
+): { farewellLine: string; closingLine: string; firstLine: string } | null {
+  if (typeof value !== "string") return null;
+  const text = decodeEntities(
+    stripHtmlToText(decodeMarkupDelimiters(value.replace(/\u0000/gu, ""))),
+  );
+  const lines = normalizeLines(text).split("\n");
+  const location = locateCorporateSignature(lines);
+  if (!location) return null;
+  const end = location.postscriptIndex ?? lines.length;
+  for (let index = location.closingIndex + 1; index < end; index += 1) {
+    // Image placeholders such as "[cid:…]" or "[logo.png]" are not text in
+    // the HTML; anchor on the first line that carries visible text.
+    const line = lines[index]
+      .replace(/\[[^\]]*\]/gu, " ")
+      .replace(RAW_SIGNATURE_LINK, " ")
+      .replace(/\s+/gu, " ")
+      .trim();
+    if (line) {
+      return {
+        farewellLine: lines[location.farewellIndex].trim(),
+        closingLine: lines[location.closingIndex].trim(),
+        firstLine: line,
+      };
+    }
+  }
+  return null;
 }
 
 /**

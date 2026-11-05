@@ -3820,6 +3820,35 @@ body:has(.ticket-detail) {
   line-height: 1.8;
 }
 
+/* HTML e-mail signature in its own design, isolated in a sandboxed frame. */
+.ticket-email-signature {
+  display: grid;
+  gap: 8px;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--border);
+  white-space: normal;
+}
+
+.ticket-email-signature__label {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  line-height: 1.4;
+  text-transform: uppercase;
+}
+
+.ticket-email-signature__frame {
+  display: block;
+  width: 100%;
+  max-width: 720px;
+  border: 0;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
 .ticket-rendered-body__text {
   min-width: 0;
   white-space: pre-wrap;
