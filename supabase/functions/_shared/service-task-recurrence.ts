@@ -6,13 +6,10 @@
  */
 
 export type RecurrenceFrequency =
-  | "daily"
-  | "weekly"
-  | "monthly"
-  | "yearly"
-  | "interval";
+  "daily" | "weekly" | "monthly" | "yearly" | "interval";
 
-export type MonthlyMode = "day" | "nth_weekday" | "first_workday" | "last_workday";
+export type MonthlyMode =
+  "day" | "nth_weekday" | "first_workday" | "last_workday";
 
 export type RecurrenceRule = {
   frequency: RecurrenceFrequency;
@@ -178,10 +175,7 @@ function monthlyDate(
       );
     case "day":
     default: {
-      const day = Math.min(
-        rule.dayOfMonth ?? 1,
-        daysInMonth(year, monthIndex),
-      );
+      const day = Math.min(rule.dayOfMonth ?? 1, daysInMonth(year, monthIndex));
       const date = new Date(Date.UTC(year, monthIndex, day));
       return rule.skipNonWorkdays ? nextWorkday(date) : date;
     }
@@ -342,7 +336,9 @@ export function nextOccurrences(
   const fromDate = parseDate(from);
   if (!fromDate) return [];
   // Look far enough ahead for yearly rules with long intervals.
-  const horizon = formatDate(addDays(fromDate, 366 * Math.max(2, rule.interval + 1)));
+  const horizon = formatDate(
+    addDays(fromDate, 366 * Math.max(2, rule.interval + 1)),
+  );
   return occurrencesBetween(rule, start, from, horizon, count);
 }
 
@@ -374,7 +370,8 @@ export function describeRule(rule: RecurrenceRule): string {
         .join(", ")}`;
     case "monthly": {
       const prefix = every("Monatlich", "Monate");
-      if (rule.monthlyMode === "first_workday") return `${prefix} am 1. Werktag`;
+      if (rule.monthlyMode === "first_workday")
+        return `${prefix} am 1. Werktag`;
       if (rule.monthlyMode === "last_workday") {
         return `${prefix} am letzten Werktag`;
       }

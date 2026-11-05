@@ -12,7 +12,11 @@ import {
 } from "./service-task-recurrence.ts";
 
 function rule(value: Record<string, unknown>): RecurrenceRule {
-  const parsed = normalizeRule({ interval: 1, skipNonWorkdays: true, ...value });
+  const parsed = normalizeRule({
+    interval: 1,
+    skipNonWorkdays: true,
+    ...value,
+  });
   if (!parsed) throw new Error(`invalid rule ${JSON.stringify(value)}`);
   return parsed;
 }
@@ -27,22 +31,30 @@ Deno.test("Easter and the holidays of the canton of Zug", () => {
   assertEquals(holidayName(parseDate("2026-11-05")!), null);
 });
 
-Deno.test("monthly on the first working day skips New Year and Berchtoldstag", () => {
-  assertEquals(
-    nextOccurrences(
-      rule({ frequency: "monthly", monthlyMode: "first_workday" }),
-      "2026-12-01",
-      "2026-12-01",
-      4,
-    ),
-    ["2026-12-01", "2027-01-04", "2027-02-01", "2027-03-01"],
-  );
-});
+Deno.test(
+  "monthly on the first working day skips New Year and Berchtoldstag",
+  () => {
+    assertEquals(
+      nextOccurrences(
+        rule({ frequency: "monthly", monthlyMode: "first_workday" }),
+        "2026-12-01",
+        "2026-12-01",
+        4,
+      ),
+      ["2026-12-01", "2027-01-04", "2027-02-01", "2027-03-01"],
+    );
+  },
+);
 
 Deno.test("monthly on the 2nd Tuesday (patch day)", () => {
   assertEquals(
     nextOccurrences(
-      rule({ frequency: "monthly", monthlyMode: "nth_weekday", nth: 2, weekday: 2 }),
+      rule({
+        frequency: "monthly",
+        monthlyMode: "nth_weekday",
+        nth: 2,
+        weekday: 2,
+      }),
       "2026-11-01",
       "2026-11-01",
       3,
@@ -118,8 +130,14 @@ Deno.test("yearly on 30 November and invalid rules", () => {
     ),
     ["2026-11-30", "2027-11-30"],
   );
-  assertEquals(normalizeRule({ frequency: "weekly", skipNonWorkdays: true }), null);
-  assertEquals(normalizeRule({ frequency: "hourly", skipNonWorkdays: true }), null);
+  assertEquals(
+    normalizeRule({ frequency: "weekly", skipNonWorkdays: true }),
+    null,
+  );
+  assertEquals(
+    normalizeRule({ frequency: "hourly", skipNonWorkdays: true }),
+    null,
+  );
 });
 
 Deno.test("German descriptions", () => {
@@ -129,7 +147,12 @@ Deno.test("German descriptions", () => {
   );
   assertEquals(
     describeRule(
-      rule({ frequency: "monthly", monthlyMode: "nth_weekday", nth: 2, weekday: 2 }),
+      rule({
+        frequency: "monthly",
+        monthlyMode: "nth_weekday",
+        nth: 2,
+        weekday: 2,
+      }),
     ),
     "Monatlich am 2. Dienstag",
   );

@@ -21,6 +21,11 @@ set name = excluded.name,
     category = excluded.category,
     default_enabled = excluded.default_enabled;
 
+insert into public.tenant_feature_flags (tenant_id, feature_key, enabled)
+select tenant.id, 'service.tasks', true
+from public.tenants as tenant
+on conflict (tenant_id, feature_key) do nothing;
+
 insert into public.permissions (code, description, is_sensitive)
 values
   ('service_tasks.read', 'Serviceaufgaben ansehen', false),
