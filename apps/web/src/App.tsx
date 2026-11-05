@@ -1911,6 +1911,11 @@ function AuthenticatedApp() {
   const [knowledgeFocusArticleId, setKnowledgeFocusArticleId] = useState<
     string | undefined
   >(undefined);
+  // Device opened from a ticket: the asset list starts filtered to it.
+  const [assetFocusQuery, setAssetFocusQuery] = useState<{
+    query: string;
+    id: number;
+  } | null>(null);
   const [createdTicketToast, setCreatedTicketToast] = useState<{
     ticketId: string;
     ticketNumber: string;
@@ -4759,6 +4764,7 @@ function AuthenticatedApp() {
           activeTenant &&
           isFeatureEnabled("assets.management") ? (
           <ServiceAssets
+            assetQueryRequest={assetFocusQuery ?? undefined}
             fixedTab="assets"
             key={`service-assets:${activeTenant.id}:assets`}
             tenantId={activeTenant.id}
@@ -5636,6 +5642,17 @@ function AuthenticatedApp() {
                 setSelectedTicketId(ticketId);
                 setCreatedTicketToast({ ticketId, ticketNumber });
               }}
+              onOpenKnowledgeArticle={(articleId) => {
+                setTicketComposerOpen(false);
+                setGlobalSearchTarget(null);
+                setKnowledgeFocusArticleId(articleId);
+                setSection("Wissen");
+              }}
+              onOpenTicket={(ticketId) => {
+                setTicketComposerOpen(false);
+                setSection("Tickets");
+                setSelectedTicketId(ticketId);
+              }}
               tenantId={activeTenant.id}
             />
           </div>
@@ -5673,6 +5690,16 @@ function AuthenticatedApp() {
               setKnowledgeFocusArticleId(articleId);
               setSection("Wissen");
             }}
+            onOpenAsset={
+              isFeatureEnabled("assets.management")
+                ? (query) => {
+                    setSelectedTicketId(null);
+                    setGlobalSearchTarget(null);
+                    setAssetFocusQuery({ query, id: Date.now() });
+                    setSection("Assets");
+                  }
+                : undefined
+            }
             tenantId={activeTenant.id}
             ticketId={selectedTicketId}
           />

@@ -1086,6 +1086,24 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     };
   };
 
+  // Tickets that were not created because a knowledge article solved the
+  // problem ("Hat mein Problem gelöst" while creating a ticket). Optional: a
+  // failed count does not fail the report.
+  const deflectedCount = async (range: PeriodRange) => {
+    const { count, error } = await context.supabaseAdmin
+      .from("knowledge_article_outcomes")
+      .select("id", { count: "exact", head: true })
+      .eq("tenant_id", action.tenantId)
+      .eq("kind", "deflected")
+      .gte("created_at", range.startsAt)
+      .lte("created_at", range.endsAt);
+    return error || typeof count !== "number" ? null : count;
+  };
+  const [deflectedTickets, previousDeflectedTickets] = await Promise.all([
+    deflectedCount(ranges.current),
+    deflectedCount(ranges.previous),
+  ]);
+
   const current = buildMetrics(
     ranges.current,
     tickets.filter((ticket) => inRange(ticket.created_at, ranges.current)),
@@ -1106,8 +1124,10 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
   return response(request, {
     data: {
       ...current,
+      deflectedTickets,
       comparison: {
         period: previous.period,
+        deflectedTickets: previousDeflectedTickets,
         ticketVolume: previous.ticketVolume,
         tickets: {
           open: previous.tickets.open,

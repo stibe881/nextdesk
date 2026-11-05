@@ -21,6 +21,8 @@ export type ServiceAssetsProps = {
   createProblemRequestId?: number | undefined;
   onCreateProblemRequestConsumed?: ((requestId: number) => void) | undefined;
   onCreateMaintenance?: (() => void) | undefined;
+  /** Prefills the asset filter, e.g. for a device opened from a ticket. */
+  assetQueryRequest?: { query: string; id: number } | undefined;
 };
 
 export type CatalogTab = "services" | "assets" | "problems";
@@ -1583,6 +1585,7 @@ export function ServiceAssets({
   createProblemRequestId,
   onCreateProblemRequestConsumed,
   onCreateMaintenance,
+  assetQueryRequest,
 }: ServiceAssetsProps) {
   const [activeTab, setActiveTab] = useState<CatalogTab>(
     fixedTab ??
@@ -1621,7 +1624,10 @@ export function ServiceAssets({
   const [serviceCriticality, setServiceCriticality] = useState<
     "all" | Criticality
   >("all");
-  const [assetQuery, setAssetQuery] = useState("");
+  const [assetQuery, setAssetQuery] = useState(assetQueryRequest?.query ?? "");
+  useEffect(() => {
+    if (assetQueryRequest) setAssetQuery(assetQueryRequest.query);
+  }, [assetQueryRequest]);
   const [assetServiceFilter, setAssetServiceFilter] = useState("all");
   const [assetStatusFilter, setAssetStatusFilter] = useState("all");
   const [problemQuery, setProblemQuery] = useState("");

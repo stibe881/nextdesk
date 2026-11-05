@@ -1,4 +1,11 @@
-const source = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
+// The visibility helpers live in _shared/knowledge-visibility.ts (also used
+// by ticket-knowledge and ticket-suggestions); they are checked together.
+const source = [
+  await Deno.readTextFile(new URL("./index.ts", import.meta.url)),
+  await Deno.readTextFile(
+    new URL("../_shared/knowledge-visibility.ts", import.meta.url),
+  ),
+].join("\n");
 const atomicMigration = await Deno.readTextFile(
   new URL(
     "../../migrations/0103_knowledge_collection_atomic_mutations.sql",

@@ -25,6 +25,7 @@ type Action =
   | { type: "listAssets"; tenantId: string; query: string }
   | { type: "getAsset"; tenantId: string; assetId: string }
   | { type: "lookupAsset"; tenantId: string; code: string }
+  | { type: "ticketPersonDevices"; tenantId: string; ticketId: string }
   | {
       type: "transitionLifecycle";
       tenantId: string;
@@ -115,6 +116,12 @@ function parseAction(value: unknown): Action | null {
     return hasOnlyKeys(value, ["type", "tenantId", "assetId"]) &&
       isUuid(value.assetId)
       ? { type: value.type, tenantId, assetId: value.assetId.toLowerCase() }
+      : null;
+  }
+  if (value.type === "ticketPersonDevices") {
+    return hasOnlyKeys(value, ["type", "tenantId", "ticketId"]) &&
+      isUuid(value.ticketId)
+      ? { type: value.type, tenantId, ticketId: value.ticketId.toLowerCase() }
       : null;
   }
   if (value.type === "lookupAsset") {
@@ -586,6 +593,155 @@ async function getAsset(
   });
 }
 
+const PERSON_DEVICE_LIMIT = 20;
+
+/**
+ * Devices of the requesting and the affected person of a ticket, for the
+ * ticket detail: active assignments (asset_assignments) and Intune primary
+ * person links (via the Entra directory mirror). The ticket is read with the
+ * caller's client (RLS), the caller must work on tickets of its department,
+ * and the assets are read with the caller's client as well, so asset RLS and
+ * the department scope apply unchanged.
+ */
+async function ticketPersonDevices(
+  request: Request,
+  client: CallerClient,
+  admin: AdminClient,
+  action: Extract<Action, { type: "ticketPersonDevices" }>,
+): Promise<Response> {
+  const { data: ticket, error: ticketError } = await client
+    .from("tickets")
+    .select(
+      "id, tenant_id, department_id, requester_id, affected_user_id, requester_contact_id",
+    )
+    .eq("tenant_id", action.tenantId)
+    .eq("id", action.ticketId)
+    .maybeSingle();
+  if (ticketError) databaseFailure(ticketError);
+  if (!ticket || !isUuid(ticket.department_id)) {
+    throw new HttpError(
+      404,
+      "ticket_not_found",
+      "Das Ticket ist nicht verfügbar.",
+    );
+  }
+  const permissionChecks = await Promise.all(
+    ["ticket.update", "ticket.read.department"].map((permission) =>
+      client.rpc("has_ticket_permission", {
+        p_tenant_id: action.tenantId,
+        p_department_id: ticket.department_id,
+        p_permission_code: permission,
+      }),
+    ),
+  );
+  if (permissionChecks.some((check) => check.error)) {
+    throw new HttpError(
+      503,
+      "authorization_check_failed",
+      "Die Berechtigung konnte nicht geprüft werden.",
+    );
+  }
+  if (!permissionChecks.some((check) => check.data === true)) {
+    throw new HttpError(
+      403,
+      "ticket_staff_required",
+      "Für diese Aktion fehlt die Berechtigung.",
+    );
+  }
+  const userIds = [ticket.requester_id, ticket.affected_user_id].filter(isUuid);
+  const [requesters, directoryPeople] = await Promise.all([
+    userIds.length
+      ? admin
+          .from("ticket_requesters")
+          .select("id")
+          .eq("tenant_id", action.tenantId)
+          .in("user_id", userIds)
+          .limit(20)
+      : Promise.resolve({ data: [], error: null }),
+    userIds.length
+      ? admin
+          .from("tenant_entra_directory_people")
+          .select("entra_object_id")
+          .eq("tenant_id", action.tenantId)
+          .in("local_user_id", userIds)
+          .limit(20)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+  if (requesters.error) databaseFailure(requesters.error);
+  if (directoryPeople.error) databaseFailure(directoryPeople.error);
+  const requesterIds = [
+    ...new Set(
+      [
+        ticket.requester_contact_id,
+        ...(requesters.data ?? []).map((row: Row) => row.id),
+      ].filter(isUuid),
+    ),
+  ];
+  const entraObjectIds = [
+    ...new Set(
+      (directoryPeople.data ?? [])
+        .map((row: Row) => row.entra_object_id)
+        .filter(isUuid),
+    ),
+  ];
+  const [assignments, primaryLinks] = await Promise.all([
+    requesterIds.length
+      ? admin
+          .from("asset_assignments")
+          .select("asset_id")
+          .eq("tenant_id", action.tenantId)
+          .in("requester_id", requesterIds)
+          .is("returned_at", null)
+          .limit(100)
+      : Promise.resolve({ data: [], error: null }),
+    entraObjectIds.length
+      ? admin
+          .from("asset_intune_primary_person_links")
+          .select("asset_id")
+          .eq("tenant_id", action.tenantId)
+          .in("entra_object_id", entraObjectIds)
+          .limit(100)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+  if (assignments.error) databaseFailure(assignments.error);
+  if (primaryLinks.error) databaseFailure(primaryLinks.error);
+  const assignedIds = new Set(
+    (assignments.data ?? []).map((row: Row) => row.asset_id).filter(isUuid),
+  );
+  const intuneIds = new Set(
+    (primaryLinks.data ?? []).map((row: Row) => row.asset_id).filter(isUuid),
+  );
+  const assetIds = [...new Set([...assignedIds, ...intuneIds])].slice(0, 100);
+  if (assetIds.length === 0) {
+    return response(request, { data: { devices: [] } });
+  }
+  const { data: assets, error: assetError } = await client
+    .from("assets")
+    .select(
+      "id, name, asset_tag, manufacturer, model, operating_system, kind, status",
+    )
+    .eq("tenant_id", action.tenantId)
+    .eq("active", true)
+    .in("id", assetIds)
+    .order("name")
+    .limit(PERSON_DEVICE_LIMIT);
+  if (assetError) databaseFailure(assetError);
+  return response(request, {
+    data: {
+      devices: (assets ?? []).map((row: Row) => {
+        const asset = asAsset(row);
+        return {
+          ...asset,
+          sources: [
+            ...(assignedIds.has(String(asset.id)) ? ["assignment"] : []),
+            ...(intuneIds.has(String(asset.id)) ? ["intune"] : []),
+          ],
+        };
+      }),
+    },
+  });
+}
+
 async function lookupAsset(
   request: Request,
   client: CallerClient,
@@ -860,6 +1016,13 @@ const securedHandler = withSupabase(
         );
       if (action.type === "getAsset")
         return await getAsset(
+          request,
+          context.supabase,
+          context.supabaseAdmin,
+          action,
+        );
+      if (action.type === "ticketPersonDevices")
+        return await ticketPersonDevices(
           request,
           context.supabase,
           context.supabaseAdmin,

@@ -59,6 +59,11 @@ import {
 } from "./lib/ticket-catalog-search";
 import { supabase } from "./lib/supabase";
 import {
+  TicketIncidentBanner,
+  TicketPersonDevices,
+  TicketSolutionPrompt,
+} from "./ticket-learning";
+import {
   EmailSignatureFrame,
   splitPlainTextSignature,
 } from "./email-signature-frame";
@@ -497,11 +502,22 @@ type TicketRelation = {
   relationType: DisplayRelationType;
 };
 
+type SimilarTicketSolution = {
+  /** Full solution text for the reply editor. */
+  text: string;
+  /** About 300 characters for the list. */
+  excerpt: string;
+};
+
 type SimilarTicket = {
   id: string;
   ticketNumber: string;
   subject: string;
   statusLabel: string;
+  /** Missing in older deployments. */
+  isClosed?: boolean;
+  rank?: number;
+  solution?: SimilarTicketSolution | null;
 };
 
 /** Only data approved for the merge-target search UI; the ID is never rendered. */
@@ -705,6 +721,8 @@ type TicketDetailProps = {
   onChanged: () => void;
   /** Opens a knowledge article (e.g. a freshly generated AI draft). */
   onOpenKnowledgeArticle?: (articleId: string) => void;
+  /** Opens the asset list filtered to a device (name or asset tag). */
+  onOpenAsset?: ((query: string) => void) | undefined;
 };
 
 const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
@@ -1226,6 +1244,18 @@ function isTicketRelation(value: unknown): value is TicketRelation {
   );
 }
 
+function isSimilarTicketSolution(
+  value: unknown,
+): value is SimilarTicketSolution | null | undefined {
+  if (value === null || value === undefined) return true;
+  const solution = asRecord(value);
+  return Boolean(
+    solution &&
+    typeof solution.text === "string" &&
+    typeof solution.excerpt === "string",
+  );
+}
+
 function isSimilarTicket(value: unknown): value is SimilarTicket {
   const ticket = asRecord(value);
   return Boolean(
@@ -1233,7 +1263,10 @@ function isSimilarTicket(value: unknown): value is SimilarTicket {
     typeof ticket.id === "string" &&
     typeof ticket.ticketNumber === "string" &&
     typeof ticket.subject === "string" &&
-    typeof ticket.statusLabel === "string",
+    typeof ticket.statusLabel === "string" &&
+    (ticket.isClosed === undefined || typeof ticket.isClosed === "boolean") &&
+    (ticket.rank === undefined || typeof ticket.rank === "number") &&
+    isSimilarTicketSolution(ticket.solution),
   );
 }
 
@@ -3669,6 +3702,7 @@ export function TicketDetail({
   onClose,
   onChanged,
   onOpenKnowledgeArticle,
+  onOpenAsset,
 }: TicketDetailProps) {
   const [detail, setDetail] = useState<TicketDetailData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -3679,6 +3713,7 @@ export function TicketDetail({
   const [statusKey, setStatusKey] = useState("");
   const [pendingCloseConfirmation, setPendingCloseConfirmation] =
     useState<PendingCloseConfirmation | null>(null);
+  const [solutionPromptOpen, setSolutionPromptOpen] = useState(false);
   const [priorityKey, setPriorityKey] = useState("");
   const [isEditingTicket, setIsEditingTicket] = useState(false);
   const [focusMode, setFocusMode] = useState(false);
@@ -4834,6 +4869,10 @@ export function TicketDetail({
     };
   }, [detail?.canMerge, mergeQuery, tenantId, ticketId]);
 
+  useEffect(() => {
+    setSolutionPromptOpen(false);
+  }, [tenantId, ticketId]);
+
   const selectedStatus = useMemo(
     () =>
       detail?.statuses.find(
@@ -5589,6 +5628,7 @@ export function TicketDetail({
       }
       onChanged();
       await Promise.all([loadTicket(), loadFeedback(), loadQuality()]);
+      if (closingStatus) void offerSolutionArticle();
       if (shouldOfferUndo && Object.keys(previousChange).length > 0) {
         const label = change.priorityKey
           ? "Priorität"
@@ -5730,6 +5770,40 @@ export function TicketDetail({
     } finally {
       setPendingAction(null);
     }
+  }
+
+  /**
+   * After closing: offer to save the solution as a knowledge article when the
+   * ticket has none yet. Purely optional; failures only hide the prompt.
+   */
+  async function offerSolutionArticle() {
+    if (!detail?.canUpdate || !detail.canUseInternalNotes) return;
+    try {
+      const links = parseKnowledgeLinks(
+        await invokeTicketKnowledge({ type: "list", tenantId, ticketId }),
+      );
+      setSolutionPromptOpen(links !== null && links.length === 0);
+    } catch {
+      setSolutionPromptOpen(false);
+    }
+  }
+
+  function applySimilarSolution(solution: SimilarTicketSolution) {
+    if (!detail?.canCommentExternal) return;
+    const currentDraft = ticketCommentDraftForMode(commentDrafts, "external");
+    setCommentDrafts((current) =>
+      updateTicketCommentDraft(
+        current,
+        "external",
+        currentDraft.trim()
+          ? `${currentDraft.trimEnd()}\n\n${solution.text}`
+          : solution.text,
+      ),
+    );
+    selectCommentMode("external");
+    setCommentNotice(
+      "Die Lösung wurde in die Antwort übernommen. Bitte prüfen und anpassen, bevor Sie sie senden.",
+    );
   }
 
   async function confirmTicketClose() {
@@ -6633,6 +6707,15 @@ export function TicketDetail({
         </p>
       )}
 
+      {detail.canUpdate && (
+        <TicketIncidentBanner
+          refreshKey={`${detail.ticket.id}:${detail.ticket.subject}`}
+          subject={detail.ticket.subject}
+          tenantId={tenantId}
+          ticketId={ticketId}
+        />
+      )}
+
       {undoChange && (
         <div className="ticket-workbench__undo" role="status">
           <span>{undoChange.label} wurde geändert.</span>
@@ -7100,6 +7183,20 @@ export function TicketDetail({
               </div>
             </div>
           </div>
+        )}
+        {solutionPromptOpen && ticketIsClosed && (
+          <TicketSolutionPrompt
+            onDismiss={() => setSolutionPromptOpen(false)}
+            onOpenArticle={
+              onOpenKnowledgeArticle
+                ? (articleId) => {
+                    setSolutionPromptOpen(false);
+                    onOpenKnowledgeArticle(articleId);
+                  }
+                : undefined
+            }
+            requestDraft={() => requestAiTicketDraft(tenantId, ticketId)}
+          />
         )}
         <dl className="ticket-detail-facts-grid">
           {detail.requesterContact && (
@@ -7660,6 +7757,14 @@ export function TicketDetail({
               ) : null}
             </dd>
           </div>
+          {detail.canUpdate && (
+            <TicketPersonDevices
+              onOpenAsset={onOpenAsset}
+              refreshKey={`${detail.ticket.requester_id ?? ""}:${detail.ticket.affected_user_id ?? ""}`}
+              tenantId={tenantId}
+              ticketId={ticketId}
+            />
+          )}
         </dl>
       </section>
 
@@ -8963,8 +9068,30 @@ export function TicketDetail({
                     <li className="ticket-comment" key={ticket.id}>
                       <div className="ticket-comment-meta">
                         <strong>{ticketReference(ticket)}</strong>
-                        <span>{ticket.statusLabel}</span>
+                        <span>
+                          {ticket.isClosed ? "Gelöst · " : ""}
+                          {ticket.statusLabel}
+                        </span>
                       </div>
+                      {ticket.solution && (
+                        <div className="ticket-learning-solution">
+                          <strong>Lösung</strong>
+                          <p>{ticket.solution.excerpt}</p>
+                          {detail.canCommentExternal && (
+                            <button
+                              className="secondary-button"
+                              disabled={busy}
+                              onClick={() => {
+                                if (ticket.solution)
+                                  applySimilarSolution(ticket.solution);
+                              }}
+                              type="button"
+                            >
+                              Als Antwort übernehmen
+                            </button>
+                          )}
+                        </div>
+                      )}
                     </li>
                   ))}
                 </ol>

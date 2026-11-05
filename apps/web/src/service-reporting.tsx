@@ -68,6 +68,8 @@ type ReportComparison = {
   openEscalations: number;
   averageSatisfaction: number | null;
   satisfactionSampleSize: number;
+  /** Tickets avoided through the knowledge base; null when not available. */
+  deflectedTickets: number | null;
 };
 type ServiceReport = {
   period: PeriodInfo;
@@ -89,6 +91,7 @@ type ServiceReport = {
   openEscalations: number;
   averageSatisfaction: number | null;
   satisfactionSampleSize: number;
+  deflectedTickets: number | null;
 };
 type ReportLoadState =
   "idle" | "loading" | "forbidden" | "unavailable" | "error";
@@ -211,6 +214,11 @@ function responseData(value: unknown): Record<string, unknown> | null {
   return isRecord(value) && isRecord(value.data) ? value.data : null;
 }
 
+/** Optional count: missing or invalid values (older API) count as unknown. */
+function optionalCount(value: unknown): number | null {
+  return isNonNegativeNumber(value) && Number.isInteger(value) ? value : null;
+}
+
 function parseComparison(value: unknown): ReportComparison | null {
   if (!isRecord(value)) return null;
   const period = parsePeriod(value.period);
@@ -245,6 +253,7 @@ function parseComparison(value: unknown): ReportComparison | null {
     openEscalations: value.openEscalations,
     averageSatisfaction: value.averageSatisfaction,
     satisfactionSampleSize: value.satisfactionSampleSize,
+    deflectedTickets: optionalCount(value.deflectedTickets),
   };
 }
 
@@ -307,6 +316,7 @@ function parseServiceReport(value: unknown): ServiceReport {
     openEscalations: data.openEscalations,
     averageSatisfaction: data.averageSatisfaction,
     satisfactionSampleSize: data.satisfactionSampleSize,
+    deflectedTickets: optionalCount(data.deflectedTickets),
   };
 }
 
@@ -921,6 +931,18 @@ export function ServiceReporting({
                   tone={report.openEscalations > 0 ? "attention" : "default"}
                   value={formatNumber(report.openEscalations)}
                 />
+                {report.deflectedTickets !== null && (
+                  <SummaryMetric
+                    comparison={comparisonText(
+                      report.deflectedTickets,
+                      report.comparison.deflectedTickets,
+                      formatNumber,
+                    )}
+                    detail="Problem mit einem Artikel gelöst, kein Ticket erstellt"
+                    label="Vermiedene Tickets (Wissensdatenbank)"
+                    value={formatNumber(report.deflectedTickets)}
+                  />
+                )}
               </div>
             </section>
           ) : null}

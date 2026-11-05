@@ -1,0 +1,94 @@
+/* Learning from solutions in the ticket detail (close prompt, incident hint,
+   solutions of similar tickets, devices of the person). Theme tokens only. */
+.ticket-learning-banner {
+  display: grid;
+  gap: 8px;
+  margin: 18px 0 0;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--warning);
+  border-radius: 8px;
+  padding: 12px 14px;
+  background: var(--warning-soft);
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.ticket-learning-banner--info {
+  border-left-color: var(--info);
+  background: var(--info-soft);
+}
+
+.ticket-learning-banner > strong {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ticket-learning-banner p {
+  margin: 0;
+}
+
+.ticket-learning-banner .ticket-detail-actions {
+  margin: 0;
+}
+
+.ticket-learning-form {
+  display: grid;
+  gap: 8px;
+}
+
+.ticket-learning-form label {
+  display: grid;
+  gap: 4px;
+  font-weight: 600;
+}
+
+.ticket-learning-form input,
+.ticket-learning-form textarea {
+  width: 100%;
+  font: inherit;
+}
+
+.ticket-learning-solution {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+  border-left: 3px solid var(--success);
+  padding: 6px 10px;
+  background: var(--success-soft);
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.ticket-learning-solution p {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.ticket-learning-solution button {
+  justify-self: start;
+}
+
+.ticket-learning-link {
+  border: 0;
+  padding: 0;
+  background: none;
+  color: var(--primary);
+  font: inherit;
+  font-weight: 600;
+  text-align: left;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.ticket-learning-link:hover {
+  color: var(--primary-hover);
+}
+
+.ticket-learning-link:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}

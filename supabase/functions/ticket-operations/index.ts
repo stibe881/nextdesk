@@ -14,6 +14,7 @@ type TicketModules = {
 type Action =
   | { type: "getTicket"; tenantId: string; ticketId: string }
   | { type: "recordExport"; tenantId: string; ticketId: string }
+  | { type: "detectIncident"; tenantId: string; ticketId: string }
   | {
       type: "openEscalation";
       tenantId: string;
@@ -178,7 +179,7 @@ function parseAction(value: unknown): Action | null {
       ticketId: value.ticketId,
     };
   if (
-    value.type === "recordExport" &&
+    (value.type === "recordExport" || value.type === "detectIncident") &&
     hasOnlyKeys(value, ["type", "tenantId", "ticketId"])
   )
     return {
@@ -1007,49 +1008,141 @@ async function createsReferenceCycle(
   return true;
 }
 
-const subjectStopWords = new Set([
-  "aber",
-  "alle",
-  "beim",
-  "dass",
-  "dem",
-  "den",
-  "der",
-  "des",
-  "die",
-  "das",
-  "ein",
-  "eine",
-  "einem",
-  "einen",
-  "einer",
-  "für",
-  "ist",
-  "mit",
-  "nach",
-  "nicht",
-  "oder",
-  "und",
-  "von",
-  "vor",
-  "wird",
-  "the",
-  "and",
-  "for",
-  "with",
-]);
+const SIMILAR_TICKET_LIMIT = 10;
+const SOLUTION_EXCERPT_LENGTH = 300;
+const SOLUTION_TEXT_LENGTH = 10_000;
+const INCIDENT_WINDOW_HOURS = 2;
+const INCIDENT_MIN_TICKETS = 5;
 
-function relevantSubjectTokens(subject: unknown) {
-  if (typeof subject !== "string") return [];
-  return [
-    ...new Set(
-      subject
-        .normalize("NFKC")
-        .toLocaleLowerCase("de-CH")
-        .split(/[^\p{L}\p{N}]+/u)
-        .filter((token) => token.length >= 3 && !subjectStopWords.has(token)),
-    ),
-  ].slice(0, 5);
+/** Subject and the start of the description, the text similar tickets use. */
+function similarityText(ticket: any): string {
+  const subject = typeof ticket.subject === "string" ? ticket.subject : "";
+  const description =
+    typeof ticket.description === "string" ? ticket.description : "";
+  return `${subject}\n${description.slice(0, 1500)}`.trim();
+}
+
+/** Plain solution text: images of another ticket cannot be carried over. */
+function solutionText(body: unknown): string {
+  if (typeof body !== "string") return "";
+  return body
+    .replace(/\[\[nextdesk-inline-image:[0-9a-f-]{36}\]\]/giu, "")
+    .replace(
+      /\s*(?:\[\s*cid:[^\]\r\n]{1,255}\s*\]|<\s*cid:[^<>\r\n]{1,255}\s*>|\bcid:[^\s<>"'\]\[\r\n]{1,255})/giu,
+      "",
+    )
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function shortenText(value: string, length: number): string {
+  const characters = [...value];
+  if (characters.length <= length) return value;
+  const cut = characters.slice(0, length).join("");
+  const boundary = cut.lastIndexOf(" ");
+  return `${(boundary > length * 0.6 ? cut.slice(0, boundary) : cut).trimEnd()} …`;
+}
+
+/**
+ * The "Lösung" of a solved ticket: its last public comment before closing
+ * that was written by staff, not by the requesting person or a contact.
+ */
+async function ticketSolution(
+  admin: any,
+  candidate: any,
+): Promise<{ text: string; excerpt: string; createdAt: string } | null> {
+  let query = admin
+    .from("ticket_comments")
+    .select("body, author_id, created_at")
+    .eq("ticket_id", candidate.ticket_id)
+    .eq("visibility", "external")
+    .is("requester_contact_id", null)
+    .not("author_id", "is", null)
+    .order("created_at", { ascending: false })
+    .limit(5);
+  if (isUuid(candidate.requester_id))
+    query = query.neq("author_id", candidate.requester_id);
+  if (typeof candidate.closed_at === "string")
+    query = query.lte("created_at", candidate.closed_at);
+  const { data, error } = await query;
+  if (error || !Array.isArray(data)) return null;
+  for (const comment of data) {
+    const text = solutionText(comment.body);
+    if (!text) continue;
+    return {
+      text: shortenText(text, SOLUTION_TEXT_LENGTH),
+      excerpt: shortenText(text.replace(/\s+/g, " "), SOLUTION_EXCERPT_LENGTH),
+      createdAt: String(comment.created_at),
+    };
+  }
+  return null;
+}
+
+/**
+ * Similar tickets from similar_tickets (already limited to readable tickets),
+ * solved ones first, each solved one with its solution.
+ */
+async function similarTicketsWithSolutions(
+  admin: any,
+  tenantId: string,
+  rows: any[],
+) {
+  const candidates = rows
+    .filter((row) => isUuid(row?.ticket_id))
+    .map((row, index) => ({ row, index }))
+    .sort(
+      (left, right) =>
+        Number(right.row.is_closed === true) -
+          Number(left.row.is_closed === true) || left.index - right.index,
+    )
+    .slice(0, SIMILAR_TICKET_LIMIT)
+    .map(({ row }) => row);
+  if (candidates.length === 0) return [];
+  // The ticket rows themselves were read by similar_tickets with the caller's
+  // rights; comments are read with the service role only for these tickets.
+  const { data: tenantTickets } = await admin
+    .from("tickets")
+    .select("id")
+    .eq("tenant_id", tenantId)
+    .in(
+      "id",
+      candidates.map((candidate) => candidate.ticket_id),
+    );
+  const tenantTicketIds = new Set(
+    (tenantTickets ?? []).map((row: any) => row.id),
+  );
+  return await Promise.all(
+    candidates
+      .filter((candidate) => tenantTicketIds.has(candidate.ticket_id))
+      .map(async (candidate) => ({
+        id: candidate.ticket_id,
+        ticketNumber: candidate.ticket_number,
+        subject: candidate.subject,
+        statusLabel:
+          typeof candidate.status_label === "string" &&
+          candidate.status_label.trim()
+            ? candidate.status_label.trim()
+            : "Status nicht verfügbar",
+        isClosed: candidate.is_closed === true,
+        rank: typeof candidate.rank === "number" ? candidate.rank : 0,
+        solution:
+          candidate.is_closed === true
+            ? await ticketSolution(admin, candidate)
+            : null,
+      })),
+  );
+}
+
+async function hasTenantPermissionForCaller(
+  client: any,
+  tenantId: string,
+  permission: string,
+): Promise<boolean> {
+  const { data, error } = await client.rpc("has_tenant_permission", {
+    p_tenant_id: tenantId,
+    p_permission_code: permission,
+  });
+  return !error && data === true;
 }
 
 function ticketReference(ticket: any) {
@@ -1115,7 +1208,6 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     );
 
   if (action.type === "getTicket") {
-    const subjectTokens = relevantSubjectTokens(ticket.subject);
     const requesterContactPromise = isRequesterContactId(
       ticket.requester_contact_id,
     )
@@ -1244,22 +1336,24 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
           `parent_ticket_id.eq.${ticket.id},merged_into_ticket_id.eq.${ticket.id}`,
         )
         .limit(100),
-      subjectTokens.length
-        ? context.supabaseAdmin
-            .from("tickets")
-            .select(
-              "id, tenant_id, department_id, ticket_number, subject, requester_id, affected_user_id, assigned_agent_id, assigned_team_id, customer_organization_id, status:ticket_statuses(id, key, label, is_closed)",
-            )
-            .eq("tenant_id", ticket.tenant_id)
-            .neq("id", ticket.id)
-            .or(
-              subjectTokens
-                .map((token) => `subject.ilike.%${token}%`)
-                .join(","),
-            )
-            .order("updated_at", { ascending: false })
-            .limit(50)
-        : Promise.resolve({ data: [] }),
+      // Full-text similarity (migration 0183) with the caller's own client:
+      // similar_tickets only returns tickets the person may read.
+      context.supabase
+        .rpc("similar_tickets", {
+          p_tenant_id: ticket.tenant_id,
+          p_text: similarityText(ticket),
+          p_exclude_ticket_id: ticket.id,
+          p_only_closed: false,
+          p_only_own: false,
+          p_limit: SIMILAR_TICKET_LIMIT,
+        })
+        .then(
+          (result: { data: unknown; error: unknown }) => ({
+            data:
+              result.error || !Array.isArray(result.data) ? [] : result.data,
+          }),
+          () => ({ data: [] }),
+        ),
       requesterContactPromise,
       ticketCategoriesPromise,
       storedTicketCategoriesPromise,
@@ -1495,7 +1589,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
           .eq("tenant_id", ticket.tenant_id)
           .in("id", relatedTicketIds)
       : { data: [] };
-    const [readableRelatedTickets, readableSimilarTickets] = await Promise.all([
+    const [readableRelatedTickets, similarTickets] = await Promise.all([
       Promise.all(
         (relatedTickets ?? []).map(async (relatedTicket: any) =>
           (await canRead(context.supabaseAdmin, actorId, relatedTicket))
@@ -1503,12 +1597,10 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
             : null,
         ),
       ),
-      Promise.all(
-        (similarCandidates ?? []).map(async (similarTicket: any) =>
-          (await canRead(context.supabaseAdmin, actorId, similarTicket))
-            ? similarTicket
-            : null,
-        ),
+      similarTicketsWithSolutions(
+        context.supabaseAdmin,
+        ticket.tenant_id,
+        similarCandidates ?? [],
       ),
     ]);
     const relatedTicketById = new Map(
@@ -1533,10 +1625,6 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
           ]
         : [];
     });
-    const similarTickets = readableSimilarTickets
-      .filter((similarTicket: any) => similarTicket !== null)
-      .slice(0, 10)
-      .map((similarTicket: any) => ticketReference(similarTicket));
     const [
       ticketAgents,
       assignedTicketAgent,
@@ -1617,6 +1705,97 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         canWriteInternalNotes,
         canCommentExternal,
         canExport,
+      },
+    });
+  }
+
+  if (action.type === "detectIncident") {
+    // Incident hint for staff only: several readable, similar tickets that
+    // were created within the last hours. Requesters never see the cluster.
+    const canUpdateTicket = await hasPermission(
+      context.supabaseAdmin,
+      actorId,
+      ticket.tenant_id,
+      ticket.department_id,
+      "ticket.update",
+    );
+    if (!canUpdateTicket)
+      return response(request, { data: { incident: null } });
+    const since = new Date(
+      Date.now() - INCIDENT_WINDOW_HOURS * 60 * 60 * 1000,
+    ).toISOString();
+    const { data: rows, error } = await context.supabase.rpc(
+      "recent_similar_tickets",
+      {
+        p_tenant_id: ticket.tenant_id,
+        p_text: similarityText(ticket),
+        p_since: since,
+        p_exclude_ticket_id: ticket.id,
+        p_limit: 50,
+      },
+    );
+    if (error)
+      return response(
+        request,
+        { error: { code: "incident_detection_failed" } },
+        503,
+      );
+    const similar = (Array.isArray(rows) ? rows : []).filter((row: any) =>
+      isUuid(row?.ticket_id),
+    );
+    const currentIsRecent =
+      typeof ticket.created_at === "string" &&
+      Date.parse(ticket.created_at) >= Date.parse(since);
+    const tickets = [
+      ...(currentIsRecent
+        ? [
+            {
+              id: ticket.id,
+              ticketNumber: ticket.ticket_number,
+              subject: ticket.subject,
+              createdAt: ticket.created_at,
+            },
+          ]
+        : []),
+      ...similar.map((row: any) => ({
+        id: row.ticket_id,
+        ticketNumber: row.ticket_number,
+        subject: row.subject,
+        createdAt: row.created_at,
+      })),
+    ];
+    if (tickets.length < INCIDENT_MIN_TICKETS)
+      return response(request, { data: { incident: null } });
+    const [features, canManageProblems, canPublishNotices] = await Promise.all([
+      resolveTenantFeatureStates(context.supabaseAdmin, ticket.tenant_id, [
+        "assets.management",
+        "agent.workbench",
+      ]),
+      hasTenantPermissionForCaller(
+        context.supabase,
+        ticket.tenant_id,
+        "asset.manage",
+      ),
+      hasTenantPermissionForCaller(
+        context.supabase,
+        ticket.tenant_id,
+        "ticket.manage",
+      ),
+    ]);
+    return response(request, {
+      data: {
+        incident: {
+          windowHours: INCIDENT_WINDOW_HOURS,
+          ticketCount: tickets.length,
+          tickets,
+          departmentId: ticket.department_id,
+          // Same permissions as service-assets (problems) and agent-workbench
+          // (incident notices); those APIs check them again.
+          canCreateProblem:
+            features?.["assets.management"] === true && canManageProblems,
+          canPublishNotice:
+            features?.["agent.workbench"] === true && canPublishNotices,
+        },
       },
     });
   }
