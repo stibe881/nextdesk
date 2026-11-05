@@ -6,7 +6,11 @@ import {
   noContent,
   parseJsonObject,
 } from "../_shared/http.ts";
-import { resolveTenantFeatureStates } from "../_shared/tenant-features.ts";
+import {
+  resolveTenantFeatureStates,
+  resolveUserFeatureStates,
+  userFeatureDepartments,
+} from "../_shared/tenant-features.ts";
 import {
   addDays,
   describeRule,
@@ -46,7 +50,7 @@ type Access = { canRead: boolean; canExecute: boolean; canManage: boolean };
 const FEATURE = "service.tasks";
 const PRIORITIES = new Set(["low", "normal", "high", "urgent"]);
 const TEMPLATE_SELECT =
-  "id, tenant_id, title, instructions, category, priority, assignee_id, team_id, reference_label, estimated_minutes, recurrence, starts_on, ends_on, due_time, lead_days, checklist, require_note, remind, escalate_after_days, active, generated_until, created_at, updated_at";
+  "id, tenant_id, department_id, title, instructions, category, priority, assignee_id, team_id, reference_label, estimated_minutes, recurrence, starts_on, ends_on, due_time, lead_days, checklist, require_note, remind, escalate_after_days, active, generated_until, created_at, updated_at";
 const OCCURRENCE_SELECT =
   "id, tenant_id, template_id, scheduled_on, due_on, due_at, visible_from, status, assignee_id, checklist, note, skipped_reason, started_at, completed_at, completed_by, reminded_at, escalated_at, created_at, updated_at";
 const OPEN_STATUSES = ["open", "in_progress"];
@@ -184,6 +188,7 @@ function templateDto(template: Row, today: string) {
     priority: template.priority,
     assigneeId: template.assignee_id,
     teamId: template.team_id,
+    departmentId: template.department_id ?? null,
     referenceLabel: template.reference_label,
     estimatedMinutes: template.estimated_minutes,
     recurrence: template.recurrence,
@@ -324,14 +329,48 @@ async function generate(admin: Admin, templates: Row[], today: string) {
   }
 }
 
-async function loadTemplates(admin: Admin, tenantId: string): Promise<Row[]> {
+/** Departments whose service tasks the caller may see. */
+type Visibility = { departments: string[] };
+
+function templateVisible(template: Row, visibility: Visibility): boolean {
+  return (
+    !template.department_id ||
+    visibility.departments.includes(String(template.department_id))
+  );
+}
+
+async function loadTemplates(
+  admin: Admin,
+  tenantId: string,
+  visibility: Visibility,
+): Promise<Row[]> {
   const { data, error } = await admin
     .from("service_task_templates")
     .select(TEMPLATE_SELECT)
     .eq("tenant_id", tenantId)
     .order("title");
   if (error) throw databaseError();
-  return data ?? [];
+  return ((data ?? []) as Row[]).filter((template) =>
+    templateVisible(template, visibility),
+  );
+}
+
+async function requireVisibleTemplate(
+  admin: Admin,
+  tenantId: string,
+  templateId: string,
+  visibility: Visibility,
+): Promise<Row> {
+  const { data } = await admin
+    .from("service_task_templates")
+    .select(TEMPLATE_SELECT)
+    .eq("tenant_id", tenantId)
+    .eq("id", templateId)
+    .maybeSingle();
+  if (!data || !templateVisible(data, visibility)) {
+    throw new HttpError(404, "not_found", "Vorlage nicht gefunden.");
+  }
+  return data as Row;
 }
 
 async function teamIdsOf(admin: Admin, tenantId: string, userId: string) {
@@ -343,8 +382,12 @@ async function teamIdsOf(admin: Admin, tenantId: string, userId: string) {
   return new Set((data ?? []).map((row: Row) => row.team_id as string));
 }
 
-async function directory(admin: Admin, tenantId: string) {
-  const [members, teams] = await Promise.all([
+async function directory(
+  admin: Admin,
+  tenantId: string,
+  visibility: Visibility,
+) {
+  const [members, teams, departments] = await Promise.all([
     admin
       .from("tenant_memberships")
       .select("user_id")
@@ -356,6 +399,14 @@ async function directory(admin: Admin, tenantId: string) {
       .eq("tenant_id", tenantId)
       .eq("active", true)
       .order("name"),
+    visibility.departments.length
+      ? admin
+          .from("departments")
+          .select("id, name")
+          .eq("tenant_id", tenantId)
+          .in("id", visibility.departments)
+          .order("name")
+      : Promise.resolve({ data: [] }),
   ]);
   const people = await names(
     admin,
@@ -369,6 +420,10 @@ async function directory(admin: Admin, tenantId: string) {
       id: row.id,
       name: row.name,
     })),
+    departments: (departments.data ?? []).map((row: Row) => ({
+      id: row.id,
+      name: row.name,
+    })),
   };
 }
 
@@ -377,10 +432,11 @@ async function overview(
   tenantId: string,
   userId: string,
   scope: string,
+  visibility: Visibility,
 ) {
   const now = new Date();
   const today = swissToday(now);
-  const templates = await loadTemplates(admin, tenantId);
+  const templates = await loadTemplates(admin, tenantId, visibility);
   await generate(admin, templates, today);
   const templateById = new Map(templates.map((t) => [t.id as string, t]));
   const myTeams = await teamIdsOf(admin, tenantId, userId);
@@ -396,7 +452,9 @@ async function overview(
     .order("due_at")
     .limit(2000);
   if (error) throw databaseError();
-  const all = (data ?? []) as Row[];
+  const all = ((data ?? []) as Row[]).filter((occurrence) =>
+    templateById.has(occurrence.template_id as string),
+  );
   const inScope = (occurrence: Row) => {
     const template = templateById.get(occurrence.template_id as string);
     if (scope === "mine") return occurrence.assignee_id === userId;
@@ -597,8 +655,34 @@ async function saveTemplate(
   tenantId: string,
   actorId: string,
   body: Row,
+  visibility: Visibility,
 ) {
-  const fields = parseTemplate(body);
+  const fields: ReturnType<typeof parseTemplate> & {
+    department_id?: string | null;
+  } = parseTemplate(body);
+  // The department must be one the caller works in; tenants without any
+  // department keep templates without one.
+  if (body.departmentId === undefined || body.departmentId === null) {
+    if (visibility.departments.length > 0) {
+      if (visibility.departments.length > 1) {
+        throw new HttpError(
+          422,
+          "invalid_data",
+          "Bitte wählen Sie eine Abteilung.",
+        );
+      }
+      fields.department_id = visibility.departments[0];
+    } else {
+      fields.department_id = null;
+    }
+  } else if (
+    isUuid(body.departmentId) &&
+    visibility.departments.includes(body.departmentId.toLowerCase())
+  ) {
+    fields.department_id = body.departmentId.toLowerCase();
+  } else {
+    throw new HttpError(422, "invalid_data", "Die Abteilung ist ungültig.");
+  }
   if (fields.assignee_id)
     await assertMember(admin, tenantId, fields.assignee_id);
   if (fields.team_id) {
@@ -618,14 +702,7 @@ async function saveTemplate(
       throw new HttpError(422, "invalid_data", "Die Vorlage ist ungültig.");
     }
     templateId = body.templateId.toLowerCase();
-    const { data: existing } = await admin
-      .from("service_task_templates")
-      .select("id")
-      .eq("tenant_id", tenantId)
-      .eq("id", templateId)
-      .maybeSingle();
-    if (!existing)
-      throw new HttpError(404, "not_found", "Vorlage nicht gefunden.");
+    await requireVisibleTemplate(admin, tenantId, templateId, visibility);
     const { error } = await admin
       .from("service_task_templates")
       .update({
@@ -675,7 +752,12 @@ async function saveTemplate(
   return templateDto(template, today);
 }
 
-async function loadOccurrence(admin: Admin, tenantId: string, id: unknown) {
+async function loadOccurrence(
+  admin: Admin,
+  tenantId: string,
+  id: unknown,
+  visibility: Visibility,
+) {
   if (!isUuid(id))
     throw new HttpError(422, "invalid_data", "Die Aufgabe ist ungültig.");
   const { data } = await admin
@@ -685,11 +767,24 @@ async function loadOccurrence(admin: Admin, tenantId: string, id: unknown) {
     .eq("id", id.toLowerCase())
     .maybeSingle();
   if (!data) throw new HttpError(404, "not_found", "Aufgabe nicht gefunden.");
+  const { data: template } = await admin
+    .from("service_task_templates")
+    .select("id, department_id")
+    .eq("id", data.template_id)
+    .maybeSingle();
+  if (!template || !templateVisible(template, visibility)) {
+    throw new HttpError(404, "not_found", "Aufgabe nicht gefunden.");
+  }
   return data as Row;
 }
 
-async function occurrenceDetail(admin: Admin, tenantId: string, id: unknown) {
-  const occurrence = await loadOccurrence(admin, tenantId, id);
+async function occurrenceDetail(
+  admin: Admin,
+  tenantId: string,
+  id: unknown,
+  visibility: Visibility,
+) {
+  const occurrence = await loadOccurrence(admin, tenantId, id, visibility);
   const [{ data: template }, { data: history }, { data: events }] =
     await Promise.all([
       admin
@@ -751,8 +846,14 @@ async function updateOccurrence(
   actorId: string,
   rights: Access,
   body: Row,
+  visibility: Visibility,
 ) {
-  const occurrence = await loadOccurrence(admin, tenantId, body.occurrenceId);
+  const occurrence = await loadOccurrence(
+    admin,
+    tenantId,
+    body.occurrenceId,
+    visibility,
+  );
   const action = body.action;
   const open = OPEN_STATUSES.includes(occurrence.status as string);
   const nowIso = new Date().toISOString();
@@ -913,10 +1014,15 @@ async function updateOccurrence(
     },
     details,
   );
-  return occurrenceDetail(admin, tenantId, occurrence.id);
+  return occurrenceDetail(admin, tenantId, occurrence.id, visibility);
 }
 
-async function calendar(admin: Admin, tenantId: string, month: unknown) {
+async function calendar(
+  admin: Admin,
+  tenantId: string,
+  month: unknown,
+  visibility: Visibility,
+) {
   if (typeof month !== "string" || !/^\d{4}-(0[1-9]|1[0-2])$/u.test(month)) {
     throw new HttpError(422, "invalid_data", "Der Monat ist ungültig.");
   }
@@ -932,7 +1038,7 @@ async function calendar(admin: Admin, tenantId: string, month: unknown) {
   const to = formatDate(addDays(last, 7 - (((last.getUTCDay() + 6) % 7) + 1)));
   const now = new Date();
   const today = swissToday(now);
-  const templates = await loadTemplates(admin, tenantId);
+  const templates = await loadTemplates(admin, tenantId, visibility);
   await generate(admin, templates, today);
   const templateById = new Map(templates.map((t) => [t.id as string, t]));
   const { data, error } = await admin
@@ -944,7 +1050,9 @@ async function calendar(admin: Admin, tenantId: string, month: unknown) {
     .order("due_at")
     .limit(3000);
   if (error) throw databaseError();
-  const stored = (data ?? []) as Row[];
+  const stored = ((data ?? []) as Row[]).filter((occurrence) =>
+    templateById.has(occurrence.template_id as string),
+  );
   const people = await names(admin, peopleIdsOf(stored));
   const entries = stored.map((occurrence) => ({
     ...occurrenceDto(
@@ -1158,11 +1266,25 @@ const userHandler = withSupabase(
       }
       const tenantId = body.tenantId.toLowerCase();
       const admin = context.supabaseAdmin;
-      if (!(await featureEnabled(admin, tenantId))) {
+      const personal = await resolveUserFeatureStates(
+        admin,
+        tenantId,
+        actorId,
+        [FEATURE],
+      );
+      if (personal?.[FEATURE] !== true) {
         return json(request, { error: { code: "feature_disabled" } }, 403);
       }
       const rights = await access(admin, actorId, tenantId);
       if (body.type === "access") return json(request, { data: rights });
+      const departments = await userFeatureDepartments(
+        admin,
+        tenantId,
+        actorId,
+        FEATURE,
+      );
+      if (departments === null) throw databaseError();
+      const visibility: Visibility = { departments };
       if (!rights.canRead) {
         return json(request, { error: { code: "forbidden" } }, 403);
       }
@@ -1179,16 +1301,17 @@ const userHandler = withSupabase(
               tenantId,
               actorId,
               scope === "done" ? "all" : scope,
+              visibility,
             ),
-            directory(admin, tenantId),
+            directory(admin, tenantId, visibility),
           ]);
           return json(request, { data: { ...data, ...dir, access: rights } });
         }
         case "listTemplates": {
           const today = swissToday();
           const [templates, dir] = await Promise.all([
-            loadTemplates(admin, tenantId),
-            directory(admin, tenantId),
+            loadTemplates(admin, tenantId, visibility),
+            directory(admin, tenantId, visibility),
           ]);
           return json(request, {
             data: {
@@ -1220,7 +1343,13 @@ const userHandler = withSupabase(
           }
           return json(request, {
             data: {
-              template: await saveTemplate(admin, tenantId, actorId, body),
+              template: await saveTemplate(
+                admin,
+                tenantId,
+                actorId,
+                body,
+                visibility,
+              ),
             },
           });
         }
@@ -1231,6 +1360,12 @@ const userHandler = withSupabase(
           if (!isUuid(body.templateId) || typeof body.active !== "boolean") {
             return json(request, { error: { code: "invalid_request" } }, 400);
           }
+          await requireVisibleTemplate(
+            admin,
+            tenantId,
+            body.templateId.toLowerCase(),
+            visibility,
+          );
           const { error } = await admin
             .from("service_task_templates")
             .update({
@@ -1262,7 +1397,12 @@ const userHandler = withSupabase(
         }
         case "getOccurrence":
           return json(request, {
-            data: await occurrenceDetail(admin, tenantId, body.occurrenceId),
+            data: await occurrenceDetail(
+              admin,
+              tenantId,
+              body.occurrenceId,
+              visibility,
+            ),
           });
         case "updateOccurrence": {
           if (!rights.canExecute) {
@@ -1275,12 +1415,13 @@ const userHandler = withSupabase(
               actorId,
               rights,
               body,
+              visibility,
             ),
           });
         }
         case "calendar":
           return json(request, {
-            data: await calendar(admin, tenantId, body.month),
+            data: await calendar(admin, tenantId, body.month, visibility),
           });
         default:
           return json(request, { error: { code: "invalid_request" } }, 400);

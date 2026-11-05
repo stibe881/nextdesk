@@ -39,6 +39,7 @@ import {
 import { TicketCustomFieldsAdmin } from "./ticket-custom-fields-admin";
 import { AssetIntuneSettings } from "./asset-intune-settings";
 import { DepartmentManagement } from "./department-management";
+import { DepartmentModules } from "./department-modules";
 import { TicketTemplates } from "./ticket-templates";
 import { TenantAutomation } from "./tenant-automation";
 import { TenantDataRetention } from "./tenant-data-retention";
@@ -3985,6 +3986,10 @@ export function TenantAdminSettings({
                 tabIndex={-1}
               >
                 <DepartmentManagement tenantId={tenantId} />
+                <DepartmentModules
+                  tenantId={tenantId}
+                  onChanged={onFeaturesUpdated}
+                />
               </section>
             )}
 

@@ -1,6 +1,6 @@
 import { type SupabaseContext, withSupabase } from "@supabase/server";
 import { listAssignableTenantSupportAgents } from "../_shared/assignable-agents.ts";
-import { resolveTenantFeatureStatesCached } from "../_shared/tenant-features.ts";
+import { resolveUserFeatureStates } from "../_shared/tenant-features.ts";
 
 const ALLOWED_ORIGIN = "https://app.nextdesk.ch";
 const MAX_REQUEST_BYTES = 512 * 1024;
@@ -1253,9 +1253,10 @@ const handler = withSupabase(
       const client = context.supabase;
       // Independent of the membership check, so both run at once; the
       // membership error still takes precedence.
-      const featureStatesPromise = resolveTenantFeatureStatesCached(
+      const featureStatesPromise = resolveUserFeatureStates(
         context.supabaseAdmin,
         action.tenantId,
+        actorId,
         ["assets.management"],
       );
       featureStatesPromise.catch(() => undefined);

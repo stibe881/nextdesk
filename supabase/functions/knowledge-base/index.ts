@@ -1,5 +1,5 @@
 import { withSupabase } from "@supabase/server";
-import { resolveTenantFeatureStatesCached } from "../_shared/tenant-features.ts";
+import { resolveUserFeatureStates } from "../_shared/tenant-features.ts";
 
 const ALLOWED_ORIGIN = "https://app.nextdesk.ch";
 const KNOWLEDGE_MANAGE_PERMISSION = "knowledge.manage";
@@ -529,9 +529,10 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     action.type === "decideReview";
   // The feature lookup is independent of the authorization check, so both run
   // at once; an authorization failure is still reported first.
-  const featureStatesPromise = resolveTenantFeatureStatesCached(
+  const featureStatesPromise = resolveUserFeatureStates(
     admin,
     action.tenantId,
+    actorId,
     ["knowledge.base"],
   );
   featureStatesPromise.catch(() => undefined);

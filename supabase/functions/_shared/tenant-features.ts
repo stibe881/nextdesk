@@ -84,3 +84,68 @@ export async function resolveTenantFeatureStatesCached(
   featureStateCache.set(key, { at: Date.now(), states: { ...states } });
   return states;
 }
+
+/**
+ * Modules whose visibility and data are scoped per department. Switching one
+ * off for a department hides it for that department's members.
+ */
+export const DEPARTMENT_SCOPED_FEATURES = [
+  "service.tasks",
+  "self_service.shop",
+  "inventory.management",
+  "assets.management",
+  "knowledge.base",
+  "contracts.management",
+  "reporting.service",
+] as const;
+
+/**
+ * Effective module switches for one person: the tenant switch plus the
+ * switches of the departments the person belongs to (or, without any
+ * membership, of all departments). Keys that are not department scoped keep
+ * the plain tenant switch. Failed lookups return null (fail closed).
+ */
+export async function resolveUserFeatureStates(
+  admin: any,
+  tenantId: string,
+  userId: string,
+  featureKeys: readonly string[],
+): Promise<TenantFeatureStates | null> {
+  const tenantStates = await resolveTenantFeatureStates(
+    admin,
+    tenantId,
+    featureKeys,
+  );
+  if (!tenantStates) return null;
+  const scoped = featureKeys.filter((key) =>
+    (DEPARTMENT_SCOPED_FEATURES as readonly string[]).includes(key),
+  );
+  if (!scoped.length) return tenantStates;
+  const { data, error } = await admin.rpc("user_feature_states", {
+    p_tenant_id: tenantId,
+    p_user_id: userId,
+    p_feature_keys: scoped,
+  });
+  if (error || typeof data !== "object" || data === null) return null;
+  const states = { ...tenantStates };
+  for (const key of scoped) {
+    states[key] = tenantStates[key] === true && data[key] === true;
+  }
+  return states;
+}
+
+/** Departments whose data the person may see in a department-scoped module. */
+export async function userFeatureDepartments(
+  admin: any,
+  tenantId: string,
+  userId: string,
+  featureKey: string,
+): Promise<string[] | null> {
+  const { data, error } = await admin.rpc("user_feature_departments", {
+    p_tenant_id: tenantId,
+    p_user_id: userId,
+    p_feature_key: featureKey,
+  });
+  if (error || !Array.isArray(data)) return null;
+  return data.filter((id): id is string => typeof id === "string");
+}

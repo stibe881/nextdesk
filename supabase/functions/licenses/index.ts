@@ -1,5 +1,5 @@
 import { type SupabaseContext, withSupabase } from "@supabase/server";
-import { resolveTenantFeatureStates } from "../_shared/tenant-features.ts";
+import { resolveUserFeatureStates } from "../_shared/tenant-features.ts";
 
 const ORIGIN = "https://app.nextdesk.ch";
 const UUID =
@@ -271,7 +271,7 @@ async function authorize(
       "Die Berechtigung für Lizenzen fehlt.",
     );
 
-  const feature = await resolveTenantFeatureStates(admin, tenantId, [
+  const feature = await resolveUserFeatureStates(admin, tenantId, actorId, [
     "contracts.management",
   ]);
   if (!feature)

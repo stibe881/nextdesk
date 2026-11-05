@@ -1,5 +1,5 @@
 import { withSupabase } from "@supabase/server";
-import { resolveTenantFeatureStates } from "../_shared/tenant-features.ts";
+import { resolveUserFeatureStates } from "../_shared/tenant-features.ts";
 import {
   buildInsights,
   type InsightComment,
@@ -751,9 +751,10 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     );
   }
 
-  const featureStates = await resolveTenantFeatureStates(
+  const featureStates = await resolveUserFeatureStates(
     context.supabaseAdmin,
     action.tenantId,
+    actorId,
     ["reporting.service"],
   );
   if (featureStates === null) {
