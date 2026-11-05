@@ -9465,4 +9465,101 @@ legacy_requester_comments_after="$(psql -At -c "
   where id::text like 'f1880000-%'
 " | tr -d '\n')"
 [[ "$legacy_requester_comments_before" == "$legacy_requester_comments_after" ]]
+# Incident clusters (0189): one call clusters the recent readable tickets of
+# the signed-in person with the word-overlap rule of recent_similar_tickets,
+# without duplicate clusters, the largest first and at most p_limit.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_owner constant uuid := 'f1890000-0000-4000-8000-000000000001';
+  v_stranger constant uuid := 'f1890000-0000-4000-8000-000000000002';
+  v_tenant uuid;
+  v_open uuid;
+  v_priority uuid;
+  v_department uuid;
+  v_vpn uuid[];
+  v_count integer;
+  v_first record;
+  v_index integer;
+begin
+  if has_function_privilege('anon', 'public.recent_incident_clusters(uuid, timestamptz, integer, integer)', 'execute')
+     or not has_function_privilege('authenticated', 'public.recent_incident_clusters(uuid, timestamptz, integer, integer)', 'execute')
+     or not has_function_privilege('service_role', 'public.recent_incident_clusters(uuid, timestamptz, integer, integer)', 'execute') then
+    raise exception 'recent_incident_clusters grants are wrong';
+  end if;
+  insert into auth.users (id) values (v_owner), (v_stranger);
+  v_tenant := public.provision_personal_workspace(v_owner, 'stoerfall@example.ch', 'Störfallteam');
+  select id into v_department from public.departments where tenant_id = v_tenant limit 1;
+  select id into v_open from public.ticket_statuses where tenant_id = v_tenant and not is_closed order by sort_order limit 1;
+  select id into v_priority from public.ticket_priorities where tenant_id = v_tenant limit 1;
+
+  for v_index in 1..6 loop
+    insert into public.tickets (tenant_id, department_id, ticket_number, subject, description, status_id, priority_id, requester_id, created_at)
+    values (v_tenant, v_department, 'S-2026-0000' || v_index, 'VPN Verbindung bricht ab', 'Das VPN trennt die Verbindung im Homeoffice', v_open, v_priority, v_owner, now() - (v_index || ' minutes')::interval)
+    returning array_append(coalesce(v_vpn, array[]::uuid[]), id) into v_vpn;
+  end loop;
+  for v_index in 1..5 loop
+    insert into public.tickets (tenant_id, department_id, ticket_number, subject, description, status_id, priority_id, requester_id, created_at)
+    values (v_tenant, v_department, 'S-2026-0001' || v_index, 'Drucker druckt nicht', 'Der Drucker im Büro druckt keine Seiten', v_open, v_priority, v_owner, now() - ((10 + v_index) || ' minutes')::interval);
+  end loop;
+  insert into public.tickets (tenant_id, department_id, ticket_number, subject, description, status_id, priority_id, requester_id, created_at)
+  values
+    (v_tenant, v_department, 'S-2026-00021', 'Passwort vergessen', 'Anmeldung klappt nicht', v_open, v_priority, v_owner, now()),
+    (v_tenant, v_department, 'S-2026-00022', 'Monitor flackert', 'Bildschirm flackert', v_open, v_priority, v_owner, now()),
+    -- Outside the window: no member.
+    (v_tenant, v_department, 'S-2026-00023', 'VPN Verbindung bricht ab', 'VPN trennt die Verbindung', v_open, v_priority, v_owner, now() - interval '5 hours');
+
+  perform set_config('request.jwt.claim.sub', v_owner::text, true);
+  select count(*) into v_count from public.recent_incident_clusters(v_tenant, now() - interval '2 hours');
+  if v_count <> 2 then
+    raise exception 'recent_incident_clusters returned % clusters instead of two', v_count;
+  end if;
+  select * into v_first from public.recent_incident_clusters(v_tenant, now() - interval '2 hours') limit 1;
+  if v_first.ticket_count <> 6 or v_first.subject <> 'VPN Verbindung bricht ab'
+     or cardinality(v_first.ticket_ids) <> 6
+     or not (v_first.ticket_ids @> v_vpn and v_vpn @> v_first.ticket_ids)
+     or jsonb_array_length(v_first.tickets) <> 6
+     or v_first.ticket_id <> v_first.ticket_ids[1] then
+    raise exception 'The largest incident cluster is wrong: %', row_to_json(v_first);
+  end if;
+  -- No ticket is part of two clusters.
+  select count(*) - count(distinct member) into v_count
+  from public.recent_incident_clusters(v_tenant, now() - interval '2 hours') clusters,
+    unnest(clusters.ticket_ids) member;
+  if v_count <> 0 then
+    raise exception 'recent_incident_clusters returned duplicate members';
+  end if;
+  select count(*) into v_count from public.recent_incident_clusters(v_tenant, now() - interval '2 hours', 5, 1);
+  if v_count <> 1 then
+    raise exception 'recent_incident_clusters ignored p_limit';
+  end if;
+  select count(*) into v_count from public.recent_incident_clusters(v_tenant, now() - interval '2 hours', 6, 3);
+  if v_count <> 1 then
+    raise exception 'recent_incident_clusters ignored p_min_size (% clusters)', v_count;
+  end if;
+  select count(*) into v_count from public.recent_incident_clusters(v_tenant, now() - interval '2 hours', 7, 3);
+  if v_count <> 0 then
+    raise exception 'recent_incident_clusters reported a cluster below p_min_size';
+  end if;
+  -- Merged tickets are no members.
+  update public.tickets set merged_into_ticket_id = v_vpn[1] where id = v_vpn[6];
+  select ticket_count into v_count from public.recent_incident_clusters(v_tenant, now() - interval '2 hours')
+  where subject = 'VPN Verbindung bricht ab';
+  if v_count is distinct from 5 then
+    raise exception 'A merged ticket was counted in a cluster (% members)', v_count;
+  end if;
+
+  perform set_config('request.jwt.claim.sub', v_stranger::text, true);
+  if exists (select 1 from public.recent_incident_clusters(v_tenant, now() - interval '2 hours')) then
+    raise exception 'recent_incident_clusters answered a person outside the tenant';
+  end if;
+  perform set_config('request.jwt.claim.sub', '', true);
+  if exists (select 1 from public.recent_incident_clusters(v_tenant, now() - interval '2 hours')) then
+    raise exception 'recent_incident_clusters answered without a signed-in person';
+  end if;
+end;
+$$;
+rollback;
+SQL
 echo "PostgreSQL 16 migration and RLS integration checks passed."
