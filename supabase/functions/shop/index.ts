@@ -1,5 +1,9 @@
 import { withSupabase } from "@supabase/server";
 import {
+  resolveUserFeatureStates,
+  userFeatureDepartments,
+} from "../_shared/tenant-features.ts";
+import {
   isRecord,
   isUuid,
   json,
@@ -196,6 +200,8 @@ async function permission(
   return data === true;
 }
 
+const SHOP_FEATURE = "self_service.shop";
+
 async function requireShop(admin: Admin, actorId: string, tenantId: string) {
   const [{ data: membership }, { data: enabled, error }] = await Promise.all([
     admin
@@ -221,12 +227,29 @@ async function requireShop(admin: Admin, actorId: string, tenantId: string) {
       "Der Shop ist in diesem Arbeitsbereich nicht aktiviert.",
     );
   }
-  const [canOrder, canFulfill, canManage] = await Promise.all([
-    permission(admin, actorId, tenantId, "shop.order"),
-    permission(admin, actorId, tenantId, "shop.fulfill"),
-    permission(admin, actorId, tenantId, "shop.manage"),
-  ]);
-  return { canOrder, canFulfill, canManage };
+  // Ordering is open as long as the shop is on in at least one department;
+  // fulfilling and managing need the shop to be on in one's own department.
+  const [canOrder, canFulfill, canManage, anyDepartment, personal] =
+    await Promise.all([
+      permission(admin, actorId, tenantId, "shop.order"),
+      permission(admin, actorId, tenantId, "shop.fulfill"),
+      permission(admin, actorId, tenantId, "shop.manage"),
+      resolveUserFeatureStates(admin, tenantId, actorId, [SHOP_FEATURE]),
+      userFeatureDepartments(admin, tenantId, actorId, SHOP_FEATURE),
+    ]);
+  if (anyDepartment?.[SHOP_FEATURE] !== true) {
+    throw new HttpError(
+      403,
+      "shop_disabled",
+      "Der Shop ist in diesem Arbeitsbereich nicht aktiviert.",
+    );
+  }
+  const ownDepartment = (personal?.length ?? 0) > 0;
+  return {
+    canOrder,
+    canFulfill: canFulfill && ownDepartment,
+    canManage: canManage && ownDepartment,
+  };
 }
 
 async function names(admin: Admin, ids: (string | null | undefined)[]) {
@@ -570,7 +593,10 @@ async function listCatalog(
       availability(admin, tenantId, itemIds),
       imageUrls(admin, tenantId, itemIds),
       signedPaths(admin, ownPaths),
-      admin.from("shop_categories").select("id, name").eq("tenant_id", tenantId),
+      admin
+        .from("shop_categories")
+        .select("id, name")
+        .eq("tenant_id", tenantId),
       borrowedQuantities(admin, tenantId, ownStockIds),
     ]);
   const categoryNameById = new Map<string, string>(
@@ -1078,8 +1104,9 @@ async function listCategories(admin: Admin, tenantId: string) {
   const counts = new Map<string, number>();
   for (const item of (items ?? []) as Row[]) {
     const ids = new Set<string>(
-      (Array.isArray(item.category_ids) ? item.category_ids : [])
-        .filter((id): id is string => typeof id === "string"),
+      (Array.isArray(item.category_ids) ? item.category_ids : []).filter(
+        (id): id is string => typeof id === "string",
+      ),
     );
     if (typeof item.category_id === "string") ids.add(item.category_id);
     for (const id of ids) counts.set(id, (counts.get(id) ?? 0) + 1);
@@ -1341,7 +1368,8 @@ async function saveCatalogItem(
   }
   if (
     optionItemIds === null ||
-    (Array.isArray(rawOptions) && optionItemIds.length !== new Set(rawOptions).size) ||
+    (Array.isArray(rawOptions) &&
+      optionItemIds.length !== new Set(rawOptions).size) ||
     optionItemIds.length > 10 ||
     (isUuid(input.id) && optionItemIds.includes(input.id))
   ) {
@@ -1696,7 +1724,9 @@ const securedHandler = withSupabase(
           // bestellt (dort ist er freiwillig).
           const reasonText = text(body.reason, 500);
           const reason =
-            reasonText && Array.from(reasonText).length >= 3 ? reasonText : null;
+            reasonText && Array.from(reasonText).length >= 3
+              ? reasonText
+              : null;
           // Ausleihartikel mit eigenem Bestand: nicht mehr ausleihen als frei.
           {
             const wanted = new Map<string, number>();

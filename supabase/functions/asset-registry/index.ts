@@ -1,5 +1,5 @@
 import { withSupabase, type SupabaseContext } from "@supabase/server";
-import { resolveTenantFeatureStates } from "../_shared/tenant-features.ts";
+import { resolveUserFeatureStates } from "../_shared/tenant-features.ts";
 
 const ALLOWED_ORIGIN = "https://app.nextdesk.ch";
 const MAX_REQUEST_BYTES = 32 * 1024;
@@ -833,9 +833,10 @@ const securedHandler = withSupabase(
           "Die Anfrage enthält ungültige oder unbekannte Felder.",
         );
       await requireTenantMember(context.supabase, action.tenantId);
-      const featureStates = await resolveTenantFeatureStates(
+      const featureStates = await resolveUserFeatureStates(
         context.supabaseAdmin,
         action.tenantId,
+        context.userClaims.id,
         ["assets.management"],
       );
       if (featureStates === null)
