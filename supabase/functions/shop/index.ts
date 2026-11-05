@@ -1291,6 +1291,77 @@ async function deleteCategory(admin: Admin, tenantId: string, id: string) {
   if (deleteError) throw databaseError(deleteError);
 }
 
+/**
+ * Deletes an article. Orders keep their history (each line stores the article
+ * name). An article with open order lines cannot be deleted; it can be hidden.
+ */
+async function deleteCatalogItem(
+  admin: Admin,
+  tenantId: string,
+  actorId: string,
+  itemId: string,
+) {
+  const paths = await catalogItemPaths(admin, tenantId, itemId);
+  const { count, error: openError } = await admin
+    .from("shop_order_lines")
+    .select("id", { count: "exact", head: true })
+    .eq("tenant_id", tenantId)
+    .eq("catalog_item_id", itemId)
+    .in("status", ["open", "reserved", "backorder"]);
+  if (openError) throw databaseError(openError);
+  if ((count ?? 0) > 0) {
+    throw new HttpError(
+      409,
+      "item_has_open_orders",
+      "Der Artikel hat offene Bestellungen. Blende ihn aus, bis sie erledigt sind.",
+    );
+  }
+  // Outstanding loans keep the article until the device is back.
+  const { count: loans, error: loanError } = await admin
+    .from("shop_order_lines")
+    .select("id", { count: "exact", head: true })
+    .eq("tenant_id", tenantId)
+    .eq("catalog_item_id", itemId)
+    .eq("kind", "loan")
+    .eq("status", "issued");
+  if (loanError) throw databaseError(loanError);
+  if ((loans ?? 0) > 0) {
+    throw new HttpError(
+      409,
+      "item_on_loan",
+      "Der Artikel ist noch ausgeliehen. Blende ihn aus, bis er zurück ist.",
+    );
+  }
+  // Drop it from the "Dazu bestellen" lists of other articles.
+  const { data: referencing, error: refError } = await admin
+    .from("shop_catalog_items")
+    .select("id, option_item_ids")
+    .eq("tenant_id", tenantId)
+    .contains("option_item_ids", [itemId]);
+  if (refError) throw databaseError(refError);
+  for (const row of (referencing ?? []) as Row[]) {
+    const ids = Array.isArray(row.option_item_ids) ? row.option_item_ids : [];
+    const { error } = await admin
+      .from("shop_catalog_items")
+      .update({
+        option_item_ids: ids.filter((id: unknown) => id !== itemId),
+      })
+      .eq("tenant_id", tenantId)
+      .eq("id", row.id);
+    if (error) throw databaseError(error);
+  }
+  const { error } = await admin
+    .from("shop_catalog_items")
+    .delete()
+    .eq("tenant_id", tenantId)
+    .eq("id", itemId);
+  if (error) throw databaseError(error);
+  if (paths.length > 0) {
+    await admin.storage.from(IMAGE_BUCKET).remove(paths);
+  }
+  await audit(admin, tenantId, actorId, "shop.catalog.item_deleted", itemId);
+}
+
 async function saveCatalogItem(
   admin: Admin,
   tenantId: string,
@@ -1593,6 +1664,22 @@ const securedHandler = withSupabase(
           }
           const id = await saveCatalogItem(admin, tenantId, actorId, body.item);
           return json(request, { data: { id } });
+        }
+        case "deleteCatalogItem": {
+          if (!access.canManage || !isUuid(body.itemId)) {
+            throw new HttpError(
+              403,
+              "forbidden",
+              "Für diese Aktion fehlt die Berechtigung.",
+            );
+          }
+          await deleteCatalogItem(
+            admin,
+            tenantId,
+            actorId,
+            body.itemId.toLowerCase(),
+          );
+          return json(request, { data: { deleted: true } });
         }
         case "listCategories": {
           return json(request, {

@@ -239,6 +239,8 @@ export const shopApi = {
     }).then((data) => data.category),
   deleteCategory: (tenantId: string, categoryId: string) =>
     call<{ deleted: true }>({ type: "deleteCategory", tenantId, categoryId }),
+  deleteItem: (tenantId: string, itemId: string) =>
+    call<{ deleted: true }>({ type: "deleteCatalogItem", tenantId, itemId }),
   addImage: (
     tenantId: string,
     itemId: string,
