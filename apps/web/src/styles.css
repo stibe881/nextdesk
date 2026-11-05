@@ -19778,3 +19778,31 @@ html:has(.embed-status-badge) body {
   align-items: center;
   gap: 10px;
 }
+
+/* Lager: Verknüpfung mit dem Shop */
+.inventory__shop-badge {
+  display: inline-block;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--success-soft);
+  color: var(--success);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.inventory__shop-badge--hidden {
+  background: var(--surface-subtle);
+  color: var(--muted);
+}
+
+.inventory__shop-offer {
+  min-height: 32px;
+  padding: 4px 10px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.inventory__muted {
+  color: var(--muted);
+}

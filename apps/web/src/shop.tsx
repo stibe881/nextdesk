@@ -1858,6 +1858,8 @@ type Draft = {
 };
 
 const MAX_IMAGES = 5;
+/** Select value: create the stock article together with the shop article. */
+const NEW_STOCK_ITEM = "__new__";
 const IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
 const MAX_IMAGE_BYTES = 3 * 1024 * 1024;
 
@@ -2276,7 +2278,11 @@ function CatalogEditor({
             : null,
         // Ausleihartikel haben keinen Lagerartikel, sondern eine eigene Anzahl.
         inventoryItemId:
-          draft.kind === "loan" ? null : draft.inventoryItemId || null,
+          draft.kind === "loan" || draft.inventoryItemId === NEW_STOCK_ITEM
+            ? null
+            : draft.inventoryItemId || null,
+        createInventoryItem:
+          draft.kind !== "loan" && draft.inventoryItemId === NEW_STOCK_ITEM,
         loanQuantity: draft.kind === "loan" ? Number(draft.loanQuantity) : null,
         optionItemIds: draft.optionItemIds,
         active: draft.active,
@@ -2884,6 +2890,9 @@ function CatalogEditor({
                   value={draft.inventoryItemId}
                 >
                   <option value="">Kein Lagerartikel – wird beschafft</option>
+                  <option value={NEW_STOCK_ITEM}>
+                    + Neu im Lager anlegen (gleicher Name und Artikelnummer)
+                  </option>
                   {inventory.map((option) => (
                     <option key={option.id} value={option.id}>
                       {option.name} ({option.articleNumber})
