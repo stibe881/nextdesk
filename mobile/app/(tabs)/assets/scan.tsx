@@ -1,10 +1,11 @@
 import { Ionicons } from "@expo/vector-icons";
 import { CameraView, useCameraPermissions } from "expo-camera";
-import { useRouter } from "expo-router";
-import { useCallback, useState } from "react";
+import { useFocusEffect, useRouter } from "expo-router";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   ActivityIndicator,
+  AppState,
   Platform,
   Pressable,
   Text,
@@ -45,6 +46,32 @@ export default function AssetScanScreen() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const wideLayout = width >= 768;
+  // Die Kamera läuft nur, solange dieser Bildschirm sichtbar ist und die App
+  // im Vordergrund ist. Tabs bleiben sonst im Hintergrund aktiv, und der
+  // Scanner würde weiter Codes lesen und vibrieren.
+  const [screenFocused, setScreenFocused] = useState(true);
+  const [appActive, setAppActive] = useState(
+    AppState.currentState === "active",
+  );
+  // Derselbe Code wird nicht bei jedem Kamerabild erneut ausgewertet.
+  const lastScan = useRef<{ code: string; at: number } | null>(null);
+
+  useFocusEffect(
+    useCallback(() => {
+      setScreenFocused(true);
+      lastScan.current = null;
+      return () => setScreenFocused(false);
+    }, []),
+  );
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (state) => {
+      setAppActive(state === "active");
+    });
+    return () => subscription.remove();
+  }, []);
+
+  const scannerActive = screenFocused && appActive;
 
   const resolveCode = useCallback(
     async (rawCode: string) => {
@@ -146,15 +173,35 @@ export default function AssetScanScreen() {
           <View
             style={[styles.cameraShell, wideLayout && styles.cameraShellWide]}
           >
-            <CameraView
-              barcodeScannerSettings={{
-                barcodeTypes: ["qr", "code128", "code39", "ean13", "ean8"],
-              }}
-              onBarcodeScanned={
-                busy ? undefined : ({ data }) => void resolveCode(data)
-              }
-              style={styles.camera}
-            />
+            {scannerActive ? (
+              <CameraView
+                barcodeScannerSettings={{
+                  barcodeTypes: ["qr", "code128", "code39", "ean13", "ean8"],
+                }}
+                active={scannerActive}
+                onBarcodeScanned={
+                  busy || !scannerActive
+                    ? undefined
+                    : ({ data }) => {
+                        const code = data.trim();
+                        const now = Date.now();
+                        const previous = lastScan.current;
+                        if (
+                          previous &&
+                          previous.code === code &&
+                          now - previous.at < 4000
+                        ) {
+                          return;
+                        }
+                        lastScan.current = { code, at: now };
+                        void resolveCode(code);
+                      }
+                }
+                style={styles.camera}
+              />
+            ) : (
+              <View style={styles.camera} />
+            )}
             <View pointerEvents="none" style={styles.overlay}>
               <View style={styles.scanFrame} />
               <Text style={styles.cameraHint}>
