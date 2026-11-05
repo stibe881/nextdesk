@@ -306,11 +306,19 @@ function formatDueAt(dueAt: string | null): {
   const difference = Date.parse(dueAt) - Date.now();
   if (difference <= 0) return { label: "SLA überfällig", risk: "kritisch" };
   const minutes = Math.ceil(difference / 60_000);
-  const hours = Math.floor(minutes / 60);
   return {
-    label: `SLA in ${hours > 0 ? `${hours} h ` : ""}${minutes % 60} min`,
+    label: `SLA in ${formatSlaRemaining(minutes)}`,
     risk: minutes <= 60 ? "kritisch" : minutes <= 240 ? "warnung" : "ok",
   };
+}
+
+/** Remaining SLA time in one unit: minutes below 1 h, hours below 24 h, else days. */
+export function formatSlaRemaining(minutes: number): string {
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} h`;
+  const days = Math.floor(hours / 24);
+  return days === 1 ? "1 Tag" : `${days} Tagen`;
 }
 
 function normaliseEvent(eventType: string): string {

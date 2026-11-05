@@ -1,5 +1,6 @@
 import { expect, test } from "vitest";
 import {
+  formatSlaRemaining,
   isAssignedToCurrentUser,
   ticketAgentsFromResponse,
   ticketListRpcArguments,
@@ -69,4 +70,12 @@ test("accepts queue departments only from the server-authorized agent directory"
       },
     }),
   ).toBeNull();
+});
+
+test("shows SLA time left in minutes, hours or days", () => {
+  expect(formatSlaRemaining(42)).toBe("42 min");
+  expect(formatSlaRemaining(60)).toBe("1 h");
+  expect(formatSlaRemaining(23 * 60 + 59)).toBe("23 h");
+  expect(formatSlaRemaining(24 * 60)).toBe("1 Tag");
+  expect(formatSlaRemaining(99 * 60 + 54)).toBe("4 Tagen");
 });
