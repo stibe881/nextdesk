@@ -48,6 +48,10 @@ const shopMigrationPath = new URL(
   "../supabase/migrations/0154_self_service_shop.sql",
   import.meta.url,
 );
+const serviceTasksMigrationPath = new URL(
+  "../supabase/migrations/0173_service_tasks.sql",
+  import.meta.url,
+);
 const catalog = await readFile(catalogPath, "utf8");
 const migrations = await Promise.all([
   readFile(baseMigrationPath, "utf8"),
@@ -61,6 +65,7 @@ const migrations = await Promise.all([
   readFile(contractsMigrationPath, "utf8"),
   readFile(inventoryMigrationPath, "utf8"),
   readFile(shopMigrationPath, "utf8"),
+  readFile(serviceTasksMigrationPath, "utf8"),
 ]);
 const migration = migrations.join("\n");
 
