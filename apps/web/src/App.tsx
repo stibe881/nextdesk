@@ -3525,6 +3525,10 @@ function AuthenticatedApp() {
     if (item.label === "Serviceaufgaben") {
       return isFeatureEnabled("service.tasks") && canReadServiceTasks;
     }
+    if (item.label === "Raumplanung") return isFeatureEnabled("event.spaces");
+    if (item.label === "Eintritte") {
+      return isFeatureEnabled("onboarding.entries");
+    }
     return true;
   });
   const requesterSections = requesterNavigationSections(featureSections);

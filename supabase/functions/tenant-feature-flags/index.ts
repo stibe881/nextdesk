@@ -18,6 +18,8 @@ const KNOWN_FEATURE_KEYS = new Set([
   "contracts.management",
   "self_service.shop",
   "service.tasks",
+  "event.spaces",
+  "onboarding.entries",
   "experience.workspace",
   "portal.self-service",
   "ai.assist",
