@@ -205,3 +205,53 @@ Deno.test(
     );
   },
 );
+
+Deno.test(
+  "knowledge article images stay private, checked and tenant-bound",
+  () => {
+    assert(
+      source.includes('const IMAGE_BUCKET = "knowledge-article-images"') &&
+        source.includes("createSignedUrls(paths, IMAGE_URL_TTL_SECONDS)") &&
+        source.includes('.from("knowledge_article_images")') &&
+        source.includes('.eq("tenant_id", tenantId)'),
+      "Image references must resolve to signed URLs of the same tenant only.",
+    );
+    assert(
+      source.includes("decodeArticleImage(action.data, action.contentType)") &&
+        source.includes('ascii(8, 12) === "WEBP"') &&
+        source.includes('ascii(0, 6) === "GIF89a"') &&
+        source.includes("bytes.length > MAX_IMAGE_BYTES"),
+      "Uploads must match their declared type and stay within 5 MB.",
+    );
+    assert(
+      source.includes('action.type === "uploadArticleImage" ||') &&
+        source.includes(
+          "`${action.tenantId}/${id}.${IMAGE_EXTENSIONS[action.contentType]}`",
+        ),
+      "Uploads need the article editing right and land in the tenant folder.",
+    );
+    assert(
+      source.includes("MAX_IMAGE_REQUEST_BYTES") &&
+        source.includes('value.type === "uploadArticleImage"') &&
+        source.includes('code: "payload_too_large"'),
+      "Only image uploads may exceed the normal request size.",
+    );
+  },
+);
+
+Deno.test("articles and collections can be deleted within the scope", () => {
+  assert(
+    source.includes('action.type === "deleteArticle" ||') &&
+      source.includes('"knowledge.article.deleted"') &&
+      source.includes(
+        "removeUnreferencedImages(admin, action.tenantId, imageIds)",
+      ),
+    "Article deletion must be authorized, audited and clean up unused images.",
+  );
+  assert(
+    source.includes('action.type === "deleteCollection" ||') &&
+      source.includes('.eq("parent_id", collection.id)') &&
+      source.includes('"knowledge.collection.deleted"'),
+    "Collection deletion must remove subcategories first and be audited.",
+  );
+});

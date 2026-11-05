@@ -4,6 +4,8 @@ import {
   useMemo,
   useRef,
   useState,
+  type ClipboardEvent as ReactClipboardEvent,
+  type DragEvent as ReactDragEvent,
   type FormEvent,
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
@@ -17,6 +19,8 @@ import {
 import {
   articleMatchesKnowledgeCollectionFilter,
   formatKnowledgeCollectionPaths,
+  knowledgeCollectionDeletionImpact,
+  knowledgeCollectionDeletionQuestion,
   knowledgeTopicCategories,
   knowledgeTopicSubcategories,
   resolveKnowledgeTopicSelection,
@@ -33,6 +37,20 @@ import {
   knowledgeEditorDialogTabIndex,
   shouldCloseKnowledgeEditor,
 } from "./lib/knowledge-editor-dialog";
+import {
+  fileToBase64,
+  prepareKnowledgeImage,
+} from "./lib/knowledge-image-prepare";
+import {
+  insertMarkdownBlock,
+  KNOWLEDGE_IMAGE_TYPES,
+  knowledgeImageFiles,
+  knowledgeImageUrlTransform,
+  parseKnowledgeImageUrls,
+  parseUploadedKnowledgeImage,
+  type KnowledgeImageUrls,
+  type UploadedKnowledgeImage,
+} from "./lib/knowledge-images";
 import { supabase } from "./lib/supabase";
 
 export type KnowledgeBaseProps = {
@@ -46,7 +64,7 @@ type ArticleVisibility = "internal" | "external";
 type ArticleStatus = "draft" | "review" | "published" | "archived";
 type ArticleListFilter = "all" | ArticleVisibility | "draft";
 type EditableArticleStatus = Exclude<ArticleStatus, "archived">;
-type SaveState = "save" | "archive" | "review" | "decision" | null;
+type SaveState = "save" | "archive" | "delete" | "review" | "decision" | null;
 type CollectionCreatorKind = "root" | "child";
 
 type KnowledgeCollection = {
@@ -90,12 +108,15 @@ type ArticleListItem = {
 type ArticleList = {
   articles: ArticleListItem[];
   departments: KnowledgeDepartment[];
+  imageUrls: KnowledgeImageUrls;
 };
 
 type ArticleDetail = {
   article: KnowledgeArticle;
   revision: KnowledgeArticleRevision;
 };
+
+type ArticleDetailResponse = ArticleDetail & { imageUrls: KnowledgeImageUrls };
 
 type ArticleDraft = {
   title: string;
@@ -134,6 +155,26 @@ type ArchiveArticleRequest = {
   articleId: string;
 };
 
+type DeleteArticleRequest = {
+  type: "deleteArticle";
+  tenantId: string;
+  articleId: string;
+};
+
+type DeleteCollectionRequest = {
+  type: "deleteCollection";
+  tenantId: string;
+  collectionId: string;
+};
+
+type UploadArticleImageRequest = {
+  type: "uploadArticleImage";
+  tenantId: string;
+  fileName: string;
+  contentType: string;
+  data: string;
+};
+
 type ListCollectionsRequest = {
   type: "listCollections";
   tenantId: string;
@@ -167,6 +208,9 @@ type KnowledgeBaseRequest =
   | ListArticlesRequest
   | GetArticleRequest
   | ArchiveArticleRequest
+  | DeleteArticleRequest
+  | DeleteCollectionRequest
+  | UploadArticleImageRequest
   | ListCollectionsRequest
   | CreateCollectionRequest
   | UpdateCollectionRequest
@@ -397,6 +441,36 @@ const knowledgeBaseStyles = `
     padding: 14px;
     font: 14px/1.7 var(--font-sans);
     overflow-wrap: anywhere;
+  }
+  .knowledge-base__markdown img {
+    display: block;
+    max-width: 100%;
+    height: auto;
+    margin: 12px 0;
+    border: 1px solid #dfe8ea;
+    border-radius: 6px;
+  }
+  .knowledge-base__image-missing {
+    display: inline-block;
+    border: 1px dashed #c9d8dd;
+    border-radius: 5px;
+    color: #5d6f7a;
+    font-size: 12px;
+    padding: 6px 9px;
+  }
+  .knowledge-base__image-tools {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px 12px;
+  }
+  .knowledge-base__image-tools .knowledge-base__hint {
+    flex: 1 1 240px;
+    margin: 0;
+  }
+  .knowledge-base__image-tools .knowledge-base__message {
+    flex: 1 0 100%;
+    margin: 0;
   }
   .knowledge-base__markdown > :first-child { margin-top: 0; }
   .knowledge-base__markdown > :last-child { margin-bottom: 0; }
@@ -714,22 +788,28 @@ function responseData(value: unknown): Record<string, unknown> {
   return value.data;
 }
 
-function parseArticleDetail(value: unknown): ArticleDetail {
+function parseArticleDetail(value: unknown): ArticleDetailResponse {
   const data = responseData(value);
   const article = parseArticle(data.article);
   const revision = parseRevision(data.revision);
-  if (!article || !revision) {
+  const imageUrls = parseKnowledgeImageUrls(data.imageUrls);
+  if (!article || !revision || !imageUrls) {
     throw new KnowledgeBaseRequestError(
       "Die Artikeldaten sind unvollständig oder ungültig.",
     );
   }
-  return { article, revision };
+  return { article, revision, imageUrls };
 }
 
 function parseArticleList(value: unknown): ArticleList {
   const data = responseData(value);
   const departments = parseKnowledgeDepartments(data.departments);
-  if (!Array.isArray(data.articles) || departments === null) {
+  const imageUrls = parseKnowledgeImageUrls(data.imageUrls);
+  if (
+    !Array.isArray(data.articles) ||
+    departments === null ||
+    imageUrls === null
+  ) {
     throw new KnowledgeBaseRequestError(
       "Die Artikelliste ist unvollständig oder ungültig.",
     );
@@ -752,7 +832,7 @@ function parseArticleList(value: unknown): ArticleList {
     }
     articles.push({ article, revision });
   }
-  return { articles, departments };
+  return { articles, departments, imageUrls };
 }
 
 function parseCollectionList(value: unknown): KnowledgeCollection[] {
@@ -798,6 +878,73 @@ function parseSetArticleCollections(value: unknown): void {
       "Die Einordnung des Artikels wurde nicht bestätigt.",
     );
   }
+}
+
+function parseDeletedArticle(value: unknown): string {
+  const data = responseData(value);
+  if (typeof data.articleId !== "string" || data.deleted !== true) {
+    throw new KnowledgeBaseRequestError(
+      "Die Löschung des Artikels wurde nicht bestätigt.",
+    );
+  }
+  return data.articleId;
+}
+
+function parseDeletedCollection(value: unknown): string[] {
+  const data = responseData(value);
+  const ids = parseCollectionIds(data.deletedCollectionIds);
+  if (
+    typeof data.collectionId !== "string" ||
+    !Array.isArray(data.deletedCollectionIds) ||
+    !ids ||
+    !ids.includes(data.collectionId)
+  ) {
+    throw new KnowledgeBaseRequestError(
+      "Die Löschung der Kategorie wurde nicht bestätigt.",
+    );
+  }
+  return ids;
+}
+
+function parseUploadedImage(value: unknown): UploadedKnowledgeImage {
+  const image = parseUploadedKnowledgeImage(value);
+  if (!image) {
+    throw new KnowledgeBaseRequestError(
+      "Der Bild-Upload wurde nicht bestätigt.",
+    );
+  }
+  return image;
+}
+
+/** Article Markdown with uploaded images (kb-image:) resolved to URLs. */
+function KnowledgeMarkdown({
+  body,
+  imageUrls,
+}: {
+  body: string;
+  imageUrls: KnowledgeImageUrls;
+}) {
+  const urlTransform = useMemo(
+    () => knowledgeImageUrlTransform(imageUrls),
+    [imageUrls],
+  );
+  return (
+    <ReactMarkdown
+      components={{
+        img: ({ src, alt }) =>
+          typeof src === "string" && src ? (
+            <img alt={alt ?? ""} loading="lazy" src={src} />
+          ) : (
+            <span className="knowledge-base__image-missing">
+              {alt ? `Bild «${alt}» nicht verfügbar` : "Bild nicht verfügbar"}
+            </span>
+          ),
+      }}
+      urlTransform={urlTransform}
+    >
+      {body}
+    </ReactMarkdown>
+  );
 }
 
 function parseArchivedArticle(value: unknown): KnowledgeArticle {
@@ -957,6 +1104,11 @@ export function KnowledgeBase({
 }: KnowledgeBaseProps) {
   const [articles, setArticles] = useState<ArticleListItem[]>([]);
   const [departments, setDepartments] = useState<KnowledgeDepartment[]>([]);
+  const [imageUrls, setImageUrls] = useState<KnowledgeImageUrls>({});
+  const [imageUploading, setImageUploading] = useState(false);
+  const [imageError, setImageError] = useState("");
+  const markdownInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const imageInputRef = useRef<HTMLInputElement | null>(null);
   const [searchInput, setSearchInput] = useState("");
   const [activeQuery, setActiveQuery] = useState("");
   const [articleListFilter, setArticleListFilter] =
@@ -1011,7 +1163,8 @@ export function KnowledgeBase({
   );
   const lastArticleCreateRequestId = useRef<number | undefined>(undefined);
 
-  const isBusy = saving !== null || aiPreparing || collectionMutating;
+  const isBusy =
+    saving !== null || aiPreparing || collectionMutating || imageUploading;
   const selectedArticleId = selected?.article.id ?? null;
   const editorPanelRef = useRef<HTMLElement | null>(null);
   const editorTitleInputRef = useRef<HTMLInputElement | null>(null);
@@ -1115,6 +1268,11 @@ export function KnowledgeBase({
   const selectedCategorySupportsSubcategories =
     selectedCategory?.parentId === null;
 
+  const mergeImageUrls = useCallback((urls: KnowledgeImageUrls) => {
+    if (Object.keys(urls).length === 0) return;
+    setImageUrls((current) => ({ ...current, ...urls }));
+  }, []);
+
   const loadArticles = useCallback(
     async (query: string) => {
       const requestVersion = listRequestVersion.current + 1;
@@ -1134,6 +1292,7 @@ export function KnowledgeBase({
         if (listRequestVersion.current !== requestVersion) return;
         setArticles(nextList.articles);
         setDepartments(nextList.departments);
+        mergeImageUrls(nextList.imageUrls);
       } catch (nextError) {
         if (listRequestVersion.current === requestVersion) {
           setArticles([]);
@@ -1150,7 +1309,7 @@ export function KnowledgeBase({
         }
       }
     },
-    [tenantId],
+    [mergeImageUrls, tenantId],
   );
 
   const loadCollections = useCallback(
@@ -1233,6 +1392,8 @@ export function KnowledgeBase({
     setEditingArticleId(null);
     setDraft(EMPTY_DRAFT);
     setRawContent("");
+    setImageUrls({});
+    setImageError("");
     setAiPreparing(false);
     setEditorOpen(false);
     setActiveQuery("");
@@ -1344,6 +1505,7 @@ export function KnowledgeBase({
           parseArticleDetail,
         );
         if (detailRequestVersion.current !== requestVersion) return;
+        mergeImageUrls(detail.imageUrls);
         setSelected(detail);
       } catch (nextError) {
         if (detailRequestVersion.current === requestVersion) {
@@ -1358,7 +1520,7 @@ export function KnowledgeBase({
         }
       }
     },
-    [tenantId],
+    [mergeImageUrls, tenantId],
   );
 
   useEffect(() => {
@@ -1855,6 +2017,7 @@ export function KnowledgeBase({
         }),
         parseArticleDetail,
       );
+      mergeImageUrls(detail.imageUrls);
       if (shouldReplaceCollections) {
         try {
           await invokeKnowledgeBase(
@@ -1961,6 +2124,208 @@ export function KnowledgeBase({
       setError(writeErrorMessage(nextError, "archive"));
     } finally {
       setSaving(null);
+    }
+  }
+
+  async function deleteArticle() {
+    if (!selected) return;
+    const confirmed = window.confirm(
+      `Artikel «${selected.article.title}» endgültig löschen? Das kann nicht rückgängig gemacht werden.`,
+    );
+    if (!confirmed) return;
+
+    const articleId = selected.article.id;
+    setSaving("delete");
+    setError("");
+    setSuccess("");
+    try {
+      await invokeKnowledgeBase(
+        { type: "deleteArticle", tenantId, articleId },
+        parseDeletedArticle,
+      );
+      setArticles((current) =>
+        current.filter(({ article }) => article.id !== articleId),
+      );
+      setSelected(null);
+      if (editingArticleId === articleId) {
+        setEditingArticleId(null);
+        setDraft(EMPTY_DRAFT);
+        setEditorOpen(false);
+      }
+      setSuccess("Der Wissensartikel wurde gelöscht.");
+    } catch (nextError) {
+      setError(
+        nextError instanceof KnowledgeBaseRequestError &&
+          nextError.status === 403
+          ? "Sie dürfen diesen Artikel nicht löschen. Bitte wenden Sie sich an eine zuständige Person mit Verwaltungsberechtigung."
+          : "Der Artikel konnte nicht gelöscht werden. Bitte versuchen Sie es erneut.",
+      );
+    } finally {
+      setSaving(null);
+    }
+  }
+
+  async function uploadImages(files: File[]) {
+    if (files.length === 0 || isBusy) return;
+    // The editor is locked while uploading, so the text cannot change meanwhile.
+    const input = markdownInputRef.current;
+    let body = draft.bodyMarkdown;
+    let selectionStart = input?.selectionStart ?? body.length;
+    let selectionEnd = input?.selectionEnd ?? selectionStart;
+    let inserted = false;
+    setImageUploading(true);
+    setImageError("");
+    const problems: string[] = [];
+    for (const file of files) {
+      try {
+        const prepared = await prepareKnowledgeImage(file);
+        if (
+          !(KNOWLEDGE_IMAGE_TYPES as readonly string[]).includes(prepared.type)
+        ) {
+          throw new Error(
+            `«${file.name}» hat ein nicht unterstütztes Format. Bitte JPG, PNG, WebP oder GIF verwenden.`,
+          );
+        }
+        const uploaded = await invokeKnowledgeBase(
+          {
+            type: "uploadArticleImage",
+            tenantId,
+            fileName: prepared.name,
+            contentType: prepared.type,
+            data: await fileToBase64(prepared),
+          },
+          parseUploadedImage,
+        );
+        if (uploaded.url) mergeImageUrls({ [uploaded.id]: uploaded.url });
+        const next = insertMarkdownBlock(
+          body,
+          selectionStart,
+          selectionEnd,
+          uploaded.markdown,
+        );
+        body = next.text;
+        // The next image follows the previous one.
+        selectionStart = selectionEnd = next.cursor;
+        inserted = true;
+        const nextBody = body;
+        setDraft((current) => ({ ...current, bodyMarkdown: nextBody }));
+      } catch (nextError) {
+        problems.push(
+          nextError instanceof KnowledgeBaseRequestError
+            ? `«${file.name}» konnte nicht hochgeladen werden: ${nextError.message}`
+            : nextError instanceof Error && nextError.message
+              ? nextError.message
+              : `«${file.name}» konnte nicht hochgeladen werden.`,
+        );
+      }
+    }
+    setImageError(problems.join(" "));
+    setImageUploading(false);
+    if (inserted) {
+      const cursor = selectionStart;
+      window.requestAnimationFrame(() => {
+        const textarea = markdownInputRef.current;
+        if (!textarea) return;
+        textarea.focus({ preventScroll: true });
+        textarea.setSelectionRange(cursor, cursor);
+      });
+    }
+  }
+
+  function handleMarkdownPaste(
+    event: ReactClipboardEvent<HTMLTextAreaElement>,
+  ) {
+    const files = knowledgeImageFiles(event.clipboardData.files);
+    if (files.length === 0) return;
+    event.preventDefault();
+    void uploadImages(files);
+  }
+
+  function handleMarkdownDrop(event: ReactDragEvent<HTMLTextAreaElement>) {
+    const files = knowledgeImageFiles(event.dataTransfer.files);
+    if (files.length === 0) return;
+    event.preventDefault();
+    void uploadImages(files);
+  }
+
+  async function deleteCollection(collection: KnowledgeCollection) {
+    if (!collectionAssignmentReady) return;
+    const impact = knowledgeCollectionDeletionImpact(
+      collection.id,
+      activeCollections,
+      articles.map(({ article }) => article),
+    );
+    const confirmed = window.confirm(
+      knowledgeCollectionDeletionQuestion(
+        collection.name,
+        collection.parentId !== null,
+        impact,
+      ),
+    );
+    if (!confirmed) return;
+
+    setCollectionMutating(true);
+    setCollectionActionError("");
+    setCollectionActionMessage("");
+    try {
+      const deletedIds = new Set(
+        await invokeKnowledgeBase(
+          { type: "deleteCollection", tenantId, collectionId: collection.id },
+          parseDeletedCollection,
+        ),
+      );
+      const withoutDeleted = (ids: string[]) =>
+        ids.filter((id) => !deletedIds.has(id));
+      updateCurrentCollections(
+        collections.filter((item) => !deletedIds.has(item.id)),
+      );
+      setArticles((current) =>
+        current.map((item) => ({
+          ...item,
+          article: {
+            ...item.article,
+            collectionIds: withoutDeleted(item.article.collectionIds),
+          },
+        })),
+      );
+      setSelected((current) =>
+        current
+          ? {
+              ...current,
+              article: {
+                ...current.article,
+                collectionIds: withoutDeleted(current.article.collectionIds),
+              },
+            }
+          : current,
+      );
+      setCollectionSelectionSourceIds((current) => withoutDeleted(current));
+      if (deletedIds.has(selectedCategoryId)) {
+        setSelectedCategoryId("");
+        setSelectedSubcategoryId("");
+      } else if (deletedIds.has(selectedSubcategoryId)) {
+        // The article falls back to the remaining category on saving.
+        setSelectedSubcategoryId("");
+        setCollectionSelectionChanged(true);
+      }
+      if (deletedIds.has(articleCategoryFilterId)) {
+        setArticleCategoryFilterId("");
+        setArticleSubcategoryFilterId("");
+      } else if (deletedIds.has(articleSubcategoryFilterId)) {
+        setArticleSubcategoryFilterId("");
+      }
+      setRenamingCollectionId(null);
+      setCollectionActionMessage(
+        collection.parentId === null
+          ? "Die Kategorie wurde gelöscht."
+          : "Die Unterkategorie wurde gelöscht.",
+      );
+    } catch (nextError) {
+      setCollectionActionError(
+        errorMessage(nextError, "Die Kategorie konnte nicht gelöscht werden."),
+      );
+    } finally {
+      setCollectionMutating(false);
     }
   }
 
@@ -2423,7 +2788,10 @@ export function KnowledgeBase({
                     aria-label="Artikelinhalt"
                   >
                     {selected.revision.body ? (
-                      <ReactMarkdown>{selected.revision.body}</ReactMarkdown>
+                      <KnowledgeMarkdown
+                        body={selected.revision.body}
+                        imageUrls={imageUrls}
+                      />
                     ) : (
                       "Dieser Artikel enthält noch keinen Inhalt."
                     )}
@@ -2480,6 +2848,14 @@ export function KnowledgeBase({
                       {saving === "archive"
                         ? "Wird archiviert …"
                         : "Archivieren"}
+                    </button>
+                    <button
+                      className="knowledge-base__button knowledge-base__button--danger"
+                      disabled={isBusy}
+                      onClick={() => void deleteArticle()}
+                      type="button"
+                    >
+                      {saving === "delete" ? "Wird gelöscht …" : "Löschen"}
                     </button>
                   </div>
                 </>
@@ -2747,6 +3123,26 @@ export function KnowledgeBase({
                       Unterkategorie umbenennen
                     </button>
                   ) : null}
+                  {selectedCategory ? (
+                    <button
+                      className="knowledge-base__button knowledge-base__button--danger"
+                      disabled={isBusy || !collectionAssignmentReady}
+                      onClick={() => void deleteCollection(selectedCategory)}
+                      type="button"
+                    >
+                      Kategorie löschen
+                    </button>
+                  ) : null}
+                  {selectedSubcategory ? (
+                    <button
+                      className="knowledge-base__button knowledge-base__button--danger"
+                      disabled={isBusy || !collectionAssignmentReady}
+                      onClick={() => void deleteCollection(selectedSubcategory)}
+                      type="button"
+                    >
+                      Unterkategorie löschen
+                    </button>
+                  ) : null}
                 </div>
 
                 {collectionCreator ? (
@@ -2885,9 +3281,46 @@ export function KnowledgeBase({
                 </button>
               </div>
 
+              <div className="knowledge-base__full-width knowledge-base__image-tools">
+                <button
+                  className="knowledge-base__button"
+                  disabled={isBusy}
+                  onClick={() => imageInputRef.current?.click()}
+                  type="button"
+                >
+                  {imageUploading ? "Bild wird hochgeladen …" : "Bild einfügen"}
+                </button>
+                <input
+                  accept={KNOWLEDGE_IMAGE_TYPES.join(",")}
+                  hidden
+                  multiple
+                  onChange={(event) => {
+                    const files = [...(event.target.files ?? [])];
+                    event.target.value = "";
+                    void uploadImages(files);
+                  }}
+                  ref={imageInputRef}
+                  type="file"
+                />
+                <p className="knowledge-base__hint">
+                  JPG, PNG, WebP oder GIF bis 5 MB; grosse Bilder werden
+                  verkleinert. Bilder können auch in das Textfeld eingefügt oder
+                  hineingezogen werden.
+                </p>
+                {imageError ? (
+                  <p
+                    className="knowledge-base__message knowledge-base__message--error"
+                    role="alert"
+                  >
+                    {imageError}
+                  </p>
+                ) : null}
+              </div>
+
               <label className="knowledge-base__full-width">
                 Markdown-Inhalt
                 <textarea
+                  aria-busy={imageUploading}
                   disabled={isBusy}
                   maxLength={100000}
                   onChange={(event) =>
@@ -2896,6 +3329,13 @@ export function KnowledgeBase({
                       bodyMarkdown: event.target.value,
                     }))
                   }
+                  onDragOver={(event) => {
+                    if (event.dataTransfer.types.includes("Files"))
+                      event.preventDefault();
+                  }}
+                  onDrop={handleMarkdownDrop}
+                  onPaste={handleMarkdownPaste}
+                  ref={markdownInputRef}
                   placeholder={
                     "# Überschrift\n\nBeschreiben Sie hier die Lösung oder den Ablauf in Markdown."
                   }
@@ -2912,7 +3352,10 @@ export function KnowledgeBase({
                 <h3>{previewTitle}</h3>
                 <article className="knowledge-base__markdown knowledge-base__markdown--preview">
                   {draft.bodyMarkdown ? (
-                    <ReactMarkdown>{draft.bodyMarkdown}</ReactMarkdown>
+                    <KnowledgeMarkdown
+                      body={draft.bodyMarkdown}
+                      imageUrls={imageUrls}
+                    />
                   ) : (
                     <p>
                       Beginnen Sie mit einer kurzen Einleitung. Die Vorschau

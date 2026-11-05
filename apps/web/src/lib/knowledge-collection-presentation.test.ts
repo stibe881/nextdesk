@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   articleMatchesKnowledgeCollectionFilter,
   formatKnowledgeCollectionPaths,
+  knowledgeCollectionDeletionImpact,
+  knowledgeCollectionDeletionQuestion,
   knowledgeTopicCategories,
   knowledgeTopicSubcategories,
   resolveKnowledgeTopicSelection,
@@ -350,5 +352,56 @@ describe("Sichtbare Wissensartikelversion", () => {
         null,
       ),
     ).toBe(4);
+  });
+});
+
+describe("Kategorien löschen", () => {
+  const tree = [
+    { active: true, id: "root", name: "Netzwerk", parentId: null, slug: "n" },
+    { active: true, id: "wlan", name: "WLAN", parentId: "root", slug: "w" },
+    { active: true, id: "vpn", name: "VPN", parentId: "root", slug: "v" },
+    { active: true, id: "other", name: "Drucker", parentId: null, slug: "d" },
+  ];
+
+  it("zählt Unterkategorien und betroffene Artikel", () => {
+    expect(
+      knowledgeCollectionDeletionImpact("root", tree, [
+        { collectionIds: ["wlan"] },
+        { collectionIds: ["root", "vpn"] },
+        { collectionIds: ["other"] },
+      ]),
+    ).toEqual({
+      collectionIds: ["root", "wlan", "vpn"],
+      subcategoryCount: 2,
+      articleCount: 2,
+    });
+    expect(
+      knowledgeCollectionDeletionImpact("wlan", tree, [
+        { collectionIds: ["root"] },
+      ]),
+    ).toEqual({
+      collectionIds: ["wlan"],
+      subcategoryCount: 0,
+      articleCount: 0,
+    });
+  });
+
+  it("nennt die Folgen in der Rückfrage", () => {
+    expect(
+      knowledgeCollectionDeletionQuestion("Netzwerk", false, {
+        subcategoryCount: 2,
+        articleCount: 1,
+      }),
+    ).toBe(
+      "Kategorie «Netzwerk» endgültig löschen? Ihre 2 Unterkategorien werden ebenfalls gelöscht. 1 zugeordneter Artikel bleibt erhalten, verliert aber diese Einordnung. Das kann nicht rückgängig gemacht werden.",
+    );
+    expect(
+      knowledgeCollectionDeletionQuestion("WLAN", true, {
+        subcategoryCount: 0,
+        articleCount: 0,
+      }),
+    ).toBe(
+      "Unterkategorie «WLAN» endgültig löschen? Es sind keine Artikel zugeordnet. Das kann nicht rückgängig gemacht werden.",
+    );
   });
 });
