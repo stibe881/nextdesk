@@ -1105,6 +1105,15 @@ function databaseFailure(error: { code?: unknown } | null): never {
   if (code === "23505") {
     throw new HttpError(409, "conflict", "Der Eintrag besteht bereits.");
   }
+  if (code === "ND409") {
+    // upsert_inventory_item (migration 0190): the item belongs to a
+    // department outside the caller's scope.
+    throw new HttpError(
+      409,
+      "article_number_conflict",
+      "Die Artikelnummer ist bereits in einer anderen Abteilung vergeben.",
+    );
+  }
   if (code === "P0002") {
     throw new HttpError(404, "not_found", "Der Eintrag wurde nicht gefunden.");
   }
@@ -3222,6 +3231,7 @@ export function upsertItemRpcParameters(
   itemId: string | null,
   item: StoredItem,
   department?: { departmentId: string | null },
+  allowedDepartmentIds?: readonly string[] | null,
 ): Record<string, JsonValue> {
   return {
     p_actor_id: actorId,
@@ -3244,6 +3254,10 @@ export function upsertItemRpcParameters(
     // visible outside its department.
     p_department_id: department ? department.departmentId : null,
     p_set_department: department !== undefined,
+    // Migration 0190: the database checks the scope on the locked row.
+    p_allowed_department_ids: allowedDepartmentIds
+      ? [...allowedDepartmentIds]
+      : null,
   };
 }
 
@@ -3327,6 +3341,7 @@ async function manage(
         action.operation === "create" ? null : action.itemId!,
         item,
         department,
+        scope.scoped ? scope.departments : null,
       ),
     );
     return json(

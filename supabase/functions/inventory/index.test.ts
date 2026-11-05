@@ -235,6 +235,7 @@ Deno.test(
         p_active: true,
         p_department_id: null,
         p_set_department: false,
+        p_allowed_department_ids: null,
       },
     );
     assertEquals(recordCountLineRpcParameters(TENANT_ID, countLineAction), {
