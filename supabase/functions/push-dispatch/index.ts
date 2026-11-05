@@ -69,6 +69,7 @@ function category(
   | "contract_deadline"
   | "inventory_low_stock"
   | "shop"
+  | "service_task"
   | null {
   if (kind === "ticket.assigned") return "assigned";
   if (kind === "ticket.requester_reply") return "requester_reply";
@@ -86,6 +87,7 @@ function category(
   if (kind === "contract.deadline") return "contract_deadline";
   if (kind === "inventory.low_stock") return "inventory_low_stock";
   if (kind.startsWith("shop.order.")) return "shop";
+  if (kind.startsWith("service_task.")) return "service_task";
   return kind.startsWith("ticket.sla.") ? "sla" : null;
 }
 
@@ -219,8 +221,11 @@ export async function ticketNotificationRecipientAuthorized(
 ): Promise<boolean> {
   if (row.source_type !== "ticket") return true;
   if (!row.ticket_id) {
-    if (row.kind.startsWith("shop.order.")) {
-      // Shop notifications go only to active members of the workspace.
+    if (
+      row.kind.startsWith("shop.order.") ||
+      row.kind.startsWith("service_task.")
+    ) {
+      // Shop and service task notifications go only to active members.
       const { data: membership } = await admin
         .from("tenant_memberships")
         .select("user_id")
@@ -304,8 +309,33 @@ async function deliverSingle(admin: any, row: ClaimRow): Promise<void> {
         : {}),
     };
   }
+  let serviceTask:
+    | {
+        serviceTaskEvent: string;
+        serviceTaskTitle?: string;
+        occurrenceId?: string;
+      }
+    | {} = {};
+  if (preferenceCategory === "service_task" && row.notification_id) {
+    const { data: notification } = await admin
+      .from("ticket_notifications")
+      .select("payload")
+      .eq("id", row.notification_id)
+      .maybeSingle();
+    const payload = notification?.payload ?? {};
+    serviceTask = {
+      serviceTaskEvent: row.kind.slice("service_task.".length),
+      ...(typeof payload.title === "string"
+        ? { serviceTaskTitle: payload.title }
+        : {}),
+      ...(typeof payload.occurrenceId === "string"
+        ? { occurrenceId: payload.occurrenceId }
+        : {}),
+    };
+  }
   const payload = buildApnsPayload({
     ...shop,
+    ...serviceTask,
     kind: payloadKind(row.kind, preferenceCategory),
     tenantId: row.tenant_id,
     notificationId: row.notification_id ?? row.outbox_id,
