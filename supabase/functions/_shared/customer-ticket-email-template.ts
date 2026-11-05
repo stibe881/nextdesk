@@ -115,6 +115,19 @@ function presentation(kind: CustomerTicketEmailKind): EmailPresentation {
   }
 }
 
+/** Mixes a #RRGGBB colour with white; share 0 is white, 1 the colour. */
+function tint(hex: string, share: number): string {
+  const channels = [1, 3, 5].map((index) =>
+    Math.round(
+      255 - (255 - Number.parseInt(hex.slice(index, index + 2), 16)) * share,
+    ),
+  );
+  return `#${channels
+    .map((value) => value.toString(16).padStart(2, "0"))
+    .join("")
+    .toUpperCase()}`;
+}
+
 function messageHtml(value: string, secondaryColor: string): string {
   const paragraphs = value
     .replace(/\r\n?/g, "\n")
@@ -175,9 +188,13 @@ export function renderCustomerTicketEmail(
               </tr>
             </table>
           </td></tr>
-          <tr><td style="padding:30px 32px 6px;">
-            <p style="margin:0 0 18px;color:#607089;font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;line-height:20px;">${escapeHtml(copy.intro)}</p>
-            ${messageHtml(input.text, branding.secondaryColor)}
+          <tr><td style="padding:28px 32px 10px;">
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="border:2px solid ${branding.primaryColor};border-left:6px solid ${branding.primaryColor};border-radius:12px;background:${tint(branding.primaryColor, 0.08)};">
+              <tr><td style="padding:22px 24px 8px;">
+                <p style="margin:0 0 14px;color:${branding.primaryColor};font-family:Arial,Helvetica,sans-serif;font-size:20px;font-weight:700;line-height:27px;mso-line-height-rule:exactly;">${escapeHtml(copy.intro)}</p>
+                ${messageHtml(input.text, branding.secondaryColor)}
+              </td></tr>
+            </table>
           </td></tr>
           ${attachmentNotice}
           <tr><td style="padding:14px 32px 26px;">
