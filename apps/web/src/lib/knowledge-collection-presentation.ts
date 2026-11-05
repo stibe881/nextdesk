@@ -308,3 +308,53 @@ export function visibleKnowledgeArticleRevision(
       : article.currentRevision;
   return isPositiveRevision(fallback) ? fallback : null;
 }
+
+/**
+ * What deleting a category or subcategory affects: its subcategories and the
+ * (visible) articles assigned to it or to one of them.
+ */
+export function knowledgeCollectionDeletionImpact(
+  collectionId: string,
+  collections: readonly KnowledgeCollectionForPresentation[],
+  articles: readonly Pick<KnowledgeArticleForPresentation, "collectionIds">[],
+): { collectionIds: string[]; subcategoryCount: number; articleCount: number } {
+  const subcategoryIds = collections
+    .filter((collection) => collection.parentId === collectionId)
+    .map((collection) => collection.id);
+  const collectionIds = [collectionId, ...subcategoryIds];
+  const affected = new Set(collectionIds);
+  return {
+    collectionIds,
+    subcategoryCount: subcategoryIds.length,
+    articleCount: articles.filter((article) =>
+      article.collectionIds.some((id) => affected.has(id)),
+    ).length,
+  };
+}
+
+/** Confirmation text for deleting a category or subcategory. */
+export function knowledgeCollectionDeletionQuestion(
+  name: string,
+  isSubcategory: boolean,
+  impact: { subcategoryCount: number; articleCount: number },
+): string {
+  const kind = isSubcategory ? "Unterkategorie" : "Kategorie";
+  const parts: string[] = [];
+  if (!isSubcategory) {
+    parts.push(
+      impact.subcategoryCount === 0
+        ? "Sie hat keine Unterkategorien."
+        : impact.subcategoryCount === 1
+          ? "Ihre 1 Unterkategorie wird ebenfalls gelöscht."
+          : `Ihre ${impact.subcategoryCount} Unterkategorien werden ebenfalls gelöscht.`,
+    );
+  }
+  parts.push(
+    impact.articleCount === 0
+      ? "Es sind keine Artikel zugeordnet."
+      : impact.articleCount === 1
+        ? "1 zugeordneter Artikel bleibt erhalten, verliert aber diese Einordnung."
+        : `${impact.articleCount} zugeordnete Artikel bleiben erhalten, verlieren aber diese Einordnung.`,
+  );
+  return `${kind} «${name}» endgültig löschen? ${parts.join(" ")} Das kann nicht rückgängig gemacht werden.`;
+}
