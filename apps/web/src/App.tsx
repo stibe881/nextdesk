@@ -44,6 +44,7 @@ import {
   UserRound,
   Boxes,
   ShoppingBag,
+  ListChecks,
   X,
   type LucideIcon,
 } from "lucide-react";
@@ -163,6 +164,7 @@ import {
 } from "./lib/workplace-first-navigation";
 import { nextExpandedAccordionId } from "./lib/navigation-accordion";
 import { appRedirectUrl, isSupabaseConfigured, supabase } from "./lib/supabase";
+import { loadServiceTaskAccess, ServiceTasks } from "./service-tasks";
 
 type Section =
   | "Übersicht"
@@ -172,6 +174,7 @@ type Section =
   | "Erwähnungen"
   | "Mein Portal"
   | "Services"
+  | "Serviceaufgaben"
   | "Systemstatus"
   | "Assets"
   | "Lager"
@@ -300,6 +303,7 @@ const sections: readonly { label: Section; Icon: LucideIcon }[] =
     { label: "Fälle", Icon: FileWarning },
     { label: "Wissen", Icon: BookOpen },
     { label: "Services", Icon: MonitorCog },
+    { label: "Serviceaufgaben", Icon: ListChecks },
     { label: "Assets", Icon: Boxes },
     { label: "Lager", Icon: Boxes },
     { label: "Systemstatus", Icon: CircleCheck },
@@ -323,7 +327,13 @@ const NAVIGATION_CATEGORIES = [
     heading: "PLANUNG & BETRIEB",
     id: "navigation-category-operations",
     navigationLabel: "Planung und Betrieb",
-    sectionLabels: ["Raumplanung", "Eintritte", "Services", "Systemstatus"],
+    sectionLabels: [
+      "Raumplanung",
+      "Eintritte",
+      "Serviceaufgaben",
+      "Services",
+      "Systemstatus",
+    ],
   },
   {
     heading: "WISSEN & RESSOURCEN",
@@ -1046,6 +1056,19 @@ function notificationPresentation(
           description: `Shop · Bestellung ${orderNumber}`.trim(),
           Icon: ShoppingBag,
           title: shopTitles[notification.kind] ?? "Shop",
+        };
+      }
+      if (notification.kind.startsWith("service_task.")) {
+        const title =
+          notificationPayloadText(notification, "title", 120) ??
+          "Serviceaufgabe";
+        return {
+          description: title,
+          Icon: ListChecks,
+          title:
+            notification.kind === "service_task.overdue"
+              ? "Serviceaufgabe überfällig"
+              : "Serviceaufgabe heute fällig",
         };
       }
       if (notification.kind.startsWith("ticket.sla.")) {
@@ -1919,6 +1942,10 @@ function AuthenticatedApp() {
   const [canManageContracts, setCanManageContracts] = useState(false);
   const [canManageServiceStatus, setCanManageServiceStatus] = useState(false);
   const [canReadReports, setCanReadReports] = useState(false);
+  const [canReadServiceTasks, setCanReadServiceTasks] = useState(false);
+  const [serviceTaskFocusId, setServiceTaskFocusId] = useState<string | null>(
+    null,
+  );
   const [serviceStatusAccessTenantId, setServiceStatusAccessTenantId] =
     useState<string | null>(null);
   const [ticketAccessLoading, setTicketAccessLoading] =
@@ -2482,6 +2509,22 @@ function AuthenticatedApp() {
     );
     return () => window.cancelAnimationFrame(frame);
   }, [keyboardHelpOpen]);
+
+  useEffect(() => {
+    // Serviceaufgaben: visible with the module switched on and at least the
+    // read permission; the function answers with the caller's rights.
+    if (!session || !activeTenant || tenantFeatures["service.tasks"] !== true) {
+      setCanReadServiceTasks(false);
+      return;
+    }
+    let mounted = true;
+    void loadServiceTaskAccess(activeTenant.id).then((serviceTaskAccess) => {
+      if (mounted) setCanReadServiceTasks(serviceTaskAccess?.canRead === true);
+    });
+    return () => {
+      mounted = false;
+    };
+  }, [activeTenant, session, tenantFeatures]);
 
   useEffect(() => {
     if (!supabase || !session || !activeTenant) {
@@ -3066,6 +3109,15 @@ function AuthenticatedApp() {
     } else if (notification.kind.startsWith("shop.order.")) {
       setSection("Shop");
       setNotificationPanelOpen(false);
+    } else if (notification.kind.startsWith("service_task.")) {
+      const occurrenceId = notificationPayloadText(
+        notification,
+        "occurrenceId",
+        64,
+      );
+      setServiceTaskFocusId(occurrenceId);
+      setSection("Serviceaufgaben");
+      setNotificationPanelOpen(false);
     }
   }
 
@@ -3464,6 +3516,9 @@ function AuthenticatedApp() {
       return contractsAvailable;
     }
     if (item.label === "Berichte") return reportsAvailable;
+    if (item.label === "Serviceaufgaben") {
+      return isFeatureEnabled("service.tasks") && canReadServiceTasks;
+    }
     return true;
   });
   const requesterSections = requesterNavigationSections(featureSections);
@@ -3473,6 +3528,7 @@ function AuthenticatedApp() {
       item.label === "Lizenzen" ||
       item.label === "Berichte" ||
       item.label === "Systemstatus" ||
+      item.label === "Serviceaufgaben" ||
       item.label === "Lager",
   );
   const independentlyAvailableEventSpaceSections = eventSpaceNavigationAccess
@@ -3500,6 +3556,7 @@ function AuthenticatedApp() {
       Shop: "self_service.shop",
       Systemstatus: "assets.management",
       Berichte: "reporting.service",
+      Serviceaufgaben: "service.tasks",
       Services: "assets.management",
       "Mein Portal": "requester.portal",
       Wissen: "knowledge.base",
@@ -4700,6 +4757,13 @@ function AuthenticatedApp() {
           activeTenant &&
           isFeatureEnabled("self_service.shop") ? (
           <Shop key={activeTenant.id} tenantId={activeTenant.id} />
+        ) : section === "Serviceaufgaben" && activeTenant ? (
+          <ServiceTasks
+            focusOccurrenceId={serviceTaskFocusId}
+            key={activeTenant.id}
+            onFocusHandled={() => setServiceTaskFocusId(null)}
+            tenantId={activeTenant.id}
+          />
         ) : section === "Raumplanung" && activeTenant ? (
           <EventSpaces
             focusRequestId={
