@@ -9562,4 +9562,71 @@ end;
 $$;
 rollback;
 SQL
+# Inventory scope check (0190): upsert_inventory_item_scoped rejects an item of a
+# department outside p_allowed_department_ids with SQLSTATE ND409.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_owner constant uuid := 'f1900000-0000-4000-8000-000000000001';
+  v_tenant uuid;
+  v_a uuid;
+  v_b uuid;
+  v_item uuid;
+  v_department uuid;
+begin
+  insert into auth.users (id) values (v_owner);
+  v_tenant := public.provision_personal_workspace(v_owner, 'scope0190@example.ch', 'Scope 0190');
+  insert into public.departments (tenant_id, key, name, kind)
+  values (v_tenant, 'abt-a', 'Abteilung A', 'custom') returning id into v_a;
+  insert into public.departments (tenant_id, key, name, kind)
+  values (v_tenant, 'abt-b', 'Abteilung B', 'custom') returning id into v_b;
+  v_item := public.upsert_inventory_item_scoped(
+    p_actor_id => v_owner, p_tenant_id => v_tenant,
+    p_client_request_id => 'f1900000-0000-4000-8000-000000000101', p_item_id => null,
+    p_article_number => 'scope-1', p_name => 'Monitor', p_category => 'Zubehör',
+    p_unit => 'stk', p_tracking_mode => 'quantity', p_minimum_quantity => 0,
+    p_target_quantity => 0, p_manufacturer => null, p_model => null, p_supplier => null,
+    p_note => null, p_active => true, p_department_id => v_a, p_set_department => true,
+    p_allowed_department_ids => array[v_a]);
+  -- A create with the same article number from department B is refused.
+  begin
+    perform public.upsert_inventory_item_scoped(
+      p_actor_id => v_owner, p_tenant_id => v_tenant,
+      p_client_request_id => 'f1900000-0000-4000-8000-000000000102', p_item_id => null,
+      p_article_number => 'scope-1', p_name => 'Monitor B', p_category => 'Zubehör',
+      p_unit => 'stk', p_tracking_mode => 'quantity', p_minimum_quantity => 0,
+      p_target_quantity => 0, p_manufacturer => null, p_model => null, p_supplier => null,
+      p_note => null, p_active => true, p_department_id => v_b, p_set_department => true,
+      p_allowed_department_ids => array[v_b]);
+    raise exception 'An item of another department was overwritten';
+  exception when sqlstate 'ND409' then null;
+  end;
+  select department_id into v_department from public.inventory_items where id = v_item;
+  if v_department is distinct from v_a then
+    raise exception 'The refused create changed the department';
+  end if;
+  -- Within the scope, or unscoped (null), the update still works.
+  perform public.upsert_inventory_item_scoped(
+    p_actor_id => v_owner, p_tenant_id => v_tenant,
+    p_client_request_id => 'f1900000-0000-4000-8000-000000000103', p_item_id => v_item,
+    p_article_number => 'scope-1', p_name => 'Monitor 27', p_category => 'Zubehör',
+    p_unit => 'stk', p_tracking_mode => 'quantity', p_minimum_quantity => 0,
+    p_target_quantity => 0, p_manufacturer => null, p_model => null, p_supplier => null,
+    p_note => null, p_active => true, p_allowed_department_ids => array[v_a, v_b]);
+  perform public.upsert_inventory_item_scoped(
+    p_actor_id => v_owner, p_tenant_id => v_tenant,
+    p_client_request_id => 'f1900000-0000-4000-8000-000000000104', p_item_id => v_item,
+    p_article_number => 'scope-1', p_name => 'Monitor 27 Zoll', p_category => 'Zubehör',
+    p_unit => 'stk', p_tracking_mode => 'quantity', p_minimum_quantity => 0,
+    p_target_quantity => 0, p_manufacturer => null, p_model => null, p_supplier => null,
+    p_note => null, p_active => true);
+  if (select name from public.inventory_items where id = v_item) <> 'Monitor 27 Zoll' then
+    raise exception 'Scoped or unscoped edits were not stored';
+  end if;
+end
+$$;
+rollback;
+SQL
+
 echo "PostgreSQL 16 migration and RLS integration checks passed."

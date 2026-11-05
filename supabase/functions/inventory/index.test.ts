@@ -79,7 +79,7 @@ Deno.test(
   () => {
     assertEquals(INVENTORY_RPC_NAMES, {
       upsertLocation: "upsert_inventory_location",
-      upsertItem: "upsert_inventory_item",
+      upsertItem: "upsert_inventory_item_scoped",
       postMovement: "post_inventory_movement",
       createReservation: "create_inventory_reservation",
       releaseReservation: "release_inventory_reservation",
@@ -235,6 +235,7 @@ Deno.test(
         p_active: true,
         p_department_id: null,
         p_set_department: false,
+        p_allowed_department_ids: null,
       },
     );
     assertEquals(recordCountLineRpcParameters(TENANT_ID, countLineAction), {
