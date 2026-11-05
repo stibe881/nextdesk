@@ -1,8 +1,16 @@
 import { withSupabase } from "@supabase/server";
 import { resolveTenantFeatureStates } from "../_shared/tenant-features.ts";
+import {
+  applyDepartmentScope,
+  type DepartmentScope,
+  departmentVisible,
+  loadDepartmentScope,
+  resolveRecordDepartment,
+} from "../_shared/department-scope.ts";
 
 const ALLOWED_ORIGIN = "https://app.nextdesk.ch";
 const MAX_REQUEST_BYTES = 420 * 1024;
+const KNOWLEDGE_FEATURE = "knowledge.base";
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -216,6 +224,110 @@ function rpcError(request: Request, code: unknown): Response {
   }
 }
 
+// deno-lint-ignore no-explicit-any
+type Admin = any;
+
+/**
+ * Departments whose published external articles requesters may read: every
+ * active department of the tenant where the knowledge module is on (the same
+ * rule as the portal in knowledge-base).
+ */
+async function publishedKnowledgeScope(
+  admin: Admin,
+  tenantId: string,
+): Promise<DepartmentScope | null> {
+  const [departments, disabled] = await Promise.all([
+    admin
+      .from("departments")
+      .select("id")
+      .eq("tenant_id", tenantId)
+      .eq("active", true),
+    admin
+      .from("department_feature_flags")
+      .select("department_id")
+      .eq("tenant_id", tenantId)
+      .eq("feature_key", KNOWLEDGE_FEATURE)
+      .eq("enabled", false),
+  ]);
+  if (departments.error || disabled.error) return null;
+  const off = new Set(
+    (disabled.data ?? []).map((row: Record<string, unknown>) =>
+      String(row.department_id),
+    ),
+  );
+  return {
+    scoped: true,
+    departments: (departments.data ?? [])
+      .map((row: Record<string, unknown>) => String(row.id))
+      .filter((id: string) => !off.has(id)),
+  };
+}
+
+/** Identifiers among `ids` whose articles are visible in the scope. */
+async function visibleArticleIds(
+  admin: Admin,
+  tenantId: string,
+  ids: string[],
+  scope: DepartmentScope,
+): Promise<Set<string> | null> {
+  if (!ids.length || !scope.scoped) return new Set(ids);
+  const { data, error: failure } = await applyDepartmentScope(
+    admin
+      .from("knowledge_articles")
+      .select("id")
+      .eq("tenant_id", tenantId)
+      .in("id", ids),
+    scope,
+  );
+  if (failure) return null;
+  return new Set(
+    (data ?? []).map((row: Record<string, unknown>) => String(row.id)),
+  );
+}
+
+const IMAGE_BUCKET = "knowledge-article-images";
+const IMAGE_URL_TTL_SECONDS = 60 * 60;
+const MAX_RESOLVED_IMAGES = 300;
+const IMAGE_REFERENCE =
+  /kb-image:([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/gi;
+
+/**
+ * Short-lived signed URLs (id → URL) for kb-image references of the same
+ * tenant, as in knowledge-base. The stored Markdown stays unchanged.
+ */
+async function resolveImageUrls(
+  admin: Admin,
+  tenantId: string,
+  bodies: unknown[],
+): Promise<Record<string, string>> {
+  const ids = new Set<string>();
+  for (const body of bodies) {
+    if (typeof body !== "string") continue;
+    for (const match of body.matchAll(IMAGE_REFERENCE)) {
+      if (ids.size < MAX_RESOLVED_IMAGES) ids.add(match[1].toLowerCase());
+    }
+  }
+  const urls: Record<string, string> = {};
+  if (ids.size === 0) return urls;
+  const { data, error: failure } = await admin
+    .from("knowledge_article_images")
+    .select("id, storage_path")
+    .eq("tenant_id", tenantId)
+    .in("id", [...ids]);
+  if (failure || !Array.isArray(data) || data.length === 0) return urls;
+  const { data: signed } = await admin.storage
+    .from(IMAGE_BUCKET)
+    .createSignedUrls(
+      data.map((row: Record<string, unknown>) => String(row.storage_path)),
+      IMAGE_URL_TTL_SECONDS,
+    );
+  data.forEach((row: Record<string, unknown>, index: number) => {
+    const url = signed?.[index]?.signedUrl;
+    if (typeof url === "string") urls[String(row.id)] = url;
+  });
+  return urls;
+}
+
 const handler = withSupabase(
   { auth: "user", errors: { detailed: false } },
   async (request, context) => {
@@ -254,12 +366,28 @@ const handler = withSupabase(
     const featureStates = await resolveTenantFeatureStates(
       context.supabaseAdmin,
       action.tenantId,
-      ["ticketing.detail"],
+      ["ticketing.detail", KNOWLEDGE_FEATURE],
     );
     if (!featureStates)
       return error(request, "tenant_feature_lookup_failed", 503);
     if (featureStates["ticketing.detail"] !== true)
       return error(request, "ticket_feature_disabled", 403);
+
+    // Agents see the articles of their departments (knowledge.base); nothing
+    // is scoped while the module is off for the whole tenant (as the RLS
+    // policy of migration 0177). Requesters keep the published external
+    // articles of all departments with the module.
+    const admin = context.supabaseAdmin;
+    const moduleOn = featureStates[KNOWLEDGE_FEATURE] === true;
+    const agentScope = async (): Promise<DepartmentScope | null> =>
+      moduleOn
+        ? await loadDepartmentScope(
+            admin,
+            action.tenantId,
+            actorId,
+            KNOWLEDGE_FEATURE,
+          )
+        : { departments: [], scoped: false };
 
     // The caller-scoped client preserves auth.uid() and never uses service-role
     // bypass. SQL rechecks membership, can_read_ticket, ticket.update, and (for
@@ -277,7 +405,105 @@ const handler = withSupabase(
       if (!isRecord(data)) {
         return error(request, "ticket_knowledge_failed", 500);
       }
-      return json(request, { data });
+      const { data: canReadInternal, error: permissionFailure } =
+        await context.supabase.rpc("has_tenant_permission", {
+          p_tenant_id: action.tenantId,
+          p_permission_code: "knowledge.read",
+        });
+      if (permissionFailure || typeof canReadInternal !== "boolean")
+        return error(request, "authorization_check_failed", 503);
+      const scope = !moduleOn
+        ? { departments: [], scoped: false }
+        : canReadInternal
+          ? await agentScope()
+          : await publishedKnowledgeScope(admin, action.tenantId);
+      if (!scope) return error(request, "department_scope_lookup_failed", 503);
+      const key = action.type === "list" ? "links" : "articles";
+      const entries = Array.isArray(data[key]) ? data[key] : [];
+      const entryId = (entry: unknown): string =>
+        isRecord(entry)
+          ? String(action.type === "list" ? entry.articleId : entry.id)
+          : "";
+      const visible = await visibleArticleIds(
+        admin,
+        action.tenantId,
+        [...new Set(entries.map(entryId).filter((id) => uuid(id)))],
+        scope,
+      );
+      if (!visible) return error(request, "ticket_knowledge_failed", 500);
+      const shown = entries.filter((entry) => visible.has(entryId(entry)));
+      return json(request, {
+        data: {
+          ...data,
+          [key]: shown,
+          // Signed URLs for the kb-image references in the article texts.
+          imageUrls: await resolveImageUrls(
+            admin,
+            action.tenantId,
+            shown.map((entry) =>
+              isRecord(entry)
+                ? action.type === "list"
+                  ? isRecord(entry.article)
+                    ? entry.article.body
+                    : null
+                  : entry.body
+                : null,
+            ),
+          ),
+        },
+      });
+    }
+
+    // Attaching needs an article of the agent's departments; a new article
+    // from the ticket goes to the ticket's department (when it is one of the
+    // agent's) or to the agent's only department.
+    let createdDepartment: string | null = null;
+    if (action.type === "attach" || action.type === "createAndAttach") {
+      const scope = await agentScope();
+      if (!scope) return error(request, "department_scope_lookup_failed", 503);
+      if (action.type === "attach") {
+        const { data: article, error: articleFailure } = await admin
+          .from("knowledge_articles")
+          .select("id, department_id")
+          .eq("tenant_id", action.tenantId)
+          .eq("id", action.articleId)
+          .maybeSingle();
+        if (articleFailure)
+          return error(request, "ticket_knowledge_failed", 500);
+        if (!article || !departmentVisible(scope, article.department_id))
+          return error(request, "not_found_or_access_denied", 404);
+      } else if (scope.scoped) {
+        const { data: ticket, error: ticketFailure } = await admin
+          .from("tickets")
+          .select("department_id")
+          .eq("tenant_id", action.tenantId)
+          .eq("id", action.ticketId)
+          .maybeSingle();
+        if (ticketFailure)
+          return error(request, "ticket_knowledge_failed", 500);
+        const ticketDepartment =
+          typeof ticket?.department_id === "string"
+            ? ticket.department_id
+            : null;
+        const department = resolveRecordDepartment(
+          scope,
+          ticketDepartment && scope.departments.includes(ticketDepartment)
+            ? ticketDepartment
+            : undefined,
+        );
+        if ("error" in department)
+          return json(
+            request,
+            {
+              error: {
+                code: "article_department_required",
+                message: department.error,
+              },
+            },
+            422,
+          );
+        createdDepartment = department.departmentId;
+      }
     }
 
     const { data, error: failure } = await context.supabase.rpc(
@@ -295,6 +521,19 @@ const handler = withSupabase(
     );
     if (failure) return rpcError(request, failure.code);
     if (!isRecord(data)) return error(request, "ticket_knowledge_failed", 500);
+    const createdArticleId =
+      action.type === "createAndAttach" && isRecord(data.link)
+        ? uuid(data.link.articleId)
+        : null;
+    if (createdArticleId && createdDepartment) {
+      // The SQL function creates the article without a department; it is
+      // assigned right after with the service role.
+      await admin
+        .from("knowledge_articles")
+        .update({ department_id: createdDepartment })
+        .eq("tenant_id", action.tenantId)
+        .eq("id", createdArticleId);
+    }
     return json(
       request,
       { data },

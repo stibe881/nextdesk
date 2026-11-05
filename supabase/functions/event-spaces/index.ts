@@ -1,4 +1,5 @@
 import { type SupabaseContext, withSupabase } from "@supabase/server";
+import { resolveUserFeatureStates } from "../_shared/tenant-features.ts";
 import {
   EVENT_SPACE_WORKSPACE_PAGE_SIZE,
   eventSpaceWorkspacePage,
@@ -1789,6 +1790,19 @@ const handler = withSupabase(
           400,
           "invalid_request",
           "Die Anfrage enthält ungültige Felder.",
+        );
+      }
+      const moduleStates = await resolveUserFeatureStates(
+        context.supabaseAdmin,
+        action.tenantId,
+        actorId,
+        ["event.spaces"],
+      );
+      if (moduleStates?.["event.spaces"] !== true) {
+        throw new HttpError(
+          403,
+          "event_spaces_feature_disabled",
+          "Die Raumplanung ist für dich nicht eingeschaltet.",
         );
       }
       if (action.type === "listWorkspace") {

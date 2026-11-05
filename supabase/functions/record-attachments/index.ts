@@ -1,5 +1,10 @@
 import { type SupabaseContext, withSupabase } from "@supabase/server";
 import { resolveTenantFeatureStatesCached } from "../_shared/tenant-features.ts";
+import {
+  type DepartmentScope,
+  departmentVisible,
+  loadDepartmentScope,
+} from "../_shared/department-scope.ts";
 
 const ORIGIN = "https://app.nextdesk.ch";
 const BUCKET = "record-attachments";
@@ -227,17 +232,19 @@ async function assertParent(
   entityType: EntityType,
   entityId: string,
   requireWritable: boolean,
+  scope: DepartmentScope,
 ): Promise<void> {
   const { data, error } = await admin
     .from(entityType === "contract" ? "contracts" : "licenses")
-    .select("id, status")
+    .select("id, status, department_id")
     .eq("tenant_id", tenantId)
     .eq("id", entityId)
     .maybeSingle();
   if (error) {
     throw new HttpError(503, "attachments_unavailable", "Die Anhänge sind derzeit nicht verfügbar.");
   }
-  if (!data) {
+  // Records of other departments are treated as missing.
+  if (!data || !departmentVisible(scope, (data as Row).department_id)) {
     throw new HttpError(404, "record_not_found", "Der Eintrag wurde nicht gefunden.");
   }
   if (requireWritable && (data as Row).status === "archived") {
@@ -294,9 +301,18 @@ async function handler(
   }
   const admin = context.supabaseAdmin;
   await authorize(admin, actorId, action.tenantId);
+  const scope = await loadDepartmentScope(
+    admin,
+    action.tenantId,
+    actorId,
+    "contracts.management",
+  );
+  if (!scope) {
+    throw new HttpError(503, "attachments_unavailable", "Die Abteilungen konnten nicht geprüft werden.");
+  }
 
   if (action.type === "list") {
-    await assertParent(admin, action.tenantId, action.entityType, action.entityId, false);
+    await assertParent(admin, action.tenantId, action.entityType, action.entityId, false, scope);
     const { data, error } = await admin
       .from("record_attachments")
       .select(SELECT)
@@ -313,7 +329,7 @@ async function handler(
   }
 
   if (action.type === "createUpload") {
-    await assertParent(admin, action.tenantId, action.entityType, action.entityId, true);
+    await assertParent(admin, action.tenantId, action.entityType, action.entityId, true, scope);
     const { count, error: countError } = await admin
       .from("record_attachments")
       .select("id", { count: "exact", head: true })
@@ -348,7 +364,7 @@ async function handler(
   }
 
   if (action.type === "completeUpload") {
-    await assertParent(admin, action.tenantId, action.entityType, action.entityId, true);
+    await assertParent(admin, action.tenantId, action.entityType, action.entityId, true, scope);
     const prefix = `${action.tenantId}/${action.entityType}/${action.entityId}`;
     if (
       !action.storageObjectPath.startsWith(`${prefix}/`) ||
@@ -406,8 +422,13 @@ async function handler(
     throw new HttpError(404, "attachment_not_found", "Der Anhang wurde nicht gefunden.");
   }
   const path = String((attachment as Row).storage_object_path);
+  const parentId = (attachment as Row).contract_id ?? (attachment as Row).license_id;
+  const parentType: EntityType = (attachment as Row).contract_id
+    ? "contract"
+    : "license";
 
   if (action.type === "createDownloadUrl") {
+    await assertParent(admin, action.tenantId, parentType, String(parentId), false, scope);
     const { data, error } = await admin.storage
       .from(BUCKET)
       .createSignedUrl(path, DOWNLOAD_URL_TTL_SECONDS, {
@@ -419,11 +440,7 @@ async function handler(
     return reply(request, { data: { url: data.signedUrl } });
   }
 
-  const parentId = (attachment as Row).contract_id ?? (attachment as Row).license_id;
-  const parentType: EntityType = (attachment as Row).contract_id
-    ? "contract"
-    : "license";
-  await assertParent(admin, action.tenantId, parentType, String(parentId), true);
+  await assertParent(admin, action.tenantId, parentType, String(parentId), true, scope);
   const { error: removeError } = await admin.storage.from(BUCKET).remove([path]);
   if (removeError) {
     throw new HttpError(503, "attachment_delete_failed", "Der Anhang konnte nicht gelöscht werden.");

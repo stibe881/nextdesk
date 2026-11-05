@@ -97,6 +97,8 @@ export const DEPARTMENT_SCOPED_FEATURES = [
   "knowledge.base",
   "contracts.management",
   "reporting.service",
+  "event.spaces",
+  "onboarding.entries",
 ] as const;
 
 /**

@@ -71,6 +71,36 @@ describe("parseInventoryWorkspace", () => {
     });
   });
 
+  it("übernimmt Abteilungen der Artikel und die Abteilungsauswahl", () => {
+    const departmentId = "6f9619ff-8b86-4011-b42d-00c04fc964ff";
+    const parsed = parseInventoryWorkspace({
+      data: {
+        ...workspace.data,
+        items: [{ ...workspace.data.items[0], departmentId }],
+        departments: [{ id: departmentId, name: "ICT" }],
+      },
+    });
+    expect(parsed?.items[0]?.departmentId).toBe(departmentId);
+    expect(parsed?.departments).toEqual([{ id: departmentId, name: "ICT" }]);
+    expect(parseInventoryWorkspace(workspace)?.departments).toEqual([]);
+    expect(
+      parseInventoryWorkspace({
+        data: {
+          ...workspace.data,
+          departments: [{ id: departmentId, name: "ICT", kind: "ict" }],
+        },
+      }),
+    ).toBeNull();
+    expect(
+      parseInventoryWorkspace({
+        data: {
+          ...workspace.data,
+          items: [{ ...workspace.data.items[0], departmentId: "ict" }],
+        },
+      }),
+    ).toBeNull();
+  });
+
   it("weist fehlende Leseberechtigung, Zusatzfelder und inkonsistente Mengen zurück", () => {
     expect(
       parseInventoryWorkspace({

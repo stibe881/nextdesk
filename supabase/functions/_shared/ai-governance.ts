@@ -12,7 +12,7 @@ export const AI_PROVIDER_KEY = "anthropic";
 export const AI_DRAFT_QUEUE_RPC = "queue_ai_draft_request";
 
 export const MAX_INPUT_CHARACTERS = 1_200;
-export const MAX_OUTPUT_TOKENS = 1_024;
+export const MAX_OUTPUT_TOKENS = 4_096;
 export const MAX_COST_CENTS = 50;
 
 const MAX_TENANT_RATE_PER_HOUR = 10_000;

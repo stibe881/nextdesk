@@ -1,5 +1,16 @@
 import { type SupabaseContext, withSupabase } from "@supabase/server";
 import { resolveUserFeatureStates } from "../_shared/tenant-features.ts";
+import {
+  applyDepartmentScope,
+  type DepartmentScope,
+  departmentVisible,
+  loadDepartmentScope,
+  scopeDepartmentOptions,
+} from "../_shared/department-scope.ts";
+import {
+  departmentForSave,
+  parseDepartmentInput,
+} from "../contracts/department-input.ts";
 
 const ORIGIN = "https://app.nextdesk.ch";
 const UUID =
@@ -22,6 +33,8 @@ type Values = {
   noticePeriodDays: number | null;
   // undefined: not sent (older clients); an update then leaves it unchanged.
   reminderDaysBefore?: number | null;
+  // undefined: not sent (older clients); an update keeps the department.
+  departmentId?: string | null;
   responsibleUserId: string | null;
   notes: string | null;
 };
@@ -86,6 +99,7 @@ function parseValues(value: unknown): Values | null {
         "endsOn",
         "noticePeriodDays",
         "reminderDaysBefore",
+        "departmentId",
         "responsibleUserId",
         "notes",
       ].includes(key),
@@ -134,7 +148,9 @@ function parseValues(value: unknown): Values | null {
           value.reminderDaysBefore <= 3650
         ? value.reminderDaysBefore
         : undefined;
+  const departmentId = parseDepartmentInput(value);
   if (
+    departmentId === false ||
     quantity === undefined ||
     !title ||
     !vendorName ||
@@ -161,6 +177,7 @@ function parseValues(value: unknown): Values | null {
     endsOn,
     noticePeriodDays,
     ...("reminderDaysBefore" in value ? { reminderDaysBefore } : {}),
+    ...(departmentId !== undefined ? { departmentId } : {}),
     responsibleUserId,
     notes,
   };
@@ -326,12 +343,42 @@ const rowToLicense = (row: Row) => ({
   noticePeriodDays: row.notice_period_days,
   reminderDaysBefore: row.reminder_days_before,
   reminderSentFor: row.reminder_sent_for,
+  departmentId: row.department_id ?? null,
   responsibleUserId: row.responsible_user_id,
   notes: row.notes,
   archivedAt: row.archived_at,
   createdAt: row.created_at,
   updatedAt: row.updated_at,
 });
+// The license's department, or a 404 when it is missing or outside the
+// caller's departments.
+async function visibleLicenseDepartment(
+  admin: Admin,
+  tenantId: string,
+  licenseId: string,
+  scope: DepartmentScope,
+): Promise<string | null> {
+  const { data, error } = await admin
+    .from("licenses")
+    .select("id, department_id")
+    .eq("tenant_id", tenantId)
+    .eq("id", licenseId)
+    .maybeSingle();
+  if (error)
+    throw new HttpError(
+      503,
+      "licenses_unavailable",
+      "Die Lizenz konnte nicht geladen werden.",
+    );
+  if (!data || !departmentVisible(scope, (data as Row).department_id))
+    throw new HttpError(
+      404,
+      "license_not_found",
+      "Die Lizenz wurde nicht gefunden.",
+    );
+  const departmentId = (data as Row).department_id;
+  return departmentId ? String(departmentId) : null;
+}
 async function handler(
   request: Request,
   context: SupabaseContext,
@@ -341,6 +388,18 @@ async function handler(
   if (!isUuid(actorId) || !action)
     throw new HttpError(400, "invalid_request", "Die Anfrage ist ungültig.");
   await authorize(context.supabaseAdmin, actorId, action.tenantId);
+  const scope = await loadDepartmentScope(
+    context.supabaseAdmin,
+    action.tenantId,
+    actorId,
+    "contracts.management",
+  );
+  if (!scope)
+    throw new HttpError(
+      503,
+      "licenses_unavailable",
+      "Die Abteilungen konnten nicht geprüft werden.",
+    );
   if (action.type === "listPeople") {
     const { data, error } = await context.supabaseAdmin
       .from("tenant_memberships")
@@ -368,14 +427,18 @@ async function handler(
     let query = context.supabaseAdmin
       .from("licenses")
       .select(
-        "id, title, vendor_name, reference_number, license_type, quantity, status, starts_on, ends_on, notice_period_days, reminder_days_before, reminder_sent_for, responsible_user_id, notes, archived_at, created_at, updated_at",
+        "id, title, vendor_name, reference_number, license_type, quantity, status, starts_on, ends_on, notice_period_days, reminder_days_before, reminder_sent_for, department_id, responsible_user_id, notes, archived_at, created_at, updated_at",
       )
       .eq("tenant_id", action.tenantId)
       .order("ends_on", { ascending: true, nullsFirst: false })
       .order("title")
       .limit(1000);
     if (!action.includeArchived) query = query.neq("status", "archived");
-    const { data, error } = await query;
+    query = applyDepartmentScope(query, scope);
+    const [{ data, error }, departments] = await Promise.all([
+      query,
+      scopeDepartmentOptions(context.supabaseAdmin, action.tenantId, scope),
+    ]);
     if (error)
       throw new HttpError(
         503,
@@ -385,10 +448,27 @@ async function handler(
     return reply(request, {
       data: {
         licenses: (data ?? []).map((item) => rowToLicense(item as Row)),
+        departments,
       },
     });
   }
   if (action.type === "create" || action.type === "update") {
+    const existingDepartment =
+      action.type === "update"
+        ? await visibleLicenseDepartment(
+            context.supabaseAdmin,
+            action.tenantId,
+            action.licenseId,
+            scope,
+          )
+        : undefined;
+    const department = departmentForSave(
+      scope,
+      action.values.departmentId,
+      existingDepartment,
+    );
+    if ("error" in department)
+      throw new HttpError(422, "department_invalid", department.error);
     await assertResponsible(
       context.supabaseAdmin,
       action.tenantId,
@@ -407,6 +487,9 @@ async function handler(
       notice_period_days: action.values.noticePeriodDays,
       ...(action.values.reminderDaysBefore !== undefined
         ? { reminder_days_before: action.values.reminderDaysBefore }
+        : {}),
+      ...("departmentId" in department
+        ? { department_id: department.departmentId }
         : {}),
       responsible_user_id: action.values.responsibleUserId,
       notes: action.values.notes,
@@ -455,6 +538,12 @@ async function handler(
       action.type === "create" ? 201 : 200,
     );
   }
+  await visibleLicenseDepartment(
+    context.supabaseAdmin,
+    action.tenantId,
+    action.licenseId,
+    scope,
+  );
   const { data, error } = await context.supabaseAdmin
     .from("licenses")
     .update({ status: "archived", archived_by: actorId, updated_by: actorId })

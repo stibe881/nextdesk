@@ -33,4 +33,24 @@ describe("Wissensartikel speichern", () => {
     expect(request).not.toHaveProperty("articleId");
     expect(request).not.toHaveProperty("collectionIds");
   });
+
+  it("übermittelt die gewählte Abteilung nur, wenn eine gewählt ist", () => {
+    expect(
+      buildKnowledgeArticleSaveRequest({
+        bodyMarkdown: "Inhalt",
+        departmentId: "department-1",
+        tenantId: "tenant-1",
+        title: "Neuer Artikel",
+        visibility: "internal",
+      }),
+    ).toMatchObject({ departmentId: "department-1" });
+    expect(
+      buildKnowledgeArticleSaveRequest({
+        bodyMarkdown: "Inhalt",
+        tenantId: "tenant-1",
+        title: "Neuer Artikel",
+        visibility: "internal",
+      }),
+    ).not.toHaveProperty("departmentId");
+  });
 });

@@ -15,6 +15,12 @@ import {
   RecordAttachments,
   uploadRecordAttachment,
 } from "./record-attachments";
+import {
+  departmentLabel,
+  initialDepartmentId,
+  parseDepartmentOptions,
+  type DepartmentOption,
+} from "./lib/contract-departments";
 
 type ContractStatus = "draft" | "active" | "terminated" | "archived";
 type ContractType = string;
@@ -38,6 +44,7 @@ type Contract = {
   autoRenew: boolean;
   renewalMonths: number | null;
   assetIds: string[];
+  departmentId: string | null;
   responsibleUserId: string | null;
   notes: string | null;
   archivedAt: string | null;
@@ -71,6 +78,7 @@ type Form = {
   autoRenew: boolean;
   renewalMonths: string;
   assetIds: string[];
+  departmentId: string;
   responsibleUserId: string;
   notes: string;
 };
@@ -93,6 +101,7 @@ const EMPTY: Form = {
   autoRenew: false,
   renewalMonths: "",
   assetIds: [],
+  departmentId: "",
   responsibleUserId: "",
   notes: "",
 };
@@ -197,6 +206,7 @@ function formFor(contract: Contract): Form {
     renewalMonths:
       contract.renewalMonths === null ? "" : String(contract.renewalMonths),
     assetIds: contract.assetIds,
+    departmentId: contract.departmentId ?? "",
     responsibleUserId: contract.responsibleUserId ?? "",
     notes: contract.notes ?? "",
   };
@@ -224,6 +234,7 @@ function parsePeople(value: unknown): Person[] | null {
 export function Contracts({ tenantId }: { tenantId: string }) {
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [people, setPeople] = useState<Person[]>([]);
+  const [departments, setDepartments] = useState<DepartmentOption[]>([]);
   const [assets, setAssets] = useState<AssetOption[]>([]);
   const [assetSearch, setAssetSearch] = useState("");
   const [loading, setLoading] = useState(true);
@@ -272,6 +283,9 @@ export function Contracts({ tenantId }: { tenantId: string }) {
       const nextPeople = parsePeople(peopleResult.data);
       if (!nextContracts || !nextPeople) throw new Error("invalid_response");
       setContracts(nextContracts);
+      setDepartments(
+        parseDepartmentOptions(responseData(contractsResult.data)),
+      );
       setAssets(await assetsPromise);
       setPeople(
         nextPeople.sort((a, b) =>
@@ -379,7 +393,11 @@ export function Contracts({ tenantId }: { tenantId: string }) {
   const open = (contract?: Contract) => {
     setNotice("");
     setError("");
-    setForm(contract ? formFor(contract) : EMPTY);
+    const initial = contract ? formFor(contract) : EMPTY;
+    setForm({
+      ...initial,
+      departmentId: initialDepartmentId(initial.departmentId, departments),
+    });
     setEditorOpen(true);
   };
   const save = async (event: FormEvent) => {
@@ -423,6 +441,7 @@ export function Contracts({ tenantId }: { tenantId: string }) {
             ? Number(form.renewalMonths)
             : null,
         assetIds: form.assetIds,
+        departmentId: form.departmentId || null,
         responsibleUserId: form.responsibleUserId || null,
         notes: form.notes || null,
       };
@@ -716,6 +735,14 @@ export function Contracts({ tenantId }: { tenantId: string }) {
                         </dd>
                       </div>
                     ) : null}
+                    {departmentLabel(contract.departmentId, departments) ? (
+                      <div>
+                        <dt>Abteilung</dt>
+                        <dd>
+                          {departmentLabel(contract.departmentId, departments)}
+                        </dd>
+                      </div>
+                    ) : null}
                     <div>
                       <dt>Verantwortlich</dt>
                       <dd>{person?.displayName ?? "Nicht zugeordnet"}</dd>
@@ -929,6 +956,27 @@ export function Contracts({ tenantId }: { tenantId: string }) {
                     <option value="terminated">Beendet</option>
                   </select>
                 </label>
+                {departments.length > 1 ? (
+                  <label>
+                    Abteilung
+                    <select
+                      required
+                      value={form.departmentId}
+                      onChange={(event) =>
+                        setForm({ ...form, departmentId: event.target.value })
+                      }
+                    >
+                      <option disabled value="">
+                        Abteilung wählen
+                      </option>
+                      {departments.map((department) => (
+                        <option key={department.id} value={department.id}>
+                          {department.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : null}
                 <label>
                   Verantwortliche Person
                   <select
