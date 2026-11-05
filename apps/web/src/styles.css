@@ -18853,47 +18853,105 @@ html:has(.embed-status-badge) body {
   top: 50%;
   display: grid;
   place-items: center;
-  width: 28px;
-  height: 28px;
+  width: 30px;
+  min-width: 0;
+  height: 30px;
+  min-height: 0;
+  padding: 0;
   transform: translateY(-50%);
   border: 0;
   border-radius: 999px;
-  background: rgb(255 255 255 / 85%);
-  color: var(--text);
-  box-shadow: 0 1px 4px rgb(15 23 42 / 18%);
+  background: rgb(15 23 42 / 55%);
+  color: #fff;
+  box-shadow: 0 1px 4px rgb(15 23 42 / 25%);
+  opacity: 0;
   cursor: pointer;
+  transition:
+    opacity 150ms ease,
+    background-color 150ms ease;
+}
+
+.shop__gallery-nav svg {
+  width: 16px;
+  height: 16px;
+  color: inherit;
+}
+
+.shop__image--gallery:hover .shop__gallery-nav,
+.shop__image--gallery:focus-within .shop__gallery-nav {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .shop__gallery-nav {
+    opacity: 1;
+  }
+}
+
+.shop__gallery-nav:hover:not(:disabled) {
+  border: 0;
+  background: rgb(15 23 42 / 75%);
+  color: #fff;
 }
 
 .shop__gallery-nav--prev {
-  left: 6px;
+  left: 8px;
 }
 
 .shop__gallery-nav--next {
-  right: 6px;
+  right: 8px;
 }
 
 .shop__gallery-dots {
   position: absolute;
   z-index: 1;
-  bottom: 6px;
+  bottom: 8px;
   left: 50%;
   display: flex;
-  gap: 5px;
+  align-items: center;
+  gap: 2px;
+  padding: 3px 6px;
   transform: translateX(-50%);
+  border-radius: 999px;
+  background: rgb(15 23 42 / 40%);
 }
 
 .shop__gallery-dot {
-  width: 7px;
-  height: 7px;
+  display: grid;
+  place-items: center;
+  width: 14px;
+  min-width: 0;
+  height: 14px;
+  min-height: 0;
   padding: 0;
   border: 0;
   border-radius: 999px;
-  background: rgb(15 23 42 / 25%);
+  background: transparent;
   cursor: pointer;
 }
 
-.shop__gallery-dot--active {
-  background: var(--primary, #2563eb);
+.shop__gallery-dot::after {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 55%);
+  content: "";
+  transition:
+    width 150ms ease,
+    background-color 150ms ease;
+}
+
+.shop__gallery-dot:hover:not(:disabled) {
+  border: 0;
+  background: transparent;
+}
+
+.shop__gallery-dot:hover::after {
+  background: rgb(255 255 255 / 85%);
+}
+
+.shop__gallery-dot--active::after {
+  background: #fff;
 }
 
 /* Shop: categories and internal article details */
@@ -19392,4 +19450,12 @@ html:has(.embed-status-badge) body {
   color: var(--muted);
   font-size: 12px;
   font-style: normal;
+}
+
+.shop__gallery-nav:active:not(:disabled) {
+  background: rgb(15 23 42 / 75%);
+}
+
+.shop__gallery-dot:active:not(:disabled) {
+  background: transparent;
 }
