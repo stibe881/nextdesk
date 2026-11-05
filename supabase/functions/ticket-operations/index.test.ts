@@ -46,3 +46,27 @@ Deno.test(
     }
   },
 );
+
+Deno.test(
+  "Lösungen ähnlicher Tickets stammen nur von Personen mit Ticketarbeit",
+  async () => {
+    const operations = await Deno.readTextFile(
+      new URL("./index.ts", import.meta.url),
+    );
+    for (const required of [
+      "async function staffUserIds(",
+      '"ticket.read.department"',
+      '"ticket.read.assigned"',
+      '"ticket.update"',
+      'role.scope === "tenant" || role.scope === "department"',
+      "if (!staff.has(comment.author_id)) continue;",
+      'type: "incidentOverview"',
+      '"can_work_tickets_in_tenant"',
+      "problemDepartmentId",
+    ]) {
+      if (!operations.includes(required)) {
+        throw new Error(`Lern-Vertrag verlor die Sicherung: ${required}`);
+      }
+    }
+  },
+);

@@ -10,8 +10,8 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 import { FolderOpen } from "lucide-react";
-import ReactMarkdown from "react-markdown";
 import { functionErrorMessage } from "./lib/function-error";
+import { knowledgeErrorBackendMessage } from "./lib/knowledge-errors";
 import {
   buildKnowledgeArticleSaveRequest,
   type KnowledgeArticleSaveRequest,
@@ -45,13 +45,13 @@ import {
   insertMarkdownBlock,
   KNOWLEDGE_IMAGE_TYPES,
   knowledgeImageFiles,
-  knowledgeImageUrlTransform,
   parseKnowledgeImageUrls,
   parseUploadedKnowledgeImage,
   type KnowledgeImageUrls,
   type UploadedKnowledgeImage,
 } from "./lib/knowledge-images";
 import { supabase } from "./lib/supabase";
+import { KnowledgeMarkdown } from "./knowledge-markdown";
 
 export type KnowledgeBaseProps = {
   createArticleRequestId?: number | undefined;
@@ -655,12 +655,32 @@ const knowledgeBaseStyles = `
 
 class KnowledgeBaseRequestError extends Error {
   readonly status: number | null;
+  /** True when the message is the backend's own (German) explanation. */
+  readonly fromBackend: boolean;
 
-  constructor(message: string, status: number | null = null) {
+  constructor(
+    message: string,
+    status: number | null = null,
+    fromBackend = false,
+  ) {
     super(message);
     this.name = "KnowledgeBaseRequestError";
     this.status = status;
+    this.fromBackend = fromBackend;
   }
+}
+
+/** Backend message when present, otherwise the generic function error text. */
+async function knowledgeRequestError(
+  error: unknown,
+  fallback: string,
+): Promise<KnowledgeBaseRequestError> {
+  const backendMessage = await knowledgeErrorBackendMessage(error);
+  return new KnowledgeBaseRequestError(
+    backendMessage ?? (await functionErrorMessage(error, fallback)),
+    statusFromError(error),
+    backendMessage !== null,
+  );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -956,37 +976,6 @@ function parseUploadedImage(value: unknown): UploadedKnowledgeImage {
   return image;
 }
 
-/** Article Markdown with uploaded images (kb-image:) resolved to URLs. */
-function KnowledgeMarkdown({
-  body,
-  imageUrls,
-}: {
-  body: string;
-  imageUrls: KnowledgeImageUrls;
-}) {
-  const urlTransform = useMemo(
-    () => knowledgeImageUrlTransform(imageUrls),
-    [imageUrls],
-  );
-  return (
-    <ReactMarkdown
-      components={{
-        img: ({ src, alt }) =>
-          typeof src === "string" && src ? (
-            <img alt={alt ?? ""} loading="lazy" src={src} />
-          ) : (
-            <span className="knowledge-base__image-missing">
-              {alt ? `Bild «${alt}» nicht verfügbar` : "Bild nicht verfügbar"}
-            </span>
-          ),
-      }}
-      urlTransform={urlTransform}
-    >
-      {body}
-    </ReactMarkdown>
-  );
-}
-
 function parseArchivedArticle(value: unknown): KnowledgeArticle {
   const article = parseArticle(responseData(value).article);
   if (!article) {
@@ -1053,12 +1042,9 @@ async function invokeKnowledgeBase<T>(
     { body: request },
   );
   if (error) {
-    throw new KnowledgeBaseRequestError(
-      await functionErrorMessage(
-        error,
-        "Die Wissensdatenbank ist nicht erreichbar.",
-      ),
-      statusFromError(error),
+    throw await knowledgeRequestError(
+      error,
+      "Die Wissensdatenbank ist nicht erreichbar.",
     );
   }
 
@@ -1081,12 +1067,9 @@ async function invokeAiAssist<T>(
     },
   );
   if (error) {
-    throw new KnowledgeBaseRequestError(
-      await functionErrorMessage(
-        error,
-        "Die KI-Aufbereitung ist derzeit nicht verfügbar.",
-      ),
-      statusFromError(error),
+    throw await knowledgeRequestError(
+      error,
+      "Die KI-Aufbereitung ist derzeit nicht verfügbar.",
     );
   }
   return parseResponse(data);
@@ -1120,6 +1103,9 @@ function shortBody(body: string | null): string {
 }
 
 function writeErrorMessage(error: unknown, action: "save" | "archive"): string {
+  if (error instanceof KnowledgeBaseRequestError && error.fromBackend) {
+    return error.message;
+  }
   if (error instanceof KnowledgeBaseRequestError && error.status === 403) {
     return action === "archive"
       ? "Sie dürfen diesen Artikel nicht archivieren. Bitte wenden Sie sich an eine zuständige Person mit Verwaltungsberechtigung."

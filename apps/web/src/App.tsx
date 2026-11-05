@@ -82,6 +82,8 @@ import {
 } from "./lib/navigation-category-attention";
 import { timeOfDayGreeting } from "./lib/greeting";
 import { TicketComposer } from "./ticket-composer";
+import { clearTicketComposerDraft } from "./lib/ticket-composer-draft";
+import { TicketListIncidentHint } from "./ticket-learning";
 import { TicketDetail } from "./ticket-detail";
 import { TenantAdminSettings } from "./tenant-admin-settings";
 import { KnowledgeBase } from "./knowledge-base";
@@ -1925,6 +1927,16 @@ function AuthenticatedApp() {
     const timer = window.setTimeout(() => setCreatedTicketToast(null), 3000);
     return () => window.clearTimeout(timer);
   }, [createdTicketToast]);
+  // "Ihr Entwurf wurde gespeichert" after a suggestion closed the composer.
+  const [composerDraftNotice, setComposerDraftNotice] = useState(false);
+  useEffect(() => {
+    if (!composerDraftNotice) return;
+    const timer = window.setTimeout(() => setComposerDraftNotice(false), 8000);
+    return () => window.clearTimeout(timer);
+  }, [composerDraftNotice]);
+  useEffect(() => {
+    if (ticketComposerOpen) setComposerDraftNotice(false);
+  }, [ticketComposerOpen]);
   const [quickCreateMenuOpen, setQuickCreateMenuOpen] = useState(false);
   const [expandedNavigationCategoryId, setExpandedNavigationCategoryId] =
     useState<string | null>("navigation-category-workspace");
@@ -3802,6 +3814,13 @@ function AuthenticatedApp() {
     setActiveTenantId(nextTenantId);
   }
 
+  /** Closing "Ticket erfassen" explicitly discards the stored draft. */
+  function cancelTicketComposer() {
+    if (activeTenant)
+      clearTicketComposerDraft(session?.user.id ?? null, activeTenant.id);
+    setTicketComposerOpen(false);
+  }
+
   function consumeQuickCreateRequest(requestId: number) {
     setQuickCreateRequest((current) =>
       current?.id === requestId ? null : current,
@@ -5032,6 +5051,14 @@ function AuthenticatedApp() {
                 queueOptions={queueOptions}
                 setQueue={setQueue}
               />
+              {activeTenant && isSupabaseConfigured && canWorkTickets && (
+                <TicketListIncidentHint
+                  onShowTickets={(incident, label) =>
+                    openMetricTickets({ label, ticketIds: incident.ticketIds })
+                  }
+                  tenantId={activeTenant.id}
+                />
+              )}
               {metricTicketFilter && (
                 <div className="ticket-search-summary ticket-metrics-filter">
                   <div>
@@ -5619,7 +5646,7 @@ function AuthenticatedApp() {
           aria-modal="true"
           className="ticket-compose-dialog"
           onKeyDown={(event) => {
-            if (event.key === "Escape") setTicketComposerOpen(false);
+            if (event.key === "Escape") cancelTicketComposer();
           }}
           role="dialog"
         >
@@ -5627,7 +5654,7 @@ function AuthenticatedApp() {
             <button
               aria-label="Ticketerfassung schliessen"
               className="ticket-compose-dialog__close"
-              onClick={() => setTicketComposerOpen(false)}
+              onClick={cancelTicketComposer}
               type="button"
             >
               <X aria-hidden="true" size={20} strokeWidth={1.8} />
@@ -5642,14 +5669,16 @@ function AuthenticatedApp() {
                 setSelectedTicketId(ticketId);
                 setCreatedTicketToast({ ticketId, ticketNumber });
               }}
-              onOpenKnowledgeArticle={(articleId) => {
+              onOpenKnowledgeArticle={(articleId, draftKept) => {
                 setTicketComposerOpen(false);
+                setComposerDraftNotice(draftKept);
                 setGlobalSearchTarget(null);
                 setKnowledgeFocusArticleId(articleId);
                 setSection("Wissen");
               }}
-              onOpenTicket={(ticketId) => {
+              onOpenTicket={(ticketId, _ticketNumber, draftKept) => {
                 setTicketComposerOpen(false);
+                setComposerDraftNotice(draftKept);
                 setSection("Tickets");
                 setSelectedTicketId(ticketId);
               }}
@@ -5657,6 +5686,36 @@ function AuthenticatedApp() {
             />
           </div>
         </div>
+      )}
+      {composerDraftNotice && !ticketComposerOpen && !createdTicketToast && (
+        <aside className="ticket-success-toast" aria-live="polite">
+          <CheckCircle2 aria-hidden="true" size={24} strokeWidth={1.8} />
+          <div>
+            <strong>Ihr Entwurf wurde gespeichert</strong>
+            <span>
+              Beim nächsten Öffnen von «Ticket erfassen» ist er wieder da.
+            </span>
+          </div>
+          <button
+            className="ticket-toast-open"
+            onClick={() => {
+              setComposerDraftNotice(false);
+              setTicketComposerOpen(true);
+            }}
+            type="button"
+          >
+            Fortsetzen
+            <ArrowRight aria-hidden="true" size={16} strokeWidth={1.8} />
+          </button>
+          <button
+            aria-label="Hinweis schliessen"
+            className="ticket-toast-dismiss"
+            onClick={() => setComposerDraftNotice(false)}
+            type="button"
+          >
+            <X aria-hidden="true" size={16} strokeWidth={1.8} />
+          </button>
+        </aside>
       )}
       {createdTicketToast && (
         <aside className="ticket-success-toast" aria-live="polite">

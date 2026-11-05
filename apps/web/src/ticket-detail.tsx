@@ -58,6 +58,12 @@ import {
   shouldLoadTicketCatalog,
 } from "./lib/ticket-catalog-search";
 import { supabase } from "./lib/supabase";
+import { knowledgeErrorBackendMessage } from "./lib/knowledge-errors";
+import {
+  parseKnowledgeImageUrls,
+  type KnowledgeImageUrls,
+} from "./lib/knowledge-images";
+import { KnowledgeMarkdown } from "./knowledge-markdown";
 import {
   TicketIncidentBanner,
   TicketPersonDevices,
@@ -2675,11 +2681,15 @@ function parseKnowledgeLinkState(value: unknown): KnowledgeLinkState | null {
   };
 }
 
-function parseKnowledgeLinks(value: unknown): KnowledgeLink[] | null {
+function parseKnowledgeLinks(
+  value: unknown,
+): { links: KnowledgeLink[]; imageUrls: KnowledgeImageUrls } | null {
   const data = parseKnowledgeData(value);
   // imageUrls: signed URLs for kb-image references (knowledge article images).
+  const imageUrls = data ? parseKnowledgeImageUrls(data.imageUrls) : null;
   if (
     !data ||
+    !imageUrls ||
     !hasOnlyKeys(data, ["links", "imageUrls"]) ||
     !Array.isArray(data.links)
   )
@@ -2719,13 +2729,17 @@ function parseKnowledgeLinks(value: unknown): KnowledgeLink[] | null {
     seen.add(article.id);
     links.push({ ...link, article });
   }
-  return links;
+  return { links, imageUrls };
 }
 
-function parseKnowledgeSearch(value: unknown): KnowledgeArticle[] | null {
+function parseKnowledgeSearch(
+  value: unknown,
+): { articles: KnowledgeArticle[]; imageUrls: KnowledgeImageUrls } | null {
   const data = parseKnowledgeData(value);
+  const imageUrls = data ? parseKnowledgeImageUrls(data.imageUrls) : null;
   if (
     !data ||
+    !imageUrls ||
     !hasOnlyKeys(data, ["articles", "imageUrls"]) ||
     !Array.isArray(data.articles) ||
     data.articles.length > 30
@@ -2739,7 +2753,7 @@ function parseKnowledgeSearch(value: unknown): KnowledgeArticle[] | null {
     new Set(articles.map((article) => article.id)).size !== articles.length
   )
     return null;
-  return articles;
+  return { articles, imageUrls };
 }
 
 function parseKnowledgeMutation(
@@ -2793,10 +2807,17 @@ async function invokeTicketKnowledge(
   return data;
 }
 
-function knowledgeErrorMessage(
+/**
+ * User message for a failed knowledge request: the backend's own German
+ * explanation when it sends one (e.g. a missing department), otherwise a
+ * generic text per status and action.
+ */
+async function knowledgeErrorMessage(
   error: unknown,
   action: TicketKnowledgeAction["type"],
-): string {
+): Promise<string> {
+  const backendMessage = await knowledgeErrorBackendMessage(error);
+  if (backendMessage) return backendMessage;
   const status = functionErrorStatus(error);
   if (status === 401)
     return "Ihre Sitzung ist abgelaufen. Bitte melden Sie sich erneut an.";
@@ -2827,7 +2848,7 @@ function knowledgeErrorMessage(
     sendToRequester:
       "Der Versand konnte nicht bestätigt werden. Bitte prüfen Sie den Versandstatus, bevor Sie es erneut versuchen.",
   };
-  // Do not render untrusted API/database messages, which may contain personal data.
+  // Database details are never rendered; only the curated error.message above.
   return messages[action];
 }
 
@@ -2871,6 +2892,7 @@ async function requestAiTicketDraft(
     }
     throw new Error(
       AI_TICKET_DRAFT_ERRORS[code] ??
+        (await knowledgeErrorBackendMessage(error)) ??
         "Der KI-Entwurf konnte nicht erstellt werden. Bitte versuchen Sie es erneut.",
     );
   }
@@ -2887,6 +2909,25 @@ async function requestAiTicketDraft(
     linkedToTicket:
       (result as { linkedToTicket?: unknown }).linkedToTicket === true,
   };
+}
+
+/** Article text as Markdown with its images, collapsed by default. */
+function KnowledgeArticleText({
+  article,
+  imageUrls,
+}: {
+  article: KnowledgeArticle;
+  imageUrls: KnowledgeImageUrls;
+}) {
+  if (!article.body.trim()) return null;
+  return (
+    <details className="ticket-knowledge-article">
+      <summary>Artikeltext anzeigen</summary>
+      <div className="knowledge-markdown">
+        <KnowledgeMarkdown body={article.body} imageUrls={imageUrls} />
+      </div>
+    </details>
+  );
 }
 
 function KnowledgeSection({
@@ -2909,6 +2950,9 @@ function KnowledgeSection({
   const [aiDraftPending, setAiDraftPending] = useState(false);
   const [aiDraft, setAiDraft] = useState<{ articleId: string } | null>(null);
   const [links, setLinks] = useState<KnowledgeLink[]>([]);
+  // Signed URLs for kb-image references in the shown article texts.
+  const [knowledgeImageUrls, setKnowledgeImageUrls] =
+    useState<KnowledgeImageUrls>({});
   const [listLoading, setListLoading] = useState(true);
   const [listError, setListError] = useState("");
   const [query, setQuery] = useState("");
@@ -2948,10 +2992,14 @@ function KnowledgeSection({
       );
       if (!result) throw new Error("Ungültige Wissensantwort.");
       if (requestId !== listSequence.current) return;
-      setLinks(result);
+      setLinks(result.links);
+      setKnowledgeImageUrls((current) => ({
+        ...current,
+        ...result.imageUrls,
+      }));
     } catch (error) {
       if (requestId === listSequence.current)
-        setListError(knowledgeErrorMessage(error, "list"));
+        setListError(await knowledgeErrorMessage(error, "list"));
     } finally {
       if (requestId === listSequence.current) setListLoading(false);
     }
@@ -3011,10 +3059,18 @@ function KnowledgeSection({
             }),
           );
           if (!result) throw new Error("Ungültige Suchantwort.");
-          if (requestId === searchSequence.current) setArticles(result);
+          if (requestId === searchSequence.current) {
+            setArticles(result.articles);
+            setKnowledgeImageUrls((current) => ({
+              ...current,
+              ...result.imageUrls,
+            }));
+          }
         } catch (error) {
           if (requestId === searchSequence.current)
-            setSearchError(knowledgeErrorMessage(error, "searchArticles"));
+            setSearchError(
+              await knowledgeErrorMessage(error, "searchArticles"),
+            );
         } finally {
           if (requestId === searchSequence.current) setSearchLoading(false);
         }
@@ -3165,11 +3221,12 @@ function KnowledgeSection({
               : "Der Artikel wurde angehängt. Es wurde keine Ticketantwort versendet.",
       );
     } catch (error) {
+      const message = await knowledgeErrorMessage(error, currentAction);
       if (scope === scopeSequence.current)
         setActionError(
           (created && sendCreated
             ? "Der Artikel wurde erstellt und extern angehängt. "
-            : "") + knowledgeErrorMessage(error, currentAction),
+            : "") + message,
         );
     } finally {
       if (scope === scopeSequence.current) {
@@ -3317,6 +3374,10 @@ function KnowledgeSection({
                     : "Noch nicht versendet"}
                 </span>
               </div>
+              <KnowledgeArticleText
+                article={link.article}
+                imageUrls={knowledgeImageUrls}
+              />
               {canUpdate && (
                 <div className="ticket-detail-actions">
                   {link.visibility === "external" &&
@@ -3433,6 +3494,10 @@ function KnowledgeSection({
                           : "Extern"}
                       </span>
                     </div>
+                    <KnowledgeArticleText
+                      article={article}
+                      imageUrls={knowledgeImageUrls}
+                    />
                     {attached ? (
                       <p className="data-caption">Bereits angehängt.</p>
                     ) : (
@@ -3658,7 +3723,9 @@ function KnowledgeSection({
               : "oben eingegebene Artikeltext"}{" "}
             wird als{" "}
             <strong>externe Ticketantwort an die anfragende Person</strong>{" "}
-            versendet. Dies ist keine interne Notiz.{" "}
+            versendet. Dies ist keine interne Notiz. Bilder des Artikels
+            erscheinen in der Antwort als Hinweis; die anfragende Person sieht
+            sie im Bereich «Wissen» dieses Tickets.{" "}
             {confirmation.kind === "draft"
               ? "Der Artikel wird außerdem extern veröffentlicht und angehängt."
               : "Bitte prüfen Sie, dass der Artikeltext für die anfragende Person bestimmt ist."}
@@ -5782,7 +5849,7 @@ export function TicketDetail({
       const links = parseKnowledgeLinks(
         await invokeTicketKnowledge({ type: "list", tenantId, ticketId }),
       );
-      setSolutionPromptOpen(links !== null && links.length === 0);
+      setSolutionPromptOpen(links !== null && links.links.length === 0);
     } catch {
       setSolutionPromptOpen(false);
     }

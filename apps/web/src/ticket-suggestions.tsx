@@ -365,7 +365,6 @@ export function TicketSuggestionPanel({
                         className="text-button"
                         disabled={disabled}
                         onClick={() => onOpenKnowledgeArticle(article.id)}
-                        title="Schliesst die Ticketerfassung."
                         type="button"
                       >
                         In der Wissensdatenbank öffnen
@@ -420,7 +419,6 @@ export function TicketSuggestionPanel({
                     className="text-button"
                     disabled={disabled}
                     onClick={() => onOpenTicket(ticket.id, ticket.ticketNumber)}
-                    title="Öffnet das Ticket und schliesst die Ticketerfassung."
                     type="button"
                   >
                     {ticketLabel(ticket)}

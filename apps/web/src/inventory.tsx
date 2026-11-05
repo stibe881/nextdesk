@@ -228,6 +228,14 @@ type InventoryAction =
       clientRequestId: string;
     }
   | {
+      type: "manageItem";
+      tenantId: string;
+      operation: "update";
+      itemId: string;
+      values: { departmentId: string };
+      clientRequestId: string;
+    }
+  | {
       type: "postMovement";
       tenantId: string;
       itemId: string;
@@ -1610,10 +1618,19 @@ function InventoryItems({
                   </td>
                   {showDepartment ? (
                     <td>
-                      {item.departmentId
-                        ? (departmentNames.get(item.departmentId) ??
-                          "Andere Abteilung")
-                        : "Alle Abteilungen"}
+                      {canManage ? (
+                        <InventoryItemDepartmentSelect
+                          departments={departments}
+                          item={item}
+                          onChanged={onChanged}
+                          tenantId={tenantId}
+                        />
+                      ) : item.departmentId ? (
+                        (departmentNames.get(item.departmentId) ??
+                        "Andere Abteilung")
+                      ) : (
+                        "Alle Abteilungen"
+                      )}
                     </td>
                   ) : null}
                   <td>{item.locationName ?? "Nicht zugeordnet"}</td>
@@ -2827,6 +2844,70 @@ function InventoryLocationCreateForm({
         </button>
       </form>
     </details>
+  );
+}
+
+/**
+ * Abteilung eines bestehenden Artikels ändern. Zur Wahl stehen nur die
+ * Abteilungen der Person; der Server prüft die Wahl erneut.
+ */
+function InventoryItemDepartmentSelect({
+  departments,
+  item,
+  onChanged,
+  tenantId,
+}: {
+  departments: readonly InventoryDepartment[];
+  item: InventoryItemSummary;
+  onChanged: InventoryChangedHandler;
+  tenantId: string;
+}) {
+  const [saving, setSaving] = useState(false);
+  const clientRequest = useClientRequestId(
+    tenantId,
+    `item-department-${item.id}`,
+  );
+  const current = item.departmentId ?? "";
+  const known = departments.some((department) => department.id === current);
+
+  const change = async (departmentId: string) => {
+    if (saving || departmentId === "" || departmentId === current) return;
+    // Jede neue Wahl ist ein eigener Auftrag.
+    clientRequest.discard();
+    setSaving(true);
+    const saved = await onChanged(
+      {
+        type: "manageItem",
+        tenantId,
+        operation: "update",
+        itemId: item.id,
+        values: { departmentId },
+        clientRequestId: clientRequest.requestId(),
+      },
+      `Die Abteilung von «${item.name}» wurde geändert.`,
+    );
+    setSaving(false);
+    if (saved) clientRequest.discard();
+  };
+
+  return (
+    <select
+      aria-label={`Abteilung von ${item.name}`}
+      disabled={saving}
+      onChange={(event) => void change(event.target.value)}
+      value={current}
+    >
+      {!known ? (
+        <option disabled value={current}>
+          {current ? "Andere Abteilung" : "Alle Abteilungen"}
+        </option>
+      ) : null}
+      {departments.map((department) => (
+        <option key={department.id} value={department.id}>
+          {department.name}
+        </option>
+      ))}
+    </select>
   );
 }
 

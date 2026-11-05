@@ -19,6 +19,10 @@ const taxonomySearchMigration = await Deno.readTextFile(
   ),
 );
 
+const followupMigration = await Deno.readTextFile(
+  new URL("../../migrations/0186_knowledge_followups.sql", import.meta.url),
+);
+
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
 }
@@ -206,9 +210,9 @@ Deno.test(
     }
     assert(
       source.includes(
-        "scopeDepartmentOptions(admin, action.tenantId, readScope)",
+        "scopeDepartmentOptions(admin, action.tenantId, editScope)",
       ),
-      "The article list must return the department options of the reader.",
+      "The article list must return the department options of the reader or editor.",
     );
   },
 );
@@ -257,8 +261,32 @@ Deno.test("articles and collections can be deleted within the scope", () => {
   );
   assert(
     source.includes('action.type === "deleteCollection" ||') &&
-      source.includes('.eq("parent_id", collection.id)') &&
-      source.includes('"knowledge.collection.deleted"'),
-    "Collection deletion must remove subcategories first and be audited.",
+      source.includes('rpc("delete_knowledge_collection"') &&
+      source.includes("p_collection_id: action.collectionId"),
+    "Collection deletion must go through the atomic SQL function.",
+  );
+  assert(
+    followupMigration.includes(
+      "create or replace function public.delete_knowledge_collection",
+    ) &&
+      followupMigration.includes("child.parent_id = v_collection.id") &&
+      followupMigration.includes("'knowledge.collection.deleted'") &&
+      followupMigration.includes(
+        "grant execute on function public.delete_knowledge_collection(uuid, uuid, uuid)\n  to service_role;",
+      ) &&
+      followupMigration.includes(
+        "revoke all on function public.delete_knowledge_collection(uuid, uuid, uuid)\n  from public, anon, authenticated;",
+      ),
+    "The SQL function must delete subcategories first, audit, and be service-role only.",
+  );
+});
+
+Deno.test("article editors receive their department options", () => {
+  assert(
+    source.includes("canReadInternal || canEditArticles") &&
+      source.includes(
+        "scopeDepartmentOptions(admin, action.tenantId, editScope)",
+      ),
+    "Managers without knowledge.read must still get the department picker.",
   );
 });

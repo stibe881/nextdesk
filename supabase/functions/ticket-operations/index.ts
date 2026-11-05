@@ -1,5 +1,15 @@
 import { withSupabase } from "@supabase/server";
+import {
+  loadDepartmentScope,
+  scopeDepartmentOptions,
+} from "../_shared/department-scope.ts";
 import { resolveTenantFeatureStates } from "../_shared/tenant-features.ts";
+import {
+  clusterRecentTickets,
+  INCIDENT_MIN_TICKETS,
+  INCIDENT_WINDOW_HOURS,
+  similarityText,
+} from "./incidents.ts";
 
 type BillingKind = "internal" | "billable" | "goodwill";
 type EscalationKind = "technical" | "organizational" | "sla";
@@ -15,6 +25,7 @@ type Action =
   | { type: "getTicket"; tenantId: string; ticketId: string }
   | { type: "recordExport"; tenantId: string; ticketId: string }
   | { type: "detectIncident"; tenantId: string; ticketId: string }
+  | { type: "incidentOverview"; tenantId: string }
   | {
       type: "openEscalation";
       tenantId: string;
@@ -170,6 +181,13 @@ function parseCommentAttachmentIds(value: unknown): string[] | null {
 }
 
 function parseAction(value: unknown): Action | null {
+  if (
+    isRecord(value) &&
+    value.type === "incidentOverview" &&
+    isUuid(value.tenantId) &&
+    hasOnlyKeys(value, ["type", "tenantId"])
+  )
+    return { type: value.type, tenantId: value.tenantId };
   if (!isRecord(value) || !isUuid(value.tenantId) || !isUuid(value.ticketId))
     return null;
   if (value.type === "getTicket")
@@ -1011,16 +1029,6 @@ async function createsReferenceCycle(
 const SIMILAR_TICKET_LIMIT = 10;
 const SOLUTION_EXCERPT_LENGTH = 300;
 const SOLUTION_TEXT_LENGTH = 10_000;
-const INCIDENT_WINDOW_HOURS = 2;
-const INCIDENT_MIN_TICKETS = 5;
-
-/** Subject and the start of the description, the text similar tickets use. */
-function similarityText(ticket: any): string {
-  const subject = typeof ticket.subject === "string" ? ticket.subject : "";
-  const description =
-    typeof ticket.description === "string" ? ticket.description : "";
-  return `${subject}\n${description.slice(0, 1500)}`.trim();
-}
 
 /** Plain solution text: images of another ticket cannot be carried over. */
 function solutionText(body: unknown): string {
@@ -1043,14 +1051,78 @@ function shortenText(value: string, length: number): string {
   return `${(boundary > length * 0.6 ? cut.slice(0, boundary) : cut).trimEnd()} …`;
 }
 
+/** Permissions that make a person staff, as in can_work_tickets_in_tenant. */
+const STAFF_PERMISSION_CODES = new Set([
+  "ticket.read.department",
+  "ticket.read.assigned",
+  "ticket.update",
+]);
+
 /**
- * The "Lösung" of a solved ticket: its last public comment before closing
- * that was written by staff, not by the requesting person or a contact.
+ * Of the given people, those who can work tickets in the tenant: an active
+ * membership and an active tenant or department role with a ticket work
+ * permission (same rule as public.can_work_tickets_in_tenant). Fails closed:
+ * on a lookup error nobody counts as staff.
  */
-async function ticketSolution(
+async function staffUserIds(
+  admin: any,
+  tenantId: string,
+  userIds: string[],
+): Promise<Set<string>> {
+  const ids = [...new Set(userIds.filter(isUuid))];
+  if (ids.length === 0) return new Set();
+  const now = new Date().toISOString();
+  const [memberships, assignments] = await Promise.all([
+    admin
+      .from("tenant_memberships")
+      .select("user_id")
+      .eq("tenant_id", tenantId)
+      .eq("status", "active")
+      .in("user_id", ids),
+    admin
+      .from("user_role_assignments")
+      .select(
+        "user_id, roles!user_role_assignments_role_tenant_fk!inner(tenant_id, active, scope, role_permissions!inner(permission_code))",
+      )
+      .eq("tenant_id", tenantId)
+      .in("user_id", ids)
+      .lte("starts_at", now)
+      .or(`expires_at.is.null,expires_at.gt.${now}`),
+  ]);
+  if (memberships.error || assignments.error) return new Set();
+  const activeMembers = new Set(
+    (memberships.data ?? []).map((row: any) => row.user_id),
+  );
+  const staff = new Set<string>();
+  for (const assignment of assignments.data ?? []) {
+    if (!activeMembers.has(assignment.user_id)) continue;
+    const role = Array.isArray(assignment.roles)
+      ? assignment.roles[0]
+      : assignment.roles;
+    if (
+      role?.tenant_id === tenantId &&
+      role.active === true &&
+      (role.scope === "tenant" || role.scope === "department") &&
+      (role.role_permissions ?? []).some((permission: any) =>
+        STAFF_PERMISSION_CODES.has(permission.permission_code),
+      )
+    )
+      staff.add(assignment.user_id);
+  }
+  return staff;
+}
+
+type SolutionComment = { body: unknown; author_id: string; created_at: string };
+
+/**
+ * Candidate comments for the "Lösung" of a solved ticket: its latest public
+ * comments before closing, not written by the requesting person or a contact.
+ * Whether the author is staff is checked afterwards for all tickets at once.
+ */
+async function solutionCandidates(
   admin: any,
   candidate: any,
-): Promise<{ text: string; excerpt: string; createdAt: string } | null> {
+): Promise<SolutionComment[]> {
   let query = admin
     .from("ticket_comments")
     .select("body, author_id, created_at")
@@ -1059,14 +1131,26 @@ async function ticketSolution(
     .is("requester_contact_id", null)
     .not("author_id", "is", null)
     .order("created_at", { ascending: false })
-    .limit(5);
+    .limit(10);
   if (isUuid(candidate.requester_id))
     query = query.neq("author_id", candidate.requester_id);
   if (typeof candidate.closed_at === "string")
     query = query.lte("created_at", candidate.closed_at);
   const { data, error } = await query;
-  if (error || !Array.isArray(data)) return null;
-  for (const comment of data) {
+  if (error || !Array.isArray(data)) return [];
+  return data.filter((comment: any) => isUuid(comment?.author_id));
+}
+
+/**
+ * The "Lösung": the latest candidate comment written by staff. Comments of
+ * other members of the requester's customer organisation are not solutions.
+ */
+function ticketSolution(
+  comments: SolutionComment[],
+  staff: Set<string>,
+): { text: string; excerpt: string; createdAt: string } | null {
+  for (const comment of comments) {
+    if (!staff.has(comment.author_id)) continue;
     const text = solutionText(comment.body);
     if (!text) continue;
     return {
@@ -1111,26 +1195,37 @@ async function similarTicketsWithSolutions(
   const tenantTicketIds = new Set(
     (tenantTickets ?? []).map((row: any) => row.id),
   );
-  return await Promise.all(
-    candidates
-      .filter((candidate) => tenantTicketIds.has(candidate.ticket_id))
-      .map(async (candidate) => ({
-        id: candidate.ticket_id,
-        ticketNumber: candidate.ticket_number,
-        subject: candidate.subject,
-        statusLabel:
-          typeof candidate.status_label === "string" &&
-          candidate.status_label.trim()
-            ? candidate.status_label.trim()
-            : "Status nicht verfügbar",
-        isClosed: candidate.is_closed === true,
-        rank: typeof candidate.rank === "number" ? candidate.rank : 0,
-        solution:
-          candidate.is_closed === true
-            ? await ticketSolution(admin, candidate)
-            : null,
-      })),
+  const tenantCandidates = candidates.filter((candidate) =>
+    tenantTicketIds.has(candidate.ticket_id),
   );
+  const comments = await Promise.all(
+    tenantCandidates.map((candidate) =>
+      candidate.is_closed === true
+        ? solutionCandidates(admin, candidate)
+        : Promise.resolve([] as SolutionComment[]),
+    ),
+  );
+  const staff = await staffUserIds(
+    admin,
+    tenantId,
+    comments.flat().map((comment) => comment.author_id),
+  );
+  return tenantCandidates.map((candidate, index) => ({
+    id: candidate.ticket_id,
+    ticketNumber: candidate.ticket_number,
+    subject: candidate.subject,
+    statusLabel:
+      typeof candidate.status_label === "string" &&
+      candidate.status_label.trim()
+        ? candidate.status_label.trim()
+        : "Status nicht verfügbar",
+    isClosed: candidate.is_closed === true,
+    rank: typeof candidate.rank === "number" ? candidate.rank : 0,
+    solution:
+      candidate.is_closed === true
+        ? ticketSolution(comments[index] ?? [], staff)
+        : null,
+  }));
 }
 
 async function hasTenantPermissionForCaller(
@@ -1173,6 +1268,50 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
   const actorId = context.userClaims?.id;
   if (!action || typeof actorId !== "string")
     return response(request, { error: { code: "invalid_request" } }, 400);
+  if (action.type === "incidentOverview") {
+    // Incident hint above the agent ticket list. Staff only; requesters and
+    // customer contacts get an empty overview, never clusters.
+    if (!(await activeMember(context.supabaseAdmin, actorId, action.tenantId)))
+      return response(
+        request,
+        { error: { code: "tenant_access_denied" } },
+        403,
+      );
+    const [modules, staffCheck] = await Promise.all([
+      getTicketModules(context.supabaseAdmin, action.tenantId),
+      context.supabase.rpc("can_work_tickets_in_tenant", {
+        p_tenant_id: action.tenantId,
+      }),
+    ]);
+    if (!modules)
+      return response(
+        request,
+        { error: { code: "ticket_feature_lookup_failed" } },
+        503,
+      );
+    if (!modules.detail || staffCheck.error || staffCheck.data !== true)
+      return response(request, {
+        data: { windowHours: INCIDENT_WINDOW_HOURS, incidents: [] },
+      });
+    const since = new Date(
+      Date.now() - INCIDENT_WINDOW_HOURS * 60 * 60 * 1000,
+    ).toISOString();
+    const incidents = await clusterRecentTickets(
+      context.supabase,
+      action.tenantId,
+      since,
+    );
+    if (!incidents)
+      return response(
+        request,
+        { error: { code: "incident_detection_failed" } },
+        503,
+      );
+    return response(request, {
+      data: { windowHours: INCIDENT_WINDOW_HOURS, incidents },
+    });
+  }
+
   const ticket = await getTicket(
     context.supabaseAdmin,
     action.tenantId,
@@ -1782,6 +1921,33 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         "ticket.manage",
       ),
     ]);
+    const canCreateProblem =
+      features?.["assets.management"] === true && canManageProblems;
+    // "Fall erstellen" needs a department of the caller's asset scope
+    // (service-assets checks it again): the ticket's department when it is in
+    // the scope, otherwise the only one; with several the client asks.
+    const problemScope = canCreateProblem
+      ? await loadDepartmentScope(
+          context.supabaseAdmin,
+          ticket.tenant_id,
+          actorId,
+          "assets.management",
+        )
+      : null;
+    const problemDepartments = problemScope
+      ? await scopeDepartmentOptions(
+          context.supabaseAdmin,
+          ticket.tenant_id,
+          problemScope,
+        )
+      : [];
+    const problemDepartmentId = !problemScope
+      ? null
+      : problemScope.departments.includes(String(ticket.department_id))
+        ? String(ticket.department_id)
+        : problemScope.departments.length === 1
+          ? (problemScope.departments[0] ?? null)
+          : null;
     return response(request, {
       data: {
         incident: {
@@ -1789,10 +1955,11 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
           ticketCount: tickets.length,
           tickets,
           departmentId: ticket.department_id,
+          problemDepartmentId,
+          problemDepartments,
           // Same permissions as service-assets (problems) and agent-workbench
           // (incident notices); those APIs check them again.
-          canCreateProblem:
-            features?.["assets.management"] === true && canManageProblems,
+          canCreateProblem,
           canPublishNotice:
             features?.["agent.workbench"] === true && canPublishNotices,
         },

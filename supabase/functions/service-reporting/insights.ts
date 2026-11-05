@@ -292,7 +292,7 @@ export function buildInsights(input: {
     { length: 24 },
     () =>
       Object.fromEntries(SOURCES.map((source) => [source, 0])) as Record<
-        string,
+        (typeof SOURCES)[number],
         number
       >,
   );
@@ -302,7 +302,7 @@ export function buildInsights(input: {
       const local = zurich(created);
       received.set(local.date, (received.get(local.date) ?? 0) + 1);
       const source = SOURCES.includes(ticket.source as (typeof SOURCES)[number])
-        ? ticket.source!
+        ? (ticket.source as (typeof SOURCES)[number])
         : "portal";
       byHour[local.hour][source] += 1;
     }

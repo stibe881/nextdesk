@@ -184,7 +184,11 @@ type ItemValues = {
   supplier?: string | null;
   privateNote?: string | null;
   active?: boolean;
-  /** Requested department; only accepted on create (resolved against the scope). */
+  /**
+   * Requested department, resolved against the caller's scope. On create it
+   * may be left out when the caller has one department; on update it moves
+   * the item to another department of the caller.
+   */
   departmentId?: string | null;
 };
 
@@ -713,14 +717,6 @@ function parseManageAction(
       ? parseItemValues(value.values)
       : parseLocationValues(value.values);
   if (!values || Object.keys(values).length === 0) return null;
-  if (
-    type === "manageItem" &&
-    operation !== "create" &&
-    Object.hasOwn(values, "departmentId")
-  ) {
-    // The department of an existing item is not changed through this command.
-    return null;
-  }
   if (
     operation === "create" &&
     (type === "manageItem"
@@ -3134,12 +3130,46 @@ async function loadManagedLocation(
   return location;
 }
 
+/**
+ * Department to write with an item command: on create the requested (or the
+ * only) department of the caller; on update only when one was requested, and
+ * then it must be one of the caller's departments. Undefined keeps the
+ * department of the item.
+ */
+export function itemDepartmentChange(
+  scope: DepartmentScope,
+  action: Extract<Action, { type: "manageItem" }>,
+): { departmentId: string | null } | undefined {
+  const requested = action.values?.departmentId;
+  if (action.operation === "update") {
+    if (!action.values || !Object.hasOwn(action.values, "departmentId")) {
+      return undefined;
+    }
+    // An edit names the target department explicitly.
+    if (requested === null || requested === undefined) {
+      throw new HttpError(
+        422,
+        "invalid_department",
+        "Bitte wählen Sie eine Abteilung.",
+      );
+    }
+  } else if (action.operation !== "create") {
+    return undefined;
+  }
+  const resolved = resolveRecordDepartment(scope, requested);
+  if ("error" in resolved) {
+    throw new HttpError(422, "invalid_department", resolved.error);
+  }
+  return { departmentId: resolved.departmentId };
+}
+
 export function upsertItemRpcParameters(
   actorId: string,
   tenantId: string,
   clientRequestId: string,
   itemId: string | null,
   item: StoredItem,
+  department?: { departmentId: string | null },
 ): Record<string, JsonValue> {
   return {
     p_actor_id: actorId,
@@ -3158,6 +3188,10 @@ export function upsertItemRpcParameters(
     p_supplier: item.supplier,
     p_note: item.privateNote,
     p_active: item.active,
+    // Migration 0187: set together with the item, so a new item is never
+    // visible outside its department.
+    p_department_id: department ? department.departmentId : null,
+    p_set_department: department !== undefined,
   };
 }
 
@@ -3187,17 +3221,9 @@ async function manage(
   action: Extract<Action, { type: "manageItem" | "manageLocation" }>,
 ): Promise<Response> {
   if (action.type === "manageItem") {
-    let departmentId: string | null = null;
-    if (action.operation === "create") {
-      const resolved = resolveRecordDepartment(
-        scope,
-        action.values?.departmentId,
-      );
-      if ("error" in resolved) {
-        throw new HttpError(422, "invalid_department", resolved.error);
-      }
-      departmentId = resolved.departmentId;
-    }
+    // The department is only written on create and when an edit asks for
+    // another one; otherwise the item keeps its department.
+    const department = itemDepartmentChange(scope, action);
     const existing =
       action.operation === "create"
         ? undefined
@@ -3233,26 +3259,9 @@ async function manage(
         action.clientRequestId,
         action.operation === "create" ? null : action.itemId!,
         item,
+        department,
       ),
     );
-    if (action.operation === "create") {
-      // The item command has no department parameter, so the department is
-      // set right after the (idempotent) create.
-      const receipt = mutationReceipt(raw);
-      if (!isUuid(receipt.id)) {
-        throw new HttpError(
-          503,
-          "inventory_contract_invalid",
-          "Der Artikel konnte nicht sicher gespeichert werden.",
-        );
-      }
-      const assigned = await admin
-        .from("inventory_items")
-        .update({ department_id: departmentId })
-        .eq("tenant_id", action.tenantId)
-        .eq("id", receipt.id);
-      if (assigned.error) databaseFailure(assigned.error);
-    }
     return json(
       request,
       { data: mutationReceipt(raw) },

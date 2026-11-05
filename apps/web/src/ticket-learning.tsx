@@ -8,6 +8,7 @@ import "./ticket-learning.css";
  *  - TicketSolutionPrompt: after closing, offer to save the solution as a
  *    knowledge article (AI draft), never blocking the close.
  *  - TicketIncidentBanner: several similar tickets within a short time.
+ *  - TicketListIncidentHint: possible incidents above the agent ticket list.
  *  - TicketPersonDevices: devices of the requesting / affected person.
  */
 
@@ -34,6 +35,21 @@ function errorStatus(error: unknown): number | null {
   if (context instanceof Response) return context.status;
   const record = asRecord(context);
   return typeof record?.status === "number" ? record.status : null;
+}
+
+/** The German message of a function error response, when it has one. */
+async function serverErrorMessage(error: unknown): Promise<string | null> {
+  const context = asRecord(error)?.context;
+  if (!(context instanceof Response)) return null;
+  try {
+    const body = asRecord(await context.clone().json());
+    const message = asRecord(body?.error)?.message;
+    return typeof message === "string" && message.trim()
+      ? message.trim()
+      : null;
+  } catch {
+    return null;
+  }
 }
 
 async function invokeFunction(name: string, body: Row): Promise<Row | null> {
@@ -160,14 +176,33 @@ type IncidentTicket = {
   subject: string;
 };
 
+type DepartmentOption = { id: string; name: string };
+
 type Incident = {
   windowHours: number;
   ticketCount: number;
   tickets: IncidentTicket[];
   departmentId: string | null;
+  /** Department for "Fall erstellen" within the caller's asset scope. */
+  problemDepartmentId: string | null;
+  /** The caller's asset departments, offered when a choice is needed. */
+  problemDepartments: DepartmentOption[];
   canCreateProblem: boolean;
   canPublishNotice: boolean;
 };
+
+function parseDepartmentOptions(value: unknown): DepartmentOption[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    const department = asRecord(item);
+    return department &&
+      isUuid(department.id) &&
+      typeof department.name === "string" &&
+      department.name.trim()
+      ? [{ id: department.id, name: department.name.trim() }]
+      : [];
+  });
+}
 
 export function parseIncident(value: Row | null): Incident | null {
   const incident = asRecord(value?.incident);
@@ -199,6 +234,10 @@ export function parseIncident(value: Row | null): Incident | null {
     ticketCount: incident.ticketCount,
     tickets,
     departmentId: isUuid(incident.departmentId) ? incident.departmentId : null,
+    problemDepartmentId: isUuid(incident.problemDepartmentId)
+      ? incident.problemDepartmentId
+      : null,
+    problemDepartments: parseDepartmentOptions(incident.problemDepartments),
     canCreateProblem: incident.canCreateProblem === true,
     canPublishNotice: incident.canPublishNotice === true,
   };
@@ -238,6 +277,8 @@ export function TicketIncidentBanner({
   const [noticeFormOpen, setNoticeFormOpen] = useState(false);
   const [noticeTitle, setNoticeTitle] = useState("");
   const [noticeDescription, setNoticeDescription] = useState("");
+  const [problemFormOpen, setProblemFormOpen] = useState(false);
+  const [problemDepartmentId, setProblemDepartmentId] = useState("");
   const sequence = useRef(0);
 
   const load = useCallback(async () => {
@@ -269,13 +310,33 @@ export function TicketIncidentBanner({
     setProblemCreated(false);
     setNoticePublished(false);
     setNoticeFormOpen(false);
+    setProblemFormOpen(false);
+    setProblemDepartmentId("");
     setNotice("");
     setError("");
   }, [ticketId]);
 
   if (!incident || dismissed) return null;
 
-  async function createProblem() {
+  function startProblem() {
+    if (!incident || pending) return;
+    setError("");
+    setNotice("");
+    // The ticket's department is outside the caller's asset scope and there
+    // are several to choose from: ask first.
+    if (
+      !incident.problemDepartmentId &&
+      incident.problemDepartments.length > 1
+    ) {
+      setProblemDepartmentId("");
+      setNoticeFormOpen(false);
+      setProblemFormOpen(true);
+      return;
+    }
+    void createProblem(incident.problemDepartmentId);
+  }
+
+  async function createProblem(departmentId: string | null) {
     if (!incident || pending) return;
     setPending("problem");
     setError("");
@@ -288,9 +349,9 @@ export function TicketIncidentBanner({
         title: shorten(`Möglicher Störfall: ${subject}`, 240),
         description: `${incidentHeadline(incident)}.\n\nBetroffene Tickets:\n${incidentTicketList(incident)}`,
         status: "investigating",
-        ...(incident.departmentId
-          ? { departmentId: incident.departmentId }
-          : {}),
+        // Without a department the server uses the caller's only asset
+        // department (or none) and explains when a choice is needed.
+        ...(departmentId ? { departmentId } : {}),
       });
       const problemId = asRecord(data?.problem)?.id;
       if (!isUuid(problemId))
@@ -311,6 +372,7 @@ export function TicketIncidentBanner({
           result.status === "fulfilled" || errorStatus(result.reason) === 409,
       ).length;
       setProblemCreated(true);
+      setProblemFormOpen(false);
       setNotice(
         linked === incident.tickets.length
           ? `Der Fall wurde erstellt und mit ${linked} Tickets verknüpft. Sie finden ihn unter „Fälle“.`
@@ -318,12 +380,14 @@ export function TicketIncidentBanner({
       );
     } catch (nextError) {
       const status = errorStatus(nextError);
+      const message = await serverErrorMessage(nextError);
       setError(
-        status === 403
-          ? "Sie sind nicht berechtigt, Fälle zu erstellen."
-          : status === 400 || status === 422
-            ? "Der Fall konnte für diese Abteilung nicht erstellt werden. Bitte erstellen Sie ihn unter „Fälle“."
-            : "Der Fall konnte nicht erstellt werden. Bitte versuchen Sie es erneut.",
+        message ??
+          (status === 403
+            ? "Sie sind nicht berechtigt, Fälle zu erstellen."
+            : status === 400 || status === 422
+              ? "Der Fall konnte für diese Abteilung nicht erstellt werden. Bitte erstellen Sie ihn unter „Fälle“."
+              : "Der Fall konnte nicht erstellt werden. Bitte versuchen Sie es erneut."),
       );
     } finally {
       setPending(null);
@@ -337,6 +401,7 @@ export function TicketIncidentBanner({
       "Wir haben mehrere Meldungen zu dieser Störung erhalten und prüfen die Ursache. Sie müssen kein weiteres Ticket erstellen; wir informieren Sie hier über den Stand.",
     );
     setNoticeFormOpen(true);
+    setProblemFormOpen(false);
     setError("");
     setNotice("");
   }
@@ -373,10 +438,12 @@ export function TicketIncidentBanner({
         "Die Störungsmeldung ist veröffentlicht und für anfragende Personen im Portal sichtbar.",
       );
     } catch (nextError) {
+      const message = await serverErrorMessage(nextError);
       setError(
-        errorStatus(nextError) === 403
-          ? "Sie sind nicht berechtigt, Störungsmeldungen zu veröffentlichen."
-          : "Die Störungsmeldung konnte nicht veröffentlicht werden. Bitte versuchen Sie es erneut.",
+        message ??
+          (errorStatus(nextError) === 403
+            ? "Sie sind nicht berechtigt, Störungsmeldungen zu veröffentlichen."
+            : "Die Störungsmeldung konnte nicht veröffentlicht werden. Bitte versuchen Sie es erneut."),
       );
     } finally {
       setPending(null);
@@ -465,13 +532,66 @@ export function TicketIncidentBanner({
             </button>
           </div>
         </form>
+      ) : problemFormOpen ? (
+        <form
+          className="ticket-learning-form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (!problemDepartmentId) {
+              setError("Bitte wählen Sie eine Abteilung.");
+              return;
+            }
+            void createProblem(problemDepartmentId);
+          }}
+        >
+          <label>
+            Abteilung des Falls
+            <select
+              disabled={pending !== null}
+              onChange={(event) => setProblemDepartmentId(event.target.value)}
+              required
+              value={problemDepartmentId}
+            >
+              <option value="">Bitte wählen</option>
+              {incident.problemDepartments.map((department) => (
+                <option key={department.id} value={department.id}>
+                  {department.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="ticket-detail-actions">
+            <button
+              className="primary-button"
+              disabled={pending !== null}
+              type="submit"
+            >
+              {pending === "problem" ? (
+                <LoaderCircle
+                  aria-hidden="true"
+                  className="ticket-detail-spinner"
+                  size={16}
+                />
+              ) : null}
+              Fall erstellen
+            </button>
+            <button
+              className="secondary-button"
+              disabled={pending !== null}
+              onClick={() => setProblemFormOpen(false)}
+              type="button"
+            >
+              Abbrechen
+            </button>
+          </div>
+        </form>
       ) : (
         <div className="ticket-detail-actions">
           {incident.canCreateProblem && !problemCreated ? (
             <button
               className="secondary-button"
               disabled={pending !== null}
-              onClick={() => void createProblem()}
+              onClick={startProblem}
               type="button"
             >
               {pending === "problem" ? (
@@ -506,6 +626,173 @@ export function TicketIncidentBanner({
           </button>
         </div>
       )}
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Incident hint above the ticket list
+
+export type ListIncident = {
+  subject: string;
+  ticketCount: number;
+  ticketIds: string[];
+};
+
+/** Polling interval of the list hint (at most every two minutes). */
+export const INCIDENT_OVERVIEW_POLL_MS = 120_000;
+
+export function parseIncidentOverview(
+  value: Row | null,
+): { windowHours: number; incidents: ListIncident[] } | null {
+  if (
+    !value ||
+    typeof value.windowHours !== "number" ||
+    !Array.isArray(value.incidents)
+  )
+    return null;
+  const incidents: ListIncident[] = [];
+  for (const item of value.incidents) {
+    const incident = asRecord(item);
+    if (
+      !incident ||
+      typeof incident.subject !== "string" ||
+      typeof incident.ticketCount !== "number" ||
+      !Array.isArray(incident.ticketIds)
+    )
+      return null;
+    const ticketIds = incident.ticketIds.filter(isUuid);
+    if (ticketIds.length === 0) continue;
+    incidents.push({
+      subject: incident.subject,
+      ticketCount: incident.ticketCount,
+      ticketIds,
+    });
+  }
+  return { windowHours: value.windowHours, incidents };
+}
+
+export function listIncidentHeadline(
+  incident: ListIncident,
+  windowHours: number,
+): string {
+  return `Möglicher Störfall: «${shorten(incident.subject, 120)}» – ${
+    incident.ticketCount
+  } ähnliche Tickets in den letzten ${
+    windowHours === 1 ? "Stunde" : `${windowHours} Stunden`
+  }`;
+}
+
+/**
+ * Possible incidents (clusters of similar tickets from the last hours) above
+ * the agent ticket list. Polled at most every two minutes while the page is
+ * visible; failures hide the hint.
+ */
+export function TicketListIncidentHint({
+  tenantId,
+  onShowTickets,
+}: {
+  tenantId: string;
+  onShowTickets: (incident: ListIncident, label: string) => void;
+}) {
+  const [overview, setOverview] = useState<{
+    tenantId: string;
+    windowHours: number;
+    incidents: ListIncident[];
+  } | null>(null);
+  const [dismissed, setDismissed] = useState<string[]>([]);
+  const sequence = useRef(0);
+
+  useEffect(() => {
+    setOverview(null);
+    setDismissed([]);
+    let lastLoad = 0;
+    const load = () => {
+      if (typeof document !== "undefined" && document.hidden) return;
+      if (Date.now() - lastLoad < INCIDENT_OVERVIEW_POLL_MS - 1000) return;
+      lastLoad = Date.now();
+      const requestId = ++sequence.current;
+      void invokeFunction("ticket-operations", {
+        type: "incidentOverview",
+        tenantId,
+      })
+        .then((data) => {
+          const parsed = parseIncidentOverview(data);
+          if (requestId === sequence.current)
+            setOverview(parsed ? { tenantId, ...parsed } : null);
+        })
+        .catch(() => {
+          // Optional hint: older deployments or a failed lookup hide it.
+          if (requestId === sequence.current) setOverview(null);
+        });
+    };
+    load();
+    const timer = window.setInterval(load, INCIDENT_OVERVIEW_POLL_MS);
+    const onVisible = () => {
+      if (!document.hidden) load();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisible);
+      sequence.current += 1;
+    };
+  }, [tenantId]);
+
+  if (!overview || overview.tenantId !== tenantId) return null;
+  const visible = overview.incidents.filter(
+    (incident) => !dismissed.includes(incident.ticketIds[0] ?? ""),
+  );
+  if (visible.length === 0) return null;
+
+  return (
+    <section
+      aria-label="Mögliche Störfälle"
+      className="ticket-learning-banner ticket-learning-banner--list"
+      role="status"
+    >
+      {visible.map((incident) => {
+        const headline = listIncidentHeadline(incident, overview.windowHours);
+        return (
+          <div
+            className="ticket-learning-list-incident"
+            key={incident.ticketIds[0]}
+          >
+            <strong>
+              <AlertCircle aria-hidden="true" size={16} strokeWidth={1.8} />
+              {headline}
+            </strong>
+            <div className="ticket-learning-list-incident__actions">
+              <button
+                className="text-button"
+                onClick={() =>
+                  onShowTickets(
+                    incident,
+                    `Möglicher Störfall: «${shorten(incident.subject, 80)}»`,
+                  )
+                }
+                type="button"
+              >
+                Tickets anzeigen
+              </button>
+              <button
+                aria-label={`Hinweis «${shorten(incident.subject, 80)}» ausblenden`}
+                className="ticket-toast-dismiss"
+                onClick={() =>
+                  setDismissed((current) => [
+                    ...current,
+                    incident.ticketIds[0] ?? "",
+                  ])
+                }
+                title="Ausblenden"
+                type="button"
+              >
+                <X aria-hidden="true" size={16} strokeWidth={1.8} />
+              </button>
+            </div>
+          </div>
+        );
+      })}
     </section>
   );
 }

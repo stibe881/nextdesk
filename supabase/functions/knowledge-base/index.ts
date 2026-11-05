@@ -952,94 +952,32 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
   }
 
   if (action.type === "deleteCollection") {
-    // A category goes with its subcategories (the parent key is ON DELETE
-    // RESTRICT, so children first). Articles stay; only their assignments
-    // to the deleted collections disappear (cascade).
-    const { data: collection, error: collectionError } = await admin
-      .from("knowledge_collections")
-      .select("id, name, parent_id")
-      .eq("tenant_id", action.tenantId)
-      .eq("id", action.collectionId)
-      .maybeSingle();
-    if (collectionError)
-      return json(
-        request,
-        { error: { code: "collection_delete_failed" } },
-        500,
-      );
-    if (!collection)
-      return json(request, { error: { code: "collection_not_found" } }, 404);
-    const { data: children, error: childrenError } = await admin
-      .from("knowledge_collections")
-      .select("id")
-      .eq("tenant_id", action.tenantId)
-      .eq("parent_id", collection.id);
-    if (childrenError)
-      return json(
-        request,
-        { error: { code: "collection_delete_failed" } },
-        500,
-      );
-    const childIds = (children ?? []).map((child: any) => String(child.id));
-    const allIds = [...childIds, String(collection.id)];
-    const { count: assignmentCount, error: countError } = await admin
-      .from("knowledge_article_collections")
-      .select("article_id", { count: "exact", head: true })
-      .eq("tenant_id", action.tenantId)
-      .in("collection_id", allIds);
-    if (countError)
-      return json(
-        request,
-        { error: { code: "collection_delete_failed" } },
-        500,
-      );
-    if (childIds.length) {
-      const { error: childDeleteError } = await admin
-        .from("knowledge_collections")
-        .delete()
-        .eq("tenant_id", action.tenantId)
-        .in("id", childIds);
-      if (childDeleteError)
-        return json(
-          request,
-          { error: { code: "collection_delete_failed" } },
-          500,
-        );
-    }
-    const { error: deleteError } = await admin
-      .from("knowledge_collections")
-      .delete()
-      .eq("tenant_id", action.tenantId)
-      .eq("id", collection.id);
-    if (deleteError)
-      return json(
-        request,
-        { error: { code: "collection_delete_failed" } },
-        500,
-      );
-    await admin.from("audit_logs").insert({
-      tenant_id: action.tenantId,
-      actor_id: actorId,
-      action: "knowledge.collection.deleted",
-      entity_type: "knowledge_collection",
-      entity_id: collection.id,
-      severity: "info",
-      before_data: {
-        name: collection.name,
-        parentId: collection.parent_id ?? null,
-      },
-      after_data: null,
-      metadata: {
-        collectionId: collection.id,
-        deletedSubcategoryIds: childIds,
-        removedAssignments: assignmentCount ?? 0,
-      },
+    // A category goes with its subcategories in one transaction (SQL function
+    // of migration 0186, which also writes the audit record). Articles stay;
+    // only their assignments to the deleted collections disappear (cascade).
+    const { data, error } = await admin.rpc("delete_knowledge_collection", {
+      p_tenant_id: action.tenantId,
+      p_collection_id: action.collectionId,
+      p_actor_id: actorId,
     });
+    if (error?.code === "P0002")
+      return json(request, { error: { code: "collection_not_found" } }, 404);
+    const deleted = Array.isArray(data) && data.length === 1 ? data[0] : null;
+    if (error || !isRecord(deleted) || !isUuid(deleted.collection_id))
+      return json(
+        request,
+        { error: { code: "collection_delete_failed" } },
+        500,
+      );
+    const deletedCollectionIds = Array.isArray(deleted.deleted_collection_ids)
+      ? deleted.deleted_collection_ids.map((id: unknown) => String(id))
+      : [deleted.collection_id];
     return json(request, {
       data: {
-        collectionId: collection.id,
-        deletedCollectionIds: allIds,
-        removedAssignments: assignmentCount ?? 0,
+        collectionId: deleted.collection_id,
+        deletedCollectionIds,
+        deletedSubcategories: outcomeCount(deleted.deleted_subcategories),
+        removedAssignments: outcomeCount(deleted.removed_assignments),
       },
     });
   }
@@ -1381,8 +1319,29 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     if (!readScope) return scopeFailed();
 
     if (action.type === "listArticles") {
-      const departments = canReadInternal
-        ? await scopeDepartmentOptions(admin, action.tenantId, readScope)
+      // Department options for the editor: everybody who may create or edit
+      // articles (knowledge.manage) gets the departments of the own scope,
+      // also without knowledge.read.
+      const canEditArticles = canReadInternal
+        ? true
+        : await hasTenantPermission(
+            admin,
+            actorId,
+            action.tenantId,
+            KNOWLEDGE_MANAGE_PERMISSION,
+          );
+      if (canEditArticles === null)
+        return json(
+          request,
+          { error: { code: "authorization_check_failed" } },
+          500,
+        );
+      const editScope =
+        canReadInternal || canEditArticles ? await loadAgentScope() : null;
+      if ((canReadInternal || canEditArticles) && !editScope)
+        return scopeFailed();
+      const departments = editScope
+        ? await scopeDepartmentOptions(admin, action.tenantId, editScope)
         : [];
       const ranks = new Map<string, number>();
       let matchingArticleIds: string[] | null = null;

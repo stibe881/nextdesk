@@ -92,3 +92,37 @@
   outline: 2px solid var(--primary);
   outline-offset: 2px;
 }
+
+.ticket-learning-form select {
+  width: 100%;
+  font: inherit;
+}
+
+/* Incident hint above the agent ticket list (compact, one line per cluster). */
+.ticket-learning-banner--list {
+  gap: 4px;
+  margin: 12px 0 0;
+  padding: 8px 12px;
+}
+
+.ticket-learning-list-incident {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 12px;
+}
+
+.ticket-learning-list-incident > strong {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.ticket-learning-list-incident__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
