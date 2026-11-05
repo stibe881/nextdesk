@@ -569,4 +569,35 @@ $function$;
 
 revoke all on function public.service_task_wake() from public, anon, authenticated;
 
+-- The dispatch secret is generated in and never leaves the database; the
+-- function checks the header it receives with this service-only helper.
+create or replace function public.service_task_verify_dispatch_secret(p_secret text)
+returns boolean
+language sql
+stable
+security definer
+set search_path = pg_catalog, service_task_private, pg_temp
+as $function$
+  select exists (
+    select 1
+    from service_task_private.dispatch_config config
+    where config.singleton
+      and p_secret is not null
+      and config.dispatch_secret = p_secret
+  );
+$function$;
+
+revoke all on function public.service_task_verify_dispatch_secret(text)
+  from public, anon, authenticated;
+grant execute on function public.service_task_verify_dispatch_secret(text)
+  to service_role;
+
+insert into service_task_private.dispatch_config (singleton, function_url, dispatch_secret)
+values (
+  true,
+  'https://ewizsylzrwogsztsthbl.supabase.co/functions/v1/service-tasks',
+  replace(gen_random_uuid()::text, '-', '') || replace(gen_random_uuid()::text, '-', '')
+)
+on conflict (singleton) do nothing;
+
 commit;

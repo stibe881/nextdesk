@@ -1314,9 +1314,16 @@ const userHandler = withSupabase(
 const cronHandler = withSupabase(
   { auth: "none", cors: "disabled", errors: { detailed: false } },
   async (request, context) => {
-    const secret = Deno.env.get("SERVICE_TASKS_DISPATCH_SECRET") ?? "";
+    // The shared secret lives only in the database; it is compared there.
     const provided = request.headers.get("x-nextdesk-dispatch-secret") ?? "";
-    if (secret.length < 32 || provided !== secret) {
+    const { data: valid, error: verifyError } =
+      provided.length >= 32 && provided.length <= 200
+        ? await context.supabaseAdmin.rpc(
+            "service_task_verify_dispatch_secret",
+            { p_secret: provided },
+          )
+        : { data: false, error: null };
+    if (verifyError || valid !== true) {
       return new Response(null, { status: 401 });
     }
     try {
