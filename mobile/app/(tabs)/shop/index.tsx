@@ -315,17 +315,28 @@ export default function ShopScreen() {
                       />
                     )}
                     {(item.imageUrls?.length ?? 0) > 1 ? (
+                      // Anzahl Fotos (nicht Bestand): mit Bild-Symbol,
+                      // damit sie nicht wie eine Stückzahl wirkt.
                       <View
+                        accessibilityLabel={`${item.imageUrls?.length} Fotos`}
                         style={{
                           position: "absolute",
                           right: 4,
                           bottom: 4,
+                          flexDirection: "row",
+                          alignItems: "center",
+                          gap: 3,
                           borderRadius: 999,
                           paddingHorizontal: 6,
-                          paddingVertical: 1,
+                          paddingVertical: 2,
                           backgroundColor: "rgba(15,23,42,0.7)",
                         }}
                       >
+                        <Ionicons
+                          color="#fff"
+                          name="images-outline"
+                          size={11}
+                        />
                         <Text
                           style={{
                             color: "#fff",
@@ -354,7 +365,9 @@ export default function ShopScreen() {
                         {item.description}
                       </Text>
                     ) : null}
-                    <Text style={[styles.cardMeta, { color: colors.primaryText }]}>
+                    <Text
+                      style={[styles.cardMeta, { color: colors.primaryText }]}
+                    >
                       Details ansehen
                     </Text>
                   </Pressable>
@@ -512,11 +525,15 @@ export default function ShopScreen() {
               </Text>
               {renderBadges(detail)}
               {detail.description ? (
-                <Text style={[styles.cardMeta, { fontSize: 16, lineHeight: 23 }]}>
+                <Text
+                  style={[styles.cardMeta, { fontSize: 16, lineHeight: 23 }]}
+                >
                   {detail.description}
                 </Text>
               ) : (
-                <Text style={styles.cardMeta}>Keine Beschreibung vorhanden.</Text>
+                <Text style={styles.cardMeta}>
+                  Keine Beschreibung vorhanden.
+                </Text>
               )}
               {detail.kind === "order" && detail.maxQuantity > 1 ? (
                 <Text style={styles.cardMeta}>
