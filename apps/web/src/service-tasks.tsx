@@ -56,6 +56,7 @@ type Overview = {
   templateCount: number;
   people: Person[];
   teams: Person[];
+  departments: Person[];
   access: Access;
 };
 type Rule = {
@@ -77,6 +78,7 @@ type Template = {
   priority: string;
   assigneeId: string | null;
   teamId: string | null;
+  departmentId: string | null;
   referenceLabel: string | null;
   estimatedMinutes: number | null;
   recurrence: Rule;
@@ -872,6 +874,7 @@ function emptyTemplate(today: string): Template {
     priority: "normal",
     assigneeId: null,
     teamId: null,
+    departmentId: null,
     referenceLabel: "",
     estimatedMinutes: null,
     recurrence: {
@@ -899,6 +902,7 @@ function TemplateForm({
   initial,
   people,
   teams,
+  departments,
   onCancel,
   onSaved,
 }: {
@@ -906,10 +910,15 @@ function TemplateForm({
   initial: Template;
   people: Person[];
   teams: Person[];
+  departments: Person[];
   onCancel: () => void;
   onSaved: () => void;
 }) {
-  const [form, setForm] = useState<Template>(initial);
+  const [form, setForm] = useState<Template>(() =>
+    initial.departmentId || departments.length !== 1
+      ? initial
+      : { ...initial, departmentId: departments[0]?.id ?? null },
+  );
   const [newCheck, setNewCheck] = useState("");
   const [preview, setPreview] = useState<{
     dates: string[];
@@ -987,6 +996,7 @@ function TemplateForm({
         priority: form.priority,
         assigneeId: form.assigneeId,
         teamId: form.teamId,
+        departmentId: form.departmentId,
         referenceLabel: form.referenceLabel || null,
         estimatedMinutes: form.estimatedMinutes,
         recurrence: form.recurrence,
@@ -1086,6 +1096,26 @@ function TemplateForm({
                 ))}
               </select>
             </label>
+            {departments.length > 1 ? (
+              <label>
+                Abteilung
+                <select
+                  onChange={(event) =>
+                    set("departmentId", event.target.value || null)
+                  }
+                  value={form.departmentId ?? ""}
+                >
+                  <option disabled value="">
+                    Abteilung wählen
+                  </option>
+                  {departments.map((department) => (
+                    <option key={department.id} value={department.id}>
+                      {department.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
             <label>
               Team (Vertretung &amp; Eskalation)
               <select
@@ -1486,17 +1516,28 @@ function TemplatesView({
 }: {
   tenantId: string;
   canManage: boolean;
-  onEdit: (template: Template, people: Person[], teams: Person[]) => void;
+  onEdit: (
+    template: Template,
+    people: Person[],
+    teams: Person[],
+    departments: Person[],
+  ) => void;
   reloadKey: number;
 }) {
   const [state, setState] = useState<{
     templates: Template[];
     people: Person[];
     teams: Person[];
+    departments: Person[];
   } | null>(null);
   const [error, setError] = useState("");
   const load = useCallback(() => {
-    call<{ templates: Template[]; people: Person[]; teams: Person[] }>({
+    call<{
+      templates: Template[];
+      people: Person[];
+      teams: Person[];
+      departments: Person[];
+    }>({
       type: "listTemplates",
       tenantId,
     })
@@ -1509,6 +1550,13 @@ function TemplatesView({
   const peopleById = new Map(
     state.people.map((person) => [person.id, person.name]),
   );
+  const departmentById = new Map(
+    (state.departments ?? []).map((department) => [
+      department.id,
+      department.name,
+    ]),
+  );
+  const showDepartment = (state.departments ?? []).length > 1;
   return (
     <section className="st-card">
       {state.templates.length === 0 ? (
@@ -1525,6 +1573,9 @@ function TemplatesView({
               <small>
                 {[
                   template.ruleText,
+                  showDepartment && template.departmentId
+                    ? departmentById.get(template.departmentId)
+                    : null,
                   template.category,
                   template.assigneeId
                     ? peopleById.get(template.assigneeId)
@@ -1562,7 +1613,14 @@ function TemplatesView({
                 </button>
                 <button
                   className="st-button"
-                  onClick={() => onEdit(template, state.people, state.teams)}
+                  onClick={() =>
+                    onEdit(
+                      template,
+                      state.people,
+                      state.teams,
+                      state.departments ?? [],
+                    )
+                  }
                   type="button"
                 >
                   Bearbeiten
@@ -1715,6 +1773,7 @@ export function ServiceTasks({
     template: Template;
     people: Person[];
     teams: Person[];
+    departments: Person[];
   } | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const version = useRef(0);
@@ -1792,6 +1851,7 @@ export function ServiceTasks({
                   template: emptyTemplate(today),
                   people: data?.people ?? [],
                   teams: data?.teams ?? [],
+                  departments: data?.departments ?? [],
                 });
                 setView("form");
               }}
@@ -1818,8 +1878,8 @@ export function ServiceTasks({
       {view === "templates" ? (
         <TemplatesView
           canManage={access.canManage}
-          onEdit={(template, people, teams) => {
-            setEditing({ template, people, teams });
+          onEdit={(template, people, teams, departments) => {
+            setEditing({ template, people, teams, departments });
             setView("form");
           }}
           reloadKey={reloadKey}
@@ -1841,6 +1901,7 @@ export function ServiceTasks({
           }}
           people={editing.people}
           teams={editing.teams}
+          departments={editing.departments}
           tenantId={tenantId}
         />
       ) : null}
