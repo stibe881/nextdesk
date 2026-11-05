@@ -104,7 +104,7 @@ const AUTH_TRANSACTION_KEY = "nextdesk:mobile:auth-transaction:v1";
 const AUTH_TRANSACTION_TTL_MS = 10 * 60 * 1_000;
 const AUTH_STORAGE_STEP_TIMEOUT_MS = 6_000;
 const AUTH_STORAGE_TIMEOUT_MESSAGE =
-  "Der sichere Gerätespeicher hat nicht rechtzeitig geantwortet. Bitte entsperren Sie das iPhone und versuchen Sie es erneut.";
+  "Der sichere Gerätespeicher hat nicht rechtzeitig geantwortet. Bitte entsperre das iPhone und versuche es erneut.";
 const SUPABASE_AUTH_STORAGE_KEY = (() => {
   try {
     return `sb-${new URL(url).hostname.split(".")[0]}-auth-token`;
@@ -131,7 +131,7 @@ export const nextDesk: SupabaseClient | null = isNextDeskConfigured
 export function requireNextDesk(): SupabaseClient {
   if (!nextDesk) {
     throw new Error(
-      "Die mobile nextDesk-Verbindung ist noch nicht konfiguriert. Bitte aktualisieren Sie die App.",
+      "Die mobile nextDesk-Verbindung ist noch nicht konfiguriert. Bitte aktualisiere die App.",
     );
   }
   return nextDesk;
@@ -187,17 +187,17 @@ export function nextDeskAuthFailureMessage(
     case "provider_email_missing":
       return "Microsoft Entra hat für dieses Konto keine E-Mail-Adresse an nextDesk übermittelt. Die Entra-Anmeldung benötigt den E-Mail-Anspruch.";
     case "pkce_verifier_missing":
-      return "Die sichere Anmelderückkehr ist abgelaufen. Bitte starten Sie die SSO-Anmeldung erneut in dieser App.";
+      return "Die sichere Anmelderückkehr ist abgelaufen. Bitte starte die SSO-Anmeldung erneut in dieser App.";
     case "provider_rejected":
-      return "Die Microsoft-Anmeldung wurde nicht bestätigt. Bitte versuchen Sie es erneut.";
+      return "Die Microsoft-Anmeldung wurde nicht bestätigt. Bitte versuche es erneut.";
     case "callback_invalid":
-      return "Die Anmelderückkehr ist ungültig oder abgelaufen. Bitte starten Sie die SSO-Anmeldung erneut.";
+      return "Die Anmelderückkehr ist ungültig oder abgelaufen. Bitte starte die SSO-Anmeldung erneut.";
     case "callback_unexpected":
-      return "Diese Anmelderückkehr gehört nicht zur aktuellen nextDesk-Anmeldung. Bitte starten Sie die SSO-Anmeldung erneut.";
+      return "Diese Anmelderückkehr gehört nicht zur aktuellen nextDesk-Anmeldung. Bitte starte die SSO-Anmeldung erneut.";
     case "session_not_saved":
-      return "Die Anmeldung konnte nicht sicher auf diesem Gerät gespeichert werden. Bitte versuchen Sie es erneut.";
+      return "Die Anmeldung konnte nicht sicher auf diesem Gerät gespeichert werden. Bitte versuche es erneut.";
     default:
-      return "Die SSO-Anmeldung konnte nicht abgeschlossen werden. Bitte versuchen Sie es erneut.";
+      return "Die SSO-Anmeldung konnte nicht abgeschlossen werden. Bitte versuche es erneut.";
   }
 }
 
@@ -520,7 +520,7 @@ export async function selectMobileTenant(
   }
   const tenant = tenants.find((candidate) => candidate.id === tenantId);
   if (!tenant) {
-    throw new Error("Dieser Mandant ist für Ihr Konto nicht aktiv.");
+    throw new Error("Dieser Mandant ist für dein Konto nicht aktiv.");
   }
   return withTenantSelectionLock(async () => {
     if (selectionGeneration !== tenantSelectionGeneration)

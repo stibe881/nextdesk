@@ -141,9 +141,7 @@ export function RequesterPicker({
   async function createRequester() {
     const displayName = newName.trim();
     if (Array.from(displayName).length < 2) {
-      setCreateError(
-        "Bitte geben Sie einen Namen mit mindestens zwei Zeichen ein.",
-      );
+      setCreateError("Bitte gib einen Namen mit mindestens zwei Zeichen ein.");
       return;
     }
     setCreating(true);
@@ -275,7 +273,7 @@ export function RequesterPicker({
             >
               {queryLength < 2 ? (
                 <Text style={styles.searchNote}>
-                  Geben Sie mindestens zwei Buchstaben ein, um Personen dieses
+                  Gib mindestens zwei Buchstaben ein, um Personen dieses
                   Mandanten zu suchen.
                 </Text>
               ) : searchError ? (

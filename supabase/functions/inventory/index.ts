@@ -3163,6 +3163,58 @@ export function itemDepartmentChange(
   return { departmentId: resolved.departmentId };
 }
 
+/**
+ * Department for a create whose article number already exists in the tenant.
+ * upsert_inventory_item updates such an item instead of creating a new one,
+ * so the existing item must be inside the caller's department scope (409
+ * otherwise), and it keeps its department unless the caller explicitly named
+ * one. Without an existing item the department of the create is used as is.
+ */
+export function createItemDepartment(
+  scope: DepartmentScope,
+  action: Extract<Action, { type: "manageItem" }>,
+  department: { departmentId: string | null } | undefined,
+  existing: { departmentId: string | null } | null,
+): { departmentId: string | null } | undefined {
+  if (action.operation !== "create" || !existing) return department;
+  if (!departmentVisible(scope, existing.departmentId)) {
+    throw new HttpError(
+      409,
+      "article_number_conflict",
+      "Die Artikelnummer ist bereits in einer anderen Abteilung vergeben.",
+    );
+  }
+  const requested = action.values?.departmentId;
+  const explicit =
+    requested !== undefined && requested !== null && requested !== "";
+  return explicit ? department : undefined;
+}
+
+async function loadItemByArticleNumber(
+  admin: AdminClient,
+  tenantId: string,
+  articleNumber: string | null,
+): Promise<{ departmentId: string | null } | null> {
+  const normalized = (articleNumber ?? "").trim().toLowerCase();
+  if (!normalized) return null;
+  const result = await admin
+    .from("inventory_items")
+    .select("id,department_id")
+    .eq("tenant_id", tenantId)
+    .eq("article_number", normalized)
+    .maybeSingle();
+  if (result.error) databaseFailure(result.error);
+  if (!result.data) return null;
+  const departmentId = (result.data as { department_id?: unknown })
+    .department_id;
+  return {
+    departmentId:
+      departmentId === null || departmentId === undefined
+        ? null
+        : String(departmentId),
+  };
+}
+
 export function upsertItemRpcParameters(
   actorId: string,
   tenantId: string,
@@ -3223,7 +3275,7 @@ async function manage(
   if (action.type === "manageItem") {
     // The department is only written on create and when an edit asks for
     // another one; otherwise the item keeps its department.
-    const department = itemDepartmentChange(scope, action);
+    let department = itemDepartmentChange(scope, action);
     const existing =
       action.operation === "create"
         ? undefined
@@ -3238,6 +3290,21 @@ async function manage(
         422,
         "invalid_data",
         "Die Angaben sind nicht zulässig.",
+      );
+    }
+    if (action.operation === "create") {
+      // A create with an existing article number updates that item (see
+      // upsert_inventory_item): only allowed inside the caller's scope, and
+      // without moving the item to another department unless asked to.
+      department = createItemDepartment(
+        scope,
+        action,
+        department,
+        await loadItemByArticleNumber(
+          admin,
+          action.tenantId,
+          item.articleNumber,
+        ),
       );
     }
     if (

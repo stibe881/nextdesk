@@ -142,7 +142,7 @@ const config: ExpoConfig = {
       "expo-local-authentication",
       {
         faceIDPermission:
-          "nextDesk verwendet Face ID nur, um Ihre bereits angemeldete Sitzung auf diesem Gerät zu schützen.",
+          "nextDesk verwendet Face ID nur, um deine bereits angemeldete Sitzung auf diesem Gerät zu schützen.",
       },
     ],
     [

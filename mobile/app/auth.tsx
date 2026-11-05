@@ -55,7 +55,7 @@ function preparationFailureMessage(error: unknown): string {
   const detail = error instanceof Error ? error.message.trim() : "";
   return detail
     ? `Die SSO-Anmeldung konnte nicht vorbereitet werden. ${detail}`
-    : "Die SSO-Anmeldung konnte nicht vorbereitet werden. Bitte versuchen Sie es erneut.";
+    : "Die SSO-Anmeldung konnte nicht vorbereitet werden. Bitte versuche es erneut.";
 }
 
 async function openNativeSsoInSafari(providerUrl: string): Promise<void> {
@@ -121,7 +121,7 @@ export default function AuthScreen() {
           : await withTimeout(
               createNativeNextDeskOAuthUrl(redirectTo),
               NATIVE_SSO_PREPARE_TIMEOUT_MS,
-              "Die Vorbereitung hat zu lange gedauert. Bitte versuchen Sie es erneut.",
+              "Die Vorbereitung hat zu lange gedauert. Bitte versuche es erneut.",
             );
       if (!providerUrl)
         throw new Error("Die SSO-Anmeldung konnte nicht vorbereitet werden.");
@@ -170,7 +170,7 @@ export default function AuthScreen() {
           setMessage("Die Anmeldung wird in Safari geöffnet …");
           await openNativeSsoInSafari(providerUrl);
           setMessage(
-            "Melden Sie sich in Safari an. nextDesk öffnet sich danach automatisch.",
+            "Melde dich in Safari an. nextDesk öffnet sich danach automatisch.",
           );
         } else {
           setMessage("Die SSO-Anmeldung wurde abgebrochen.");
@@ -185,11 +185,11 @@ export default function AuthScreen() {
         setMessage("Die Anmeldung wird in Safari geöffnet …");
         await openNativeSsoInSafari(providerUrl);
         setMessage(
-          "Melden Sie sich in Safari an. nextDesk öffnet sich danach automatisch.",
+          "Melde dich in Safari an. nextDesk öffnet sich danach automatisch.",
         );
       } else {
         setMessage(
-          "Die Rückkehr aus dem Anmeldefenster wurde nicht erkannt. Bitte versuchen Sie die SSO-Anmeldung erneut.",
+          "Die Rückkehr aus dem Anmeldefenster wurde nicht erkannt. Bitte versuche die SSO-Anmeldung erneut.",
         );
       }
     } catch (error) {
@@ -227,7 +227,7 @@ export default function AuthScreen() {
   async function sendMagicLink() {
     const address = email.trim().toLowerCase();
     if (!address.includes("@")) {
-      setMessage("Bitte geben Sie eine gültige E-Mail-Adresse ein.");
+      setMessage("Bitte gib eine gültige E-Mail-Adresse ein.");
       return;
     }
     setPending("magic");
@@ -242,12 +242,12 @@ export default function AuthScreen() {
       });
       if (error) throw error;
       setMessage(
-        "Der Anmeldelink wurde versendet. Öffnen Sie ihn auf diesem Gerät.",
+        "Der Anmeldelink wurde versendet. Öffne ihn auf diesem Gerät.",
       );
     } catch {
       await clearNextDeskAuthTransaction();
       setMessage(
-        "Der Anmeldelink konnte nicht versendet werden. Bitte versuchen Sie es erneut.",
+        "Der Anmeldelink konnte nicht versendet werden. Bitte versuche es erneut.",
       );
     } finally {
       setPending(null);
@@ -258,7 +258,7 @@ export default function AuthScreen() {
   async function signInWithPassword() {
     const address = email.trim().toLowerCase();
     if (!address.includes("@") || !password) {
-      setMessage("Bitte geben Sie E-Mail-Adresse und Passwort ein.");
+      setMessage("Bitte gib E-Mail-Adresse und Passwort ein.");
       return;
     }
     setPending("password");
@@ -278,7 +278,7 @@ export default function AuthScreen() {
       router.replace("/");
     } catch {
       setMessage(
-        "Die Anmeldung war nicht möglich. Bitte prüfen Sie E-Mail-Adresse und Passwort.",
+        "Die Anmeldung war nicht möglich. Bitte prüfe E-Mail-Adresse und Passwort.",
       );
     } finally {
       setPending(null);

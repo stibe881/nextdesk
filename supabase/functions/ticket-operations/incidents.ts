@@ -19,9 +19,9 @@ export function similarityText(ticket: any): string {
   return `${subject}\n${description.slice(0, 1500)}`.trim();
 }
 
-const INCIDENT_OVERVIEW_MAX_TICKETS = 30;
-const INCIDENT_OVERVIEW_MAX_LOOKUPS = 12;
 const INCIDENT_OVERVIEW_MAX_CLUSTERS = 3;
+const INCIDENT_OVERVIEW_CACHE_MS = 60_000;
+const INCIDENT_OVERVIEW_CACHE_MAX_ENTRIES = 500;
 
 type IncidentOverviewTicket = {
   id: string;
@@ -30,7 +30,7 @@ type IncidentOverviewTicket = {
   createdAt: string;
 };
 
-type IncidentCluster = {
+export type IncidentCluster = {
   subject: string;
   ticketCount: number;
   ticketIds: string[];
@@ -39,84 +39,94 @@ type IncidentCluster = {
 
 /**
  * Possible incidents for the ticket list: clusters of at least
- * INCIDENT_MIN_TICKETS similar tickets created in the incident window. Every
- * read uses the caller's client, so only tickets the caller can read are
- * seeds or members. The work is capped: the latest
- * INCIDENT_OVERVIEW_MAX_TICKETS tickets are seeds, at most
- * INCIDENT_OVERVIEW_MAX_LOOKUPS of them are looked up, and a ticket that is
- * already part of a cluster is not used as a seed again.
+ * INCIDENT_MIN_TICKETS similar tickets created in the incident window, from
+ * one call of recent_incident_clusters (migration 0189). The call uses the
+ * caller's client, so only tickets the caller can read are seeds or members;
+ * the database caps the work and drops clusters that repeat earlier ones.
  */
 export async function clusterRecentTickets(
   client: any,
   tenantId: string,
   since: string,
 ): Promise<IncidentCluster[] | null> {
-  const { data: recent, error } = await client
-    .from("tickets")
-    .select("id, ticket_number, subject, description, created_at")
-    .eq("tenant_id", tenantId)
-    .is("merged_into_ticket_id", null)
-    .gte("created_at", since)
-    .order("created_at", { ascending: false })
-    .limit(INCIDENT_OVERVIEW_MAX_TICKETS);
-  if (error || !Array.isArray(recent)) return null;
-  const seeds = recent.filter((row: any) => isUuid(row?.id));
-  // Fewer readable tickets in the window than a cluster needs: no lookups.
-  if (seeds.length < INCIDENT_MIN_TICKETS) return [];
-  const clustered = new Set<string>();
+  const { data, error } = await client.rpc("recent_incident_clusters", {
+    p_tenant_id: tenantId,
+    p_since: since,
+    p_min_size: INCIDENT_MIN_TICKETS,
+    p_limit: INCIDENT_OVERVIEW_MAX_CLUSTERS,
+  });
+  if (error || !Array.isArray(data)) return null;
   const clusters: IncidentCluster[] = [];
-  let lookups = 0;
-  for (const seed of seeds) {
-    if (
-      lookups >= INCIDENT_OVERVIEW_MAX_LOOKUPS ||
-      clusters.length >= INCIDENT_OVERVIEW_MAX_CLUSTERS
-    )
-      break;
-    if (clustered.has(seed.id)) continue;
-    lookups += 1;
-    const { data: rows, error: lookupError } = await client.rpc(
-      "recent_similar_tickets",
-      {
-        p_tenant_id: tenantId,
-        p_text: similarityText(seed),
-        p_since: since,
-        p_exclude_ticket_id: seed.id,
-        p_limit: 50,
-      },
-    );
-    if (lookupError) return null;
-    const members: IncidentOverviewTicket[] = [
-      {
-        id: seed.id,
-        ticketNumber: String(seed.ticket_number ?? ""),
-        subject: String(seed.subject ?? ""),
-        createdAt: String(seed.created_at ?? ""),
-      },
-      ...(Array.isArray(rows) ? rows : [])
-        .filter(
-          (row: any) => isUuid(row?.ticket_id) && row.ticket_id !== seed.id,
-        )
-        .map((row: any) => ({
-          id: row.ticket_id,
-          ticketNumber: String(row.ticket_number ?? ""),
-          subject: String(row.subject ?? ""),
-          createdAt: String(row.created_at ?? ""),
-        })),
+  for (const row of data) {
+    if (!isUuid(row?.ticket_id) || !Array.isArray(row?.ticket_ids)) continue;
+    const ticketIds = [
+      row.ticket_id,
+      ...row.ticket_ids.filter(
+        (ticketId: unknown) => isUuid(ticketId) && ticketId !== row.ticket_id,
+      ),
     ];
-    // A cluster that mostly repeats an earlier one is not reported twice.
-    const fresh = members.filter((member) => !clustered.has(member.id));
-    if (
-      members.length < INCIDENT_MIN_TICKETS ||
-      fresh.length < INCIDENT_MIN_TICKETS
-    )
-      continue;
-    for (const member of members) clustered.add(member.id);
+    const details = new Map<string, any>(
+      (Array.isArray(row.tickets) ? row.tickets : [])
+        .filter((ticket: any) => isUuid(ticket?.id))
+        .map((ticket: any) => [ticket.id, ticket]),
+    );
     clusters.push({
-      subject: String(seed.subject ?? ""),
-      ticketCount: members.length,
-      ticketIds: members.map((member) => member.id),
-      tickets: members,
+      subject: String(row.subject ?? ""),
+      ticketCount: ticketIds.length,
+      ticketIds,
+      tickets: ticketIds.map((ticketId) => {
+        const ticket = details.get(ticketId);
+        return {
+          id: ticketId,
+          ticketNumber: String(ticket?.ticket_number ?? ""),
+          subject: String(ticket?.subject ?? ""),
+          createdAt: String(ticket?.created_at ?? ""),
+        };
+      }),
     });
   }
   return clusters.sort((left, right) => right.ticketCount - left.ticketCount);
+}
+
+/**
+ * Short in-memory cache of the overview per tenant and person: every open
+ * ticket list polls it, and the clusters rarely change within a minute. The
+ * cache lives in one function instance only; access checks still run on
+ * every request.
+ */
+export function createIncidentOverviewCache(
+  ttlMs = INCIDENT_OVERVIEW_CACHE_MS,
+  maxEntries = INCIDENT_OVERVIEW_CACHE_MAX_ENTRIES,
+  now: () => number = Date.now,
+) {
+  const entries = new Map<
+    string,
+    { expiresAt: number; incidents: IncidentCluster[] }
+  >();
+  const key = (tenantId: string, userId: string) => `${tenantId}:${userId}`;
+  return {
+    get(tenantId: string, userId: string): IncidentCluster[] | null {
+      const entry = entries.get(key(tenantId, userId));
+      if (!entry) return null;
+      if (entry.expiresAt <= now()) {
+        entries.delete(key(tenantId, userId));
+        return null;
+      }
+      return entry.incidents;
+    },
+    set(tenantId: string, userId: string, incidents: IncidentCluster[]) {
+      const entryKey = key(tenantId, userId);
+      entries.delete(entryKey);
+      entries.set(entryKey, { expiresAt: now() + ttlMs, incidents });
+      // Oldest entries first: Map keeps insertion order.
+      while (entries.size > maxEntries) {
+        const oldest = entries.keys().next().value;
+        if (oldest === undefined) break;
+        entries.delete(oldest);
+      }
+    },
+    get size() {
+      return entries.size;
+    },
+  };
 }

@@ -52,17 +52,11 @@
   line-height: 1.5;
 }
 
-.ticket-suggestions__article-body {
+/* Article text: shared Markdown styles (knowledge-markdown.css), scrolled. */
+.knowledge-markdown.ticket-suggestions__article-body {
   max-height: 360px;
+  margin: 0;
   overflow: auto;
-  color: var(--text);
-  font-size: 13px;
-  line-height: 1.55;
-}
-
-.ticket-suggestions__article-body img {
-  max-width: 100%;
-  height: auto;
 }
 
 .ticket-suggestions__actions {

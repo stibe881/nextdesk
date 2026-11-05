@@ -336,17 +336,17 @@ export default function NewTicketScreen() {
     const cleanDescription = description.trim();
     if (cleanSubject.length < 3) {
       hapticError();
-      setError("Bitte geben Sie einen Betreff mit mindestens 3 Zeichen ein.");
+      setError("Bitte gib einen Betreff mit mindestens 3 Zeichen ein.");
       return;
     }
     if (!departmentId || !priorityKey) {
       hapticError();
-      setError("Bitte wählen Sie Abteilung und Priorität.");
+      setError("Bitte wähle Abteilung und Priorität.");
       return;
     }
     if (!selectedRequester) {
       hapticError();
-      setError("Bitte wählen Sie eine anfragende Person.");
+      setError("Bitte wähle eine anfragende Person.");
       return;
     }
     setSaving(true);
