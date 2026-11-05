@@ -2,17 +2,13 @@ begin;
 
 set local search_path = pg_catalog, public;
 
--- Inventory items: the department scope check moves into
--- upsert_inventory_item (on the locked row). A create that hits an existing
+-- Inventory items: upsert_inventory_item_scoped is upsert_inventory_item
+-- (0187) plus the department scope check on the locked row. It is a new
+-- function, so the existing one stays untouched (no drop). A create that hits an existing
 -- article number of another department, or an edit of an item that was moved
 -- to another department meanwhile, fails with SQLSTATE ND409.
 
-drop function if exists public.upsert_inventory_item(
-  uuid, uuid, uuid, uuid, text, text, text, text, text, numeric, numeric,
-  text, text, text, text, boolean, uuid, boolean
-);
-
-create or replace function public.upsert_inventory_item(
+create or replace function public.upsert_inventory_item_scoped(
   p_actor_id uuid,
   p_tenant_id uuid,
   p_client_request_id uuid,
@@ -194,18 +190,13 @@ begin
 end;
 $$;
 
-revoke all on function public.upsert_inventory_item(
+revoke all on function public.upsert_inventory_item_scoped(
   uuid, uuid, uuid, uuid, text, text, text, text, text, numeric, numeric,
   text, text, text, text, boolean, uuid, boolean, uuid[]
 ) from public, anon, authenticated;
-grant execute on function public.upsert_inventory_item(
+grant execute on function public.upsert_inventory_item_scoped(
   uuid, uuid, uuid, uuid, text, text, text, text, text, numeric, numeric,
   text, text, text, text, boolean, uuid, boolean, uuid[]
 ) to service_role;
-
--- 2. Expiry reminder tickets -------------------------------------------------
-
--- p_department_id is optional, so calls with the four old parameters keep
--- working. The old signature is dropped to keep calls unambiguous.
 
 commit;

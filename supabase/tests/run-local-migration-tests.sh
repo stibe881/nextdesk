@@ -9178,13 +9178,12 @@ begin
 
   -- 1. Inventory items.
   if has_function_privilege('authenticated',
-       'public.upsert_inventory_item(uuid, uuid, uuid, uuid, text, text, text, text, text, numeric, numeric, text, text, text, text, boolean, uuid, boolean, uuid[])',
+       'public.upsert_inventory_item(uuid, uuid, uuid, uuid, text, text, text, text, text, numeric, numeric, text, text, text, text, boolean, uuid, boolean)',
        'execute')
      or not has_function_privilege('service_role',
-       'public.upsert_inventory_item(uuid, uuid, uuid, uuid, text, text, text, text, text, numeric, numeric, text, text, text, text, boolean, uuid, boolean, uuid[])',
+       'public.upsert_inventory_item(uuid, uuid, uuid, uuid, text, text, text, text, text, numeric, numeric, text, text, text, text, boolean, uuid, boolean)',
        'execute')
-     or to_regprocedure('public.upsert_inventory_item(uuid, uuid, uuid, uuid, text, text, text, text, text, numeric, numeric, text, text, text, text, boolean)') is not null
-     or to_regprocedure('public.upsert_inventory_item(uuid, uuid, uuid, uuid, text, text, text, text, text, numeric, numeric, text, text, text, text, boolean, uuid, boolean)') is not null then
+     or to_regprocedure('public.upsert_inventory_item(uuid, uuid, uuid, uuid, text, text, text, text, text, numeric, numeric, text, text, text, text, boolean)') is not null then
     raise exception 'upsert_inventory_item grants or overloads are wrong';
   end if;
   v_item := public.upsert_inventory_item(
@@ -9563,7 +9562,7 @@ end;
 $$;
 rollback;
 SQL
-# Inventory scope check (0190): upsert_inventory_item rejects an item of a
+# Inventory scope check (0190): upsert_inventory_item_scoped rejects an item of a
 # department outside p_allowed_department_ids with SQLSTATE ND409.
 psql -v ON_ERROR_STOP=1 <<'SQL'
 begin;
@@ -9582,7 +9581,7 @@ begin
   values (v_tenant, 'abt-a', 'Abteilung A', 'custom') returning id into v_a;
   insert into public.departments (tenant_id, key, name, kind)
   values (v_tenant, 'abt-b', 'Abteilung B', 'custom') returning id into v_b;
-  v_item := public.upsert_inventory_item(
+  v_item := public.upsert_inventory_item_scoped(
     p_actor_id => v_owner, p_tenant_id => v_tenant,
     p_client_request_id => 'f1900000-0000-4000-8000-000000000101', p_item_id => null,
     p_article_number => 'scope-1', p_name => 'Monitor', p_category => 'Zubehör',
@@ -9592,7 +9591,7 @@ begin
     p_allowed_department_ids => array[v_a]);
   -- A create with the same article number from department B is refused.
   begin
-    perform public.upsert_inventory_item(
+    perform public.upsert_inventory_item_scoped(
       p_actor_id => v_owner, p_tenant_id => v_tenant,
       p_client_request_id => 'f1900000-0000-4000-8000-000000000102', p_item_id => null,
       p_article_number => 'scope-1', p_name => 'Monitor B', p_category => 'Zubehör',
@@ -9608,14 +9607,14 @@ begin
     raise exception 'The refused create changed the department';
   end if;
   -- Within the scope, or unscoped (null), the update still works.
-  perform public.upsert_inventory_item(
+  perform public.upsert_inventory_item_scoped(
     p_actor_id => v_owner, p_tenant_id => v_tenant,
     p_client_request_id => 'f1900000-0000-4000-8000-000000000103', p_item_id => v_item,
     p_article_number => 'scope-1', p_name => 'Monitor 27', p_category => 'Zubehör',
     p_unit => 'stk', p_tracking_mode => 'quantity', p_minimum_quantity => 0,
     p_target_quantity => 0, p_manufacturer => null, p_model => null, p_supplier => null,
     p_note => null, p_active => true, p_allowed_department_ids => array[v_a, v_b]);
-  perform public.upsert_inventory_item(
+  perform public.upsert_inventory_item_scoped(
     p_actor_id => v_owner, p_tenant_id => v_tenant,
     p_client_request_id => 'f1900000-0000-4000-8000-000000000104', p_item_id => v_item,
     p_article_number => 'scope-1', p_name => 'Monitor 27 Zoll', p_category => 'Zubehör',

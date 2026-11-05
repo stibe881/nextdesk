@@ -69,7 +69,7 @@ type MovementType = keyof typeof MOVEMENT_PERMISSIONS;
 /** The only service-command RPCs supplied by migration 0068. */
 export const INVENTORY_RPC_NAMES = {
   upsertLocation: "upsert_inventory_location",
-  upsertItem: "upsert_inventory_item",
+  upsertItem: "upsert_inventory_item_scoped",
   postMovement: "post_inventory_movement",
   createReservation: "create_inventory_reservation",
   releaseReservation: "release_inventory_reservation",
