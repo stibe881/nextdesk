@@ -20749,3 +20749,8 @@ html:has(.embed-status-badge) body {
 .employee-navigation {
   margin-top: 8px;
 }
+
+/* An open quick-assign menu sits above the following ticket rows. */
+.ticket-row:has(.ticket-quick-assign__popover) {
+  z-index: 40;
+}
