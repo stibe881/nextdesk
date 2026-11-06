@@ -9,6 +9,8 @@ export type ApnsPayloadKind =
   | "approval"
   | "department_question_asked"
   | "department_question_answered"
+  | "supervisor_request"
+  | "supervisor_answer"
   | "escalation"
   | "sla"
   | "follow_up"
@@ -116,7 +118,11 @@ async function apnsJwt(configuration: ApnsConfiguration): Promise<string> {
     ["sign"],
   );
   const issuedAt = Math.floor(now / 1000);
-  const unsigned = `${utf8Base64url(JSON.stringify({ alg: "ES256", kid: configuration.keyId }))}.${utf8Base64url(JSON.stringify({ iss: configuration.teamId, iat: issuedAt }))}`;
+  const unsigned = `${
+    utf8Base64url(JSON.stringify({ alg: "ES256", kid: configuration.keyId }))
+  }.${
+    utf8Base64url(JSON.stringify({ iss: configuration.teamId, iat: issuedAt }))
+  }`;
   const signature = new Uint8Array(
     await crypto.subtle.sign(
       { name: "ECDSA", hash: "SHA-256" },
@@ -140,8 +146,9 @@ function truncateSubject(subject: string): string {
 
 function alertFor(input: ApnsPayloadInput): { title: string; body: string } {
   const ticketNumber = input.ticketNumber ?? "";
-  const subject =
-    typeof input.subject === "string" ? truncateSubject(input.subject) : null;
+  const subject = typeof input.subject === "string"
+    ? truncateSubject(input.subject)
+    : null;
 
   switch (input.kind) {
     case "assigned":
@@ -199,6 +206,20 @@ function alertFor(input: ApnsPayloadInput): { title: string; body: string } {
         body: subject
           ? `Es gibt eine Antwort zu Ihrer Rückfrage in ${ticketNumber}: ${subject}`
           : `Es gibt eine Antwort zu Ihrer Rückfrage in ${ticketNumber}.`,
+      };
+    case "supervisor_request":
+      return {
+        title: "Anfrage an dich",
+        body: subject
+          ? `Zu ${ticketNumber} wird deine Antwort benötigt: ${subject}`
+          : `Zu ${ticketNumber} wird deine Antwort benötigt.`,
+      };
+    case "supervisor_answer":
+      return {
+        title: "Antwort auf deine Anfrage",
+        body: subject
+          ? `Deine Anfrage zu ${ticketNumber} wurde beantwortet: ${subject}`
+          : `Deine Anfrage zu ${ticketNumber} wurde beantwortet.`,
       };
     case "escalation":
       return {
@@ -284,17 +305,17 @@ function alertFor(input: ApnsPayloadInput): { title: string; body: string } {
       }
     }
     case "service_task": {
-      const title =
-        input.serviceTaskTitle?.trim().slice(0, 80) || "Eine Serviceaufgabe";
+      const title = input.serviceTaskTitle?.trim().slice(0, 80) ||
+        "Eine Serviceaufgabe";
       return input.serviceTaskEvent === "overdue"
         ? {
-            title: "Serviceaufgabe überfällig",
-            body: `${title} ist überfällig.`,
-          }
+          title: "Serviceaufgabe überfällig",
+          body: `${title} ist überfällig.`,
+        }
         : {
-            title: "Serviceaufgabe heute fällig",
-            body: `${title} ist heute fällig.`,
-          };
+          title: "Serviceaufgabe heute fällig",
+          body: `${title} ist heute fällig.`,
+        };
     }
     case "inventory_low_stock":
       return {
@@ -304,7 +325,9 @@ function alertFor(input: ApnsPayloadInput): { title: string; body: string } {
     case "summary":
       return {
         title: "nextDesk",
-        body: `${Math.max(1, input.summaryCount ?? 1)} neue Hinweise in nextDesk.`,
+        body: `${
+          Math.max(1, input.summaryCount ?? 1)
+        } neue Hinweise in nextDesk.`,
       };
     case "test":
       return {
@@ -367,10 +390,9 @@ export async function sendApns(
   if (!configuration) return { status: 0, reason: "apns_not_configured" };
   try {
     const authorization = await apnsJwt(configuration);
-    const host =
-      environment === "development"
-        ? "https://api.sandbox.push.apple.com"
-        : "https://api.push.apple.com";
+    const host = environment === "development"
+      ? "https://api.sandbox.push.apple.com"
+      : "https://api.push.apple.com";
     const response = await fetch(`${host}/3/device/${token}`, {
       method: "POST",
       headers: {
