@@ -142,7 +142,8 @@ async function readableArticles(
       "id, title, visibility, status, department_id, current_revision, published_revision",
     )
     .eq("tenant_id", tenantId)
-    .neq("status", "archived")
+    // Only published articles are suggested (no drafts or reviews).
+    .eq("status", "published")
     .in("id", ids);
   query = applyDepartmentScope(query, reader.scope);
   if (!reader.canReadInternal) {

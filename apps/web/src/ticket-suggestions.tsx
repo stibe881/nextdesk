@@ -143,8 +143,13 @@ function ticketLabel(ticket: SuggestedTicket): string {
  * for the draft. Requesters can close their request with "Hat mein Problem
  * gelöst" (recorded as deflected, no ticket is created).
  */
+/** What happens with a suggested article when the ticket is created. */
+export type ArticleChoice = "link" | "internal" | "external";
+
 export function TicketSuggestionPanel({
+  articleChoices,
   disabled = false,
+  onArticleChoice,
   onDeflected,
   onOpenKnowledgeArticle,
   onOpenTicket,
@@ -152,7 +157,11 @@ export function TicketSuggestionPanel({
   suggestions,
   tenantId,
 }: {
+  articleChoices?: Readonly<Record<string, ArticleChoice>> | undefined;
   disabled?: boolean;
+  onArticleChoice?:
+    | ((article: SuggestedArticle, choice: ArticleChoice | null) => void)
+    | undefined;
   onDeflected?: (() => void) | undefined;
   onOpenKnowledgeArticle?: ((articleId: string) => void) | undefined;
   onOpenTicket?: ((ticketId: string, ticketNumber: string) => void) | undefined;
@@ -310,6 +319,35 @@ export function TicketSuggestionPanel({
                       )}
                     </div>
                   )}
+                  {!requester && onArticleChoice ? (
+                    <label className="ticket-suggestions__choice">
+                      Beim Erstellen
+                      <select
+                        disabled={disabled}
+                        onChange={(event) =>
+                          onArticleChoice(
+                            article,
+                            event.target.value === ""
+                              ? null
+                              : (event.target.value as ArticleChoice),
+                          )
+                        }
+                        value={articleChoices?.[article.id] ?? ""}
+                      >
+                        <option value="">Nicht übernehmen</option>
+                        <option value="link">Mit Ticket verknüpfen</option>
+                        <option value="internal">
+                          Verknüpfen und als interne Notiz eintragen
+                        </option>
+                        {article.visibility === "external" ? (
+                          <option value="external">
+                            Verknüpfen und als Antwort an anfragende Person
+                            senden
+                          </option>
+                        ) : null}
+                      </select>
+                    </label>
+                  ) : null}
                   <div className="ticket-suggestions__actions">
                     <button
                       aria-controls={`ticket-suggestion-article-${article.id}`}
