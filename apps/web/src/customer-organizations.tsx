@@ -701,13 +701,6 @@ export function CustomerOrganizations({
             Kundenorganisationen dieses Mandanten.
           </p>
         </div>
-        <button
-          disabled={controlsDisabled}
-          onClick={() => void loadData()}
-          type="button"
-        >
-          {loading ? "Wird geladen …" : "Aktualisieren"}
-        </button>
       </header>
 
       {forbidden ? (

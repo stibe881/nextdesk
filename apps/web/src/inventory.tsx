@@ -1291,14 +1291,6 @@ export function Inventory({ tenantId }: { tenantId: string }) {
             und nachvollziehbar als Bewegungen festgehalten.
           </p>
         </div>
-        <button
-          className="inventory__refresh"
-          disabled={loading}
-          onClick={() => void load()}
-          type="button"
-        >
-          <RefreshCw aria-hidden="true" size={16} /> Aktualisieren
-        </button>
       </header>
 
       <div
@@ -2775,7 +2767,7 @@ function InventoryActiveCountList({
       ))}
     </ul>
   ) : (
-    <EmptyInventoryState text="Keine aktiven Inventuren. Mit Aktualisieren werden bestehende Count-IDs erneut geladen." />
+    <EmptyInventoryState text="Keine aktiven Inventuren." />
   );
 }
 

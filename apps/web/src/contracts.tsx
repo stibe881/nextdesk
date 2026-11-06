@@ -576,14 +576,6 @@ export function Contracts({ tenantId }: { tenantId: string }) {
         </div>
         <div className="contracts__actions">
           <button
-            className="secondary-button"
-            disabled={loading}
-            onClick={() => void load()}
-            type="button"
-          >
-            <RefreshCw size={16} /> Aktualisieren
-          </button>
-          <button
             className="primary-button"
             onClick={(event) => {
               triggerRef.current = event.currentTarget;

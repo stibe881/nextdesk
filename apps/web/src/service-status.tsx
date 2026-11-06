@@ -1834,15 +1834,6 @@ export function ServiceStatus({
               : "Zeigen Sie den bewusst gesetzten Zustand Ihrer Services und veröffentlichen Sie bei Bedarf eine datensparsame Statusseite."}
           </p>
         </div>
-        <button
-          className="secondary-button"
-          disabled={loading || saving || maintenanceSaving}
-          onClick={() => void load()}
-          type="button"
-        >
-          <RefreshCw aria-hidden="true" size={16} />
-          Aktualisieren
-        </button>
       </header>
 
       {error ? (

@@ -2586,14 +2586,6 @@ export function KnowledgeBase({
                 ? `${articleCountLabel} gefunden`
                 : articleCountLabel}
             </span>
-            <button
-              className="knowledge-base__button"
-              disabled={loadingList || isBusy}
-              onClick={() => void loadArticles(activeQuery)}
-              type="button"
-            >
-              {loadingList ? "Wird aktualisiert …" : "Aktualisieren"}
-            </button>
             {readOnly ? null : (
               <button
                 className="primary-button knowledge-base__button knowledge-base__create-button"

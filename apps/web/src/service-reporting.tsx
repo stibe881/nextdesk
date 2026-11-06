@@ -688,14 +688,6 @@ export function ServiceReporting({
               Eigener Zeitraum
             </button>
           </div>
-          <button
-            className="service-reporting__toolbar-button"
-            disabled={isLoading}
-            onClick={() => void loadReport()}
-            type="button"
-          >
-            {isLoading ? "Wird geladen …" : "Aktualisieren"}
-          </button>
           {view === "metrics" ? (
             <button
               className="service-reporting__toolbar-button"

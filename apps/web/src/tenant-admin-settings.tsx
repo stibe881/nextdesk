@@ -2838,13 +2838,6 @@ export function TenantAdminSettings({
                       Mandanten.
                     </p>
                   </div>
-                  <button
-                    type="button"
-                    disabled={auditLoading}
-                    onClick={() => void loadAudit()}
-                  >
-                    {auditLoading ? "Wird geladen …" : "Aktualisieren"}
-                  </button>
                 </div>
                 {auditError ? (
                   <p

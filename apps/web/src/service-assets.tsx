@@ -2989,16 +2989,7 @@ export function ServiceAssets({
               ) : null}
             </div>
           ) : null
-        ) : (
-          <button
-            className="secondary-button"
-            disabled={controlsDisabled}
-            onClick={() => void loadCatalog()}
-            type="button"
-          >
-            {loading ? "Wird geladen …" : "Aktualisieren"}
-          </button>
-        )}
+        ) : null}
       </div>
 
       {error && !serviceEditorOpen && !inlineServiceEditorId ? (

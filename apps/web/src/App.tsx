@@ -6942,11 +6942,7 @@ function SavedTicketViews({
               disabled={loading || pending !== null || !currentUserId}
               type="submit"
             >
-              {pending === "save"
-                ? "Wird gespeichert …"
-                : selectedView
-                  ? "Aktualisieren"
-                  : "Ansicht speichern"}
+              {pending === "save" ? "Wird gespeichert …" : "Ansicht speichern"}
             </button>
             {selectedView && canDelete && (
               <button
