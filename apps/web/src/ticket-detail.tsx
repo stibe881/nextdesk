@@ -2973,6 +2973,26 @@ function KnowledgeArticleText({
   );
 }
 
+function openKnowledgeArticleInNewTab(articleId: string) {
+  const url = new URL(window.location.href);
+  url.search = "";
+  url.hash = "";
+  url.searchParams.set("wissen", articleId);
+  window.open(url.toString(), "_blank", "noopener,noreferrer");
+}
+
+function RequiredMark() {
+  return (
+    <span
+      aria-label="Pflichtfeld vor dem Schliessen"
+      className="ticket-required-mark"
+      title="Pflichtfeld vor dem Schliessen"
+    >
+      *
+    </span>
+  );
+}
+
 function KnowledgeSection({
   tenantId,
   ticketId,
@@ -3369,7 +3389,7 @@ function KnowledgeSection({
             <button
               className="text-button"
               type="button"
-              onClick={() => onOpenArticle(createdArticleId)}
+              onClick={() => openKnowledgeArticleInNewTab(createdArticleId)}
             >
               In der Wissensdatenbank öffnen
             </button>
@@ -3428,7 +3448,7 @@ function KnowledgeSection({
                       <button
                         className="text-button"
                         type="button"
-                        onClick={() => onOpenArticle(article.id)}
+                        onClick={() => openKnowledgeArticleInNewTab(article.id)}
                       >
                         Öffnen
                       </button>
@@ -3488,7 +3508,9 @@ function KnowledgeSection({
                       <button
                         className="text-button"
                         type="button"
-                        onClick={() => onOpenArticle(link.articleId)}
+                        onClick={() =>
+                          openKnowledgeArticleInNewTab(link.articleId)
+                        }
                       >
                         Öffnen
                       </button>
@@ -4881,6 +4903,17 @@ export function TicketDetail({
     () => ticketCategories.filter((category) => category.parentId === null),
     [ticketCategories],
   );
+  // Category, team and assignee must be set before a ticket is closed;
+  // category and team only where the department offers any.
+  const requiredCloseFields = {
+    assignee: Boolean(detail && !detail.ticket.assigned_agent_id),
+    team: Boolean(
+      detail && detail.teams.length > 0 && !detail.ticket.assigned_team_id,
+    ),
+    category: Boolean(
+      detail && rootTicketCategories.length > 0 && !detail.ticket.category_id,
+    ),
+  };
   const ticketCategoryDraftParent = useMemo(
     () =>
       ticketCategoryDraft?.parentId
@@ -5509,6 +5542,20 @@ export function TicketDetail({
     const updatesAgent = change.assignedAgentId !== undefined;
     if (!updatesTicket && !updatesAgent) return;
     const closingStatus = closingStatusForKey(change.statusKey);
+    if (closingStatus) {
+      const missing = [
+        requiredCloseFields.category ? "Kategorie" : null,
+        requiredCloseFields.team ? "Team" : null,
+        requiredCloseFields.assignee ? "Zuweisung" : null,
+      ].filter((label): label is string => label !== null);
+      if (missing.length > 0) {
+        setStatusKey(selectedStatus?.key ?? "");
+        setError(
+          `Bevor das Ticket ${closingStatus.label.toLowerCase()} werden kann, bitte zuerst ausfüllen: ${missing.join(", ")}.`,
+        );
+        return;
+      }
+    }
     if (closingStatus && !confirmedClose) {
       setPendingCloseConfirmation({
         statusKey: closingStatus.key,
@@ -7186,11 +7233,13 @@ export function TicketDetail({
                 </dd>
               </div>
               <div
-                className={
-                  detail.canAssign ? "ticket-detail-fact--editable" : undefined
-                }
+                className={`${
+                  detail.canAssign ? "ticket-detail-fact--editable" : ""
+                }${requiredCloseFields.assignee ? " ticket-detail-fact--required-missing" : ""}`}
               >
-                <dt>Zugewiesen an</dt>
+                <dt>
+                  Zugewiesen an <RequiredMark />
+                </dt>
                 <dd>
                   {detail.canAssign ? (
                     <>
@@ -7237,11 +7286,13 @@ export function TicketDetail({
                 </dd>
               </div>
               <div
-                className={
-                  detail.canAssign ? "ticket-detail-fact--editable" : undefined
-                }
+                className={`${
+                  detail.canAssign ? "ticket-detail-fact--editable" : ""
+                }${requiredCloseFields.team ? " ticket-detail-fact--required-missing" : ""}`}
               >
-                <dt>Team</dt>
+                <dt>
+                  Team <RequiredMark />
+                </dt>
                 <dd>
                   {detail.canAssign ? (
                     <select
@@ -7305,13 +7356,13 @@ export function TicketDetail({
               </div>
               <div className="ticket-detail-fact-pair">
                 <div
-                  className={
-                    detail.canUpdate
-                      ? "ticket-detail-fact--editable"
-                      : undefined
-                  }
+                  className={`${
+                    detail.canUpdate ? "ticket-detail-fact--editable" : ""
+                  }${requiredCloseFields.category ? " ticket-detail-fact--required-missing" : ""}`}
                 >
-                  <dt>Kategorie</dt>
+                  <dt>
+                    Kategorie <RequiredMark />
+                  </dt>
                   <dd>
                     {ticketCategoriesLoading ? (
                       "Wird geladen …"
