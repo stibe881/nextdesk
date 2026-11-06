@@ -1,3 +1,4 @@
+import { formatSlaRemaining } from "./lib/live-dashboard";
 import {
   AlertCircle,
   BookOpenCheck,
@@ -545,13 +546,16 @@ function relativeSlaLabel(dueAt: string | null, now: number): string | null {
   if (Number.isNaN(due)) return null;
   const differenceMinutes = Math.round((due - now) / 60_000);
   const absolute = Math.abs(differenceMinutes);
+  // Same rule as the ticket list: minutes below 1 h, hours below 24 h,
+  // otherwise days.
   const hours = Math.floor(absolute / 60);
-  const minutes = absolute % 60;
-  const duration =
-    hours > 0 ? `${hours} Std. ${minutes} Min.` : `${minutes} Min.`;
-  return differenceMinutes >= 0
-    ? `noch ${duration}`
-    : `seit ${duration} überfällig`;
+  const days = Math.floor(hours / 24);
+  if (differenceMinutes >= 0) {
+    if (absolute < 60) return `noch ${absolute} Min.`;
+    if (hours < 24) return `noch ${hours} Std.`;
+    return days === 1 ? "noch 1 Tag" : `noch ${days} Tage`;
+  }
+  return `seit ${formatSlaRemaining(absolute)} überfällig`;
 }
 
 function useNow(interval = 30_000): number {
