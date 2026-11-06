@@ -20401,3 +20401,57 @@ html:has(.embed-status-badge) body {
   border-color: var(--danger);
   box-shadow: inset 0 0 0 1px var(--danger);
 }
+
+.knowledge-base__raw-images {
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+}
+
+.knowledge-base__raw-images small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.knowledge-base__raw-images ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.knowledge-base__raw-images li {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 96px;
+  height: 72px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--surface-subtle);
+  font-size: 11px;
+}
+
+.knowledge-base__raw-images li img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.knowledge-base__raw-images li button {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 999px;
+  background: rgb(0 0 0 / 60%);
+  color: #fff;
+  font-size: 14px;
+  line-height: 22px;
+  cursor: pointer;
+}

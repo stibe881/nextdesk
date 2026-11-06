@@ -2,6 +2,7 @@ import { type SupabaseContext, withSupabase } from "@supabase/server";
 import {
   AnthropicKnowledgeDraftError,
   generateKnowledgeDraft,
+  type KnowledgeDraftImage,
   TICKET_ARTICLE_INSTRUCTIONS,
 } from "../_shared/anthropic-knowledge-draft.ts";
 import {
@@ -55,7 +56,65 @@ type Action =
       visibility: Visibility;
       rawContent: string;
       articleId?: string;
+      imageIds: string[];
     };
+
+const MAX_DRAFT_IMAGES = 6;
+const MAX_DRAFT_IMAGE_BYTES = 4 * 1024 * 1024;
+const KNOWLEDGE_IMAGE_BUCKET = "knowledge-article-images";
+const DRAFT_IMAGE_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+]);
+
+/**
+ * Loads the knowledge images the person added to the raw content (only
+ * images of this tenant), for the model to look at.
+ */
+async function loadDraftImages(
+  admin: AdminClient,
+  tenantId: string,
+  imageIds: string[],
+): Promise<KnowledgeDraftImage[] | null> {
+  if (imageIds.length === 0) return [];
+  const { data, error } = await admin
+    .from("knowledge_article_images")
+    .select("id, storage_path, content_type, byte_size")
+    .eq("tenant_id", tenantId)
+    .in("id", imageIds);
+  if (error) return null;
+  const rows = (data ?? []) as Row[];
+  const images: KnowledgeDraftImage[] = [];
+  for (const id of imageIds) {
+    const row = rows.find((item) => item.id === id);
+    if (
+      !row ||
+      typeof row.storage_path !== "string" ||
+      !row.storage_path.startsWith(`${tenantId}/`) ||
+      !DRAFT_IMAGE_TYPES.has(String(row.content_type)) ||
+      Number(row.byte_size) > MAX_DRAFT_IMAGE_BYTES
+    ) {
+      continue;
+    }
+    const { data: file, error: downloadError } = await admin.storage
+      .from(KNOWLEDGE_IMAGE_BUCKET)
+      .download(row.storage_path);
+    if (downloadError || !file) continue;
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    let binary = "";
+    for (let index = 0; index < bytes.length; index += 0x8000) {
+      binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
+    }
+    images.push({
+      id,
+      mediaType: String(row.content_type) as KnowledgeDraftImage["mediaType"],
+      base64: btoa(binary),
+    });
+  }
+  return images;
+}
 
 function isRecord(value: unknown): value is Row {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -156,13 +215,18 @@ function parseAction(value: unknown): Action | null {
       "articleId",
       "visibility",
       "rawContent",
+      "imageIds",
     ]) &&
     (value.visibility === "internal" || value.visibility === "external")
   ) {
     const rawContent = sanitizeRawContent(value.rawContent);
+    const imageIds = value.imageIds === undefined ? [] : value.imageIds;
     if (
       !rawContent ||
-      (value.articleId !== undefined && !isUuid(value.articleId))
+      (value.articleId !== undefined && !isUuid(value.articleId)) ||
+      !Array.isArray(imageIds) ||
+      imageIds.length > MAX_DRAFT_IMAGES ||
+      !imageIds.every(isUuid)
     ) {
       return null;
     }
@@ -171,6 +235,7 @@ function parseAction(value: unknown): Action | null {
       tenantId,
       visibility: value.visibility,
       rawContent,
+      imageIds: [...new Set(imageIds.map((id) => id.toLowerCase()))],
       ...(typeof value.articleId === "string"
         ? { articleId: value.articleId.toLowerCase() }
         : {}),
@@ -901,10 +966,23 @@ const handler = withSupabase(
       return response(request, { error: { code: "ai_audit_failed" } }, 500);
     }
     try {
+      const images = await loadDraftImages(
+        admin,
+        action.tenantId,
+        action.imageIds,
+      );
+      if (images === null) {
+        return response(
+          request,
+          { error: { code: "ai_image_lookup_failed" } },
+          503,
+        );
+      }
       const draft = await generateKnowledgeDraft({
         ...provider,
         rawContent: action.rawContent,
         maxTokens: MAX_OUTPUT_TOKENS,
+        images,
       });
       if (
         !(await writeAudit(

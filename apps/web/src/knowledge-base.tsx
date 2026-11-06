@@ -1147,6 +1147,12 @@ export function KnowledgeBase({
   const [editorOpen, setEditorOpen] = useState(false);
   const [draft, setDraft] = useState<ArticleDraft>(EMPTY_DRAFT);
   const [rawContent, setRawContent] = useState("");
+  // Images added to the raw content; the AI looks at them and places them.
+  const [rawImages, setRawImages] = useState<
+    { id: string; name: string; url: string | null }[]
+  >([]);
+  const [rawImagesUploading, setRawImagesUploading] = useState(false);
+  const rawImageInputRef = useRef<HTMLInputElement | null>(null);
   const [aiPreparing, setAiPreparing] = useState(false);
   const [loadingList, setLoadingList] = useState(true);
   const [loadingDetail, setLoadingDetail] = useState(false);
@@ -1418,6 +1424,7 @@ export function KnowledgeBase({
     setEditingArticleId(null);
     setDraft(EMPTY_DRAFT);
     setRawContent("");
+    setRawImages([]);
     setImageUrls({});
     setImageError("");
     setAiPreparing(false);
@@ -1565,6 +1572,7 @@ export function KnowledgeBase({
       departmentId: initialKnowledgeDepartmentId(null, departments),
     });
     setRawContent("");
+    setRawImages([]);
     setSelectedCategoryId("");
     setSelectedSubcategoryId("");
     setCollectionSelectionSourceIds([]);
@@ -1602,6 +1610,7 @@ export function KnowledgeBase({
     setEditingArticleId(selected.article.id);
     setDraft(draftFromDetail(selected));
     setRawContent("");
+    setRawImages([]);
     setSelectedCategoryId("");
     setSelectedSubcategoryId("");
     setCollectionSelectionSourceIds(selected.article.collectionIds);
@@ -1624,6 +1633,7 @@ export function KnowledgeBase({
     setEditingArticleId(null);
     setDraft(EMPTY_DRAFT);
     setRawContent("");
+    setRawImages([]);
     setSelectedCategoryId("");
     setSelectedSubcategoryId("");
     setCollectionSelectionSourceIds([]);
@@ -1942,6 +1952,58 @@ export function KnowledgeBase({
     }
   }
 
+  async function addRawImages(files: File[]) {
+    if (files.length === 0 || isBusy) return;
+    setRawImagesUploading(true);
+    setImageError("");
+    const problems: string[] = [];
+    for (const file of files) {
+      if (rawImages.length >= 6) {
+        problems.push(
+          "Für die KI-Aufbereitung sind höchstens 6 Bilder möglich.",
+        );
+        break;
+      }
+      try {
+        const prepared = await prepareKnowledgeImage(file);
+        if (
+          !(KNOWLEDGE_IMAGE_TYPES as readonly string[]).includes(prepared.type)
+        ) {
+          throw new Error(
+            `«${file.name}» hat ein nicht unterstütztes Format. Bitte JPG, PNG, WebP oder GIF verwenden.`,
+          );
+        }
+        const uploaded = await invokeKnowledgeBase(
+          {
+            type: "uploadArticleImage",
+            tenantId,
+            fileName: prepared.name,
+            contentType: prepared.type,
+            data: await fileToBase64(prepared),
+          },
+          parseUploadedImage,
+        );
+        if (uploaded.url) mergeImageUrls({ [uploaded.id]: uploaded.url });
+        setRawImages((current) =>
+          current.length >= 6
+            ? current
+            : [
+                ...current,
+                { id: uploaded.id, name: file.name, url: uploaded.url ?? null },
+              ],
+        );
+      } catch (nextError) {
+        problems.push(
+          nextError instanceof Error && nextError.message
+            ? nextError.message
+            : `«${file.name}» konnte nicht hochgeladen werden.`,
+        );
+      }
+    }
+    setImageError(problems.join(" "));
+    setRawImagesUploading(false);
+  }
+
   async function prepareWithAi() {
     const normalizedRawContent = rawContent.trim();
     if (!normalizedRawContent) {
@@ -1962,6 +2024,9 @@ export function KnowledgeBase({
           ...(editingArticleId ? { articleId: editingArticleId } : {}),
           visibility: draft.visibility,
           rawContent: normalizedRawContent,
+          ...(rawImages.length > 0
+            ? { imageIds: rawImages.map((image) => image.id) }
+            : {}),
         },
         parsePreparedKnowledgeArticle,
       );
@@ -2079,6 +2144,7 @@ export function KnowledgeBase({
           setEditingArticleId(null);
           setDraft(EMPTY_DRAFT);
           setRawContent("");
+          setRawImages([]);
           setEditorOpen(false);
           setError(
             isEditing
@@ -2106,6 +2172,7 @@ export function KnowledgeBase({
       setEditingArticleId(null);
       setDraft(EMPTY_DRAFT);
       setRawContent("");
+      setRawImages([]);
       setEditorOpen(false);
       setSuccess(
         isEditing
@@ -3327,14 +3394,71 @@ export function KnowledgeBase({
                 />
               </label>
 
+              <div className="knowledge-base__full-width knowledge-base__raw-images">
+                <button
+                  className="knowledge-base__button"
+                  disabled={
+                    isBusy || rawImagesUploading || rawImages.length >= 6
+                  }
+                  onClick={() => rawImageInputRef.current?.click()}
+                  type="button"
+                >
+                  {rawImagesUploading
+                    ? "Bilder werden hochgeladen …"
+                    : "Bilder zum Rohinhalt hinzufügen"}
+                </button>
+                <input
+                  accept={KNOWLEDGE_IMAGE_TYPES.join(",")}
+                  hidden
+                  multiple
+                  onChange={(event) => {
+                    const files = Array.from(event.target.files ?? []);
+                    event.target.value = "";
+                    void addRawImages(files);
+                  }}
+                  ref={rawImageInputRef}
+                  type="file"
+                />
+                <small>
+                  Höchstens 6 Bilder, z. B. Screenshots. Die KI wertet sie aus
+                  und setzt sie an passender Stelle in den Artikel ein.
+                </small>
+                {rawImages.length > 0 ? (
+                  <ul aria-label="Bilder zum Rohinhalt">
+                    {rawImages.map((image) => (
+                      <li key={image.id}>
+                        {image.url ? (
+                          <img alt={image.name} src={image.url} />
+                        ) : (
+                          <span>{image.name}</span>
+                        )}
+                        <button
+                          aria-label={`${image.name} entfernen`}
+                          disabled={isBusy}
+                          onClick={() =>
+                            setRawImages((current) =>
+                              current.filter((item) => item.id !== image.id),
+                            )
+                          }
+                          type="button"
+                        >
+                          ×
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
+
               <div className="knowledge-base__full-width knowledge-base__ai-assist">
                 <div>
                   <strong>Mit KI aufbereiten</strong>
                   <p>
-                    Erst beim Klick wird der Rohinhalt zur Aufbereitung an den
-                    für diesen Mandanten freigegebenen externen KI-Anbieter
-                    übermittelt. Der Vorschlag wird nicht automatisch
-                    gespeichert oder veröffentlicht.
+                    Erst beim Klick werden der Rohinhalt und die hinzugefügten
+                    Bilder zur Aufbereitung an den für diesen Mandanten
+                    freigegebenen externen KI-Anbieter übermittelt. Der
+                    Vorschlag wird nicht automatisch gespeichert oder
+                    veröffentlicht.
                   </p>
                 </div>
                 <button
