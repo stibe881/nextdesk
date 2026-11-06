@@ -3321,7 +3321,7 @@ function KnowledgeSection({
           : action.type === "detach"
             ? "Die Artikelverknüpfung wurde entfernt. Bereits versendete Ticketantworten bleiben bestehen."
             : action.type === "createAndAttach"
-              ? "Der Artikel wurde als Entwurf in der Wissensdatenbank gespeichert und mit dem Ticket verknüpft."
+              ? "Der Artikel wurde als Entwurf in der Wissensdatenbank gespeichert. Sobald er veröffentlicht ist, erscheint er hier beim Ticket."
               : "Der Artikel wurde mit dem Ticket verknüpft.",
       );
     } catch (error) {
@@ -3637,10 +3637,9 @@ function KnowledgeSection({
         <div className="ticket-knowledge__block">
           <h3>Wissensartikel aus diesem Ticket erstellen</h3>
           <p className="data-caption">
-            Der Artikel wird als Entwurf in der Wissensdatenbank gespeichert und
-            mit diesem Ticket verknüpft. Veröffentlicht wird er erst, wenn Sie
-            ihn dort prüfen und freigeben. Bitte keine Namen oder Kontaktdaten
-            übernehmen.
+            Der Artikel wird als Entwurf in der Wissensdatenbank gespeichert.
+            Sobald Sie ihn dort geprüft und veröffentlicht haben, erscheint er
+            hier beim Ticket. Bitte keine Namen oder Kontaktdaten übernehmen.
           </p>
           <div className="ticket-knowledge__ai">
             <button
@@ -3658,7 +3657,7 @@ function KnowledgeSection({
                   );
                   setCreatedArticleId(created.articleId);
                   setNotice(
-                    "Der KI-Entwurf wurde in der Wissensdatenbank als Entwurf gespeichert.",
+                    "Der KI-Entwurf wurde in der Wissensdatenbank gespeichert. Sobald er veröffentlicht ist, erscheint er hier beim Ticket.",
                   );
                   void loadLinks();
                   onChanged();
