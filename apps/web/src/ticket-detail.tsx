@@ -6497,10 +6497,15 @@ export function TicketDetail({
 
   async function linkCatalogItem(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    await linkCatalogItemByKey(selectedCatalogItemKey);
+  }
+
+  // Choosing an asset or catalog entry links it right away.
+  async function linkCatalogItemByKey(selectionKey: string) {
     if (!detail || !detail.canUpdate || catalogBusy) return;
 
     const item = availableCatalogItems.find(
-      (entry) => catalogSelectionKey(entry) === selectedCatalogItemKey,
+      (entry) => catalogSelectionKey(entry) === selectionKey,
     );
     if (!item) {
       setAffectedItemsError(
@@ -6539,6 +6544,7 @@ export function TicketDetail({
     window.requestAnimationFrame(() => {
       catalogPickerTriggerRef.current?.focus();
     });
+    void linkCatalogItemByKey(itemKey);
   }
 
   function focusCatalogSearchResult(index: number) {
@@ -7889,26 +7895,16 @@ export function TicketDetail({
                       </section>
                     ) : null}
                   </div>
-                  <button
-                    className="secondary-button"
-                    disabled={
-                      catalogBusy ||
-                      affectedItemsLoading ||
-                      !selectedCatalogItemKey
-                    }
-                    type="submit"
-                  >
-                    {pendingCatalogAction === "link" ? (
+                  {pendingCatalogAction === "link" ? (
+                    <span className="data-caption" role="status">
                       <LoaderCircle
                         aria-hidden="true"
                         className="ticket-detail-spinner"
                         size={16}
-                      />
-                    ) : (
-                      <Circle aria-hidden="true" size={16} strokeWidth={1.8} />
-                    )}
-                    Verknüpfen
-                  </button>
+                      />{" "}
+                      Wird verknüpft …
+                    </span>
+                  ) : null}
                 </form>
               ) : null}
               {linkedCatalogItems.length > 0 ? (
