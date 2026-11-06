@@ -206,11 +206,18 @@ async function customerEmailBranding(
       }
     }
   }
+  // Where no inline logo can be sent (threaded replies), the public logo URL
+  // of the tenant branding is shown instead.
+  const publicLogoUrl =
+    !logoAttachment && tenantBrandingStoragePath(row.logo_path, tenantId)
+      ? asString(row.logo_path)
+      : null;
   return {
     branding: normalizeCustomerTicketEmailBranding({
       accentColor: asString(row.accent_color) ?? undefined,
       displayName: portalName,
       logoContentId: logoAttachment ? TENANT_LOGO_CONTENT_ID : null,
+      logoUrl: publicLogoUrl,
       primaryColor: asString(row.primary_color) ?? undefined,
       secondaryColor: asString(row.secondary_color) ?? undefined,
     }),
@@ -1741,7 +1748,14 @@ export async function dispatchOutboundMessage(
     let ticket: any = null;
     let bodyText = "";
     let recipient = emailAddress(message.to_addresses?.[0]);
-    let portalName = "nextDesk Portal";
+    // Name shown in the e-mail: the portal name from the settings, otherwise
+    // the tenant name.
+    const tenantName = await admin
+      .from("tenants")
+      .select("name")
+      .eq("id", message.tenant_id)
+      .maybeSingle();
+    let portalName = asString(tenantName.data?.name) ?? "Support";
     const internalDepartmentNotice =
       message.kind === "department_question" ||
       message.kind === "department_answer";
