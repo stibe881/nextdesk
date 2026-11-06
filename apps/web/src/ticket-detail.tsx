@@ -4946,9 +4946,11 @@ export function TicketDetail({
     () =>
       (detail?.statuses ?? []).filter(
         (status) =>
-          !status.is_closed ||
-          detail?.canClose ||
-          status.id === selectedStatus?.id,
+          // "Neu" cannot be chosen again once the ticket has left it.
+          (status.key !== "new" || status.id === selectedStatus?.id) &&
+          (!status.is_closed ||
+            detail?.canClose ||
+            status.id === selectedStatus?.id),
       ),
     [detail?.canClose, detail?.statuses, selectedStatus?.id],
   );
@@ -5650,6 +5652,19 @@ export function TicketDetail({
     const updatesAgent = change.assignedAgentId !== undefined;
     if (!updatesTicket && !updatesAgent) return;
     const closingStatus = closingStatusForKey(change.statusKey);
+    if (
+      change.statusKey !== undefined &&
+      change.statusKey !== "new" &&
+      selectedStatus?.key === "new" &&
+      !detail.ticket.assigned_agent_id &&
+      !change.assignedAgentId
+    ) {
+      setStatusKey(selectedStatus.key);
+      setError(
+        "Der Status «Neu» kann erst geändert werden, wenn das Ticket einer Person zugewiesen ist.",
+      );
+      return;
+    }
     if (closingStatus) {
       const missing = [
         requiredCloseFields.category ? "Kategorie" : null,

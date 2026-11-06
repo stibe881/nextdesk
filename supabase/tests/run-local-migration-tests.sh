@@ -9085,7 +9085,8 @@ begin
   insert into auth.users (id) values (v_owner);
   v_tenant := public.provision_personal_workspace(v_owner, 'loesung@example.ch', 'Lösungsteam');
   select id into v_department from public.departments where tenant_id = v_tenant limit 1;
-  select id into v_open from public.ticket_statuses where tenant_id = v_tenant and not is_closed order by sort_order limit 1;
+  -- An open status other than "Neu": tickets cannot go back to "Neu" (0195).
+  select id into v_open from public.ticket_statuses where tenant_id = v_tenant and not is_closed and key <> 'new' order by sort_order limit 1;
   select id into v_closed from public.ticket_statuses where tenant_id = v_tenant and is_closed order by sort_order limit 1;
   select id into v_priority from public.ticket_priorities where tenant_id = v_tenant limit 1;
   if v_open is null or v_closed is null then
@@ -9094,8 +9095,8 @@ begin
 
   insert into public.knowledge_articles (id, tenant_id, title, slug, visibility, status, current_revision)
   values (v_article, v_tenant, 'VPN neu verbinden', 'vpn-neu-verbinden', 'internal', 'published', 1);
-  insert into public.tickets (id, tenant_id, department_id, ticket_number, subject, description, status_id, priority_id, requester_id)
-  values (v_ticket, v_tenant, v_department, 'L-2026-000001', 'VPN Verbindung bricht ab', 'Das VPN trennt sich ständig im Homeoffice', v_open, v_priority, v_owner);
+  insert into public.tickets (id, tenant_id, department_id, ticket_number, subject, description, status_id, priority_id, requester_id, assigned_agent_id)
+  values (v_ticket, v_tenant, v_department, 'L-2026-000001', 'VPN Verbindung bricht ab', 'Das VPN trennt sich ständig im Homeoffice', v_open, v_priority, v_owner, v_owner);
   insert into public.ticket_knowledge_links (ticket_id, article_id) values (v_ticket, v_article);
 
   update public.tickets set status_id = v_closed, closed_at = now() where id = v_ticket;
@@ -9727,6 +9728,55 @@ begin
   exception when sqlstate '23505' then null;
   end;
   perform set_config('request.jwt.claim.sub', '', true);
+end;
+$$;
+rollback;
+SQL
+
+# Status rules (0195): "Neu" is left only with an assignee; no way back to
+# "Neu"; merging a duplicate stays possible without an assignee.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_owner constant uuid := 'f1950000-0000-4000-8000-000000000001';
+  v_tenant uuid;
+  v_new uuid;
+  v_progress uuid;
+  v_closed uuid;
+  v_ticket uuid;
+  v_duplicate uuid;
+begin
+  insert into auth.users (id) values (v_owner);
+  v_tenant := public.provision_personal_workspace(v_owner, 'status@example.ch', 'Statusteam');
+  select id into v_new from public.ticket_statuses where tenant_id = v_tenant and key = 'new';
+  select id into v_progress from public.ticket_statuses where tenant_id = v_tenant and not is_closed and key <> 'new' order by sort_order limit 1;
+  select id into v_closed from public.ticket_statuses where tenant_id = v_tenant and is_closed order by sort_order limit 1;
+  insert into public.tickets (tenant_id, department_id, ticket_number, subject, description, status_id, priority_id, requester_id)
+  select v_tenant, d.id, 'S-2026-00001', 'Neu', 'Neu', v_new,
+    (select id from public.ticket_priorities where tenant_id = v_tenant limit 1), v_owner
+  from public.departments d where d.tenant_id = v_tenant limit 1
+  returning id into v_ticket;
+  insert into public.tickets (tenant_id, department_id, ticket_number, subject, description, status_id, priority_id, requester_id)
+  select v_tenant, department_id, 'S-2026-00002', 'Duplikat', 'Duplikat', v_new, priority_id, v_owner
+  from public.tickets where id = v_ticket
+  returning id into v_duplicate;
+
+  begin
+    update public.tickets set status_id = v_progress where id = v_ticket;
+    raise exception 'A new ticket left "Neu" without an assignee';
+  exception when check_violation then null;
+  end;
+  update public.tickets set assigned_agent_id = v_owner, status_id = v_progress where id = v_ticket;
+  begin
+    update public.tickets set status_id = v_new where id = v_ticket;
+    raise exception 'A ticket went back to "Neu"';
+  exception when check_violation then null;
+  end;
+  -- Merging closes an unassigned duplicate.
+  update public.tickets
+  set merged_into_ticket_id = v_ticket, status_id = v_closed, closed_at = now()
+  where id = v_duplicate;
 end;
 $$;
 rollback;

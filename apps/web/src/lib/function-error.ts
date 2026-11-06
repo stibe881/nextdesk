@@ -54,6 +54,10 @@ export async function functionErrorMessage(
   const status = functionErrorStatus(error);
 
   switch (code) {
+    case "ticket_status_new_locked":
+      return "Ein Ticket kann nicht auf «Neu» zurückgesetzt werden.";
+    case "ticket_assignee_required":
+      return "Der Status «Neu» kann erst geändert werden, wenn das Ticket einer Person zugewiesen ist.";
     case "ticket_required_fields_missing": {
       const labels: Record<string, string> = {
         category: "Kategorie",

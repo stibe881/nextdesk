@@ -1736,16 +1736,23 @@ async function loadQuickAssignOptions(
       .order("sort_order");
     if (error) throw error;
     return (
-      (data ?? []) as {
-        key: string;
-        label: string;
-        is_closed: boolean;
-      }[]
-    ).map((status) => ({
-      id: status.key,
-      label: status.label,
-      isClosed: status.is_closed,
-    }));
+      (
+        (data ?? []) as {
+          key: string;
+          label: string;
+          is_closed: boolean;
+        }[]
+      )
+        // "Neu" can only stay selected, it cannot be chosen again.
+        .filter(
+          (status) => status.key !== "new" || status.label === ticket.state,
+        )
+        .map((status) => ({
+          id: status.key,
+          label: status.label,
+          isClosed: status.is_closed,
+        }))
+    );
   }
   if (kind === "agent") {
     const { data, error } = await supabase.functions.invoke(
@@ -1857,6 +1864,12 @@ function TicketQuickAssign({
     if (open === "status") {
       const status = options?.find((option) => option.id === value);
       if (!status) return;
+      if (value !== "new" && ticket.isUnassigned && ticket.state === "Neu") {
+        setError(
+          "Der Status «Neu» kann erst geändert werden, wenn das Ticket einer Person zugewiesen ist.",
+        );
+        return;
+      }
       // Closing needs an explicit confirmation, as in the ticket detail.
       if (status.isClosed && !confirmed) {
         setPendingClose(status);
