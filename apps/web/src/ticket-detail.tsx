@@ -739,6 +739,8 @@ type TicketDetailProps = {
   onOpenKnowledgeArticle?: (articleId: string) => void;
   /** Opens the asset list filtered to a device (name or asset tag). */
   onOpenAsset?: ((query: string) => void) | undefined;
+  /** Requesters without ticket work see only what matters to them. */
+  requesterView?: boolean;
 };
 
 const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
@@ -3742,6 +3744,7 @@ export function TicketDetail({
   onChanged,
   onOpenKnowledgeArticle,
   onOpenAsset,
+  requesterView = false,
 }: TicketDetailProps) {
   const [detail, setDetail] = useState<TicketDetailData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -4024,7 +4027,15 @@ export function TicketDetail({
     }
     return grouped;
   }, [attachments]);
-  const commentComposer = ticketCommentComposerCopy(commentVisibility);
+  const commentComposer = requesterView
+    ? {
+        ...ticketCommentComposerCopy("external"),
+        bodyLabel: "Ihre Nachricht",
+        placeholder: "Nachricht an den Support schreiben …",
+        hint: "Der Support sieht Ihre Nachricht im Ticket und antwortet Ihnen hier.",
+        submitLabel: "Nachricht senden",
+      }
+    : ticketCommentComposerCopy(commentVisibility);
   const restoreInternalNoteDraft = useCallback((body: string) => {
     setCommentDrafts((current) =>
       updateTicketCommentDraft(current, "internal", body),
@@ -6672,33 +6683,35 @@ export function TicketDetail({
             ticketId={ticketId}
             ticketNumber={detail.ticket.ticket_number}
           />
-          <button
-            aria-label={watchPresentation.actionLabel}
-            className={
-              detail.watching
-                ? "secondary-button ticket-watch-button active"
-                : "secondary-button ticket-watch-button"
-            }
-            disabled={busy}
-            onClick={() => void toggleWatch()}
-            title={watchPresentation.actionLabel}
-            type="button"
-          >
-            {pendingAction === "watch" ? (
-              <LoaderCircle
-                aria-hidden="true"
-                className="ticket-detail-spinner"
-                size={16}
-              />
-            ) : watchPresentation.icon === "eye" ? (
-              <Eye aria-hidden="true" size={16} strokeWidth={1.8} />
-            ) : (
-              <EyeOff aria-hidden="true" size={16} strokeWidth={1.8} />
-            )}
-            <span className="ticket-detail-action-label">
-              {watchPresentation.label}
-            </span>
-          </button>
+          {requesterView ? null : (
+            <button
+              aria-label={watchPresentation.actionLabel}
+              className={
+                detail.watching
+                  ? "secondary-button ticket-watch-button active"
+                  : "secondary-button ticket-watch-button"
+              }
+              disabled={busy}
+              onClick={() => void toggleWatch()}
+              title={watchPresentation.actionLabel}
+              type="button"
+            >
+              {pendingAction === "watch" ? (
+                <LoaderCircle
+                  aria-hidden="true"
+                  className="ticket-detail-spinner"
+                  size={16}
+                />
+              ) : watchPresentation.icon === "eye" ? (
+                <Eye aria-hidden="true" size={16} strokeWidth={1.8} />
+              ) : (
+                <EyeOff aria-hidden="true" size={16} strokeWidth={1.8} />
+              )}
+              <span className="ticket-detail-action-label">
+                {watchPresentation.label}
+              </span>
+            </button>
+          )}
           {detail.canUpdate && (
             <button
               aria-expanded={isEditingTicket}
@@ -6968,40 +6981,42 @@ export function TicketDetail({
             )}
 
             <form className="ticket-comment-form" onSubmit={saveComment}>
-              <div
-                aria-label="Nachrichtenart wählen"
-                className={`ticket-comment-mode-switch${detail.canUseInternalNotes ? "" : " ticket-comment-mode-switch--external-only"}`}
-                role="group"
-              >
-                {detail.canUseInternalNotes && (
+              {requesterView ? null : (
+                <div
+                  aria-label="Nachrichtenart wählen"
+                  className={`ticket-comment-mode-switch${detail.canUseInternalNotes ? "" : " ticket-comment-mode-switch--external-only"}`}
+                  role="group"
+                >
+                  {detail.canUseInternalNotes && (
+                    <button
+                      aria-pressed={commentVisibility === "internal"}
+                      className="ticket-comment-mode ticket-comment-mode--internal"
+                      disabled={busy || attachmentBusy}
+                      onClick={() => selectCommentMode("internal")}
+                      type="button"
+                    >
+                      <MessageSquare aria-hidden="true" size={17} />
+                      <span>
+                        <strong>Interne Notiz</strong>
+                        <small>Nur für berechtigte Mitarbeitende</small>
+                      </span>
+                    </button>
+                  )}
                   <button
-                    aria-pressed={commentVisibility === "internal"}
-                    className="ticket-comment-mode ticket-comment-mode--internal"
+                    aria-pressed={commentVisibility === "external"}
+                    className="ticket-comment-mode ticket-comment-mode--external"
                     disabled={busy || attachmentBusy}
-                    onClick={() => selectCommentMode("internal")}
+                    onClick={() => selectCommentMode("external")}
                     type="button"
                   >
-                    <MessageSquare aria-hidden="true" size={17} />
+                    <Send aria-hidden="true" size={17} strokeWidth={1.8} />
                     <span>
-                      <strong>Interne Notiz</strong>
-                      <small>Nur für berechtigte Mitarbeitende</small>
+                      <strong>Antwort an anfragende Person</strong>
+                      <small>Für die anfragende Person sichtbar</small>
                     </span>
                   </button>
-                )}
-                <button
-                  aria-pressed={commentVisibility === "external"}
-                  className="ticket-comment-mode ticket-comment-mode--external"
-                  disabled={busy || attachmentBusy}
-                  onClick={() => selectCommentMode("external")}
-                  type="button"
-                >
-                  <Send aria-hidden="true" size={17} strokeWidth={1.8} />
-                  <span>
-                    <strong>Antwort an anfragende Person</strong>
-                    <small>Für die anfragende Person sichtbar</small>
-                  </span>
-                </button>
-              </div>
+                </div>
+              )}
               <label className="ticket-comment-body">
                 {commentComposer.bodyLabel}
                 <textarea
@@ -7274,52 +7289,60 @@ export function TicketDetail({
                 requestDraft={() => requestAiTicketDraft(tenantId, ticketId)}
               />
             )}
-            <dl className="ticket-detail-facts-grid">
-              {detail.requesterContact && (
+            {requesterView ? (
+              <dl className="ticket-detail-facts-grid">
                 <div>
-                  <dt>Anfragende Person</dt>
+                  <dt>Status</dt>
+                  <dd>{selectedStatus?.label ?? "Nicht verfügbar"}</dd>
+                </div>
+                <div>
+                  <dt>Priorität</dt>
+                  <dd>{selectedPriority?.label ?? "Nicht verfügbar"}</dd>
+                </div>
+                <div>
+                  <dt>Bearbeitet von</dt>
                   <dd>
-                    {formatPersonDisplayName(
-                      detail.requesterContact.displayName,
-                    )}
+                    {detail.assignedAgent?.displayName ??
+                      "Noch nicht zugewiesen"}
                   </dd>
                 </div>
-              )}
-              <div
-                className={
-                  detail.canUpdate && requesterProfile
-                    ? "ticket-detail-fact--editable ticket-requester-context"
-                    : undefined
-                }
-              >
-                <dt>Abteilung / Angebot</dt>
-                <dd>
-                  {detail.canUpdate && requesterProfile ? (
-                    <span className="ticket-requester-context-fields">
-                      {requesterDepartment.trim() ? (
-                        <input
-                          aria-label="Abteilung der anfragenden Person"
-                          disabled={busy || requesterProfileBusy}
-                          onBlur={() => void saveRequesterContext()}
-                          onChange={(event) =>
-                            setRequesterDepartment(event.target.value)
-                          }
-                          placeholder="Abteilung"
-                          value={requesterDepartment}
-                        />
-                      ) : requesterOffer.trim() ? (
-                        <input
-                          aria-label="Angebot der anfragenden Person"
-                          disabled={busy || requesterProfileBusy}
-                          onBlur={() => void saveRequesterContext()}
-                          onChange={(event) =>
-                            setRequesterOffer(event.target.value)
-                          }
-                          placeholder="Angebot"
-                          value={requesterOffer}
-                        />
-                      ) : (
-                        <>
+                <div>
+                  <dt>Abteilung</dt>
+                  <dd>{detail.department?.name ?? "Nicht hinterlegt"}</dd>
+                </div>
+                <div>
+                  <dt>Kategorie</dt>
+                  <dd>{selectedTicketCategory?.name ?? "Keine Kategorie"}</dd>
+                </div>
+                <div>
+                  <dt>Erfasst am</dt>
+                  <dd>{formatDateTime(detail.ticket.created_at)}</dd>
+                </div>
+              </dl>
+            ) : (
+              <dl className="ticket-detail-facts-grid">
+                {detail.requesterContact && (
+                  <div>
+                    <dt>Anfragende Person</dt>
+                    <dd>
+                      {formatPersonDisplayName(
+                        detail.requesterContact.displayName,
+                      )}
+                    </dd>
+                  </div>
+                )}
+                <div
+                  className={
+                    detail.canUpdate && requesterProfile
+                      ? "ticket-detail-fact--editable ticket-requester-context"
+                      : undefined
+                  }
+                >
+                  <dt>Abteilung / Angebot</dt>
+                  <dd>
+                    {detail.canUpdate && requesterProfile ? (
+                      <span className="ticket-requester-context-fields">
+                        {requesterDepartment.trim() ? (
                           <input
                             aria-label="Abteilung der anfragenden Person"
                             disabled={busy || requesterProfileBusy}
@@ -7330,6 +7353,7 @@ export function TicketDetail({
                             placeholder="Abteilung"
                             value={requesterDepartment}
                           />
+                        ) : requesterOffer.trim() ? (
                           <input
                             aria-label="Angebot der anfragenden Person"
                             disabled={busy || requesterProfileBusy}
@@ -7340,237 +7364,35 @@ export function TicketDetail({
                             placeholder="Angebot"
                             value={requesterOffer}
                           />
-                        </>
-                      )}
-                    </span>
-                  ) : requesterContext.length > 0 ? (
-                    requesterContext.join(" · ")
-                  ) : (
-                    "Nicht hinterlegt"
-                  )}
-                </dd>
-              </div>
-              <div
-                className={
-                  detail.canUpdate ? "ticket-detail-fact--editable" : undefined
-                }
-              >
-                <dt>Status</dt>
-                <dd>
-                  {detail.canUpdate ? (
-                    <select
-                      aria-label="Ticketstatus direkt ändern"
-                      disabled={busy}
-                      onChange={(event) => {
-                        void saveOverviewChange({
-                          statusKey: event.target.value,
-                        });
-                      }}
-                      value={selectedStatus?.key ?? ""}
-                    >
-                      {selectableStatuses.map((status) => (
-                        <option key={status.id} value={status.key}>
-                          {status.label}
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
-                    (selectedStatus?.label ?? "Nicht verfügbar")
-                  )}
-                </dd>
-              </div>
-              <div
-                className={
-                  detail.canUpdate ? "ticket-detail-fact--editable" : undefined
-                }
-              >
-                <dt>Priorität</dt>
-                <dd>
-                  {detail.canUpdate ? (
-                    <select
-                      aria-label="Ticketpriorität direkt ändern"
-                      disabled={busy}
-                      onChange={(event) => {
-                        setPriorityKey(event.target.value);
-                        void saveOverviewChange({
-                          priorityKey: event.target.value,
-                        });
-                      }}
-                      value={selectedPriority?.key ?? ""}
-                    >
-                      {detail.priorities.map((priority) => (
-                        <option key={priority.id} value={priority.key}>
-                          {priority.label}
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
-                    (selectedPriority?.label ?? "Nicht verfügbar")
-                  )}
-                </dd>
-              </div>
-              <div
-                className={`${
-                  detail.canAssign ? "ticket-detail-fact--editable" : ""
-                }${requiredCloseFields.assignee ? " ticket-detail-fact--required-missing" : ""}`}
-              >
-                <dt>
-                  Zugewiesen an <RequiredMark />
-                </dt>
-                <dd>
-                  {detail.canAssign ? (
-                    <>
-                      <select
-                        aria-label="Zugewiesene Person direkt ändern"
-                        disabled={busy}
-                        onChange={(event) => {
-                          setSelectedAgentId(event.target.value);
-                          setAssignmentPrefilled(false);
-                          void saveOverviewChange({
-                            assignedAgentId: event.target.value || null,
-                          });
-                        }}
-                        value={selectedAgentId}
-                      >
-                        <option value="">Nicht zugewiesen</option>
-                        {visibleAssignableAgents.map((agent) => (
-                          <option key={agent.id} value={agent.id}>
-                            {agent.displayName}
-                            {agent.id === currentUserId ? " (ich)" : ""}
-                          </option>
-                        ))}
-                      </select>
-                      {assignmentPrefilled &&
-                        selectedAgentId !== assignedAgentId && (
-                          <button
-                            className="text-button"
-                            disabled={busy}
-                            onClick={() => {
-                              void saveOverviewChange({
-                                assignedAgentId: selectedAgentId || null,
-                              });
-                              setAssignmentPrefilled(false);
-                            }}
-                            type="button"
-                          >
-                            Zuweisung bestätigen
-                          </button>
+                        ) : (
+                          <>
+                            <input
+                              aria-label="Abteilung der anfragenden Person"
+                              disabled={busy || requesterProfileBusy}
+                              onBlur={() => void saveRequesterContext()}
+                              onChange={(event) =>
+                                setRequesterDepartment(event.target.value)
+                              }
+                              placeholder="Abteilung"
+                              value={requesterDepartment}
+                            />
+                            <input
+                              aria-label="Angebot der anfragenden Person"
+                              disabled={busy || requesterProfileBusy}
+                              onBlur={() => void saveRequesterContext()}
+                              onChange={(event) =>
+                                setRequesterOffer(event.target.value)
+                              }
+                              placeholder="Angebot"
+                              value={requesterOffer}
+                            />
+                          </>
                         )}
-                    </>
-                  ) : (
-                    (detail.assignedAgent?.displayName ?? "Nicht zugewiesen")
-                  )}
-                </dd>
-              </div>
-              <div
-                className={`${
-                  detail.canAssign ? "ticket-detail-fact--editable" : ""
-                }${requiredCloseFields.team ? " ticket-detail-fact--required-missing" : ""}`}
-              >
-                <dt>
-                  Team <RequiredMark />
-                </dt>
-                <dd>
-                  {detail.canAssign ? (
-                    <select
-                      aria-label="Zugewiesenes Team direkt ändern"
-                      disabled={busy}
-                      onChange={(event) => {
-                        setSelectedTeamId(event.target.value);
-                        void saveOverviewChange({
-                          assignedTeamId: event.target.value || null,
-                        });
-                      }}
-                      value={selectedTeamId}
-                    >
-                      <option value="">Kein Team</option>
-                      {detail.teams.map((team) => (
-                        <option key={team.id} value={team.id}>
-                          {team.name}
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
-                    (selectedTeam?.name ?? "Kein Team")
-                  )}
-                </dd>
-              </div>
-              <div
-                className={
-                  detail.canUpdate ? "ticket-detail-fact--editable" : undefined
-                }
-              >
-                <dt>Bearbeitende Abteilung</dt>
-                <dd>
-                  {detail.canUpdate ? (
-                    <select
-                      aria-label="Bearbeitende Abteilung direkt ändern"
-                      disabled={busy || detail.departments.length === 0}
-                      onChange={(event) => {
-                        setSelectedDepartmentId(event.target.value);
-                        void saveDepartmentChange(event.target.value);
-                      }}
-                      value={selectedDepartmentId}
-                    >
-                      {detail.departments.map((department) => (
-                        <option key={department.id} value={department.id}>
-                          {department.name}
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
-                    (detail.department?.name ?? "Nicht hinterlegt")
-                  )}
-                </dd>
-              </div>
-              <div
-                className={
-                  detail.canUpdate ? "ticket-detail-fact--editable" : undefined
-                }
-              >
-                <dt>Erfasst am</dt>
-                <dd>{formatDateTime(detail.ticket.created_at)}</dd>
-              </div>
-              <div className="ticket-detail-fact-pair">
-                <div
-                  className={`${
-                    detail.canUpdate ? "ticket-detail-fact--editable" : ""
-                  }${requiredCloseFields.category ? " ticket-detail-fact--required-missing" : ""}`}
-                >
-                  <dt>
-                    Kategorie <RequiredMark />
-                  </dt>
-                  <dd>
-                    {ticketCategoriesLoading ? (
-                      "Wird geladen …"
-                    ) : detail.canUpdate ? (
-                      <select
-                        aria-label="Ticketkategorie direkt ändern"
-                        disabled={ticketCategorySaving}
-                        onChange={(event) => {
-                          if (event.target.value === NEW_CATEGORY_OPTION) {
-                            openTicketCategoryForm(null);
-                            return;
-                          }
-                          void saveTicketCategory(
-                            event.target.value || null,
-                            null,
-                          );
-                        }}
-                        value={selectedTicketCategory?.id ?? ""}
-                      >
-                        <option value="">Keine Kategorie</option>
-                        {rootTicketCategories.map((category) => (
-                          <option key={category.id} value={category.id}>
-                            {category.name}
-                          </option>
-                        ))}
-                        <option value={NEW_CATEGORY_OPTION}>
-                          + Neue Kategorie …
-                        </option>
-                      </select>
+                      </span>
+                    ) : requesterContext.length > 0 ? (
+                      requesterContext.join(" · ")
                     ) : (
-                      (selectedTicketCategory?.name ?? "Keine Kategorie")
+                      "Nicht hinterlegt"
                     )}
                   </dd>
                 </div>
@@ -7581,388 +7403,630 @@ export function TicketDetail({
                       : undefined
                   }
                 >
-                  <dt>Unterkategorie</dt>
+                  <dt>Status</dt>
                   <dd>
-                    {ticketCategoriesLoading ? (
-                      "Wird geladen …"
-                    ) : detail.canUpdate ? (
+                    {detail.canUpdate ? (
                       <select
-                        aria-label="Ticketunterkategorie direkt ändern"
-                        disabled={
-                          !selectedTicketCategory || ticketCategorySaving
-                        }
+                        aria-label="Ticketstatus direkt ändern"
+                        disabled={busy}
                         onChange={(event) => {
-                          if (event.target.value === NEW_CATEGORY_OPTION) {
-                            if (selectedTicketCategory) {
-                              openTicketCategoryForm(selectedTicketCategory.id);
-                            }
-                            return;
-                          }
-                          void saveTicketCategory(
-                            selectedTicketCategory?.id ?? null,
-                            event.target.value || null,
-                          );
+                          void saveOverviewChange({
+                            statusKey: event.target.value,
+                          });
                         }}
-                        value={selectedTicketSubcategory?.id ?? ""}
+                        value={selectedStatus?.key ?? ""}
                       >
-                        <option value="">
-                          {selectedTicketCategory
-                            ? "Keine Unterkategorie"
-                            : "Zuerst Kategorie wählen"}
-                        </option>
-                        {availableTicketSubcategories.map((category) => (
-                          <option key={category.id} value={category.id}>
-                            {category.name}
+                        {selectableStatuses.map((status) => (
+                          <option key={status.id} value={status.key}>
+                            {status.label}
                           </option>
                         ))}
-                        {selectedTicketCategory ? (
-                          <option value={NEW_CATEGORY_OPTION}>
-                            + Neue Unterkategorie …
-                          </option>
-                        ) : null}
                       </select>
                     ) : (
-                      (selectedTicketSubcategory?.name ??
-                      "Keine Unterkategorie")
+                      (selectedStatus?.label ?? "Nicht verfügbar")
                     )}
                   </dd>
                 </div>
-              </div>
-              {detail.canUpdate && ticketCategoryDraft ? (
-                <div className="ticket-detail-fact--wide">
-                  <div className="ticket-category-create" role="group">
-                    <p className="data-caption">
-                      {ticketCategoryDraftParent
-                        ? `Unterkategorie von: ${ticketCategoryDraftParent.name}`
-                        : "Neue Kategorie ohne übergeordnete Kategorie"}
-                    </p>
-                    <label>
-                      Name
-                      <input
-                        autoFocus
-                        disabled={ticketCategorySaving}
-                        maxLength={120}
+                <div
+                  className={
+                    detail.canUpdate
+                      ? "ticket-detail-fact--editable"
+                      : undefined
+                  }
+                >
+                  <dt>Priorität</dt>
+                  <dd>
+                    {detail.canUpdate ? (
+                      <select
+                        aria-label="Ticketpriorität direkt ändern"
+                        disabled={busy}
                         onChange={(event) => {
-                          const name = event.target.value;
-                          setTicketCategoryDraft((current) =>
-                            current ? { ...current, name } : null,
-                          );
-                          setTicketCategoryError("");
+                          setPriorityKey(event.target.value);
+                          void saveOverviewChange({
+                            priorityKey: event.target.value,
+                          });
                         }}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter") {
-                            event.preventDefault();
-                            void createTicketCategoryFromDetail();
+                        value={selectedPriority?.key ?? ""}
+                      >
+                        {detail.priorities.map((priority) => (
+                          <option key={priority.id} value={priority.key}>
+                            {priority.label}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      (selectedPriority?.label ?? "Nicht verfügbar")
+                    )}
+                  </dd>
+                </div>
+                <div
+                  className={`${
+                    detail.canAssign ? "ticket-detail-fact--editable" : ""
+                  }${requiredCloseFields.assignee ? " ticket-detail-fact--required-missing" : ""}`}
+                >
+                  <dt>
+                    Zugewiesen an <RequiredMark />
+                  </dt>
+                  <dd>
+                    {detail.canAssign ? (
+                      <>
+                        <select
+                          aria-label="Zugewiesene Person direkt ändern"
+                          disabled={busy}
+                          onChange={(event) => {
+                            setSelectedAgentId(event.target.value);
+                            setAssignmentPrefilled(false);
+                            void saveOverviewChange({
+                              assignedAgentId: event.target.value || null,
+                            });
+                          }}
+                          value={selectedAgentId}
+                        >
+                          <option value="">Nicht zugewiesen</option>
+                          {visibleAssignableAgents.map((agent) => (
+                            <option key={agent.id} value={agent.id}>
+                              {agent.displayName}
+                              {agent.id === currentUserId ? " (ich)" : ""}
+                            </option>
+                          ))}
+                        </select>
+                        {assignmentPrefilled &&
+                          selectedAgentId !== assignedAgentId && (
+                            <button
+                              className="text-button"
+                              disabled={busy}
+                              onClick={() => {
+                                void saveOverviewChange({
+                                  assignedAgentId: selectedAgentId || null,
+                                });
+                                setAssignmentPrefilled(false);
+                              }}
+                              type="button"
+                            >
+                              Zuweisung bestätigen
+                            </button>
+                          )}
+                      </>
+                    ) : (
+                      (detail.assignedAgent?.displayName ?? "Nicht zugewiesen")
+                    )}
+                  </dd>
+                </div>
+                <div
+                  className={`${
+                    detail.canAssign ? "ticket-detail-fact--editable" : ""
+                  }${requiredCloseFields.team ? " ticket-detail-fact--required-missing" : ""}`}
+                >
+                  <dt>
+                    Team <RequiredMark />
+                  </dt>
+                  <dd>
+                    {detail.canAssign ? (
+                      <select
+                        aria-label="Zugewiesenes Team direkt ändern"
+                        disabled={busy}
+                        onChange={(event) => {
+                          setSelectedTeamId(event.target.value);
+                          void saveOverviewChange({
+                            assignedTeamId: event.target.value || null,
+                          });
+                        }}
+                        value={selectedTeamId}
+                      >
+                        <option value="">Kein Team</option>
+                        {detail.teams.map((team) => (
+                          <option key={team.id} value={team.id}>
+                            {team.name}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      (selectedTeam?.name ?? "Kein Team")
+                    )}
+                  </dd>
+                </div>
+                <div
+                  className={
+                    detail.canUpdate
+                      ? "ticket-detail-fact--editable"
+                      : undefined
+                  }
+                >
+                  <dt>Bearbeitende Abteilung</dt>
+                  <dd>
+                    {detail.canUpdate ? (
+                      <select
+                        aria-label="Bearbeitende Abteilung direkt ändern"
+                        disabled={busy || detail.departments.length === 0}
+                        onChange={(event) => {
+                          setSelectedDepartmentId(event.target.value);
+                          void saveDepartmentChange(event.target.value);
+                        }}
+                        value={selectedDepartmentId}
+                      >
+                        {detail.departments.map((department) => (
+                          <option key={department.id} value={department.id}>
+                            {department.name}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      (detail.department?.name ?? "Nicht hinterlegt")
+                    )}
+                  </dd>
+                </div>
+                <div
+                  className={
+                    detail.canUpdate
+                      ? "ticket-detail-fact--editable"
+                      : undefined
+                  }
+                >
+                  <dt>Erfasst am</dt>
+                  <dd>{formatDateTime(detail.ticket.created_at)}</dd>
+                </div>
+                <div className="ticket-detail-fact-pair">
+                  <div
+                    className={`${
+                      detail.canUpdate ? "ticket-detail-fact--editable" : ""
+                    }${requiredCloseFields.category ? " ticket-detail-fact--required-missing" : ""}`}
+                  >
+                    <dt>
+                      Kategorie <RequiredMark />
+                    </dt>
+                    <dd>
+                      {ticketCategoriesLoading ? (
+                        "Wird geladen …"
+                      ) : detail.canUpdate ? (
+                        <select
+                          aria-label="Ticketkategorie direkt ändern"
+                          disabled={ticketCategorySaving}
+                          onChange={(event) => {
+                            if (event.target.value === NEW_CATEGORY_OPTION) {
+                              openTicketCategoryForm(null);
+                              return;
+                            }
+                            void saveTicketCategory(
+                              event.target.value || null,
+                              null,
+                            );
+                          }}
+                          value={selectedTicketCategory?.id ?? ""}
+                        >
+                          <option value="">Keine Kategorie</option>
+                          {rootTicketCategories.map((category) => (
+                            <option key={category.id} value={category.id}>
+                              {category.name}
+                            </option>
+                          ))}
+                          <option value={NEW_CATEGORY_OPTION}>
+                            + Neue Kategorie …
+                          </option>
+                        </select>
+                      ) : (
+                        (selectedTicketCategory?.name ?? "Keine Kategorie")
+                      )}
+                    </dd>
+                  </div>
+                  <div
+                    className={
+                      detail.canUpdate
+                        ? "ticket-detail-fact--editable"
+                        : undefined
+                    }
+                  >
+                    <dt>Unterkategorie</dt>
+                    <dd>
+                      {ticketCategoriesLoading ? (
+                        "Wird geladen …"
+                      ) : detail.canUpdate ? (
+                        <select
+                          aria-label="Ticketunterkategorie direkt ändern"
+                          disabled={
+                            !selectedTicketCategory || ticketCategorySaving
                           }
-                        }}
-                        placeholder={
-                          ticketCategoryDraftParent
-                            ? "Name der Unterkategorie"
-                            : "Name der Kategorie"
-                        }
-                        value={ticketCategoryDraft.name}
-                      />
-                    </label>
-                    <div>
-                      <button
-                        className="secondary-button"
-                        disabled={ticketCategorySaving}
-                        onClick={() => {
-                          setTicketCategoryDraft(null);
-                          setTicketCategoryError("");
-                        }}
-                        type="button"
-                      >
-                        Abbrechen
-                      </button>
-                      <button
-                        className="primary-button"
-                        disabled={
-                          ticketCategorySaving ||
-                          !ticketCategoryDraft.name.trim()
-                        }
-                        onClick={() => void createTicketCategoryFromDetail()}
-                        type="button"
-                      >
-                        {ticketCategorySaving
-                          ? "Wird gespeichert …"
-                          : "Erstellen"}
-                      </button>
-                    </div>
+                          onChange={(event) => {
+                            if (event.target.value === NEW_CATEGORY_OPTION) {
+                              if (selectedTicketCategory) {
+                                openTicketCategoryForm(
+                                  selectedTicketCategory.id,
+                                );
+                              }
+                              return;
+                            }
+                            void saveTicketCategory(
+                              selectedTicketCategory?.id ?? null,
+                              event.target.value || null,
+                            );
+                          }}
+                          value={selectedTicketSubcategory?.id ?? ""}
+                        >
+                          <option value="">
+                            {selectedTicketCategory
+                              ? "Keine Unterkategorie"
+                              : "Zuerst Kategorie wählen"}
+                          </option>
+                          {availableTicketSubcategories.map((category) => (
+                            <option key={category.id} value={category.id}>
+                              {category.name}
+                            </option>
+                          ))}
+                          {selectedTicketCategory ? (
+                            <option value={NEW_CATEGORY_OPTION}>
+                              + Neue Unterkategorie …
+                            </option>
+                          ) : null}
+                        </select>
+                      ) : (
+                        (selectedTicketSubcategory?.name ??
+                        "Keine Unterkategorie")
+                      )}
+                    </dd>
                   </div>
                 </div>
-              ) : null}
-              {detail.canUpdate && ticketCategoryError ? (
-                <div className="error ticket-detail-fact--wide" role="alert">
-                  {ticketCategoryError}
-                </div>
-              ) : null}
-              <div
-                className={
-                  detail.canUpdate
-                    ? "ticket-detail-fact--editable ticket-detail-fact--catalog-link"
-                    : "ticket-detail-fact--catalog-link"
-                }
-              >
-                <dt>Asset / Katalogeintrag verknüpfen</dt>
-                <dd>
-                  {detail.canUpdate ? (
-                    <form
-                      className="ticket-overview-catalog-link"
-                      onSubmit={linkCatalogItem}
-                    >
-                      <div
-                        className="ticket-catalog-picker"
-                        ref={catalogPickerRef}
-                      >
-                        <button
-                          aria-controls={
-                            catalogPickerOpen
-                              ? catalogPickerResultsId
-                              : undefined
+                {detail.canUpdate && ticketCategoryDraft ? (
+                  <div className="ticket-detail-fact--wide">
+                    <div className="ticket-category-create" role="group">
+                      <p className="data-caption">
+                        {ticketCategoryDraftParent
+                          ? `Unterkategorie von: ${ticketCategoryDraftParent.name}`
+                          : "Neue Kategorie ohne übergeordnete Kategorie"}
+                      </p>
+                      <label>
+                        Name
+                        <input
+                          autoFocus
+                          disabled={ticketCategorySaving}
+                          maxLength={120}
+                          onChange={(event) => {
+                            const name = event.target.value;
+                            setTicketCategoryDraft((current) =>
+                              current ? { ...current, name } : null,
+                            );
+                            setTicketCategoryError("");
+                          }}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter") {
+                              event.preventDefault();
+                              void createTicketCategoryFromDetail();
+                            }
+                          }}
+                          placeholder={
+                            ticketCategoryDraftParent
+                              ? "Name der Unterkategorie"
+                              : "Name der Kategorie"
                           }
-                          aria-expanded={catalogPickerOpen}
-                          className="ticket-catalog-picker__trigger"
-                          disabled={catalogBusy || affectedItemsLoading}
-                          onClick={() => setCatalogPickerOpen((open) => !open)}
-                          ref={catalogPickerTriggerRef}
+                          value={ticketCategoryDraft.name}
+                        />
+                      </label>
+                      <div>
+                        <button
+                          className="secondary-button"
+                          disabled={ticketCategorySaving}
+                          onClick={() => {
+                            setTicketCategoryDraft(null);
+                            setTicketCategoryError("");
+                          }}
                           type="button"
                         >
-                          <span>
-                            <strong>
-                              {selectedCatalogItem
-                                ? selectedCatalogItem.label
-                                : "Asset oder Katalogeintrag suchen"}
-                            </strong>
-                            {selectedCatalogItem ? (
-                              <small>
-                                {catalogKindLabel(selectedCatalogItem.kind)} ·{" "}
-                                {selectedCatalogItem.description}
-                              </small>
-                            ) : null}
-                          </span>
-                          <ChevronDown
-                            aria-hidden="true"
-                            size={16}
-                            strokeWidth={1.8}
-                          />
+                          Abbrechen
                         </button>
-                        {catalogPickerOpen ? (
-                          <section
-                            aria-label="Asset oder Katalogeintrag suchen"
-                            className="ticket-catalog-picker__panel"
-                            id={catalogPickerResultsId}
+                        <button
+                          className="primary-button"
+                          disabled={
+                            ticketCategorySaving ||
+                            !ticketCategoryDraft.name.trim()
+                          }
+                          onClick={() => void createTicketCategoryFromDetail()}
+                          type="button"
+                        >
+                          {ticketCategorySaving
+                            ? "Wird gespeichert …"
+                            : "Erstellen"}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+                {detail.canUpdate && ticketCategoryError ? (
+                  <div className="error ticket-detail-fact--wide" role="alert">
+                    {ticketCategoryError}
+                  </div>
+                ) : null}
+                <div
+                  className={
+                    detail.canUpdate
+                      ? "ticket-detail-fact--editable ticket-detail-fact--catalog-link"
+                      : "ticket-detail-fact--catalog-link"
+                  }
+                >
+                  <dt>Asset / Katalogeintrag verknüpfen</dt>
+                  <dd>
+                    {detail.canUpdate ? (
+                      <form
+                        className="ticket-overview-catalog-link"
+                        onSubmit={linkCatalogItem}
+                      >
+                        <div
+                          className="ticket-catalog-picker"
+                          ref={catalogPickerRef}
+                        >
+                          <button
+                            aria-controls={
+                              catalogPickerOpen
+                                ? catalogPickerResultsId
+                                : undefined
+                            }
+                            aria-expanded={catalogPickerOpen}
+                            className="ticket-catalog-picker__trigger"
+                            disabled={catalogBusy || affectedItemsLoading}
+                            onClick={() =>
+                              setCatalogPickerOpen((open) => !open)
+                            }
+                            ref={catalogPickerTriggerRef}
+                            type="button"
                           >
-                            <label className="ticket-catalog-picker__search">
-                              <Search
-                                aria-hidden="true"
-                                size={16}
-                                strokeWidth={1.8}
-                              />
-                              <input
-                                aria-label="Assets und Katalogeinträge durchsuchen"
-                                autoComplete="off"
-                                onChange={(event) =>
-                                  setCatalogSearchQuery(event.target.value)
-                                }
-                                onKeyDown={(event) => {
-                                  if (event.key === "Enter") {
-                                    event.preventDefault();
-                                    return;
-                                  }
-                                  if (
-                                    event.key === "ArrowDown" &&
-                                    catalogSearchResults.length > 0
-                                  ) {
-                                    event.preventDefault();
-                                    focusCatalogSearchResult(0);
-                                  }
-                                }}
-                                placeholder="Name, Asset-Kennung oder Typ suchen …"
-                                ref={catalogSearchInputRef}
-                                type="search"
-                                value={catalogSearchQuery}
-                              />
-                              {catalogSearchQuery ? (
-                                <button
-                                  aria-label="Assetsuche löschen"
-                                  className="ticket-catalog-picker__clear"
-                                  onClick={() => setCatalogSearchQuery("")}
-                                  type="button"
-                                >
-                                  <X
-                                    aria-hidden="true"
-                                    size={15}
-                                    strokeWidth={1.8}
-                                  />
-                                </button>
+                            <span>
+                              <strong>
+                                {selectedCatalogItem
+                                  ? selectedCatalogItem.label
+                                  : "Asset oder Katalogeintrag suchen"}
+                              </strong>
+                              {selectedCatalogItem ? (
+                                <small>
+                                  {catalogKindLabel(selectedCatalogItem.kind)} ·{" "}
+                                  {selectedCatalogItem.description}
+                                </small>
                               ) : null}
-                            </label>
-                            {affectedItemsError ? (
-                              <p
-                                className="ticket-catalog-picker__state"
-                                role="alert"
-                              >
-                                {affectedItemsError}
-                              </p>
-                            ) : !affectedItemsLoaded || affectedItemsLoading ? (
-                              <p
-                                className="ticket-catalog-picker__state"
-                                role="status"
-                              >
-                                Verfügbare Assets und Katalogeinträge werden
-                                geladen …
-                              </p>
-                            ) : availableCatalogItems.length === 0 ? (
-                              <p className="ticket-catalog-picker__state">
-                                Keine weiteren verfügbaren Katalogeinträge.
-                              </p>
-                            ) : catalogSearchQuery.trim().length < 2 ? (
-                              <p className="ticket-catalog-picker__state">
-                                Mindestens zwei Zeichen eingeben, um verfügbare
-                                Assets und Katalogeinträge zu suchen.
-                              </p>
-                            ) : catalogSearchResults.length === 0 ? (
-                              <p className="ticket-catalog-picker__state">
-                                Keine verfügbaren Treffer für «
-                                {catalogSearchQuery.trim()}
-                                ».
-                              </p>
-                            ) : (
-                              <ul>
-                                {catalogSearchResults.map((item, index) => {
-                                  const itemKey = catalogSelectionKey(item);
-                                  return (
-                                    <li key={itemKey}>
-                                      <button
-                                        className={
-                                          selectedCatalogItemKey === itemKey
-                                            ? "ticket-catalog-picker__option ticket-catalog-picker__option--selected"
-                                            : "ticket-catalog-picker__option"
-                                        }
-                                        onClick={() =>
-                                          selectCatalogSearchResult(itemKey)
-                                        }
-                                        onKeyDown={(event) => {
-                                          if (event.key === "ArrowDown") {
-                                            event.preventDefault();
-                                            focusCatalogSearchResult(
-                                              Math.min(
-                                                index + 1,
-                                                catalogSearchResults.length - 1,
-                                              ),
-                                            );
-                                          } else if (event.key === "ArrowUp") {
-                                            event.preventDefault();
-                                            if (index === 0) {
-                                              catalogSearchInputRef.current?.focus();
-                                            } else {
+                            </span>
+                            <ChevronDown
+                              aria-hidden="true"
+                              size={16}
+                              strokeWidth={1.8}
+                            />
+                          </button>
+                          {catalogPickerOpen ? (
+                            <section
+                              aria-label="Asset oder Katalogeintrag suchen"
+                              className="ticket-catalog-picker__panel"
+                              id={catalogPickerResultsId}
+                            >
+                              <label className="ticket-catalog-picker__search">
+                                <Search
+                                  aria-hidden="true"
+                                  size={16}
+                                  strokeWidth={1.8}
+                                />
+                                <input
+                                  aria-label="Assets und Katalogeinträge durchsuchen"
+                                  autoComplete="off"
+                                  onChange={(event) =>
+                                    setCatalogSearchQuery(event.target.value)
+                                  }
+                                  onKeyDown={(event) => {
+                                    if (event.key === "Enter") {
+                                      event.preventDefault();
+                                      return;
+                                    }
+                                    if (
+                                      event.key === "ArrowDown" &&
+                                      catalogSearchResults.length > 0
+                                    ) {
+                                      event.preventDefault();
+                                      focusCatalogSearchResult(0);
+                                    }
+                                  }}
+                                  placeholder="Name, Asset-Kennung oder Typ suchen …"
+                                  ref={catalogSearchInputRef}
+                                  type="search"
+                                  value={catalogSearchQuery}
+                                />
+                                {catalogSearchQuery ? (
+                                  <button
+                                    aria-label="Assetsuche löschen"
+                                    className="ticket-catalog-picker__clear"
+                                    onClick={() => setCatalogSearchQuery("")}
+                                    type="button"
+                                  >
+                                    <X
+                                      aria-hidden="true"
+                                      size={15}
+                                      strokeWidth={1.8}
+                                    />
+                                  </button>
+                                ) : null}
+                              </label>
+                              {affectedItemsError ? (
+                                <p
+                                  className="ticket-catalog-picker__state"
+                                  role="alert"
+                                >
+                                  {affectedItemsError}
+                                </p>
+                              ) : !affectedItemsLoaded ||
+                                affectedItemsLoading ? (
+                                <p
+                                  className="ticket-catalog-picker__state"
+                                  role="status"
+                                >
+                                  Verfügbare Assets und Katalogeinträge werden
+                                  geladen …
+                                </p>
+                              ) : availableCatalogItems.length === 0 ? (
+                                <p className="ticket-catalog-picker__state">
+                                  Keine weiteren verfügbaren Katalogeinträge.
+                                </p>
+                              ) : catalogSearchQuery.trim().length < 2 ? (
+                                <p className="ticket-catalog-picker__state">
+                                  Mindestens zwei Zeichen eingeben, um
+                                  verfügbare Assets und Katalogeinträge zu
+                                  suchen.
+                                </p>
+                              ) : catalogSearchResults.length === 0 ? (
+                                <p className="ticket-catalog-picker__state">
+                                  Keine verfügbaren Treffer für «
+                                  {catalogSearchQuery.trim()}
+                                  ».
+                                </p>
+                              ) : (
+                                <ul>
+                                  {catalogSearchResults.map((item, index) => {
+                                    const itemKey = catalogSelectionKey(item);
+                                    return (
+                                      <li key={itemKey}>
+                                        <button
+                                          className={
+                                            selectedCatalogItemKey === itemKey
+                                              ? "ticket-catalog-picker__option ticket-catalog-picker__option--selected"
+                                              : "ticket-catalog-picker__option"
+                                          }
+                                          onClick={() =>
+                                            selectCatalogSearchResult(itemKey)
+                                          }
+                                          onKeyDown={(event) => {
+                                            if (event.key === "ArrowDown") {
+                                              event.preventDefault();
                                               focusCatalogSearchResult(
-                                                index - 1,
+                                                Math.min(
+                                                  index + 1,
+                                                  catalogSearchResults.length -
+                                                    1,
+                                                ),
+                                              );
+                                            } else if (
+                                              event.key === "ArrowUp"
+                                            ) {
+                                              event.preventDefault();
+                                              if (index === 0) {
+                                                catalogSearchInputRef.current?.focus();
+                                              } else {
+                                                focusCatalogSearchResult(
+                                                  index - 1,
+                                                );
+                                              }
+                                            } else if (event.key === "Home") {
+                                              event.preventDefault();
+                                              focusCatalogSearchResult(0);
+                                            } else if (event.key === "End") {
+                                              event.preventDefault();
+                                              focusCatalogSearchResult(
+                                                catalogSearchResults.length - 1,
                                               );
                                             }
-                                          } else if (event.key === "Home") {
-                                            event.preventDefault();
-                                            focusCatalogSearchResult(0);
-                                          } else if (event.key === "End") {
-                                            event.preventDefault();
-                                            focusCatalogSearchResult(
-                                              catalogSearchResults.length - 1,
-                                            );
-                                          }
-                                        }}
-                                        ref={(element) => {
-                                          catalogSearchResultRefs.current[
-                                            index
-                                          ] = element;
-                                        }}
-                                        type="button"
-                                      >
-                                        <span>
-                                          {catalogKindLabel(item.kind)}
-                                        </span>
-                                        <strong>{item.label}</strong>
-                                        <small>{item.description}</small>
-                                      </button>
-                                    </li>
-                                  );
-                                })}
-                              </ul>
-                            )}
-                          </section>
+                                          }}
+                                          ref={(element) => {
+                                            catalogSearchResultRefs.current[
+                                              index
+                                            ] = element;
+                                          }}
+                                          type="button"
+                                        >
+                                          <span>
+                                            {catalogKindLabel(item.kind)}
+                                          </span>
+                                          <strong>{item.label}</strong>
+                                          <small>{item.description}</small>
+                                        </button>
+                                      </li>
+                                    );
+                                  })}
+                                </ul>
+                              )}
+                            </section>
+                          ) : null}
+                        </div>
+                        {pendingCatalogAction === "link" ? (
+                          <span className="data-caption" role="status">
+                            <LoaderCircle
+                              aria-hidden="true"
+                              className="ticket-detail-spinner"
+                              size={16}
+                            />{" "}
+                            Wird verknüpft …
+                          </span>
                         ) : null}
+                      </form>
+                    ) : null}
+                    {linkedCatalogItems.length > 0 ? (
+                      <div
+                        aria-label="Verknüpfte Assets und Katalogeinträge"
+                        className="ticket-overview-linked-catalog"
+                      >
+                        <p className="data-caption">Verknüpft</p>
+                        <ul>
+                          {linkedCatalogItems.map((item) => (
+                            <li key={catalogItemKey(item)}>
+                              <span>{catalogKindLabel(item.kind)}</span>
+                              <strong>{item.label}</strong>
+                              {item.metadata.length > 0 ? (
+                                <small>{item.metadata.join(" · ")}</small>
+                              ) : null}
+                              {detail.canUpdate ? (
+                                <button
+                                  aria-label={`${item.label} entfernen`}
+                                  className="ticket-overview-linked-catalog__remove"
+                                  disabled={catalogBusy}
+                                  onClick={() => void unlinkCatalogItem(item)}
+                                  title="Verknüpfung entfernen"
+                                  type="button"
+                                >
+                                  <X aria-hidden="true" size={15} />
+                                </button>
+                              ) : null}
+                            </li>
+                          ))}
+                        </ul>
                       </div>
-                      {pendingCatalogAction === "link" ? (
-                        <span className="data-caption" role="status">
-                          <LoaderCircle
-                            aria-hidden="true"
-                            className="ticket-detail-spinner"
-                            size={16}
-                          />{" "}
-                          Wird verknüpft …
-                        </span>
-                      ) : null}
-                    </form>
-                  ) : null}
-                  {linkedCatalogItems.length > 0 ? (
-                    <div
-                      aria-label="Verknüpfte Assets und Katalogeinträge"
-                      className="ticket-overview-linked-catalog"
-                    >
-                      <p className="data-caption">Verknüpft</p>
-                      <ul>
-                        {linkedCatalogItems.map((item) => (
-                          <li key={catalogItemKey(item)}>
-                            <span>{catalogKindLabel(item.kind)}</span>
-                            <strong>{item.label}</strong>
-                            {item.metadata.length > 0 ? (
-                              <small>{item.metadata.join(" · ")}</small>
-                            ) : null}
-                            {detail.canUpdate ? (
-                              <button
-                                aria-label={`${item.label} entfernen`}
-                                className="ticket-overview-linked-catalog__remove"
-                                disabled={catalogBusy}
-                                onClick={() => void unlinkCatalogItem(item)}
-                                title="Verknüpfung entfernen"
-                                type="button"
-                              >
-                                <X aria-hidden="true" size={15} />
-                              </button>
-                            ) : null}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  ) : !detail.canUpdate ? (
-                    "Keine Elemente verknüpft"
-                  ) : null}
-                  {detail.canUpdate && affectedItemsLoading ? (
-                    <p
-                      className="data-caption"
-                      aria-live="polite"
-                      role="status"
-                    >
-                      Verfügbare Assets und Katalogeinträge werden geladen …
-                    </p>
-                  ) : detail.canUpdate &&
-                    availableCatalogItems.length === 0 &&
-                    affectedItemsLoaded ? (
-                    <p className="data-caption" aria-live="polite">
-                      Keine weiteren verfügbaren Katalogeinträge.
-                    </p>
-                  ) : null}
-                </dd>
-              </div>
-              {detail.canUpdate && (
-                <TicketPersonDevices
-                  onOpenAsset={onOpenAsset}
-                  refreshKey={`${detail.ticket.requester_id ?? ""}:${detail.ticket.affected_user_id ?? ""}`}
-                  tenantId={tenantId}
-                  ticketId={ticketId}
-                />
-              )}
-            </dl>
+                    ) : !detail.canUpdate ? (
+                      "Keine Elemente verknüpft"
+                    ) : null}
+                    {detail.canUpdate && affectedItemsLoading ? (
+                      <p
+                        className="data-caption"
+                        aria-live="polite"
+                        role="status"
+                      >
+                        Verfügbare Assets und Katalogeinträge werden geladen …
+                      </p>
+                    ) : detail.canUpdate &&
+                      availableCatalogItems.length === 0 &&
+                      affectedItemsLoaded ? (
+                      <p className="data-caption" aria-live="polite">
+                        Keine weiteren verfügbaren Katalogeinträge.
+                      </p>
+                    ) : null}
+                  </dd>
+                </div>
+                {detail.canUpdate && (
+                  <TicketPersonDevices
+                    onOpenAsset={onOpenAsset}
+                    refreshKey={`${detail.ticket.requester_id ?? ""}:${detail.ticket.affected_user_id ?? ""}`}
+                    tenantId={tenantId}
+                    ticketId={ticketId}
+                  />
+                )}
+              </dl>
+            )}
           </section>
 
           <TicketCustomFields
@@ -7971,7 +8035,7 @@ export function TicketDetail({
             ticketId={detail.ticket.id}
           />
 
-          {presence.length > 0 && (
+          {!requesterView && presence.length > 0 && (
             <aside
               className="ticket-presence"
               aria-label="Aktive Ticketbearbeitung"
@@ -8076,7 +8140,7 @@ export function TicketDetail({
             </section>
           )}
 
-          {detail.ticketModules.checklists ? (
+          {!requesterView && detail.ticketModules.checklists ? (
             <details className="ticket-detail-disclosure">
               <summary>
                 <span className="ticket-detail-disclosure-label">
@@ -8215,7 +8279,9 @@ export function TicketDetail({
             </details>
           ) : null}
 
-          {detail.ticketModules.timeTracking && detail.canTrackTime ? (
+          {!requesterView &&
+          detail.ticketModules.timeTracking &&
+          detail.canTrackTime ? (
             <details className="ticket-detail-disclosure">
               <summary>
                 <span className="ticket-detail-disclosure-label">
@@ -8355,229 +8421,238 @@ export function TicketDetail({
             </details>
           ) : null}
 
-          <details
-            className="ticket-detail-disclosure"
-            onToggle={(event) => setIsWorkToolsOpen(event.currentTarget.open)}
-            open={isWorkToolsOpen}
-          >
-            <summary>
-              <span className="ticket-detail-disclosure-label">
-                <CircleCheck aria-hidden="true" size={17} strokeWidth={1.8} />
-                Ticket steuern
-              </span>
-              <span className="ticket-detail-disclosure-meta">
-                Zusammenführen, Fall eröffnen, vorgesetzte Person fragen
-                <ChevronDown
-                  aria-hidden="true"
-                  className="ticket-detail-disclosure-icon"
-                  size={18}
-                  strokeWidth={1.8}
-                />
-              </span>
-            </summary>
-            {isWorkToolsOpen && (
-              <div className="ticket-detail-disclosure-content">
-                <TicketControlPanel
-                  canAskSupervisor={detail.canUseInternalNotes}
-                  canMerge={detail.canMerge}
-                  canOpenCase={detail.canUpdate}
-                  departmentId={detail.ticket.department_id ?? null}
-                  mergeContent={
-                    <section
-                      aria-busy={
-                        mergeSearchLoading || pendingAction === "merge"
-                      }
-                      aria-labelledby="ticket-merge-heading"
-                      className="ticket-detail-comments"
-                    >
-                      <div className="ticket-detail-section-heading">
-                        <div>
-                          <p className="eyebrow">ZUSAMMENFÜHREN</p>
-                          <h3 id="ticket-merge-heading">Zusammenführen</h3>
+          {requesterView ? null : (
+            <details
+              className="ticket-detail-disclosure"
+              onToggle={(event) => setIsWorkToolsOpen(event.currentTarget.open)}
+              open={isWorkToolsOpen}
+            >
+              <summary>
+                <span className="ticket-detail-disclosure-label">
+                  <CircleCheck aria-hidden="true" size={17} strokeWidth={1.8} />
+                  Ticket steuern
+                </span>
+                <span className="ticket-detail-disclosure-meta">
+                  Zusammenführen, Fall eröffnen, vorgesetzte Person fragen
+                  <ChevronDown
+                    aria-hidden="true"
+                    className="ticket-detail-disclosure-icon"
+                    size={18}
+                    strokeWidth={1.8}
+                  />
+                </span>
+              </summary>
+              {isWorkToolsOpen && (
+                <div className="ticket-detail-disclosure-content">
+                  <TicketControlPanel
+                    canAskSupervisor={detail.canUseInternalNotes}
+                    canMerge={detail.canMerge}
+                    canOpenCase={detail.canUpdate}
+                    departmentId={detail.ticket.department_id ?? null}
+                    mergeContent={
+                      <section
+                        aria-busy={
+                          mergeSearchLoading || pendingAction === "merge"
+                        }
+                        aria-labelledby="ticket-merge-heading"
+                        className="ticket-detail-comments"
+                      >
+                        <div className="ticket-detail-section-heading">
+                          <div>
+                            <p className="eyebrow">ZUSAMMENFÜHREN</p>
+                            <h3 id="ticket-merge-heading">Zusammenführen</h3>
+                          </div>
                         </div>
-                      </div>
-                      <p className="data-caption" id="ticket-merge-help">
-                        Das aktuelle Ticket wird als Duplikat geschlossen und im
-                        gewählten Hauptticket referenziert.
-                      </p>
-                      <label className="ticket-comment-body">
-                        Hauptticket suchen
-                        <input
-                          aria-describedby="ticket-merge-help"
-                          disabled={busy}
-                          maxLength={240}
-                          minLength={2}
-                          onChange={(event) =>
-                            setMergeQuery(event.target.value)
-                          }
-                          placeholder="Ticketnummer oder Titel eingeben"
-                          type="search"
-                          value={mergeQuery}
-                        />
-                      </label>
-                      <p className="data-caption" aria-live="polite">
-                        {[...mergeQuery.trim()].length < 2
-                          ? "Mindestens 2 Zeichen eingeben."
-                          : "Es werden passende Haupttickets gesucht."}
-                      </p>
-
-                      {mergeError && (
-                        <p className="ticket-detail-message error" role="alert">
-                          <AlertCircle aria-hidden="true" size={17} />
-                          {mergeError}
+                        <p className="data-caption" id="ticket-merge-help">
+                          Das aktuelle Ticket wird als Duplikat geschlossen und
+                          im gewählten Hauptticket referenziert.
                         </p>
-                      )}
-
-                      {mergeSearchLoading && (
-                        <p
-                          className="empty-state ticket-detail-loading"
-                          role="status"
-                        >
-                          <LoaderCircle
-                            aria-hidden="true"
-                            className="ticket-detail-spinner"
-                            size={18}
+                        <label className="ticket-comment-body">
+                          Hauptticket suchen
+                          <input
+                            aria-describedby="ticket-merge-help"
+                            disabled={busy}
+                            maxLength={240}
+                            minLength={2}
+                            onChange={(event) =>
+                              setMergeQuery(event.target.value)
+                            }
+                            placeholder="Ticketnummer oder Titel eingeben"
+                            type="search"
+                            value={mergeQuery}
                           />
-                          Haupttickets werden gesucht …
+                        </label>
+                        <p className="data-caption" aria-live="polite">
+                          {[...mergeQuery.trim()].length < 2
+                            ? "Mindestens 2 Zeichen eingeben."
+                            : "Es werden passende Haupttickets gesucht."}
                         </p>
-                      )}
 
-                      {!mergeSearchLoading &&
-                      [...mergeQuery.trim()].length >= 2 &&
-                      mergeTargets.length === 0 &&
-                      !mergeError ? (
-                        <p className="empty-state">
-                          Keine passenden Haupttickets gefunden.
-                        </p>
-                      ) : null}
+                        {mergeError && (
+                          <p
+                            className="ticket-detail-message error"
+                            role="alert"
+                          >
+                            <AlertCircle aria-hidden="true" size={17} />
+                            {mergeError}
+                          </p>
+                        )}
 
-                      {mergeTargets.length > 0 && (
-                        <ol className="ticket-comment-list">
-                          {mergeTargets.map((target) => {
-                            const isConfirming =
-                              mergeConfirmationTarget?.id === target.id;
-                            const isMerging =
-                              pendingAction === "merge" &&
-                              pendingRelationKey === `merge:${target.id}`;
+                        {mergeSearchLoading && (
+                          <p
+                            className="empty-state ticket-detail-loading"
+                            role="status"
+                          >
+                            <LoaderCircle
+                              aria-hidden="true"
+                              className="ticket-detail-spinner"
+                              size={18}
+                            />
+                            Haupttickets werden gesucht …
+                          </p>
+                        )}
 
-                            return (
-                              <li className="ticket-comment" key={target.id}>
-                                <div className="ticket-comment-meta">
-                                  <strong>{ticketReference(target)}</strong>
-                                  <span>{target.statusLabel}</span>
-                                </div>
-                                {isConfirming ? (
-                                  <div>
-                                    <p className="data-caption" role="status">
-                                      Bitte bestätigen: Das aktuelle Ticket wird
-                                      als Duplikat geschlossen und in diesem
-                                      Hauptticket referenziert.
-                                    </p>
-                                    <div className="ticket-detail-actions">
-                                      <button
-                                        className="primary-button"
-                                        disabled={busy || mergeSearchLoading}
-                                        onClick={() => void markMerged(target)}
-                                        type="button"
-                                      >
-                                        {isMerging ? (
-                                          <LoaderCircle
-                                            aria-hidden="true"
-                                            className="ticket-detail-spinner"
-                                            size={16}
-                                          />
-                                        ) : (
-                                          <CircleCheck
-                                            aria-hidden="true"
-                                            size={16}
-                                            strokeWidth={1.8}
-                                          />
-                                        )}
-                                        Zusammenführen bestätigen
-                                      </button>
-                                      <button
-                                        className="secondary-button"
-                                        disabled={busy}
-                                        onClick={() =>
-                                          setMergeConfirmationTarget(null)
-                                        }
-                                        type="button"
-                                      >
-                                        Abbrechen
-                                      </button>
-                                    </div>
+                        {!mergeSearchLoading &&
+                        [...mergeQuery.trim()].length >= 2 &&
+                        mergeTargets.length === 0 &&
+                        !mergeError ? (
+                          <p className="empty-state">
+                            Keine passenden Haupttickets gefunden.
+                          </p>
+                        ) : null}
+
+                        {mergeTargets.length > 0 && (
+                          <ol className="ticket-comment-list">
+                            {mergeTargets.map((target) => {
+                              const isConfirming =
+                                mergeConfirmationTarget?.id === target.id;
+                              const isMerging =
+                                pendingAction === "merge" &&
+                                pendingRelationKey === `merge:${target.id}`;
+
+                              return (
+                                <li className="ticket-comment" key={target.id}>
+                                  <div className="ticket-comment-meta">
+                                    <strong>{ticketReference(target)}</strong>
+                                    <span>{target.statusLabel}</span>
                                   </div>
-                                ) : (
-                                  <button
-                                    aria-label={`Aktuelles Ticket in ${ticketReference(target)} zusammenführen`}
-                                    className="secondary-button"
-                                    disabled={busy || mergeSearchLoading}
-                                    onClick={() =>
-                                      setMergeConfirmationTarget(target)
-                                    }
-                                    type="button"
-                                  >
-                                    In dieses Ticket zusammenführen
-                                  </button>
-                                )}
-                              </li>
-                            );
-                          })}
-                        </ol>
-                      )}
-                    </section>
-                  }
-                  onChanged={async () => {
-                    onChanged();
-                    await Promise.all([loadTicket(), loadAffectedItems()]);
-                  }}
-                  tenantId={tenantId}
-                  ticketDescription={detail.ticket.description ?? ""}
-                  ticketId={ticketId}
-                  ticketSubject={detail.ticket.subject}
-                />
-              </div>
-            )}
-          </details>
+                                  {isConfirming ? (
+                                    <div>
+                                      <p className="data-caption" role="status">
+                                        Bitte bestätigen: Das aktuelle Ticket
+                                        wird als Duplikat geschlossen und in
+                                        diesem Hauptticket referenziert.
+                                      </p>
+                                      <div className="ticket-detail-actions">
+                                        <button
+                                          className="primary-button"
+                                          disabled={busy || mergeSearchLoading}
+                                          onClick={() =>
+                                            void markMerged(target)
+                                          }
+                                          type="button"
+                                        >
+                                          {isMerging ? (
+                                            <LoaderCircle
+                                              aria-hidden="true"
+                                              className="ticket-detail-spinner"
+                                              size={16}
+                                            />
+                                          ) : (
+                                            <CircleCheck
+                                              aria-hidden="true"
+                                              size={16}
+                                              strokeWidth={1.8}
+                                            />
+                                          )}
+                                          Zusammenführen bestätigen
+                                        </button>
+                                        <button
+                                          className="secondary-button"
+                                          disabled={busy}
+                                          onClick={() =>
+                                            setMergeConfirmationTarget(null)
+                                          }
+                                          type="button"
+                                        >
+                                          Abbrechen
+                                        </button>
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <button
+                                      aria-label={`Aktuelles Ticket in ${ticketReference(target)} zusammenführen`}
+                                      className="secondary-button"
+                                      disabled={busy || mergeSearchLoading}
+                                      onClick={() =>
+                                        setMergeConfirmationTarget(target)
+                                      }
+                                      type="button"
+                                    >
+                                      In dieses Ticket zusammenführen
+                                    </button>
+                                  )}
+                                </li>
+                              );
+                            })}
+                          </ol>
+                        )}
+                      </section>
+                    }
+                    onChanged={async () => {
+                      onChanged();
+                      await Promise.all([loadTicket(), loadAffectedItems()]);
+                    }}
+                    tenantId={tenantId}
+                    ticketDescription={detail.ticket.description ?? ""}
+                    ticketId={ticketId}
+                    ticketSubject={detail.ticket.subject}
+                  />
+                </div>
+              )}
+            </details>
+          )}
 
-          <details
-            className="ticket-detail-disclosure"
-            onToggle={(event) =>
-              setIsClosureContextOpen(event.currentTarget.open)
-            }
-            open={isClosureContextOpen}
-          >
-            <summary>
-              <span className="ticket-detail-disclosure-label">
-                <BookOpen aria-hidden="true" size={17} strokeWidth={1.8} />
-                Wissen
-              </span>
-              <span className="ticket-detail-disclosure-meta">
-                Artikel suchen oder aus dem Ticket erstellen
-                <ChevronDown
-                  aria-hidden="true"
-                  className="ticket-detail-disclosure-icon"
-                  size={18}
-                  strokeWidth={1.8}
-                />
-              </span>
-            </summary>
-            {isClosureContextOpen && (
-              <div className="ticket-detail-disclosure-content">
-                <KnowledgeSection
-                  key={`${tenantId}:${ticketId}`}
-                  tenantId={tenantId}
-                  ticketId={ticketId}
-                  canUpdate={detail.canUpdate}
-                  canUseInternalNotes={detail.canUseInternalNotes}
-                  refreshToken={`${detail.ticket.id}:${detail.canUpdate}:${detail.canUseInternalNotes}`}
-                  onChanged={onChanged}
-                  onSent={async () => (await loadTicket()) !== null}
-                  onOpenArticle={onOpenKnowledgeArticle}
-                />
-              </div>
-            )}
-          </details>
+          {requesterView ? null : (
+            <details
+              className="ticket-detail-disclosure"
+              onToggle={(event) =>
+                setIsClosureContextOpen(event.currentTarget.open)
+              }
+              open={isClosureContextOpen}
+            >
+              <summary>
+                <span className="ticket-detail-disclosure-label">
+                  <BookOpen aria-hidden="true" size={17} strokeWidth={1.8} />
+                  Wissen
+                </span>
+                <span className="ticket-detail-disclosure-meta">
+                  Artikel suchen oder aus dem Ticket erstellen
+                  <ChevronDown
+                    aria-hidden="true"
+                    className="ticket-detail-disclosure-icon"
+                    size={18}
+                    strokeWidth={1.8}
+                  />
+                </span>
+              </summary>
+              {isClosureContextOpen && (
+                <div className="ticket-detail-disclosure-content">
+                  <KnowledgeSection
+                    key={`${tenantId}:${ticketId}`}
+                    tenantId={tenantId}
+                    ticketId={ticketId}
+                    canUpdate={detail.canUpdate}
+                    canUseInternalNotes={detail.canUseInternalNotes}
+                    refreshToken={`${detail.ticket.id}:${detail.canUpdate}:${detail.canUseInternalNotes}`}
+                    onChanged={onChanged}
+                    onSent={async () => (await loadTicket()) !== null}
+                    onOpenArticle={onOpenKnowledgeArticle}
+                  />
+                </div>
+              )}
+            </details>
+          )}
 
           <details className="ticket-detail-disclosure">
             <summary>
@@ -8800,62 +8875,64 @@ export function TicketDetail({
             </div>
           </details>
 
-          <details className="ticket-detail-disclosure ticket-detail-disclosure--timeline">
-            <summary>
-              <span className="ticket-detail-disclosure-label">
-                <Clock3 aria-hidden="true" size={17} strokeWidth={1.8} />
-                Änderungsverlauf
-              </span>
-              <span className="ticket-detail-disclosure-meta">
-                {detail.events.length} Ereignisse
-                <ChevronDown
-                  aria-hidden="true"
-                  className="ticket-detail-disclosure-icon"
-                  size={18}
-                  strokeWidth={1.8}
-                />
-              </span>
-            </summary>
-            <div className="ticket-detail-disclosure-content ticket-detail-disclosure-content--timeline">
-              <div className="ticket-detail-disclosure-intro">
-                <p>Systemereignisse und Statusänderungen zu diesem Ticket.</p>
-              </div>
-              <section
-                className="ticket-detail-timeline"
-                aria-labelledby="ticket-timeline-heading"
-              >
-                <div className="ticket-detail-section-heading">
-                  <div>
-                    <h3 id="ticket-timeline-heading">Ereignisse</h3>
-                  </div>
-                  <Clock3 aria-hidden="true" size={18} strokeWidth={1.8} />
+          {requesterView ? null : (
+            <details className="ticket-detail-disclosure ticket-detail-disclosure--timeline">
+              <summary>
+                <span className="ticket-detail-disclosure-label">
+                  <Clock3 aria-hidden="true" size={17} strokeWidth={1.8} />
+                  Änderungsverlauf
+                </span>
+                <span className="ticket-detail-disclosure-meta">
+                  {detail.events.length} Ereignisse
+                  <ChevronDown
+                    aria-hidden="true"
+                    className="ticket-detail-disclosure-icon"
+                    size={18}
+                    strokeWidth={1.8}
+                  />
+                </span>
+              </summary>
+              <div className="ticket-detail-disclosure-content ticket-detail-disclosure-content--timeline">
+                <div className="ticket-detail-disclosure-intro">
+                  <p>Systemereignisse und Statusänderungen zu diesem Ticket.</p>
                 </div>
-                {detail.events.length === 0 ? (
-                  <p className="empty-state">
-                    Noch keine Ereignisse vorhanden.
-                  </p>
-                ) : (
-                  <ol className="ticket-timeline-list">
-                    {detail.events.map((event) => (
-                      <li className="ticket-timeline-event" key={event.id}>
-                        <MessageSquare
-                          aria-hidden="true"
-                          size={16}
-                          strokeWidth={1.8}
-                        />
-                        <div>
-                          <strong>{eventLabel(event.event_type)}</strong>
-                          <time dateTime={event.created_at}>
-                            {formatDateTime(event.created_at)}
-                          </time>
-                        </div>
-                      </li>
-                    ))}
-                  </ol>
-                )}
-              </section>
-            </div>
-          </details>
+                <section
+                  className="ticket-detail-timeline"
+                  aria-labelledby="ticket-timeline-heading"
+                >
+                  <div className="ticket-detail-section-heading">
+                    <div>
+                      <h3 id="ticket-timeline-heading">Ereignisse</h3>
+                    </div>
+                    <Clock3 aria-hidden="true" size={18} strokeWidth={1.8} />
+                  </div>
+                  {detail.events.length === 0 ? (
+                    <p className="empty-state">
+                      Noch keine Ereignisse vorhanden.
+                    </p>
+                  ) : (
+                    <ol className="ticket-timeline-list">
+                      {detail.events.map((event) => (
+                        <li className="ticket-timeline-event" key={event.id}>
+                          <MessageSquare
+                            aria-hidden="true"
+                            size={16}
+                            strokeWidth={1.8}
+                          />
+                          <div>
+                            <strong>{eventLabel(event.event_type)}</strong>
+                            <time dateTime={event.created_at}>
+                              {formatDateTime(event.created_at)}
+                            </time>
+                          </div>
+                        </li>
+                      ))}
+                    </ol>
+                  )}
+                </section>
+              </div>
+            </details>
+          )}
         </aside>
       </div>
     </section>

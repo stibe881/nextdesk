@@ -5737,7 +5737,9 @@ function AuthenticatedApp() {
                           onSelectionChange: updateTicketSelection,
                           selectedTicketIds,
                         }
-                      : {})}
+                      : isSupabaseConfigured
+                        ? { onOpen: setSelectedTicketId }
+                        : {})}
                     {...(query.trim() ||
                     queue !== "alle" ||
                     (canWorkTickets && ticketScope !== "all") ||
@@ -6367,6 +6369,7 @@ function AuthenticatedApp() {
                   }
                 : undefined
             }
+            requesterView={!canWorkTickets}
             tenantId={activeTenant.id}
             ticketId={selectedTicketId}
           />
