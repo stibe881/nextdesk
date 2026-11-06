@@ -2225,7 +2225,8 @@ export function ServiceAssets({
     const query = ticketSearchQuery.trim();
     const version = ticketSearchRequestVersion.current + 1;
     ticketSearchRequestVersion.current = version;
-    if (!problemId || query.length < 2) {
+    // New cases search as well; their tickets are linked after creating.
+    if (query.length < 2) {
       setTicketSearchResults([]);
       setTicketSearchLoading(false);
       return;
@@ -2918,7 +2919,15 @@ export function ServiceAssets({
   async function linkTicketToProblem(ticket: TicketReference) {
     const problemId = problemForm.id;
     if (!problemId) {
-      setError("Der ausgewählte Fall ist nicht mehr verfügbar.");
+      // New case: remember the ticket and link it after creating.
+      setProblemTickets((current) =>
+        current.some((item) => item.id === ticket.id)
+          ? current
+          : [...current, ticket],
+      );
+      setTicketSearchResults((current) =>
+        current.filter((item) => item.id !== ticket.id),
+      );
       return;
     }
 
@@ -2959,7 +2968,9 @@ export function ServiceAssets({
   async function unlinkTicketFromProblem(ticket: TicketReference) {
     const problemId = problemForm.id;
     if (!problemId) {
-      setError("Der ausgewählte Fall ist nicht mehr verfügbar.");
+      setProblemTickets((current) =>
+        current.filter((item) => item.id !== ticket.id),
+      );
       return;
     }
 
@@ -3117,6 +3128,26 @@ export function ServiceAssets({
         ...departmentRequestValue(departments, problemForm.departmentId),
       };
       const saved = parseSavedProblem(await requestServiceAssets(request));
+      const pendingTickets = editing ? [] : [...problemTickets];
+      const linkFailures: string[] = [];
+      for (const ticket of pendingTickets) {
+        try {
+          await requestServiceAssets({
+            type: "linkTicket",
+            tenantId,
+            ticketId: ticket.id,
+            kind: "problem",
+            targetId: saved.id,
+          });
+        } catch (linkError) {
+          linkFailures.push(
+            `${ticket.ticketNumber}: ${await apiErrorMessage(
+              linkError,
+              "konnte nicht angehängt werden",
+            )}`,
+          );
+        }
+      }
       setProblems((current) =>
         sortProblems([
           ...current.filter((problem) => problem.id !== saved.id),
@@ -3124,11 +3155,19 @@ export function ServiceAssets({
         ]),
       );
       resetProblemForm();
+      const linked = pendingTickets.length - linkFailures.length;
       setSuccess(
         editing
           ? `Der Fall „${saved.title}“ wurde gespeichert.`
-          : `Der Fall „${saved.title}“ wurde angelegt.`,
+          : pendingTickets.length > 0
+            ? `Der Fall „${saved.title}“ wurde angelegt. ${linked} von ${pendingTickets.length} Tickets wurden angehängt.`
+            : `Der Fall „${saved.title}“ wurde angelegt.`,
       );
+      if (linkFailures.length > 0) {
+        setError(
+          `Nicht alle Tickets konnten angehängt werden: ${linkFailures.join(" · ")}`,
+        );
+      }
     } catch (nextError) {
       setForbidden(errorStatus(nextError) === 403);
       setError(
@@ -4824,7 +4863,7 @@ export function ServiceAssets({
                           value={problemForm.rootCause}
                         />
                       </label>
-                      {problemForm.id ? (
+                      {problemMode !== "resolve" || problemForm.id ? (
                         <section aria-labelledby="service-assets-problem-tickets-title">
                           <h4 id="service-assets-problem-tickets-title">
                             Ticketanhänge
@@ -4834,7 +4873,11 @@ export function ServiceAssets({
                               Verknüpfte Tickets werden geladen …
                             </p>
                           ) : problemTickets.length === 0 ? (
-                            <p>Noch keine Tickets angehängt.</p>
+                            <p>
+                              {problemForm.id
+                                ? "Noch keine Tickets angehängt."
+                                : "Suchen Sie Tickets, die zu diesem Fall gehören. Sie werden beim Anlegen angehängt."}
+                            </p>
                           ) : (
                             <ul aria-label="Verknüpfte Tickets">
                               {problemTickets.map((ticket) => (
