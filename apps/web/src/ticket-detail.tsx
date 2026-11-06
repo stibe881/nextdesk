@@ -10,7 +10,9 @@ import {
 import {
   AlertCircle,
   Circle,
+  BookOpen,
   CircleCheck,
+  Paperclip,
   ChevronDown,
   Clock3,
   Eye,
@@ -2987,7 +2989,7 @@ function KnowledgeSection({
   onOpenArticle?: ((articleId: string) => void) | undefined;
 }) {
   const [aiDraftPending, setAiDraftPending] = useState(false);
-  const [aiDraft, setAiDraft] = useState<{ articleId: string } | null>(null);
+  const [createdArticleId, setCreatedArticleId] = useState<string | null>(null);
   const [links, setLinks] = useState<KnowledgeLink[]>([]);
   // Signed URLs for kb-image references in the shown article texts.
   const [knowledgeImageUrls, setKnowledgeImageUrls] =
@@ -3225,6 +3227,9 @@ function KnowledgeSection({
         created = true;
         setTitle("");
         setBodyMarkdown("");
+        setCreatedArticleId(result.articleId);
+      } else {
+        setCreatedArticleId(null);
       }
       if (sendCreated) {
         // Creation only attaches. Sending is a separate, explicitly confirmed API call.
@@ -3256,8 +3261,8 @@ function KnowledgeSection({
           : action.type === "detach"
             ? "Die Artikelverknüpfung wurde entfernt. Bereits versendete Ticketantworten bleiben bestehen."
             : action.type === "createAndAttach"
-              ? "Der Artikel wurde erstellt und angehängt. Es wurde keine Ticketantwort versendet."
-              : "Der Artikel wurde angehängt. Es wurde keine Ticketantwort versendet.",
+              ? "Der Artikel wurde als Entwurf in der Wissensdatenbank gespeichert und mit dem Ticket verknüpft."
+              : "Der Artikel wurde mit dem Ticket verknüpft.",
       );
     } catch (error) {
       const message = await knowledgeErrorMessage(error, currentAction);
@@ -3295,7 +3300,9 @@ function KnowledgeSection({
       ticketId,
       title: title.trim(),
       bodyMarkdown,
-      visibility,
+      // Internal articles are created as drafts and published later in the
+      // knowledge base, where their visibility is chosen.
+      visibility: "internal",
     });
   }
 
@@ -3334,36 +3341,15 @@ function KnowledgeSection({
     }
   }
 
+  const canCreate = canUpdate && canUseInternalNotes;
+  const searching = [...query.trim()].length >= 2;
+
   return (
     <section
-      className="ticket-detail-comments"
+      className="ticket-knowledge"
       aria-labelledby="ticket-knowledge-heading"
       aria-busy={listLoading || knowledgeBusy}
     >
-      <div className="ticket-detail-section-heading">
-        <div>
-          <p className="eyebrow">WISSEN</p>
-          <h3 id="ticket-knowledge-heading">Wissen</h3>
-        </div>
-        <button
-          className="secondary-button"
-          type="button"
-          disabled={listLoading || knowledgeBusy}
-          onClick={() => {
-            setConfirmation(null);
-            setSearchRevision((revision) => revision + 1);
-            void loadLinks();
-          }}
-        >
-          <RefreshCw aria-hidden="true" size={16} />
-          Wissen aktualisieren
-        </button>
-      </div>
-      <p className="data-caption" id="ticket-knowledge-help">
-        Anhängen allein versendet keine Antwort. Interne Verknüpfungen sind nur
-        mit Berechtigung sichtbar. Bitte keine Namen, E-Mail-Adressen oder
-        personenbezogenen Kennungen in neue Artikel übernehmen.
-      </p>
       {listError && (
         <p className="ticket-detail-message error" role="alert">
           {listError}
@@ -3375,428 +3361,258 @@ function KnowledgeSection({
         </p>
       )}
       {notice && (
-        <p className="data-caption" role="status">
-          {notice}
-        </p>
+        <div className="ticket-knowledge__notice" role="status">
+          <span>{notice}</span>
+          {createdArticleId && onOpenArticle ? (
+            <button
+              className="text-button"
+              type="button"
+              onClick={() => onOpenArticle(createdArticleId)}
+            >
+              In der Wissensdatenbank öffnen
+            </button>
+          ) : null}
+        </div>
       )}
-      {listLoading ? (
-        <p className="empty-state" role="status">
-          Wissensartikel werden geladen …
-        </p>
-      ) : !listError && visibleLinks.length === 0 ? (
-        <p className="empty-state">Noch keine sichtbaren Artikel angehängt.</p>
-      ) : null}
-      {visibleLinks.length > 0 && (
-        <ul
-          className="ticket-comment-list"
-          aria-label="Angehängte Wissensartikel"
-        >
-          {visibleLinks.map((link) => (
-            <li className="ticket-comment" key={link.articleId}>
-              <div className="ticket-comment-meta">
-                <strong>{link.article.title}</strong>
-                <span
-                  className={`ticket-comment-visibility-badge ${link.article.visibility}`}
-                >
-                  Artikel:{" "}
-                  {link.article.visibility === "internal" ? "Intern" : "Extern"}
-                </span>
-                <span
-                  className={`ticket-comment-visibility-badge ${link.visibility}`}
-                >
-                  Angehängt:{" "}
-                  {link.visibility === "internal" ? "Intern" : "Extern"}
-                </span>
-                <span className="data-caption">
-                  {link.sentAt
-                    ? `Versendet am ${formatDateTime(link.sentAt)}`
-                    : "Noch nicht versendet"}
-                </span>
-              </div>
-              <KnowledgeArticleText
-                article={link.article}
-                imageUrls={knowledgeImageUrls}
-              />
-              {canUpdate && (
-                <div className="ticket-detail-actions">
-                  {link.visibility === "external" &&
-                    link.article.visibility === "external" &&
-                    !link.sentAt && (
+
+      <div className="ticket-knowledge__block">
+        <h3 id="ticket-knowledge-heading">Wissensartikel suchen</h3>
+        <input
+          aria-label="Wissensartikel suchen"
+          className="ticket-knowledge__search"
+          disabled={knowledgeBusy}
+          maxLength={120}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Stichwort eingeben, z. B. Drucker, VPN, Passwort …"
+          type="search"
+          value={query}
+        />
+        {searchError && (
+          <p className="ticket-detail-message error" role="alert">
+            {searchError}
+          </p>
+        )}
+        {searchLoading && (
+          <p className="data-caption" role="status">
+            Artikel werden gesucht …
+          </p>
+        )}
+        {searching &&
+          !searchLoading &&
+          !searchError &&
+          visibleArticles.length === 0 && (
+            <p className="data-caption">Keine passenden Artikel gefunden.</p>
+          )}
+        {visibleArticles.length > 0 && (
+          <ul
+            aria-label="Gefundene Wissensartikel"
+            className="ticket-knowledge__list"
+          >
+            {visibleArticles.map((article) => {
+              const attached = visibleLinks.some(
+                (link) => link.articleId === article.id,
+              );
+              const attachVisibility: CommentVisibility = canUseInternalNotes
+                ? "internal"
+                : "external";
+              return (
+                <li key={article.id}>
+                  <span className="ticket-knowledge__item-text">
+                    <strong>{article.title}</strong>
+                    {article.summary ? <small>{article.summary}</small> : null}
+                  </span>
+                  <span className="ticket-knowledge__item-actions">
+                    {onOpenArticle ? (
+                      <button
+                        className="text-button"
+                        type="button"
+                        onClick={() => onOpenArticle(article.id)}
+                      >
+                        Öffnen
+                      </button>
+                    ) : null}
+                    {canUpdate &&
+                    !attached &&
+                    (attachVisibility === "internal" ||
+                      article.visibility === "external") ? (
                       <button
                         className="secondary-button"
                         type="button"
-                        disabled={
-                          knowledgeBusy ||
-                          listLoading ||
-                          !link.article.body.trim() ||
-                          [...link.article.body].length > 50_000
+                        disabled={knowledgeBusy || listLoading}
+                        onClick={() =>
+                          void runMutation({
+                            type: "attach",
+                            tenantId,
+                            ticketId,
+                            articleId: article.id,
+                            visibility: attachVisibility,
+                          })
                         }
-                        onClick={() => {
-                          setActionError("");
-                          setNotice("");
-                          setConfirmation({
-                            kind: "article",
-                            articleId: link.articleId,
-                            title: link.article.title,
-                          });
-                        }}
                       >
-                        <Send aria-hidden="true" size={16} />
-                        An anfragende Person versenden …
+                        Mit Ticket verknüpfen
                       </button>
-                    )}
-                  <button
-                    className="secondary-button"
-                    type="button"
-                    disabled={knowledgeBusy || listLoading}
-                    onClick={() =>
-                      void runMutation({
-                        type: "detach",
-                        tenantId,
-                        ticketId,
-                        articleId: link.articleId,
-                      })
-                    }
-                  >
-                    Verknüpfung entfernen
-                  </button>
-                </div>
-              )}
-              {canUpdate &&
-                link.visibility === "external" &&
-                !link.sentAt &&
-                [...link.article.body].length > 50_000 && (
-                  <p className="data-caption">
-                    Dieser Artikeltext ist für eine Ticketantwort zu lang
-                    (höchstens 50'000 Zeichen).
-                  </p>
-                )}
-            </li>
-          ))}
-        </ul>
-      )}
-      {canUpdate ? (
-        <>
-          <label className="ticket-comment-body">
-            Artikel suchen
-            <input
-              type="search"
-              value={query}
-              maxLength={120}
-              disabled={knowledgeBusy}
-              aria-describedby="ticket-knowledge-search-help"
-              onChange={(event) => {
-                setQuery(event.target.value);
-                setConfirmation(null);
-              }}
-              placeholder="Mindestens 2 Zeichen"
-            />
-          </label>
-          <p className="data-caption" id="ticket-knowledge-search-help">
-            Die Suche startet ab 2 Zeichen. Nur externe Artikel können als
-            Kundenantwort angehängt werden; das versendet noch keine Antwort.
+                    ) : attached ? (
+                      <span className="data-caption">Verknüpft</span>
+                    ) : null}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+        {listLoading ? (
+          <p className="data-caption" role="status">
+            Verknüpfte Artikel werden geladen …
           </p>
-          {searchError && (
-            <p className="ticket-detail-message error" role="alert">
-              {searchError}
+        ) : visibleLinks.length > 0 ? (
+          <>
+            <p className="ticket-knowledge__label">
+              Mit diesem Ticket verknüpft
             </p>
-          )}
-          {searchLoading && (
-            <p className="data-caption" role="status">
-              Artikel werden gesucht …
-            </p>
-          )}
-          {!searchLoading &&
-            !searchError &&
-            [...query.trim()].length >= 2 &&
-            visibleArticles.length === 0 && (
-              <p className="empty-state">Keine sichtbaren Artikel gefunden.</p>
-            )}
-          {visibleArticles.length > 0 && (
             <ul
-              className="ticket-comment-list"
-              aria-label="Gefundene Wissensartikel"
+              aria-label="Verknüpfte Wissensartikel"
+              className="ticket-knowledge__list"
             >
-              {visibleArticles.map((article) => {
-                const attached = visibleLinks.some(
-                  (link) => link.articleId === article.id,
-                );
-                return (
-                  <li className="ticket-comment" key={article.id}>
-                    <div className="ticket-comment-meta">
-                      <strong>{article.title}</strong>
-                      <span
-                        className={`ticket-comment-visibility-badge ${article.visibility}`}
+              {visibleLinks.map((link) => (
+                <li key={link.articleId}>
+                  <span className="ticket-knowledge__item-text">
+                    <strong>{link.article.title}</strong>
+                    {link.article.summary ? (
+                      <small>{link.article.summary}</small>
+                    ) : null}
+                  </span>
+                  <span className="ticket-knowledge__item-actions">
+                    {onOpenArticle ? (
+                      <button
+                        className="text-button"
+                        type="button"
+                        onClick={() => onOpenArticle(link.articleId)}
                       >
-                        {article.visibility === "internal"
-                          ? "Intern"
-                          : "Extern"}
-                      </span>
-                    </div>
-                    <KnowledgeArticleText
-                      article={article}
-                      imageUrls={knowledgeImageUrls}
-                    />
-                    {attached ? (
-                      <p className="data-caption">Bereits angehängt.</p>
-                    ) : (
-                      <div className="ticket-detail-actions">
-                        {canUseInternalNotes && (
-                          <button
-                            className="secondary-button"
-                            type="button"
-                            disabled={knowledgeBusy || listLoading}
-                            onClick={() =>
-                              void runMutation({
-                                type: "attach",
-                                tenantId,
-                                ticketId,
-                                articleId: article.id,
-                                visibility: "internal",
-                              })
-                            }
-                          >
-                            Anhängen intern
-                          </button>
-                        )}
-                        {article.visibility === "external" && (
-                          <button
-                            className="secondary-button"
-                            type="button"
-                            disabled={knowledgeBusy || listLoading}
-                            onClick={() =>
-                              void runMutation({
-                                type: "attach",
-                                tenantId,
-                                ticketId,
-                                articleId: article.id,
-                                visibility: "external",
-                              })
-                            }
-                          >
-                            Als Kundenantwort anhängen
-                          </button>
-                        )}
-                      </div>
-                    )}
-                  </li>
-                );
-              })}
+                        Öffnen
+                      </button>
+                    ) : null}
+                    {canUpdate ? (
+                      <button
+                        className="text-button"
+                        type="button"
+                        disabled={knowledgeBusy || listLoading}
+                        onClick={() =>
+                          void runMutation({
+                            type: "detach",
+                            tenantId,
+                            ticketId,
+                            articleId: link.articleId,
+                          })
+                        }
+                      >
+                        Entfernen
+                      </button>
+                    ) : null}
+                  </span>
+                </li>
+              ))}
             </ul>
-          )}
-          {canUpdate && canUseInternalNotes && (
-            <div className="ticket-knowledge-ai">
-              <div>
-                <strong>Wissensartikel mit KI erstellen</strong>
-                <p className="data-caption">
-                  Die KI analysiert Betreff, Beschreibung und Verlauf und legt
-                  daraus einen internen Entwurf an. Namen und Kontaktdaten
-                  werden vorher entfernt. Der Entwurf wird nicht veröffentlicht:
-                  Prüfen, bearbeiten und veröffentlichen Sie ihn anschliessend
-                  in der Wissensdatenbank.
-                </p>
-              </div>
-              <div className="ticket-detail-actions">
-                <button
-                  className="secondary-button"
-                  type="button"
-                  disabled={aiDraftPending || knowledgeBusy}
-                  onClick={async () => {
-                    setAiDraftPending(true);
-                    setActionError("");
-                    setNotice("");
-                    try {
-                      const created = await requestAiTicketDraft(
-                        tenantId,
-                        ticketId,
-                      );
-                      setAiDraft({ articleId: created.articleId });
-                      setNotice(
-                        created.linkedToTicket
-                          ? "Der KI-Entwurf wurde in der Wissensdatenbank angelegt und intern an dieses Ticket angehängt."
-                          : "Der KI-Entwurf wurde in der Wissensdatenbank angelegt.",
-                      );
-                      void loadLinks();
-                      onChanged();
-                    } catch (error) {
-                      setActionError(
-                        error instanceof Error
-                          ? error.message
-                          : "Der KI-Entwurf konnte nicht erstellt werden.",
-                      );
-                    } finally {
-                      setAiDraftPending(false);
-                    }
-                  }}
-                >
-                  {aiDraftPending ? (
-                    <LoaderCircle aria-hidden="true" size={16} />
-                  ) : (
-                    <Sparkles aria-hidden="true" size={16} />
-                  )}
-                  {aiDraftPending
-                    ? "KI erstellt Entwurf …"
-                    : "Entwurf mit KI erstellen"}
-                </button>
-                {aiDraft && onOpenArticle && (
-                  <button
-                    className="primary-button"
-                    type="button"
-                    onClick={() => onOpenArticle(aiDraft.articleId)}
-                  >
-                    Entwurf prüfen und veröffentlichen
-                  </button>
-                )}
-              </div>
-            </div>
-          )}
-          <form
-            className="ticket-comment-form"
-            aria-labelledby="ticket-knowledge-create-heading"
-            onSubmit={createArticle}
-          >
-            <h4 id="ticket-knowledge-create-heading">
-              Neuen Artikel aus Ticket
-            </h4>
-            <label className="ticket-comment-body">
-              Titel
-              <input
-                value={title}
-                required
-                minLength={3}
-                maxLength={240}
-                disabled={knowledgeBusy}
-                aria-describedby="ticket-knowledge-help"
-                onChange={(event) => {
-                  setTitle(event.target.value);
-                  setConfirmation(null);
-                }}
-              />
-            </label>
-            <label className="ticket-comment-body">
-              Text (Markdown)
-              <textarea
-                value={bodyMarkdown}
-                required
-                maxLength={100000}
-                rows={3}
-                disabled={knowledgeBusy}
-                aria-describedby="ticket-knowledge-help"
-                onChange={(event) => {
-                  setBodyMarkdown(event.target.value);
-                  setConfirmation(null);
-                }}
-              />
-            </label>
-            <label>
-              Sichtbarkeit
-              <select
-                value={visibility}
-                disabled={knowledgeBusy}
-                onChange={(event) => {
-                  if (
-                    isKnowledgeVisibility(event.target.value) &&
-                    (event.target.value === "external" || canUseInternalNotes)
-                  ) {
-                    setVisibility(event.target.value);
-                    setConfirmation(null);
-                  }
-                }}
-              >
-                {canUseInternalNotes && (
-                  <option value="internal">Intern</option>
-                )}
-                <option value="external">Extern (veröffentlicht)</option>
-              </select>
-            </label>
-            <p className="data-caption">
-              {visibility === "internal"
-                ? "Der interne Artikel wird nur angehängt und nicht versendet."
-                : "Externe Artikel werden veröffentlicht. Die anfragende Person kann die externe Verknüpfung sehen; ein Versand erfolgt nur nach gesonderter Bestätigung."}{" "}
-              Die Erstellung erfordert zusätzlich die Berechtigung zur
-              Wissensverwaltung.
-            </p>
-            <div className="ticket-detail-actions">
-              <button
-                className="secondary-button"
-                type="submit"
-                disabled={knowledgeBusy || listLoading}
-              >
-                {visibility === "internal"
-                  ? "Artikel erstellen und intern anhängen"
-                  : "Extern erstellen und anhängen (ohne Versand)"}
-              </button>
-              {visibility === "external" && (
-                <button
-                  className="secondary-button"
-                  type="button"
-                  disabled={knowledgeBusy || listLoading}
-                  onClick={requestDraftSend}
-                >
-                  Erstellen und als Kundenantwort versenden …
-                </button>
-              )}
-            </div>
-          </form>
-        </>
-      ) : (
-        <p className="data-caption">Sie haben für Wissen nur Leserechte.</p>
-      )}
-      {canUpdate && confirmation && (
-        <div
-          className="ticket-comment"
-          role="group"
-          aria-labelledby="ticket-knowledge-send-heading"
-          aria-describedby="ticket-knowledge-send-warning"
-        >
-          <h4 id="ticket-knowledge-send-heading">
-            Versand ausdrücklich bestätigen
-          </h4>
-          <p>
-            <strong>{confirmation.title}</strong>
+          </>
+        ) : null}
+      </div>
+
+      {canCreate ? (
+        <div className="ticket-knowledge__block">
+          <h3>Wissensartikel aus diesem Ticket erstellen</h3>
+          <p className="data-caption">
+            Der Artikel wird als Entwurf in der Wissensdatenbank gespeichert und
+            mit diesem Ticket verknüpft. Veröffentlicht wird er erst, wenn Sie
+            ihn dort prüfen und freigeben. Bitte keine Namen oder Kontaktdaten
+            übernehmen.
           </p>
-          <p id="ticket-knowledge-send-warning">
-            Der vollständige{" "}
-            {confirmation.kind === "article"
-              ? "aktuelle Artikeltext"
-              : "oben eingegebene Artikeltext"}{" "}
-            wird als{" "}
-            <strong>externe Ticketantwort an die anfragende Person</strong>{" "}
-            versendet. Dies ist keine interne Notiz. Bilder des Artikels
-            erscheinen in der Antwort als Hinweis; die anfragende Person sieht
-            sie im Bereich «Wissen» dieses Tickets.{" "}
-            {confirmation.kind === "draft"
-              ? "Der Artikel wird außerdem extern veröffentlicht und angehängt."
-              : "Bitte prüfen Sie, dass der Artikeltext für die anfragende Person bestimmt ist."}
-          </p>
-          <div className="ticket-detail-actions">
-            <button
-              className="primary-button"
-              type="button"
-              disabled={knowledgeBusy || listLoading}
-              onClick={confirmSend}
-            >
-              <Send aria-hidden="true" size={16} />
-              Ja, Artikeltext als externe Ticketantwort versenden
-            </button>
+          <div className="ticket-knowledge__ai">
             <button
               className="secondary-button"
               type="button"
-              disabled={knowledgeBusy}
-              onClick={() => setConfirmation(null)}
+              disabled={aiDraftPending || knowledgeBusy}
+              onClick={async () => {
+                setAiDraftPending(true);
+                setActionError("");
+                setNotice("");
+                try {
+                  const created = await requestAiTicketDraft(
+                    tenantId,
+                    ticketId,
+                  );
+                  setCreatedArticleId(created.articleId);
+                  setNotice(
+                    "Der KI-Entwurf wurde in der Wissensdatenbank als Entwurf gespeichert.",
+                  );
+                  void loadLinks();
+                  onChanged();
+                } catch (error) {
+                  setActionError(
+                    error instanceof Error
+                      ? error.message
+                      : "Der KI-Entwurf konnte nicht erstellt werden.",
+                  );
+                } finally {
+                  setAiDraftPending(false);
+                }
+              }}
             >
-              Abbrechen – nicht versenden
+              {aiDraftPending ? (
+                <LoaderCircle aria-hidden="true" size={16} />
+              ) : (
+                <Sparkles aria-hidden="true" size={16} />
+              )}
+              {aiDraftPending
+                ? "KI erstellt Entwurf …"
+                : "Entwurf mit KI erstellen"}
             </button>
+            <small className="data-caption">
+              Die KI fasst Betreff, Beschreibung und Verlauf zusammen.
+            </small>
           </div>
+          <form
+            aria-label="Wissensartikel selbst schreiben"
+            className="ticket-knowledge__form"
+            onSubmit={createArticle}
+          >
+            <p className="ticket-knowledge__label">Oder selbst schreiben</p>
+            <label>
+              Titel
+              <input
+                disabled={knowledgeBusy}
+                maxLength={240}
+                minLength={3}
+                onChange={(event) => setTitle(event.target.value)}
+                placeholder="z. B. Drucker im 2. Stock druckt nicht"
+                required
+                value={title}
+              />
+            </label>
+            <label>
+              Lösung
+              <textarea
+                disabled={knowledgeBusy}
+                maxLength={100000}
+                onChange={(event) => setBodyMarkdown(event.target.value)}
+                placeholder="Ursache und Lösungsschritte beschreiben …"
+                required
+                rows={5}
+                value={bodyMarkdown}
+              />
+            </label>
+            <div className="ticket-detail-actions">
+              <button
+                className="primary-button"
+                disabled={knowledgeBusy || listLoading}
+                type="submit"
+              >
+                {pending === "createAndAttach"
+                  ? "Wird gespeichert …"
+                  : "Als Entwurf speichern"}
+              </button>
+            </div>
+          </form>
         </div>
-      )}
-      {knowledgeBusy && (
-        <p className="data-caption" role="status">
-          {pending === "sendToRequester"
-            ? "Externe Ticketantwort wird versendet …"
-            : "Wissensvorgang wird verarbeitet …"}
-        </p>
-      )}
+      ) : null}
     </section>
   );
 }
@@ -7928,11 +7744,11 @@ export function TicketDetail({
       >
         <summary>
           <span className="ticket-detail-disclosure-label">
-            <CircleCheck aria-hidden="true" size={17} strokeWidth={1.8} />
-            Abschluss &amp; Nachbereitung
+            <BookOpen aria-hidden="true" size={17} strokeWidth={1.8} />
+            Wissen
           </span>
           <span className="ticket-detail-disclosure-meta">
-            Lösung, Übergaben, Anhänge
+            Artikel suchen oder aus dem Ticket erstellen
             <ChevronDown
               aria-hidden="true"
               className="ticket-detail-disclosure-icon"
@@ -7942,11 +7758,7 @@ export function TicketDetail({
           </span>
         </summary>
         {isClosureContextOpen && (
-          <div className="ticket-detail-disclosure-content ticket-detail-disclosure-content--closure">
-            <div className="ticket-detail-disclosure-intro">
-              <p className="eyebrow">NACHBEREITUNG</p>
-              <p>Lösung dokumentieren, Übergaben und Unterlagen prüfen.</p>
-            </div>
+          <div className="ticket-detail-disclosure-content">
             <KnowledgeSection
               key={`${tenantId}:${ticketId}`}
               tenantId={tenantId}
@@ -7958,283 +7770,167 @@ export function TicketDetail({
               onSent={async () => (await loadTicket()) !== null}
               onOpenArticle={onOpenKnowledgeArticle}
             />
+          </div>
+        )}
+      </details>
 
-            <section
-              aria-busy={handoversLoading}
-              aria-labelledby="ticket-handovers-heading"
-              className="ticket-detail-comments"
-            >
-              <div className="ticket-detail-section-heading">
-                <div>
-                  <p className="eyebrow">ÜBERGABEN</p>
-                  <h3 id="ticket-handovers-heading">Übergaben</h3>
-                </div>
-                <span className="data-caption">{handovers.length}</span>
+      <details className="ticket-detail-disclosure">
+        <summary>
+          <span className="ticket-detail-disclosure-label">
+            <Paperclip aria-hidden="true" size={17} strokeWidth={1.8} />
+            Anhänge
+          </span>
+          <span className="ticket-detail-disclosure-meta">
+            Dateien zum Ticket
+            <ChevronDown
+              aria-hidden="true"
+              className="ticket-detail-disclosure-icon"
+              size={18}
+              strokeWidth={1.8}
+            />
+          </span>
+        </summary>
+        <div className="ticket-detail-disclosure-content">
+          <section
+            className="ticket-detail-comments"
+            aria-labelledby="ticket-attachments-heading"
+          >
+            <div className="ticket-detail-section-heading">
+              <div>
+                <p className="eyebrow">ANHÄNGE</p>
+                <h3 id="ticket-attachments-heading">Anhänge</h3>
               </div>
-              <p className="data-caption" id="ticket-handovers-help">
-                Übergaben zeigen keine Angaben zu beteiligten Personen. Bitte
-                keine Namen oder anderen personenbezogenen Daten eingeben.
+              <span className="data-caption">{attachments.length}</span>
+            </div>
+            <p className="data-caption" id="ticket-attachments-help">
+              Erlaubt sind {ATTACHMENT_ALLOWLIST_LABEL}. Maximal 25 MiB pro
+              Datei.
+            </p>
+
+            {attachmentError && (
+              <p className="ticket-detail-message error" role="alert">
+                <AlertCircle aria-hidden="true" size={17} />
+                {attachmentError}
               </p>
+            )}
 
-              {handoverError && (
-                <p className="ticket-detail-message error" role="alert">
-                  <AlertCircle aria-hidden="true" size={17} />
-                  {handoverError}
-                </p>
-              )}
-
-              {detail.canUpdate ? (
-                <form className="ticket-comment-form" onSubmit={createHandover}>
-                  <label className="ticket-comment-body">
-                    Zusammenfassung
-                    <textarea
-                      aria-describedby="ticket-handovers-help"
-                      disabled={handoverBusy || handoversLoading}
-                      maxLength={2000}
-                      minLength={3}
-                      onChange={(event) =>
-                        setHandoverSummary(event.target.value)
-                      }
-                      placeholder="Was muss bei der Übergabe bekannt sein?"
-                      required
-                      rows={2}
-                      value={handoverSummary}
-                    />
-                  </label>
-                  <label className="ticket-comment-body">
-                    Nächste Schritte (optional)
-                    <textarea
-                      disabled={handoverBusy || handoversLoading}
-                      maxLength={3000}
-                      onChange={(event) =>
-                        setHandoverNextSteps(event.target.value)
-                      }
-                      placeholder="Welche Schritte stehen als Nächstes an?"
-                      rows={2}
-                      value={handoverNextSteps}
-                    />
-                  </label>
-                  <label>
-                    Risikostufe
-                    <select
-                      disabled={handoverBusy || handoversLoading}
-                      onChange={(event) => {
-                        const riskLevel = event.target.value;
-                        if (isHandoverRiskLevel(riskLevel)) {
-                          setHandoverRiskLevel(riskLevel);
-                        }
-                      }}
-                      value={handoverRiskLevel}
-                    >
-                      <option value="low">Niedrig</option>
-                      <option value="medium">Mittel</option>
-                      <option value="high">Hoch</option>
-                    </select>
-                  </label>
-                  <button
-                    className="secondary-button"
-                    disabled={handoverBusy || handoversLoading}
-                    type="submit"
+            {detail.canUpdate && (
+              <form className="ticket-comment-form" onSubmit={uploadAttachment}>
+                <label className="ticket-comment-body">
+                  Datei auswählen
+                  <input
+                    accept={ATTACHMENT_ACCEPT}
+                    aria-describedby="ticket-attachments-help"
+                    disabled={attachmentBusy || busy}
+                    onChange={(event) =>
+                      selectAttachmentFile(event.target.files?.[0] ?? null)
+                    }
+                    ref={attachmentInputRef}
+                    type="file"
+                  />
+                </label>
+                {pendingAttachmentAction === "upload" ? (
+                  <p
+                    className="data-caption ticket-detail-loading"
+                    role="status"
                   >
-                    {pendingHandoverAction === "create" ? (
-                      <LoaderCircle
-                        aria-hidden="true"
-                        className="ticket-detail-spinner"
-                        size={16}
-                      />
-                    ) : (
-                      <Circle aria-hidden="true" size={16} strokeWidth={1.8} />
-                    )}
-                    Übergabe erstellen
-                  </button>
-                </form>
-              ) : (
-                <p className="data-caption">
-                  Sie haben für Übergaben nur Leserechte.
-                </p>
-              )}
-
-              {handoversLoading && !handoversLoaded ? (
-                <p className="empty-state ticket-detail-loading" role="status">
-                  <LoaderCircle
-                    aria-hidden="true"
-                    className="ticket-detail-spinner"
-                    size={18}
-                  />
-                  Übergaben werden geladen …
-                </p>
-              ) : handovers.length === 0 && !handoverError ? (
-                <p className="empty-state">Noch keine Übergaben vorhanden.</p>
-              ) : handovers.length > 0 ? (
-                <ol
-                  className="ticket-comment-list"
-                  aria-busy={handoversLoading}
+                    <LoaderCircle
+                      aria-hidden="true"
+                      className="ticket-detail-spinner"
+                      size={16}
+                    />
+                    Anhang wird hochgeladen …
+                  </p>
+                ) : selectedAttachmentFile ? (
+                  <p className="data-caption" aria-live="polite">
+                    Ausgewählt: {selectedAttachmentFile.name} (
+                    {formatFileSize(selectedAttachmentFile.size)})
+                  </p>
+                ) : null}
+                <button
+                  className="secondary-button"
+                  disabled={attachmentBusy || busy || !selectedAttachmentFile}
+                  type="submit"
                 >
-                  {handovers.map((handover) => {
-                    const status = handoverStatus(handover);
-                    const isAcknowledging =
-                      pendingHandoverAction === "acknowledge" &&
-                      pendingHandoverId === handover.id;
-                    const isResolving =
-                      pendingHandoverAction === "resolve" &&
-                      pendingHandoverId === handover.id;
+                  {pendingAttachmentAction === "upload" ? (
+                    <LoaderCircle
+                      aria-hidden="true"
+                      className="ticket-detail-spinner"
+                      size={16}
+                    />
+                  ) : (
+                    <Circle aria-hidden="true" size={16} strokeWidth={1.8} />
+                  )}
+                  Anhang hochladen
+                </button>
+              </form>
+            )}
 
-                    return (
-                      <li className="ticket-comment" key={handover.id}>
-                        <div className="ticket-comment-meta">
-                          <strong>{handover.summary}</strong>
-                          <span className="ticket-comment-visibility-badge internal">
-                            Risiko: {handoverRiskLevelLabel(handover.riskLevel)}
-                          </span>
-                          <span className="ticket-comment-visibility-badge external">
-                            {handoverStatusLabel(status)}
-                          </span>
-                          <time dateTime={handover.createdAt}>
-                            Erstellt am {formatDateTime(handover.createdAt)}
-                          </time>
-                          {handover.acknowledgedAt && (
-                            <time dateTime={handover.acknowledgedAt}>
-                              Übernommen am{" "}
-                              {formatDateTime(handover.acknowledgedAt)}
-                            </time>
-                          )}
-                          {handover.resolvedAt && (
-                            <time dateTime={handover.resolvedAt}>
-                              Erledigt am {formatDateTime(handover.resolvedAt)}
-                            </time>
-                          )}
-                        </div>
-                        <p>
-                          <strong>Nächste Schritte:</strong>{" "}
-                          {handover.nextSteps ??
-                            "Keine nächsten Schritte angegeben."}
-                        </p>
-                        {detail.canUpdate && status === "open" && (
-                          <button
-                            aria-label={`Übergabe „${handover.summary}“ übernehmen`}
-                            className="secondary-button"
-                            disabled={handoverBusy || handoversLoading}
-                            onClick={() => void acknowledgeHandover(handover)}
-                            type="button"
-                          >
-                            {isAcknowledging ? (
-                              <LoaderCircle
-                                aria-hidden="true"
-                                className="ticket-detail-spinner"
-                                size={16}
-                              />
-                            ) : (
-                              <CircleCheck
-                                aria-hidden="true"
-                                size={16}
-                                strokeWidth={1.8}
-                              />
-                            )}
-                            Übernehmen
-                          </button>
-                        )}
-                        {detail.canUpdate && status === "acknowledged" && (
-                          <button
-                            aria-label={`Übergabe „${handover.summary}“ als erledigt markieren`}
-                            className="secondary-button"
-                            disabled={handoverBusy || handoversLoading}
-                            onClick={() => void resolveHandover(handover)}
-                            type="button"
-                          >
-                            {isResolving ? (
-                              <LoaderCircle
-                                aria-hidden="true"
-                                className="ticket-detail-spinner"
-                                size={16}
-                              />
-                            ) : (
-                              <CircleCheck
-                                aria-hidden="true"
-                                size={16}
-                                strokeWidth={1.8}
-                              />
-                            )}
-                            Als erledigt
-                          </button>
-                        )}
-                      </li>
-                    );
-                  })}
-                </ol>
-              ) : null}
-            </section>
-
-            <section
-              aria-busy={affectedItemsLoading}
-              aria-labelledby="ticket-affected-items-heading"
-              className="ticket-detail-comments"
-            >
-              <div className="ticket-detail-section-heading">
-                <div>
-                  <p className="eyebrow">KATALOG</p>
-                  <h3 id="ticket-affected-items-heading">
-                    Betroffene Elemente
-                  </h3>
-                </div>
-                <span className="data-caption">
-                  {linkedCatalogItems.length}
-                </span>
-              </div>
-              <p className="data-caption" id="ticket-affected-items-help">
-                Verknüpfte Services, Assets und Problemfälle dieses Tickets.
+            {attachmentsLoading && !attachmentsLoaded ? (
+              <p className="empty-state ticket-detail-loading" role="status">
+                <LoaderCircle
+                  aria-hidden="true"
+                  className="ticket-detail-spinner"
+                  size={18}
+                />
+                Anhänge werden geladen …
               </p>
+            ) : attachments.length === 0 ? (
+              <p className="empty-state">Noch keine Anhänge vorhanden.</p>
+            ) : (
+              <ol
+                className="ticket-comment-list"
+                aria-busy={attachmentsLoading}
+              >
+                {attachments.map((attachment) => {
+                  const isDownloading =
+                    pendingAttachmentAction === "download" &&
+                    pendingAttachmentId === attachment.id;
+                  const isDeleting =
+                    pendingAttachmentAction === "delete" &&
+                    pendingAttachmentId === attachment.id;
 
-              {affectedItemsError && (
-                <p className="ticket-detail-message error" role="alert">
-                  <AlertCircle aria-hidden="true" size={17} />
-                  {affectedItemsError}
-                </p>
-              )}
-
-              {affectedItemsLoading && !affectedItemsLoaded ? (
-                <p className="empty-state ticket-detail-loading" role="status">
-                  <LoaderCircle
-                    aria-hidden="true"
-                    className="ticket-detail-spinner"
-                    size={18}
-                  />
-                  Betroffene Elemente werden geladen …
-                </p>
-              ) : linkedCatalogItems.length === 0 && !affectedItemsError ? (
-                <p className="empty-state">
-                  Keine Elemente mit diesem Ticket verknüpft.
-                </p>
-              ) : linkedCatalogItems.length > 0 ? (
-                <ol
-                  className="ticket-comment-list"
-                  aria-busy={affectedItemsLoading}
-                >
-                  {linkedCatalogItems.map((item) => {
-                    const itemKey = catalogItemKey(item);
-                    const isUnlinking =
-                      pendingCatalogAction === "unlink" &&
-                      pendingCatalogItemKey === itemKey;
-
-                    return (
-                      <li className="ticket-comment" key={itemKey}>
-                        <div className="ticket-comment-meta">
-                          <strong>{item.label}</strong>
-                          <span className="ticket-comment-visibility-badge internal">
-                            {catalogKindLabel(item.kind)}
-                          </span>
-                          {item.metadata.length > 0 && (
-                            <span>{item.metadata.join(" · ")}</span>
+                  return (
+                    <li className="ticket-comment" key={attachment.id}>
+                      <div className="ticket-comment-meta">
+                        <strong>{attachment.originalFilename}</strong>
+                        <span>{formatFileSize(attachment.byteSize)}</span>
+                        <time dateTime={attachment.createdAt}>
+                          Hochgeladen am {formatDateTime(attachment.createdAt)}
+                        </time>
+                      </div>
+                      <div className="ticket-detail-actions">
+                        <button
+                          aria-label={`${attachment.originalFilename} herunterladen`}
+                          className="secondary-button"
+                          disabled={attachmentBusy || busy}
+                          onClick={() => void downloadAttachment(attachment)}
+                          type="button"
+                        >
+                          {isDownloading ? (
+                            <LoaderCircle
+                              aria-hidden="true"
+                              className="ticket-detail-spinner"
+                              size={16}
+                            />
+                          ) : (
+                            <Save
+                              aria-hidden="true"
+                              size={16}
+                              strokeWidth={1.8}
+                            />
                           )}
-                        </div>
+                          Herunterladen
+                        </button>
                         {detail.canUpdate && (
                           <button
-                            aria-label={`Verknüpfung mit ${catalogKindLabel(item.kind)} ${item.label} entfernen`}
+                            aria-label={`${attachment.originalFilename} löschen`}
                             className="secondary-button"
-                            disabled={catalogBusy || affectedItemsLoading}
-                            onClick={() => void unlinkCatalogItem(item)}
+                            disabled={attachmentBusy || busy}
+                            onClick={() => void deleteAttachment(attachment)}
                             type="button"
                           >
-                            {isUnlinking ? (
+                            {isDeleting ? (
                               <LoaderCircle
                                 aria-hidden="true"
                                 className="ticket-detail-spinner"
@@ -8247,484 +7943,17 @@ export function TicketDetail({
                                 strokeWidth={1.8}
                               />
                             )}
-                            Verknüpfung entfernen
+                            Löschen
                           </button>
                         )}
-                      </li>
-                    );
-                  })}
-                </ol>
-              ) : null}
-            </section>
-
-            <section
-              aria-busy={qualityLoading}
-              aria-labelledby="ticket-quality-heading"
-              className="ticket-detail-comments"
-            >
-              <div className="ticket-detail-section-heading">
-                <div>
-                  <p className="eyebrow">QUALITÄT</p>
-                  <h3 id="ticket-quality-heading">Qualitätsprüfung</h3>
-                </div>
-              </div>
-
-              {qualityLoading ? (
-                <p className="empty-state ticket-detail-loading" role="status">
-                  <LoaderCircle
-                    aria-hidden="true"
-                    className="ticket-detail-spinner"
-                    size={18}
-                  />
-                  Qualitätsprüfungsdaten werden geladen …
-                </p>
-              ) : null}
-
-              {qualityError && (
-                <p className="ticket-detail-message error" role="alert">
-                  <AlertCircle aria-hidden="true" size={17} />
-                  {qualityError}
-                </p>
-              )}
-              {qualitySuccess && (
-                <p className="ticket-detail-message success" role="status">
-                  <CircleCheck aria-hidden="true" size={17} />
-                  {qualitySuccess}
-                </p>
-              )}
-
-              {!qualityLoading && !quality && !qualityError ? (
-                <p className="data-caption">
-                  {ticketIsClosed
-                    ? "Die Qualitätsprüfung wird nach einer erneuten Berechtigungsprüfung angezeigt."
-                    : "Nach dem Schliessen können berechtigte Mitarbeitende eine Qualitätsprüfung abgeben."}
-                </p>
-              ) : null}
-
-              {quality && quality.canRead ? (
-                <>
-                  <div className="ticket-comment">
-                    <div className="ticket-comment-meta">
-                      <strong>Übersicht</strong>
-                      <span>
-                        {quality.count}{" "}
-                        {quality.count === 1 ? "Bewertung" : "Bewertungen"}
-                      </span>
-                      <span>
-                        Durchschnitt:{" "}
-                        {quality.averageScore === null
-                          ? "Noch keine Bewertung"
-                          : `${new Intl.NumberFormat("de-CH", {
-                              minimumFractionDigits: 1,
-                              maximumFractionDigits: 2,
-                            }).format(quality.averageScore)} von 5`}
-                      </span>
-                    </div>
-                  </div>
-
-                  {quality.canReview ? (
-                    <form
-                      className="ticket-comment-form"
-                      onSubmit={saveQuality}
-                    >
-                      <fieldset
-                        className="ticket-comment-visibility"
-                        disabled={busy}
-                      >
-                        <legend>Eigene Qualitätsbewertung</legend>
-                        {[1, 2, 3, 4, 5].map((score) => (
-                          <label key={score}>
-                            <input
-                              checked={qualityScore === score}
-                              name="ticket-quality-score"
-                              onChange={() => setQualityScore(score)}
-                              required
-                              type="radio"
-                              value={score}
-                            />
-                            <Star
-                              aria-hidden="true"
-                              size={16}
-                              strokeWidth={1.8}
-                            />{" "}
-                            {score} {score === 1 ? "Stern" : "Sterne"}
-                          </label>
-                        ))}
-                      </fieldset>
-                      <label className="ticket-comment-body">
-                        Notizen (optional)
-                        <textarea
-                          disabled={busy}
-                          maxLength={3000}
-                          onChange={(event) =>
-                            setQualityNotes(event.target.value)
-                          }
-                          placeholder="Notizen zur Qualitätsprüfung"
-                          rows={3}
-                          value={qualityNotes}
-                        />
-                      </label>
-                      <p className="data-caption" aria-live="polite">
-                        {[...qualityNotes].length}/3&apos;000 Zeichen
-                      </p>
-                      <button
-                        className="primary-button"
-                        disabled={busy || qualityScore === null}
-                        type="submit"
-                      >
-                        {pendingAction === "quality-review" ? (
-                          <LoaderCircle
-                            aria-hidden="true"
-                            className="ticket-detail-spinner"
-                            size={16}
-                          />
-                        ) : (
-                          <Save
-                            aria-hidden="true"
-                            size={16}
-                            strokeWidth={1.8}
-                          />
-                        )}
-                        Qualitätsprüfung speichern
-                      </button>
-                    </form>
-                  ) : (
-                    <p className="data-caption">
-                      Eine eigene Qualitätsprüfung ist nur für geschlossene
-                      Tickets mit entsprechender Berechtigung möglich.
-                    </p>
-                  )}
-                </>
-              ) : quality && !quality.canRead ? (
-                <p className="data-caption">
-                  Die Qualitätsübersicht ist nur für berechtigte Mitarbeitende
-                  sichtbar.
-                </p>
-              ) : null}
-            </section>
-
-            {ticketIsResolved &&
-              (isResolutionParticipant || hasAgentExperienceAccess) && (
-                <TicketResolutionExperience
-                  canConfirm={isResolutionParticipant}
-                  canReadHistory={hasAgentExperienceAccess}
-                  tenantId={tenantId}
-                  ticketId={ticketId}
-                />
-              )}
-
-            <section
-              aria-busy={feedbackLoading}
-              aria-labelledby="ticket-satisfaction-heading"
-              className="ticket-detail-comments"
-            >
-              <div className="ticket-detail-section-heading">
-                <div>
-                  <p className="eyebrow">ZUFRIEDENHEIT</p>
-                  <h3 id="ticket-satisfaction-heading">Zufriedenheit</h3>
-                </div>
-              </div>
-
-              {feedbackLoading ? (
-                <p className="empty-state ticket-detail-loading" role="status">
-                  <LoaderCircle
-                    aria-hidden="true"
-                    className="ticket-detail-spinner"
-                    size={18}
-                  />
-                  Zufriedenheitsdaten werden geladen …
-                </p>
-              ) : null}
-
-              {feedbackError && (
-                <p className="ticket-detail-message error" role="alert">
-                  <AlertCircle aria-hidden="true" size={17} />
-                  {feedbackError}
-                </p>
-              )}
-              {feedbackSuccess && (
-                <p className="ticket-detail-message success" role="status">
-                  <CircleCheck aria-hidden="true" size={17} />
-                  {feedbackSuccess}
-                </p>
-              )}
-
-              {!feedbackLoading && !feedback && !feedbackError ? (
-                <p className="data-caption">
-                  Kundenfeedback kann abgegeben werden, sobald das Ticket
-                  geschlossen ist.
-                </p>
-              ) : null}
-
-              {feedback && (
-                <>
-                  {feedback.satisfaction ? (
-                    <div className="ticket-comment">
-                      <div className="ticket-comment-meta">
-                        <strong>Bestehende Bewertung</strong>
-                        <span>
-                          {feedback.satisfaction.score === null
-                            ? "Bewertung nicht verfügbar"
-                            : `${feedback.satisfaction.score} von 5 Sternen`}
-                        </span>
                       </div>
-                      {feedback.satisfaction.comment && (
-                        <p>
-                          <strong>Kommentar:</strong>{" "}
-                          {feedback.satisfaction.comment}
-                        </p>
-                      )}
-                    </div>
-                  ) : (
-                    <p className="empty-state">
-                      Noch keine Bewertung vorhanden.
-                    </p>
-                  )}
-
-                  {feedback.canRate && feedback.isClosed ? (
-                    <form
-                      className="ticket-comment-form"
-                      onSubmit={saveFeedback}
-                    >
-                      <fieldset
-                        className="ticket-comment-visibility"
-                        disabled={busy}
-                      >
-                        <legend>Bewertung auswählen</legend>
-                        {[1, 2, 3, 4, 5].map((score) => (
-                          <label key={score}>
-                            <input
-                              checked={feedbackScore === score}
-                              name="ticket-satisfaction-score"
-                              onChange={() => setFeedbackScore(score)}
-                              required
-                              type="radio"
-                              value={score}
-                            />
-                            <Star
-                              aria-hidden="true"
-                              size={16}
-                              strokeWidth={1.8}
-                            />{" "}
-                            {score} {score === 1 ? "Stern" : "Sterne"}
-                          </label>
-                        ))}
-                      </fieldset>
-                      <label className="ticket-comment-body">
-                        Kommentar (optional)
-                        <textarea
-                          disabled={busy}
-                          maxLength={3000}
-                          onChange={(event) =>
-                            setFeedbackComment(event.target.value)
-                          }
-                          placeholder="Ihre Rückmeldung zur Ticketlösung"
-                          rows={3}
-                          value={feedbackComment}
-                        />
-                      </label>
-                      <p className="data-caption" aria-live="polite">
-                        {[...feedbackComment].length}/3&apos;000 Zeichen
-                      </p>
-                      <button
-                        className="primary-button"
-                        disabled={busy || feedbackScore === null}
-                        type="submit"
-                      >
-                        {pendingAction === "feedback" ? (
-                          <LoaderCircle
-                            aria-hidden="true"
-                            className="ticket-detail-spinner"
-                            size={16}
-                          />
-                        ) : (
-                          <Save
-                            aria-hidden="true"
-                            size={16}
-                            strokeWidth={1.8}
-                          />
-                        )}
-                        Bewertung speichern
-                      </button>
-                    </form>
-                  ) : !feedback.isClosed ? (
-                    <p className="data-caption">
-                      Eine Bewertung kann nach dem Schliessen des Tickets
-                      abgegeben werden.
-                    </p>
-                  ) : null}
-                </>
-              )}
-            </section>
-
-            <section
-              className="ticket-detail-comments"
-              aria-labelledby="ticket-attachments-heading"
-            >
-              <div className="ticket-detail-section-heading">
-                <div>
-                  <p className="eyebrow">ANHÄNGE</p>
-                  <h3 id="ticket-attachments-heading">Anhänge</h3>
-                </div>
-                <span className="data-caption">{attachments.length}</span>
-              </div>
-              <p className="data-caption" id="ticket-attachments-help">
-                Erlaubt sind {ATTACHMENT_ALLOWLIST_LABEL}. Maximal 25 MiB pro
-                Datei.
-              </p>
-
-              {attachmentError && (
-                <p className="ticket-detail-message error" role="alert">
-                  <AlertCircle aria-hidden="true" size={17} />
-                  {attachmentError}
-                </p>
-              )}
-
-              {detail.canUpdate && (
-                <form
-                  className="ticket-comment-form"
-                  onSubmit={uploadAttachment}
-                >
-                  <label className="ticket-comment-body">
-                    Datei auswählen
-                    <input
-                      accept={ATTACHMENT_ACCEPT}
-                      aria-describedby="ticket-attachments-help"
-                      disabled={attachmentBusy || busy}
-                      onChange={(event) =>
-                        selectAttachmentFile(event.target.files?.[0] ?? null)
-                      }
-                      ref={attachmentInputRef}
-                      type="file"
-                    />
-                  </label>
-                  {pendingAttachmentAction === "upload" ? (
-                    <p
-                      className="data-caption ticket-detail-loading"
-                      role="status"
-                    >
-                      <LoaderCircle
-                        aria-hidden="true"
-                        className="ticket-detail-spinner"
-                        size={16}
-                      />
-                      Anhang wird hochgeladen …
-                    </p>
-                  ) : selectedAttachmentFile ? (
-                    <p className="data-caption" aria-live="polite">
-                      Ausgewählt: {selectedAttachmentFile.name} (
-                      {formatFileSize(selectedAttachmentFile.size)})
-                    </p>
-                  ) : null}
-                  <button
-                    className="secondary-button"
-                    disabled={attachmentBusy || busy || !selectedAttachmentFile}
-                    type="submit"
-                  >
-                    {pendingAttachmentAction === "upload" ? (
-                      <LoaderCircle
-                        aria-hidden="true"
-                        className="ticket-detail-spinner"
-                        size={16}
-                      />
-                    ) : (
-                      <Circle aria-hidden="true" size={16} strokeWidth={1.8} />
-                    )}
-                    Anhang hochladen
-                  </button>
-                </form>
-              )}
-
-              {attachmentsLoading && !attachmentsLoaded ? (
-                <p className="empty-state ticket-detail-loading" role="status">
-                  <LoaderCircle
-                    aria-hidden="true"
-                    className="ticket-detail-spinner"
-                    size={18}
-                  />
-                  Anhänge werden geladen …
-                </p>
-              ) : attachments.length === 0 ? (
-                <p className="empty-state">Noch keine Anhänge vorhanden.</p>
-              ) : (
-                <ol
-                  className="ticket-comment-list"
-                  aria-busy={attachmentsLoading}
-                >
-                  {attachments.map((attachment) => {
-                    const isDownloading =
-                      pendingAttachmentAction === "download" &&
-                      pendingAttachmentId === attachment.id;
-                    const isDeleting =
-                      pendingAttachmentAction === "delete" &&
-                      pendingAttachmentId === attachment.id;
-
-                    return (
-                      <li className="ticket-comment" key={attachment.id}>
-                        <div className="ticket-comment-meta">
-                          <strong>{attachment.originalFilename}</strong>
-                          <span>{formatFileSize(attachment.byteSize)}</span>
-                          <time dateTime={attachment.createdAt}>
-                            Hochgeladen am{" "}
-                            {formatDateTime(attachment.createdAt)}
-                          </time>
-                        </div>
-                        <div className="ticket-detail-actions">
-                          <button
-                            aria-label={`${attachment.originalFilename} herunterladen`}
-                            className="secondary-button"
-                            disabled={attachmentBusy || busy}
-                            onClick={() => void downloadAttachment(attachment)}
-                            type="button"
-                          >
-                            {isDownloading ? (
-                              <LoaderCircle
-                                aria-hidden="true"
-                                className="ticket-detail-spinner"
-                                size={16}
-                              />
-                            ) : (
-                              <Save
-                                aria-hidden="true"
-                                size={16}
-                                strokeWidth={1.8}
-                              />
-                            )}
-                            Herunterladen
-                          </button>
-                          {detail.canUpdate && (
-                            <button
-                              aria-label={`${attachment.originalFilename} löschen`}
-                              className="secondary-button"
-                              disabled={attachmentBusy || busy}
-                              onClick={() => void deleteAttachment(attachment)}
-                              type="button"
-                            >
-                              {isDeleting ? (
-                                <LoaderCircle
-                                  aria-hidden="true"
-                                  className="ticket-detail-spinner"
-                                  size={16}
-                                />
-                              ) : (
-                                <X
-                                  aria-hidden="true"
-                                  size={16}
-                                  strokeWidth={1.8}
-                                />
-                              )}
-                              Löschen
-                            </button>
-                          )}
-                        </div>
-                      </li>
-                    );
-                  })}
-                </ol>
-              )}
-            </section>
-          </div>
-        )}
+                    </li>
+                  );
+                })}
+              </ol>
+            )}
+          </section>
+        </div>
       </details>
 
       <details
