@@ -1641,7 +1641,10 @@ async function outboundAttachments(
     )
     .eq("ticket_id", ticketId)
     .eq("comment_id", commentId)
-    .eq("malware_status", "clean")
+    .eq("visibility", "external")
+    // No malware scanner marks uploads as clean yet; files attached to a
+    // reply in nextDesk are sent while their scan is pending.
+    .in("malware_status", ["clean", "pending"])
     .order("created_at")
     .limit(10);
   if (rows.error) return { attachments: [], omitted: true };
@@ -1935,8 +1938,11 @@ export async function dispatchOutboundMessage(
           .limit(1)
           .maybeSingle()
       : { data: null };
+    // Graph does not take file attachments on message/reply, so a reply with
+    // attachments is sent as a new message with the same "AW:" subject.
     if (
       message.kind === "agent_reply" &&
+      attachments.attachments.length === 0 &&
       asString(previous.data?.graph_message_id)
     ) {
       await graphRequestForChannel(
