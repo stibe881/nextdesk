@@ -1392,6 +1392,54 @@ function parseSavedProblem(value: unknown): Problem {
   return problem;
 }
 
+function defaultTicketFollowUpMessage(
+  title: string,
+  workaround: string,
+): string {
+  const lines = [
+    "Guten Tag",
+    "",
+    `Die Ursache Ihrer Meldung wurde behoben (${title.trim()}).`,
+  ];
+  if (workaround.trim()) lines.push("", workaround.trim());
+  lines.push("", "Bitte melden Sie sich, falls das Problem weiterhin besteht.");
+  return lines.join("\n");
+}
+
+/** Sends a reply to and/or resolves one ticket linked to a resolved case. */
+async function followUpLinkedTicket(
+  tenantId: string,
+  ticketId: string,
+  options: { message: string | null; resolve: boolean },
+): Promise<void> {
+  if (!supabase) {
+    throw new Error("Die Verbindung zu Supabase ist nicht konfiguriert.");
+  }
+  if (options.message) {
+    const { error } = await supabase.functions.invoke("ticket-operations", {
+      body: {
+        type: "addComment",
+        tenantId,
+        ticketId,
+        body: options.message,
+        visibility: "external",
+      },
+    });
+    if (error) throw error;
+  }
+  if (options.resolve) {
+    const { error } = await supabase.functions.invoke("ticket-operations", {
+      body: {
+        type: "updateTicket",
+        tenantId,
+        ticketId,
+        statusKey: "resolved",
+      },
+    });
+    if (error) throw error;
+  }
+}
+
 async function requestServiceAssets(
   body: ServiceAssetsRequest,
 ): Promise<unknown> {
@@ -1632,8 +1680,14 @@ export function ServiceAssets({
   const [assetStatusFilter, setAssetStatusFilter] = useState("all");
   const [problemQuery, setProblemQuery] = useState("");
   const [problemStatusFilter, setProblemStatusFilter] = useState<
-    "all" | EditableProblemStatus
-  >("all");
+    "open" | "all" | ProblemStatus
+  >("open");
+  // Follow-up for the tickets of a case that is being resolved.
+  const [ticketFollowUp, setTicketFollowUp] = useState({
+    notify: false,
+    message: "",
+    resolve: false,
+  });
   const [loading, setLoading] = useState(true);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [error, setError] = useState("");
@@ -1837,7 +1891,9 @@ export function ServiceAssets({
             problemQuery,
           ) &&
           (problemStatusFilter === "all" ||
-            problem.status === problemStatusFilter),
+            (problemStatusFilter === "open"
+              ? problem.status !== "resolved"
+              : problem.status === problemStatusFilter)),
       ),
     [problemOwnerNames, problemQuery, problemStatusFilter, problems],
   );
@@ -2308,6 +2364,7 @@ export function ServiceAssets({
   }
 
   function resetProblemForm() {
+    setTicketFollowUp({ notify: false, message: "", resolve: false });
     setProblemForm(EMPTY_PROBLEM_FORM);
     setProblemMode("create");
     clearProblemTicketState();
@@ -2882,10 +2939,54 @@ export function ServiceAssets({
           }),
         );
         setProblems((current) =>
-          current.filter((problem) => problem.id !== resolved.id),
+          sortProblems([
+            ...current.filter((problem) => problem.id !== resolved.id),
+            resolved,
+          ]),
         );
+        const linkedTickets = [...problemTickets];
+        const message = ticketFollowUp.notify
+          ? ticketFollowUp.message.trim()
+          : "";
+        const followUpWanted =
+          linkedTickets.length > 0 &&
+          (Boolean(message) || ticketFollowUp.resolve);
+        const failed: string[] = [];
+        if (followUpWanted) {
+          for (const ticket of linkedTickets) {
+            try {
+              await followUpLinkedTicket(tenantId, ticket.id, {
+                message: message || null,
+                resolve: ticketFollowUp.resolve,
+              });
+            } catch (ticketError) {
+              failed.push(
+                `${ticket.ticketNumber}: ${await apiErrorMessage(
+                  ticketError,
+                  "Aktion fehlgeschlagen",
+                )}`,
+              );
+            }
+          }
+        }
         resetProblemForm();
-        setSuccess(`Der Fall „${resolved.title}“ wurde gelöst.`);
+        const done = linkedTickets.length - failed.length;
+        const actionText = [
+          message ? "benachrichtigt" : null,
+          ticketFollowUp.resolve ? "gelöst" : null,
+        ]
+          .filter(Boolean)
+          .join(" und ");
+        setSuccess(
+          followUpWanted
+            ? `Der Fall „${resolved.title}“ wurde gelöst. ${done} von ${linkedTickets.length} angehängten Tickets wurden ${actionText}.`
+            : `Der Fall „${resolved.title}“ wurde gelöst.`,
+        );
+        if (failed.length > 0) {
+          setError(
+            `Nicht alle Tickets konnten bearbeitet werden: ${failed.join(" · ")}`,
+          );
+        }
         return;
       }
 
@@ -4266,7 +4367,7 @@ export function ServiceAssets({
           <div className="panel-heading">
             <div>
               {!fixedTab ? <h3>Fälle</h3> : null}
-              <p>{activeCount} passende offene Fälle</p>
+              <p>{activeCount} passende Fälle</p>
             </div>
           </div>
           <fieldset disabled={controlsDisabled}>
@@ -4285,30 +4386,34 @@ export function ServiceAssets({
               <select
                 onChange={(event) =>
                   setProblemStatusFilter(
-                    event.target.value as "all" | EditableProblemStatus,
+                    event.target.value as "open" | "all" | ProblemStatus,
                   )
                 }
                 value={problemStatusFilter}
               >
-                <option value="all">Alle offenen Status</option>
+                <option value="open">Alle offenen Status</option>
                 {EDITABLE_PROBLEM_STATUSES.map((status) => (
                   <option key={status} value={status}>
                     {PROBLEM_STATUS_LABELS[status]}
                   </option>
                 ))}
+                <option value="resolved">
+                  {PROBLEM_STATUS_LABELS.resolved}
+                </option>
+                <option value="all">Alle Fälle</option>
               </select>
             </label>
           </fieldset>
 
           {problems.length === 0 ? (
             <p className="empty-state">
-              Es sind keine offenen Fälle vorhanden. Legen Sie unten bei Bedarf
-              einen neuen Fall an.
+              Es sind keine Fälle vorhanden. Legen Sie unten bei Bedarf einen
+              neuen Fall an.
             </p>
           ) : filteredProblems.length === 0 ? (
             <p className="empty-state">Keine Fälle entsprechen dem Filter.</p>
           ) : (
-            <ul aria-label="Offene Fälle">
+            <ul aria-label="Fälle">
               {filteredProblems.map((problem) => (
                 <li key={problem.id}>
                   <article>
@@ -4348,7 +4453,9 @@ export function ServiceAssets({
                       }}
                       type="button"
                     >
-                      Bearbeiten
+                      {problem.status === "resolved"
+                        ? "Wieder öffnen"
+                        : "Bearbeiten"}
                     </button>{" "}
                     <button
                       disabled={controlsDisabled}
@@ -4361,7 +4468,9 @@ export function ServiceAssets({
                       }}
                       type="button"
                     >
-                      Lösen
+                      {problem.status === "resolved"
+                        ? "Lösung und Tickets"
+                        : "Lösen"}
                     </button>
                   </article>
                 </li>
@@ -4494,8 +4603,8 @@ export function ServiceAssets({
                 </>
               ) : (
                 <p>
-                  Beim Speichern wird dieser Fall als gelöst markiert und
-                  anschließend nicht mehr im offenen Katalog angezeigt.
+                  Beim Speichern wird dieser Fall als gelöst markiert. Gelöste
+                  Fälle finden Sie über den Statusfilter «Gelöst».
                 </p>
               )}
               <label>
@@ -4616,6 +4725,71 @@ export function ServiceAssets({
                   ) : null}
                 </section>
               ) : null}
+              {problemMode === "resolve" && problemTickets.length > 0 ? (
+                <fieldset className="service-assets__ticket-follow-up">
+                  <legend>
+                    Angehängte Tickets ({problemTickets.length}) nach dem Lösen
+                  </legend>
+                  <label className="service-assets__checkbox">
+                    <input
+                      checked={ticketFollowUp.notify}
+                      disabled={controlsDisabled}
+                      onChange={(event) => {
+                        const notify = event.target.checked;
+                        setTicketFollowUp((current) => ({
+                          ...current,
+                          notify,
+                          message:
+                            notify && !current.message.trim()
+                              ? defaultTicketFollowUpMessage(
+                                  problemForm.title,
+                                  problemForm.workaround,
+                                )
+                              : current.message,
+                        }));
+                      }}
+                      type="checkbox"
+                    />
+                    Antwort an alle angehängten Tickets senden
+                  </label>
+                  {ticketFollowUp.notify ? (
+                    <label>
+                      Antwort an die anfragenden Personen
+                      <textarea
+                        disabled={controlsDisabled}
+                        maxLength={50000}
+                        onChange={(event) =>
+                          setTicketFollowUp((current) => ({
+                            ...current,
+                            message: event.target.value,
+                          }))
+                        }
+                        rows={5}
+                        value={ticketFollowUp.message}
+                      />
+                    </label>
+                  ) : null}
+                  <label className="service-assets__checkbox">
+                    <input
+                      checked={ticketFollowUp.resolve}
+                      disabled={controlsDisabled}
+                      onChange={(event) =>
+                        setTicketFollowUp((current) => ({
+                          ...current,
+                          resolve: event.target.checked,
+                        }))
+                      }
+                      type="checkbox"
+                    />
+                    Alle angehängten Tickets auf «Gelöst» setzen
+                  </label>
+                  <p className="data-caption">
+                    Beides lässt sich kombinieren. Tickets ohne zugewiesene
+                    Agent:in oder mit fehlenden Pflichtangaben können nicht
+                    gelöst werden; sie werden nach dem Speichern aufgelistet.
+                  </p>
+                </fieldset>
+              ) : null}
               <p>
                 <button
                   className="primary-button"
@@ -4627,7 +4801,9 @@ export function ServiceAssets({
                     : pendingAction?.startsWith("problem:save:")
                       ? "Wird gespeichert …"
                       : problemMode === "resolve"
-                        ? "Fall lösen"
+                        ? ticketFollowUp.notify || ticketFollowUp.resolve
+                          ? "Fall lösen und Tickets bearbeiten"
+                          : "Fall lösen"
                         : problemMode === "edit"
                           ? "Änderungen speichern"
                           : "Fall anlegen"}

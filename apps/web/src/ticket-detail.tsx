@@ -5110,17 +5110,20 @@ export function TicketDetail({
           .filter((entry): entry is string => entry !== null)
           .join(" · "),
       })),
-      ...catalog.problems.map((problem) => ({
-        kind: "problem" as const,
-        id: problem.id,
-        label: problem.title,
-        description: [
-          problem.description?.trim() || null,
-          `Status: ${problem.status}`,
-        ]
-          .filter((entry): entry is string => entry !== null)
-          .join(" · "),
-      })),
+      // Only open cases can be linked; resolved ones stay in the case list.
+      ...catalog.problems
+        .filter((problem) => problem.status !== "resolved")
+        .map((problem) => ({
+          kind: "problem" as const,
+          id: problem.id,
+          label: problem.title,
+          description: [
+            problem.description?.trim() || null,
+            `Status: ${problem.status}`,
+          ]
+            .filter((entry): entry is string => entry !== null)
+            .join(" · "),
+        })),
     ];
     return items
       .filter((item) => !linkedItemKeys.has(catalogSelectionKey(item)))

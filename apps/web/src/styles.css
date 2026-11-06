@@ -20754,3 +20754,24 @@ html:has(.embed-status-badge) body {
 .ticket-row:has(.ticket-quick-assign__popover) {
   z-index: 40;
 }
+
+.service-assets__ticket-follow-up {
+  display: grid;
+  gap: 10px;
+  margin: 4px 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px 16px;
+}
+
+.service-assets__ticket-follow-up legend {
+  padding: 0 6px;
+  font-weight: 700;
+}
+
+.service-assets__checkbox {
+  display: flex !important;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+}
