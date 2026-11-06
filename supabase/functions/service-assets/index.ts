@@ -644,10 +644,9 @@ async function readCatalog(
       .from(resource.table)
       .select(resource.select)
       .eq("tenant_id", tenantId);
+    // Cases include resolved ones; the web app filters them by status.
     query = resource.key === "problem"
-      ? query
-        .in("status", ["open", "investigating", "known_error"])
-        .order("updated_at", { ascending: false })
+      ? query.order("updated_at", { ascending: false })
       : query.eq("active", active).order("name");
     const { data, error } = await query
       .order("id")
