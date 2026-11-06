@@ -1452,6 +1452,9 @@ export function KnowledgeBase({
     setCollectionActionMessage("");
     void loadArticles("");
     void loadCollections();
+    if (pendingFocusArticleId.current) {
+      void openArticle(pendingFocusArticleId.current);
+    }
 
     return () => {
       listRequestVersion.current += 1;
@@ -1540,6 +1543,9 @@ export function KnowledgeBase({
         if (detailRequestVersion.current !== requestVersion) return;
         mergeImageUrls(detail.imageUrls);
         setSelected(detail);
+        if (pendingFocusArticleId.current === articleId) {
+          pendingFocusArticleId.current = null;
+        }
       } catch (nextError) {
         if (detailRequestVersion.current === requestVersion) {
           setSelected(null);
@@ -1556,8 +1562,12 @@ export function KnowledgeBase({
     [mergeImageUrls, tenantId],
   );
 
+  // An article to open from outside (deep link, ticket). It stays pending
+  // until it is shown: the initial reload of the list cancels open requests.
+  const pendingFocusArticleId = useRef<string | null>(null);
   useEffect(() => {
     if (!focusArticleId) return;
+    pendingFocusArticleId.current = focusArticleId;
     void openArticle(focusArticleId);
   }, [focusArticleId, openArticle]);
 
