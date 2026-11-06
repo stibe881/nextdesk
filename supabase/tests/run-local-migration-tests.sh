@@ -9629,4 +9629,107 @@ $$;
 rollback;
 SQL
 
+# Supervisor requests (0193): an agent asks another agent of the ticket; the
+# question and the answer become internal notes and notifications. Only the
+# addressed person can answer, and only once.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_owner constant uuid := 'f1930000-0000-4000-8000-000000000001';
+  v_lead constant uuid := 'f1930000-0000-4000-8000-000000000002';
+  v_stranger constant uuid := 'f1930000-0000-4000-8000-000000000003';
+  v_tenant uuid;
+  v_ticket uuid;
+  v_request uuid;
+  v_count integer;
+begin
+  if has_function_privilege('anon', 'public.create_ticket_supervisor_request(uuid, uuid, text)', 'execute')
+     or has_function_privilege('anon', 'public.answer_ticket_supervisor_request(uuid, text)', 'execute') then
+    raise exception 'Supervisor request functions are open to anon';
+  end if;
+  insert into auth.users (id) values (v_owner), (v_lead), (v_stranger);
+  v_tenant := public.provision_personal_workspace(v_owner, 'leitung@example.ch', 'Leitungsteam');
+  insert into public.user_profiles (id, display_name) values (v_lead, 'Lea Leitung')
+    on conflict (id) do update set display_name = excluded.display_name;
+  -- The lead gets the same memberships and roles as the owner.
+  insert into public.tenant_memberships (tenant_id, user_id, status)
+    values (v_tenant, v_lead, 'active');
+  insert into public.department_memberships (tenant_id, department_id, user_id, status)
+    select tenant_id, department_id, v_lead, status
+    from public.department_memberships where tenant_id = v_tenant and user_id = v_owner;
+  insert into public.user_role_assignments (tenant_id, user_id, role_id, department_id)
+    select tenant_id, v_lead, role_id, department_id
+    from public.user_role_assignments where tenant_id = v_tenant and user_id = v_owner;
+
+  insert into public.tickets (tenant_id, department_id, ticket_number, subject, description, status_id, priority_id, requester_id)
+  select v_tenant, department.id, 'L-2026-00001', 'Lizenz fehlt', 'Bitte Lizenz freigeben',
+    (select id from public.ticket_statuses where tenant_id = v_tenant and not is_closed order by sort_order limit 1),
+    (select id from public.ticket_priorities where tenant_id = v_tenant limit 1),
+    v_owner
+  from public.departments department where department.tenant_id = v_tenant limit 1
+  returning id into v_ticket;
+
+  perform set_config('request.jwt.claim.sub', v_owner::text, true);
+  if not exists (
+    select 1 from public.list_ticket_supervisor_candidates(v_ticket) where user_id = v_lead
+  ) or exists (
+    select 1 from public.list_ticket_supervisor_candidates(v_ticket) where user_id in (v_owner, v_stranger)
+  ) then
+    raise exception 'Supervisor candidates are wrong';
+  end if;
+  begin
+    perform public.create_ticket_supervisor_request(v_ticket, v_stranger, 'Darf ich?');
+    raise exception 'A person outside the tenant could be asked';
+  exception when sqlstate '23514' then null;
+  end;
+  v_request := public.create_ticket_supervisor_request(v_ticket, v_lead, 'Darf ich die Lizenz freigeben?');
+  select count(*) into v_count from public.ticket_comments
+  where ticket_id = v_ticket and visibility = 'internal' and body like 'Anfrage an Lea Leitung:%';
+  if v_count <> 1 then
+    raise exception 'The question was not stored as an internal note';
+  end if;
+  if not exists (
+    select 1 from public.ticket_notifications
+    where user_id = v_lead and kind = 'ticket.supervisor_request'
+      and payload ->> 'requestId' = v_request::text
+  ) then
+    raise exception 'The addressed person got no notification';
+  end if;
+  -- The asker cannot answer the own request.
+  begin
+    perform public.answer_ticket_supervisor_request(v_request, 'Ja');
+    raise exception 'The asker answered the own request';
+  exception when sqlstate 'P0002' then null;
+  end;
+
+  perform set_config('request.jwt.claim.sub', v_lead::text, true);
+  perform public.answer_ticket_supervisor_request(v_request, 'Ja, bitte freigeben.');
+  if (select status from public.ticket_supervisor_requests where id = v_request) <> 'answered' then
+    raise exception 'The request was not marked as answered';
+  end if;
+  if not exists (
+    select 1 from public.ticket_comments
+    where ticket_id = v_ticket and author_id = v_lead and visibility = 'internal'
+      and body like 'Antwort auf die Anfrage von %Ja, bitte freigeben.'
+  ) then
+    raise exception 'The answer was not stored as an internal note';
+  end if;
+  if not exists (
+    select 1 from public.ticket_notifications
+    where user_id = v_owner and kind = 'ticket.supervisor_answer'
+  ) then
+    raise exception 'The asker got no answer notification';
+  end if;
+  begin
+    perform public.answer_ticket_supervisor_request(v_request, 'Nochmals');
+    raise exception 'A request was answered twice';
+  exception when sqlstate '23505' then null;
+  end;
+  perform set_config('request.jwt.claim.sub', '', true);
+end;
+$$;
+rollback;
+SQL
+
 echo "PostgreSQL 16 migration and RLS integration checks passed."

@@ -984,6 +984,89 @@ function notificationPayloadDateTime(
   return value && !Number.isNaN(new Date(value).getTime()) ? value : null;
 }
 
+function SupervisorRequestReply({
+  notification,
+  onAnswered,
+}: {
+  notification: NotificationItem;
+  onAnswered: (notificationId: string) => void;
+}) {
+  const [answer, setAnswer] = useState("");
+  const [state, setState] = useState<"idle" | "saving" | "done">("idle");
+  const [error, setError] = useState("");
+  const requestId =
+    notification.payload &&
+    typeof notification.payload === "object" &&
+    typeof (notification.payload as { requestId?: unknown }).requestId ===
+      "string"
+      ? (notification.payload as { requestId: string }).requestId
+      : null;
+  if (!requestId) return null;
+
+  async function send() {
+    const text = answer.trim();
+    if (!supabase || !text || state === "saving" || !requestId) return;
+    setState("saving");
+    setError("");
+    const { error: rpcError } = await supabase.rpc(
+      "answer_ticket_supervisor_request",
+      { p_answer: text, p_request_id: requestId },
+    );
+    if (rpcError) {
+      setState("idle");
+      setError(
+        rpcError.code === "23505"
+          ? "Diese Anfrage wurde bereits beantwortet."
+          : "Die Antwort konnte nicht gespeichert werden.",
+      );
+      return;
+    }
+    setState("done");
+    onAnswered(notification.id);
+  }
+
+  if (state === "done") {
+    return (
+      <p className="notification-reply__done" role="status">
+        Antwort gespeichert. Sie steht als interne Notiz im Ticket.
+      </p>
+    );
+  }
+  return (
+    <form
+      className="notification-reply"
+      onSubmit={(event) => {
+        event.preventDefault();
+        void send();
+      }}
+    >
+      <label>
+        <span className="sr-only">Antwort</span>
+        <textarea
+          disabled={state === "saving"}
+          maxLength={4000}
+          onChange={(event) => setAnswer(event.target.value)}
+          placeholder="Antwort schreiben …"
+          rows={2}
+          value={answer}
+        />
+      </label>
+      <button
+        className="primary-button"
+        disabled={state === "saving" || !answer.trim()}
+        type="submit"
+      >
+        {state === "saving" ? "Wird gesendet …" : "Antworten"}
+      </button>
+      {error ? (
+        <small className="notification-reply__error" role="alert">
+          {error}
+        </small>
+      ) : null}
+    </form>
+  );
+}
+
 function notificationPresentation(
   notification: NotificationItem,
 ): NotificationPresentation {
@@ -1037,6 +1120,30 @@ function notificationPresentation(
           : followUpTitle,
         Icon: CalendarClock,
         title: "Wiedervorlage fällig",
+      };
+    }
+    case "ticket.supervisor_request": {
+      const askedBy =
+        notificationPayloadText(notification, "askedByName", 120) ??
+        "Eine Person";
+      const question =
+        notificationPayloadText(notification, "question", 1000) ?? "";
+      return {
+        description: `${askedBy} fragt zu ${ticketLabel}: ${question}`,
+        Icon: MessageSquareText,
+        title: "Anfrage an dich",
+      };
+    }
+    case "ticket.supervisor_answer": {
+      const answeredBy =
+        notificationPayloadText(notification, "answeredByName", 120) ??
+        "Eine Person";
+      const answer =
+        notificationPayloadText(notification, "answer", 1000) ?? "";
+      return {
+        description: `${answeredBy} zu ${ticketLabel}: ${answer}`,
+        Icon: MessageSquareText,
+        title: "Antwort auf deine Anfrage",
       };
     }
     case "ticket.escalation_opened":
@@ -4956,6 +5063,26 @@ function AuthenticatedApp() {
                                 {time}
                               </small>
                             </button>
+                            {notification.kind ===
+                            "ticket.supervisor_request" ? (
+                              <SupervisorRequestReply
+                                notification={notification}
+                                onAnswered={(notificationId) =>
+                                  setNotifications((current) =>
+                                    current.map((item) =>
+                                      item.id === notificationId
+                                        ? {
+                                            ...item,
+                                            readAt:
+                                              item.readAt ??
+                                              new Date().toISOString(),
+                                          }
+                                        : item,
+                                    ),
+                                  )
+                                }
+                              />
+                            ) : null}
                           </li>
                         );
                       })}

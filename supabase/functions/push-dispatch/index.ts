@@ -75,13 +75,20 @@ function category(
   if (kind === "ticket.requester_reply") return "requester_reply";
   if (kind === "ticket.support_reply") return "support_reply";
   if (kind === "ticket.mention") return "mention";
+  if (
+    kind === "ticket.supervisor_request" ||
+    kind === "ticket.supervisor_answer"
+  ) {
+    return "mention";
+  }
   if (kind === "ticket.resolved") return "resolved";
   if (kind === "ticket.approval.requested") return "approval";
   if (
     kind === "ticket.department_question.asked" ||
     kind === "ticket.department_question.answered"
-  )
+  ) {
     return "approval";
+  }
   if (kind === "ticket.escalation_opened") return "escalation";
   if (kind === "ticket.follow_up_due") return "follow_up";
   if (kind === "contract.deadline") return "contract_deadline";
@@ -97,11 +104,17 @@ function payloadKind(
 ):
   | NonNullable<ReturnType<typeof category>>
   | "department_question_asked"
-  | "department_question_answered" {
-  if (kind === "ticket.department_question.asked")
+  | "department_question_answered"
+  | "supervisor_request"
+  | "supervisor_answer" {
+  if (kind === "ticket.department_question.asked") {
     return "department_question_asked";
-  if (kind === "ticket.department_question.answered")
+  }
+  if (kind === "ticket.department_question.answered") {
     return "department_question_answered";
+  }
+  if (kind === "ticket.supervisor_request") return "supervisor_request";
+  if (kind === "ticket.supervisor_answer") return "supervisor_answer";
   return fallback;
 }
 
@@ -311,10 +324,10 @@ async function deliverSingle(admin: any, row: ClaimRow): Promise<void> {
   }
   let serviceTask:
     | {
-        serviceTaskEvent: string;
-        serviceTaskTitle?: string;
-        occurrenceId?: string;
-      }
+      serviceTaskEvent: string;
+      serviceTaskTitle?: string;
+      occurrenceId?: string;
+    }
     | {} = {};
   if (preferenceCategory === "service_task" && row.notification_id) {
     const { data: notification } = await admin
@@ -378,8 +391,9 @@ async function deliverSummary(admin: any, rows: ClaimRow[]): Promise<void> {
 
   const uniqueDevices = new Map<string, Device>();
   for (const row of authorizedRows) {
-    for (const device of devices(row.devices))
+    for (const device of devices(row.devices)) {
       uniqueDevices.set(device.id, device);
+    }
   }
   const anchor = authorizedRows[0];
   const payload = buildApnsPayload({
@@ -400,8 +414,9 @@ async function deliverSummary(admin: any, rows: ClaimRow[]): Promise<void> {
       return result;
     }),
   );
-  for (const row of authorizedRows)
+  for (const row of authorizedRows) {
     await completeForDeliveries(admin, row, results);
+  }
 }
 
 const handler = withSupabase(
@@ -419,8 +434,8 @@ const handler = withSupabase(
       return response({ error: { code: "unauthorized" } }, 401);
     }
 
-    const [ticketAuthorizationSweep, questionAuthorizationSweep] =
-      await Promise.all([
+    const [ticketAuthorizationSweep, questionAuthorizationSweep] = await Promise
+      .all([
         context.supabaseAdmin.rpc("push_skip_unauthorized_ticket_outbox"),
         context.supabaseAdmin.rpc(
           "push_skip_unauthorized_department_question_outbox",
@@ -441,8 +456,9 @@ const handler = withSupabase(
     if (claimed.length === 0) return response({ data: { claimed: 0 } });
 
     if (!isApnsConfigured()) {
-      for (const row of claimed)
+      for (const row of claimed) {
         await skip(context.supabaseAdmin, row.outbox_id, "apns_not_configured");
+      }
       return response({
         data: { claimed: claimed.length, skipped: claimed.length },
       });
