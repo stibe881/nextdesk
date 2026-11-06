@@ -6,8 +6,17 @@ describe("Queue-Register", () => {
     expect(shouldShowQueueTabs([])).toBe(false);
   });
 
-  it("zeigt die Leiste, sobald eine autorisierte Queue zusätzlich verfügbar ist", () => {
-    expect(shouldShowQueueTabs([["ict", "ICT"]])).toBe(true);
+  it("blendet die Leiste bei nur einer Abteilung aus", () => {
+    expect(shouldShowQueueTabs([["ict", "ICT"]])).toBe(false);
+  });
+
+  it("zeigt die Leiste ab zwei Abteilungen", () => {
+    expect(
+      shouldShowQueueTabs([
+        ["ict", "ICT"],
+        ["infrastruktur", "Infrastruktur"],
+      ]),
+    ).toBe(true);
   });
 
   it("behält nur Alle Queues oder eine noch autorisierte Auswahl bei", () => {
