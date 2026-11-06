@@ -20684,3 +20684,68 @@ html:has(.embed-status-badge) body {
   outline-offset: 3px;
   border-radius: 4px;
 }
+
+/* Status badge in the navigation of employees */
+.navigation-status-badge {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 40px;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 8px;
+  color: #fff;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.25;
+  text-align: left;
+  text-decoration: none;
+  background: #31a85a;
+  cursor: pointer;
+}
+
+.navigation-status-badge--maintenance {
+  background: #2563eb;
+}
+
+.navigation-status-badge--degraded,
+.navigation-status-badge--partial_outage {
+  background: #d97706;
+}
+
+.navigation-status-badge--major_outage {
+  background: #dc2626;
+}
+
+.navigation-status-badge--unavailable {
+  background: #475569;
+}
+
+.navigation-status-badge:hover {
+  filter: brightness(1.06);
+}
+
+.navigation-status-badge:focus-visible,
+.navigation-status-badge.is-active {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.navigation-status-badge__dot {
+  flex: 0 0 auto;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.95);
+}
+
+.employee-status-navigation {
+  padding-bottom: 4px;
+}
+
+.employee-navigation {
+  margin-top: 8px;
+}

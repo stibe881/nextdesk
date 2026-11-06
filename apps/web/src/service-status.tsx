@@ -2259,3 +2259,88 @@ export function PublicServiceStatusPage({
     </main>
   );
 }
+
+/**
+ * Status badge in the navigation of employees without ticket work: the same
+ * look as the published badge; it opens the public status page when the
+ * tenant published one, otherwise the read-only status view in the app.
+ */
+export function NavigationStatusBadge({
+  active,
+  onOpenInternal,
+  tenantId,
+}: {
+  active: boolean;
+  onOpenInternal: () => void;
+  tenantId: string;
+}) {
+  const [overview, setOverview] = useState<StatusOverview | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      try {
+        const next = await requestStatus({
+          type: "getStatusOverview",
+          tenantId,
+        });
+        if (!cancelled) {
+          setOverview(next);
+          setFailed(false);
+        }
+      } catch {
+        if (!cancelled) setFailed(true);
+      }
+    }
+    void load();
+    const timer = window.setInterval(() => void load(), 120_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [tenantId]);
+
+  const status = useMemo(() => {
+    if (!overview) return null;
+    const payload = internalToPublicPayload(overview);
+    return displayOverallStatus(payload.services);
+  }, [overview]);
+  const visual = status ?? "unavailable";
+  const label =
+    status !== null
+      ? BADGE_LABELS[status]
+      : failed
+        ? "Systemstatus nicht verfügbar"
+        : "Systemstatus wird geladen …";
+  const publicId =
+    overview?.page.publicEnabled && overview.page.publicId
+      ? overview.page.publicId
+      : null;
+  const className = `navigation-status-badge navigation-status-badge--${visual}${
+    active ? " is-active" : ""
+  }`;
+
+  return publicId ? (
+    <a
+      aria-label={`${label} – Systemstatusseite öffnen`}
+      className={className}
+      href={publicPageUrl(publicId)}
+      rel="noopener noreferrer"
+      target="_blank"
+    >
+      <span aria-hidden="true" className="navigation-status-badge__dot" />
+      <span>{label}</span>
+    </a>
+  ) : (
+    <button
+      aria-label={`${label} – Systemstatus öffnen`}
+      className={className}
+      onClick={onOpenInternal}
+      type="button"
+    >
+      <span aria-hidden="true" className="navigation-status-badge__dot" />
+      <span>{label}</span>
+    </button>
+  );
+}
