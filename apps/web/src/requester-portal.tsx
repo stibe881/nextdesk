@@ -4,7 +4,9 @@ import {
   ClipboardCheck,
   Clock3,
   Laptop,
+  Plus,
   RefreshCw,
+  ShoppingBag,
   Ticket,
   UsersRound,
   type LucideIcon,
@@ -325,8 +327,23 @@ function approvalKindLabel(value: string): string {
     : "Freigabe";
 }
 
-export function RequesterPortalPanel(props: { tenantId: string }): JSX.Element {
-  const { tenantId } = props;
+export function RequesterPortalPanel(props: {
+  /** Shown as a tab of the workplace: the tab names the area. */
+  embedded?: boolean;
+  onCreateTicket?: () => void;
+  onOpenShop?: (() => void) | undefined;
+  onOpenTicket?: (ticketId: string) => void;
+  onOpenTickets?: () => void;
+  tenantId: string;
+}): JSX.Element {
+  const {
+    embedded = false,
+    onCreateTicket,
+    onOpenShop,
+    onOpenTicket,
+    onOpenTickets,
+    tenantId,
+  } = props;
   const [data, setData] = useState<PortalData | null>(null);
   const [state, setState] = useState<PortalState>(() =>
     supabase ? "loading" : "hidden",
@@ -515,15 +532,65 @@ export function RequesterPortalPanel(props: { tenantId: string }): JSX.Element {
       aria-labelledby="requester-portal-heading"
       className="requester-portal"
     >
-      <header className="requester-portal__header">
+      <header
+        className={
+          embedded
+            ? "requester-portal__header requester-portal__header--embedded"
+            : "requester-portal__header"
+        }
+      >
         <div>
-          <p className="eyebrow">MEIN BEREICH</p>
-          <h2 id="requester-portal-heading">Meine Anfragen</h2>
-          <p>
-            Behalten Sie aktuelle Störungen, offene Freigaben und Ihre Geräte im
-            Blick.
-          </p>
+          {embedded ? (
+            <h2 className="sr-only" id="requester-portal-heading">
+              Mein Bereich
+            </h2>
+          ) : (
+            <>
+              <p className="eyebrow">MEIN BEREICH</p>
+              <h2 id="requester-portal-heading">
+                Alles Wichtige auf einen Blick
+              </h2>
+              <p>
+                Störungen, offene Freigaben, Ihre Geräte und Ihre Anfragen an
+                einem Ort.
+              </p>
+            </>
+          )}
         </div>
+        {onCreateTicket || onOpenTickets || onOpenShop ? (
+          <div className="requester-portal__actions">
+            {onCreateTicket ? (
+              <button
+                className="primary-button"
+                onClick={onCreateTicket}
+                type="button"
+              >
+                <Plus aria-hidden="true" size={16} strokeWidth={2} />
+                Neues Ticket
+              </button>
+            ) : null}
+            {onOpenTickets ? (
+              <button
+                className="secondary-button"
+                onClick={onOpenTickets}
+                type="button"
+              >
+                <Ticket aria-hidden="true" size={16} strokeWidth={1.9} />
+                Meine Tickets
+              </button>
+            ) : null}
+            {onOpenShop ? (
+              <button
+                className="secondary-button"
+                onClick={onOpenShop}
+                type="button"
+              >
+                <ShoppingBag aria-hidden="true" size={16} strokeWidth={1.9} />
+                Shop
+              </button>
+            ) : null}
+          </div>
+        ) : null}
       </header>
 
       {state === "loading" ? (
@@ -550,46 +617,66 @@ export function RequesterPortalPanel(props: { tenantId: string }): JSX.Element {
         </div>
       ) : (
         <div className="requester-portal__grid">
-          <section
-            aria-labelledby="requester-incidents-heading"
-            className="requester-portal__card requester-portal__card--wide"
-          >
-            <div className="requester-portal__card-heading">
-              <span aria-hidden="true" className="requester-portal__icon">
-                <AlertTriangle size={19} strokeWidth={1.9} />
+          {sortedNotices.length === 0 ? (
+            <p
+              className="requester-portal__all-clear requester-portal__card--wide"
+              role="status"
+            >
+              <CheckCircle2 aria-hidden="true" size={18} strokeWidth={2} />
+              <span>
+                <strong>Alles in Betrieb.</strong> Derzeit sind keine Störungen
+                bekannt.
               </span>
-              <div>
-                <h3 id="requester-incidents-heading">Aktive Störungen</h3>
-                <p>Mandantenlokale Informationen zu laufenden Störungen.</p>
+            </p>
+          ) : (
+            <section
+              aria-labelledby="requester-incidents-heading"
+              className="requester-portal__card requester-portal__card--wide"
+            >
+              <div className="requester-portal__card-heading">
+                <span aria-hidden="true" className="requester-portal__icon">
+                  <AlertTriangle size={19} strokeWidth={1.9} />
+                </span>
+                <div>
+                  <h3 id="requester-incidents-heading">Aktive Störungen</h3>
+                  <p>Mandantenlokale Informationen zu laufenden Störungen.</p>
+                </div>
               </div>
-            </div>
-            {sortedNotices.length === 0 ? (
-              <p className="requester-portal__empty">
-                Derzeit sind keine aktiven Störungen bekannt.
-              </p>
-            ) : (
-              <ul className="requester-portal__list">
-                {sortedNotices.map((notice) => {
-                  const { Icon, label } = incidentStatus[notice.status];
-                  return (
-                    <li className="requester-portal__incident" key={notice.id}>
-                      <div className="requester-portal__item-heading">
-                        <strong>{notice.title}</strong>
-                        <span className="requester-portal__status">
-                          <Icon aria-hidden="true" size={14} strokeWidth={2} />
-                          {label}
-                        </span>
-                      </div>
-                      <p>{notice.description}</p>
-                      <time dateTime={notice.updatedAt}>
-                        Letzte Aktualisierung: {formatDate(notice.updatedAt)}
-                      </time>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </section>
+              {sortedNotices.length === 0 ? (
+                <p className="requester-portal__empty">
+                  Derzeit sind keine aktiven Störungen bekannt.
+                </p>
+              ) : (
+                <ul className="requester-portal__list">
+                  {sortedNotices.map((notice) => {
+                    const { Icon, label } = incidentStatus[notice.status];
+                    return (
+                      <li
+                        className="requester-portal__incident"
+                        key={notice.id}
+                      >
+                        <div className="requester-portal__item-heading">
+                          <strong>{notice.title}</strong>
+                          <span className="requester-portal__status">
+                            <Icon
+                              aria-hidden="true"
+                              size={14}
+                              strokeWidth={2}
+                            />
+                            {label}
+                          </span>
+                        </div>
+                        <p>{notice.description}</p>
+                        <time dateTime={notice.updatedAt}>
+                          Letzte Aktualisierung: {formatDate(notice.updatedAt)}
+                        </time>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </section>
+          )}
 
           <section
             aria-labelledby="requester-approvals-heading"
@@ -610,9 +697,19 @@ export function RequesterPortalPanel(props: { tenantId: string }): JSX.Element {
                   <li className="requester-portal__approval" key={approval.id}>
                     <strong>{approvalKindLabel(approval.approvalKind)}</strong>
                     <p>{approval.reason}</p>
-                    <span>
-                      Ticketreferenz: <code>{approval.ticketId}</code>
-                    </span>
+                    {onOpenTicket ? (
+                      <button
+                        className="requester-portal__link"
+                        onClick={() => onOpenTicket(approval.ticketId)}
+                        type="button"
+                      >
+                        Ticket öffnen und entscheiden
+                      </button>
+                    ) : (
+                      <span>
+                        Ticketreferenz: <code>{approval.ticketId}</code>
+                      </span>
+                    )}
                     <span>
                       Benötigte Freigaben: {approval.requiredApprovals} ·
                       Angefragt: {formatDate(approval.requestedAt)}
@@ -625,10 +722,12 @@ export function RequesterPortalPanel(props: { tenantId: string }): JSX.Element {
                 Keine offenen Freigaben. Sie müssen derzeit nichts bestätigen.
               </p>
             )}
-            <p className="requester-portal__hint">
-              Öffnen Sie die Ticketübersicht, um eine Freigabe im zugehörigen
-              Ticket zu bearbeiten.
-            </p>
+            {onOpenTicket ? null : (
+              <p className="requester-portal__hint">
+                Öffnen Sie die Ticketübersicht, um eine Freigabe im zugehörigen
+                Ticket zu bearbeiten.
+              </p>
+            )}
           </section>
 
           <section
@@ -768,25 +867,27 @@ export function RequesterPortalPanel(props: { tenantId: string }): JSX.Element {
             </section>
           )}
 
-          <section
-            aria-labelledby="requester-tickets-heading"
-            className="requester-portal__card requester-portal__card--tickets"
-          >
-            <div className="requester-portal__card-heading">
-              <span aria-hidden="true" className="requester-portal__icon">
-                <Ticket size={19} strokeWidth={1.9} />
-              </span>
-              <div>
-                <h3 id="requester-tickets-heading">Meine Tickets</h3>
-                <p>Status und öffentlicher Verlauf Ihrer eigenen Anfragen.</p>
+          {onOpenTickets ? null : (
+            <section
+              aria-labelledby="requester-tickets-heading"
+              className="requester-portal__card requester-portal__card--tickets"
+            >
+              <div className="requester-portal__card-heading">
+                <span aria-hidden="true" className="requester-portal__icon">
+                  <Ticket size={19} strokeWidth={1.9} />
+                </span>
+                <div>
+                  <h3 id="requester-tickets-heading">Meine Tickets</h3>
+                  <p>Status und öffentlicher Verlauf Ihrer eigenen Anfragen.</p>
+                </div>
               </div>
-            </div>
-            <p className="requester-portal__empty">
-              Ihre Tickets werden in der Ticketübersicht angezeigt. Dort sehen
-              Sie den Status in Klartext und können den öffentlichen Verlauf
-              eines Tickets öffnen.
-            </p>
-          </section>
+              <p className="requester-portal__empty">
+                Ihre Tickets werden in der Ticketübersicht angezeigt. Dort sehen
+                Sie den Status in Klartext und können den öffentlichen Verlauf
+                eines Tickets öffnen.
+              </p>
+            </section>
+          )}
         </div>
       )}
     </section>

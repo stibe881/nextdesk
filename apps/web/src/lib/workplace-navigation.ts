@@ -1,4 +1,4 @@
-export type WorkplaceRequestedView = "followUps";
+export type WorkplaceRequestedView = "followUps" | "portal";
 
 export type MigratedWorkplaceStartSection = {
   requestedView: WorkplaceRequestedView | null;
@@ -17,8 +17,13 @@ type WorkspaceNavigationReadiness = {
 export function isWorkplaceAvailable(
   agentWorkbenchEnabled: boolean,
   experienceWorkspaceEnabled: boolean,
+  requesterPortalEnabled = false,
 ): boolean {
-  return agentWorkbenchEnabled || experienceWorkspaceEnabled;
+  return (
+    agentWorkbenchEnabled ||
+    experienceWorkspaceEnabled ||
+    requesterPortalEnabled
+  );
 }
 
 export function isWorkspaceNavigationReady({
@@ -49,6 +54,10 @@ export function migrateWorkplaceStartSection(
 ): MigratedWorkplaceStartSection {
   if (value === "Wiedervorlagen") {
     return { requestedView: "followUps", section: "Arbeitsplatz" };
+  }
+  // "Mein Portal" is now the "Mein Bereich" view of the workplace.
+  if (value === "Mein Portal") {
+    return { requestedView: "portal", section: "Arbeitsplatz" };
   }
   if (value === "Erwähnungen") {
     return { requestedView: null, section: "Arbeitsplatz" };

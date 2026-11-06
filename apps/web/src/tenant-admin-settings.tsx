@@ -784,7 +784,6 @@ function CorporateDesignPreview({
     { Icon: Box, label: "Dienste" },
     { Icon: Box, label: "Assets" },
     { Icon: BookOpen, label: "Wissensdatenbank" },
-    { Icon: UserRound, label: "Mein Portal" },
     { Icon: Settings, label: "Einstellungen" },
   ];
 

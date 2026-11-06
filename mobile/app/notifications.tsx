@@ -99,13 +99,21 @@ const CATEGORY_DETAILS: readonly {
     label: "Shop",
     description: "Freigaben, Bereitstellung und Status deiner Bestellungen.",
   },
+  {
+    key: "inventory_low_stock",
+    label: "Lagerunterbestand",
+    description:
+      "Wenn die Verfügbarkeit eines Artikels den Mindestbestand erreicht.",
+  },
 ];
 
 const HOURS = Array.from({ length: 24 }, (_, hour) => hour);
 
 function defaultPreferences(): PushPreferences {
   return {
-    enabledCategories: [...PUSH_CATEGORIES],
+    enabledCategories: PUSH_CATEGORIES.filter(
+      (category) => category !== "inventory_low_stock",
+    ),
     quietEnd: 7,
     quietHoursEnabled: false,
     quietStart: 22,

@@ -5,6 +5,7 @@ import {
   Check,
   CircleHelp,
   Clock3,
+  House,
   ListTodo,
   LoaderCircle,
   ShieldCheck,
@@ -26,7 +27,7 @@ import {
 import "./agent-workbench.css";
 
 type WorkbenchView =
-  "team" | "mentions" | "delegations" | "incidents" | "followUps";
+  "team" | "mentions" | "delegations" | "incidents" | "followUps" | "portal";
 type IncidentStatus =
   "investigating" | "identified" | "monitoring" | "resolved";
 
@@ -1582,6 +1583,7 @@ export function AgentWorkbenchPanel({
   onOpenQueue,
   onOpenTicket,
   onUnreadMentionsChange,
+  portalPanel,
   requestedView,
   showAgentWorkbench = true,
   tenantId,
@@ -1592,26 +1594,34 @@ export function AgentWorkbenchPanel({
   onOpenQueue: (queue: TeamQueue) => void;
   onOpenTicket: (ticketId: string) => void;
   onUnreadMentionsChange: (count: number) => void;
+  /** The personal area ("Mein Bereich"): incidents, approvals, devices. */
+  portalPanel?: ReactNode | undefined;
   requestedView?: WorkbenchView | undefined;
   showAgentWorkbench?: boolean;
   tenantId: string;
 }) {
-  const [view, setView] = useState<WorkbenchView>(
-    showAgentWorkbench ? "team" : "followUps",
-  );
+  const portalEnabled = portalPanel !== undefined;
+  const fallbackView: WorkbenchView = showAgentWorkbench
+    ? "team"
+    : followUpsEnabled
+      ? "followUps"
+      : "portal";
+  const [view, setView] = useState<WorkbenchView>(fallbackView);
 
   useEffect(() => {
     if (requestedView === "followUps" && followUpsEnabled) {
       setView("followUps");
     }
-  }, [followUpsEnabled, requestedView]);
+    if (requestedView === "portal" && portalEnabled) setView("portal");
+  }, [followUpsEnabled, portalEnabled, requestedView]);
 
   useEffect(() => {
-    if (!showAgentWorkbench && followUpsEnabled) setView("followUps");
-    if (showAgentWorkbench && view === "followUps" && !followUpsEnabled) {
-      setView("team");
-    }
-  }, [followUpsEnabled, showAgentWorkbench, view]);
+    const available =
+      (view === "followUps" && followUpsEnabled) ||
+      (view === "portal" && portalEnabled) ||
+      (view !== "followUps" && view !== "portal" && showAgentWorkbench);
+    if (!available) setView(fallbackView);
+  }, [fallbackView, followUpsEnabled, portalEnabled, showAgentWorkbench, view]);
 
   const views: Array<{
     Icon: typeof UsersRound;
@@ -1639,7 +1649,19 @@ export function AgentWorkbenchPanel({
           },
         ]
       : []),
+    ...(portalEnabled
+      ? [{ Icon: House, label: "Mein Bereich", value: "portal" as const }]
+      : []),
   ];
+
+  // Employees only have their personal area: no team header, no tabs.
+  if (views.length === 1 && portalEnabled) {
+    return (
+      <section className="agent-workbench" aria-label="Arbeitsplatz">
+        {portalPanel}
+      </section>
+    );
+  }
 
   return (
     <section className="agent-workbench" aria-label="Arbeitsplatz">
@@ -1654,38 +1676,43 @@ export function AgentWorkbenchPanel({
         </div>
         <ShieldCheck aria-hidden="true" size={24} strokeWidth={1.8} />
       </header>
-      <nav
-        aria-label="Bereiche des Arbeitsplatzes"
-        className="agent-workbench__tabs"
-      >
-        {views.map(({ Icon, label, value }) => (
-          <button
-            aria-pressed={view === value}
-            className={view === value ? "is-active" : ""}
-            key={value}
-            onClick={() => setView(value)}
-            type="button"
-          >
-            <Icon aria-hidden="true" size={17} strokeWidth={1.9} />
-            {label}
-          </button>
-        ))}
-      </nav>
-      {view === "team" && (
+      {views.length > 1 ? (
+        <nav
+          aria-label="Bereiche des Arbeitsplatzes"
+          className="agent-workbench__tabs"
+        >
+          {views.map(({ Icon, label, value }) => (
+            <button
+              aria-pressed={view === value}
+              className={view === value ? "is-active" : ""}
+              key={value}
+              onClick={() => setView(value)}
+              type="button"
+            >
+              <Icon aria-hidden="true" size={17} strokeWidth={1.9} />
+              {label}
+            </button>
+          ))}
+        </nav>
+      ) : null}
+      {view === "team" && showAgentWorkbench && (
         <TeamQueuesPanel onOpenQueue={onOpenQueue} tenantId={tenantId} />
       )}
-      {view === "mentions" && (
+      {view === "mentions" && showAgentWorkbench && (
         <MentionsPanel
           onOpenTicket={onOpenTicket}
           onUnreadChange={onUnreadMentionsChange}
           tenantId={tenantId}
         />
       )}
-      {view === "delegations" && <DelegationsPanel tenantId={tenantId} />}
-      {view === "incidents" && (
+      {view === "delegations" && showAgentWorkbench && (
+        <DelegationsPanel tenantId={tenantId} />
+      )}
+      {view === "incidents" && showAgentWorkbench && (
         <IncidentsPanel canManage={canManageIncidents} tenantId={tenantId} />
       )}
       {view === "followUps" && followUpsEnabled && followUpsPanel}
+      {view === "portal" && portalEnabled && portalPanel}
     </section>
   );
 }
