@@ -106,6 +106,8 @@ type Problem = {
   created_by: string;
   created_at: string;
   updated_at: string;
+  /** Affected services (older functions send none). */
+  service_ids: string[];
 };
 
 type TicketReference = {
@@ -170,6 +172,9 @@ type ProblemForm = {
   rootCause: string;
   ownerId: string;
   departmentId: string;
+  serviceIds: string[];
+  /** "" keeps the current state of the affected services. */
+  serviceStatus: "" | ServiceStatus;
 };
 
 type ProblemFormMode = "create" | "edit" | "resolve";
@@ -276,6 +281,8 @@ type ProblemSaveRequest = {
   ownerId: string | null;
   departmentId?: string;
   problemId?: string;
+  serviceIds: string[];
+  serviceStatus: ServiceStatus | null;
 };
 type ProblemResolveRequest = {
   type: "manageProblem";
@@ -284,6 +291,7 @@ type ProblemResolveRequest = {
   problemId: string;
   workaround: string | null;
   rootCause: string | null;
+  serviceStatus?: ServiceStatus | null;
 };
 type ProblemDeleteRequest = {
   type: "manageProblem";
@@ -370,6 +378,8 @@ const EMPTY_PROBLEM_FORM: ProblemForm = {
   rootCause: "",
   ownerId: "",
   departmentId: "",
+  serviceIds: [],
+  serviceStatus: "",
 };
 
 const CRITICALITY_LABELS: Record<Criticality, string> = {
@@ -1101,6 +1111,11 @@ function parseProblem(value: unknown): Problem | null {
     created_by: value.created_by,
     created_at: value.created_at,
     updated_at: value.updated_at,
+    service_ids: Array.isArray(value.service_ids)
+      ? value.service_ids.filter(
+          (entry): entry is string => typeof entry === "string",
+        )
+      : [],
   };
 }
 
@@ -1687,7 +1702,105 @@ function problemDraft(problem: Problem): ProblemForm {
     rootCause: problem.root_cause ?? "",
     ownerId: problem.owner_id ?? "",
     departmentId: problem.department_id ?? "",
+    serviceIds: problem.service_ids,
+    // Resolving suggests to set the affected services back to operational.
+    serviceStatus: "",
   };
+}
+
+/** Affected services of a case and the state to set on them. */
+function ProblemServicesField({
+  disabled,
+  onChange,
+  onStatusChange,
+  selectedIds,
+  services,
+  status,
+  statusLabel,
+}: {
+  disabled: boolean;
+  onChange: (serviceIds: string[]) => void;
+  onStatusChange: (status: "" | ServiceStatus) => void;
+  selectedIds: readonly string[];
+  services: readonly Service[];
+  status: "" | ServiceStatus;
+  statusLabel: string;
+}) {
+  const [query, setQuery] = useState("");
+  const selected = new Set(selectedIds);
+  const term = query.trim().toLocaleLowerCase("de-CH");
+  const visible = services.filter(
+    (service) =>
+      service.active &&
+      (!term || service.name.toLocaleLowerCase("de-CH").includes(term)),
+  );
+  return (
+    <fieldset className="service-assets__problem-services">
+      <legend>Betroffene Dienste (optional)</legend>
+      {services.length > 8 ? (
+        <input
+          aria-label="Dienste filtern"
+          disabled={disabled}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Dienst suchen"
+          type="search"
+          value={query}
+        />
+      ) : null}
+      {visible.length === 0 ? (
+        <p className="data-caption">Keine Dienste gefunden.</p>
+      ) : (
+        <ul>
+          {visible.map((service) => (
+            <li key={service.id}>
+              <label className="service-assets__checkbox">
+                <input
+                  checked={selected.has(service.id)}
+                  disabled={disabled}
+                  onChange={(event) =>
+                    onChange(
+                      event.target.checked
+                        ? [...selectedIds, service.id]
+                        : selectedIds.filter((id) => id !== service.id),
+                    )
+                  }
+                  type="checkbox"
+                />
+                <span>
+                  {service.name}
+                  <small> · {SERVICE_STATUS_LABELS[service.status]}</small>
+                </span>
+              </label>
+            </li>
+          ))}
+        </ul>
+      )}
+      <label>
+        {statusLabel}
+        <select
+          disabled={disabled || selectedIds.length === 0}
+          onChange={(event) =>
+            onStatusChange(event.target.value as "" | ServiceStatus)
+          }
+          value={status}
+        >
+          <option value="">Nicht ändern</option>
+          {(Object.keys(SERVICE_STATUS_LABELS) as ServiceStatus[]).map(
+            (entry) => (
+              <option key={entry} value={entry}>
+                {SERVICE_STATUS_LABELS[entry]}
+              </option>
+            ),
+          )}
+        </select>
+      </label>
+      <p className="data-caption">
+        Der gewählte Zustand wird bei den Diensten gespeichert und im
+        Systemstatus angezeigt (bei öffentlichen Diensten auch auf der
+        Statusseite).
+      </p>
+    </fieldset>
+  );
 }
 
 export function ServiceAssets({
@@ -2923,6 +3036,20 @@ export function ServiceAssets({
     }
   }
 
+  /** Mirrors a state change of affected services in the local list. */
+  function applyLocalServiceStatus(
+    serviceIds: readonly string[],
+    status: "" | ServiceStatus,
+  ) {
+    if (!status || serviceIds.length === 0) return;
+    const ids = new Set(serviceIds);
+    setServices((current) =>
+      current.map((service) =>
+        ids.has(service.id) ? { ...service, status } : service,
+      ),
+    );
+  }
+
   async function deleteProblem(problem: Problem) {
     if (
       !window.confirm(
@@ -3071,7 +3198,12 @@ export function ServiceAssets({
             problemId: problemForm.id!,
             workaround: optionalText(problemForm.workaround),
             rootCause: optionalText(problemForm.rootCause),
+            serviceStatus: problemForm.serviceStatus || null,
           }),
+        );
+        applyLocalServiceStatus(
+          resolved.service_ids,
+          problemForm.serviceStatus,
         );
         setProblems((current) =>
           sortProblems([
@@ -3167,8 +3299,11 @@ export function ServiceAssets({
         rootCause: optionalText(problemForm.rootCause),
         ownerId: optionalText(problemForm.ownerId),
         ...departmentRequestValue(departments, problemForm.departmentId),
+        serviceIds: problemForm.serviceIds,
+        serviceStatus: problemForm.serviceStatus || null,
       };
       const saved = parseSavedProblem(await requestServiceAssets(request));
+      applyLocalServiceStatus(saved.service_ids, problemForm.serviceStatus);
       const pendingTickets = editing ? [] : [...problemTickets];
       const linkFailures: string[] = [];
       for (const ticket of pendingTickets) {
@@ -4640,6 +4775,20 @@ export function ServiceAssets({
                     {problem.root_cause ? (
                       <p>Ursache: {problem.root_cause}</p>
                     ) : null}
+                    {problem.service_ids.length > 0 ? (
+                      <p>
+                        Dienste:{" "}
+                        {services
+                          .filter((service) =>
+                            problem.service_ids.includes(service.id),
+                          )
+                          .map(
+                            (service) =>
+                              `${service.name} (${SERVICE_STATUS_LABELS[service.status]})`,
+                          )
+                          .join(", ") || "Nicht mehr verfügbar"}
+                      </p>
+                    ) : null}
                     {problem.owner_id ? (
                       <p>
                         Verantwortlich:{" "}
@@ -4802,6 +4951,25 @@ export function ServiceAssets({
                             }
                             required={problemMode === "create"}
                             value={problemForm.departmentId}
+                          />
+                          <ProblemServicesField
+                            disabled={controlsDisabled}
+                            onChange={(serviceIds) =>
+                              setProblemForm((current) => ({
+                                ...current,
+                                serviceIds,
+                              }))
+                            }
+                            onStatusChange={(serviceStatus) =>
+                              setProblemForm((current) => ({
+                                ...current,
+                                serviceStatus,
+                              }))
+                            }
+                            selectedIds={problemForm.serviceIds}
+                            services={services}
+                            status={problemForm.serviceStatus}
+                            statusLabel="Betriebszustand der betroffenen Dienste"
                           />
                           <label>
                             Status
@@ -5010,6 +5178,42 @@ export function ServiceAssets({
                             </ul>
                           ) : null}
                         </section>
+                      ) : null}
+                      {problemMode === "resolve" &&
+                      problemForm.serviceIds.length > 0 ? (
+                        <fieldset className="service-assets__ticket-follow-up">
+                          <legend>Betroffene Dienste</legend>
+                          <p className="data-caption">
+                            {services
+                              .filter((service) =>
+                                problemForm.serviceIds.includes(service.id),
+                              )
+                              .map(
+                                (service) =>
+                                  `${service.name} (${SERVICE_STATUS_LABELS[service.status]})`,
+                              )
+                              .join(" · ")}
+                          </p>
+                          <label className="service-assets__checkbox">
+                            <input
+                              checked={
+                                problemForm.serviceStatus === "operational"
+                              }
+                              disabled={controlsDisabled}
+                              onChange={(event) =>
+                                setProblemForm((current) => ({
+                                  ...current,
+                                  serviceStatus: event.target.checked
+                                    ? "operational"
+                                    : "",
+                                }))
+                              }
+                              type="checkbox"
+                            />
+                            Betroffene Dienste auf «Betriebsbereit» setzen
+                            (Systemstatus)
+                          </label>
+                        </fieldset>
                       ) : null}
                       {problemMode === "resolve" ? (
                         <fieldset className="service-assets__ticket-follow-up">

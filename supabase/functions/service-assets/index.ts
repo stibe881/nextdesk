@@ -43,6 +43,20 @@ type JsonValue = null | boolean | number | string | JsonValue[] | {
 type Kind = "service" | "asset" | "problem";
 type ManageType = "manageService" | "manageAsset" | "manageProblem";
 type Operation = "create" | "update" | "archive" | "restore" | "resolve" | "delete";
+const SERVICE_STATUSES = [
+  "operational",
+  "degraded",
+  "partial_outage",
+  "major_outage",
+  "maintenance",
+] as const;
+type ServiceStatusValue = (typeof SERVICE_STATUSES)[number];
+const MAX_PROBLEM_SERVICES = 50;
+/** Affected services of a case and an optional state to set on them. */
+type ProblemServices = {
+  serviceIds?: string[];
+  serviceStatus?: ServiceStatusValue;
+};
 type Action =
   | {
     type: "listCatalog";
@@ -70,6 +84,7 @@ type Action =
     values: Record<string, JsonValue>;
     /** Requested department (create/update only); undefined when absent. */
     departmentId?: string | null;
+    problemServices?: ProblemServices;
   }
   | {
     type: "linkTicket" | "unlinkTicket";
@@ -445,6 +460,10 @@ export function parseAction(value: unknown): Action | null {
   if (operation === "create" || operation === "update") {
     allowedKeys.push("departmentId");
   }
+  const problemServicesAllowed = value.type === "manageProblem" &&
+    (operation === "create" || operation === "update" ||
+      operation === "resolve");
+  if (problemServicesAllowed) allowedKeys.push("serviceIds", "serviceStatus");
   if (!hasOnlyKeys(value, allowedKeys)) return null;
   const id = operation === "create" ? undefined : value[resource.idKey];
   if (operation !== "create" && !isUuid(id)) return null;
@@ -464,10 +483,37 @@ export function parseAction(value: unknown): Action | null {
     if (validated !== null && typeof validated !== "string") return null;
     departmentId = validated;
   }
+  const problemServices: ProblemServices = {};
+  if (problemServicesAllowed && Object.hasOwn(value, "serviceIds")) {
+    const ids = value.serviceIds;
+    if (
+      !Array.isArray(ids) || ids.length > MAX_PROBLEM_SERVICES ||
+      !ids.every(isUuid)
+    ) {
+      return null;
+    }
+    problemServices.serviceIds = [
+      ...new Set(ids.map((entry) => (entry as string).toLowerCase())),
+    ];
+  }
+  if (problemServicesAllowed && Object.hasOwn(value, "serviceStatus")) {
+    if (
+      value.serviceStatus !== null &&
+      !(SERVICE_STATUSES as readonly unknown[]).includes(value.serviceStatus)
+    ) {
+      return null;
+    }
+    if (value.serviceStatus !== null) {
+      problemServices.serviceStatus = value.serviceStatus as ServiceStatusValue;
+    }
+  }
+  const hasProblemServices = problemServices.serviceIds !== undefined ||
+    problemServices.serviceStatus !== undefined;
   if (
     operation === "update" &&
     Object.keys(values).length === 0 &&
-    departmentId === undefined
+    departmentId === undefined &&
+    !hasProblemServices
   ) {
     return null;
   }
@@ -478,6 +524,7 @@ export function parseAction(value: unknown): Action | null {
     ...(typeof id === "string" ? { id: id.toLowerCase() } : {}),
     values,
     ...(departmentId !== undefined ? { departmentId } : {}),
+    ...(hasProblemServices ? { problemServices } : {}),
   };
 }
 
@@ -1144,6 +1191,111 @@ async function searchTickets(
   return json(request, { data: { tickets } });
 }
 
+/**
+ * Stores the affected services of a case and optionally sets their state.
+ * Services are checked with the caller's client (RLS: tenant, departments);
+ * the state change also runs with it, so it needs the same permissions as
+ * editing the service and is recorded in the status history.
+ */
+async function applyProblemServices(
+  client: CallerClient,
+  admin: AdminClient,
+  tenantId: string,
+  problemId: string,
+  problemServices: ProblemServices | undefined,
+): Promise<string[]> {
+  let serviceIds: string[];
+  if (problemServices?.serviceIds !== undefined) {
+    serviceIds = problemServices.serviceIds;
+    if (serviceIds.length > 0) {
+      const { data, error } = await client
+        .from("services")
+        .select("id")
+        .eq("tenant_id", tenantId)
+        .in("id", serviceIds);
+      if (error) databaseFailure(error);
+      if ((data ?? []).length !== serviceIds.length) {
+        throw new HttpError(
+          422,
+          "invalid_problem_services",
+          "Mindestens ein gewählter Dienst ist nicht verfügbar.",
+        );
+      }
+    }
+    const removed = await admin
+      .from("problem_services")
+      .delete()
+      .eq("tenant_id", tenantId)
+      .eq("problem_id", problemId);
+    if (removed.error) databaseFailure(removed.error);
+    if (serviceIds.length > 0) {
+      const inserted = await admin.from("problem_services").insert(
+        serviceIds.map((serviceId) => ({
+          tenant_id: tenantId,
+          problem_id: problemId,
+          service_id: serviceId,
+        })),
+      );
+      if (inserted.error) databaseFailure(inserted.error);
+    }
+  } else {
+    serviceIds = await readProblemServiceIds(admin, tenantId, problemId);
+  }
+  if (problemServices?.serviceStatus && serviceIds.length > 0) {
+    const { error } = await client
+      .from("services")
+      .update({ status: problemServices.serviceStatus })
+      .eq("tenant_id", tenantId)
+      .in("id", serviceIds);
+    if (error) databaseFailure(error);
+  }
+  return serviceIds;
+}
+
+async function readProblemServiceIds(
+  admin: AdminClient,
+  tenantId: string,
+  problemId: string,
+): Promise<string[]> {
+  const { data, error } = await admin
+    .from("problem_services")
+    .select("service_id")
+    .eq("tenant_id", tenantId)
+    .eq("problem_id", problemId);
+  if (error) databaseFailure(error);
+  return (data ?? []).flatMap((row: Row) =>
+    typeof row.service_id === "string" ? [row.service_id] : []
+  );
+}
+
+/** Adds the affected service ids to every case of the catalog. */
+async function withProblemServiceIds(
+  admin: AdminClient,
+  tenantId: string,
+  problems: Row[],
+): Promise<Row[]> {
+  if (problems.length === 0) return problems;
+  const { data, error } = await admin
+    .from("problem_services")
+    .select("problem_id, service_id")
+    .eq("tenant_id", tenantId)
+    .in("problem_id", problems.map((problem) => problem.id as string));
+  if (error) databaseFailure(error);
+  const byProblem = new Map<string, string[]>();
+  for (const row of (data ?? []) as Row[]) {
+    if (typeof row.problem_id !== "string") continue;
+    if (typeof row.service_id !== "string") continue;
+    byProblem.set(row.problem_id, [
+      ...(byProblem.get(row.problem_id) ?? []),
+      row.service_id,
+    ]);
+  }
+  return problems.map((problem) => ({
+    ...problem,
+    service_ids: byProblem.get(problem.id as string) ?? [],
+  }));
+}
+
 async function manageResource(
   request: Request,
   client: CallerClient,
@@ -1212,6 +1364,20 @@ async function manageResource(
         "Die Aktion konnte nicht abgeschlossen werden.",
       );
     }
+    if (action.type === "manageProblem" && isRecord(data)) {
+      const serviceIds = await applyProblemServices(
+        client,
+        admin,
+        action.tenantId,
+        data.id as string,
+        action.problemServices,
+      );
+      return json(
+        request,
+        { data: { problem: { ...data, service_ids: serviceIds } } },
+        201,
+      );
+    }
     return json(request, { data: { [resource.key]: data } }, 201);
   }
   if (action.operation === "delete") {
@@ -1246,12 +1412,20 @@ async function manageResource(
     : action.operation === "resolve"
     ? { ...action.values, status: "resolved" }
     : { ...action.values, ...departmentValues };
-  const { data, error } = await resourceClient
-    .update(values)
-    .eq("tenant_id", action.tenantId)
-    .eq("id", action.id!)
-    .select(resource.select)
-    .maybeSingle();
+  // Only the affected services changed: read the case instead of an empty
+  // update.
+  const { data, error } = Object.keys(values).length === 0
+    ? await resourceClient
+      .select(resource.select)
+      .eq("tenant_id", action.tenantId)
+      .eq("id", action.id!)
+      .maybeSingle()
+    : await resourceClient
+      .update(values)
+      .eq("tenant_id", action.tenantId)
+      .eq("id", action.id!)
+      .select(resource.select)
+      .maybeSingle();
   if (error) databaseFailure(error);
   if (!data) {
     throw new HttpError(
@@ -1259,6 +1433,18 @@ async function manageResource(
       "resource_not_found",
       "Der Eintrag ist nicht verfügbar.",
     );
+  }
+  if (action.type === "manageProblem" && isRecord(data)) {
+    const serviceIds = await applyProblemServices(
+      client,
+      admin,
+      action.tenantId,
+      action.id!,
+      action.problemServices,
+    );
+    return json(request, {
+      data: { problem: { ...data, service_ids: serviceIds } },
+    });
   }
   return json(request, { data: { [resource.key]: data } });
 }
@@ -1471,7 +1657,11 @@ const handler = withSupabase(
             canManageServices: assetManage.data,
             serviceCategories,
             assets: resolvedAssets,
-            problems,
+            problems: await withProblemServiceIds(
+              context.supabaseAdmin,
+              action.tenantId,
+              problems,
+            ),
             departments,
           },
         });

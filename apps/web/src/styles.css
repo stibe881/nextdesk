@@ -20795,3 +20795,33 @@ html:has(.embed-status-badge) body {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+.service-assets__problem-services {
+  display: grid;
+  gap: 10px;
+  grid-column: 1 / -1;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px 16px;
+}
+
+.service-assets__problem-services legend {
+  padding: 0 6px;
+  font-weight: 700;
+}
+
+.service-assets__problem-services ul {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 6px 14px;
+  max-height: 220px;
+  margin: 0;
+  overflow: auto;
+  padding: 0;
+  list-style: none;
+}
+
+.service-assets__problem-services small {
+  color: var(--muted);
+  font-weight: 500;
+}
