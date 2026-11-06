@@ -1116,16 +1116,58 @@ async function teamQueues(
     const key = `${typeof row.department_id === "string" ? row.department_id : ""}:${typeof row.assigned_team_id === "string" ? row.assigned_team_id : "unassigned"}`;
     counts.set(key, (counts.get(key) ?? 0) + 1);
   }
+  const entries = [...counts.entries()].map(([key, openTickets]) => {
+    const [departmentId, teamId] = key.split(":");
+    return {
+      departmentId,
+      teamId: teamId === "unassigned" ? null : teamId,
+      openTickets,
+    };
+  });
+  // Names for the labels (the caller sees these tickets, so their
+  // departments and teams too).
+  const departmentIds = [
+    ...new Set(entries.map((entry) => entry.departmentId).filter(Boolean)),
+  ];
+  const teamIds = [
+    ...new Set(
+      entries.flatMap((entry) => (entry.teamId ? [entry.teamId] : [])),
+    ),
+  ];
+  const [departments, teams] = await Promise.all([
+    departmentIds.length
+      ? client
+        .from("departments")
+        .select("id, name")
+        .eq("tenant_id", action.tenantId)
+        .in("id", departmentIds)
+      : Promise.resolve({ data: [], error: null }),
+    teamIds.length
+      ? client
+        .from("teams")
+        .select("id, name")
+        .eq("tenant_id", action.tenantId)
+        .in("id", teamIds)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+  const nameMap = (rows: unknown) =>
+    new Map(
+      (Array.isArray(rows) ? rows : []).flatMap((row) =>
+        isRecord(row) && typeof row.id === "string" &&
+          typeof row.name === "string"
+          ? [[row.id, row.name] as const]
+          : []
+      ),
+    );
+  const departmentNames = nameMap(departments.data);
+  const teamNames = nameMap(teams.data);
   return reply(request, {
     data: {
-      queues: [...counts.entries()].map(([key, openTickets]) => {
-        const [departmentId, teamId] = key.split(":");
-        return {
-          departmentId,
-          teamId: teamId === "unassigned" ? null : teamId,
-          openTickets,
-        };
-      }),
+      queues: entries.map((entry) => ({
+        ...entry,
+        departmentName: departmentNames.get(entry.departmentId) ?? null,
+        teamName: entry.teamId ? teamNames.get(entry.teamId) ?? null : null,
+      })),
     },
   });
 }

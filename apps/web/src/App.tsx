@@ -46,6 +46,7 @@ import {
   Boxes,
   ShoppingBag,
   ListChecks,
+  Package,
   X,
   type LucideIcon,
 } from "lucide-react";
@@ -217,10 +218,14 @@ const quickCreateActionPresentation: Record<
   QuickCreateAction,
   { Icon: LucideIcon; label: string }
 > = {
+  followUp: { Icon: CalendarClock, label: "Wiedervorlage erfassen" },
   ticket: { Icon: Ticket, label: "Ticket erfassen" },
   problem: { Icon: FileWarning, label: "Fall erfassen" },
-  followUp: { Icon: CalendarClock, label: "Wiedervorlage erfassen" },
+  serviceTask: { Icon: ListChecks, label: "Serviceaufgabe erfassen" },
   knowledge: { Icon: BookOpen, label: "Wissensartikel erfassen" },
+  inventoryItem: { Icon: Package, label: "Lagerartikel erfassen" },
+  contract: { Icon: FileText, label: "Vertrag erfassen" },
+  license: { Icon: KeyRound, label: "Lizenz erfassen" },
 };
 
 type DashboardView = {
@@ -4011,13 +4016,6 @@ function AuthenticatedApp() {
     ticketListRefinement.sortDirection !== "desc";
   const isFeatureEnabled = (featureKey: string) =>
     !isSupabaseConfigured || tenantFeatures[featureKey] === true;
-  const quickCreateActions = quickCreateActionsForContext({
-    assetManagementEnabled: isFeatureEnabled("assets.management"),
-    canWorkTickets,
-    experienceWorkspaceEnabled,
-    hasActiveTenant: activeTenant !== null,
-    knowledgeBaseEnabled: isFeatureEnabled("knowledge.base"),
-  });
   const activeQuickCreateRequest =
     quickCreateRequest &&
     quickCreateRequestMatchesTenant(
@@ -4087,6 +4085,19 @@ function AuthenticatedApp() {
           !employeeHiddenSections.includes(item.label) &&
           list.findIndex((other) => other.label === item.label) === index,
       );
+  const workSectionAvailable = (label: Section) =>
+    workSections.some((item) => item.label === label);
+  const quickCreateActions = quickCreateActionsForContext({
+    assetManagementEnabled: isFeatureEnabled("assets.management"),
+    canWorkTickets,
+    experienceWorkspaceEnabled,
+    hasActiveTenant: activeTenant !== null,
+    knowledgeBaseEnabled: isFeatureEnabled("knowledge.base"),
+    serviceTasksAvailable: workSectionAvailable("Serviceaufgaben"),
+    inventoryAvailable: workSectionAvailable("Lager"),
+    contractsAvailable:
+      workSectionAvailable("Verträge") && workSectionAvailable("Lizenzen"),
+  });
 
   useEffect(() => {
     if (ticketAccessLoading || tenantFeaturesLoading) return;
@@ -4375,13 +4386,19 @@ function AuthenticatedApp() {
       tenantId: requestTenantId,
     };
     setQuickCreateRequest(request);
-    setSection(
-      action === "problem"
-        ? "Fälle"
-        : action === "followUp"
-          ? "Arbeitsplatz"
-          : "Wissen",
-    );
+    const actionSections: Record<
+      Exclude<QuickCreateAction, "ticket">,
+      Section
+    > = {
+      followUp: "Arbeitsplatz",
+      problem: "Fälle",
+      serviceTask: "Serviceaufgaben",
+      knowledge: "Wissen",
+      inventoryItem: "Lager",
+      contract: "Verträge",
+      license: "Lizenzen",
+    };
+    setSection(actionSections[action]);
   }
 
   function handleQuickCreateMenuKeyDown(
@@ -5354,9 +5371,25 @@ function AuthenticatedApp() {
             tenantId={activeTenant.id}
           />
         ) : section === "Verträge" && activeTenant && contractsAvailable ? (
-          <Contracts tenantId={activeTenant.id} />
+          <Contracts
+            createRequestId={
+              activeQuickCreateRequest?.action === "contract"
+                ? activeQuickCreateRequest.id
+                : undefined
+            }
+            onCreateRequestConsumed={consumeQuickCreateRequest}
+            tenantId={activeTenant.id}
+          />
         ) : section === "Lizenzen" && activeTenant && contractsAvailable ? (
-          <Licenses tenantId={activeTenant.id} />
+          <Licenses
+            createRequestId={
+              activeQuickCreateRequest?.action === "license"
+                ? activeQuickCreateRequest.id
+                : undefined
+            }
+            onCreateRequestConsumed={consumeQuickCreateRequest}
+            tenantId={activeTenant.id}
+          />
         ) : section === "Assets" &&
           activeTenant &&
           isFeatureEnabled("assets.management") ? (
@@ -5369,13 +5402,27 @@ function AuthenticatedApp() {
         ) : section === "Lager" &&
           activeTenant &&
           isFeatureEnabled("inventory.management") ? (
-          <Inventory tenantId={activeTenant.id} />
+          <Inventory
+            createRequestId={
+              activeQuickCreateRequest?.action === "inventoryItem"
+                ? activeQuickCreateRequest.id
+                : undefined
+            }
+            onCreateRequestConsumed={consumeQuickCreateRequest}
+            tenantId={activeTenant.id}
+          />
         ) : section === "Shop" &&
           activeTenant &&
           isFeatureEnabled("self_service.shop") ? (
           <Shop key={activeTenant.id} tenantId={activeTenant.id} />
         ) : section === "Serviceaufgaben" && activeTenant ? (
           <ServiceTasks
+            createRequestId={
+              activeQuickCreateRequest?.action === "serviceTask"
+                ? activeQuickCreateRequest.id
+                : undefined
+            }
+            onCreateRequestConsumed={consumeQuickCreateRequest}
             focusOccurrenceId={serviceTaskFocusId}
             key={activeTenant.id}
             onFocusHandled={() => setServiceTaskFocusId(null)}
