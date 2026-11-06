@@ -6,6 +6,9 @@ export interface DashboardTicket {
   assignedAgentId?: string | null;
   assignedAgentName?: string | null;
   assignedToCurrentUser: boolean;
+  assignedTeamId?: string | null;
+  assignedTeamName?: string | null;
+  departmentId?: string;
   createdAt?: string;
   isClosed: boolean;
   isUnassigned: boolean;

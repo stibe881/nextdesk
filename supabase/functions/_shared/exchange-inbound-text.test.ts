@@ -1,4 +1,7 @@
-import { normalizeInboundEmailText } from "./exchange-inbound-text.ts";
+import {
+  corporateSignatureAnchors,
+  normalizeInboundEmailText,
+} from "./exchange-inbound-text.ts";
 
 Deno.test("bereinigt technische Outlook-Reaktions- und Abo-Fusszeilen", () => {
   const result = normalizeInboundEmailText(`Microsoft Outlook
@@ -256,5 +259,55 @@ m: mara@beispiel.ch
     throw new Error(
       `CID-Bild ging in der sichtbaren Signatur verloren: ${result}`,
     );
+  }
+});
+
+Deno.test(
+  "erkennt eine Signatur nach einer Grussformel am Satzende (Gruess)",
+  () => {
+    const mail = `Hallo Zusammen
+
+Sara Zulian erhält keine Anrufe.
+
+Danke für eure Hilfe und e liebe Gruess
+
+Melanie Sauter
+Sozialpädagoge*in
+Integration
+t: 041 767 39 62
+[Logo_Sonnenberg_Baar_CMYK.png]
+[https://eucattachment.freshservice.com/inline/attachment?token=abc]<https://www.linkedin.com/company/x> [https://eucattachment.freshservice.com/inline/attachment?token=def] <https://www.facebook.com/SonnenbergBaar>
+SONNENBERG
+Landhausstrasse 20
+CH-6340 Baar (ZG)
+m: info@sonnenberg-baar.ch
+w: sonnenberg-baar.ch<https://www.sonnenberg-baar.ch/>`;
+    const anchors = corporateSignatureAnchors(mail);
+    if (anchors?.firstLine !== "Sozialpädagoge*in") {
+      throw new Error(`Signatur nicht erkannt: ${JSON.stringify(anchors)}`);
+    }
+    const result = normalizeInboundEmailText(mail, undefined, {
+      formatCorporateSignature: true,
+    });
+    if (
+      !result.includes("E-Mail-Signatur\nSozialpädagoge*in") ||
+      result.includes("freshservice") ||
+      result.includes("Logo_Sonnenberg")
+    ) {
+      throw new Error(`Signatur nicht bereinigt: ${result}`);
+    }
+  },
+);
+
+Deno.test("hält einen langen Satz mit «Gruss» nicht für eine Grussformel", () => {
+  const anchors = corporateSignatureAnchors(`Hallo
+
+Bitte richte der ganzen Abteilung im zweiten Stock einen herzlichen Gruss aus
+
+Anna
+t: 041 000 00 00
+m: anna@example.ch`);
+  if (anchors !== null) {
+    throw new Error(`Unerwartete Signatur: ${JSON.stringify(anchors)}`);
   }
 });

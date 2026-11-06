@@ -26,7 +26,6 @@ import {
   Send,
   Sparkles,
   Star,
-  FolderTree,
   UsersRound,
   X,
 } from "lucide-react";
@@ -2260,6 +2259,8 @@ function parseCreatedTicketCategory(
   }
   return category;
 }
+
+const NEW_CATEGORY_OPTION = "__new__";
 
 async function loadTicketCategories(
   tenantId: string,
@@ -7528,9 +7529,13 @@ export function TicketDetail({
                   <select
                     aria-label="Ticketkategorie direkt ändern"
                     disabled={ticketCategorySaving}
-                    onChange={(event) =>
-                      void saveTicketCategory(event.target.value || null, null)
-                    }
+                    onChange={(event) => {
+                      if (event.target.value === NEW_CATEGORY_OPTION) {
+                        openTicketCategoryForm(null);
+                        return;
+                      }
+                      void saveTicketCategory(event.target.value || null, null);
+                    }}
                     value={selectedTicketCategory?.id ?? ""}
                   >
                     <option value="">Keine Kategorie</option>
@@ -7539,6 +7544,9 @@ export function TicketDetail({
                         {category.name}
                       </option>
                     ))}
+                    <option value={NEW_CATEGORY_OPTION}>
+                      + Neue Kategorie …
+                    </option>
                   </select>
                 ) : (
                   (selectedTicketCategory?.name ?? "Keine Kategorie")
@@ -7558,12 +7566,18 @@ export function TicketDetail({
                   <select
                     aria-label="Ticketunterkategorie direkt ändern"
                     disabled={!selectedTicketCategory || ticketCategorySaving}
-                    onChange={(event) =>
+                    onChange={(event) => {
+                      if (event.target.value === NEW_CATEGORY_OPTION) {
+                        if (selectedTicketCategory) {
+                          openTicketCategoryForm(selectedTicketCategory.id);
+                        }
+                        return;
+                      }
                       void saveTicketCategory(
                         selectedTicketCategory?.id ?? null,
                         event.target.value || null,
-                      )
-                    }
+                      );
+                    }}
                     value={selectedTicketSubcategory?.id ?? ""}
                   >
                     <option value="">
@@ -7576,6 +7590,11 @@ export function TicketDetail({
                         {category.name}
                       </option>
                     ))}
+                    {selectedTicketCategory ? (
+                      <option value={NEW_CATEGORY_OPTION}>
+                        + Neue Unterkategorie …
+                      </option>
+                    ) : null}
                   </select>
                 ) : (
                   (selectedTicketSubcategory?.name ?? "Keine Unterkategorie")
@@ -7583,6 +7602,72 @@ export function TicketDetail({
               </dd>
             </div>
           </div>
+          {detail.canUpdate && ticketCategoryDraft ? (
+            <div className="ticket-detail-fact--wide">
+              <div className="ticket-category-create" role="group">
+                <p className="data-caption">
+                  {ticketCategoryDraftParent
+                    ? `Unterkategorie von: ${ticketCategoryDraftParent.name}`
+                    : "Neue Kategorie ohne übergeordnete Kategorie"}
+                </p>
+                <label>
+                  Name
+                  <input
+                    autoFocus
+                    disabled={ticketCategorySaving}
+                    maxLength={120}
+                    onChange={(event) => {
+                      const name = event.target.value;
+                      setTicketCategoryDraft((current) =>
+                        current ? { ...current, name } : null,
+                      );
+                      setTicketCategoryError("");
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        void createTicketCategoryFromDetail();
+                      }
+                    }}
+                    placeholder={
+                      ticketCategoryDraftParent
+                        ? "Name der Unterkategorie"
+                        : "Name der Kategorie"
+                    }
+                    value={ticketCategoryDraft.name}
+                  />
+                </label>
+                <div>
+                  <button
+                    className="secondary-button"
+                    disabled={ticketCategorySaving}
+                    onClick={() => {
+                      setTicketCategoryDraft(null);
+                      setTicketCategoryError("");
+                    }}
+                    type="button"
+                  >
+                    Abbrechen
+                  </button>
+                  <button
+                    className="primary-button"
+                    disabled={
+                      ticketCategorySaving || !ticketCategoryDraft.name.trim()
+                    }
+                    onClick={() => void createTicketCategoryFromDetail()}
+                    type="button"
+                  >
+                    {ticketCategorySaving ? "Wird gespeichert …" : "Erstellen"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : null}
+          {detail.canUpdate && ticketCategoryError ? (
+            <div className="error ticket-detail-fact--wide" role="alert">
+              {ticketCategoryError}
+            </div>
+          ) : null}
           <div
             className={
               detail.canUpdate
@@ -7840,119 +7925,6 @@ export function TicketDetail({
         tenantId={tenantId}
         ticketId={detail.ticket.id}
       />
-
-      {detail.canUpdate && (
-        <section
-          className="ticket-categorization ticket-detail-primary"
-          aria-labelledby="ticket-categorization-heading"
-        >
-          <div className="ticket-detail-section-heading">
-            <div>
-              <p className="eyebrow">VERWALTEN</p>
-              <h3 id="ticket-categorization-heading">Kategorien verwalten</h3>
-            </div>
-            <FolderTree aria-hidden="true" size={19} strokeWidth={1.7} />
-          </div>
-          <p className="ticket-category-description">
-            Kategorie und Unterkategorie werden direkt im Überblick geändert.
-          </p>
-          {ticketCategoriesLoading ? (
-            <p className="ticket-categories-status" role="status">
-              Kategorien werden geladen …
-            </p>
-          ) : (
-            <div className="ticket-category-editor">
-              <div className="ticket-category-actions">
-                <button
-                  className="text-button"
-                  disabled={ticketCategorySaving}
-                  onClick={() => openTicketCategoryForm(null)}
-                  type="button"
-                >
-                  Neue Kategorie
-                </button>
-                <button
-                  className="text-button"
-                  disabled={!selectedTicketCategory || ticketCategorySaving}
-                  onClick={() =>
-                    selectedTicketCategory &&
-                    openTicketCategoryForm(selectedTicketCategory.id)
-                  }
-                  type="button"
-                >
-                  Neue Unterkategorie
-                </button>
-              </div>
-              {ticketCategoryDraft && (
-                <div className="ticket-category-create" role="group">
-                  <p className="data-caption">
-                    {ticketCategoryDraftParent
-                      ? `Unterkategorie von: ${ticketCategoryDraftParent.name}`
-                      : "Neue Kategorie ohne übergeordnete Kategorie"}
-                  </p>
-                  <label>
-                    Name
-                    <input
-                      autoFocus
-                      disabled={ticketCategorySaving}
-                      maxLength={120}
-                      onChange={(event) => {
-                        const name = event.target.value;
-                        setTicketCategoryDraft((current) =>
-                          current ? { ...current, name } : null,
-                        );
-                        setTicketCategoryError("");
-                      }}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter") {
-                          event.preventDefault();
-                          void createTicketCategoryFromDetail();
-                        }
-                      }}
-                      placeholder={
-                        ticketCategoryDraftParent
-                          ? "Name der Unterkategorie"
-                          : "Name der Kategorie"
-                      }
-                      value={ticketCategoryDraft.name}
-                    />
-                  </label>
-                  <div>
-                    <button
-                      className="secondary-button"
-                      disabled={ticketCategorySaving}
-                      onClick={() => {
-                        setTicketCategoryDraft(null);
-                        setTicketCategoryError("");
-                      }}
-                      type="button"
-                    >
-                      Abbrechen
-                    </button>
-                    <button
-                      className="primary-button"
-                      disabled={
-                        ticketCategorySaving || !ticketCategoryDraft.name.trim()
-                      }
-                      onClick={() => void createTicketCategoryFromDetail()}
-                      type="button"
-                    >
-                      {ticketCategorySaving
-                        ? "Wird gespeichert …"
-                        : "Erstellen"}
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-          {ticketCategoryError && (
-            <p className="error" role="alert">
-              {ticketCategoryError}
-            </p>
-          )}
-        </section>
-      )}
 
       {presence.length > 0 && (
         <aside

@@ -14065,7 +14065,6 @@ body:has(.ticket-list-filter-panel) {
   line-height: 1.55;
 }
 
-
 .tenant-admin-settings__feature-group--operational {
   margin-top: 2px;
   border-top: 1px solid var(--border);
@@ -17985,17 +17984,28 @@ html:has(.embed-status-badge) body {
   padding: 0 16px;
   border-radius: 6px;
   color: #fff;
-  font: 700 14px/1 Arial, Helvetica, sans-serif;
+  font:
+    700 14px/1 Arial,
+    Helvetica,
+    sans-serif;
   text-decoration: none;
   white-space: nowrap;
   background: #31a85a;
 }
 
-.embed-status-badge--maintenance { background: #2563eb; }
+.embed-status-badge--maintenance {
+  background: #2563eb;
+}
 .embed-status-badge--degraded,
-.embed-status-badge--partial_outage { background: #d97706; }
-.embed-status-badge--major_outage { background: #dc2626; }
-.embed-status-badge--unavailable { background: #475569; }
+.embed-status-badge--partial_outage {
+  background: #d97706;
+}
+.embed-status-badge--major_outage {
+  background: #dc2626;
+}
+.embed-status-badge--unavailable {
+  background: #475569;
+}
 
 .embed-status-badge__dot {
   width: 12px;
@@ -18026,7 +18036,10 @@ html:has(.embed-status-badge) body {
   justify-items: center;
   padding: 22px 16px;
   text-align: center;
-  transition: background 0.15s, border-color 0.15s, transform 0.15s;
+  transition:
+    background 0.15s,
+    border-color 0.15s,
+    transform 0.15s;
 }
 
 .record-attachments__dropzone svg {
@@ -19171,7 +19184,6 @@ html:has(.embed-status-badge) body {
   margin: 2px 0;
 }
 
-
 /* Foto passt fast zum 4:3-Feld: Feld ganz ausfüllen. */
 .shop__image img.shop__image-fill {
   object-fit: cover;
@@ -19805,4 +19817,107 @@ html:has(.embed-status-badge) body {
 
 .inventory__muted {
   color: var(--muted);
+}
+
+.ticket-detail-facts-grid > .ticket-detail-fact--wide {
+  grid-column: 1 / -1;
+}
+
+.ticket-quick-assign {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.ticket-assign-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 180px;
+  min-height: 26px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 3px 10px;
+  overflow: hidden;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.ticket-assign-chip:hover,
+.ticket-assign-chip[aria-expanded="true"] {
+  border-color: var(--primary);
+}
+
+.ticket-assign-chip:focus-visible {
+  outline: 3px solid var(--focus-tint-rgb-99-102-241-16);
+  outline-offset: 1px;
+}
+
+.ticket-assign-chip--unassigned {
+  border-color: var(--warning);
+  color: var(--warning);
+}
+
+.ticket-assign-chip--empty {
+  color: var(--muted, var(--text));
+  border-style: dashed;
+}
+
+.ticket-quick-assign__popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 30;
+  display: grid;
+  gap: 8px;
+  width: 260px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px;
+  background: var(--surface);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 22%);
+  text-align: left;
+}
+
+.ticket-quick-assign__popover label {
+  display: grid;
+  gap: 6px;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.ticket-quick-assign__popover select {
+  width: 100%;
+  min-height: 38px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 6px 8px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+}
+
+.ticket-quick-assign__popover .text-button {
+  justify-self: start;
+}
+
+.ticket-quick-assign__error {
+  color: var(--danger, #dc2626);
+}
+
+@media (max-width: 720px) {
+  .ticket-quick-assign {
+    justify-content: flex-start;
+  }
 }
