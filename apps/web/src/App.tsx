@@ -2344,9 +2344,7 @@ function useDebouncedValue(value: string, delayMs: number): string {
 }
 
 function AuthenticatedApp() {
-  const [section, setRequestedSection] = useState<Section>(() =>
-    initialKnowledgeDeepLink ? "Wissen" : "Übersicht",
-  );
+  const [section, setRequestedSection] = useState<Section>("Übersicht");
   const [globalSearchTarget, setGlobalSearchTarget] =
     useState<GlobalSearchResult | null>(null);
   const [workplaceRequestedView, setWorkplaceRequestedView] =
@@ -2849,6 +2847,7 @@ function AuthenticatedApp() {
         isSupabaseConfigured && tenantFeatures["assets.management"] === true,
       canManageServiceStatus,
     });
+  const knowledgeDeepLinkConsumedRef = useRef(false);
   const workspaceNavigationReady = isWorkspaceNavigationReady({
     activeTenantAvailable: activeTenant !== null,
     isSupabaseConfigured,
@@ -2868,7 +2867,12 @@ function AuthenticatedApp() {
       setWorkplaceRequestedView(workspacePreferences.startWorkplaceView);
     }
     // A deep link to a knowledge article wins over the start page.
-    if (initialKnowledgeDeepLink && section === "Wissen") return;
+    if (initialKnowledgeDeepLink && !knowledgeDeepLinkConsumedRef.current) {
+      knowledgeDeepLinkConsumedRef.current = true;
+      setKnowledgeFocusArticleId(initialKnowledgeDeepLink);
+      setSection("Wissen");
+      return;
+    }
     setSection(workspacePreferences.startSection);
   }, [
     activeTenant?.id,
