@@ -3750,6 +3750,7 @@ export function TicketDetail({
   const [presence, setPresence] = useState<TicketPresencePerson[]>([]);
   const [pendingAction, setPendingAction] = useState<PendingAction>(null);
   const [statusKey, setStatusKey] = useState("");
+  const resolveAfterCommentRef = useRef(false);
   const [pendingCloseConfirmation, setPendingCloseConfirmation] =
     useState<PendingCloseConfirmation | null>(null);
   const [solutionPromptOpen, setSolutionPromptOpen] = useState(false);
@@ -5926,6 +5927,8 @@ export function TicketDetail({
 
   async function saveComment(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const resolveAfter = resolveAfterCommentRef.current;
+    resolveAfterCommentRef.current = false;
     const body = ticketCommentBodyWithAttachments(
       commentBody,
       activeCommentImageAttachments.length,
@@ -5940,6 +5943,29 @@ export function TicketDetail({
     if (body.length > 50_000) {
       setError("Ein Kommentar darf höchstens 50'000 Zeichen enthalten.");
       return;
+    }
+
+    // "… und als gelöst markieren": check before anything is sent.
+    const resolvedStatus = resolveAfter
+      ? (detail?.statuses.find((status) => status.key === "resolved") ??
+        detail?.statuses.find((status) => status.is_closed))
+      : undefined;
+    if (resolveAfter) {
+      if (!detail?.canClose || !resolvedStatus) {
+        setError("Sie dürfen dieses Ticket nicht schliessen.");
+        return;
+      }
+      const missing = [
+        requiredCloseFields.category ? "Kategorie" : null,
+        requiredCloseFields.team ? "Team" : null,
+        requiredCloseFields.assignee ? "Zuweisung" : null,
+      ].filter((label): label is string => label !== null);
+      if (missing.length > 0) {
+        setError(
+          `Bevor das Ticket gelöst werden kann, bitte zuerst ausfüllen: ${missing.join(", ")}. Die Nachricht wurde nicht gesendet.`,
+        );
+        return;
+      }
     }
 
     setPendingAction("comment");
@@ -6034,6 +6060,13 @@ export function TicketDetail({
         setCommentNotice("Interne Notiz wurde gespeichert.");
       }
       if (copyNotice) setCommentNotice(copyNotice);
+      if (resolveAfter && resolvedStatus) {
+        await saveOverviewChange(
+          { statusKey: resolvedStatus.key },
+          true,
+          false,
+        );
+      }
     } catch (nextError) {
       if (!commentSaved && uploadedAttachments.length > 0) {
         await Promise.allSettled(
@@ -7145,6 +7178,21 @@ export function TicketDetail({
                 )}
                 {commentComposer.submitLabel}
               </button>
+              {detail.canClose && !ticketIsClosed ? (
+                <button
+                  className="secondary-button ticket-comment-resolve-button"
+                  disabled={busy || attachmentBusy}
+                  onClick={() => {
+                    resolveAfterCommentRef.current = true;
+                  }}
+                  type="submit"
+                >
+                  <CircleCheck aria-hidden="true" size={16} strokeWidth={1.8} />
+                  {commentVisibility === "internal"
+                    ? "Notiz speichern und als gelöst markieren"
+                    : "Antwort senden und als gelöst markieren"}
+                </button>
+              ) : null}
             </form>
           </section>
         </div>

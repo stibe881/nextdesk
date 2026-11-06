@@ -3,7 +3,8 @@ export type QueueOption = readonly [key: string, label: string];
 export function shouldShowQueueTabs(
   queueOptions: readonly QueueOption[],
 ): boolean {
-  return queueOptions.length > 0;
+  // Only agents who work in several departments choose between queues.
+  return queueOptions.length > 1;
 }
 
 export function normalizeQueueSelection(
