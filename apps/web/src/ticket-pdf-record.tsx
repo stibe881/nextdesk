@@ -116,12 +116,80 @@ async function loadRecord(tenantId: string, ticketId: string) {
   return {
     data: detailEnvelope.data,
     exportedAt: recordEnvelope.data.occurredAt,
+    imagesByCommentId: await loadCommentImages(tenantId, ticketId),
   };
+}
+
+type CommentImage = { name: string; url: string };
+
+/** Images attached to messages, with short-lived URLs for the print view. */
+async function loadCommentImages(
+  tenantId: string,
+  ticketId: string,
+): Promise<Map<string, CommentImage[]>> {
+  const result = new Map<string, CommentImage[]>();
+  if (!supabase) return result;
+  try {
+    const { data: listEnvelope } = await supabase.functions.invoke(
+      "ticket-attachments",
+      { body: { type: "list", tenantId, ticketId } },
+    );
+    const rows = (
+      isRecord(listEnvelope) &&
+      isRecord(listEnvelope.data) &&
+      Array.isArray(listEnvelope.data.attachments)
+        ? listEnvelope.data.attachments
+        : []
+    ).filter(
+      (row): row is Record<string, unknown> =>
+        isRecord(row) &&
+        typeof row.id === "string" &&
+        typeof row.comment_id === "string" &&
+        ["image/png", "image/jpeg", "image/webp"].includes(
+          String(row.content_type),
+        ),
+    );
+    if (rows.length === 0) return result;
+    const commentByAttachment = new Map(
+      rows.map((row) => [String(row.id), String(row.comment_id)]),
+    );
+    const { data: urlEnvelope } = await supabase.functions.invoke(
+      "ticket-attachments",
+      {
+        body: {
+          type: "createInlineImageUrls",
+          tenantId,
+          ticketId,
+          attachmentIds: rows.slice(0, 16).map((row) => String(row.id)),
+        },
+      },
+    );
+    const images =
+      isRecord(urlEnvelope) &&
+      isRecord(urlEnvelope.data) &&
+      Array.isArray(urlEnvelope.data.inlineImages)
+        ? urlEnvelope.data.inlineImages.filter(isRecord)
+        : [];
+    for (const image of images) {
+      const commentId = commentByAttachment.get(String(image.attachmentId));
+      if (!commentId || typeof image.signedUrl !== "string") continue;
+      const list = result.get(commentId) ?? [];
+      list.push({
+        name: text(image.originalFilename, "Bild"),
+        url: image.signedUrl,
+      });
+      result.set(commentId, list);
+    }
+  } catch {
+    // Images are a best-effort addition; the record works without them.
+  }
+  return result;
 }
 
 function createPrintDocument(
   data: Record<string, unknown>,
   exportedAt: string,
+  imagesByCommentId: Map<string, CommentImage[]> = new Map(),
 ) {
   const ticket = isRecord(data.ticket) ? data.ticket : {};
   const requester = isRecord(data.requesterContact)
@@ -183,7 +251,14 @@ function createPrintDocument(
               <div><strong>${escapeHtml(comment.authorName)}</strong><span class="comment__visibility">${visibilityLabel}</span>${inboundEmail ? '<span class="comment__channel">per E-Mail</span>' : ""}${deliveryLabel ? `<span class="comment__delivery${emailDelivery === "failed" ? " is-warning" : ""}">${deliveryLabel}</span>` : ""}</div>
               <time>${escapeHtml(formatDateTime(comment.created_at))}</time>
             </header>
-            <p>${escapeHtml(comment.body).replace(/\n/g, "<br>")}</p>
+            <p>${escapeHtml(comment.body).replace(/\n/g, "<br>")}</p>${(
+              imagesByCommentId.get(String(comment.id)) ?? []
+            )
+              .map(
+                (image) =>
+                  `<figure class="comment__image"><img alt="${escapeHtml(image.name)}" src="${escapeHtml(image.url)}"><figcaption>${escapeHtml(image.name)}</figcaption></figure>`,
+              )
+              .join("")}
           </div>
         </article>`;
     })
@@ -249,6 +324,7 @@ function createPrintDocument(
     .comment__header strong { font-size:9pt; } .comment__visibility { background:var(--blue-soft); color:#2454aa; padding:3px 6px; } .comment--outgoing .comment__visibility { background:var(--violet-soft); color:#4c3bb0; } .comment--internal .comment__visibility { background:var(--amber-soft); color:var(--amber); }
     .comment__channel,.comment__delivery { color:var(--muted); font-size:7pt; font-weight:650; } .comment__delivery.is-warning { color:var(--red); }
     .comment time { color:var(--muted); font-size:7.4pt; padding-top:1px; text-align:right; white-space:nowrap; } .comment p { color:#283750; margin:8px 0 0; overflow-wrap:anywhere; }
+    .comment__image { break-inside:avoid; margin:8px 0 0; } .comment__image img { border:1px solid var(--line); border-radius:8px; display:block; max-height:90mm; max-width:100%; } .comment__image figcaption { color:var(--muted); font-size:7pt; margin-top:3px; }
     .empty-communication { color:var(--muted); font-style:italic; margin:0; }
     .record__footer { border-top:1px solid var(--line); color:var(--muted); display:flex; font-size:7.4pt; gap:10px; justify-content:space-between; margin-top:24px; padding-top:10px; }
     .record__footer span:last-child { text-align:right; }
@@ -310,9 +386,14 @@ export function TicketPdfRecord({
     setPending(true);
     setError("");
     try {
-      const { data, exportedAt } = await loadRecord(tenantId, ticketId);
+      const { data, exportedAt, imagesByCommentId } = await loadRecord(
+        tenantId,
+        ticketId,
+      );
       report.document.open();
-      report.document.write(createPrintDocument(data, exportedAt));
+      report.document.write(
+        createPrintDocument(data, exportedAt, imagesByCommentId),
+      );
       report.document.close();
     } catch (nextError) {
       report.close();
