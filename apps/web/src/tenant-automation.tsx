@@ -507,14 +507,6 @@ export function TenantAutomation({ tenantId }: { tenantId: string }) {
           </ul>
         )}
       </section>
-      <button
-        className="text-button"
-        disabled={loading}
-        onClick={() => void load()}
-        type="button"
-      >
-        <RefreshCw aria-hidden="true" size={15} /> Aktualisieren
-      </button>
     </section>
   );
 }

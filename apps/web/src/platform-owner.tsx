@@ -475,14 +475,6 @@ export function OwnerConsoleScreen({
               <p className="eyebrow">KUNDENBESTAND</p>
               <h2>Kundenmandanten</h2>
             </div>
-            <button
-              className="table-action"
-              disabled={loading || saving}
-              onClick={() => void loadTenants()}
-              type="button"
-            >
-              Aktualisieren
-            </button>
           </div>
           <label className="customer-search">
             <Search aria-hidden="true" size={17} strokeWidth={1.8} />
@@ -683,14 +675,6 @@ export function OwnerConsoleScreen({
               <p className="eyebrow">BENUTZER</p>
               <h2>{selectedUserTenant?.name ?? "Kundenbenutzer"}</h2>
             </div>
-            <button
-              className="table-action"
-              disabled={directoryLoading || !userTenantId}
-              onClick={() => void loadDirectory(userTenantId)}
-              type="button"
-            >
-              Aktualisieren
-            </button>
           </div>
           <label>
             Kundenmandant

@@ -655,14 +655,6 @@ export function AssetIntuneSettings({ tenantId }: { tenantId: string }) {
                   ? "Prüfung läuft …"
                   : "Lokalen Preflight ausführen"}
               </button>
-              <button
-                className="secondary-button"
-                disabled={controlsDisabled}
-                onClick={() => void load()}
-                type="button"
-              >
-                <RefreshCw aria-hidden="true" size={16} /> Aktualisieren
-              </button>
             </div>
           </form>
 

@@ -316,13 +316,6 @@ function DepartmentQuestionRouting({ tenantId }: { tenantId: string }) {
             zugewiesenen Agenten zugestellt.
           </p>
         </div>
-        <button
-          disabled={state === "loading" || savingDepartmentId !== null}
-          onClick={() => void load()}
-          type="button"
-        >
-          <RefreshCw aria-hidden="true" size={16} /> Aktualisieren
-        </button>
       </div>
       {error ? (
         <p
@@ -728,14 +721,6 @@ function DepartmentTeams({ tenantId }: { tenantId: string }) {
           </p>
         </div>
         <div className="department-management__header-actions">
-          <button
-            aria-label="Teams aktualisieren"
-            disabled={loading || isSaving}
-            onClick={() => void load()}
-            type="button"
-          >
-            <RefreshCw aria-hidden="true" size={16} /> Aktualisieren
-          </button>
           <button
             className="primary-button"
             disabled={loading || isSaving}
@@ -1166,13 +1151,6 @@ export function DepartmentManagement({ tenantId }: DepartmentManagementProps) {
           </p>
         </div>
         <div className="department-management__header-actions">
-          <button
-            disabled={loading || saving}
-            onClick={() => void load()}
-            type="button"
-          >
-            <RefreshCw aria-hidden="true" size={16} /> Aktualisieren
-          </button>
           <button
             className="primary-button"
             disabled={saving}

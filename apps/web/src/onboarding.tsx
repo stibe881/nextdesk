@@ -358,14 +358,6 @@ export function Onboarding({
           </p>
         </div>
         <div className="onboarding__actions">
-          <button
-            className="secondary-button"
-            onClick={() => void load()}
-            disabled={loading}
-            type="button"
-          >
-            <RefreshCw size={16} /> Aktualisieren
-          </button>
           {canRequest ? (
             <button
               className="primary-button"

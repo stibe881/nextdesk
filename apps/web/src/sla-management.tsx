@@ -1315,14 +1315,6 @@ export function SlaManagement({
           </p>
         </div>
         <div className="sla-management__toolbar">
-          <button
-            className="sla-management__button"
-            type="button"
-            onClick={() => void loadData()}
-            disabled={loading || saving !== null}
-          >
-            Aktualisieren
-          </button>
           {!readForbidden && !manageForbidden && (
             <button
               className="sla-management__button sla-management__button--primary"

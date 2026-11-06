@@ -771,15 +771,6 @@ export function TicketTemplates({ tenantId }: { tenantId: string }) {
           <div className="ticket-templates__header-actions">
             <button
               className="ticket-templates__button"
-              disabled={loading || isBusy}
-              onClick={() => void loadTemplates()}
-              type="button"
-            >
-              <RefreshCw aria-hidden="true" size={15} />
-              Aktualisieren
-            </button>
-            <button
-              className="ticket-templates__button"
               disabled={isBusy}
               onClick={resetForm}
               type="button"

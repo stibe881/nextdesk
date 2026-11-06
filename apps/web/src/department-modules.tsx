@@ -191,13 +191,6 @@ export function DepartmentModules({
             ausgeschaltet sind, bleiben für alle aus.
           </p>
         </div>
-        <button
-          disabled={loading || saving !== null}
-          onClick={() => void load()}
-          type="button"
-        >
-          <RefreshCw aria-hidden="true" size={16} /> Aktualisieren
-        </button>
       </div>
       {error ? (
         <p
