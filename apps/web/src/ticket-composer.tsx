@@ -624,7 +624,6 @@ export function TicketComposer({
   const [options, setOptions] = useState<OptionsResponse>(EMPTY_OPTIONS);
   const [optionsTenantId, setOptionsTenantId] = useState<string | null>(null);
   const [departmentId, setDepartmentId] = useState("");
-  const [departmentSelectionOpen, setDepartmentSelectionOpen] = useState(false);
   const [pickedAssets, setPickedAssets] = useState<PickedAsset[]>([]);
   // Chosen suggested articles, kept even if the suggestions change.
   const [articleChoices, setArticleChoices] = useState<
@@ -744,7 +743,6 @@ export function TicketComposer({
     setOptions(EMPTY_OPTIONS);
     setOptionsTenantId(null);
     setDepartmentId("");
-    setDepartmentSelectionOpen(false);
     setCategoryDraft(null);
     setTemplateLookup(null);
     setTemplateId("");
@@ -1257,11 +1255,6 @@ export function TicketComposer({
     return value || null;
   }
 
-  function openDepartmentSelection() {
-    setDepartmentSelectionOpen(true);
-    window.requestAnimationFrame(() => departmentSelectRef.current?.focus());
-  }
-
   function changeDepartment(nextDepartmentId: string) {
     setDepartmentId(nextDepartmentId);
     setAssignableAgents([]);
@@ -1767,8 +1760,6 @@ export function TicketComposer({
   const draftParent = categoryDraft?.parentId
     ? rootCategories.find((category) => category.id === categoryDraft.parentId)
     : null;
-  const showDepartmentSelection =
-    options.requesterContext.isInternal || departmentSelectionOpen;
   const requesterDepartmentIsValid =
     options.requesterContext.isInternal &&
     options.requesterContext.departmentId !== undefined &&
@@ -2304,60 +2295,37 @@ export function TicketComposer({
               <p className="eyebrow">EINORDNUNG & ZUSTÄNDIGKEIT</p>
               <h3 id="ticket-routing-heading">Ticket einordnen</h3>
             </div>
-            {showDepartmentSelection && (
-              <label>
-                Abteilung / Angebot
-                <select
-                  aria-describedby={
-                    options.requesterContext.isInternal && contextDepartmentName
-                      ? "ticket-requester-department"
-                      : undefined
-                  }
-                  disabled={saving || options.departments.length === 0}
-                  id="ticket-department-selection"
-                  onChange={(event) => changeDepartment(event.target.value)}
-                  ref={departmentSelectRef}
-                  required
-                  value={departmentId}
-                >
-                  {options.departments.map((department) => (
-                    <option key={department.id} value={department.id}>
-                      {department.name}
-                    </option>
-                  ))}
-                </select>
-                {options.requesterContext.isInternal &&
-                  contextDepartmentName && (
-                    <span
-                      className="data-caption"
-                      id="ticket-requester-department"
-                    >
-                      Vorausgefüllt: {contextDepartmentName}
-                    </span>
-                  )}
-              </label>
-            )}
-            {!showDepartmentSelection && (
-              <button
-                aria-controls={
-                  showDepartmentSelection
-                    ? "ticket-department-selection"
+            <label>
+              Abteilung / Angebot
+              <select
+                aria-describedby={
+                  options.requesterContext.isInternal && contextDepartmentName
+                    ? "ticket-requester-department"
                     : undefined
                 }
-                aria-expanded={showDepartmentSelection}
-                className="text-button"
                 disabled={saving || options.departments.length === 0}
-                onClick={openDepartmentSelection}
-                type="button"
+                id="ticket-department-selection"
+                onChange={(event) => changeDepartment(event.target.value)}
+                ref={departmentSelectRef}
+                required
+                value={departmentId}
               >
-                Zuordnung anpassen
-              </button>
-            )}
+                {options.departments.map((department) => (
+                  <option key={department.id} value={department.id}>
+                    {department.name}
+                  </option>
+                ))}
+              </select>
+              {options.requesterContext.isInternal && contextDepartmentName && (
+                <span className="data-caption" id="ticket-requester-department">
+                  Vorausgefüllt: {contextDepartmentName}
+                </span>
+              )}
+            </label>
             {departmentSuggestion && (
               <ClassificationSuggestion
                 disabled={saving}
                 onApply={() => {
-                  setDepartmentSelectionOpen(true);
                   changeDepartment(departmentSuggestion.id);
                 }}
                 vote={departmentSuggestion}
