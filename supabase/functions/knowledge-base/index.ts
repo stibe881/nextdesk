@@ -912,8 +912,8 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         { error: { code: "authorization_check_failed" } },
         500,
       );
-    if (canReadInternal !== true && canManage !== true)
-      return json(request, { error: { code: "article_read_denied" } }, 403);
+    // Requesters browse published articles by collection too; collection
+    // names carry no article content.
     const { data, error } = await admin
       .from("knowledge_collections")
       .select("id, name, slug, parent_id, active")

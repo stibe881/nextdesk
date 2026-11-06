@@ -2853,6 +2853,9 @@ function AuthenticatedApp() {
     isSupabaseConfigured &&
     canReadReports &&
     tenantFeatures["reporting.service"] === true;
+  // Every member may read the status; managing needs asset.manage.
+  const serviceStatusReadable =
+    isSupabaseConfigured && tenantFeatures["assets.management"] === true;
   const serviceStatusAvailable =
     serviceStatusAccessTenantId === activeTenant?.id &&
     isServiceStatusAvailable({
@@ -3388,21 +3391,10 @@ function AuthenticatedApp() {
     if (eventSpaceNavigationAccess) {
       restrictedWorkspaceSections.push("Raumplanung");
     }
-    if (restrictedWorkspaceSections.length > 0) {
-      const fallbackSection = restrictedWorkspaceSections[0];
-      const shopOpen =
-        section === "Shop" && tenantFeatures["self_service.shop"] === true;
-      if (
-        fallbackSection &&
-        !shopOpen &&
-        !restrictedWorkspaceSections.includes(section)
-      ) {
-        setSection(fallbackSection);
-      }
-      return;
-    }
+    if (restrictedWorkspaceSections.includes(section)) return;
     if (!canRequesterOpenSection(section, requesterPortalEnabled)) {
-      setSection("Übersicht");
+      // Employees start on their tickets.
+      setSection("Tickets");
     }
   }, [
     canWorkTickets,
@@ -3456,7 +3448,9 @@ function AuthenticatedApp() {
         metricTicketIds: metricTicketFilter?.ticketIds ?? null,
         query: debouncedQuery,
         queue,
-        scope: canWorkTickets ? ticketScope : "mine",
+        // Employees see every ticket they may read: their own and those of
+        // their direct reports.
+        scope: canWorkTickets ? ticketScope : "all",
       },
     )
       .then((nextSnapshot) => {
@@ -3593,7 +3587,7 @@ function AuthenticatedApp() {
       ((nextSection === "Verträge" || nextSection === "Lizenzen") &&
         contractsAvailable) ||
       (nextSection === "Berichte" && reportsAvailable) ||
-      (nextSection === "Systemstatus" && serviceStatusAvailable) ||
+      (nextSection === "Systemstatus" && serviceStatusReadable) ||
       (nextSection === "Raumplanung" && eventSpaceNavigationAccess);
     if (
       !canWorkTickets &&
@@ -3601,7 +3595,7 @@ function AuthenticatedApp() {
       !canRequesterOpenSection(nextSection, requesterPortalEnabled)
     ) {
       setGlobalSearchTarget(null);
-      setRequestedSection("Übersicht");
+      setRequestedSection("Tickets");
       return;
     }
     setRequestedSection(nextSection);
@@ -4035,7 +4029,7 @@ function AuthenticatedApp() {
       );
     }
     if (item.label === "Mein Portal") return requesterPortalEnabled;
-    if (item.label === "Systemstatus") return serviceStatusAvailable;
+    if (item.label === "Systemstatus") return serviceStatusReadable;
     if (
       item.label === "Services" ||
       item.label === "Assets" ||
@@ -4076,14 +4070,15 @@ function AuthenticatedApp() {
   const shopSections = featureSections.filter((item) => item.label === "Shop");
   const workSections = canWorkTickets
     ? featureSections
-    : [...restrictedWorkSections, ...independentlyAvailableEventSpaceSections]
-          .length > 0
-      ? [
-          ...restrictedWorkSections,
-          ...independentlyAvailableEventSpaceSections,
-          ...shopSections,
-        ]
-      : requesterSections;
+    : [
+        ...requesterSections,
+        ...restrictedWorkSections,
+        ...independentlyAvailableEventSpaceSections,
+        ...shopSections,
+      ].filter(
+        (item, index, list) =>
+          list.findIndex((other) => other.label === item.label) === index,
+      );
 
   useEffect(() => {
     if (ticketAccessLoading || tenantFeaturesLoading) return;
@@ -4106,7 +4101,7 @@ function AuthenticatedApp() {
       section === "Arbeitsplatz" &&
       !isWorkplaceAvailable(agentWorkbenchEnabled, experienceWorkspaceEnabled);
     const serviceStatusUnavailable =
-      section === "Systemstatus" && !serviceStatusAvailable;
+      section === "Systemstatus" && !serviceStatusReadable;
     if (
       ((workplaceUnavailable || featureKey) &&
         isSupabaseConfigured &&
@@ -4124,7 +4119,7 @@ function AuthenticatedApp() {
     contractsAvailable,
     reportsAvailable,
     section,
-    serviceStatusAvailable,
+    serviceStatusReadable,
     tenantFeatures,
     tenantFeaturesLoading,
     ticketAccessLoading,
@@ -5375,7 +5370,7 @@ function AuthenticatedApp() {
           />
         ) : section === "Systemstatus" &&
           activeTenant &&
-          serviceStatusAvailable ? (
+          serviceStatusReadable ? (
           <ServiceStatus
             createMaintenanceRequestId={serviceMaintenanceCreateRequestId}
             onCreateMaintenanceRequestConsumed={(requestId) =>
