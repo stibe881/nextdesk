@@ -375,11 +375,16 @@ function OverviewView({
         ))}
       </div>
       <div className="st-kpis">
-        <article className="st-card st-kpi st-kpi--bad">
+        {/* Nothing overdue or due today is good news: shown in green. */}
+        <article
+          className={`st-card st-kpi ${kpis.overdue === 0 ? "st-kpi--good" : "st-kpi--bad"}`}
+        >
           <p>Überfällig</p>
           <strong>{kpis.overdue}</strong>
         </article>
-        <article className="st-card st-kpi st-kpi--warn">
+        <article
+          className={`st-card st-kpi ${kpis.dueToday === 0 ? "st-kpi--good" : "st-kpi--warn"}`}
+        >
           <p>Heute fällig</p>
           <strong>{kpis.dueToday}</strong>
         </article>
@@ -1757,10 +1762,15 @@ function CalendarView({
 
 export function ServiceTasks({
   tenantId,
+  createRequestId,
+  onCreateRequestConsumed,
   focusOccurrenceId,
   onFocusHandled,
 }: {
   tenantId: string;
+  createRequestId?: number | undefined;
+  onCreateRequestConsumed?: (requestId: number) => void;
+
   focusOccurrenceId?: string | null;
   onFocusHandled?: () => void;
 }) {
@@ -1809,6 +1819,28 @@ export function ServiceTasks({
     canManage: false,
   };
   const today = data?.today ?? new Date().toISOString().slice(0, 10);
+  // "+" menu: open a new service task once the data has loaded.
+  const handledCreateRequest = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (
+      createRequestId === undefined ||
+      !data ||
+      handledCreateRequest.current === createRequestId
+    ) {
+      return;
+    }
+    handledCreateRequest.current = createRequestId;
+    onCreateRequestConsumed?.(createRequestId);
+    if (!data.access.canManage) return;
+    setEditing({
+      template: emptyTemplate(data.today),
+      people: data.people ?? [],
+      teams: data.teams ?? [],
+      departments: data.departments ?? [],
+    });
+    setView("form");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [createRequestId, data]);
 
   return (
     <section className="service-tasks" aria-label="Serviceaufgaben">

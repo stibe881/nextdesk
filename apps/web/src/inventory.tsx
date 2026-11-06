@@ -1052,9 +1052,28 @@ function deltaLabel(value: number, unit: string): string {
   return `${prefix}${quantity(value, unit)}`;
 }
 
-export function Inventory({ tenantId }: { tenantId: string }) {
+export function Inventory({
+  createRequestId,
+  onCreateRequestConsumed,
+  tenantId,
+}: {
+  createRequestId?: number | undefined;
+  onCreateRequestConsumed?: (requestId: number) => void;
+  tenantId: string;
+}) {
   const [activeSection, setActiveSection] =
     useState<InventorySection>("Übersicht");
+  // "+" menu: show the articles with the create form open.
+  const [itemCreateRequestId, setItemCreateRequestId] = useState<
+    number | undefined
+  >(undefined);
+  useEffect(() => {
+    if (createRequestId === undefined) return;
+    setActiveSection("Artikel");
+    setItemCreateRequestId(createRequestId);
+    onCreateRequestConsumed?.(createRequestId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [createRequestId]);
   const [workspace, setWorkspace] = useState<InventoryWorkspace | null>(null);
   const [openReservations, setOpenReservations] = useState<OpenReservation[]>(
     [],
@@ -1338,6 +1357,7 @@ export function Inventory({ tenantId }: { tenantId: string }) {
           {activeSection === "Artikel" ? (
             <InventoryItems
               canManage={workspace.permissions.canManage}
+              createOpenRequestId={itemCreateRequestId}
               departments={workspace.departments}
               items={currentItems}
               onChanged={onChanged}
@@ -1468,6 +1488,7 @@ function InventoryOverview({ workspace }: { workspace: InventoryWorkspace }) {
 
 function InventoryItems({
   canManage,
+  createOpenRequestId,
   departments,
   items,
   onChanged,
@@ -1475,6 +1496,8 @@ function InventoryItems({
   tenantId,
 }: {
   canManage: boolean;
+  /** Opens the create form (key) when set by the "+" menu. */
+  createOpenRequestId?: number | undefined;
   departments: readonly InventoryDepartment[];
   items: readonly InventoryItemSummary[];
   onChanged: InventoryChangedHandler;
@@ -1557,7 +1580,9 @@ function InventoryItems({
       </div>
       {canManage ? (
         <InventoryItemCreateForm
+          defaultOpen={createOpenRequestId !== undefined}
           departments={departments}
+          key={createOpenRequestId ?? "item-create"}
           onChanged={onChanged}
           tenantId={tenantId}
         />
@@ -2904,10 +2929,12 @@ function InventoryItemDepartmentSelect({
 }
 
 function InventoryItemCreateForm({
+  defaultOpen = false,
   departments,
   onChanged,
   tenantId,
 }: {
+  defaultOpen?: boolean;
   departments: readonly InventoryDepartment[];
   onChanged: InventoryChangedHandler;
   tenantId: string;
@@ -2974,7 +3001,7 @@ function InventoryItemCreateForm({
   };
 
   return (
-    <details className="inventory__form">
+    <details className="inventory__form" open={defaultOpen || undefined}>
       <summary>Artikel erfassen</summary>
       <form
         onChange={clientRequest.discard}

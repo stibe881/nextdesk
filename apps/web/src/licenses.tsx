@@ -171,7 +171,15 @@ function parsePeople(value: unknown): Person[] | null {
   return data && Array.isArray(data.people) ? (data.people as Person[]) : null;
 }
 
-export function Licenses({ tenantId }: { tenantId: string }) {
+export function Licenses({
+  createRequestId,
+  onCreateRequestConsumed,
+  tenantId,
+}: {
+  createRequestId?: number | undefined;
+  onCreateRequestConsumed?: (requestId: number) => void;
+  tenantId: string;
+}) {
   const [licenses, setLicenses] = useState<License[]>([]);
   const [people, setPeople] = useState<Person[]>([]);
   const [departments, setDepartments] = useState<DepartmentOption[]>([]);
@@ -325,6 +333,21 @@ export function Licenses({ tenantId }: { tenantId: string }) {
     });
     setEditorOpen(true);
   };
+  // "+" menu: open the editor once the data has loaded.
+  const handledCreateRequest = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (
+      createRequestId === undefined ||
+      loading ||
+      handledCreateRequest.current === createRequestId
+    ) {
+      return;
+    }
+    handledCreateRequest.current = createRequestId;
+    open();
+    onCreateRequestConsumed?.(createRequestId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [createRequestId, loading]);
   const save = async (event: FormEvent) => {
     event.preventDefault();
     if (!supabase) return;

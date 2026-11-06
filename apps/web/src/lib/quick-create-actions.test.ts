@@ -14,7 +14,31 @@ describe("zentrale Erfassungsaktionen", () => {
         hasActiveTenant: true,
         knowledgeBaseEnabled: true,
       }),
-    ).toEqual(["ticket", "problem", "followUp", "knowledge"]);
+    ).toEqual(["followUp", "ticket", "problem", "knowledge"]);
+  });
+
+  it("ordnet alle Aktionen wie die Navigation", () => {
+    expect(
+      quickCreateActionsForContext({
+        assetManagementEnabled: true,
+        canWorkTickets: true,
+        experienceWorkspaceEnabled: true,
+        hasActiveTenant: true,
+        knowledgeBaseEnabled: true,
+        serviceTasksAvailable: true,
+        inventoryAvailable: true,
+        contractsAvailable: true,
+      }),
+    ).toEqual([
+      "followUp",
+      "ticket",
+      "problem",
+      "serviceTask",
+      "knowledge",
+      "inventoryItem",
+      "contract",
+      "license",
+    ]);
   });
 
   it("blendet nur nicht verfügbare Bereichsaktionen aus", () => {

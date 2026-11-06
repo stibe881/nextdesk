@@ -33,8 +33,10 @@ type IncidentStatus =
 
 type TeamQueue = {
   departmentId: string;
+  departmentName?: string | null;
   openTickets: number;
   teamId: string | null;
+  teamName?: string | null;
 };
 type Mention = {
   authorId: string;
@@ -338,8 +340,11 @@ function queueFromValue(value: unknown): TeamQueue | null {
   }
   return {
     departmentId: value.departmentId,
+    departmentName:
+      typeof value.departmentName === "string" ? value.departmentName : null,
     openTickets: value.openTickets,
     teamId: value.teamId,
+    teamName: typeof value.teamName === "string" ? value.teamName : null,
   };
 }
 
@@ -484,10 +489,15 @@ function TeamQueuesPanel({
                   <UsersRound aria-hidden="true" size={18} strokeWidth={1.8} />
                 </span>
                 <span>
-                  <strong>Abteilung {shortId(queue.departmentId)}</strong>
+                  <strong>
+                    {queue.departmentName?.trim() ||
+                      (queue.departmentId
+                        ? "Unbekannte Abteilung"
+                        : "Ohne Abteilung")}
+                  </strong>
                   <small>
                     {queue.teamId
-                      ? `Team ${shortId(queue.teamId)}`
+                      ? `Team ${queue.teamName?.trim() || "unbekannt"}`
                       : "Ohne Teamzuordnung"}
                   </small>
                 </span>

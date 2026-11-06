@@ -1,4 +1,12 @@
-export type QuickCreateAction = "ticket" | "problem" | "followUp" | "knowledge";
+export type QuickCreateAction =
+  | "followUp"
+  | "ticket"
+  | "problem"
+  | "serviceTask"
+  | "knowledge"
+  | "inventoryItem"
+  | "contract"
+  | "license";
 
 export type QuickCreateContext = {
   assetManagementEnabled: boolean;
@@ -6,24 +14,34 @@ export type QuickCreateContext = {
   experienceWorkspaceEnabled: boolean;
   hasActiveTenant: boolean;
   knowledgeBaseEnabled: boolean;
+  /** Menu sections the person can open (Serviceaufgaben, Lager, ...). */
+  serviceTasksAvailable?: boolean;
+  inventoryAvailable?: boolean;
+  contractsAvailable?: boolean;
 };
 
+/** Actions in the order of the navigation on the left. */
 export function quickCreateActionsForContext({
   assetManagementEnabled,
   canWorkTickets,
   experienceWorkspaceEnabled,
   hasActiveTenant,
   knowledgeBaseEnabled,
+  serviceTasksAvailable = false,
+  inventoryAvailable = false,
+  contractsAvailable = false,
 }: QuickCreateContext): readonly QuickCreateAction[] {
   if (!hasActiveTenant) return [];
+  if (!canWorkTickets) return ["ticket"];
 
   return [
+    ...(experienceWorkspaceEnabled ? (["followUp"] as const) : []),
     "ticket",
-    ...(canWorkTickets && assetManagementEnabled ? (["problem"] as const) : []),
-    ...(canWorkTickets && experienceWorkspaceEnabled
-      ? (["followUp"] as const)
-      : []),
-    ...(canWorkTickets && knowledgeBaseEnabled ? (["knowledge"] as const) : []),
+    ...(assetManagementEnabled ? (["problem"] as const) : []),
+    ...(serviceTasksAvailable ? (["serviceTask"] as const) : []),
+    ...(knowledgeBaseEnabled ? (["knowledge"] as const) : []),
+    ...(inventoryAvailable ? (["inventoryItem"] as const) : []),
+    ...(contractsAvailable ? (["contract", "license"] as const) : []),
   ];
 }
 
