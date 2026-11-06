@@ -57,6 +57,8 @@ export type KnowledgeBaseProps = {
   createArticleRequestId?: number | undefined;
   focusArticleId?: string | undefined;
   onCreateArticleRequestConsumed?: ((requestId: number) => void) | undefined;
+  /** Employees without ticket work only read the published external articles. */
+  readOnly?: boolean;
   tenantId: string;
 };
 
@@ -1126,6 +1128,7 @@ export function KnowledgeBase({
   createArticleRequestId,
   focusArticleId,
   onCreateArticleRequestConsumed,
+  readOnly = false,
   tenantId,
 }: KnowledgeBaseProps) {
   const [articles, setArticles] = useState<ArticleListItem[]>([]);
@@ -1601,6 +1604,7 @@ export function KnowledgeBase({
 
   useEffect(() => {
     if (
+      readOnly ||
       createArticleRequestId === undefined ||
       lastArticleCreateRequestId.current === createArticleRequestId
     ) {
@@ -1609,7 +1613,7 @@ export function KnowledgeBase({
     lastArticleCreateRequestId.current = createArticleRequestId;
     beginNewArticle();
     onCreateArticleRequestConsumed?.(createArticleRequestId);
-  }, [createArticleRequestId, onCreateArticleRequestConsumed]);
+  }, [createArticleRequestId, onCreateArticleRequestConsumed, readOnly]);
 
   function beginEditArticle() {
     if (!selected) return;
@@ -2590,14 +2594,16 @@ export function KnowledgeBase({
             >
               {loadingList ? "Wird aktualisiert …" : "Aktualisieren"}
             </button>
-            <button
-              className="primary-button knowledge-base__button knowledge-base__create-button"
-              disabled={isBusy}
-              onClick={beginNewArticle}
-              type="button"
-            >
-              Neuer Artikel
-            </button>
+            {readOnly ? null : (
+              <button
+                className="primary-button knowledge-base__button knowledge-base__create-button"
+                disabled={isBusy}
+                onClick={beginNewArticle}
+                type="button"
+              >
+                Neuer Artikel
+              </button>
+            )}
           </div>
         </div>
 
@@ -2645,27 +2651,31 @@ export function KnowledgeBase({
           <div className="knowledge-base__filter-region">
             <p className="knowledge-base__filter-heading">Artikel filtern</p>
             <div className="knowledge-base__filters">
-              <label className="knowledge-base__filter">
-                Anzeigen
-                <select
-                  aria-label="Wissensartikel nach Sichtbarkeit oder Status filtern"
-                  disabled={loadingList || isBusy}
-                  onChange={(event) =>
-                    changeArticleListFilter(
-                      event.target.value as ArticleListFilter,
-                    )
-                  }
-                  value={articleListFilter}
-                >
-                  {(
-                    Object.keys(articleListFilterLabels) as ArticleListFilter[]
-                  ).map((filter) => (
-                    <option key={filter} value={filter}>
-                      {articleListFilterLabels[filter]}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              {readOnly ? null : (
+                <label className="knowledge-base__filter">
+                  Anzeigen
+                  <select
+                    aria-label="Wissensartikel nach Sichtbarkeit oder Status filtern"
+                    disabled={loadingList || isBusy}
+                    onChange={(event) =>
+                      changeArticleListFilter(
+                        event.target.value as ArticleListFilter,
+                      )
+                    }
+                    value={articleListFilter}
+                  >
+                    {(
+                      Object.keys(
+                        articleListFilterLabels,
+                      ) as ArticleListFilter[]
+                    ).map((filter) => (
+                      <option key={filter} value={filter}>
+                        {articleListFilterLabels[filter]}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
               {collectionAssignmentReady ? (
                 <>
                   <label className="knowledge-base__filter">
@@ -2939,68 +2949,70 @@ export function KnowledgeBase({
                       "Dieser Artikel enthält noch keinen Inhalt."
                     )}
                   </article>
-                  <div className="knowledge-base__actions knowledge-base__article-actions">
-                    <button
-                      className="knowledge-base__button"
-                      disabled={isBusy}
-                      onClick={beginEditArticle}
-                      type="button"
-                    >
-                      Bearbeiten
-                    </button>
-                    {detailArticle.status === "draft" ? (
+                  {readOnly ? null : (
+                    <div className="knowledge-base__actions knowledge-base__article-actions">
                       <button
                         className="knowledge-base__button"
                         disabled={isBusy}
-                        onClick={() => void requestReview()}
+                        onClick={beginEditArticle}
                         type="button"
                       >
-                        {saving === "review"
-                          ? "Wird eingereicht …"
-                          : "Zur Freigabe einreichen"}
+                        Bearbeiten
                       </button>
-                    ) : null}
-                    {detailArticle.status === "review" ? (
-                      <>
+                      {detailArticle.status === "draft" ? (
                         <button
                           className="knowledge-base__button"
                           disabled={isBusy}
-                          onClick={() => void decideReview("approved")}
+                          onClick={() => void requestReview()}
                           type="button"
                         >
-                          {saving === "decision"
-                            ? "Wird gespeichert …"
-                            : "Freigeben"}
+                          {saving === "review"
+                            ? "Wird eingereicht …"
+                            : "Zur Freigabe einreichen"}
                         </button>
-                        <button
-                          className="knowledge-base__button knowledge-base__button--danger"
-                          disabled={isBusy}
-                          onClick={() => void decideReview("rejected")}
-                          type="button"
-                        >
-                          Ablehnen
-                        </button>
-                      </>
-                    ) : null}
-                    <button
-                      className="knowledge-base__button knowledge-base__button--danger"
-                      disabled={isBusy}
-                      onClick={() => void archiveArticle()}
-                      type="button"
-                    >
-                      {saving === "archive"
-                        ? "Wird archiviert …"
-                        : "Archivieren"}
-                    </button>
-                    <button
-                      className="knowledge-base__button knowledge-base__button--danger"
-                      disabled={isBusy}
-                      onClick={() => void deleteArticle()}
-                      type="button"
-                    >
-                      {saving === "delete" ? "Wird gelöscht …" : "Löschen"}
-                    </button>
-                  </div>
+                      ) : null}
+                      {detailArticle.status === "review" ? (
+                        <>
+                          <button
+                            className="knowledge-base__button"
+                            disabled={isBusy}
+                            onClick={() => void decideReview("approved")}
+                            type="button"
+                          >
+                            {saving === "decision"
+                              ? "Wird gespeichert …"
+                              : "Freigeben"}
+                          </button>
+                          <button
+                            className="knowledge-base__button knowledge-base__button--danger"
+                            disabled={isBusy}
+                            onClick={() => void decideReview("rejected")}
+                            type="button"
+                          >
+                            Ablehnen
+                          </button>
+                        </>
+                      ) : null}
+                      <button
+                        className="knowledge-base__button knowledge-base__button--danger"
+                        disabled={isBusy}
+                        onClick={() => void archiveArticle()}
+                        type="button"
+                      >
+                        {saving === "archive"
+                          ? "Wird archiviert …"
+                          : "Archivieren"}
+                      </button>
+                      <button
+                        className="knowledge-base__button knowledge-base__button--danger"
+                        disabled={isBusy}
+                        onClick={() => void deleteArticle()}
+                        type="button"
+                      >
+                        {saving === "delete" ? "Wird gelöscht …" : "Löschen"}
+                      </button>
+                    </div>
+                  )}
                 </>
               ) : (
                 <div className="knowledge-base__reader-empty">

@@ -5350,6 +5350,7 @@ function AuthenticatedApp() {
                 : knowledgeFocusArticleId
             }
             onCreateArticleRequestConsumed={consumeQuickCreateRequest}
+            readOnly={isSupabaseConfigured && !canWorkTickets}
             tenantId={activeTenant.id}
           />
         ) : section === "Verträge" && activeTenant && contractsAvailable ? (
