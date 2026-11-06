@@ -590,6 +590,8 @@ function localSlaDate(value: string | null): string | null {
   }).format(date);
 }
 
+const NEW_CATEGORY_OPTION = "__new__";
+
 function knowledgeArticleLink(articleId: string): string {
   const url = new URL(window.location.href);
   url.search = "";
@@ -2455,6 +2457,10 @@ export function TicketComposer({
                       saving || categorySaving || categoryDraft !== null
                     }
                     onChange={(event) => {
+                      if (event.target.value === NEW_CATEGORY_OPTION) {
+                        openCategoryForm(null);
+                        return;
+                      }
                       setCategoryId(event.target.value);
                       setSubcategoryId("");
                       setCategoryError("");
@@ -2467,6 +2473,9 @@ export function TicketComposer({
                         {category.name}
                       </option>
                     ))}
+                    <option value={NEW_CATEGORY_OPTION}>
+                      + Neue Kategorie …
+                    </option>
                   </select>
                   {categorySuggestion && (
                     <ClassificationSuggestion
@@ -2489,7 +2498,13 @@ export function TicketComposer({
                       disabled={
                         saving || categorySaving || categoryDraft !== null
                       }
-                      onChange={(event) => setSubcategoryId(event.target.value)}
+                      onChange={(event) => {
+                        if (event.target.value === NEW_CATEGORY_OPTION) {
+                          openCategoryForm(selectedCategory.id);
+                          return;
+                        }
+                        setSubcategoryId(event.target.value);
+                      }}
                       value={selectedSubcategory?.id ?? ""}
                     >
                       <option value="">Keine Auswahl</option>
@@ -2498,39 +2513,12 @@ export function TicketComposer({
                           {category.name}
                         </option>
                       ))}
+                      <option value={NEW_CATEGORY_OPTION}>
+                        + Neue Unterkategorie …
+                      </option>
                     </select>
                   </label>
                 )}
-                <div>
-                  <button
-                    aria-controls={
-                      categoryDraft ? "ticket-category-form" : undefined
-                    }
-                    aria-expanded={categoryDraft?.parentId === null}
-                    className="text-button"
-                    disabled={saving || categorySaving}
-                    onClick={() => openCategoryForm(null)}
-                    type="button"
-                  >
-                    Neue Kategorie
-                  </button>
-                  {selectedCategory && (
-                    <button
-                      aria-controls={
-                        categoryDraft ? "ticket-category-form" : undefined
-                      }
-                      aria-expanded={
-                        categoryDraft?.parentId === selectedCategory.id
-                      }
-                      className="text-button"
-                      disabled={saving || categorySaving}
-                      onClick={() => openCategoryForm(selectedCategory.id)}
-                      type="button"
-                    >
-                      Neue Unterkategorie
-                    </button>
-                  )}
-                </div>
                 {categoryDraft && (
                   <div
                     aria-label={
