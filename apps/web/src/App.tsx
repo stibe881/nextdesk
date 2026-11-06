@@ -42,6 +42,7 @@ import {
   SlidersHorizontal,
   Ticket,
   UserRound,
+  UsersRound,
   Boxes,
   ShoppingBag,
   ListChecks,
@@ -68,6 +69,7 @@ import {
   loadActiveTenants,
   loadLiveDashboard,
   loadProfileName,
+  ticketTeamsFromResponse,
   type LiveDashboardSnapshot,
   type TicketAgentOption,
   type TicketFilterCatalog,
@@ -1604,7 +1606,260 @@ function MembershipErrorScreen({
   );
 }
 
+type TicketListAssignment = {
+  tenantId: string;
+  currentUserId: string | null;
+  onChanged: () => void;
+};
+
+type QuickAssignOption = { id: string; label: string };
+
+async function loadQuickAssignOptions(
+  kind: "agent" | "team",
+  tenantId: string,
+  ticket: DashboardTicket,
+  currentUserId: string | null,
+): Promise<QuickAssignOption[]> {
+  if (!supabase) throw new Error("Supabase ist nicht konfiguriert.");
+  if (kind === "agent") {
+    const { data, error } = await supabase.functions.invoke(
+      "ticket-agent-assignment",
+      {
+        body: {
+          tenantId,
+          ticketId: ticket.recordId ?? ticket.id,
+          type: "list",
+        },
+      },
+    );
+    if (error) throw error;
+    const agents = (data as { data?: { agents?: unknown } } | null)?.data
+      ?.agents;
+    if (!Array.isArray(agents)) throw new Error("invalid_agents_response");
+    return agents
+      .flatMap((agent: unknown) => {
+        const row = agent as { id?: unknown; displayName?: unknown };
+        return typeof row?.id === "string" &&
+          typeof row.displayName === "string"
+          ? [
+              {
+                id: row.id,
+                label:
+                  row.id === currentUserId
+                    ? `${row.displayName} (ich)`
+                    : row.displayName,
+              },
+            ]
+          : [];
+      })
+      .sort((left, right) =>
+        left.label.localeCompare(right.label, "de-CH", { sensitivity: "base" }),
+      );
+  }
+  const { data, error } = await supabase.functions.invoke(
+    "ticket-agent-assignment",
+    { body: { tenantId, type: "listTeams" } },
+  );
+  if (error) throw error;
+  return ticketTeamsFromResponse(data)
+    .filter(
+      (team) =>
+        !ticket.departmentId ||
+        team.departmentId === null ||
+        team.departmentId === ticket.departmentId,
+    )
+    .map((team) => ({ id: team.id, label: team.name }));
+}
+
+function TicketQuickAssign({
+  assignment,
+  ticket,
+}: {
+  assignment: TicketListAssignment;
+  ticket: DashboardTicket;
+}) {
+  const [open, setOpen] = useState<"agent" | "team" | null>(null);
+  const [options, setOptions] = useState<QuickAssignOption[] | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const ticketId = ticket.recordId ?? ticket.id;
+
+  useEffect(() => {
+    if (!open) return;
+    let active = true;
+    setOptions(null);
+    setError("");
+    loadQuickAssignOptions(
+      open,
+      assignment.tenantId,
+      ticket,
+      assignment.currentUserId,
+    )
+      .then((next) => {
+        if (active) setOptions(next);
+      })
+      .catch(() => {
+        if (active) {
+          setOptions([]);
+          setError("Die Auswahl konnte nicht geladen werden.");
+        }
+      });
+    const closeOnOutside = (event: MouseEvent) => {
+      if (!containerRef.current?.contains(event.target as Node)) setOpen(null);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(null);
+    };
+    document.addEventListener("mousedown", closeOnOutside);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      active = false;
+      document.removeEventListener("mousedown", closeOnOutside);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+    // Options depend on the ticket only while the popover is open.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, ticketId, assignment.tenantId]);
+
+  async function choose(value: string) {
+    if (!supabase || !open || saving) return;
+    setSaving(true);
+    setError("");
+    try {
+      const { error: invokeError } =
+        open === "agent"
+          ? await supabase.functions.invoke("ticket-agent-assignment", {
+              body: {
+                assignedAgentId: value || null,
+                tenantId: assignment.tenantId,
+                ticketId,
+                type: "assign",
+              },
+            })
+          : await supabase.functions.invoke("ticket-operations", {
+              body: {
+                assignedTeamId: value || null,
+                tenantId: assignment.tenantId,
+                ticketId,
+                type: "updateTicket",
+              },
+            });
+      if (invokeError) throw invokeError;
+      setOpen(null);
+      assignment.onChanged();
+    } catch {
+      setError(
+        open === "agent"
+          ? "Die Zuweisung konnte nicht gespeichert werden."
+          : "Das Team konnte nicht gespeichert werden.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const agentLabel = ticket.isUnassigned
+    ? "Nicht zugewiesen"
+    : ticket.assignedToCurrentUser
+      ? "Mir zugewiesen"
+      : (ticket.assignedAgentName ?? "Zugewiesen");
+  const teamLabel = ticket.assignedTeamName ?? "Kein Team";
+  const currentValue =
+    open === "agent"
+      ? (ticket.assignedAgentId ?? "")
+      : (ticket.assignedTeamId ?? "");
+
+  return (
+    <div
+      className="ticket-quick-assign"
+      onClick={(event) => event.stopPropagation()}
+      onKeyDown={(event) => event.stopPropagation()}
+      ref={containerRef}
+    >
+      <button
+        aria-expanded={open === "agent"}
+        aria-label={`Zuweisung: ${agentLabel}. Ändern`}
+        className={`ticket-assign-chip${
+          ticket.isUnassigned ? " ticket-assign-chip--unassigned" : ""
+        }`}
+        onClick={() =>
+          setOpen((current) => (current === "agent" ? null : "agent"))
+        }
+        type="button"
+      >
+        <UserRound aria-hidden="true" size={13} strokeWidth={2} />
+        {agentLabel}
+      </button>
+      <button
+        aria-expanded={open === "team"}
+        aria-label={`Team: ${teamLabel}. Ändern`}
+        className={`ticket-assign-chip${
+          ticket.assignedTeamId ? "" : " ticket-assign-chip--empty"
+        }`}
+        onClick={() =>
+          setOpen((current) => (current === "team" ? null : "team"))
+        }
+        type="button"
+      >
+        <UsersRound aria-hidden="true" size={13} strokeWidth={2} />
+        {teamLabel}
+      </button>
+      {open ? (
+        <div
+          className="ticket-quick-assign__popover"
+          role="dialog"
+          aria-label={open === "agent" ? "Person zuweisen" : "Team zuweisen"}
+        >
+          <label>
+            {open === "agent" ? "Zuweisen an" : "Team"}
+            <select
+              autoFocus
+              disabled={options === null || saving}
+              onChange={(event) => void choose(event.target.value)}
+              value={currentValue}
+            >
+              <option value="">
+                {options === null
+                  ? "Wird geladen …"
+                  : open === "agent"
+                    ? "Nicht zugewiesen"
+                    : "Kein Team"}
+              </option>
+              {(options ?? []).map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          {open === "agent" &&
+          assignment.currentUserId &&
+          !ticket.assignedToCurrentUser &&
+          options?.some((option) => option.id === assignment.currentUserId) ? (
+            <button
+              className="text-button"
+              disabled={saving}
+              onClick={() => void choose(assignment.currentUserId ?? "")}
+              type="button"
+            >
+              Mir zuweisen
+            </button>
+          ) : null}
+          {saving ? <small>Wird gespeichert …</small> : null}
+          {error ? (
+            <small className="ticket-quick-assign__error" role="alert">
+              {error}
+            </small>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function TicketList({
+  assignment,
   loading = false,
   hasActiveFilters = false,
   keyboardActiveTicketId,
@@ -1615,6 +1870,7 @@ function TicketList({
   onSelectionChange,
   selectedTicketIds,
 }: {
+  assignment?: TicketListAssignment;
   loading?: boolean;
   hasActiveFilters?: boolean;
   keyboardActiveTicketId?: string | null;
@@ -1743,6 +1999,9 @@ function TicketList({
               </p>
             </div>
             <div className="ticket-state">
+              {assignment && !ticket.isClosed ? (
+                <TicketQuickAssign assignment={assignment} ticket={ticket} />
+              ) : null}
               <span
                 aria-label={`Status: ${ticket.state}`}
                 className={`state-badge ${statusClass(ticket.state)}`}
@@ -5133,6 +5392,16 @@ function AuthenticatedApp() {
               >
                 <div className="ticket-list-detail__list">
                   <TicketList
+                    {...(isSupabaseConfigured && canWorkTickets && activeTenant
+                      ? {
+                          assignment: {
+                            currentUserId: session?.user.id ?? null,
+                            onChanged: () =>
+                              setDashboardRevision((current) => current + 1),
+                            tenantId: activeTenant.id,
+                          },
+                        }
+                      : {})}
                     {...(isSupabaseConfigured && canWorkTickets
                       ? {
                           onOpen: openTicketFromList,

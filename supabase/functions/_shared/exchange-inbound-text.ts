@@ -30,8 +30,13 @@ const OUTLOOK_FOOTER_START =
   /^(?:führen sie jetzt ein upgrade auf das neueste outlook|diese e-mail wird durch die verwendung microsoft(?: 365| outlook)?)/iu;
 const OUTLOOK_LINK_LINE =
   /^(?:zu nachricht wechseln|abonnement kündigen|mac|ios|android)\s*<https?:\/\/[^>]+>\s*$/iu;
+// A farewell either stands on its own line ("Liebe Grüsse") or ends a short
+// closing sentence ("Danke für eure Hilfe und e liebe Gruess"); Swiss German
+// spellings (Gruess, Grüess, Grüessli) count too.
 const SIGNATURE_FAREWELL =
-  /^(?:(?:(?:mit\s+)?freundliche[nr]?|liebe[nr]?|beste[nr]?|herzliche[nr]?|viele[nr]?)\s+)?gr(?:uss|üsse|uesse)[,!\.\s]*$/iu;
+  /(?:^|\s)(?:(?:(?:mit\s+)?freundliche[nr]?|liebe[nr]?|liebi|beste[nr]?|herzliche[nr]?|herzlichi|viele[nr]?|vieli)\s+)?gr(?:uss|üsse|uesse|üess|uess)(?:li)?[,!\.\s]*$/iu;
+const SIGNATURE_FAREWELL_MAX_LENGTH = 80;
+const SIGNATURE_BRACKETED_LINK = /\[https?:\/\/[^\]\s]*\]/giu;
 const SIGNATURE_IMAGE_FILE =
   /^\s*\[(?!cid:)([^\]]+\.(?:png|jpe?g|gif|webp|svg))\]\s*$/iu;
 const SIGNATURE_CONTACT = /^(?:tel(?:efon)?|mobile?|handy|t|m|f|w)\s*:\s*\S+/iu;
@@ -66,8 +71,8 @@ function decodeEntitiesOnce(value: string): string {
         ? Number.parseInt(encoded.slice(1), 16)
         : Number.parseInt(encoded, 10);
       return Number.isSafeInteger(codePoint) &&
-        codePoint > 0 &&
-        codePoint <= 0x10ffff
+          codePoint > 0 &&
+          codePoint <= 0x10ffff
         ? String.fromCodePoint(codePoint)
         : match;
     });
@@ -91,8 +96,8 @@ function decodeMarkupDelimiters(value: string): string {
         return name.toLowerCase() === "amp"
           ? "&"
           : name.toLowerCase() === "lt"
-            ? "<"
-            : ">";
+          ? "<"
+          : ">";
       })
       .replace(/&#(x[0-9a-f]+|\d+);/giu, (match, encoded: string) => {
         const codePoint = encoded.toLowerCase().startsWith("x")
@@ -101,10 +106,10 @@ function decodeMarkupDelimiters(value: string): string {
         return codePoint === 38
           ? "&"
           : codePoint === 60
-            ? "<"
-            : codePoint === 62
-              ? ">"
-              : match;
+          ? "<"
+          : codePoint === 62
+          ? ">"
+          : match;
       });
     if (next === decoded) break;
     decoded = next;
@@ -263,6 +268,7 @@ function displayableSignatureLine(value: string): string | null {
       : `Bildanhang: ${imageFile}`;
   }
   const withoutLinks = line
+    .replace(SIGNATURE_BRACKETED_LINK, "")
     .replace(RAW_SIGNATURE_LINK, "")
     .replace(/\s{2,}/gu, " ")
     .trim();
@@ -285,7 +291,13 @@ function locateCorporateSignature(lines: string[]): SignatureLocation | null {
     farewellIndex < lines.length;
     farewellIndex += 1
   ) {
-    if (!SIGNATURE_FAREWELL.test(lines[farewellIndex].trim())) continue;
+    const farewell = lines[farewellIndex].trim();
+    if (
+      farewell.length > SIGNATURE_FAREWELL_MAX_LENGTH ||
+      !SIGNATURE_FAREWELL.test(farewell)
+    ) {
+      continue;
+    }
     let closingIndex = farewellIndex + 1;
     while (closingIndex < lines.length && !lines[closingIndex].trim()) {
       closingIndex += 1;

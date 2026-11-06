@@ -9,18 +9,19 @@ import { readableTicketDepartments } from "../_shared/readable-ticket-department
 type Action =
   | { type: "list"; tenantId: string; ticketId: string }
   | { type: "listForDepartment"; tenantId: string; departmentId: string }
+  | { type: "listTeams"; tenantId: string }
   | {
-      type: "listForTenant";
-      includeAgents: boolean;
-      tenantId: string;
-      ticketIds: string[];
-    }
+    type: "listForTenant";
+    includeAgents: boolean;
+    tenantId: string;
+    ticketIds: string[];
+  }
   | {
-      type: "assign";
-      tenantId: string;
-      ticketId: string;
-      assignedAgentId: string | null;
-    };
+    type: "assign";
+    tenantId: string;
+    ticketId: string;
+    assignedAgentId: string | null;
+  };
 
 type PermissionCode =
   | "ticket.assign"
@@ -65,8 +66,9 @@ function response(
   return new Response(status === 204 ? null : JSON.stringify(body), {
     status,
     headers: {
-      "Access-Control-Allow-Origin":
-        origin === "https://app.nextdesk.ch" ? origin : "",
+      "Access-Control-Allow-Origin": origin === "https://app.nextdesk.ch"
+        ? origin
+        : "",
       "Access-Control-Allow-Headers":
         "authorization, apikey, content-type, x-client-info",
       "Access-Control-Allow-Methods": "POST, OPTIONS",
@@ -86,6 +88,9 @@ function parseAction(value: unknown): Action | null {
       tenantId: value.tenantId,
       ticketId: value.ticketId,
     };
+  }
+  if (value.type === "listTeams" && hasOnlyKeys(value, ["type", "tenantId"])) {
+    return { type: value.type, tenantId: value.tenantId };
   }
   if (value.type === "listForDepartment" && isUuid(value.departmentId)) {
     return {
@@ -191,8 +196,7 @@ async function hasTicketPermission(
     const role = Array.isArray(assignment.roles)
       ? assignment.roles[0]
       : assignment.roles;
-    const roleApplies =
-      Boolean(departmentMembership) &&
+    const roleApplies = Boolean(departmentMembership) &&
       (role?.scope === "tenant" ||
         (role?.scope === "department" &&
           assignment.department_id === departmentId));
@@ -237,29 +241,59 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       action.tenantId,
       ["ticketing.detail"],
     );
-    if (!featureStates)
+    if (!featureStates) {
       return response(
         request,
         { error: { code: "tenant_feature_lookup_failed" } },
         503,
       );
-    if (featureStates["ticketing.detail"] !== true)
+    }
+    if (featureStates["ticketing.detail"] !== true) {
       return response(
         request,
         { error: { code: "ticket_feature_disabled" } },
         403,
       );
+    }
+  }
+
+  // Active teams of the tenant, for the team chip and quick assignment in
+  // the ticket list (team names are not confidential within a tenant).
+  if (action.type === "listTeams") {
+    const { data: teams, error: teamsError } = await context.supabaseAdmin
+      .from("teams")
+      .select("id, name, department_id")
+      .eq("tenant_id", action.tenantId)
+      .eq("active", true)
+      .order("name")
+      .limit(500);
+    if (teamsError) {
+      return response(
+        request,
+        { error: { code: "ticket_agents_lookup_failed" } },
+        500,
+      );
+    }
+    return response(request, {
+      data: {
+        teams: (teams ?? []).map((team: any) => ({
+          id: String(team.id),
+          name: String(team.name),
+          departmentId: team.department_id ? String(team.department_id) : null,
+        })),
+      },
+    });
   }
 
   if (action.type === "listForDepartment") {
-    const { data: department, error: departmentError } =
-      await context.supabaseAdmin
-        .from("departments")
-        .select("id")
-        .eq("id", action.departmentId)
-        .eq("tenant_id", action.tenantId)
-        .eq("active", true)
-        .maybeSingle();
+    const { data: department, error: departmentError } = await context
+      .supabaseAdmin
+      .from("departments")
+      .select("id")
+      .eq("id", action.departmentId)
+      .eq("tenant_id", action.tenantId)
+      .eq("active", true)
+      .maybeSingle();
     if (departmentError) {
       return response(
         request,
@@ -316,15 +350,15 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     const now = new Date().toISOString();
     const departments: DepartmentRow[] = [];
     const departmentPageSize = 250;
-    for (let offset = 0; ; offset += departmentPageSize) {
-      const { data: departmentRows, error: departmentsError } =
-        await context.supabaseAdmin
-          .from("departments")
-          .select("id, key, name")
-          .eq("tenant_id", action.tenantId)
-          .eq("active", true)
-          .order("id", { ascending: true })
-          .range(offset, offset + departmentPageSize - 1);
+    for (let offset = 0;; offset += departmentPageSize) {
+      const { data: departmentRows, error: departmentsError } = await context
+        .supabaseAdmin
+        .from("departments")
+        .select("id, key, name")
+        .eq("tenant_id", action.tenantId)
+        .eq("active", true)
+        .order("id", { ascending: true })
+        .range(offset, offset + departmentPageSize - 1);
       if (departmentsError) {
         return response(
           request,
@@ -366,19 +400,17 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
 
     const activeDepartmentMembershipIds = new Set(
       (departmentMemberships ?? []).flatMap((membership: any) =>
-        isUuid(membership.department_id) ? [membership.department_id] : [],
+        isUuid(membership.department_id) ? [membership.department_id] : []
       ),
     );
     const departmentAccess = new Map<string, boolean>();
     for (const department of departments) {
-      const allowed =
-        activeDepartmentMembershipIds.has(department.id) &&
+      const allowed = activeDepartmentMembershipIds.has(department.id) &&
         (roleAssignments ?? []).some((assignment: any) => {
           const role = Array.isArray(assignment.roles)
             ? assignment.roles[0]
             : assignment.roles;
-          const roleApplies =
-            role?.scope === "tenant" ||
+          const roleApplies = role?.scope === "tenant" ||
             (role?.scope === "department" &&
               assignment.department_id === department.id);
           return (
@@ -394,7 +426,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     }
 
     const readableDepartmentIds = departments.flatMap((department) =>
-      departmentAccess.get(department.id) === true ? [department.id] : [],
+      departmentAccess.get(department.id) === true ? [department.id] : []
     );
     const readableDepartments = readableTicketDepartments(
       departments,
@@ -419,16 +451,15 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       }
     }
 
-    const { data: tickets, error: ticketsError } =
-      action.ticketIds.length > 0
-        ? await context.supabaseAdmin
-            .from("tickets")
-            .select(
-              "id, tenant_id, department_id, assigned_team_id, assigned_agent_id",
-            )
-            .eq("tenant_id", action.tenantId)
-            .in("id", action.ticketIds)
-        : { data: [], error: null };
+    const { data: tickets, error: ticketsError } = action.ticketIds.length > 0
+      ? await context.supabaseAdmin
+        .from("tickets")
+        .select(
+          "id, tenant_id, department_id, assigned_team_id, assigned_agent_id",
+        )
+        .eq("tenant_id", action.tenantId)
+        .in("id", action.ticketIds)
+      : { data: [], error: null };
     if (ticketsError) {
       return response(
         request,
@@ -436,12 +467,12 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         500,
       );
     }
-    const { data: teamMemberships, error: teamMembershipsError } =
-      await context.supabaseAdmin
-        .from("team_memberships")
-        .select("team_id")
-        .eq("tenant_id", action.tenantId)
-        .eq("user_id", actorId);
+    const { data: teamMemberships, error: teamMembershipsError } = await context
+      .supabaseAdmin
+      .from("team_memberships")
+      .select("team_id")
+      .eq("tenant_id", action.tenantId)
+      .eq("user_id", actorId);
     if (teamMembershipsError) {
       return response(
         request,
@@ -456,23 +487,23 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       ...new Set(
         (tickets ?? []).flatMap((ticket: any) =>
           ticket.tenant_id === action.tenantId &&
-          departmentAccess.get(ticket.department_id) === true &&
-          (ticket.assigned_team_id === null ||
-            typeof ticket.assigned_team_id !== "string" ||
-            teamMembershipIds.has(ticket.assigned_team_id)) &&
-          isUuid(ticket.assigned_agent_id)
+            departmentAccess.get(ticket.department_id) === true &&
+            (ticket.assigned_team_id === null ||
+              typeof ticket.assigned_team_id !== "string" ||
+              teamMembershipIds.has(ticket.assigned_team_id)) &&
+            isUuid(ticket.assigned_agent_id)
             ? [ticket.assigned_agent_id]
-            : [],
+            : []
         ),
       ),
     ];
     const assignedAgentNames: Record<string, string> = {};
     if (assignedAgentIds.length > 0) {
-      const { data: profiles, error: profilesError } =
-        await context.supabaseAdmin
-          .from("user_profiles")
-          .select("id, display_name")
-          .in("id", assignedAgentIds);
+      const { data: profiles, error: profilesError } = await context
+        .supabaseAdmin
+        .from("user_profiles")
+        .select("id, display_name")
+        .in("id", assignedAgentIds);
       if (profilesError) {
         return response(
           request,

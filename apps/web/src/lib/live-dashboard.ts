@@ -107,6 +107,34 @@ interface TicketListRecord {
   matching_ticket_count: number;
 }
 
+export type TicketTeamOption = {
+  id: string;
+  name: string;
+  departmentId: string | null;
+};
+
+export function ticketTeamsFromResponse(value: unknown): TicketTeamOption[] {
+  const data =
+    value && typeof value === "object"
+      ? (value as { data?: { teams?: unknown } }).data
+      : null;
+  if (!data || !Array.isArray(data.teams)) return [];
+  return data.teams.flatMap((team: unknown) => {
+    if (!team || typeof team !== "object") return [];
+    const row = team as Record<string, unknown>;
+    return typeof row.id === "string" && typeof row.name === "string"
+      ? [
+          {
+            id: row.id,
+            name: row.name,
+            departmentId:
+              typeof row.departmentId === "string" ? row.departmentId : null,
+          },
+        ]
+      : [];
+  });
+}
+
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -547,6 +575,34 @@ export async function loadLiveDashboard(
     }
   }
 
+  // Team of each listed ticket (not part of the list RPC) and the team names,
+  // for the team chip in the list. Best effort: the list works without them.
+  const listedTicketIds = tickets
+    .slice(0, TICKET_PAGE_SIZE)
+    .map((ticket) => ticket.id);
+  const ticketTeamIds = new Map<string, string | null>();
+  const teamNames = new Map<string, string>();
+  if (listedTicketIds.length > 0) {
+    const [teamRowsResult, teamsResult] = await Promise.all([
+      client
+        .from("tickets")
+        .select("id, assigned_team_id")
+        .in("id", listedTicketIds),
+      client.functions.invoke("ticket-agent-assignment", {
+        body: { tenantId: tenant.id, type: "listTeams" },
+      }),
+    ]);
+    for (const row of (teamRowsResult.data ?? []) as {
+      id: string;
+      assigned_team_id: string | null;
+    }[]) {
+      ticketTeamIds.set(row.id, row.assigned_team_id ?? null);
+    }
+    for (const team of ticketTeamsFromResponse(teamsResult.data)) {
+      teamNames.set(team.id, team.name);
+    }
+  }
+
   const ticketRows = tickets.slice(0, TICKET_PAGE_SIZE).map((ticket) => {
     const due = formatDueAt(ticket.resolution_due_at);
     return {
@@ -560,6 +616,12 @@ export async function loadLiveDashboard(
         ticket.assigned_agent_id,
         user?.id,
       ),
+      assignedTeamId: ticketTeamIds.get(ticket.id) ?? null,
+      assignedTeamName: (() => {
+        const teamId = ticketTeamIds.get(ticket.id);
+        return teamId ? (teamNames.get(teamId) ?? null) : null;
+      })(),
+      departmentId: ticket.department_id,
       createdAt: ticket.created_at,
       id: ticket.ticket_number,
       recordId: ticket.id,
