@@ -1,6 +1,8 @@
-// Employees without ticket work rights: their tickets (and those of their
-// direct reports), the shop, the public knowledge and the service status.
+// Employees without ticket work rights: their workplace (personal area),
+// their tickets (and those of their direct reports), the shop, the public
+// knowledge and the service status.
 export const REQUESTER_NAVIGATION_SECTIONS = [
+  "Arbeitsplatz",
   "Tickets",
   "Shop",
   "Wissen",
@@ -26,6 +28,6 @@ export function canRequesterOpenSection(
     section === "Shop" ||
     section === "Wissen" ||
     section === "Systemstatus" ||
-    (section === "Mein Portal" && requesterPortalEnabled)
+    (section === "Arbeitsplatz" && requesterPortalEnabled)
   );
 }

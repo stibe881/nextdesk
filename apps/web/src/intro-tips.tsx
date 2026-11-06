@@ -19,8 +19,8 @@ const INTRO_TIPS: Record<IntroTipId, IntroTipDefinition> = {
   },
   "mein-portal": {
     Icon: UserRound,
-    text: "Im Portal finden Sie Ihre eigenen Tickets, Freigaben und Geräte. Verfügbare Bereiche richten sich nach Ihrem Mandanten.",
-    title: "Neu: Mein Portal",
+    text: "Im Arbeitsplatz finden Sie Störungen, offene Freigaben, Ihre Geräte und Ihre Anfragen. Verfügbare Bereiche richten sich nach Ihrem Mandanten.",
+    title: "Ihr Arbeitsplatz",
   },
 };
 

@@ -1,8 +1,5 @@
 export type EventSpaceMetricFilter =
-  | "upcoming"
-  | "in_preparation"
-  | "ready"
-  | "unassigned";
+  "upcoming" | "in_preparation" | "ready" | "unassigned";
 
 export type EventSpaceMetricRequest = Readonly<{
   assignedAgent?: unknown;

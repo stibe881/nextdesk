@@ -317,7 +317,6 @@ const sections: readonly { label: Section; Icon: LucideIcon }[] =
     { label: "Lizenzen", Icon: KeyRound },
     { label: "Berichte", Icon: ChartNoAxesCombined },
     { label: "Arbeitsplatz", Icon: BriefcaseBusiness },
-    { label: "Mein Portal", Icon: UserRound },
   ]);
 
 const NAVIGATION_CATEGORIES = [
@@ -2845,6 +2844,15 @@ function AuthenticatedApp() {
     isSupabaseConfigured &&
     canWorkTickets &&
     tenantFeatures["agent.workbench"] === true;
+  // Follow-ups are ticket work; employees only get their personal area.
+  const workplaceFollowUpsEnabled =
+    experienceWorkspaceEnabled && (canWorkTickets || !isSupabaseConfigured);
+  // "Mein Portal" lives in the workplace as "Mein Bereich".
+  const workplaceAvailable = isWorkplaceAvailable(
+    agentWorkbenchEnabled,
+    workplaceFollowUpsEnabled,
+    requesterPortalEnabled,
+  );
   const contractsAvailable =
     isSupabaseConfigured &&
     canManageContracts &&
@@ -3582,7 +3590,13 @@ function AuthenticatedApp() {
     setNotificationPanelOpen(true);
   }
 
-  function setSection(nextSection: Section) {
+  function setSection(requestedSection: Section) {
+    // "Mein Portal" is now the "Mein Bereich" view of the workplace.
+    if (requestedSection === "Mein Portal") {
+      setWorkplaceRequestedView("portal");
+    }
+    const nextSection: Section =
+      requestedSection === "Mein Portal" ? "Arbeitsplatz" : requestedSection;
     const nonTicketSectionAllowed =
       ((nextSection === "Verträge" || nextSection === "Lizenzen") &&
         contractsAvailable) ||
@@ -4023,12 +4037,8 @@ function AuthenticatedApp() {
   const isPersonalAppearanceDialog = workspacePreferencesContext === "personal";
   const featureSections = sections.filter((item) => {
     if (item.label === "Arbeitsplatz") {
-      return isWorkplaceAvailable(
-        agentWorkbenchEnabled,
-        experienceWorkspaceEnabled,
-      );
+      return workplaceAvailable;
     }
-    if (item.label === "Mein Portal") return requesterPortalEnabled;
     if (item.label === "Systemstatus") return serviceStatusReadable;
     if (
       item.label === "Services" ||
@@ -4091,15 +4101,13 @@ function AuthenticatedApp() {
       Berichte: "reporting.service",
       Serviceaufgaben: "service.tasks",
       Services: "assets.management",
-      "Mein Portal": "requester.portal",
       Wissen: "knowledge.base",
       Verträge: "contracts.management",
       Lizenzen: "contracts.management",
     };
     const featureKey = sectionFeature[section];
     const workplaceUnavailable =
-      section === "Arbeitsplatz" &&
-      !isWorkplaceAvailable(agentWorkbenchEnabled, experienceWorkspaceEnabled);
+      section === "Arbeitsplatz" && !workplaceAvailable;
     const serviceStatusUnavailable =
       section === "Systemstatus" && !serviceStatusReadable;
     if (
@@ -4120,6 +4128,7 @@ function AuthenticatedApp() {
     reportsAvailable,
     section,
     serviceStatusReadable,
+    workplaceAvailable,
     tenantFeatures,
     tenantFeaturesLoading,
     ticketAccessLoading,
@@ -4538,7 +4547,7 @@ function AuthenticatedApp() {
     ? [...workSections, { label: "Einstellungen" as const, Icon: Settings }]
     : workSections;
   const primaryNavigationSections = visibleSections.filter(
-    (item) => item.label !== "Mein Portal" && item.label !== "Einstellungen",
+    (item) => item.label !== "Einstellungen",
   );
   const { workplaceNavigationItem, remainingNavigationSections } =
     splitWorkplaceNavigation(primaryNavigationSections);
@@ -4547,9 +4556,6 @@ function AuthenticatedApp() {
     remainingNavigationSections.find((item) => item.label === "Übersicht"),
     workplaceNavigationItem,
   ].filter((item): item is NonNullable<typeof item> => Boolean(item));
-  const portalNavigationItem = visibleSections.find(
-    (item) => item.label === "Mein Portal",
-  );
   const settingsNavigationItem = visibleSections.find(
     (item) => item.label === "Einstellungen",
   );
@@ -4861,29 +4867,6 @@ function AuthenticatedApp() {
                   strokeWidth={1.8}
                 />
                 {sectionDisplayLabel(settingsNavigationItem.label)}
-              </button>
-            </nav>
-          )}
-          {portalNavigationItem && (
-            <nav aria-label="Mein Portal" className="rail-footer__navigation">
-              <button
-                className={
-                  section === portalNavigationItem.label
-                    ? "nav-item rail-footer__portal active"
-                    : "nav-item rail-footer__portal"
-                }
-                onClick={() => {
-                  setPersonalSettingsOpen(false);
-                  setSection(portalNavigationItem.label);
-                }}
-                type="button"
-              >
-                <portalNavigationItem.Icon
-                  aria-hidden="true"
-                  size={18}
-                  strokeWidth={1.8}
-                />
-                {sectionDisplayLabel(portalNavigationItem.label)}
               </button>
             </nav>
           )}
@@ -5260,6 +5243,7 @@ function AuthenticatedApp() {
         )}
         {personalSettingsOpen && session ? (
           <PersonalSettings
+            employeeView={!canWorkTickets}
             onBack={() => setPersonalSettingsOpen(false)}
             onOpenAppearance={() => {
               setPersonalSettingsOpen(false);
@@ -5409,21 +5393,18 @@ function AuthenticatedApp() {
         ) : section === "Arbeitsplatz" &&
           activeTenant &&
           session &&
-          isWorkplaceAvailable(
-            agentWorkbenchEnabled,
-            experienceWorkspaceEnabled,
-          ) ? (
+          workplaceAvailable ? (
           <>
             <IntroTip
               tenantId={activeTenant.id}
-              tip="arbeitsplatz"
+              tip={canWorkTickets ? "arbeitsplatz" : "mein-portal"}
               userId={session.user.id}
             />
             <AgentWorkbenchPanel
               canManageIncidents={isTenantAdmin}
-              followUpsEnabled={experienceWorkspaceEnabled}
+              followUpsEnabled={workplaceFollowUpsEnabled}
               followUpsPanel={
-                experienceWorkspaceEnabled ? (
+                workplaceFollowUpsEnabled ? (
                   <ExperienceWorkspace
                     createFollowUpRequestId={
                       activeQuickCreateRequest?.action === "followUp"
@@ -5457,27 +5438,40 @@ function AuthenticatedApp() {
                 setSelectedTicketId(ticketId);
               }}
               onUnreadMentionsChange={ignoreUnreadMentions}
-              requestedView={requestedWorkplaceViewForFollowUps(
-                experienceWorkspaceEnabled,
-                workplaceRequestedView === "followUps" ||
-                  activeQuickCreateRequest?.action === "followUp" ||
-                  globalSearchTarget?.resultType === "follow_up",
-              )}
+              portalPanel={
+                requesterPortalEnabled ? (
+                  <RequesterPortalPanel
+                    embedded={
+                      agentWorkbenchEnabled || workplaceFollowUpsEnabled
+                    }
+                    onCreateTicket={() => startQuickCreate("ticket")}
+                    onOpenShop={
+                      workSections.some((item) => item.label === "Shop")
+                        ? () => setSection("Shop")
+                        : undefined
+                    }
+                    onOpenTicket={(ticketId) => {
+                      setSection("Tickets");
+                      setSelectedTicketId(ticketId);
+                    }}
+                    onOpenTickets={() => setSection("Tickets")}
+                    tenantId={activeTenant.id}
+                  />
+                ) : undefined
+              }
+              requestedView={
+                workplaceRequestedView === "portal"
+                  ? "portal"
+                  : requestedWorkplaceViewForFollowUps(
+                      workplaceFollowUpsEnabled,
+                      workplaceRequestedView === "followUps" ||
+                        activeQuickCreateRequest?.action === "followUp" ||
+                        globalSearchTarget?.resultType === "follow_up",
+                    )
+              }
               showAgentWorkbench={agentWorkbenchEnabled}
               tenantId={activeTenant.id}
             />
-          </>
-        ) : section === "Mein Portal" &&
-          activeTenant &&
-          session &&
-          requesterPortalEnabled ? (
-          <>
-            <IntroTip
-              tenantId={activeTenant.id}
-              tip="mein-portal"
-              userId={session.user.id}
-            />
-            <RequesterPortalPanel tenantId={activeTenant.id} />
           </>
         ) : section === "Tickets" ? (
           <>

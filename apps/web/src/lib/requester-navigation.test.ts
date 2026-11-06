@@ -18,10 +18,10 @@ describe("Navigation für reine Anfragende", () => {
     { label: "Einstellungen" },
   ] as const;
 
-  it("zeigt nur Tickets, Shop und Wissen (Systemstatus, wenn vorhanden)", () => {
+  it("zeigt Arbeitsplatz, Tickets, Shop und Wissen (Systemstatus, wenn vorhanden)", () => {
     expect(
       requesterNavigationSections(sections).map((section) => section.label),
-    ).toEqual(["Tickets", "Shop", "Wissen"]);
+    ).toEqual(["Tickets", "Shop", "Arbeitsplatz", "Wissen"]);
   });
 
   it("verweigert weitere Bereiche bei direkter clientseitiger Navigation", () => {
@@ -30,9 +30,9 @@ describe("Navigation für reine Anfragende", () => {
     expect(canRequesterOpenSection("Systemstatus", true)).toBe(true);
     expect(canRequesterOpenSection("Tickets", true)).toBe(true);
     expect(canRequesterOpenSection("Shop", true)).toBe(true);
-    expect(canRequesterOpenSection("Mein Portal", true)).toBe(true);
-    expect(canRequesterOpenSection("Mein Portal", false)).toBe(false);
-    expect(canRequesterOpenSection("Arbeitsplatz", true)).toBe(false);
+    expect(canRequesterOpenSection("Arbeitsplatz", true)).toBe(true);
+    expect(canRequesterOpenSection("Arbeitsplatz", false)).toBe(false);
+    expect(canRequesterOpenSection("Mein Portal", true)).toBe(false);
     expect(canRequesterOpenSection("Raumplanung", true)).toBe(false);
     expect(canRequesterOpenSection("Eintritte", true)).toBe(false);
   });

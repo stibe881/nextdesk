@@ -30,6 +30,8 @@ import {
 } from "./lib/push-notifications";
 
 type PersonalSettingsProps = {
+  /** Plain employees: no password or data-export cards. */
+  employeeView?: boolean;
   onBack: () => void;
   onOpenAppearance: () => void;
   onSignOut: () => void;
@@ -150,6 +152,7 @@ function workHoursStatusLabel(workHours: WorkHours): string {
 }
 
 export function PersonalSettings({
+  employeeView = false,
   onBack,
   onOpenAppearance,
   onSignOut,
@@ -430,8 +433,10 @@ export function PersonalSettings({
     >
       <header className="personal-settings__header">
         <div>
-          <p className="eyebrow">MEIN KONTO</p>
-          <h2 id="personal-settings-heading">Persönliche Einstellungen</h2>
+          {/* The page title is shown in the top bar. */}
+          <h2 className="sr-only" id="personal-settings-heading">
+            Persönliche Einstellungen
+          </h2>
           <p>
             Verwalte deine eigenen Zugangs- und Sicherheitsangaben. Diese Seite
             betrifft nur dein Konto, nicht die Mandanteneinstellungen.
@@ -493,7 +498,7 @@ export function PersonalSettings({
           </button>
         </article>
 
-        {provider.canChangePassword ? (
+        {employeeView ? null : provider.canChangePassword ? (
           <article className="personal-settings__card">
             <div className="personal-settings__card-heading">
               <span
@@ -817,60 +822,62 @@ export function PersonalSettings({
         </section>
       ) : null}
 
-      <section
-        aria-labelledby="personal-privacy-heading"
-        className="personal-settings__card"
-      >
-        <div className="personal-settings__card-heading">
-          <span
-            className="personal-settings__icon personal-settings__icon--security"
-            aria-hidden="true"
-          >
-            <Download size={19} strokeWidth={1.9} />
-          </span>
-          <div>
-            <h3 id="personal-privacy-heading">Datenschutz</h3>
-            <p>
-              Lade eine JSON-Datei mit deinen exportierbaren Profildaten,
-              eigenen Tickets und externen Kommentaren herunter.
-            </p>
-          </div>
-        </div>
-        <button
-          className="secondary-button"
-          disabled={!tenantId || exportState === "exporting"}
-          onClick={() => void exportPersonalData()}
-          type="button"
+      {employeeView ? null : (
+        <section
+          aria-labelledby="personal-privacy-heading"
+          className="personal-settings__card"
         >
-          {exportState === "exporting" ? (
-            <LoaderCircle aria-hidden="true" size={17} strokeWidth={1.9} />
-          ) : (
-            <Download aria-hidden="true" size={17} strokeWidth={1.9} />
-          )}
-          {exportState === "exporting"
-            ? "Daten werden vorbereitet …"
-            : "Meine Daten exportieren"}
-        </button>
-        {!tenantId && (
-          <p className="personal-settings__hint">
-            Der Export wird verfügbar, sobald ein aktiver Mandant übergeben
-            wird.
-          </p>
-        )}
-        {exportMessage && (
-          <p
-            aria-live="polite"
-            className={
-              exportState === "success"
-                ? "personal-settings__notice personal-settings__notice--success"
-                : "personal-settings__notice personal-settings__notice--error"
-            }
-            role="status"
+          <div className="personal-settings__card-heading">
+            <span
+              className="personal-settings__icon personal-settings__icon--security"
+              aria-hidden="true"
+            >
+              <Download size={19} strokeWidth={1.9} />
+            </span>
+            <div>
+              <h3 id="personal-privacy-heading">Datenschutz</h3>
+              <p>
+                Lade eine JSON-Datei mit deinen exportierbaren Profildaten,
+                eigenen Tickets und externen Kommentaren herunter.
+              </p>
+            </div>
+          </div>
+          <button
+            className="secondary-button"
+            disabled={!tenantId || exportState === "exporting"}
+            onClick={() => void exportPersonalData()}
+            type="button"
           >
-            {exportMessage}
-          </p>
-        )}
-      </section>
+            {exportState === "exporting" ? (
+              <LoaderCircle aria-hidden="true" size={17} strokeWidth={1.9} />
+            ) : (
+              <Download aria-hidden="true" size={17} strokeWidth={1.9} />
+            )}
+            {exportState === "exporting"
+              ? "Daten werden vorbereitet …"
+              : "Meine Daten exportieren"}
+          </button>
+          {!tenantId && (
+            <p className="personal-settings__hint">
+              Der Export wird verfügbar, sobald ein aktiver Mandant übergeben
+              wird.
+            </p>
+          )}
+          {exportMessage && (
+            <p
+              aria-live="polite"
+              className={
+                exportState === "success"
+                  ? "personal-settings__notice personal-settings__notice--success"
+                  : "personal-settings__notice personal-settings__notice--error"
+              }
+              role="status"
+            >
+              {exportMessage}
+            </p>
+          )}
+        </section>
+      )}
 
       <section
         aria-labelledby="personal-sessions-heading"

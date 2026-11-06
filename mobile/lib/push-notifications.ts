@@ -25,6 +25,7 @@ export const PUSH_CATEGORIES = [
   "follow_up",
   "sla",
   "shop",
+  "inventory_low_stock",
 ] as const;
 
 export type PushCategory = (typeof PUSH_CATEGORIES)[number];
@@ -146,10 +147,7 @@ type RegistrationContext = {
 };
 
 export type PushPermissionState =
-  | "granted"
-  | "denied"
-  | "undetermined"
-  | "unsupported";
+  "granted" | "denied" | "undetermined" | "unsupported";
 
 const REGISTRATION_KEY_PREFIX = "nextdesk:push:registered:v1";
 const APNS_TOKEN_PATTERN = /^[a-f0-9]{64,200}$/i;
