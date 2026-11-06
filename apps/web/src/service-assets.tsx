@@ -4470,13 +4470,13 @@ export function ServiceAssets({
                     >
                       <option value="">
                         {problemOwnersLoading
-                          ? "Aktive Personen werden geladen …"
+                          ? "Agent:innen werden geladen …"
                           : "Nicht zugewiesen"}
                       </option>
                       {problemForm.ownerId &&
                       !problemOwnerNames.has(problemForm.ownerId) ? (
                         <option value={problemForm.ownerId}>
-                          Nicht mehr aktive Person
+                          Keine aktive Agent:in
                         </option>
                       ) : null}
                       {problemOwners.map((owner) => (
@@ -4487,9 +4487,9 @@ export function ServiceAssets({
                     </select>
                   </label>
                   <p>
-                    Es werden ausschliesslich aktive Mandantenmitglieder
-                    angezeigt. Bereits nicht mehr aktive Verantwortliche können
-                    entfernt oder durch eine aktive Person ersetzt werden.
+                    Fälle können nur aktiven Agent:innen zugewiesen werden. Eine
+                    bisherige verantwortliche Person ohne Agentenzugriff kann
+                    entfernt oder durch eine Agent:in ersetzt werden.
                   </p>
                 </>
               ) : (
