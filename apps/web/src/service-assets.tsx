@@ -1406,6 +1406,64 @@ function defaultTicketFollowUpMessage(
   return lines.join("\n");
 }
 
+/** Markdown of a knowledge draft from a resolved case. */
+function caseArticleMarkdown(form: {
+  description: string;
+  workaround: string;
+  rootCause: string;
+}): string {
+  const sections = [
+    ["Problem", form.description],
+    ["Lösung / Workaround", form.workaround],
+    ["Ursache", form.rootCause],
+  ]
+    .filter(([, text]) => text?.trim())
+    .map(([heading, text]) => `## ${heading}\n\n${text!.trim()}`);
+  return sections.length > 0
+    ? sections.join("\n\n")
+    : "## Lösung\n\nBeschreiben Sie hier die Lösung.";
+}
+
+/** Creates a knowledge draft and returns its id. */
+async function createCaseArticle(
+  tenantId: string,
+  input: {
+    title: string;
+    bodyMarkdown: string;
+    visibility: "internal" | "external";
+    departmentId: string | null;
+  },
+): Promise<string> {
+  if (!supabase) {
+    throw new Error("Die Verbindung zu Supabase ist nicht konfiguriert.");
+  }
+  const { data, error } = await supabase.functions.invoke("knowledge-base", {
+    body: {
+      type: "saveArticle",
+      tenantId,
+      title: input.title,
+      bodyMarkdown: input.bodyMarkdown,
+      visibility: input.visibility,
+      ...(input.departmentId ? { departmentId: input.departmentId } : {}),
+    },
+  });
+  if (error) throw error;
+  const article =
+    isRecord(data) && isRecord(data.data) ? data.data.article : null;
+  if (!isRecord(article) || typeof article.id !== "string") {
+    throw new Error("Der Wissensartikel konnte nicht angelegt werden.");
+  }
+  return article.id;
+}
+
+function knowledgeArticleLink(articleId: string): string {
+  const url = new URL(window.location.href);
+  url.search = "";
+  url.hash = "";
+  url.searchParams.set("wissen", articleId);
+  return url.toString();
+}
+
 /** Sends a reply to and/or resolves one ticket linked to a resolved case. */
 async function followUpLinkedTicket(
   tenantId: string,
@@ -1688,6 +1746,13 @@ export function ServiceAssets({
     message: "",
     resolve: false,
   });
+  // Optional knowledge draft from the case being resolved.
+  const [caseArticle, setCaseArticle] = useState({
+    create: false,
+    title: "",
+    visibility: "internal" as "internal" | "external",
+  });
+  const [createdArticleId, setCreatedArticleId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [error, setError] = useState("");
@@ -2071,6 +2136,7 @@ export function ServiceAssets({
     setServiceCategoryForm(EMPTY_SERVICE_CATEGORY_FORM);
     setShowArchivedServices(false);
     setSuccess("");
+    setCreatedArticleId(null);
   }, [tenantId]);
 
   useEffect(() => {
@@ -2205,6 +2271,7 @@ export function ServiceAssets({
     setError("");
     setForbidden(false);
     setSuccess("");
+    setCreatedArticleId(null);
   }
 
   function resetServiceForm() {
@@ -2213,6 +2280,7 @@ export function ServiceAssets({
     setInlineServiceEditorId(null);
     setError("");
     setSuccess("");
+    setCreatedArticleId(null);
     restoreServiceEditorFocus();
   }
 
@@ -2250,6 +2318,7 @@ export function ServiceAssets({
     setServiceForm(EMPTY_SERVICE_FORM);
     setError("");
     setSuccess("");
+    setCreatedArticleId(null);
     setServiceEditorOpen(true);
   }
 
@@ -2264,6 +2333,7 @@ export function ServiceAssets({
     setServiceForm(serviceDraft(service));
     setError("");
     setSuccess("");
+    setCreatedArticleId(null);
   }
 
   function handleServiceEditorKeyDown(event: KeyboardEvent<HTMLElement>) {
@@ -2318,6 +2388,7 @@ export function ServiceAssets({
     setAssetEditorOpen(false);
     setError("");
     setSuccess("");
+    setCreatedArticleId(null);
     restoreAssetEditorFocus();
   }
 
@@ -2330,6 +2401,7 @@ export function ServiceAssets({
     setAssetForm(asset ? assetDraft(asset) : EMPTY_ASSET_FORM);
     setError("");
     setSuccess("");
+    setCreatedArticleId(null);
     setAssetEditorOpen(true);
   }
 
@@ -2365,11 +2437,13 @@ export function ServiceAssets({
 
   function resetProblemForm() {
     setTicketFollowUp({ notify: false, message: "", resolve: false });
+    setCaseArticle({ create: false, title: "", visibility: "internal" });
     setProblemForm(EMPTY_PROBLEM_FORM);
     setProblemMode("create");
     clearProblemTicketState();
     setError("");
     setSuccess("");
+    setCreatedArticleId(null);
   }
 
   useEffect(() => {
@@ -2399,6 +2473,7 @@ export function ServiceAssets({
     setActiveTab(tab);
     setError("");
     setSuccess("");
+    setCreatedArticleId(null);
   }
 
   function moveTab(event: KeyboardEvent<HTMLButtonElement>, tab: CatalogTab) {
@@ -2490,6 +2565,7 @@ export function ServiceAssets({
     );
     setError("");
     setSuccess("");
+    setCreatedArticleId(null);
   }
 
   async function saveServiceCategory(event: FormEvent<HTMLFormElement>) {
@@ -2945,6 +3021,26 @@ export function ServiceAssets({
           ]),
         );
         const linkedTickets = [...problemTickets];
+        const articleRequest = caseArticle.create
+          ? {
+              title: caseArticle.title.trim() || resolved.title,
+              bodyMarkdown: caseArticleMarkdown(problemForm),
+              visibility: caseArticle.visibility,
+              departmentId: problemForm.departmentId || null,
+            }
+          : null;
+        let articleId: string | null = null;
+        let articleFailure = "";
+        if (articleRequest) {
+          try {
+            articleId = await createCaseArticle(tenantId, articleRequest);
+          } catch (articleError) {
+            articleFailure = await apiErrorMessage(
+              articleError,
+              "Der Wissensartikel konnte nicht angelegt werden.",
+            );
+          }
+        }
         const message = ticketFollowUp.notify
           ? ticketFollowUp.message.trim()
           : "";
@@ -2970,6 +3066,7 @@ export function ServiceAssets({
           }
         }
         resetProblemForm();
+        setCreatedArticleId(articleId);
         const done = linkedTickets.length - failed.length;
         const actionText = [
           message ? "benachrichtigt" : null,
@@ -2978,15 +3075,23 @@ export function ServiceAssets({
           .filter(Boolean)
           .join(" und ");
         setSuccess(
-          followUpWanted
-            ? `Der Fall „${resolved.title}“ wurde gelöst. ${done} von ${linkedTickets.length} angehängten Tickets wurden ${actionText}.`
-            : `Der Fall „${resolved.title}“ wurde gelöst.`,
+          [
+            `Der Fall „${resolved.title}“ wurde gelöst.`,
+            followUpWanted
+              ? `${done} von ${linkedTickets.length} angehängten Tickets wurden ${actionText}.`
+              : null,
+            articleId ? "Der Wissensartikel wurde als Entwurf angelegt." : null,
+          ]
+            .filter(Boolean)
+            .join(" "),
         );
-        if (failed.length > 0) {
-          setError(
-            `Nicht alle Tickets konnten bearbeitet werden: ${failed.join(" · ")}`,
-          );
-        }
+        const problemsText = [
+          failed.length > 0
+            ? `Nicht alle Tickets konnten bearbeitet werden: ${failed.join(" · ")}`
+            : null,
+          articleFailure || null,
+        ].filter(Boolean);
+        if (problemsText.length > 0) setError(problemsText.join(" "));
         return;
       }
 
@@ -3102,6 +3207,18 @@ export function ServiceAssets({
       {success ? (
         <p aria-live="polite" role="status">
           {success}
+          {createdArticleId ? (
+            <>
+              {" "}
+              <a
+                href={knowledgeArticleLink(createdArticleId)}
+                rel="noreferrer"
+                target="_blank"
+              >
+                Artikel öffnen
+              </a>
+            </>
+          ) : null}
         </p>
       ) : null}
 
@@ -4450,6 +4567,7 @@ export function ServiceAssets({
                         setProblemMode("edit");
                         setError("");
                         setSuccess("");
+                        setCreatedArticleId(null);
                       }}
                       type="button"
                     >
@@ -4465,6 +4583,7 @@ export function ServiceAssets({
                         setProblemMode("resolve");
                         setError("");
                         setSuccess("");
+                        setCreatedArticleId(null);
                       }}
                       type="button"
                     >
@@ -4724,6 +4843,72 @@ export function ServiceAssets({
                     </ul>
                   ) : null}
                 </section>
+              ) : null}
+              {problemMode === "resolve" ? (
+                <fieldset className="service-assets__ticket-follow-up">
+                  <legend>Wissensartikel</legend>
+                  <label className="service-assets__checkbox">
+                    <input
+                      checked={caseArticle.create}
+                      disabled={controlsDisabled}
+                      onChange={(event) => {
+                        const create = event.target.checked;
+                        setCaseArticle((current) => ({
+                          ...current,
+                          create,
+                          title:
+                            create && !current.title.trim()
+                              ? problemForm.title
+                              : current.title,
+                        }));
+                      }}
+                      type="checkbox"
+                    />
+                    Aus diesem Fall einen Wissensartikel erstellen
+                  </label>
+                  {caseArticle.create ? (
+                    <>
+                      <label>
+                        Titel des Artikels
+                        <input
+                          disabled={controlsDisabled}
+                          maxLength={240}
+                          minLength={3}
+                          onChange={(event) =>
+                            setCaseArticle((current) => ({
+                              ...current,
+                              title: event.target.value,
+                            }))
+                          }
+                          required
+                          value={caseArticle.title}
+                        />
+                      </label>
+                      <label>
+                        Sichtbarkeit
+                        <select
+                          disabled={controlsDisabled}
+                          onChange={(event) =>
+                            setCaseArticle((current) => ({
+                              ...current,
+                              visibility: event.target.value as
+                                "internal" | "external",
+                            }))
+                          }
+                          value={caseArticle.visibility}
+                        >
+                          <option value="internal">Intern</option>
+                          <option value="external">Extern</option>
+                        </select>
+                      </label>
+                      <p className="data-caption">
+                        Der Artikel wird aus Beschreibung, Workaround und
+                        Ursache als Entwurf angelegt. Sie können ihn danach in
+                        der Wissensdatenbank überarbeiten und freigeben.
+                      </p>
+                    </>
+                  ) : null}
+                </fieldset>
               ) : null}
               {problemMode === "resolve" && problemTickets.length > 0 ? (
                 <fieldset className="service-assets__ticket-follow-up">
