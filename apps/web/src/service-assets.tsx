@@ -285,6 +285,12 @@ type ProblemResolveRequest = {
   workaround: string | null;
   rootCause: string | null;
 };
+type ProblemDeleteRequest = {
+  type: "manageProblem";
+  tenantId: string;
+  operation: "delete";
+  problemId: string;
+};
 type ProblemTicketsRequest = {
   type: "listProblemTickets";
   tenantId: string;
@@ -314,6 +320,7 @@ type ServiceAssetsRequest =
   | AssetArchiveRequest
   | ProblemSaveRequest
   | ProblemResolveRequest
+  | ProblemDeleteRequest
   | ProblemTicketsRequest
   | TicketSearchRequest
   | ProblemTicketLinkRequest;
@@ -2916,6 +2923,40 @@ export function ServiceAssets({
     }
   }
 
+  async function deleteProblem(problem: Problem) {
+    if (
+      !window.confirm(
+        `Den Fall „${problem.title}“ endgültig löschen? Die Verknüpfungen zu Tickets werden entfernt; die Tickets selbst bleiben bestehen.`,
+      )
+    ) {
+      return;
+    }
+    beginAction(`problem:delete:${problem.id}`);
+    try {
+      await requestServiceAssets({
+        type: "manageProblem",
+        tenantId,
+        operation: "delete",
+        problemId: problem.id,
+      });
+      setProblems((current) =>
+        current.filter((item) => item.id !== problem.id),
+      );
+      if (problemForm.id === problem.id) resetProblemForm();
+      setSuccess(`Der Fall „${problem.title}“ wurde gelöscht.`);
+    } catch (nextError) {
+      setForbidden(errorStatus(nextError) === 403);
+      setError(
+        await apiErrorMessage(
+          nextError,
+          "Der Fall konnte nicht gelöscht werden.",
+        ),
+      );
+    } finally {
+      setPendingAction(null);
+    }
+  }
+
   async function linkTicketToProblem(ticket: TicketReference) {
     const problemId = problemForm.id;
     if (!problemId) {
@@ -4646,6 +4687,16 @@ export function ServiceAssets({
                       {problem.status === "resolved"
                         ? "Lösung und Tickets"
                         : "Lösen"}
+                    </button>{" "}
+                    <button
+                      className="danger-action"
+                      disabled={controlsDisabled}
+                      onClick={() => void deleteProblem(problem)}
+                      type="button"
+                    >
+                      {pendingAction === `problem:delete:${problem.id}`
+                        ? "Wird gelöscht …"
+                        : "Löschen"}
                     </button>
                   </article>
                 </li>
