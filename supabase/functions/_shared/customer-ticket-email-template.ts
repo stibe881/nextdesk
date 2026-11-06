@@ -5,6 +5,8 @@ export type CustomerTicketEmailBrand = {
   accentColor: string;
   displayName: string;
   logoContentId: string | null;
+  /** Public https URL of the logo, used where no inline logo can be sent. */
+  logoUrl?: string | null;
   primaryColor: string;
   secondaryColor: string;
 };
@@ -26,8 +28,9 @@ type EmailPresentation = {
 
 const DEFAULT_BRANDING: CustomerTicketEmailBrand = {
   accentColor: "#14B8A6",
-  displayName: "nextDesk",
+  displayName: "Support",
   logoContentId: null,
+  logoUrl: null,
   primaryColor: "#2563EB",
   secondaryColor: "#0F172A",
 };
@@ -69,10 +72,22 @@ export function normalizeCustomerTicketEmailBranding(
     CONTENT_ID.test(input.logoContentId)
       ? input.logoContentId
       : null;
+  let logoUrl: string | null = null;
+  if (typeof input.logoUrl === "string") {
+    try {
+      const url = new URL(input.logoUrl);
+      if (url.protocol === "https:" && !url.username && !url.password) {
+        logoUrl = url.toString();
+      }
+    } catch {
+      logoUrl = null;
+    }
+  }
   return {
     accentColor: color(input.accentColor, DEFAULT_BRANDING.accentColor),
     displayName,
     logoContentId,
+    logoUrl,
     primaryColor: color(input.primaryColor, DEFAULT_BRANDING.primaryColor),
     secondaryColor: color(
       input.secondaryColor,
@@ -145,8 +160,11 @@ function messageHtml(value: string, secondaryColor: string): string {
 }
 
 function brandMark(branding: CustomerTicketEmailBrand): string {
-  if (branding.logoContentId) {
-    return `<img src="cid:${escapeHtml(branding.logoContentId)}" width="112" alt="${escapeHtml(branding.displayName)}" style="display:block;max-width:112px;height:auto;border:0;outline:none;text-decoration:none;">`;
+  const source = branding.logoContentId
+    ? `cid:${branding.logoContentId}`
+    : branding.logoUrl;
+  if (source) {
+    return `<img src="${escapeHtml(source)}" width="112" alt="${escapeHtml(branding.displayName)}" style="display:block;max-width:112px;height:auto;border:0;outline:none;text-decoration:none;">`;
   }
   return `<span style="color:#ffffff;font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;line-height:20px;">${escapeHtml(branding.displayName)}</span>`;
 }
@@ -211,7 +229,7 @@ export function renderCustomerTicketEmail(
             </table>
           </td></tr>
           <tr><td style="padding:18px 32px;border-top:1px solid #E5EBF4;background:#FBFCFE;">
-            <p style="margin:0;color:#71809A;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:18px;">${escapeHtml(branding.displayName)} · Ticketbenachrichtigung über nextDesk</p>
+            <p style="margin:0;color:#71809A;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:18px;">Ticketbenachrichtigung über ${escapeHtml(branding.displayName)}</p>
           </td></tr>
         </table>
       </td></tr>

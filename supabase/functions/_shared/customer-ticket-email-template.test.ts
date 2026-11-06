@@ -39,7 +39,7 @@ Deno.test(
       "Neue Nachricht zu Ihrem Ticket",
       "VPN einrichten",
       "Ticket ICT-2026-000011",
-      "Verein SONNENBERG Baar · Ticketbenachrichtigung über nextDesk",
+      "Ticketbenachrichtigung über Verein SONNENBERG Baar",
       "#1B67C9",
       "#15365F",
       "#1C8276",
@@ -89,7 +89,7 @@ Deno.test(
     });
     for (const required of [
       "ICT-2026-&lt;000011&gt; · VPN &amp; &lt;Test&gt;",
-      "Support &lt;Portal&gt; · Ticketbenachrichtigung über nextDesk",
+      "Ticketbenachrichtigung über Support &lt;Portal&gt;",
     ]) {
       if (!html.includes(required)) {
         throw new Error(`Wert wurde nicht HTML-escaped: ${required}`);
@@ -135,6 +135,7 @@ Deno.test(
       accentColor: "url(javascript:alert(1))",
       displayName: "",
       logoContentId: "cid:extern",
+      logoUrl: "javascript:alert(1)",
       primaryColor: "blue",
       secondaryColor: "#12",
     });
@@ -143,7 +144,8 @@ Deno.test(
       normalized.secondaryColor !== "#0F172A" ||
       normalized.accentColor !== "#14B8A6" ||
       normalized.logoContentId !== null ||
-      normalized.displayName !== "nextDesk"
+      normalized.logoUrl !== null ||
+      normalized.displayName !== "Support"
     ) {
       throw new Error(
         "Ungültige Brandingwerte wurden nicht sicher normalisiert.",
@@ -151,3 +153,28 @@ Deno.test(
     }
   },
 );
+
+Deno.test("Kundschafts-E-Mail zeigt das öffentliche Logo, wenn kein Inline-Logo möglich ist", () => {
+  const html = renderCustomerTicketEmail({
+    attachmentNotice: false,
+    branding: {
+      accentColor: "#1C8276",
+      displayName: "SONNENBERG",
+      logoContentId: null,
+      logoUrl: "https://example.supabase.co/storage/v1/object/public/tenant-branding/tenant/x/logo.png",
+      primaryColor: "#2563EB",
+      secondaryColor: "#0F172A",
+    },
+    kind: "agent_reply",
+    subject: "Drucker",
+    text: "Hallo",
+    ticketNumber: "ICT-1",
+  });
+  if (
+    !html.includes('src="https://example.supabase.co/storage/v1/object/public/tenant-branding/tenant/x/logo.png"') ||
+    !html.includes("Ticketbenachrichtigung über SONNENBERG") ||
+    html.includes("nextDesk")
+  ) {
+    throw new Error("Logo oder Mandantenname fehlen in der E-Mail.");
+  }
+});
