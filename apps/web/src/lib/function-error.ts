@@ -54,6 +54,23 @@ export async function functionErrorMessage(
   const status = functionErrorStatus(error);
 
   switch (code) {
+    case "ticket_required_fields_missing": {
+      const labels: Record<string, string> = {
+        category: "Kategorie",
+        team: "Team",
+        assignee: "Zuweisung",
+      };
+      const fields = (payload?.error as { fields?: unknown } | undefined)
+        ?.fields;
+      const missing = Array.isArray(fields)
+        ? fields
+            .map((field) => labels[String(field)])
+            .filter((label): label is string => Boolean(label))
+        : [];
+      return missing.length > 0
+        ? `Bevor das Ticket geschlossen werden kann, bitte zuerst ausfüllen: ${missing.join(", ")}.`
+        : "Bevor das Ticket geschlossen werden kann, bitte Kategorie, Team und Zuweisung ausfüllen.";
+    }
     case "invalid_request":
     case "validation_failed":
       return "Die Eingaben sind unvollständig oder ungültig. Bitte prüfen Sie die markierten Felder.";

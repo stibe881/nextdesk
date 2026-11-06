@@ -1900,10 +1900,14 @@ function TicketQuickAssign({
       setOpen(null);
       setPendingClose(null);
       assignment.onChanged();
-    } catch {
+    } catch (saveError) {
+      setPendingClose(null);
       setError(
         open === "status"
-          ? "Der Status konnte nicht gespeichert werden."
+          ? await functionErrorMessage(
+              saveError,
+              "Der Status konnte nicht gespeichert werden.",
+            )
           : open === "agent"
             ? "Die Zuweisung konnte nicht gespeichert werden."
             : "Das Team konnte nicht gespeichert werden.",
@@ -2066,6 +2070,23 @@ function TicketQuickAssign({
     </div>
   );
 }
+
+// "?wissen=<article id>" opens a knowledge article directly, e.g. from the
+// ticket detail in a new browser tab. The parameter is removed afterwards.
+const KNOWLEDGE_DEEP_LINK_PARAM = "wissen";
+const initialKnowledgeDeepLink: string | null = (() => {
+  if (typeof window === "undefined") return null;
+  try {
+    const url = new URL(window.location.href);
+    const value = url.searchParams.get(KNOWLEDGE_DEEP_LINK_PARAM);
+    if (!value || !/^[0-9a-f-]{36}$/i.test(value)) return null;
+    url.searchParams.delete(KNOWLEDGE_DEEP_LINK_PARAM);
+    window.history.replaceState(window.history.state, "", url.toString());
+    return value.toLowerCase();
+  } catch {
+    return null;
+  }
+})();
 
 function TicketList({
   assignment,
@@ -2323,7 +2344,9 @@ function useDebouncedValue(value: string, delayMs: number): string {
 }
 
 function AuthenticatedApp() {
-  const [section, setRequestedSection] = useState<Section>("Übersicht");
+  const [section, setRequestedSection] = useState<Section>(() =>
+    initialKnowledgeDeepLink ? "Wissen" : "Übersicht",
+  );
   const [globalSearchTarget, setGlobalSearchTarget] =
     useState<GlobalSearchResult | null>(null);
   const [workplaceRequestedView, setWorkplaceRequestedView] =
@@ -2381,7 +2404,7 @@ function AuthenticatedApp() {
   const [ticketComposerOpen, setTicketComposerOpen] = useState(false);
   const [knowledgeFocusArticleId, setKnowledgeFocusArticleId] = useState<
     string | undefined
-  >(undefined);
+  >(initialKnowledgeDeepLink ?? undefined);
   // Device opened from a ticket: the asset list starts filtered to it.
   const [assetFocusQuery, setAssetFocusQuery] = useState<{
     query: string;
@@ -2844,6 +2867,8 @@ function AuthenticatedApp() {
     if (workspacePreferences.startWorkplaceView) {
       setWorkplaceRequestedView(workspacePreferences.startWorkplaceView);
     }
+    // A deep link to a knowledge article wins over the start page.
+    if (initialKnowledgeDeepLink && section === "Wissen") return;
     setSection(workspacePreferences.startSection);
   }, [
     activeTenant?.id,

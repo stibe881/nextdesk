@@ -20389,3 +20389,15 @@ html:has(.embed-status-badge) body {
   padding: 4px 12px;
   font-size: 13px;
 }
+
+.ticket-required-mark {
+  margin-left: 2px;
+  color: var(--danger);
+  font-weight: 700;
+}
+
+.ticket-detail-facts-grid > .ticket-detail-fact--required-missing,
+.ticket-detail-fact-pair > .ticket-detail-fact--required-missing {
+  border-color: var(--danger);
+  box-shadow: inset 0 0 0 1px var(--danger);
+}

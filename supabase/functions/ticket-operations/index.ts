@@ -1266,6 +1266,48 @@ const escalationLevelForKind = (kind: EscalationKind) => {
   return 3;
 };
 
+// Category, team and assignee are required before a ticket is resolved or
+// closed. Category and team only count where the department has any to
+// choose from; team and assignee may be set in the same update.
+async function missingRequiredCloseFields(
+  admin: any,
+  ticket: Record<string, unknown>,
+  nextTeamId: string | null | undefined,
+  nextAgentId: string | null | undefined,
+): Promise<("category" | "team" | "assignee")[]> {
+  const missing: ("category" | "team" | "assignee")[] = [];
+  const tenantId = String(ticket.tenant_id);
+  const departmentId = String(ticket.department_id);
+  const teamId =
+    nextTeamId !== undefined ? nextTeamId : ticket.assigned_team_id;
+  const agentId =
+    nextAgentId !== undefined ? nextAgentId : ticket.assigned_agent_id;
+  const [categories, teams] = await Promise.all([
+    ticket.category_id
+      ? Promise.resolve({ count: 0 })
+      : admin
+          .from("ticket_categories")
+          .select("id", { count: "exact", head: true })
+          .eq("tenant_id", tenantId)
+          .eq("department_id", departmentId)
+          .eq("active", true),
+    teamId
+      ? Promise.resolve({ count: 0 })
+      : admin
+          .from("teams")
+          .select("id", { count: "exact", head: true })
+          .eq("tenant_id", tenantId)
+          .eq("department_id", departmentId)
+          .eq("active", true),
+  ]);
+  if (!ticket.category_id && (categories.count ?? 0) > 0) {
+    missing.push("category");
+  }
+  if (!teamId && (teams.count ?? 0) > 0) missing.push("team");
+  if (!agentId) missing.push("assignee");
+  return missing;
+}
+
 const handler = withSupabase({ auth: "user" }, async (request, context) => {
   if (request.method !== "POST")
     return response(request, { error: { code: "method_not_allowed" } }, 405);
@@ -3112,6 +3154,23 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
           return response(
             request,
             { error: { code: "ticket_close_confirmation_required" } },
+            422,
+          );
+        const missing = await missingRequiredCloseFields(
+          context.supabaseAdmin,
+          ticket,
+          action.assignedTeamId,
+          action.assignedAgentId,
+        );
+        if (missing.length > 0)
+          return response(
+            request,
+            {
+              error: {
+                code: "ticket_required_fields_missing",
+                fields: missing,
+              },
+            },
             422,
           );
       }
