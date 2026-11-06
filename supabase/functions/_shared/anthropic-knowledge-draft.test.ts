@@ -4,6 +4,7 @@ import {
   classifyAnthropicResponseStatus,
   createKnowledgeDraftRequest,
   generateKnowledgeDraft,
+  keepKnownImageReferences,
   parseKnowledgeDraft,
 } from "./anthropic-knowledge-draft.ts";
 
@@ -140,3 +141,40 @@ Deno.test(
     );
   },
 );
+
+Deno.test("sends added images with their ids and keeps only known image references", () => {
+  const imageId = "0f0f0f0f-0000-4000-8000-000000000001";
+  const request = createKnowledgeDraftRequest(
+    "Drucker zeigt Fehler 49",
+    "claude-test",
+    1000,
+    "",
+    true,
+    [{ id: imageId, mediaType: "image/png", base64: "iVBORw0KGgo=" }],
+  ) as { system: string; messages: { content: unknown }[] };
+  const content = request.messages[0].content as {
+    type: string;
+    text?: string;
+    source?: { media_type: string; data: string };
+  }[];
+  if (!Array.isArray(content) || content.length !== 3) {
+    throw new Error("The image was not sent as a content block");
+  }
+  if (
+    content[1].text !== `Bild 1, ID ${imageId}:` ||
+    content[2].type !== "image" ||
+    content[2].source?.media_type !== "image/png"
+  ) {
+    throw new Error("The image block is wrong");
+  }
+  if (!request.system.includes("kb-image:<ID>")) {
+    throw new Error("The image instructions are missing");
+  }
+  const cleaned = keepKnownImageReferences(
+    `Schritt 1\n![Fehler](kb-image:${imageId})\n![Fremd](kb-image:0f0f0f0f-0000-4000-8000-000000000999)`,
+    [imageId],
+  );
+  if (!cleaned.includes(imageId) || cleaned.includes("000000000999")) {
+    throw new Error(`Unknown image references were kept: ${cleaned}`);
+  }
+});
