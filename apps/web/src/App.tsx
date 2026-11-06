@@ -1719,15 +1719,34 @@ type TicketListAssignment = {
   onChanged: () => void;
 };
 
-type QuickAssignOption = { id: string; label: string };
+type QuickAssignOption = { id: string; label: string; isClosed?: boolean };
 
 async function loadQuickAssignOptions(
-  kind: "agent" | "team",
+  kind: "agent" | "team" | "status",
   tenantId: string,
   ticket: DashboardTicket,
   currentUserId: string | null,
 ): Promise<QuickAssignOption[]> {
   if (!supabase) throw new Error("Supabase ist nicht konfiguriert.");
+  if (kind === "status") {
+    const { data, error } = await supabase
+      .from("ticket_statuses")
+      .select("key, label, is_closed, sort_order")
+      .eq("tenant_id", tenantId)
+      .order("sort_order");
+    if (error) throw error;
+    return (
+      (data ?? []) as {
+        key: string;
+        label: string;
+        is_closed: boolean;
+      }[]
+    ).map((status) => ({
+      id: status.key,
+      label: status.label,
+      isClosed: status.is_closed,
+    }));
+  }
   if (kind === "agent") {
     const { data, error } = await supabase.functions.invoke(
       "ticket-agent-assignment",
@@ -1785,7 +1804,10 @@ function TicketQuickAssign({
   assignment: TicketListAssignment;
   ticket: DashboardTicket;
 }) {
-  const [open, setOpen] = useState<"agent" | "team" | null>(null);
+  const [open, setOpen] = useState<"agent" | "team" | "status" | null>(null);
+  const [pendingClose, setPendingClose] = useState<QuickAssignOption | null>(
+    null,
+  );
   const [options, setOptions] = useState<QuickAssignOption[] | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -1797,6 +1819,7 @@ function TicketQuickAssign({
     let active = true;
     setOptions(null);
     setError("");
+    setPendingClose(null);
     loadQuickAssignOptions(
       open,
       assignment.tenantId,
@@ -1829,37 +1852,61 @@ function TicketQuickAssign({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, ticketId, assignment.tenantId]);
 
-  async function choose(value: string) {
+  async function choose(value: string, confirmed = false) {
     if (!supabase || !open || saving) return;
+    if (open === "status") {
+      const status = options?.find((option) => option.id === value);
+      if (!status) return;
+      // Closing needs an explicit confirmation, as in the ticket detail.
+      if (status.isClosed && !confirmed) {
+        setPendingClose(status);
+        return;
+      }
+    }
     setSaving(true);
     setError("");
     try {
       const { error: invokeError } =
-        open === "agent"
-          ? await supabase.functions.invoke("ticket-agent-assignment", {
+        open === "status"
+          ? await supabase.functions.invoke("ticket-operations", {
               body: {
-                assignedAgentId: value || null,
-                tenantId: assignment.tenantId,
-                ticketId,
-                type: "assign",
-              },
-            })
-          : await supabase.functions.invoke("ticket-operations", {
-              body: {
-                assignedTeamId: value || null,
+                statusKey: value,
+                ...(options?.find((option) => option.id === value)?.isClosed
+                  ? { confirmClose: true }
+                  : {}),
                 tenantId: assignment.tenantId,
                 ticketId,
                 type: "updateTicket",
               },
-            });
+            })
+          : open === "agent"
+            ? await supabase.functions.invoke("ticket-agent-assignment", {
+                body: {
+                  assignedAgentId: value || null,
+                  tenantId: assignment.tenantId,
+                  ticketId,
+                  type: "assign",
+                },
+              })
+            : await supabase.functions.invoke("ticket-operations", {
+                body: {
+                  assignedTeamId: value || null,
+                  tenantId: assignment.tenantId,
+                  ticketId,
+                  type: "updateTicket",
+                },
+              });
       if (invokeError) throw invokeError;
       setOpen(null);
+      setPendingClose(null);
       assignment.onChanged();
     } catch {
       setError(
-        open === "agent"
-          ? "Die Zuweisung konnte nicht gespeichert werden."
-          : "Das Team konnte nicht gespeichert werden.",
+        open === "status"
+          ? "Der Status konnte nicht gespeichert werden."
+          : open === "agent"
+            ? "Die Zuweisung konnte nicht gespeichert werden."
+            : "Das Team konnte nicht gespeichert werden.",
       );
     } finally {
       setSaving(false);
@@ -1873,9 +1920,11 @@ function TicketQuickAssign({
       : (ticket.assignedAgentName ?? "Zugewiesen");
   const teamLabel = ticket.assignedTeamName ?? "Kein Team";
   const currentValue =
-    open === "agent"
-      ? (ticket.assignedAgentId ?? "")
-      : (ticket.assignedTeamId ?? "");
+    open === "status"
+      ? (options?.find((option) => option.label === ticket.state)?.id ?? "")
+      : open === "agent"
+        ? (ticket.assignedAgentId ?? "")
+        : (ticket.assignedTeamId ?? "");
 
   return (
     <div
@@ -1912,27 +1961,55 @@ function TicketQuickAssign({
         <UsersRound aria-hidden="true" size={13} strokeWidth={2} />
         {teamLabel}
       </button>
+      <button
+        aria-expanded={open === "status"}
+        aria-label={`Status: ${ticket.state}. Ändern`}
+        className={`state-badge ${statusClass(ticket.state)} ticket-status-chip`}
+        onClick={() =>
+          setOpen((current) => (current === "status" ? null : "status"))
+        }
+        type="button"
+      >
+        <span aria-hidden="true" className="state-badge__indicator" />
+        {ticket.state}
+      </button>
       {open ? (
         <div
           className="ticket-quick-assign__popover"
           role="dialog"
-          aria-label={open === "agent" ? "Person zuweisen" : "Team zuweisen"}
+          aria-label={
+            open === "status"
+              ? "Status ändern"
+              : open === "agent"
+                ? "Person zuweisen"
+                : "Team zuweisen"
+          }
         >
           <label>
-            {open === "agent" ? "Zuweisen an" : "Team"}
+            {open === "status"
+              ? "Status"
+              : open === "agent"
+                ? "Zuweisen an"
+                : "Team"}
             <select
               autoFocus
-              disabled={options === null || saving}
+              disabled={options === null || saving || pendingClose !== null}
               onChange={(event) => void choose(event.target.value)}
               value={currentValue}
             >
-              <option value="">
-                {options === null
-                  ? "Wird geladen …"
-                  : open === "agent"
-                    ? "Nicht zugewiesen"
-                    : "Kein Team"}
-              </option>
+              {open === "status" ? (
+                options === null ? (
+                  <option value="">Wird geladen …</option>
+                ) : null
+              ) : (
+                <option value="">
+                  {options === null
+                    ? "Wird geladen …"
+                    : open === "agent"
+                      ? "Nicht zugewiesen"
+                      : "Kein Team"}
+                </option>
+              )}
               {(options ?? []).map((option) => (
                 <option key={option.id} value={option.id}>
                   {option.label}
@@ -1952,6 +2029,31 @@ function TicketQuickAssign({
             >
               Mir zuweisen
             </button>
+          ) : null}
+          {pendingClose ? (
+            <div className="ticket-quick-assign__confirm" role="group">
+              <small>
+                Ticket auf «{pendingClose.label}» setzen und schliessen?
+              </small>
+              <span>
+                <button
+                  className="primary-button"
+                  disabled={saving}
+                  onClick={() => void choose(pendingClose.id, true)}
+                  type="button"
+                >
+                  Ja, schliessen
+                </button>
+                <button
+                  className="text-button"
+                  disabled={saving}
+                  onClick={() => setPendingClose(null)}
+                  type="button"
+                >
+                  Abbrechen
+                </button>
+              </span>
+            </div>
           ) : null}
           {saving ? <small>Wird gespeichert …</small> : null}
           {error ? (
@@ -2108,14 +2210,15 @@ function TicketList({
             <div className="ticket-state">
               {assignment && !ticket.isClosed ? (
                 <TicketQuickAssign assignment={assignment} ticket={ticket} />
-              ) : null}
-              <span
-                aria-label={`Status: ${ticket.state}`}
-                className={`state-badge ${statusClass(ticket.state)}`}
-              >
-                <span aria-hidden="true" className="state-badge__indicator" />
-                {ticket.state}
-              </span>
+              ) : (
+                <span
+                  aria-label={`Status: ${ticket.state}`}
+                  className={`state-badge ${statusClass(ticket.state)}`}
+                >
+                  <span aria-hidden="true" className="state-badge__indicator" />
+                  {ticket.state}
+                </span>
+              )}
               <span
                 aria-label={`SLA: ${slaLabel}`}
                 className={`sla ${ticket.risk}`}
