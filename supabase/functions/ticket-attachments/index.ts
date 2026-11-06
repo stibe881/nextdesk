@@ -10,42 +10,42 @@ type AttachmentVisibility = "internal" | "external";
 type Action =
   | { type: "list"; tenantId: string; ticketId: string }
   | {
-      type: "createUpload";
-      tenantId: string;
-      ticketId: string;
-      filename: string;
-      contentType: string;
-      byteSize: number;
-      visibility?: AttachmentVisibility;
-    }
+    type: "createUpload";
+    tenantId: string;
+    ticketId: string;
+    filename: string;
+    contentType: string;
+    byteSize: number;
+    visibility?: AttachmentVisibility;
+  }
   | {
-      type: "completeUpload";
-      tenantId: string;
-      ticketId: string;
-      storageObjectPath: string;
-      originalFilename: string;
-      contentType: string;
-      byteSize: number;
-      visibility?: AttachmentVisibility;
-    }
+    type: "completeUpload";
+    tenantId: string;
+    ticketId: string;
+    storageObjectPath: string;
+    originalFilename: string;
+    contentType: string;
+    byteSize: number;
+    visibility?: AttachmentVisibility;
+  }
   | {
-      type: "createDownloadUrl";
-      tenantId: string;
-      ticketId: string;
-      attachmentId: string;
-    }
+    type: "createDownloadUrl";
+    tenantId: string;
+    ticketId: string;
+    attachmentId: string;
+  }
   | {
-      type: "createInlineImageUrls";
-      tenantId: string;
-      ticketId: string;
-      attachmentIds: string[];
-    }
+    type: "createInlineImageUrls";
+    tenantId: string;
+    ticketId: string;
+    attachmentIds: string[];
+  }
   | {
-      type: "delete";
-      tenantId: string;
-      ticketId: string;
-      attachmentId: string;
-    };
+    type: "delete";
+    tenantId: string;
+    ticketId: string;
+    attachmentId: string;
+  };
 
 type Ticket = {
   id: string;
@@ -107,8 +107,9 @@ function corsHeaders(request: Request): Headers {
 function withCors(request: Request, response: Response): Response {
   const headers = new Headers(response.headers);
   for (const header of [...headers.keys()]) {
-    if (header.toLowerCase().startsWith("access-control-"))
+    if (header.toLowerCase().startsWith("access-control-")) {
       headers.delete(header);
+    }
   }
   const allowedHeaders = corsHeaders(request);
   allowedHeaders.forEach((value, key) => headers.set(key, value));
@@ -137,9 +138,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function isUuid(value: unknown): value is string {
   return (
     typeof value === "string" &&
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
-      value,
-    )
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+      .test(
+        value,
+      )
   );
 }
 
@@ -164,8 +166,9 @@ function parseFilename(value: unknown): string | null {
     filename === "." ||
     filename === ".." ||
     /[\u0000-\u001f\u007f/\\]/.test(filename)
-  )
+  ) {
     return null;
+  }
   return filename;
 }
 
@@ -183,9 +186,9 @@ function parseAttachmentVisibility(
 
 function parseByteSize(value: unknown): number | null {
   return typeof value === "number" &&
-    Number.isSafeInteger(value) &&
-    value >= 1 &&
-    value <= MAX_BYTES
+      Number.isSafeInteger(value) &&
+      value >= 1 &&
+      value <= MAX_BYTES
     ? value
     : null;
 }
@@ -200,8 +203,8 @@ function parseAttachmentIds(value: unknown): string[] | null {
   }
   const attachmentIds = value.map(canonicalUuid);
   return attachmentIds.every((attachmentId): attachmentId is string =>
-    Boolean(attachmentId),
-  ) && new Set(attachmentIds).size === attachmentIds.length
+      Boolean(attachmentId)
+    ) && new Set(attachmentIds).size === attachmentIds.length
     ? attachmentIds
     : null;
 }
@@ -215,8 +218,9 @@ function parseAction(value: unknown): Action | null {
   if (
     value.type === "list" &&
     hasOnlyKeys(value, ["type", "tenantId", "ticketId"])
-  )
+  ) {
     return { type: value.type, tenantId, ticketId };
+  }
 
   if (
     value.type === "createUpload" &&
@@ -233,17 +237,17 @@ function parseAction(value: unknown): Action | null {
     const filename = parseFilename(value.filename);
     const contentType = parseContentType(value.contentType);
     const byteSize = parseByteSize(value.byteSize);
-    const visibility =
-      value.visibility === undefined
-        ? undefined
-        : parseAttachmentVisibility(value.visibility);
+    const visibility = value.visibility === undefined
+      ? undefined
+      : parseAttachmentVisibility(value.visibility);
     if (
       !filename ||
       !contentType ||
       byteSize === null ||
       (value.visibility !== undefined && !visibility)
-    )
+    ) {
       return null;
+    }
     return {
       type: value.type,
       tenantId,
@@ -271,18 +275,18 @@ function parseAction(value: unknown): Action | null {
     const originalFilename = parseFilename(value.originalFilename);
     const contentType = parseContentType(value.contentType);
     const byteSize = parseByteSize(value.byteSize);
-    const visibility =
-      value.visibility === undefined
-        ? undefined
-        : parseAttachmentVisibility(value.visibility);
+    const visibility = value.visibility === undefined
+      ? undefined
+      : parseAttachmentVisibility(value.visibility);
     if (
       typeof value.storageObjectPath !== "string" ||
       !originalFilename ||
       !contentType ||
       byteSize === null ||
       (value.visibility !== undefined && !visibility)
-    )
+    ) {
       return null;
+    }
     return {
       type: value.type,
       tenantId,
@@ -446,8 +450,9 @@ async function getStoredObject(
   ticketId: string,
   storageObjectPath: string,
 ): Promise<{ object: Record<string, unknown> | null; error: boolean }> {
-  if (!isTicketStoragePath(storageObjectPath, tenantId, ticketId))
+  if (!isTicketStoragePath(storageObjectPath, tenantId, ticketId)) {
     return { object: null, error: false };
+  }
   const prefix = `${tenantId}/${ticketId}`;
   const objectName = storageObjectPath.slice(prefix.length + 1);
   const { data, error } = await admin.storage.from(BUCKET).list(prefix, {
@@ -468,12 +473,11 @@ function objectMetadataMatches(
   const metadata = isRecord(object.metadata) ? object.metadata : null;
   if (!metadata) return false;
   const storedSize = metadata.size;
-  const actualSize =
-    typeof storedSize === "number"
-      ? storedSize
-      : typeof storedSize === "string" && /^\d+$/.test(storedSize)
-        ? Number(storedSize)
-        : NaN;
+  const actualSize = typeof storedSize === "number"
+    ? storedSize
+    : typeof storedSize === "string" && /^\d+$/.test(storedSize)
+    ? Number(storedSize)
+    : NaN;
   const actualContentType = metadata.mimetype;
   return (
     Number.isSafeInteger(actualSize) &&
@@ -536,21 +540,24 @@ function attachmentAuditData(attachment: Attachment): Record<string, unknown> {
 const handler = withSupabase(
   { auth: "user", errors: { detailed: false } },
   async (request, context) => {
-    if (request.method !== "POST")
+    if (request.method !== "POST") {
       return json(request, { error: { code: "method_not_allowed" } }, 405);
+    }
 
     const contentLength = request.headers.get("content-length");
     if (
       contentLength !== null &&
       (!/^\d+$/.test(contentLength) ||
         Number(contentLength) > MAX_REQUEST_BYTES)
-    )
+    ) {
       return json(request, { error: { code: "payload_too_large" } }, 413);
+    }
 
     const action = parseAction(await request.json().catch(() => null));
     const actorId = canonicalUuid(context.userClaims?.id);
-    if (!action || !actorId)
+    if (!action || !actorId) {
       return json(request, { error: { code: "invalid_request" } }, 422);
+    }
 
     const admin = context.supabaseAdmin;
     const access = await resolveReadableTicket(
@@ -559,46 +566,52 @@ const handler = withSupabase(
       action.tenantId,
       action.ticketId,
     );
-    if (access.failure === "error")
+    if (access.failure === "error") {
       return json(
         request,
         { error: { code: "ticket_access_check_failed" } },
         500,
       );
-    if (access.failure === "not_found")
+    }
+    if (access.failure === "not_found") {
       return json(request, { error: { code: "ticket_not_found" } }, 404);
-    if (access.failure === "denied" || !access.ticket)
+    }
+    if (access.failure === "denied" || !access.ticket) {
       return json(
         request,
         { error: { code: "ticket_not_found_or_access_denied" } },
         404,
       );
+    }
     const ticket = access.ticket;
     const featureStates = await resolveTenantFeatureStates(
       admin,
       ticket.tenant_id,
       ["ticketing.detail"],
     );
-    if (!featureStates)
+    if (!featureStates) {
       return json(
         request,
         { error: { code: "tenant_feature_lookup_failed" } },
         503,
       );
-    if (featureStates["ticketing.detail"] !== true)
+    }
+    if (featureStates["ticketing.detail"] !== true) {
       return json(request, { error: { code: "ticket_feature_disabled" } }, 403);
+    }
 
     if (action.type === "list") {
       const canReadInternal = await canReadInternalTicketAttachment(
         context.supabase,
         ticket.id,
       );
-      if (canReadInternal === null)
+      if (canReadInternal === null) {
         return json(
           request,
           { error: { code: "internal_attachment_access_check_failed" } },
           500,
         );
+      }
       let attachmentQuery = admin
         .from("ticket_attachments")
         .select(
@@ -610,12 +623,13 @@ const handler = withSupabase(
         attachmentQuery = attachmentQuery.eq("visibility", "external");
       }
       const { data: attachments, error } = await attachmentQuery;
-      if (error)
+      if (error) {
         return json(
           request,
           { error: { code: "attachment_list_failed" } },
           500,
         );
+      }
       return json(request, { data: { attachments: attachments ?? [] } });
     }
 
@@ -624,32 +638,33 @@ const handler = withSupabase(
         context.supabase,
         ticket.id,
       );
-      if (canReadInternal === null)
+      if (canReadInternal === null) {
         return json(
           request,
           { error: { code: "internal_attachment_access_check_failed" } },
           500,
         );
+      }
       let attachmentQuery = admin
         .from("ticket_attachments")
         .select(
-          "id, ticket_id, comment_id, visibility, storage_bucket, storage_object_path, original_filename, content_type, byte_size, uploaded_by, created_at, inline_content_id",
+          "id, ticket_id, comment_id, visibility, storage_bucket, storage_object_path, original_filename, content_type, byte_size, uploaded_by, created_at, inline_content_id, malware_status",
         )
         .eq("ticket_id", ticket.id)
         .in("id", action.attachmentIds)
-        .eq("malware_status", "clean")
-        .not("inline_content_id", "is", null);
+        .or("inline_content_id.not.is.null,comment_id.not.is.null");
       if (!canReadInternal) {
         attachmentQuery = attachmentQuery.eq("visibility", "external");
       }
       const { data: attachments, error: attachmentError } =
         await attachmentQuery;
-      if (attachmentError)
+      if (attachmentError) {
         return json(
           request,
           { error: { code: "inline_attachment_lookup_failed" } },
           500,
         );
+      }
 
       const inlineImages: Array<{
         attachmentId: string;
@@ -659,10 +674,21 @@ const handler = withSupabase(
       for (const attachment of attachments ?? []) {
         const typedAttachment = attachment as Attachment & {
           inline_content_id?: string | null;
+          malware_status?: string | null;
         };
+        // Inline images from e-mails must be scanned clean. Images attached
+        // to a comment in nextDesk were checked as real PNG/JPEG/WebP when
+        // the upload completed, so they are shown while the scan is pending.
+        const isInlineMailImage =
+          typeof typedAttachment.inline_content_id === "string" &&
+          typedAttachment.malware_status === "clean";
+        const isCommentImage = (typedAttachment.inline_content_id === null ||
+          typedAttachment.inline_content_id === undefined) &&
+          typeof typedAttachment.comment_id === "string" &&
+          (typedAttachment.malware_status === "clean" ||
+            typedAttachment.malware_status === "pending");
         if (
-          typedAttachment.inline_content_id === null ||
-          typedAttachment.inline_content_id === undefined ||
+          (!isInlineMailImage && !isCommentImage) ||
           !["image/png", "image/jpeg", "image/webp"].includes(
             typedAttachment.content_type,
           ) ||
@@ -698,29 +724,33 @@ const handler = withSupabase(
         context.supabase,
         ticket.id,
       );
-      if (canReadInternal === null)
+      if (canReadInternal === null) {
         return json(
           request,
           { error: { code: "internal_attachment_access_check_failed" } },
           500,
         );
+      }
       const { data: attachment, error: attachmentError } = await admin
         .from("ticket_attachments")
         .select(ATTACHMENT_SELECT)
         .eq("id", action.attachmentId)
         .eq("ticket_id", ticket.id)
         .maybeSingle();
-      if (attachmentError)
+      if (attachmentError) {
         return json(
           request,
           { error: { code: "attachment_lookup_failed" } },
           500,
         );
-      if (!attachment)
+      }
+      if (!attachment) {
         return json(request, { error: { code: "attachment_not_found" } }, 404);
+      }
       const typedAttachment = attachment as Attachment;
-      if (typedAttachment.visibility === "internal" && !canReadInternal)
+      if (typedAttachment.visibility === "internal" && !canReadInternal) {
         return json(request, { error: { code: "attachment_not_found" } }, 404);
+      }
       if (
         typedAttachment.storage_bucket !== BUCKET ||
         !isTicketStoragePath(
@@ -728,24 +758,26 @@ const handler = withSupabase(
           ticket.tenant_id,
           ticket.id,
         )
-      )
+      ) {
         return json(
           request,
           { error: { code: "attachment_storage_metadata_invalid" } },
           422,
         );
+      }
       const { data: signed, error: signedError } = await admin.storage
         .from(BUCKET)
         .createSignedUrl(
           typedAttachment.storage_object_path,
           DOWNLOAD_URL_TTL_SECONDS,
         );
-      if (signedError || !signed?.signedUrl)
+      if (signedError || !signed?.signedUrl) {
         return json(
           request,
           { error: { code: "download_url_create_failed" } },
           500,
         );
+      }
       return json(request, {
         data: {
           attachmentId: typedAttachment.id,
@@ -756,44 +788,46 @@ const handler = withSupabase(
     }
 
     if (action.type === "createUpload") {
-      const canCreateUpload =
-        action.visibility === undefined
-          ? await canUpdateTicket(context.supabase, ticket)
-          : await canWriteCommentAttachment(
-              context.supabase,
-              actorId,
-              ticket,
-              action.visibility,
-            );
-      if (canCreateUpload === null)
+      const canCreateUpload = action.visibility === undefined
+        ? await canUpdateTicket(context.supabase, ticket)
+        : await canWriteCommentAttachment(
+          context.supabase,
+          actorId,
+          ticket,
+          action.visibility,
+        );
+      if (canCreateUpload === null) {
         return json(
           request,
           { error: { code: "attachment_permission_check_failed" } },
           500,
         );
-      if (!canCreateUpload)
+      }
+      if (!canCreateUpload) {
         return json(
           request,
           {
             error: {
-              code:
-                action.visibility === undefined
-                  ? "ticket_update_denied"
-                  : "comment_attachment_write_denied",
+              code: action.visibility === undefined
+                ? "ticket_update_denied"
+                : "comment_attachment_write_denied",
             },
           },
           403,
         );
-      const storageObjectPath = `${ticket.tenant_id}/${ticket.id}/${crypto.randomUUID()}`;
+      }
+      const storageObjectPath =
+        `${ticket.tenant_id}/${ticket.id}/${crypto.randomUUID()}`;
       const { data: signed, error: signedError } = await admin.storage
         .from(BUCKET)
         .createSignedUploadUrl(storageObjectPath, { upsert: false });
-      if (signedError || !signed?.signedUrl || !signed.token)
+      if (signedError || !signed?.signedUrl || !signed.token) {
         return json(
           request,
           { error: { code: "upload_url_create_failed" } },
           500,
         );
+      }
       return json(request, {
         data: {
           storageObjectPath,
@@ -808,46 +842,47 @@ const handler = withSupabase(
 
     if (action.type === "completeUpload") {
       const visibility = action.visibility ?? "external";
-      const canCompleteUpload =
-        action.visibility === undefined
-          ? await canUpdateTicket(context.supabase, ticket)
-          : await canWriteCommentAttachment(
-              context.supabase,
-              actorId,
-              ticket,
-              action.visibility,
-            );
-      if (canCompleteUpload === null)
+      const canCompleteUpload = action.visibility === undefined
+        ? await canUpdateTicket(context.supabase, ticket)
+        : await canWriteCommentAttachment(
+          context.supabase,
+          actorId,
+          ticket,
+          action.visibility,
+        );
+      if (canCompleteUpload === null) {
         return json(
           request,
           { error: { code: "attachment_permission_check_failed" } },
           500,
         );
-      if (!canCompleteUpload)
+      }
+      if (!canCompleteUpload) {
         return json(
           request,
           {
             error: {
-              code:
-                action.visibility === undefined
-                  ? "ticket_update_denied"
-                  : "comment_attachment_write_denied",
+              code: action.visibility === undefined
+                ? "ticket_update_denied"
+                : "comment_attachment_write_denied",
             },
           },
           403,
         );
+      }
       if (
         !isTicketStoragePath(
           action.storageObjectPath,
           ticket.tenant_id,
           ticket.id,
         )
-      )
+      ) {
         return json(
           request,
           { error: { code: "invalid_storage_object_path" } },
           422,
         );
+      }
 
       const storedObject = await getStoredObject(
         admin,
@@ -855,30 +890,33 @@ const handler = withSupabase(
         ticket.id,
         action.storageObjectPath,
       );
-      if (storedObject.error)
+      if (storedObject.error) {
         return json(
           request,
           { error: { code: "storage_object_check_failed" } },
           500,
         );
-      if (!storedObject.object)
+      }
+      if (!storedObject.object) {
         return json(
           request,
           { error: { code: "storage_object_not_found" } },
           422,
         );
+      }
       if (
         !objectMetadataMatches(
           storedObject.object,
           action.contentType,
           action.byteSize,
         )
-      )
+      ) {
         return json(
           request,
           { error: { code: "storage_object_metadata_mismatch" } },
           422,
         );
+      }
       if (action.visibility !== undefined) {
         const validCommentImage = await hasValidCommentImageSignature(
           admin,
@@ -886,18 +924,20 @@ const handler = withSupabase(
           action.contentType,
           action.byteSize,
         );
-        if (validCommentImage === null)
+        if (validCommentImage === null) {
           return json(
             request,
             { error: { code: "comment_image_inspection_failed" } },
             500,
           );
-        if (!validCommentImage)
+        }
+        if (!validCommentImage) {
           return json(
             request,
             { error: { code: "invalid_comment_image_content" } },
             422,
           );
+        }
       }
 
       const { data: attachment, error: insertError } = await admin
@@ -914,12 +954,13 @@ const handler = withSupabase(
         })
         .select(ATTACHMENT_SELECT)
         .single();
-      if (insertError || !attachment)
+      if (insertError || !attachment) {
         return json(
           request,
           { error: { code: "attachment_create_failed" } },
           422,
         );
+      }
 
       const typedAttachment = attachment as Attachment;
       const { error: auditError } = await writeAudit(
@@ -932,12 +973,13 @@ const handler = withSupabase(
         null,
         attachmentAuditData(typedAttachment),
       );
-      if (auditError)
+      if (auditError) {
         return json(
           request,
           { error: { code: "attachment_audit_failed" } },
           500,
         );
+      }
       return json(
         request,
         {
@@ -961,18 +1003,21 @@ const handler = withSupabase(
 
     // The only remaining action is delete; parseAction has already made this
     // exhaustive, but keeping the guard prevents accidental future fallthrough.
-    if (action.type !== "delete")
+    if (action.type !== "delete") {
       return json(request, { error: { code: "invalid_request" } }, 422);
+    }
 
     const canUpdate = await canUpdateTicket(context.supabase, ticket);
-    if (canUpdate === null)
+    if (canUpdate === null) {
       return json(
         request,
         { error: { code: "ticket_permission_check_failed" } },
         500,
       );
-    if (!canUpdate)
+    }
+    if (!canUpdate) {
       return json(request, { error: { code: "ticket_update_denied" } }, 403);
+    }
 
     const { data: attachment, error: attachmentError } = await admin
       .from("ticket_attachments")
@@ -980,14 +1025,16 @@ const handler = withSupabase(
       .eq("id", action.attachmentId)
       .eq("ticket_id", ticket.id)
       .maybeSingle();
-    if (attachmentError)
+    if (attachmentError) {
       return json(
         request,
         { error: { code: "attachment_lookup_failed" } },
         500,
       );
-    if (!attachment)
+    }
+    if (!attachment) {
       return json(request, { error: { code: "attachment_not_found" } }, 404);
+    }
     const typedAttachment = attachment as Attachment;
     if (
       typedAttachment.storage_bucket !== BUCKET ||
@@ -996,24 +1043,26 @@ const handler = withSupabase(
         ticket.tenant_id,
         ticket.id,
       )
-    )
+    ) {
       return json(
         request,
         { error: { code: "attachment_storage_metadata_invalid" } },
         422,
       );
+    }
 
     const { error: deleteError } = await admin
       .from("ticket_attachments")
       .delete()
       .eq("id", typedAttachment.id)
       .eq("ticket_id", ticket.id);
-    if (deleteError)
+    if (deleteError) {
       return json(
         request,
         { error: { code: "attachment_delete_failed" } },
         500,
       );
+    }
 
     const { error: storageDeleteError } = await admin.storage
       .from(BUCKET)
@@ -1028,14 +1077,16 @@ const handler = withSupabase(
       attachmentAuditData(typedAttachment),
       null,
     );
-    if (auditError)
+    if (auditError) {
       return json(request, { error: { code: "attachment_audit_failed" } }, 500);
-    if (storageDeleteError)
+    }
+    if (storageDeleteError) {
       return json(
         request,
         { error: { code: "attachment_storage_delete_failed" } },
         500,
       );
+    }
     return json(request, { data: { deletedAttachmentId: typedAttachment.id } });
   },
 );
@@ -1043,10 +1094,12 @@ const handler = withSupabase(
 export default {
   async fetch(request: Request): Promise<Response> {
     const origin = request.headers.get("origin");
-    if (origin !== null && origin !== ALLOWED_ORIGIN)
+    if (origin !== null && origin !== ALLOWED_ORIGIN) {
       return new Response(null, { status: 403, headers: { Vary: "Origin" } });
-    if (request.method === "OPTIONS")
+    }
+    if (request.method === "OPTIONS") {
       return new Response(null, { status: 204, headers: corsHeaders(request) });
+    }
     return withCors(request, await handler(request));
   },
 };

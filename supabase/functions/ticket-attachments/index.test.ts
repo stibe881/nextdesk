@@ -5,30 +5,35 @@ Deno.test(
       new URL("./index.ts", import.meta.url),
     );
 
-    for (const required of [
-      'type: "createInlineImageUrls"',
-      "const access = await resolveReadableTicket(",
-      'if (action.type === "createInlineImageUrls")',
-      '.eq("ticket_id", ticket.id)',
-      '.eq("malware_status", "clean")',
-      '.not("inline_content_id", "is", null)',
-      '"image/png", "image/jpeg", "image/webp"',
-      "canReadInternalTicketAttachment",
-      "canWriteExternalTicketAttachment",
-      '"ticket.comment.external.own"',
-      'attachmentQuery = attachmentQuery.eq("visibility", "external")',
-      'typedAttachment.visibility === "internal"',
-      "canWriteInternalTicketAttachment",
-      "canWriteCommentAttachment",
-      "action.visibility !== undefined",
-      "hasValidCommentImageSignature(",
-      'code: "invalid_comment_image_content"',
-      '"comment_attachment_write_denied"',
-      "isTicketStoragePath(",
-      "ticket.tenant_id",
-      "DOWNLOAD_URL_TTL_SECONDS",
-      ".createSignedUrl(",
-    ]) {
+    for (
+      const required of [
+        'type: "createInlineImageUrls"',
+        "const access = await resolveReadableTicket(",
+        'if (action.type === "createInlineImageUrls")',
+        '.eq("ticket_id", ticket.id)',
+        // Inline mail images must be scanned clean; comment images, which were
+        // checked as real PNG/JPEG/WebP on upload, may still be pending.
+        'typedAttachment.malware_status === "clean"',
+        '.or("inline_content_id.not.is.null,comment_id.not.is.null")',
+        'typeof typedAttachment.comment_id === "string"',
+        '"image/png", "image/jpeg", "image/webp"',
+        "canReadInternalTicketAttachment",
+        "canWriteExternalTicketAttachment",
+        '"ticket.comment.external.own"',
+        'attachmentQuery = attachmentQuery.eq("visibility", "external")',
+        'typedAttachment.visibility === "internal"',
+        "canWriteInternalTicketAttachment",
+        "canWriteCommentAttachment",
+        "action.visibility !== undefined",
+        "hasValidCommentImageSignature(",
+        'code: "invalid_comment_image_content"',
+        '"comment_attachment_write_denied"',
+        "isTicketStoragePath(",
+        "ticket.tenant_id",
+        "DOWNLOAD_URL_TTL_SECONDS",
+        ".createSignedUrl(",
+      ]
+    ) {
       if (!source.includes(required)) {
         throw new Error(
           `Inlinebildvertrag verlor die Schutzvorgabe: ${required}`,
