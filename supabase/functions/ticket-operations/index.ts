@@ -3149,6 +3149,28 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     )
       return response(request, { error: { code: "ticket_close_denied" } }, 403);
     if (status.id !== ticket.status_id) {
+      // Same rules as the database trigger (0195), with clear error codes.
+      const { data: currentStatus } = await context.supabaseAdmin
+        .from("ticket_statuses")
+        .select("key")
+        .eq("id", ticket.status_id)
+        .maybeSingle();
+      if (status.key === "new" && currentStatus?.key !== "new")
+        return response(
+          request,
+          { error: { code: "ticket_status_new_locked" } },
+          422,
+        );
+      const nextAgentId =
+        action.assignedAgentId !== undefined
+          ? action.assignedAgentId
+          : ticket.assigned_agent_id;
+      if (currentStatus?.key === "new" && !nextAgentId)
+        return response(
+          request,
+          { error: { code: "ticket_assignee_required" } },
+          422,
+        );
       if (status.is_closed) {
         if (action.confirmClose !== true)
           return response(
