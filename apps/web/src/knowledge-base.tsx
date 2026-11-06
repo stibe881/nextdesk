@@ -3434,6 +3434,7 @@ export function KnowledgeBase({
                         )}
                         <button
                           aria-label={`${image.name} entfernen`}
+                          className="knowledge-base__raw-image-remove"
                           disabled={isBusy}
                           onClick={() =>
                             setRawImages((current) =>
