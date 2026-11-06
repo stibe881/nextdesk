@@ -60,6 +60,7 @@ import {
   shouldLoadTicketCatalog,
 } from "./lib/ticket-catalog-search";
 import { supabase } from "./lib/supabase";
+import { functionErrorMessage } from "./lib/function-error";
 import { TicketControlPanel } from "./ticket-control";
 import { knowledgeErrorBackendMessage } from "./lib/knowledge-errors";
 import {
@@ -5741,6 +5742,12 @@ export function TicketDetail({
       ) {
         setError(
           "Das Team wurde nicht geändert, weil die zugewiesene Person diesem Team nicht angehört. Fügen Sie die Person zuerst zum Team hinzu oder heben Sie die Zuweisung bewusst auf.",
+        );
+      } else if (change.statusKey !== undefined) {
+        // e.g. required fields missing before closing: show the reason.
+        if (selectedStatus) setStatusKey(selectedStatus.key);
+        setError(
+          await functionErrorMessage(nextError, errorMessage(nextError)),
         );
       } else {
         setError(errorMessage(nextError));
