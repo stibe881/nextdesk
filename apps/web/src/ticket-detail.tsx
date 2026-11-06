@@ -7918,6 +7918,18 @@ export function TicketDetail({
                             {item.metadata.length > 0 ? (
                               <small>{item.metadata.join(" · ")}</small>
                             ) : null}
+                            {detail.canUpdate ? (
+                              <button
+                                aria-label={`${item.label} entfernen`}
+                                className="ticket-overview-linked-catalog__remove"
+                                disabled={catalogBusy}
+                                onClick={() => void unlinkCatalogItem(item)}
+                                title="Verknüpfung entfernen"
+                                type="button"
+                              >
+                                <X aria-hidden="true" size={15} />
+                              </button>
+                            ) : null}
                           </li>
                         ))}
                       </ul>
