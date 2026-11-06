@@ -20,6 +20,7 @@ import {
   ClassificationSuggestion,
   TicketSuggestionPanel,
   useTicketSuggestions,
+  type ArticleChoice,
 } from "./ticket-suggestions";
 
 type Department = { id: string; key: string; name: string; kind: string };
@@ -589,6 +590,14 @@ function localSlaDate(value: string | null): string | null {
   }).format(date);
 }
 
+function knowledgeArticleLink(articleId: string): string {
+  const url = new URL(window.location.href);
+  url.search = "";
+  url.hash = "";
+  url.searchParams.set("wissen", articleId);
+  return url.toString();
+}
+
 export function TicketComposer({
   currentUserId,
   tenantId,
@@ -615,6 +624,10 @@ export function TicketComposer({
   const [departmentId, setDepartmentId] = useState("");
   const [departmentSelectionOpen, setDepartmentSelectionOpen] = useState(false);
   const [pickedAssets, setPickedAssets] = useState<PickedAsset[]>([]);
+  // Chosen suggested articles, kept even if the suggestions change.
+  const [articleChoices, setArticleChoices] = useState<
+    Record<string, { choice: ArticleChoice; title: string }>
+  >({});
   const [selectedRequester, setSelectedRequester] =
     useState<RequesterContact | null>(null);
   const [requesterManagement, setRequesterManagement] = useState<{
@@ -1635,6 +1648,38 @@ export function TicketComposer({
           });
         if (requesterAssignmentError) throw requesterAssignmentError;
       }
+      // Chosen knowledge articles: link them and, if wanted, add a link to
+      // the conversation as an internal note or a reply to the requester.
+      for (const [articleId, { choice, title }] of Object.entries(
+        articleChoices,
+      )) {
+        const article = { id: articleId, title };
+        try {
+          await supabase!.functions.invoke("ticket-knowledge", {
+            body: {
+              type: "attach",
+              tenantId,
+              ticketId: created.ticketId,
+              articleId: article.id,
+              visibility: choice === "external" ? "external" : "internal",
+            },
+          });
+          if (choice === "internal" || choice === "external") {
+            await supabase!.functions.invoke("ticket-operations", {
+              body: {
+                type: "addComment",
+                tenantId,
+                ticketId: created.ticketId,
+                visibility: choice,
+                body: `Wissensartikel: ${article.title}\n${knowledgeArticleLink(article.id)}`,
+              },
+            });
+          }
+        } catch {
+          // Best effort: the ticket exists; the article can be added there.
+        }
+      }
+      setArticleChoices({});
       // Picked assets are linked to the new ticket (best effort: the ticket
       // exists either way, missing links can be added in the ticket).
       await Promise.allSettled(
@@ -2226,6 +2271,29 @@ export function TicketComposer({
               </span>
             )}
           </label>
+          <TicketSuggestionPanel
+            articleChoices={Object.fromEntries(
+              Object.entries(articleChoices).map(([id, value]) => [
+                id,
+                value.choice,
+              ]),
+            )}
+            disabled={saving}
+            onArticleChoice={(article, choice) =>
+              setArticleChoices((current) => {
+                const next = { ...current };
+                if (choice) next[article.id] = { choice, title: article.title };
+                else delete next[article.id];
+                return next;
+              })
+            }
+            onDeflected={finishWithArticle}
+            onOpenKnowledgeArticle={openSuggestedArticle}
+            onOpenTicket={openSuggestedTicket}
+            subject={draftSubject}
+            suggestions={suggestions}
+            tenantId={tenantId}
+          />
           <section
             aria-labelledby="ticket-routing-heading"
             className="ticket-compose-routing"
@@ -2618,15 +2686,6 @@ export function TicketComposer({
               </span>
             )}
           </label>
-          <TicketSuggestionPanel
-            disabled={saving}
-            onDeflected={finishWithArticle}
-            onOpenKnowledgeArticle={openSuggestedArticle}
-            onOpenTicket={openSuggestedTicket}
-            subject={draftSubject}
-            suggestions={suggestions}
-            tenantId={tenantId}
-          />
           <button
             className="primary-button"
             disabled={
