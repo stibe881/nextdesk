@@ -20629,3 +20629,31 @@ html:has(.embed-status-badge) body {
   background: var(--danger-soft, rgb(180 35 53 / 12%));
   color: var(--danger);
 }
+
+.ticket-overview-linked-catalog li {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+}
+
+.ticket-overview-linked-catalog li > .ticket-overview-linked-catalog__remove {
+  grid-column: 3;
+  grid-row: 1 / span 2;
+  align-self: center;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  min-height: 0;
+  border: 0;
+  border-radius: 999px;
+  padding: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.ticket-overview-linked-catalog
+  li
+  > .ticket-overview-linked-catalog__remove:hover:not(:disabled) {
+  background: rgb(180 35 53 / 12%);
+  color: var(--danger);
+}
