@@ -9112,30 +9112,78 @@ body:has(.ticket-list-filter-panel) {
   order: 1;
 }
 
-.ticket-detail > .ticket-detail-facts {
+.ticket-detail > .ticket-detail-layout {
   order: 2;
 }
 
-.ticket-detail > .ticket-detail-summary {
+/* Narrow: one column in working order (details, description, conversation,
+   then the tools). The two column wrappers do not take part in the layout. */
+.ticket-detail-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+.ticket-detail-main,
+.ticket-detail-sidebar {
+  display: contents;
+}
+
+.ticket-detail-layout .ticket-detail-sidebar > *,
+.ticket-detail-layout .ticket-detail-main > * {
+  order: 8;
+}
+
+.ticket-detail-layout .ticket-detail-facts {
+  order: 2;
+}
+
+.ticket-detail-layout .ticket-detail-summary {
   order: 3;
 }
 
-.ticket-detail > .ticket-detail-comments.ticket-detail-primary {
+.ticket-detail-layout .ticket-detail-comments.ticket-detail-primary {
   order: 4;
 }
 
-.ticket-detail > .ticket-categorization {
-  order: 5;
-}
-
-.ticket-detail > .ticket-custom-fields,
-.ticket-detail > .ticket-presence {
+.ticket-detail-layout .ticket-custom-fields,
+.ticket-detail-layout .ticket-presence {
   order: 6;
 }
 
-.ticket-detail > .ticket-focus-notice,
-.ticket-detail > .ticket-detail-workspace {
+.ticket-detail-layout .ticket-focus-notice {
   order: 7;
+}
+
+/* The ticket opens as a large work view instead of a narrow side panel. */
+.ticket-detail:not(.ticket-detail--focus) {
+  left: 16px;
+  right: 16px;
+  width: auto;
+  max-width: 1680px;
+  margin-inline: auto;
+  box-shadow:
+    0 28px 72px var(--shadow-tint-rgb-23-35-63-22),
+    0 0 0 100vmax rgb(8 12 24 / 45%);
+}
+
+/* Wide: conversation on the left, ticket information on the right. */
+@container ticket-detail (min-width: 1080px) {
+  .ticket-detail-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(360px, 440px);
+    align-items: start;
+    gap: 20px;
+  }
+
+  .ticket-detail-main,
+  .ticket-detail-sidebar {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    min-width: 0;
+  }
 }
 
 .ticket-detail-header {
