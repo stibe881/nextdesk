@@ -42,7 +42,7 @@ type JsonValue = null | boolean | number | string | JsonValue[] | {
 };
 type Kind = "service" | "asset" | "problem";
 type ManageType = "manageService" | "manageAsset" | "manageProblem";
-type Operation = "create" | "update" | "archive" | "restore" | "resolve";
+type Operation = "create" | "update" | "archive" | "restore" | "resolve" | "delete";
 type Action =
   | {
     type: "listCatalog";
@@ -428,11 +428,14 @@ export function parseAction(value: unknown): Action | null {
     operation !== "update" &&
     !(value.type !== "manageProblem" && operation === "archive") &&
     !(value.type === "manageService" && operation === "restore") &&
-    !(value.type === "manageProblem" && operation === "resolve")
+    !(value.type === "manageProblem" && operation === "resolve") &&
+    !(value.type === "manageProblem" && operation === "delete")
   ) {
     return null;
   }
-  const fields = operation === "archive" || operation === "restore"
+  const fields =
+    operation === "archive" || operation === "restore" ||
+      operation === "delete"
     ? {}
     : operation === "resolve"
     ? RESOLUTION_FIELDS
@@ -1210,6 +1213,24 @@ async function manageResource(
       );
     }
     return json(request, { data: { [resource.key]: data } }, 201);
+  }
+  if (action.operation === "delete") {
+    // Cases only. Ticket links are removed by the foreign-key cascade.
+    const { data, error } = await resourceClient
+      .delete()
+      .eq("tenant_id", action.tenantId)
+      .eq("id", action.id!)
+      .select("id")
+      .maybeSingle();
+    if (error) databaseFailure(error);
+    if (!data) {
+      throw new HttpError(
+        404,
+        "resource_not_found",
+        "Der Eintrag ist nicht verfügbar.",
+      );
+    }
+    return json(request, { data: { deleted: true, id: action.id } });
   }
   // Tenant and row filters are mandatory even though the caller's RLS also
   // protects every write; records outside the caller's departments are not
