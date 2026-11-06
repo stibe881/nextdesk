@@ -66,6 +66,7 @@ type StatusPage = {
   updatedAt: string | null;
 };
 type StatusOverview = {
+  canManage: boolean;
   canManagePublication: boolean;
   events: StatusEvent[];
   maintenances: StatusMaintenance[];
@@ -451,6 +452,8 @@ export function parseStatusOverview(value: unknown): StatusOverview {
     throw new Error("Die Wartungsliste enthält ungültige Werte.");
   }
   return {
+    // Older function versions only answered asset managers.
+    canManage: typeof data.canManage === "boolean" ? data.canManage : true,
     canManagePublication: data.canManagePublication,
     events: parsedEvents,
     maintenances: parsedMaintenances,
@@ -1826,8 +1829,9 @@ export function ServiceStatus({
           <p className="eyebrow">Servicekommunikation</p>
           <h2 id="service-status-title">Systemstatus</h2>
           <p>
-            Zeigen Sie den bewusst gesetzten Zustand Ihrer Services und
-            veröffentlichen Sie bei Bedarf eine datensparsame Statusseite.
+            {overview && !overview.canManage
+              ? "Aktueller Zustand der Services und geplante Wartungen."
+              : "Zeigen Sie den bewusst gesetzten Zustand Ihrer Services und veröffentlichen Sie bei Bedarf eine datensparsame Statusseite."}
           </p>
         </div>
         <button
@@ -1858,175 +1862,183 @@ export function ServiceStatus({
       {!loading && overview && publicPayload ? (
         <>
           <StatusPresentation payload={publicPayload} />
-          <MaintenanceList
-            canManagePublication={overview.canManagePublication}
-            maintenances={overview.maintenances}
-            onEdit={openMaintenanceEditor}
-            services={overview.services}
-          />
-          <section
-            className="service-status__publication panel"
-            aria-labelledby="service-status-publication-title"
-          >
-            <div className="panel-heading">
-              <div>
-                <p className="eyebrow">Öffentliche Freigabe</p>
-                <h3 id="service-status-publication-title">
-                  Statusseite und SharePoint-Badge
-                </h3>
+          {overview.canManage ? (
+            <MaintenanceList
+              canManagePublication={overview.canManagePublication}
+              maintenances={overview.maintenances}
+              onEdit={openMaintenanceEditor}
+              services={overview.services}
+            />
+          ) : null}
+          {overview.canManage ? (
+            <section
+              className="service-status__publication panel"
+              aria-labelledby="service-status-publication-title"
+            >
+              <div className="panel-heading">
+                <div>
+                  <p className="eyebrow">Öffentliche Freigabe</p>
+                  <h3 id="service-status-publication-title">
+                    Statusseite und SharePoint-Badge
+                  </h3>
+                </div>
+                <span
+                  className={
+                    overview.page.publicEnabled
+                      ? "service-status__publication-state service-status__publication-state--published"
+                      : "service-status__publication-state"
+                  }
+                >
+                  {overview.page.publicEnabled
+                    ? "Veröffentlicht"
+                    : "Nicht veröffentlicht"}
+                </span>
               </div>
-              <span
-                className={
-                  overview.page.publicEnabled
-                    ? "service-status__publication-state service-status__publication-state--published"
-                    : "service-status__publication-state"
-                }
-              >
-                {overview.page.publicEnabled
-                  ? "Veröffentlicht"
-                  : "Nicht veröffentlicht"}
-              </span>
-            </div>
-            {overview.canManagePublication ? (
-              <form onSubmit={(event) => void save(event)}>
-                <label>
-                  Öffentliche Überschrift
-                  <input
-                    disabled={saving}
-                    maxLength={120}
-                    onChange={(event) => setTitle(event.target.value)}
-                    value={title}
-                  />
-                </label>
-                <label className="service-status__publish-toggle">
-                  <input
-                    checked={publicEnabled}
-                    disabled={saving}
-                    onChange={(event) => setPublicEnabled(event.target.checked)}
-                    type="checkbox"
-                  />
-                  <span>
-                    <strong>Statusseite veröffentlichen</strong>
-                    <small>
-                      Erst nach dem Speichern ist die Seite für Personen mit der
-                      öffentlichen Adresse sichtbar.
-                    </small>
-                  </span>
-                </label>
-                <p className="service-status__publication-actions">
-                  <button
-                    className="primary-button"
-                    disabled={saving}
-                    type="submit"
-                  >
-                    {saving
-                      ? "Wird gespeichert …"
-                      : "Veröffentlichung speichern"}
-                  </button>
-                  {overview.page.publicId ? (
-                    <button
+              {overview.canManagePublication ? (
+                <form onSubmit={(event) => void save(event)}>
+                  <label>
+                    Öffentliche Überschrift
+                    <input
                       disabled={saving}
-                      onClick={() => void rotatePublicId()}
-                      type="button"
+                      maxLength={120}
+                      onChange={(event) => setTitle(event.target.value)}
+                      value={title}
+                    />
+                  </label>
+                  <label className="service-status__publish-toggle">
+                    <input
+                      checked={publicEnabled}
+                      disabled={saving}
+                      onChange={(event) =>
+                        setPublicEnabled(event.target.checked)
+                      }
+                      type="checkbox"
+                    />
+                    <span>
+                      <strong>Statusseite veröffentlichen</strong>
+                      <small>
+                        Erst nach dem Speichern ist die Seite für Personen mit
+                        der öffentlichen Adresse sichtbar.
+                      </small>
+                    </span>
+                  </label>
+                  <p className="service-status__publication-actions">
+                    <button
+                      className="primary-button"
+                      disabled={saving}
+                      type="submit"
                     >
-                      Öffentliche Adresse ersetzen
+                      {saving
+                        ? "Wird gespeichert …"
+                        : "Veröffentlichung speichern"}
                     </button>
-                  ) : null}
+                    {overview.page.publicId ? (
+                      <button
+                        disabled={saving}
+                        onClick={() => void rotatePublicId()}
+                        type="button"
+                      >
+                        Öffentliche Adresse ersetzen
+                      </button>
+                    ) : null}
+                  </p>
+                </form>
+              ) : (
+                <p className="service-status__permission-note">
+                  Für die Veröffentlichung oder das Ersetzen der Adresse ist die
+                  Berechtigung für Mandanteneinstellungen erforderlich.
                 </p>
-              </form>
-            ) : (
-              <p className="service-status__permission-note">
-                Für die Veröffentlichung oder das Ersetzen der Adresse ist die
-                Berechtigung für Mandanteneinstellungen erforderlich.
-              </p>
-            )}
-            {overview.page.publicEnabled &&
-            pageUrl &&
-            currentBadgeUrl &&
-            embedCode &&
-            iframeEmbedCode ? (
-              <div className="service-status__sharepoint">
-                <h4>In SharePoint einfügen</h4>
-                <p>
-                  Für den Bild-Webpart verwenden Sie die Bildadresse und
-                  verlinken das Badge mit der Statusseite. Für das
-                  Einbetten-Webpart zeigt der iFrame ausschliesslich das
-                  kompakte Statusbadge. nextDesk verändert keine
-                  SharePoint-Seite automatisch.
-                </p>
-                <label>
-                  Öffentliche Statusseite
-                  <span className="service-status__copy-row">
-                    <input readOnly value={pageUrl} />
-                    <button
-                      onClick={() =>
-                        void copy(pageUrl, "Die Statusseitenadresse")
-                      }
-                      type="button"
-                      aria-label="Statusseitenadresse kopieren"
-                    >
-                      <Copy aria-hidden="true" size={16} />
-                    </button>
-                    <a
-                      href={pageUrl}
-                      rel="noreferrer"
-                      target="_blank"
-                      aria-label="Öffentliche Statusseite öffnen"
-                    >
-                      <ExternalLink aria-hidden="true" size={16} />
-                    </a>
-                  </span>
-                </label>
-                <label>
-                  SharePoint-Bildadresse (SVG-Badge)
-                  <span className="service-status__copy-row">
-                    <input readOnly value={currentBadgeUrl} />
-                    <button
-                      onClick={() =>
-                        void copy(currentBadgeUrl, "Die Bildadresse")
-                      }
-                      type="button"
-                      aria-label="SharePoint-Bildadresse kopieren"
-                    >
-                      <Copy aria-hidden="true" size={16} />
-                    </button>
-                  </span>
-                </label>
-                <label>
-                  SharePoint-iFrame-Einbettung (Statusbadge)
-                  <span className="service-status__copy-row">
-                    <textarea readOnly rows={3} value={iframeEmbedCode} />
-                    <button
-                      onClick={() =>
-                        void copy(
-                          iframeEmbedCode,
-                          "Der SharePoint-iFrame-Code für das Statusbadge",
-                        )
-                      }
-                      type="button"
-                      aria-label="SharePoint-iFrame-Code für das Statusbadge kopieren"
-                    >
-                      <Copy aria-hidden="true" size={16} />
-                    </button>
-                  </span>
-                </label>
-                <label>
-                  HTML-Fallback
-                  <span className="service-status__copy-row">
-                    <textarea readOnly rows={3} value={embedCode} />
-                    <button
-                      onClick={() => void copy(embedCode, "Der HTML-Fallback")}
-                      type="button"
-                      aria-label="HTML-Fallback kopieren"
-                    >
-                      <Copy aria-hidden="true" size={16} />
-                    </button>
-                  </span>
-                </label>
-              </div>
-            ) : null}
-          </section>
-          {maintenanceDraft ? (
+              )}
+              {overview.page.publicEnabled &&
+              pageUrl &&
+              currentBadgeUrl &&
+              embedCode &&
+              iframeEmbedCode ? (
+                <div className="service-status__sharepoint">
+                  <h4>In SharePoint einfügen</h4>
+                  <p>
+                    Für den Bild-Webpart verwenden Sie die Bildadresse und
+                    verlinken das Badge mit der Statusseite. Für das
+                    Einbetten-Webpart zeigt der iFrame ausschliesslich das
+                    kompakte Statusbadge. nextDesk verändert keine
+                    SharePoint-Seite automatisch.
+                  </p>
+                  <label>
+                    Öffentliche Statusseite
+                    <span className="service-status__copy-row">
+                      <input readOnly value={pageUrl} />
+                      <button
+                        onClick={() =>
+                          void copy(pageUrl, "Die Statusseitenadresse")
+                        }
+                        type="button"
+                        aria-label="Statusseitenadresse kopieren"
+                      >
+                        <Copy aria-hidden="true" size={16} />
+                      </button>
+                      <a
+                        href={pageUrl}
+                        rel="noreferrer"
+                        target="_blank"
+                        aria-label="Öffentliche Statusseite öffnen"
+                      >
+                        <ExternalLink aria-hidden="true" size={16} />
+                      </a>
+                    </span>
+                  </label>
+                  <label>
+                    SharePoint-Bildadresse (SVG-Badge)
+                    <span className="service-status__copy-row">
+                      <input readOnly value={currentBadgeUrl} />
+                      <button
+                        onClick={() =>
+                          void copy(currentBadgeUrl, "Die Bildadresse")
+                        }
+                        type="button"
+                        aria-label="SharePoint-Bildadresse kopieren"
+                      >
+                        <Copy aria-hidden="true" size={16} />
+                      </button>
+                    </span>
+                  </label>
+                  <label>
+                    SharePoint-iFrame-Einbettung (Statusbadge)
+                    <span className="service-status__copy-row">
+                      <textarea readOnly rows={3} value={iframeEmbedCode} />
+                      <button
+                        onClick={() =>
+                          void copy(
+                            iframeEmbedCode,
+                            "Der SharePoint-iFrame-Code für das Statusbadge",
+                          )
+                        }
+                        type="button"
+                        aria-label="SharePoint-iFrame-Code für das Statusbadge kopieren"
+                      >
+                        <Copy aria-hidden="true" size={16} />
+                      </button>
+                    </span>
+                  </label>
+                  <label>
+                    HTML-Fallback
+                    <span className="service-status__copy-row">
+                      <textarea readOnly rows={3} value={embedCode} />
+                      <button
+                        onClick={() =>
+                          void copy(embedCode, "Der HTML-Fallback")
+                        }
+                        type="button"
+                        aria-label="HTML-Fallback kopieren"
+                      >
+                        <Copy aria-hidden="true" size={16} />
+                      </button>
+                    </span>
+                  </label>
+                </div>
+              ) : null}
+            </section>
+          ) : null}
+          {maintenanceDraft && overview.canManage ? (
             <MaintenanceEditorDialog
               canManagePublication={overview.canManagePublication}
               draft={maintenanceDraft}
@@ -2110,7 +2122,8 @@ export function PublicServiceStatusBadgePage({
     };
   }, [publicId]);
 
-  const visual = status === null || status === "unavailable" ? "unavailable" : status;
+  const visual =
+    status === null || status === "unavailable" ? "unavailable" : status;
   return (
     <a
       className={`embed-status-badge embed-status-badge--${visual}`}

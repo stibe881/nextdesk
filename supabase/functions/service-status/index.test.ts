@@ -80,6 +80,19 @@ Deno.test(
         "Maintenance RPC calls must remain after membership, feature and asset permission checks.",
       );
     }
+    const readOnlyOverview = handlerSource.slice(
+      handlerSource.indexOf('if (action.type === "getStatusOverview")'),
+      authorizationEnd,
+    );
+    if (
+      !readOnlyOverview.includes('p_permission_code: "asset.manage"') ||
+      !readOnlyOverview.includes("publicId: null") ||
+      !readOnlyOverview.includes("canManage: false")
+    ) {
+      throw new Error(
+        "Members without asset.manage may only read the status without planning or publication data.",
+      );
+    }
 
     const maintenanceMutation = internalSource.slice(
       internalSource.indexOf("async function manageMaintenance"),
@@ -149,7 +162,7 @@ Deno.test(
       '.gte("ends_at", now)',
       '.eq("status_public", true)',
       '.eq("active", true)',
-      'select("id, name, status, updated_at")',
+      'select("id, name, status, updated_at, service_category_id")',
       'select("service_id, status, changed_at")',
       'select("id, title, description, starts_at, ends_at, state")',
       'select("maintenance_id, service_id")',

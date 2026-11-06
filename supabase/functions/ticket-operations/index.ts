@@ -807,6 +807,18 @@ async function ticketNotificationRecipientAuthorized(
   return !error && data === true;
 }
 
+async function employeeCanRead(
+  admin: any,
+  userId: string,
+  ticketId: string,
+): Promise<boolean> {
+  const { data, error } = await admin.rpc("employee_can_read_ticket_for", {
+    p_user_id: userId,
+    p_ticket_id: ticketId,
+  });
+  return !error && data === true;
+}
+
 async function canRead(admin: any, userId: string, ticket: any) {
   if (!(await activeMember(admin, userId, ticket.tenant_id))) return false;
   if (ticket.requester_id === userId || ticket.affected_user_id === userId)
@@ -843,12 +855,15 @@ async function canRead(admin: any, userId: string, ticket: any) {
       .eq("customer_organization_id", ticket.customer_organization_id)
       .eq("user_id", userId)
       .maybeSingle();
-    return Boolean(
+    if (
       data?.access === "company" &&
       data.customer_organizations?.active &&
-      data.customer_organizations?.ticket_access !== "disabled",
-    );
+      data.customer_organizations?.ticket_access !== "disabled"
+    )
+      return true;
   }
+  // Own tickets by requester e-mail and tickets of direct reports (Entra).
+  if (await employeeCanRead(admin, userId, ticket.id)) return true;
   return false;
 }
 async function getTicket(admin: any, tenantId: string, ticketId: string) {

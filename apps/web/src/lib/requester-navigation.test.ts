@@ -18,14 +18,16 @@ describe("Navigation für reine Anfragende", () => {
     { label: "Einstellungen" },
   ] as const;
 
-  it("zeigt nur Übersicht, Tickets, Shop und Mein Portal", () => {
+  it("zeigt nur Tickets, Shop und Wissen (Systemstatus, wenn vorhanden)", () => {
     expect(
       requesterNavigationSections(sections).map((section) => section.label),
-    ).toEqual(["Übersicht", "Tickets", "Shop", "Mein Portal"]);
+    ).toEqual(["Tickets", "Shop", "Wissen"]);
   });
 
   it("verweigert weitere Bereiche bei direkter clientseitiger Navigation", () => {
-    expect(canRequesterOpenSection("Übersicht", true)).toBe(true);
+    expect(canRequesterOpenSection("Übersicht", true)).toBe(false);
+    expect(canRequesterOpenSection("Wissen", true)).toBe(true);
+    expect(canRequesterOpenSection("Systemstatus", true)).toBe(true);
     expect(canRequesterOpenSection("Tickets", true)).toBe(true);
     expect(canRequesterOpenSection("Shop", true)).toBe(true);
     expect(canRequesterOpenSection("Mein Portal", true)).toBe(true);

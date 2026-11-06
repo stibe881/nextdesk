@@ -30,6 +30,7 @@ psql -v ON_ERROR_STOP=1 <<'SQL'
 create schema auth;
 create table auth.users (
   id uuid primary key,
+  email text,
   raw_user_meta_data jsonb not null default '{}'::jsonb
 );
 create function auth.uid()
@@ -9777,6 +9778,64 @@ begin
   update public.tickets
   set merged_into_ticket_id = v_ticket, status_id = v_closed, closed_at = now()
   where id = v_duplicate;
+end;
+$$;
+rollback;
+SQL
+
+# Employee ticket visibility (0196): an employee reads own tickets (by e-mail
+# of the requester contact) and the tickets of direct reports from Entra; a
+# colleague without that relation does not.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_owner constant uuid := 'f1960000-0000-4000-8000-000000000001';
+  v_manager constant uuid := 'f1960000-0000-4000-8000-000000000002';
+  v_report constant uuid := 'f1960000-0000-4000-8000-000000000003';
+  v_colleague constant uuid := 'f1960000-0000-4000-8000-000000000004';
+  v_tenant uuid;
+  v_contact uuid;
+  v_ticket uuid;
+begin
+  insert into auth.users (id, email) values
+    (v_owner, 'owner@firma.ch'), (v_manager, 'chefin@firma.ch'),
+    (v_report, 'mitarbeiter@firma.ch'), (v_colleague, 'kollege@firma.ch');
+  v_tenant := public.provision_personal_workspace(v_owner, 'owner@firma.ch', 'Firma');
+  insert into public.user_profiles (id, display_name) values
+    (v_manager, 'Chefin'), (v_report, 'Mitarbeiter'), (v_colleague, 'Kollege')
+    on conflict (id) do nothing;
+  insert into public.tenant_memberships (tenant_id, user_id, status) values
+    (v_tenant, v_manager, 'active'), (v_tenant, v_report, 'active'),
+    (v_tenant, v_colleague, 'active');
+  insert into public.tenant_entra_directory_people (tenant_id, entra_object_id, email, display_name, manager_entra_object_id) values
+    (v_tenant, 'f1960000-0000-4000-8000-0000000000e1', 'chefin@firma.ch', 'Chefin', null),
+    (v_tenant, 'f1960000-0000-4000-8000-0000000000e2', 'mitarbeiter@firma.ch', 'Mitarbeiter', 'f1960000-0000-4000-8000-0000000000e1'),
+    (v_tenant, 'f1960000-0000-4000-8000-0000000000e3', 'kollege@firma.ch', 'Kollege', null);
+  insert into public.ticket_requesters (tenant_id, email, display_name, source)
+    values (v_tenant, 'mitarbeiter@firma.ch', 'Mitarbeiter', 'manual')
+    returning id into v_contact;
+  insert into public.tickets (tenant_id, department_id, ticket_number, subject, description, status_id, priority_id, requester_id, requester_contact_id)
+  select v_tenant, d.id, 'E-2026-00001', 'Drucker', 'Druckt nicht',
+    (select id from public.ticket_statuses where tenant_id = v_tenant order by sort_order limit 1),
+    (select id from public.ticket_priorities where tenant_id = v_tenant limit 1),
+    v_owner, v_contact
+  from public.departments d where d.tenant_id = v_tenant limit 1
+  returning id into v_ticket;
+
+  perform set_config('request.jwt.claim.sub', v_report::text, true);
+  if not public.can_read_ticket(v_ticket) then
+    raise exception 'The requester (by e-mail) cannot read the own ticket';
+  end if;
+  perform set_config('request.jwt.claim.sub', v_manager::text, true);
+  if not public.can_read_ticket(v_ticket) then
+    raise exception 'The manager cannot read the ticket of a direct report';
+  end if;
+  perform set_config('request.jwt.claim.sub', v_colleague::text, true);
+  if public.can_read_ticket(v_ticket) then
+    raise exception 'A colleague without a manager relation reads the ticket';
+  end if;
+  perform set_config('request.jwt.claim.sub', '', true);
 end;
 $$;
 rollback;

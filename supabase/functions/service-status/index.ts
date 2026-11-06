@@ -843,13 +843,40 @@ const handler = withSupabase(
     // read or write. The feature RPC is intentionally caller-scoped.
     await requireActiveMembership(context.supabase, action.tenantId);
     await requireAssetFeature(context.supabase, action.tenantId);
-    await requirePermission(context.supabase, action.tenantId, "asset.manage");
 
     if (action.type === "getStatusOverview") {
+      // Every active member may read the status; only asset managers see
+      // planning data and may manage maintenance or the public page.
+      const manage = await context.supabase.rpc("has_tenant_permission", {
+        p_tenant_id: action.tenantId,
+        p_permission_code: "asset.manage",
+      });
+      if (manage.error || typeof manage.data !== "boolean") {
+        throw new HttpError(
+          503,
+          "authorization_check_failed",
+          "Die Berechtigung konnte nicht geprüft werden.",
+        );
+      }
       const overview = await readOverview(
         context.supabaseAdmin,
         action.tenantId,
       );
+      if (!manage.data) {
+        return json(request, {
+          data: {
+            ...overview,
+            page: { ...overview.page, publicId: null },
+            maintenances: overview.maintenances.filter(
+              (maintenance) =>
+                maintenance.state === "scheduled" ||
+                maintenance.state === "active",
+            ),
+            canManage: false,
+            canManagePublication: false,
+          },
+        });
+      }
       const publication = await context.supabase.rpc("has_tenant_permission", {
         p_tenant_id: action.tenantId,
         p_permission_code: "tenant.settings.manage",
@@ -862,9 +889,15 @@ const handler = withSupabase(
         );
       }
       return json(request, {
-        data: { ...overview, canManagePublication: publication.data },
+        data: {
+          ...overview,
+          canManage: true,
+          canManagePublication: publication.data,
+        },
       });
     }
+
+    await requirePermission(context.supabase, action.tenantId, "asset.manage");
 
     if (action.type === "manageMaintenance") {
       await manageMaintenance(context.supabaseAdmin, actorId, action);
@@ -891,7 +924,9 @@ const handler = withSupabase(
               p_permission_code: "tenant.settings.manage",
             })
           ).data === true;
-    return json(request, { data: { ...overview, canManagePublication } });
+    return json(request, {
+      data: { ...overview, canManage: true, canManagePublication },
+    });
   },
 );
 

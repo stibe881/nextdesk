@@ -108,8 +108,9 @@ Deno.test(
     assert(
       source.includes("KNOWLEDGE_READ_PERMISSION") &&
         source.includes("KNOWLEDGE_MANAGE_PERMISSION") &&
-        source.includes("canReadInternal !== true && canManage !== true"),
-      "The category list must be allowed only to internal readers or server-authorized knowledge managers.",
+        source.includes('.from("knowledge_collections")') &&
+        source.includes('.eq("tenant_id", action.tenantId)'),
+      "The category list must stay tenant-scoped; requesters only see collection names.",
     );
     assert(
       source.includes('action.type === "setArticleCollections"') &&

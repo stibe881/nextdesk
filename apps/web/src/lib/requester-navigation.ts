@@ -1,8 +1,10 @@
+// Employees without ticket work rights: their tickets (and those of their
+// direct reports), the shop, the public knowledge and the service status.
 export const REQUESTER_NAVIGATION_SECTIONS = [
-  "Übersicht",
   "Tickets",
   "Shop",
-  "Mein Portal",
+  "Wissen",
+  "Systemstatus",
 ] as const;
 
 export function requesterNavigationSections<T extends { label: string }>(
@@ -20,9 +22,10 @@ export function canRequesterOpenSection(
   requesterPortalEnabled: boolean,
 ): boolean {
   return (
-    section === "Übersicht" ||
     section === "Tickets" ||
     section === "Shop" ||
+    section === "Wissen" ||
+    section === "Systemstatus" ||
     (section === "Mein Portal" && requesterPortalEnabled)
   );
 }
