@@ -20775,3 +20775,23 @@ html:has(.embed-status-badge) body {
   gap: 8px;
   font-weight: 600;
 }
+
+/* Case dialog: wide blocks span both columns. */
+.service-assets__problem-dialog form > fieldset,
+.service-assets__problem-dialog form > section,
+.service-assets__problem-dialog form > p {
+  grid-column: 1 / -1;
+}
+
+.service-assets__problem-dialog form > section ul {
+  display: grid;
+  gap: 6px;
+  margin: 8px 0;
+  padding-left: 18px;
+}
+
+@media (max-width: 640px) {
+  .service-assets__problem-dialog form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

@@ -1722,6 +1722,7 @@ export function ServiceAssets({
     useState<ProblemForm>(EMPTY_PROBLEM_FORM);
   const [problemMode, setProblemMode] = useState<ProblemFormMode>("create");
   const [assetEditorOpen, setAssetEditorOpen] = useState(false);
+  const [problemEditorOpen, setProblemEditorOpen] = useState(false);
   const [serviceEditorOpen, setServiceEditorOpen] = useState(false);
   const [inlineServiceEditorId, setInlineServiceEditorId] = useState<
     string | null
@@ -2435,7 +2436,13 @@ export function ServiceAssets({
     }
   }
 
+  function openNewProblem() {
+    resetProblemForm();
+    setProblemEditorOpen(true);
+  }
+
   function resetProblemForm() {
+    setProblemEditorOpen(false);
     setTicketFollowUp({ notify: false, message: "", resolve: false });
     setCaseArticle({ create: false, title: "", visibility: "internal" });
     setProblemForm(EMPTY_PROBLEM_FORM);
@@ -2455,7 +2462,7 @@ export function ServiceAssets({
     }
     lastProblemCreateRequestId.current = createProblemRequestId;
     setActiveTab("problems");
-    resetProblemForm();
+    openNewProblem();
     onCreateProblemRequestConsumed?.(createProblemRequestId);
   }, [createProblemRequestId, onCreateProblemRequestConsumed]);
 
@@ -4486,6 +4493,14 @@ export function ServiceAssets({
               {!fixedTab ? <h3>Fälle</h3> : null}
               <p>{activeCount} passende Fälle</p>
             </div>
+            <button
+              className="primary-button"
+              disabled={controlsDisabled}
+              onClick={openNewProblem}
+              type="button"
+            >
+              Neuer Fall
+            </button>
           </div>
           <fieldset disabled={controlsDisabled}>
             <legend>Fälle filtern</legend>
@@ -4524,8 +4539,8 @@ export function ServiceAssets({
 
           {problems.length === 0 ? (
             <p className="empty-state">
-              Es sind keine Fälle vorhanden. Legen Sie unten bei Bedarf einen
-              neuen Fall an.
+              Es sind keine Fälle vorhanden. Legen Sie bei Bedarf mit «Neuer
+              Fall» einen an.
             </p>
           ) : filteredProblems.length === 0 ? (
             <p className="empty-state">Keine Fälle entsprechen dem Filter.</p>
@@ -4565,6 +4580,7 @@ export function ServiceAssets({
                         clearProblemTicketState();
                         setProblemForm(problemDraft(problem));
                         setProblemMode("edit");
+                        setProblemEditorOpen(true);
                         setError("");
                         setSuccess("");
                         setCreatedArticleId(null);
@@ -4581,6 +4597,7 @@ export function ServiceAssets({
                         clearProblemTicketState();
                         setProblemForm(problemDraft(problem));
                         setProblemMode("resolve");
+                        setProblemEditorOpen(true);
                         setError("");
                         setSuccess("");
                         setCreatedArticleId(null);
@@ -4597,414 +4614,479 @@ export function ServiceAssets({
             </ul>
           )}
 
-          <section
-            aria-labelledby="service-assets-problem-form-title"
-            className="panel"
-          >
-            <div className="panel-heading">
-              <div>
-                <p className="eyebrow">
-                  {problemMode === "resolve"
-                    ? "Fall lösen"
-                    : problemMode === "edit"
-                      ? "Fall bearbeiten"
-                      : "Neuer Fall"}
-                </p>
-                <h3 id="service-assets-problem-form-title">
-                  {problemMode === "resolve"
-                    ? `Lösung dokumentieren: ${problemForm.title}`
-                    : problemMode === "edit"
-                      ? "Fall aktualisieren"
-                      : "Fall anlegen"}
-                </h3>
-              </div>
-            </div>
-            <form onSubmit={(event) => void saveProblem(event)}>
-              {problemMode !== "resolve" ? (
-                <>
-                  <label>
-                    Titel
-                    <input
-                      disabled={controlsDisabled}
-                      maxLength={240}
-                      minLength={3}
-                      onChange={(event) =>
-                        setProblemForm((current) => ({
-                          ...current,
-                          title: event.target.value,
-                        }))
-                      }
-                      required
-                      value={problemForm.title}
-                    />
-                  </label>
-                  <DepartmentField
-                    departments={departments}
-                    disabled={controlsDisabled}
-                    onChange={(departmentId) =>
-                      setProblemForm((current) => ({
-                        ...current,
-                        departmentId,
-                      }))
+          {problemEditorOpen
+            ? createPortal(
+                <div
+                  aria-label={
+                    problemMode === "resolve"
+                      ? "Fall lösen"
+                      : problemMode === "edit"
+                        ? "Fall bearbeiten"
+                        : "Fall anlegen"
+                  }
+                  aria-modal="true"
+                  className="service-assets__dialog-backdrop"
+                  onKeyDown={(event) => {
+                    if (event.key === "Escape" && !controlsDisabled) {
+                      event.preventDefault();
+                      resetProblemForm();
                     }
-                    required={problemMode === "create"}
-                    value={problemForm.departmentId}
-                  />
-                  <label>
-                    Status
-                    <select
-                      disabled={controlsDisabled}
-                      onChange={(event) =>
-                        setProblemForm((current) => ({
-                          ...current,
-                          status: event.target.value as EditableProblemStatus,
-                        }))
-                      }
-                      value={problemForm.status}
-                    >
-                      {EDITABLE_PROBLEM_STATUSES.map((status) => (
-                        <option key={status} value={status}>
-                          {PROBLEM_STATUS_LABELS[status]}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label>
-                    Beschreibung
-                    <textarea
-                      disabled={controlsDisabled}
-                      maxLength={50000}
-                      onChange={(event) =>
-                        setProblemForm((current) => ({
-                          ...current,
-                          description: event.target.value,
-                        }))
-                      }
-                      rows={4}
-                      value={problemForm.description}
-                    />
-                  </label>
-                  <label>
-                    Verantwortliche Person (optional)
-                    <select
-                      disabled={controlsDisabled || problemOwnersLoading}
-                      onChange={(event) =>
-                        setProblemForm((current) => ({
-                          ...current,
-                          ownerId: event.target.value,
-                        }))
-                      }
-                      value={problemForm.ownerId}
-                    >
-                      <option value="">
-                        {problemOwnersLoading
-                          ? "Agent:innen werden geladen …"
-                          : "Nicht zugewiesen"}
-                      </option>
-                      {problemForm.ownerId &&
-                      !problemOwnerNames.has(problemForm.ownerId) ? (
-                        <option value={problemForm.ownerId}>
-                          Keine aktive Agent:in
-                        </option>
-                      ) : null}
-                      {problemOwners.map((owner) => (
-                        <option key={owner.id} value={owner.id}>
-                          {owner.displayName}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <p>
-                    Fälle können nur aktiven Agent:innen zugewiesen werden. Eine
-                    bisherige verantwortliche Person ohne Agentenzugriff kann
-                    entfernt oder durch eine Agent:in ersetzt werden.
-                  </p>
-                </>
-              ) : (
-                <p>
-                  Beim Speichern wird dieser Fall als gelöst markiert. Gelöste
-                  Fälle finden Sie über den Statusfilter «Gelöst».
-                </p>
-              )}
-              <label>
-                Workaround (optional)
-                <textarea
-                  disabled={controlsDisabled}
-                  maxLength={50000}
-                  onChange={(event) =>
-                    setProblemForm((current) => ({
-                      ...current,
-                      workaround: event.target.value,
-                    }))
-                  }
-                  rows={3}
-                  value={problemForm.workaround}
-                />
-              </label>
-              <label>
-                Ursache / Root Cause (optional)
-                <textarea
-                  disabled={controlsDisabled}
-                  maxLength={50000}
-                  onChange={(event) =>
-                    setProblemForm((current) => ({
-                      ...current,
-                      rootCause: event.target.value,
-                    }))
-                  }
-                  rows={3}
-                  value={problemForm.rootCause}
-                />
-              </label>
-              {problemForm.id ? (
-                <section aria-labelledby="service-assets-problem-tickets-title">
-                  <h4 id="service-assets-problem-tickets-title">
-                    Ticketanhänge
-                  </h4>
-                  {problemTicketsLoading ? (
-                    <p aria-live="polite">
-                      Verknüpfte Tickets werden geladen …
-                    </p>
-                  ) : problemTickets.length === 0 ? (
-                    <p>Noch keine Tickets angehängt.</p>
-                  ) : (
-                    <ul aria-label="Verknüpfte Tickets">
-                      {problemTickets.map((ticket) => (
-                        <li key={ticket.id}>
-                          <strong>{ticket.ticketNumber}</strong> ·{" "}
-                          {ticket.subject} · {ticket.statusLabel}{" "}
-                          <button
+                  }}
+                  onMouseDown={(event) => {
+                    if (
+                      event.currentTarget === event.target &&
+                      !controlsDisabled
+                    ) {
+                      resetProblemForm();
+                    }
+                  }}
+                  role="dialog"
+                >
+                  <section
+                    aria-busy={controlsDisabled}
+                    aria-labelledby="service-assets-problem-form-title"
+                    className="service-assets__asset-editor-dialog service-assets__problem-dialog"
+                    tabIndex={-1}
+                  >
+                    <div className="panel-heading">
+                      <div>
+                        <p className="eyebrow">
+                          {problemMode === "resolve"
+                            ? "Fall lösen"
+                            : problemMode === "edit"
+                              ? "Fall bearbeiten"
+                              : "Neuer Fall"}
+                        </p>
+                        <h3 id="service-assets-problem-form-title">
+                          {problemMode === "resolve"
+                            ? `Lösung dokumentieren: ${problemForm.title}`
+                            : problemMode === "edit"
+                              ? "Fall aktualisieren"
+                              : "Fall anlegen"}
+                        </h3>
+                      </div>
+                      <button
+                        aria-label="Fallbearbeitung schliessen"
+                        disabled={controlsDisabled}
+                        onClick={resetProblemForm}
+                        type="button"
+                      >
+                        Schliessen
+                      </button>
+                    </div>
+                    {error ? (
+                      <p
+                        className="form-message form-message--error"
+                        role="alert"
+                      >
+                        {error}
+                      </p>
+                    ) : null}
+                    <form onSubmit={(event) => void saveProblem(event)}>
+                      {problemMode !== "resolve" ? (
+                        <>
+                          <label>
+                            Titel
+                            <input
+                              disabled={controlsDisabled}
+                              maxLength={240}
+                              minLength={3}
+                              onChange={(event) =>
+                                setProblemForm((current) => ({
+                                  ...current,
+                                  title: event.target.value,
+                                }))
+                              }
+                              required
+                              value={problemForm.title}
+                            />
+                          </label>
+                          <DepartmentField
+                            departments={departments}
                             disabled={controlsDisabled}
-                            onClick={() => void unlinkTicketFromProblem(ticket)}
-                            type="button"
-                          >
-                            {pendingAction ===
-                            `problem:ticket:unlink:${problemForm.id}:${ticket.id}`
-                              ? "Wird entfernt …"
-                              : "Entfernen"}
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                  <label>
-                    Ticket suchen
-                    <input
-                      aria-describedby="service-assets-ticket-search-help"
-                      disabled={controlsDisabled}
-                      maxLength={240}
-                      onChange={(event) =>
-                        setTicketSearchQuery(event.target.value)
-                      }
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter") event.preventDefault();
-                      }}
-                      placeholder="Ticketnummer oder Betreff"
-                      type="search"
-                      value={ticketSearchQuery}
-                    />
-                  </label>
-                  <p id="service-assets-ticket-search-help">
-                    Geben Sie mindestens zwei Zeichen ein.
-                  </p>
-                  {ticketSearchQuery.trim().length >= 2 &&
-                  ticketSearchLoading ? (
-                    <p aria-live="polite">Tickets werden gesucht …</p>
-                  ) : null}
-                  {ticketSearchQuery.trim().length >= 2 &&
-                  !ticketSearchLoading &&
-                  attachableTicketSearchResults.length === 0 ? (
-                    <p>
-                      {ticketSearchResults.length > 0
-                        ? "Alle passenden Tickets sind bereits angehängt."
-                        : "Keine passenden Tickets gefunden."}
-                    </p>
-                  ) : null}
-                  {ticketSearchQuery.trim().length >= 2 &&
-                  !ticketSearchLoading &&
-                  attachableTicketSearchResults.length > 0 ? (
-                    <ul aria-label="Gefundene Tickets">
-                      {attachableTicketSearchResults.map((ticket) => (
-                        <li key={ticket.id}>
-                          <strong>{ticket.ticketNumber}</strong> ·{" "}
-                          {ticket.subject} · {ticket.statusLabel}{" "}
-                          <button
-                            disabled={controlsDisabled}
-                            onClick={() => void linkTicketToProblem(ticket)}
-                            type="button"
-                          >
-                            {pendingAction ===
-                            `problem:ticket:link:${problemForm.id}:${ticket.id}`
-                              ? "Wird angehängt …"
-                              : "Anhängen"}
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : null}
-                </section>
-              ) : null}
-              {problemMode === "resolve" ? (
-                <fieldset className="service-assets__ticket-follow-up">
-                  <legend>Wissensartikel</legend>
-                  <label className="service-assets__checkbox">
-                    <input
-                      checked={caseArticle.create}
-                      disabled={controlsDisabled}
-                      onChange={(event) => {
-                        const create = event.target.checked;
-                        setCaseArticle((current) => ({
-                          ...current,
-                          create,
-                          title:
-                            create && !current.title.trim()
-                              ? problemForm.title
-                              : current.title,
-                        }));
-                      }}
-                      type="checkbox"
-                    />
-                    Aus diesem Fall einen Wissensartikel erstellen
-                  </label>
-                  {caseArticle.create ? (
-                    <>
+                            onChange={(departmentId) =>
+                              setProblemForm((current) => ({
+                                ...current,
+                                departmentId,
+                              }))
+                            }
+                            required={problemMode === "create"}
+                            value={problemForm.departmentId}
+                          />
+                          <label>
+                            Status
+                            <select
+                              disabled={controlsDisabled}
+                              onChange={(event) =>
+                                setProblemForm((current) => ({
+                                  ...current,
+                                  status: event.target
+                                    .value as EditableProblemStatus,
+                                }))
+                              }
+                              value={problemForm.status}
+                            >
+                              {EDITABLE_PROBLEM_STATUSES.map((status) => (
+                                <option key={status} value={status}>
+                                  {PROBLEM_STATUS_LABELS[status]}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <label>
+                            Beschreibung
+                            <textarea
+                              disabled={controlsDisabled}
+                              maxLength={50000}
+                              onChange={(event) =>
+                                setProblemForm((current) => ({
+                                  ...current,
+                                  description: event.target.value,
+                                }))
+                              }
+                              rows={4}
+                              value={problemForm.description}
+                            />
+                          </label>
+                          <label>
+                            Verantwortliche Person (optional)
+                            <select
+                              disabled={
+                                controlsDisabled || problemOwnersLoading
+                              }
+                              onChange={(event) =>
+                                setProblemForm((current) => ({
+                                  ...current,
+                                  ownerId: event.target.value,
+                                }))
+                              }
+                              value={problemForm.ownerId}
+                            >
+                              <option value="">
+                                {problemOwnersLoading
+                                  ? "Agent:innen werden geladen …"
+                                  : "Nicht zugewiesen"}
+                              </option>
+                              {problemForm.ownerId &&
+                              !problemOwnerNames.has(problemForm.ownerId) ? (
+                                <option value={problemForm.ownerId}>
+                                  Keine aktive Agent:in
+                                </option>
+                              ) : null}
+                              {problemOwners.map((owner) => (
+                                <option key={owner.id} value={owner.id}>
+                                  {owner.displayName}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <p>
+                            Fälle können nur aktiven Agent:innen zugewiesen
+                            werden. Eine bisherige verantwortliche Person ohne
+                            Agentenzugriff kann entfernt oder durch eine
+                            Agent:in ersetzt werden.
+                          </p>
+                        </>
+                      ) : (
+                        <p>
+                          Beim Speichern wird dieser Fall als gelöst markiert.
+                          Gelöste Fälle finden Sie über den Statusfilter
+                          «Gelöst».
+                        </p>
+                      )}
                       <label>
-                        Titel des Artikels
-                        <input
+                        Workaround (optional)
+                        <textarea
                           disabled={controlsDisabled}
-                          maxLength={240}
-                          minLength={3}
+                          maxLength={50000}
                           onChange={(event) =>
-                            setCaseArticle((current) => ({
+                            setProblemForm((current) => ({
                               ...current,
-                              title: event.target.value,
+                              workaround: event.target.value,
                             }))
                           }
-                          required
-                          value={caseArticle.title}
+                          rows={3}
+                          value={problemForm.workaround}
                         />
                       </label>
                       <label>
-                        Sichtbarkeit
-                        <select
+                        Ursache / Root Cause (optional)
+                        <textarea
                           disabled={controlsDisabled}
+                          maxLength={50000}
                           onChange={(event) =>
-                            setCaseArticle((current) => ({
+                            setProblemForm((current) => ({
                               ...current,
-                              visibility: event.target.value as
-                                "internal" | "external",
+                              rootCause: event.target.value,
                             }))
                           }
-                          value={caseArticle.visibility}
-                        >
-                          <option value="internal">Intern</option>
-                          <option value="external">Extern</option>
-                        </select>
+                          rows={3}
+                          value={problemForm.rootCause}
+                        />
                       </label>
-                      <p className="data-caption">
-                        Der Artikel wird aus Beschreibung, Workaround und
-                        Ursache als Entwurf angelegt. Sie können ihn danach in
-                        der Wissensdatenbank überarbeiten und freigeben.
+                      {problemForm.id ? (
+                        <section aria-labelledby="service-assets-problem-tickets-title">
+                          <h4 id="service-assets-problem-tickets-title">
+                            Ticketanhänge
+                          </h4>
+                          {problemTicketsLoading ? (
+                            <p aria-live="polite">
+                              Verknüpfte Tickets werden geladen …
+                            </p>
+                          ) : problemTickets.length === 0 ? (
+                            <p>Noch keine Tickets angehängt.</p>
+                          ) : (
+                            <ul aria-label="Verknüpfte Tickets">
+                              {problemTickets.map((ticket) => (
+                                <li key={ticket.id}>
+                                  <strong>{ticket.ticketNumber}</strong> ·{" "}
+                                  {ticket.subject} · {ticket.statusLabel}{" "}
+                                  <button
+                                    disabled={controlsDisabled}
+                                    onClick={() =>
+                                      void unlinkTicketFromProblem(ticket)
+                                    }
+                                    type="button"
+                                  >
+                                    {pendingAction ===
+                                    `problem:ticket:unlink:${problemForm.id}:${ticket.id}`
+                                      ? "Wird entfernt …"
+                                      : "Entfernen"}
+                                  </button>
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                          <label>
+                            Ticket suchen
+                            <input
+                              aria-describedby="service-assets-ticket-search-help"
+                              disabled={controlsDisabled}
+                              maxLength={240}
+                              onChange={(event) =>
+                                setTicketSearchQuery(event.target.value)
+                              }
+                              onKeyDown={(event) => {
+                                if (event.key === "Enter")
+                                  event.preventDefault();
+                              }}
+                              placeholder="Ticketnummer oder Betreff"
+                              type="search"
+                              value={ticketSearchQuery}
+                            />
+                          </label>
+                          <p id="service-assets-ticket-search-help">
+                            Geben Sie mindestens zwei Zeichen ein.
+                          </p>
+                          {ticketSearchQuery.trim().length >= 2 &&
+                          ticketSearchLoading ? (
+                            <p aria-live="polite">Tickets werden gesucht …</p>
+                          ) : null}
+                          {ticketSearchQuery.trim().length >= 2 &&
+                          !ticketSearchLoading &&
+                          attachableTicketSearchResults.length === 0 ? (
+                            <p>
+                              {ticketSearchResults.length > 0
+                                ? "Alle passenden Tickets sind bereits angehängt."
+                                : "Keine passenden Tickets gefunden."}
+                            </p>
+                          ) : null}
+                          {ticketSearchQuery.trim().length >= 2 &&
+                          !ticketSearchLoading &&
+                          attachableTicketSearchResults.length > 0 ? (
+                            <ul aria-label="Gefundene Tickets">
+                              {attachableTicketSearchResults.map((ticket) => (
+                                <li key={ticket.id}>
+                                  <strong>{ticket.ticketNumber}</strong> ·{" "}
+                                  {ticket.subject} · {ticket.statusLabel}{" "}
+                                  <button
+                                    disabled={controlsDisabled}
+                                    onClick={() =>
+                                      void linkTicketToProblem(ticket)
+                                    }
+                                    type="button"
+                                  >
+                                    {pendingAction ===
+                                    `problem:ticket:link:${problemForm.id}:${ticket.id}`
+                                      ? "Wird angehängt …"
+                                      : "Anhängen"}
+                                  </button>
+                                </li>
+                              ))}
+                            </ul>
+                          ) : null}
+                        </section>
+                      ) : null}
+                      {problemMode === "resolve" ? (
+                        <fieldset className="service-assets__ticket-follow-up">
+                          <legend>Wissensartikel</legend>
+                          <label className="service-assets__checkbox">
+                            <input
+                              checked={caseArticle.create}
+                              disabled={controlsDisabled}
+                              onChange={(event) => {
+                                const create = event.target.checked;
+                                setCaseArticle((current) => ({
+                                  ...current,
+                                  create,
+                                  title:
+                                    create && !current.title.trim()
+                                      ? problemForm.title
+                                      : current.title,
+                                }));
+                              }}
+                              type="checkbox"
+                            />
+                            Aus diesem Fall einen Wissensartikel erstellen
+                          </label>
+                          {caseArticle.create ? (
+                            <>
+                              <label>
+                                Titel des Artikels
+                                <input
+                                  disabled={controlsDisabled}
+                                  maxLength={240}
+                                  minLength={3}
+                                  onChange={(event) =>
+                                    setCaseArticle((current) => ({
+                                      ...current,
+                                      title: event.target.value,
+                                    }))
+                                  }
+                                  required
+                                  value={caseArticle.title}
+                                />
+                              </label>
+                              <label>
+                                Sichtbarkeit
+                                <select
+                                  disabled={controlsDisabled}
+                                  onChange={(event) =>
+                                    setCaseArticle((current) => ({
+                                      ...current,
+                                      visibility: event.target.value as
+                                        "internal" | "external",
+                                    }))
+                                  }
+                                  value={caseArticle.visibility}
+                                >
+                                  <option value="internal">Intern</option>
+                                  <option value="external">Extern</option>
+                                </select>
+                              </label>
+                              <p className="data-caption">
+                                Der Artikel wird aus Beschreibung, Workaround
+                                und Ursache als Entwurf angelegt. Sie können ihn
+                                danach in der Wissensdatenbank überarbeiten und
+                                freigeben.
+                              </p>
+                            </>
+                          ) : null}
+                        </fieldset>
+                      ) : null}
+                      {problemMode === "resolve" &&
+                      problemTickets.length > 0 ? (
+                        <fieldset className="service-assets__ticket-follow-up">
+                          <legend>
+                            Angehängte Tickets ({problemTickets.length}) nach
+                            dem Lösen
+                          </legend>
+                          <label className="service-assets__checkbox">
+                            <input
+                              checked={ticketFollowUp.notify}
+                              disabled={controlsDisabled}
+                              onChange={(event) => {
+                                const notify = event.target.checked;
+                                setTicketFollowUp((current) => ({
+                                  ...current,
+                                  notify,
+                                  message:
+                                    notify && !current.message.trim()
+                                      ? defaultTicketFollowUpMessage(
+                                          problemForm.title,
+                                          problemForm.workaround,
+                                        )
+                                      : current.message,
+                                }));
+                              }}
+                              type="checkbox"
+                            />
+                            Antwort an alle angehängten Tickets senden
+                          </label>
+                          {ticketFollowUp.notify ? (
+                            <label>
+                              Antwort an die anfragenden Personen
+                              <textarea
+                                disabled={controlsDisabled}
+                                maxLength={50000}
+                                onChange={(event) =>
+                                  setTicketFollowUp((current) => ({
+                                    ...current,
+                                    message: event.target.value,
+                                  }))
+                                }
+                                rows={5}
+                                value={ticketFollowUp.message}
+                              />
+                            </label>
+                          ) : null}
+                          <label className="service-assets__checkbox">
+                            <input
+                              checked={ticketFollowUp.resolve}
+                              disabled={controlsDisabled}
+                              onChange={(event) =>
+                                setTicketFollowUp((current) => ({
+                                  ...current,
+                                  resolve: event.target.checked,
+                                }))
+                              }
+                              type="checkbox"
+                            />
+                            Alle angehängten Tickets auf «Gelöst» setzen
+                          </label>
+                          <p className="data-caption">
+                            Beides lässt sich kombinieren. Tickets ohne
+                            zugewiesene Agent:in oder mit fehlenden
+                            Pflichtangaben können nicht gelöst werden; sie
+                            werden nach dem Speichern aufgelistet.
+                          </p>
+                        </fieldset>
+                      ) : null}
+                      <p>
+                        <button
+                          className="primary-button"
+                          disabled={controlsDisabled}
+                          type="submit"
+                        >
+                          {pendingAction?.startsWith("problem:resolve:")
+                            ? "Wird gelöst …"
+                            : pendingAction?.startsWith("problem:save:")
+                              ? "Wird gespeichert …"
+                              : problemMode === "resolve"
+                                ? ticketFollowUp.notify ||
+                                  ticketFollowUp.resolve
+                                  ? "Fall lösen und Tickets bearbeiten"
+                                  : "Fall lösen"
+                                : problemMode === "edit"
+                                  ? "Änderungen speichern"
+                                  : "Fall anlegen"}
+                        </button>{" "}
+                        {problemMode === "edit" || problemMode === "resolve" ? (
+                          <button
+                            disabled={controlsDisabled}
+                            onClick={resetProblemForm}
+                            type="button"
+                          >
+                            Abbrechen
+                          </button>
+                        ) : null}
                       </p>
-                    </>
-                  ) : null}
-                </fieldset>
-              ) : null}
-              {problemMode === "resolve" && problemTickets.length > 0 ? (
-                <fieldset className="service-assets__ticket-follow-up">
-                  <legend>
-                    Angehängte Tickets ({problemTickets.length}) nach dem Lösen
-                  </legend>
-                  <label className="service-assets__checkbox">
-                    <input
-                      checked={ticketFollowUp.notify}
-                      disabled={controlsDisabled}
-                      onChange={(event) => {
-                        const notify = event.target.checked;
-                        setTicketFollowUp((current) => ({
-                          ...current,
-                          notify,
-                          message:
-                            notify && !current.message.trim()
-                              ? defaultTicketFollowUpMessage(
-                                  problemForm.title,
-                                  problemForm.workaround,
-                                )
-                              : current.message,
-                        }));
-                      }}
-                      type="checkbox"
-                    />
-                    Antwort an alle angehängten Tickets senden
-                  </label>
-                  {ticketFollowUp.notify ? (
-                    <label>
-                      Antwort an die anfragenden Personen
-                      <textarea
-                        disabled={controlsDisabled}
-                        maxLength={50000}
-                        onChange={(event) =>
-                          setTicketFollowUp((current) => ({
-                            ...current,
-                            message: event.target.value,
-                          }))
-                        }
-                        rows={5}
-                        value={ticketFollowUp.message}
-                      />
-                    </label>
-                  ) : null}
-                  <label className="service-assets__checkbox">
-                    <input
-                      checked={ticketFollowUp.resolve}
-                      disabled={controlsDisabled}
-                      onChange={(event) =>
-                        setTicketFollowUp((current) => ({
-                          ...current,
-                          resolve: event.target.checked,
-                        }))
-                      }
-                      type="checkbox"
-                    />
-                    Alle angehängten Tickets auf «Gelöst» setzen
-                  </label>
-                  <p className="data-caption">
-                    Beides lässt sich kombinieren. Tickets ohne zugewiesene
-                    Agent:in oder mit fehlenden Pflichtangaben können nicht
-                    gelöst werden; sie werden nach dem Speichern aufgelistet.
-                  </p>
-                </fieldset>
-              ) : null}
-              <p>
-                <button
-                  className="primary-button"
-                  disabled={controlsDisabled}
-                  type="submit"
-                >
-                  {pendingAction?.startsWith("problem:resolve:")
-                    ? "Wird gelöst …"
-                    : pendingAction?.startsWith("problem:save:")
-                      ? "Wird gespeichert …"
-                      : problemMode === "resolve"
-                        ? ticketFollowUp.notify || ticketFollowUp.resolve
-                          ? "Fall lösen und Tickets bearbeiten"
-                          : "Fall lösen"
-                        : problemMode === "edit"
-                          ? "Änderungen speichern"
-                          : "Fall anlegen"}
-                </button>{" "}
-                {problemMode === "edit" || problemMode === "resolve" ? (
-                  <button
-                    disabled={controlsDisabled}
-                    onClick={resetProblemForm}
-                    type="button"
-                  >
-                    Abbrechen
-                  </button>
-                ) : null}
-              </p>
-            </form>
-          </section>
+                    </form>
+                  </section>
+                </div>,
+                document.body,
+              )
+            : null}
         </section>
       ) : null}
     </section>
