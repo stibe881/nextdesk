@@ -904,6 +904,42 @@ async function ensureServiceResponsibleAgents(
   }
 }
 
+async function ensureProblemOwnerAgent(
+  admin: AdminClient,
+  tenantId: string,
+  values: Record<string, JsonValue>,
+  problemId?: string,
+): Promise<void> {
+  const ownerId = values.owner_id;
+  if (!isUuid(ownerId)) return;
+  if (problemId) {
+    // An unchanged earlier owner stays; only a new choice must be an agent.
+    const { data, error } = await admin
+      .from("problems")
+      .select("owner_id")
+      .eq("tenant_id", tenantId)
+      .eq("id", problemId)
+      .maybeSingle();
+    if (error) databaseFailure(error);
+    if (data?.owner_id === ownerId.toLowerCase()) return;
+  }
+  const result = await listAssignableTenantSupportAgents(admin, tenantId);
+  if (result.error) {
+    throw new HttpError(
+      503,
+      "problem_owner_lookup_failed",
+      "Die Liste der Agent:innen konnte nicht sicher geprüft werden.",
+    );
+  }
+  if (!result.agents.some((agent) => agent.id === ownerId.toLowerCase())) {
+    throw new HttpError(
+      422,
+      "invalid_problem_owner",
+      "Fälle können nur Agent:innen zugewiesen werden.",
+    );
+  }
+}
+
 async function ensureActiveServiceCategory(
   client: CallerClient,
   tenantId: string,
@@ -1023,25 +1059,19 @@ async function listProblemOwners(
     },
     "asset_manage_required",
   );
-  const { data, error } = await admin
-    .from("tenant_memberships")
-    .select("user_id, user_profiles!inner(display_name)")
-    .eq("tenant_id", action.tenantId)
-    .eq("status", "active")
-    .order("user_id")
-    .limit(500)
-    .overrideTypes<Row[], { merge: false }>();
-  if (error) databaseFailure(error);
-  const owners = (data ?? []).flatMap((membership) => {
-    const profile = membership.user_profiles;
-    return typeof membership.user_id === "string" &&
-        isRecord(profile) &&
-        validString(profile.display_name) &&
-        profile.display_name.trim()
-      ? [{ id: membership.user_id, displayName: profile.display_name.trim() }]
-      : [];
-  });
-  owners.sort((left, right) =>
+  // Cases are assigned to support agents only.
+  const result = await listAssignableTenantSupportAgents(
+    admin,
+    action.tenantId,
+  );
+  if (result.error) {
+    throw new HttpError(
+      503,
+      "problem_owner_lookup_failed",
+      "Die Liste der Agent:innen konnte nicht sicher gelesen werden.",
+    );
+  }
+  const owners = [...result.agents].sort((left, right) =>
     left.displayName.localeCompare(right.displayName, "de-CH")
   );
   return json(request, { data: { owners } });
@@ -1146,6 +1176,17 @@ async function manageResource(
   ) {
     await ensureServiceResponsibleAgents(admin, action.tenantId, action.values);
     await ensureActiveServiceCategory(client, action.tenantId, action.values);
+  }
+  if (
+    action.type === "manageProblem" &&
+    (action.operation === "create" || action.operation === "update")
+  ) {
+    await ensureProblemOwnerAgent(
+      admin,
+      action.tenantId,
+      action.values,
+      action.operation === "update" ? action.id : undefined,
+    );
   }
   // The resource is selected from a finite, server-owned table map. Avoid
   // expanding PostgREST's full table-union here; values were strictly parsed
