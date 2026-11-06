@@ -702,6 +702,7 @@ export function TicketComposer({
       : null;
   const canManageRequesters = currentRequesterManagement?.allowed === true;
   const requesterFormOpen = requesterDraft !== null;
+  const [requesterPickerOpen, setRequesterPickerOpen] = useState(false);
   const currentSelectedRequester = formReady ? selectedRequester : null;
   const currentRequesterLookup =
     canManageRequesters &&
@@ -1910,22 +1911,6 @@ export function TicketComposer({
             )}
           </section>
           <div className="ticket-compose-description ticket-compose-requester">
-            <label>
-              Anfragende Person <span aria-hidden="true">*</span>
-              <input
-                aria-describedby="ticket-requester-help"
-                aria-invalid={!currentSelectedRequester}
-                disabled={saving}
-                readOnly
-                required
-                value={currentSelectedRequester?.displayName ?? ""}
-              />
-            </label>
-            <p className="data-caption" id="ticket-requester-help">
-              {currentSelectedRequester
-                ? "Diese Person ist für das Ticket ausgewählt."
-                : "Eine anfragende Person muss ausgewählt sein, bevor ein Ticket erstellt werden kann."}
-            </p>
             {currentRequesterManagement?.error && (
               <div>
                 <p className="error" role="alert">
@@ -1943,107 +1928,152 @@ export function TicketComposer({
                 </button>
               </div>
             )}
-            {canManageRequesters && (
-              <>
-                {!requesterFormOpen && (
-                  <label>
-                    Andere anfragende Person suchen
-                    <input
-                      aria-describedby="ticket-requester-search-help"
-                      autoComplete="off"
-                      disabled={saving || requesterSaving}
-                      maxLength={120}
-                      onChange={(event) => {
-                        // Invalidate before the effect: no old result may win a keystroke race.
-                        ++requesterSearchRef.current;
-                        setRequesterQuery(event.target.value);
-                        setRequesterLookup(null);
-                        setRequesterError("");
-                      }}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter") event.preventDefault();
-                      }}
-                      placeholder="Name eingeben"
-                      type="search"
-                      value={requesterQuery}
-                    />
-                    <span
-                      className="data-caption"
-                      id="ticket-requester-search-help"
-                    >
-                      Suche ab 2 Zeichen. Ein Suchtext allein ändert die
-                      ausgewählte Person nicht.
-                    </span>
-                  </label>
-                )}
-                {currentRequesterLookup?.status === "loading" && (
-                  <p className="data-caption" role="status">
-                    Personen werden gesucht …
-                  </p>
-                )}
-                {currentRequesterLookup?.status === "error" && (
-                  <p className="error" role="alert">
-                    {currentRequesterLookup.error}
-                  </p>
-                )}
-                {currentRequesterLookup?.status === "loaded" && (
-                  <div>
-                    <p className="data-caption" role="status">
-                      {currentRequesterLookup.requesters.length === 0
-                        ? "Keine passende Person gefunden. Sie können eine neue anfragende Person anlegen."
-                        : "Bitte wählen Sie die passende Person aus."}
+            <div className="ticket-requester-combobox">
+              <label>
+                Anfragende Person <span aria-hidden="true">*</span>
+                <input
+                  aria-autocomplete="list"
+                  aria-controls="ticket-requester-options"
+                  aria-describedby="ticket-requester-help"
+                  aria-expanded={requesterPickerOpen}
+                  aria-invalid={!currentSelectedRequester}
+                  autoComplete="off"
+                  disabled={saving || requesterSaving || requesterFormOpen}
+                  maxLength={120}
+                  onBlur={() => {
+                    // Let a click on an option finish first.
+                    window.setTimeout(() => {
+                      setRequesterPickerOpen(false);
+                      setRequesterQuery("");
+                      setRequesterLookup(null);
+                    }, 150);
+                  }}
+                  onChange={(event) => {
+                    if (!canManageRequesters) return;
+                    // Invalidate before the effect: no old result may win a keystroke race.
+                    ++requesterSearchRef.current;
+                    setRequesterPickerOpen(true);
+                    setRequesterQuery(event.target.value);
+                    setRequesterLookup(null);
+                    setRequesterError("");
+                  }}
+                  onFocus={() => {
+                    if (canManageRequesters) setRequesterPickerOpen(true);
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") event.preventDefault();
+                    if (event.key === "Escape") {
+                      setRequesterPickerOpen(false);
+                      setRequesterQuery("");
+                    }
+                  }}
+                  placeholder={
+                    canManageRequesters
+                      ? "Name eingeben, um eine Person zu suchen"
+                      : ""
+                  }
+                  readOnly={!canManageRequesters}
+                  required
+                  role="combobox"
+                  value={
+                    requesterPickerOpen
+                      ? requesterQuery
+                      : (currentSelectedRequester?.displayName ?? "")
+                  }
+                />
+              </label>
+              {canManageRequesters && requesterPickerOpen ? (
+                <div
+                  className="ticket-requester-combobox__options"
+                  id="ticket-requester-options"
+                  role="listbox"
+                >
+                  {currentSelectedRequester ? (
+                    <p className="ticket-requester-combobox__current">
+                      Ausgewählt: {currentSelectedRequester.displayName}
                     </p>
-                    {currentRequesterLookup.requesters.length > 0 && (
-                      <ul aria-label="Gefundene anfragende Personen">
-                        {currentRequesterLookup.requesters.map((requester) => (
-                          <li key={requester.id}>
-                            <button
-                              aria-pressed={
-                                currentSelectedRequester?.id === requester.id
-                              }
-                              className="text-button"
-                              disabled={saving || requesterSaving}
-                              onClick={() => selectRequester(requester)}
-                              type="button"
-                            >
-                              {requester.displayName}
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-                )}
-                <div>
-                  {!requesterFormOpen && (
+                  ) : null}
+                  {[...requesterQuery.trim()].length < 2 ? (
+                    <p className="data-caption">
+                      Mindestens 2 Zeichen eingeben.
+                    </p>
+                  ) : currentRequesterLookup?.status === "loading" ? (
+                    <p className="data-caption" role="status">
+                      Personen werden gesucht …
+                    </p>
+                  ) : currentRequesterLookup?.status === "error" ? (
+                    <p className="error" role="alert">
+                      {currentRequesterLookup.error}
+                    </p>
+                  ) : currentRequesterLookup?.status === "loaded" &&
+                    currentRequesterLookup.requesters.length === 0 ? (
+                    <p className="data-caption">
+                      Keine passende Person gefunden.
+                    </p>
+                  ) : null}
+                  {currentRequesterLookup?.status === "loaded"
+                    ? currentRequesterLookup.requesters.map((requester) => (
+                        <button
+                          aria-selected={
+                            currentSelectedRequester?.id === requester.id
+                          }
+                          className="ticket-requester-combobox__option"
+                          key={requester.id}
+                          onMouseDown={(event) => event.preventDefault()}
+                          onClick={() => {
+                            selectRequester(requester);
+                            setRequesterPickerOpen(false);
+                          }}
+                          role="option"
+                          type="button"
+                        >
+                          {requester.displayName}
+                        </button>
+                      ))
+                    : null}
+                  {options.currentRequester &&
+                  currentSelectedRequester?.id !==
+                    options.currentRequester.id ? (
                     <button
-                      aria-controls="ticket-requester-form"
-                      aria-expanded={requesterFormOpen}
-                      className="text-button"
-                      disabled={saving || requesterSaving}
-                      onClick={openRequesterForm}
+                      className="ticket-requester-combobox__option ticket-requester-combobox__option--action"
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() => {
+                        if (options.currentRequester)
+                          selectRequester(options.currentRequester);
+                        setRequesterPickerOpen(false);
+                      }}
                       type="button"
                     >
-                      Neue anfragende Person
+                      Mich auswählen
                     </button>
-                  )}
-                  {!requesterFormOpen &&
-                    options.currentRequester &&
-                    currentSelectedRequester?.id !==
-                      options.currentRequester.id && (
-                      <button
-                        className="text-button"
-                        disabled={saving || requesterSaving}
-                        onClick={() => {
-                          if (options.currentRequester)
-                            selectRequester(options.currentRequester);
-                        }}
-                        type="button"
-                      >
-                        Mich auswählen
-                      </button>
-                    )}
+                  ) : null}
+                  <button
+                    className="ticket-requester-combobox__option ticket-requester-combobox__option--action"
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => {
+                      openRequesterForm();
+                      setRequesterPickerOpen(false);
+                    }}
+                    type="button"
+                  >
+                    + Neue anfragende Person
+                    {requesterQuery.trim()
+                      ? ` «${requesterQuery.trim()}» anlegen`
+                      : " anlegen"}
+                  </button>
                 </div>
+              ) : null}
+              {!currentSelectedRequester && !requesterPickerOpen ? (
+                <p className="data-caption" id="ticket-requester-help">
+                  Eine anfragende Person muss ausgewählt sein, bevor ein Ticket
+                  erstellt werden kann.
+                </p>
+              ) : (
+                <span hidden id="ticket-requester-help" />
+              )}
+            </div>
+            {canManageRequesters && (
+              <>
                 {requesterDraft && (
                   <div
                     aria-label="Neue anfragende Person"
