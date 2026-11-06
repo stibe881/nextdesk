@@ -5541,6 +5541,16 @@ function AuthenticatedApp() {
                   {...(isSupabaseConfigured
                     ? { onOpen: setSelectedTicketId }
                     : {})}
+                  {...(isSupabaseConfigured && canWorkTickets && activeTenant
+                    ? {
+                        assignment: {
+                          currentUserId: session?.user.id ?? null,
+                          onChanged: () =>
+                            setDashboardRevision((current) => current + 1),
+                          tenantId: activeTenant.id,
+                        },
+                      }
+                    : {})}
                   keyboardActiveTicketId={keyboardActiveTicketId}
                   {...(activeTenant
                     ? { onCreateTicket: () => setTicketComposerOpen(true) }
