@@ -9,6 +9,7 @@ import {
   X,
 } from "lucide-react";
 import { supabase } from "./lib/supabase";
+import { TicketAssetPicker, type PickedAsset } from "./ticket-asset-picker";
 import {
   clearTicketComposerDraft,
   readTicketComposerDraft,
@@ -613,6 +614,7 @@ export function TicketComposer({
   const [optionsTenantId, setOptionsTenantId] = useState<string | null>(null);
   const [departmentId, setDepartmentId] = useState("");
   const [departmentSelectionOpen, setDepartmentSelectionOpen] = useState(false);
+  const [pickedAssets, setPickedAssets] = useState<PickedAsset[]>([]);
   const [selectedRequester, setSelectedRequester] =
     useState<RequesterContact | null>(null);
   const [requesterManagement, setRequesterManagement] = useState<{
@@ -1633,6 +1635,22 @@ export function TicketComposer({
           });
         if (requesterAssignmentError) throw requesterAssignmentError;
       }
+      // Picked assets are linked to the new ticket (best effort: the ticket
+      // exists either way, missing links can be added in the ticket).
+      await Promise.allSettled(
+        pickedAssets.map((asset) =>
+          supabase!.functions.invoke("service-assets", {
+            body: {
+              type: "linkTicket",
+              tenantId,
+              ticketId: created.ticketId,
+              kind: "asset",
+              targetId: asset.id,
+            },
+          }),
+        ),
+      );
+      setPickedAssets([]);
       // The ticket exists: the stored draft is done, whatever happens next.
       clearTicketComposerDraft(currentUserId, tenantId);
       draftRestoreRef.current = null;
@@ -2339,6 +2357,14 @@ export function TicketComposer({
                 </span>
               </label>
             )}
+            {agentLookupAllowed ? (
+              <TicketAssetPicker
+                disabled={saving}
+                onChange={setPickedAssets}
+                selected={pickedAssets}
+                tenantId={tenantId}
+              />
+            ) : null}
             {currentCategoryLookup?.status === "loading" && (
               <p
                 className="data-caption ticket-compose-description"
