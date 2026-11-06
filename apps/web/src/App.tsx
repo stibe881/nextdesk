@@ -95,6 +95,7 @@ import { ServiceAssets } from "./service-assets";
 import {
   isPublicServiceStatusBadgeRequested,
   isPublicServiceStatusRequested,
+  NavigationStatusBadge,
   PublicServiceStatusBadgePage,
   PublicServiceStatusPage,
   ServiceStatus,
@@ -2851,7 +2852,7 @@ function AuthenticatedApp() {
   const workplaceAvailable = isWorkplaceAvailable(
     agentWorkbenchEnabled,
     workplaceFollowUpsEnabled,
-    requesterPortalEnabled,
+    canWorkTickets && requesterPortalEnabled,
   );
   const contractsAvailable =
     isSupabaseConfigured &&
@@ -3394,11 +3395,8 @@ function AuthenticatedApp() {
       restrictedWorkspaceSections.push("Verträge", "Lizenzen");
     }
     if (reportsAvailable) restrictedWorkspaceSections.push("Berichte");
-    if (serviceStatusAvailable)
-      restrictedWorkspaceSections.push("Systemstatus");
-    if (eventSpaceNavigationAccess) {
-      restrictedWorkspaceSections.push("Raumplanung");
-    }
+    // Employees open the read-only status from the badge in the navigation.
+    if (serviceStatusReadable) restrictedWorkspaceSections.push("Systemstatus");
     if (restrictedWorkspaceSections.includes(section)) return;
     if (!canRequesterOpenSection(section, requesterPortalEnabled)) {
       // Employees start on their tickets.
@@ -3601,8 +3599,7 @@ function AuthenticatedApp() {
       ((nextSection === "Verträge" || nextSection === "Lizenzen") &&
         contractsAvailable) ||
       (nextSection === "Berichte" && reportsAvailable) ||
-      (nextSection === "Systemstatus" && serviceStatusReadable) ||
-      (nextSection === "Raumplanung" && eventSpaceNavigationAccess);
+      (nextSection === "Systemstatus" && serviceStatusReadable);
     if (
       !canWorkTickets &&
       !nonTicketSectionAllowed &&
@@ -4073,20 +4070,21 @@ function AuthenticatedApp() {
       item.label === "Serviceaufgaben" ||
       item.label === "Lager",
   );
-  const independentlyAvailableEventSpaceSections = eventSpaceNavigationAccess
-    ? featureSections.filter((item) => item.label === "Raumplanung")
-    : [];
   // The shop is open to everybody, also next to restricted work sections.
   const shopSections = featureSections.filter((item) => item.label === "Shop");
+  // Employees without ticket work get a flat menu without room planning,
+  // inventory or workplace; the status is a badge on top of the menu.
+  const employeeHiddenSections: readonly Section[] = [
+    "Raumplanung",
+    "Lager",
+    "Arbeitsplatz",
+    "Systemstatus",
+  ];
   const workSections = canWorkTickets
     ? featureSections
-    : [
-        ...requesterSections,
-        ...restrictedWorkSections,
-        ...independentlyAvailableEventSpaceSections,
-        ...shopSections,
-      ].filter(
+    : [...requesterSections, ...restrictedWorkSections, ...shopSections].filter(
         (item, index, list) =>
+          !employeeHiddenSections.includes(item.label) &&
           list.findIndex((other) => other.label === item.label) === index,
       );
 
@@ -4543,6 +4541,8 @@ function AuthenticatedApp() {
       activeWorkspaceBranding?.secondaryColor ?? "#3730A3",
   } as CSSProperties;
 
+  // Employees without ticket work: flat menu, status badge on top.
+  const employeeNavigation = isSupabaseConfigured && !canWorkTickets;
   const visibleSections = isTenantAdmin
     ? [...workSections, { label: "Einstellungen" as const, Icon: Settings }]
     : workSections;
@@ -4684,168 +4684,235 @@ function AuthenticatedApp() {
           />
           {workspaceBrandName ? <span>{workspaceBrandName}</span> : null}
         </div>
-        {primaryNavigationItems.length > 0 && (
-          <nav
-            aria-label="Übersicht und Arbeitsplatz"
-            className="workplace-primary-navigation"
-          >
-            {primaryNavigationItems.map((item) => (
-              <button
-                className={
-                  section === item.label ? "nav-item active" : "nav-item"
-                }
-                key={item.label}
-                onClick={() => {
-                  setPersonalSettingsOpen(false);
-                  setSection(item.label);
-                }}
-                type="button"
-              >
-                <item.Icon aria-hidden="true" size={18} strokeWidth={1.8} />
-                {sectionDisplayLabel(item.label)}
-              </button>
-            ))}
-          </nav>
-        )}
-        <div className="navigation-categories">
-          {navigationGroups.map((category) => {
-            const categoryExpanded =
-              expandedNavigationCategoryId === category.id;
-            const categoryAttentionCount =
-              collapsedNavigationCategoryAttentionCount({
-                categoryExpanded,
-                itemCounts: category.items.map((item) =>
-                  navigationAttentionFor(item.label),
-                ),
-              });
-            const hasCategoryAttention = categoryAttentionCount !== null;
-            const panelId = `${category.id}-panel`;
-
-            return (
-              <section className="navigation-cluster" key={category.id}>
-                <h2 className="navigation-label">
-                  <button
-                    aria-controls={panelId}
-                    aria-expanded={categoryExpanded}
-                    aria-label={
-                      hasCategoryAttention
-                        ? `${category.navigationLabel} – ${categoryAttentionCount} offene Einträge`
-                        : category.navigationLabel
-                    }
-                    className="navigation-cluster__toggle"
-                    id={category.id}
-                    onClick={() =>
-                      setExpandedNavigationCategoryId((current) =>
-                        nextExpandedAccordionId(current, category.id),
-                      )
-                    }
-                    type="button"
-                  >
-                    <span className="navigation-cluster__heading">
-                      <span>{category.heading}</span>
-                      {hasCategoryAttention ? (
+        {employeeNavigation ? (
+          <>
+            {serviceStatusReadable && activeTenant ? (
+              <div className="workplace-primary-navigation employee-status-navigation">
+                <NavigationStatusBadge
+                  active={section === "Systemstatus"}
+                  onOpenInternal={() => {
+                    setPersonalSettingsOpen(false);
+                    setSection("Systemstatus");
+                  }}
+                  tenantId={activeTenant.id}
+                />
+              </div>
+            ) : null}
+            <nav
+              aria-label="Navigation"
+              className="nav-list employee-navigation"
+            >
+              {remainingNavigationSections
+                .filter((item) => item.label !== "Übersicht")
+                .map((item) => {
+                  const attentionCount = navigationAttentionFor(item.label);
+                  const hasAttention = attentionCount !== null;
+                  const label = sectionDisplayLabel(item.label);
+                  return (
+                    <button
+                      aria-current={section === item.label ? "page" : undefined}
+                      aria-label={
+                        hasAttention
+                          ? `${label} – ${attentionCount} ${navigationAttentionDescription(item.label)}`
+                          : label
+                      }
+                      className={
+                        section === item.label ? "nav-item active" : "nav-item"
+                      }
+                      key={item.label}
+                      onClick={() => {
+                        setPersonalSettingsOpen(false);
+                        setSection(item.label);
+                      }}
+                      type="button"
+                    >
+                      <item.Icon
+                        aria-hidden="true"
+                        size={18}
+                        strokeWidth={1.8}
+                      />
+                      <span className="nav-item__label">{label}</span>
+                      {hasAttention ? (
                         <span
                           aria-hidden="true"
-                          className="navigation-cluster__badge"
+                          className="nav-item__badge nav-item__badge--trailing"
                         >
-                          {categoryAttentionCount > 99
-                            ? "99+"
-                            : categoryAttentionCount}
+                          {attentionCount > 99 ? "99+" : attentionCount}
                         </span>
                       ) : null}
-                    </span>
-                    <ChevronDown
-                      aria-hidden="true"
-                      className="navigation-cluster__chevron"
-                      size={15}
-                      strokeWidth={1.9}
-                    />
+                    </button>
+                  );
+                })}
+            </nav>
+          </>
+        ) : (
+          <>
+            {primaryNavigationItems.length > 0 && (
+              <nav
+                aria-label="Übersicht und Arbeitsplatz"
+                className="workplace-primary-navigation"
+              >
+                {primaryNavigationItems.map((item) => (
+                  <button
+                    className={
+                      section === item.label ? "nav-item active" : "nav-item"
+                    }
+                    key={item.label}
+                    onClick={() => {
+                      setPersonalSettingsOpen(false);
+                      setSection(item.label);
+                    }}
+                    type="button"
+                  >
+                    <item.Icon aria-hidden="true" size={18} strokeWidth={1.8} />
+                    {sectionDisplayLabel(item.label)}
                   </button>
-                </h2>
-                <div
-                  className="navigation-cluster__content"
-                  hidden={!categoryExpanded}
-                  id={panelId}
-                >
-                  <nav aria-labelledby={category.id} className="nav-list">
-                    {category.items.map((item) => {
-                      const attentionCount = navigationAttentionFor(item.label);
-                      const hasAttention = attentionCount !== null;
-                      const label = sectionDisplayLabel(item.label);
-                      return (
-                        <button
-                          aria-current={
-                            section === item.label ? "page" : undefined
-                          }
-                          aria-label={
-                            hasAttention
-                              ? `${label} – ${attentionCount} ${navigationAttentionDescription(item.label)}`
-                              : label
-                          }
-                          className={
-                            section === item.label
-                              ? "nav-item active"
-                              : "nav-item"
-                          }
-                          key={item.label}
-                          onClick={() => {
-                            setPersonalSettingsOpen(false);
-                            setSection(item.label);
-                          }}
-                          type="button"
-                        >
-                          <item.Icon
-                            aria-hidden="true"
-                            size={18}
-                            strokeWidth={1.8}
-                          />
-                          <span className="nav-item__label">{label}</span>
-                          {hasAttention ? (
+                ))}
+              </nav>
+            )}
+            <div className="navigation-categories">
+              {navigationGroups.map((category) => {
+                const categoryExpanded =
+                  expandedNavigationCategoryId === category.id;
+                const categoryAttentionCount =
+                  collapsedNavigationCategoryAttentionCount({
+                    categoryExpanded,
+                    itemCounts: category.items.map((item) =>
+                      navigationAttentionFor(item.label),
+                    ),
+                  });
+                const hasCategoryAttention = categoryAttentionCount !== null;
+                const panelId = `${category.id}-panel`;
+
+                return (
+                  <section className="navigation-cluster" key={category.id}>
+                    <h2 className="navigation-label">
+                      <button
+                        aria-controls={panelId}
+                        aria-expanded={categoryExpanded}
+                        aria-label={
+                          hasCategoryAttention
+                            ? `${category.navigationLabel} – ${categoryAttentionCount} offene Einträge`
+                            : category.navigationLabel
+                        }
+                        className="navigation-cluster__toggle"
+                        id={category.id}
+                        onClick={() =>
+                          setExpandedNavigationCategoryId((current) =>
+                            nextExpandedAccordionId(current, category.id),
+                          )
+                        }
+                        type="button"
+                      >
+                        <span className="navigation-cluster__heading">
+                          <span>{category.heading}</span>
+                          {hasCategoryAttention ? (
                             <span
                               aria-hidden="true"
-                              className="nav-item__badge nav-item__badge--trailing"
+                              className="navigation-cluster__badge"
                             >
-                              {attentionCount > 99 ? "99+" : attentionCount}
+                              {categoryAttentionCount > 99
+                                ? "99+"
+                                : categoryAttentionCount}
                             </span>
                           ) : null}
-                        </button>
-                      );
-                    })}
-                  </nav>
-                </div>
-              </section>
-            );
-          })}
-        </div>
-        {reportsNavigationItem ? (
-          <nav
-            aria-label="Berichte"
-            className="workplace-primary-navigation rail-reports-navigation"
-          >
-            <button
-              aria-current={
-                section === reportsNavigationItem.label ? "page" : undefined
-              }
-              className={
-                section === reportsNavigationItem.label
-                  ? "nav-item active"
-                  : "nav-item"
-              }
-              onClick={() => {
-                setPersonalSettingsOpen(false);
-                setSection(reportsNavigationItem.label);
-              }}
-              type="button"
-            >
-              <reportsNavigationItem.Icon
-                aria-hidden="true"
-                size={18}
-                strokeWidth={1.8}
-              />
-              {sectionDisplayLabel(reportsNavigationItem.label)}
-            </button>
-          </nav>
-        ) : null}
+                        </span>
+                        <ChevronDown
+                          aria-hidden="true"
+                          className="navigation-cluster__chevron"
+                          size={15}
+                          strokeWidth={1.9}
+                        />
+                      </button>
+                    </h2>
+                    <div
+                      className="navigation-cluster__content"
+                      hidden={!categoryExpanded}
+                      id={panelId}
+                    >
+                      <nav aria-labelledby={category.id} className="nav-list">
+                        {category.items.map((item) => {
+                          const attentionCount = navigationAttentionFor(
+                            item.label,
+                          );
+                          const hasAttention = attentionCount !== null;
+                          const label = sectionDisplayLabel(item.label);
+                          return (
+                            <button
+                              aria-current={
+                                section === item.label ? "page" : undefined
+                              }
+                              aria-label={
+                                hasAttention
+                                  ? `${label} – ${attentionCount} ${navigationAttentionDescription(item.label)}`
+                                  : label
+                              }
+                              className={
+                                section === item.label
+                                  ? "nav-item active"
+                                  : "nav-item"
+                              }
+                              key={item.label}
+                              onClick={() => {
+                                setPersonalSettingsOpen(false);
+                                setSection(item.label);
+                              }}
+                              type="button"
+                            >
+                              <item.Icon
+                                aria-hidden="true"
+                                size={18}
+                                strokeWidth={1.8}
+                              />
+                              <span className="nav-item__label">{label}</span>
+                              {hasAttention ? (
+                                <span
+                                  aria-hidden="true"
+                                  className="nav-item__badge nav-item__badge--trailing"
+                                >
+                                  {attentionCount > 99 ? "99+" : attentionCount}
+                                </span>
+                              ) : null}
+                            </button>
+                          );
+                        })}
+                      </nav>
+                    </div>
+                  </section>
+                );
+              })}
+            </div>
+            {reportsNavigationItem ? (
+              <nav
+                aria-label="Berichte"
+                className="workplace-primary-navigation rail-reports-navigation"
+              >
+                <button
+                  aria-current={
+                    section === reportsNavigationItem.label ? "page" : undefined
+                  }
+                  className={
+                    section === reportsNavigationItem.label
+                      ? "nav-item active"
+                      : "nav-item"
+                  }
+                  onClick={() => {
+                    setPersonalSettingsOpen(false);
+                    setSection(reportsNavigationItem.label);
+                  }}
+                  type="button"
+                >
+                  <reportsNavigationItem.Icon
+                    aria-hidden="true"
+                    size={18}
+                    strokeWidth={1.8}
+                  />
+                  {sectionDisplayLabel(reportsNavigationItem.label)}
+                </button>
+              </nav>
+            ) : null}
+          </>
+        )}
         <div className="rail-footer">
           {settingsNavigationItem && (
             <nav aria-label="Einstellungen" className="rail-footer__settings">

@@ -86,7 +86,7 @@ Deno.test(
     );
     if (
       !readOnlyOverview.includes('p_permission_code: "asset.manage"') ||
-      !readOnlyOverview.includes("publicId: null") ||
+      !readOnlyOverview.includes("publicId: overview.page.publicEnabled") ||
       !readOnlyOverview.includes("canManage: false")
     ) {
       throw new Error(

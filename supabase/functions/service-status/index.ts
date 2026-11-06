@@ -866,7 +866,13 @@ const handler = withSupabase(
         return json(request, {
           data: {
             ...overview,
-            page: { ...overview.page, publicId: null },
+            // The address is only shared once the page is public anyway.
+            page: {
+              ...overview.page,
+              publicId: overview.page.publicEnabled
+                ? overview.page.publicId
+                : null,
+            },
             maintenances: overview.maintenances.filter(
               (maintenance) =>
                 maintenance.state === "scheduled" ||

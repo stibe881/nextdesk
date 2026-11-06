@@ -1,12 +1,10 @@
-// Employees without ticket work rights: their workplace (personal area),
-// their tickets (and those of their direct reports), the shop, the public
-// knowledge and the service status.
+// Employees without ticket work rights: their tickets (and those of their
+// direct reports), the shop and the public knowledge. The service status is
+// a badge on top of the menu, not a menu item.
 export const REQUESTER_NAVIGATION_SECTIONS = [
-  "Arbeitsplatz",
   "Tickets",
   "Shop",
   "Wissen",
-  "Systemstatus",
 ] as const;
 
 export function requesterNavigationSections<T extends { label: string }>(
@@ -27,7 +25,6 @@ export function canRequesterOpenSection(
     section === "Tickets" ||
     section === "Shop" ||
     section === "Wissen" ||
-    section === "Systemstatus" ||
-    (section === "Arbeitsplatz" && requesterPortalEnabled)
+    section === "Systemstatus"
   );
 }
