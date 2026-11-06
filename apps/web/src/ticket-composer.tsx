@@ -1877,7 +1877,6 @@ export function TicketComposer({
           <p className="eyebrow">NEUER VORGANG</p>
           <h2>Ticket erfassen</h2>
         </div>
-        <span className="data-caption">Mandantenzugriff aktiv</span>
       </div>
       {loading || optionsTenantId !== tenantId ? (
         <p className="empty-state">Erfassungsoptionen werden geladen …</p>
