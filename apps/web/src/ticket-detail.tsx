@@ -19,7 +19,6 @@ import {
   Clock3,
   Eye,
   EyeOff,
-  Focus,
   ImagePlus,
   LoaderCircle,
   Mail,
@@ -3868,10 +3867,10 @@ export function TicketDetail({
       detail.ticket.description,
       ...detail.comments.map((comment) => comment.body),
     ]);
-    // Images attached to a message are shown in the conversation as well.
+    // Image attachments are shown as previews in the conversation and in
+    // the attachment list.
     for (const attachment of attachments) {
       if (
-        attachment.commentId &&
         COMMENT_PREVIEW_IMAGE_TYPES.has(attachment.contentType) &&
         !ids.includes(attachment.id)
       ) {
@@ -6504,27 +6503,6 @@ export function TicketDetail({
             </button>
           )}
           <button
-            aria-pressed={focusMode}
-            className={
-              focusMode
-                ? "secondary-button ticket-focus-button active"
-                : "secondary-button ticket-focus-button"
-            }
-            disabled={busy}
-            onClick={() => setFocusMode((current) => !current)}
-            title={
-              focusMode
-                ? "Fokusmodus beenden und alle Bereiche anzeigen"
-                : "Fokusmodus aktivieren"
-            }
-            type="button"
-          >
-            <Focus aria-hidden="true" size={16} strokeWidth={1.8} />
-            <span className="ticket-detail-action-label">
-              {focusMode ? "Alle Bereiche" : "Fokus"}
-            </span>
-          </button>
-          <button
             aria-label="Ticketdetails schliessen"
             className="more-button"
             disabled={busy}
@@ -7955,6 +7933,28 @@ export function TicketDetail({
 
                       return (
                         <li className="ticket-comment" key={attachment.id}>
+                          {inlineImagesByAttachmentId[attachment.id] ? (
+                            <button
+                              aria-label={`${attachment.originalFilename} gross anzeigen`}
+                              className="ticket-attachment-thumbnail"
+                              onClick={() =>
+                                void downloadAttachment(attachment)
+                              }
+                              type="button"
+                            >
+                              <img
+                                alt=""
+                                loading="lazy"
+                                onError={() =>
+                                  refreshInlineImageAfterError(attachment.id)
+                                }
+                                src={
+                                  inlineImagesByAttachmentId[attachment.id]
+                                    ?.signedUrl
+                                }
+                              />
+                            </button>
+                          ) : null}
                           <div className="ticket-comment-meta">
                             <strong>{attachment.originalFilename}</strong>
                             <span>{formatFileSize(attachment.byteSize)}</span>

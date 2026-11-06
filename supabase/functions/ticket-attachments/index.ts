@@ -651,8 +651,7 @@ const handler = withSupabase(
           "id, ticket_id, comment_id, visibility, storage_bucket, storage_object_path, original_filename, content_type, byte_size, uploaded_by, created_at, inline_content_id, malware_status",
         )
         .eq("ticket_id", ticket.id)
-        .in("id", action.attachmentIds)
-        .or("inline_content_id.not.is.null,comment_id.not.is.null");
+        .in("id", action.attachmentIds);
       if (!canReadInternal) {
         attachmentQuery = attachmentQuery.eq("visibility", "external");
       }
@@ -676,19 +675,20 @@ const handler = withSupabase(
           inline_content_id?: string | null;
           malware_status?: string | null;
         };
-        // Inline images from e-mails must be scanned clean. Images attached
-        // to a comment in nextDesk were checked as real PNG/JPEG/WebP when
-        // the upload completed, so they are shown while the scan is pending.
+        // Inline images from e-mails must be scanned clean. Images uploaded
+        // in nextDesk (messages and ticket attachments) are previews of the
+        // same files the person can already download, so they are shown
+        // while the scan is pending. Only PNG, JPEG and WebP qualify.
         const isInlineMailImage =
           typeof typedAttachment.inline_content_id === "string" &&
           typedAttachment.malware_status === "clean";
-        const isCommentImage = (typedAttachment.inline_content_id === null ||
-          typedAttachment.inline_content_id === undefined) &&
-          typeof typedAttachment.comment_id === "string" &&
+        const isUploadedImage =
+          (typedAttachment.inline_content_id === null ||
+            typedAttachment.inline_content_id === undefined) &&
           (typedAttachment.malware_status === "clean" ||
             typedAttachment.malware_status === "pending");
         if (
-          (!isInlineMailImage && !isCommentImage) ||
+          (!isInlineMailImage && !isUploadedImage) ||
           !["image/png", "image/jpeg", "image/webp"].includes(
             typedAttachment.content_type,
           ) ||
