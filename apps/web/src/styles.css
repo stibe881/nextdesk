@@ -19939,3 +19939,32 @@ html:has(.embed-status-badge) body {
     justify-content: flex-start;
   }
 }
+
+.ticket-comment-attachment-list li:has(> .ticket-comment-image-preview) {
+  flex-wrap: wrap;
+}
+
+.ticket-comment-image-preview {
+  display: block;
+  flex: 1 0 100%;
+  max-width: 100%;
+  border: 0;
+  border-radius: 8px;
+  padding: 0;
+  overflow: hidden;
+  background: transparent;
+  cursor: zoom-in;
+}
+
+.ticket-comment-image-preview img {
+  display: block;
+  max-width: 100%;
+  max-height: 360px;
+  border-radius: 8px;
+  object-fit: contain;
+}
+
+.ticket-comment-image-preview:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}

@@ -85,7 +85,6 @@ import {
   TicketCopyRecipients,
   TicketMentionPicker,
   type CopyRecipient,
-  TicketWorkbench,
   useTicketReplyDraft,
 } from "./ticket-workbench";
 
@@ -542,6 +541,12 @@ type TicketAttachment = {
   byteSize: number;
   createdAt: string;
 };
+
+const COMMENT_PREVIEW_IMAGE_TYPES = new Set([
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+]);
 
 type QueuedCommentImage = {
   key: string;
@@ -3840,7 +3845,6 @@ export function TicketDetail({
   const [copyRecipients, setCopyRecipients] = useState<CopyRecipient[]>([]);
   const [commentNotice, setCommentNotice] = useState("");
   const [undoChange, setUndoChange] = useState<UndoChange | null>(null);
-  const [isWorkspaceOpen, setIsWorkspaceOpen] = useState(false);
   const [isClosureContextOpen, setIsClosureContextOpen] = useState(false);
   const [isWorkToolsOpen, setIsWorkToolsOpen] = useState(false);
   const [ticketCategories, setTicketCategories] = useState<TicketCategory[]>(
@@ -4039,16 +4043,25 @@ export function TicketDetail({
       detail.canUseInternalNotes ||
       detail.canEscalate === true),
   );
-  const inlineAttachmentIds = useMemo(
-    () =>
-      detail
-        ? ticketInlineAttachmentIds([
-            detail.ticket.description,
-            ...detail.comments.map((comment) => comment.body),
-          ])
-        : [],
-    [detail?.comments, detail?.ticket.description],
-  );
+  const inlineAttachmentIds = useMemo(() => {
+    if (!detail) return [];
+    const ids = ticketInlineAttachmentIds([
+      detail.ticket.description,
+      ...detail.comments.map((comment) => comment.body),
+    ]);
+    // Images attached to a message are shown in the conversation as well.
+    for (const attachment of attachments) {
+      if (
+        attachment.commentId &&
+        COMMENT_PREVIEW_IMAGE_TYPES.has(attachment.contentType) &&
+        !ids.includes(attachment.id)
+      ) {
+        ids.push(attachment.id);
+      }
+    }
+    // The server signs at most 16 images per request; newest first.
+    return ids.slice(-16);
+  }, [attachments, detail]);
   const inlineAttachmentIdsKey = inlineAttachmentIds.join(",");
   const refreshInlineImageAfterError = useCallback((attachmentId: string) => {
     if (inlineImageErrorRefreshes.current.has(attachmentId)) return;
@@ -6278,48 +6291,6 @@ export function TicketDetail({
     }
   }
 
-  async function applyMacroPreview(preview: {
-    responseText: string | null;
-    categoryId: string | null;
-    subcategoryId: string | null;
-    priorityId: string | null;
-  }) {
-    if (!detail || !detail.canUpdate || busy) {
-      throw new Error("Die Ticketfelder können derzeit nicht geändert werden.");
-    }
-
-    if (preview.responseText !== null) {
-      setCommentDrafts((current) =>
-        updateTicketCommentDraft(
-          current,
-          "external",
-          preview.responseText ?? "",
-        ),
-      );
-      selectCommentMode("external");
-    }
-    if (preview.categoryId !== null || preview.subcategoryId !== null) {
-      const saved = await saveTicketCategory(
-        preview.categoryId,
-        preview.subcategoryId,
-      );
-      if (!saved)
-        throw new Error("Die Kategorie konnte nicht übernommen werden.");
-    }
-    if (preview.priorityId !== null) {
-      const priority = detail.priorities.find(
-        (item) => item.id === preview.priorityId,
-      );
-      if (!priority) {
-        throw new Error(
-          "Die Makropriorität ist in diesem Ticket nicht verfügbar.",
-        );
-      }
-      setPriorityKey(priority.key);
-      await saveOverviewChange({ priorityKey: priority.key });
-    }
-  }
-
   async function createTicketCategoryFromDetail() {
     if (
       !detail ||
@@ -6747,69 +6718,6 @@ export function TicketDetail({
         </div>
       </header>
 
-      <details
-        className="ticket-detail-disclosure ticket-detail-workspace"
-        onToggle={(event) => setIsWorkspaceOpen(event.currentTarget.open)}
-        open={isWorkspaceOpen}
-      >
-        <summary>
-          <span className="ticket-detail-disclosure-label">
-            <UsersRound aria-hidden="true" size={17} strokeWidth={1.8} />
-            Arbeitskontext
-          </span>
-          <span className="ticket-detail-disclosure-meta">
-            Zuweisung, Überblick, Makros
-            <ChevronDown
-              aria-hidden="true"
-              className="ticket-detail-disclosure-icon"
-              size={18}
-              strokeWidth={1.8}
-            />
-          </span>
-        </summary>
-        {isWorkspaceOpen && (
-          <div className="ticket-detail-disclosure-content">
-            <TicketWorkbench
-              canAssign={detail.canAssign}
-              canUpdate={detail.canUpdate}
-              canUseInternalNotes={detail.canUseInternalNotes}
-              categories={ticketCategories}
-              currentUserId={currentUserId}
-              hasAgentAccess={hasAgentExperienceAccess}
-              isRequester={isResolutionParticipant}
-              onApplyMacro={applyMacroPreview}
-              onPrefillAssignee={(agentId) => {
-                setSelectedAgentId(agentId);
-                setAssignmentPrefilled(true);
-                setError("");
-              }}
-              people={visibleAssignableAgents.map((agent) => ({
-                id: agent.id,
-                displayName: agent.displayName,
-              }))}
-              priorities={detail.priorities.map((priority) => ({
-                id: priority.id,
-                label: priority.label,
-              }))}
-              tenantId={tenantId}
-              ticket={{
-                id: detail.ticket.id,
-                ticketNumber: detail.ticket.ticket_number,
-                subject: detail.ticket.subject,
-                statusLabel: selectedStatus?.label ?? "Status nicht verfügbar",
-                priorityLabel:
-                  selectedPriority?.label ?? "Priorität nicht verfügbar",
-                requesterName: detail.requesterContact
-                  ? formatPersonDisplayName(detail.requesterContact.displayName)
-                  : "Anfragende Person nicht verfügbar",
-                isClosed: ticketIsClosed,
-                isResolved: ticketIsResolved,
-              }}
-            />
-          </div>
-        )}
-      </details>
-
       {error && (
         <p className="ticket-detail-message error" role="alert">
           <AlertCircle aria-hidden="true" size={17} />
@@ -6997,6 +6905,28 @@ export function TicketDetail({
                     <ul className="ticket-comment-attachment-list">
                       {commentAttachments.map((attachment) => (
                         <li key={attachment.id}>
+                          {inlineImagesByAttachmentId[attachment.id] ? (
+                            <button
+                              aria-label={`${attachment.originalFilename} gross anzeigen`}
+                              className="ticket-comment-image-preview"
+                              onClick={() =>
+                                void downloadAttachment(attachment)
+                              }
+                              type="button"
+                            >
+                              <img
+                                alt={attachment.originalFilename}
+                                loading="lazy"
+                                onError={() =>
+                                  refreshInlineImageAfterError(attachment.id)
+                                }
+                                src={
+                                  inlineImagesByAttachmentId[attachment.id]
+                                    ?.signedUrl
+                                }
+                              />
+                            </button>
+                          ) : null}
                           <ImagePlus aria-hidden="true" size={16} />
                           <span>
                             <strong>{attachment.originalFilename}</strong>
