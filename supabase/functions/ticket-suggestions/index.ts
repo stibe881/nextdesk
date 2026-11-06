@@ -142,11 +142,14 @@ async function readableArticles(
       "id, title, visibility, status, department_id, current_revision, published_revision",
     )
     .eq("tenant_id", tenantId)
-    // Only published articles are suggested (no drafts or reviews).
-    .eq("status", "published")
     .in("id", ids);
   query = applyDepartmentScope(query, reader.scope);
-  if (!reader.canReadInternal) {
+  if (reader.canReadInternal) {
+    // Internal readers get published articles only (no drafts or reviews).
+    query = query.eq("status", "published");
+  } else {
+    // Requesters read the published version, like in the knowledge base,
+    // also while a newer draft of the article is being edited.
     query = applyExternalArticleScope(query, reader.organizationIds);
   }
   const { data, error } = await query;
