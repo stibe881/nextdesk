@@ -1,0 +1,9 @@
+# The mobile app is its own workspace with its own lockfile. Without this
+# file, pnpm in mobile/ would install the web monorepo instead (EAS builds
+# from the repository with mobile/ as the project root).
+packages:
+  - "."
+
+allowBuilds:
+  esbuild: true
+  unrs-resolver: true
