@@ -11,11 +11,10 @@ Deno.test(
         "const access = await resolveReadableTicket(",
         'if (action.type === "createInlineImageUrls")',
         '.eq("ticket_id", ticket.id)',
-        // Inline mail images must be scanned clean; comment images, which were
-        // checked as real PNG/JPEG/WebP on upload, may still be pending.
+        // Inline mail images must be scanned clean; images uploaded in
+        // nextDesk (messages and ticket attachments) may still be pending.
         'typedAttachment.malware_status === "clean"',
-        '.or("inline_content_id.not.is.null,comment_id.not.is.null")',
-        'typeof typedAttachment.comment_id === "string"',
+        "const isUploadedImage",
         '"image/png", "image/jpeg", "image/webp"',
         "canReadInternalTicketAttachment",
         "canWriteExternalTicketAttachment",
