@@ -618,6 +618,7 @@ type CatalogAsset = {
   assetTag: string | null;
   kind: string;
   status: string;
+  primaryPersonName: string | null;
 };
 
 type CatalogProblem = {
@@ -1675,6 +1676,11 @@ function toCatalogAsset(value: unknown): CatalogAsset | null {
     assetTag: asset.asset_tag,
     kind: asset.kind,
     status: asset.status,
+    primaryPersonName:
+      typeof asset.intune_primary_person_name === "string" &&
+      asset.intune_primary_person_name.trim()
+        ? asset.intune_primary_person_name.trim()
+        : null,
   };
 }
 
@@ -1730,6 +1736,33 @@ function criticalityLabel(criticality: string): string {
     critical: "Kritisch",
   };
   return labels[criticality] ?? criticality;
+}
+
+const ASSET_KIND_TEXT: Record<string, string> = {
+  device: "Gerät",
+  laptop: "Notebook",
+  monitor: "Monitor",
+  phone: "Telefon",
+  printer: "Drucker",
+  software: "Software",
+  server: "Server",
+  network: "Netzwerk",
+};
+
+const ASSET_STATUS_TEXT: Record<string, string> = {
+  active: "Aktiv",
+  inactive: "Inaktiv",
+  retired: "Ausgemustert",
+  maintenance: "In Wartung",
+  stock: "Am Lager",
+};
+
+function assetKindText(kind: string): string {
+  return ASSET_KIND_TEXT[kind] ?? kind;
+}
+
+function assetStatusText(status: string): string {
+  return ASSET_STATUS_TEXT[status] ?? status;
 }
 
 function catalogKindLabel(kind: CatalogKind): string {
@@ -1795,8 +1828,8 @@ function toLinkedAsset(value: unknown): LinkedCatalogItem | null {
     label: asset.name,
     metadata: [
       asset.asset_tag ? `Asset-Kennung: ${asset.asset_tag}` : null,
-      `Typ: ${asset.kind}`,
-      `Status: ${asset.status}`,
+      `Typ: ${assetKindText(asset.kind)}`,
+      `Status: ${assetStatusText(asset.status)}`,
     ].filter((entry): entry is string => entry !== null),
   };
 }
@@ -5081,9 +5114,12 @@ export function TicketDetail({
         id: asset.id,
         label: asset.name,
         description: [
+          asset.primaryPersonName
+            ? `Primäre Person: ${asset.primaryPersonName}`
+            : null,
           asset.assetTag ? `Asset-Kennung: ${asset.assetTag}` : null,
-          `Typ: ${asset.kind}`,
-          `Status: ${asset.status}`,
+          `Typ: ${assetKindText(asset.kind)}`,
+          `Status: ${assetStatusText(asset.status)}`,
         ]
           .filter((entry): entry is string => entry !== null)
           .join(" · "),
