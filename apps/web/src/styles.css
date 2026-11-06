@@ -9944,9 +9944,27 @@ body:has(.ticket-list-filter-panel) {
 }
 
 .ticket-comment-mode--internal[aria-pressed="true"] {
-  border-color: var(--border-tint-a5b4fc);
-  background: var(--surface-tint-eef2ff);
-  color: var(--primary-hover);
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 16%, var(--surface));
+  box-shadow: inset 0 0 0 1px var(--primary);
+  color: var(--ink);
+}
+
+.ticket-comment-mode--internal[aria-pressed="true"] svg {
+  color: var(--primary);
+}
+
+.ticket-comment-mode--external[aria-pressed="true"] {
+  box-shadow: inset 0 0 0 1px var(--border-tint-f3b37b);
+}
+
+/* The mode that is not chosen steps back, so the chosen one stands out. */
+.ticket-comment-mode[aria-pressed="false"] {
+  opacity: 0.72;
+}
+
+.ticket-comment-mode[aria-pressed="false"]:hover:not(:disabled) {
+  opacity: 1;
 }
 
 .ticket-comment-mode--external[aria-pressed="true"] {
