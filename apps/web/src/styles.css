@@ -19968,3 +19968,137 @@ html:has(.embed-status-badge) body {
   outline: 2px solid var(--primary);
   outline-offset: 2px;
 }
+
+.ticket-knowledge {
+  display: grid;
+  gap: 14px;
+}
+
+.ticket-knowledge__block {
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px;
+  background: var(--surface);
+}
+
+.ticket-knowledge__block h3 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.ticket-knowledge__search,
+.ticket-knowledge__form input,
+.ticket-knowledge__form textarea {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 9px 11px;
+  background: var(--surface-subtle);
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+}
+
+.ticket-knowledge__form textarea {
+  resize: vertical;
+}
+
+.ticket-knowledge__search:focus-visible,
+.ticket-knowledge__form input:focus-visible,
+.ticket-knowledge__form textarea:focus-visible {
+  border-color: var(--primary);
+  outline: 3px solid var(--focus-tint-rgb-99-102-241-16);
+  outline-offset: 1px;
+}
+
+.ticket-knowledge__label {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.ticket-knowledge__list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ticket-knowledge__list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px 10px;
+  background: var(--surface-subtle);
+}
+
+.ticket-knowledge__item-text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.ticket-knowledge__item-text strong {
+  font-size: 14px;
+}
+
+.ticket-knowledge__item-text small {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ticket-knowledge__item-actions {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 8px;
+}
+
+.ticket-knowledge__ai {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.ticket-knowledge__form {
+  display: grid;
+  gap: 10px;
+}
+
+.ticket-knowledge__form label {
+  display: grid;
+  gap: 6px;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.ticket-knowledge__notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  border-left: 3px solid var(--success);
+  padding: 8px 12px;
+  background: var(--surface-subtle);
+  font-size: 13px;
+}
+
+@media (max-width: 720px) {
+  .ticket-knowledge__list li {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
