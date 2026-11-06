@@ -1,4 +1,5 @@
 import {
+  Fragment,
   useCallback,
   useEffect,
   useMemo,
@@ -1249,9 +1250,11 @@ export function TenantAdminSettings({
   const [personSearch, setPersonSearch] = useState("");
   // Both person lists start collapsed; a search opens them.
   const [tenantPeopleOpen, setTenantPeopleOpen] = useState(false);
+  const [signedInPeopleOpen, setSignedInPeopleOpen] = useState(false);
   const [entraPeopleOpen, setEntraPeopleOpen] = useState(false);
   const personSearchActive = personSearch.trim() !== "";
   const tenantPeopleExpanded = tenantPeopleOpen || personSearchActive;
+  const signedInPeopleExpanded = signedInPeopleOpen || personSearchActive;
   const entraPeopleExpanded = entraPeopleOpen || personSearchActive;
   const [brandingForm, setBrandingForm] =
     useState<BrandingForm>(emptyBrandingForm);
@@ -1661,6 +1664,35 @@ export function TenantAdminSettings({
       ].some((value) => value?.toLocaleLowerCase("de-CH").includes(term)),
     );
   }, [activeUsers, personSearch]);
+  // Agents (and tenant admins) first, then everybody who already signed in
+  // without agent access.
+  const isAgentMember = (member: TenantDirectoryMember) =>
+    member.isAgent || member.isTenantAdmin;
+  const memberGroups = [
+    {
+      key: "agents",
+      title: "Agenten",
+      listId: "tenant-agents-list",
+      expanded: tenantPeopleExpanded,
+      toggle: () => setTenantPeopleOpen((open) => !open),
+      members: filteredActiveUsers.filter(isAgentMember),
+      caption: `${activeUsers.filter(isAgentMember).length} Agent(en) im Mandanten`,
+      emptySearch: "Für diese Suche wurden keine Agenten gefunden.",
+      empty: "Für diesen Mandanten sind noch keine Agenten vorhanden.",
+    },
+    {
+      key: "signed-in",
+      title: "Angemeldete Personen",
+      listId: "tenant-signed-in-list",
+      expanded: signedInPeopleExpanded,
+      toggle: () => setSignedInPeopleOpen((open) => !open),
+      members: filteredActiveUsers.filter((member) => !isAgentMember(member)),
+      caption: `${activeUsers.filter((member) => !isAgentMember(member)).length} Person(en) ohne Agentenzugriff, bereits angemeldet`,
+      emptySearch:
+        "Für diese Suche wurden keine angemeldeten Personen gefunden.",
+      empty: "Es hat sich noch niemand ohne Agentenzugriff angemeldet.",
+    },
+  ];
   const filteredDirectoryPeople = useMemo(() => {
     const term = personSearch.trim().toLocaleLowerCase("de-CH");
     if (!term) return userDirectory.directoryPeople;
@@ -4261,299 +4293,320 @@ export function TenantAdminSettings({
                   </button>
                 </form>
 
-                <div className="tenant-admin-settings__people-heading">
-                  <div>
-                    <h3>
-                      <button
-                        aria-controls="tenant-people-list"
-                        aria-expanded={tenantPeopleExpanded}
-                        className="tenant-admin-settings__collapse-toggle"
-                        onClick={() => setTenantPeopleOpen((open) => !open)}
-                        type="button"
-                      >
-                        <ChevronDown aria-hidden="true" size={18} />
-                        Personen im Mandanten
-                      </button>
-                    </h3>
-                    <p>{activeUsers.length} aktive Person(en) im Mandanten</p>
-                  </div>
-                  <label>
-                    <span className="tenant-admin-settings__visually-hidden">
-                      Personen suchen
-                    </span>
-                    <input
-                      type="search"
-                      placeholder="Name, E-Mail, Ticketzugriff …"
-                      value={personSearch}
-                      onChange={(event) => setPersonSearch(event.target.value)}
-                    />
-                  </label>
-                </div>
-                {tenantPeopleExpanded ? (
-                  <div id="tenant-people-list">
-                    {filteredActiveUsers.length > 0 ? (
-                      <ul className="tenant-admin-settings__person-list">
-                        {filteredActiveUsers.map((member) => {
-                          const target: SaveTarget = `remove-user:${member.id}`;
-                          const editTarget: SaveTarget = `person:${member.id}`;
-                          const isEditing = editingPerson?.id === member.id;
-                          const offerFromEntra = member.offerSource === "entra";
-                          const jobTitleFromEntra =
-                            member.jobTitleSource === "entra";
-                          return (
-                            <li key={member.id}>
-                              <div className="tenant-admin-settings__person-summary">
-                                <div>
-                                  <strong>
-                                    {member.displayName?.trim() || member.email}
-                                  </strong>
-                                  <span>{member.email}</span>
-                                </div>
-                                <div className="tenant-admin-settings__person-badges">
-                                  {member.departmentName ? (
-                                    <span>
-                                      Ticketzugriff: {member.departmentName}
-                                    </span>
-                                  ) : null}
-                                  {member.offer ? (
-                                    <span>Organisation: {member.offer}</span>
-                                  ) : null}
-                                  {member.jobTitle ? (
-                                    <span>Funktion: {member.jobTitle}</span>
-                                  ) : null}
-                                  {member.managerName ? (
-                                    <span>
-                                      Vorgesetzt: {member.managerName}
-                                      {member.managerSource === "entra"
-                                        ? " (Entra)"
-                                        : ""}
-                                    </span>
-                                  ) : null}
-                                  {member.isTenantAdmin ? (
-                                    <span>Mandantenadmin</span>
-                                  ) : member.isAgent ? (
-                                    <span>Support-Agent</span>
-                                  ) : (
-                                    <span>Anfragende Person</span>
-                                  )}
-                                </div>
-                              </div>
-                              <div className="tenant-admin-settings__person-actions">
-                                <button
-                                  type="button"
-                                  disabled={saving !== null}
-                                  onClick={() => {
-                                    setEditingPerson(isEditing ? null : member);
-                                    setPersonEditForm(
-                                      personFormFromMember(member),
-                                    );
-                                    setManagerDraft(
-                                      member.managerSource === "manual"
-                                        ? (member.managerUserId ?? "")
-                                        : "",
-                                    );
-                                  }}
-                                >
-                                  {isEditing
-                                    ? "Bearbeitung schliessen"
-                                    : "Bearbeiten"}
-                                </button>
-                                <button
-                                  type="button"
-                                  disabled={saving !== null}
-                                  onClick={() => void removeUser(member)}
-                                >
-                                  {saving === target
-                                    ? "Wird entfernt …"
-                                    : "Entfernen"}
-                                </button>
-                              </div>
-                              {isEditing ? (
-                                <form
-                                  className="tenant-admin-settings__person-editor"
-                                  onSubmit={savePerson}
-                                >
-                                  <label>
-                                    Vor- und Nachname
-                                    <input
-                                      value={personEditForm.displayName}
-                                      minLength={2}
-                                      disabled={saving !== null}
-                                      onChange={(event) =>
-                                        setPersonEditForm((current) => ({
-                                          ...current,
-                                          displayName: event.target.value,
-                                        }))
-                                      }
-                                    />
-                                  </label>
-                                  <label>
-                                    Vorgesetzte Person
-                                    <select
-                                      value={managerDraft}
-                                      disabled={saving !== null}
-                                      onChange={(event) =>
-                                        setManagerDraft(event.target.value)
-                                      }
-                                    >
-                                      <option value="">
-                                        {member.managerSource === "entra" &&
-                                        member.managerName
-                                          ? `Aus Entra: ${member.managerName}`
-                                          : "Keine bzw. aus Entra übernehmen"}
-                                      </option>
-                                      {userDirectory.members
-                                        .filter(
-                                          (candidate) =>
-                                            candidate.id !== member.id &&
-                                            candidate.status === "active",
-                                        )
-                                        .map((candidate) => (
-                                          <option
-                                            key={candidate.id}
-                                            value={candidate.id}
-                                          >
-                                            {candidate.displayName?.trim() ||
-                                              candidate.email}
-                                          </option>
-                                        ))}
-                                    </select>
-                                  </label>
-                                  <label>
-                                    Ticketzugriffsbereich
-                                    <select
-                                      value={personEditForm.departmentId}
-                                      disabled={saving !== null}
-                                      onChange={(event) =>
-                                        setPersonEditForm((current) => ({
-                                          ...current,
-                                          departmentId: event.target.value,
-                                        }))
-                                      }
-                                    >
-                                      <option value="">
-                                        Noch nicht zugeordnet
-                                      </option>
-                                      {userDirectory.departments
-                                        .filter(
-                                          (department) => department.active,
-                                        )
-                                        .map((department) => (
-                                          <option
-                                            key={department.id}
-                                            value={department.id}
-                                          >
-                                            {department.name}
-                                          </option>
-                                        ))}
-                                    </select>
-                                    <small className="tenant-admin-settings__field-hint">
-                                      Steuert ausschliesslich, auf welche
-                                      Ticketbereiche diese Person als Agent
-                                      zugreifen darf. Entra-Organisationsdaten
-                                      ändern diesen Zugriff nie.
-                                    </small>
-                                  </label>
-                                  <label>
-                                    {offerFromEntra
-                                      ? "Organisation / Angebot (Entra)"
-                                      : "Angebot"}
-                                    <input
-                                      value={personEditForm.offer}
-                                      disabled={saving !== null}
-                                      readOnly={offerFromEntra}
-                                      onChange={
-                                        offerFromEntra
-                                          ? undefined
-                                          : (event) =>
-                                              setPersonEditForm((current) => ({
-                                                ...current,
-                                                offer: event.target.value,
-                                              }))
-                                      }
-                                    />
-                                    {offerFromEntra ? (
-                                      <small className="tenant-admin-settings__field-hint">
-                                        Wird aus der
-                                        Entra-Organisationsabteilung übernommen
-                                        und beim nächsten Abgleich aktualisiert.
-                                      </small>
-                                    ) : null}
-                                  </label>
-                                  <label>
-                                    {jobTitleFromEntra
-                                      ? "Funktion (Entra)"
-                                      : "Funktion"}
-                                    <input
-                                      value={personEditForm.jobTitle}
-                                      disabled={saving !== null}
-                                      readOnly={jobTitleFromEntra}
-                                      onChange={
-                                        jobTitleFromEntra
-                                          ? undefined
-                                          : (event) =>
-                                              setPersonEditForm((current) => ({
-                                                ...current,
-                                                jobTitle: event.target.value,
-                                              }))
-                                      }
-                                    />
-                                    {jobTitleFromEntra ? (
-                                      <small className="tenant-admin-settings__field-hint">
-                                        Wird aus der Entra-Funktion übernommen
-                                        und beim nächsten Abgleich aktualisiert.
-                                      </small>
-                                    ) : null}
-                                  </label>
-                                  <label className="tenant-admin-settings__agent-toggle">
-                                    <input
-                                      type="checkbox"
-                                      checked={personEditForm.isAgent}
-                                      disabled={
-                                        saving !== null || member.isTenantAdmin
-                                      }
-                                      onChange={(event) =>
-                                        setPersonEditForm((current) => ({
-                                          ...current,
-                                          isAgent: event.target.checked,
-                                        }))
-                                      }
-                                    />
-                                    <span>
-                                      {member.isTenantAdmin
-                                        ? "Mandantenadministration hat automatisch Agentenzugang"
-                                        : "Arbeitet als Support-Agent"}
-                                    </span>
-                                  </label>
-                                  <div className="tenant-admin-settings__form-actions">
+                {memberGroups.map((group) => (
+                  <Fragment key={group.key}>
+                    <div className="tenant-admin-settings__people-heading">
+                      <div>
+                        <h3>
+                          <button
+                            aria-controls={group.listId}
+                            aria-expanded={group.expanded}
+                            className="tenant-admin-settings__collapse-toggle"
+                            onClick={group.toggle}
+                            type="button"
+                          >
+                            <ChevronDown aria-hidden="true" size={18} />
+                            {group.title}
+                          </button>
+                        </h3>
+                        <p>
+                          {personSearchActive
+                            ? `${group.members.length} Treffer`
+                            : group.caption}
+                        </p>
+                      </div>
+                      {group.key === "agents" ? (
+                        <label>
+                          <span className="tenant-admin-settings__visually-hidden">
+                            Personen suchen
+                          </span>
+                          <input
+                            type="search"
+                            placeholder="Name, E-Mail, Ticketzugriff …"
+                            value={personSearch}
+                            onChange={(event) =>
+                              setPersonSearch(event.target.value)
+                            }
+                          />
+                        </label>
+                      ) : null}
+                    </div>
+                    {group.expanded ? (
+                      <div id={group.listId}>
+                        {group.members.length > 0 ? (
+                          <ul className="tenant-admin-settings__person-list">
+                            {group.members.map((member) => {
+                              const target: SaveTarget = `remove-user:${member.id}`;
+                              const editTarget: SaveTarget = `person:${member.id}`;
+                              const isEditing = editingPerson?.id === member.id;
+                              const offerFromEntra =
+                                member.offerSource === "entra";
+                              const jobTitleFromEntra =
+                                member.jobTitleSource === "entra";
+                              return (
+                                <li key={member.id}>
+                                  <div className="tenant-admin-settings__person-summary">
+                                    <div>
+                                      <strong>
+                                        {member.displayName?.trim() ||
+                                          member.email}
+                                      </strong>
+                                      <span>{member.email}</span>
+                                    </div>
+                                    <div className="tenant-admin-settings__person-badges">
+                                      {member.departmentName ? (
+                                        <span>
+                                          Ticketzugriff: {member.departmentName}
+                                        </span>
+                                      ) : null}
+                                      {member.offer ? (
+                                        <span>
+                                          Organisation: {member.offer}
+                                        </span>
+                                      ) : null}
+                                      {member.jobTitle ? (
+                                        <span>Funktion: {member.jobTitle}</span>
+                                      ) : null}
+                                      {member.managerName ? (
+                                        <span>
+                                          Vorgesetzt: {member.managerName}
+                                          {member.managerSource === "entra"
+                                            ? " (Entra)"
+                                            : ""}
+                                        </span>
+                                      ) : null}
+                                      {member.isTenantAdmin ? (
+                                        <span>Mandantenadmin</span>
+                                      ) : member.isAgent ? (
+                                        <span>Support-Agent</span>
+                                      ) : (
+                                        <span>Anfragende Person</span>
+                                      )}
+                                    </div>
+                                  </div>
+                                  <div className="tenant-admin-settings__person-actions">
                                     <button
-                                      type="submit"
+                                      type="button"
                                       disabled={saving !== null}
+                                      onClick={() => {
+                                        setEditingPerson(
+                                          isEditing ? null : member,
+                                        );
+                                        setPersonEditForm(
+                                          personFormFromMember(member),
+                                        );
+                                        setManagerDraft(
+                                          member.managerSource === "manual"
+                                            ? (member.managerUserId ?? "")
+                                            : "",
+                                        );
+                                      }}
                                     >
-                                      {saving === editTarget
-                                        ? "Wird gespeichert …"
-                                        : "Person speichern"}
+                                      {isEditing
+                                        ? "Bearbeitung schliessen"
+                                        : "Bearbeiten"}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      disabled={saving !== null}
+                                      onClick={() => void removeUser(member)}
+                                    >
+                                      {saving === target
+                                        ? "Wird entfernt …"
+                                        : "Entfernen"}
                                     </button>
                                   </div>
-                                </form>
-                              ) : null}
-                            </li>
-                          );
-                        })}
-                      </ul>
-                    ) : personSearch.trim() ? (
-                      <p>
-                        Für diese Suche wurden keine aktiven nextDesk-Personen
-                        gefunden.
-                      </p>
-                    ) : (
-                      <p>
-                        Für diesen Mandanten sind noch keine aktiven Personen
-                        vorhanden.
-                      </p>
-                    )}
-                  </div>
-                ) : null}
+                                  {isEditing ? (
+                                    <form
+                                      className="tenant-admin-settings__person-editor"
+                                      onSubmit={savePerson}
+                                    >
+                                      <label>
+                                        Vor- und Nachname
+                                        <input
+                                          value={personEditForm.displayName}
+                                          minLength={2}
+                                          disabled={saving !== null}
+                                          onChange={(event) =>
+                                            setPersonEditForm((current) => ({
+                                              ...current,
+                                              displayName: event.target.value,
+                                            }))
+                                          }
+                                        />
+                                      </label>
+                                      <label>
+                                        Vorgesetzte Person
+                                        <select
+                                          value={managerDraft}
+                                          disabled={saving !== null}
+                                          onChange={(event) =>
+                                            setManagerDraft(event.target.value)
+                                          }
+                                        >
+                                          <option value="">
+                                            {member.managerSource === "entra" &&
+                                            member.managerName
+                                              ? `Aus Entra: ${member.managerName}`
+                                              : "Keine bzw. aus Entra übernehmen"}
+                                          </option>
+                                          {userDirectory.members
+                                            .filter(
+                                              (candidate) =>
+                                                candidate.id !== member.id &&
+                                                candidate.status === "active",
+                                            )
+                                            .map((candidate) => (
+                                              <option
+                                                key={candidate.id}
+                                                value={candidate.id}
+                                              >
+                                                {candidate.displayName?.trim() ||
+                                                  candidate.email}
+                                              </option>
+                                            ))}
+                                        </select>
+                                      </label>
+                                      <label>
+                                        Ticketzugriffsbereich
+                                        <select
+                                          value={personEditForm.departmentId}
+                                          disabled={saving !== null}
+                                          onChange={(event) =>
+                                            setPersonEditForm((current) => ({
+                                              ...current,
+                                              departmentId: event.target.value,
+                                            }))
+                                          }
+                                        >
+                                          <option value="">
+                                            Noch nicht zugeordnet
+                                          </option>
+                                          {userDirectory.departments
+                                            .filter(
+                                              (department) => department.active,
+                                            )
+                                            .map((department) => (
+                                              <option
+                                                key={department.id}
+                                                value={department.id}
+                                              >
+                                                {department.name}
+                                              </option>
+                                            ))}
+                                        </select>
+                                        <small className="tenant-admin-settings__field-hint">
+                                          Steuert ausschliesslich, auf welche
+                                          Ticketbereiche diese Person als Agent
+                                          zugreifen darf.
+                                          Entra-Organisationsdaten ändern diesen
+                                          Zugriff nie.
+                                        </small>
+                                      </label>
+                                      <label>
+                                        {offerFromEntra
+                                          ? "Organisation / Angebot (Entra)"
+                                          : "Angebot"}
+                                        <input
+                                          value={personEditForm.offer}
+                                          disabled={saving !== null}
+                                          readOnly={offerFromEntra}
+                                          onChange={
+                                            offerFromEntra
+                                              ? undefined
+                                              : (event) =>
+                                                  setPersonEditForm(
+                                                    (current) => ({
+                                                      ...current,
+                                                      offer: event.target.value,
+                                                    }),
+                                                  )
+                                          }
+                                        />
+                                        {offerFromEntra ? (
+                                          <small className="tenant-admin-settings__field-hint">
+                                            Wird aus der
+                                            Entra-Organisationsabteilung
+                                            übernommen und beim nächsten
+                                            Abgleich aktualisiert.
+                                          </small>
+                                        ) : null}
+                                      </label>
+                                      <label>
+                                        {jobTitleFromEntra
+                                          ? "Funktion (Entra)"
+                                          : "Funktion"}
+                                        <input
+                                          value={personEditForm.jobTitle}
+                                          disabled={saving !== null}
+                                          readOnly={jobTitleFromEntra}
+                                          onChange={
+                                            jobTitleFromEntra
+                                              ? undefined
+                                              : (event) =>
+                                                  setPersonEditForm(
+                                                    (current) => ({
+                                                      ...current,
+                                                      jobTitle:
+                                                        event.target.value,
+                                                    }),
+                                                  )
+                                          }
+                                        />
+                                        {jobTitleFromEntra ? (
+                                          <small className="tenant-admin-settings__field-hint">
+                                            Wird aus der Entra-Funktion
+                                            übernommen und beim nächsten
+                                            Abgleich aktualisiert.
+                                          </small>
+                                        ) : null}
+                                      </label>
+                                      <label className="tenant-admin-settings__agent-toggle">
+                                        <input
+                                          type="checkbox"
+                                          checked={personEditForm.isAgent}
+                                          disabled={
+                                            saving !== null ||
+                                            member.isTenantAdmin
+                                          }
+                                          onChange={(event) =>
+                                            setPersonEditForm((current) => ({
+                                              ...current,
+                                              isAgent: event.target.checked,
+                                            }))
+                                          }
+                                        />
+                                        <span>
+                                          {member.isTenantAdmin
+                                            ? "Mandantenadministration hat automatisch Agentenzugang"
+                                            : "Arbeitet als Support-Agent"}
+                                        </span>
+                                      </label>
+                                      <div className="tenant-admin-settings__form-actions">
+                                        <button
+                                          type="submit"
+                                          disabled={saving !== null}
+                                        >
+                                          {saving === editTarget
+                                            ? "Wird gespeichert …"
+                                            : "Person speichern"}
+                                        </button>
+                                      </div>
+                                    </form>
+                                  ) : null}
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        ) : personSearch.trim() ? (
+                          <p>{group.emptySearch}</p>
+                        ) : (
+                          <p>{group.empty}</p>
+                        )}
+                      </div>
+                    ) : null}
+                  </Fragment>
+                ))}
 
                 <div className="tenant-admin-settings__people-heading">
                   <div>
