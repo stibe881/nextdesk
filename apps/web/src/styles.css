@@ -20657,3 +20657,30 @@ html:has(.embed-status-badge) body {
   background: rgb(180 35 53 / 12%);
   color: var(--danger);
 }
+
+.tenant-admin-settings__collapse-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  padding: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.tenant-admin-settings__collapse-toggle svg {
+  transition: transform 0.15s ease;
+  transform: rotate(-90deg);
+}
+
+.tenant-admin-settings__collapse-toggle[aria-expanded="true"] svg {
+  transform: rotate(0deg);
+}
+
+.tenant-admin-settings__collapse-toggle:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
