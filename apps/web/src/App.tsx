@@ -1955,6 +1955,14 @@ async function loadQuickAssignOptions(
     .map((team) => ({ id: team.id, label: team.name }));
 }
 
+function ticketAgentLabel(ticket: DashboardTicket): string {
+  return ticket.isUnassigned
+    ? "Nicht zugewiesen"
+    : ticket.assignedToCurrentUser
+      ? "Mir zugewiesen"
+      : (ticket.assignedAgentName ?? "Zugewiesen");
+}
+
 function TicketQuickAssign({
   assignment,
   ticket,
@@ -2081,11 +2089,7 @@ function TicketQuickAssign({
     }
   }
 
-  const agentLabel = ticket.isUnassigned
-    ? "Nicht zugewiesen"
-    : ticket.assignedToCurrentUser
-      ? "Mir zugewiesen"
-      : (ticket.assignedAgentName ?? "Zugewiesen");
+  const agentLabel = ticketAgentLabel(ticket);
   const teamLabel = ticket.assignedTeamName ?? "Kein Team";
   const currentValue =
     open === "status"
@@ -2396,13 +2400,49 @@ function TicketList({
               {assignment && !ticket.isClosed ? (
                 <TicketQuickAssign assignment={assignment} ticket={ticket} />
               ) : (
-                <span
-                  aria-label={`Status: ${ticket.state}`}
-                  className={`state-badge ${statusClass(ticket.state)}`}
-                >
-                  <span aria-hidden="true" className="state-badge__indicator" />
-                  {ticket.state}
-                </span>
+                <div className="ticket-quick-assign">
+                  {assignment ? (
+                    // Solved and closed tickets still show who handled them.
+                    <>
+                      <span
+                        aria-label={`Zuweisung: ${ticketAgentLabel(ticket)}`}
+                        className="ticket-assign-chip ticket-assign-chip--static"
+                      >
+                        <UserRound
+                          aria-hidden="true"
+                          size={13}
+                          strokeWidth={2}
+                        />
+                        {ticketAgentLabel(ticket)}
+                      </span>
+                      <span
+                        aria-label={`Team: ${ticket.assignedTeamName ?? "Kein Team"}`}
+                        className={`ticket-assign-chip ticket-assign-chip--static${
+                          ticket.assignedTeamId
+                            ? ""
+                            : " ticket-assign-chip--empty"
+                        }`}
+                      >
+                        <UsersRound
+                          aria-hidden="true"
+                          size={13}
+                          strokeWidth={2}
+                        />
+                        {ticket.assignedTeamName ?? "Kein Team"}
+                      </span>
+                    </>
+                  ) : null}
+                  <span
+                    aria-label={`Status: ${ticket.state}`}
+                    className={`state-badge ${statusClass(ticket.state)}`}
+                  >
+                    <span
+                      aria-hidden="true"
+                      className="state-badge__indicator"
+                    />
+                    {ticket.state}
+                  </span>
+                </div>
               )}
               <span
                 aria-label={`SLA: ${slaLabel}`}
