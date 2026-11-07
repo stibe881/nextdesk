@@ -285,7 +285,7 @@ async function resolveWorkspace(
   }
   if (workspaces.length === 1) return workspaces[0]!;
   throw new ToolError(
-    `Mehrere Arbeitsbereiche verfügbar, bitte "workspace" angeben: ${workspaces.map((workspace) => workspace.slug).join(", ")}.`,
+    `Mehrere Arbeitsbereiche verfügbar, bitte "arbeitsbereich" angeben: ${workspaces.map((workspace) => workspace.slug).join(", ")}.`,
   );
 }
 
@@ -331,7 +331,11 @@ async function ticketContext(
   session: Session,
   args: Json,
 ): Promise<{ workspace: Workspace; ticketId: string }> {
-  const workspace = await resolveWorkspace(config, session, args.workspace);
+  const workspace = await resolveWorkspace(
+    config,
+    session,
+    args.arbeitsbereich,
+  );
   const ticketId = await ticketIdFromReference(
     config,
     session,
@@ -641,7 +645,7 @@ function validQuantity(value: unknown): number {
     Math.round(value * 1000) !== value * 1000
   ) {
     throw new ToolError(
-      '"quantity" muss eine positive Zahl mit höchstens 3 Nachkommastellen sein.',
+      '"menge" muss eine positive Zahl mit höchstens 3 Nachkommastellen sein.',
     );
   }
   return value;
@@ -703,7 +707,7 @@ function draftResult(
     template,
     fields,
     ...(missing.length ? { optionalNotFilled: missing } : {}),
-    next: "Zeige der Person dieses Formular, ergänze oder korrigiere Angaben nach ihren Wünschen und schicke erst nach ihrer ausdrücklichen Bestätigung mit denselben Angaben und confirm=true ab.",
+    next: "Zeige der Person dieses Formular, ergänze oder korrigiere Angaben nach ihren Wünschen und schicke erst nach ihrer ausdrücklichen Bestätigung mit denselben Angaben und bestaetigt=true ab.",
   });
 }
 
@@ -745,26 +749,33 @@ const TOOLS: Tool[] = [
   {
     name: "tickets_suchen",
     description:
-      "Sucht Tickets. scope: mine (mir zugewiesen), open (offen, Standard), unassigned (nicht zugewiesen), all.",
+      "Sucht Tickets. bereich: mine (mir zugewiesen), open (offen, Standard), unassigned (nicht zugewiesen), all.",
     annotations: { readOnlyHint: true, title: "Tickets suchen" },
     inputSchema: {
       type: "object",
       properties: {
-        workspace: WORKSPACE_PROPERTY,
-        query: {
+        arbeitsbereich: WORKSPACE_PROPERTY,
+        suchbegriff: {
           type: "string",
           description: "Suchtext in Nummer, Betreff oder Beschreibung.",
         },
-        scope: { type: "string", enum: ["mine", "open", "unassigned", "all"] },
-        limit: { type: "integer", minimum: 1, maximum: 25 },
+        bereich: {
+          type: "string",
+          enum: ["mine", "open", "unassigned", "all"],
+        },
+        max_anzahl: { type: "integer", minimum: 1, maximum: 25 },
       },
       additionalProperties: false,
     },
     run: async (config, session, args) => {
-      const workspace = await resolveWorkspace(config, session, args.workspace);
-      const scope = typeof args.scope === "string" ? args.scope : "open";
+      const workspace = await resolveWorkspace(
+        config,
+        session,
+        args.arbeitsbereich,
+      );
+      const scope = typeof args.bereich === "string" ? args.bereich : "open";
       if (!["mine", "open", "unassigned", "all"].includes(scope)) {
-        throw new ToolError("Ungültiger scope.");
+        throw new ToolError("Ungültiger bereich.");
       }
       const [statuses, priorities] = await Promise.all([
         rest(config, session, "ticket_statuses", {
@@ -781,7 +792,7 @@ const TOOLS: Tool[] = [
           "id,ticket_number,subject,status_id,priority_id,assigned_agent_id,created_at,updated_at",
         tenant_id: `eq.${workspace.id}`,
         order: "updated_at.desc",
-        limit: String(clampLimit(args.limit, 10, 25)),
+        limit: String(clampLimit(args.max_anzahl, 10, 25)),
       };
       if (scope === "mine") params.assigned_agent_id = `eq.${session.userId}`;
       if (scope === "unassigned") params.assigned_agent_id = "is.null";
@@ -793,7 +804,7 @@ const TOOLS: Tool[] = [
         if (closed.length > 0)
           params.status_id = `not.in.(${closed.join(",")})`;
       }
-      const text = filterText(args.query);
+      const text = filterText(args.suchbegriff);
       if (text) {
         params.or = `(subject.ilike.*${text}*,ticket_number.ilike.*${text}*,description.ilike.*${text}*)`;
       }
@@ -822,12 +833,19 @@ const TOOLS: Tool[] = [
     annotations: { readOnlyHint: true, title: "Ticket anzeigen" },
     inputSchema: {
       type: "object",
-      properties: { workspace: WORKSPACE_PROPERTY, ticket: { type: "string" } },
+      properties: {
+        arbeitsbereich: WORKSPACE_PROPERTY,
+        ticket: { type: "string" },
+      },
       required: ["ticket"],
       additionalProperties: false,
     },
     run: async (config, session, args) => {
-      const workspace = await resolveWorkspace(config, session, args.workspace);
+      const workspace = await resolveWorkspace(
+        config,
+        session,
+        args.arbeitsbereich,
+      );
       const ticketId = await ticketIdFromReference(
         config,
         session,
@@ -900,25 +918,29 @@ const TOOLS: Tool[] = [
   {
     name: "wissen_suchen",
     description:
-      "Durchsucht die Wissensdatenbank (Anleitungen und Lösungen der eigenen Organisation). Bei jeder IT-Frage zuerst verwenden, z. B. «Wie installiere ich Visio?», «VPN verbindet nicht», «Drucker einrichten». query: Stichwörter wie «Visio» oder «VPN». Gibt es zu einem Programm keinen eigenen Artikel, sucht das Werkzeug selbst nach dem allgemeinen Weg (z. B. Unternehmensportal). Den vollen Text liefert wissensartikel_lesen.",
+      "Durchsucht die Wissensdatenbank (Anleitungen und Lösungen der eigenen Organisation). Bei jeder IT-Frage zuerst verwenden, z. B. «Wie installiere ich Visio?», «VPN verbindet nicht», «Drucker einrichten». suchbegriff: Stichwörter wie «Visio» oder «VPN». Gibt es zu einem Programm keinen eigenen Artikel, sucht das Werkzeug selbst nach dem allgemeinen Weg (z. B. Unternehmensportal). Den vollen Text liefert wissensartikel_lesen.",
     annotations: { readOnlyHint: true, title: "Wissen durchsuchen" },
     inputSchema: {
       type: "object",
       properties: {
-        workspace: WORKSPACE_PROPERTY,
-        query: {
+        arbeitsbereich: WORKSPACE_PROPERTY,
+        suchbegriff: {
           type: "string",
           description: "Stichwörter, z. B. «Visio installieren».",
         },
-        limit: { type: "integer", minimum: 1, maximum: 20 },
+        max_anzahl: { type: "integer", minimum: 1, maximum: 20 },
       },
-      required: ["query"],
+      required: ["suchbegriff"],
       additionalProperties: false,
     },
     run: async (config, session, args) => {
-      const workspace = await resolveWorkspace(config, session, args.workspace);
-      const query = str(args.query, 1, 120);
-      if (!query) throw new ToolError('"query" fehlt.');
+      const workspace = await resolveWorkspace(
+        config,
+        session,
+        args.arbeitsbereich,
+      );
+      const query = str(args.suchbegriff, 1, 120);
+      if (!query) throw new ToolError('"suchbegriff" fehlt.');
       const search = async (text: string) =>
         records(
           (
@@ -973,7 +995,7 @@ const TOOLS: Tool[] = [
           }
         }
       }
-      articles = articles.slice(0, clampLimit(args.limit, 8, 20));
+      articles = articles.slice(0, clampLimit(args.max_anzahl, 8, 20));
       return textResult({
         count: articles.length,
         searchedFor,
@@ -1006,12 +1028,19 @@ const TOOLS: Tool[] = [
     annotations: { readOnlyHint: true, title: "Wissensartikel lesen" },
     inputSchema: {
       type: "object",
-      properties: { workspace: WORKSPACE_PROPERTY, id: { type: "string" } },
+      properties: {
+        arbeitsbereich: WORKSPACE_PROPERTY,
+        id: { type: "string" },
+      },
       required: ["id"],
       additionalProperties: false,
     },
     run: async (config, session, args) => {
-      const workspace = await resolveWorkspace(config, session, args.workspace);
+      const workspace = await resolveWorkspace(
+        config,
+        session,
+        args.arbeitsbereich,
+      );
       if (!isUuid(args.id)) throw new ToolError('"id" ist ungültig.');
       const data = await callFunction(config, session, "knowledge-base", {
         type: "getArticle",
@@ -1036,17 +1065,21 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
-        workspace: WORKSPACE_PROPERTY,
-        query: { type: "string" },
-        limit: { type: "integer", minimum: 1, maximum: 20 },
+        arbeitsbereich: WORKSPACE_PROPERTY,
+        suchbegriff: { type: "string" },
+        max_anzahl: { type: "integer", minimum: 1, maximum: 20 },
       },
-      required: ["query"],
+      required: ["suchbegriff"],
       additionalProperties: false,
     },
     run: async (config, session, args) => {
-      const workspace = await resolveWorkspace(config, session, args.workspace);
-      const query = str(args.query, 1, 120);
-      if (!query) throw new ToolError('"query" fehlt.');
+      const workspace = await resolveWorkspace(
+        config,
+        session,
+        args.arbeitsbereich,
+      );
+      const query = str(args.suchbegriff, 1, 120);
+      if (!query) throw new ToolError('"suchbegriff" fehlt.');
       const data = await callFunction(config, session, "asset-registry", {
         type: "listAssets",
         tenantId: workspace.id,
@@ -1058,7 +1091,7 @@ const TOOLS: Tool[] = [
       return textResult({
         count: assets.length,
         assets: assets
-          .slice(0, clampLimit(args.limit, 10, 20))
+          .slice(0, clampLimit(args.max_anzahl, 10, 20))
           .map((asset) => ({
             id: asset.id,
             name: asset.name,
@@ -1078,7 +1111,7 @@ const TOOLS: Tool[] = [
   {
     name: "ticket_erfassen",
     description:
-      "Erfasst ein neues Ticket, für dich selbst oder für eine anfragende Person (requester aus anfragende_suchen). Frage vorher nach, ob das Ticket wirklich erfasst werden soll. Ohne confirm zeigt das Werkzeug zuerst einen Entwurf zum Prüfen und Ergänzen; erst mit confirm=true wird abgeschickt.",
+      "Erfasst ein neues Ticket, für dich selbst oder für eine anfragende Person (anfragende_person aus anfragende_suchen). Frage vorher nach, ob das Ticket wirklich erfasst werden soll. Ohne bestaetigt zeigt das Werkzeug zuerst einen Entwurf zum Prüfen und Ergänzen; erst mit bestaetigt=true wird abgeschickt.",
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
@@ -1087,21 +1120,21 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
-        confirm: CONFIRM_PROPERTY,
-        workspace: WORKSPACE_PROPERTY,
-        subject: { type: "string", minLength: 3, maxLength: 240 },
-        description: { type: "string", maxLength: 8000 },
-        priority: { type: "string", enum: PRIORITY_KEYS },
-        department: {
+        bestaetigt: CONFIRM_PROPERTY,
+        arbeitsbereich: WORKSPACE_PROPERTY,
+        betreff: { type: "string", minLength: 3, maxLength: 240 },
+        beschreibung: { type: "string", maxLength: 8000 },
+        prioritaet: { type: "string", enum: PRIORITY_KEYS },
+        abteilung: {
           type: "string",
           description: "Abteilung (Name). Standard: die erste.",
         },
-        requester: {
+        anfragende_person: {
           type: "string",
           description:
             "ID der anfragenden Person aus anfragende_suchen. Ohne Angabe wird das Ticket für dich selbst erfasst.",
         },
-        template: {
+        vorlage: {
           type: "string",
           description:
             "Ticketvorlage (Name oder ID aus ticketvorlagen_anzeigen). Füllt Betreff, Beschreibung, Priorität und Checkliste, soweit nicht angegeben.",
@@ -1111,15 +1144,19 @@ const TOOLS: Tool[] = [
       additionalProperties: false,
     },
     run: async (config, session, args) => {
-      if (args.subject === undefined && args.template === undefined) {
-        throw new ToolError('Gib "subject" oder eine Vorlage ("template") an.');
+      if (args.betreff === undefined && args.vorlage === undefined) {
+        throw new ToolError('Gib "betreff" oder eine Vorlage ("vorlage") an.');
       }
-      const workspace = await resolveWorkspace(config, session, args.workspace);
+      const workspace = await resolveWorkspace(
+        config,
+        session,
+        args.arbeitsbereich,
+      );
       const { departments, currentRequester: requester } =
         await formDepartments(config, session, workspace);
       const requested =
-        typeof args.department === "string"
-          ? args.department.trim().toLocaleLowerCase("de-CH")
+        typeof args.abteilung === "string"
+          ? args.abteilung.trim().toLocaleLowerCase("de-CH")
           : "";
       const department = requested
         ? departments.find(
@@ -1132,23 +1169,26 @@ const TOOLS: Tool[] = [
           `Abteilung nicht gefunden. Verfügbar: ${departments.map((entry) => entry.name).join(", ")}.`,
         );
       }
-      if (args.requester !== undefined && !isUuid(args.requester)) {
+      if (
+        args.anfragende_person !== undefined &&
+        !isUuid(args.anfragende_person)
+      ) {
         throw new ToolError(
-          '"requester" ist ungültig (ID aus anfragende_suchen).',
+          '"anfragende_person" ist ungültig (ID aus anfragende_suchen).',
         );
       }
-      const requesterId = isUuid(args.requester)
-        ? args.requester
+      const requesterId = isUuid(args.anfragende_person)
+        ? args.anfragende_person
         : requester && typeof requester.id === "string"
           ? requester.id
           : null;
       if (!requesterId) {
         throw new ToolError(
-          "Für dein Konto ist keine anfragende Person hinterlegt. Gib requester an (anfragende_suchen).",
+          "Für dein Konto ist keine anfragende Person hinterlegt. Gib anfragende_person an (anfragende_suchen).",
         );
       }
       let template: Json | null = null;
-      if (args.template !== undefined) {
+      if (args.vorlage !== undefined) {
         const data = await callFunction(config, session, "ticket-actions", {
           type: "listAvailableTemplates",
           tenantId: workspace.id,
@@ -1156,7 +1196,7 @@ const TOOLS: Tool[] = [
         });
         template = findByName(
           records(data.templates),
-          args.template,
+          args.vorlage,
           "name",
           "Vorlage",
         );
@@ -1174,37 +1214,37 @@ const TOOLS: Tool[] = [
               )
               .replaceAll(
                 "{{anfragende_person}}",
-                !isUuid(args.requester) && requester
+                !isUuid(args.anfragende_person) && requester
                   ? String(requester.displayName ?? requester.name ?? "")
                   : "",
               )
           : "";
       const subject =
-        args.subject === undefined && template
+        args.betreff === undefined && template
           ? str(fill(template.subjectTemplate), 3, 240)
-          : str(args.subject, 3, 240);
+          : str(args.betreff, 3, 240);
       if (!subject)
-        throw new ToolError('"subject" muss 3 bis 240 Zeichen lang sein.');
+        throw new ToolError('"betreff" muss 3 bis 240 Zeichen lang sein.');
       const description =
-        typeof args.description === "string" && args.description.trim()
-          ? clip(args.description.trim(), 8000)
+        typeof args.beschreibung === "string" && args.beschreibung.trim()
+          ? clip(args.beschreibung.trim(), 8000)
           : template && fill(template.descriptionTemplate).trim()
             ? clip(fill(template.descriptionTemplate).trim(), 8000)
             : subject;
       const priority =
-        typeof args.priority === "string"
-          ? args.priority
+        typeof args.prioritaet === "string"
+          ? args.prioritaet
           : template && typeof template.priorityKey === "string"
             ? template.priorityKey
             : "normal";
-      if (args.confirm !== true) {
+      if (args.bestaetigt !== true) {
         return draftResult(
           "Ticket erfassen",
           {
             arbeitsbereich: workspace.name,
             abteilung: department.name,
-            anfragendePerson: isUuid(args.requester)
-              ? args.requester
+            anfragendePerson: isUuid(args.anfragende_person)
+              ? args.anfragende_person
               : (requester?.displayName ?? "du selbst"),
             betreff: subject,
             beschreibung: clip(description, 2000),
@@ -1212,13 +1252,13 @@ const TOOLS: Tool[] = [
             vorlage: template?.name ?? null,
           },
           [
-            args.description === undefined &&
+            args.beschreibung === undefined &&
               !template &&
               "beschreibung (sonst wird der Betreff verwendet)",
-            args.priority === undefined &&
+            args.prioritaet === undefined &&
               !template &&
               "prioritaet (Standard normal)",
-            args.department === undefined && "abteilung (Standard: erste)",
+            args.abteilung === undefined && "abteilung (Standard: erste)",
           ],
         );
       }
@@ -1251,7 +1291,7 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
-        workspace: WORKSPACE_PROPERTY,
+        arbeitsbereich: WORKSPACE_PROPERTY,
         ticket: { type: "string", description: "Ticketnummer oder ID." },
         text: { type: "string", minLength: 1, maxLength: 8000 },
       },
@@ -1259,7 +1299,11 @@ const TOOLS: Tool[] = [
       additionalProperties: false,
     },
     run: async (config, session, args) => {
-      const workspace = await resolveWorkspace(config, session, args.workspace);
+      const workspace = await resolveWorkspace(
+        config,
+        session,
+        args.arbeitsbereich,
+      );
       const text = str(args.text, 1, 8000);
       if (!text)
         throw new ToolError('"text" muss 1 bis 8000 Zeichen lang sein.');
@@ -1282,7 +1326,7 @@ const TOOLS: Tool[] = [
   {
     name: "ticketstatus_aendern",
     description:
-      "Ändert den Status eines Ticketauftrags. Für resolved (gelöst) und closed (geschlossen) muss die Person vorher ausdrücklich zugestimmt haben; setze dann confirm auf true. Anfragende werden dabei von nextDesk informiert.",
+      "Ändert den Status eines Ticketauftrags. Für resolved (gelöst) und closed (geschlossen) muss die Person vorher ausdrücklich zugestimmt haben; setze dann bestaetigt auf true. Anfragende werden dabei von nextDesk informiert.",
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
@@ -1291,10 +1335,10 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
-        workspace: WORKSPACE_PROPERTY,
+        arbeitsbereich: WORKSPACE_PROPERTY,
         ticket: { type: "string", description: "Ticketnummer oder ID." },
         status: { type: "string", enum: STATUS_KEYS },
-        confirm: {
+        bestaetigt: {
           type: "boolean",
           description:
             "Nur true, wenn die Person das Lösen oder Schliessen ausdrücklich bestätigt hat.",
@@ -1304,7 +1348,11 @@ const TOOLS: Tool[] = [
       additionalProperties: false,
     },
     run: async (config, session, args) => {
-      const workspace = await resolveWorkspace(config, session, args.workspace);
+      const workspace = await resolveWorkspace(
+        config,
+        session,
+        args.arbeitsbereich,
+      );
       const status = typeof args.status === "string" ? args.status : "";
       if (!STATUS_KEYS.includes(status)) {
         throw new ToolError(
@@ -1312,9 +1360,9 @@ const TOOLS: Tool[] = [
         );
       }
       const closing = status === "resolved" || status === "closed";
-      if (closing && args.confirm !== true) {
+      if (closing && args.bestaetigt !== true) {
         throw new ToolError(
-          "Das Lösen oder Schliessen braucht die ausdrückliche Bestätigung der Person. Frage nach und wiederhole den Aufruf danach mit confirm=true.",
+          "Das Lösen oder Schliessen braucht die ausdrückliche Bestätigung der Person. Frage nach und wiederhole den Aufruf danach mit bestaetigt=true.",
         );
       }
       const ticketId = await ticketIdFromReference(
@@ -1345,14 +1393,18 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
-        workspace: WORKSPACE_PROPERTY,
+        arbeitsbereich: WORKSPACE_PROPERTY,
         ticket: { type: "string", description: "Ticketnummer oder ID." },
       },
       required: ["ticket"],
       additionalProperties: false,
     },
     run: async (config, session, args) => {
-      const workspace = await resolveWorkspace(config, session, args.workspace);
+      const workspace = await resolveWorkspace(
+        config,
+        session,
+        args.arbeitsbereich,
+      );
       const ticketId = await ticketIdFromReference(
         config,
         session,
@@ -1371,7 +1423,7 @@ const TOOLS: Tool[] = [
   {
     name: "ticket_beantworten",
     description:
-      "Antwortet im Ticket an die anfragende Person. Der Text ist für sie sichtbar und wird ihr in der Regel per E-Mail zugestellt. Zeige der Person den Text vorher und setze confirm erst nach ihrer ausdrücklichen Zustimmung auf true. Für interne Hinweise interne_notiz_hinzufuegen verwenden. Ohne confirm zeigt das Werkzeug zuerst den Entwurf.",
+      "Antwortet im Ticket an die anfragende Person. Der Text ist für sie sichtbar und wird ihr in der Regel per E-Mail zugestellt. Zeige der Person den Text vorher und setze bestaetigt erst nach ihrer ausdrücklichen Zustimmung auf true. Für interne Hinweise interne_notiz_hinzufuegen verwenden. Ohne bestaetigt zeigt das Werkzeug zuerst den Entwurf.",
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
@@ -1380,10 +1432,10 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
-        workspace: WORKSPACE_PROPERTY,
+        arbeitsbereich: WORKSPACE_PROPERTY,
         ticket: { type: "string", description: "Ticketnummer oder ID." },
         text: { type: "string", minLength: 1, maxLength: 8000 },
-        confirm: {
+        bestaetigt: {
           type: "boolean",
           description:
             "Nur true, wenn die Person den Wortlaut ausdrücklich freigegeben hat.",
@@ -1393,7 +1445,11 @@ const TOOLS: Tool[] = [
       additionalProperties: false,
     },
     run: async (config, session, args) => {
-      const workspace = await resolveWorkspace(config, session, args.workspace);
+      const workspace = await resolveWorkspace(
+        config,
+        session,
+        args.arbeitsbereich,
+      );
       const text = str(args.text, 1, 8000);
       if (!text)
         throw new ToolError('"text" muss 1 bis 8000 Zeichen lang sein.');
@@ -1403,7 +1459,7 @@ const TOOLS: Tool[] = [
         workspace,
         args.ticket,
       );
-      if (args.confirm !== true) {
+      if (args.bestaetigt !== true) {
         return draftResult("Antwort an anfragende Person", {
           ticket: args.ticket,
           sichtbarFuer: "anfragende Person (in der Regel per E-Mail)",
@@ -1432,15 +1488,16 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
-        workspace: WORKSPACE_PROPERTY,
+        arbeitsbereich: WORKSPACE_PROPERTY,
         ticket: TICKET_PROPERTY,
-        priority: { type: "string", enum: PRIORITY_KEYS },
+        prioritaet: { type: "string", enum: PRIORITY_KEYS },
       },
-      required: ["ticket", "priority"],
+      required: ["ticket", "prioritaet"],
       additionalProperties: false,
     },
     run: async (config, session, args) => {
-      const priority = typeof args.priority === "string" ? args.priority : "";
+      const priority =
+        typeof args.prioritaet === "string" ? args.prioritaet : "";
       if (!PRIORITY_KEYS.includes(priority)) {
         throw new ToolError(
           `Ungültige Priorität. Erlaubt: ${PRIORITY_KEYS.join(", ")}.`,
@@ -1463,7 +1520,7 @@ const TOOLS: Tool[] = [
   {
     name: "zeit_erfassen",
     description:
-      "Erfasst Arbeitszeit auf einem Ticket (in Minuten). billing: internal (Standard), billable (verrechenbar) oder goodwill (Kulanz).",
+      "Erfasst Arbeitszeit auf einem Ticket (in Minuten). verrechnung: internal (Standard), billable (verrechenbar) oder goodwill (Kulanz).",
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
@@ -1472,17 +1529,17 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
-        workspace: WORKSPACE_PROPERTY,
+        arbeitsbereich: WORKSPACE_PROPERTY,
         ticket: TICKET_PROPERTY,
-        minutes: { type: "integer", minimum: 1, maximum: 1440 },
-        billing: { type: "string", enum: BILLING_KINDS },
-        note: { type: "string", maxLength: 2900 },
+        minuten: { type: "integer", minimum: 1, maximum: 1440 },
+        verrechnung: { type: "string", enum: BILLING_KINDS },
+        notiz: { type: "string", maxLength: 2900 },
       },
-      required: ["ticket", "minutes"],
+      required: ["ticket", "minuten"],
       additionalProperties: false,
     },
     run: async (config, session, args) => {
-      const minutes = args.minutes;
+      const minutes = args.minuten;
       if (
         typeof minutes !== "number" ||
         !Number.isInteger(minutes) ||
@@ -1490,19 +1547,19 @@ const TOOLS: Tool[] = [
         minutes > 1440
       ) {
         throw new ToolError(
-          '"minutes" muss eine ganze Zahl von 1 bis 1440 sein.',
+          '"minuten" muss eine ganze Zahl von 1 bis 1440 sein.',
         );
       }
       const billing =
-        typeof args.billing === "string" ? args.billing : "internal";
+        typeof args.verrechnung === "string" ? args.verrechnung : "internal";
       if (!BILLING_KINDS.includes(billing)) {
         throw new ToolError(
           `Ungültige Verrechnungsart. Erlaubt: ${BILLING_KINDS.join(", ")}.`,
         );
       }
-      const note = args.note === undefined ? null : str(args.note, 1, 2900);
-      if (args.note !== undefined && !note) {
-        throw new ToolError('"note" muss 1 bis 2900 Zeichen lang sein.');
+      const note = args.notiz === undefined ? null : str(args.notiz, 1, 2900);
+      if (args.notiz !== undefined && !note) {
+        throw new ToolError('"notiz" muss 1 bis 2900 Zeichen lang sein.');
       }
       const { workspace, ticketId } = await ticketContext(
         config,
@@ -1531,7 +1588,7 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
-        workspace: WORKSPACE_PROPERTY,
+        arbeitsbereich: WORKSPACE_PROPERTY,
         ticket: TICKET_PROPERTY,
         text: { type: "string", minLength: 1, maxLength: 1000 },
       },
@@ -1559,7 +1616,7 @@ const TOOLS: Tool[] = [
   {
     name: "checklistenpunkt_abhaken",
     description:
-      "Hakt einen Checklistenpunkt eines Tickets ab oder öffnet ihn wieder. item: id aus ticket_anzeigen (checklist).",
+      "Hakt einen Checklistenpunkt eines Tickets ab oder öffnet ihn wieder. punkt: id aus ticket_anzeigen (checklist).",
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
@@ -1569,20 +1626,20 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
-        workspace: WORKSPACE_PROPERTY,
+        arbeitsbereich: WORKSPACE_PROPERTY,
         ticket: TICKET_PROPERTY,
-        item: { type: "string", description: "ID des Checklistenpunkts." },
-        done: { type: "boolean", description: "Standard: true." },
+        punkt: { type: "string", description: "ID des Checklistenpunkts." },
+        erledigt: { type: "boolean", description: "Standard: true." },
       },
-      required: ["ticket", "item"],
+      required: ["ticket", "punkt"],
       additionalProperties: false,
     },
     run: async (config, session, args) => {
-      if (!isUuid(args.item)) throw new ToolError('"item" ist ungültig.');
-      if (args.done !== undefined && typeof args.done !== "boolean") {
-        throw new ToolError('"done" muss true oder false sein.');
+      if (!isUuid(args.punkt)) throw new ToolError('"punkt" ist ungültig.');
+      if (args.erledigt !== undefined && typeof args.erledigt !== "boolean") {
+        throw new ToolError('"erledigt" muss true oder false sein.');
       }
-      const done = args.done !== false;
+      const done = args.erledigt !== false;
       const { workspace, ticketId } = await ticketContext(
         config,
         session,
@@ -1592,7 +1649,7 @@ const TOOLS: Tool[] = [
         type: "toggleChecklistItem",
         tenantId: workspace.id,
         ticketId,
-        itemId: args.item,
+        itemId: args.punkt,
         completed: done,
       });
       return textResult({ updated: true, done });
@@ -1611,18 +1668,21 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
-        workspace: WORKSPACE_PROPERTY,
+        arbeitsbereich: WORKSPACE_PROPERTY,
         ticket: TICKET_PROPERTY,
-        watching: { type: "boolean", description: "Standard: true." },
+        beobachten: { type: "boolean", description: "Standard: true." },
       },
       required: ["ticket"],
       additionalProperties: false,
     },
     run: async (config, session, args) => {
-      if (args.watching !== undefined && typeof args.watching !== "boolean") {
-        throw new ToolError('"watching" muss true oder false sein.');
+      if (
+        args.beobachten !== undefined &&
+        typeof args.beobachten !== "boolean"
+      ) {
+        throw new ToolError('"beobachten" muss true oder false sein.');
       }
-      const watching = args.watching !== false;
+      const watching = args.beobachten !== false;
       const { workspace, ticketId } = await ticketContext(
         config,
         session,
@@ -1645,18 +1705,22 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
-        workspace: WORKSPACE_PROPERTY,
-        query: { type: "string", minLength: 2, maxLength: 120 },
-        limit: { type: "integer", minimum: 1, maximum: 30 },
+        arbeitsbereich: WORKSPACE_PROPERTY,
+        suchbegriff: { type: "string", minLength: 2, maxLength: 120 },
+        max_anzahl: { type: "integer", minimum: 1, maximum: 30 },
       },
-      required: ["query"],
+      required: ["suchbegriff"],
       additionalProperties: false,
     },
     run: async (config, session, args) => {
-      const query = str(args.query, 2, 120);
+      const query = str(args.suchbegriff, 2, 120);
       if (!query)
-        throw new ToolError('"query" muss 2 bis 120 Zeichen lang sein.');
-      const workspace = await resolveWorkspace(config, session, args.workspace);
+        throw new ToolError('"suchbegriff" muss 2 bis 120 Zeichen lang sein.');
+      const workspace = await resolveWorkspace(
+        config,
+        session,
+        args.arbeitsbereich,
+      );
       const data = await callFunction(config, session, "global-search", {
         tenantId: workspace.id,
         query,
@@ -1667,7 +1731,7 @@ const TOOLS: Tool[] = [
       return textResult({
         count: results.length,
         results: results
-          .slice(0, clampLimit(args.limit, 15, 30))
+          .slice(0, clampLimit(args.max_anzahl, 15, 30))
           .map((result) => ({
             section: result.section,
             type: result.resultType,
@@ -1685,19 +1749,23 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
-        workspace: WORKSPACE_PROPERTY,
-        unreadOnly: { type: "boolean", description: "Standard: true." },
-        limit: { type: "integer", minimum: 1, maximum: 50 },
+        arbeitsbereich: WORKSPACE_PROPERTY,
+        nur_ungelesene: { type: "boolean", description: "Standard: true." },
+        max_anzahl: { type: "integer", minimum: 1, maximum: 50 },
       },
       additionalProperties: false,
     },
     run: async (config, session, args) => {
-      const workspace = await resolveWorkspace(config, session, args.workspace);
+      const workspace = await resolveWorkspace(
+        config,
+        session,
+        args.arbeitsbereich,
+      );
       const data = await callFunction(config, session, "notification-center", {
         type: "list",
         tenantId: workspace.id,
-        unreadOnly: args.unreadOnly !== false,
-        limit: clampLimit(args.limit, 20, 50),
+        unreadOnly: args.nur_ungelesene !== false,
+        limit: clampLimit(args.max_anzahl, 20, 50),
       });
       const notifications = Array.isArray(data.notifications)
         ? data.notifications.filter(isRecord)
@@ -1735,7 +1803,7 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
-        workspace: WORKSPACE_PROPERTY,
+        arbeitsbereich: WORKSPACE_PROPERTY,
         id: { type: "string", description: "Einzelne Benachrichtigung." },
       },
       additionalProperties: false,
@@ -1749,7 +1817,11 @@ const TOOLS: Tool[] = [
         });
         return textResult({ marked: 1 });
       }
-      const workspace = await resolveWorkspace(config, session, args.workspace);
+      const workspace = await resolveWorkspace(
+        config,
+        session,
+        args.arbeitsbereich,
+      );
       const data = await callFunction(config, session, "notification-center", {
         type: "markAllRead",
         tenantId: workspace.id,
@@ -1764,11 +1836,15 @@ const TOOLS: Tool[] = [
     annotations: { readOnlyHint: true, title: "Offene Freigaben" },
     inputSchema: {
       type: "object",
-      properties: { workspace: WORKSPACE_PROPERTY },
+      properties: { arbeitsbereich: WORKSPACE_PROPERTY },
       additionalProperties: false,
     },
     run: async (config, session, args) => {
-      const workspace = await resolveWorkspace(config, session, args.workspace);
+      const workspace = await resolveWorkspace(
+        config,
+        session,
+        args.arbeitsbereich,
+      );
       const data = await callFunction(config, session, "ticket-approvals", {
         type: "listInbox",
         tenantId: workspace.id,
@@ -1796,7 +1872,7 @@ const TOOLS: Tool[] = [
   {
     name: "freigabe_entscheiden",
     description:
-      "Genehmigt oder lehnt eine Ticketfreigabe ab (id aus offene_freigaben_anzeigen). Nur nach ausdrücklicher Zustimmung der Person; setze dann confirm auf true.",
+      "Genehmigt oder lehnt eine Ticketfreigabe ab (id aus offene_freigaben_anzeigen). Nur nach ausdrücklicher Zustimmung der Person; setze dann bestaetigt auf true.",
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
@@ -1805,35 +1881,35 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
-        workspace: WORKSPACE_PROPERTY,
+        arbeitsbereich: WORKSPACE_PROPERTY,
         ticket: TICKET_PROPERTY,
-        approval: { type: "string", description: "ID der Freigabe." },
-        decision: { type: "string", enum: ["approved", "rejected"] },
-        comment: { type: "string", maxLength: 2000 },
-        confirm: {
+        freigabe: { type: "string", description: "ID der Freigabe." },
+        entscheid: { type: "string", enum: ["approved", "rejected"] },
+        kommentar: { type: "string", maxLength: 2000 },
+        bestaetigt: {
           type: "boolean",
           description:
             "Nur true, wenn die Person den Entscheid ausdrücklich bestätigt hat.",
         },
       },
-      required: ["ticket", "approval", "decision", "confirm"],
+      required: ["ticket", "freigabe", "entscheid", "bestaetigt"],
       additionalProperties: false,
     },
     run: async (config, session, args) => {
-      if (args.confirm !== true) {
+      if (args.bestaetigt !== true) {
         throw new ToolError(
-          "Ein Freigabeentscheid braucht die ausdrückliche Bestätigung der Person. Frage nach und wiederhole den Aufruf danach mit confirm=true.",
+          "Ein Freigabeentscheid braucht die ausdrückliche Bestätigung der Person. Frage nach und wiederhole den Aufruf danach mit bestaetigt=true.",
         );
       }
-      if (!isUuid(args.approval))
-        throw new ToolError('"approval" ist ungültig.');
-      if (args.decision !== "approved" && args.decision !== "rejected") {
-        throw new ToolError('"decision" muss approved oder rejected sein.');
+      if (!isUuid(args.freigabe))
+        throw new ToolError('"freigabe" ist ungültig.');
+      if (args.entscheid !== "approved" && args.entscheid !== "rejected") {
+        throw new ToolError('"entscheid" muss approved oder rejected sein.');
       }
       const comment =
-        args.comment === undefined ? null : str(args.comment, 1, 2000);
-      if (args.comment !== undefined && !comment) {
-        throw new ToolError('"comment" muss 1 bis 2000 Zeichen lang sein.');
+        args.kommentar === undefined ? null : str(args.kommentar, 1, 2000);
+      if (args.kommentar !== undefined && !comment) {
+        throw new ToolError('"kommentar" muss 1 bis 2000 Zeichen lang sein.');
       }
       const { workspace, ticketId } = await ticketContext(
         config,
@@ -1844,32 +1920,36 @@ const TOOLS: Tool[] = [
         type: "decide",
         tenantId: workspace.id,
         ticketId,
-        approvalId: args.approval,
-        decision: args.decision,
+        approvalId: args.freigabe,
+        decision: args.entscheid,
         ...(comment ? { comment } : {}),
       });
-      return textResult({ decided: true, decision: args.decision });
+      return textResult({ decided: true, decision: args.entscheid });
     },
   },
   {
     name: "serviceaufgaben_anzeigen",
     description:
-      "Zeigt Serviceaufgaben: überfällige, heute fällige und kommende. scope: mine (Standard), team, all.",
+      "Zeigt Serviceaufgaben: überfällige, heute fällige und kommende. bereich: mine (Standard), team, all.",
     annotations: { readOnlyHint: true, title: "Serviceaufgaben" },
     inputSchema: {
       type: "object",
       properties: {
-        workspace: WORKSPACE_PROPERTY,
-        scope: { type: "string", enum: ["mine", "team", "all"] },
+        arbeitsbereich: WORKSPACE_PROPERTY,
+        bereich: { type: "string", enum: ["mine", "team", "all"] },
       },
       additionalProperties: false,
     },
     run: async (config, session, args) => {
-      const scope = typeof args.scope === "string" ? args.scope : "mine";
+      const scope = typeof args.bereich === "string" ? args.bereich : "mine";
       if (!["mine", "team", "all"].includes(scope)) {
-        throw new ToolError("Ungültiger scope.");
+        throw new ToolError("Ungültiger bereich.");
       }
-      const workspace = await resolveWorkspace(config, session, args.workspace);
+      const workspace = await resolveWorkspace(
+        config,
+        session,
+        args.arbeitsbereich,
+      );
       const data = await callFunction(config, session, "service-tasks", {
         type: "overview",
         tenantId: workspace.id,
@@ -1910,24 +1990,28 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
-        workspace: WORKSPACE_PROPERTY,
-        task: { type: "string", description: "ID der Serviceaufgabe." },
-        note: { type: "string", maxLength: 3900 },
+        arbeitsbereich: WORKSPACE_PROPERTY,
+        aufgabe: { type: "string", description: "ID der Serviceaufgabe." },
+        notiz: { type: "string", maxLength: 3900 },
       },
-      required: ["task"],
+      required: ["aufgabe"],
       additionalProperties: false,
     },
     run: async (config, session, args) => {
-      if (!isUuid(args.task)) throw new ToolError('"task" ist ungültig.');
-      const note = args.note === undefined ? null : str(args.note, 1, 3900);
-      if (args.note !== undefined && !note) {
-        throw new ToolError('"note" muss 1 bis 3900 Zeichen lang sein.');
+      if (!isUuid(args.aufgabe)) throw new ToolError('"aufgabe" ist ungültig.');
+      const note = args.notiz === undefined ? null : str(args.notiz, 1, 3900);
+      if (args.notiz !== undefined && !note) {
+        throw new ToolError('"notiz" muss 1 bis 3900 Zeichen lang sein.');
       }
-      const workspace = await resolveWorkspace(config, session, args.workspace);
+      const workspace = await resolveWorkspace(
+        config,
+        session,
+        args.arbeitsbereich,
+      );
       await callFunction(config, session, "service-tasks", {
         type: "updateOccurrence",
         tenantId: workspace.id,
-        occurrenceId: args.task,
+        occurrenceId: args.aufgabe,
         action: "complete",
         ...(note ? { note: `${note}\n\n${CONNECTOR_NOTE}` } : {}),
       });
@@ -1939,22 +2023,26 @@ const TOOLS: Tool[] = [
   {
     name: "anfragende_suchen",
     description:
-      "Sucht anfragende Personen (Kundinnen und Kunden) nach Name. Die id wird für ticket_erfassen (requester) verwendet.",
+      "Sucht anfragende Personen (Kundinnen und Kunden) nach Name. Die id wird für ticket_erfassen (anfragende_person) verwendet.",
     annotations: { readOnlyHint: true, title: "Anfragende suchen" },
     inputSchema: {
       type: "object",
       properties: {
-        workspace: WORKSPACE_PROPERTY,
-        query: { type: "string", minLength: 2, maxLength: 120 },
+        arbeitsbereich: WORKSPACE_PROPERTY,
+        suchbegriff: { type: "string", minLength: 2, maxLength: 120 },
       },
-      required: ["query"],
+      required: ["suchbegriff"],
       additionalProperties: false,
     },
     run: async (config, session, args) => {
-      const query = str(args.query, 2, 120);
+      const query = str(args.suchbegriff, 2, 120);
       if (!query)
-        throw new ToolError('"query" muss 2 bis 120 Zeichen lang sein.');
-      const workspace = await resolveWorkspace(config, session, args.workspace);
+        throw new ToolError('"suchbegriff" muss 2 bis 120 Zeichen lang sein.');
+      const workspace = await resolveWorkspace(
+        config,
+        session,
+        args.arbeitsbereich,
+      );
       const data = await callFunction(config, session, "ticket-actions", {
         type: "searchRequesters",
         tenantId: workspace.id,
@@ -1980,18 +2068,22 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
-        workspace: WORKSPACE_PROPERTY,
+        arbeitsbereich: WORKSPACE_PROPERTY,
         ticket: {
           ...TICKET_PROPERTY,
           description: "Nur Wiedervorlagen dieses Tickets.",
         },
-        includeResolved: { type: "boolean" },
-        limit: { type: "integer", minimum: 1, maximum: 100 },
+        mit_erledigten: { type: "boolean" },
+        max_anzahl: { type: "integer", minimum: 1, maximum: 100 },
       },
       additionalProperties: false,
     },
     run: async (config, session, args) => {
-      const workspace = await resolveWorkspace(config, session, args.workspace);
+      const workspace = await resolveWorkspace(
+        config,
+        session,
+        args.arbeitsbereich,
+      );
       const ticketId =
         args.ticket === undefined
           ? undefined
@@ -2004,8 +2096,8 @@ const TOOLS: Tool[] = [
       const data = await callFunction(config, session, "experience-hub", {
         type: "listFollowUps",
         tenantId: workspace.id,
-        includeResolved: args.includeResolved === true,
-        limit: clampLimit(args.limit, 30, 100),
+        includeResolved: args.mit_erledigten === true,
+        limit: clampLimit(args.max_anzahl, 30, 100),
         ...(ticketId ? { ticketId } : {}),
       });
       const followUps = records(data.followUps);
@@ -2039,7 +2131,7 @@ const TOOLS: Tool[] = [
   {
     name: "wiedervorlage_erstellen",
     description:
-      "Erstellt eine Wiedervorlage (Erinnerung) für dich, optional zu einem Ticket. dueAt als Datum/Zeit mit Zeitzone, z. B. 2026-11-10T08:00:00+01:00.",
+      "Erstellt eine Wiedervorlage (Erinnerung) für dich, optional zu einem Ticket. faellig als Datum/Zeit mit Zeitzone, z. B. 2026-11-10T08:00:00+01:00.",
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
@@ -2048,35 +2140,43 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
-        workspace: WORKSPACE_PROPERTY,
-        title: { type: "string", minLength: 1, maxLength: 240 },
-        description: { type: "string", maxLength: 4900 },
-        dueAt: { type: "string", description: "Fälligkeit (ISO 8601)." },
-        priority: { type: "string", enum: ["low", "normal", "high"] },
+        arbeitsbereich: WORKSPACE_PROPERTY,
+        titel: { type: "string", minLength: 1, maxLength: 240 },
+        beschreibung: { type: "string", maxLength: 4900 },
+        faellig: { type: "string", description: "Fälligkeit (ISO 8601)." },
+        prioritaet: { type: "string", enum: ["low", "normal", "high"] },
         ticket: TICKET_PROPERTY,
       },
-      required: ["title"],
+      required: ["titel"],
       additionalProperties: false,
     },
     run: async (config, session, args) => {
-      const title = str(args.title, 1, 240);
+      const title = str(args.titel, 1, 240);
       if (!title)
-        throw new ToolError('"title" muss 1 bis 240 Zeichen lang sein.');
+        throw new ToolError('"titel" muss 1 bis 240 Zeichen lang sein.');
       const description =
-        args.description === undefined ? null : str(args.description, 1, 4900);
-      if (args.description !== undefined && !description) {
-        throw new ToolError('"description" muss 1 bis 4900 Zeichen lang sein.');
+        args.beschreibung === undefined
+          ? null
+          : str(args.beschreibung, 1, 4900);
+      if (args.beschreibung !== undefined && !description) {
+        throw new ToolError(
+          '"beschreibung" muss 1 bis 4900 Zeichen lang sein.',
+        );
       }
-      const dueAt = args.dueAt === undefined ? null : isoDate(args.dueAt);
-      if (args.dueAt !== undefined && !dueAt) {
-        throw new ToolError('"dueAt" ist kein gültiges Datum.');
+      const dueAt = args.faellig === undefined ? null : isoDate(args.faellig);
+      if (args.faellig !== undefined && !dueAt) {
+        throw new ToolError('"faellig" ist kein gültiges Datum.');
       }
       const priority =
-        typeof args.priority === "string" ? args.priority : "normal";
+        typeof args.prioritaet === "string" ? args.prioritaet : "normal";
       if (!["low", "normal", "high"].includes(priority)) {
-        throw new ToolError('"priority" muss low, normal oder high sein.');
+        throw new ToolError('"prioritaet" muss low, normal oder high sein.');
       }
-      const workspace = await resolveWorkspace(config, session, args.workspace);
+      const workspace = await resolveWorkspace(
+        config,
+        session,
+        args.arbeitsbereich,
+      );
       const ticketId =
         args.ticket === undefined
           ? null
@@ -2114,7 +2214,7 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
-        workspace: WORKSPACE_PROPERTY,
+        arbeitsbereich: WORKSPACE_PROPERTY,
         id: { type: "string", description: "ID der Wiedervorlage." },
       },
       required: ["id"],
@@ -2122,7 +2222,11 @@ const TOOLS: Tool[] = [
     },
     run: async (config, session, args) => {
       if (!isUuid(args.id)) throw new ToolError('"id" ist ungültig.');
-      const workspace = await resolveWorkspace(config, session, args.workspace);
+      const workspace = await resolveWorkspace(
+        config,
+        session,
+        args.arbeitsbereich,
+      );
       await callFunction(config, session, "experience-hub", {
         type: "resolveFollowUp",
         tenantId: workspace.id,
@@ -2141,22 +2245,28 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
-        workspace: WORKSPACE_PROPERTY,
-        unreadOnly: { type: "boolean", description: "Standard: true." },
-        limit: { type: "integer", minimum: 1, maximum: 50 },
+        arbeitsbereich: WORKSPACE_PROPERTY,
+        nur_ungelesene: { type: "boolean", description: "Standard: true." },
+        max_anzahl: { type: "integer", minimum: 1, maximum: 50 },
       },
       additionalProperties: false,
     },
     run: async (config, session, args) => {
-      const workspace = await resolveWorkspace(config, session, args.workspace);
+      const workspace = await resolveWorkspace(
+        config,
+        session,
+        args.arbeitsbereich,
+      );
       const data = await callFunction(config, session, "agent-workbench", {
         type: "listMentions",
         tenantId: workspace.id,
         onlyMine: true,
       });
       const mentions = records(data.mentions)
-        .filter((entry) => args.unreadOnly === false || entry.read_at === null)
-        .slice(0, clampLimit(args.limit, 20, 50));
+        .filter(
+          (entry) => args.nur_ungelesene === false || entry.read_at === null,
+        )
+        .slice(0, clampLimit(args.max_anzahl, 20, 50));
       const labels = await ticketLabels(
         config,
         session,
@@ -2186,13 +2296,20 @@ const TOOLS: Tool[] = [
     },
     inputSchema: {
       type: "object",
-      properties: { workspace: WORKSPACE_PROPERTY, id: { type: "string" } },
+      properties: {
+        arbeitsbereich: WORKSPACE_PROPERTY,
+        id: { type: "string" },
+      },
       required: ["id"],
       additionalProperties: false,
     },
     run: async (config, session, args) => {
       if (!isUuid(args.id)) throw new ToolError('"id" ist ungültig.');
-      const workspace = await resolveWorkspace(config, session, args.workspace);
+      const workspace = await resolveWorkspace(
+        config,
+        session,
+        args.arbeitsbereich,
+      );
       await callFunction(config, session, "agent-workbench", {
         type: "markMentionRead",
         tenantId: workspace.id,
@@ -2208,11 +2325,15 @@ const TOOLS: Tool[] = [
     annotations: { readOnlyHint: true, title: "Meine Kennzahlen" },
     inputSchema: {
       type: "object",
-      properties: { workspace: WORKSPACE_PROPERTY },
+      properties: { arbeitsbereich: WORKSPACE_PROPERTY },
       additionalProperties: false,
     },
     run: async (config, session, args) => {
-      const workspace = await resolveWorkspace(config, session, args.workspace);
+      const workspace = await resolveWorkspace(
+        config,
+        session,
+        args.arbeitsbereich,
+      );
       const data = await callFunction(config, session, "agent-workbench", {
         type: "myMetrics",
         tenantId: workspace.id,
@@ -2235,11 +2356,15 @@ const TOOLS: Tool[] = [
     annotations: { readOnlyHint: true, title: "Warteschlangen" },
     inputSchema: {
       type: "object",
-      properties: { workspace: WORKSPACE_PROPERTY },
+      properties: { arbeitsbereich: WORKSPACE_PROPERTY },
       additionalProperties: false,
     },
     run: async (config, session, args) => {
-      const workspace = await resolveWorkspace(config, session, args.workspace);
+      const workspace = await resolveWorkspace(
+        config,
+        session,
+        args.arbeitsbereich,
+      );
       const data = await callFunction(config, session, "agent-workbench", {
         type: "teamQueues",
         tenantId: workspace.id,
@@ -2263,7 +2388,10 @@ const TOOLS: Tool[] = [
     annotations: { readOnlyHint: true, title: "Übergaben" },
     inputSchema: {
       type: "object",
-      properties: { workspace: WORKSPACE_PROPERTY, ticket: TICKET_PROPERTY },
+      properties: {
+        arbeitsbereich: WORKSPACE_PROPERTY,
+        ticket: TICKET_PROPERTY,
+      },
       required: ["ticket"],
       additionalProperties: false,
     },
@@ -2294,7 +2422,7 @@ const TOOLS: Tool[] = [
   {
     name: "uebergabe_erstellen",
     description:
-      "Erstellt eine Übergabe für ein Ticket (z. B. vor Abwesenheit oder Schichtwechsel). risk: low, medium (Standard), high. Ohne confirm zeigt das Werkzeug zuerst einen Entwurf zum Prüfen und Ergänzen; erst mit confirm=true wird abgeschickt.",
+      "Erstellt eine Übergabe für ein Ticket (z. B. vor Abwesenheit oder Schichtwechsel). risiko: low, medium (Standard), high. Ohne bestaetigt zeigt das Werkzeug zuerst einen Entwurf zum Prüfen und Ergänzen; erst mit bestaetigt=true wird abgeschickt.",
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
@@ -2303,35 +2431,41 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
-        confirm: CONFIRM_PROPERTY,
-        workspace: WORKSPACE_PROPERTY,
+        bestaetigt: CONFIRM_PROPERTY,
+        arbeitsbereich: WORKSPACE_PROPERTY,
         ticket: TICKET_PROPERTY,
-        summary: { type: "string", minLength: 3, maxLength: 2000 },
-        nextSteps: { type: "string", maxLength: 3000 },
-        risk: { type: "string", enum: ["low", "medium", "high"] },
+        zusammenfassung: { type: "string", minLength: 3, maxLength: 2000 },
+        naechste_schritte: { type: "string", maxLength: 3000 },
+        risiko: { type: "string", enum: ["low", "medium", "high"] },
       },
-      required: ["ticket", "summary"],
+      required: ["ticket", "zusammenfassung"],
       additionalProperties: false,
     },
     run: async (config, session, args) => {
-      const summary = str(args.summary, 3, 2000);
+      const summary = str(args.zusammenfassung, 3, 2000);
       if (!summary)
-        throw new ToolError('"summary" muss 3 bis 2000 Zeichen lang sein.');
+        throw new ToolError(
+          '"zusammenfassung" muss 3 bis 2000 Zeichen lang sein.',
+        );
       const nextSteps =
-        args.nextSteps === undefined ? null : str(args.nextSteps, 1, 3000);
-      if (args.nextSteps !== undefined && !nextSteps) {
-        throw new ToolError('"nextSteps" muss 1 bis 3000 Zeichen lang sein.');
+        args.naechste_schritte === undefined
+          ? null
+          : str(args.naechste_schritte, 1, 3000);
+      if (args.naechste_schritte !== undefined && !nextSteps) {
+        throw new ToolError(
+          '"naechste_schritte" muss 1 bis 3000 Zeichen lang sein.',
+        );
       }
-      const risk = typeof args.risk === "string" ? args.risk : "medium";
+      const risk = typeof args.risiko === "string" ? args.risiko : "medium";
       if (!["low", "medium", "high"].includes(risk)) {
-        throw new ToolError('"risk" muss low, medium oder high sein.');
+        throw new ToolError('"risiko" muss low, medium oder high sein.');
       }
       const { workspace, ticketId } = await ticketContext(
         config,
         session,
         args,
       );
-      if (args.confirm !== true) {
+      if (args.bestaetigt !== true) {
         return draftResult(
           "Übergabe erstellen",
           {
@@ -2340,7 +2474,7 @@ const TOOLS: Tool[] = [
             naechsteSchritte: nextSteps,
             risiko: risk,
           },
-          [args.nextSteps === undefined && "naechsteSchritte"],
+          [args.naechste_schritte === undefined && "naechsteSchritte"],
         );
       }
       await callFunction(config, session, "ticket-handovers", {
@@ -2367,10 +2501,10 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
-        workspace: WORKSPACE_PROPERTY,
+        arbeitsbereich: WORKSPACE_PROPERTY,
         ticket: TICKET_PROPERTY,
         id: { type: "string", description: "ID der Übergabe." },
-        action: {
+        aktion: {
           type: "string",
           enum: ["acknowledge", "resolve"],
           description: "Standard: acknowledge.",
@@ -2381,9 +2515,9 @@ const TOOLS: Tool[] = [
     },
     run: async (config, session, args) => {
       if (!isUuid(args.id)) throw new ToolError('"id" ist ungültig.');
-      const action = args.action === "resolve" ? "resolve" : "acknowledge";
-      if (args.action !== undefined && args.action !== action) {
-        throw new ToolError('"action" muss acknowledge oder resolve sein.');
+      const action = args.aktion === "resolve" ? "resolve" : "acknowledge";
+      if (args.aktion !== undefined && args.aktion !== action) {
+        throw new ToolError('"aktion" muss acknowledge oder resolve sein.');
       }
       const { workspace, ticketId } = await ticketContext(
         config,
@@ -2402,7 +2536,7 @@ const TOOLS: Tool[] = [
   {
     name: "ticket_eskalieren",
     description:
-      "Eskaliert ein Ticket. kind: technical (fachlich), organizational (organisatorisch) oder sla. Eine Eskalation benachrichtigt weitere Personen; nur nach ausdrücklicher Zustimmung der Person mit confirm=true.",
+      "Eskaliert ein Ticket. art: technical (fachlich), organizational (organisatorisch) oder sla. Eine Eskalation benachrichtigt weitere Personen; nur nach ausdrücklicher Zustimmung der Person mit bestaetigt=true.",
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
@@ -2411,33 +2545,33 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
-        workspace: WORKSPACE_PROPERTY,
+        arbeitsbereich: WORKSPACE_PROPERTY,
         ticket: TICKET_PROPERTY,
-        kind: { type: "string", enum: ["technical", "organizational", "sla"] },
-        reason: { type: "string", minLength: 3, maxLength: 2000 },
-        confirm: {
+        art: { type: "string", enum: ["technical", "organizational", "sla"] },
+        begruendung: { type: "string", minLength: 3, maxLength: 2000 },
+        bestaetigt: {
           type: "boolean",
           description:
             "Nur true, wenn die Person die Eskalation ausdrücklich bestätigt hat.",
         },
       },
-      required: ["ticket", "kind", "reason", "confirm"],
+      required: ["ticket", "art", "begruendung", "bestaetigt"],
       additionalProperties: false,
     },
     run: async (config, session, args) => {
-      if (args.confirm !== true) {
+      if (args.bestaetigt !== true) {
         throw new ToolError(
-          "Eine Eskalation braucht die ausdrückliche Bestätigung der Person. Frage nach und wiederhole den Aufruf danach mit confirm=true.",
+          "Eine Eskalation braucht die ausdrückliche Bestätigung der Person. Frage nach und wiederhole den Aufruf danach mit bestaetigt=true.",
         );
       }
-      if (!["technical", "organizational", "sla"].includes(String(args.kind))) {
+      if (!["technical", "organizational", "sla"].includes(String(args.art))) {
         throw new ToolError(
-          '"kind" muss technical, organizational oder sla sein.',
+          '"art" muss technical, organizational oder sla sein.',
         );
       }
-      const reason = str(args.reason, 3, 2000);
+      const reason = str(args.begruendung, 3, 2000);
       if (!reason)
-        throw new ToolError('"reason" muss 3 bis 2000 Zeichen lang sein.');
+        throw new ToolError('"begruendung" muss 3 bis 2000 Zeichen lang sein.');
       const { workspace, ticketId } = await ticketContext(
         config,
         session,
@@ -2447,16 +2581,16 @@ const TOOLS: Tool[] = [
         type: "openEscalation",
         tenantId: workspace.id,
         ticketId,
-        kind: args.kind,
+        kind: args.art,
         reason,
       });
-      return textResult({ escalated: true, kind: args.kind });
+      return textResult({ escalated: true, kind: args.art });
     },
   },
   {
     name: "tickets_verknuepfen",
     description:
-      "Verknüpft zwei Tickets. relation: relates_to (Standard), duplicates, blocks, blocked_by, parent, child.",
+      "Verknüpft zwei Tickets. beziehung: relates_to (Standard), duplicates, blocks, blocked_by, parent, child.",
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
@@ -2466,17 +2600,17 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
-        workspace: WORKSPACE_PROPERTY,
+        arbeitsbereich: WORKSPACE_PROPERTY,
         ticket: TICKET_PROPERTY,
-        relatedTicket: TICKET_PROPERTY,
-        relation: { type: "string", enum: RELATION_TYPES },
+        verknuepftes_ticket: TICKET_PROPERTY,
+        beziehung: { type: "string", enum: RELATION_TYPES },
       },
-      required: ["ticket", "relatedTicket"],
+      required: ["ticket", "verknuepftes_ticket"],
       additionalProperties: false,
     },
     run: async (config, session, args) => {
       const relation =
-        typeof args.relation === "string" ? args.relation : "relates_to";
+        typeof args.beziehung === "string" ? args.beziehung : "relates_to";
       if (!RELATION_TYPES.includes(relation)) {
         throw new ToolError(
           `Ungültige Verknüpfung. Erlaubt: ${RELATION_TYPES.join(", ")}.`,
@@ -2491,7 +2625,7 @@ const TOOLS: Tool[] = [
         config,
         session,
         workspace,
-        args.relatedTicket,
+        args.verknuepftes_ticket,
       );
       if (relatedTicketId === ticketId) {
         throw new ToolError(
@@ -2511,7 +2645,7 @@ const TOOLS: Tool[] = [
   {
     name: "wissensartikel_verknuepfen",
     description:
-      "Verknüpft einen Wissensartikel (id aus wissen_suchen) mit einem Ticket. visibility: internal (Standard) oder external (für Anfragende sichtbar, nur mit confirm=true).",
+      "Verknüpft einen Wissensartikel (id aus wissen_suchen) mit einem Ticket. sichtbarkeit: internal (Standard) oder external (für Anfragende sichtbar, nur mit bestaetigt=true).",
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
@@ -2521,25 +2655,29 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
-        workspace: WORKSPACE_PROPERTY,
+        arbeitsbereich: WORKSPACE_PROPERTY,
         ticket: TICKET_PROPERTY,
-        article: { type: "string", description: "ID des Wissensartikels." },
-        visibility: { type: "string", enum: ["internal", "external"] },
-        confirm: { type: "boolean" },
+        wissensartikel: {
+          type: "string",
+          description: "ID des Wissensartikels.",
+        },
+        sichtbarkeit: { type: "string", enum: ["internal", "external"] },
+        bestaetigt: { type: "boolean" },
       },
-      required: ["ticket", "article"],
+      required: ["ticket", "wissensartikel"],
       additionalProperties: false,
     },
     run: async (config, session, args) => {
-      if (!isUuid(args.article)) throw new ToolError('"article" ist ungültig.');
+      if (!isUuid(args.wissensartikel))
+        throw new ToolError('"wissensartikel" ist ungültig.');
       const visibility =
-        args.visibility === "external" ? "external" : "internal";
-      if (args.visibility !== undefined && args.visibility !== visibility) {
-        throw new ToolError('"visibility" muss internal oder external sein.');
+        args.sichtbarkeit === "external" ? "external" : "internal";
+      if (args.sichtbarkeit !== undefined && args.sichtbarkeit !== visibility) {
+        throw new ToolError('"sichtbarkeit" muss internal oder external sein.');
       }
-      if (visibility === "external" && args.confirm !== true) {
+      if (visibility === "external" && args.bestaetigt !== true) {
         throw new ToolError(
-          "Ein externer Artikel ist für die anfragende Person sichtbar. Frage nach und wiederhole den Aufruf danach mit confirm=true.",
+          "Ein externer Artikel ist für die anfragende Person sichtbar. Frage nach und wiederhole den Aufruf danach mit bestaetigt=true.",
         );
       }
       const { workspace, ticketId } = await ticketContext(
@@ -2551,7 +2689,7 @@ const TOOLS: Tool[] = [
         type: "attach",
         tenantId: workspace.id,
         ticketId,
-        articleId: args.article,
+        articleId: args.wissensartikel,
         visibility,
       });
       return textResult({ attached: true, visibility });
@@ -2567,8 +2705,8 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
-        workspace: WORKSPACE_PROPERTY,
-        onlyIssues: {
+        arbeitsbereich: WORKSPACE_PROPERTY,
+        nur_stoerungen: {
           type: "boolean",
           description: "Nur Services mit Störung oder Einschränkung.",
         },
@@ -2576,7 +2714,11 @@ const TOOLS: Tool[] = [
       additionalProperties: false,
     },
     run: async (config, session, args) => {
-      const workspace = await resolveWorkspace(config, session, args.workspace);
+      const workspace = await resolveWorkspace(
+        config,
+        session,
+        args.arbeitsbereich,
+      );
       const data = await callFunction(config, session, "service-status", {
         type: "getStatusOverview",
         tenantId: workspace.id,
@@ -2588,7 +2730,7 @@ const TOOLS: Tool[] = [
         services: services
           .filter(
             (entry) =>
-              args.onlyIssues !== true || entry.status !== "operational",
+              args.nur_stoerungen !== true || entry.status !== "operational",
           )
           .map((entry) => ({
             name: entry.name,
@@ -2621,7 +2763,7 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
-        workspace: WORKSPACE_PROPERTY,
+        arbeitsbereich: WORKSPACE_PROPERTY,
         code: { type: "string", minLength: 1, maxLength: 120 },
       },
       required: ["code"],
@@ -2630,7 +2772,11 @@ const TOOLS: Tool[] = [
     run: async (config, session, args) => {
       const code = str(args.code, 1, 120);
       if (!code) throw new ToolError('"code" fehlt.');
-      const workspace = await resolveWorkspace(config, session, args.workspace);
+      const workspace = await resolveWorkspace(
+        config,
+        session,
+        args.arbeitsbereich,
+      );
       const data = await callFunction(config, session, "inventory", {
         type: "lookupCode",
         tenantId: workspace.id,
@@ -2647,30 +2793,35 @@ const TOOLS: Tool[] = [
   {
     name: "lizenzen_anzeigen",
     description:
-      "Listet Softwarelizenzen. Mit expiringWithinDays nur solche, die in den nächsten Tagen ablaufen.",
+      "Listet Softwarelizenzen. Mit ablauf_in_tagen nur solche, die in den nächsten Tagen ablaufen.",
     annotations: { readOnlyHint: true, title: "Lizenzen" },
     inputSchema: {
       type: "object",
       properties: {
-        workspace: WORKSPACE_PROPERTY,
-        query: {
+        arbeitsbereich: WORKSPACE_PROPERTY,
+        suchbegriff: {
           type: "string",
           description: "Filter nach Titel, Hersteller oder Referenz.",
         },
-        expiringWithinDays: { type: "integer", minimum: 1, maximum: 730 },
-        limit: { type: "integer", minimum: 1, maximum: 100 },
+        ablauf_in_tagen: { type: "integer", minimum: 1, maximum: 730 },
+        max_anzahl: { type: "integer", minimum: 1, maximum: 100 },
       },
       additionalProperties: false,
     },
     run: async (config, session, args) => {
-      const workspace = await resolveWorkspace(config, session, args.workspace);
+      const workspace = await resolveWorkspace(
+        config,
+        session,
+        args.arbeitsbereich,
+      );
       const data = await callFunction(config, session, "licenses", {
         type: "list",
         tenantId: workspace.id,
         includeArchived: false,
       });
-      const query = typeof args.query === "string" ? args.query.trim() : "";
-      const within = clampLimit(args.expiringWithinDays, 0, 730);
+      const query =
+        typeof args.suchbegriff === "string" ? args.suchbegriff.trim() : "";
+      const within = clampLimit(args.ablauf_in_tagen, 0, 730);
       const licenses = records(data.licenses)
         .map((entry) => ({ entry, days: daysUntil(entry.endsOn) }))
         .filter(
@@ -2683,7 +2834,7 @@ const TOOLS: Tool[] = [
             ) &&
             (!within || (days !== null && days <= within)),
         )
-        .slice(0, clampLimit(args.limit, 30, 100));
+        .slice(0, clampLimit(args.max_anzahl, 30, 100));
       return textResult({
         count: licenses.length,
         licenses: licenses.map(({ entry, days }) => ({
@@ -2703,30 +2854,35 @@ const TOOLS: Tool[] = [
   {
     name: "vertraege_anzeigen",
     description:
-      "Listet Verträge mit Laufzeit, Kündigungsfrist und Kosten. Mit expiringWithinDays nur solche, die bald enden.",
+      "Listet Verträge mit Laufzeit, Kündigungsfrist und Kosten. Mit ablauf_in_tagen nur solche, die bald enden.",
     annotations: { readOnlyHint: true, title: "Verträge" },
     inputSchema: {
       type: "object",
       properties: {
-        workspace: WORKSPACE_PROPERTY,
-        query: {
+        arbeitsbereich: WORKSPACE_PROPERTY,
+        suchbegriff: {
           type: "string",
           description: "Filter nach Titel, Vertragspartner oder Referenz.",
         },
-        expiringWithinDays: { type: "integer", minimum: 1, maximum: 730 },
-        limit: { type: "integer", minimum: 1, maximum: 100 },
+        ablauf_in_tagen: { type: "integer", minimum: 1, maximum: 730 },
+        max_anzahl: { type: "integer", minimum: 1, maximum: 100 },
       },
       additionalProperties: false,
     },
     run: async (config, session, args) => {
-      const workspace = await resolveWorkspace(config, session, args.workspace);
+      const workspace = await resolveWorkspace(
+        config,
+        session,
+        args.arbeitsbereich,
+      );
       const data = await callFunction(config, session, "contracts", {
         type: "list",
         tenantId: workspace.id,
         includeArchived: false,
       });
-      const query = typeof args.query === "string" ? args.query.trim() : "";
-      const within = clampLimit(args.expiringWithinDays, 0, 730);
+      const query =
+        typeof args.suchbegriff === "string" ? args.suchbegriff.trim() : "";
+      const within = clampLimit(args.ablauf_in_tagen, 0, 730);
       const contracts = records(data.contracts)
         .map((entry) => ({ entry, days: daysUntil(entry.endsOn) }))
         .filter(
@@ -2739,7 +2895,7 @@ const TOOLS: Tool[] = [
             ) &&
             (!within || (days !== null && days <= within)),
         )
-        .slice(0, clampLimit(args.limit, 30, 100));
+        .slice(0, clampLimit(args.max_anzahl, 30, 100));
       return textResult({
         count: contracts.length,
         contracts: contracts.map(({ entry, days }) => ({
@@ -2771,18 +2927,23 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
-        workspace: WORKSPACE_PROPERTY,
-        query: { type: "string", description: "Filter nach Name." },
+        arbeitsbereich: WORKSPACE_PROPERTY,
+        suchbegriff: { type: "string", description: "Filter nach Name." },
       },
       additionalProperties: false,
     },
     run: async (config, session, args) => {
-      const workspace = await resolveWorkspace(config, session, args.workspace);
+      const workspace = await resolveWorkspace(
+        config,
+        session,
+        args.arbeitsbereich,
+      );
       const data = await callFunction(config, session, "agent-workbench", {
         type: "listMacros",
         tenantId: workspace.id,
       });
-      const query = typeof args.query === "string" ? args.query.trim() : "";
+      const query =
+        typeof args.suchbegriff === "string" ? args.suchbegriff.trim() : "";
       const macros = records(data.macros).filter((entry) =>
         matches(query, entry.name),
       );
@@ -2804,16 +2965,20 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
-        workspace: WORKSPACE_PROPERTY,
-        macro: { type: "string", description: "ID des Makros." },
+        arbeitsbereich: WORKSPACE_PROPERTY,
+        makro: { type: "string", description: "ID des Makros." },
         ticket: TICKET_PROPERTY,
       },
-      required: ["macro"],
+      required: ["makro"],
       additionalProperties: false,
     },
     run: async (config, session, args) => {
-      if (!isUuid(args.macro)) throw new ToolError('"macro" ist ungültig.');
-      const workspace = await resolveWorkspace(config, session, args.workspace);
+      if (!isUuid(args.makro)) throw new ToolError('"makro" ist ungültig.');
+      const workspace = await resolveWorkspace(
+        config,
+        session,
+        args.arbeitsbereich,
+      );
       const ticketId =
         args.ticket === undefined
           ? undefined
@@ -2826,7 +2991,7 @@ const TOOLS: Tool[] = [
       const data = await callFunction(config, session, "agent-workbench", {
         type: "previewMacro",
         tenantId: workspace.id,
-        macroId: args.macro,
+        macroId: args.makro,
         ...(ticketId ? { ticketId } : {}),
       });
       const preview = isRecord(data.preview) ? data.preview : {};
@@ -2836,7 +3001,7 @@ const TOOLS: Tool[] = [
   {
     name: "wissensentwurf_aus_ticket",
     description:
-      "Erstellt aus einem Ticket einen Entwurf für einen Wissensartikel. Der Entwurf geht in die Prüfung und wird nicht direkt veröffentlicht. body in Markdown; ohne Angabe wird die Ticketbeschreibung verwendet.",
+      "Erstellt aus einem Ticket einen Entwurf für einen Wissensartikel. Der Entwurf geht in die Prüfung und wird nicht direkt veröffentlicht. inhalt in Markdown; ohne Angabe wird die Ticketbeschreibung verwendet.",
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
@@ -2845,22 +3010,23 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
-        workspace: WORKSPACE_PROPERTY,
+        arbeitsbereich: WORKSPACE_PROPERTY,
         ticket: TICKET_PROPERTY,
-        title: { type: "string", minLength: 3, maxLength: 240 },
-        body: { type: "string", maxLength: 50000 },
+        titel: { type: "string", minLength: 3, maxLength: 240 },
+        inhalt: { type: "string", maxLength: 50000 },
       },
       required: ["ticket"],
       additionalProperties: false,
     },
     run: async (config, session, args) => {
-      const title = args.title === undefined ? null : str(args.title, 3, 240);
-      if (args.title !== undefined && !title) {
-        throw new ToolError('"title" muss 3 bis 240 Zeichen lang sein.');
+      const title = args.titel === undefined ? null : str(args.titel, 3, 240);
+      if (args.titel !== undefined && !title) {
+        throw new ToolError('"titel" muss 3 bis 240 Zeichen lang sein.');
       }
-      const body = args.body === undefined ? null : str(args.body, 1, 50000);
-      if (args.body !== undefined && !body) {
-        throw new ToolError('"body" muss 1 bis 50000 Zeichen lang sein.');
+      const body =
+        args.inhalt === undefined ? null : str(args.inhalt, 1, 50000);
+      if (args.inhalt !== undefined && !body) {
+        throw new ToolError('"inhalt" muss 1 bis 50000 Zeichen lang sein.');
       }
       const { workspace, ticketId } = await ticketContext(
         config,
@@ -2894,27 +3060,31 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
-        workspace: WORKSPACE_PROPERTY,
-        room: { type: "string", description: "Raumname oder ID." },
-        from: { type: "string", description: "Ab Datum/Zeit (ISO 8601)." },
-        to: { type: "string", description: "Bis Datum/Zeit (ISO 8601)." },
-        limit: { type: "integer", minimum: 1, maximum: 100 },
+        arbeitsbereich: WORKSPACE_PROPERTY,
+        raum: { type: "string", description: "Raumname oder ID." },
+        von: { type: "string", description: "Ab Datum/Zeit (ISO 8601)." },
+        nach: { type: "string", description: "Bis Datum/Zeit (ISO 8601)." },
+        max_anzahl: { type: "integer", minimum: 1, maximum: 100 },
       },
       additionalProperties: false,
     },
     run: async (config, session, args) => {
-      const from = args.from === undefined ? null : isoDate(args.from);
-      const to = args.to === undefined ? null : isoDate(args.to);
+      const from = args.von === undefined ? null : isoDate(args.von);
+      const to = args.nach === undefined ? null : isoDate(args.nach);
       if (
-        (args.from !== undefined && !from) ||
-        (args.to !== undefined && !to)
+        (args.von !== undefined && !from) ||
+        (args.nach !== undefined && !to)
       ) {
-        throw new ToolError('"from" oder "to" ist kein gültiges Datum.');
+        throw new ToolError('"von" oder "nach" ist kein gültiges Datum.');
       }
-      const workspace = await resolveWorkspace(config, session, args.workspace);
+      const workspace = await resolveWorkspace(
+        config,
+        session,
+        args.arbeitsbereich,
+      );
       const data = await eventWorkspace(config, session, workspace);
       const rooms = data.rooms;
-      const room = args.room === undefined ? null : findRoom(rooms, args.room);
+      const room = args.raum === undefined ? null : findRoom(rooms, args.raum);
       const roomName = new Map(rooms.map((entry) => [entry.id, entry.name]));
       const matching = data.requests.filter(
         (entry) =>
@@ -2922,7 +3092,7 @@ const TOOLS: Tool[] = [
           (!from || String(entry.endsAt) >= from) &&
           (!to || String(entry.startsAt) <= to),
       );
-      const bookings = matching.slice(0, clampLimit(args.limit, 30, 100));
+      const bookings = matching.slice(0, clampLimit(args.max_anzahl, 30, 100));
       return textResult({
         count: matching.length,
         rooms: rooms.map((entry) => ({
@@ -2956,14 +3126,14 @@ const TOOLS: Tool[] = [
         moreAvailable: matching.length > bookings.length || !data.complete,
         hint:
           matching.length > bookings.length
-            ? "Weitere Buchungen vorhanden: Zeitraum oder Raum eingrenzen oder limit erhöhen."
+            ? "Weitere Buchungen vorhanden: Zeitraum oder Raum eingrenzen oder max_anzahl erhöhen."
             : undefined,
       });
     },
   },
   {
     name: "raum_buchen",
-    description: `Bucht einen Raum, einmalig oder als Serie (recurrence weekly mit count 2-52 Terminen, monthly mit count 2-12; gleiche Uhrzeit, Zürcher Zeit). Prüft vorher auf Überschneidungen; bei einer Überschneidung wird nicht gebucht, ausser die Person bestätigt sie ausdrücklich (confirmConflicts=true). equipment: ${EVENT_EQUIPMENT.join(", ")}. Ohne confirm zeigt das Werkzeug zuerst die Buchung mit Überschneidungsprüfung als Entwurf; erst mit confirm=true wird gebucht.`,
+    description: `Bucht einen Raum, einmalig oder als Serie (wiederholung weekly mit anzahl_termine 2-52 Terminen, monthly mit anzahl_termine 2-12; gleiche Uhrzeit, Zürcher Zeit). Prüft vorher auf Überschneidungen; bei einer Überschneidung wird nicht gebucht, ausser die Person bestätigt sie ausdrücklich (ueberschneidung_bestaetigt=true). ausstattung: ${EVENT_EQUIPMENT.join(", ")}. Ohne bestaetigt zeigt das Werkzeug zuerst die Buchung mit Überschneidungsprüfung als Entwurf; erst mit bestaetigt=true wird gebucht.`,
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
@@ -2972,69 +3142,67 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
-        confirm: CONFIRM_PROPERTY,
-        workspace: WORKSPACE_PROPERTY,
-        room: { type: "string", description: "Raumname oder ID." },
-        title: { type: "string", minLength: 3, maxLength: 240 },
-        startsAt: { type: "string", description: "Beginn (ISO 8601)." },
-        endsAt: { type: "string", description: "Ende (ISO 8601)." },
-        organizer: { type: "string", maxLength: 160 },
-        participants: { type: "integer", minimum: 1, maximum: 10000 },
-        recurrence: {
+        bestaetigt: CONFIRM_PROPERTY,
+        arbeitsbereich: WORKSPACE_PROPERTY,
+        raum: { type: "string", description: "Raumname oder ID." },
+        titel: { type: "string", minLength: 3, maxLength: 240 },
+        beginn: { type: "string", description: "Beginn (ISO 8601)." },
+        ende: { type: "string", description: "Ende (ISO 8601)." },
+        veranstalter: { type: "string", maxLength: 160 },
+        teilnehmende: { type: "integer", minimum: 1, maximum: 10000 },
+        wiederholung: {
           type: "string",
           enum: ["none", "weekly", "monthly"],
           description: "Standard: none (einmalig).",
         },
-        count: {
+        anzahl_termine: {
           type: "integer",
           minimum: 2,
           maximum: 52,
           description:
-            "Anzahl Termine der Serie inklusive des ersten (nur mit recurrence).",
+            "Anzahl Termine der Serie inklusive des ersten (nur mit wiederholung).",
         },
-        equipment: {
+        ausstattung: {
           type: "array",
           items: { type: "string", enum: EVENT_EQUIPMENT },
         },
-        confirmConflicts: {
+        ueberschneidung_bestaetigt: {
           type: "boolean",
           description:
             "Nur true, wenn die Person eine gemeldete Überschneidung ausdrücklich akzeptiert hat.",
         },
       },
-      required: ["room", "title", "startsAt", "endsAt"],
+      required: ["raum", "titel", "beginn", "ende"],
       additionalProperties: false,
     },
     run: async (config, session, args) => {
-      const title = str(args.title, 3, 240);
+      const title = str(args.titel, 3, 240);
       if (!title)
-        throw new ToolError('"title" muss 3 bis 240 Zeichen lang sein.');
-      const startsAt = isoDate(args.startsAt);
-      const endsAt = isoDate(args.endsAt);
+        throw new ToolError('"titel" muss 3 bis 240 Zeichen lang sein.');
+      const startsAt = isoDate(args.beginn);
+      const endsAt = isoDate(args.ende);
       if (!startsAt || !endsAt) {
-        throw new ToolError(
-          '"startsAt" oder "endsAt" ist kein gültiges Datum.',
-        );
+        throw new ToolError('"beginn" oder "ende" ist kein gültiges Datum.');
       }
       const organizer =
-        args.organizer === undefined ? null : str(args.organizer, 2, 160);
-      if (args.organizer !== undefined && !organizer) {
-        throw new ToolError('"organizer" muss 2 bis 160 Zeichen lang sein.');
+        args.veranstalter === undefined ? null : str(args.veranstalter, 2, 160);
+      if (args.veranstalter !== undefined && !organizer) {
+        throw new ToolError('"veranstalter" muss 2 bis 160 Zeichen lang sein.');
       }
       if (
-        args.participants !== undefined &&
-        (typeof args.participants !== "number" ||
-          !Number.isInteger(args.participants) ||
-          args.participants < 1)
+        args.teilnehmende !== undefined &&
+        (typeof args.teilnehmende !== "number" ||
+          !Number.isInteger(args.teilnehmende) ||
+          args.teilnehmende < 1)
       ) {
         throw new ToolError(
-          '"participants" muss eine positive ganze Zahl sein.',
+          '"teilnehmende" muss eine positive ganze Zahl sein.',
         );
       }
-      const equipment = Array.isArray(args.equipment) ? args.equipment : [];
+      const equipment = Array.isArray(args.ausstattung) ? args.ausstattung : [];
       if (
-        args.equipment !== undefined &&
-        (!Array.isArray(args.equipment) ||
+        args.ausstattung !== undefined &&
+        (!Array.isArray(args.ausstattung) ||
           !equipment.every((key) => EVENT_EQUIPMENT.includes(String(key))))
       ) {
         throw new ToolError(
@@ -3042,16 +3210,16 @@ const TOOLS: Tool[] = [
         );
       }
       const recurrence =
-        args.recurrence === "weekly" || args.recurrence === "monthly"
-          ? args.recurrence
+        args.wiederholung === "weekly" || args.wiederholung === "monthly"
+          ? args.wiederholung
           : "none";
-      if (args.recurrence !== undefined && args.recurrence !== recurrence) {
+      if (args.wiederholung !== undefined && args.wiederholung !== recurrence) {
         throw new ToolError(
-          '"recurrence" muss none, weekly oder monthly sein.',
+          '"wiederholung" muss none, weekly oder monthly sein.',
         );
       }
       const maxCount = recurrence === "monthly" ? 12 : 52;
-      const count = args.count;
+      const count = args.anzahl_termine;
       if (
         recurrence !== "none" &&
         (typeof count !== "number" ||
@@ -3060,11 +3228,13 @@ const TOOLS: Tool[] = [
           count > maxCount)
       ) {
         throw new ToolError(
-          `"count" muss für eine ${recurrence === "monthly" ? "monatliche" : "wöchentliche"} Serie eine ganze Zahl von 2 bis ${maxCount} sein.`,
+          `"anzahl_termine" muss für eine ${recurrence === "monthly" ? "monatliche" : "wöchentliche"} Serie eine ganze Zahl von 2 bis ${maxCount} sein.`,
         );
       }
       if (recurrence === "none" && count !== undefined) {
-        throw new ToolError('"count" gilt nur zusammen mit recurrence.');
+        throw new ToolError(
+          '"anzahl_termine" gilt nur zusammen mit wiederholung.',
+        );
       }
       const duration = Date.parse(endsAt) - Date.parse(startsAt);
       if (duration < 15 * 60_000 || duration > 24 * 60 * 60_000) {
@@ -3078,20 +3248,24 @@ const TOOLS: Tool[] = [
         recurrence,
         typeof count === "number" ? count : 1,
       );
-      const workspace = await resolveWorkspace(config, session, args.workspace);
+      const workspace = await resolveWorkspace(
+        config,
+        session,
+        args.arbeitsbereich,
+      );
       const overview = await callFunction(config, session, "event-spaces", {
         type: "listWorkspace",
         tenantId: workspace.id,
         offset: 0,
       });
-      const room = findRoom(records(overview.rooms), args.room);
+      const room = findRoom(records(overview.rooms), args.raum);
       const input = {
         tenantId: workspace.id,
         spaceId: room.id,
         title,
         organizer,
         expectedParticipants:
-          typeof args.participants === "number" ? args.participants : null,
+          typeof args.teilnehmende === "number" ? args.teilnehmende : null,
         responsibleUserId: session.userId,
         equipmentKeys: [...new Set(equipment.map(String))],
         recurrence,
@@ -3103,7 +3277,7 @@ const TOOLS: Tool[] = [
       });
       const conflicts = isRecord(preview.conflicts) ? preview.conflicts : {};
       const hasConflicts = conflicts.hasConflicts === true;
-      if (args.confirm !== true) {
+      if (args.bestaetigt !== true) {
         return draftResult(
           "Raum buchen",
           {
@@ -3121,25 +3295,25 @@ const TOOLS: Tool[] = [
                   raum: conflicts.roomConflictCount ?? 0,
                   ausstattung: conflicts.equipmentConflictCount ?? 0,
                   hinweis:
-                    "Trotzdem buchen nur mit confirmConflicts=true nach ausdrücklicher Zustimmung.",
+                    "Trotzdem buchen nur mit ueberschneidung_bestaetigt=true nach ausdrücklicher Zustimmung.",
                 }
               : "keine",
           },
           [
-            args.participants === undefined && "teilnehmende",
-            args.equipment === undefined && "ausstattung",
-            args.organizer === undefined && "veranstalter",
+            args.teilnehmende === undefined && "teilnehmende",
+            args.ausstattung === undefined && "ausstattung",
+            args.veranstalter === undefined && "veranstalter",
           ],
         );
       }
-      if (hasConflicts && args.confirmConflicts !== true) {
+      if (hasConflicts && args.ueberschneidung_bestaetigt !== true) {
         return textResult({
           booked: false,
           conflicts: {
             room: conflicts.roomConflictCount ?? 0,
             equipment: conflicts.equipmentConflictCount ?? 0,
           },
-          hint: "Es gibt Überschneidungen. Frage die Person, ob trotzdem gebucht werden soll (confirmConflicts=true), oder wähle einen anderen Raum oder Zeitpunkt.",
+          hint: "Es gibt Überschneidungen. Frage die Person, ob trotzdem gebucht werden soll (ueberschneidung_bestaetigt=true), oder wähle einen anderen Raum oder Zeitpunkt.",
         });
       }
       await callFunction(config, session, "event-spaces", {
@@ -3174,25 +3348,29 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
-        workspace: WORKSPACE_PROPERTY,
-        booking: { type: "string", description: "ID der Raumbuchung." },
+        arbeitsbereich: WORKSPACE_PROPERTY,
+        buchung: { type: "string", description: "ID der Raumbuchung." },
         status: { type: "string", enum: EVENT_REQUEST_STATUSES },
       },
-      required: ["booking", "status"],
+      required: ["buchung", "status"],
       additionalProperties: false,
     },
     run: async (config, session, args) => {
-      if (!isUuid(args.booking)) throw new ToolError('"booking" ist ungültig.');
+      if (!isUuid(args.buchung)) throw new ToolError('"buchung" ist ungültig.');
       if (!EVENT_REQUEST_STATUSES.includes(String(args.status))) {
         throw new ToolError(
           `Ungültiger Status. Erlaubt: ${EVENT_REQUEST_STATUSES.join(", ")}.`,
         );
       }
-      const workspace = await resolveWorkspace(config, session, args.workspace);
+      const workspace = await resolveWorkspace(
+        config,
+        session,
+        args.arbeitsbereich,
+      );
       await callFunction(config, session, "event-spaces", {
         type: "updateRequestStatus",
         tenantId: workspace.id,
-        requestId: args.booking,
+        requestId: args.buchung,
         status: args.status,
       });
       return textResult({ updated: true, status: args.status });
@@ -3211,25 +3389,29 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
-        workspace: WORKSPACE_PROPERTY,
-        task: { type: "string", description: "ID der Aufgabe." },
+        arbeitsbereich: WORKSPACE_PROPERTY,
+        aufgabe: { type: "string", description: "ID der Aufgabe." },
         status: { type: "string", enum: ["open", "in_progress", "completed"] },
       },
-      required: ["task", "status"],
+      required: ["aufgabe", "status"],
       additionalProperties: false,
     },
     run: async (config, session, args) => {
-      if (!isUuid(args.task)) throw new ToolError('"task" ist ungültig.');
+      if (!isUuid(args.aufgabe)) throw new ToolError('"aufgabe" ist ungültig.');
       if (!["open", "in_progress", "completed"].includes(String(args.status))) {
         throw new ToolError(
           '"status" muss open, in_progress oder completed sein.',
         );
       }
-      const workspace = await resolveWorkspace(config, session, args.workspace);
+      const workspace = await resolveWorkspace(
+        config,
+        session,
+        args.arbeitsbereich,
+      );
       await callFunction(config, session, "event-spaces", {
         type: "updateTaskStatus",
         tenantId: workspace.id,
-        taskId: args.task,
+        taskId: args.aufgabe,
         status: args.status,
       });
       return textResult({ updated: true, status: args.status });
@@ -3245,12 +3427,12 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
-        workspace: WORKSPACE_PROPERTY,
-        query: {
+        arbeitsbereich: WORKSPACE_PROPERTY,
+        suchbegriff: {
           type: "string",
           description: "Filter nach Name oder Einheit.",
         },
-        openTasksOnly: {
+        nur_offene_aufgaben: {
           type: "boolean",
           description: "Nur nicht erledigte Aufgaben anzeigen.",
         },
@@ -3258,12 +3440,17 @@ const TOOLS: Tool[] = [
       additionalProperties: false,
     },
     run: async (config, session, args) => {
-      const workspace = await resolveWorkspace(config, session, args.workspace);
+      const workspace = await resolveWorkspace(
+        config,
+        session,
+        args.arbeitsbereich,
+      );
       const data = await callFunction(config, session, "onboarding", {
         type: "listWorkspace",
         tenantId: workspace.id,
       });
-      const query = typeof args.query === "string" ? args.query.trim() : "";
+      const query =
+        typeof args.suchbegriff === "string" ? args.suchbegriff.trim() : "";
       const entries = records(data.entries).filter((entry) =>
         matches(query, entry.employeeName, entry.organisationUnit),
       );
@@ -3280,7 +3467,8 @@ const TOOLS: Tool[] = [
           tasks: records(entry.tasks)
             .filter(
               (task) =>
-                args.openTasksOnly !== true || task.status !== "completed",
+                args.nur_offene_aufgaben !== true ||
+                task.status !== "completed",
             )
             .map((task) => ({
               id: task.id,
@@ -3304,7 +3492,7 @@ const TOOLS: Tool[] = [
   {
     name: "eintritt_erfassen",
     description:
-      "Erfasst einen Eintritt (neue mitarbeitende Person). Vorlage, Führungsperson und ICT-Verantwortung als Name oder ID aus eintritte_anzeigen. Frage vorher nach, ob der Eintritt erfasst werden soll. Ohne confirm zeigt das Werkzeug zuerst einen Entwurf zum Prüfen und Ergänzen; erst mit confirm=true wird abgeschickt.",
+      "Erfasst einen Eintritt (neue mitarbeitende Person). Vorlage, Führungsperson und ICT-Verantwortung als Name oder ID aus eintritte_anzeigen. Frage vorher nach, ob der Eintritt erfasst werden soll. Ohne bestaetigt zeigt das Werkzeug zuerst einen Entwurf zum Prüfen und Ergänzen; erst mit bestaetigt=true wird abgeschickt.",
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
@@ -3313,63 +3501,72 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
-        confirm: CONFIRM_PROPERTY,
-        workspace: WORKSPACE_PROPERTY,
-        employeeName: { type: "string", minLength: 2, maxLength: 160 },
-        startsOn: { type: "string", description: "Startdatum JJJJ-MM-TT." },
-        unit: {
+        bestaetigt: CONFIRM_PROPERTY,
+        arbeitsbereich: WORKSPACE_PROPERTY,
+        name: { type: "string", minLength: 2, maxLength: 160 },
+        von_datum: { type: "string", description: "Startdatum JJJJ-MM-TT." },
+        einheit: {
           type: "string",
           minLength: 2,
           maxLength: 160,
           description: "Organisationseinheit.",
         },
-        location: { type: "string", minLength: 2, maxLength: 160 },
-        manager: { type: "string", description: "Führungsperson." },
-        ictResponsible: {
+        standort: { type: "string", minLength: 2, maxLength: 160 },
+        fuehrungsperson: { type: "string", description: "Führungsperson." },
+        ict_verantwortung: {
           type: "string",
           description: "ICT-Verantwortung. Standard: du selbst.",
         },
-        template: {
+        vorlage: {
           type: "string",
           description: "Vorlage. Standard: die erste.",
         },
       },
-      required: ["employeeName", "startsOn", "unit", "location", "manager"],
+      required: ["name", "von_datum", "einheit", "standort", "fuehrungsperson"],
       additionalProperties: false,
     },
     run: async (config, session, args) => {
-      const employeeName = str(args.employeeName, 2, 160);
-      const unit = str(args.unit, 2, 160);
-      const location = str(args.location, 2, 160);
+      const employeeName = str(args.name, 2, 160);
+      const unit = str(args.einheit, 2, 160);
+      const location = str(args.standort, 2, 160);
       if (!employeeName || !unit || !location) {
         throw new ToolError(
-          '"employeeName", "unit" und "location" müssen 2 bis 160 Zeichen lang sein.',
+          '"name", "einheit" und "standort" müssen 2 bis 160 Zeichen lang sein.',
         );
       }
-      const startsOn = typeof args.startsOn === "string" ? args.startsOn : "";
+      const startsOn = typeof args.von_datum === "string" ? args.von_datum : "";
       if (isoDate(`${startsOn}T00:00:00Z`)?.slice(0, 10) !== startsOn) {
-        throw new ToolError('"startsOn" muss ein Datum JJJJ-MM-TT sein.');
+        throw new ToolError('"von_datum" muss ein Datum JJJJ-MM-TT sein.');
       }
-      const workspace = await resolveWorkspace(config, session, args.workspace);
+      const workspace = await resolveWorkspace(
+        config,
+        session,
+        args.arbeitsbereich,
+      );
       const data = await callFunction(config, session, "onboarding", {
         type: "listWorkspace",
         tenantId: workspace.id,
       });
       const people = records(data.people);
       const templates = records(data.templates);
-      const manager = findByName(people, args.manager, "displayName", "Person");
+      const manager = findByName(
+        people,
+        args.fuehrungsperson,
+        "displayName",
+        "Person",
+      );
       const ict =
-        args.ictResponsible === undefined
+        args.ict_verantwortung === undefined
           ? { id: session.userId }
-          : findByName(people, args.ictResponsible, "displayName", "Person");
+          : findByName(people, args.ict_verantwortung, "displayName", "Person");
       const template =
-        args.template === undefined
+        args.vorlage === undefined
           ? templates[0]
-          : findByName(templates, args.template, "name", "Vorlage");
+          : findByName(templates, args.vorlage, "name", "Vorlage");
       if (!template) {
         throw new ToolError("Es ist keine Vorlage für Eintritte vorhanden.");
       }
-      if (args.confirm !== true) {
+      if (args.bestaetigt !== true) {
         return draftResult("Eintritt erfassen", {
           mitarbeitende: employeeName,
           startdatum: startsOn,
@@ -3413,18 +3610,18 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
-        workspace: WORKSPACE_PROPERTY,
-        task: { type: "string", description: "ID der Aufgabe." },
+        arbeitsbereich: WORKSPACE_PROPERTY,
+        aufgabe: { type: "string", description: "ID der Aufgabe." },
         status: {
           type: "string",
           enum: ["open", "in_progress", "blocked", "completed"],
         },
       },
-      required: ["task", "status"],
+      required: ["aufgabe", "status"],
       additionalProperties: false,
     },
     run: async (config, session, args) => {
-      if (!isUuid(args.task)) throw new ToolError('"task" ist ungültig.');
+      if (!isUuid(args.aufgabe)) throw new ToolError('"aufgabe" ist ungültig.');
       if (
         !["open", "in_progress", "blocked", "completed"].includes(
           String(args.status),
@@ -3434,11 +3631,15 @@ const TOOLS: Tool[] = [
           '"status" muss open, in_progress, blocked oder completed sein.',
         );
       }
-      const workspace = await resolveWorkspace(config, session, args.workspace);
+      const workspace = await resolveWorkspace(
+        config,
+        session,
+        args.arbeitsbereich,
+      );
       await callFunction(config, session, "onboarding", {
         type: "updateTaskStatus",
         tenantId: workspace.id,
-        taskId: args.task,
+        taskId: args.aufgabe,
         status: args.status,
       });
       return textResult({ updated: true, status: args.status });
@@ -3448,7 +3649,7 @@ const TOOLS: Tool[] = [
   {
     name: "ticket_zuweisen",
     description:
-      'Weist ein Ticket einer anderen Agentin oder einem anderen Agenten zu (Name oder ID) oder hebt die Zuweisung auf (agent: "none"). Ohne agent werden die möglichen Personen aufgelistet. Nur möglich mit dem Recht zum Zuweisen in nextDesk.',
+      'Weist ein Ticket einer anderen Agentin oder einem anderen Agenten zu (Name oder ID) oder hebt die Zuweisung auf (person: "none"). Ohne person werden die möglichen Personen aufgelistet. Nur möglich mit dem Recht zum Zuweisen in nextDesk.',
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
@@ -3458,9 +3659,9 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
-        workspace: WORKSPACE_PROPERTY,
+        arbeitsbereich: WORKSPACE_PROPERTY,
         ticket: TICKET_PROPERTY,
-        agent: {
+        person: {
           type: "string",
           description: 'Name oder ID der Person, oder "none" zum Aufheben.',
         },
@@ -3481,7 +3682,7 @@ const TOOLS: Tool[] = [
         { type: "list", tenantId: workspace.id, ticketId },
       );
       const agents = records(data.agents);
-      if (args.agent === undefined) {
+      if (args.person === undefined) {
         return textResult({
           agents: agents.map((entry) => ({
             id: entry.id,
@@ -3490,13 +3691,13 @@ const TOOLS: Tool[] = [
         });
       }
       const none =
-        typeof args.agent === "string" &&
+        typeof args.person === "string" &&
         ["none", "niemand", "keine", "-"].includes(
-          args.agent.trim().toLowerCase(),
+          args.person.trim().toLowerCase(),
         );
       const agent = none
         ? null
-        : findByName(agents, args.agent, "displayName", "Person");
+        : findByName(agents, args.person, "displayName", "Person");
       const result = await callFunction(
         config,
         session,
@@ -3527,7 +3728,7 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
-        workspace: WORKSPACE_PROPERTY,
+        arbeitsbereich: WORKSPACE_PROPERTY,
         ticket: TICKET_PROPERTY,
         team: { type: "string", description: 'Teamname, ID oder "none".' },
       },
@@ -3573,7 +3774,7 @@ const TOOLS: Tool[] = [
   {
     name: "abteilung_wechseln",
     description:
-      "Verschiebt ein Ticket in eine andere Abteilung. Dabei werden Kategorie, Team und zuständige Person zurückgesetzt. Nur nach ausdrücklicher Zustimmung der Person mit confirm=true.",
+      "Verschiebt ein Ticket in eine andere Abteilung. Dabei werden Kategorie, Team und zuständige Person zurückgesetzt. Nur nach ausdrücklicher Zustimmung der Person mit bestaetigt=true.",
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
@@ -3582,18 +3783,18 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
-        workspace: WORKSPACE_PROPERTY,
+        arbeitsbereich: WORKSPACE_PROPERTY,
         ticket: TICKET_PROPERTY,
-        department: { type: "string", description: "Name oder ID." },
-        confirm: { type: "boolean" },
+        abteilung: { type: "string", description: "Name oder ID." },
+        bestaetigt: { type: "boolean" },
       },
-      required: ["ticket", "department", "confirm"],
+      required: ["ticket", "abteilung", "bestaetigt"],
       additionalProperties: false,
     },
     run: async (config, session, args) => {
-      if (args.confirm !== true) {
+      if (args.bestaetigt !== true) {
         throw new ToolError(
-          "Der Abteilungswechsel setzt Kategorie, Team und zuständige Person zurück. Frage nach und wiederhole den Aufruf danach mit confirm=true.",
+          "Der Abteilungswechsel setzt Kategorie, Team und zuständige Person zurück. Frage nach und wiederhole den Aufruf danach mit bestaetigt=true.",
         );
       }
       const { workspace, ticketId } = await ticketContext(
@@ -3604,7 +3805,7 @@ const TOOLS: Tool[] = [
       const { departments } = await formDepartments(config, session, workspace);
       const department = findByName(
         departments,
-        args.department,
+        args.abteilung,
         "name",
         "Abteilung",
       );
@@ -3623,7 +3824,7 @@ const TOOLS: Tool[] = [
   {
     name: "kategorie_setzen",
     description:
-      'Setzt Kategorie und optional Unterkategorie eines Tickets (Namen oder IDs). Ohne category werden die Kategorien der Ticketabteilung aufgelistet; category "none" entfernt sie.',
+      'Setzt Kategorie und optional Unterkategorie eines Tickets (Namen oder IDs). Ohne kategorie werden die Kategorien der Ticketabteilung aufgelistet; kategorie "none" entfernt sie.',
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
@@ -3633,10 +3834,10 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
-        workspace: WORKSPACE_PROPERTY,
+        arbeitsbereich: WORKSPACE_PROPERTY,
         ticket: TICKET_PROPERTY,
-        category: { type: "string" },
-        subcategory: { type: "string" },
+        kategorie: { type: "string" },
+        unterkategorie: { type: "string" },
       },
       required: ["ticket"],
       additionalProperties: false,
@@ -3660,7 +3861,7 @@ const TOOLS: Tool[] = [
       });
       const categories = records(data.categories);
       const top = categories.filter((entry) => entry.parentId === null);
-      if (args.category === undefined) {
+      if (args.kategorie === undefined) {
         return textResult({
           categories: top.map((entry) => ({
             id: entry.id,
@@ -3672,19 +3873,19 @@ const TOOLS: Tool[] = [
         });
       }
       const none =
-        typeof args.category === "string" &&
-        ["none", "keine", "-"].includes(args.category.trim().toLowerCase());
-      if (none && args.subcategory !== undefined) {
+        typeof args.kategorie === "string" &&
+        ["none", "keine", "-"].includes(args.kategorie.trim().toLowerCase());
+      if (none && args.unterkategorie !== undefined) {
         throw new ToolError("Ohne Kategorie ist keine Unterkategorie möglich.");
       }
       const category = none
         ? null
-        : findByName(top, args.category, "name", "Kategorie");
+        : findByName(top, args.kategorie, "name", "Kategorie");
       const subcategory =
-        category && args.subcategory !== undefined
+        category && args.unterkategorie !== undefined
           ? findByName(
               categories.filter((entry) => entry.parentId === category.id),
-              args.subcategory,
+              args.unterkategorie,
               "name",
               "Unterkategorie",
             )
@@ -3705,7 +3906,7 @@ const TOOLS: Tool[] = [
   {
     name: "tickets_zusammenfuehren",
     description:
-      "Führt ein Ticket (ticket) in ein Haupt-Ticket (into) zusammen. Das zusammengeführte Ticket wird dabei in der Regel geschlossen. Ohne into werden mögliche Ziele gesucht (query). Zusammenführen nur nach ausdrücklicher Zustimmung der Person mit confirm=true.",
+      "Führt ein Ticket (ticket) in ein Haupt-Ticket (in_ticket) zusammen. Das zusammengeführte Ticket wird dabei in der Regel geschlossen. Ohne in_ticket werden mögliche Ziele gesucht (suchbegriff). Zusammenführen nur nach ausdrücklicher Zustimmung der Person mit bestaetigt=true.",
     annotations: {
       readOnlyHint: false,
       destructiveHint: true,
@@ -3714,22 +3915,22 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
-        workspace: WORKSPACE_PROPERTY,
+        arbeitsbereich: WORKSPACE_PROPERTY,
         ticket: TICKET_PROPERTY,
-        into: { ...TICKET_PROPERTY, description: "Haupt-Ticket." },
-        query: {
+        in_ticket: { ...TICKET_PROPERTY, description: "Haupt-Ticket." },
+        suchbegriff: {
           type: "string",
           description: "Suchtext im Betreff, um Ziele zu finden.",
         },
-        confirm: { type: "boolean" },
+        bestaetigt: { type: "boolean" },
       },
       required: ["ticket"],
       additionalProperties: false,
     },
     run: async (config, session, args) => {
-      if (args.into !== undefined && args.confirm !== true) {
+      if (args.in_ticket !== undefined && args.bestaetigt !== true) {
         throw new ToolError(
-          "Das Zusammenführen lässt sich nicht einfach rückgängig machen. Frage nach und wiederhole den Aufruf danach mit confirm=true.",
+          "Das Zusammenführen lässt sich nicht einfach rückgängig machen. Frage nach und wiederhole den Aufruf danach mit bestaetigt=true.",
         );
       }
       const { workspace, ticketId } = await ticketContext(
@@ -3737,11 +3938,11 @@ const TOOLS: Tool[] = [
         session,
         args,
       );
-      if (args.into === undefined) {
-        const query = str(args.query, 2, 240);
+      if (args.in_ticket === undefined) {
+        const query = str(args.suchbegriff, 2, 240);
         if (!query) {
           throw new ToolError(
-            'Gib "into" (Haupt-Ticket) oder "query" (Suchtext) an.',
+            'Gib "in_ticket" (Haupt-Ticket) oder "suchbegriff" (Suchtext) an.',
           );
         }
         const data = await callFunction(config, session, "ticket-operations", {
@@ -3762,7 +3963,7 @@ const TOOLS: Tool[] = [
         config,
         session,
         workspace,
-        args.into,
+        args.in_ticket,
       );
       const result = await callFunction(config, session, "ticket-operations", {
         type: "markMerged",
@@ -3779,7 +3980,7 @@ const TOOLS: Tool[] = [
   {
     name: "verknuepfung_entfernen",
     description:
-      "Entfernt eine Verknüpfung zwischen zwei Tickets (relation wie bei tickets_verknuepfen, Standard relates_to).",
+      "Entfernt eine Verknüpfung zwischen zwei Tickets (beziehung wie bei tickets_verknuepfen, Standard relates_to).",
     annotations: {
       readOnlyHint: false,
       destructiveHint: true,
@@ -3789,17 +3990,17 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
-        workspace: WORKSPACE_PROPERTY,
+        arbeitsbereich: WORKSPACE_PROPERTY,
         ticket: TICKET_PROPERTY,
-        relatedTicket: TICKET_PROPERTY,
-        relation: { type: "string", enum: RELATION_TYPES },
+        verknuepftes_ticket: TICKET_PROPERTY,
+        beziehung: { type: "string", enum: RELATION_TYPES },
       },
-      required: ["ticket", "relatedTicket"],
+      required: ["ticket", "verknuepftes_ticket"],
       additionalProperties: false,
     },
     run: async (config, session, args) => {
       const relation =
-        typeof args.relation === "string" ? args.relation : "relates_to";
+        typeof args.beziehung === "string" ? args.beziehung : "relates_to";
       if (!RELATION_TYPES.includes(relation)) {
         throw new ToolError(
           `Ungültige Verknüpfung. Erlaubt: ${RELATION_TYPES.join(", ")}.`,
@@ -3814,7 +4015,7 @@ const TOOLS: Tool[] = [
         config,
         session,
         workspace,
-        args.relatedTicket,
+        args.verknuepftes_ticket,
       );
       await callFunction(config, session, "ticket-operations", {
         type: "deleteRelation",
@@ -3829,23 +4030,27 @@ const TOOLS: Tool[] = [
   {
     name: "ticketvorlagen_anzeigen",
     description:
-      "Listet die Ticketvorlagen einer Abteilung (Standard: alle Abteilungen, in denen du Tickets erfassen kannst). Eine Vorlage lässt sich bei ticket_erfassen mit template verwenden.",
+      "Listet die Ticketvorlagen einer Abteilung (Standard: alle Abteilungen, in denen du Tickets erfassen kannst). Eine Vorlage lässt sich bei ticket_erfassen mit vorlage verwenden.",
     annotations: { readOnlyHint: true, title: "Ticketvorlagen" },
     inputSchema: {
       type: "object",
       properties: {
-        workspace: WORKSPACE_PROPERTY,
-        department: { type: "string", description: "Name oder ID." },
+        arbeitsbereich: WORKSPACE_PROPERTY,
+        abteilung: { type: "string", description: "Name oder ID." },
       },
       additionalProperties: false,
     },
     run: async (config, session, args) => {
-      const workspace = await resolveWorkspace(config, session, args.workspace);
+      const workspace = await resolveWorkspace(
+        config,
+        session,
+        args.arbeitsbereich,
+      );
       const { departments } = await formDepartments(config, session, workspace);
       const selected =
-        args.department === undefined
+        args.abteilung === undefined
           ? departments.filter((entry) => isUuid(entry.id)).slice(0, 10)
-          : [findByName(departments, args.department, "name", "Abteilung")];
+          : [findByName(departments, args.abteilung, "name", "Abteilung")];
       const result = await Promise.all(
         selected.map(async (department) => {
           const data = await callFunction(config, session, "ticket-actions", {
@@ -3872,7 +4077,7 @@ const TOOLS: Tool[] = [
   {
     name: "wissensartikel_speichern",
     description:
-      "Erstellt einen neuen Wissensartikel oder speichert eine neue Fassung eines bestehenden (article: ID). Der Artikel ist danach ein Entwurf und muss zur Prüfung gegeben werden (wissenspruefung_anfordern). Braucht das Recht zur Wissenspflege in nextDesk. Frage vorher nach. Ohne confirm zeigt das Werkzeug zuerst einen Entwurf zum Prüfen und Ergänzen; erst mit confirm=true wird abgeschickt.",
+      "Erstellt einen neuen Wissensartikel oder speichert eine neue Fassung eines bestehenden (wissensartikel: ID). Der Artikel ist danach ein Entwurf und muss zur Prüfung gegeben werden (wissenspruefung_anfordern). Braucht das Recht zur Wissenspflege in nextDesk. Frage vorher nach. Ohne bestaetigt zeigt das Werkzeug zuerst einen Entwurf zum Prüfen und Ergänzen; erst mit bestaetigt=true wird abgeschickt.",
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
@@ -3881,48 +4086,52 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
-        confirm: CONFIRM_PROPERTY,
-        workspace: WORKSPACE_PROPERTY,
-        article: {
+        bestaetigt: CONFIRM_PROPERTY,
+        arbeitsbereich: WORKSPACE_PROPERTY,
+        wissensartikel: {
           type: "string",
           description: "ID eines bestehenden Artikels; leer für neu.",
         },
-        title: { type: "string", minLength: 3, maxLength: 240 },
-        body: {
+        titel: { type: "string", minLength: 3, maxLength: 240 },
+        inhalt: {
           type: "string",
           maxLength: 100000,
           description: "Inhalt in Markdown.",
         },
-        visibility: {
+        sichtbarkeit: {
           type: "string",
           enum: ["internal", "external"],
           description: "internal (Standard) oder external (für Anfragende).",
         },
-        department: {
+        abteilung: {
           type: "string",
           description: "Abteilung (Name oder ID).",
         },
       },
-      required: ["title", "body"],
+      required: ["titel", "inhalt"],
       additionalProperties: false,
     },
     run: async (config, session, args) => {
-      const title = str(args.title, 3, 240);
+      const title = str(args.titel, 3, 240);
       if (!title)
-        throw new ToolError('"title" muss 3 bis 240 Zeichen lang sein.');
-      if (typeof args.body !== "string" || args.body.length > 100000) {
+        throw new ToolError('"titel" muss 3 bis 240 Zeichen lang sein.');
+      if (typeof args.inhalt !== "string" || args.inhalt.length > 100000) {
         throw new ToolError(
-          '"body" muss Text mit höchstens 100000 Zeichen sein.',
+          '"inhalt" muss Text mit höchstens 100000 Zeichen sein.',
         );
       }
-      if (args.article !== undefined && !isUuid(args.article)) {
-        throw new ToolError('"article" ist ungültig.');
+      if (args.wissensartikel !== undefined && !isUuid(args.wissensartikel)) {
+        throw new ToolError('"wissensartikel" ist ungültig.');
       }
       const visibility =
-        args.visibility === "external" ? "external" : "internal";
-      const workspace = await resolveWorkspace(config, session, args.workspace);
+        args.sichtbarkeit === "external" ? "external" : "internal";
+      const workspace = await resolveWorkspace(
+        config,
+        session,
+        args.arbeitsbereich,
+      );
       let departmentId: string | undefined;
-      if (args.department !== undefined) {
+      if (args.abteilung !== undefined) {
         const { departments } = await formDepartments(
           config,
           session,
@@ -3930,32 +4139,34 @@ const TOOLS: Tool[] = [
         );
         departmentId = findByName(
           departments,
-          args.department,
+          args.abteilung,
           "name",
           "Abteilung",
         ).id;
       }
-      if (args.confirm !== true) {
+      if (args.bestaetigt !== true) {
         return draftResult(
-          isUuid(args.article)
+          isUuid(args.wissensartikel)
             ? "Wissensartikel: neue Fassung"
             : "Wissensartikel erstellen",
           {
             titel: title,
             sichtbarkeit: visibility,
-            abteilung: args.department ?? null,
-            inhaltVorschau: clip(args.body, 1500),
-            zeichen: Array.from(String(args.body)).length,
+            abteilung: args.abteilung ?? null,
+            inhaltVorschau: clip(args.inhalt, 1500),
+            zeichen: Array.from(String(args.inhalt)).length,
           },
-          [args.department === undefined && "abteilung"],
+          [args.abteilung === undefined && "abteilung"],
         );
       }
       const data = await callFunction(config, session, "knowledge-base", {
         type: "saveArticle",
         tenantId: workspace.id,
-        ...(isUuid(args.article) ? { articleId: args.article } : {}),
+        ...(isUuid(args.wissensartikel)
+          ? { articleId: args.wissensartikel }
+          : {}),
         title,
-        bodyMarkdown: args.body,
+        bodyMarkdown: args.inhalt,
         visibility,
         ...(departmentId ? { departmentId } : {}),
       });
@@ -3980,19 +4191,24 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
-        workspace: WORKSPACE_PROPERTY,
-        article: { type: "string" },
+        arbeitsbereich: WORKSPACE_PROPERTY,
+        wissensartikel: { type: "string" },
       },
-      required: ["article"],
+      required: ["wissensartikel"],
       additionalProperties: false,
     },
     run: async (config, session, args) => {
-      if (!isUuid(args.article)) throw new ToolError('"article" ist ungültig.');
-      const workspace = await resolveWorkspace(config, session, args.workspace);
+      if (!isUuid(args.wissensartikel))
+        throw new ToolError('"wissensartikel" ist ungültig.');
+      const workspace = await resolveWorkspace(
+        config,
+        session,
+        args.arbeitsbereich,
+      );
       const data = await callFunction(config, session, "knowledge-base", {
         type: "requestReview",
         tenantId: workspace.id,
-        articleId: args.article,
+        articleId: args.wissensartikel,
       });
       const article = isRecord(data.article) ? data.article : {};
       return textResult({ requested: true, status: article.status ?? null });
@@ -4001,7 +4217,7 @@ const TOOLS: Tool[] = [
   {
     name: "wissensartikel_freigeben",
     description:
-      "Entscheidet über einen Wissensartikel in Prüfung: approved veröffentlicht ihn, rejected setzt ihn auf Entwurf zurück. Braucht das Recht zum Veröffentlichen in nextDesk und die ausdrückliche Zustimmung der Person (confirm=true).",
+      "Entscheidet über einen Wissensartikel in Prüfung: approved veröffentlicht ihn, rejected setzt ihn auf Entwurf zurück. Braucht das Recht zum Veröffentlichen in nextDesk und die ausdrückliche Zustimmung der Person (bestaetigt=true).",
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
@@ -4010,35 +4226,40 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
-        workspace: WORKSPACE_PROPERTY,
-        article: { type: "string" },
-        decision: { type: "string", enum: ["approved", "rejected"] },
-        note: { type: "string", maxLength: 120 },
-        confirm: { type: "boolean" },
+        arbeitsbereich: WORKSPACE_PROPERTY,
+        wissensartikel: { type: "string" },
+        entscheid: { type: "string", enum: ["approved", "rejected"] },
+        notiz: { type: "string", maxLength: 120 },
+        bestaetigt: { type: "boolean" },
       },
-      required: ["article", "decision", "confirm"],
+      required: ["wissensartikel", "entscheid", "bestaetigt"],
       additionalProperties: false,
     },
     run: async (config, session, args) => {
-      if (args.confirm !== true) {
+      if (args.bestaetigt !== true) {
         throw new ToolError(
-          "Eine Freigabe veröffentlicht den Artikel. Frage nach und wiederhole den Aufruf danach mit confirm=true.",
+          "Eine Freigabe veröffentlicht den Artikel. Frage nach und wiederhole den Aufruf danach mit bestaetigt=true.",
         );
       }
-      if (!isUuid(args.article)) throw new ToolError('"article" ist ungültig.');
-      if (args.decision !== "approved" && args.decision !== "rejected") {
-        throw new ToolError('"decision" muss approved oder rejected sein.');
+      if (!isUuid(args.wissensartikel))
+        throw new ToolError('"wissensartikel" ist ungültig.');
+      if (args.entscheid !== "approved" && args.entscheid !== "rejected") {
+        throw new ToolError('"entscheid" muss approved oder rejected sein.');
       }
-      const note = args.note === undefined ? null : str(args.note, 1, 120);
-      if (args.note !== undefined && !note) {
-        throw new ToolError('"note" muss 1 bis 120 Zeichen lang sein.');
+      const note = args.notiz === undefined ? null : str(args.notiz, 1, 120);
+      if (args.notiz !== undefined && !note) {
+        throw new ToolError('"notiz" muss 1 bis 120 Zeichen lang sein.');
       }
-      const workspace = await resolveWorkspace(config, session, args.workspace);
+      const workspace = await resolveWorkspace(
+        config,
+        session,
+        args.arbeitsbereich,
+      );
       const data = await callFunction(config, session, "knowledge-base", {
         type: "decideReview",
         tenantId: workspace.id,
-        articleId: args.article,
-        decision: args.decision,
+        articleId: args.wissensartikel,
+        decision: args.entscheid,
         ...(note ? { note } : {}),
       });
       const article = isRecord(data.article) ? data.article : {};
@@ -4048,7 +4269,7 @@ const TOOLS: Tool[] = [
   {
     name: "wissensartikel_archivieren",
     description:
-      "Archiviert einen Wissensartikel (er ist danach nicht mehr auffindbar). Nur nach ausdrücklicher Zustimmung der Person mit confirm=true.",
+      "Archiviert einen Wissensartikel (er ist danach nicht mehr auffindbar). Nur nach ausdrücklicher Zustimmung der Person mit bestaetigt=true.",
     annotations: {
       readOnlyHint: false,
       destructiveHint: true,
@@ -4057,25 +4278,30 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
-        workspace: WORKSPACE_PROPERTY,
-        article: { type: "string" },
-        confirm: { type: "boolean" },
+        arbeitsbereich: WORKSPACE_PROPERTY,
+        wissensartikel: { type: "string" },
+        bestaetigt: { type: "boolean" },
       },
-      required: ["article", "confirm"],
+      required: ["wissensartikel", "bestaetigt"],
       additionalProperties: false,
     },
     run: async (config, session, args) => {
-      if (args.confirm !== true) {
+      if (args.bestaetigt !== true) {
         throw new ToolError(
-          "Archivieren entfernt den Artikel aus der Wissensdatenbank. Frage nach und wiederhole den Aufruf danach mit confirm=true.",
+          "Archivieren entfernt den Artikel aus der Wissensdatenbank. Frage nach und wiederhole den Aufruf danach mit bestaetigt=true.",
         );
       }
-      if (!isUuid(args.article)) throw new ToolError('"article" ist ungültig.');
-      const workspace = await resolveWorkspace(config, session, args.workspace);
+      if (!isUuid(args.wissensartikel))
+        throw new ToolError('"wissensartikel" ist ungültig.');
+      const workspace = await resolveWorkspace(
+        config,
+        session,
+        args.arbeitsbereich,
+      );
       await callFunction(config, session, "knowledge-base", {
         type: "archiveArticle",
         tenantId: workspace.id,
-        articleId: args.article,
+        articleId: args.wissensartikel,
       });
       return textResult({ archived: true });
     },
@@ -4086,11 +4312,15 @@ const TOOLS: Tool[] = [
     annotations: { readOnlyHint: true, title: "Wissenssammlungen" },
     inputSchema: {
       type: "object",
-      properties: { workspace: WORKSPACE_PROPERTY },
+      properties: { arbeitsbereich: WORKSPACE_PROPERTY },
       additionalProperties: false,
     },
     run: async (config, session, args) => {
-      const workspace = await resolveWorkspace(config, session, args.workspace);
+      const workspace = await resolveWorkspace(
+        config,
+        session,
+        args.arbeitsbereich,
+      );
       const data = await callFunction(config, session, "knowledge-base", {
         type: "listCollections",
         tenantId: workspace.id,
@@ -4112,19 +4342,24 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
-        workspace: WORKSPACE_PROPERTY,
-        article: { type: "string" },
+        arbeitsbereich: WORKSPACE_PROPERTY,
+        wissensartikel: { type: "string" },
       },
-      required: ["article"],
+      required: ["wissensartikel"],
       additionalProperties: false,
     },
     run: async (config, session, args) => {
-      if (!isUuid(args.article)) throw new ToolError('"article" ist ungültig.');
-      const workspace = await resolveWorkspace(config, session, args.workspace);
+      if (!isUuid(args.wissensartikel))
+        throw new ToolError('"wissensartikel" ist ungültig.');
+      const workspace = await resolveWorkspace(
+        config,
+        session,
+        args.arbeitsbereich,
+      );
       const data = await callFunction(config, session, "knowledge-base", {
         type: "listRevisions",
         tenantId: workspace.id,
-        articleId: args.article,
+        articleId: args.wissensartikel,
       });
       return textResult({
         revisions: records(data.revisions).map((entry) => ({
@@ -4142,7 +4377,10 @@ const TOOLS: Tool[] = [
     annotations: { readOnlyHint: true, title: "Wissen am Ticket" },
     inputSchema: {
       type: "object",
-      properties: { workspace: WORKSPACE_PROPERTY, ticket: TICKET_PROPERTY },
+      properties: {
+        arbeitsbereich: WORKSPACE_PROPERTY,
+        ticket: TICKET_PROPERTY,
+      },
       required: ["ticket"],
       additionalProperties: false,
     },
@@ -4185,15 +4423,16 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
-        workspace: WORKSPACE_PROPERTY,
+        arbeitsbereich: WORKSPACE_PROPERTY,
         ticket: TICKET_PROPERTY,
-        article: { type: "string" },
+        wissensartikel: { type: "string" },
       },
-      required: ["ticket", "article"],
+      required: ["ticket", "wissensartikel"],
       additionalProperties: false,
     },
     run: async (config, session, args) => {
-      if (!isUuid(args.article)) throw new ToolError('"article" ist ungültig.');
+      if (!isUuid(args.wissensartikel))
+        throw new ToolError('"wissensartikel" ist ungültig.');
       const { workspace, ticketId } = await ticketContext(
         config,
         session,
@@ -4203,7 +4442,7 @@ const TOOLS: Tool[] = [
         type: "detach",
         tenantId: workspace.id,
         ticketId,
-        articleId: args.article,
+        articleId: args.wissensartikel,
       });
       return textResult({ detached: true });
     },
@@ -4211,7 +4450,7 @@ const TOOLS: Tool[] = [
   {
     name: "wissensartikel_senden",
     description:
-      "Sendet einen verknüpften, externen und veröffentlichten Wissensartikel als Antwort an die anfragende Person. Nur nach ausdrücklicher Zustimmung der Person mit confirm=true.",
+      "Sendet einen verknüpften, externen und veröffentlichten Wissensartikel als Antwort an die anfragende Person. Nur nach ausdrücklicher Zustimmung der Person mit bestaetigt=true.",
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
@@ -4220,21 +4459,22 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
-        workspace: WORKSPACE_PROPERTY,
+        arbeitsbereich: WORKSPACE_PROPERTY,
         ticket: TICKET_PROPERTY,
-        article: { type: "string" },
-        confirm: { type: "boolean" },
+        wissensartikel: { type: "string" },
+        bestaetigt: { type: "boolean" },
       },
-      required: ["ticket", "article", "confirm"],
+      required: ["ticket", "wissensartikel", "bestaetigt"],
       additionalProperties: false,
     },
     run: async (config, session, args) => {
-      if (args.confirm !== true) {
+      if (args.bestaetigt !== true) {
         throw new ToolError(
-          "Der Artikel wird der anfragenden Person zugestellt. Frage nach und wiederhole den Aufruf danach mit confirm=true.",
+          "Der Artikel wird der anfragenden Person zugestellt. Frage nach und wiederhole den Aufruf danach mit bestaetigt=true.",
         );
       }
-      if (!isUuid(args.article)) throw new ToolError('"article" ist ungültig.');
+      if (!isUuid(args.wissensartikel))
+        throw new ToolError('"wissensartikel" ist ungültig.');
       const { workspace, ticketId } = await ticketContext(
         config,
         session,
@@ -4244,7 +4484,7 @@ const TOOLS: Tool[] = [
         type: "sendToRequester",
         tenantId: workspace.id,
         ticketId,
-        articleId: args.article,
+        articleId: args.wissensartikel,
       });
       return textResult({
         sent: true,
@@ -4261,17 +4501,24 @@ const TOOLS: Tool[] = [
     annotations: { readOnlyHint: true, title: "Serviceaufgabe" },
     inputSchema: {
       type: "object",
-      properties: { workspace: WORKSPACE_PROPERTY, task: { type: "string" } },
-      required: ["task"],
+      properties: {
+        arbeitsbereich: WORKSPACE_PROPERTY,
+        aufgabe: { type: "string" },
+      },
+      required: ["aufgabe"],
       additionalProperties: false,
     },
     run: async (config, session, args) => {
-      if (!isUuid(args.task)) throw new ToolError('"task" ist ungültig.');
-      const workspace = await resolveWorkspace(config, session, args.workspace);
+      if (!isUuid(args.aufgabe)) throw new ToolError('"aufgabe" ist ungültig.');
+      const workspace = await resolveWorkspace(
+        config,
+        session,
+        args.arbeitsbereich,
+      );
       const data = await callFunction(config, session, "service-tasks", {
         type: "getOccurrence",
         tenantId: workspace.id,
-        occurrenceId: args.task,
+        occurrenceId: args.aufgabe,
       });
       return textResult(serviceTaskDetail(data));
     },
@@ -4279,7 +4526,7 @@ const TOOLS: Tool[] = [
   {
     name: "serviceaufgabe_bearbeiten",
     description:
-      'Bearbeitet eine Serviceaufgabe. action: start, skip (mit reason), note (Notiz speichern), check (Checklistenpunkt checkId, done), reopen, reschedule (dueOn JJJJ-MM-TT, braucht Verwaltungsrecht), assign (assignee: "me", "none" oder Personen-ID, braucht Verwaltungsrecht). Zum Abschliessen serviceaufgabe_erledigen verwenden.',
+      'Bearbeitet eine Serviceaufgabe. aktion: start, skip (mit begruendung), notiz (Notiz speichern), check (Checklistenpunkt punkt_id, erledigt), reopen, reschedule (faellig_am JJJJ-MM-TT, braucht Verwaltungsrecht), assign (zustaendig: "me", "none" oder Personen-ID, braucht Verwaltungsrecht). Zum Abschliessen serviceaufgabe_erledigen verwenden.',
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
@@ -4288,9 +4535,9 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
-        workspace: WORKSPACE_PROPERTY,
-        task: { type: "string" },
-        action: {
+        arbeitsbereich: WORKSPACE_PROPERTY,
+        aufgabe: { type: "string" },
+        aktion: {
           type: "string",
           enum: [
             "start",
@@ -4302,66 +4549,67 @@ const TOOLS: Tool[] = [
             "assign",
           ],
         },
-        reason: { type: "string", maxLength: 500 },
-        note: { type: "string", maxLength: 4000 },
-        checkId: { type: "string" },
-        done: { type: "boolean" },
-        dueOn: { type: "string" },
-        assignee: { type: "string" },
+        begruendung: { type: "string", maxLength: 500 },
+        notiz: { type: "string", maxLength: 4000 },
+        punkt_id: { type: "string" },
+        erledigt: { type: "boolean" },
+        faellig_am: { type: "string" },
+        zustaendig: { type: "string" },
       },
-      required: ["task", "action"],
+      required: ["aufgabe", "aktion"],
       additionalProperties: false,
     },
     run: async (config, session, args) => {
-      if (!isUuid(args.task)) throw new ToolError('"task" ist ungültig.');
+      if (!isUuid(args.aufgabe)) throw new ToolError('"aufgabe" ist ungültig.');
       const body: Json = {};
-      switch (args.action) {
+      switch (args.aktion) {
         case "start":
         case "reopen":
-          body.action = args.action;
+          body.action = args.aktion;
           break;
         case "skip": {
-          const reason = str(args.reason, 1, 500);
+          const reason = str(args.begruendung, 1, 500);
           if (!reason)
-            throw new ToolError('Zum Überspringen braucht es "reason".');
+            throw new ToolError('Zum Überspringen braucht es "begruendung".');
           body.action = "skip";
           body.reason = reason;
           break;
         }
         case "note": {
           const note =
-            args.note === undefined || args.note === ""
+            args.notiz === undefined || args.notiz === ""
               ? ""
-              : str(args.note, 1, 4000);
+              : str(args.notiz, 1, 4000);
           if (note === null)
-            throw new ToolError('"note" darf höchstens 4000 Zeichen haben.');
+            throw new ToolError('"notiz" darf höchstens 4000 Zeichen haben.');
           body.action = "saveNote";
           body.note = note;
           break;
         }
         case "check":
-          if (typeof args.checkId !== "string" || !args.checkId) {
+          if (typeof args.punkt_id !== "string" || !args.punkt_id) {
             throw new ToolError(
-              '"checkId" fehlt (aus serviceaufgabe_anzeigen).',
+              '"punkt_id" fehlt (aus serviceaufgabe_anzeigen).',
             );
           }
           body.action = "toggleCheck";
-          body.checkId = args.checkId;
-          body.done = args.done !== false;
+          body.checkId = args.punkt_id;
+          body.done = args.erledigt !== false;
           break;
         case "reschedule":
           if (
-            typeof args.dueOn !== "string" ||
-            isoDate(`${args.dueOn}T00:00:00Z`)?.slice(0, 10) !== args.dueOn
+            typeof args.faellig_am !== "string" ||
+            isoDate(`${args.faellig_am}T00:00:00Z`)?.slice(0, 10) !==
+              args.faellig_am
           ) {
-            throw new ToolError('"dueOn" muss ein Datum JJJJ-MM-TT sein.');
+            throw new ToolError('"faellig_am" muss ein Datum JJJJ-MM-TT sein.');
           }
           body.action = "reschedule";
-          body.dueOn = args.dueOn;
+          body.dueOn = args.faellig_am;
           break;
         case "assign": {
           const value =
-            typeof args.assignee === "string" ? args.assignee.trim() : "";
+            typeof args.zustaendig === "string" ? args.zustaendig.trim() : "";
           const assigneeId =
             value === "me"
               ? session.userId
@@ -4370,7 +4618,7 @@ const TOOLS: Tool[] = [
                 : value;
           if (assigneeId !== null && !isUuid(assigneeId)) {
             throw new ToolError(
-              '"assignee" muss "me", "none" oder eine Personen-ID sein.',
+              '"zustaendig" muss "me", "none" oder eine Personen-ID sein.',
             );
           }
           body.action = "assign";
@@ -4378,13 +4626,17 @@ const TOOLS: Tool[] = [
           break;
         }
         default:
-          throw new ToolError("Ungültige action.");
+          throw new ToolError("Ungültige aktion.");
       }
-      const workspace = await resolveWorkspace(config, session, args.workspace);
+      const workspace = await resolveWorkspace(
+        config,
+        session,
+        args.arbeitsbereich,
+      );
       const data = await callFunction(config, session, "service-tasks", {
         type: "updateOccurrence",
         tenantId: workspace.id,
-        occurrenceId: args.task,
+        occurrenceId: args.aufgabe,
         ...body,
       });
       return textResult({ updated: true, task: serviceTaskDetail(data) });
@@ -4398,24 +4650,28 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
-        workspace: WORKSPACE_PROPERTY,
-        month: { type: "string", description: "Monat JJJJ-MM." },
+        arbeitsbereich: WORKSPACE_PROPERTY,
+        monat: { type: "string", description: "Monat JJJJ-MM." },
       },
-      required: ["month"],
+      required: ["monat"],
       additionalProperties: false,
     },
     run: async (config, session, args) => {
       if (
-        typeof args.month !== "string" ||
-        !/^\d{4}-(0[1-9]|1[0-2])$/.test(args.month)
+        typeof args.monat !== "string" ||
+        !/^\d{4}-(0[1-9]|1[0-2])$/.test(args.monat)
       ) {
-        throw new ToolError('"month" muss die Form JJJJ-MM haben.');
+        throw new ToolError('"monat" muss die Form JJJJ-MM haben.');
       }
-      const workspace = await resolveWorkspace(config, session, args.workspace);
+      const workspace = await resolveWorkspace(
+        config,
+        session,
+        args.arbeitsbereich,
+      );
       const data = await callFunction(config, session, "service-tasks", {
         type: "calendar",
         tenantId: workspace.id,
-        month: args.month,
+        month: args.monat,
       });
       return textResult({
         month: data.month,
@@ -4441,7 +4697,10 @@ const TOOLS: Tool[] = [
     annotations: { readOnlyHint: true, title: "Freigaben am Ticket" },
     inputSchema: {
       type: "object",
-      properties: { workspace: WORKSPACE_PROPERTY, ticket: TICKET_PROPERTY },
+      properties: {
+        arbeitsbereich: WORKSPACE_PROPERTY,
+        ticket: TICKET_PROPERTY,
+      },
       required: ["ticket"],
       additionalProperties: false,
     },
@@ -4479,7 +4738,7 @@ const TOOLS: Tool[] = [
   {
     name: "freigabe_anfordern",
     description:
-      'Fordert für ein Ticket eine Freigabe an (z. B. kind "beschaffung"). requiredApprovals: Anzahl nötiger Zustimmungen (1-10, Standard 1). Frage vorher nach. Ohne confirm zeigt das Werkzeug zuerst einen Entwurf zum Prüfen und Ergänzen; erst mit confirm=true wird abgeschickt.',
+      'Fordert für ein Ticket eine Freigabe an (z. B. art "beschaffung"). noetige_zustimmungen: Anzahl nötiger Zustimmungen (1-10, Standard 1). Frage vorher nach. Ohne bestaetigt zeigt das Werkzeug zuerst einen Entwurf zum Prüfen und Ergänzen; erst mit bestaetigt=true wird abgeschickt.',
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
@@ -4488,51 +4747,51 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
-        confirm: CONFIRM_PROPERTY,
-        workspace: WORKSPACE_PROPERTY,
+        bestaetigt: CONFIRM_PROPERTY,
+        arbeitsbereich: WORKSPACE_PROPERTY,
         ticket: TICKET_PROPERTY,
-        kind: {
+        art: {
           type: "string",
           description: "Art der Freigabe, Kleinbuchstaben, z. B. beschaffung.",
         },
-        reason: { type: "string", minLength: 3, maxLength: 2000 },
-        requiredApprovals: { type: "integer", minimum: 1, maximum: 10 },
+        begruendung: { type: "string", minLength: 3, maxLength: 2000 },
+        noetige_zustimmungen: { type: "integer", minimum: 1, maximum: 10 },
       },
-      required: ["ticket", "kind", "reason"],
+      required: ["ticket", "art", "begruendung"],
       additionalProperties: false,
     },
     run: async (config, session, args) => {
       const kind =
-        typeof args.kind === "string"
-          ? args.kind
+        typeof args.art === "string"
+          ? args.art
               .trim()
               .toLowerCase()
               .replace(/[^a-z0-9_]+/g, "_")
           : "";
       if (!/^[a-z][a-z0-9_]{1,62}$/.test(kind)) {
         throw new ToolError(
-          '"kind" muss mit einem Buchstaben beginnen (a-z, 0-9, _; 2-63 Zeichen).',
+          '"art" muss mit einem Buchstaben beginnen (a-z, 0-9, _; 2-63 Zeichen).',
         );
       }
-      const reason = str(args.reason, 3, 2000);
+      const reason = str(args.begruendung, 3, 2000);
       if (!reason)
-        throw new ToolError('"reason" muss 3 bis 2000 Zeichen lang sein.');
+        throw new ToolError('"begruendung" muss 3 bis 2000 Zeichen lang sein.');
       const required =
-        args.requiredApprovals === undefined ? 1 : args.requiredApprovals;
+        args.noetige_zustimmungen === undefined ? 1 : args.noetige_zustimmungen;
       if (
         typeof required !== "number" ||
         !Number.isInteger(required) ||
         required < 1 ||
         required > 10
       ) {
-        throw new ToolError('"requiredApprovals" muss 1 bis 10 sein.');
+        throw new ToolError('"noetige_zustimmungen" muss 1 bis 10 sein.');
       }
       const { workspace, ticketId } = await ticketContext(
         config,
         session,
         args,
       );
-      if (args.confirm !== true) {
+      if (args.bestaetigt !== true) {
         return draftResult("Freigabe anfordern", {
           ticket: args.ticket,
           art: kind,
@@ -4567,16 +4826,16 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
-        workspace: WORKSPACE_PROPERTY,
+        arbeitsbereich: WORKSPACE_PROPERTY,
         ticket: TICKET_PROPERTY,
-        approval: { type: "string" },
+        freigabe: { type: "string" },
       },
-      required: ["ticket", "approval"],
+      required: ["ticket", "freigabe"],
       additionalProperties: false,
     },
     run: async (config, session, args) => {
-      if (!isUuid(args.approval))
-        throw new ToolError('"approval" ist ungültig.');
+      if (!isUuid(args.freigabe))
+        throw new ToolError('"freigabe" ist ungültig.');
       const { workspace, ticketId } = await ticketContext(
         config,
         session,
@@ -4589,7 +4848,7 @@ const TOOLS: Tool[] = [
         ticketId,
       });
       if (
-        !records(list.approvals).some((entry) => entry.id === args.approval)
+        !records(list.approvals).some((entry) => entry.id === args.freigabe)
       ) {
         throw new ToolError("Diese Freigabe gehört nicht zu diesem Ticket.");
       }
@@ -4597,7 +4856,7 @@ const TOOLS: Tool[] = [
         type: "cancel",
         tenantId: workspace.id,
         ticketId,
-        approvalId: args.approval,
+        approvalId: args.freigabe,
       });
       return textResult({ cancelled: true });
     },
@@ -4607,18 +4866,22 @@ const TOOLS: Tool[] = [
   {
     name: "stellvertretungen_anzeigen",
     description:
-      "Zeigt deine Stellvertretungen (wer dich wann vertritt). Mit agent die einer anderen Person, sofern du sie führst.",
+      "Zeigt deine Stellvertretungen (wer dich wann vertritt). Mit person die einer anderen Person, sofern du sie führst.",
     annotations: { readOnlyHint: true, title: "Stellvertretungen" },
     inputSchema: {
       type: "object",
       properties: {
-        workspace: WORKSPACE_PROPERTY,
-        agent: { type: "string", description: "Name oder ID (optional)." },
+        arbeitsbereich: WORKSPACE_PROPERTY,
+        person: { type: "string", description: "Name oder ID (optional)." },
       },
       additionalProperties: false,
     },
     run: async (config, session, args) => {
-      const workspace = await resolveWorkspace(config, session, args.workspace);
+      const workspace = await resolveWorkspace(
+        config,
+        session,
+        args.arbeitsbereich,
+      );
       const people = records(
         (
           await callFunction(config, session, "agent-workbench", {
@@ -4628,9 +4891,9 @@ const TOOLS: Tool[] = [
         ).agents,
       );
       const agent =
-        args.agent === undefined
+        args.person === undefined
           ? null
-          : findByName(people, args.agent, "displayName", "Person");
+          : findByName(people, args.person, "displayName", "Person");
       const data = await callFunction(config, session, "agent-workbench", {
         type: "listDelegations",
         tenantId: workspace.id,
@@ -4654,7 +4917,7 @@ const TOOLS: Tool[] = [
   {
     name: "stellvertretung_einrichten",
     description:
-      "Richtet eine Stellvertretung ein: delegate vertritt dich (oder agent, sofern du die Person führst) von startsAt bis endsAt (ISO 8601). Frage vorher nach. Ohne confirm zeigt das Werkzeug zuerst einen Entwurf zum Prüfen und Ergänzen; erst mit confirm=true wird abgeschickt.",
+      "Richtet eine Stellvertretung ein: vertretung vertritt dich (oder person, sofern du die Person führst) von beginn bis ende (ISO 8601). Frage vorher nach. Ohne bestaetigt zeigt das Werkzeug zuerst einen Entwurf zum Prüfen und Ergänzen; erst mit bestaetigt=true wird abgeschickt.",
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
@@ -4663,30 +4926,40 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
-        confirm: CONFIRM_PROPERTY,
-        workspace: WORKSPACE_PROPERTY,
-        delegate: { type: "string", description: "Vertretung (Name oder ID)." },
-        agent: { type: "string", description: "Vertretene Person (optional)." },
-        startsAt: { type: "string" },
-        endsAt: { type: "string" },
-        note: { type: "string", maxLength: 2000 },
+        bestaetigt: CONFIRM_PROPERTY,
+        arbeitsbereich: WORKSPACE_PROPERTY,
+        vertretung: {
+          type: "string",
+          description: "Vertretung (Name oder ID).",
+        },
+        person: {
+          type: "string",
+          description: "Vertretene Person (optional).",
+        },
+        beginn: { type: "string" },
+        ende: { type: "string" },
+        notiz: { type: "string", maxLength: 2000 },
       },
-      required: ["delegate", "startsAt", "endsAt"],
+      required: ["vertretung", "beginn", "ende"],
       additionalProperties: false,
     },
     run: async (config, session, args) => {
-      const startsAt = isoDate(args.startsAt);
-      const endsAt = isoDate(args.endsAt);
+      const startsAt = isoDate(args.beginn);
+      const endsAt = isoDate(args.ende);
       if (!startsAt || !endsAt || endsAt <= startsAt) {
         throw new ToolError(
-          '"startsAt" und "endsAt" müssen gültige Zeitpunkte sein, das Ende nach dem Beginn.',
+          '"beginn" und "ende" müssen gültige Zeitpunkte sein, das Ende nach dem Beginn.',
         );
       }
-      const note = args.note === undefined ? null : str(args.note, 1, 2000);
-      if (args.note !== undefined && !note) {
-        throw new ToolError('"note" muss 1 bis 2000 Zeichen lang sein.');
+      const note = args.notiz === undefined ? null : str(args.notiz, 1, 2000);
+      if (args.notiz !== undefined && !note) {
+        throw new ToolError('"notiz" muss 1 bis 2000 Zeichen lang sein.');
       }
-      const workspace = await resolveWorkspace(config, session, args.workspace);
+      const workspace = await resolveWorkspace(
+        config,
+        session,
+        args.arbeitsbereich,
+      );
       const people = records(
         (
           await callFunction(config, session, "agent-workbench", {
@@ -4697,15 +4970,15 @@ const TOOLS: Tool[] = [
       );
       const delegate = findByName(
         people,
-        args.delegate,
+        args.vertretung,
         "displayName",
         "Person",
       );
       const agent =
-        args.agent === undefined
+        args.person === undefined
           ? null
-          : findByName(people, args.agent, "displayName", "Person");
-      if (args.confirm !== true) {
+          : findByName(people, args.person, "displayName", "Person");
+      if (args.bestaetigt !== true) {
         return draftResult(
           "Stellvertretung einrichten",
           {
@@ -4715,7 +4988,7 @@ const TOOLS: Tool[] = [
             bis: endsAt,
             notiz: note,
           },
-          [args.note === undefined && "notiz"],
+          [args.notiz === undefined && "notiz"],
         );
       }
       await callFunction(config, session, "agent-workbench", {
@@ -4747,13 +5020,20 @@ const TOOLS: Tool[] = [
     },
     inputSchema: {
       type: "object",
-      properties: { workspace: WORKSPACE_PROPERTY, id: { type: "string" } },
+      properties: {
+        arbeitsbereich: WORKSPACE_PROPERTY,
+        id: { type: "string" },
+      },
       required: ["id"],
       additionalProperties: false,
     },
     run: async (config, session, args) => {
       if (!isUuid(args.id)) throw new ToolError('"id" ist ungültig.');
-      const workspace = await resolveWorkspace(config, session, args.workspace);
+      const workspace = await resolveWorkspace(
+        config,
+        session,
+        args.arbeitsbereich,
+      );
       const data = await callFunction(config, session, "agent-workbench", {
         type: "endDelegation",
         tenantId: workspace.id,
@@ -4772,13 +5052,17 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
-        workspace: WORKSPACE_PROPERTY,
-        openOnly: { type: "boolean", description: "Nur nicht behobene." },
+        arbeitsbereich: WORKSPACE_PROPERTY,
+        nur_offene: { type: "boolean", description: "Nur nicht behobene." },
       },
       additionalProperties: false,
     },
     run: async (config, session, args) => {
-      const workspace = await resolveWorkspace(config, session, args.workspace);
+      const workspace = await resolveWorkspace(
+        config,
+        session,
+        args.arbeitsbereich,
+      );
       const data = await callFunction(config, session, "agent-workbench", {
         type: "listIncidentNotices",
         tenantId: workspace.id,
@@ -4786,7 +5070,7 @@ const TOOLS: Tool[] = [
       return textResult({
         notices: records(data.notices)
           .filter(
-            (entry) => args.openOnly !== true || entry.status !== "resolved",
+            (entry) => args.nur_offene !== true || entry.status !== "resolved",
           )
           .map((entry) => ({
             id: entry.id,
@@ -4802,7 +5086,7 @@ const TOOLS: Tool[] = [
   {
     name: "stoerungsmeldung_speichern",
     description:
-      "Erfasst eine Störungsmeldung oder aktualisiert sie (notice: ID). status: investigating, identified, monitoring, resolved. Braucht das Verwaltungsrecht für Tickets. Frage vorher nach. Ohne confirm zeigt das Werkzeug zuerst einen Entwurf zum Prüfen und Ergänzen; erst mit confirm=true wird abgeschickt.",
+      "Erfasst eine Störungsmeldung oder aktualisiert sie (meldung: ID). status: investigating, identified, monitoring, resolved. Braucht das Verwaltungsrecht für Tickets. Frage vorher nach. Ohne bestaetigt zeigt das Werkzeug zuerst einen Entwurf zum Prüfen und Ergänzen; erst mit bestaetigt=true wird abgeschickt.",
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
@@ -4811,27 +5095,27 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
-        confirm: CONFIRM_PROPERTY,
-        workspace: WORKSPACE_PROPERTY,
-        notice: { type: "string", description: "ID zum Aktualisieren." },
-        title: { type: "string", minLength: 3, maxLength: 240 },
-        description: { type: "string", minLength: 3, maxLength: 10000 },
+        bestaetigt: CONFIRM_PROPERTY,
+        arbeitsbereich: WORKSPACE_PROPERTY,
+        meldung: { type: "string", description: "ID zum Aktualisieren." },
+        titel: { type: "string", minLength: 3, maxLength: 240 },
+        beschreibung: { type: "string", minLength: 3, maxLength: 10000 },
         status: {
           type: "string",
           enum: ["investigating", "identified", "monitoring", "resolved"],
         },
-        department: { type: "string", description: "Abteilung (optional)." },
-        startsAt: { type: "string", description: "Beginn (ISO 8601)." },
+        abteilung: { type: "string", description: "Abteilung (optional)." },
+        beginn: { type: "string", description: "Beginn (ISO 8601)." },
       },
-      required: ["title", "description", "status"],
+      required: ["titel", "beschreibung", "status"],
       additionalProperties: false,
     },
     run: async (config, session, args) => {
-      const title = str(args.title, 3, 240);
-      const description = str(args.description, 3, 10000);
+      const title = str(args.titel, 3, 240);
+      const description = str(args.beschreibung, 3, 10000);
       if (!title || !description) {
         throw new ToolError(
-          '"title" (3-240) und "description" (3-10000 Zeichen) sind nötig.',
+          '"titel" (3-240) und "beschreibung" (3-10000 Zeichen) sind nötig.',
         );
       }
       if (
@@ -4841,15 +5125,19 @@ const TOOLS: Tool[] = [
       ) {
         throw new ToolError("Ungültiger status.");
       }
-      if (args.notice !== undefined && !isUuid(args.notice)) {
-        throw new ToolError('"notice" ist ungültig.');
+      if (args.meldung !== undefined && !isUuid(args.meldung)) {
+        throw new ToolError('"meldung" ist ungültig.');
       }
       const startsAt =
-        args.startsAt === undefined ? undefined : isoDate(args.startsAt);
-      if (startsAt === null) throw new ToolError('"startsAt" ist ungültig.');
-      const workspace = await resolveWorkspace(config, session, args.workspace);
+        args.beginn === undefined ? undefined : isoDate(args.beginn);
+      if (startsAt === null) throw new ToolError('"beginn" ist ungültig.');
+      const workspace = await resolveWorkspace(
+        config,
+        session,
+        args.arbeitsbereich,
+      );
       let departmentId: string | null = null;
-      if (args.department !== undefined) {
+      if (args.abteilung !== undefined) {
         const { departments } = await formDepartments(
           config,
           session,
@@ -4857,21 +5145,21 @@ const TOOLS: Tool[] = [
         );
         departmentId = findByName(
           departments,
-          args.department,
+          args.abteilung,
           "name",
           "Abteilung",
         ).id;
       }
-      if (args.confirm !== true) {
+      if (args.bestaetigt !== true) {
         return draftResult(
-          isUuid(args.notice)
+          isUuid(args.meldung)
             ? "Störungsmeldung aktualisieren"
             : "Störungsmeldung erfassen",
           {
             titel: title,
             beschreibung: clip(description, 2000),
             status: args.status,
-            abteilung: args.department ?? null,
+            abteilung: args.abteilung ?? null,
             beginn: startsAt ?? "jetzt",
           },
         );
@@ -4879,7 +5167,7 @@ const TOOLS: Tool[] = [
       const data = await callFunction(config, session, "agent-workbench", {
         type: "saveIncidentNotice",
         tenantId: workspace.id,
-        ...(isUuid(args.notice) ? { noticeId: args.notice } : {}),
+        ...(isUuid(args.meldung) ? { noticeId: args.meldung } : {}),
         title,
         description,
         status: args.status,
@@ -4900,7 +5188,10 @@ const TOOLS: Tool[] = [
     annotations: { readOnlyHint: true, title: "Zuweisung vorschlagen" },
     inputSchema: {
       type: "object",
-      properties: { workspace: WORKSPACE_PROPERTY, ticket: TICKET_PROPERTY },
+      properties: {
+        arbeitsbereich: WORKSPACE_PROPERTY,
+        ticket: TICKET_PROPERTY,
+      },
       required: ["ticket"],
       additionalProperties: false,
     },
@@ -4934,7 +5225,10 @@ const TOOLS: Tool[] = [
     annotations: { readOnlyHint: true, title: "Ticketumfeld" },
     inputSchema: {
       type: "object",
-      properties: { workspace: WORKSPACE_PROPERTY, ticket: TICKET_PROPERTY },
+      properties: {
+        arbeitsbereich: WORKSPACE_PROPERTY,
+        ticket: TICKET_PROPERTY,
+      },
       required: ["ticket"],
       additionalProperties: false,
     },
@@ -4973,36 +5267,43 @@ const TOOLS: Tool[] = [
   {
     name: "servicebericht",
     description:
-      "Kennzahlen des Service: eingegangene, gelöste und offene Tickets, SLA-Einhaltung, Reaktions- und Lösungszeiten, Zufriedenheit und Werte je Person, mit Vergleich zur Vorperiode. period: 7d, 30d (Standard), 90d oder custom mit startsOn/endsOn. Braucht das Recht für Berichte in nextDesk.",
+      "Kennzahlen des Service: eingegangene, gelöste und offene Tickets, SLA-Einhaltung, Reaktions- und Lösungszeiten, Zufriedenheit und Werte je Person, mit Vergleich zur Vorperiode. zeitraum: 7d, 30d (Standard), 90d oder custom mit von_datum/bis_datum. Braucht das Recht für Berichte in nextDesk.",
     annotations: { readOnlyHint: true, title: "Servicebericht" },
     inputSchema: {
       type: "object",
       properties: {
-        workspace: WORKSPACE_PROPERTY,
-        period: { type: "string", enum: ["7d", "30d", "90d", "custom"] },
-        startsOn: { type: "string", description: "JJJJ-MM-TT (custom)." },
-        endsOn: { type: "string", description: "JJJJ-MM-TT (custom)." },
+        arbeitsbereich: WORKSPACE_PROPERTY,
+        zeitraum: { type: "string", enum: ["7d", "30d", "90d", "custom"] },
+        von_datum: { type: "string", description: "JJJJ-MM-TT (custom)." },
+        bis_datum: { type: "string", description: "JJJJ-MM-TT (custom)." },
       },
       additionalProperties: false,
     },
     run: async (config, session, args) => {
-      const period = typeof args.period === "string" ? args.period : "30d";
+      const period = typeof args.zeitraum === "string" ? args.zeitraum : "30d";
       if (!["7d", "30d", "90d", "custom"].includes(period)) {
-        throw new ToolError('"period" muss 7d, 30d, 90d oder custom sein.');
+        throw new ToolError('"zeitraum" muss 7d, 30d, 90d oder custom sein.');
       }
       if (
         period === "custom" &&
-        (typeof args.startsOn !== "string" || typeof args.endsOn !== "string")
+        (typeof args.von_datum !== "string" ||
+          typeof args.bis_datum !== "string")
       ) {
-        throw new ToolError('Für custom braucht es "startsOn" und "endsOn".');
+        throw new ToolError(
+          'Für custom braucht es "von_datum" und "bis_datum".',
+        );
       }
-      const workspace = await resolveWorkspace(config, session, args.workspace);
+      const workspace = await resolveWorkspace(
+        config,
+        session,
+        args.arbeitsbereich,
+      );
       const data = await callFunction(config, session, "service-reporting", {
         type: "getInsights",
         tenantId: workspace.id,
         period,
         ...(period === "custom"
-          ? { startsOn: args.startsOn, endsOn: args.endsOn }
+          ? { startsOn: args.von_datum, endsOn: args.bis_datum }
           : {}),
       });
       const overview = isRecord(data.overview) ? data.overview : {};
@@ -5041,22 +5342,29 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
-        workspace: WORKSPACE_PROPERTY,
-        openOnly: { type: "boolean", description: "Nur offene Eskalationen." },
-        limit: { type: "integer", minimum: 1, maximum: 100 },
+        arbeitsbereich: WORKSPACE_PROPERTY,
+        nur_offene: {
+          type: "boolean",
+          description: "Nur offene Eskalationen.",
+        },
+        max_anzahl: { type: "integer", minimum: 1, maximum: 100 },
       },
       additionalProperties: false,
     },
     run: async (config, session, args) => {
-      const workspace = await resolveWorkspace(config, session, args.workspace);
+      const workspace = await resolveWorkspace(
+        config,
+        session,
+        args.arbeitsbereich,
+      );
       const data = await callFunction(config, session, "sla-management", {
         type: "listEscalations",
         tenantId: workspace.id,
-        limit: clampLimit(args.limit, 50, 100),
+        limit: clampLimit(args.max_anzahl, 50, 100),
       });
       return textResult({
         escalations: records(data.escalations)
-          .filter((entry) => args.openOnly !== true || !entry.resolvedAt)
+          .filter((entry) => args.nur_offene !== true || !entry.resolvedAt)
           .map((entry) => {
             const ticket = isRecord(entry.ticket) ? entry.ticket : {};
             return {
@@ -5079,11 +5387,15 @@ const TOOLS: Tool[] = [
     annotations: { readOnlyHint: true, title: "SLA-Regeln" },
     inputSchema: {
       type: "object",
-      properties: { workspace: WORKSPACE_PROPERTY },
+      properties: { arbeitsbereich: WORKSPACE_PROPERTY },
       additionalProperties: false,
     },
     run: async (config, session, args) => {
-      const workspace = await resolveWorkspace(config, session, args.workspace);
+      const workspace = await resolveWorkspace(
+        config,
+        session,
+        args.arbeitsbereich,
+      );
       const data = await callFunction(config, session, "sla-management", {
         type: "listRules",
         tenantId: workspace.id,
@@ -5111,8 +5423,8 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
-        workspace: WORKSPACE_PROPERTY,
-        criticalOnly: {
+        arbeitsbereich: WORKSPACE_PROPERTY,
+        nur_kritische: {
           type: "boolean",
           description:
             "Nur überfällige, gefährdete oder unbeantwortete Tickets.",
@@ -5121,7 +5433,11 @@ const TOOLS: Tool[] = [
       additionalProperties: false,
     },
     run: async (config, session, args) => {
-      const workspace = await resolveWorkspace(config, session, args.workspace);
+      const workspace = await resolveWorkspace(
+        config,
+        session,
+        args.arbeitsbereich,
+      );
       const data = await callFunction(config, session, "team-supervision", {
         type: "overview",
         tenantId: workspace.id,
@@ -5148,7 +5464,7 @@ const TOOLS: Tool[] = [
         tickets: records(data.tickets)
           .filter(
             (entry) =>
-              args.criticalOnly !== true ||
+              args.nur_kritische !== true ||
               entry.overdue === true ||
               entry.atRisk === true ||
               entry.noFirstResponse === true,
@@ -5174,11 +5490,15 @@ const TOOLS: Tool[] = [
     annotations: { readOnlyHint: true, title: "Prüfliste" },
     inputSchema: {
       type: "object",
-      properties: { workspace: WORKSPACE_PROPERTY },
+      properties: { arbeitsbereich: WORKSPACE_PROPERTY },
       additionalProperties: false,
     },
     run: async (config, session, args) => {
-      const workspace = await resolveWorkspace(config, session, args.workspace);
+      const workspace = await resolveWorkspace(
+        config,
+        session,
+        args.arbeitsbereich,
+      );
       const data = await callFunction(config, session, "team-supervision", {
         type: "reviewQueue",
         tenantId: workspace.id,
@@ -5198,7 +5518,7 @@ const TOOLS: Tool[] = [
   {
     name: "ticket_bewerten",
     description:
-      "Für Vorgesetzte: bewertet die Bearbeitung eines gelösten Tickets (rating 1-5, Lösung korrekt, Ton angemessen, Kommentar).",
+      "Für Vorgesetzte: bewertet die Bearbeitung eines gelösten Tickets (bewertung 1-5, Lösung korrekt, Ton angemessen, Kommentar).",
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
@@ -5207,37 +5527,37 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
-        workspace: WORKSPACE_PROPERTY,
+        arbeitsbereich: WORKSPACE_PROPERTY,
         ticket: TICKET_PROPERTY,
-        rating: { type: "integer", minimum: 1, maximum: 5 },
-        solutionCorrect: { type: "boolean" },
-        toneAppropriate: { type: "boolean" },
-        comment: { type: "string", maxLength: 2000 },
+        bewertung: { type: "integer", minimum: 1, maximum: 5 },
+        loesung_korrekt: { type: "boolean" },
+        ton_angemessen: { type: "boolean" },
+        kommentar: { type: "string", maxLength: 2000 },
       },
-      required: ["ticket", "rating", "solutionCorrect", "toneAppropriate"],
+      required: ["ticket", "bewertung", "loesung_korrekt", "ton_angemessen"],
       additionalProperties: false,
     },
     run: async (config, session, args) => {
       if (
-        typeof args.rating !== "number" ||
-        !Number.isInteger(args.rating) ||
-        args.rating < 1 ||
-        args.rating > 5
+        typeof args.bewertung !== "number" ||
+        !Number.isInteger(args.bewertung) ||
+        args.bewertung < 1 ||
+        args.bewertung > 5
       ) {
-        throw new ToolError('"rating" muss 1 bis 5 sein.');
+        throw new ToolError('"bewertung" muss 1 bis 5 sein.');
       }
       if (
-        typeof args.solutionCorrect !== "boolean" ||
-        typeof args.toneAppropriate !== "boolean"
+        typeof args.loesung_korrekt !== "boolean" ||
+        typeof args.ton_angemessen !== "boolean"
       ) {
         throw new ToolError(
-          '"solutionCorrect" und "toneAppropriate" müssen true oder false sein.',
+          '"loesung_korrekt" und "ton_angemessen" müssen true oder false sein.',
         );
       }
       const comment =
-        args.comment === undefined ? null : str(args.comment, 0, 2000);
-      if (args.comment !== undefined && comment === null) {
-        throw new ToolError('"comment" darf höchstens 2000 Zeichen haben.');
+        args.kommentar === undefined ? null : str(args.kommentar, 0, 2000);
+      if (args.kommentar !== undefined && comment === null) {
+        throw new ToolError('"kommentar" darf höchstens 2000 Zeichen haben.');
       }
       const { workspace, ticketId } = await ticketContext(
         config,
@@ -5248,9 +5568,9 @@ const TOOLS: Tool[] = [
         type: "saveReview",
         tenantId: workspace.id,
         ticketId,
-        rating: args.rating,
-        solutionCorrect: args.solutionCorrect,
-        toneAppropriate: args.toneAppropriate,
+        rating: args.bewertung,
+        solutionCorrect: args.loesung_korrekt,
+        toneAppropriate: args.ton_angemessen,
         comment: comment || null,
       });
       return textResult({ saved: true });
@@ -5259,29 +5579,33 @@ const TOOLS: Tool[] = [
   {
     name: "monatsbericht",
     description:
-      "Für Vorgesetzte: Monatsbericht je Person (zugewiesen, gelöst, Reaktions- und Lösungszeit, SLA, Zufriedenheit, Qualität, Wissensartikel). month: JJJJ-MM.",
+      "Für Vorgesetzte: Monatsbericht je Person (zugewiesen, gelöst, Reaktions- und Lösungszeit, SLA, Zufriedenheit, Qualität, Wissensartikel). monat: JJJJ-MM.",
     annotations: { readOnlyHint: true, title: "Monatsbericht" },
     inputSchema: {
       type: "object",
       properties: {
-        workspace: WORKSPACE_PROPERTY,
-        month: { type: "string" },
+        arbeitsbereich: WORKSPACE_PROPERTY,
+        monat: { type: "string" },
       },
-      required: ["month"],
+      required: ["monat"],
       additionalProperties: false,
     },
     run: async (config, session, args) => {
       if (
-        typeof args.month !== "string" ||
-        !/^\d{4}-(0[1-9]|1[0-2])$/.test(args.month)
+        typeof args.monat !== "string" ||
+        !/^\d{4}-(0[1-9]|1[0-2])$/.test(args.monat)
       ) {
-        throw new ToolError('"month" muss die Form JJJJ-MM haben.');
+        throw new ToolError('"monat" muss die Form JJJJ-MM haben.');
       }
-      const workspace = await resolveWorkspace(config, session, args.workspace);
+      const workspace = await resolveWorkspace(
+        config,
+        session,
+        args.arbeitsbereich,
+      );
       const data = await callFunction(config, session, "team-supervision", {
         type: "monthlyReport",
         tenantId: workspace.id,
-        month: args.month,
+        month: args.monat,
       });
       return textResult({
         month: data.month,
@@ -5292,7 +5616,7 @@ const TOOLS: Tool[] = [
   {
     name: "tickets_umverteilen",
     description:
-      'Für Vorgesetzte: weist mehrere Tickets (bis 100) einer Person aus dem geführten Team zu (agent: Name oder ID) oder hebt die Zuweisung auf (agent: "none"). Nur nach ausdrücklicher Zustimmung der Person mit confirm=true.',
+      'Für Vorgesetzte: weist mehrere Tickets (bis 100) einer Person aus dem geführten Team zu (person: Name oder ID) oder hebt die Zuweisung auf (person: "none"). Nur nach ausdrücklicher Zustimmung der Person mit bestaetigt=true.',
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
@@ -5301,23 +5625,23 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
-        workspace: WORKSPACE_PROPERTY,
+        arbeitsbereich: WORKSPACE_PROPERTY,
         tickets: {
           type: "array",
           items: { type: "string" },
           minItems: 1,
           maxItems: 100,
         },
-        agent: { type: "string" },
-        confirm: { type: "boolean" },
+        person: { type: "string" },
+        bestaetigt: { type: "boolean" },
       },
-      required: ["tickets", "agent", "confirm"],
+      required: ["tickets", "person", "bestaetigt"],
       additionalProperties: false,
     },
     run: async (config, session, args) => {
-      if (args.confirm !== true) {
+      if (args.bestaetigt !== true) {
         throw new ToolError(
-          "Das Umverteilen ändert die Zuständigkeit mehrerer Tickets. Frage nach und wiederhole den Aufruf danach mit confirm=true.",
+          "Das Umverteilen ändert die Zuständigkeit mehrerer Tickets. Frage nach und wiederhole den Aufruf danach mit bestaetigt=true.",
         );
       }
       if (
@@ -5327,7 +5651,11 @@ const TOOLS: Tool[] = [
       ) {
         throw new ToolError('"tickets" muss 1 bis 100 Tickets enthalten.');
       }
-      const workspace = await resolveWorkspace(config, session, args.workspace);
+      const workspace = await resolveWorkspace(
+        config,
+        session,
+        args.arbeitsbereich,
+      );
       const ticketIds = [
         ...new Set(
           await Promise.all(
@@ -5338,8 +5666,8 @@ const TOOLS: Tool[] = [
         ),
       ];
       const none =
-        typeof args.agent === "string" &&
-        ["none", "niemand", "-"].includes(args.agent.trim().toLowerCase());
+        typeof args.person === "string" &&
+        ["none", "niemand", "-"].includes(args.person.trim().toLowerCase());
       let agent: (Json & { id: string }) | null = null;
       if (!none) {
         const overview = await callFunction(
@@ -5350,7 +5678,7 @@ const TOOLS: Tool[] = [
         );
         agent = findByName(
           records(overview.agents),
-          args.agent,
+          args.person,
           "displayName",
           "Person",
         );
@@ -5372,31 +5700,35 @@ const TOOLS: Tool[] = [
   {
     name: "anfragende_profil_anzeigen",
     description:
-      "Zeigt das Profil einer anfragenden Person (Standort, Abteilung, Angebot, Sprache, bevorzugter Kontaktweg, wichtige Hinweise). requester: ID aus anfragende_suchen oder ticket_anzeigen (requesterId). Braucht das Recht zur Pflege von Anfragenden.",
+      "Zeigt das Profil einer anfragenden Person (Standort, Abteilung, Angebot, Sprache, bevorzugter Kontaktweg, wichtige Hinweise). anfragende_person: ID aus anfragende_suchen oder aus ticket_anzeigen (Angabe requesterId). Braucht das Recht zur Pflege von Anfragenden.",
     annotations: { readOnlyHint: true, title: "Profil Anfragende" },
     inputSchema: {
       type: "object",
       properties: {
-        workspace: WORKSPACE_PROPERTY,
-        requester: { type: "string" },
+        arbeitsbereich: WORKSPACE_PROPERTY,
+        anfragende_person: { type: "string" },
       },
-      required: ["requester"],
+      required: ["anfragende_person"],
       additionalProperties: false,
     },
     run: async (config, session, args) => {
       if (
-        typeof args.requester !== "string" ||
+        typeof args.anfragende_person !== "string" ||
         !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-          args.requester,
+          args.anfragende_person,
         )
       ) {
-        throw new ToolError('"requester" ist ungültig.');
+        throw new ToolError('"anfragende_person" ist ungültig.');
       }
-      const workspace = await resolveWorkspace(config, session, args.workspace);
+      const workspace = await resolveWorkspace(
+        config,
+        session,
+        args.arbeitsbereich,
+      );
       const data = await callFunction(config, session, "ticket-requesters", {
         type: "getProfile",
         tenantId: workspace.id,
-        requesterContactId: args.requester,
+        requesterContactId: args.anfragende_person,
       });
       return textResult({ profile: data.profile ?? null });
     },
@@ -5404,18 +5736,22 @@ const TOOLS: Tool[] = [
   {
     name: "kundenorganisationen_anzeigen",
     description:
-      "Listet die Kundenorganisationen; mit organization (Name oder ID) zusätzlich deren Mitglieder. Braucht Verwaltungsrechte für Benutzer oder Einstellungen.",
+      "Listet die Kundenorganisationen; mit organisation (Name oder ID) zusätzlich deren Mitglieder. Braucht Verwaltungsrechte für Benutzer oder Einstellungen.",
     annotations: { readOnlyHint: true, title: "Kundenorganisationen" },
     inputSchema: {
       type: "object",
       properties: {
-        workspace: WORKSPACE_PROPERTY,
-        organization: { type: "string" },
+        arbeitsbereich: WORKSPACE_PROPERTY,
+        organisation: { type: "string" },
       },
       additionalProperties: false,
     },
     run: async (config, session, args) => {
-      const workspace = await resolveWorkspace(config, session, args.workspace);
+      const workspace = await resolveWorkspace(
+        config,
+        session,
+        args.arbeitsbereich,
+      );
       const data = await callFunction(
         config,
         session,
@@ -5423,7 +5759,7 @@ const TOOLS: Tool[] = [
         { type: "list", tenantId: workspace.id },
       );
       const organizations = records(data.organizations);
-      if (args.organization === undefined) {
+      if (args.organisation === undefined) {
         return textResult({
           organizations: organizations.map((entry) => ({
             id: entry.id,
@@ -5435,7 +5771,7 @@ const TOOLS: Tool[] = [
       }
       const organization = findByName(
         organizations,
-        args.organization,
+        args.organisation,
         "name",
         "Organisation",
       );
@@ -5466,30 +5802,34 @@ const TOOLS: Tool[] = [
   {
     name: "geraet_anzeigen",
     description:
-      "Zeigt ein Gerät mit Details, Standort, zugehörigen Tickets und (mit Verwaltungsrecht) Intune-Daten und Lebenszyklus. asset: ID aus geraet_suchen, oder code: Inventarnummer, Asset-Tag oder Seriennummer.",
+      "Zeigt ein Gerät mit Details, Standort, zugehörigen Tickets und (mit Verwaltungsrecht) Intune-Daten und Lebenszyklus. geraet: ID aus geraet_suchen, oder code: Inventarnummer, Asset-Tag oder Seriennummer.",
     annotations: { readOnlyHint: true, title: "Gerät anzeigen" },
     inputSchema: {
       type: "object",
       properties: {
-        workspace: WORKSPACE_PROPERTY,
-        asset: { type: "string" },
+        arbeitsbereich: WORKSPACE_PROPERTY,
+        geraet: { type: "string" },
         code: { type: "string", maxLength: 200 },
       },
       additionalProperties: false,
     },
     run: async (config, session, args) => {
-      if (!isUuid(args.asset) && !str(args.code, 1, 200)) {
-        throw new ToolError('Gib "asset" (ID) oder "code" an.');
+      if (!isUuid(args.geraet) && !str(args.code, 1, 200)) {
+        throw new ToolError('Gib "geraet" (ID) oder "code" an.');
       }
-      const workspace = await resolveWorkspace(config, session, args.workspace);
+      const workspace = await resolveWorkspace(
+        config,
+        session,
+        args.arbeitsbereich,
+      );
       let data: Json;
       try {
         data = await callFunction(
           config,
           session,
           "asset-registry",
-          isUuid(args.asset)
-            ? { type: "getAsset", tenantId: workspace.id, assetId: args.asset }
+          isUuid(args.geraet)
+            ? { type: "getAsset", tenantId: workspace.id, assetId: args.geraet }
             : {
                 type: "lookupAsset",
                 tenantId: workspace.id,
@@ -5541,7 +5881,10 @@ const TOOLS: Tool[] = [
     annotations: { readOnlyHint: true, title: "Geräte zum Ticket" },
     inputSchema: {
       type: "object",
-      properties: { workspace: WORKSPACE_PROPERTY, ticket: TICKET_PROPERTY },
+      properties: {
+        arbeitsbereich: WORKSPACE_PROPERTY,
+        ticket: TICKET_PROPERTY,
+      },
       required: ["ticket"],
       additionalProperties: false,
     },
@@ -5575,26 +5918,34 @@ const TOOLS: Tool[] = [
   {
     name: "lageruebersicht",
     description:
-      "Zeigt das Lager: Artikel mit Bestand (physisch, reserviert, verfügbar), knappe Artikel, Lagerorte und letzte Bewegungen. Optional nach Artikel gefiltert (query).",
+      "Zeigt das Lager: Artikel mit Bestand (physisch, reserviert, verfügbar), knappe Artikel, Lagerorte und letzte Bewegungen. Optional nach Artikel gefiltert (suchbegriff).",
     annotations: { readOnlyHint: true, title: "Lagerübersicht" },
     inputSchema: {
       type: "object",
       properties: {
-        workspace: WORKSPACE_PROPERTY,
-        query: { type: "string", description: "Name oder Artikelnummer." },
-        lowStockOnly: { type: "boolean" },
+        arbeitsbereich: WORKSPACE_PROPERTY,
+        suchbegriff: {
+          type: "string",
+          description: "Name oder Artikelnummer.",
+        },
+        nur_knappe: { type: "boolean" },
       },
       additionalProperties: false,
     },
     run: async (config, session, args) => {
-      const workspace = await resolveWorkspace(config, session, args.workspace);
+      const workspace = await resolveWorkspace(
+        config,
+        session,
+        args.arbeitsbereich,
+      );
       const data = await callFunction(config, session, "inventory", {
         type: "workspace",
         tenantId: workspace.id,
       });
-      const query = typeof args.query === "string" ? args.query.trim() : "";
+      const query =
+        typeof args.suchbegriff === "string" ? args.suchbegriff.trim() : "";
       const source =
-        args.lowStockOnly === true
+        args.nur_knappe === true
           ? records(data.lowStockItems)
           : records(data.items);
       const items = source
@@ -5628,7 +5979,7 @@ const TOOLS: Tool[] = [
   {
     name: "lagerbewegung_buchen",
     description:
-      "Bucht eine Lagerbewegung. type: receipt (Eingang, to), issue (Ausgabe, from), transfer (from und to), defect, loss, adjustment_out (from), adjustment_in (to). Artikel und Lagerorte als Name, Nummer/Code oder ID. Frage vorher nach.",
+      "Bucht eine Lagerbewegung. bewegungsart: receipt (Eingang, nach), issue (Ausgabe, von), transfer (von und nach), defect, loss, adjustment_out (von), adjustment_in (nach). Artikel und Lagerorte als Name, Nummer/Code oder ID. Frage vorher nach.",
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
@@ -5637,8 +5988,8 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
-        workspace: WORKSPACE_PROPERTY,
-        type: {
+        arbeitsbereich: WORKSPACE_PROPERTY,
+        bewegungsart: {
           type: "string",
           enum: [
             "receipt",
@@ -5650,16 +6001,16 @@ const TOOLS: Tool[] = [
             "adjustment_out",
           ],
         },
-        item: { type: "string" },
-        quantity: { type: "number", exclusiveMinimum: 0 },
-        from: { type: "string", description: "Lagerort (Quelle)." },
-        to: { type: "string", description: "Lagerort (Ziel)." },
+        punkt: { type: "string" },
+        menge: { type: "number", exclusiveMinimum: 0 },
+        von: { type: "string", description: "Lagerort (Quelle)." },
+        nach: { type: "string", description: "Lagerort (Ziel)." },
       },
-      required: ["type", "item", "quantity"],
+      required: ["bewegungsart", "punkt", "menge"],
       additionalProperties: false,
     },
     run: async (config, session, args) => {
-      const type = String(args.type);
+      const type = String(args.bewegungsart);
       const needsFrom = [
         "issue",
         "transfer",
@@ -5668,31 +6019,36 @@ const TOOLS: Tool[] = [
         "adjustment_out",
       ].includes(type);
       const needsTo = ["receipt", "transfer", "adjustment_in"].includes(type);
-      if (!needsFrom && !needsTo) throw new ToolError("Ungültiger type.");
-      if (needsFrom !== (args.from !== undefined)) {
+      if (!needsFrom && !needsTo)
+        throw new ToolError("Ungültiger bewegungsart.");
+      if (needsFrom !== (args.von !== undefined)) {
         throw new ToolError(
           needsFrom
-            ? `Für ${type} braucht es "from".`
-            : `Für ${type} ist kein "from" erlaubt.`,
+            ? `Für ${type} braucht es "von".`
+            : `Für ${type} ist kein "von" erlaubt.`,
         );
       }
-      if (needsTo !== (args.to !== undefined)) {
+      if (needsTo !== (args.nach !== undefined)) {
         throw new ToolError(
           needsTo
-            ? `Für ${type} braucht es "to".`
-            : `Für ${type} ist kein "to" erlaubt.`,
+            ? `Für ${type} braucht es "nach".`
+            : `Für ${type} ist kein "nach" erlaubt.`,
         );
       }
-      const quantity = validQuantity(args.quantity);
-      const workspace = await resolveWorkspace(config, session, args.workspace);
+      const quantity = validQuantity(args.menge);
+      const workspace = await resolveWorkspace(
+        config,
+        session,
+        args.arbeitsbereich,
+      );
       const { item, location } = await inventoryRefs(
         config,
         session,
         workspace,
       );
-      const itemRow = item(args.item);
-      const fromRow = needsFrom ? location(args.from) : null;
-      const toRow = needsTo ? location(args.to) : null;
+      const itemRow = item(args.punkt);
+      const fromRow = needsFrom ? location(args.von) : null;
+      const toRow = needsTo ? location(args.nach) : null;
       if (fromRow && toRow && fromRow.id === toRow.id) {
         throw new ToolError("Quelle und Ziel müssen verschieden sein.");
       }
@@ -5728,25 +6084,29 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
-        workspace: WORKSPACE_PROPERTY,
-        item: { type: "string" },
-        location: { type: "string" },
-        quantity: { type: "number", exclusiveMinimum: 0 },
+        arbeitsbereich: WORKSPACE_PROPERTY,
+        punkt: { type: "string" },
+        standort: { type: "string" },
+        menge: { type: "number", exclusiveMinimum: 0 },
         ticket: TICKET_PROPERTY,
       },
-      required: ["item", "location", "quantity"],
+      required: ["punkt", "standort", "menge"],
       additionalProperties: false,
     },
     run: async (config, session, args) => {
-      const quantity = validQuantity(args.quantity);
-      const workspace = await resolveWorkspace(config, session, args.workspace);
+      const quantity = validQuantity(args.menge);
+      const workspace = await resolveWorkspace(
+        config,
+        session,
+        args.arbeitsbereich,
+      );
       const { item, location } = await inventoryRefs(
         config,
         session,
         workspace,
       );
-      const itemRow = item(args.item);
-      const locationRow = location(args.location);
+      const itemRow = item(args.punkt);
+      const locationRow = location(args.standort);
       const ticketId =
         args.ticket === undefined
           ? undefined
@@ -5779,11 +6139,15 @@ const TOOLS: Tool[] = [
     annotations: { readOnlyHint: true, title: "Reservationen" },
     inputSchema: {
       type: "object",
-      properties: { workspace: WORKSPACE_PROPERTY },
+      properties: { arbeitsbereich: WORKSPACE_PROPERTY },
       additionalProperties: false,
     },
     run: async (config, session, args) => {
-      const workspace = await resolveWorkspace(config, session, args.workspace);
+      const workspace = await resolveWorkspace(
+        config,
+        session,
+        args.arbeitsbereich,
+      );
       const data = await callFunction(config, session, "inventory", {
         type: "listOpenReservations",
         tenantId: workspace.id,
@@ -5813,7 +6177,7 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
-        workspace: WORKSPACE_PROPERTY,
+        arbeitsbereich: WORKSPACE_PROPERTY,
         reservation: { type: "string" },
       },
       required: ["reservation"],
@@ -5823,7 +6187,11 @@ const TOOLS: Tool[] = [
       if (!isUuid(args.reservation)) {
         throw new ToolError('"reservation" ist ungültig.');
       }
-      const workspace = await resolveWorkspace(config, session, args.workspace);
+      const workspace = await resolveWorkspace(
+        config,
+        session,
+        args.arbeitsbereich,
+      );
       await callFunction(config, session, "inventory", {
         type: "releaseReservation",
         tenantId: workspace.id,
@@ -5837,13 +6205,13 @@ const TOOLS: Tool[] = [
   {
     name: "shop_katalog_anzeigen",
     description:
-      "Durchsucht den Self-Service-Shop (Software, Lizenzen, Geräte, Zubehör, Ausleihartikel), den Mitarbeitende selbst bestellen können. query: z. B. «Visio».",
+      "Durchsucht den Self-Service-Shop (Software, Lizenzen, Geräte, Zubehör, Ausleihartikel), den Mitarbeitende selbst bestellen können. suchbegriff: z. B. «Visio».",
     annotations: { readOnlyHint: true, title: "Shop-Katalog" },
     inputSchema: {
       type: "object",
       properties: {
-        workspace: WORKSPACE_PROPERTY,
-        query: {
+        arbeitsbereich: WORKSPACE_PROPERTY,
+        suchbegriff: {
           type: "string",
           description: "Name, Kategorie oder Stichwort.",
         },
@@ -5851,12 +6219,17 @@ const TOOLS: Tool[] = [
       additionalProperties: false,
     },
     run: async (config, session, args) => {
-      const workspace = await resolveWorkspace(config, session, args.workspace);
+      const workspace = await resolveWorkspace(
+        config,
+        session,
+        args.arbeitsbereich,
+      );
       const data = await callFunction(config, session, "shop", {
         type: "listCatalog",
         tenantId: workspace.id,
       });
-      const query = typeof args.query === "string" ? args.query.trim() : "";
+      const query =
+        typeof args.suchbegriff === "string" ? args.suchbegriff.trim() : "";
       const items = records(data.items).filter((entry) =>
         matches(
           query,
@@ -5886,7 +6259,7 @@ const TOOLS: Tool[] = [
   {
     name: "im_shop_bestellen",
     description:
-      "Bestellt Artikel im Self-Service-Shop für dich (items: Name oder ID aus shop_katalog_anzeigen, mit Menge). reason ist Pflicht, ausser bei reinen Ausleihartikeln; bei Ausleihe loanFrom/loanUntil (JJJJ-MM-TT) angeben. Je nach Artikel braucht es eine Freigabe. Ohne confirm zeigt das Werkzeug zuerst die Bestellung als Entwurf; erst mit confirm=true wird bestellt.",
+      "Bestellt Artikel im Self-Service-Shop für dich (positionen: Name oder ID aus shop_katalog_anzeigen, mit Menge). begruendung ist Pflicht, ausser bei reinen Ausleihartikeln; bei Ausleihe ausleihe_von/ausleihe_bis (JJJJ-MM-TT) angeben. Je nach Artikel braucht es eine Freigabe. Ohne bestaetigt zeigt das Werkzeug zuerst die Bestellung als Entwurf; erst mit bestaetigt=true wird bestellt.",
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
@@ -5895,44 +6268,44 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
-        workspace: WORKSPACE_PROPERTY,
-        items: {
+        arbeitsbereich: WORKSPACE_PROPERTY,
+        positionen: {
           type: "array",
           minItems: 1,
           maxItems: 30,
           items: {
             type: "object",
             properties: {
-              item: { type: "string" },
-              quantity: { type: "integer", minimum: 1, maximum: 100 },
+              artikel: { type: "string" },
+              menge: { type: "integer", minimum: 1, maximum: 100 },
             },
-            required: ["item"],
+            required: ["artikel"],
             additionalProperties: false,
           },
         },
-        reason: { type: "string", minLength: 3, maxLength: 500 },
-        comment: { type: "string", maxLength: 2000 },
-        loanFrom: { type: "string" },
-        loanUntil: { type: "string" },
-        delivery: {
+        begruendung: { type: "string", minLength: 3, maxLength: 500 },
+        kommentar: { type: "string", maxLength: 2000 },
+        ausleihe_von: { type: "string" },
+        ausleihe_bis: { type: "string" },
+        lieferung: {
           type: "string",
           enum: ["pickup", "desk"],
           description: "pickup (Abholung, Standard) oder desk (an den Platz).",
         },
-        confirm: { type: "boolean" },
+        bestaetigt: { type: "boolean" },
       },
-      required: ["items"],
+      required: ["positionen"],
       additionalProperties: false,
     },
     run: async (config, session, args) => {
       if (
-        !Array.isArray(args.items) ||
-        args.items.length < 1 ||
-        args.items.length > 30
+        !Array.isArray(args.positionen) ||
+        args.positionen.length < 1 ||
+        args.positionen.length > 30
       ) {
-        throw new ToolError('"items" muss 1 bis 30 Positionen enthalten.');
+        throw new ToolError('"positionen" muss 1 bis 30 Positionen enthalten.');
       }
-      for (const key of ["loanFrom", "loanUntil"] as const) {
+      for (const key of ["ausleihe_von", "ausleihe_bis"] as const) {
         const value = args[key];
         if (
           value !== undefined &&
@@ -5943,11 +6316,15 @@ const TOOLS: Tool[] = [
         }
       }
       const reason =
-        args.reason === undefined ? null : str(args.reason, 3, 500);
-      if (args.reason !== undefined && !reason) {
-        throw new ToolError('"reason" muss 3 bis 500 Zeichen lang sein.');
+        args.begruendung === undefined ? null : str(args.begruendung, 3, 500);
+      if (args.begruendung !== undefined && !reason) {
+        throw new ToolError('"begruendung" muss 3 bis 500 Zeichen lang sein.');
       }
-      const workspace = await resolveWorkspace(config, session, args.workspace);
+      const workspace = await resolveWorkspace(
+        config,
+        session,
+        args.arbeitsbereich,
+      );
       const catalog = records(
         (
           await callFunction(config, session, "shop", {
@@ -5956,27 +6333,27 @@ const TOOLS: Tool[] = [
           })
         ).items,
       );
-      const lines = args.items.map((entry) => {
+      const lines = args.positionen.map((entry) => {
         if (!isRecord(entry)) throw new ToolError("Ungültige Position.");
-        const quantity = entry.quantity === undefined ? 1 : entry.quantity;
+        const quantity = entry.menge === undefined ? 1 : entry.menge;
         if (
           typeof quantity !== "number" ||
           !Number.isInteger(quantity) ||
           quantity < 1 ||
           quantity > 100
         ) {
-          throw new ToolError('"quantity" muss 1 bis 100 sein.');
+          throw new ToolError('"menge" muss 1 bis 100 sein.');
         }
-        const item = findByName(catalog, entry.item, "name", "Artikel");
+        const item = findByName(catalog, entry.artikel, "name", "Artikel");
         return { item, quantity };
       });
       const onlyLoans = lines.every(({ item }) => item.kind === "loan");
       if (!onlyLoans && !reason) {
         throw new ToolError(
-          'Für diese Bestellung braucht es einen Grund ("reason").',
+          'Für diese Bestellung braucht es einen Grund ("begruendung").',
         );
       }
-      if (args.confirm !== true) {
+      if (args.bestaetigt !== true) {
         return draftResult(
           "Shop-Bestellung",
           {
@@ -5984,14 +6361,14 @@ const TOOLS: Tool[] = [
               ({ item, quantity }) => `${quantity}× ${item.name}`,
             ),
             grund: reason,
-            lieferung: args.delivery === "desk" ? "an den Platz" : "Abholung",
-            ausleiheVon: args.loanFrom ?? null,
-            ausleiheBis: args.loanUntil ?? null,
+            lieferung: args.lieferung === "desk" ? "an den Platz" : "Abholung",
+            ausleiheVon: args.ausleihe_von ?? null,
+            ausleiheBis: args.ausleihe_bis ?? null,
             freigabeNoetig: lines.some(
               ({ item }) => item.requiresApproval === true,
             ),
           },
-          [args.comment === undefined && "kommentar"],
+          [args.kommentar === undefined && "kommentar"],
         );
       }
       const data = await callFunction(config, session, "shop", {
@@ -6001,17 +6378,17 @@ const TOOLS: Tool[] = [
         lines: lines.map(({ item, quantity }) => ({
           catalogItemId: item.id,
           quantity,
-          ...(item.kind === "loan" && args.loanFrom
-            ? { loanFrom: args.loanFrom, loanUntil: args.loanUntil }
+          ...(item.kind === "loan" && args.ausleihe_von
+            ? { loanFrom: args.ausleihe_von, loanUntil: args.ausleihe_bis }
             : {}),
         })),
         ...(reason ? { reason } : {}),
-        ...(args.comment !== undefined
-          ? { comment: str(args.comment, 0, 2000) }
+        ...(args.kommentar !== undefined
+          ? { comment: str(args.kommentar, 0, 2000) }
           : {}),
-        deliveryMethod: args.delivery === "desk" ? "desk" : "pickup",
-        ...(args.loanFrom ? { loanFrom: args.loanFrom } : {}),
-        ...(args.loanUntil ? { loanUntil: args.loanUntil } : {}),
+        deliveryMethod: args.lieferung === "desk" ? "desk" : "pickup",
+        ...(args.ausleihe_von ? { loanFrom: args.ausleihe_von } : {}),
+        ...(args.ausleihe_bis ? { loanUntil: args.ausleihe_bis } : {}),
       });
       return textResult({
         ordered: true,
@@ -6026,22 +6403,26 @@ const TOOLS: Tool[] = [
   {
     name: "shop_bestellungen_anzeigen",
     description:
-      "Zeigt deine Shop-Bestellungen mit Status (scope: mine, Standard). Mit scope approvals die Bestellungen, die auf deine Freigabe warten.",
+      "Zeigt deine Shop-Bestellungen mit Status (bereich: mine, Standard). Mit bereich approvals die Bestellungen, die auf deine Freigabe warten.",
     annotations: { readOnlyHint: true, title: "Shop-Bestellungen" },
     inputSchema: {
       type: "object",
       properties: {
-        workspace: WORKSPACE_PROPERTY,
-        scope: { type: "string", enum: ["mine", "approvals"] },
+        arbeitsbereich: WORKSPACE_PROPERTY,
+        bereich: { type: "string", enum: ["mine", "approvals"] },
       },
       additionalProperties: false,
     },
     run: async (config, session, args) => {
-      const workspace = await resolveWorkspace(config, session, args.workspace);
+      const workspace = await resolveWorkspace(
+        config,
+        session,
+        args.arbeitsbereich,
+      );
       const data = await callFunction(config, session, "shop", {
         type: "listOrders",
         tenantId: workspace.id,
-        scope: args.scope === "approvals" ? "approvals" : "mine",
+        scope: args.bereich === "approvals" ? "approvals" : "mine",
       });
       return textResult({
         orders: records(data.orders)
@@ -6078,7 +6459,7 @@ type Prompt = {
 };
 
 const DRAFT_FLOW =
-  "Rufe das Werkzeug zuerst ohne confirm auf, zeige mir den Entwurf, frage nach fehlenden Pflichtangaben und schicke erst nach meiner ausdrücklichen Bestätigung mit confirm=true ab.";
+  "Rufe das Werkzeug zuerst ohne bestaetigt=true auf, zeige mir den Entwurf, frage nach fehlenden Pflichtangaben und schicke erst nach meiner ausdrücklichen Bestätigung mit bestaetigt=true ab.";
 
 const PROMPTS: Prompt[] = [
   {
@@ -6116,7 +6497,7 @@ const PROMPTS: Prompt[] = [
       { name: "vorlage", description: "Ticketvorlage (Name)" },
     ],
     intro:
-      "Falls fuer_person angegeben ist, suche die Person mit anfragende_suchen und verwende deren id als requester. Falls eine Vorlage genannt ist, prüfe sie mit ticketvorlagen_anzeigen.",
+      "Falls fuer_person angegeben ist, suche die Person mit anfragende_suchen und verwende deren id als anfragende_person. Falls eine Vorlage genannt ist, prüfe sie mit ticketvorlagen_anzeigen.",
     tool: "ticket_erfassen",
   },
   {
@@ -6198,7 +6579,7 @@ const PROMPTS: Prompt[] = [
       },
     ],
     intro:
-      "Datum und Zeiten sind Schweizer Zeit (Europe/Zurich); rechne sie in ISO 8601 mit Zeitzone um. Übersetze die Ausstattung in die erlaubten equipment-Werte.",
+      "Datum und Zeiten sind Schweizer Zeit (Europe/Zurich); rechne sie in ISO 8601 mit Zeitzone um. Übersetze die Ausstattung in die erlaubten Werte des Felds ausstattung.",
     tool: "raum_buchen",
   },
   {
@@ -6421,7 +6802,7 @@ export async function handleMessage(
       instructions: [
         "Greift als angemeldete Person auf nextDesk zu (Service-Desk der Organisation).",
         "IT-Fragen zuerst in nextDesk beantworten: Bei Fragen zu Software (Installation, Download, Lizenzen), Geräten, Zugängen, Konten, Drucken, E-Mail, VPN oder anderen IT-Problemen IMMER zuerst wissen_suchen aufrufen und die Antwort auf die gefundenen Artikel stützen (wissensartikel_lesen für den vollen Text). Gibt es zu einem bestimmten Programm keinen eigenen Artikel, gilt der allgemeine Weg aus der Wissensdatenbank (z. B. Software über das Unternehmensportal installieren). Interne Abläufe wie das Unternehmensportal, Company Portal oder Bestellwege gehen allgemeinen Anleitungen aus dem Web vor. Bei Software oder Material zusätzlich shop_katalog_anzeigen prüfen. Findet sich nichts, das offen sagen, keine allgemeinen Download-Anleitungen erfinden und anbieten, ein Ticket zu erfassen (ticket_erfassen).",
-        "Lesen ist frei. Schreibaktionen nur nach Rückfrage bei der Person; folgenreiche Aktionen (Antworten an Anfragende, Lösen, Schliessen, Freigabeentscheide, Eskalationen, Abteilungswechsel, Zusammenführen, Umverteilen, Veröffentlichen und Archivieren von Wissen, an Anfragende gesendete Artikel, Bestellungen im Shop, Raumbuchungen trotz Überschneidung) verlangen ausdrückliche Bestätigung (confirm=true).",
+        "Lesen ist frei. Schreibaktionen nur nach Rückfrage bei der Person; folgenreiche Aktionen (Antworten an Anfragende, Lösen, Schliessen, Freigabeentscheide, Eskalationen, Abteilungswechsel, Zusammenführen, Umverteilen, Veröffentlichen und Archivieren von Wissen, an Anfragende gesendete Artikel, Bestellungen im Shop, Raumbuchungen trotz Überschneidung) verlangen ausdrückliche Bestätigung (bestaetigt=true).",
         "Alle Rechte prüft nextDesk selbst; fehlt ein Recht, meldet das Werkzeug dies.",
       ].join(" "),
     });

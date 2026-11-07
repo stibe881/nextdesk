@@ -40,44 +40,44 @@ den OAuth-2.1-Server von Supabase Auth, also mit dem normalen nextDesk-Konto
 | `teamuebersicht`, `pruefliste_anzeigen`, `monatsbericht` | lesen | Teamführung (nur für Vorgesetzte) |
 | `anfragende_profil_anzeigen`, `kundenorganisationen_anzeigen` | lesen | Profil Anfragende, Kundenorganisationen |
 | `geraet_anzeigen`, `lageruebersicht`, `reservationen_anzeigen` | lesen | Gerät im Detail, Lager, Reservationen |
-| `ticket_erfassen` | schreiben | Ticket erfassen, für sich selbst oder eine anfragende Person (`requester`) |
+| `ticket_erfassen` | schreiben | Ticket erfassen, für sich selbst oder eine anfragende Person (`anfragende_person`) |
 | `interne_notiz_hinzufuegen` | schreiben | Interne Notiz an ein Ticket |
-| `ticketstatus_aendern` | schreiben | Status ändern; Lösen/Schliessen nur mit `confirm=true` |
+| `ticketstatus_aendern` | schreiben | Status ändern; Lösen/Schliessen nur mit `bestaetigt=true` |
 | `prioritaet_aendern` | schreiben | Priorität ändern (low, normal, high, urgent) |
 | `ticket_mir_zuweisen` | schreiben | Ticket sich selbst zuweisen |
-| `ticket_beantworten` | schreiben | Antwort an Anfragende; nur mit `confirm=true` |
+| `ticket_beantworten` | schreiben | Antwort an Anfragende; nur mit `bestaetigt=true` |
 | `zeit_erfassen` | schreiben | Arbeitszeit in Minuten erfassen (internal, billable, goodwill) |
 | `checklistenpunkt_hinzufuegen`, `checklistenpunkt_abhaken` | schreiben | Checklistenpunkt hinzufügen bzw. abhaken |
 | `ticket_beobachten` | schreiben | Ticket beobachten oder nicht mehr beobachten |
 | `benachrichtigungen_gelesen` | schreiben | Eine oder alle Benachrichtigungen als gelesen markieren |
-| `freigabe_entscheiden` | schreiben | Freigabe genehmigen oder ablehnen; nur mit `confirm=true` |
+| `freigabe_entscheiden` | schreiben | Freigabe genehmigen oder ablehnen; nur mit `bestaetigt=true` |
 | `serviceaufgabe_erledigen` | schreiben | Serviceaufgabe erledigen (optional mit Notiz) |
 | `wiedervorlage_erstellen`, `wiedervorlage_erledigen` | schreiben | Wiedervorlage erstellen bzw. erledigen |
 | `erwaehnung_gelesen` | schreiben | Erwähnung als gelesen markieren |
 | `uebergabe_erstellen`, `uebergabe_bestaetigen` | schreiben | Übergabe erstellen, bestätigen oder abschliessen |
-| `ticket_eskalieren` | schreiben | Ticket eskalieren; nur mit `confirm=true` |
+| `ticket_eskalieren` | schreiben | Ticket eskalieren; nur mit `bestaetigt=true` |
 | `tickets_verknuepfen` | schreiben | Zwei Tickets verknüpfen (Duplikat, blockiert, Eltern/Kind …) |
-| `wissensartikel_verknuepfen` | schreiben | Wissensartikel mit Ticket verknüpfen; extern nur mit `confirm=true` |
+| `wissensartikel_verknuepfen` | schreiben | Wissensartikel mit Ticket verknüpfen; extern nur mit `bestaetigt=true` |
 | `wissensentwurf_aus_ticket` | schreiben | Wissensartikel-Entwurf aus einem Ticket (geht in die Prüfung) |
-| `raum_buchen` | schreiben | Raum buchen, einmalig oder als Serie (wöchentlich bis 52, monatlich bis 12 Termine); bei Überschneidung nur mit `confirmConflicts=true` |
+| `raum_buchen` | schreiben | Raum buchen, einmalig oder als Serie (wöchentlich bis 52, monatlich bis 12 Termine); bei Überschneidung nur mit `ueberschneidung_bestaetigt=true` |
 | `raumbuchung_aktualisieren`, `raumaufgabe_aktualisieren` | schreiben | Status einer Raumbuchung bzw. ihrer Aufgaben setzen |
 | `eintritt_erfassen` | schreiben | Eintritt erfassen (Vorlage, Führungsperson, ICT-Verantwortung) |
 | `eintrittsaufgabe_aktualisieren` | schreiben | Status einer Eintrittsaufgabe setzen |
 | `ticket_zuweisen`, `ticket_team_zuweisen` | schreiben | Ticket einer Person oder einem Team zuweisen |
-| `abteilung_wechseln` | schreiben | Abteilung wechseln; nur mit `confirm=true` |
+| `abteilung_wechseln` | schreiben | Abteilung wechseln; nur mit `bestaetigt=true` |
 | `kategorie_setzen` | schreiben | Kategorie und Unterkategorie setzen |
-| `tickets_zusammenfuehren` | schreiben | Tickets zusammenführen; nur mit `confirm=true` |
+| `tickets_zusammenfuehren` | schreiben | Tickets zusammenführen; nur mit `bestaetigt=true` |
 | `verknuepfung_entfernen` | schreiben | Verknüpfung entfernen |
 | `wissensartikel_speichern`, `wissenspruefung_anfordern` | schreiben | Wissensartikel schreiben und zur Prüfung geben |
-| `wissensartikel_freigeben`, `wissensartikel_archivieren` | schreiben | Veröffentlichen bzw. archivieren; nur mit `confirm=true` |
-| `wissensartikel_loesen`, `wissensartikel_senden` | schreiben | Artikel vom Ticket lösen bzw. an Anfragende senden (nur mit `confirm=true`) |
+| `wissensartikel_freigeben`, `wissensartikel_archivieren` | schreiben | Veröffentlichen bzw. archivieren; nur mit `bestaetigt=true` |
+| `wissensartikel_loesen`, `wissensartikel_senden` | schreiben | Artikel vom Ticket lösen bzw. an Anfragende senden (nur mit `bestaetigt=true`) |
 | `serviceaufgabe_bearbeiten` | schreiben | Serviceaufgabe starten, überspringen, Notiz, Checkliste, neu planen, zuweisen, wieder öffnen |
 | `freigabe_anfordern`, `freigabe_zurueckziehen` | schreiben | Freigabe anfordern bzw. zurückziehen |
 | `stellvertretung_einrichten`, `stellvertretung_beenden` | schreiben | Stellvertretung einrichten bzw. beenden |
 | `stoerungsmeldung_speichern` | schreiben | Störungsmeldung erfassen oder aktualisieren |
-| `ticket_bewerten`, `tickets_umverteilen` | schreiben | Teamführung: Ticket bewerten, Tickets umverteilen (nur mit `confirm=true`) |
+| `ticket_bewerten`, `tickets_umverteilen` | schreiben | Teamführung: Ticket bewerten, Tickets umverteilen (nur mit `bestaetigt=true`) |
 | `lagerbewegung_buchen`, `material_reservieren`, `reservation_freigeben` | schreiben | Lagerbewegung buchen, Material reservieren, Reservation freigeben |
-| `im_shop_bestellen` | schreiben | Im Shop bestellen; nur mit `confirm=true` |
+| `im_shop_bestellen` | schreiben | Im Shop bestellen; nur mit `bestaetigt=true` |
 
 Bei IT-Fragen (Software, Geräte, Zugänge …) weist der Connector Gemini an, zuerst
 die Wissensdatenbank zu befragen und keine allgemeinen Anleitungen aus dem Web
@@ -90,7 +90,10 @@ Anfragende werden ohne diesen Hinweis versendet.
 
 Alle Werkzeuge haben deutsche Namen (z. B. `ticket_erfassen`), damit Gemini sie
 in Rückfragen und Bestätigungen auf Deutsch anzeigt; zusätzlich liefert der
-Connector einen deutschen Anzeigetitel (`title`).
+Connector einen deutschen Anzeigetitel (`title`). Auch die Felder sind deutsch
+(z. B. `betreff`, `beschreibung`, `anfragende_person`, `bestaetigt`). Die
+Schlüssel, die der Connector an die Edge Functions weitergibt, bleiben
+unverändert.
 
 ## Vorlagen und Entwürfe
 
@@ -117,9 +120,9 @@ mit Feldern zum Ausfüllen, z. B. `/ticket_erfassen --betreff="Drucker druckt ni
 **Entwurf vor dem Abschicken:** `ticket_erfassen`, `ticket_beantworten`,
 `raum_buchen`, `eintritt_erfassen`, `im_shop_bestellen`,
 `stoerungsmeldung_speichern`, `freigabe_anfordern`, `stellvertretung_einrichten`,
-`wissensartikel_speichern` und `uebergabe_erstellen` geben ohne `confirm` ein
+`wissensartikel_speichern` und `uebergabe_erstellen` geben ohne `bestaetigt` ein
 ausgefülltes Formular zurück (mit aufgelösten Namen, Schweizer Zeiten und nicht
-ausgefüllten optionalen Feldern). Abgeschickt wird erst mit `confirm=true`.
+ausgefüllten optionalen Feldern). Abgeschickt wird erst mit `bestaetigt=true`.
 
 ## Berechtigungen
 
@@ -129,7 +132,7 @@ nextDesk prüft dort Mitgliedschaft, Funktionsfreigaben und Rechte (z. B.
 `ticket.assign`, `knowledge.manage`, `knowledge.publish`, `report.read`,
 `inventory.move`, `team.supervise`). Fehlt ein Recht, meldet das Werkzeug
 «Keine Berechtigung für diese Aktion». Zusätzlich verlangt der Connector für
-folgenreiche Aktionen die ausdrückliche Bestätigung der Person (`confirm=true`).
+folgenreiche Aktionen die ausdrückliche Bestätigung der Person (`bestaetigt=true`).
 
 ## Einrichtung (einmalig)
 
