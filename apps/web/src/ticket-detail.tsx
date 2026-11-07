@@ -88,12 +88,16 @@ import {
 import { TicketApprovals } from "./ticket-approvals";
 import { TicketComparison } from "./ticket-comparison";
 import { TicketCustomFields } from "./ticket-custom-fields";
+import { TicketIntuneActions } from "./intune-actions";
+import { intuneActionEventLabel } from "./lib/intune-actions";
 import {
   TicketFollowUps,
   TicketResolutionExperience,
 } from "./ticket-experience";
 import "./ticket-experience.css";
 import { TicketPdfRecord } from "./ticket-pdf-record";
+import { TicketCoordination } from "./ticket-coordination";
+import { useReplySnippetAssist } from "./reply-snippets";
 import {
   TicketFormAnswersBlock,
   parseStoredFormAnswers,
@@ -406,6 +410,7 @@ type TicketEvent = {
   id: string;
   event_type: string;
   created_at: string;
+  payload?: Record<string, unknown> | null;
 };
 
 type TicketEscalation = {
@@ -756,6 +761,8 @@ type TicketDetailProps = {
   onOpenAsset?: ((query: string) => void) | undefined;
   /** Requesters without ticket work see only what matters to them. */
   requesterView?: boolean;
+  /** Opens another ticket (e.g. a child or parent ticket of a split). */
+  onOpenTicket?: ((ticketId: string) => void) | undefined;
 };
 
 const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
@@ -2240,7 +2247,13 @@ function relationActionKey(relation: TicketRelation): string {
   return `${relation.relationType}:${relation.relatedTicketId}`;
 }
 
-function eventLabel(eventType: string): string {
+function eventLabel(
+  eventType: string,
+  payload?: Record<string, unknown> | null,
+): string {
+  if (eventType === "asset.intune_action") {
+    return intuneActionEventLabel(payload ?? null);
+  }
   const labels: Record<string, string> = {
     "ticket.created": "Ticket erstellt",
     "comment.external_added": "Externer Kommentar hinzugefügt",
@@ -3764,6 +3777,7 @@ export function TicketDetail({
   onOpenKnowledgeArticle,
   onOpenAsset,
   requesterView = false,
+  onOpenTicket,
 }: TicketDetailProps) {
   const [detail, setDetail] = useState<TicketDetailData | null>(null);
   // Answers from a ticket template form (only tickets created with one).
@@ -4064,6 +4078,26 @@ export function TicketDetail({
     commentDrafts,
     commentVisibility,
   );
+  const commentTextareaRef = useRef<HTMLTextAreaElement>(null);
+  // «Antwort-Bausteine»: «/» in the reply field opens the snippet picker.
+  const snippetAssist = useReplySnippetAssist({
+    enabled:
+      !requesterView &&
+      Boolean(
+        detail &&
+        (detail.canCommentExternal || detail.canWriteInternalNotes) &&
+        detail.ticket.id === ticketId,
+      ),
+    tenantId,
+    ticketId,
+    departmentId: detail?.ticket.department_id ?? null,
+    text: commentBody,
+    onTextChange: (value) =>
+      setCommentDrafts((current) =>
+        updateTicketCommentDraft(current, commentVisibility, value),
+      ),
+    textareaRef: commentTextareaRef,
+  });
   const activeCommentImageAttachments =
     commentImageAttachments[commentVisibility];
   // Shared with colleagues so nobody answers the same ticket twice.
@@ -4476,6 +4510,27 @@ export function TicketDetail({
       ticketId,
     ],
   );
+
+  // After an Intune action: reload only the ticket history, so open edits
+  // in the form are kept.
+  const refreshTicketEvents = useCallback(async () => {
+    try {
+      const nextDetail = parseTicketDetail(
+        await invokeTicketOperation({ type: "getTicket", tenantId, ticketId }),
+      );
+      if (!nextDetail) return;
+      setDetail((current) => {
+        if (!current || current.ticket.id !== nextDetail.ticket.id) {
+          return current;
+        }
+        const updated = { ...current, events: nextDetail.events };
+        detailRef.current = updated;
+        return updated;
+      });
+    } catch {
+      // The history updates with the next regular reload.
+    }
+  }, [tenantId, ticketId]);
 
   const loadAttachments = useCallback(async () => {
     const requestId = ++attachmentRequestSequence.current;
@@ -6895,6 +6950,22 @@ export function TicketDetail({
             )}
           </section>
 
+          {requesterView ? null : (
+            <TicketCoordination
+              description={detail.ticket.description}
+              onChanged={() => {
+                onChanged();
+                void loadTicket();
+              }}
+              onOpenTicket={onOpenTicket}
+              refreshKey={`${detail.ticket.status_id}|${detail.ticket.assigned_agent_id ?? ""}|${detail.comments.length}|${detail.events[0]?.id ?? ""}`}
+              subject={detail.ticket.subject}
+              tenantId={tenantId}
+              ticketId={detail.ticket.id}
+              ticketNumber={detail.ticket.ticket_number}
+            />
+          )}
+
           <section
             className="ticket-detail-comments ticket-detail-primary"
             aria-labelledby="ticket-comments-heading"
@@ -7112,9 +7183,11 @@ export function TicketDetail({
               <label className="ticket-comment-body">
                 {commentComposer.bodyLabel}
                 <textarea
+                  {...snippetAssist.textareaProps}
                   aria-describedby="ticket-comment-visibility-hint"
                   disabled={busy || attachmentBusy}
                   maxLength={50_000}
+                  ref={commentTextareaRef}
                   onChange={(event) =>
                     setCommentDrafts((current) =>
                       updateTicketCommentDraft(
@@ -7129,6 +7202,8 @@ export function TicketDetail({
                   value={commentBody}
                 />
               </label>
+              {snippetAssist.picker}
+              {snippetAssist.browser}
               {canAttachCommentImages ? (
                 <div
                   className={`ticket-comment-image-dropzone${isCommentImageDropActive ? " ticket-comment-image-dropzone--active" : ""}`}
@@ -8123,6 +8198,14 @@ export function TicketDetail({
                     ticketId={ticketId}
                   />
                 )}
+                {detail.canUpdate && (
+                  <TicketIntuneActions
+                    onCompleted={() => void refreshTicketEvents()}
+                    refreshKey={`${detail.ticket.requester_id ?? ""}:${detail.ticket.affected_user_id ?? ""}`}
+                    tenantId={tenantId}
+                    ticketId={ticketId}
+                  />
+                )}
               </dl>
             )}
           </section>
@@ -9034,7 +9117,9 @@ export function TicketDetail({
                             strokeWidth={1.8}
                           />
                           <div>
-                            <strong>{eventLabel(event.event_type)}</strong>
+                            <strong>
+                              {eventLabel(event.event_type, event.payload)}
+                            </strong>
                             <time dateTime={event.created_at}>
                               {formatDateTime(event.created_at)}
                             </time>

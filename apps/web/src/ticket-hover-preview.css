@@ -1,0 +1,35 @@
+.ticket-hover-preview {
+  background: var(--surface, #fff);
+  border: 1px solid var(--border, #dfe5ef);
+  border-radius: 12px;
+  box-shadow: 0 12px 32px rgb(15 23 42 / 18%);
+  color: var(--text, #17233f);
+  display: grid;
+  font-size: 13px;
+  gap: 6px;
+  max-height: 260px;
+  overflow: hidden;
+  padding: 12px 14px;
+  pointer-events: none;
+  position: fixed;
+  z-index: 60;
+}
+.ticket-hover-preview p {
+  line-height: 1.45;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.ticket-hover-preview__muted {
+  color: var(--muted, #59677c);
+}
+.ticket-hover-preview__comment {
+  border-top: 1px solid var(--border, #dfe5ef);
+  display: grid;
+  gap: 3px;
+  padding-top: 6px;
+}
+.ticket-hover-preview__comment span {
+  color: var(--muted, #59677c);
+  font-size: 11px;
+  font-weight: 600;
+}

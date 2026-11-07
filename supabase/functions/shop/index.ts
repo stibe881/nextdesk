@@ -1051,21 +1051,42 @@ async function getOrder(
     );
   }
 
-  const [{ data: lines }, { data: events }] = await Promise.all([
-    admin
-      .from("shop_order_lines")
-      .select(
-        "id, catalog_item_id, inventory_item_id, item_name, kind, quantity, status, location_id, serial_unit_id, issued_at, returned_at, loan_from, loan_until",
-      )
-      .eq("order_id", orderId)
-      .order("created_at"),
-    admin
-      .from("shop_order_events")
-      .select("id, actor_id, event_type, note, internal, created_at")
-      .eq("order_id", orderId)
-      .order("created_at"),
-  ]);
+  const [{ data: lines }, { data: events }, { data: backorders }] =
+    await Promise.all([
+      admin
+        .from("shop_order_lines")
+        .select(
+          "id, catalog_item_id, inventory_item_id, item_name, kind, quantity, status, location_id, serial_unit_id, issued_at, returned_at, loan_from, loan_until",
+        )
+        .eq("order_id", orderId)
+        .order("created_at"),
+      admin
+        .from("shop_order_events")
+        .select("id, actor_id, event_type, note, internal, created_at")
+        .eq("order_id", orderId)
+        .order("created_at"),
+      // Beschaffung: wartende Bedarfe der Bestellzeilen (Migration 0224).
+      admin
+        .from("shop_backorders")
+        .select("order_line_id, status, expected_on")
+        .eq("tenant_id", tenantId)
+        .eq("order_id", orderId)
+        .in("status", ["open", "ordered"]),
+    ]);
   const lineRows = (lines ?? []) as Row[];
+  const procurement = new Map<
+    string,
+    { status: "open" | "ordered"; expectedOn: string | null }
+  >();
+  for (const backorder of (backorders ?? []) as Row[]) {
+    procurement.set(String(backorder.order_line_id), {
+      status: backorder.status === "ordered" ? "ordered" : "open",
+      expectedOn:
+        typeof backorder.expected_on === "string"
+          ? backorder.expected_on
+          : null,
+    });
+  }
   const eventRows = ((events ?? []) as Row[]).filter(
     (event) => canFulfill || event.internal !== true,
   );
@@ -1208,6 +1229,10 @@ async function getOrder(
       locationId: line.location_id,
       serialUnitId: line.serial_unit_id,
       imageUrl: lineImages.get(String(line.catalog_item_id)) ?? null,
+      procurement:
+        line.status === "backorder"
+          ? (procurement.get(String(line.id)) ?? null)
+          : null,
       ...(canFulfill
         ? {
             articleNumber:

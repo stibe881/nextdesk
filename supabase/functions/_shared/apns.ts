@@ -21,6 +21,8 @@ export type ApnsPayloadKind =
   | "infrastructure"
   | "watched"
   | "rule_reminder"
+  | "vendor_reminder"
+  | "children_done"
   | "summary"
   | "test";
 
@@ -52,6 +54,8 @@ export type ApnsPayloadInput = {
   watchInternal?: boolean;
   /** Reminder from a time-based ticket rule: the rule's name. */
   ruleName?: string;
+  /** Vendor case reminder: name of the vendor. */
+  vendorName?: string;
   /** Forwarded to a stand-in: name of the absent person. */
   delegatedFromName?: string;
 };
@@ -262,6 +266,22 @@ function alertFor(input: ApnsPayloadInput): { title: string; body: string } {
           : `${ticketNumber} braucht Aufmerksamkeit.`,
       };
     }
+    case "vendor_reminder": {
+      const vendor = input.vendorName
+        ? truncateSubject(input.vendorName)
+        : "Der Drittanbieter";
+      return {
+        title: "Drittanbieter nachfassen",
+        body: `${vendor} hat sich zu ${ticketNumber} noch nicht gemeldet.`,
+      };
+    }
+    case "children_done":
+      return {
+        title: "Teil-Tickets erledigt",
+        body: subject
+          ? `Alle Teil-Tickets von ${ticketNumber} sind erledigt: ${subject}`
+          : `Alle Teil-Tickets von ${ticketNumber} sind erledigt.`,
+      };
     case "follow_up":
       return {
         title: "Wiedervorlage fällig",

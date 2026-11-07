@@ -136,6 +136,9 @@ export function rpcError(
   error: any,
   operation: "status" | "delete",
 ): Response {
+  if (error?.hint === "ticket_children_open") {
+    return response(request, { error: { code: "ticket_children_open" } }, 409);
+  }
   if (error?.message === "Bulk ticket close confirmation required") {
     return response(
       request,

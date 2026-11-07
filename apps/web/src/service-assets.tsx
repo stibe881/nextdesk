@@ -15,6 +15,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { supabase } from "./lib/supabase";
+import { IntuneActionsMenu, useIntuneAssetDevices } from "./intune-actions";
 
 export type ServiceAssetsProps = {
   tenantId: string;
@@ -2034,6 +2035,18 @@ export function ServiceAssets({
       ),
     [archivedServices, serviceCategoryLabels, serviceCriticality, serviceQuery],
   );
+  // Intune actions only for assets with a known operating system (devices).
+  const intuneCandidateIds = useMemo(
+    () =>
+      allowAssets && activeTab === "assets"
+        ? assets
+            .filter((asset) => asset.operating_system)
+            .slice(0, 100)
+            .map((asset) => asset.id)
+        : [],
+    [activeTab, allowAssets, assets],
+  );
+  const intuneAssets = useIntuneAssetDevices(tenantId, intuneCandidateIds);
   const filteredAssets = useMemo(
     () =>
       assets.filter(
@@ -4460,6 +4473,13 @@ export function ServiceAssets({
                         ? "Wird archiviert …"
                         : "Archivieren"}
                     </button>
+                    {intuneAssets.devices.has(asset.id) ? " " : null}
+                    <IntuneActionsMenu
+                      device={intuneAssets.devices.get(asset.id)}
+                      disabled={!intuneAssets.connectionReady}
+                      tenantId={tenantId}
+                      ticketId={null}
+                    />
                   </article>
                 </li>
               ))}

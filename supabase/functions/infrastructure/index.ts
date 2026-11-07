@@ -503,13 +503,17 @@ function deviceFromRows(asset: Row, infra: Row, locations: Map<string, string>, 
 }
 
 async function list(request: Request, admin: Admin, tenantId: string, canManage: boolean) {
-  const [infra, locations, services] = await Promise.all([
+  const [infra, locations, services, alerts] = await Promise.all([
     admin.from("asset_infrastructure").select("*").eq("tenant_id", tenantId).limit(5000),
     admin.from("asset_locations").select("id, name").eq("tenant_id", tenantId).eq("active", true)
       .order("name"),
     admin.from("services").select("id, name").eq("tenant_id", tenantId).order("name").limit(1000),
+    // Live monitoring state (PRTG) for the network map.
+    admin.from("monitoring_alerts")
+      .select("asset_id, sensor_name, last_status, last_message, last_event_at")
+      .eq("tenant_id", tenantId).eq("state", "open").not("asset_id", "is", null).limit(2000),
   ]);
-  if (infra.error || locations.error || services.error) throw dbFailure();
+  if (infra.error || locations.error || services.error || alerts.error) throw dbFailure();
   const rows = (infra.data ?? []) as Row[];
   const ids = rows.map((row) => String(row.asset_id));
   const assets = ids.length
@@ -531,10 +535,21 @@ async function list(request: Request, admin: Admin, tenantId: string, canManage:
     const asset = assetById.get(String(row.asset_id));
     return asset ? [deviceFromRows(asset, row, locationNames, names)] : [];
   }).sort((a, b) => String(a.name).localeCompare(String(b.name), "de-CH"));
+  const monitoring: Record<string, { sensor: string | null; status: string | null; message: string | null; at: string }[]> = {};
+  for (const alert of (alerts.data ?? []) as Row[]) {
+    const key = String(alert.asset_id);
+    (monitoring[key] ??= []).push({
+      sensor: (alert.sensor_name as string | null) ?? null,
+      status: (alert.last_status as string | null) ?? null,
+      message: (alert.last_message as string | null) ?? null,
+      at: String(alert.last_event_at),
+    });
+  }
   return json(request, {
     data: {
       canManage,
       devices,
+      monitoring,
       locations: ((locations.data ?? []) as Row[]).map((row) => ({ id: row.id, name: row.name })),
       services: ((services.data ?? []) as Row[]).map((row) => ({ id: row.id, name: row.name })),
     },

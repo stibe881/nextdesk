@@ -2,7 +2,7 @@
   "name": "app-template",
   "version": "1.0.0",
   "private": true,
-  "main": "expo-router/entry",
+  "main": "index.ts",
   "scripts": {
     "dev": "concurrently -k \"pnpm dev:server\" \"pnpm dev:metro\"",
     "dev:server": "cross-env PORT=3000 NODE_ENV=development tsx watch server/_core/index.ts",
@@ -19,6 +19,7 @@
     "qr": "node scripts/generate_qr.mjs"
   },
   "dependencies": {
+    "@bacons/apple-targets": "5.0.0",
     "@expo/metro-runtime": "~57.0.16",
     "@expo/vector-icons": "^15.0.2",
     "@react-native-async-storage/async-storage": "2.2.0",
@@ -68,6 +69,7 @@
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "react-native": "0.86.3",
+    "react-native-android-widget": "0.24.0",
     "react-native-gesture-handler": "~2.32.0",
     "react-native-reanimated": "4.5.1",
     "react-native-safe-area-context": "~5.7.0",

@@ -1,6 +1,7 @@
 import { CsvImportDialog } from "./csv-import-dialog";
 import { INFRASTRUCTURE_IMPORT_FIELDS } from "./lib/import-fields";
 import { RackView } from "./infrastructure-racks";
+import { NetworkMap, type MonitoringEntry } from "./infrastructure-network-map";
 import {
   MaintenancePlanning,
   type MaintenanceWindow,
@@ -294,7 +295,10 @@ export function Infrastructure({
   >("current");
   const [query, setQuery] = useState("");
   const [onlyDue, setOnlyDue] = useState(false);
-  const [layout, setLayout] = useState<"list" | "racks">("list");
+  const [layout, setLayout] = useState<"list" | "racks" | "map">("list");
+  const [monitoring, setMonitoring] = useState<
+    Record<string, MonitoringEntry[]>
+  >({});
   const [importOpen, setImportOpen] = useState(false);
   // Locations created during an import, by lower-case name.
   const importLocations = useRef(new Map<string, string>());
@@ -363,7 +367,9 @@ export function Infrastructure({
         devices: Device[];
         locations: Location[];
         services?: Service[];
+        monitoring?: Record<string, MonitoringEntry[]>;
       }>({ type: "list", tenantId });
+      setMonitoring(data.monitoring ?? {});
       setDevices(data.devices);
       setLocations(data.locations);
       setServices(data.services ?? []);
@@ -383,6 +389,20 @@ export function Infrastructure({
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Live PRTG state: refresh quietly every minute while the map is shown.
+  useEffect(() => {
+    if (layout !== "map") return;
+    const timer = window.setInterval(() => {
+      void call<{ monitoring?: Record<string, MonitoringEntry[]> }>({
+        type: "list",
+        tenantId,
+      })
+        .then((data) => setMonitoring(data.monitoring ?? {}))
+        .catch(() => undefined);
+    }, 60_000);
+    return () => window.clearInterval(timer);
+  }, [layout, tenantId]);
 
   const visible = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase("de-CH");
@@ -552,6 +572,16 @@ export function Infrastructure({
         >
           Racks
         </button>
+        <button
+          aria-pressed={layout === "map"}
+          className={
+            layout === "map" ? "secondary-button is-active" : "text-button"
+          }
+          onClick={() => setLayout("map")}
+          type="button"
+        >
+          Netzwerkkarte
+        </button>
       </div>
 
       <div className="infrastructure__filters">
@@ -651,6 +681,13 @@ export function Infrastructure({
             </button>
           ) : null}
         </div>
+      ) : layout === "map" ? (
+        <NetworkMap
+          categoryLabel={(key) => CATEGORY[key as Category]?.label ?? key}
+          devices={visible}
+          monitoring={monitoring}
+          onOpen={setSelectedId}
+        />
       ) : layout === "racks" ? (
         <RackView
           categoryLabel={(key) => CATEGORY[key as Category]?.label ?? key}

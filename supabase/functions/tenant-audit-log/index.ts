@@ -1,13 +1,25 @@
 import { withSupabase } from "@supabase/server";
 
+import {
+  AUDIT_EXPORT_MAX_ROWS,
+  AUDIT_LIST_DEFAULT_LIMIT,
+  AUDIT_LIST_MAX_LIMIT,
+  auditAreaPrefixFilter,
+  auditCsvHeaderLine,
+  auditCsvRow,
+  auditEntityLink,
+  auditEntityTypeLabel,
+  type AuditExportEntry,
+  type AuditFilters,
+  isAuditUuid,
+  parseAuditFilters,
+  redactAuditSecrets,
+} from "../_shared/audit-view.ts";
+
 const ALLOWED_ORIGIN = "https://app.nextdesk.ch";
 const MAX_REQUEST_BYTES = 64 * 1024;
-const DEFAULT_LIST_LIMIT = 50;
-const MAX_LIST_LIMIT = 100;
-const DEFAULT_EXPORT_LIMIT = 1_000;
-const MAX_EXPORT_LIMIT = 2_000;
-const UUID_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const EXPORT_BATCH_SIZE = 1_000;
+const ACTOR_SEARCH_LIMIT = 20;
 
 const ERROR_MESSAGES = {
   authentication_required: {
@@ -57,6 +69,11 @@ const ERROR_MESSAGES = {
     detail: "Das Änderungsprotokoll konnte vorübergehend nicht geladen werden.",
     retryable: true,
   },
+  audit_log_entry_not_found: {
+    title: "Eintrag nicht gefunden",
+    detail: "Der Protokolleintrag existiert nicht oder ist nicht verfügbar.",
+    retryable: false,
+  },
   audit_log_actor_read_failed: {
     title: "Änderungsprotokoll unvollständig",
     detail:
@@ -64,45 +81,45 @@ const ERROR_MESSAGES = {
     retryable: true,
   },
   audit_log_export_failed: {
-    title: "CSV-Export nicht verfügbar",
-    detail: "Der CSV-Export konnte nicht sicher protokolliert werden.",
+    title: "Export nicht verfügbar",
+    detail: "Der Export konnte nicht sicher protokolliert werden.",
     retryable: true,
   },
 } as const;
 
 type ErrorCode = keyof typeof ERROR_MESSAGES;
-type AuditCursor = { id: string; occurredAt: string };
-type AuditFilters = {
-  action?: string;
-  actorId?: string;
-  endAt?: string;
-  entityId?: string;
-  entityType?: string;
-  freeText?: string;
-  startAt?: string;
-};
-type AuditListRequest = {
-  cursor?: AuditCursor;
-  filters: AuditFilters;
-  limit: number;
-  tenantId: string;
-  type: "list";
-};
-type AuditExportRequest = {
-  filters: AuditFilters;
-  limit: number;
-  tenantId: string;
-  type: "exportCsv";
-};
-type AuditRequest = AuditListRequest | AuditExportRequest;
+
+export type AuditCursor = { id: string; occurredAt: string };
+export type AuditRequest =
+  | {
+      type: "list";
+      tenantId: string;
+      filters: AuditFilters;
+      cursor?: AuditCursor;
+      limit: number;
+    }
+  | { type: "detail"; tenantId: string; id: string }
+  | { type: "actors"; tenantId: string; query?: string }
+  | { type: "facets"; tenantId: string }
+  | {
+      type: "export";
+      tenantId: string;
+      filters: AuditFilters;
+      format: "csv" | "json";
+    };
+
 type AuditLogRow = {
+  id: string;
   action: string;
   actor_id: string | null;
-  entity_id: string | null;
   entity_type: string;
-  id: string;
-  occurred_at: string;
+  entity_id: string | null;
   severity: string;
+  occurred_at: string;
+  request_id: string | null;
+  metadata: unknown;
+  before_data: unknown;
+  after_data: unknown;
 };
 
 class HttpError extends Error {
@@ -118,27 +135,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function isUuid(value: unknown): value is string {
-  return typeof value === "string" && UUID_PATTERN.test(value);
-}
-
-function validText(value: unknown, maximum: number): value is string {
-  return (
-    typeof value === "string" &&
-    !value.includes("\u0000") &&
-    value.isWellFormed() &&
-    Array.from(value.trim()).length >= 1 &&
-    Array.from(value.trim()).length <= maximum
-  );
-}
-
-function optionalText(
-  value: unknown,
-  maximum: number,
-): string | undefined | null {
-  if (value === undefined) return undefined;
-  if (!validText(value, maximum)) return null;
-  return value.trim();
+function hasOnlyKeys(
+  value: Record<string, unknown>,
+  allowedKeys: readonly string[],
+): boolean {
+  const allowed = new Set(allowedKeys);
+  return Object.keys(value).every((key) => allowed.has(key));
 }
 
 function isoTimestamp(value: unknown): value is string {
@@ -150,78 +152,14 @@ function isoTimestamp(value: unknown): value is string {
   );
 }
 
-function hasOnlyKeys(
-  value: Record<string, unknown>,
-  allowedKeys: readonly string[],
-): boolean {
-  const allowed = new Set(allowedKeys);
-  return Object.keys(value).every((key) => allowed.has(key));
-}
-
-function parseFilters(value: Record<string, unknown>): AuditFilters | null {
-  if (
-    !hasOnlyKeys(value, [
-      "startAt",
-      "endAt",
-      "action",
-      "actorId",
-      "entityType",
-      "entityId",
-      "freeText",
-    ])
-  ) {
-    return null;
-  }
-
-  const action = optionalText(value.action, 120);
-  const entityType = optionalText(value.entityType, 120);
-  const freeText = optionalText(value.freeText, 120);
-  if (action === null || entityType === null || freeText === null) return null;
-  if (
-    (value.startAt !== undefined && !isoTimestamp(value.startAt)) ||
-    (value.endAt !== undefined && !isoTimestamp(value.endAt)) ||
-    (value.actorId !== undefined && !isUuid(value.actorId)) ||
-    (value.entityId !== undefined && !isUuid(value.entityId))
-  ) {
-    return null;
-  }
-  if (
-    typeof value.startAt === "string" &&
-    typeof value.endAt === "string" &&
-    Date.parse(value.startAt) > Date.parse(value.endAt)
-  ) {
-    return null;
-  }
-
-  // PostgREST's .or() syntax cannot safely carry structural characters from a
-  // search term. Keep the server-side free-text filter deliberately narrow.
-  if (freeText !== undefined && !/^[\p{L}\p{N}\s._:/-]+$/u.test(freeText)) {
-    return null;
-  }
-
-  return {
-    ...(action ? { action } : {}),
-    ...(typeof value.actorId === "string"
-      ? { actorId: value.actorId.toLowerCase() }
-      : {}),
-    ...(typeof value.endAt === "string" ? { endAt: value.endAt } : {}),
-    ...(typeof value.entityId === "string"
-      ? { entityId: value.entityId.toLowerCase() }
-      : {}),
-    ...(entityType ? { entityType } : {}),
-    ...(freeText ? { freeText } : {}),
-    ...(typeof value.startAt === "string" ? { startAt: value.startAt } : {}),
-  };
-}
-
-function decodeCursor(value: unknown): AuditCursor | null {
+export function decodeCursor(value: unknown): AuditCursor | null {
   if (typeof value !== "string" || value.length > 512) return null;
   try {
     const base64 = value.replace(/-/g, "+").replace(/_/g, "/");
     const parsed: unknown = JSON.parse(atob(base64));
     if (
       !isRecord(parsed) ||
-      !isUuid(parsed.id) ||
+      !isAuditUuid(parsed.id) ||
       !isoTimestamp(parsed.occurredAt)
     ) {
       return null;
@@ -232,104 +170,139 @@ function decodeCursor(value: unknown): AuditCursor | null {
   }
 }
 
-function encodeCursor(row: AuditLogRow): string {
+export function encodeCursor(row: { id: string; occurred_at: string }): string {
   return btoa(JSON.stringify({ id: row.id, occurredAt: row.occurred_at }))
     .replace(/\+/g, "-")
     .replace(/\//g, "_")
     .replace(/=+$/g, "");
 }
 
-function parseRequest(value: unknown): AuditRequest | null {
+export function parseRequest(value: unknown): AuditRequest | null {
   if (
     !isRecord(value) ||
-    !isUuid(value.tenantId) ||
+    !isAuditUuid(value.tenantId) ||
     typeof value.type !== "string"
   ) {
     return null;
   }
   const tenantId = value.tenantId.toLowerCase();
-  const filters = parseFilters(
-    Object.fromEntries(
-      [
-        "startAt",
-        "endAt",
-        "action",
-        "actorId",
-        "entityType",
-        "entityId",
-        "freeText",
-      ].flatMap((key) => (key in value ? [[key, value[key]]] : [])),
-    ),
-  );
-  if (!filters) return null;
 
-  if (value.type === "list") {
-    if (
-      !hasOnlyKeys(value, [
-        "type",
-        "tenantId",
-        "limit",
-        "cursor",
-        "startAt",
-        "endAt",
-        "action",
-        "actorId",
-        "entityType",
-        "entityId",
-        "freeText",
-      ]) ||
-      (value.limit !== undefined &&
+  switch (value.type) {
+    case "list": {
+      if (
+        !hasOnlyKeys(value, ["type", "tenantId", "filters", "cursor", "limit"])
+      ) {
+        return null;
+      }
+      const filters = parseAuditFilters(value.filters);
+      if (!filters) return null;
+      if (
+        value.limit !== undefined &&
         (typeof value.limit !== "number" ||
           !Number.isInteger(value.limit) ||
           value.limit < 1 ||
-          value.limit > MAX_LIST_LIMIT))
-    ) {
-      return null;
+          value.limit > AUDIT_LIST_MAX_LIMIT)
+      ) {
+        return null;
+      }
+      const cursor =
+        value.cursor === undefined || value.cursor === null
+          ? undefined
+          : decodeCursor(value.cursor);
+      if (cursor === null) return null;
+      return {
+        type: "list",
+        tenantId,
+        filters,
+        ...(cursor ? { cursor } : {}),
+        limit:
+          typeof value.limit === "number"
+            ? value.limit
+            : AUDIT_LIST_DEFAULT_LIMIT,
+      };
     }
-    const cursor =
-      value.cursor === undefined ? undefined : decodeCursor(value.cursor);
-    if (value.cursor !== undefined && !cursor) return null;
-    return {
-      cursor: cursor ?? undefined,
-      filters,
-      limit: typeof value.limit === "number" ? value.limit : DEFAULT_LIST_LIMIT,
-      tenantId,
-      type: "list",
-    };
-  }
-
-  if (value.type === "exportCsv") {
-    if (
-      !hasOnlyKeys(value, [
-        "type",
-        "tenantId",
-        "limit",
-        "startAt",
-        "endAt",
-        "action",
-        "actorId",
-        "entityType",
-        "entityId",
-        "freeText",
-      ]) ||
-      (value.limit !== undefined &&
-        (typeof value.limit !== "number" ||
-          !Number.isInteger(value.limit) ||
-          value.limit < 1 ||
-          value.limit > MAX_EXPORT_LIMIT))
-    ) {
-      return null;
+    case "detail": {
+      if (!hasOnlyKeys(value, ["type", "tenantId", "id"])) return null;
+      if (!isAuditUuid(value.id)) return null;
+      return { type: "detail", tenantId, id: value.id.toLowerCase() };
     }
-    return {
-      filters,
-      limit:
-        typeof value.limit === "number" ? value.limit : DEFAULT_EXPORT_LIMIT,
-      tenantId,
-      type: "exportCsv",
-    };
+    case "actors": {
+      if (!hasOnlyKeys(value, ["type", "tenantId", "query"])) return null;
+      if (value.query === undefined || value.query === null) {
+        return { type: "actors", tenantId };
+      }
+      if (
+        typeof value.query !== "string" ||
+        value.query.length > 120 ||
+        !value.query.isWellFormed() ||
+        // deno-lint-ignore no-control-regex
+        /[\u0000-\u001f\u007f]/.test(value.query)
+      ) {
+        return null;
+      }
+      const query = value.query.trim();
+      return query
+        ? { type: "actors", tenantId, query }
+        : { type: "actors", tenantId };
+    }
+    case "facets": {
+      if (!hasOnlyKeys(value, ["type", "tenantId"])) return null;
+      return { type: "facets", tenantId };
+    }
+    case "export": {
+      if (!hasOnlyKeys(value, ["type", "tenantId", "filters", "format"])) {
+        return null;
+      }
+      if (value.format !== "csv" && value.format !== "json") return null;
+      const filters = parseAuditFilters(value.filters);
+      if (!filters) return null;
+      return { type: "export", tenantId, filters, format: value.format };
+    }
+    default:
+      return null;
   }
+}
 
-  return null;
+/** Parameter für public.audit_log_search (Migration 0227). */
+export function searchParameters(
+  tenantId: string,
+  filters: AuditFilters,
+  cursor: AuditCursor | undefined,
+  limit: number,
+): Record<string, unknown> {
+  const area = filters.area ? auditAreaPrefixFilter(filters.area) : null;
+  return {
+    p_tenant_id: tenantId,
+    p_actor_id: filters.actorId ?? null,
+    p_action: filters.action ?? null,
+    p_action_prefixes: area?.include ?? null,
+    p_excluded_prefixes: area && area.exclude.length > 0 ? area.exclude : null,
+    p_entity_type: filters.entityType ?? null,
+    p_entity_id: filters.entityId ?? null,
+    p_severity: filters.severity ?? null,
+    p_start_at: filters.startAt ?? null,
+    p_end_at: filters.endAt ?? null,
+    p_query: filters.freeText ?? null,
+    p_cursor_at: cursor?.occurredAt ?? null,
+    p_cursor_id: cursor?.id ?? null,
+    p_limit: limit,
+  };
+}
+
+/** Metadaten des Exports im Änderungsprotokoll: die tatsächlichen Filter. */
+export function exportAuditMetadata(
+  format: "csv" | "json",
+  filters: AuditFilters,
+  exportedRows: number,
+  truncated: boolean,
+): Record<string, unknown> {
+  return {
+    format,
+    exportedRows,
+    truncated,
+    maxRows: AUDIT_EXPORT_MAX_ROWS,
+    filters: { ...filters },
+  };
 }
 
 function corsHeaders(request: Request): Headers {
@@ -347,7 +320,7 @@ function corsHeaders(request: Request): Headers {
     headers.set("Access-Control-Allow-Methods", "POST, OPTIONS");
     headers.set(
       "Access-Control-Expose-Headers",
-      "X-Request-Id, X-NextDesk-Export-Truncated",
+      "Content-Disposition, X-Request-Id, X-NextDesk-Export-Truncated, X-NextDesk-Export-Rows",
     );
   }
   return headers;
@@ -371,22 +344,6 @@ function json(
 
 function failure(request: Request, code: ErrorCode, status: number): Response {
   return json(request, { error: { code, ...ERROR_MESSAGES[code] } }, status);
-}
-
-function csvResponse(
-  request: Request,
-  csv: string,
-  truncated: boolean,
-): Response {
-  const headers = corsHeaders(request);
-  headers.set("Content-Type", "text/csv; charset=utf-8");
-  headers.set(
-    "Content-Disposition",
-    `attachment; filename="nextdesk-audit-${new Date().toISOString().slice(0, 10)}.csv"`,
-  );
-  headers.set("X-Request-Id", crypto.randomUUID());
-  headers.set("X-NextDesk-Export-Truncated", String(truncated));
-  return new Response(`\uFEFF${csv}`, { status: 200, headers });
 }
 
 async function isTenantAdministrator(
@@ -419,7 +376,7 @@ async function isTenantAdministrator(
     ...new Set(
       (assignments ?? [])
         .map((assignment: any) => assignment.role_id)
-        .filter((roleId: unknown): roleId is string => isUuid(roleId)),
+        .filter((roleId: unknown): roleId is string => isAuditUuid(roleId)),
     ),
   ];
   if (roleIds.length === 0) return "forbidden";
@@ -444,63 +401,53 @@ async function isTenantAdministrator(
   return allowed ? "allowed" : "forbidden";
 }
 
-function auditQuery(admin: any, tenantId: string, filters: AuditFilters) {
-  let query = admin
-    .from("audit_logs")
-    .select(
-      "id, actor_id, action, entity_type, entity_id, severity, occurred_at",
-    )
-    .eq("tenant_id", tenantId);
-  if (filters.startAt) query = query.gte("occurred_at", filters.startAt);
-  if (filters.endAt) query = query.lte("occurred_at", filters.endAt);
-  if (filters.action) query = query.eq("action", filters.action);
-  if (filters.actorId) query = query.eq("actor_id", filters.actorId);
-  if (filters.entityType) query = query.eq("entity_type", filters.entityType);
-  if (filters.entityId) query = query.eq("entity_id", filters.entityId);
-  return query;
-}
-
-function searchAndCursorFilter(
-  filters: AuditFilters,
-  cursor: AuditCursor | undefined,
-): string | null {
-  const cursorFilter = cursor
-    ? `or(occurred_at.lt.${cursor.occurredAt},and(occurred_at.eq.${cursor.occurredAt},id.lt.${cursor.id}))`
-    : null;
-  if (!filters.freeText) return cursorFilter?.slice(3, -1) ?? null;
-
-  const actionFilter = `action.ilike.*${filters.freeText}*`;
-  const entityFilter = `entity_type.ilike.*${filters.freeText}*`;
-  if (!cursorFilter) return `or(${actionFilter},${entityFilter})`;
-  return `or(and(${actionFilter},${cursorFilter}),and(${entityFilter},${cursorFilter}))`;
-}
-
 function validateRows(value: unknown): AuditLogRow[] | null {
   if (!Array.isArray(value)) return null;
   const rows: AuditLogRow[] = [];
   for (const row of value) {
     if (
       !isRecord(row) ||
-      !isUuid(row.id) ||
-      (row.actor_id !== null && !isUuid(row.actor_id)) ||
-      !validText(row.action, 240) ||
-      !validText(row.entity_type, 240) ||
-      (row.entity_id !== null && !isUuid(row.entity_id)) ||
-      !validText(row.severity, 80) ||
+      !isAuditUuid(row.id) ||
+      (row.actor_id !== null && !isAuditUuid(row.actor_id)) ||
+      typeof row.action !== "string" ||
+      typeof row.entity_type !== "string" ||
+      (row.entity_id !== null && !isAuditUuid(row.entity_id)) ||
+      typeof row.severity !== "string" ||
       !isoTimestamp(row.occurred_at)
     ) {
       return null;
     }
     rows.push({
-      action: row.action,
-      actor_id: row.actor_id,
-      entity_id: row.entity_id,
-      entity_type: row.entity_type,
       id: row.id.toLowerCase(),
-      occurred_at: row.occurred_at,
+      action: row.action,
+      actor_id: row.actor_id === null ? null : row.actor_id.toLowerCase(),
+      entity_type: row.entity_type,
+      entity_id: row.entity_id === null ? null : row.entity_id.toLowerCase(),
       severity: row.severity,
+      occurred_at: row.occurred_at,
+      request_id: isAuditUuid(row.request_id) ? row.request_id : null,
+      metadata: row.metadata ?? {},
+      before_data: row.before_data ?? null,
+      after_data: row.after_data ?? null,
     });
   }
+  return rows;
+}
+
+async function searchRows(
+  admin: any,
+  tenantId: string,
+  filters: AuditFilters,
+  cursor: AuditCursor | undefined,
+  limit: number,
+): Promise<AuditLogRow[]> {
+  const { data, error } = await admin.rpc(
+    "audit_log_search",
+    searchParameters(tenantId, filters, cursor, limit),
+  );
+  if (error) throw new HttpError(500, "audit_log_read_failed");
+  const rows = validateRows(data ?? []);
+  if (!rows) throw new HttpError(500, "audit_log_read_failed");
   return rows;
 }
 
@@ -524,7 +471,7 @@ async function actorNamesForRows(
       .limit(100);
     if (error) throw new HttpError(500, "audit_log_actor_read_failed");
     for (const profile of profiles ?? []) {
-      if (!isRecord(profile) || !isUuid(profile.id)) continue;
+      if (!isRecord(profile) || !isAuditUuid(profile.id)) continue;
       actorNames.set(
         profile.id.toLowerCase(),
         typeof profile.display_name === "string" ? profile.display_name : null,
@@ -534,11 +481,21 @@ async function actorNamesForRows(
   return actorNames;
 }
 
-function publicEntries(
-  rows: readonly AuditLogRow[],
+function actorName(
+  actorId: string | null,
+  actorNames: ReadonlyMap<string, string | null>,
+): string {
+  return actorId
+    ? actorNames.get(actorId)?.trim() || "Benutzerkonto"
+    : "System";
+}
+
+function summaryEntry(
+  row: AuditLogRow,
   actorNames: ReadonlyMap<string, string | null>,
 ) {
-  return rows.map((row) => ({
+  const link = auditEntityLink(row.entity_type, row.entity_id, row.metadata);
+  return {
     id: row.id,
     action: row.action,
     entityType: row.entity_type,
@@ -546,144 +503,250 @@ function publicEntries(
     severity: row.severity,
     occurredAt: row.occurred_at,
     actorId: row.actor_id,
-    actorName: row.actor_id
-      ? actorNames.get(row.actor_id)?.trim() || "Benutzerkonto"
-      : "System",
-  }));
-}
-
-function csvCell(value: string | null): string {
-  const normalized = value ?? "";
-  return /[";\r\n]/.test(normalized)
-    ? `"${normalized.replaceAll('"', '""')}"`
-    : normalized;
-}
-
-function asCsv(
-  rows: readonly AuditLogRow[],
-  actorNames: ReadonlyMap<string, string | null>,
-): string {
-  const header = [
-    "Zeitpunkt",
-    "Aktion",
-    "Person",
-    "Personen-ID",
-    "Objekttyp",
-    "Objekt-ID",
-    "Schweregrad",
-    "Audit-ID",
-  ];
-  const records = rows.map((row) => [
-    row.occurred_at,
-    row.action,
-    row.actor_id
-      ? actorNames.get(row.actor_id)?.trim() || "Benutzerkonto"
-      : "System",
-    row.actor_id,
-    row.entity_type,
-    row.entity_id,
-    row.severity,
-    row.id,
-  ]);
-  return [header, ...records]
-    .map((row) => row.map(csvCell).join(";"))
-    .join("\r\n");
-}
-
-function exportMetadata(
-  filters: AuditFilters,
-  exportedRows: number,
-  truncated: boolean,
-) {
-  return {
-    exportedRows,
-    truncated,
-    filters: {
-      action: Boolean(filters.action),
-      actor: Boolean(filters.actorId),
-      entity: Boolean(filters.entityType || filters.entityId),
-      freeText: Boolean(filters.freeText),
-      period: Boolean(filters.startAt || filters.endAt),
-    },
+    actorName: actorName(row.actor_id, actorNames),
+    ticketId: link?.kind === "ticket" ? link.ticketId : null,
+    hasChanges: row.before_data !== null || row.after_data !== null,
   };
 }
 
-async function writeExportAudit(
-  admin: any,
-  tenantId: string,
-  actorId: string,
-  filters: AuditFilters,
-  exportedRows: number,
-  truncated: boolean,
-): Promise<void> {
-  const { error } = await admin.from("audit_logs").insert({
-    tenant_id: tenantId,
-    actor_id: actorId,
-    action: "tenant.audit_log.exported",
-    entity_type: "audit_log_export",
-    entity_id: null,
-    metadata: exportMetadata(filters, exportedRows, truncated),
-  });
-  if (error) throw new HttpError(500, "audit_log_export_failed");
+function exportEntry(
+  row: AuditLogRow,
+  actorNames: ReadonlyMap<string, string | null>,
+): AuditExportEntry {
+  return {
+    id: row.id,
+    occurredAt: row.occurred_at,
+    action: row.action,
+    actorId: row.actor_id,
+    actorName: actorName(row.actor_id, actorNames),
+    entityType: row.entity_type,
+    entityId: row.entity_id,
+    severity: row.severity,
+    metadata: redactAuditSecrets(row.metadata),
+    beforeData: redactAuditSecrets(row.before_data),
+    afterData: redactAuditSecrets(row.after_data),
+  };
 }
 
 async function listAuditEntries(
   request: Request,
   admin: any,
-  input: AuditListRequest,
+  input: Extract<AuditRequest, { type: "list" }>,
 ): Promise<Response> {
-  let query = auditQuery(admin, input.tenantId, input.filters);
-  const searchFilter = searchAndCursorFilter(input.filters, input.cursor);
-  if (searchFilter) query = query.or(searchFilter);
-  const { data, error } = await query
-    .order("occurred_at", { ascending: false })
-    .order("id", { ascending: false })
-    .limit(input.limit + 1);
-  if (error) throw new HttpError(500, "audit_log_read_failed");
-  const rows = validateRows(data ?? []);
-  if (!rows) throw new HttpError(500, "audit_log_read_failed");
-
+  const rows = await searchRows(
+    admin,
+    input.tenantId,
+    input.filters,
+    input.cursor,
+    input.limit + 1,
+  );
   const visibleRows = rows.slice(0, input.limit);
+  const hasMore = rows.length > input.limit;
   const actorNames = await actorNamesForRows(admin, visibleRows);
-  const truncated = rows.length > input.limit;
   return json(request, {
     data: {
-      entries: publicEntries(visibleRows, actorNames),
+      entries: visibleRows.map((row) => summaryEntry(row, actorNames)),
       nextCursor:
-        truncated && visibleRows.length > 0
+        hasMore && visibleRows.length > 0
           ? encodeCursor(visibleRows[visibleRows.length - 1])
           : null,
-      truncated,
+      truncated: hasMore,
     },
   });
+}
+
+async function auditEntryDetail(
+  request: Request,
+  admin: any,
+  input: Extract<AuditRequest, { type: "detail" }>,
+): Promise<Response> {
+  const { data, error } = await admin
+    .from("audit_logs")
+    .select(
+      "id, action, actor_id, entity_type, entity_id, severity, occurred_at, request_id, metadata, before_data, after_data",
+    )
+    .eq("tenant_id", input.tenantId)
+    .eq("id", input.id)
+    .maybeSingle();
+  if (error) throw new HttpError(500, "audit_log_read_failed");
+  if (!data) throw new HttpError(404, "audit_log_entry_not_found");
+  const rows = validateRows([data]);
+  if (!rows) throw new HttpError(500, "audit_log_read_failed");
+  const row = rows[0];
+  const actorNames = await actorNamesForRows(admin, rows);
+  return json(request, {
+    data: {
+      entry: {
+        ...summaryEntry(row, actorNames),
+        requestId: row.request_id,
+        metadata: redactAuditSecrets(row.metadata),
+        beforeData: redactAuditSecrets(row.before_data),
+        afterData: redactAuditSecrets(row.after_data),
+      },
+    },
+  });
+}
+
+async function searchActors(
+  request: Request,
+  admin: any,
+  input: Extract<AuditRequest, { type: "actors" }>,
+): Promise<Response> {
+  const { data, error } = await admin.rpc("audit_log_actor_search", {
+    p_tenant_id: input.tenantId,
+    p_query: input.query ?? null,
+    p_limit: ACTOR_SEARCH_LIMIT,
+  });
+  if (error || !Array.isArray(data)) {
+    throw new HttpError(500, "audit_log_actor_read_failed");
+  }
+  const actors = data.flatMap((row: unknown) => {
+    if (!isRecord(row) || !isAuditUuid(row.user_id)) return [];
+    const name =
+      typeof row.display_name === "string" ? row.display_name.trim() : "";
+    const email = typeof row.email === "string" ? row.email : null;
+    return [
+      {
+        id: row.user_id.toLowerCase(),
+        name: name || email || "Benutzerkonto",
+        email,
+      },
+    ];
+  });
+  return json(request, { data: { actors } });
+}
+
+async function auditFacets(
+  request: Request,
+  admin: any,
+  input: Extract<AuditRequest, { type: "facets" }>,
+): Promise<Response> {
+  const { data, error } = await admin.rpc("audit_log_entity_types", {
+    p_tenant_id: input.tenantId,
+  });
+  if (error || !Array.isArray(data)) {
+    throw new HttpError(500, "audit_log_read_failed");
+  }
+  const entityTypes = data.flatMap((row: unknown) =>
+    isRecord(row) && typeof row.entity_type === "string"
+      ? [
+          {
+            value: row.entity_type,
+            label: auditEntityTypeLabel(row.entity_type),
+          },
+        ]
+      : [],
+  );
+  return json(request, { data: { entityTypes } });
+}
+
+/**
+ * Lädt höchstens AUDIT_EXPORT_MAX_ROWS + 1 Einträge in Blöcken zu 1000
+ * (Keyset), damit eine Kürzung zuverlässig erkannt wird.
+ */
+export async function collectExportRows<
+  Row extends { id: string; occurred_at: string },
+>(
+  fetchBatch: (
+    cursor: AuditCursor | undefined,
+    limit: number,
+  ) => Promise<Row[]>,
+  maxRows = AUDIT_EXPORT_MAX_ROWS,
+  batchSize = EXPORT_BATCH_SIZE,
+): Promise<{ rows: Row[]; truncated: boolean }> {
+  const rows: Row[] = [];
+  let cursor: AuditCursor | undefined;
+  while (rows.length <= maxRows) {
+    const wanted = Math.min(batchSize, maxRows + 1 - rows.length);
+    const batch = await fetchBatch(cursor, wanted);
+    rows.push(...batch);
+    if (batch.length < wanted) break;
+    const last = batch[batch.length - 1];
+    cursor = { id: last.id, occurredAt: last.occurred_at };
+  }
+  return { rows: rows.slice(0, maxRows), truncated: rows.length > maxRows };
 }
 
 async function exportAuditEntries(
   request: Request,
   admin: any,
   actorId: string,
-  input: AuditExportRequest,
+  input: Extract<AuditRequest, { type: "export" }>,
 ): Promise<Response> {
-  const { data, error } = await auditQuery(admin, input.tenantId, input.filters)
-    .order("occurred_at", { ascending: false })
-    .order("id", { ascending: false })
-    .limit(input.limit + 1);
-  if (error) throw new HttpError(500, "audit_log_read_failed");
-  const rows = validateRows(data ?? []);
-  if (!rows) throw new HttpError(500, "audit_log_read_failed");
-
-  const visibleRows = rows.slice(0, input.limit);
-  const truncated = rows.length > input.limit;
-  const actorNames = await actorNamesForRows(admin, visibleRows);
-  await writeExportAudit(
-    admin,
-    input.tenantId,
-    actorId,
-    input.filters,
-    visibleRows.length,
-    truncated,
+  const { rows, truncated } = await collectExportRows((cursor, limit) =>
+    searchRows(admin, input.tenantId, input.filters, cursor, limit),
   );
-  return csvResponse(request, asCsv(visibleRows, actorNames), truncated);
+  const actorNames = await actorNamesForRows(admin, rows);
+  const entries = rows.map((row) => exportEntry(row, actorNames));
+
+  // Fail closed: without a written audit entry no export leaves the server.
+  const { error } = await admin.from("audit_logs").insert({
+    tenant_id: input.tenantId,
+    actor_id: actorId,
+    action: "audit.exported",
+    entity_type: "audit_log_export",
+    entity_id: null,
+    severity: "security",
+    metadata: exportAuditMetadata(
+      input.format,
+      input.filters,
+      entries.length,
+      truncated,
+    ),
+  });
+  if (error) throw new HttpError(500, "audit_log_export_failed");
+
+  const date = new Date().toISOString().slice(0, 10);
+  const headers = corsHeaders(request);
+  headers.set("X-Request-Id", crypto.randomUUID());
+  headers.set("X-NextDesk-Export-Truncated", String(truncated));
+  headers.set("X-NextDesk-Export-Rows", String(entries.length));
+
+  if (input.format === "json") {
+    headers.set("Content-Type", "application/json; charset=utf-8");
+    headers.set(
+      "Content-Disposition",
+      `attachment; filename="nextdesk-audit-${date}.json"`,
+    );
+    return new Response(
+      JSON.stringify({
+        exportedAt: new Date().toISOString(),
+        filters: input.filters,
+        truncated,
+        count: entries.length,
+        entries,
+      }),
+      { status: 200, headers },
+    );
+  }
+
+  // Stream the CSV line by line so the full document never exists as one
+  // additional string in memory.
+  headers.set("Content-Type", "text/csv; charset=utf-8");
+  headers.set(
+    "Content-Disposition",
+    `attachment; filename="nextdesk-audit-${date}.csv"`,
+  );
+  const encoder = new TextEncoder();
+  let index = -1;
+  const body = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      if (index === -1) {
+        controller.enqueue(encoder.encode(`﻿${auditCsvHeaderLine()}\r\n`));
+      } else if (index < entries.length) {
+        const chunk = entries
+          .slice(index, index + 200)
+          .map((entry) => `${auditCsvRow(entry)}\r\n`)
+          .join("");
+        controller.enqueue(encoder.encode(chunk));
+      } else {
+        controller.close();
+        return;
+      }
+      index = index === -1 ? 0 : index + 200;
+    },
+  });
+  return new Response(body, { status: 200, headers });
 }
 
 const handler = withSupabase(
@@ -691,7 +754,7 @@ const handler = withSupabase(
   async (request, context) => {
     try {
       const actorId = context.userClaims?.id;
-      if (!isUuid(actorId)) {
+      if (!isAuditUuid(actorId)) {
         throw new HttpError(401, "authentication_required");
       }
       const input = parseRequest(await request.json().catch(() => null));
@@ -709,14 +772,24 @@ const handler = withSupabase(
         throw new HttpError(403, "tenant_admin_required");
       }
 
-      return input.type === "list"
-        ? await listAuditEntries(request, context.supabaseAdmin, input)
-        : await exportAuditEntries(
+      const admin = context.supabaseAdmin;
+      switch (input.type) {
+        case "list":
+          return await listAuditEntries(request, admin, input);
+        case "detail":
+          return await auditEntryDetail(request, admin, input);
+        case "actors":
+          return await searchActors(request, admin, input);
+        case "facets":
+          return await auditFacets(request, admin, input);
+        case "export":
+          return await exportAuditEntries(
             request,
-            context.supabaseAdmin,
+            admin,
             actorId.toLowerCase(),
             input,
           );
+      }
     } catch (error) {
       if (error instanceof HttpError) {
         return failure(request, error.code, error.status);

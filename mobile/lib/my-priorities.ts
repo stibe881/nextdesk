@@ -1,4 +1,5 @@
 import { invokeNextDesk } from "@/lib/nextdesk-client";
+import { recordWidgetPriorities } from "@/lib/widget-sync";
 
 export type PriorityItem = {
   position: number;
@@ -27,6 +28,10 @@ async function call(body: Record<string, unknown>): Promise<PriorityList> {
   );
   if (!response?.data || !Array.isArray(response.data.tickets)) {
     throw new Error("Die Prioritäten sind unvollständig.");
+  }
+  // Keep the home-screen widgets in step with every load or change.
+  if (typeof body.tenantId === "string") {
+    void recordWidgetPriorities(body.tenantId, response.data);
   }
   return response.data;
 }

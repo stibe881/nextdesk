@@ -3,6 +3,7 @@ import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Pressable,
   ScrollView,
   Text,
@@ -17,6 +18,15 @@ import {
 } from "@/components/mobile-feature-gate";
 import { useMobileNetworkStatus } from "@/components/offline-status";
 import { getMobileAsset, type MobileAssetDetail } from "@/lib/asset-registry";
+import {
+  getMobileIntuneDevice,
+  type MobileIntuneAction,
+  type MobileIntuneDevice,
+  mobileIntuneActionLabel,
+  mobileIntuneConfirmationText,
+  mobileIntuneNeedsConfirmation,
+  runMobileIntuneAction,
+} from "@/lib/intune-actions";
 import { loadCurrentTenant } from "@/lib/nextdesk-client";
 import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
 import { useMobileSessionGuard } from "@/lib/use-mobile-session-guard";
@@ -48,6 +58,13 @@ export default function AssetDetailScreen() {
   const [detail, setDetail] = useState<MobileAssetDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [tenantId, setTenantId] = useState<string | null>(null);
+  const [intuneDevice, setIntuneDevice] = useState<MobileIntuneDevice | null>(
+    null,
+  );
+  const [intunePending, setIntunePending] = useState<MobileIntuneAction | null>(
+    null,
+  );
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -55,7 +72,12 @@ export default function AssetDetailScreen() {
     setError("");
     try {
       const tenant = await loadCurrentTenant();
+      setTenantId(tenant.id);
       setDetail(await getMobileAsset(tenant.id, id));
+      // Intune-Aktionen nur mit Berechtigung; sonst bleibt der Bereich weg.
+      getMobileIntuneDevice(tenant.id, id)
+        .then(setIntuneDevice)
+        .catch(() => setIntuneDevice(null));
     } catch (nextError) {
       setDetail(null);
       setError(
@@ -74,6 +96,47 @@ export default function AssetDetailScreen() {
       if (!checkingSession && !checkingFeatures && assetsEnabled) void load();
     }, [assetsEnabled, checkingFeatures, checkingSession, load, recoveryEpoch]),
   );
+
+  const runIntuneAction = async (action: MobileIntuneAction) => {
+    if (!tenantId || !intuneDevice) return;
+    setIntunePending(action);
+    try {
+      await runMobileIntuneAction(tenantId, intuneDevice.assetId, action);
+      Alert.alert(
+        "Intune-Aktion ausgelöst",
+        `${mobileIntuneActionLabel(action)} für «${intuneDevice.name}» wurde an Intune übergeben.`,
+      );
+    } catch (actionError) {
+      Alert.alert(
+        "Intune-Aktion fehlgeschlagen",
+        actionError instanceof Error
+          ? actionError.message
+          : "Die Intune-Aktion konnte nicht ausgeführt werden.",
+      );
+    } finally {
+      setIntunePending(null);
+    }
+  };
+
+  const chooseIntuneAction = (action: MobileIntuneAction) => {
+    if (!intuneDevice) return;
+    if (!mobileIntuneNeedsConfirmation(action)) {
+      void runIntuneAction(action);
+      return;
+    }
+    Alert.alert(
+      `${mobileIntuneActionLabel(action)}?`,
+      mobileIntuneConfirmationText(action, intuneDevice.name),
+      [
+        { style: "cancel", text: "Abbrechen" },
+        {
+          onPress: () => void runIntuneAction(action),
+          style: "destructive",
+          text: mobileIntuneActionLabel(action),
+        },
+      ],
+    );
+  };
 
   if (checkingSession || checkingFeatures) {
     return <MobileFeatureLoadingScreen />;
@@ -268,6 +331,33 @@ export default function AssetDetailScreen() {
         />
         {integrationRows.length ? (
           <InfoCard rows={integrationRows} title="Microsoft Intune" />
+        ) : null}
+        {intuneDevice ? (
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Intune-Aktionen</Text>
+            {!intuneDevice.connectionReady ? (
+              <Text style={styles.timelineDate}>
+                Die Intune-Anbindung ist nicht aktiv.
+              </Text>
+            ) : null}
+            {intuneDevice.actions.map((action) => (
+              <Pressable
+                accessibilityRole="button"
+                disabled={
+                  intunePending !== null || !intuneDevice.connectionReady
+                }
+                key={action}
+                onPress={() => chooseIntuneAction(action)}
+                style={styles.secondaryButton}
+              >
+                <Text style={styles.secondaryButtonText}>
+                  {intunePending === action
+                    ? `${mobileIntuneActionLabel(action)} …`
+                    : mobileIntuneActionLabel(action)}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
         ) : null}
         {lifecycle.length ? (
           <View style={styles.card}>

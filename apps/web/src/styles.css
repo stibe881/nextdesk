@@ -18070,6 +18070,38 @@ body:has(.knowledge-base__editor-backdrop) {
   margin-right: 6px;
 }
 
+/* Beschaffung: Bedarfe je Artikel und Lieferant */
+.inventory__procurement-item {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  margin: 17px 0 0;
+  padding: 16px;
+}
+
+.inventory__procurement-item > header {
+  align-items: flex-start;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.inventory__procurement-item h3 {
+  font-size: 1rem;
+  margin: 0 0 4px;
+}
+
+.inventory__procurement-supplier {
+  border-top: 1px solid var(--border);
+  margin-top: 14px;
+  padding-top: 12px;
+}
+
+.inventory__procurement-supplier h4 {
+  font-size: 0.86rem;
+  margin: 0;
+}
+
 .inventory__empty {
   background: color-mix(in srgb, var(--primary-soft) 40%, var(--surface));
   border: 1px dashed color-mix(in srgb, var(--primary) 35%, var(--border));

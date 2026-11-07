@@ -1,0 +1,172 @@
+.intune-actions {
+  position: relative;
+  display: inline-block;
+}
+
+.intune-actions__trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 10px;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.intune-actions__trigger:hover:not(:disabled) {
+  background: var(--surface-subtle);
+}
+
+.intune-actions__trigger:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.intune-actions__menu {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 4px);
+  right: 0;
+  display: grid;
+  min-width: 240px;
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  padding: 4px;
+  background: var(--surface);
+  box-shadow: var(--shadow-lg);
+  list-style: none;
+}
+
+.intune-actions__menu button {
+  width: 100%;
+  border: 0;
+  border-radius: 6px;
+  padding: 8px 10px;
+  background: transparent;
+  color: var(--ink);
+  font-size: 13px;
+  text-align: left;
+}
+
+.intune-actions__menu button:hover,
+.intune-actions__menu button:focus-visible {
+  background: var(--surface-subtle);
+}
+
+.intune-actions__devices {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.intune-actions__devices li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.intune-actions__devices li > span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.intune-actions__devices small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.intune-actions__backdrop {
+  position: fixed;
+  z-index: 60;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: color-mix(in srgb, var(--ink) 35%, transparent);
+}
+
+.intune-actions__dialog {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 12px;
+  width: min(460px, 100%);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  padding: 20px;
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--shadow-lg);
+}
+
+.intune-actions__dialog > svg {
+  color: var(--warning);
+}
+
+.intune-actions__dialog p {
+  margin: 8px 0 0;
+}
+
+.intune-actions__hint {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.intune-actions__dialog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.intune-actions__toast {
+  position: fixed;
+  z-index: 50;
+  right: 24px;
+  bottom: 24px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  width: min(480px, calc(100% - 32px));
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--success);
+  border-radius: var(--radius-card);
+  padding: 12px 14px;
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--shadow-lg);
+  font-size: 14px;
+}
+
+.intune-actions__toast--success > svg {
+  color: var(--success);
+}
+
+.intune-actions__toast--error {
+  border-left-color: var(--danger);
+}
+
+.intune-actions__toast--error > svg {
+  color: var(--danger);
+}
+
+@media (max-width: 720px) {
+  .intune-actions__toast {
+    right: 16px;
+    bottom: 16px;
+  }
+
+  .intune-actions__menu {
+    right: auto;
+    left: 0;
+  }
+}
