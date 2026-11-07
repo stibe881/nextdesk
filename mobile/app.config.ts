@@ -152,6 +152,36 @@ const config: ExpoConfig = {
         supportsPictureInPicture: true,
       },
     ],
+    // Static home-screen quick actions on iOS: they show on long-press of the
+    // app icon from the first launch on, without waiting for JavaScript.
+    // Keep ids in sync with components/quick-actions-bridge.tsx.
+    [
+      "expo-quick-actions",
+      {
+        iosActions: [
+          {
+            id: "follow-up",
+            title: "Wiedervorlage erfassen",
+            icon: "symbol:calendar.badge.clock",
+          },
+          {
+            id: "ticket",
+            title: "Ticket erfassen",
+            icon: "symbol:plus.bubble",
+          },
+          {
+            id: "service-task",
+            title: "Serviceaufgabe erfassen",
+            icon: "symbol:checklist",
+          },
+          {
+            id: "inventory-item",
+            title: "Lagerartikel erfassen",
+            icon: "symbol:shippingbox",
+          },
+        ],
+      },
+    ],
     [
       "expo-splash-screen",
       {
