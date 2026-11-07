@@ -57,11 +57,11 @@
 }
 
 .infrastructure__kpis .is-warn strong {
-  color: #d97706;
+  color: var(--tone-warning);
 }
 
 .infrastructure__kpis .is-bad strong {
-  color: #dc2626;
+  color: var(--tone-danger);
 }
 
 .infrastructure__filters {
@@ -191,23 +191,23 @@
 .infrastructure__icon--server,
 .infrastructure__icon--virtual_host,
 .infrastructure__icon--storage {
-  background: color-mix(in srgb, #7c3aed 16%, var(--surface));
-  color: #7c3aed;
+  background: color-mix(in srgb, var(--tone-accent) 16%, var(--surface));
+  color: var(--tone-accent);
 }
 
 .infrastructure__icon--access_point {
-  background: color-mix(in srgb, #0284c7 16%, var(--surface));
-  color: #0284c7;
+  background: color-mix(in srgb, var(--tone-info) 16%, var(--surface));
+  color: var(--tone-info);
 }
 
 .infrastructure__icon--firewall {
-  background: color-mix(in srgb, #dc2626 16%, var(--surface));
-  color: #dc2626;
+  background: color-mix(in srgb, var(--tone-danger) 16%, var(--surface));
+  color: var(--tone-danger);
 }
 
 .infrastructure__icon--ups {
-  background: color-mix(in srgb, #d97706 18%, var(--surface));
-  color: #d97706;
+  background: color-mix(in srgb, var(--tone-warning) 18%, var(--surface));
+  color: var(--tone-warning);
 }
 
 .infrastructure__main {
@@ -270,8 +270,8 @@
 }
 
 .infrastructure__lifecycle--repair {
-  background: color-mix(in srgb, #d97706 18%, var(--surface));
-  color: #b45309;
+  background: color-mix(in srgb, var(--tone-warning) 18%, var(--surface));
+  color: var(--tone-warning);
 }
 
 .infrastructure__lifecycle--ordered,
@@ -281,23 +281,23 @@
 }
 
 .infrastructure__criticality--high {
-  background: color-mix(in srgb, #ea580c 16%, var(--surface));
-  color: #ea580c;
+  background: color-mix(in srgb, var(--tone-warning) 16%, var(--surface));
+  color: var(--tone-warning);
 }
 
 .infrastructure__criticality--critical {
-  background: color-mix(in srgb, #dc2626 16%, var(--surface));
-  color: #dc2626;
+  background: color-mix(in srgb, var(--tone-danger) 16%, var(--surface));
+  color: var(--tone-danger);
 }
 
 .infrastructure__due--warn {
-  background: color-mix(in srgb, #d97706 18%, var(--surface));
-  color: #b45309;
+  background: color-mix(in srgb, var(--tone-warning) 18%, var(--surface));
+  color: var(--tone-warning);
 }
 
 .infrastructure__due--bad {
-  background: color-mix(in srgb, #dc2626 16%, var(--surface));
-  color: #dc2626;
+  background: color-mix(in srgb, var(--tone-danger) 16%, var(--surface));
+  color: var(--tone-danger);
 }
 
 .infrastructure__empty {

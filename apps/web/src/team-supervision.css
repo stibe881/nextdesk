@@ -71,16 +71,16 @@
 .team-supervision__kpis .is-bad strong,
 .team-supervision__agent .is-bad dd,
 .team-supervision__card.is-bad code {
-  color: #dc2626;
+  color: var(--tone-danger);
 }
 
 .team-supervision__kpis .is-warn strong,
 .team-supervision__agent .is-warn dd {
-  color: #d97706;
+  color: var(--tone-warning);
 }
 
 .team-supervision__kpis .is-good strong {
-  color: var(--success, #11664e);
+  color: var(--tone-success);
 }
 
 .team-supervision__overview {
@@ -120,7 +120,7 @@
   align-items: center;
   gap: 4px;
   margin: 2px 0 0;
-  color: #b45309;
+  color: var(--tone-warning);
   font-size: 12px;
 }
 
@@ -271,11 +271,11 @@
 }
 
 .team-supervision__card.is-warn {
-  border-left: 3px solid #d97706;
+  border-left: 3px solid var(--tone-warning);
 }
 
 .team-supervision__card.is-bad {
-  border-left: 3px solid #dc2626;
+  border-left: 3px solid var(--tone-danger);
 }
 
 .team-supervision__card.is-selected {
@@ -415,11 +415,11 @@
 }
 
 .team-supervision__trend.is-good {
-  color: var(--success, #11664e);
+  color: var(--tone-success);
 }
 
 .team-supervision__trend.is-bad {
-  color: #dc2626;
+  color: var(--tone-danger);
 }
 
 .team-supervision__coaching {
@@ -508,7 +508,7 @@
 }
 
 .team-supervision__coaching-list li.is-praise {
-  border-left-color: var(--success, #11664e);
+  border-left-color: var(--tone-success);
 }
 
 .team-supervision__coaching-list li.is-goal {
@@ -516,7 +516,7 @@
 }
 
 .team-supervision__coaching-list li.is-concern {
-  border-left-color: #d97706;
+  border-left-color: var(--tone-warning);
 }
 
 .team-supervision__coaching-list li > div {

@@ -73,7 +73,7 @@
   place-items: center;
   border-radius: 999px;
   background: var(--warning-soft, #fef3c7);
-  color: var(--warning, #b45309);
+  color: var(--warning, var(--tone-warning));
 }
 
 .problem-candidates__detail {
@@ -162,5 +162,5 @@
 }
 
 .problem-analysis__error {
-  color: #dc2626;
+  color: var(--tone-danger);
 }
