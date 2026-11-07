@@ -1,4 +1,5 @@
 import {
+  Fragment,
   useEffect,
   useMemo,
   useRef,
@@ -25,6 +26,7 @@ import {
   CalendarClock,
   CalendarDays,
   ChartNoAxesCombined,
+  Columns3,
   ChevronDown,
   ClipboardList,
   CircleCheck,
@@ -46,6 +48,7 @@ import {
   UsersRound,
   Boxes,
   ShoppingBag,
+  List,
   ListChecks,
   Package,
   X,
@@ -95,6 +98,13 @@ import { GlobalSearch, type GlobalSearchResult } from "./global-search";
 import { ServiceReporting } from "./service-reporting";
 import { TeamSupervision } from "./team-supervision";
 import { ProblemCandidates } from "./problem-insights";
+import { TicketKanban } from "./ticket-kanban";
+import {
+  HomeLayoutEditor,
+  loadHomeLayout,
+  saveHomeLayout,
+  type HomeLayout,
+} from "./home-layout";
 import { absenceLabel, loadActiveAbsences } from "./lib/active-absences";
 import { ServiceAssets } from "./service-assets";
 import {
@@ -2560,6 +2570,28 @@ function AuthenticatedApp() {
   const [delegatedForIds, setDelegatedForIds] = useState<string[]>([]);
   // Departments the user supervises (role "Vorgesetzter Agent").
   const [problemListVersion, setProblemListVersion] = useState(0);
+  const [homeLayout, setHomeLayout] = useState<HomeLayout>(loadHomeLayout);
+  const changeHomeLayout = (next: HomeLayout) => {
+    setHomeLayout(next);
+    saveHomeLayout(next);
+  };
+  const [ticketLayout, setTicketLayout] = useState<"list" | "kanban">(() => {
+    try {
+      return window.localStorage.getItem("nextdesk.ticketLayout") === "kanban"
+        ? "kanban"
+        : "list";
+    } catch {
+      return "list";
+    }
+  });
+  const changeTicketLayout = (layout: "list" | "kanban") => {
+    setTicketLayout(layout);
+    try {
+      window.localStorage.setItem("nextdesk.ticketLayout", layout);
+    } catch {
+      // Only a convenience; the list stays the default.
+    }
+  };
   const [supervisedDepartmentIds, setSupervisedDepartmentIds] = useState<
     string[]
   >([]);
@@ -6073,73 +6105,113 @@ function AuthenticatedApp() {
                   Einige Tickets sind in der aktuellen Liste nicht geladen.
                 </p>
               )}
-              <div
-                className={
-                  workspacePreferences.ticketSplitView &&
-                  isSupabaseConfigured &&
-                  canWorkTickets
-                    ? "ticket-list-detail ticket-list-detail--enabled"
-                    : "ticket-list-detail"
-                }
-              >
-                <div className="ticket-list-detail__list">
-                  <TicketList
-                    {...(isSupabaseConfigured && canWorkTickets && activeTenant
-                      ? {
-                          assignment: {
-                            currentUserId: session?.user.id ?? null,
-                            onChanged: () =>
-                              setDashboardRevision((current) => current + 1),
-                            tenantId: activeTenant.id,
-                          },
-                        }
-                      : {})}
-                    {...(isSupabaseConfigured && canWorkTickets
-                      ? {
-                          onOpen: openTicketFromList,
-                          onSelectionChange: updateTicketSelection,
-                          selectedTicketIds,
-                        }
-                      : isSupabaseConfigured
-                        ? { onOpen: setSelectedTicketId }
+              {isSupabaseConfigured && canWorkTickets && activeTenant ? (
+                <div
+                  aria-label="Darstellung der Tickets"
+                  className="ticket-layout-switch"
+                  role="group"
+                >
+                  {(["list", "kanban"] as const).map((layout) => (
+                    <button
+                      aria-pressed={ticketLayout === layout}
+                      className={ticketLayout === layout ? "is-active" : ""}
+                      key={layout}
+                      onClick={() => changeTicketLayout(layout)}
+                      type="button"
+                    >
+                      {layout === "list" ? (
+                        <List aria-hidden="true" size={15} />
+                      ) : (
+                        <Columns3 aria-hidden="true" size={15} />
+                      )}
+                      {layout === "list" ? "Liste" : "Kanban"}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+              {ticketLayout === "kanban" &&
+              isSupabaseConfigured &&
+              canWorkTickets &&
+              activeTenant ? (
+                <TicketKanban
+                  onChanged={() =>
+                    setDashboardRevision((current) => current + 1)
+                  }
+                  onOpen={(ticketId) => setSelectedTicketId(ticketId)}
+                  tenantId={activeTenant.id}
+                  tickets={filteredTickets}
+                />
+              ) : (
+                <div
+                  className={
+                    workspacePreferences.ticketSplitView &&
+                    isSupabaseConfigured &&
+                    canWorkTickets
+                      ? "ticket-list-detail ticket-list-detail--enabled"
+                      : "ticket-list-detail"
+                  }
+                >
+                  <div className="ticket-list-detail__list">
+                    <TicketList
+                      {...(isSupabaseConfigured &&
+                      canWorkTickets &&
+                      activeTenant
+                        ? {
+                            assignment: {
+                              currentUserId: session?.user.id ?? null,
+                              onChanged: () =>
+                                setDashboardRevision((current) => current + 1),
+                              tenantId: activeTenant.id,
+                            },
+                          }
                         : {})}
-                    {...(query.trim() ||
-                    queue !== "alle" ||
-                    (canWorkTickets && ticketScope !== "all") ||
-                    metricTicketFilter ||
-                    hasTicketListRefinement
-                      ? { onClearFilters: clearTicketFilters }
-                      : {})}
-                    hasActiveFilters={Boolean(
-                      query.trim() ||
+                      {...(isSupabaseConfigured && canWorkTickets
+                        ? {
+                            onOpen: openTicketFromList,
+                            onSelectionChange: updateTicketSelection,
+                            selectedTicketIds,
+                          }
+                        : isSupabaseConfigured
+                          ? { onOpen: setSelectedTicketId }
+                          : {})}
+                      {...(query.trim() ||
                       queue !== "alle" ||
                       (canWorkTickets && ticketScope !== "all") ||
                       metricTicketFilter ||
-                      hasTicketListRefinement,
-                    )}
-                    keyboardActiveTicketId={keyboardActiveTicketId}
-                    loading={dashboardLoading && snapshot === null}
-                    {...(activeTenant
-                      ? { onCreateTicket: () => setTicketComposerOpen(true) }
-                      : {})}
-                    tickets={filteredTickets}
-                  />
-                </div>
-                {workspacePreferences.ticketSplitView &&
-                  isSupabaseConfigured &&
-                  canWorkTickets && (
-                    <TicketListDetailPreview
-                      onOpenFull={() =>
-                        splitSelectedTicket &&
-                        setSelectedTicketId(
-                          splitSelectedTicket.recordId ??
-                            splitSelectedTicket.id,
-                        )
-                      }
-                      ticket={splitSelectedTicket}
+                      hasTicketListRefinement
+                        ? { onClearFilters: clearTicketFilters }
+                        : {})}
+                      hasActiveFilters={Boolean(
+                        query.trim() ||
+                        queue !== "alle" ||
+                        (canWorkTickets && ticketScope !== "all") ||
+                        metricTicketFilter ||
+                        hasTicketListRefinement,
+                      )}
+                      keyboardActiveTicketId={keyboardActiveTicketId}
+                      loading={dashboardLoading && snapshot === null}
+                      {...(activeTenant
+                        ? { onCreateTicket: () => setTicketComposerOpen(true) }
+                        : {})}
+                      tickets={filteredTickets}
                     />
-                  )}
-              </div>
+                  </div>
+                  {workspacePreferences.ticketSplitView &&
+                    isSupabaseConfigured &&
+                    canWorkTickets && (
+                      <TicketListDetailPreview
+                        onOpenFull={() =>
+                          splitSelectedTicket &&
+                          setSelectedTicketId(
+                            splitSelectedTicket.recordId ??
+                              splitSelectedTicket.id,
+                          )
+                        }
+                        ticket={splitSelectedTicket}
+                      />
+                    )}
+                </div>
+              )}
               {isSupabaseConfigured && view.hasMoreTickets && (
                 <div className="ticket-load-more">
                   <button
@@ -6193,129 +6265,155 @@ function AuthenticatedApp() {
               </div>
             </section>
 
-            <TicketScopeMetricTiles
-              canWorkTickets={canWorkTickets}
-              delegatedForNames={delegatedForNames}
-              loading={dashboardMetricsLoading}
-              metrics={view.metrics}
-              onOpenScope={openTicketScope}
-              selectedScope={null}
-              trends={dashboardTrends}
-            />
+            <HomeLayoutEditor layout={homeLayout} onChange={changeHomeLayout} />
+            {homeLayout.hidden.includes("metrics") ? null : (
+              <TicketScopeMetricTiles
+                canWorkTickets={canWorkTickets}
+                delegatedForNames={delegatedForNames}
+                loading={dashboardMetricsLoading}
+                metrics={view.metrics}
+                onOpenScope={openTicketScope}
+                selectedScope={null}
+                trends={dashboardTrends}
+              />
+            )}
 
-            <section className="content-grid">
-              <article className="ticket-panel panel">
-                <div className="panel-heading">
-                  <div>
-                    <p className="eyebrow">Aktive Arbeit</p>
-                    <h2>Priorisierte Tickets</h2>
-                  </div>
-                  <button
-                    className="text-button"
-                    onClick={() => setSection("Tickets")}
-                    type="button"
-                  >
-                    Alle Tickets
-                    <ArrowRight
-                      aria-hidden="true"
-                      size={16}
-                      strokeWidth={1.8}
-                    />
-                  </button>
-                </div>
-                <QueueTabs
-                  queue={queue}
-                  queueCount={queueCount}
-                  queueOptions={queueOptions}
-                  setQueue={setQueue}
-                />
-                {view.ticketListNote && (
-                  <p className="list-note">{view.ticketListNote}</p>
-                )}
-                <TicketList
-                  {...(isSupabaseConfigured
-                    ? { onOpen: setSelectedTicketId }
-                    : {})}
-                  {...(isSupabaseConfigured && canWorkTickets && activeTenant
-                    ? {
-                        assignment: {
-                          currentUserId: session?.user.id ?? null,
-                          onChanged: () =>
-                            setDashboardRevision((current) => current + 1),
-                          tenantId: activeTenant.id,
-                        },
-                      }
-                    : {})}
-                  keyboardActiveTicketId={keyboardActiveTicketId}
-                  {...(activeTenant
-                    ? { onCreateTicket: () => setTicketComposerOpen(true) }
-                    : {})}
-                  tickets={filteredTickets}
-                />
-              </article>
-
-              <aside className="side-stack">
-                {activeTenant && isFeatureEnabled("ticketing.detail") && (
-                  <ApprovalInboxCard
-                    onOpenTicket={(ticketId) => {
-                      setSection("Tickets");
-                      setSelectedTicketId(ticketId);
-                    }}
-                    tenantId={activeTenant.id}
-                  />
-                )}
-                {activeTenant && agentWorkbenchEnabled && (
-                  <AgentMetricsCard
-                    onOpenTickets={openMetricTickets}
-                    tenantId={activeTenant.id}
-                  />
-                )}
-                {activeTenant &&
-                  canWorkTickets &&
-                  experienceWorkspaceEnabled && (
-                    <MyDayCard
-                      onOpenFollowUps={() => {
-                        setWorkplaceRequestedView("followUps");
-                        setSection("Arbeitsplatz");
-                      }}
-                      onOpenTicket={(ticketId) => {
-                        setSection("Tickets");
-                        setSelectedTicketId(ticketId);
-                      }}
-                      refreshKey={experienceFollowUpsRevision}
-                      tenantId={activeTenant.id}
-                      tickets={view.tickets}
-                    />
-                  )}
-                <article className="panel activity-panel">
+            <section
+              className={`content-grid${homeLayout.hidden.includes("tickets") ? " content-grid--no-tickets" : ""}`}
+            >
+              {homeLayout.hidden.includes("tickets") ? null : (
+                <article className="ticket-panel panel">
                   <div className="panel-heading">
                     <div>
-                      <p className="eyebrow">Ereignisse</p>
-                      <h2>Gerade passiert</h2>
+                      <p className="eyebrow">Aktive Arbeit</p>
+                      <h2>Priorisierte Tickets</h2>
                     </div>
+                    <button
+                      className="text-button"
+                      onClick={() => setSection("Tickets")}
+                      type="button"
+                    >
+                      Alle Tickets
+                      <ArrowRight
+                        aria-hidden="true"
+                        size={16}
+                        strokeWidth={1.8}
+                      />
+                    </button>
                   </div>
-                  {view.activity.length === 0 ? (
-                    <p className="empty-state">
-                      Keine autorisierten Ereignisse im gewählten Zeitraum.
-                    </p>
-                  ) : (
-                    <ol>
-                      {view.activity.map((item) => (
-                        <li key={`${item.time}-${item.text}`}>
-                          <time>{item.time}</time>
-                          <span
-                            className={
-                              item.tone === "critical"
-                                ? "activity-marker critical"
-                                : "activity-marker"
-                            }
-                          />
-                          <p>{item.text}</p>
-                        </li>
-                      ))}
-                    </ol>
+                  <QueueTabs
+                    queue={queue}
+                    queueCount={queueCount}
+                    queueOptions={queueOptions}
+                    setQueue={setQueue}
+                  />
+                  {view.ticketListNote && (
+                    <p className="list-note">{view.ticketListNote}</p>
                   )}
+                  <TicketList
+                    {...(isSupabaseConfigured
+                      ? { onOpen: setSelectedTicketId }
+                      : {})}
+                    {...(isSupabaseConfigured && canWorkTickets && activeTenant
+                      ? {
+                          assignment: {
+                            currentUserId: session?.user.id ?? null,
+                            onChanged: () =>
+                              setDashboardRevision((current) => current + 1),
+                            tenantId: activeTenant.id,
+                          },
+                        }
+                      : {})}
+                    keyboardActiveTicketId={keyboardActiveTicketId}
+                    {...(activeTenant
+                      ? { onCreateTicket: () => setTicketComposerOpen(true) }
+                      : {})}
+                    tickets={filteredTickets}
+                  />
                 </article>
+              )}
+
+              <aside className="side-stack">
+                {homeLayout.order
+                  .filter((key) => !homeLayout.hidden.includes(key))
+                  .map((key) => (
+                    <Fragment key={key}>
+                      {key === "approvals" ? (
+                        <>
+                          {activeTenant &&
+                            isFeatureEnabled("ticketing.detail") && (
+                              <ApprovalInboxCard
+                                onOpenTicket={(ticketId) => {
+                                  setSection("Tickets");
+                                  setSelectedTicketId(ticketId);
+                                }}
+                                tenantId={activeTenant.id}
+                              />
+                            )}
+                        </>
+                      ) : key === "agentMetrics" ? (
+                        <>
+                          {activeTenant && agentWorkbenchEnabled && (
+                            <AgentMetricsCard
+                              onOpenTickets={openMetricTickets}
+                              tenantId={activeTenant.id}
+                            />
+                          )}
+                        </>
+                      ) : key === "myDay" ? (
+                        <>
+                          {activeTenant &&
+                            canWorkTickets &&
+                            experienceWorkspaceEnabled && (
+                              <MyDayCard
+                                onOpenFollowUps={() => {
+                                  setWorkplaceRequestedView("followUps");
+                                  setSection("Arbeitsplatz");
+                                }}
+                                onOpenTicket={(ticketId) => {
+                                  setSection("Tickets");
+                                  setSelectedTicketId(ticketId);
+                                }}
+                                refreshKey={experienceFollowUpsRevision}
+                                tenantId={activeTenant.id}
+                                tickets={view.tickets}
+                              />
+                            )}
+                        </>
+                      ) : key === "activity" ? (
+                        <article className="panel activity-panel">
+                          <div className="panel-heading">
+                            <div>
+                              <p className="eyebrow">Ereignisse</p>
+                              <h2>Gerade passiert</h2>
+                            </div>
+                          </div>
+                          {view.activity.length === 0 ? (
+                            <p className="empty-state">
+                              Keine autorisierten Ereignisse im gewählten
+                              Zeitraum.
+                            </p>
+                          ) : (
+                            <ol>
+                              {view.activity.map((item) => (
+                                <li key={`${item.time}-${item.text}`}>
+                                  <time>{item.time}</time>
+                                  <span
+                                    className={
+                                      item.tone === "critical"
+                                        ? "activity-marker critical"
+                                        : "activity-marker"
+                                    }
+                                  />
+                                  <p>{item.text}</p>
+                                </li>
+                              ))}
+                            </ol>
+                          )}
+                        </article>
+                      ) : null}
+                    </Fragment>
+                  ))}
               </aside>
             </section>
           </>
