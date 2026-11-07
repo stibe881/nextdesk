@@ -12428,7 +12428,7 @@ begin
     raise exception 'recent items test: browser roles can run service functions';
   end if;
   if not has_function_privilege('authenticated',
-       'public.list_authorized_ticket_list_page_v2(uuid, uuid[], uuid[], uuid[], uuid, boolean, text, text, integer, integer, text, text, text[], text[], text[], text[], text[], text, text[], uuid[], uuid[], uuid[], uuid[], timestamptz, timestamptz, timestamptz, timestamptz, boolean)',
+       'public.list_authorized_ticket_list_page_v2(uuid, uuid[], uuid[], uuid[], uuid, boolean, text, text, integer, integer, text, text, text[], text[], text[], text[], text[], text, text[], uuid[], uuid[], uuid[], uuid[], timestamptz, timestamptz, timestamptz, timestamptz, boolean, smallint)',
        'execute') then
     raise exception 'drilldown test: list v2 not executable for authenticated';
   end if;
