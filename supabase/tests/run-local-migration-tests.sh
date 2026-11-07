@@ -2160,8 +2160,22 @@ begin
     from public.ticket_notifications notification
     where notification.kind = 'ticket.follow_up_due'
       and notification.payload ->> 'followUpId' = v_due_id::text
+      -- Copies for an active stand-in are counted separately below.
+      and not notification.payload ? 'delegatedFrom'
   ) <> 1 then
     raise exception 'Wiedervorlagen-Erinnerung wurde doppelt erzeugt';
+  end if;
+  -- The fixtures contain an active delegation 002 -> 001: the stand-in gets
+  -- exactly one copy, marked with the absent agent.
+  if (
+    select count(*)
+    from public.ticket_notifications notification
+    where notification.user_id = '00000000-0000-4000-8000-000000000001'
+      and notification.kind = 'ticket.follow_up_due'
+      and notification.payload ->> 'followUpId' = v_due_id::text
+      and notification.payload ->> 'delegatedFrom' = '00000000-0000-4000-8000-000000000002'
+  ) <> 1 then
+    raise exception 'Stellvertretung erhielt die Benachrichtigung nicht genau einmal';
   end if;
 
   update public.experience_follow_ups

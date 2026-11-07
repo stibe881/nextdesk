@@ -36,6 +36,8 @@ export type ApnsPayloadInput = {
   serviceTaskEvent?: string;
   serviceTaskTitle?: string;
   occurrenceId?: string;
+  /** Forwarded to a stand-in: name of the absent person. */
+  delegatedFromName?: string;
 };
 
 type ApnsConfiguration = {
@@ -341,7 +343,13 @@ function alertFor(input: ApnsPayloadInput): { title: string; body: string } {
 export function buildApnsPayload(
   input: ApnsPayloadInput,
 ): Record<string, unknown> {
-  const alert = alertFor(input);
+  const baseAlert = alertFor(input);
+  const delegatedFrom = input.delegatedFromName
+    ? truncateSubject(input.delegatedFromName)
+    : null;
+  const alert = delegatedFrom
+    ? { ...baseAlert, title: `Vertretung ${delegatedFrom}: ${baseAlert.title}` }
+    : baseAlert;
   const data: Record<string, unknown> = {
     nextdeskV: 1,
     tenantId: input.tenantId,

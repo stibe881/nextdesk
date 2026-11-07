@@ -192,7 +192,8 @@ type Section =
   | "Wissen"
   | "Berichte"
   | "Einstellungen";
-type TicketScope = "all" | "mine" | "unassigned" | "open" | "closed";
+type TicketScope =
+  "all" | "mine" | "unassigned" | "open" | "closed" | "delegated";
 type MetricTicketFilter = {
   label: string;
   ticketIds: string[];
@@ -471,6 +472,7 @@ function MetricLoadingState() {
 
 function TicketScopeMetricTiles({
   canWorkTickets,
+  delegatedForNames,
   loading,
   metrics,
   onOpenScope,
@@ -478,6 +480,8 @@ function TicketScopeMetricTiles({
   trends,
 }: {
   canWorkTickets: boolean;
+  /** People the user currently stands in for (empty: no tile). */
+  delegatedForNames: readonly string[];
   loading: boolean;
   metrics: DashboardMetrics;
   onOpenScope: (scope: TicketScope) => void;
@@ -576,6 +580,23 @@ function TicketScopeMetricTiles({
               </>
             )}
           </button>
+          {delegatedForNames.length > 0 ? (
+            <button
+              aria-pressed={selectedScope === "delegated"}
+              className={className("delegated")}
+              disabled={loading}
+              onClick={() => onOpenScope("delegated")}
+              type="button"
+            >
+              <p>Stellvertretung</p>
+              <div>
+                <strong className="metric-card__names">
+                  {delegatedForNames.join(", ")}
+                </strong>
+              </div>
+              <small>Tickets der vertretenen Personen</small>
+            </button>
+          ) : null}
         </>
       )}
     </section>
@@ -643,7 +664,8 @@ function isTicketScope(value: unknown): value is TicketScope {
     value === "mine" ||
     value === "unassigned" ||
     value === "open" ||
-    value === "closed"
+    value === "closed" ||
+    value === "delegated"
   );
 }
 
@@ -1072,7 +1094,25 @@ function SupervisorRequestReply({
   );
 }
 
+/** Forwarded copies for a stand-in name the absent person. */
 function notificationPresentation(
+  notification: NotificationItem,
+): NotificationPresentation {
+  const base = baseNotificationPresentation(notification);
+  const delegatedFrom = notificationPayloadText(
+    notification,
+    "delegatedFromName",
+    200,
+  );
+  return delegatedFrom
+    ? {
+        ...base,
+        description: `Stellvertretung für ${delegatedFrom}: ${base.description}`,
+      }
+    : base;
+}
+
+function baseNotificationPresentation(
   notification: NotificationItem,
 ): NotificationPresentation {
   const ticketNumber = notificationTicketNumber(notification);
@@ -2370,6 +2410,7 @@ function AuthenticatedApp() {
   const [period, setPeriod] = useState<Period>("Heute");
   const [queue, setQueue] = useState("alle");
   const [ticketScope, setTicketScope] = useState<TicketScope>("all");
+  const [delegatedForIds, setDelegatedForIds] = useState<string[]>([]);
   const [ticketListRefinement, setTicketListRefinement] =
     useState<TicketListRefinement>(DEFAULT_TICKET_LIST_REFINEMENT);
   const [metricTicketFilter, setMetricTicketFilter] =
@@ -3873,6 +3914,84 @@ function AuthenticatedApp() {
     return { agents, departments, priorities, statuses };
   }, [queueOptions, view.ticketAgents, view.ticketFilterCatalog, view.tickets]);
   const parsedTicketSearch = useMemo(() => parseTicketSearch(query), [query]);
+  // Active delegations in which the current user stands in for someone.
+  const delegationUserId = session?.user.id ?? null;
+  const delegationTenantId = activeTenant?.id ?? null;
+  const [delegatorProfileNames, setDelegatorProfileNames] = useState<
+    Record<string, string>
+  >({});
+  useEffect(() => {
+    if (
+      !supabase ||
+      !delegationUserId ||
+      !delegationTenantId ||
+      !canWorkTickets
+    ) {
+      setDelegatedForIds([]);
+      return;
+    }
+    const client = supabase;
+    let active = true;
+    const load = async () => {
+      const now = new Date().toISOString();
+      const { data, error } = await client
+        .from("agent_delegations")
+        .select("agent_id")
+        .eq("tenant_id", delegationTenantId)
+        .eq("delegate_id", delegationUserId)
+        .is("ended_at", null)
+        .lte("starts_at", now)
+        .gt("ends_at", now);
+      if (!active || error) return;
+      const ids = [
+        ...new Set(
+          (data ?? []).flatMap((row) =>
+            typeof row.agent_id === "string" ? [row.agent_id] : [],
+          ),
+        ),
+      ];
+      setDelegatedForIds(ids);
+      if (ids.length === 0) return;
+      const profiles = await client
+        .from("user_profiles")
+        .select("id, display_name")
+        .in("id", ids);
+      if (!active || profiles.error) return;
+      setDelegatorProfileNames(
+        Object.fromEntries(
+          (profiles.data ?? []).flatMap((row) =>
+            typeof row.id === "string" &&
+            typeof row.display_name === "string" &&
+            row.display_name.trim()
+              ? [[row.id, row.display_name.trim()]]
+              : [],
+          ),
+        ),
+      );
+    };
+    void load();
+    // Delegations start and end over time.
+    const timer = window.setInterval(() => void load(), 5 * 60 * 1000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [canWorkTickets, delegationTenantId, delegationUserId]);
+  useEffect(() => {
+    // The scope disappears when the last delegation ends.
+    if (ticketScope === "delegated" && delegatedForIds.length === 0) {
+      setTicketScope("all");
+    }
+  }, [delegatedForIds, ticketScope]);
+  // Agents the current user stands in for right now (active delegations).
+  const delegatedForNames = useMemo(() => {
+    const names = new Map(
+      ticketFilterOptions.agents.map((agent) => [agent.id, agent.displayName]),
+    );
+    return delegatedForIds.map(
+      (id) => delegatorProfileNames[id] ?? names.get(id) ?? "Kolleg:in",
+    );
+  }, [delegatedForIds, delegatorProfileNames, ticketFilterOptions.agents]);
   const effectiveTicketScope = canWorkTickets ? ticketScope : "mine";
   const metricTicketIds = useMemo(
     () => (metricTicketFilter ? new Set(metricTicketFilter.ticketIds) : null),
@@ -4005,6 +4124,9 @@ function AuthenticatedApp() {
     mine: "Meine Tickets",
     open: "Offene Tickets",
     unassigned: "Nicht zugewiesene Tickets",
+    delegated: delegatedForNames.length
+      ? `Stellvertretung für ${delegatedForNames.join(", ")}`
+      : "Stellvertretung",
   };
   const hasTicketListRefinement =
     query.trim().length > 0 ||
@@ -5609,6 +5731,7 @@ function AuthenticatedApp() {
               </div>
               <TicketScopeMetricTiles
                 canWorkTickets={canWorkTickets}
+                delegatedForNames={delegatedForNames}
                 loading={dashboardMetricsLoading}
                 metrics={view.metrics}
                 onOpenScope={openTicketScope}
@@ -5879,6 +6002,7 @@ function AuthenticatedApp() {
 
             <TicketScopeMetricTiles
               canWorkTickets={canWorkTickets}
+              delegatedForNames={delegatedForNames}
               loading={dashboardMetricsLoading}
               metrics={view.metrics}
               onOpenScope={openTicketScope}
