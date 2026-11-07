@@ -87,7 +87,7 @@ Deno.test("secrets are hidden at any depth", () => {
         clientSecret: AUDIT_REDACTED,
         list: [{ password: AUDIT_REDACTED, ok: 1 }],
       },
-      priorityKey: AUDIT_REDACTED,
+      priorityKey: "high",
       name: "Sichtbar",
     },
   );

@@ -35,7 +35,7 @@ begin
   if jsonb_typeof(p_value) = 'object' then
     v_result := '{}'::jsonb;
     for v_key, v_item in select key, value from jsonb_each(p_value) loop
-      if v_key ~* '(token|secret|password|key)' then
+      if v_key ~* '(token|secret|password|passwd|credential|^key$|(api|private|access|signing|encryption|license)[_-]?key)' then
         v_result := v_result || jsonb_build_object(v_key, '[verborgen]');
       else
         v_result := v_result || jsonb_build_object(v_key, public.audit_redact_jsonb(v_item));

@@ -408,11 +408,12 @@ export function auditEntityTypeLabel(entityType: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Vertrauliche Werte: Schlüssel mit token, secret, password oder key werden
+// Vertrauliche Werte: Schlüssel mit token, secret, password oder API-/Private-Key werden
 // unabhängig von der Verschachtelung durch «[verborgen]» ersetzt.
 // ---------------------------------------------------------------------------
 
-const SECRET_KEY_PATTERN = /token|secret|password|key/i;
+const SECRET_KEY_PATTERN =
+  /token|secret|password|passwd|credential|^key$|(api|private|access|signing|encryption|license)[_-]?key/i;
 const MAX_REDACTION_DEPTH = 12;
 
 export function isSecretAuditKey(key: string): boolean {
