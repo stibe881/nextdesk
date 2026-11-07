@@ -1,6 +1,13 @@
 import { assertEquals } from "jsr:@std/assert@1";
 
-import { parseAction, parseChecklist, parseDevice, validIp, validMac } from "./index.ts";
+import {
+  parseAction,
+  parseChecklist,
+  parseDevice,
+  parsePrtgObjectId,
+  validIp,
+  validMac,
+} from "./index.ts";
 
 const tenantId = "00000000-0000-4000-8000-000000000001";
 
@@ -80,5 +87,22 @@ Deno.test("checklist items are trimmed and limited", () => {
       startsOn: "2026-12-01",
     })?.type,
     "scheduleChecklist",
+  );
+});
+
+Deno.test("PRTG object id is optional and numeric", () => {
+  assertEquals(parsePrtgObjectId(""), null);
+  assertEquals(parsePrtgObjectId(" 2045 "), "2045");
+  assertEquals(parsePrtgObjectId(2045), "2045");
+  assertEquals(parsePrtgObjectId("abc"), undefined);
+  assertEquals(
+    parseDevice({ name: "SW1", category: "switch", prtgObjectId: "1234" })
+      ?.prtgObjectId,
+    "1234",
+  );
+  assertEquals(parseDevice({ name: "SW1", category: "switch" })?.prtgObjectId, null);
+  assertEquals(
+    parseDevice({ name: "SW1", category: "switch", prtgObjectId: "12a" }),
+    null,
   );
 });

@@ -85,6 +85,7 @@ type Device = {
   serviceId: string | null;
   maintenanceChecklist: string[];
   serviceTaskTemplateId: string | null;
+  prtgObjectId: string | null;
 };
 type Location = { id: string; name: string };
 type Service = { id: string; name: string };
@@ -265,6 +266,7 @@ const EMPTY_FORM: Omit<
   notes: null,
   serviceId: null,
   maintenanceChecklist: [],
+  prtgObjectId: null,
 };
 type Form = typeof EMPTY_FORM;
 
@@ -995,6 +997,7 @@ function DeviceDetail({
                 {field("MAC-Adresse", device.macAddress)}
                 {field("Hostname", device.hostname)}
                 {field("Firmware / Version", device.firmwareVersion)}
+                {field("PRTG-Objekt-ID", device.prtgObjectId ?? null)}
                 {field(
                   "Uplink",
                   device.uplinkName
@@ -1517,6 +1520,7 @@ function DeviceEditor({
             {text("ipAddress", "IP-Adresse", "10.0.0.21")}
             {text("macAddress", "MAC-Adresse", "00:1A:2B:3C:4D:5E")}
             {text("firmwareVersion", "Firmware / Version")}
+            {text("prtgObjectId", "PRTG-Objekt-ID (optional)", "z. B. 2045")}
             <label>
               Uplink (hängt an)
               <select

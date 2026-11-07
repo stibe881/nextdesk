@@ -10764,4 +10764,84 @@ $$;
 rollback;
 SQL
 
+# 0220: PRTG monitoring tables are service-role only; one open alert per object.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_tenant uuid;
+  v_integration uuid;
+  v_asset uuid;
+begin
+  select tenant_id into v_tenant from public.tenant_memberships
+  where status = 'active' order by created_at limit 1;
+  if has_table_privilege('authenticated', 'public.monitoring_integrations', 'select')
+     or has_table_privilege('anon', 'public.monitoring_alerts', 'select')
+     or has_table_privilege('authenticated', 'public.monitoring_service_identity', 'select') then
+    raise exception 'monitoring test: browser roles can read monitoring tables';
+  end if;
+  if not (select relrowsecurity from pg_class where oid = 'public.monitoring_alerts'::regclass)
+     or not (select relrowsecurity from pg_class where oid = 'public.monitoring_integrations'::regclass) then
+    raise exception 'monitoring test: RLS disabled';
+  end if;
+
+  insert into public.monitoring_integrations (tenant_id, token_hash, enabled)
+  values (v_tenant, repeat('a', 64), true)
+  returning id into v_integration;
+  begin
+    insert into public.monitoring_integrations (tenant_id) values (v_tenant);
+    raise exception 'monitoring test: second integration per tenant accepted';
+  exception when unique_violation then
+    null;
+  end;
+  begin
+    update public.monitoring_integrations set token_hash = 'not-a-hash'
+    where id = v_integration;
+    raise exception 'monitoring test: invalid token hash accepted';
+  exception when check_violation then
+    null;
+  end;
+  begin
+    update public.monitoring_integrations set create_on = 'always'
+    where id = v_integration;
+    raise exception 'monitoring test: invalid create_on accepted';
+  exception when check_violation then
+    null;
+  end;
+
+  insert into public.monitoring_alerts (tenant_id, integration_id, external_key, last_status)
+  values (v_tenant, v_integration, 'prtg:obj:2045', 'Down');
+  begin
+    insert into public.monitoring_alerts (tenant_id, integration_id, external_key)
+    values (v_tenant, v_integration, 'prtg:obj:2045');
+    raise exception 'monitoring test: second open alert accepted';
+  exception when unique_violation then
+    null;
+  end;
+  update public.monitoring_alerts
+  set state = 'resolved', resolved_at = timezone('utc', now())
+  where tenant_id = v_tenant and external_key = 'prtg:obj:2045';
+  insert into public.monitoring_alerts (tenant_id, integration_id, external_key)
+  values (v_tenant, v_integration, 'prtg:obj:2045');
+  if (select count(*) from public.monitoring_alerts
+      where tenant_id = v_tenant and external_key = 'prtg:obj:2045') <> 2 then
+    raise exception 'monitoring test: reopening after resolve failed';
+  end if;
+
+  insert into public.assets (tenant_id, name, kind, lifecycle_state)
+  values (v_tenant, 'Core-Switch PRTG', 'switch', 'active') returning id into v_asset;
+  insert into public.asset_infrastructure (asset_id, tenant_id, category, prtg_object_id)
+  values (v_asset, v_tenant, 'switch', '2045');
+  begin
+    update public.asset_infrastructure set prtg_object_id = 'abc' where asset_id = v_asset;
+    raise exception 'monitoring test: non-numeric PRTG object id accepted';
+  exception when check_violation then
+    null;
+  end;
+  raise notice 'monitoring checks ran';
+end;
+$$;
+rollback;
+SQL
+
 echo "PostgreSQL 16 migration and RLS integration checks passed."

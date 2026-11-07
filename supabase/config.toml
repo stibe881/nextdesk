@@ -202,3 +202,8 @@ verify_jwt = true
 
 [functions.knowledge-suggestions]
 verify_jwt = true
+[functions.monitoring-webhook]
+verify_jwt = false
+
+[functions.monitoring-integrations]
+verify_jwt = true
