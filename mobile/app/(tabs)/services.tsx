@@ -132,6 +132,33 @@ export default function ServicesScreen() {
                   />
                 </Pressable>
               ) : null}
+              {assetsEnabled ? (
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => router.push("/infrastructure" as never)}
+                  style={styles.action}
+                >
+                  <View style={styles.actionPrimaryIcon}>
+                    <Ionicons
+                      color={colors.primaryText}
+                      name="server-outline"
+                      size={20}
+                    />
+                  </View>
+                  <View style={styles.cardCopy}>
+                    <Text style={styles.actionTitle}>Infrastruktur</Text>
+                    <Text style={styles.actionText}>
+                      Server, Switches und Access Points mit Lebenszyklus,
+                      Wartung und Fristen.
+                    </Text>
+                  </View>
+                  <Ionicons
+                    color={colors.subtle}
+                    name="chevron-forward"
+                    size={19}
+                  />
+                </Pressable>
+              ) : null}
             </View>
           </View>
         </View>
