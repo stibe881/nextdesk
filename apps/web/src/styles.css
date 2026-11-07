@@ -9006,7 +9006,14 @@ body:has(.ticket-list-filter-panel) {
 }
 
 .ticket-state {
+  position: relative;
   flex-wrap: wrap;
+}
+
+/* Assignment, team, status and SLA are one row of equal chips, so every
+   ticket wraps them the same way. The popover anchors to .ticket-state. */
+.ticket-row .ticket-quick-assign {
+  display: contents;
 }
 
 @container ticket-list (max-width: 960px) {
@@ -9028,8 +9035,9 @@ body:has(.ticket-list-filter-panel) {
     grid-column: 2 / -1;
   }
 
-  .ticket-row .ticket-quick-assign {
-    justify-content: flex-start;
+  .ticket-row .ticket-quick-assign__popover {
+    right: auto;
+    left: 0;
   }
 
   .ticket-row-arrow {
@@ -20918,7 +20926,7 @@ html:has(.embed-status-badge) body {
 /* Die Kennzeichnungen brechen bei Platzmangel um, statt die Nummer zu quetschen. */
 .ticket-state {
   flex-wrap: wrap;
-  max-width: min(100%, 460px);
+  max-width: 100%;
 }
 
 .ticket-number {
