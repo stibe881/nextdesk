@@ -11090,4 +11090,118 @@ $$;
 rollback;
 SQL
 
+# 0227: audit view search, keyset pagination, area prefixes, redacted free
+# text, actor search and service_role-only execution.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_tenant constant uuid := 'f2270000-0000-4000-8000-000000000001';
+  v_other_tenant constant uuid := 'f2270000-0000-4000-8000-000000000002';
+  v_actor constant uuid := 'f2270000-0000-4000-8000-000000000011';
+  v_second constant uuid := 'f2270000-0000-4000-8000-000000000012';
+  v_rows public.audit_logs[];
+  v_last public.audit_logs;
+  v_count integer;
+begin
+  insert into public.tenants (id, slug, name) values
+    (v_tenant, 'audit-view-test', 'Audit View Test'),
+    (v_other_tenant, 'audit-view-other', 'Audit View Other');
+  insert into auth.users (id, email) values
+    (v_actor, 'verantwortlich@firma.ch'), (v_second, 'zweite@firma.ch');
+  insert into public.user_profiles (id, display_name) values
+    (v_actor, 'Vera Verantwortlich'), (v_second, 'Zora Zweite')
+    on conflict (id) do nothing;
+  insert into public.tenant_memberships (tenant_id, user_id, status) values
+    (v_tenant, v_actor, 'active'), (v_tenant, v_second, 'active');
+
+  insert into public.audit_logs (tenant_id, actor_id, action, entity_type, severity, metadata, occurred_at)
+  select v_tenant, case when n % 2 = 0 then v_actor else v_second end,
+    case when n % 3 = 0 then 'tenant.role.assigned' when n % 3 = 1 then 'tenant.settings.updated' else 'ticket.updated' end,
+    case when n % 3 = 2 then 'ticket' else 'tenant' end,
+    case when n = 5 then 'security'::public.audit_severity else 'info'::public.audit_severity end,
+    jsonb_build_object('note', 'Eintrag ' || n, 'api_token', 'geheimwert-' || n),
+    timestamptz '2026-01-01 10:00:00+00' + (n / 2) * interval '1 minute'
+  from generate_series(1, 12) n;
+  insert into public.audit_logs (tenant_id, actor_id, action, entity_type, metadata)
+  values (v_other_tenant, v_actor, 'tenant.settings.updated', 'tenant', '{"note":"fremd"}');
+
+  select count(*) into v_count from public.audit_log_search(v_tenant, p_limit => 500);
+  if v_count <> 12 then
+    raise exception 'audit view test: expected 12 tenant rows, got %', v_count;
+  end if;
+
+  -- Keyset pagination with duplicate timestamps visits every row exactly once.
+  v_count := 0;
+  v_last := null;
+  loop
+    select array_agg(row_value) into v_rows
+    from public.audit_log_search(
+      v_tenant, p_cursor_at => v_last.occurred_at, p_cursor_id => v_last.id, p_limit => 5
+    ) row_value;
+    exit when v_rows is null;
+    v_count := v_count + cardinality(v_rows);
+    v_last := v_rows[cardinality(v_rows)];
+  end loop;
+  if v_count <> 12 then
+    raise exception 'audit view test: keyset pagination returned % rows', v_count;
+  end if;
+
+  select count(*) into v_count from public.audit_log_search(v_tenant, p_actor_id => v_actor);
+  if v_count <> 6 then
+    raise exception 'audit view test: actor filter returned %', v_count;
+  end if;
+  select count(*) into v_count from public.audit_log_search(v_tenant, p_severity => 'security');
+  if v_count <> 1 then
+    raise exception 'audit view test: severity filter returned %', v_count;
+  end if;
+  -- Area «Einstellungen»: tenant. prefix, excluding tenant.role. (Benutzer).
+  select count(*) into v_count from public.audit_log_search(
+    v_tenant, p_action_prefixes => array['tenant.'], p_excluded_prefixes => array['tenant.role.']);
+  if v_count <> 4 then
+    raise exception 'audit view test: area prefix filter returned %', v_count;
+  end if;
+  select count(*) into v_count from public.audit_log_search(v_tenant, p_query => 'Eintrag 1');
+  if v_count <> 4 then
+    raise exception 'audit view test: free text returned % (expected 1, 10, 11, 12)', v_count;
+  end if;
+  -- Secrets in metadata are not searchable; LIKE wildcards are literal.
+  select count(*) into v_count from public.audit_log_search(v_tenant, p_query => 'geheimwert');
+  if v_count <> 0 then
+    raise exception 'audit view test: secret metadata value is searchable';
+  end if;
+  select count(*) into v_count from public.audit_log_search(v_tenant, p_query => '%');
+  if v_count <> 0 then
+    raise exception 'audit view test: wildcard query was not escaped';
+  end if;
+  if public.audit_redact_jsonb('{"a":{"clientSecret":"x","list":[{"password":"y","ok":1}]},"b":2}'::jsonb)
+     <> '{"a":{"clientSecret":"[verborgen]","list":[{"password":"[verborgen]","ok":1}]},"b":2}'::jsonb then
+    raise exception 'audit view test: redaction failed';
+  end if;
+
+  select count(*) into v_count from public.audit_log_actor_search(v_tenant, 'zweite');
+  if v_count <> 1 then
+    raise exception 'audit view test: actor search returned %', v_count;
+  end if;
+  select count(*) into v_count from public.audit_log_actor_search(v_other_tenant, null);
+  if v_count <> 0 then
+    raise exception 'audit view test: actor search leaked another tenant';
+  end if;
+  select count(*) into v_count from public.audit_log_entity_types(v_tenant);
+  if v_count <> 2 then
+    raise exception 'audit view test: entity types returned %', v_count;
+  end if;
+
+  if has_function_privilege('authenticated', 'public.audit_log_search(uuid, uuid, text, text[], text[], text, uuid, text, timestamptz, timestamptz, text, timestamptz, uuid, integer)', 'execute')
+     or has_function_privilege('anon', 'public.audit_log_actor_search(uuid, text, integer)', 'execute')
+     or has_function_privilege('authenticated', 'public.audit_log_entity_types(uuid)', 'execute')
+     or not has_function_privilege('service_role', 'public.audit_log_search(uuid, uuid, text, text[], text[], text, uuid, text, timestamptz, timestamptz, text, timestamptz, uuid, integer)', 'execute') then
+    raise exception 'audit view test: function privileges are wrong';
+  end if;
+  raise notice 'audit view checks ran';
+end;
+$$;
+rollback;
+SQL
+
 echo "PostgreSQL 16 migration and RLS integration checks passed."

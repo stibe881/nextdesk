@@ -5826,6 +5826,7 @@ function AuthenticatedApp() {
                 setTenantFeatureRevision((revision) => revision + 1)
               }
               onClose={() => setSection("Übersicht")}
+              onOpenTicket={(ticketId) => setSelectedTicketId(ticketId)}
               tenantId={activeTenant.id}
             />
           </>
