@@ -4,6 +4,7 @@ import { router, useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   KeyboardAvoidingView,
   Linking,
   Modal,
@@ -71,6 +72,7 @@ import {
 } from "@/lib/mobile-haptics";
 import {
   getMobileUserId,
+  invokeNextDesk,
   loadCurrentTenant,
   type MobileTenant,
 } from "@/lib/nextdesk-client";
@@ -2714,6 +2716,34 @@ export default function TicketDetailScreen() {
               isSending={sendingComment}
               onBodyChange={changeComment}
               onSend={() => void sendComment()}
+              onPolish={
+                tenant
+                  ? async () => {
+                      try {
+                        const result = await invokeNextDesk<{
+                          data?: { text?: string };
+                        }>("ai-assist", {
+                          type: "polishText",
+                          tenantId: tenant.id,
+                          text: comment,
+                          audience:
+                            commentVisibility === "internal"
+                              ? "internal"
+                              : "customer",
+                        });
+                        const polished = result?.data?.text;
+                        if (polished) changeComment(polished);
+                      } catch (error) {
+                        Alert.alert(
+                          "KI nicht verfügbar",
+                          error instanceof Error
+                            ? error.message
+                            : "Der Text konnte nicht ausformuliert werden.",
+                        );
+                      }
+                    }
+                  : undefined
+              }
               onVisibilityChange={changeCommentVisibility}
               visibility={commentVisibility}
             />

@@ -1261,6 +1261,15 @@ function baseNotificationPresentation(
         title: "Infrastruktur: Fälligkeit",
       };
     }
+    case "ticket.rule_reminder": {
+      const rule =
+        notificationPayloadText(notification, "ruleName", 160) ?? "Regel";
+      return {
+        description: `${ticketLabel}: ausgelöst durch die Regel «${rule}».`,
+        Icon: AlertTriangle,
+        title: "Erinnerung aus Regel",
+      };
+    }
     case "maintenance.upcoming": {
       const title =
         notificationPayloadText(notification, "title", 200) ?? "Wartung";
@@ -5816,6 +5825,7 @@ function AuthenticatedApp() {
                 : knowledgeFocusArticleId
             }
             onCreateArticleRequestConsumed={consumeQuickCreateRequest}
+            onOpenTicket={(ticketId) => setSelectedTicketId(ticketId)}
             readOnly={isSupabaseConfigured && !canWorkTickets}
             tenantId={activeTenant.id}
           />

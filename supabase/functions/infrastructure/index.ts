@@ -86,6 +86,7 @@ export type DeviceInput = {
   notes: string | null;
   serviceId: string | null;
   maintenanceChecklist: string[];
+  prtgObjectId: string | null;
 };
 
 type Action =
@@ -153,6 +154,16 @@ export function parseChecklist(value: unknown): string[] | null {
     if (item) items.push(item);
   }
   return items;
+}
+
+/** PRTG object IDs are numeric; empty clears the mapping. */
+export function parsePrtgObjectId(value: unknown): string | null | undefined {
+  if (value === null || value === undefined || value === "") return null;
+  const text = typeof value === "number" ? String(value) : value;
+  if (typeof text !== "string") return undefined;
+  const trimmed = text.trim();
+  if (!trimmed) return null;
+  return /^\d{1,12}$/.test(trimmed) ? trimmed : undefined;
 }
 
 function optionalText(value: unknown, max: number): string | null | undefined {
@@ -279,7 +290,11 @@ export function parseDevice(value: unknown): DeviceInput | null {
     ? value.serviceId.toLowerCase()
     : undefined;
   const maintenanceChecklist = parseChecklist(value.maintenanceChecklist);
-  if (serviceId === undefined || maintenanceChecklist === null) return null;
+  const prtgObjectId = parsePrtgObjectId(value.prtgObjectId);
+  if (
+    serviceId === undefined || maintenanceChecklist === null ||
+    prtgObjectId === undefined
+  ) return null;
   return {
     id,
     name,
@@ -288,6 +303,7 @@ export function parseDevice(value: unknown): DeviceInput | null {
     locationId,
     serviceId,
     maintenanceChecklist,
+    prtgObjectId,
     uplinkAssetId,
     purchasePrice: price,
     maintenanceIntervalMonths: interval,
@@ -482,6 +498,7 @@ function deviceFromRows(asset: Row, infra: Row, locations: Map<string, string>, 
       ? infra.maintenance_checklist.filter((item): item is string => typeof item === "string")
       : [],
     serviceTaskTemplateId: infra.service_task_template_id ?? null,
+    prtgObjectId: infra.prtg_object_id ?? null,
   };
 }
 
@@ -712,6 +729,7 @@ async function save(
     maintenance_interval_months: device.maintenanceIntervalMonths,
     notes: device.notes,
     maintenance_checklist: device.maintenanceChecklist,
+    prtg_object_id: device.prtgObjectId,
     updated_at: new Date().toISOString(),
   }, { onConflict: "asset_id" });
   if (infraError) throw dbFailure();

@@ -5,7 +5,15 @@ import { supabase } from "./lib/supabase";
 import "./ticket-rules.css";
 
 type Option = { id: string; name: string; departmentId?: string };
+type TimeCondition = {
+  kind: "no_reply" | "in_status" | "sla_due" | "unassigned";
+  hours?: number;
+  minutes?: number;
+  statusKeys?: string[];
+};
 type Conditions = {
+  trigger?: "created" | "time";
+  time?: TimeCondition | undefined;
   departmentIds?: string[];
   categoryIds?: string[];
   priorityIds?: string[];
@@ -17,7 +25,37 @@ type Actions = {
   agentId?: string | null;
   priorityId?: string | null;
   watcherIds?: string[];
+  notify?: ("assignee" | "watchers" | "supervisors")[] | undefined;
 };
+
+const TIME_KINDS: { id: TimeCondition["kind"]; name: string }[] = [
+  { id: "no_reply", name: "keine Antwort seit … Stunden" },
+  { id: "unassigned", name: "nicht zugewiesen seit … Stunden" },
+  { id: "in_status", name: "im Status … seit … Stunden" },
+  { id: "sla_due", name: "SLA läuft in … Minuten ab" },
+];
+const NOTIFY: Option[] = [
+  { id: "assignee", name: "Zugewiesene Person" },
+  { id: "watchers", name: "Beobachtende" },
+  { id: "supervisors", name: "Vorgesetzte der Abteilung" },
+];
+
+function describeTime(
+  time: TimeCondition | undefined,
+  statusName: (key: string) => string,
+): string {
+  if (!time) return "";
+  switch (time.kind) {
+    case "no_reply":
+      return `seit ${time.hours ?? 0} h keine Antwort`;
+    case "unassigned":
+      return `seit ${time.hours ?? 0} h nicht zugewiesen`;
+    case "in_status":
+      return `seit ${time.hours ?? 0} h im Status ${(time.statusKeys ?? []).map(statusName).join(" oder ") || "…"}`;
+    case "sla_due":
+      return `SLA läuft in ${time.minutes ?? 0} min ab`;
+  }
+}
 type Rule = {
   id: string | null;
   name: string;
@@ -116,9 +154,18 @@ export function TicketRules({ tenantId }: { tenantId: string }) {
   const [keywordText, setKeywordText] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
+  const [statuses, setStatuses] = useState<{ key: string; label: string }[]>(
+    [],
+  );
 
   const load = useCallback(async () => {
     if (!supabase) return;
+    void supabase
+      .rpc("list_ticket_rule_statuses", { p_tenant_id: tenantId })
+      .then(({ data }) => {
+        if (Array.isArray(data))
+          setStatuses(data as { key: string; label: string }[]);
+      });
     const { data, error: loadError } = await supabase.rpc("list_ticket_rules", {
       p_tenant_id: tenantId,
     });
@@ -216,6 +263,14 @@ export function TicketRules({ tenantId }: { tenantId: string }) {
   function describe(rule: Rule): { when: string; then: string } {
     const when: string[] = [];
     const c = rule.conditions;
+    if (c.trigger === "time") {
+      when.push(
+        describeTime(
+          c.time,
+          (key) => statuses.find((status) => status.key === key)?.label ?? key,
+        ),
+      );
+    }
     if (c.departmentIds?.length)
       when.push(`Abteilung ${c.departmentIds.map(nameOf).join(" oder ")}`);
     if (c.categoryIds?.length)
@@ -233,8 +288,18 @@ export function TicketRules({ tenantId }: { tenantId: string }) {
     if (a.priorityId) then.push(`Priorität ${nameOf(a.priorityId)}`);
     if (a.watcherIds?.length)
       then.push(`Beobachtende ${a.watcherIds.map(nameOf).join(", ")}`);
+    if (a.notify?.length)
+      then.push(
+        `benachrichtigen: ${a.notify
+          .map((key) => NOTIFY.find((entry) => entry.id === key)?.name ?? key)
+          .join(", ")}`,
+      );
     return {
-      when: when.length ? when.join(" und ") : "jedes neue Ticket",
+      when: when.length
+        ? when.join(" und ")
+        : c.trigger === "time"
+          ? "jedes offene Ticket"
+          : "jedes neue Ticket",
       then: then.length ? then.join(", ") : "keine Aktion",
     };
   }
@@ -260,9 +325,10 @@ export function TicketRules({ tenantId }: { tenantId: string }) {
           <p className="eyebrow">REGEL-BAUKASTEN</p>
           <h2 id="ticket-rules-heading">Regeln für neue Tickets</h2>
           <p>
-            «Wenn … dann …»: Regeln greifen beim Erstellen eines Tickets, in der
-            angezeigten Reihenfolge. Was eine frühere Regel oder die erfassende
-            Person bereits gesetzt hat, wird nicht überschrieben.
+            «Wenn … dann …»: Regeln greifen beim Erstellen eines Tickets oder
+            zeitgesteuert (alle 10 Minuten geprüft, pro Ticket einmal), in der
+            angezeigten Reihenfolge. Beim Erstellen wird nicht überschrieben,
+            was eine frühere Regel oder die erfassende Person gesetzt hat.
           </p>
         </div>
         <button
@@ -293,6 +359,149 @@ export function TicketRules({ tenantId }: { tenantId: string }) {
               value={editing.name}
             />
           </label>
+          <fieldset className="ticket-rules__trigger">
+            <legend>Auslöser</legend>
+            <label>
+              <input
+                checked={editing.conditions.trigger !== "time"}
+                name="rule-trigger"
+                onChange={() =>
+                  setEditing({
+                    ...editing,
+                    conditions: {
+                      ...editing.conditions,
+                      trigger: "created",
+                      time: undefined,
+                    },
+                  })
+                }
+                type="radio"
+              />
+              Beim Erstellen eines Tickets
+            </label>
+            <label>
+              <input
+                checked={editing.conditions.trigger === "time"}
+                name="rule-trigger"
+                onChange={() =>
+                  setEditing({
+                    ...editing,
+                    conditions: {
+                      ...editing.conditions,
+                      trigger: "time",
+                      time: editing.conditions.time ?? {
+                        kind: "no_reply",
+                        hours: 4,
+                      },
+                    },
+                  })
+                }
+                type="radio"
+              />
+              Zeitgesteuert
+            </label>
+            {editing.conditions.trigger === "time" ? (
+              <div className="ticket-rules__time">
+                <select
+                  aria-label="Zeitbedingung"
+                  onChange={(event) =>
+                    setEditing({
+                      ...editing,
+                      conditions: {
+                        ...editing.conditions,
+                        time: {
+                          ...(editing.conditions.time ?? { kind: "no_reply" }),
+                          kind: event.target.value as TimeCondition["kind"],
+                        },
+                      },
+                    })
+                  }
+                  value={editing.conditions.time?.kind ?? "no_reply"}
+                >
+                  {TIME_KINDS.map((kind) => (
+                    <option key={kind.id} value={kind.id}>
+                      {kind.name}
+                    </option>
+                  ))}
+                </select>
+                {editing.conditions.time?.kind === "sla_due" ? (
+                  <label>
+                    Minuten
+                    <input
+                      max={43200}
+                      min={1}
+                      onChange={(event) =>
+                        setEditing({
+                          ...editing,
+                          conditions: {
+                            ...editing.conditions,
+                            time: {
+                              ...(editing.conditions.time ?? {
+                                kind: "sla_due",
+                              }),
+                              minutes: Number(event.target.value) || 0,
+                            },
+                          },
+                        })
+                      }
+                      type="number"
+                      value={editing.conditions.time?.minutes ?? 60}
+                    />
+                  </label>
+                ) : (
+                  <label>
+                    Stunden
+                    <input
+                      max={2160}
+                      min={0.5}
+                      onChange={(event) =>
+                        setEditing({
+                          ...editing,
+                          conditions: {
+                            ...editing.conditions,
+                            time: {
+                              ...(editing.conditions.time ?? {
+                                kind: "no_reply",
+                              }),
+                              hours: Number(event.target.value) || 0,
+                            },
+                          },
+                        })
+                      }
+                      step={0.5}
+                      type="number"
+                      value={editing.conditions.time?.hours ?? 4}
+                    />
+                  </label>
+                )}
+                {editing.conditions.time?.kind === "in_status" ? (
+                  <ChipPicker
+                    emptyHint="Keine Status vorhanden."
+                    label="Status"
+                    onChange={(statusKeys) =>
+                      setEditing({
+                        ...editing,
+                        conditions: {
+                          ...editing.conditions,
+                          time: {
+                            ...(editing.conditions.time ?? {
+                              kind: "in_status",
+                            }),
+                            statusKeys,
+                          },
+                        },
+                      })
+                    }
+                    options={statuses.map((status) => ({
+                      id: status.key,
+                      name: status.label,
+                    }))}
+                    selected={editing.conditions.time?.statusKeys}
+                  />
+                ) : null}
+              </div>
+            ) : null}
+          </fieldset>
           <div className="ticket-rules__columns">
             <div className="ticket-rules__block">
               <h3>Wenn …</h3>
@@ -438,6 +647,23 @@ export function TicketRules({ tenantId }: { tenantId: string }) {
                 options={catalog.people}
                 selected={editing.actions.watcherIds}
               />
+              {editing.conditions.trigger === "time" ? (
+                <ChipPicker
+                  emptyHint=""
+                  label="Benachrichtigen"
+                  onChange={(notify) =>
+                    setEditing({
+                      ...editing,
+                      actions: {
+                        ...editing.actions,
+                        notify: notify as Actions["notify"],
+                      },
+                    })
+                  }
+                  options={NOTIFY}
+                  selected={editing.actions.notify}
+                />
+              ) : null}
               <p className="ticket-rules__hint">
                 Eine Person wird nur zugewiesen, wenn sie in der Abteilung (und
                 im Team) arbeitet. Sonst überspringt die Regel diesen Schritt.

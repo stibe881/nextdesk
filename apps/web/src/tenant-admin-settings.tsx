@@ -1,3 +1,4 @@
+import { TicketTriageSettings } from "./ticket-ai-triage";
 import {
   Fragment,
   useCallback,
@@ -40,6 +41,7 @@ import {
 } from "./lib/push-notifications";
 import { TicketCustomFieldsAdmin } from "./ticket-custom-fields-admin";
 import { AssetIntuneSettings } from "./asset-intune-settings";
+import { MonitoringSettings } from "./monitoring-settings";
 import { DepartmentManagement } from "./department-management";
 import { DepartmentModules } from "./department-modules";
 import { TicketTemplates } from "./ticket-templates";
@@ -3640,9 +3642,14 @@ export function TenantAdminSettings({
                                             ) : null}
                                             {feature.feature_key ===
                                             "assets.management" ? (
-                                              <AssetIntuneSettings
-                                                tenantId={tenantId}
-                                              />
+                                              <>
+                                                <AssetIntuneSettings
+                                                  tenantId={tenantId}
+                                                />
+                                                <MonitoringSettings
+                                                  tenantId={tenantId}
+                                                />
+                                              </>
                                             ) : null}
                                             {feature.feature_key ===
                                             "automation.sla" ? (
@@ -3651,6 +3658,9 @@ export function TenantAdminSettings({
                                                   tenantId={tenantId}
                                                 />
                                                 <TicketRules
+                                                  tenantId={tenantId}
+                                                />
+                                                <TicketTriageSettings
                                                   tenantId={tenantId}
                                                 />
                                                 <TenantAutomation

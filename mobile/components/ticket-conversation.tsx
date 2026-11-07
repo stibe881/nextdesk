@@ -12,6 +12,7 @@ import {
   type MobileTicketComment,
   type TicketCommentVisibility,
 } from "@/lib/nextdesk-tickets";
+import { DictationControls } from "@/components/dictation-controls";
 import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
 
 type TicketConversationProps = {
@@ -23,6 +24,7 @@ type TicketConversationProps = {
   isSending: boolean;
   onBodyChange: (body: string) => void;
   onSend: () => void;
+  onPolish?: (() => Promise<void>) | undefined;
   onVisibilityChange: (visibility: TicketCommentVisibility) => void;
   visibility: TicketCommentVisibility;
 };
@@ -156,6 +158,7 @@ export function TicketConversation({
   isSending,
   onBodyChange,
   onSend,
+  onPolish,
   onVisibilityChange,
   visibility,
 }: TicketConversationProps) {
@@ -282,6 +285,12 @@ export function TicketConversation({
             </View>
           ) : null}
 
+          <DictationControls
+            disabled={isSending}
+            onPolish={onPolish}
+            onTextChange={onBodyChange}
+            text={body}
+          />
           <View style={styles.inputRow}>
             <TextInput
               accessibilityLabel={

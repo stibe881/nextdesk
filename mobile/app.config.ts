@@ -116,6 +116,18 @@ const config: ExpoConfig = {
     "@react-native-community/datetimepicker",
     ["expo-notifications", { mode: "production" }],
     [
+      "expo-speech-recognition",
+      {
+        microphonePermission:
+          "nextDesk nutzt das Mikrofon, damit du Antworten diktieren kannst.",
+        speechRecognitionPermission:
+          "nextDesk wandelt dein Diktat in Text um, damit du Antworten nicht tippen musst.",
+        androidSpeechServicePackages: [
+          "com.google.android.googlequicksearchbox",
+        ],
+      },
+    ],
+    [
       "expo-audio",
       {
         microphonePermission:
