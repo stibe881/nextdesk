@@ -10335,4 +10335,120 @@ $$;
 rollback;
 SQL
 
+# 0216: completing an offboarding return task closes the device assignment
+# and moves the device back to stock with a documented reason.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_tenant uuid := '10000000-0000-4000-8000-000000000001';
+  v_user uuid := '00000000-0000-4000-8000-000000000002';
+  v_template uuid;
+  v_entry uuid;
+  v_requester uuid;
+  v_other_requester uuid;
+  v_notebook uuid;
+  v_phone uuid;
+  v_monitor uuid;
+  v_notebook_assignment uuid;
+  v_phone_assignment uuid;
+  v_monitor_assignment uuid;
+  v_monitor_new_assignment uuid;
+  v_task_notebook uuid := gen_random_uuid();
+  v_task_phone uuid := gen_random_uuid();
+  v_task_monitor uuid := gen_random_uuid();
+  v_position integer;
+begin
+  select id into v_template from public.onboarding_templates
+  where tenant_id = v_tenant and template_key = 'standard';
+  v_entry := public.create_onboarding_entry_with_kind(
+    v_tenant, 'Rückgabe Test', current_date + 5, 'ICT', 'Test',
+    v_user, v_user, v_template, v_user, 'offboarding');
+  set constraints all immediate;
+  insert into public.ticket_requesters (tenant_id, display_name, source)
+  values (v_tenant, 'Rückgabe Test', 'manual') returning id into v_requester;
+  insert into public.ticket_requesters (tenant_id, display_name, source)
+  values (v_tenant, 'Nachfolge Test', 'manual') returning id into v_other_requester;
+  insert into public.assets (tenant_id, name, kind, lifecycle_state)
+  values (v_tenant, 'Notebook Rückgabe', 'other', 'active') returning id into v_notebook;
+  insert into public.assets (tenant_id, name, kind, lifecycle_state)
+  values (v_tenant, 'Telefon Rückgabe', 'other', 'repair') returning id into v_phone;
+  insert into public.assets (tenant_id, name, kind, lifecycle_state)
+  values (v_tenant, 'Monitor Rückgabe', 'other', 'active') returning id into v_monitor;
+  insert into public.asset_assignments (tenant_id, asset_id, requester_id)
+  values (v_tenant, v_notebook, v_requester) returning id into v_notebook_assignment;
+  insert into public.asset_assignments (tenant_id, asset_id, requester_id)
+  values (v_tenant, v_phone, v_requester) returning id into v_phone_assignment;
+  insert into public.asset_assignments (tenant_id, asset_id, requester_id)
+  values (v_tenant, v_monitor, v_requester) returning id into v_monitor_assignment;
+  select max(position) into v_position from public.onboarding_tasks where entry_id = v_entry;
+  insert into public.onboarding_tasks (id, tenant_id, entry_id, title, due_on, responsible_user_id, position)
+  values
+    (v_task_notebook, v_tenant, v_entry, 'Rückgabe: Notebook', current_date + 5, v_user, v_position + 1),
+    (v_task_phone, v_tenant, v_entry, 'Rückgabe: Telefon', current_date + 5, v_user, v_position + 2),
+    (v_task_monitor, v_tenant, v_entry, 'Rückgabe: Monitor', current_date + 5, v_user, v_position + 3);
+  insert into public.onboarding_asset_returns (tenant_id, task_id, assignment_id, asset_id) values
+    (v_tenant, v_task_notebook, v_notebook_assignment, v_notebook),
+    (v_tenant, v_task_phone, v_phone_assignment, v_phone),
+    (v_tenant, v_task_monitor, v_monitor_assignment, v_monitor);
+
+  begin
+    insert into public.onboarding_asset_returns (tenant_id, task_id, assignment_id, asset_id)
+    values (v_tenant, v_task_phone, v_notebook_assignment, v_notebook);
+    raise exception 'offboarding return test: duplicate return link accepted';
+  exception when unique_violation then
+    null;
+  end;
+
+  -- Status changes short of completion leave the device untouched.
+  update public.onboarding_tasks set status = 'in_progress' where id = v_task_notebook;
+  if (select returned_at from public.asset_assignments where id = v_notebook_assignment) is not null then
+    raise exception 'offboarding return test: in-progress task returned the device';
+  end if;
+
+  update public.onboarding_tasks set status = 'completed', completed_at = now()
+  where id in (v_task_notebook, v_task_phone);
+  if exists (select 1 from public.asset_assignments
+      where id in (v_notebook_assignment, v_phone_assignment) and returned_at is null) then
+    raise exception 'offboarding return test: assignment not returned';
+  end if;
+  if (select lifecycle_state from public.assets where id = v_notebook) <> 'stock'
+    or (select lifecycle_state from public.assets where id = v_phone) <> 'stock' then
+    raise exception 'offboarding return test: device not back in stock';
+  end if;
+  if (select count(*) from public.asset_lifecycle_events
+      where asset_id in (v_notebook, v_phone) and next_state = 'stock'
+        and reason = 'Rückgabe beim Austritt') <> 2 then
+    raise exception 'offboarding return test: lifecycle history without reason';
+  end if;
+  if (select previous_state from public.asset_lifecycle_events
+      where asset_id = v_phone and next_state = 'stock') <> 'repair' then
+    raise exception 'offboarding return test: lifecycle history lost previous state';
+  end if;
+
+  -- The monitor came back earlier and went to somebody else: completing the
+  -- late task must not take it away from the new holder.
+  update public.asset_assignments set returned_at = now() where id = v_monitor_assignment;
+  insert into public.asset_assignments (tenant_id, asset_id, requester_id)
+  values (v_tenant, v_monitor, v_other_requester) returning id into v_monitor_new_assignment;
+  update public.onboarding_tasks set status = 'completed', completed_at = now()
+  where id = v_task_monitor;
+  if (select returned_at from public.asset_assignments where id = v_monitor_new_assignment) is not null
+    or (select lifecycle_state from public.assets where id = v_monitor) <> 'active' then
+    raise exception 'offboarding return test: reassigned device was touched';
+  end if;
+
+  -- Reopening and completing again stays idempotent.
+  update public.onboarding_tasks set status = 'open', completed_at = null where id = v_task_notebook;
+  update public.onboarding_tasks set status = 'completed', completed_at = now() where id = v_task_notebook;
+  if (select count(*) from public.asset_lifecycle_events
+      where asset_id = v_notebook and next_state = 'stock') <> 1 then
+    raise exception 'offboarding return test: repeated completion changed history';
+  end if;
+  raise notice 'offboarding return checks ran';
+end;
+$$;
+rollback;
+SQL
+
 echo "PostgreSQL 16 migration and RLS integration checks passed."

@@ -49,6 +49,18 @@ type Action =
       taskId: string | null;
       ticketNumber: string;
       reason: string;
+    }
+  | {
+      type: "offboardingAssets";
+      tenantId: string;
+      entryId: string;
+      requesterId: string | null;
+    }
+  | {
+      type: "createReturnTasks";
+      tenantId: string;
+      entryId: string;
+      assignmentIds: string[];
     };
 
 class HttpError extends Error {
@@ -103,11 +115,49 @@ function validDate(value: unknown): value is string {
     !Number.isNaN(date.valueOf()) && date.toISOString().slice(0, 10) === value
   );
 }
+const MAX_RETURN_TASKS = 50;
+/** Compares person names case-insensitively with normalized whitespace. */
+export function normalizePersonName(value: unknown): string {
+  return typeof value === "string"
+    ? value
+        .normalize("NFC")
+        .trim()
+        .replace(/\s+/g, " ")
+        .toLocaleLowerCase("de-CH")
+    : "";
+}
+export function namesMatch(left: unknown, right: unknown): boolean {
+  const normalized = normalizePersonName(left);
+  return normalized.length > 0 && normalized === normalizePersonName(right);
+}
+/** Title of the return task: «Rückgabe: <Gerät> (<Inventarnummer oder Seriennummer>)». */
+export function returnTaskTitle(asset: {
+  name: unknown;
+  inventoryNumber: unknown;
+  serialNumber: unknown;
+}): string {
+  const clean = (value: unknown) =>
+    typeof value === "string" ? value.trim().replace(/\s+/g, " ") : "";
+  const reference =
+    clean(asset.inventoryNumber) || clean(asset.serialNumber) || "";
+  const name = clean(asset.name) || "Gerät";
+  const suffix = reference
+    ? ` (${Array.from(reference).slice(0, 80).join("")})`
+    : "";
+  const room = 240 - "Rückgabe: ".length - Array.from(suffix).length;
+  const shortName =
+    Array.from(name).length > room
+      ? `${Array.from(name)
+          .slice(0, room - 1)
+          .join("")}…`
+      : name;
+  return `Rückgabe: ${shortName}${suffix}`;
+}
 function onlyKeys(value: Row, keys: string[]) {
   const allowed = new Set(keys);
   return Object.keys(value).every((key) => allowed.has(key));
 }
-function parseAction(value: unknown): Action | null {
+export function parseAction(value: unknown): Action | null {
   if (!isRecord(value) || typeof value.type !== "string") return null;
   if (value.type === "navigationSummary") {
     return isUuid(value.tenantId) && onlyKeys(value, ["type", "tenantId"])
@@ -261,6 +311,43 @@ function parseAction(value: unknown): Action | null {
           taskId,
           ticketNumber,
           reason,
+        }
+      : null;
+  }
+  if (value.type === "offboardingAssets") {
+    return isUuid(value.tenantId) &&
+      isUuid(value.entryId) &&
+      (value.requesterId === undefined ||
+        value.requesterId === null ||
+        isUuid(value.requesterId)) &&
+      onlyKeys(value, ["type", "tenantId", "entryId", "requesterId"])
+      ? {
+          type: value.type,
+          tenantId: value.tenantId.toLowerCase(),
+          entryId: value.entryId.toLowerCase(),
+          requesterId:
+            typeof value.requesterId === "string"
+              ? value.requesterId.toLowerCase()
+              : null,
+        }
+      : null;
+  }
+  if (value.type === "createReturnTasks") {
+    const ids = Array.isArray(value.assignmentIds) ? value.assignmentIds : [];
+    return isUuid(value.tenantId) &&
+      isUuid(value.entryId) &&
+      Array.isArray(value.assignmentIds) &&
+      ids.length >= 1 &&
+      ids.length <= MAX_RETURN_TASKS &&
+      ids.every(isUuid) &&
+      onlyKeys(value, ["type", "tenantId", "entryId", "assignmentIds"])
+      ? {
+          type: value.type,
+          tenantId: value.tenantId.toLowerCase(),
+          entryId: value.entryId.toLowerCase(),
+          assignmentIds: [
+            ...new Set(ids.map((id) => String(id).toLowerCase())),
+          ],
         }
       : null;
   }
@@ -580,7 +667,9 @@ async function listDepartmentTasks(
   const [{ data, error }, departments] = await Promise.all([
     admin
       .from("onboarding_department_tasks")
-      .select("id, kind, department_id, title, due_offset_days, active, position")
+      .select(
+        "id, kind, department_id, title, due_offset_days, active, position",
+      )
       .eq("tenant_id", tenantId)
       .order("kind")
       .order("position")
@@ -866,6 +955,13 @@ async function listWorkspace(
         "ICT-Verantwortung",
       templateId: String(entry.template_id),
       kind: entry.kind === "offboarding" ? "offboarding" : "onboarding",
+      canEdit:
+        canManage ||
+        [
+          entry.created_by,
+          entry.manager_user_id,
+          entry.ict_responsible_user_id,
+        ].includes(actorId),
       source: entry.source === "email" ? "email" : "manual",
       sourceTicketNumber:
         typeof entry.source_ticket_number === "string"
@@ -1074,6 +1170,426 @@ async function linkExceptionTicket(
   );
 }
 
+type ReturnEntry = {
+  id: string;
+  employeeName: string;
+  startsOn: string;
+  ictResponsibleUserId: string;
+};
+/**
+ * Device returns belong to an offboarding entry. Like the other entry-level
+ * writes, onboarding managers and the entry's creator, manager or ICT
+ * responsible person may use them.
+ */
+async function requireOffboardingEntry(
+  client: Client,
+  admin: Admin,
+  actorId: string,
+  tenantId: string,
+  entryId: string,
+): Promise<ReturnEntry> {
+  await requireMembership(client, tenantId);
+  const canManage = await hasPermission(client, tenantId, "onboarding.manage");
+  const { data: entry, error } = await admin
+    .from("onboarding_entries")
+    .select(
+      "id, kind, employee_name, starts_on, created_by, manager_user_id, ict_responsible_user_id",
+    )
+    .eq("tenant_id", tenantId)
+    .eq("id", entryId)
+    .maybeSingle();
+  if (error) databaseFailure(error);
+  if (!entry)
+    throw new HttpError(
+      404,
+      "onboarding_entry_not_found",
+      "Der Austritt ist nicht mehr verfügbar.",
+    );
+  if (
+    !canManage &&
+    ![
+      entry.created_by,
+      entry.manager_user_id,
+      entry.ict_responsible_user_id,
+    ].includes(actorId)
+  )
+    throw new HttpError(
+      403,
+      "onboarding_permission_denied",
+      "Für diesen Austritt fehlt Ihnen die erforderliche Berechtigung.",
+    );
+  if (entry.kind !== "offboarding")
+    throw new HttpError(
+      422,
+      "onboarding_not_offboarding",
+      "Geräte-Rückgaben gibt es nur bei Austritten.",
+    );
+  return {
+    id: String(entry.id),
+    employeeName: String(entry.employee_name),
+    startsOn: String(entry.starts_on),
+    ictResponsibleUserId: String(entry.ict_responsible_user_id),
+  };
+}
+function escapeLike(value: string) {
+  return value.replace(/[\\%_]/g, (character) => `\\${character}`);
+}
+type Requester = { id: string; displayName: string; email: string | null };
+function asRequester(row: Row): Requester {
+  return {
+    id: String(row.id),
+    displayName:
+      typeof row.display_name === "string" && row.display_name.trim()
+        ? row.display_name.trim()
+        : "Ohne Namen",
+    email: typeof row.email === "string" ? row.email : null,
+  };
+}
+function chunks<T>(values: T[], size: number): T[][] {
+  const result: T[][] = [];
+  for (let index = 0; index < values.length; index += size)
+    result.push(values.slice(index, index + size));
+  return result;
+}
+async function requestersByIds(
+  admin: Admin,
+  tenantId: string,
+  ids: string[],
+): Promise<Requester[]> {
+  const rows: Row[] = [];
+  for (const part of chunks(ids, 200)) {
+    const { data, error } = await admin
+      .from("ticket_requesters")
+      .select("id, display_name, email")
+      .eq("tenant_id", tenantId)
+      .in("id", part)
+      .limit(part.length);
+    if (error) databaseFailure(error);
+    rows.push(...((data ?? []) as Row[]));
+  }
+  return rows.map(asRequester);
+}
+async function offboardingAssets(
+  client: Client,
+  admin: Admin,
+  actorId: string,
+  action: Extract<Action, { type: "offboardingAssets" }>,
+) {
+  const entry = await requireOffboardingEntry(
+    client,
+    admin,
+    actorId,
+    action.tenantId,
+    action.entryId,
+  );
+  // Candidates by name: a broad ILIKE narrows the rows, the exact comparison
+  // (trimmed, case-insensitive) decides.
+  const pattern = `%${escapeLike(entry.employeeName.trim()).replace(/\s+/g, "%")}%`;
+  const { data: nameRows, error: nameError } = await admin
+    .from("ticket_requesters")
+    .select("id, display_name, email")
+    .eq("tenant_id", action.tenantId)
+    .ilike("display_name", pattern)
+    .limit(50);
+  if (nameError) databaseFailure(nameError);
+  const matches = ((nameRows ?? []) as Row[])
+    .filter((row) => namesMatch(row.display_name, entry.employeeName))
+    .map(asRequester);
+  let selectedRequesterId: string | null = null;
+  if (action.requesterId) {
+    const known = await requestersByIds(admin, action.tenantId, [
+      action.requesterId,
+    ]);
+    if (!known.length)
+      throw new HttpError(
+        422,
+        "onboarding_reference_invalid",
+        "Die gewählte Person ist nicht mehr verfügbar.",
+      );
+    selectedRequesterId = action.requesterId;
+  } else if (matches.length === 1) {
+    selectedRequesterId = matches[0].id;
+  }
+  // Without a unique name match the picker offers everybody who currently
+  // holds a device.
+  let requesters: Requester[] = [];
+  if (matches.length !== 1) {
+    const { data: holderRows, error: holderError } = await admin
+      .from("asset_assignments")
+      .select("requester_id")
+      .eq("tenant_id", action.tenantId)
+      .is("returned_at", null)
+      .limit(5000);
+    if (holderError) databaseFailure(holderError);
+    const holderIds = [
+      ...new Set(
+        ((holderRows ?? []) as Row[])
+          .map((row) => row.requester_id)
+          .filter((id): id is string => isUuid(id)),
+      ),
+    ];
+    requesters = (await requestersByIds(admin, action.tenantId, holderIds))
+      .sort((a, b) => a.displayName.localeCompare(b.displayName, "de-CH"))
+      .slice(0, 1000);
+  }
+  // Return tasks already created for this entry stay visible after the
+  // device came back.
+  const { data: entryTasks, error: entryTasksError } = await admin
+    .from("onboarding_tasks")
+    .select("id")
+    .eq("tenant_id", action.tenantId)
+    .eq("entry_id", entry.id)
+    .limit(200);
+  if (entryTasksError) databaseFailure(entryTasksError);
+  const entryTaskIds = ((entryTasks ?? []) as Row[]).map((row) =>
+    String(row.id),
+  );
+  const { data: entryLinks, error: entryLinksError } = entryTaskIds.length
+    ? await admin
+        .from("onboarding_asset_returns")
+        .select("assignment_id")
+        .eq("tenant_id", action.tenantId)
+        .in("task_id", entryTaskIds)
+        .limit(200)
+    : { data: [], error: null };
+  if (entryLinksError) databaseFailure(entryLinksError);
+  const linkedAssignmentIds = ((entryLinks ?? []) as Row[]).map((row) =>
+    String(row.assignment_id),
+  );
+  const assignmentRows: Row[] = [];
+  if (selectedRequesterId) {
+    const { data, error } = await admin
+      .from("asset_assignments")
+      .select("id, asset_id, requester_id, assigned_at, returned_at")
+      .eq("tenant_id", action.tenantId)
+      .eq("requester_id", selectedRequesterId)
+      .is("returned_at", null)
+      .order("assigned_at")
+      .limit(200);
+    if (error) databaseFailure(error);
+    assignmentRows.push(...((data ?? []) as Row[]));
+  }
+  const missingLinked = linkedAssignmentIds.filter(
+    (id) => !assignmentRows.some((row) => row.id === id),
+  );
+  if (missingLinked.length) {
+    const { data, error } = await admin
+      .from("asset_assignments")
+      .select("id, asset_id, requester_id, assigned_at, returned_at")
+      .eq("tenant_id", action.tenantId)
+      .in("id", missingLinked)
+      .limit(missingLinked.length);
+    if (error) databaseFailure(error);
+    assignmentRows.push(...((data ?? []) as Row[]));
+  }
+  const assignmentIds = assignmentRows.map((row) => String(row.id));
+  const assetIds = [
+    ...new Set(assignmentRows.map((row) => String(row.asset_id))),
+  ];
+  const [assetsResult, linksResult] = await Promise.all([
+    assetIds.length
+      ? admin
+          .from("assets")
+          .select("id, name, inventory_number, serial_number")
+          .eq("tenant_id", action.tenantId)
+          .in("id", assetIds)
+          .limit(assetIds.length)
+      : Promise.resolve({ data: [] as Row[], error: null }),
+    assignmentIds.length
+      ? admin
+          .from("onboarding_asset_returns")
+          .select("assignment_id, task_id")
+          .eq("tenant_id", action.tenantId)
+          .in("assignment_id", assignmentIds)
+          .limit(assignmentIds.length)
+      : Promise.resolve({ data: [] as Row[], error: null }),
+  ]);
+  if (assetsResult.error) databaseFailure(assetsResult.error);
+  if (linksResult.error) databaseFailure(linksResult.error);
+  const linkRows = (linksResult.data ?? []) as Row[];
+  const linkTaskIds = linkRows.map((row) => String(row.task_id));
+  const { data: linkTasks, error: linkTasksError } = linkTaskIds.length
+    ? await admin
+        .from("onboarding_tasks")
+        .select("id, entry_id, status")
+        .eq("tenant_id", action.tenantId)
+        .in("id", linkTaskIds)
+        .limit(linkTaskIds.length)
+    : { data: [], error: null };
+  if (linkTasksError) databaseFailure(linkTasksError);
+  const tasksById = new Map(
+    ((linkTasks ?? []) as Row[]).map((row) => [String(row.id), row]),
+  );
+  const taskByAssignment = new Map(
+    linkRows.map((row) => [
+      String(row.assignment_id),
+      tasksById.get(String(row.task_id)),
+    ]),
+  );
+  const assetsById = new Map(
+    ((assetsResult.data ?? []) as Row[]).map((row) => [String(row.id), row]),
+  );
+  return {
+    entry: { id: entry.id, employeeName: entry.employeeName },
+    matches,
+    requesters,
+    selectedRequesterId,
+    assets: assignmentRows.map((row) => {
+      const asset: Row = assetsById.get(String(row.asset_id)) ?? {};
+      const task = taskByAssignment.get(String(row.id));
+      return {
+        assignmentId: String(row.id),
+        assetId: String(row.asset_id),
+        name: typeof asset.name === "string" ? asset.name : "Gerät",
+        inventoryNumber:
+          typeof asset.inventory_number === "string"
+            ? asset.inventory_number
+            : null,
+        serialNumber:
+          typeof asset.serial_number === "string" ? asset.serial_number : null,
+        assignedAt: String(row.assigned_at),
+        returnedAt:
+          typeof row.returned_at === "string" ? row.returned_at : null,
+        returnTask: task
+          ? {
+              taskId: String(task.id),
+              status: String(task.status),
+              sameEntry: task.entry_id === entry.id,
+            }
+          : null,
+      };
+    }),
+  };
+}
+async function createReturnTasks(
+  client: Client,
+  admin: Admin,
+  actorId: string,
+  action: Extract<Action, { type: "createReturnTasks" }>,
+) {
+  const entry = await requireOffboardingEntry(
+    client,
+    admin,
+    actorId,
+    action.tenantId,
+    action.entryId,
+  );
+  const { data: assignments, error: assignmentsError } = await admin
+    .from("asset_assignments")
+    .select("id, asset_id")
+    .eq("tenant_id", action.tenantId)
+    .in("id", action.assignmentIds)
+    .is("returned_at", null)
+    .limit(action.assignmentIds.length);
+  if (assignmentsError) databaseFailure(assignmentsError);
+  const found = (assignments ?? []) as Row[];
+  if (found.length !== action.assignmentIds.length)
+    throw new HttpError(
+      422,
+      "onboarding_assignment_invalid",
+      "Mindestens eine Gerätezuweisung ist nicht mehr aktiv.",
+    );
+  const { data: existing, error: existingError } = await admin
+    .from("onboarding_asset_returns")
+    .select("assignment_id")
+    .eq("tenant_id", action.tenantId)
+    .in("assignment_id", action.assignmentIds)
+    .limit(action.assignmentIds.length);
+  if (existingError) databaseFailure(existingError);
+  const linked = new Set(
+    ((existing ?? []) as Row[]).map((row) => String(row.assignment_id)),
+  );
+  // Keep the order in which the devices were listed.
+  const pendingAssignments = action.assignmentIds
+    .filter((id) => !linked.has(id))
+    .map((id) => found.find((row) => row.id === id) as Row);
+  if (!pendingAssignments.length) return { created: 0, skipped: linked.size };
+  const assetIds = [
+    ...new Set(pendingAssignments.map((row) => String(row.asset_id))),
+  ];
+  const [{ data: assets, error: assetsError }, lastTask] = await Promise.all([
+    admin
+      .from("assets")
+      .select("id, name, inventory_number, serial_number")
+      .eq("tenant_id", action.tenantId)
+      .in("id", assetIds)
+      .limit(assetIds.length),
+    admin
+      .from("onboarding_tasks")
+      .select("position")
+      .eq("tenant_id", action.tenantId)
+      .eq("entry_id", entry.id)
+      .order("position", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ]);
+  if (assetsError) databaseFailure(assetsError);
+  if (lastTask.error) databaseFailure(lastTask.error);
+  const assetsById = new Map(
+    ((assets ?? []) as Row[]).map((row) => [String(row.id), row]),
+  );
+  const startPosition = Number(lastTask.data?.position ?? 0);
+  if (startPosition + pendingAssignments.length > 100)
+    throw new HttpError(
+      422,
+      "onboarding_task_limit",
+      "Dieser Austritt hat zu viele Aufgaben für weitere Rückgaben.",
+    );
+  const tasks = pendingAssignments.map((assignment, index) => {
+    const asset: Row = assetsById.get(String(assignment.asset_id)) ?? {};
+    return {
+      id: crypto.randomUUID(),
+      tenant_id: action.tenantId,
+      entry_id: entry.id,
+      title: returnTaskTitle({
+        name: asset.name,
+        inventoryNumber: asset.inventory_number,
+        serialNumber: asset.serial_number,
+      }),
+      due_on: entry.startsOn,
+      responsible_user_id: entry.ictResponsibleUserId,
+      position: startPosition + index + 1,
+    };
+  });
+  const { error: tasksError } = await admin
+    .from("onboarding_tasks")
+    .insert(tasks);
+  if (tasksError) databaseFailure(tasksError);
+  const { error: linksError } = await admin
+    .from("onboarding_asset_returns")
+    .insert(
+      tasks.map((task, index) => ({
+        tenant_id: action.tenantId,
+        task_id: task.id,
+        assignment_id: String(pendingAssignments[index].id),
+        asset_id: String(pendingAssignments[index].asset_id),
+      })),
+    );
+  if (linksError) {
+    // A parallel request linked the same device first: remove the tasks of
+    // this attempt so no unlinked return task remains.
+    await admin
+      .from("onboarding_tasks")
+      .delete()
+      .eq("tenant_id", action.tenantId)
+      .in(
+        "id",
+        tasks.map((task) => task.id),
+      );
+    databaseFailure(linksError);
+  }
+  await audit(
+    admin,
+    action.tenantId,
+    actorId,
+    "onboarding.asset_return_tasks.created",
+    "onboarding_entry",
+    entry.id,
+    { created: tasks.length, skipped: linked.size },
+  );
+  return { created: tasks.length, skipped: linked.size };
+}
+
 const handler = withSupabase(
   { auth: "user", cors: "disabled", errors: { detailed: false } },
   async (request, context) => {
@@ -1172,6 +1688,28 @@ const handler = withSupabase(
         );
         return json(request, { data: { updated: true } });
       }
+      if (action.type === "offboardingAssets")
+        return json(request, {
+          data: await offboardingAssets(
+            context.supabase,
+            context.supabaseAdmin,
+            actorId,
+            action,
+          ),
+        });
+      if (action.type === "createReturnTasks")
+        return json(
+          request,
+          {
+            data: await createReturnTasks(
+              context.supabase,
+              context.supabaseAdmin,
+              actorId,
+              action,
+            ),
+          },
+          201,
+        );
       await linkExceptionTicket(
         context.supabase,
         context.supabaseAdmin,
