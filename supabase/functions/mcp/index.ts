@@ -9,7 +9,7 @@
 const SUPPORTED_PROTOCOLS = ["2025-06-18", "2025-03-26", "2024-11-05"] as const;
 const MAX_BODY_BYTES = 64 * 1024;
 const REQUEST_TIMEOUT_MS = 15_000;
-const SERVER_INFO = { name: "nextdesk", version: "2.0.0" } as const;
+const SERVER_INFO = { name: "nextdesk", version: "2.1.0" } as const;
 const STATUS_KEYS = [
   "new",
   "in_progress",
@@ -49,6 +49,73 @@ const EVENT_REQUEST_STATUSES = [
   "completed",
 ];
 const CONNECTOR_NOTE = "Erfasst über den nextDesk-Connector.";
+/** Hinweise darauf, dass es um Software geht (herunterladen, installieren …). */
+const SOFTWARE_WORDS =
+  /herunterlad|download|install|programm|software|applikation|anwendung|\bapps?\b|lizenz|update|aktualisier|bekomm|beziehen|bestell|freischalt/i;
+/** Allgemeiner Weg zu Software, wenn zum Programm selbst nichts dasteht. */
+const SOFTWARE_FALLBACK_QUERIES = [
+  "Unternehmensportal",
+  "Company Portal",
+  "Software installieren",
+  "Software",
+];
+const STOP_WORDS = new Set([
+  "wie",
+  "was",
+  "wer",
+  "wo",
+  "wann",
+  "warum",
+  "kann",
+  "ich",
+  "man",
+  "mir",
+  "mich",
+  "mein",
+  "meine",
+  "meinen",
+  "einen",
+  "eine",
+  "einem",
+  "einer",
+  "der",
+  "die",
+  "das",
+  "den",
+  "dem",
+  "des",
+  "und",
+  "oder",
+  "mit",
+  "für",
+  "von",
+  "auf",
+  "aus",
+  "bei",
+  "ist",
+  "sind",
+  "bitte",
+  "habe",
+  "hat",
+  "nicht",
+  "kein",
+  "keine",
+  "geht",
+  "gibt",
+  "funktioniert",
+  "brauche",
+  "möchte",
+  "will",
+  "soll",
+  "muss",
+  "darf",
+  "neu",
+  "neue",
+  "neuen",
+  "the",
+  "how",
+  "can",
+]);
 
 type Json = Record<string, unknown>;
 type Config = { anonKey: string; supabaseUrl: string };
@@ -790,13 +857,17 @@ const TOOLS: Tool[] = [
   },
   {
     name: "search_knowledge",
-    description: "Durchsucht die Wissensdatenbank nach Artikeln.",
+    description:
+      "Durchsucht die Wissensdatenbank (Anleitungen und Lösungen der eigenen Organisation). Bei jeder IT-Frage zuerst verwenden, z. B. «Wie installiere ich Visio?», «VPN verbindet nicht», «Drucker einrichten». query: Stichwörter wie «Visio» oder «VPN». Gibt es zu einem Programm keinen eigenen Artikel, sucht das Werkzeug selbst nach dem allgemeinen Weg (z. B. Unternehmensportal). Den vollen Text liefert get_knowledge_article.",
     annotations: { readOnlyHint: true, title: "Wissen durchsuchen" },
     inputSchema: {
       type: "object",
       properties: {
         workspace: WORKSPACE_PROPERTY,
-        query: { type: "string" },
+        query: {
+          type: "string",
+          description: "Stichwörter, z. B. «Visio installieren».",
+        },
         limit: { type: "integer", minimum: 1, maximum: 20 },
       },
       required: ["query"],
@@ -806,24 +877,84 @@ const TOOLS: Tool[] = [
       const workspace = await resolveWorkspace(config, session, args.workspace);
       const query = str(args.query, 1, 120);
       if (!query) throw new ToolError('"query" fehlt.');
-      const data = await callFunction(config, session, "knowledge-base", {
-        type: "listArticles",
-        tenantId: workspace.id,
-        query,
-      });
-      const articles = Array.isArray(data.articles)
-        ? data.articles.filter(isRecord)
-        : [];
+      const search = async (text: string) =>
+        records(
+          (
+            await callFunction(config, session, "knowledge-base", {
+              type: "listArticles",
+              tenantId: workspace.id,
+              query: text,
+            })
+          ).articles,
+        );
+      let articles = await search(query);
+      let searchedFor = [query];
+      // Ganze Fragen finden oft nichts; dann einzeln nach den
+      // aussagekräftigen Stichwörtern suchen (längste zuerst).
+      if (articles.length === 0) {
+        const words = [
+          ...new Set(
+            query
+              .toLocaleLowerCase("de-CH")
+              .split(/[^\p{L}\p{N}]+/u)
+              .filter(
+                (word) => Array.from(word).length >= 3 && !STOP_WORDS.has(word),
+              ),
+          ),
+        ]
+          .sort((a, b) => b.length - a.length)
+          .slice(0, 4);
+        if (words.length > 0) {
+          searchedFor = words;
+          const seen = new Set<unknown>();
+          for (const list of await Promise.all(words.map(search))) {
+            for (const article of list) {
+              if (!seen.has(article.id)) {
+                seen.add(article.id);
+                articles.push(article);
+              }
+            }
+          }
+        }
+      }
+      // Zu einem bestimmten Programm gibt es oft keinen eigenen Artikel,
+      // wohl aber eine Anleitung für den allgemeinen Weg (z. B. den Artikel
+      // «Unternehmensportal»). Dann diese anbieten.
+      let generalMatch = false;
+      if (articles.length === 0 && SOFTWARE_WORDS.test(query)) {
+        for (const fallback of SOFTWARE_FALLBACK_QUERIES) {
+          articles = await search(fallback);
+          if (articles.length > 0) {
+            searchedFor = [...searchedFor, fallback];
+            generalMatch = true;
+            break;
+          }
+        }
+      }
+      articles = articles.slice(0, clampLimit(args.limit, 8, 20));
       return textResult({
         count: articles.length,
-        articles: articles
-          .slice(0, clampLimit(args.limit, 8, 20))
-          .map((article) => ({
+        searchedFor,
+        ...(generalMatch
+          ? {
+              note: "Zum genannten Programm gibt es keinen eigenen Artikel. Diese Artikel beschreiben den allgemeinen Weg, Software zu beziehen; mit get_knowledge_article lesen und der Person danach erklären.",
+            }
+          : {}),
+        articles: articles.map((article) => {
+          const revision = isRecord(article.revision) ? article.revision : {};
+          return {
             id: article.id,
             title: article.title,
-            summary: clip(article.summary, 300),
+            summary: clip(article.summary ?? revision.summary, 300) || null,
+            excerpt: clip(revision.body, 600) || null,
             updatedAt: article.updated_at ?? article.updatedAt ?? null,
-          })),
+          };
+        }),
+        ...(articles.length === 0
+          ? {
+              hint: "Nichts gefunden. Keine allgemeine Anleitung erfinden; list_shop_catalog prüfen oder anbieten, ein Ticket zu erfassen.",
+            }
+          : {}),
       });
     },
   },
@@ -5518,6 +5649,218 @@ const TOOLS: Tool[] = [
       return textResult({ released: true });
     },
   },
+  // ------------------------------------------------ Shop
+  {
+    name: "list_shop_catalog",
+    description:
+      "Durchsucht den Self-Service-Shop (Software, Lizenzen, Geräte, Zubehör, Ausleihartikel), den Mitarbeitende selbst bestellen können. query: z. B. «Visio».",
+    annotations: { readOnlyHint: true, title: "Shop-Katalog" },
+    inputSchema: {
+      type: "object",
+      properties: {
+        workspace: WORKSPACE_PROPERTY,
+        query: {
+          type: "string",
+          description: "Name, Kategorie oder Stichwort.",
+        },
+      },
+      additionalProperties: false,
+    },
+    run: async (config, session, args) => {
+      const workspace = await resolveWorkspace(config, session, args.workspace);
+      const data = await callFunction(config, session, "shop", {
+        type: "listCatalog",
+        tenantId: workspace.id,
+      });
+      const query = typeof args.query === "string" ? args.query.trim() : "";
+      const items = records(data.items).filter((entry) =>
+        matches(
+          query,
+          entry.name,
+          entry.description,
+          entry.category,
+          ...(Array.isArray(entry.categoryNames) ? entry.categoryNames : []),
+        ),
+      );
+      return textResult({
+        count: items.length,
+        items: items.slice(0, 40).map((entry) => ({
+          id: entry.id,
+          name: entry.name,
+          description: clip(entry.description, 400) || null,
+          category: Array.isArray(entry.categoryNames)
+            ? entry.categoryNames.join(", ")
+            : (entry.category ?? null),
+          kind: entry.kind,
+          requiresApproval: entry.requiresApproval === true,
+          maxQuantity: entry.maxQuantity ?? null,
+          maxLoanDays: entry.maxLoanDays ?? null,
+        })),
+      });
+    },
+  },
+  {
+    name: "order_from_shop",
+    description:
+      "Bestellt Artikel im Self-Service-Shop für dich (items: Name oder ID aus list_shop_catalog, mit Menge). reason ist Pflicht, ausser bei reinen Ausleihartikeln; bei Ausleihe loanFrom/loanUntil (JJJJ-MM-TT) angeben. Je nach Artikel braucht es eine Freigabe. Nur nach ausdrücklicher Zustimmung der Person mit confirm=true.",
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      title: "Im Shop bestellen",
+    },
+    inputSchema: {
+      type: "object",
+      properties: {
+        workspace: WORKSPACE_PROPERTY,
+        items: {
+          type: "array",
+          minItems: 1,
+          maxItems: 30,
+          items: {
+            type: "object",
+            properties: {
+              item: { type: "string" },
+              quantity: { type: "integer", minimum: 1, maximum: 100 },
+            },
+            required: ["item"],
+            additionalProperties: false,
+          },
+        },
+        reason: { type: "string", minLength: 3, maxLength: 500 },
+        comment: { type: "string", maxLength: 2000 },
+        loanFrom: { type: "string" },
+        loanUntil: { type: "string" },
+        delivery: {
+          type: "string",
+          enum: ["pickup", "desk"],
+          description: "pickup (Abholung, Standard) oder desk (an den Platz).",
+        },
+        confirm: { type: "boolean" },
+      },
+      required: ["items", "confirm"],
+      additionalProperties: false,
+    },
+    run: async (config, session, args) => {
+      if (args.confirm !== true) {
+        throw new ToolError(
+          "Eine Bestellung wird verbindlich ausgelöst. Zeige der Person Artikel und Menge, frage nach und wiederhole den Aufruf danach mit confirm=true.",
+        );
+      }
+      if (
+        !Array.isArray(args.items) ||
+        args.items.length < 1 ||
+        args.items.length > 30
+      ) {
+        throw new ToolError('"items" muss 1 bis 30 Positionen enthalten.');
+      }
+      for (const key of ["loanFrom", "loanUntil"] as const) {
+        const value = args[key];
+        if (
+          value !== undefined &&
+          (typeof value !== "string" ||
+            isoDate(`${value}T00:00:00Z`)?.slice(0, 10) !== value)
+        ) {
+          throw new ToolError(`"${key}" muss ein Datum JJJJ-MM-TT sein.`);
+        }
+      }
+      const reason =
+        args.reason === undefined ? null : str(args.reason, 3, 500);
+      if (args.reason !== undefined && !reason) {
+        throw new ToolError('"reason" muss 3 bis 500 Zeichen lang sein.');
+      }
+      const workspace = await resolveWorkspace(config, session, args.workspace);
+      const catalog = records(
+        (
+          await callFunction(config, session, "shop", {
+            type: "listCatalog",
+            tenantId: workspace.id,
+          })
+        ).items,
+      );
+      const lines = args.items.map((entry) => {
+        if (!isRecord(entry)) throw new ToolError("Ungültige Position.");
+        const quantity = entry.quantity === undefined ? 1 : entry.quantity;
+        if (
+          typeof quantity !== "number" ||
+          !Number.isInteger(quantity) ||
+          quantity < 1 ||
+          quantity > 100
+        ) {
+          throw new ToolError('"quantity" muss 1 bis 100 sein.');
+        }
+        const item = findByName(catalog, entry.item, "name", "Artikel");
+        return { item, quantity };
+      });
+      const onlyLoans = lines.every(({ item }) => item.kind === "loan");
+      if (!onlyLoans && !reason) {
+        throw new ToolError(
+          'Für diese Bestellung braucht es einen Grund ("reason").',
+        );
+      }
+      const data = await callFunction(config, session, "shop", {
+        type: "submitOrder",
+        tenantId: workspace.id,
+        clientRequestId: crypto.randomUUID(),
+        lines: lines.map(({ item, quantity }) => ({
+          catalogItemId: item.id,
+          quantity,
+          ...(item.kind === "loan" && args.loanFrom
+            ? { loanFrom: args.loanFrom, loanUntil: args.loanUntil }
+            : {}),
+        })),
+        ...(reason ? { reason } : {}),
+        ...(args.comment !== undefined
+          ? { comment: str(args.comment, 0, 2000) }
+          : {}),
+        deliveryMethod: args.delivery === "desk" ? "desk" : "pickup",
+        ...(args.loanFrom ? { loanFrom: args.loanFrom } : {}),
+        ...(args.loanUntil ? { loanUntil: args.loanUntil } : {}),
+      });
+      return textResult({
+        ordered: true,
+        orderId: data.orderId ?? null,
+        items: lines.map(({ item, quantity }) => `${quantity}× ${item.name}`),
+        approvalNeeded: lines.some(
+          ({ item }) => item.requiresApproval === true,
+        ),
+      });
+    },
+  },
+  {
+    name: "list_shop_orders",
+    description:
+      "Zeigt deine Shop-Bestellungen mit Status (scope: mine, Standard). Mit scope approvals die Bestellungen, die auf deine Freigabe warten.",
+    annotations: { readOnlyHint: true, title: "Shop-Bestellungen" },
+    inputSchema: {
+      type: "object",
+      properties: {
+        workspace: WORKSPACE_PROPERTY,
+        scope: { type: "string", enum: ["mine", "approvals"] },
+      },
+      additionalProperties: false,
+    },
+    run: async (config, session, args) => {
+      const workspace = await resolveWorkspace(config, session, args.workspace);
+      const data = await callFunction(config, session, "shop", {
+        type: "listOrders",
+        tenantId: workspace.id,
+        scope: args.scope === "approvals" ? "approvals" : "mine",
+      });
+      return textResult({
+        orders: records(data.orders)
+          .slice(0, 50)
+          .map((entry) => ({
+            number: entry.orderNumber,
+            status: entry.status,
+            items: entry.itemsLabel,
+            requester: entry.requesterName ?? null,
+            approver: entry.approverName ?? null,
+            neededBy: entry.neededBy ?? null,
+            overdue: entry.overdue === true,
+          })),
+      });
+    },
+  },
 ];
 
 // ---------------------------------------------------------------- JSON-RPC
@@ -5560,8 +5903,12 @@ export async function handleMessage(
       protocolVersion: version,
       capabilities: { tools: { listChanged: false } },
       serverInfo: SERVER_INFO,
-      instructions:
-        "Greift als angemeldete Person auf nextDesk zu. Lesen ist frei. Schreibaktionen (Ticket erfassen, Notiz, Status, Priorität, Zuweisen, Zeit, Checkliste, Antworten, Freigaben, Serviceaufgaben, Wiedervorlagen, Übergaben, Verknüpfungen, Eskalationen, Raumbuchungen, Eintritte, Wissensartikel, Zuweisungen, Lager, Stellvertretung) nur nach Rückfrage bei der Person; Antworten, Lösen, Schliessen, Freigabeentscheide, Eskalationen, Abteilungswechsel, Zusammenführen, Umverteilen, Veröffentlichen und Archivieren von Wissen, an Anfragende gesendete Artikel und Raumbuchungen trotz Überschneidung verlangen ausdrückliche Bestätigung (confirm=true). Alle Rechte prüft nextDesk selbst; fehlt ein Recht, meldet das Werkzeug dies.",
+      instructions: [
+        "Greift als angemeldete Person auf nextDesk zu (Service-Desk der Organisation).",
+        "IT-Fragen zuerst in nextDesk beantworten: Bei Fragen zu Software (Installation, Download, Lizenzen), Geräten, Zugängen, Konten, Drucken, E-Mail, VPN oder anderen IT-Problemen IMMER zuerst search_knowledge aufrufen und die Antwort auf die gefundenen Artikel stützen (get_knowledge_article für den vollen Text). Gibt es zu einem bestimmten Programm keinen eigenen Artikel, gilt der allgemeine Weg aus der Wissensdatenbank (z. B. Software über das Unternehmensportal installieren). Interne Abläufe wie das Unternehmensportal, Company Portal oder Bestellwege gehen allgemeinen Anleitungen aus dem Web vor. Bei Software oder Material zusätzlich list_shop_catalog prüfen. Findet sich nichts, das offen sagen, keine allgemeinen Download-Anleitungen erfinden und anbieten, ein Ticket zu erfassen (create_ticket).",
+        "Lesen ist frei. Schreibaktionen nur nach Rückfrage bei der Person; folgenreiche Aktionen (Antworten an Anfragende, Lösen, Schliessen, Freigabeentscheide, Eskalationen, Abteilungswechsel, Zusammenführen, Umverteilen, Veröffentlichen und Archivieren von Wissen, an Anfragende gesendete Artikel, Bestellungen im Shop, Raumbuchungen trotz Überschneidung) verlangen ausdrückliche Bestätigung (confirm=true).",
+        "Alle Rechte prüft nextDesk selbst; fehlt ein Recht, meldet das Werkzeug dies.",
+      ].join(" "),
     });
   }
   if (method === "ping") return isNotification ? null : rpcResult(id, {});

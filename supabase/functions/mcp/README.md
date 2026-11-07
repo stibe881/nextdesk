@@ -11,7 +11,8 @@ den OAuth-2.1-Server von Supabase Auth, also mit dem normalen nextDesk-Konto
 | `list_workspaces` | lesen | Arbeitsbereiche des Kontos |
 | `search_tickets` | lesen | Tickets suchen (mine, open, unassigned, all) |
 | `get_ticket` | lesen | Ticket mit Beschreibung, Verlauf, Checkliste, erfasster Zeit, Eskalationen und Verknüpfungen |
-| `search_knowledge`, `get_knowledge_article` | lesen | Wissensdatenbank |
+| `search_knowledge`, `get_knowledge_article` | lesen | Wissensdatenbank. Sucht bei ganzen Fragen einzeln nach Stichwörtern; gibt es zu einem Programm keinen eigenen Artikel, liefert sie den allgemeinen Weg (z. B. «Unternehmensportal») |
+| `list_shop_catalog`, `list_shop_orders` | lesen | Self-Service-Shop: Katalog und eigene Bestellungen |
 | `find_asset` | lesen | Geräte nach Name, Nummer, Tag oder Seriennummer |
 | `global_search` | lesen | Gleichzeitig in Tickets, Wiedervorlagen, Wissen, Veranstaltungsräumen und Eintritten suchen |
 | `list_notifications` | lesen | Eigene Benachrichtigungen (standardmässig nur ungelesene) |
@@ -76,6 +77,11 @@ den OAuth-2.1-Server von Supabase Auth, also mit dem normalen nextDesk-Konto
 | `save_incident_notice` | schreiben | Störungsmeldung erfassen oder aktualisieren |
 | `save_ticket_review`, `reassign_tickets` | schreiben | Teamführung: Ticket bewerten, Tickets umverteilen (nur mit `confirm=true`) |
 | `post_inventory_movement`, `reserve_inventory`, `release_inventory_reservation` | schreiben | Lagerbewegung buchen, Material reservieren, Reservation freigeben |
+| `order_from_shop` | schreiben | Im Shop bestellen; nur mit `confirm=true` |
+
+Bei IT-Fragen (Software, Geräte, Zugänge …) weist der Connector Gemini an, zuerst
+die Wissensdatenbank zu befragen und keine allgemeinen Anleitungen aus dem Web
+zu erfinden.
 
 Geschriebene Texte (Ticket, interne Notiz, Zeitnotiz, Notiz zur Serviceaufgabe,
 Wiedervorlage)
