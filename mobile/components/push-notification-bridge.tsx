@@ -9,6 +9,14 @@ import {
   nextDesk,
 } from "@/lib/nextdesk-client";
 import { reregisterPushTokenIfEnabled } from "@/lib/push-notifications";
+import {
+  isNotificationAction,
+  startNotificationActions,
+} from "@/lib/notification-actions";
+
+// Antwort-Knöpfe (iPhone-Sperrbildschirm, Apple Watch) schon beim Laden des
+// Moduls registrieren, damit sie auch bei einem Hintergrundstart greifen.
+startNotificationActions();
 
 if (Platform.OS === "ios") {
   Notifications.setNotificationHandler({
@@ -87,6 +95,8 @@ export function PushNotificationBridge() {
     const handleResponse = async (
       response: Notifications.NotificationResponse,
     ) => {
+      // Antwort-Knöpfe führen eine Aktion aus und öffnen kein Ticket.
+      if (isNotificationAction(response)) return;
       const responseId = response.notification.request.identifier;
       if (handledResponseIds.current.has(responseId)) return;
       handledResponseIds.current.add(responseId);
