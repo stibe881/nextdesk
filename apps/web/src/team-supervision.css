@@ -542,3 +542,11 @@
   color: var(--ink);
   font-weight: 700;
 }
+
+.team-supervision__coaching-toolbar {
+  align-items: flex-end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: space-between;
+}

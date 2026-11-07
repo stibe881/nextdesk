@@ -10863,4 +10863,62 @@ end;
 $$;
 SQL
 
+# 0228: three PRTG alerts on one device within 30 days open one problem.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_tenant uuid;
+  v_asset uuid;
+  v_integration uuid;
+  v_has_manager boolean;
+begin
+  v_tenant := '10000000-0000-4000-8000-000000000001';
+  insert into public.assets (tenant_id, name, kind, lifecycle_state)
+  values (v_tenant, 'Access Point Aula', 'access_point', 'active') returning id into v_asset;
+  select id into v_integration from public.monitoring_integrations where tenant_id = v_tenant;
+  if v_integration is null then
+    insert into public.monitoring_integrations (tenant_id, token_hash, enabled)
+    values (v_tenant, repeat('b', 64), true) returning id into v_integration;
+  end if;
+  insert into public.monitoring_alerts (tenant_id, integration_id, external_key, asset_id, sensor_name,
+    state, opened_at, resolved_at)
+  select v_tenant, v_integration, 'recurring-' || n, v_asset, 'Ping', 'resolved',
+    timezone('utc', now()) - make_interval(days => n), timezone('utc', now()) - make_interval(days => n)
+  from generate_series(1, 3) n;
+  insert into public.role_permissions (role_id, permission_code)
+  values ('16500000-0000-4000-8000-000000000002', 'asset.manage')
+  on conflict do nothing;
+  select exists (
+    select 1 from public.user_role_assignments assignment
+    join public.role_permissions permission
+      on permission.role_id = assignment.role_id and permission.permission_code = 'asset.manage'
+    join public.tenant_memberships membership
+      on membership.tenant_id = assignment.tenant_id and membership.user_id = assignment.user_id
+     and membership.status = 'active'
+    where assignment.tenant_id = v_tenant
+  ) into v_has_manager;
+  perform public.monitoring_detect_recurring_problems();
+  if v_has_manager and not exists (
+    select 1 from public.monitoring_recurring_problems where asset_id = v_asset
+  ) then
+    raise exception 'recurring outage test: no problem opened';
+  end if;
+  perform public.monitoring_detect_recurring_problems();
+  if (select count(*) from public.monitoring_recurring_problems where asset_id = v_asset) > 1 then
+    raise exception 'recurring outage test: problem opened twice';
+  end if;
+  if not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'ticket_triage_settings'
+      and column_name = 'auto_merge_duplicates'
+  ) then
+    raise exception 'triage settings test: auto merge column missing';
+  end if;
+  raise notice 'recurring outage checks ran (manager present: %)', v_has_manager;
+end;
+$$;
+rollback;
+SQL
+
 echo "PostgreSQL 16 migration and RLS integration checks passed."

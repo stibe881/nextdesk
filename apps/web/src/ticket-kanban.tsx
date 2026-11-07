@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type DragEvent } from "react";
+import { useTicketHoverPreview } from "./ticket-hover-preview";
 
 import type { DashboardTicket } from "./dashboard-data";
 import { functionErrorMessage } from "./lib/function-error";
@@ -27,6 +28,7 @@ export function TicketKanban({
   const [moving, setMoving] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [showClosed, setShowClosed] = useState(false);
+  const hoverPreview = useTicketHoverPreview();
 
   useEffect(() => {
     if (!supabase) return;
@@ -116,6 +118,7 @@ export function TicketKanban({
 
   return (
     <div className="ticket-kanban">
+      {hoverPreview.overlay}
       <div className="ticket-kanban__toolbar">
         <p>
           Ziehen Sie eine Karte in eine andere Spalte, um den Status zu ändern.
@@ -163,7 +166,14 @@ export function TicketKanban({
                       event.dataTransfer.setData("text/plain", id)
                     }
                   >
-                    <button onClick={() => onOpen(id)} type="button">
+                    <button
+                      {...hoverPreview.bind(
+                        id,
+                        `${ticket.id} · ${ticket.subject}`,
+                      )}
+                      onClick={() => onOpen(id)}
+                      type="button"
+                    >
                       <code>{ticket.id}</code>
                       <strong>{ticket.subject}</strong>
                       <span>

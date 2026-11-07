@@ -43,3 +43,11 @@
   display: grid;
   gap: 4px;
 }
+.ticket-ai-triage--flags {
+  background: var(--surface-subtle);
+}
+.ticket-ai-triage__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}

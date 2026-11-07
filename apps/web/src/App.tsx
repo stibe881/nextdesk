@@ -1,3 +1,4 @@
+import { useTicketHoverPreview } from "./ticket-hover-preview";
 import {
   AGENT_TOUR,
   markTourSeen,
@@ -1261,6 +1262,16 @@ function baseNotificationPresentation(
         title: "Infrastruktur: Fälligkeit",
       };
     }
+    case "problem.recurring_detected": {
+      const asset =
+        notificationPayloadText(notification, "assetName", 200) ?? "Ein Gerät";
+      const count = notificationPayloadNumber(notification, "alertCount");
+      return {
+        description: `${asset} hatte ${count ?? "mehrere"} Störungen in 30 Tagen. Ein Problemfall wurde eröffnet.`,
+        Icon: AlertTriangle,
+        title: "Wiederkehrende Störung",
+      };
+    }
     case "ticket.rule_reminder": {
       const rule =
         notificationPayloadText(notification, "ruleName", 160) ?? "Regel";
@@ -2388,6 +2399,7 @@ function TicketList({
   onSelectionChange?: (ticketId: string, selected: boolean) => void;
   selectedTicketIds?: ReadonlySet<string>;
 }) {
+  const hoverPreview = useTicketHoverPreview();
   if (loading && tickets.length === 0) {
     return (
       <div className="ticket-list-skeleton" aria-busy="true" role="status">
@@ -2435,6 +2447,7 @@ function TicketList({
 
   return (
     <div className="ticket-list">
+      {hoverPreview.overlay}
       {tickets.map((ticket) => {
         const ticketId = ticket.recordId ?? ticket.id;
         const keyboardActive = keyboardActiveTicketId === ticketId;
@@ -2455,6 +2468,9 @@ function TicketList({
             }${keyboardActive ? " ticket-row--keyboard-active" : ""}`}
             id={onOpen ? `ticket-shortcut-${ticketId}` : undefined}
             key={ticket.id}
+            {...(onOpen
+              ? hoverPreview.bind(ticketId, `${ticket.id} · ${ticket.subject}`)
+              : {})}
             onClick={onOpen ? () => onOpen(ticketId) : undefined}
             onKeyDown={
               onOpen
@@ -3994,6 +4010,9 @@ function AuthenticatedApp() {
       setNotificationPanelOpen(false);
     } else if (notification.kind === "team.overload") {
       setSection("Teamführung");
+      setNotificationPanelOpen(false);
+    } else if (notification.kind === "problem.recurring_detected") {
+      setSection("Fälle");
       setNotificationPanelOpen(false);
     } else if (notification.kind === "maintenance.upcoming") {
       setSection("Systemstatus");

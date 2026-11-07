@@ -20,6 +20,8 @@ import {
 } from "lucide-react";
 import { LiveBoard, SkillMatrix } from "./team-leadership";
 import { callTeamSupervision } from "./team-supervision-api";
+import { buildOneOnOneSheet } from "./lib/one-on-one-sheet";
+import { supabase } from "./lib/supabase";
 import "./team-supervision.css";
 
 type Absence = {
@@ -1202,6 +1204,58 @@ function Coaching({
     }
   }
 
+  /** Opens a print view (save as PDF) with metrics, goals, notes and reviews. */
+  async function printSheet() {
+    const sheetWindow = window.open("", "_blank");
+    if (!sheetWindow) {
+      setError("Bitte erlauben Sie Pop-ups, um das Gesprächsblatt zu öffnen.");
+      return;
+    }
+    sheetWindow.document.write(
+      '<p style="font-family:sans-serif">Wird vorbereitet …</p>',
+    );
+    try {
+      const month = currentMonth();
+      const report = await call<Report>({
+        type: "monthlyReport",
+        tenantId,
+        month,
+      });
+      const agentReport =
+        report.agents.find((entry) => entry.id === agentId) ?? null;
+      const { data: session } = supabase
+        ? await supabase.auth.getUser()
+        : { data: { user: null } };
+      const html = buildOneOnOneSheet({
+        agentName:
+          agents.find((entry) => entry.id === agentId)?.displayName ?? "",
+        supervisorName:
+          (session.user?.user_metadata?.full_name as string | undefined) ??
+          session.user?.email ??
+          "Vorgesetzte Person",
+        monthLabel: monthLabel(month),
+        current: agentReport,
+        previous: agentReport?.previous
+          ? { ...agentReport.previous, knowledgeArticles: 0 }
+          : null,
+        notes,
+        reviews,
+      });
+      sheetWindow.document.open();
+      sheetWindow.document.write(html);
+      sheetWindow.document.close();
+      sheetWindow.focus();
+      window.setTimeout(() => sheetWindow.print(), 300);
+    } catch (nextError) {
+      sheetWindow.close();
+      setError(
+        nextError instanceof Error
+          ? nextError.message
+          : "Das Gesprächsblatt konnte nicht erstellt werden.",
+      );
+    }
+  }
+
   if (!agents.length) {
     return <p className="empty-state">Noch keine Agent:innen im Team.</p>;
   }
@@ -1218,19 +1272,29 @@ function Coaching({
         Private Notizen für Mitarbeitergespräche. Nur Sie sehen Ihre Notizen;
         daneben die letzten Qualitätsprüfungen der Person.
       </p>
-      <label className="team-supervision__coaching-agent">
-        Agent:in
-        <select
-          onChange={(event) => setAgentId(event.target.value)}
-          value={agentId}
+      <div className="team-supervision__coaching-toolbar">
+        <label className="team-supervision__coaching-agent">
+          Agent:in
+          <select
+            onChange={(event) => setAgentId(event.target.value)}
+            value={agentId}
+          >
+            {agents.map((agent) => (
+              <option key={agent.id} value={agent.id}>
+                {agent.displayName}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button
+          className="secondary-button"
+          disabled={busy || !agentId}
+          onClick={() => void printSheet()}
+          type="button"
         >
-          {agents.map((agent) => (
-            <option key={agent.id} value={agent.id}>
-              {agent.displayName}
-            </option>
-          ))}
-        </select>
-      </label>
+          <Printer aria-hidden="true" size={15} /> Gesprächsblatt (PDF)
+        </button>
+      </div>
       {error ? (
         <p className="form-message form-message--error" role="alert">
           {error}

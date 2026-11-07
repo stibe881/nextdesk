@@ -13,6 +13,15 @@ type Triage = {
   priorityLabel?: string | null;
   teamName?: string | null;
   assetName?: string | null;
+  sentiment?: "angry" | "frustrated" | "neutral" | "positive";
+  urgent?: boolean;
+  duplicateOf?: { id: string; ticketNumber: string | null } | null;
+};
+
+const SENTIMENT_LABEL: Record<string, string> = {
+  angry: "verärgert",
+  frustrated: "genervt",
+  positive: "zufrieden",
 };
 
 async function call<T>(body: Record<string, unknown>): Promise<T> {
@@ -55,6 +64,30 @@ export function TicketAiTriage({
   const [triage, setTriage] = useState<Triage | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [merged, setMerged] = useState(false);
+
+  async function mergeIntoDuplicate(primaryTicketId: string) {
+    if (!supabase) return;
+    if (
+      !window.confirm("Dieses Ticket in das bestehende Ticket zusammenführen?")
+    )
+      return;
+    setBusy(true);
+    setError("");
+    const { error: mergeError } = await supabase.functions.invoke(
+      "ticket-operations",
+      {
+        body: { type: "markMerged", tenantId, ticketId, primaryTicketId },
+      },
+    );
+    setBusy(false);
+    if (mergeError) {
+      setError("Die Tickets konnten nicht zusammengeführt werden.");
+      return;
+    }
+    setMerged(true);
+    onChanged();
+  }
 
   const load = useCallback(async () => {
     try {
@@ -93,71 +126,133 @@ export function TicketAiTriage({
     }
   }
 
-  if (!triage || !["suggested", "applied"].includes(triage.state)) return null;
+  if (
+    !triage ||
+    !["suggested", "applied", "accepted", "dismissed"].includes(triage.state)
+  ) {
+    return null;
+  }
+  const mood =
+    triage.sentiment && SENTIMENT_LABEL[triage.sentiment]
+      ? SENTIMENT_LABEL[triage.sentiment]
+      : null;
+  const duplicate =
+    triage.duplicateOf && !merged && !(triage.applied ?? []).includes("merged")
+      ? triage.duplicateOf
+      : null;
+  const flags =
+    mood || triage.urgent || duplicate ? (
+      <aside
+        aria-label="KI-Hinweise"
+        className="ticket-ai-triage ticket-ai-triage--flags"
+      >
+        <Sparkles aria-hidden="true" size={16} />
+        <div>
+          <span className="ticket-ai-triage__chips">
+            {mood ? (
+              <span
+                className={`tone-chip tone-chip--${triage.sentiment === "positive" ? "success" : "danger"}`}
+              >
+                Stimmung: {mood}
+              </span>
+            ) : null}
+            {triage.urgent ? (
+              <span className="tone-chip tone-chip--warning">Dringend</span>
+            ) : null}
+          </span>
+          {duplicate ? (
+            <span>
+              Mögliches Duplikat von Ticket {duplicate.ticketNumber ?? ""}{" "}
+              derselben Person.
+            </span>
+          ) : null}
+          {error && !["suggested", "applied"].includes(triage.state) ? (
+            <small className="ticket-ai-triage__error">{error}</small>
+          ) : null}
+        </div>
+        {duplicate && canUpdate ? (
+          <button
+            className="secondary-button"
+            disabled={busy}
+            onClick={() => void mergeIntoDuplicate(duplicate.id)}
+            type="button"
+          >
+            Zusammenführen
+          </button>
+        ) : null}
+      </aside>
+    ) : null;
+  if (!["suggested", "applied"].includes(triage.state)) return flags;
   const parts = [
     triage.categoryName ? `Kategorie ${triage.categoryName}` : null,
     triage.priorityLabel ? `Priorität ${triage.priorityLabel}` : null,
     triage.teamName ? `Team ${triage.teamName}` : null,
     triage.assetName ? `Gerät ${triage.assetName}` : null,
   ].filter(Boolean);
-  if (parts.length === 0) return null;
+  if (parts.length === 0) return flags;
   const confidence = Math.round((triage.confidence ?? 0) * 100);
 
   return (
-    <aside
-      aria-label="KI-Einordnung"
-      className={`ticket-ai-triage ticket-ai-triage--${triage.state}`}
-    >
-      <Sparkles aria-hidden="true" size={16} />
-      <div>
-        <strong>
-          {triage.state === "applied"
-            ? `KI hat eingeordnet (${(triage.applied ?? []).map((key) => APPLIED_LABEL[key] ?? key).join(", ") || "nichts geändert"})`
-            : "KI-Vorschlag zur Einordnung"}
-        </strong>
-        <span>
-          {parts.join(" · ")} · Sicherheit {confidence} %
-        </span>
-        {triage.reason ? <small>{triage.reason}</small> : null}
-        {error ? (
-          <small className="ticket-ai-triage__error">{error}</small>
+    <>
+      {flags}
+      <aside
+        aria-label="KI-Einordnung"
+        className={`ticket-ai-triage ticket-ai-triage--${triage.state}`}
+      >
+        <Sparkles aria-hidden="true" size={16} />
+        <div>
+          <strong>
+            {triage.state === "applied"
+              ? `KI hat eingeordnet (${(triage.applied ?? []).map((key) => APPLIED_LABEL[key] ?? key).join(", ") || "nichts geändert"})`
+              : "KI-Vorschlag zur Einordnung"}
+          </strong>
+          <span>
+            {parts.join(" · ")} · Sicherheit {confidence} %
+          </span>
+          {triage.reason ? <small>{triage.reason}</small> : null}
+          {error ? (
+            <small className="ticket-ai-triage__error">{error}</small>
+          ) : null}
+        </div>
+        {triage.state === "suggested" && canUpdate ? (
+          <span className="ticket-ai-triage__actions">
+            <button
+              className="secondary-button"
+              disabled={busy}
+              onClick={() => void decide("accept")}
+              type="button"
+            >
+              <Check aria-hidden="true" size={14} /> Übernehmen
+            </button>
+            <button
+              aria-label="Vorschlag verwerfen"
+              className="icon-button"
+              disabled={busy}
+              onClick={() => void decide("dismiss")}
+              type="button"
+            >
+              <X aria-hidden="true" size={15} />
+            </button>
+          </span>
         ) : null}
-      </div>
-      {triage.state === "suggested" && canUpdate ? (
-        <span className="ticket-ai-triage__actions">
-          <button
-            className="secondary-button"
-            disabled={busy}
-            onClick={() => void decide("accept")}
-            type="button"
-          >
-            <Check aria-hidden="true" size={14} /> Übernehmen
-          </button>
-          <button
-            aria-label="Vorschlag verwerfen"
-            className="icon-button"
-            disabled={busy}
-            onClick={() => void decide("dismiss")}
-            type="button"
-          >
-            <X aria-hidden="true" size={15} />
-          </button>
-        </span>
-      ) : null}
-    </aside>
+      </aside>
+    </>
   );
 }
 
 /** Tenant setting: AI triage on intake and the confidence for automatic apply. */
 export function TicketTriageSettings({ tenantId }: { tenantId: string }) {
-  const [settings, setSettings] = useState<{
+  type Settings = {
     enabled: boolean;
     applyThreshold: number;
-  } | null>(null);
+    sentimentEnabled: boolean;
+    autoMergeDuplicates: boolean;
+  };
+  const [settings, setSettings] = useState<Settings | null>(null);
   const [message, setMessage] = useState("");
 
   useEffect(() => {
-    void call<{ enabled: boolean; applyThreshold: number }>({
+    void call<Settings>({
       type: "getSettings",
       tenantId,
     })
@@ -167,7 +262,7 @@ export function TicketTriageSettings({ tenantId }: { tenantId: string }) {
       );
   }, [tenantId]);
 
-  async function save(next: { enabled: boolean; applyThreshold: number }) {
+  async function save(next: Settings) {
     setSettings(next);
     try {
       setSettings(await call({ type: "saveSettings", tenantId, ...next }));
@@ -223,6 +318,40 @@ export function TicketTriageSettings({ tenantId }: { tenantId: string }) {
               type="range"
               value={Math.round(settings.applyThreshold * 100)}
             />
+          </label>
+          <label className="tenant-automation__switch">
+            <input
+              checked={settings.sentimentEnabled}
+              disabled={!settings.enabled}
+              onChange={(event) =>
+                void save({
+                  ...settings,
+                  sentimentEnabled: event.target.checked,
+                })
+              }
+              type="checkbox"
+            />
+            <span>
+              Stimmung erkennen (verärgerte oder dringende Tickets markieren und
+              Priorität um eine Stufe erhöhen)
+            </span>
+          </label>
+          <label className="tenant-automation__switch">
+            <input
+              checked={settings.autoMergeDuplicates}
+              disabled={!settings.enabled}
+              onChange={(event) =>
+                void save({
+                  ...settings,
+                  autoMergeDuplicates: event.target.checked,
+                })
+              }
+              type="checkbox"
+            />
+            <span>
+              Duplikate derselben Person (24 h) automatisch zusammenführen,
+              sonst nur vorschlagen
+            </span>
           </label>
         </div>
       ) : null}
