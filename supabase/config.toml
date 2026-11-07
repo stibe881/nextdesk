@@ -199,3 +199,6 @@ verify_jwt = true
 
 [functions.infrastructure]
 verify_jwt = true
+
+[functions.knowledge-suggestions]
+verify_jwt = true

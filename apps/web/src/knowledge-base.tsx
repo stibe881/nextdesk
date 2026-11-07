@@ -52,11 +52,14 @@ import {
 } from "./lib/knowledge-images";
 import { supabase } from "./lib/supabase";
 import { KnowledgeMarkdown } from "./knowledge-markdown";
+import { KnowledgeSuggestions } from "./knowledge-suggestions";
 
 export type KnowledgeBaseProps = {
   createArticleRequestId?: number | undefined;
   focusArticleId?: string | undefined;
   onCreateArticleRequestConsumed?: ((requestId: number) => void) | undefined;
+  /** Opens a ticket (sample tickets of the article suggestions). */
+  onOpenTicket?: ((ticketId: string) => void) | undefined;
   /** Employees without ticket work only read the published external articles. */
   readOnly?: boolean;
   tenantId: string;
@@ -1128,6 +1131,7 @@ export function KnowledgeBase({
   createArticleRequestId,
   focusArticleId,
   onCreateArticleRequestConsumed,
+  onOpenTicket,
   readOnly = false,
   tenantId,
 }: KnowledgeBaseProps) {
@@ -1639,6 +1643,23 @@ export function KnowledgeBase({
     setError("");
     setSuccess("");
     setEditorOpen(true);
+  }
+
+  // A draft created from an article suggestion opens in the editor for
+  // review as soon as its detail is loaded.
+  const pendingEditArticleId = useRef<string | null>(null);
+  useEffect(() => {
+    if (selected && pendingEditArticleId.current === selected.article.id) {
+      pendingEditArticleId.current = null;
+      beginEditArticle();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected]);
+
+  function openSuggestedDraft(articleId: string) {
+    pendingEditArticleId.current = articleId;
+    void loadArticles(activeQuery);
+    void openArticle(articleId);
   }
 
   function closeEditor() {
@@ -3020,6 +3041,15 @@ export function KnowledgeBase({
           </div>
         </div>
       </section>
+
+      {readOnly ? null : (
+        <KnowledgeSuggestions
+          disabled={isBusy}
+          onOpenDraft={openSuggestedDraft}
+          onOpenTicket={onOpenTicket}
+          tenantId={tenantId}
+        />
+      )}
 
       {editorOpen && (
         <div className="knowledge-base__editor-backdrop">

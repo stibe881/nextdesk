@@ -5825,6 +5825,7 @@ function AuthenticatedApp() {
                 : knowledgeFocusArticleId
             }
             onCreateArticleRequestConsumed={consumeQuickCreateRequest}
+            onOpenTicket={(ticketId) => setSelectedTicketId(ticketId)}
             readOnly={isSupabaseConfigured && !canWorkTickets}
             tenantId={activeTenant.id}
           />

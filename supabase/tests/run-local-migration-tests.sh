@@ -10679,4 +10679,89 @@ $$;
 rollback;
 SQL
 
+# 0221: knowledge suggestions are service-role only, unique per fingerprint,
+# and the source tickets skip unsolved, merged, uncommented and covered tickets.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_template record;
+  v_member uuid;
+  v_ids uuid[] := array[gen_random_uuid(), gen_random_uuid(), gen_random_uuid(),
+    gen_random_uuid(), gen_random_uuid(), gen_random_uuid()];
+  v_article uuid := gen_random_uuid();
+  v_index integer;
+  v_found uuid[];
+begin
+  if has_table_privilege('authenticated', 'public.knowledge_suggestions', 'select')
+    or has_table_privilege('anon', 'public.knowledge_suggestions', 'select')
+    or has_table_privilege('authenticated', 'public.knowledge_suggestion_refreshes', 'select') then
+    raise exception 'knowledge suggestion test: table readable by browsers';
+  end if;
+  if has_function_privilege('authenticated',
+      'public.knowledge_suggestion_source_tickets(uuid, timestamptz, integer)', 'execute') then
+    raise exception 'knowledge suggestion test: source function callable by browsers';
+  end if;
+  if not (select relrowsecurity from pg_class where oid = 'public.knowledge_suggestions'::regclass) then
+    raise exception 'knowledge suggestion test: RLS disabled';
+  end if;
+
+  select * into v_template from public.tickets limit 1;
+  select user_id into v_member from public.tenant_memberships
+  where tenant_id = v_template.tenant_id and status = 'active' limit 1;
+  for v_index in 1..6 loop
+    insert into public.tickets (id, tenant_id, department_id, ticket_number, subject, description,
+      status_id, priority_id, requester_id)
+    values (v_ids[v_index], v_template.tenant_id, v_template.department_id,
+      'KS-TEST-' || v_index, 'VPN Verbindung bricht ab', 'Seit heute',
+      v_template.status_id, v_template.priority_id, v_template.requester_id);
+  end loop;
+  update public.tickets set resolved_at = timezone('utc', now()) - interval '2 days'
+  where id = any(v_ids[1:5]);
+  update public.tickets set merged_into_ticket_id = v_ids[1] where id = v_ids[4];
+  insert into public.ticket_comments (ticket_id, author_id, visibility, body)
+  select ticket_id, v_member, 'external', 'Client neu installiert'
+  from unnest(array[v_ids[1], v_ids[2], v_ids[3], v_ids[4], v_ids[6]]) ticket_id;
+  -- Ticket 3 was solved with a published article: covered.
+  insert into public.knowledge_articles (id, tenant_id, title, slug, visibility, status,
+    current_revision, created_by)
+  values (v_article, v_template.tenant_id, 'VPN neu verbinden', 'ks-test-vpn', 'internal',
+    'published', 1, v_member);
+  insert into public.ticket_knowledge_links (ticket_id, article_id, linked_by)
+  values (v_ids[3], v_article, v_member);
+
+  select array_agg(ticket_id) into v_found
+  from public.knowledge_suggestion_source_tickets(
+    v_template.tenant_id, timezone('utc', now()) - interval '120 days', 2000)
+  where ticket_id = any(v_ids);
+  -- 1 and 2 qualify; 3 covered, 4 merged, 5 without comment, 6 unsolved.
+  if coalesce(array_length(v_found, 1), 0) <> 2
+    or not (v_found @> array[v_ids[1], v_ids[2]]) then
+    raise exception 'knowledge suggestion test: unexpected source tickets %', v_found;
+  end if;
+
+  insert into public.knowledge_suggestions (tenant_id, department_id, fingerprint, title_hint,
+    ticket_ids, ticket_count)
+  values (v_template.tenant_id, v_template.department_id, 'v1|-|pair:verbindung+vpn',
+    'Verbindung · Vpn', v_ids[1:3], 3);
+  begin
+    insert into public.knowledge_suggestions (tenant_id, fingerprint, title_hint)
+    values (v_template.tenant_id, 'v1|-|pair:verbindung+vpn', 'Doppelt');
+    raise exception 'knowledge suggestion test: duplicate fingerprint accepted';
+  exception when unique_violation then
+    null;
+  end;
+  begin
+    insert into public.knowledge_suggestions (tenant_id, fingerprint, title_hint, status)
+    values (v_template.tenant_id, 'v1|-|word:vpn', 'Vpn', 'stale');
+    raise exception 'knowledge suggestion test: invalid status accepted';
+  exception when check_violation then
+    null;
+  end;
+  raise notice 'knowledge suggestion checks ran';
+end;
+$$;
+rollback;
+SQL
+
 echo "PostgreSQL 16 migration and RLS integration checks passed."
