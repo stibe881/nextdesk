@@ -1,5 +1,17 @@
 import { withSupabase } from "@supabase/server";
 import { resolveTenantFeatureStates } from "../_shared/tenant-features.ts";
+import {
+  appendAnswersToDescription,
+  applicableChecklistItems,
+  parseCondition,
+  parseTemplateFormField,
+  sanitizeAnswers,
+  validateAnswers,
+  type FormAnswerValue,
+  type FormAnswers,
+  type TemplateCondition,
+  type TemplateFormField,
+} from "../_shared/ticket-template-form.ts";
 
 type Action =
   | { type: "getFormOptions"; tenantId: string; departmentId?: string }
@@ -32,6 +44,7 @@ type Action =
       subcategoryId?: string | null;
       assignedAgentId?: string | null;
       templateId?: string;
+      formAnswers?: FormAnswers;
     };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -44,6 +57,29 @@ function isUuid(value: unknown): value is string {
       value,
     )
   );
+}
+
+/**
+ * Formularantworten: ein flaches Objekt mit höchstens 50 Einträgen aus Text,
+ * Zahl, Wahrheitswert oder null. Ungültige Eingaben ergeben `null`.
+ */
+export function parseFormAnswers(value: unknown): FormAnswers | null {
+  if (!isRecord(value)) return null;
+  const entries = Object.entries(value);
+  if (entries.length > 50) return null;
+  const answers: FormAnswers = {};
+  for (const [key, answer] of entries) {
+    if (!/^[a-z][a-z0-9_]{0,62}$/.test(key)) return null;
+    if (
+      answer !== null &&
+      typeof answer !== "boolean" &&
+      !(typeof answer === "number" && Number.isFinite(answer)) &&
+      !(typeof answer === "string" && answer.length <= 10000)
+    )
+      return null;
+    answers[key] = answer as FormAnswerValue | null;
+  }
+  return answers;
 }
 
 function isOptionalUuid(value: unknown): value is string | null | undefined {
@@ -228,7 +264,7 @@ function json(request: Request, body: Record<string, unknown>, status = 200) {
     },
   });
 }
-function parseAction(value: unknown): Action | null {
+export function parseAction(value: unknown): Action | null {
   if (!isRecord(value) || !isUuid(value.tenantId)) return null;
   if (
     value.type === "getFormOptions" &&
@@ -290,8 +326,14 @@ function parseAction(value: unknown): Action | null {
     };
   }
   const assignedAgentId = value.assignedAgentId;
+  const formAnswers =
+    value.formAnswers === undefined
+      ? undefined
+      : parseFormAnswers(value.formAnswers);
   if (
     value.type === "createTicket" &&
+    formAnswers !== null &&
+    (formAnswers === undefined || isUuid(value.templateId)) &&
     isUuid(value.departmentId) &&
     typeof value.subject === "string" &&
     typeof value.description === "string" &&
@@ -321,6 +363,7 @@ function parseAction(value: unknown): Action | null {
       ...(typeof value.templateId === "string"
         ? { templateId: value.templateId }
         : {}),
+      ...(formAnswers !== undefined ? { formAnswers } : {}),
       ...(assignedAgentId !== undefined ? { assignedAgentId } : {}),
     };
   }
@@ -853,14 +896,19 @@ type AvailableTicketTemplate = {
   subjectTemplate: string;
   descriptionTemplate: string;
   priorityKey: string | null;
-  checklistItems: Array<{ description: string; position: number }>;
+  checklistItems: Array<{
+    description: string;
+    position: number;
+    condition: TemplateCondition | null;
+  }>;
+  formFields: TemplateFormField[];
 };
 
 function hasOnlySafeTemplatePlaceholders(value: string): boolean {
   return !/[{}]/.test(value.replace(SAFE_TEMPLATE_PLACEHOLDER, ""));
 }
 
-function publicTicketTemplate(row: any): AvailableTicketTemplate | null {
+export function publicTicketTemplate(row: any): AvailableTicketTemplate | null {
   if (
     !isUuid(row?.id) ||
     typeof row?.name !== "string" ||
@@ -873,24 +921,41 @@ function publicTicketTemplate(row: any): AvailableTicketTemplate | null {
     return null;
   }
 
-  const checklistItems: Array<{ description: string; position: number }> = [];
+  const checklistItems: AvailableTicketTemplate["checklistItems"] = [];
   for (const item of Array.isArray(row.ticket_template_checklist_items)
     ? row.ticket_template_checklist_items
     : []) {
+    const condition = parseCondition(item?.condition);
     if (
       typeof item?.description !== "string" ||
       item.description.length < 1 ||
       item.description.length > 1000 ||
       typeof item.position !== "number" ||
-      !Number.isSafeInteger(item.position)
+      !Number.isSafeInteger(item.position) ||
+      condition === undefined
     ) {
       return null;
     }
     checklistItems.push({
       description: item.description,
       position: item.position,
+      condition,
     });
   }
+  const formFields: TemplateFormField[] = [];
+  for (const [index, item] of (Array.isArray(row.ticket_template_fields)
+    ? row.ticket_template_fields
+    : []
+  ).entries()) {
+    const field = parseTemplateFormField(item, index);
+    // Ungültige Felder machen die Vorlage unbrauchbar (fail-closed).
+    if (!field) return null;
+    formFields.push(field);
+  }
+  formFields.sort(
+    (left, right) =>
+      left.position - right.position || left.key.localeCompare(right.key),
+  );
   checklistItems.sort(
     (left, right) =>
       left.position - right.position ||
@@ -904,6 +969,7 @@ function publicTicketTemplate(row: any): AvailableTicketTemplate | null {
     descriptionTemplate: row.description_template,
     priorityKey: row.priority_key,
     checklistItems,
+    formFields,
   };
 }
 
@@ -915,7 +981,7 @@ async function getAvailableTicketTemplates(
   const { data, error } = await admin
     .from("ticket_templates")
     .select(
-      "id, name, subject_template, description_template, priority_key, department_id, ticket_template_checklist_items(description, position)",
+      "id, name, subject_template, description_template, priority_key, department_id, ticket_template_checklist_items(description, position, condition), ticket_template_fields(key, label, field_type, required, options, help_text, position, condition)",
     )
     .eq("tenant_id", tenantId)
     .eq("active", true)
@@ -1585,12 +1651,38 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         422,
       );
     }
-    if (
-      ticketTemplate.checklistItems.length > 0 &&
-      templateFeatureStates?.["ticketing.checklists"] !== true
-    )
-      return json(request, { error: { code: "ticket_feature_disabled" } }, 403);
   }
+  if (!ticketTemplate && action.formAnswers !== undefined) {
+    return json(request, { error: { code: "invalid_request" } }, 400);
+  }
+  // Formularangaben werden auf dem Server geprüft und bereinigt; nur sie
+  // bestimmen, welche bedingten Checklistenpunkte entstehen.
+  const formFields = ticketTemplate?.formFields ?? [];
+  const rawFormAnswers = action.formAnswers ?? {};
+  const formErrors = validateAnswers(formFields, rawFormAnswers);
+  const firstFormError = Object.values(formErrors)[0];
+  if (firstFormError) {
+    return json(
+      request,
+      {
+        error: {
+          code: "ticket_form_invalid",
+          message: firstFormError,
+          fields: formErrors,
+        },
+      },
+      422,
+    );
+  }
+  const formAnswers = sanitizeAnswers(formFields, rawFormAnswers);
+  const templateChecklistItems = ticketTemplate
+    ? applicableChecklistItems(ticketTemplate.checklistItems, formAnswers)
+    : [];
+  if (
+    templateChecklistItems.length > 0 &&
+    templateFeatureStates?.["ticketing.checklists"] !== true
+  )
+    return json(request, { error: { code: "ticket_feature_disabled" } }, 403);
   const effectivePriorityKey =
     ticketTemplate?.priorityKey ?? action.priorityKey;
   const { data: priority } = await context.supabaseAdmin
@@ -1742,7 +1834,13 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       )
     : null;
   const ticketSubject = renderedTemplate?.subject ?? action.subject;
-  const ticketDescription = renderedTemplate?.description ?? action.description;
+  const ticketDescription = renderedTemplate
+    ? appendAnswersToDescription(
+        renderedTemplate.description,
+        formFields,
+        formAnswers,
+      )
+    : action.description;
   if (
     ticketSubject.length < 3 ||
     ticketSubject.length > 240 ||
@@ -1784,11 +1882,11 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       .eq("tenant_id", action.tenantId)
       .eq("id", ticket.id);
   };
-  if (ticketTemplate && ticketTemplate.checklistItems.length > 0) {
+  if (ticketTemplate && templateChecklistItems.length > 0) {
     const { error: checklistError } = await context.supabaseAdmin
       .from("ticket_checklist_items")
       .insert(
-        ticketTemplate.checklistItems.map((item) => ({
+        templateChecklistItems.map((item) => ({
           ticket_id: ticket.id,
           description: item.description,
           position: item.position,
@@ -1800,6 +1898,29 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       return json(
         request,
         { error: { code: "ticket_template_checklist_apply_failed" } },
+        500,
+      );
+    }
+  }
+  if (ticketTemplate && formFields.length > 0) {
+    const { error: answersError } = await context.supabaseAdmin
+      .from("ticket_form_answers")
+      .insert({
+        ticket_id: ticket.id,
+        tenant_id: action.tenantId,
+        template_id: ticketTemplate.id,
+        answers: formAnswers,
+        fields: formFields.map((field) => ({
+          key: field.key,
+          label: field.label,
+          fieldType: field.fieldType,
+        })),
+      });
+    if (answersError) {
+      await removeIncompleteTemplateTicket();
+      return json(
+        request,
+        { error: { code: "ticket_form_answers_store_failed" } },
         500,
       );
     }
@@ -1838,7 +1959,8 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         severity: "info",
         metadata: {
           templateId: ticketTemplate.id,
-          checklistItemCount: ticketTemplate.checklistItems.length,
+          checklistItemCount: templateChecklistItems.length,
+          formFieldCount: formFields.length,
         },
       });
     if (auditError) {

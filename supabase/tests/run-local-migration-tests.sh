@@ -10451,4 +10451,136 @@ $$;
 rollback;
 SQL
 
+# 0217: ticket templates with form fields, conditional checklist items and
+# stored answers.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_ticket record;
+  v_other_tenant uuid;
+  v_template uuid;
+  v_answers jsonb := '{"person": "Erika Muster", "modell": "Standard", "docking": true}'::jsonb;
+  v_created integer;
+begin
+  select * into v_ticket from public.tickets limit 1;
+  select id into v_other_tenant from public.tenants where id <> v_ticket.tenant_id limit 1;
+  insert into public.ticket_templates (tenant_id, name, subject_template, description_template)
+  values (v_ticket.tenant_id, 'Neuer Laptop (Formulartest)', 'Neuer Laptop', 'Bitte vorbereiten.')
+  returning id into v_template;
+  insert into public.ticket_template_fields
+    (tenant_id, template_id, key, label, field_type, required, options, position, condition)
+  values
+    (v_ticket.tenant_id, v_template, 'person', 'Name der Person', 'text', true, '{}', 0, null),
+    (v_ticket.tenant_id, v_template, 'modell', 'Modell', 'select', true,
+      array['Standard', 'Entwickler'], 1, null),
+    (v_ticket.tenant_id, v_template, 'docking', 'Docking-Station nötig', 'checkbox', false, '{}', 2, null),
+    (v_ticket.tenant_id, v_template, 'docking_typ', 'Typ', 'text', false, '{}', 3,
+      '{"fieldKey": "docking", "equals": "true"}'::jsonb);
+  insert into public.ticket_template_checklist_items (tenant_id, template_id, description, position, condition)
+  values
+    (v_ticket.tenant_id, v_template, 'Laptop bestellen', 0, null),
+    (v_ticket.tenant_id, v_template, 'Docking-Station bestellen', 1,
+      '{"fieldKey": "docking", "equals": "true"}'::jsonb),
+    (v_ticket.tenant_id, v_template, 'Entwicklerlizenz', 2,
+      '{"fieldKey": "modell", "equals": "Entwickler"}'::jsonb);
+
+  select count(*) into v_created from public.ticket_template_checklist_items
+  where template_id = v_template and public.ticket_template_condition_holds(condition, v_answers);
+  if v_created <> 2 then
+    raise exception 'template form test: expected 2 applicable checklist items, got %', v_created;
+  end if;
+  if public.ticket_template_condition_holds('{"fieldKey": "docking", "equals": "true"}'::jsonb, '{}'::jsonb) then
+    raise exception 'template form test: missing answer matched';
+  end if;
+  if not public.ticket_template_condition_holds('{"fieldKey": "modell", "equals": "Standard"}'::jsonb,
+      '{"modell": " Standard "}'::jsonb) then
+    raise exception 'template form test: trimmed text did not match';
+  end if;
+
+  begin
+    insert into public.ticket_template_fields (tenant_id, template_id, key, label, field_type)
+    values (v_ticket.tenant_id, v_template, 'person', 'Doppelt', 'text');
+    raise exception 'template form test: duplicate key accepted';
+  exception when unique_violation then null;
+  end;
+  begin
+    insert into public.ticket_template_fields (tenant_id, template_id, key, label, field_type)
+    values (v_ticket.tenant_id, v_template, 'auswahl', 'Auswahl', 'select');
+    raise exception 'template form test: select without options accepted';
+  exception when check_violation then null;
+  end;
+  begin
+    insert into public.ticket_template_fields (tenant_id, template_id, key, label, field_type, condition)
+    values (v_ticket.tenant_id, v_template, 'kaputt', 'Kaputt', 'text', '{"fieldKey": "x"}'::jsonb);
+    raise exception 'template form test: invalid condition accepted';
+  exception when check_violation then null;
+  end;
+  begin
+    insert into public.ticket_template_fields (tenant_id, template_id, key, label, field_type, condition)
+    values (v_ticket.tenant_id, v_template, 'selbst', 'Selbst', 'text',
+      '{"fieldKey": "selbst", "equals": "x"}'::jsonb);
+    raise exception 'template form test: self condition accepted';
+  exception when check_violation then null;
+  end;
+  begin
+    update public.ticket_template_checklist_items set condition = '[]'::jsonb
+    where template_id = v_template and position = 0;
+    raise exception 'template form test: invalid checklist condition accepted';
+  exception when check_violation then null;
+  end;
+  if v_other_tenant is not null then
+    begin
+      insert into public.ticket_template_fields (tenant_id, template_id, key, label, field_type)
+      values (v_other_tenant, v_template, 'fremd', 'Fremd', 'text');
+      raise exception 'template form test: cross-tenant field accepted';
+    exception when foreign_key_violation then null;
+    end;
+    begin
+      insert into public.ticket_form_answers (ticket_id, tenant_id, template_id, answers)
+      values (v_ticket.id, v_other_tenant, null, '{}'::jsonb);
+      raise exception 'template form test: cross-tenant answers accepted';
+    exception when foreign_key_violation then null;
+    end;
+  end if;
+
+  insert into public.ticket_form_answers (ticket_id, tenant_id, template_id, answers, fields)
+  values (v_ticket.id, v_ticket.tenant_id, v_template, v_answers,
+    '[{"key": "person", "label": "Name der Person", "fieldType": "text"}]'::jsonb);
+  begin
+    insert into public.ticket_form_answers (ticket_id, tenant_id, template_id, answers)
+    values (v_ticket.id, v_ticket.tenant_id, v_template, '[]'::jsonb);
+    raise exception 'template form test: second or non-object answers accepted';
+  exception when unique_violation or check_violation then null;
+  end;
+
+  if has_table_privilege('authenticated', 'public.ticket_template_fields', 'select')
+    or has_table_privilege('anon', 'public.ticket_template_fields', 'select')
+    or has_table_privilege('authenticated', 'public.ticket_form_answers', 'insert')
+    or has_table_privilege('anon', 'public.ticket_form_answers', 'select')
+    or not has_table_privilege('authenticated', 'public.ticket_form_answers', 'select') then
+    raise exception 'template form test: unexpected browser privileges';
+  end if;
+  if (
+    select count(*) from pg_class
+    where oid in ('public.ticket_template_fields'::regclass, 'public.ticket_form_answers'::regclass)
+      and relrowsecurity and relforcerowsecurity
+  ) <> 2 then
+    raise exception 'template form test: row level security not forced';
+  end if;
+
+  -- Deleting the template removes its fields and keeps the answers.
+  delete from public.ticket_templates where id = v_template;
+  if exists (select 1 from public.ticket_template_fields where template_id = v_template) then
+    raise exception 'template form test: fields survived template deletion';
+  end if;
+  if (select template_id from public.ticket_form_answers where ticket_id = v_ticket.id) is not null then
+    raise exception 'template form test: answers kept a deleted template';
+  end if;
+  raise notice 'ticket template form checks ran';
+end;
+$$;
+rollback;
+SQL
+
 echo "PostgreSQL 16 migration and RLS integration checks passed."

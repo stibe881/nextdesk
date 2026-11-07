@@ -15,6 +15,20 @@ import {
   X,
 } from "lucide-react";
 import { supabase } from "./lib/supabase";
+import {
+  parseCondition,
+  parseTemplateFormField,
+  validateFieldDefinitions,
+  type TemplateCondition,
+  type TemplateFormField,
+} from "./lib/ticket-template-form";
+import {
+  ConditionPicker,
+  TemplateFieldsEditor,
+  fieldDraftFromField,
+  fieldFromDraft,
+  type FieldDraft,
+} from "./ticket-template-form-fields";
 
 type Department = {
   id: string;
@@ -33,6 +47,7 @@ type TemplateChecklistItem = {
   id: string;
   description: string;
   position: number;
+  condition: TemplateCondition | null;
 };
 
 type TicketTemplate = {
@@ -44,6 +59,7 @@ type TicketTemplate = {
   priority_key: string | null;
   active: boolean;
   checklistItems: TemplateChecklistItem[];
+  formFields: TemplateFormField[];
 };
 
 type TemplateFields = {
@@ -52,7 +68,11 @@ type TemplateFields = {
   descriptionTemplate: string;
   priorityKey: string | null;
   departmentId: string | null;
-  checklistItems: Array<{ description: string }>;
+  checklistItems: Array<{
+    description: string;
+    condition: TemplateCondition | null;
+  }>;
+  formFields: TemplateFormField[];
 };
 
 type ListTemplatesAction = {
@@ -91,7 +111,11 @@ type TemplateDraft = {
   priorityKey: string;
   departmentId: string;
   active: boolean;
-  checklistItems: string[];
+  checklistItems: Array<{
+    description: string;
+    condition: TemplateCondition | null;
+  }>;
+  fieldDrafts: FieldDraft[];
 };
 
 type FormOptions = {
@@ -125,10 +149,13 @@ function parseChecklistItem(
   if (typeof value.id !== "string" || typeof value.description !== "string") {
     return null;
   }
+  const condition = parseCondition(value.condition);
+  if (condition === undefined) return null;
   return {
     id: value.id,
     description: value.description,
     position: typeof value.position === "number" ? value.position : position,
+    condition,
   };
 }
 
@@ -148,6 +175,11 @@ function parseTemplate(value: unknown): TicketTemplate | null {
 
   const checklistItems = value.checklistItems.map(parseChecklistItem);
   if (checklistItems.some((item) => item === null)) return null;
+  const rawFields = Array.isArray(value.formFields) ? value.formFields : [];
+  const formFields = rawFields.map((field, index) =>
+    parseTemplateFormField(field, index),
+  );
+  if (formFields.some((field) => field === null)) return null;
 
   return {
     id: value.id,
@@ -158,6 +190,7 @@ function parseTemplate(value: unknown): TicketTemplate | null {
     priority_key: value.priority_key,
     active: value.active,
     checklistItems: checklistItems as TemplateChecklistItem[],
+    formFields: formFields as TemplateFormField[],
   };
 }
 
@@ -247,6 +280,7 @@ function emptyDraft(priorities: Priority[]): TemplateDraft {
     departmentId: "",
     active: true,
     checklistItems: [],
+    fieldDrafts: [],
   };
 }
 
@@ -257,9 +291,11 @@ function fieldsFromDraft(draft: TemplateDraft): TemplateFields {
     descriptionTemplate: draft.descriptionTemplate.trim(),
     priorityKey: draft.priorityKey || null,
     departmentId: draft.departmentId || null,
-    checklistItems: draft.checklistItems.map((description) => ({
-      description: description.trim(),
+    checklistItems: draft.checklistItems.map((item) => ({
+      description: item.description.trim(),
+      condition: item.condition,
     })),
+    formFields: draft.fieldDrafts.map(fieldFromDraft),
   };
 }
 
@@ -278,10 +314,13 @@ function validateDraft(draft: TemplateDraft): string | null {
   ) {
     return "Es sind nur die sicheren Platzhalter {{anfragende_person}}, {{abteilung}}, {{heute}} und {{ticket_nummer}} erlaubt.";
   }
-  if (draft.checklistItems.some((item) => !item.trim())) {
+  if (draft.checklistItems.some((item) => !item.description.trim())) {
     return "Bitte füllen Sie jeden Checklistenpunkt aus oder entfernen Sie leere Punkte.";
   }
-  return null;
+  return validateFieldDefinitions(
+    draft.fieldDrafts.map(fieldFromDraft),
+    draft.checklistItems.map((item) => item.condition),
+  );
 }
 
 function preview(value: string): string {
@@ -507,6 +546,47 @@ const ticketTemplateStyles = `
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
 }
+.ticket-templates__checklist-row > .ticket-templates__full-width {
+  grid-column: 1 / -1;
+}
+.ticket-template-fields {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ticket-template-fields__item {
+  border: 1px solid #dfe8ea;
+  border-radius: 7px;
+  padding: 12px;
+}
+.ticket-template-fields__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 14px;
+}
+.ticket-templates__form .ticket-template-fields__required {
+  grid-column: auto;
+  align-self: end;
+}
+.ticket-template-condition {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  color: #34596a;
+  font-size: 12px;
+}
+.ticket-template-condition__label {
+  font-weight: 700;
+}
+.ticket-templates__form .ticket-template-condition select,
+.ticket-templates__form .ticket-template-condition input {
+  width: auto;
+  min-width: 140px;
+  padding: 6px 8px;
+}
 .ticket-templates__save {
   margin-top: 0;
 }
@@ -519,7 +599,8 @@ const ticketTemplateStyles = `
   .ticket-templates__item-header {
     display: grid;
   }
-  .ticket-templates__form {
+  .ticket-templates__form,
+  .ticket-template-fields__grid {
     grid-template-columns: 1fr;
   }
   .ticket-templates__full-width,
@@ -624,17 +705,25 @@ export function TicketTemplates({ tenantId }: { tenantId: string }) {
       priorityKey: template.priority_key ?? "",
       departmentId: template.department_id ?? "",
       active: template.active,
-      checklistItems: template.checklistItems.map((item) => item.description),
+      checklistItems: template.checklistItems.map((item) => ({
+        description: item.description,
+        condition: item.condition,
+      })),
+      fieldDrafts: template.formFields.map(fieldDraftFromField),
     });
     setError("");
     setSuccess("");
   }
 
-  function updateChecklistItem(index: number, description: string) {
+  function updateChecklistItem(
+    index: number,
+    patch: Partial<TemplateDraft["checklistItems"][number]>,
+  ) {
     setDraft((current) => {
-      if (current.checklistItems[index] === undefined) return current;
+      const item = current.checklistItems[index];
+      if (item === undefined) return current;
       const checklistItems = [...current.checklistItems];
-      checklistItems[index] = description;
+      checklistItems[index] = { ...item, ...patch };
       return { ...current, checklistItems };
     });
   }
@@ -754,6 +843,7 @@ export function TicketTemplates({ tenantId }: { tenantId: string }) {
 
   const isBusy = saving !== null || deletingTemplateId !== null;
   const editing = editingTemplateId !== null;
+  const draftFormFields = draft.fieldDrafts.map(fieldFromDraft);
 
   return (
     <div className="ticket-templates">
@@ -832,6 +922,10 @@ export function TicketTemplates({ tenantId }: { tenantId: string }) {
                         {template.checklistItems.length === 1
                           ? "Punkt"
                           : "Punkte"}
+                      </span>
+                      <span>
+                        Formular: {template.formFields.length}{" "}
+                        {template.formFields.length === 1 ? "Feld" : "Felder"}
                       </span>
                     </p>
                     <div className="ticket-templates__actions">
@@ -990,7 +1084,10 @@ export function TicketTemplates({ tenantId }: { tenantId: string }) {
                 onClick={() =>
                   setDraft((current) => ({
                     ...current,
-                    checklistItems: [...current.checklistItems, ""],
+                    checklistItems: [
+                      ...current.checklistItems,
+                      { description: "", condition: null },
+                    ],
                   }))
                 }
                 type="button"
@@ -1012,11 +1109,13 @@ export function TicketTemplates({ tenantId }: { tenantId: string }) {
                     disabled={loading || isBusy}
                     maxLength={1000}
                     onChange={(event) =>
-                      updateChecklistItem(index, event.target.value)
+                      updateChecklistItem(index, {
+                        description: event.target.value,
+                      })
                     }
                     placeholder={`Checklistenpunkt ${index + 1}`}
                     required
-                    value={item}
+                    value={item.description}
                   />
                   <button
                     aria-label={`Checklistenpunkt ${index + 1} entfernen`}
@@ -1028,10 +1127,33 @@ export function TicketTemplates({ tenantId }: { tenantId: string }) {
                     <X aria-hidden="true" size={15} />
                     Entfernen
                   </button>
+                  {(draftFormFields.length > 0 || item.condition) && (
+                    <div className="ticket-templates__full-width">
+                      <ConditionPicker
+                        candidates={draftFormFields.filter(
+                          (field) => field.key,
+                        )}
+                        condition={item.condition}
+                        disabled={loading || isBusy}
+                        label={`Punkt ${index + 1} nur erstellen`}
+                        onChange={(condition) =>
+                          updateChecklistItem(index, { condition })
+                        }
+                      />
+                    </div>
+                  )}
                 </div>
               ))
             )}
           </div>
+
+          <TemplateFieldsEditor
+            disabled={loading || isBusy}
+            drafts={draft.fieldDrafts}
+            onChange={(fieldDrafts) =>
+              setDraft((current) => ({ ...current, fieldDrafts }))
+            }
+          />
 
           <label className="ticket-templates__checkbox">
             <input

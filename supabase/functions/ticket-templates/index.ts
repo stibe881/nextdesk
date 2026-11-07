@@ -1,7 +1,17 @@
 import { withSupabase } from "@supabase/server";
 import { resolveTenantFeatureStates } from "../_shared/tenant-features.ts";
+import {
+  parseCondition,
+  parseTemplateFormField,
+  validateFieldDefinitions,
+  type TemplateCondition,
+  type TemplateFormField,
+} from "../_shared/ticket-template-form.ts";
 
-type ChecklistItem = { description: string };
+type ChecklistItem = {
+  description: string;
+  condition: TemplateCondition | null;
+};
 type TemplateFields = {
   name: string;
   subjectTemplate: string;
@@ -9,6 +19,7 @@ type TemplateFields = {
   priorityKey?: string | null;
   departmentId?: string | null;
   checklistItems?: ChecklistItem[];
+  formFields?: TemplateFormField[];
 };
 type Action =
   | { type: "listTemplates"; tenantId: string }
@@ -27,7 +38,7 @@ type ManagementScopes = {
 
 const ALLOWED_ORIGIN = "https://app.nextdesk.ch";
 const TEMPLATE_SELECT =
-  "id, tenant_id, department_id, name, subject_template, description_template, priority_key, active, created_by, created_at, updated_at, ticket_template_checklist_items(id, description, position)";
+  "id, tenant_id, department_id, name, subject_template, description_template, priority_key, active, created_by, created_at, updated_at, ticket_template_checklist_items(id, description, position, condition), ticket_template_fields(id, key, label, field_type, required, options, help_text, position, condition)";
 const SAFE_TEMPLATE_PLACEHOLDER =
   /\{\{(anfragende_person|abteilung|heute|ticket_nummer)\}\}/g;
 
@@ -113,10 +124,59 @@ function parseChecklistItems(
         : isRecord(item)
           ? requiredText(item.description, 1, 1000)
           : null;
-    if (description === null) return null;
-    items.push({ description });
+    const condition = isRecord(item) ? parseCondition(item.condition) : null;
+    if (description === null || condition === undefined) return null;
+    items.push({ description, condition });
   }
   return items;
+}
+
+export function parseFormFields(
+  value: unknown,
+): TemplateFormField[] | undefined | null {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value) || value.length > 50) return null;
+  const fields: TemplateFormField[] = [];
+  for (const [index, item] of value.entries()) {
+    const field = parseTemplateFormField(item, index);
+    if (!field) return null;
+    // Die Reihenfolge der Eingabe ist verbindlich.
+    fields.push({ ...field, position: index });
+  }
+  return fields;
+}
+
+function formFieldRows(
+  fields: TemplateFormField[],
+  templateId: string,
+  tenantId: string,
+) {
+  return fields.map((field) => ({
+    template_id: templateId,
+    tenant_id: tenantId,
+    key: field.key,
+    label: field.label,
+    field_type: field.fieldType,
+    required: field.required,
+    options: field.options,
+    help_text: field.helpText,
+    position: field.position,
+    condition: field.condition,
+  }));
+}
+
+function checklistRows(
+  items: ChecklistItem[],
+  templateId: string,
+  tenantId: string,
+) {
+  return items.map((item, position) => ({
+    template_id: templateId,
+    tenant_id: tenantId,
+    description: item.description,
+    position,
+    condition: item.condition,
+  }));
 }
 
 function parseTemplateFields(
@@ -128,6 +188,7 @@ function parseTemplateFields(
   const priority = optionalText(value.priorityKey, 63);
   const department = optionalUuid(value.departmentId);
   const checklistItems = parseChecklistItems(value.checklistItems);
+  const formFields = parseFormFields(value.formFields);
 
   if (
     name === null ||
@@ -137,7 +198,8 @@ function parseTemplateFields(
     !hasOnlySafeTemplatePlaceholders(descriptionTemplate) ||
     !priority.valid ||
     !department.valid ||
-    checklistItems === null
+    checklistItems === null ||
+    formFields === null
   )
     return null;
 
@@ -150,10 +212,22 @@ function parseTemplateFields(
       ? { departmentId: department.value }
       : {}),
     ...(checklistItems !== undefined ? { checklistItems } : {}),
+    ...(formFields !== undefined ? { formFields } : {}),
   };
 }
 
-function parseAction(value: unknown): Action | null {
+/** Prüft Felder und Checklisten-Bedingungen zusammen. */
+export function templateFormError(
+  formFields: TemplateFormField[],
+  checklistItems: ChecklistItem[],
+): string | null {
+  return validateFieldDefinitions(
+    formFields,
+    checklistItems.map((item) => item.condition),
+  );
+}
+
+export function parseAction(value: unknown): Action | null {
   if (!isRecord(value) || !isUuid(value.tenantId)) return null;
   if (value.type === "listTemplates")
     return { type: value.type, tenantId: value.tenantId };
@@ -301,17 +375,42 @@ async function getTemplate(admin: any, tenantId: string, templateId: string) {
   return { data, error };
 }
 
-function normalizeTemplate(template: any) {
-  const { ticket_template_checklist_items: checklistItems, ...fields } =
-    template;
+function byPosition(
+  left: { position?: unknown; id?: unknown },
+  right: { position?: unknown; id?: unknown },
+) {
+  return (
+    Number(left.position) - Number(right.position) ||
+    String(left.id).localeCompare(String(right.id))
+  );
+}
+
+export function normalizeTemplate(template: any) {
+  const {
+    ticket_template_checklist_items: checklistItems,
+    ticket_template_fields: formFields,
+    ...fields
+  } = template;
   return {
     ...fields,
     checklistItems: Array.isArray(checklistItems)
-      ? [...checklistItems].sort(
-          (left, right) =>
-            Number(left.position) - Number(right.position) ||
-            String(left.id).localeCompare(String(right.id)),
-        )
+      ? [...checklistItems].sort(byPosition).map((item: any) => ({
+          id: item.id,
+          description: item.description,
+          position: item.position,
+          condition: parseCondition(item.condition) ?? null,
+        }))
+      : [],
+    formFields: Array.isArray(formFields)
+      ? [...formFields]
+          .sort(byPosition)
+          .map((field: unknown, index: number) =>
+            parseTemplateFormField(field, index),
+          )
+          .filter(
+            (field: TemplateFormField | null): field is TemplateFormField =>
+              field !== null,
+          )
       : [],
   };
 }
@@ -325,6 +424,7 @@ function auditData(template: any) {
     departmentId: normalized.department_id,
     active: normalized.active,
     checklistItemCount: normalized.checklistItems.length,
+    formFieldCount: normalized.formFields.length,
   };
 }
 
@@ -424,6 +524,18 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       !checklistsEnabled
     )
       return json(request, { error: { code: "ticket_feature_disabled" } }, 403);
+    const formError = templateFormError(
+      action.formFields ?? [],
+      action.checklistItems ?? [],
+    );
+    if (formError)
+      return json(
+        request,
+        {
+          error: { code: "ticket_template_form_invalid", message: formError },
+        },
+        422,
+      );
     const departmentId = action.departmentId ?? null;
     if (!canManageTemplate(scopes, departmentId))
       return json(
@@ -469,18 +581,27 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       const { error: checklistError } = await admin
         .from("ticket_template_checklist_items")
         .insert(
-          action.checklistItems.map((item, position) => ({
-            template_id: created.id,
-            tenant_id: action.tenantId,
-            description: item.description,
-            position,
-          })),
+          checklistRows(action.checklistItems, created.id, action.tenantId),
         );
       if (checklistError) {
         await admin.from("ticket_templates").delete().eq("id", created.id);
         return json(
           request,
           { error: { code: "ticket_template_checklist_create_failed" } },
+          500,
+        );
+      }
+    }
+
+    if (action.formFields && action.formFields.length > 0) {
+      const { error: fieldsError } = await admin
+        .from("ticket_template_fields")
+        .insert(formFieldRows(action.formFields, created.id, action.tenantId));
+      if (fieldsError) {
+        await admin.from("ticket_templates").delete().eq("id", created.id);
+        return json(
+          request,
+          { error: { code: "ticket_template_fields_create_failed" } },
           500,
         );
       }
@@ -580,6 +701,32 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
   if (action.checklistItems !== undefined && !checklistsEnabled)
     return json(request, { error: { code: "ticket_feature_disabled" } }, 403);
 
+  const existingNormalized = normalizeTemplate(existing);
+  const updateFormError = templateFormError(
+    action.formFields ?? existingNormalized.formFields,
+    action.checklistItems ??
+      existingNormalized.checklistItems.map(
+        (item: {
+          description: string;
+          condition: TemplateCondition | null;
+        }) => ({
+          description: item.description,
+          condition: item.condition,
+        }),
+      ),
+  );
+  if (updateFormError)
+    return json(
+      request,
+      {
+        error: {
+          code: "ticket_template_form_invalid",
+          message: updateFormError,
+        },
+      },
+      422,
+    );
+
   const nextDepartmentId =
     action.departmentId === undefined
       ? existing.department_id
@@ -643,17 +790,43 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       const { error: insertChecklistError } = await admin
         .from("ticket_template_checklist_items")
         .insert(
-          action.checklistItems.map((item, position) => ({
-            template_id: action.templateId,
-            tenant_id: action.tenantId,
-            description: item.description,
-            position,
-          })),
+          checklistRows(
+            action.checklistItems,
+            action.templateId,
+            action.tenantId,
+          ),
         );
       if (insertChecklistError)
         return json(
           request,
           { error: { code: "ticket_template_checklist_replace_failed" } },
+          500,
+        );
+    }
+  }
+
+  if (action.formFields !== undefined) {
+    const { error: deleteFieldsError } = await admin
+      .from("ticket_template_fields")
+      .delete()
+      .eq("tenant_id", action.tenantId)
+      .eq("template_id", action.templateId);
+    if (deleteFieldsError)
+      return json(
+        request,
+        { error: { code: "ticket_template_fields_replace_failed" } },
+        500,
+      );
+    if (action.formFields.length > 0) {
+      const { error: insertFieldsError } = await admin
+        .from("ticket_template_fields")
+        .insert(
+          formFieldRows(action.formFields, action.templateId, action.tenantId),
+        );
+      if (insertFieldsError)
+        return json(
+          request,
+          { error: { code: "ticket_template_fields_replace_failed" } },
           500,
         );
     }
