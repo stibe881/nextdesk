@@ -9,7 +9,7 @@
 const SUPPORTED_PROTOCOLS = ["2025-06-18", "2025-03-26", "2024-11-05"] as const;
 const MAX_BODY_BYTES = 64 * 1024;
 const REQUEST_TIMEOUT_MS = 15_000;
-const SERVER_INFO = { name: "nextdesk", version: "1.3.0" } as const;
+const SERVER_INFO = { name: "nextdesk", version: "1.4.0" } as const;
 const STATUS_KEYS = [
   "new",
   "in_progress",
@@ -363,6 +363,128 @@ function findByName(
 
 function findRoom(rooms: Json[], value: unknown): Json & { id: string } {
   return findByName(rooms, value, "name", "Raum");
+}
+
+const zurichFormatter = new Intl.DateTimeFormat("en-GB", {
+  timeZone: "Europe/Zurich",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hourCycle: "h23",
+});
+
+type LocalTime = [number, number, number, number, number, number];
+
+/** Kalenderteile eines Zeitpunkts in Zürcher Ortszeit (Monat 1-12). */
+function zurichParts(ms: number): LocalTime {
+  const parts = new Map<string, number>(
+    zurichFormatter
+      .formatToParts(new Date(ms))
+      .filter((part) => part.type !== "literal")
+      .map((part) => [part.type, Number(part.value)]),
+  );
+  const get = (key: string) => parts.get(key) ?? 0;
+  return [
+    get("year"),
+    get("month"),
+    get("day"),
+    get("hour"),
+    get("minute"),
+    get("second"),
+  ];
+}
+
+/** Zürcher Ortszeit als UTC-Zeitpunkt, mit Sommerzeit. */
+function zurichToUtc(local: LocalTime): number {
+  const toUtc = ([y, mo, d, h, mi, se]: LocalTime) =>
+    Date.UTC(y, mo - 1, d, h, mi, se);
+  const wanted = toUtc(local);
+  let guess = wanted;
+  for (let step = 0; step < 3; step += 1) {
+    guess += wanted - toUtc(zurichParts(guess));
+  }
+  return guess;
+}
+
+/**
+ * Termine einer Serie: gleiche Zürcher Uhrzeit, wöchentlich (+7 Tage) oder
+ * monatlich (gleicher Tag, am Monatsende gekürzt), wie es event-spaces prüft.
+ */
+export function seriesOccurrences(
+  startsAt: string,
+  endsAt: string,
+  recurrence: "none" | "weekly" | "monthly",
+  count: number,
+): { startsAt: string; endsAt: string }[] {
+  const start = Date.parse(startsAt);
+  const duration = Date.parse(endsAt) - start;
+  if (recurrence === "none") return [{ startsAt, endsAt }];
+  const [year, month, day, hour, minute, second] = zurichParts(start);
+  const result: { startsAt: string; endsAt: string }[] = [];
+  for (let index = 0; index < count; index += 1) {
+    let local: LocalTime;
+    if (recurrence === "weekly") {
+      const date = new Date(Date.UTC(year, month - 1, day + index * 7));
+      local = [
+        date.getUTCFullYear(),
+        date.getUTCMonth() + 1,
+        date.getUTCDate(),
+        hour,
+        minute,
+        second,
+      ];
+    } else {
+      const absolute = year * 12 + (month - 1) + index;
+      const targetYear = Math.floor(absolute / 12);
+      const targetMonth = (absolute % 12) + 1;
+      const lastDay = new Date(
+        Date.UTC(targetYear, targetMonth, 0),
+      ).getUTCDate();
+      local = [
+        targetYear,
+        targetMonth,
+        Math.min(day, lastDay),
+        hour,
+        minute,
+        second,
+      ];
+    }
+    const occurrenceStart = zurichToUtc(local);
+    result.push({
+      startsAt: new Date(occurrenceStart).toISOString(),
+      endsAt: new Date(occurrenceStart + duration).toISOString(),
+    });
+  }
+  return result;
+}
+
+/** Liest alle Seiten der Raumplanung (je 250 Buchungen, höchstens 8 Seiten). */
+async function eventWorkspace(
+  config: Config,
+  session: Session,
+  workspace: Workspace,
+): Promise<{ rooms: Json[]; requests: Json[]; complete: boolean }> {
+  const requests: Json[] = [];
+  let rooms: Json[] = [];
+  let offset: number | null = 0;
+  for (let page = 0; page < 8 && offset !== null; page += 1) {
+    const data = await callFunction(config, session, "event-spaces", {
+      type: "listWorkspace",
+      tenantId: workspace.id,
+      offset,
+    });
+    if (page === 0) rooms = records(data.rooms);
+    requests.push(...records(data.requests));
+    const pagination = isRecord(data.pagination) ? data.pagination : {};
+    offset =
+      pagination.hasMore === true && typeof pagination.nextOffset === "number"
+        ? pagination.nextOffset
+        : null;
+  }
+  return { rooms, requests, complete: offset === null };
 }
 
 // ---------------------------------------------------------------- Werkzeuge
@@ -2397,7 +2519,7 @@ const TOOLS: Tool[] = [
   {
     name: "list_event_bookings",
     description:
-      "Zeigt die Räume und die Raumbuchungen (Veranstaltungen, Sitzungen) mit Status und Aufgaben. Optional gefiltert nach Raum oder Zeitraum.",
+      "Zeigt die Räume und die Raumbuchungen (Veranstaltungen, Sitzungen) der letzten zwei Tage und der nächsten rund 13 Monate mit Status und Aufgaben. Optional gefiltert nach Raum oder Zeitraum.",
     annotations: { readOnlyHint: true, title: "Raumbuchungen" },
     inputSchema: {
       type: "object",
@@ -2420,23 +2542,19 @@ const TOOLS: Tool[] = [
         throw new ToolError('"from" oder "to" ist kein gültiges Datum.');
       }
       const workspace = await resolveWorkspace(config, session, args.workspace);
-      const data = await callFunction(config, session, "event-spaces", {
-        type: "listWorkspace",
-        tenantId: workspace.id,
-        offset: 0,
-      });
-      const rooms = records(data.rooms);
+      const data = await eventWorkspace(config, session, workspace);
+      const rooms = data.rooms;
       const room = args.room === undefined ? null : findRoom(rooms, args.room);
       const roomName = new Map(rooms.map((entry) => [entry.id, entry.name]));
-      const bookings = records(data.requests)
-        .filter(
-          (entry) =>
-            (!room || entry.spaceId === room.id) &&
-            (!from || String(entry.endsAt) >= from) &&
-            (!to || String(entry.startsAt) <= to),
-        )
-        .slice(0, clampLimit(args.limit, 30, 100));
+      const matching = data.requests.filter(
+        (entry) =>
+          (!room || entry.spaceId === room.id) &&
+          (!from || String(entry.endsAt) >= from) &&
+          (!to || String(entry.startsAt) <= to),
+      );
+      const bookings = matching.slice(0, clampLimit(args.limit, 30, 100));
       return textResult({
+        count: matching.length,
         rooms: rooms.map((entry) => ({
           id: entry.id,
           name: entry.name,
@@ -2455,21 +2573,27 @@ const TOOLS: Tool[] = [
           requester: entry.requesterName ?? null,
           participants: entry.expectedParticipants ?? null,
           equipment: entry.equipment ?? [],
+          series:
+            entry.recurrence && entry.recurrence !== "none"
+              ? { recurrence: entry.recurrence, index: entry.seriesIndex }
+              : null,
           tasks: records(entry.tasks).map((task) => ({
             id: task.id,
             title: task.title,
             status: task.status,
           })),
         })),
-        moreAvailable: isRecord(data.pagination)
-          ? data.pagination.hasMore === true
-          : false,
+        moreAvailable: matching.length > bookings.length || !data.complete,
+        hint:
+          matching.length > bookings.length
+            ? "Weitere Buchungen vorhanden: Zeitraum oder Raum eingrenzen oder limit erhöhen."
+            : undefined,
       });
     },
   },
   {
     name: "book_event_space",
-    description: `Bucht einen Raum (einmaliger Termin). Prüft vorher auf Überschneidungen; bei einer Überschneidung wird nicht gebucht, ausser die Person bestätigt sie ausdrücklich (confirmConflicts=true). equipment: ${EVENT_EQUIPMENT.join(", ")}.`,
+    description: `Bucht einen Raum, einmalig oder als Serie (recurrence weekly mit count 2-52 Terminen, monthly mit count 2-12; gleiche Uhrzeit, Zürcher Zeit). Prüft vorher auf Überschneidungen; bei einer Überschneidung wird nicht gebucht, ausser die Person bestätigt sie ausdrücklich (confirmConflicts=true). equipment: ${EVENT_EQUIPMENT.join(", ")}.`,
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
@@ -2485,6 +2609,18 @@ const TOOLS: Tool[] = [
         endsAt: { type: "string", description: "Ende (ISO 8601)." },
         organizer: { type: "string", maxLength: 160 },
         participants: { type: "integer", minimum: 1, maximum: 10000 },
+        recurrence: {
+          type: "string",
+          enum: ["none", "weekly", "monthly"],
+          description: "Standard: none (einmalig).",
+        },
+        count: {
+          type: "integer",
+          minimum: 2,
+          maximum: 52,
+          description:
+            "Anzahl Termine der Serie inklusive des ersten (nur mit recurrence).",
+        },
         equipment: {
           type: "array",
           items: { type: "string", enum: EVENT_EQUIPMENT },
@@ -2534,6 +2670,43 @@ const TOOLS: Tool[] = [
           `Ungültige Ausstattung. Erlaubt: ${EVENT_EQUIPMENT.join(", ")}.`,
         );
       }
+      const recurrence =
+        args.recurrence === "weekly" || args.recurrence === "monthly"
+          ? args.recurrence
+          : "none";
+      if (args.recurrence !== undefined && args.recurrence !== recurrence) {
+        throw new ToolError(
+          '"recurrence" muss none, weekly oder monthly sein.',
+        );
+      }
+      const maxCount = recurrence === "monthly" ? 12 : 52;
+      const count = args.count;
+      if (
+        recurrence !== "none" &&
+        (typeof count !== "number" ||
+          !Number.isInteger(count) ||
+          count < 2 ||
+          count > maxCount)
+      ) {
+        throw new ToolError(
+          `"count" muss für eine ${recurrence === "monthly" ? "monatliche" : "wöchentliche"} Serie eine ganze Zahl von 2 bis ${maxCount} sein.`,
+        );
+      }
+      if (recurrence === "none" && count !== undefined) {
+        throw new ToolError('"count" gilt nur zusammen mit recurrence.');
+      }
+      const duration = Date.parse(endsAt) - Date.parse(startsAt);
+      if (duration < 15 * 60_000 || duration > 24 * 60 * 60_000) {
+        throw new ToolError(
+          "Ein Termin muss mindestens 15 Minuten und höchstens 24 Stunden dauern.",
+        );
+      }
+      const occurrences = seriesOccurrences(
+        startsAt,
+        endsAt,
+        recurrence,
+        typeof count === "number" ? count : 1,
+      );
       const workspace = await resolveWorkspace(config, session, args.workspace);
       const overview = await callFunction(config, session, "event-spaces", {
         type: "listWorkspace",
@@ -2550,8 +2723,8 @@ const TOOLS: Tool[] = [
           typeof args.participants === "number" ? args.participants : null,
         responsibleUserId: session.userId,
         equipmentKeys: [...new Set(equipment.map(String))],
-        recurrence: "none",
-        occurrences: [{ startsAt, endsAt }],
+        recurrence,
+        occurrences,
       };
       const preview = await callFunction(config, session, "event-spaces", {
         type: "previewConflicts",
@@ -2580,8 +2753,10 @@ const TOOLS: Tool[] = [
       return textResult({
         booked: true,
         room: room.name,
-        startsAt,
-        endsAt,
+        recurrence,
+        occurrences: occurrences.length,
+        first: occurrences[0],
+        last: occurrences[occurrences.length - 1],
         conflictsAccepted: hasConflicts,
       });
     },
