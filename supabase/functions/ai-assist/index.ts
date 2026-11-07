@@ -50,6 +50,7 @@ type Action =
       allowExternalArticleContent: boolean;
     }
   | { type: "draftArticleFromTicket"; tenantId: string; ticketId: string }
+  | { type: "summarizeTicket"; tenantId: string; ticketId: string }
   | {
       type: "prepareKnowledgeArticle";
       tenantId: string;
@@ -199,6 +200,13 @@ function parseAction(value: unknown): Action | null {
       enabled: value.enabled,
       allowExternalArticleContent: value.allowExternalArticleContent,
     };
+  }
+  if (
+    value.type === "summarizeTicket" &&
+    hasOnlyKeys(value, ["type", "tenantId", "ticketId"]) &&
+    isUuid(value.ticketId)
+  ) {
+    return { type: value.type, tenantId, ticketId: value.ticketId.toLowerCase() };
   }
   if (
     value.type === "draftArticleFromTicket" &&
@@ -529,6 +537,84 @@ function articleSlug(title: string): string {
   return `${base || "article"}-${crypto.randomUUID().slice(0, 8)}`;
 }
 
+const TICKET_SUMMARY_INSTRUCTIONS = [
+  "Fasse dieses Support-Ticket für eine Kollegin oder einen Kollegen zusammen,",
+  "die/der das Ticket übernimmt. Titel: ein kurzer Satz zum Kernproblem.",
+  "Text in Markdown mit genau diesen Abschnitten als Aufzählungen:",
+  "## Anliegen, ## Bisher unternommen, ## Aktueller Stand, ## Nächster Schritt.",
+  "Höchstens 120 Wörter, sachlich, auf Deutsch (Schweiz, ss statt ß).",
+  "Keine Vermutungen, keine Personendaten wie Telefonnummern oder Passwörter.",
+].join(" ");
+
+async function summarizeTicket(
+  request: Request,
+  client: SupabaseContext["supabase"],
+  admin: AdminClient,
+  actorId: string,
+  action: Extract<Action, { type: "summarizeTicket" }>,
+  policy: Parameters<typeof validateAiPurpose>[0],
+): Promise<Response> {
+  const purposeFailure = validateAiPurpose(policy, "general_draft");
+  if (purposeFailure)
+    return response(
+      request,
+      { error: { code: purposeFailure.code } },
+      purposeFailure.status,
+    );
+  const budgetFailure = validateAiBudget(policy, MAX_OUTPUT_TOKENS, MAX_COST_CENTS);
+  if (budgetFailure)
+    return response(
+      request,
+      { error: { code: budgetFailure.code } },
+      budgetFailure.status,
+    );
+  const provider = anthropicConfiguration();
+  if (!provider)
+    return response(
+      request,
+      { error: { code: "ai_provider_not_configured" } },
+      503,
+    );
+  const source = await ticketSourceText(client, action.tenantId, action.ticketId);
+  if (source === null)
+    return response(request, { error: { code: "ticket_read_failed" } }, 503);
+  if (source === "not_found")
+    return response(request, { error: { code: "ticket_not_found" } }, 404);
+  const queued = await queueMinimalAiDraftRequest(admin, {
+    tenantId: action.tenantId,
+    actorId,
+    purpose: "general_draft",
+    object: { type: "none", id: null } as AiDraftObject,
+    inputCharacterCount: Math.max(1, Array.from(source).length),
+    maxOutputTokens: MAX_OUTPUT_TOKENS,
+    maxCostCents: MAX_COST_CENTS,
+    externalArticleContent: false,
+  });
+  if (!queued.ok)
+    return response(request, { error: { code: queued.code } }, queued.status);
+  await writeAudit(admin, action.tenantId, actorId, "ticket.ai_summary_requested", {
+    provider: AI_PROVIDER_KEY,
+    request_id: queued.requestId,
+    ticket_id: action.ticketId,
+  });
+  try {
+    const draft = await generateKnowledgeDraft({
+      ...provider,
+      rawContent: source,
+      maxTokens: MAX_OUTPUT_TOKENS,
+      extraInstructions: TICKET_SUMMARY_INSTRUCTIONS,
+    });
+    return response(request, {
+      data: { title: draft.title, summaryMarkdown: draft.bodyMarkdown },
+    });
+  } catch (error) {
+    const code = error instanceof AnthropicKnowledgeDraftError
+      ? error.code
+      : "ai_provider_request_failed";
+    return response(request, { error: { code } }, 503);
+  }
+}
+
 async function draftArticleFromTicket(
   request: Request,
   client: SupabaseContext["supabase"],
@@ -831,12 +917,16 @@ const handler = withSupabase(
         { error: { code: "tenant_membership_required" } },
         403,
       );
-    const permitted = await hasTenantPermission(
-      admin,
-      actorId,
-      action.tenantId,
-      KNOWLEDGE_MANAGE_PERMISSION,
-    );
+    // A summary needs only read access to the ticket, which the caller's
+    // own client enforces when the ticket text is loaded.
+    const permitted = action.type === "summarizeTicket"
+      ? true
+      : await hasTenantPermission(
+        admin,
+        actorId,
+        action.tenantId,
+        KNOWLEDGE_MANAGE_PERMISSION,
+      );
     if (permitted === null)
       return response(
         request,
@@ -856,6 +946,16 @@ const handler = withSupabase(
         request,
         { error: { code: governance.code } },
         governance.status,
+      );
+    }
+    if (action.type === "summarizeTicket") {
+      return await summarizeTicket(
+        request,
+        context.supabase,
+        admin,
+        actorId,
+        action,
+        governance.policy,
       );
     }
     if (action.type === "draftArticleFromTicket") {

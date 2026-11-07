@@ -1,3 +1,4 @@
+import { TicketAiSummary } from "./ticket-ai-summary";
 import {
   absenceLabel,
   loadActiveAbsences,
@@ -14,6 +15,7 @@ import {
 } from "react";
 import {
   AlertCircle,
+  AlertTriangle,
   Circle,
   BookOpen,
   CircleCheck,
@@ -221,6 +223,7 @@ type TicketPresenceAction =
       tenantId: string;
       ticketId: string;
       editing: boolean;
+      composing: "external" | "internal" | null;
     };
 
 type AddCommentAction = {
@@ -437,6 +440,7 @@ type TicketAgent = {
 type TicketPresencePerson = {
   displayName: string;
   editing: boolean;
+  composing: "external" | "internal" | null;
   lastSeenAt: string;
 };
 
@@ -1079,6 +1083,10 @@ function toTicketPresencePerson(value: unknown): TicketPresencePerson | null {
   return {
     displayName: person.displayName.trim(),
     editing: person.editing,
+    composing:
+      person.composing === "external" || person.composing === "internal"
+        ? person.composing
+        : null,
     lastSeenAt: person.lastSeenAt,
   };
 }
@@ -4029,6 +4037,10 @@ export function TicketDetail({
   );
   const activeCommentImageAttachments =
     commentImageAttachments[commentVisibility];
+  // Shared with colleagues so nobody answers the same ticket twice.
+  const composingVisibility: "external" | "internal" | null =
+    !requesterView && commentBody.trim() ? commentVisibility : null;
+  const colleaguesComposing = presence.filter((person) => person.composing);
   const canAttachCommentImages = Boolean(
     detail &&
     (commentVisibility === "internal"
@@ -4774,6 +4786,7 @@ export function TicketDetail({
           tenantId,
           ticketId,
           editing: isEditingTicket,
+          composing: composingVisibility,
         });
         const response = await invokeTicketPresence({
           type: "list",
@@ -4791,9 +4804,13 @@ export function TicketDetail({
     };
 
     void refreshPresence();
-    const interval = window.setInterval(() => {
-      void refreshPresence();
-    }, 30_000);
+    // Shorter while someone writes, so a second reply is noticed in time.
+    const interval = window.setInterval(
+      () => {
+        void refreshPresence();
+      },
+      composingVisibility ? 10_000 : 20_000,
+    );
     const onVisibilityChange = () => {
       if (document.visibilityState === "hidden") {
         setPresence([]);
@@ -4808,7 +4825,13 @@ export function TicketDetail({
       window.clearInterval(interval);
       document.removeEventListener("visibilitychange", onVisibilityChange);
     };
-  }, [detail?.ticket.id, isEditingTicket, tenantId, ticketId]);
+  }, [
+    detail?.ticket.id,
+    isEditingTicket,
+    composingVisibility,
+    tenantId,
+    ticketId,
+  ]);
 
   useEffect(() => {
     if (!isClosureContextOpen || !ticketIsClosed) {
@@ -7001,6 +7024,22 @@ export function TicketDetail({
               </ol>
             )}
 
+            {colleaguesComposing.length > 0 ? (
+              <p className="ticket-collision-warning" role="status">
+                <AlertTriangle aria-hidden="true" size={16} />
+                {colleaguesComposing
+                  .map(
+                    (person) =>
+                      `${person.displayName} schreibt gerade ${
+                        person.composing === "internal"
+                          ? "eine interne Notiz"
+                          : "eine Antwort"
+                      }`,
+                  )
+                  .join(" · ")}
+                . Stimmen Sie sich ab, bevor Sie ebenfalls antworten.
+              </p>
+            ) : null}
             <form className="ticket-comment-form" onSubmit={saveComment}>
               {requesterView ? null : (
                 <div
@@ -8061,6 +8100,10 @@ export function TicketDetail({
             tenantId={tenantId}
             ticketId={detail.ticket.id}
           />
+
+          {!requesterView ? (
+            <TicketAiSummary tenantId={tenantId} ticketId={detail.ticket.id} />
+          ) : null}
 
           {!requesterView && presence.length > 0 && (
             <aside
