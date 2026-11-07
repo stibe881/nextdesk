@@ -9,7 +9,7 @@ import { functionErrorMessage } from "./lib/function-error";
 import { supabase } from "./lib/supabase";
 
 export type PredefinedReportKey =
-  "trends" | "overview" | "satisfaction" | "agents";
+  "trends" | "overview" | "satisfaction" | "agents" | "themes" | "requesters";
 
 export const PREDEFINED_REPORTS: readonly {
   key: PredefinedReportKey;
@@ -39,6 +39,18 @@ export const PREDEFINED_REPORTS: readonly {
     label: "Agentenleistung",
     description:
       "SLA-Einhaltung, Bearbeitungszeiten und Zufriedenheit pro Agent.",
+  },
+  {
+    key: "themes",
+    label: "Top-Themen",
+    description:
+      "Häufigste Kategorien und Stichworte im Vergleich zur Vorperiode – Hinweise auf fehlende Wissensartikel oder Automatisierungen.",
+  },
+  {
+    key: "requesters",
+    label: "Anfragende Abteilungen",
+    description:
+      "Tickets pro anfragender Abteilung mit Vorperiode, offenen Tickets und Lösungszeit.",
   },
 ];
 
@@ -104,6 +116,26 @@ type Insights = {
     byTeam: (MoodShares & { id: string | null; name: string | null })[];
   };
   agents: { rows: AgentRow[]; total: AgentRow };
+  themes?: {
+    total: number;
+    previousTotal: number;
+    categories: ThemeRow[];
+    keywords: ThemeRow[];
+  };
+  requesterDepartments?: {
+    name: string;
+    received: number;
+    previous: number;
+    resolved: number;
+    open: number;
+    averageResolutionMinutes: number | null;
+  }[];
+};
+type ThemeRow = {
+  name: string;
+  count: number;
+  previous: number;
+  share: number;
 };
 
 const SOURCE_LABELS: Record<string, string> = {
@@ -867,6 +899,176 @@ function AgentsReport({
   );
 }
 
+function ChangeBadge({
+  current,
+  previous,
+  higherIsWorse = true,
+}: {
+  current: number;
+  previous: number;
+  higherIsWorse?: boolean;
+}) {
+  if (previous === 0 && current === 0) return null;
+  if (previous === 0)
+    return (
+      <span className="predefined-report__delta predefined-report__delta--flat">
+        neu
+      </span>
+    );
+  return (
+    <Delta
+      current={current}
+      higherIsBetter={!higherIsWorse}
+      kind="relative"
+      previous={previous}
+    />
+  );
+}
+
+function ThemeTable({ rows, label }: { rows: ThemeRow[]; label: string }) {
+  if (!rows.length)
+    return <p className="predefined-report__empty">Keine Daten im Zeitraum.</p>;
+  const max = Math.max(...rows.map((row) => row.count), 1);
+  return (
+    <div className="predefined-report__table-wrap">
+      <table className="predefined-report__table predefined-report__themes">
+        <thead>
+          <tr>
+            <th scope="col">{label}</th>
+            <th scope="col">Tickets</th>
+            <th scope="col">Anteil</th>
+            <th scope="col">Vorperiode</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr key={row.name}>
+              <th scope="row">
+                <span className="predefined-report__theme-name">
+                  {row.name}
+                </span>
+                <span
+                  aria-hidden="true"
+                  className="predefined-report__theme-bar"
+                  style={{ width: `${Math.round((row.count / max) * 100)}%` }}
+                />
+              </th>
+              <td>{numberFormat.format(row.count)}</td>
+              <td>{formatPercent(row.share)}</td>
+              <td>
+                {numberFormat.format(row.previous)}{" "}
+                <ChangeBadge current={row.count} previous={row.previous} />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function ThemesReport({ insights }: { insights: Insights }) {
+  const themes = insights.themes;
+  if (!themes)
+    return (
+      <p className="predefined-report__empty">
+        Dieser Bericht ist nach dem nächsten Update verfügbar.
+      </p>
+    );
+  return (
+    <>
+      <div className="predefined-report__kpis">
+        <Kpi
+          current={themes.total}
+          higherIsBetter={false}
+          label="Tickets im Zeitraum"
+          previous={themes.previousTotal}
+          value={numberFormat.format(themes.total)}
+        />
+        <Kpi
+          label="Häufigste Kategorie"
+          value={themes.categories[0]?.name ?? "–"}
+        />
+        <Kpi
+          label="Häufigstes Stichwort"
+          value={themes.keywords[0]?.name ?? "–"}
+        />
+      </div>
+      <Panel title="Top-Kategorien">
+        <ThemeTable label="Kategorie" rows={themes.categories} />
+      </Panel>
+      <Panel title="Häufige Stichworte im Betreff">
+        <ThemeTable label="Stichwort" rows={themes.keywords} />
+        <p className="predefined-report__note">
+          Wiederkehrende Stichworte sind gute Kandidaten für einen
+          Wissensartikel, eine Ticketvorlage oder eine Regel im Regel-Baukasten.
+        </p>
+      </Panel>
+    </>
+  );
+}
+
+function RequesterDepartmentsReport({ insights }: { insights: Insights }) {
+  const rows = insights.requesterDepartments;
+  if (!rows)
+    return (
+      <p className="predefined-report__empty">
+        Dieser Bericht ist nach dem nächsten Update verfügbar.
+      </p>
+    );
+  if (!rows.length)
+    return <p className="predefined-report__empty">Keine Daten im Zeitraum.</p>;
+  const max = Math.max(...rows.map((row) => row.received), 1);
+  return (
+    <Panel title="Tickets pro anfragender Abteilung">
+      <div className="predefined-report__table-wrap">
+        <table className="predefined-report__table predefined-report__themes">
+          <thead>
+            <tr>
+              <th scope="col">Abteilung</th>
+              <th scope="col">Erhalten</th>
+              <th scope="col">Vorperiode</th>
+              <th scope="col">Gelöst</th>
+              <th scope="col">Offen</th>
+              <th scope="col">Ø Lösungszeit</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.name}>
+                <th scope="row">
+                  <span className="predefined-report__theme-name">
+                    {row.name}
+                  </span>
+                  <span
+                    aria-hidden="true"
+                    className="predefined-report__theme-bar"
+                    style={{
+                      width: `${Math.round((row.received / max) * 100)}%`,
+                    }}
+                  />
+                </th>
+                <td>{numberFormat.format(row.received)}</td>
+                <td>
+                  {numberFormat.format(row.previous)}{" "}
+                  <ChangeBadge current={row.received} previous={row.previous} />
+                </td>
+                <td>{numberFormat.format(row.resolved)}</td>
+                <td>{numberFormat.format(row.open)}</td>
+                <td>{formatCompactDuration(row.averageResolutionMinutes)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="predefined-report__note">
+        Die Abteilung stammt aus dem Profil der anfragenden Person (z. B. aus
+        Entra ID). Tickets ohne diese Angabe erscheinen unter «Ohne Abteilung».
+      </p>
+    </Panel>
+  );
+}
+
 export function ReportBody({
   report,
   insights,
@@ -880,6 +1082,9 @@ export function ReportBody({
   if (report === "overview") return <OverviewReport insights={insights} />;
   if (report === "satisfaction")
     return <SatisfactionReport insights={insights} />;
+  if (report === "themes") return <ThemesReport insights={insights} />;
+  if (report === "requesters")
+    return <RequesterDepartmentsReport insights={insights} />;
   return <AgentsReport insights={insights} printing={printing} />;
 }
 
@@ -915,6 +1120,8 @@ export function PredefinedReports({
     overview: false,
     satisfaction: false,
     agents: false,
+    themes: false,
+    requesters: false,
   });
   const [printReports, setPrintReports] = useState<
     PredefinedReportKey[] | null
@@ -989,6 +1196,8 @@ export function PredefinedReports({
       overview: report === "overview",
       satisfaction: report === "satisfaction",
       agents: report === "agents",
+      themes: report === "themes",
+      requesters: report === "requesters",
     });
     setPdfOpen(true);
   }
@@ -1222,6 +1431,9 @@ export const predefinedReportStyles = `
   .predefined-report__table thead th { background: var(--surface-subtle, var(--surface)); color: var(--text); font-size: 12px; }
   .predefined-report__table tbody th { color: var(--ink); font-weight: 600; }
   .predefined-report__table td { color: var(--text); font-variant-numeric: tabular-nums; }
+  .predefined-report__themes tbody th { position: relative; min-width: 180px; }
+  .predefined-report__theme-name { position: relative; z-index: 1; }
+  .predefined-report__theme-bar { position: absolute; left: 0; bottom: 3px; height: 3px; border-radius: 99px; background: var(--report-primary, #4338ca); opacity: 0.35; }
   .predefined-report__total th, .predefined-report__total td { background: var(--surface-subtle, var(--surface)); font-weight: 800; }
   @media (max-width: 920px) { .predefined-report__kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } .predefined-report__grid { grid-template-columns: 1fr; } }
   @media (max-width: 560px) { .predefined-report__kpis, .predefined-report__kpis--two { grid-template-columns: 1fr; } .predefined-report__masthead { grid-template-columns: auto 1fr; } .predefined-report__masthead small { grid-column: 1 / -1; text-align: left; } }
