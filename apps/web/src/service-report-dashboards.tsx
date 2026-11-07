@@ -145,18 +145,19 @@ const SOURCE_LABELS: Record<string, string> = {
   api: "API",
   automation: "Automation",
 };
+// Theme tokens (status-tokens.css) so the charts follow brand and dark mode.
 const COLORS = {
-  received: "#3b82f6",
-  resolved: "#16a34a",
-  unresolved: "#f59e0b",
-  happy: "#16a34a",
-  neutral: "#f59e0b",
-  unhappy: "#dc2626",
-  email: "#d4a72c",
-  portal: "#3b82f6",
-  phone: "#a21caf",
-  api: "#64748b",
-  automation: "#0d9488",
+  received: "var(--chart-2)",
+  resolved: "var(--chart-3)",
+  unresolved: "var(--chart-4)",
+  happy: "var(--chart-3)",
+  neutral: "var(--chart-4)",
+  unhappy: "var(--chart-6)",
+  email: "var(--chart-8)",
+  portal: "var(--chart-2)",
+  phone: "var(--chart-5)",
+  api: "var(--chart-label)",
+  automation: "var(--chart-7)",
 };
 const numberFormat = new Intl.NumberFormat("de-CH");
 const percentFormat = new Intl.NumberFormat("de-CH", {
@@ -353,13 +354,18 @@ function LineChart({
               points={entry.values
                 .map((value, index) => `${x(index)},${y(value)}`)
                 .join(" ")}
-              stroke={entry.color}
+              style={{ stroke: entry.color }}
               strokeLinejoin="round"
               strokeWidth={2.2}
             />
             {entry.values.map((value, index) => (
               <g key={index}>
-                <circle cx={x(index)} cy={y(value)} fill={entry.color} r={3}>
+                <circle
+                  cx={x(index)}
+                  cy={y(value)}
+                  r={3}
+                  style={{ fill: entry.color }}
+                >
                   <title>{`${labels[index]} · ${entry.label}: ${value}`}</title>
                 </circle>
                 {showValues && value > 0 ? (
@@ -441,7 +447,7 @@ function StackedBars({
                 offset += barH;
                 return value > 0 ? (
                   <rect
-                    fill={entry.color}
+                    style={{ fill: entry.color }}
                     height={barH}
                     key={entry.label}
                     width={barW}

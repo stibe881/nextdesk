@@ -94,6 +94,11 @@ import {
 import "./ticket-experience.css";
 import { TicketPdfRecord } from "./ticket-pdf-record";
 import {
+  TicketFormAnswersBlock,
+  parseStoredFormAnswers,
+  type StoredFormAnswers,
+} from "./ticket-template-form-fields";
+import {
   TicketCopyRecipients,
   TicketMentionPicker,
   type CopyRecipient,
@@ -3760,6 +3765,29 @@ export function TicketDetail({
   requesterView = false,
 }: TicketDetailProps) {
   const [detail, setDetail] = useState<TicketDetailData | null>(null);
+  // Answers from a ticket template form (only tickets created with one).
+  const [storedFormAnswers, setStoredFormAnswers] = useState<{
+    ticketId: string;
+    stored: StoredFormAnswers;
+  } | null>(null);
+  useEffect(() => {
+    if (!supabase) return;
+    let active = true;
+    void supabase
+      .from("ticket_form_answers")
+      .select("answers, fields")
+      .eq("tenant_id", tenantId)
+      .eq("ticket_id", ticketId)
+      .maybeSingle()
+      .then(({ data, error }) => {
+        if (!active) return;
+        const stored = !error && data ? parseStoredFormAnswers(data) : null;
+        setStoredFormAnswers(stored ? { ticketId, stored } : null);
+      });
+    return () => {
+      active = false;
+    };
+  }, [tenantId, ticketId]);
   // Absent agents in the assignment picker (new assignments go to the stand-in).
   const [activeAbsences, setActiveAbsences] = useState<
     Map<string, ActiveAbsence>
@@ -6861,6 +6889,9 @@ export function TicketDetail({
                 <EmailSignatureFrame html={emailSignatureHtml} />
               ) : null}
             </div>
+            {storedFormAnswers?.ticketId === detail.ticket.id && (
+              <TicketFormAnswersBlock stored={storedFormAnswers.stored} />
+            )}
           </section>
 
           <section

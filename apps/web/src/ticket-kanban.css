@@ -106,11 +106,11 @@
 }
 
 .ticket-kanban__card--warnung {
-  border-left-color: #d97706;
+  border-left-color: var(--tone-warning);
 }
 
 .ticket-kanban__card--kritisch {
-  border-left-color: #dc2626;
+  border-left-color: var(--tone-danger);
 }
 
 .ticket-kanban__card button {

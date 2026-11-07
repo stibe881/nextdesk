@@ -31,10 +31,10 @@
   padding: 14px;
 }
 .live-board__queue.is-bad {
-  border-color: var(--danger, #b42318);
+  border-color: var(--tone-danger);
 }
 .live-board__queue.is-warn {
-  border-color: var(--warning, #b54708);
+  border-color: var(--tone-warning);
 }
 .live-board__queue h4 {
   font-size: 0.95rem;
@@ -66,10 +66,10 @@
 }
 .live-board .is-bad dd,
 .live-board__agent footer .is-bad {
-  color: var(--danger, #b42318);
+  color: var(--tone-danger);
 }
 .live-board .is-warn dd {
-  color: var(--warning, #b54708);
+  color: var(--tone-warning);
 }
 .live-board__agents {
   display: grid;
@@ -95,9 +95,9 @@
   width: 10px;
 }
 .live-board__agent.is-working .live-board__dot {
-  background: var(--success, #12805c);
+  background: var(--tone-success);
   box-shadow: 0 0 0 4px
-    color-mix(in srgb, var(--success, #12805c) 20%, transparent);
+    color-mix(in srgb, var(--tone-success) 20%, transparent);
 }
 .live-board__agent.is-available .live-board__dot {
   background: var(--primary);
@@ -190,7 +190,7 @@
   font-weight: 500;
 }
 .skill-matrix thead th.is-gap small {
-  color: var(--warning, #b54708);
+  color: var(--tone-warning);
   font-weight: 700;
 }
 .skill-matrix tbody th {
@@ -222,8 +222,8 @@
 }
 
 .team-supervision__warnings {
-  background: color-mix(in srgb, var(--warning, #b54708) 10%, var(--surface));
-  border: 1px solid color-mix(in srgb, var(--warning, #b54708) 40%, transparent);
+  background: color-mix(in srgb, var(--tone-warning) 10%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--tone-warning) 40%, transparent);
   border-radius: var(--radius-card, 14px);
   display: grid;
   gap: 4px;

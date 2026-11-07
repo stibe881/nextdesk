@@ -21247,3 +21247,79 @@ html:has(.embed-status-badge) body {
     transition-duration: 1ms !important;
   }
 }
+
+/* Ticketvorlagen mit Formularfeldern */
+.ticket-template-answers > label,
+.ticket-template-answers > .ticket-template-answers__checkbox {
+  align-self: start;
+}
+
+.ticket-template-answers > .ticket-compose-description {
+  grid-column: 1 / -1;
+}
+
+.ticket-template-answers__req {
+  color: var(--danger);
+}
+
+.ticket-template-answers__checkbox {
+  display: grid;
+  gap: 4px;
+}
+
+.ticket-compose-form .ticket-template-answers__checkbox label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ticket-template-answers__checkbox input {
+  width: 16px;
+  height: 16px;
+}
+
+.ticket-form-answers {
+  margin-top: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  background: var(--surface-subtle);
+}
+
+.ticket-form-answers h3 {
+  margin: 0 0 8px;
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.ticket-form-answers dl {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+}
+
+.ticket-form-answers dl > div {
+  display: grid;
+  grid-template-columns: minmax(120px, 34%) minmax(0, 1fr);
+  gap: 10px;
+}
+
+.ticket-form-answers dt {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.ticket-form-answers dd {
+  margin: 0;
+  color: var(--text);
+  font-size: 13px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 680px) {
+  .ticket-form-answers dl > div {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+}

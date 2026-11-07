@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { App } from "./App";
 import { captureOAuthAuthorizationId } from "./oauth-consent";
 import "./styles.css";
+import "./status-tokens.css";
 
 // Muss vor dem Start der App laufen, bevor die Anmeldung die Adresse ändert.
 captureOAuthAuthorizationId();

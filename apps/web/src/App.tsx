@@ -1,4 +1,10 @@
 import {
+  AGENT_TOUR,
+  markTourSeen,
+  OnboardingTour,
+  tourSeen,
+} from "./onboarding-tour";
+import {
   Fragment,
   useEffect,
   useMemo,
@@ -300,6 +306,9 @@ type SavedTicketView = {
   id: string;
   name: string;
   ownerId: string;
+  ownerName?: string | null;
+  sharedDepartmentId?: string | null;
+  sharedDepartmentName?: string | null;
   updatedAt: string;
   visibility: "private";
 };
@@ -875,6 +884,15 @@ function savedTicketViewFromValue(value: unknown): SavedTicketView | null {
     id: value.id,
     name: value.name,
     ownerId: value.ownerId,
+    ownerName: typeof value.ownerName === "string" ? value.ownerName : null,
+    sharedDepartmentId:
+      typeof value.sharedDepartmentId === "string"
+        ? value.sharedDepartmentId
+        : null,
+    sharedDepartmentName:
+      typeof value.sharedDepartmentName === "string"
+        ? value.sharedDepartmentName
+        : null,
     updatedAt: value.updatedAt,
     visibility: value.visibility,
   };
@@ -2631,6 +2649,7 @@ function useDebouncedValue(value: string, delayMs: number): string {
 
 function AuthenticatedApp() {
   const [section, setRequestedSection] = useState<Section>("Übersicht");
+  const [tourOpen, setTourOpen] = useState(false);
   const [globalSearchTarget, setGlobalSearchTarget] =
     useState<GlobalSearchResult | null>(null);
   const [workplaceRequestedView, setWorkplaceRequestedView] =
@@ -3889,6 +3908,20 @@ function AuthenticatedApp() {
     setNotificationPanelOpen(true);
   }
 
+  const setSectionRef = useRef<(section: Section) => void>(() => {});
+  const navigateForTour = useMemo(
+    () => (target: string) => setSectionRef.current(target as Section),
+    [],
+  );
+
+  // New agents see the introduction once (per browser and person).
+  useEffect(() => {
+    const userId = session?.user.id;
+    if (!userId || !canWorkTickets || tourSeen(userId)) return;
+    setTourOpen(true);
+    markTourSeen(userId, true);
+  }, [canWorkTickets, session?.user.id]);
+
   function setSection(requestedSection: Section) {
     // "Mein Portal" is now the "Mein Bereich" view of the workplace.
     if (requestedSection === "Mein Portal") {
@@ -3912,6 +3945,7 @@ function AuthenticatedApp() {
     }
     setRequestedSection(nextSection);
   }
+  setSectionRef.current = setSection;
 
   async function handleNotificationClick(notification: NotificationItem) {
     if (!supabase) return;
@@ -6523,6 +6557,16 @@ function AuthenticatedApp() {
           </>
         )}
       </main>
+      {tourOpen ? (
+        <OnboardingTour
+          onClose={() => {
+            setTourOpen(false);
+            if (session?.user.id) markTourSeen(session.user.id, true);
+          }}
+          onNavigate={navigateForTour}
+          steps={AGENT_TOUR}
+        />
+      ) : null}
       {workspaceLiveMessage &&
         dismissedLiveMessage !== workspaceLiveMessage.id && (
           <section
@@ -6709,6 +6753,15 @@ function AuthenticatedApp() {
                       des Geräts.
                     </span>
                   </label>
+                  {canWorkTickets ? (
+                    <button
+                      className="text-button"
+                      onClick={() => setTourOpen(true)}
+                      type="button"
+                    >
+                      Einführung erneut starten
+                    </button>
+                  ) : null}
                 </>
               )}
               {!isPersonalAppearanceDialog &&
@@ -7307,8 +7360,43 @@ function SavedTicketViews({
   const [status, setStatus] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [editorOpen, setEditorOpen] = useState(false);
+  const [shareDepartmentId, setShareDepartmentId] = useState("");
+  const [shareDepartments, setShareDepartments] = useState<
+    { id: string; name: string }[]
+  >([]);
   const selectedView =
     savedViews.find((savedView) => savedView.id === selectedViewId) ?? null;
+  const ownViews = savedViews.filter(
+    (savedView) => savedView.ownerId === currentUserId,
+  );
+  const sharedViews = savedViews.filter(
+    (savedView) => savedView.ownerId !== currentUserId,
+  );
+
+  useEffect(() => {
+    if (!editorOpen || !supabase || shareDepartments.length) return;
+    let active = true;
+    void supabase.functions
+      .invoke("ticket-saved-views", {
+        body: { type: "listSavedViews", tenantId },
+      })
+      .then(({ data }) => {
+        const departments =
+          isRecord(data) && isRecord(data.data) ? data.data.departments : null;
+        if (!active || !Array.isArray(departments)) return;
+        setShareDepartments(
+          departments.filter(
+            (entry): entry is { id: string; name: string } =>
+              isRecord(entry) &&
+              typeof entry.id === "string" &&
+              typeof entry.name === "string",
+          ),
+        );
+      });
+    return () => {
+      active = false;
+    };
+  }, [editorOpen, shareDepartments.length, tenantId]);
   const canDelete = Boolean(
     selectedView && selectedView.ownerId === currentUserId,
   );
@@ -7342,13 +7430,15 @@ function SavedTicketViews({
   function startNewView() {
     setSelectedViewId("");
     setName("");
+    setShareDepartmentId("");
     setErrorMessage("");
     setEditorOpen(true);
     setStatus("Neue Ansicht aus den aktuellen Filtern anlegen.");
   }
 
   function startEditView() {
-    if (!selectedView) return;
+    if (!selectedView || selectedView.ownerId !== currentUserId) return;
+    setShareDepartmentId(selectedView.sharedDepartmentId ?? "");
     setErrorMessage("");
     setEditorOpen(true);
     setStatus(`Ansicht „${selectedView.name}“ bearbeiten.`);
@@ -7378,6 +7468,7 @@ function SavedTicketViews({
             ...(selectedView ? { viewId: selectedView.id } : {}),
             name: trimmedName,
             filters,
+            sharedDepartmentId: shareDepartmentId || null,
           },
         },
       );
@@ -7451,7 +7542,7 @@ function SavedTicketViews({
       <div className="saved-ticket-views__heading">
         <div>
           <p className="eyebrow">GESPEICHERTE ANSICHTEN</p>
-          <p>Nur für Sie sichtbar.</p>
+          <p>Eigene Ansichten und Ansichten, die Ihr Team mit Ihnen teilt.</p>
         </div>
       </div>
       <div className="saved-ticket-views__picker">
@@ -7466,11 +7557,28 @@ function SavedTicketViews({
             <option value="">
               {loading ? "Ansichten werden geladen …" : "Aktuelle Filter"}
             </option>
-            {savedViews.map((savedView) => (
-              <option key={savedView.id} value={savedView.id}>
-                {savedView.name}
-              </option>
-            ))}
+            {ownViews.length ? (
+              <optgroup label="Meine Ansichten">
+                {ownViews.map((savedView) => (
+                  <option key={savedView.id} value={savedView.id}>
+                    {savedView.name}
+                    {savedView.sharedDepartmentName
+                      ? ` (geteilt mit ${savedView.sharedDepartmentName})`
+                      : ""}
+                  </option>
+                ))}
+              </optgroup>
+            ) : null}
+            {sharedViews.length ? (
+              <optgroup label="Vom Team geteilt">
+                {sharedViews.map((savedView) => (
+                  <option key={savedView.id} value={savedView.id}>
+                    {savedView.name}
+                    {savedView.ownerName ? ` · ${savedView.ownerName}` : ""}
+                  </option>
+                ))}
+              </optgroup>
+            ) : null}
           </select>
         </label>
         <button
@@ -7481,7 +7589,7 @@ function SavedTicketViews({
         >
           Neue Ansicht
         </button>
-        {selectedView && (
+        {selectedView && selectedView.ownerId === currentUserId && (
           <button
             className="text-button"
             disabled={pending !== null}
@@ -7504,6 +7612,21 @@ function SavedTicketViews({
               required
               value={name}
             />
+          </label>
+          <label>
+            <span>Teilen mit</span>
+            <select
+              disabled={loading || pending !== null}
+              onChange={(event) => setShareDepartmentId(event.target.value)}
+              value={shareDepartmentId}
+            >
+              <option value="">Niemandem (nur für mich)</option>
+              {shareDepartments.map((department) => (
+                <option key={department.id} value={department.id}>
+                  Abteilung {department.name}
+                </option>
+              ))}
+            </select>
           </label>
           <div className="saved-ticket-views__actions">
             <button

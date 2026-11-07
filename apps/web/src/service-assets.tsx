@@ -1,3 +1,5 @@
+import { CsvImportDialog } from "./csv-import-dialog";
+import { ASSET_IMPORT_FIELDS } from "./lib/import-fields";
 import { ProblemAnalysis } from "./problem-insights";
 import {
   useCallback,
@@ -1834,6 +1836,7 @@ export function ServiceAssets({
     useState<ServiceCategoryForm>(EMPTY_SERVICE_CATEGORY_FORM);
   const [showArchivedServices, setShowArchivedServices] = useState(false);
   const [assets, setAssets] = useState<Asset[]>([]);
+  const [assetImportOpen, setAssetImportOpen] = useState(false);
   const [problems, setProblems] = useState<Problem[]>([]);
   const [departments, setDepartments] = useState<DepartmentOption[]>([]);
   const [serviceForm, setServiceForm] =
@@ -4260,18 +4263,66 @@ export function ServiceAssets({
               {!fixedTab ? <h3>Assets</h3> : null}
               <p>{activeCount} passende Assets</p>
             </div>
-            <button
-              className="secondary-button"
-              disabled={controlsDisabled}
-              onClick={(event) =>
-                openAssetEditor(undefined, event.currentTarget)
-              }
-              ref={assetCreateButtonRef}
-              type="button"
-            >
-              Asset erfassen
-            </button>
+            <span className="service-assets__heading-actions">
+              <button
+                className="text-button"
+                disabled={controlsDisabled}
+                onClick={() => setAssetImportOpen(true)}
+                type="button"
+              >
+                CSV importieren
+              </button>
+              <button
+                className="secondary-button"
+                disabled={controlsDisabled}
+                onClick={(event) =>
+                  openAssetEditor(undefined, event.currentTarget)
+                }
+                ref={assetCreateButtonRef}
+                type="button"
+              >
+                Asset erfassen
+              </button>
+            </span>
           </div>
+          {assetImportOpen ? (
+            <CsvImportDialog
+              fields={ASSET_IMPORT_FIELDS}
+              onClose={() => setAssetImportOpen(false)}
+              onFinished={(imported) => {
+                if (imported) {
+                  setSuccess(`${imported} Assets importiert.`);
+                  void loadCatalog();
+                }
+              }}
+              onImportRow={async (values) => {
+                const text = (key: string) =>
+                  typeof values[key] === "string"
+                    ? (values[key] as string)
+                    : null;
+                await requestServiceAssets({
+                  type: "manageAsset",
+                  tenantId,
+                  operation: "create",
+                  name: text("name") ?? "",
+                  serviceId: null,
+                  assetTag: text("assetTag"),
+                  inventoryNumber: text("inventoryNumber"),
+                  serialNumber: text("serialNumber"),
+                  manufacturer: text("manufacturer"),
+                  model: text("model"),
+                  operatingSystem: text("operatingSystem"),
+                  kind: text("kind") ?? "other",
+                  status: "active",
+                  customerOrganizationId: null,
+                  metadata: { source: "csv-import" },
+                  active: true,
+                });
+              }}
+              templateName="assets-vorlage.csv"
+              title="Assets aus CSV importieren"
+            />
+          ) : null}
           <fieldset disabled={controlsDisabled}>
             <legend>Assets filtern</legend>
             <label>
