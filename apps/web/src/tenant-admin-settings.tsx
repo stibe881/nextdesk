@@ -46,6 +46,7 @@ import { DepartmentManagement } from "./department-management";
 import { DepartmentModules } from "./department-modules";
 import { TicketTemplates } from "./ticket-templates";
 import { TenantAutomation } from "./tenant-automation";
+import { TicketVendors } from "./ticket-vendors";
 import { TicketLifecycleSettings } from "./ticket-lifecycle-settings";
 import { TicketRules } from "./ticket-rules";
 import { TenantDataRetention } from "./tenant-data-retention";
@@ -3536,6 +3537,9 @@ export function TenantAdminSettings({
                                                   tenantId={tenantId}
                                                 />
                                                 <TenantAutomation
+                                                  tenantId={tenantId}
+                                                />
+                                                <TicketVendors
                                                   tenantId={tenantId}
                                                 />
                                               </>

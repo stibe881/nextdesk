@@ -11412,4 +11412,185 @@ $$;
 rollback;
 SQL
 
+# 0223: ticket split (children block resolving the parent, last child adds an
+# event), vendor cases (waiting status, reminders, closing) are service-role only.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_template record;
+  v_member uuid;
+  v_in_progress uuid;
+  v_resolved uuid;
+  v_waiting_vendor uuid;
+  v_parent uuid := gen_random_uuid();
+  v_ticket uuid := gen_random_uuid();
+  v_children jsonb;
+  v_child_ids uuid[];
+  v_hint text;
+  v_vendor uuid;
+  v_result jsonb;
+  v_case uuid;
+  v_status uuid;
+  v_count integer;
+begin
+  if has_table_privilege('authenticated', 'public.ticket_vendors', 'select')
+    or has_table_privilege('anon', 'public.ticket_vendor_cases', 'select')
+    or has_table_privilege('authenticated', 'public.ticket_vendor_cases', 'insert') then
+    raise exception 'split vendor test: vendor tables readable by browsers';
+  end if;
+  if has_function_privilege('authenticated',
+      'public.ticket_split_create_children(uuid, uuid, uuid, jsonb)', 'execute')
+    or has_function_privilege('authenticated',
+      'public.ticket_vendor_case_open(uuid, uuid, uuid, uuid, text, text)', 'execute')
+    or has_function_privilege('authenticated', 'public.ticket_vendor_send_reminders()', 'execute') then
+    raise exception 'split vendor test: service functions callable by browsers';
+  end if;
+  if not (select relrowsecurity from pg_class where oid = 'public.ticket_vendor_cases'::regclass) then
+    raise exception 'split vendor test: RLS disabled';
+  end if;
+  if public.push_notification_category('ticket.vendor_reminder') <> 'follow_up'
+    or public.push_notification_category('ticket.children_done') <> 'follow_up' then
+    raise exception 'split vendor test: wrong push category';
+  end if;
+
+  select * into v_template from public.tickets limit 1;
+  select user_id into v_member from public.tenant_memberships
+  where tenant_id = v_template.tenant_id and status = 'active' limit 1;
+  select id into v_in_progress from public.ticket_statuses
+  where tenant_id = v_template.tenant_id and key = 'in_progress';
+  select id into v_resolved from public.ticket_statuses
+  where tenant_id = v_template.tenant_id and key = 'resolved';
+  select id into v_waiting_vendor from public.ticket_statuses
+  where tenant_id = v_template.tenant_id and key = 'waiting_vendor';
+  insert into public.tickets (id, tenant_id, department_id, ticket_number, subject, description,
+    status_id, priority_id, requester_id)
+  values
+    (v_parent, v_template.tenant_id, v_template.department_id, 'SPLIT-TEST-1',
+      'Neue Mitarbeiterin', 'Arbeitsplatz einrichten', v_in_progress,
+      v_template.priority_id, v_template.requester_id),
+    (v_ticket, v_template.tenant_id, v_template.department_id, 'VENDOR-TEST-1',
+      'Glasfaser gestört', 'Leitung tot', v_in_progress,
+      v_template.priority_id, v_template.requester_id);
+
+  -- Split into two children.
+  v_children := public.ticket_split_create_children(v_template.tenant_id, v_parent, v_member,
+    jsonb_build_array(
+      jsonb_build_object('subject', 'Notebook bereitstellen', 'description', 'Teil 1',
+        'departmentId', v_template.department_id),
+      jsonb_build_object('subject', 'Badge erstellen', 'description', 'Teil 2',
+        'departmentId', v_template.department_id)
+    ));
+  select array_agg((child ->> 'id')::uuid) into v_child_ids
+  from jsonb_array_elements(v_children) child;
+  if coalesce(array_length(v_child_ids, 1), 0) <> 2
+    or (select count(*) from public.tickets
+        where parent_ticket_id = v_parent and requester_id = v_member
+          and affected_user_id = v_template.requester_id) <> 2
+    or (select count(*) from public.ticket_relations
+        where related_ticket_id = v_parent and relation_type = 'parent') <> 2
+    or not exists (select 1 from public.ticket_events
+                   where ticket_id = v_parent and event_type = 'ticket.split') then
+    raise exception 'split vendor test: children not created as expected';
+  end if;
+  begin
+    perform public.ticket_split_create_children(v_template.tenant_id, v_parent, v_member, '[]'::jsonb);
+    raise exception 'split vendor test: empty split accepted';
+  exception when invalid_parameter_value then
+    null;
+  end;
+
+  -- The parent cannot be resolved while a child is open.
+  v_hint := null;
+  begin
+    update public.tickets set status_id = v_resolved where id = v_parent;
+  exception when check_violation then
+    get stacked diagnostics v_hint = pg_exception_hint;
+  end;
+  if v_hint is distinct from 'ticket_children_open' then
+    raise exception 'split vendor test: open children did not block resolving (hint %)', v_hint;
+  end if;
+  update public.tickets set assigned_agent_id = v_member, status_id = v_resolved
+  where id = v_child_ids[1];
+  if exists (select 1 from public.ticket_events
+             where ticket_id = v_parent and event_type = 'ticket.children_done') then
+    raise exception 'split vendor test: children_done before the last child';
+  end if;
+  update public.tickets set assigned_agent_id = v_member, status_id = v_resolved
+  where id = v_child_ids[2];
+  if not exists (select 1 from public.ticket_events
+                 where ticket_id = v_parent and event_type = 'ticket.children_done') then
+    raise exception 'split vendor test: children_done event missing';
+  end if;
+  update public.tickets set status_id = v_resolved where id = v_parent;
+
+  -- Vendors and vendor cases.
+  begin
+    insert into public.ticket_vendors (tenant_id, name) values (v_template.tenant_id, 'X');
+    raise exception 'split vendor test: too short vendor name accepted';
+  exception when check_violation then
+    null;
+  end;
+  insert into public.ticket_vendors (tenant_id, name, contact_email)
+  values (v_template.tenant_id, 'Swisscom', 'support@swisscom.example')
+  returning id into v_vendor;
+  begin
+    insert into public.ticket_vendors (tenant_id, name) values (v_template.tenant_id, ' swisscom ');
+    raise exception 'split vendor test: duplicate vendor name accepted';
+  exception when unique_violation then
+    null;
+  end;
+  if (select reminder_after_hours from public.ticket_vendors where id = v_vendor) <> 48 then
+    raise exception 'split vendor test: reminder default is not 48 hours';
+  end if;
+
+  v_result := public.ticket_vendor_case_open(v_template.tenant_id, v_ticket, v_vendor, v_member,
+    'SC-12345', 'Störung gemeldet');
+  v_case := (v_result ->> 'caseId')::uuid;
+  select status_id into v_status from public.tickets where id = v_ticket;
+  if v_waiting_vendor is not null and (v_status <> v_waiting_vendor
+      or (v_result ->> 'statusChanged')::boolean is not true) then
+    raise exception 'split vendor test: ticket not waiting for vendor';
+  end if;
+  begin
+    perform public.ticket_vendor_case_open(v_template.tenant_id, v_ticket, v_vendor, v_member, null, null);
+    raise exception 'split vendor test: second open case accepted';
+  exception when unique_violation then
+    null;
+  end;
+
+  update public.ticket_vendor_cases
+  set opened_at = timezone('utc', now()) - interval '50 hours'
+  where id = v_case;
+  v_count := public.ticket_vendor_send_reminders();
+  if v_count < 1 or (select reminder_sent_at from public.ticket_vendor_cases where id = v_case) is null
+    or not exists (select 1 from public.ticket_events
+                   where ticket_id = v_ticket and event_type = 'ticket.vendor_reminder') then
+    raise exception 'split vendor test: reminder not sent';
+  end if;
+  perform public.ticket_vendor_send_reminders();
+  if (select count(*) from public.ticket_events
+      where ticket_id = v_ticket and event_type = 'ticket.vendor_reminder') <> 1 then
+    raise exception 'split vendor test: reminder repeated too early';
+  end if;
+
+  perform public.ticket_vendor_case_record_update(v_template.tenant_id, v_ticket, v_case, v_member,
+    'Techniker kommt morgen');
+  if (select last_vendor_update_at from public.ticket_vendor_cases where id = v_case) is null then
+    raise exception 'split vendor test: vendor update not recorded';
+  end if;
+  v_result := public.ticket_vendor_case_close(v_template.tenant_id, v_ticket, v_case, v_member, null);
+  if (select closed_at from public.ticket_vendor_cases where id = v_case) is null then
+    raise exception 'split vendor test: case not closed';
+  end if;
+  if v_waiting_vendor is not null
+    and (select status_id from public.tickets where id = v_ticket) <> v_in_progress then
+    raise exception 'split vendor test: ticket not back in progress';
+  end if;
+  raise notice 'ticket split and vendor case checks ran';
+end;
+$$;
+rollback;
+SQL
+
 echo "PostgreSQL 16 migration and RLS integration checks passed."

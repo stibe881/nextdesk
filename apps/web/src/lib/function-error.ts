@@ -58,6 +58,8 @@ export async function functionErrorMessage(
       return "Ein Ticket kann nicht auf «Neu» zurückgesetzt werden.";
     case "ticket_assignee_required":
       return "Der Status «Neu» kann erst geändert werden, wenn das Ticket einer Person zugewiesen ist.";
+    case "ticket_children_open":
+      return "Das Ticket kann erst gelöst oder geschlossen werden, wenn alle Teil-Tickets gelöst oder geschlossen sind.";
     case "ticket_required_fields_missing": {
       const labels: Record<string, string> = {
         category: "Kategorie",

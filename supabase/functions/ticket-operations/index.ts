@@ -3388,6 +3388,8 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       "x-nextdesk-actor-id",
       typeof actorId === "string" ? actorId : "",
     );
+  if (error?.hint === "ticket_children_open")
+    return response(request, { error: { code: "ticket_children_open" } }, 409);
   if (error)
     return response(request, { error: { code: "ticket_update_failed" } }, 422);
   await context.supabaseAdmin.from("ticket_events").insert({

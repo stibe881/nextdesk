@@ -158,6 +158,9 @@ verify_jwt = true
 [functions.ticket-handovers]
 verify_jwt = true
 
+[functions.ticket-coordination]
+verify_jwt = true
+
 [functions.ticket-knowledge]
 verify_jwt = true
 

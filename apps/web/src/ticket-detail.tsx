@@ -96,6 +96,7 @@ import {
 } from "./ticket-experience";
 import "./ticket-experience.css";
 import { TicketPdfRecord } from "./ticket-pdf-record";
+import { TicketCoordination } from "./ticket-coordination";
 import {
   TicketFormAnswersBlock,
   parseStoredFormAnswers,
@@ -759,6 +760,8 @@ type TicketDetailProps = {
   onOpenAsset?: ((query: string) => void) | undefined;
   /** Requesters without ticket work see only what matters to them. */
   requesterView?: boolean;
+  /** Opens another ticket (e.g. a child or parent ticket of a split). */
+  onOpenTicket?: ((ticketId: string) => void) | undefined;
 };
 
 const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
@@ -3773,6 +3776,7 @@ export function TicketDetail({
   onOpenKnowledgeArticle,
   onOpenAsset,
   requesterView = false,
+  onOpenTicket,
 }: TicketDetailProps) {
   const [detail, setDetail] = useState<TicketDetailData | null>(null);
   // Answers from a ticket template form (only tickets created with one).
@@ -6924,6 +6928,22 @@ export function TicketDetail({
               <TicketFormAnswersBlock stored={storedFormAnswers.stored} />
             )}
           </section>
+
+          {requesterView ? null : (
+            <TicketCoordination
+              description={detail.ticket.description}
+              onChanged={() => {
+                onChanged();
+                void loadTicket();
+              }}
+              onOpenTicket={onOpenTicket}
+              refreshKey={`${detail.ticket.status_id}|${detail.ticket.assigned_agent_id ?? ""}|${detail.comments.length}|${detail.events[0]?.id ?? ""}`}
+              subject={detail.ticket.subject}
+              tenantId={tenantId}
+              ticketId={detail.ticket.id}
+              ticketNumber={detail.ticket.ticket_number}
+            />
+          )}
 
           <section
             className="ticket-detail-comments ticket-detail-primary"

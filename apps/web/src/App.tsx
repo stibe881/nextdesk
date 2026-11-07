@@ -1272,6 +1272,36 @@ function baseNotificationPresentation(
         title: "Wiederkehrende Störung",
       };
     }
+    case "ticket.children_done": {
+      const childCount = notificationPayloadNumber(notification, "childCount");
+      return {
+        description:
+          childCount && childCount > 1
+            ? `Alle ${childCount} Teil-Tickets von ${ticketLabel} sind erledigt. Das Hauptticket kann jetzt abgeschlossen werden.`
+            : `Die Teil-Tickets von ${ticketLabel} sind erledigt. Das Hauptticket kann jetzt abgeschlossen werden.`,
+        Icon: CheckCircle2,
+        title: "Teil-Tickets erledigt",
+      };
+    }
+    case "ticket.vendor_reminder": {
+      const vendor =
+        notificationPayloadText(notification, "vendorName", 160) ??
+        "Der Drittanbieter";
+      const caseNumber = notificationPayloadText(
+        notification,
+        "externalCaseNumber",
+        120,
+      );
+      const silentSince = notificationPayloadDateTime(
+        notification,
+        "silentSince",
+      );
+      return {
+        description: `${vendor}${caseNumber ? ` (Fall ${caseNumber})` : ""} hat sich zu ${ticketLabel} ${silentSince ? `seit ${notificationTime(silentSince)} ` : ""}nicht mehr gemeldet. Bitte nachfassen.`,
+        Icon: CalendarClock,
+        title: "Drittanbieter nachfassen",
+      };
+    }
     case "ticket.rule_reminder": {
       const rule =
         notificationPayloadText(notification, "ruleName", 160) ?? "Regel";
@@ -7018,6 +7048,7 @@ function AuthenticatedApp() {
                   }
                 : undefined
             }
+            onOpenTicket={(ticketId) => setSelectedTicketId(ticketId)}
             requesterView={!canWorkTickets}
             tenantId={activeTenant.id}
             ticketId={selectedTicketId}

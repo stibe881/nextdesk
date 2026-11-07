@@ -156,3 +156,32 @@ Deno.test("rule reminders name the rule and open the ticket", () => {
     "00000000-0000-4000-8000-000000000003",
   );
 });
+
+Deno.test("vendor reminders and finished child tickets open the ticket", () => {
+  const reminder = buildApnsPayload({
+    kind: "vendor_reminder",
+    tenantId: "00000000-0000-4000-8000-000000000001",
+    notificationId: "00000000-0000-4000-8000-000000000002",
+    ticketId: "00000000-0000-4000-8000-000000000003",
+    ticketNumber: "ICT-7",
+    vendorName: "Swisscom",
+  });
+  const reminderAlert = (reminder.aps as { alert: { title: string; body: string } })
+    .alert;
+  assertEquals(reminderAlert.title, "Drittanbieter nachfassen");
+  assertStringIncludes(reminderAlert.body, "Swisscom");
+  assertStringIncludes(reminderAlert.body, "ICT-7");
+  const done = buildApnsPayload({
+    kind: "children_done",
+    tenantId: "00000000-0000-4000-8000-000000000001",
+    notificationId: "00000000-0000-4000-8000-000000000004",
+    ticketId: "00000000-0000-4000-8000-000000000003",
+    ticketNumber: "ICT-7",
+  });
+  const doneAlert = (done.aps as { alert: { title: string; body: string } }).alert;
+  assertEquals(doneAlert.title, "Teil-Tickets erledigt");
+  assertEquals(
+    (done.body as Record<string, unknown>).ticketId,
+    "00000000-0000-4000-8000-000000000003",
+  );
+});
