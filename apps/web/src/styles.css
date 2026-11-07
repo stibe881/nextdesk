@@ -20825,3 +20825,8 @@ html:has(.embed-status-badge) body {
   color: var(--muted);
   font-weight: 500;
 }
+
+.metric-card__names {
+  font-size: 1rem;
+  line-height: 1.3;
+}

@@ -42,7 +42,8 @@ export type LiveTicketListRefinement = {
   status: string;
 };
 
-export type LiveTicketScope = "all" | "mine" | "unassigned" | "open" | "closed";
+export type LiveTicketScope =
+  "all" | "mine" | "unassigned" | "open" | "closed" | "delegated";
 
 export type LiveTicketListControls = {
   metricTicketIds: string[] | null;

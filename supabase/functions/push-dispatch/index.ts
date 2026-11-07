@@ -346,9 +346,23 @@ async function deliverSingle(admin: any, row: ClaimRow): Promise<void> {
         : {}),
     };
   }
+  // Copies for a stand-in carry the name of the absent person.
+  let delegated: { delegatedFromName?: string } = {};
+  if (row.notification_id && row.ticket_id) {
+    const { data: notification } = await admin
+      .from("ticket_notifications")
+      .select("payload")
+      .eq("id", row.notification_id)
+      .maybeSingle();
+    const name = notification?.payload?.delegatedFromName;
+    if (typeof name === "string" && name.trim()) {
+      delegated = { delegatedFromName: name.trim() };
+    }
+  }
   const payload = buildApnsPayload({
     ...shop,
     ...serviceTask,
+    ...delegated,
     kind: payloadKind(row.kind, preferenceCategory),
     tenantId: row.tenant_id,
     notificationId: row.notification_id ?? row.outbox_id,
