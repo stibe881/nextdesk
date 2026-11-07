@@ -11854,4 +11854,160 @@ $$;
 rollback;
 SQL
 
+# 0234: certificate/domain expiry and backup monitoring tables are
+# service-role only; targets and jobs are unique per tenant; the cron wake-up
+# is not callable by browser roles.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_tenant uuid;
+  v_job uuid;
+begin
+  select tenant_id into v_tenant from public.tenant_memberships
+  where status = 'active' order by created_at limit 1;
+  if has_table_privilege('authenticated', 'public.monitoring_expiry_targets', 'select')
+     or has_table_privilege('anon', 'public.monitoring_expiry_settings', 'select')
+     or has_table_privilege('authenticated', 'public.monitoring_backup_settings', 'select')
+     or has_table_privilege('authenticated', 'public.monitoring_backup_jobs', 'select')
+     or has_table_privilege('anon', 'public.monitoring_backup_reports', 'select') then
+    raise exception 'expiry/backup test: browser roles can read the new tables';
+  end if;
+  if not (select relrowsecurity from pg_class where oid = 'public.monitoring_expiry_targets'::regclass)
+     or not (select relrowsecurity from pg_class where oid = 'public.monitoring_backup_jobs'::regclass)
+     or not (select relrowsecurity from pg_class where oid = 'public.monitoring_backup_reports'::regclass) then
+    raise exception 'expiry/backup test: RLS disabled';
+  end if;
+  if has_function_privilege('authenticated', 'public.monitoring_automation_wake(text)', 'execute')
+     or has_function_privilege('anon', 'public.monitoring_automation_verify_dispatch_secret(text)', 'execute') then
+    raise exception 'expiry/backup test: browser roles can call the dispatch functions';
+  end if;
+  if public.monitoring_automation_verify_dispatch_secret('wrong-secret-wrong-secret-wrong-secret') then
+    raise exception 'expiry/backup test: wrong dispatch secret accepted';
+  end if;
+  -- No enabled tenant: the wake-up returns without calling out.
+  perform public.monitoring_automation_wake('expiry-monitoring');
+  perform public.monitoring_automation_wake('backup-monitoring');
+  perform public.monitoring_automation_wake('unknown');
+
+  insert into public.monitoring_expiry_settings (tenant_id, enabled) values (v_tenant, true);
+  begin
+    update public.monitoring_expiry_settings set reminder_days = 30 where tenant_id = v_tenant;
+    raise exception 'expiry test: reminder not before warning accepted';
+  exception when check_violation then
+    null;
+  end;
+
+  insert into public.monitoring_expiry_targets (tenant_id, kind, host, port)
+  values (v_tenant, 'certificate', 'mail.example.ch', 443);
+  insert into public.monitoring_expiry_targets (tenant_id, kind, host, port)
+  values (v_tenant, 'certificate', 'mail.example.ch', 993);
+  insert into public.monitoring_expiry_targets (tenant_id, kind, host)
+  values (v_tenant, 'domain', 'example.ch');
+  begin
+    insert into public.monitoring_expiry_targets (tenant_id, kind, host, port)
+    values (v_tenant, 'certificate', 'mail.example.ch', 443);
+    raise exception 'expiry test: duplicate target accepted';
+  exception when unique_violation then
+    null;
+  end;
+  begin
+    insert into public.monitoring_expiry_targets (tenant_id, kind, host)
+    values (v_tenant, 'domain', 'example.ch');
+    raise exception 'expiry test: duplicate domain accepted';
+  exception when unique_violation then
+    null;
+  end;
+  begin
+    insert into public.monitoring_expiry_targets (tenant_id, kind, host, port)
+    values (v_tenant, 'domain', 'example.org', 443);
+    raise exception 'expiry test: domain with port accepted';
+  exception when check_violation then
+    null;
+  end;
+  begin
+    insert into public.monitoring_expiry_targets (tenant_id, kind, host, port)
+    values (v_tenant, 'certificate', 'Mail.Example.ch', 443);
+    raise exception 'expiry test: uppercase host accepted';
+  exception when check_violation then
+    null;
+  end;
+  begin
+    update public.monitoring_expiry_targets set status = 'unknown'
+    where tenant_id = v_tenant and kind = 'domain';
+    raise exception 'expiry test: invalid status accepted';
+  exception when check_violation then
+    null;
+  end;
+  update public.monitoring_expiry_targets
+  set status = 'expiring', expires_at = timezone('utc', now()) + interval '20 days',
+      ticket_stage = 'warned', ticket_expires_at = timezone('utc', now()) + interval '20 days',
+      san = array['mail.example.ch', 'autodiscover.example.ch'], check_method = 'tls'
+  where tenant_id = v_tenant and port = 443;
+
+  insert into public.monitoring_backup_settings (tenant_id, enabled, sender_patterns, token_hash)
+  values (v_tenant, true, array['veeam@example.ch'], repeat('b', 64));
+  begin
+    update public.monitoring_backup_settings set warning_action = 'comment' where tenant_id = v_tenant;
+    raise exception 'backup test: invalid warning action accepted';
+  exception when check_violation then
+    null;
+  end;
+  begin
+    update public.monitoring_backup_settings set token_hash = 'plain' where tenant_id = v_tenant;
+    raise exception 'backup test: invalid token hash accepted';
+  exception when check_violation then
+    null;
+  end;
+  insert into public.monitoring_backup_jobs (tenant_id, name, name_key, expected_interval_hours)
+  values (v_tenant, 'Daily VMs', 'daily vms', 24)
+  returning id into v_job;
+  begin
+    insert into public.monitoring_backup_jobs (tenant_id, name, name_key)
+    values (v_tenant, 'DAILY VMs', 'daily vms');
+    raise exception 'backup test: duplicate job accepted';
+  exception when unique_violation then
+    null;
+  end;
+  begin
+    insert into public.monitoring_backup_jobs (tenant_id, name, name_key)
+    values (v_tenant, 'Other', 'Other');
+    raise exception 'backup test: uppercase job key accepted';
+  exception when check_violation then
+    null;
+  end;
+  insert into public.monitoring_backup_reports (tenant_id, job_id, result, source, dedupe_key)
+  values (v_tenant, v_job, 'failed', 'email', 'email:<abc@example.ch>');
+  begin
+    insert into public.monitoring_backup_reports (tenant_id, job_id, result, source, dedupe_key)
+    values (v_tenant, v_job, 'failed', 'email', 'email:<abc@example.ch>');
+    raise exception 'backup test: duplicate report accepted';
+  exception when unique_violation then
+    null;
+  end;
+  begin
+    insert into public.monitoring_backup_reports (tenant_id, job_id, result, source)
+    values (v_tenant, v_job, 'unknown', 'email');
+    raise exception 'backup test: invalid result accepted';
+  exception when check_violation then
+    null;
+  end;
+  insert into public.monitoring_backup_reports (tenant_id, job_id, result, source)
+  values (v_tenant, v_job, 'success', 'webhook');
+  update public.monitoring_backup_jobs
+  set last_result = 'success', last_report_at = timezone('utc', now()), report_count = 2,
+      ticket_reason = 'missing'
+  where id = v_job;
+  begin
+    update public.monitoring_backup_jobs set ticket_reason = 'other' where id = v_job;
+    raise exception 'backup test: invalid ticket reason accepted';
+  exception when check_violation then
+    null;
+  end;
+  raise notice 'expiry and backup monitoring checks ran';
+end;
+$$;
+rollback;
+SQL
+
 echo "PostgreSQL 16 migration and RLS integration checks passed."

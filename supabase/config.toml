@@ -215,6 +215,14 @@ verify_jwt = false
 [functions.monitoring-integrations]
 verify_jwt = true
 
+# Admin calls authenticate inside the function; the hourly/15-minute wake-up
+# uses the dispatch secret header and the backup webhook a per-tenant token.
+[functions.expiry-monitoring]
+verify_jwt = false
+
+[functions.backup-monitoring]
+verify_jwt = false
+
 [functions.my-priorities]
 verify_jwt = true
 

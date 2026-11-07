@@ -21,6 +21,7 @@ import {
 import { processEventSpaceEmailTicketIntake } from "./event-space-email-ticket-intake.ts";
 import { processOnboardingEmailTicketIntake } from "./onboarding-email-intake.ts";
 import { resolveTenantFeatureStates } from "./tenant-features.ts";
+import { routeBackupEmail } from "./backup-monitoring.ts";
 
 const SERVICE_EMAIL = "exchange-mail-service@app.nextdesk.ch";
 const SERVICE_NAME = "nextDesk E-Mail-Dienst";
@@ -1298,6 +1299,35 @@ export async function processInboundMessage(
       return;
     }
     const sender = emailFromPerson(graph.from) ?? emailFromPerson(graph.sender);
+    // Backup reports (e.g. Veeam) from configured senders go to backup
+    // monitoring instead of becoming tickets; checked before the auto-reply
+    // filters because report mails are often marked as auto-submitted.
+    if (
+      sender &&
+      graph.isDraft !== true &&
+      sender !== channel.mailbox_address
+    ) {
+      stage = "backup_monitoring";
+      const consumed = await routeBackupEmail(admin, {
+        tenantId: channel.tenant_id,
+        sender,
+        subject: subject(graph.subject),
+        body: record(graph.body) ? (asString(graph.body.content) ?? "") : "",
+        messageId: asString(graph.internetMessageId),
+        receivedAt: asString(graph.receivedDateTime),
+      });
+      if (consumed) {
+        await updateMessage(admin, message.id, {
+          processing_status: "ignored",
+          ignore_reason: "backup_monitoring",
+          internet_message_id: asString(graph.internetMessageId),
+          conversation_id: asString(graph.conversationId),
+          from_address: sender,
+          occurred_at: asString(graph.receivedDateTime),
+        });
+        return;
+      }
+    }
     let reason = ignoredReason(channel, graph, sender);
     if (!reason && sender && (await isOtherChannelMailbox(admin, sender)))
       reason = "nextdesk_channel_mailbox";

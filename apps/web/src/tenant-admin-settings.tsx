@@ -42,6 +42,8 @@ import {
 import { TicketCustomFieldsAdmin } from "./ticket-custom-fields-admin";
 import { AssetIntuneSettings } from "./asset-intune-settings";
 import { MonitoringSettings } from "./monitoring-settings";
+import { ExpiryMonitoringSettings } from "./expiry-monitoring-settings";
+import { BackupMonitoringSettings } from "./backup-monitoring-settings";
 import { DepartmentManagement } from "./department-management";
 import { DepartmentModules } from "./department-modules";
 import { TicketTemplates } from "./ticket-templates";
@@ -3533,6 +3535,12 @@ export function TenantAdminSettings({
                                                   tenantId={tenantId}
                                                 />
                                                 <MonitoringSettings
+                                                  tenantId={tenantId}
+                                                />
+                                                <ExpiryMonitoringSettings
+                                                  tenantId={tenantId}
+                                                />
+                                                <BackupMonitoringSettings
                                                   tenantId={tenantId}
                                                 />
                                               </>

@@ -10994,6 +10994,78 @@ body:has(.ticket-list-filter-panel) {
   gap: 6px;
 }
 
+/* Certificate/domain expiry and backup monitoring. */
+.monitoring-chip {
+  display: inline-flex;
+  align-items: center;
+  margin: 0 4px 0 0;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.5;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.monitoring-chip--success {
+  background: var(--tone-success-soft);
+  color: var(--tone-success);
+}
+
+.monitoring-chip--warning {
+  background: var(--tone-warning-soft);
+  color: var(--tone-warning);
+}
+
+.monitoring-chip--danger {
+  background: var(--tone-danger-soft);
+  color: var(--tone-danger);
+}
+
+.monitoring-chip--info {
+  background: var(--tone-info-soft);
+  color: var(--tone-info);
+}
+
+.monitoring-chip--neutral {
+  background: var(--tone-neutral-soft);
+  color: var(--tone-neutral);
+}
+
+.monitoring-settings__error,
+.asset-intune-settings__history li p.monitoring-settings__error {
+  color: var(--tone-danger);
+}
+
+.monitoring-settings__row-actions {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.monitoring-settings__grid textarea {
+  min-height: 72px;
+  font: inherit;
+  font-weight: 400;
+  resize: vertical;
+}
+
+.monitoring-settings__history {
+  display: grid;
+  gap: 6px;
+  margin: 8px 0 0;
+  padding-left: 18px;
+  font-size: 13px;
+}
+
+.monitoring-settings__history p {
+  margin: 2px 0 0;
+  color: var(--muted);
+}
+
 .monitoring-settings__setup ol {
   display: grid;
   gap: 8px;
