@@ -10264,4 +10264,75 @@ $$;
 rollback;
 SQL
 
+# 0215: maintenance windows are announced once; done device tasks log maintenance.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_tenant uuid;
+  v_service uuid;
+  v_window uuid;
+  v_asset uuid;
+  v_template uuid;
+  v_occurrence uuid;
+begin
+  select tenant_id into v_tenant from public.tenant_memberships
+  where status = 'active' order by created_at limit 1;
+  select id into v_service from public.services where tenant_id = v_tenant limit 1;
+  if v_service is null then
+    insert into public.services (tenant_id, name) values (v_tenant, 'Netzwerk')
+    returning id into v_service;
+  end if;
+  insert into public.service_status_maintenances (tenant_id, title, starts_at, ends_at, public_enabled)
+  values (v_tenant, 'Firmware Core-Switch', timezone('utc', now()) + interval '2 hours',
+    timezone('utc', now()) + interval '4 hours', true)
+  returning id into v_window;
+  insert into public.service_status_maintenance_services (tenant_id, maintenance_id, service_id)
+  values (v_tenant, v_window, v_service);
+  perform public.maintenance_announce_run();
+  if not exists (
+    select 1 from public.ticket_notifications
+    where kind = 'maintenance.upcoming' and payload ->> 'maintenanceId' = v_window::text
+  ) then
+    raise exception 'maintenance test: no announcement';
+  end if;
+  if (select announced_at from public.service_status_maintenances where id = v_window) is null then
+    raise exception 'maintenance test: announced_at not set';
+  end if;
+  if public.maintenance_announce_run() <> 0 then
+    raise exception 'maintenance test: announced twice';
+  end if;
+
+  insert into public.assets (tenant_id, name, kind, lifecycle_state)
+  values (v_tenant, 'Firewall', 'firewall', 'active') returning id into v_asset;
+  insert into public.service_task_templates (tenant_id, title, recurrence, starts_on, checklist)
+  values (v_tenant, 'Wartung: Firewall', '{"frequency":"monthly","interval":6}'::jsonb,
+    current_date, '[{"id":"w1","label":"Firmware"}]'::jsonb)
+  returning id into v_template;
+  insert into public.asset_infrastructure (asset_id, tenant_id, category, service_task_template_id,
+    maintenance_checklist)
+  values (v_asset, v_tenant, 'firewall', v_template, '["Firmware"]'::jsonb);
+  insert into public.service_task_occurrences (tenant_id, template_id, scheduled_on, due_on, due_at,
+    visible_from, checklist)
+  values (v_tenant, v_template, current_date, current_date, timezone('utc', now()),
+    current_date, '[{"id":"w1","label":"Firmware","done":true}]'::jsonb)
+  returning id into v_occurrence;
+  update public.service_task_occurrences
+  set status = 'done', completed_at = timezone('utc', now()), note = 'Version 7.2'
+  where id = v_occurrence;
+  if not exists (
+    select 1 from public.asset_maintenance_log
+    where asset_id = v_asset and note like 'Wartung gemäss Checkliste erledigt%1/1 Punkte%Version 7.2'
+  ) then
+    raise exception 'maintenance test: service task not logged';
+  end if;
+  if (select last_maintenance_on from public.asset_infrastructure where asset_id = v_asset) is null then
+    raise exception 'maintenance test: last maintenance not updated';
+  end if;
+  raise notice 'infrastructure workflow checks ran';
+end;
+$$;
+rollback;
+SQL
+
 echo "PostgreSQL 16 migration and RLS integration checks passed."
