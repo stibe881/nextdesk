@@ -13,10 +13,13 @@ import {
   isNotificationAction,
   startNotificationActions,
 } from "@/lib/notification-actions";
+import { startWatchBridge } from "@/lib/watch-bridge";
 
-// Antwort-Knöpfe (iPhone-Sperrbildschirm, Apple Watch) schon beim Laden des
-// Moduls registrieren, damit sie auch bei einem Hintergrundstart greifen.
+// Antwort-Knöpfe (iPhone-Sperrbildschirm, Apple Watch) und die Verbindung zur
+// Watch-App schon beim Laden des Moduls starten, damit sie auch bei einem
+// Hintergrundstart greifen (z. B. wenn die Watch ein Token anfragt).
 startNotificationActions();
+startWatchBridge();
 
 if (Platform.OS === "ios") {
   Notifications.setNotificationHandler({

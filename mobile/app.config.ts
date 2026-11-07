@@ -77,6 +77,7 @@ const config: ExpoConfig = {
   ios: {
     supportsTablet: true,
     bundleIdentifier: env.iosBundleId,
+    appleTeamId: "QF59FHQ44R",
     infoPlist: {
       ITSAppUsesNonExemptEncryption: false,
     },
@@ -111,6 +112,8 @@ const config: ExpoConfig = {
     favicon: "./assets/images/favicon.png",
   },
   plugins: [
+    // Apple-Watch-App und Komplikation aus targets/watch und targets/watch-widget.
+    "@bacons/apple-targets",
     "expo-asset",
     "expo-router",
     "@react-native-community/datetimepicker",
