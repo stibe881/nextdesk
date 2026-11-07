@@ -1003,18 +1003,6 @@ export default function HomeScreen() {
               </Text>
             </>
           )}
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => router.push("/ticket/new")}
-            style={[styles.heroButton, { backgroundColor: colors.surface }]}
-          >
-            <Ionicons color={colors.primaryText} name="add" size={21} />
-            <Text
-              style={[styles.heroButtonText, { color: colors.primaryText }]}
-            >
-              Ticket erfassen
-            </Text>
-          </Pressable>
         </View>
 
         {error ? (
@@ -1761,17 +1749,6 @@ const useStyles = makeThemedStyles(() => ({
   headerBrand: { flex: 1, marginRight: 12 },
   hero: { borderRadius: 26, gap: 9, padding: 22 },
   heroBody: { fontSize: 15, lineHeight: 21, opacity: 0.86 },
-  heroButton: {
-    alignItems: "center",
-    alignSelf: "flex-start",
-    borderRadius: 14,
-    flexDirection: "row",
-    gap: 7,
-    marginTop: 6,
-    paddingHorizontal: 15,
-    paddingVertical: 11,
-  },
-  heroButtonText: { fontSize: 14, fontWeight: "800" },
   heroEyebrow: {
     fontSize: 11,
     fontWeight: "800",
