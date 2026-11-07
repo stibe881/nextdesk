@@ -10,13 +10,29 @@ den OAuth-2.1-Server von Supabase Auth, also mit dem normalen nextDesk-Konto
 | --- | --- | --- |
 | `list_workspaces` | lesen | Arbeitsbereiche des Kontos |
 | `search_tickets` | lesen | Tickets suchen (mine, open, unassigned, all) |
-| `get_ticket` | lesen | Ticket mit Beschreibung und Verlauf |
+| `get_ticket` | lesen | Ticket mit Beschreibung, Verlauf, Checkliste, erfasster Zeit, Eskalationen und Verknüpfungen |
 | `search_knowledge`, `get_knowledge_article` | lesen | Wissensdatenbank |
 | `find_asset` | lesen | Geräte nach Name, Nummer, Tag oder Seriennummer |
+| `global_search` | lesen | Gleichzeitig in Tickets, Wiedervorlagen, Wissen, Veranstaltungsräumen und Eintritten suchen |
+| `list_notifications` | lesen | Eigene Benachrichtigungen (standardmässig nur ungelesene) |
+| `list_pending_approvals` | lesen | Ticketfreigaben, die auf den eigenen Entscheid warten |
+| `list_service_tasks` | lesen | Serviceaufgaben: überfällig, heute, kommend (mine, team, all) |
 | `create_ticket` | schreiben | Ticket für sich selbst erfassen |
 | `add_internal_note` | schreiben | Interne Notiz an ein Ticket |
+| `update_ticket_status` | schreiben | Status ändern; Lösen/Schliessen nur mit `confirm=true` |
+| `set_ticket_priority` | schreiben | Priorität ändern (low, normal, high, urgent) |
+| `assign_ticket_to_me` | schreiben | Ticket sich selbst zuweisen |
+| `reply_to_ticket` | schreiben | Antwort an Anfragende; nur mit `confirm=true` |
+| `add_time_entry` | schreiben | Arbeitszeit in Minuten erfassen (internal, billable, goodwill) |
+| `add_checklist_item`, `set_checklist_item` | schreiben | Checklistenpunkt hinzufügen bzw. abhaken |
+| `watch_ticket` | schreiben | Ticket beobachten oder nicht mehr beobachten |
+| `mark_notifications_read` | schreiben | Eine oder alle Benachrichtigungen als gelesen markieren |
+| `decide_approval` | schreiben | Freigabe genehmigen oder ablehnen; nur mit `confirm=true` |
+| `complete_service_task` | schreiben | Serviceaufgabe erledigen (optional mit Notiz) |
 
-Geschriebene Texte enden mit dem Hinweis «Erfasst über den nextDesk-Connector.».
+Geschriebene Texte (Ticket, interne Notiz, Zeitnotiz, Notiz zur Serviceaufgabe)
+enden mit dem Hinweis «Erfasst über den nextDesk-Connector.». Antworten an
+Anfragende werden ohne diesen Hinweis versendet.
 
 ## Einrichtung (einmalig)
 
