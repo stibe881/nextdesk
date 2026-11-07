@@ -1,3 +1,4 @@
+import { TicketTriageSettings } from "./ticket-ai-triage";
 import {
   Fragment,
   useCallback,
@@ -3651,6 +3652,9 @@ export function TenantAdminSettings({
                                                   tenantId={tenantId}
                                                 />
                                                 <TicketRules
+                                                  tenantId={tenantId}
+                                                />
+                                                <TicketTriageSettings
                                                   tenantId={tenantId}
                                                 />
                                                 <TenantAutomation

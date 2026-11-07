@@ -1,3 +1,4 @@
+import { TicketAiTriage } from "./ticket-ai-triage";
 import { TicketAiSummary } from "./ticket-ai-summary";
 import {
   absenceLabel,
@@ -8132,6 +8133,18 @@ export function TicketDetail({
             ticketId={detail.ticket.id}
           />
 
+          {!requesterView ? (
+            <TicketAiTriage
+              canUpdate={detail.canUpdate}
+              key={`triage-${detail.ticket.id}`}
+              onChanged={() => {
+                void loadTicket();
+                onChanged();
+              }}
+              tenantId={tenantId}
+              ticketId={detail.ticket.id}
+            />
+          ) : null}
           {!requesterView ? (
             <TicketAiSummary tenantId={tenantId} ticketId={detail.ticket.id} />
           ) : null}

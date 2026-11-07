@@ -10583,4 +10583,100 @@ $$;
 rollback;
 SQL
 
+# 0219: time rules apply once, renewals create one ticket, triage queues tickets.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_template public.tickets;
+  v_priority uuid;
+  v_rule uuid;
+  v_ticket uuid := gen_random_uuid();
+  v_asset uuid;
+  v_requester_exists boolean;
+begin
+  select ticket.* into v_template
+  from public.tickets ticket
+  join public.ticket_statuses status on status.id = ticket.status_id and not status.is_closed
+  where ticket.department_id is not null
+  limit 1;
+  select id into v_priority from public.ticket_priorities
+  where tenant_id = v_template.tenant_id and id <> v_template.priority_id limit 1;
+
+  insert into public.ticket_rules (tenant_id, name, conditions, actions)
+  values (v_template.tenant_id, 'Nicht zugewiesen nach 1 h',
+    jsonb_build_object('trigger', 'time', 'time', jsonb_build_object('kind', 'unassigned', 'hours', 1),
+      'departmentIds', jsonb_build_array(v_template.department_id)),
+    jsonb_build_object('priorityId', v_priority, 'notify', jsonb_build_array('supervisors')))
+  returning id into v_rule;
+
+  insert into public.tickets (id, tenant_id, department_id, ticket_number, subject, description,
+    status_id, priority_id, requester_id, created_at)
+  values (v_ticket, v_template.tenant_id, v_template.department_id, 'TIME-1', 'Alt',
+    'Test', v_template.status_id, v_template.priority_id, v_template.requester_id,
+    timezone('utc', now()) - interval '2 hours');
+  if (select priority_id from public.tickets where id = v_ticket) <> v_template.priority_id then
+    raise exception 'time rule test: time rule applied on insert';
+  end if;
+  perform public.ticket_time_rules_run();
+  if (select priority_id from public.tickets where id = v_ticket) <> v_priority then
+    raise exception 'time rule test: priority not changed';
+  end if;
+  if not exists (select 1 from public.ticket_rule_time_runs where rule_id = v_rule and ticket_id = v_ticket) then
+    raise exception 'time rule test: run not recorded';
+  end if;
+  update public.tickets set priority_id = v_template.priority_id where id = v_ticket;
+  perform public.ticket_time_rules_run();
+  if (select priority_id from public.tickets where id = v_ticket) <> v_template.priority_id then
+    raise exception 'time rule test: rule applied twice';
+  end if;
+  if (select status_changed_at from public.tickets where id = v_ticket) is null then
+    raise exception 'time rule test: status_changed_at not set';
+  end if;
+
+  -- Renewal tickets
+  insert into public.tenant_feature_flags (tenant_id, feature_key, enabled)
+  values (v_template.tenant_id, 'assets.management', true)
+  on conflict (tenant_id, feature_key) do update set enabled = true;
+  insert into public.assets (tenant_id, name, kind, lifecycle_state)
+  values (v_template.tenant_id, 'Firewall Haupt', 'firewall', 'active') returning id into v_asset;
+  insert into public.asset_infrastructure (asset_id, tenant_id, category, warranty_until, supplier)
+  values (v_asset, v_template.tenant_id, 'firewall', current_date + 30, 'Muster AG');
+  select exists (
+    select 1 from public.user_role_assignments assignment
+    join public.role_permissions permission
+      on permission.role_id = assignment.role_id and permission.permission_code = 'asset.manage'
+    where assignment.tenant_id = v_template.tenant_id
+  ) into v_requester_exists;
+  perform public.infrastructure_create_renewal_tickets();
+  perform public.infrastructure_create_renewal_tickets();
+  if v_requester_exists then
+    if (select count(*) from public.infrastructure_renewal_tickets where asset_id = v_asset) <> 1 then
+      raise exception 'renewal test: expected exactly one renewal';
+    end if;
+    if not exists (
+      select 1 from public.ticket_assets link
+      join public.infrastructure_renewal_tickets renewal on renewal.ticket_id = link.ticket_id
+      where renewal.asset_id = v_asset and link.asset_id = v_asset
+    ) then
+      raise exception 'renewal test: ticket not linked to device';
+    end if;
+  end if;
+
+  -- Triage queue
+  insert into public.ticket_triage_settings (tenant_id, enabled) values (v_template.tenant_id, true);
+  insert into public.tickets (tenant_id, department_id, ticket_number, subject, description,
+    status_id, priority_id, requester_id)
+  values (v_template.tenant_id, v_template.department_id, 'TRIAGE-1', 'Drucker', 'Test',
+    v_template.status_id, v_template.priority_id, v_template.requester_id)
+  returning id into v_ticket;
+  if not exists (select 1 from public.ticket_ai_triage where ticket_id = v_ticket and state = 'queued') then
+    raise exception 'triage test: ticket not queued';
+  end if;
+  raise notice 'time rule, renewal and triage checks ran (renewal requester: %)', v_requester_exists;
+end;
+$$;
+rollback;
+SQL
+
 echo "PostgreSQL 16 migration and RLS integration checks passed."
