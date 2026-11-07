@@ -336,7 +336,7 @@ const NAVIGATION_CATEGORIES = [
     heading: "ARBEITSBEREICH",
     id: "navigation-category-workspace",
     navigationLabel: "Arbeitsbereich",
-    sectionLabels: ["Tickets", "Shop", "Fälle", "Teamführung"],
+    sectionLabels: ["Tickets", "Shop", "Fälle"],
   },
   {
     heading: "PLANUNG & BETRIEB",
@@ -4783,10 +4783,12 @@ function AuthenticatedApp() {
   );
   const { workplaceNavigationItem, remainingNavigationSections } =
     splitWorkplaceNavigation(primaryNavigationSections);
-  // Übersicht und Arbeitsplatz stehen als primäre Einträge über den Kategorien.
+  // Übersicht, Arbeitsplatz und Teamführung stehen als primäre Einträge über
+  // den Kategorien.
   const primaryNavigationItems = [
     remainingNavigationSections.find((item) => item.label === "Übersicht"),
     workplaceNavigationItem,
+    remainingNavigationSections.find((item) => item.label === "Teamführung"),
   ].filter((item): item is NonNullable<typeof item> => Boolean(item));
   const settingsNavigationItem = visibleSections.find(
     (item) => item.label === "Einstellungen",
