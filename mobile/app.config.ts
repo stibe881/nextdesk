@@ -1,6 +1,7 @@
 // Load environment variables with proper priority (system > .env)
 import "./scripts/load-env.js";
 import type { ExpoConfig } from "expo/config";
+import type { WithAndroidWidgetsParams } from "react-native-android-widget";
 
 // Bundle ID format: space.manus.<project_name_dots>.<timestamp>
 // e.g., "my-app" created at 2024-01-15 10:30:45 -> "space.manus.my.app.t20240115103045"
@@ -36,6 +37,8 @@ const env = {
   iosBundleId: bundleId,
   // Google Play verlangt eine eigene Paket-ID; sie weicht bewusst von der iOS-Bundle-ID ab.
   androidPackage: "ch.nextdesk.grossict",
+  // Keep in sync with lib/widget-publisher.ios.ts and targets/widget/Snapshot.swift.
+  iosWidgetAppGroup: `group.${bundleId}`,
 };
 
 // Expo serializes this browser-safe subset into native and web bundles. The server-only
@@ -79,6 +82,11 @@ const config: ExpoConfig = {
     bundleIdentifier: env.iosBundleId,
     infoPlist: {
       ITSAppUsesNonExemptEncryption: false,
+    },
+    // Shared with the WidgetKit extension in targets/widget, which reads the
+    // token-free widget snapshot (lib/widget-publisher.ios.ts).
+    entitlements: {
+      "com.apple.security.application-groups": [env.iosWidgetAppGroup],
     },
   },
   android: {
@@ -205,6 +213,42 @@ const config: ExpoConfig = {
           backgroundColor: "#000000",
         },
       },
+    ],
+    // Home-screen widgets. iOS: WidgetKit extension from targets/widget
+    // (Swift). Android: react-native-android-widget renders
+    // widgets/android/nextdesk-widgets.tsx in a headless JS task.
+    "@bacons/apple-targets",
+    [
+      "react-native-android-widget",
+      {
+        widgets: [
+          {
+            // Keep names in sync with widgets/android/nextdesk-widgets.tsx.
+            name: "NextDeskPriorities",
+            label: "Meine Prioritäten",
+            description:
+              "Deine drei wichtigsten Tickets mit SLA-Warnungen und offenen Freigaben.",
+            minWidth: "250dp",
+            minHeight: "180dp",
+            targetCellWidth: 4,
+            targetCellHeight: 3,
+            resizeMode: "horizontal|vertical",
+            updatePeriodMillis: 1_800_000,
+          },
+          {
+            name: "NextDeskCounters",
+            label: "SLA & Freigaben",
+            description:
+              "Deine SLA-Warnungen (fällig in unter 4 Stunden) und offenen Freigaben.",
+            minWidth: "180dp",
+            minHeight: "110dp",
+            targetCellWidth: 3,
+            targetCellHeight: 2,
+            resizeMode: "horizontal|vertical",
+            updatePeriodMillis: 1_800_000,
+          },
+        ],
+      } satisfies WithAndroidWidgetsParams,
     ],
     [
       "expo-build-properties",

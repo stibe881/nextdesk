@@ -10,6 +10,7 @@ import {
   type ApprovalDecision,
   type InboxApproval,
 } from "@/lib/nextdesk-approvals";
+import { recordWidgetApprovals } from "@/lib/widget-sync";
 import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
 
 /**
@@ -38,7 +39,9 @@ export function ApprovalInboxCard({ tenantId }: { tenantId: string | null }) {
       request.current = requestId;
       void listApprovalInbox()
         .then((items) => {
-          if (request.current === requestId) setApprovals(items);
+          if (request.current !== requestId) return;
+          setApprovals(items);
+          void recordWidgetApprovals(tenantId, items.length);
         })
         .catch(() => {
           // Ohne Berechtigung oder Funktion bleibt die Karte verborgen.
@@ -56,6 +59,10 @@ export function ApprovalInboxCard({ tenantId }: { tenantId: string | null }) {
         decision,
         ticketId: item.ticketId,
       });
+      const remaining = (approvals ?? []).filter(
+        (entry) => entry.approvalId !== item.approvalId,
+      );
+      if (tenantId) void recordWidgetApprovals(tenantId, remaining.length);
       setApprovals((current) =>
         (current ?? []).filter((entry) => entry.approvalId !== item.approvalId),
       );
