@@ -40,6 +40,7 @@ import {
   MessageSquareText,
   Minus,
   MonitorCog,
+  Network,
   Plus,
   Settings,
   SlidersHorizontal,
@@ -99,6 +100,7 @@ import { ServiceReporting } from "./service-reporting";
 import { TeamSupervision } from "./team-supervision";
 import { ProblemCandidates } from "./problem-insights";
 import { TicketKanban } from "./ticket-kanban";
+import { Infrastructure } from "./infrastructure";
 import {
   HomeLayoutEditor,
   loadHomeLayout,
@@ -197,6 +199,7 @@ type Section =
   | "Serviceaufgaben"
   | "Systemstatus"
   | "Assets"
+  | "Infrastruktur"
   | "Lager"
   | "Fälle"
   | "Verträge"
@@ -331,6 +334,7 @@ const sections: readonly { label: Section; Icon: LucideIcon }[] =
     { label: "Services", Icon: MonitorCog },
     { label: "Serviceaufgaben", Icon: ListChecks },
     { label: "Assets", Icon: Boxes },
+    { label: "Infrastruktur", Icon: Network },
     { label: "Lager", Icon: Boxes },
     { label: "Systemstatus", Icon: CircleCheck },
     { label: "Raumplanung", Icon: CalendarDays },
@@ -365,7 +369,7 @@ const NAVIGATION_CATEGORIES = [
     heading: "DIENSTE & ÜBERWACHUNG",
     id: "navigation-category-services",
     navigationLabel: "Dienste und Überwachung",
-    sectionLabels: ["Services", "Systemstatus"],
+    sectionLabels: ["Services", "Infrastruktur", "Systemstatus"],
   },
 ] as const satisfies readonly {
   heading: string;
@@ -1205,6 +1209,28 @@ function baseNotificationPresentation(
         description: `${answeredBy} zu ${ticketLabel}: ${answer}`,
         Icon: MessageSquareText,
         title: "Antwort auf deine Anfrage",
+      };
+    }
+    case "infrastructure.due": {
+      const asset =
+        notificationPayloadText(notification, "assetName", 200) ?? "Ein Gerät";
+      const reason = notificationPayloadText(notification, "reason", 40);
+      const dueOn = notificationPayloadText(notification, "dueOn", 20);
+      const what =
+        reason === "warranty"
+          ? "Die Garantie"
+          : reason === "support"
+            ? "Der Herstellersupport"
+            : reason === "end_of_life"
+              ? "Das End of Life"
+              : "Die Wartung";
+      const date = dueOn
+        ? new Date(`${dueOn}T00:00:00`).toLocaleDateString("de-CH")
+        : "bald";
+      return {
+        description: `${what} von ${asset} ist am ${date} fällig.`,
+        Icon: AlertTriangle,
+        title: "Infrastruktur: Fälligkeit",
       };
     }
     case "ticket.watch.status": {
@@ -4368,6 +4394,9 @@ function AuthenticatedApp() {
     ) {
       return isFeatureEnabled("assets.management");
     }
+    if (item.label === "Infrastruktur") {
+      return isFeatureEnabled("assets.management");
+    }
     if (item.label === "Lager") return isFeatureEnabled("inventory.management");
     if (item.label === "Shop") return isFeatureEnabled("self_service.shop");
     if (item.label === "Wissen") return isFeatureEnabled("knowledge.base");
@@ -4403,6 +4432,7 @@ function AuthenticatedApp() {
   // inventory or workplace; the status is a badge on top of the menu.
   const employeeHiddenSections: readonly Section[] = [
     "Raumplanung",
+    "Infrastruktur",
     "Lager",
     "Arbeitsplatz",
     "Systemstatus",
@@ -5728,6 +5758,13 @@ function AuthenticatedApp() {
             assetQueryRequest={assetFocusQuery ?? undefined}
             fixedTab="assets"
             key={`service-assets:${activeTenant.id}:assets`}
+            tenantId={activeTenant.id}
+          />
+        ) : section === "Infrastruktur" &&
+          activeTenant &&
+          isFeatureEnabled("assets.management") ? (
+          <Infrastructure
+            onOpenTicket={(ticketId) => setSelectedTicketId(ticketId)}
             tenantId={activeTenant.id}
           />
         ) : section === "Lager" &&
