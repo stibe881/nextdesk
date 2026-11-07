@@ -75,6 +75,7 @@ function category(
   if (kind === "ticket.assigned") return "assigned";
   if (kind === "ticket.requester_reply") return "requester_reply";
   if (kind === "ticket.support_reply") return "support_reply";
+  if (kind === "ticket.requester_reminder") return "support_reply";
   if (kind === "ticket.mention") return "mention";
   if (
     kind === "ticket.supervisor_request" ||
@@ -117,6 +118,7 @@ function payloadKind(
   | "watched"
   | "rule_reminder"
   | "vendor_reminder"
+  | "requester_reminder"
   | "children_done"
   | "kudos" {
   if (kind === "ticket.department_question.asked") {
@@ -130,6 +132,7 @@ function payloadKind(
   if (kind.startsWith("ticket.watch.")) return "watched";
   if (kind === "ticket.rule_reminder") return "rule_reminder";
   if (kind === "ticket.vendor_reminder") return "vendor_reminder";
+  if (kind === "ticket.requester_reminder") return "requester_reminder";
   if (kind === "ticket.children_done") return "children_done";
   if (kind === "ticket.kudos") return "kudos";
   return fallback;

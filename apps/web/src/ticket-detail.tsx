@@ -1,5 +1,6 @@
 import { TicketAiTriage } from "./ticket-ai-triage";
 import { TicketAiSummary } from "./ticket-ai-summary";
+import { RequesterTicketProgress } from "./requester-ticket-progress";
 import {
   absenceLabel,
   loadActiveAbsences,
@@ -7486,6 +7487,17 @@ export function TicketDetail({
                 requestDraft={() => requestAiTicketDraft(tenantId, ticketId)}
               />
             )}
+            {requesterView ? (
+              <RequesterTicketProgress
+                onChanged={() => {
+                  void loadTicket();
+                  onChanged();
+                }}
+                refreshKey={`${detail.ticket.status_id}:${detail.ticket.resolved_at ?? ""}:${detail.comments.length}`}
+                tenantId={tenantId}
+                ticketId={detail.ticket.id}
+              />
+            ) : null}
             {requesterView ? (
               <dl className="ticket-detail-facts-grid">
                 <div>

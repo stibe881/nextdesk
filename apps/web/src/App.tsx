@@ -1192,6 +1192,12 @@ function baseNotificationPresentation(
         Icon: MessageSquareText,
         title: "Antwort vom Support",
       };
+    case "ticket.requester_reminder":
+      return {
+        description: `${ticketLabel} wartet auf Ihre Rückmeldung. Ist Ihr Problem gelöst?`,
+        Icon: MessageSquareText,
+        title: "Erinnerung: Ihre Rückmeldung fehlt",
+      };
     case "ticket.mention":
       return {
         description: `Du wurdest in ${ticketLabel} erwähnt.`,

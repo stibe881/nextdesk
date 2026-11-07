@@ -15,15 +15,21 @@ import {
 import {
   normalizeCustomerTicketEmailBranding,
   renderCustomerTicketEmail,
+  type CustomerTicketEmailAction,
   type CustomerTicketEmailBrand,
   type CustomerTicketEmailKind,
 } from "./customer-ticket-email-template.ts";
+import {
+  requesterActionUrl,
+  signRequesterActionToken,
+} from "./requester-action-token.ts";
 import { processEventSpaceEmailTicketIntake } from "./event-space-email-ticket-intake.ts";
 import { processOnboardingEmailTicketIntake } from "./onboarding-email-intake.ts";
 import { resolveTenantFeatureStates } from "./tenant-features.ts";
 import { routeBackupEmail } from "./backup-monitoring.ts";
 
 const SERVICE_EMAIL = "exchange-mail-service@app.nextdesk.ch";
+const APP_ORIGIN = "https://app.nextdesk.ch";
 const SERVICE_NAME = "nextDesk E-Mail-Dienst";
 const MAX_BODY = 48_000;
 const MAX_INBOUND_ATTACHMENTS = 10;
@@ -94,6 +100,61 @@ type InboundAttachment = {
   filename: string;
   size: number;
 };
+
+/**
+ * Automatic reminders (ticket lifecycle) carry signed one-click links
+ * «Problem ist gelöst» / «Ich brauche noch Hilfe». Missing secrets or a
+ * reminder that can no longer be answered simply send the mail without them.
+ */
+async function reminderEmailActions(
+  admin: any,
+  commentId: unknown,
+): Promise<CustomerTicketEmailAction[]> {
+  if (typeof commentId !== "string" || !commentId) return [];
+  try {
+    const reminder = await admin.rpc("ticket_requester_reminder_for_comment", {
+      p_comment_id: commentId,
+    });
+    const data = reminder.data;
+    if (
+      reminder.error ||
+      typeof data !== "object" ||
+      data === null ||
+      typeof data.reminderId !== "string" ||
+      typeof data.ticketId !== "string" ||
+      typeof data.tenantId !== "string" ||
+      typeof data.expiresAt !== "string"
+    )
+      return [];
+    const secret = await admin.rpc("ticket_requester_action_secret");
+    if (secret.error || typeof secret.data !== "string") return [];
+    const expiresAt = Math.floor(Date.parse(data.expiresAt) / 1000);
+    if (!Number.isFinite(expiresAt)) return [];
+    const claims = {
+      reminderId: data.reminderId,
+      ticketId: data.ticketId,
+      tenantId: data.tenantId,
+      expiresAt,
+    };
+    const [resolved, needHelp] = await Promise.all([
+      signRequesterActionToken({ ...claims, action: "resolved" }, secret.data),
+      signRequesterActionToken({ ...claims, action: "need_help" }, secret.data),
+    ]);
+    return [
+      {
+        label: "Problem ist gelöst",
+        url: requesterActionUrl(APP_ORIGIN, resolved),
+        primary: true,
+      },
+      {
+        label: "Ich brauche noch Hilfe",
+        url: requesterActionUrl(APP_ORIGIN, needHelp),
+      },
+    ];
+  } catch {
+    return [];
+  }
+}
 
 export function customerTicketEmailKindForOutbound(
   messageKind: string | null,
@@ -1931,6 +1992,10 @@ export async function dispatchOutboundMessage(
           attachmentNotice: attachments.omitted,
         })
       : renderCustomerTicketEmail({
+          actions:
+            message.kind === "agent_reply"
+              ? await reminderEmailActions(admin, message.comment_id)
+              : [],
           text: bodyText,
           ticketNumber,
           subject: ticketSubject,

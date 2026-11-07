@@ -12182,4 +12182,223 @@ $$;
 rollback;
 SQL
 
+# 0233: repeated reminders with push, one-click answers, resolution median.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_ticket record;
+  v_agent uuid;
+  v_waiting uuid;
+  v_result jsonb;
+  v_key text;
+  v_reminder uuid;
+  v_count integer;
+  v_median jsonb;
+begin
+  select ticket.id, ticket.tenant_id, ticket.department_id, ticket.requester_id,
+         ticket.priority_id
+  into v_ticket
+  from public.tickets ticket
+  where ticket.closed_at is null
+    and exists (select 1 from public.department_memberships dm
+      where dm.department_id = ticket.department_id and dm.status = 'active')
+  order by (ticket.tenant_id = '10000000-0000-4000-8000-000000000001') desc, ticket.created_at
+  limit 1;
+  select dm.user_id into v_agent from public.department_memberships dm
+  where dm.department_id = v_ticket.department_id and dm.status = 'active'
+  limit 1;
+  select id into v_waiting from public.ticket_statuses
+  where tenant_id = v_ticket.tenant_id and key = 'waiting_customer';
+  if v_ticket.id is null or v_agent is null or v_waiting is null then
+    raise exception 'reminder action test: fixtures missing (%, %, %)',
+      v_ticket.id, v_agent, v_waiting;
+  end if;
+  -- The requester must be another active member than the agent.
+  if v_ticket.requester_id = v_agent then
+    select membership.user_id into v_ticket.requester_id
+    from public.tenant_memberships membership
+    where membership.tenant_id = v_ticket.tenant_id and membership.status = 'active'
+      and membership.user_id <> v_agent
+    limit 1;
+    if v_ticket.requester_id is null then
+      insert into auth.users (id) values ('02330000-0000-4000-8000-000000000001');
+      insert into public.user_profiles (id, display_name)
+      values ('02330000-0000-4000-8000-000000000001', 'Erinnerung Anfragende');
+      insert into public.tenant_memberships (tenant_id, user_id, status, joined_at)
+      values (v_ticket.tenant_id, '02330000-0000-4000-8000-000000000001', 'active', now());
+      v_ticket.requester_id := '02330000-0000-4000-8000-000000000001';
+    end if;
+  end if;
+  update public.tickets set requester_id = v_ticket.requester_id, affected_user_id = null
+  where id = v_ticket.id;
+  update public.tickets set assigned_agent_id = v_agent where id = v_ticket.id;
+  update public.tickets set status_id = v_waiting,
+    waiting_since = timezone('utc', now()) - interval '10 days',
+    waiting_reminder_sent_at = null, waiting_reminder_count = 0
+  where id = v_ticket.id;
+  insert into public.ticket_lifecycle_settings (tenant_id, waiting_reminder_enabled,
+    waiting_reminder_days, waiting_reminder_max_count, waiting_resolve_enabled,
+    resolved_close_enabled)
+  values (v_ticket.tenant_id, true, 3, 2, false, false)
+  on conflict (tenant_id) do update set waiting_reminder_enabled = true,
+    waiting_reminder_days = 3, waiting_reminder_max_count = 2,
+    waiting_reminder_actions_enabled = true,
+    waiting_resolve_enabled = false, resolved_close_enabled = false;
+
+  begin
+    update public.ticket_lifecycle_settings set waiting_reminder_max_count = 9
+    where tenant_id = v_ticket.tenant_id;
+    raise exception 'reminder action test: max count 9 accepted';
+  exception when check_violation then
+    null;
+  end;
+
+  -- First reminder: recorded, with push but without a second support_reply push.
+  select count(*) into v_count from public.ticket_notifications
+  where ticket_id = v_ticket.id and kind = 'ticket.support_reply';
+  v_result := public.ticket_lifecycle_run();
+  select id into v_reminder from public.ticket_requester_reminders
+  where ticket_id = v_ticket.id and reminder_number = 1;
+  if v_reminder is null then
+    raise exception 'reminder action test: no reminder record (%)', v_result;
+  end if;
+  if public.push_notification_category('ticket.requester_reminder') <> 'support_reply' then
+    raise exception 'reminder action test: no push category';
+  end if;
+  if not exists (select 1 from public.ticket_notifications
+      where ticket_id = v_ticket.id and kind = 'ticket.requester_reminder'
+        and user_id = v_ticket.requester_id) then
+    raise exception 'reminder action test: no reminder push';
+  end if;
+  if (select count(*) from public.ticket_notifications
+      where ticket_id = v_ticket.id and kind = 'ticket.support_reply') <> v_count then
+    raise exception 'reminder action test: reminder created a support_reply push';
+  end if;
+  if public.ticket_requester_reminder_for_comment(
+       (select comment_id from public.ticket_requester_reminders where id = v_reminder)) is null then
+    raise exception 'reminder action test: no e-mail actions for the reminder';
+  end if;
+  if (public.ticket_requester_reminder_preview(v_reminder, v_ticket.id) ->> 'state') <> 'open' then
+    raise exception 'reminder action test: preview not open';
+  end if;
+
+  -- Not again right away; a second reminder after another interval; never a third.
+  perform public.ticket_lifecycle_run();
+  if (select count(*) from public.ticket_requester_reminders where ticket_id = v_ticket.id) <> 1 then
+    raise exception 'reminder action test: reminded again too early';
+  end if;
+  update public.tickets set waiting_reminder_sent_at = timezone('utc', now()) - interval '4 days'
+  where id = v_ticket.id;
+  perform public.ticket_lifecycle_run();
+  update public.tickets set waiting_reminder_sent_at = timezone('utc', now()) - interval '4 days'
+  where id = v_ticket.id;
+  perform public.ticket_lifecycle_run();
+  if (select count(*) from public.ticket_requester_reminders where ticket_id = v_ticket.id) <> 2
+     or (select waiting_reminder_count from public.tickets where id = v_ticket.id) <> 2 then
+    raise exception 'reminder action test: max count not respected';
+  end if;
+
+  -- Someone else cannot answer for the requester.
+  begin
+    perform public.ticket_requester_respond(v_ticket.tenant_id, v_ticket.id, v_agent,
+      'resolved', 'portal', null, null);
+    raise exception 'reminder action test: agent answered as requester';
+  exception when no_data_found then
+    null;
+  end;
+
+  -- One click: resolved by the requester, event recorded, link used up.
+  v_result := public.ticket_requester_respond(v_ticket.tenant_id, v_ticket.id, null,
+    'resolved', 'email', v_reminder, null);
+  select status.key into v_key from public.tickets ticket
+  join public.ticket_statuses status on status.id = ticket.status_id where ticket.id = v_ticket.id;
+  if v_key <> 'resolved' or (select resolved_at from public.tickets where id = v_ticket.id) is null then
+    raise exception 'reminder action test: not resolved (%)', v_key;
+  end if;
+  if not exists (select 1 from public.ticket_events where ticket_id = v_ticket.id
+      and event_type = 'ticket.resolved_by_requester' and actor_id = v_ticket.requester_id) then
+    raise exception 'reminder action test: event missing';
+  end if;
+  begin
+    perform public.ticket_requester_respond(v_ticket.tenant_id, v_ticket.id, null,
+      'resolved', 'email', v_reminder, null);
+    raise exception 'reminder action test: token used twice';
+  exception when invalid_parameter_value then
+    if sqlerrm <> 'token_used' then raise; end if;
+  end;
+  if (public.ticket_requester_reminder_preview(v_reminder, v_ticket.id) ->> 'state') <> 'used' then
+    raise exception 'reminder action test: preview not used';
+  end if;
+
+  -- «Ich brauche noch Hilfe» in the portal: back to «In Bearbeitung» with a reply.
+  update public.tickets set status_id = v_waiting, resolved_at = null,
+    waiting_since = timezone('utc', now())
+  where id = v_ticket.id;
+  perform public.ticket_requester_respond(v_ticket.tenant_id, v_ticket.id,
+    v_ticket.requester_id, 'need_help', 'portal', null, 'Es geht immer noch nicht.');
+  select status.key into v_key from public.tickets ticket
+  join public.ticket_statuses status on status.id = ticket.status_id where ticket.id = v_ticket.id;
+  if v_key <> 'in_progress' or not exists (
+      select 1 from public.ticket_comments where ticket_id = v_ticket.id
+        and author_id = v_ticket.requester_id and body = 'Es geht immer noch nicht.') then
+    raise exception 'reminder action test: need help not applied (%)', v_key;
+  end if;
+  begin
+    perform public.ticket_requester_respond(v_ticket.tenant_id, v_ticket.id,
+      v_ticket.requester_id, 'resolved', 'portal', null, null);
+    raise exception 'reminder action test: answered a ticket that is not waiting';
+  exception when invalid_parameter_value then
+    if sqlerrm <> 'ticket_not_waiting' then raise; end if;
+  end;
+
+  -- Expired links are refused.
+  update public.tickets set status_id = v_waiting, waiting_since = timezone('utc', now())
+  where id = v_ticket.id;
+  insert into public.ticket_requester_reminders (tenant_id, ticket_id, recipient_id,
+    reminder_number, sent_at, actions_expire_at)
+  values (v_ticket.tenant_id, v_ticket.id, v_ticket.requester_id, 1,
+    timezone('utc', now()) - interval '20 days', timezone('utc', now()) - interval '6 days')
+  returning id into v_reminder;
+  begin
+    perform public.ticket_requester_respond(v_ticket.tenant_id, v_ticket.id, null,
+      'resolved', 'email', v_reminder, null);
+    raise exception 'reminder action test: expired token accepted';
+  exception when invalid_parameter_value then
+    if sqlerrm <> 'token_expired' then raise; end if;
+  end;
+
+  -- Median of similar tickets (five or more) solved in the last 90 days.
+  select count(*) into v_count from public.tickets
+  where tenant_id = v_ticket.tenant_id and id <> v_ticket.id;
+  if v_count >= 5 then
+    update public.tickets
+    set priority_id = v_ticket.priority_id,
+        created_at = timezone('utc', now()) - interval '1 day 2 hours',
+        resolved_at = timezone('utc', now()) - interval '1 day'
+    where id in (
+      select id from public.tickets
+      where tenant_id = v_ticket.tenant_id and id <> v_ticket.id
+      order by id limit 5
+    );
+    update public.tickets set resolved_at = null
+    where tenant_id = v_ticket.tenant_id and priority_id = v_ticket.priority_id
+      and resolved_at is not null
+      and resolved_at <> timezone('utc', now()) - interval '1 day';
+    v_median := public.ticket_resolution_median(v_ticket.tenant_id, v_ticket.priority_id, null);
+    if v_median is null or (v_median ->> 'seconds')::numeric <> 7200
+       or v_median ->> 'basis' <> 'priority' then
+      raise exception 'reminder action test: wrong median %', v_median;
+    end if;
+  end if;
+  if public.ticket_requester_action_secret() is null
+     or char_length(public.ticket_requester_action_secret()) < 64 then
+    raise exception 'reminder action test: no signing secret';
+  end if;
+  raise notice 'requester progress and reminder action checks ran';
+end;
+$$;
+rollback;
+SQL
+
 echo "PostgreSQL 16 migration and RLS integration checks passed."

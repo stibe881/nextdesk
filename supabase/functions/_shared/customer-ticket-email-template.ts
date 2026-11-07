@@ -11,7 +11,15 @@ export type CustomerTicketEmailBrand = {
   secondaryColor: string;
 };
 
+/** One-click buttons (e.g. reminder answers). Only https links are rendered. */
+export type CustomerTicketEmailAction = {
+  label: string;
+  url: string;
+  primary?: boolean;
+};
+
 type CustomerTicketEmailInput = {
+  actions?: readonly CustomerTicketEmailAction[];
   attachmentNotice: boolean;
   branding: CustomerTicketEmailBrand;
   kind: CustomerTicketEmailKind;
@@ -169,6 +177,31 @@ function brandMark(branding: CustomerTicketEmailBrand): string {
   return `<span style="color:#ffffff;font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;line-height:20px;">${escapeHtml(branding.displayName)}</span>`;
 }
 
+function actionsHtml(
+  actions: readonly CustomerTicketEmailAction[] | undefined,
+  branding: CustomerTicketEmailBrand,
+): string {
+  const safe = (actions ?? [])
+    .filter((action) => {
+      try {
+        const url = new URL(action.url);
+        return url.protocol === "https:" && !url.username && !url.password;
+      } catch {
+        return false;
+      }
+    })
+    .slice(0, 3);
+  if (safe.length === 0) return "";
+  const buttons = safe
+    .map((action) => {
+      const background = action.primary ? branding.primaryColor : "#FFFFFF";
+      const foreground = action.primary ? "#FFFFFF" : branding.secondaryColor;
+      return `<td style="padding:0 10px 10px 0;"><a href="${escapeHtml(action.url)}" style="display:inline-block;padding:12px 20px;border:2px solid ${branding.primaryColor};border-radius:10px;background:${background};color:${foreground};font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:700;line-height:20px;text-decoration:none;">${escapeHtml(action.label.slice(0, 60))}</a></td>`;
+    })
+    .join("");
+  return `<tr><td style="padding:6px 32px 14px;"><table role="presentation" cellspacing="0" cellpadding="0" border="0"><tr>${buttons}</tr></table><p style="margin:0;color:#607089;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:18px;">Die Links sind persönlich, einmal verwendbar und 14 Tage gültig.</p></td></tr>`;
+}
+
 /**
  * Renders presentation-only, Outlook-friendly HTML for customer-facing ticket
  * e-mails. All dynamic values are escaped locally; callers still own recipient,
@@ -214,6 +247,7 @@ export function renderCustomerTicketEmail(
               </td></tr>
             </table>
           </td></tr>
+          ${actionsHtml(input.actions, branding)}
           ${attachmentNotice}
           <tr><td style="padding:14px 32px 26px;">
             <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="border-left:4px solid ${branding.accentColor};background:#F6FAF9;">

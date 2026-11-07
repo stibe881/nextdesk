@@ -4,7 +4,7 @@ import {
   assertStringIncludes,
 } from "jsr:@std/assert@1";
 
-import { buildApnsPayload } from "./apns.ts";
+import { APNS_REQUESTER_REMINDER_CATEGORY, buildApnsPayload } from "./apns.ts";
 
 Deno.test(
   "contract deadline payload is neutral and carries only the opaque contract route",
@@ -28,6 +28,30 @@ Deno.test(
     assertFalse(String(alert.body).includes("Vertragsname"));
   },
 );
+
+Deno.test("requester reminder carries the action category and ticket route", () => {
+  const payload = buildApnsPayload({
+    kind: "requester_reminder",
+    tenantId: "00000000-0000-4000-8000-000000000001",
+    notificationId: "reminder-1",
+    ticketId: "00000000-0000-4000-8000-000000000003",
+    ticketNumber: "ICT-2026-000042",
+  });
+  const aps = payload.aps as Record<string, unknown>;
+  const body = payload.body as Record<string, unknown>;
+  const alert = aps.alert as Record<string, unknown>;
+  assertEquals(aps.category, APNS_REQUESTER_REMINDER_CATEGORY);
+  assertEquals(body.ticketId, "00000000-0000-4000-8000-000000000003");
+  assertEquals(body.kind, "requester_reminder");
+  assertStringIncludes(String(alert.body), "ICT-2026-000042");
+  const other = buildApnsPayload({
+    kind: "support_reply",
+    tenantId: "00000000-0000-4000-8000-000000000001",
+    notificationId: "reply-1",
+    ticketId: "00000000-0000-4000-8000-000000000003",
+  });
+  assertFalse("category" in (other.aps as Record<string, unknown>));
+});
 
 Deno.test("summary payload is source-neutral", () => {
   const payload = buildApnsPayload({

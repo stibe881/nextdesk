@@ -240,3 +240,6 @@ verify_jwt = true
 
 [functions.ticket-support-levels]
 verify_jwt = true
+
+[functions.requester-reminder-action]
+verify_jwt = false

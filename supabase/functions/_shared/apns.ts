@@ -1,9 +1,13 @@
 type ApnsEnvironment = "production" | "development";
 
+/** Must match the category the mobile app registers (push-notification-bridge). */
+export const APNS_REQUESTER_REMINDER_CATEGORY = "NEXTDESK_REQUESTER_REMINDER";
+
 export type ApnsPayloadKind =
   | "assigned"
   | "requester_reply"
   | "support_reply"
+  | "requester_reminder"
   | "mention"
   | "resolved"
   | "approval"
@@ -197,6 +201,13 @@ function alertFor(input: ApnsPayloadInput): { title: string; body: string } {
         body: subject
           ? `Es gibt eine neue Antwort zu deinem Ticket ${ticketNumber}: ${subject}`
           : `Es gibt eine neue Antwort zu deinem Ticket ${ticketNumber}.`,
+      };
+    case "requester_reminder":
+      return {
+        title: "Wir warten auf deine Antwort",
+        body: subject
+          ? `${ticketNumber}: ${subject} – Ist dein Problem gelöst? Tippe hier zum Antworten.`
+          : `${ticketNumber} wartet auf deine Rückmeldung. Ist dein Problem gelöst?`,
       };
     case "mention":
       return {
@@ -522,6 +533,11 @@ export function buildApnsPayload(
     alert,
     sound: "default",
   };
+  // iOS shows «Problem ist gelöst» / «Ich brauche noch Hilfe» as notification
+  // actions; both open the ticket in the app, where the person confirms.
+  if (input.kind === "requester_reminder" && input.ticketId) {
+    aps.category = APNS_REQUESTER_REMINDER_CATEGORY;
+  }
   if (
     input.ticketId &&
     input.kind !== "summary" &&

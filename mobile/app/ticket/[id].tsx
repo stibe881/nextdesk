@@ -26,6 +26,8 @@ import {
 import { useMobileNetworkStatus } from "@/components/offline-status";
 import { RequesterPicker } from "@/components/requester-picker";
 import { DepartmentQuestions } from "@/components/department-questions";
+import { RequesterTicketProgress } from "@/components/requester-ticket-progress";
+import { reminderAnswerFromParam } from "@/lib/requester-progress";
 import { TicketConversation } from "@/components/ticket-conversation";
 import { loadTicketSnippets } from "@/lib/nextdesk-assistance";
 import type { ReplySnippet, SnippetContext } from "@/lib/reply-snippets";
@@ -239,7 +241,11 @@ function compactContextValue(value: unknown): string | null {
 }
 
 export default function TicketDetailScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, reminderAnswer: reminderAnswerParam } = useLocalSearchParams<{
+    id: string;
+    reminderAnswer?: string;
+  }>();
+  const reminderAnswer = reminderAnswerFromParam(reminderAnswerParam);
   const { recoveryEpoch } = useMobileNetworkStatus();
   const {
     isEnabled,
@@ -1633,6 +1639,18 @@ export default function TicketDetailScreen() {
               </Pressable>
             ) : null}
           </View>
+
+          {canUseRequesterPortal &&
+          currentUserId &&
+          ticket.requesterId === currentUserId ? (
+            <RequesterTicketProgress
+              initialAnswer={reminderAnswer}
+              key={`${ticket.id}:${reminderAnswer ?? ""}`}
+              onChanged={() => void load(false)}
+              refreshKey={`${ticket.statusId}:${ticket.resolvedAt ?? ""}:${ticket.comments.length}`}
+              ticketId={ticket.id}
+            />
+          ) : null}
 
           <View
             style={[styles.detailsCard, tokenStyles.card, densityStyles.card]}
