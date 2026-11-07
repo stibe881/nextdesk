@@ -8999,7 +8999,7 @@ begin
   -- 4. Loan: out and back in.
   v_order := public.shop_submit_order(v_employee, v_tenant, gen_random_uuid(),
     jsonb_build_array(jsonb_build_object('catalog_item_id', v_cat_beamer, 'quantity', 1)),
-    'pickup', null, null, current_date, current_date + 2, null);
+    'pickup', null, null, (timezone('Europe/Zurich', now()))::date, (timezone('Europe/Zurich', now()))::date + 2, null);
   v_status := public.shop_update_order(v_owner, v_tenant, v_order, 'issue', '{}'::jsonb);
   select physical_quantity into v_physical from public.inventory_stock_balances
   where tenant_id = v_tenant and item_id = v_beamer;
@@ -9015,7 +9015,7 @@ begin
   begin
     perform public.shop_submit_order(v_employee, v_tenant, gen_random_uuid(),
       jsonb_build_array(jsonb_build_object('catalog_item_id', v_cat_beamer, 'quantity', 1)),
-      'pickup', null, null, current_date, current_date + 30, null);
+      'pickup', null, null, (timezone('Europe/Zurich', now()))::date, (timezone('Europe/Zurich', now()))::date + 30, null);
     raise exception 'A too long loan was accepted';
   exception when invalid_parameter_value then null;
   end;
