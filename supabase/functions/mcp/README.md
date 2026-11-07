@@ -95,6 +95,11 @@ Connector einen deutschen Anzeigetitel (`title`). Auch die Felder sind deutsch
 Schlüssel, die der Connector an die Edge Functions weitergibt, bleiben
 unverändert.
 
+Auch Auswahlwerte (z. B. `in_bearbeitung`, `hoch`, `woechentlich`, `beamer`)
+und die Feldnamen in den Antworten sind deutsch. Eine zentrale Schicht
+übersetzt deutsche Eingaben vor der Ausführung in die Werte von nextDesk
+(englische Werte bleiben gültig) und gibt Antworten deutsch aus.
+
 ## Vorlagen und Entwürfe
 
 **Vorlagen (MCP-Prompts):** In der Gemini CLI erscheinen sie als Slash-Befehle

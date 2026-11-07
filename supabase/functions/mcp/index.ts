@@ -151,7 +151,11 @@ function clip(value: unknown, max: number): string {
 }
 
 function textResult(value: unknown): ToolResult {
-  return { content: [{ type: "text", text: JSON.stringify(value, null, 2) }] };
+  return {
+    content: [
+      { type: "text", text: JSON.stringify(localizeOutput(value), null, 2) },
+    ],
+  };
 }
 
 // ---------------------------------------------------------------- Zugriff
@@ -1520,7 +1524,7 @@ const TOOLS: Tool[] = [
   {
     name: "zeit_erfassen",
     description:
-      "Erfasst Arbeitszeit auf einem Ticket (in Minuten). verrechnung: internal (Standard), billable (verrechenbar) oder goodwill (Kulanz).",
+      "Erfasst Arbeitszeit auf einem Ticket (in Minuten). verrechnung: intern (Standard), verrechenbar oder kulanz.",
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
@@ -1616,7 +1620,7 @@ const TOOLS: Tool[] = [
   {
     name: "checklistenpunkt_abhaken",
     description:
-      "Hakt einen Checklistenpunkt eines Tickets ab oder öffnet ihn wieder. punkt: id aus ticket_anzeigen (checklist).",
+      "Hakt einen Checklistenpunkt eines Tickets ab oder öffnet ihn wieder. punkt: id aus ticket_anzeigen (checkliste).",
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
@@ -2170,7 +2174,9 @@ const TOOLS: Tool[] = [
       const priority =
         typeof args.prioritaet === "string" ? args.prioritaet : "normal";
       if (!["low", "normal", "high"].includes(priority)) {
-        throw new ToolError('"prioritaet" muss low, normal oder high sein.');
+        throw new ToolError(
+          '"prioritaet" muss niedrig, normal oder hoch sein.',
+        );
       }
       const workspace = await resolveWorkspace(
         config,
@@ -2422,7 +2428,7 @@ const TOOLS: Tool[] = [
   {
     name: "uebergabe_erstellen",
     description:
-      "Erstellt eine Übergabe für ein Ticket (z. B. vor Abwesenheit oder Schichtwechsel). risiko: low, medium (Standard), high. Ohne bestaetigt zeigt das Werkzeug zuerst einen Entwurf zum Prüfen und Ergänzen; erst mit bestaetigt=true wird abgeschickt.",
+      "Erstellt eine Übergabe für ein Ticket (z. B. vor Abwesenheit oder Schichtwechsel). risiko: niedrig, mittel (Standard) oder hoch. Ohne bestaetigt zeigt das Werkzeug zuerst einen Entwurf zum Prüfen und Ergänzen; erst mit bestaetigt=true wird abgeschickt.",
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
@@ -2458,7 +2464,7 @@ const TOOLS: Tool[] = [
       }
       const risk = typeof args.risiko === "string" ? args.risiko : "medium";
       if (!["low", "medium", "high"].includes(risk)) {
-        throw new ToolError('"risiko" muss low, medium oder high sein.');
+        throw new ToolError('"risiko" muss niedrig, mittel oder hoch sein.');
       }
       const { workspace, ticketId } = await ticketContext(
         config,
@@ -2645,7 +2651,7 @@ const TOOLS: Tool[] = [
   {
     name: "wissensartikel_verknuepfen",
     description:
-      "Verknüpft einen Wissensartikel (id aus wissen_suchen) mit einem Ticket. sichtbarkeit: internal (Standard) oder external (für Anfragende sichtbar, nur mit bestaetigt=true).",
+      "Verknüpft einen Wissensartikel (id aus wissen_suchen) mit einem Ticket. sichtbarkeit: intern (Standard) oder extern (für Anfragende sichtbar, nur mit bestaetigt=true).",
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
@@ -2673,7 +2679,7 @@ const TOOLS: Tool[] = [
       const visibility =
         args.sichtbarkeit === "external" ? "external" : "internal";
       if (args.sichtbarkeit !== undefined && args.sichtbarkeit !== visibility) {
-        throw new ToolError('"sichtbarkeit" muss internal oder external sein.');
+        throw new ToolError('"sichtbarkeit" muss intern oder extern sein.');
       }
       if (visibility === "external" && args.bestaetigt !== true) {
         throw new ToolError(
@@ -4101,7 +4107,7 @@ const TOOLS: Tool[] = [
         sichtbarkeit: {
           type: "string",
           enum: ["internal", "external"],
-          description: "internal (Standard) oder external (für Anfragende).",
+          description: "intern (Standard) oder extern (für Anfragende).",
         },
         abteilung: {
           type: "string",
@@ -5086,7 +5092,7 @@ const TOOLS: Tool[] = [
   {
     name: "stoerungsmeldung_speichern",
     description:
-      "Erfasst eine Störungsmeldung oder aktualisiert sie (meldung: ID). status: investigating, identified, monitoring, resolved. Braucht das Verwaltungsrecht für Tickets. Frage vorher nach. Ohne bestaetigt zeigt das Werkzeug zuerst einen Entwurf zum Prüfen und Ergänzen; erst mit bestaetigt=true wird abgeschickt.",
+      "Erfasst eine Störungsmeldung oder aktualisiert sie (meldung: ID). status: wird_untersucht, ursache_bekannt, wird_beobachtet oder behoben. Braucht das Verwaltungsrecht für Tickets. Frage vorher nach. Ohne bestaetigt zeigt das Werkzeug zuerst einen Entwurf zum Prüfen und Ergänzen; erst mit bestaetigt=true wird abgeschickt.",
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
@@ -5700,7 +5706,7 @@ const TOOLS: Tool[] = [
   {
     name: "anfragende_profil_anzeigen",
     description:
-      "Zeigt das Profil einer anfragenden Person (Standort, Abteilung, Angebot, Sprache, bevorzugter Kontaktweg, wichtige Hinweise). anfragende_person: ID aus anfragende_suchen oder aus ticket_anzeigen (Angabe requesterId). Braucht das Recht zur Pflege von Anfragenden.",
+      "Zeigt das Profil einer anfragenden Person (Standort, Abteilung, Angebot, Sprache, bevorzugter Kontaktweg, wichtige Hinweise). anfragende_person: ID aus anfragende_suchen oder aus ticket_anzeigen (Angabe anfragende_person_id). Braucht das Recht zur Pflege von Anfragenden.",
     annotations: { readOnlyHint: true, title: "Profil Anfragende" },
     inputSchema: {
       type: "object",
@@ -6488,7 +6494,10 @@ const PROMPTS: Prompt[] = [
         name: "beschreibung",
         description: "Was ist passiert, seit wann, welches Gerät?",
       },
-      { name: "prioritaet", description: "low, normal, high oder urgent" },
+      {
+        name: "prioritaet",
+        description: "niedrig, normal, hoch oder dringend",
+      },
       { name: "abteilung", description: "Zuständige Abteilung (Name)" },
       {
         name: "fuer_person",
@@ -6513,7 +6522,10 @@ const PROMPTS: Prompt[] = [
       },
       { name: "seit_wann", description: "Seit wann besteht das Problem?" },
       { name: "geraet", description: "Betroffenes Gerät oder Programm" },
-      { name: "dringlichkeit", description: "low, normal, high oder urgent" },
+      {
+        name: "dringlichkeit",
+        description: "niedrig, normal, hoch oder dringend",
+      },
     ],
     intro:
       "Suche zuerst mit wissen_suchen nach einer Lösung und zeige sie mir. Hilft sie nicht oder gibt es keine, erfasse ein Ticket: Betreff kurz aus der Beschreibung, Beschreibung mit allen Angaben (was, seit wann, Gerät), Priorität aus der Dringlichkeit. Schau mit servicestatus_anzeigen nach, ob eine bekannte Störung vorliegt, und erwähne sie.",
@@ -6569,7 +6581,7 @@ const PROMPTS: Prompt[] = [
       { name: "bis", description: "Ende, z. B. 10:30", required: true },
       {
         name: "wiederholung",
-        description: "keine, wöchentlich oder monatlich",
+        description: "keine, woechentlich oder monatlich",
       },
       { name: "anzahl", description: "Anzahl Termine bei Wiederholung" },
       { name: "teilnehmende", description: "Erwartete Anzahl Personen" },
@@ -6579,7 +6591,7 @@ const PROMPTS: Prompt[] = [
       },
     ],
     intro:
-      "Datum und Zeiten sind Schweizer Zeit (Europe/Zurich); rechne sie in ISO 8601 mit Zeitzone um. Übersetze die Ausstattung in die erlaubten Werte des Felds ausstattung.",
+      "Datum und Zeiten sind Schweizer Zeit (Europe/Zurich); rechne sie in ISO 8601 mit Zeitzone um. Wähle für die Ausstattung die passenden Werte des Felds ausstattung (z. B. beamer, videokonferenz, mikrofone).",
     tool: "raum_buchen",
   },
   {
@@ -6617,7 +6629,7 @@ const PROMPTS: Prompt[] = [
       },
       { name: "menge", description: "Menge (Standard 1)" },
       { name: "grund", description: "Wofür wird es gebraucht?" },
-      { name: "lieferung", description: "Abholung oder an den Platz" },
+      { name: "lieferung", description: "abholung oder an_den_platz" },
     ],
     intro: "Suche die Artikel zuerst mit shop_katalog_anzeigen.",
     tool: "im_shop_bestellen",
@@ -6652,7 +6664,7 @@ const PROMPTS: Prompt[] = [
         name: "naechste_schritte",
         description: "Was ist als Nächstes zu tun?",
       },
-      { name: "risiko", description: "low, medium oder high" },
+      { name: "risiko", description: "niedrig, mittel oder hoch" },
     ],
     intro:
       "Fehlt die Zusammenfassung, schlage aus ticket_anzeigen eine vor und lass sie mich bestätigen.",
@@ -6711,12 +6723,11 @@ const PROMPTS: Prompt[] = [
       },
       {
         name: "status",
-        description: "untersucht, erkannt, beobachtet oder behoben",
+        description:
+          "wird_untersucht, ursache_bekannt, wird_beobachtet oder behoben",
       },
       { name: "abteilung", description: "Betroffene Abteilung" },
     ],
-    intro:
-      "Übersetze den Status: untersucht = investigating, erkannt = identified, beobachtet = monitoring, behoben = resolved (Standard investigating).",
     tool: "stoerungsmeldung_speichern",
   },
   {
@@ -6726,11 +6737,10 @@ const PROMPTS: Prompt[] = [
     arguments: [
       { name: "ticket", description: "Ticketnummer", required: true },
       { name: "minuten", description: "Dauer in Minuten", required: true },
-      { name: "verrechnung", description: "intern, verrechenbar oder Kulanz" },
+      { name: "verrechnung", description: "intern, verrechenbar oder kulanz" },
       { name: "notiz", description: "Was wurde gemacht?" },
     ],
-    intro:
-      "Übersetze die Verrechnung: intern = internal, verrechenbar = billable, Kulanz = goodwill. Zeige mir die Angaben kurz und erfasse nach meiner Bestätigung.",
+    intro: "Zeige mir die Angaben kurz und erfasse nach meiner Bestätigung.",
     tool: "zeit_erfassen",
   },
 ];
@@ -6754,6 +6764,649 @@ function promptMessage(prompt: Prompt, args: Json): string {
   ]
     .filter(Boolean)
     .join("\n\n");
+}
+
+// ---------------------------------------------------------------- Deutsch
+//
+// Gemini zeigt Werkzeugnamen, Felder, Auswahlwerte und Antworten an. Die
+// Werkzeuge arbeiten intern mit den Schlüsseln von nextDesk (z. B.
+// "in_progress"); diese Schicht zeigt sie deutsch an und übersetzt deutsche
+// Eingaben vor der Ausführung zurück. Englische Werte bleiben gültig.
+
+/** Auswahllisten: [nextDesk-Werte, deutsche Werte] in gleicher Reihenfolge. */
+const ENUM_SETS: [readonly string[], readonly string[]][] = [
+  [
+    ["new", "in_progress", "waiting", "waiting_customer", "resolved", "closed"],
+    [
+      "neu",
+      "in_bearbeitung",
+      "wartend",
+      "wartet_auf_kunde",
+      "geloest",
+      "geschlossen",
+    ],
+  ],
+  [
+    ["low", "normal", "high", "urgent"],
+    ["niedrig", "normal", "hoch", "dringend"],
+  ],
+  [
+    ["low", "normal", "high"],
+    ["niedrig", "normal", "hoch"],
+  ],
+  [
+    ["low", "medium", "high"],
+    ["niedrig", "mittel", "hoch"],
+  ],
+  [
+    ["mine", "open", "unassigned", "all"],
+    ["meine", "offene", "nicht_zugewiesene", "alle"],
+  ],
+  [
+    ["mine", "team", "all"],
+    ["meine", "team", "alle"],
+  ],
+  [
+    ["mine", "approvals"],
+    ["meine", "freigaben"],
+  ],
+  [
+    ["internal", "billable", "goodwill"],
+    ["intern", "verrechenbar", "kulanz"],
+  ],
+  [
+    ["internal", "external"],
+    ["intern", "extern"],
+  ],
+  [
+    ["approved", "rejected"],
+    ["genehmigt", "abgelehnt"],
+  ],
+  [
+    ["acknowledge", "resolve"],
+    ["bestaetigen", "abschliessen"],
+  ],
+  [
+    ["technical", "organizational", "sla"],
+    ["fachlich", "organisatorisch", "sla"],
+  ],
+  [
+    ["relates_to", "duplicates", "blocks", "blocked_by", "parent", "child"],
+    [
+      "verwandt",
+      "dupliziert",
+      "blockiert",
+      "blockiert_durch",
+      "uebergeordnet",
+      "untergeordnet",
+    ],
+  ],
+  [
+    ["none", "weekly", "monthly"],
+    ["keine", "woechentlich", "monatlich"],
+  ],
+  [
+    [
+      "ict_material",
+      "internet_access",
+      "sobe_network_access",
+      "projector",
+      "connections",
+      "display",
+      "audio",
+      "videocall",
+      "microphones",
+      "screen",
+      "reception_laptop",
+    ],
+    [
+      "ict_material",
+      "internetzugang",
+      "sobe_netzwerk",
+      "beamer",
+      "anschluesse",
+      "bildschirm",
+      "audio",
+      "videokonferenz",
+      "mikrofone",
+      "leinwand",
+      "empfangs_laptop",
+    ],
+  ],
+  [
+    ["open", "in_progress", "completed"],
+    ["offen", "in_bearbeitung", "erledigt"],
+  ],
+  [
+    ["open", "in_progress", "blocked", "completed"],
+    ["offen", "in_bearbeitung", "blockiert", "erledigt"],
+  ],
+  [
+    ["planned", "in_preparation", "ready", "conducted", "completed"],
+    ["geplant", "in_vorbereitung", "bereit", "durchgefuehrt", "abgeschlossen"],
+  ],
+  [
+    ["start", "skip", "note", "check", "reopen", "reschedule", "assign"],
+    [
+      "starten",
+      "ueberspringen",
+      "notiz",
+      "abhaken",
+      "wieder_oeffnen",
+      "neu_planen",
+      "zuweisen",
+    ],
+  ],
+  [
+    ["investigating", "identified", "monitoring", "resolved"],
+    ["wird_untersucht", "ursache_bekannt", "wird_beobachtet", "behoben"],
+  ],
+  [
+    ["7d", "30d", "90d", "custom"],
+    ["7_tage", "30_tage", "90_tage", "eigener"],
+  ],
+  [
+    [
+      "receipt",
+      "issue",
+      "transfer",
+      "defect",
+      "loss",
+      "adjustment_in",
+      "adjustment_out",
+    ],
+    [
+      "eingang",
+      "ausgabe",
+      "umlagerung",
+      "defekt",
+      "verlust",
+      "korrektur_plus",
+      "korrektur_minus",
+    ],
+  ],
+  [
+    ["pickup", "desk"],
+    ["abholung", "an_den_platz"],
+  ],
+];
+
+/** Statuswerte aus nextDesk, die in Antworten vorkommen. */
+const VALUE_DE: Record<string, string> = {
+  operational: "in_betrieb",
+  degraded: "eingeschraenkt",
+  partial_outage: "teilausfall",
+  major_outage: "ausfall",
+  maintenance: "wartung",
+  scheduled: "geplant",
+  active: "aktiv",
+  cancelled: "storniert",
+  pending: "ausstehend",
+  pending_approval: "wartet_auf_freigabe",
+  loaned: "ausgeliehen",
+  returned: "zurueckgegeben",
+  reserved: "reserviert",
+  backorder: "nachbestellt",
+  issued: "ausgegeben",
+  done: "erledigt",
+  skipped: "uebersprungen",
+  draft: "entwurf",
+  review: "in_pruefung",
+  published: "veroeffentlicht",
+  archived: "archiviert",
+  loan: "ausleihe",
+};
+for (const [english, german] of ENUM_SETS) {
+  english.forEach((value, index) => {
+    VALUE_DE[value] ??= german[index]!;
+  });
+}
+
+/** Felder, deren Werte Auswahlwerte sind (vor und nach der Übersetzung). */
+const VALUE_KEYS = new Set([
+  "status",
+  "priority",
+  "prioritaet",
+  "risk",
+  "risiko",
+  "recurrence",
+  "wiederholung",
+  "visibility",
+  "sichtbarkeit",
+  "billing",
+  "verrechnung",
+  "kind",
+  "art",
+  "type",
+  "relation",
+  "beziehung",
+  "decision",
+  "entscheid",
+  "action",
+  "aktion",
+  "state",
+  "zustand",
+  "lieferung",
+  "equipment",
+  "ausstattung",
+  "relationType",
+]);
+
+/** Feldnamen in Antworten an Gemini. */
+const OUTPUT_KEYS: Record<string, string> = {
+  absence: "abwesenheit",
+  access: "zugang",
+  acknowledged: "bestaetigt",
+  action: "aktion",
+  active: "aktiv",
+  added: "hinzugefuegt",
+  agent: "person",
+  agents: "personen",
+  alreadySent: "bereits_gesendet",
+  approvalNeeded: "freigabe_noetig",
+  approvals: "freigaben",
+  approver: "freigebende_person",
+  archived: "archiviert",
+  articleId: "artikel_id",
+  articleNumber: "artikelnummer",
+  articles: "artikel",
+  asset: "geraet",
+  assetHistory: "geraeteverlauf",
+  assets: "geraete",
+  assigned: "zugewiesen",
+  assignedAgent: "zustaendige_person",
+  assignedTo: "zugewiesen_an",
+  assignedToMe: "mir_zugewiesen",
+  assignee: "zustaendig",
+  assignments: "zuweisungen",
+  atRisk: "gefaehrdet",
+  attached: "verknuepft",
+  author: "verfasser",
+  autoRenew: "automatische_verlaengerung",
+  available: "verfuegbar",
+  averageFirstResponseMinutes: "mittlere_erstreaktion_minuten",
+  averageResolutionMinutes: "mittlere_loesungszeit_minuten",
+  averageReactionMinutes: "mittlere_reaktionszeit_minuten",
+  billing: "verrechnung",
+  body: "inhalt",
+  booked: "gebucht",
+  bookings: "buchungen",
+  by: "von",
+  canDecide: "darf_entscheiden",
+  canRequest: "darf_anfordern",
+  canUpdate: "darf_bearbeiten",
+  canRead: "darf_lesen",
+  canManage: "darf_verwalten",
+  canMove: "darf_bewegen",
+  canAdjust: "darf_korrigieren",
+  canCloseInventoryCount: "darf_inventur_abschliessen",
+  cancelled: "zurueckgezogen",
+  candidates: "kandidaten",
+  capacity: "kapazitaet",
+  categories: "kategorien",
+  category: "kategorie",
+  changed: "geaendert",
+  checklist: "checkliste",
+  closed: "geschlossen",
+  collections: "sammlungen",
+  comment: "kommentar",
+  comments: "kommentare",
+  completed: "erledigt",
+  conflicts: "ueberschneidungen",
+  conflictsAccepted: "ueberschneidungen_akzeptiert",
+  contracts: "vertraege",
+  cost: "kosten",
+  count: "anzahl",
+  counterparty: "vertragspartner",
+  created: "erstellt",
+  createdAt: "erstellt_am",
+  current: "aktuell",
+  days: "tage",
+  daysUntilEnd: "tage_bis_ende",
+  daysUntilStart: "tage_bis_start",
+  decided: "entschieden",
+  decision: "entscheid",
+  decisions: "entscheide",
+  delegate: "vertretung",
+  delegations: "stellvertretungen",
+  deleted: "entfernt",
+  department: "abteilung",
+  departments: "abteilungen",
+  description: "beschreibung",
+  detached: "geloest",
+  devices: "geraete",
+  displayName: "name",
+  done: "erledigt",
+  draft: "entwurf",
+  dueAt: "faellig",
+  dueFollowUps: "faellige_wiedervorlagen",
+  dueOn: "faellig_am",
+  dueToday: "heute_faellig",
+  employee: "mitarbeitende_person",
+  end: "ende",
+  ended: "beendet",
+  endsAt: "ende",
+  endsOn: "endet_am",
+  entries: "eintraege",
+  entry: "eintrag",
+  equipment: "ausstattung",
+  escalated: "eskaliert",
+  escalations: "eskalationen",
+  excerpt: "auszug",
+  externalReplies: "externe_antworten",
+  fields: "felder",
+  first: "erster_termin",
+  firstContactResolutionRate: "erstloesungsquote",
+  firstResponseSlaCompliance: "sla_einhaltung_erstreaktion",
+  followUps: "wiedervorlagen",
+  from: "von",
+  fulfillment: "erfuellung",
+  handovers: "uebergaben",
+  happyPercent: "zufrieden_prozent",
+  hint: "hinweis",
+  ictResponsible: "ict_verantwortung",
+  importantNote: "wichtiger_hinweis",
+  index: "nummer",
+  inventoryNumber: "inventarnummer",
+  item: "artikel",
+  itemName: "artikel",
+  items: "artikel",
+  key: "schluessel",
+  kind: "art",
+  knowledgeArticles: "wissensartikel",
+  kpis: "kennzahlen",
+  label: "bezeichnung",
+  language: "sprache",
+  last: "letzter_termin",
+  lastReply: "letzte_antwort",
+  level: "stufe",
+  licenses: "lizenzen",
+  lifecycle: "lebenszyklus",
+  lifecycleState: "lebenszyklus_status",
+  linked: "verknuepft",
+  links: "verknuepfungen",
+  location: "standort",
+  locationName: "lagerort",
+  locations: "lagerorte",
+  macros: "makros",
+  maintenances: "wartungen",
+  manager: "fuehrungsperson",
+  manufacturer: "hersteller",
+  marked: "markiert",
+  maxLoanDays: "max_ausleihtage",
+  maxQuantity: "max_menge",
+  medianFirstResponseMinutes: "median_erstreaktion_minuten",
+  medianResolutionMinutes: "median_loesungszeit_minuten",
+  members: "mitglieder",
+  mentions: "erwaehnungen",
+  merged: "zusammengefuehrt",
+  minimum: "mindestbestand",
+  minutes: "minuten",
+  mode: "modus",
+  model: "modell",
+  month: "monat",
+  moreAvailable: "weitere_vorhanden",
+  neededBy: "benoetigt_bis",
+  neutralPercent: "neutral_prozent",
+  next: "naechster_schritt",
+  nextDueOn: "naechste_faelligkeit",
+  noFirstResponse: "ohne_erstreaktion",
+  note: "notiz",
+  noticePeriodDays: "kuendigungsfrist_tage",
+  notices: "meldungen",
+  notifications: "benachrichtigungen",
+  number: "nummer",
+  occurredAt: "zeitpunkt",
+  occurrences: "termine",
+  offer: "angebot",
+  openAssigned: "offen_zugewiesen",
+  openEscalations: "offene_eskalationen",
+  openReservationCount: "offene_reservationen",
+  openTickets: "offene_tickets",
+  openedAt: "eroeffnet_am",
+  operatingSystem: "betriebssystem",
+  optionalNotFilled: "optional_nicht_ausgefuellt",
+  orderId: "bestellung_id",
+  ordered: "bestellt",
+  orders: "bestellungen",
+  organization: "organisation",
+  organizations: "organisationen",
+  organizer: "veranstalter",
+  overdue: "ueberfaellig",
+  parentId: "uebergeordnet_id",
+  participants: "teilnehmende",
+  people: "personen",
+  period: "zeitraum",
+  permissions: "rechte",
+  physical: "physisch",
+  physicalDelta: "veraenderung",
+  planned: "geplant",
+  posted: "gebucht",
+  preferredContactChannel: "bevorzugter_kontaktweg",
+  preview: "vorschau",
+  previous: "vorperiode",
+  priority: "prioritaet",
+  profile: "profil",
+  published: "veroeffentlicht",
+  qualityAverage: "qualitaet_schnitt",
+  qualityReviews: "qualitaet_bewertungen",
+  quantity: "menge",
+  queues: "warteschlangen",
+  read: "gelesen",
+  reason: "begruendung",
+  reasons: "gruende",
+  reassigned: "umverteilt",
+  received: "eingegangen",
+  recentEvents: "letzte_bewegungen",
+  recurrence: "wiederholung",
+  reference: "referenz",
+  relation: "beziehung",
+  relations: "verknuepfungen",
+  released: "freigegeben",
+  replied: "beantwortet",
+  requested: "angefordert",
+  requestedAt: "angefordert_am",
+  requestedBy: "angefordert_von",
+  requester: "anfragende_person",
+  requesterAvailability: "erreichbarkeit",
+  requesterContactId: "anfragende_person_id",
+  requesterId: "anfragende_person_id",
+  requesterTickets: "tickets_der_person",
+  requesters: "anfragende",
+  requiredApprovals: "noetige_zustimmungen",
+  requiresApproval: "freigabe_noetig",
+  reservations: "reservationen",
+  reserved: "reserviert",
+  reservedDelta: "veraenderung_reserviert",
+  resolutionMinutes: "loesungszeit_minuten",
+  resolutionSlaCompliance: "sla_einhaltung_loesung",
+  resolved: "geloest",
+  resolvedAt: "geloest_am",
+  resolvedLast30Days: "geloest_letzte_30_tage",
+  responseMinutes: "reaktionszeit_minuten",
+  responses: "antworten",
+  responsible: "verantwortlich",
+  result: "ergebnis",
+  results: "ergebnisse",
+  revision: "fassung",
+  revisions: "fassungen",
+  risk: "risiko",
+  room: "raum",
+  rooms: "raeume",
+  rules: "regeln",
+  satisfaction: "zufriedenheit",
+  satisfactionAverage: "zufriedenheit_schnitt",
+  satisfactionResponses: "zufriedenheit_antworten",
+  saved: "gespeichert",
+  score: "punktzahl",
+  searchedFor: "gesucht_nach",
+  section: "bereich",
+  sent: "gesendet",
+  sentToRequester: "an_anfragende_gesendet",
+  serialNumber: "seriennummer",
+  series: "serie",
+  serviceHours: "servicezeiten",
+  slaCompliancePercent: "sla_einhaltung_prozent",
+  slaDue: "sla_faellig",
+  solvedToday: "heute_geloest",
+  sources: "quellen",
+  start: "beginn",
+  startsAt: "beginn",
+  startsOn: "beginnt_am",
+  state: "zustand",
+  subcategories: "unterkategorien",
+  subcategory: "unterkategorie",
+  subject: "betreff",
+  suggestions: "vorschlaege",
+  summary: "zusammenfassung",
+  surveysSent: "umfragen_gesendet",
+  targets: "ziele",
+  task: "aufgabe",
+  tasks: "aufgaben",
+  template: "vorlage",
+  templates: "vorlagen",
+  thisWeek: "diese_woche",
+  ticketAccess: "ticketzugriff",
+  ticketsAssigned: "tickets_zugewiesen",
+  ticketsResolved: "tickets_geloest",
+  title: "titel",
+  to: "nach",
+  today: "heute",
+  total: "gesamt",
+  trackedMinutes: "erfasste_minuten",
+  truncated: "gekuerzt",
+  type: "art",
+  unassigned: "nicht_zugewiesen",
+  unhappyPercent: "unzufrieden_prozent",
+  unit: "einheit",
+  unresolved: "ungeloest",
+  until: "bis",
+  upcoming: "anstehend",
+  updated: "aktualisiert",
+  updatedAt: "aktualisiert_am",
+  userId: "person_id",
+  vendor: "hersteller",
+  visibility: "sichtbarkeit",
+  watchers: "beobachtende",
+  watching: "beobachtet",
+  weekMinutes: "wochenminuten",
+  weekdays: "wochentage",
+  workspace: "arbeitsbereich",
+  workspaces: "arbeitsbereiche",
+};
+
+function germanEnum(values: readonly unknown[]): readonly string[] | null {
+  const key = JSON.stringify(values);
+  const set = ENUM_SETS.find(([english]) => JSON.stringify(english) === key);
+  return set ? set[1] : null;
+}
+
+/** Englische Auswahlwerte eines Werkzeugs im Text durch deutsche ersetzen. */
+function localizeText(text: string, pairs: [string, string][]): string {
+  let result = text;
+  for (const [english, german] of pairs) {
+    if (english === german) continue;
+    result = result.replace(
+      new RegExp(`(?<![\\w-])${english}(?![\\w-])`, "g"),
+      german,
+    );
+  }
+  return result;
+}
+
+function enumPairs(schema: unknown, pairs: [string, string][] = []) {
+  if (!isRecord(schema)) return pairs;
+  if (Array.isArray(schema.enum)) {
+    const german = germanEnum(schema.enum);
+    if (german) {
+      schema.enum.forEach((value, index) =>
+        pairs.push([String(value), german[index]!]),
+      );
+    }
+  }
+  for (const value of Object.values(schema)) {
+    if (isRecord(value)) enumPairs(value, pairs);
+  }
+  return pairs;
+}
+
+/** Schema mit deutschen Auswahlwerten und Beschreibungen (tiefe Kopie). */
+function localizeSchema(schema: unknown, pairs: [string, string][]): unknown {
+  if (Array.isArray(schema)) {
+    return schema.map((entry) => localizeSchema(entry, pairs));
+  }
+  if (!isRecord(schema)) return schema;
+  const result: Json = {};
+  for (const [key, value] of Object.entries(schema)) {
+    if (key === "enum" && Array.isArray(value)) {
+      result.enum = germanEnum(value) ?? value;
+    } else if (key === "description" && typeof value === "string") {
+      result.description = localizeText(value, pairs);
+    } else {
+      result[key] = localizeSchema(value, pairs);
+    }
+  }
+  return result;
+}
+
+/** Deutsche Auswahlwerte in Eingaben auf die Werte von nextDesk abbilden. */
+function translateInput(
+  schema: unknown,
+  value: unknown,
+  field: string,
+): unknown {
+  if (!isRecord(schema)) return value;
+  if (Array.isArray(schema.enum) && typeof value === "string") {
+    const english = schema.enum.map(String);
+    const german = germanEnum(schema.enum) ?? english;
+    const normalized = value
+      .trim()
+      .toLocaleLowerCase("de-CH")
+      .replaceAll("ä", "ae")
+      .replaceAll("ö", "oe")
+      .replaceAll("ü", "ue")
+      .replace(/[\s-]+/g, "_");
+    const index = german.indexOf(normalized);
+    if (index >= 0) return english[index];
+    if (english.includes(value)) return value;
+    throw new ToolError(
+      `Ungültiger Wert für "${field}". Erlaubt: ${german.join(", ")}.`,
+    );
+  }
+  if (Array.isArray(value) && isRecord(schema.items)) {
+    return value.map((entry) => translateInput(schema.items, entry, field));
+  }
+  if (isRecord(value) && isRecord(schema.properties)) {
+    const result: Json = { ...value };
+    for (const [key, propertySchema] of Object.entries(schema.properties)) {
+      if (key in result) {
+        result[key] = translateInput(propertySchema, result[key], key);
+      }
+    }
+    return result;
+  }
+  return value;
+}
+
+/** Antworten: deutsche Feldnamen und Auswahlwerte. */
+function localizeOutput(value: unknown, key = ""): unknown {
+  if (Array.isArray(value)) {
+    return value.map((entry) => localizeOutput(entry, key));
+  }
+  if (isRecord(value)) {
+    const result: Json = {};
+    for (const [entryKey, entryValue] of Object.entries(value)) {
+      result[OUTPUT_KEYS[entryKey] ?? entryKey] = localizeOutput(
+        entryValue,
+        entryKey,
+      );
+    }
+    return result;
+  }
+  if (typeof value === "string" && VALUE_KEYS.has(key)) {
+    return VALUE_DE[value] ?? value;
+  }
+  return value;
 }
 
 // ---------------------------------------------------------------- JSON-RPC
@@ -6842,24 +7495,28 @@ export async function handleMessage(
   }
   if (method === "tools/list") {
     return rpcResult(id, {
-      tools: TOOLS.map(({ name, description, inputSchema, annotations }) => ({
-        name,
-        // Deutscher Anzeigename für Clients, die das Feld title auswerten.
-        ...(typeof annotations.title === "string"
-          ? { title: annotations.title }
-          : {}),
-        description,
-        inputSchema,
-        annotations,
-      })),
+      tools: TOOLS.map(({ name, description, inputSchema, annotations }) => {
+        const pairs = enumPairs(inputSchema);
+        return {
+          name,
+          // Deutscher Anzeigename für Clients, die das Feld title auswerten.
+          ...(typeof annotations.title === "string"
+            ? { title: annotations.title }
+            : {}),
+          description: localizeText(description, pairs),
+          inputSchema: localizeSchema(inputSchema, pairs),
+          annotations,
+        };
+      }),
     });
   }
   if (method === "tools/call") {
     const params = isRecord(message.params) ? message.params : {};
     const tool = TOOLS.find((entry) => entry.name === params.name);
     if (!tool) return rpcError(id, -32602, "Unbekanntes Werkzeug.");
-    const args = isRecord(params.arguments) ? params.arguments : {};
+    const raw = isRecord(params.arguments) ? params.arguments : {};
     try {
+      const args = translateInput(tool.inputSchema, raw, "") as Json;
       return rpcResult(id, await tool.run(config, session, args));
     } catch (error) {
       const text =
