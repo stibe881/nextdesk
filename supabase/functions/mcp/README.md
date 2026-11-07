@@ -8,76 +8,76 @@ den OAuth-2.1-Server von Supabase Auth, also mit dem normalen nextDesk-Konto
 
 | Werkzeug | Art | Zweck |
 | --- | --- | --- |
-| `list_workspaces` | lesen | Arbeitsbereiche des Kontos |
-| `search_tickets` | lesen | Tickets suchen (mine, open, unassigned, all) |
-| `get_ticket` | lesen | Ticket mit Beschreibung, Verlauf, Checkliste, erfasster Zeit, Eskalationen und Verknüpfungen |
-| `search_knowledge`, `get_knowledge_article` | lesen | Wissensdatenbank. Sucht bei ganzen Fragen einzeln nach Stichwörtern; gibt es zu einem Programm keinen eigenen Artikel, liefert sie den allgemeinen Weg (z. B. «Unternehmensportal») |
-| `list_shop_catalog`, `list_shop_orders` | lesen | Self-Service-Shop: Katalog und eigene Bestellungen |
-| `find_asset` | lesen | Geräte nach Name, Nummer, Tag oder Seriennummer |
-| `global_search` | lesen | Gleichzeitig in Tickets, Wiedervorlagen, Wissen, Veranstaltungsräumen und Eintritten suchen |
-| `list_notifications` | lesen | Eigene Benachrichtigungen (standardmässig nur ungelesene) |
-| `list_pending_approvals` | lesen | Ticketfreigaben, die auf den eigenen Entscheid warten |
-| `list_service_tasks` | lesen | Serviceaufgaben: überfällig, heute, kommend (mine, team, all) |
-| `search_requesters` | lesen | Anfragende Personen nach Name suchen |
-| `list_follow_ups` | lesen | Eigene Wiedervorlagen (optional nur zu einem Ticket) |
-| `list_mentions` | lesen | @-Erwähnungen in Ticketnotizen |
-| `my_metrics` | lesen | Persönliche Kennzahlen (offen, heute gelöst, Reaktions- und Lösungszeit, SLA) |
-| `team_queues` | lesen | Offene Tickets je Abteilung und Team |
-| `list_handovers` | lesen | Übergaben eines Tickets |
-| `service_status` | lesen | Status der IT-Services und anstehende Wartungen |
-| `inventory_lookup` | lesen | Lagerartikel oder -ort über Nummer, Barcode oder QR-Code |
-| `list_licenses`, `list_contracts` | lesen | Lizenzen und Verträge, optional nur bald ablaufende |
-| `list_macros`, `get_macro_text` | lesen | Antwortmakros und ihr Text |
-| `list_event_bookings` | lesen | Räume und Raumbuchungen mit Aufgaben (alle Seiten, rund 13 Monate) |
-| `list_onboardings` | lesen | Eintritte mit Aufgaben, Vorlagen und Personen |
-| `list_ticket_templates` | lesen | Ticketvorlagen je Abteilung |
-| `list_knowledge_collections`, `list_knowledge_revisions`, `list_ticket_knowledge` | lesen | Sammlungen, Fassungen eines Artikels, Wissen am Ticket |
-| `get_service_task`, `service_task_calendar` | lesen | Serviceaufgabe im Detail, Monatskalender |
-| `list_ticket_approvals` | lesen | Freigaben eines Tickets |
-| `list_delegations`, `list_incident_notices` | lesen | Stellvertretungen, Störungsmeldungen |
-| `suggest_assignees`, `get_ticket_context`, `get_ticket_devices` | lesen | Zuweisungsvorschläge, Ticketumfeld, Geräte der anfragenden Person |
-| `service_report`, `list_sla_escalations`, `list_sla_rules` | lesen | Kennzahlen, SLA-Eskalationen und -Regeln (braucht Berichtsrecht) |
-| `team_overview`, `team_review_queue`, `team_monthly_report` | lesen | Teamführung (nur für Vorgesetzte) |
-| `get_requester_profile`, `list_customer_organizations` | lesen | Profil Anfragende, Kundenorganisationen |
-| `get_asset`, `inventory_overview`, `list_inventory_reservations` | lesen | Gerät im Detail, Lager, Reservationen |
-| `create_ticket` | schreiben | Ticket erfassen, für sich selbst oder eine anfragende Person (`requester`) |
-| `add_internal_note` | schreiben | Interne Notiz an ein Ticket |
-| `update_ticket_status` | schreiben | Status ändern; Lösen/Schliessen nur mit `confirm=true` |
-| `set_ticket_priority` | schreiben | Priorität ändern (low, normal, high, urgent) |
-| `assign_ticket_to_me` | schreiben | Ticket sich selbst zuweisen |
-| `reply_to_ticket` | schreiben | Antwort an Anfragende; nur mit `confirm=true` |
-| `add_time_entry` | schreiben | Arbeitszeit in Minuten erfassen (internal, billable, goodwill) |
-| `add_checklist_item`, `set_checklist_item` | schreiben | Checklistenpunkt hinzufügen bzw. abhaken |
-| `watch_ticket` | schreiben | Ticket beobachten oder nicht mehr beobachten |
-| `mark_notifications_read` | schreiben | Eine oder alle Benachrichtigungen als gelesen markieren |
-| `decide_approval` | schreiben | Freigabe genehmigen oder ablehnen; nur mit `confirm=true` |
-| `complete_service_task` | schreiben | Serviceaufgabe erledigen (optional mit Notiz) |
-| `create_follow_up`, `resolve_follow_up` | schreiben | Wiedervorlage erstellen bzw. erledigen |
-| `mark_mention_read` | schreiben | Erwähnung als gelesen markieren |
-| `create_handover`, `acknowledge_handover` | schreiben | Übergabe erstellen, bestätigen oder abschliessen |
-| `escalate_ticket` | schreiben | Ticket eskalieren; nur mit `confirm=true` |
-| `link_tickets` | schreiben | Zwei Tickets verknüpfen (Duplikat, blockiert, Eltern/Kind …) |
-| `attach_knowledge_article` | schreiben | Wissensartikel mit Ticket verknüpfen; extern nur mit `confirm=true` |
-| `create_knowledge_draft` | schreiben | Wissensartikel-Entwurf aus einem Ticket (geht in die Prüfung) |
-| `book_event_space` | schreiben | Raum buchen, einmalig oder als Serie (wöchentlich bis 52, monatlich bis 12 Termine); bei Überschneidung nur mit `confirmConflicts=true` |
-| `update_event_booking`, `update_event_task` | schreiben | Status einer Raumbuchung bzw. ihrer Aufgaben setzen |
-| `create_onboarding` | schreiben | Eintritt erfassen (Vorlage, Führungsperson, ICT-Verantwortung) |
-| `update_onboarding_task` | schreiben | Status einer Eintrittsaufgabe setzen |
-| `assign_ticket`, `assign_ticket_team` | schreiben | Ticket einer Person oder einem Team zuweisen |
-| `change_ticket_department` | schreiben | Abteilung wechseln; nur mit `confirm=true` |
-| `set_ticket_category` | schreiben | Kategorie und Unterkategorie setzen |
-| `merge_tickets` | schreiben | Tickets zusammenführen; nur mit `confirm=true` |
-| `unlink_tickets` | schreiben | Verknüpfung entfernen |
-| `save_knowledge_article`, `request_knowledge_review` | schreiben | Wissensartikel schreiben und zur Prüfung geben |
-| `decide_knowledge_review`, `archive_knowledge_article` | schreiben | Veröffentlichen bzw. archivieren; nur mit `confirm=true` |
-| `detach_knowledge_article`, `send_knowledge_to_requester` | schreiben | Artikel vom Ticket lösen bzw. an Anfragende senden (nur mit `confirm=true`) |
-| `update_service_task` | schreiben | Serviceaufgabe starten, überspringen, Notiz, Checkliste, neu planen, zuweisen, wieder öffnen |
-| `request_approval`, `cancel_approval` | schreiben | Freigabe anfordern bzw. zurückziehen |
-| `set_delegation`, `end_delegation` | schreiben | Stellvertretung einrichten bzw. beenden |
-| `save_incident_notice` | schreiben | Störungsmeldung erfassen oder aktualisieren |
-| `save_ticket_review`, `reassign_tickets` | schreiben | Teamführung: Ticket bewerten, Tickets umverteilen (nur mit `confirm=true`) |
-| `post_inventory_movement`, `reserve_inventory`, `release_inventory_reservation` | schreiben | Lagerbewegung buchen, Material reservieren, Reservation freigeben |
-| `order_from_shop` | schreiben | Im Shop bestellen; nur mit `confirm=true` |
+| `arbeitsbereiche_anzeigen` | lesen | Arbeitsbereiche des Kontos |
+| `tickets_suchen` | lesen | Tickets suchen (mine, open, unassigned, all) |
+| `ticket_anzeigen` | lesen | Ticket mit Beschreibung, Verlauf, Checkliste, erfasster Zeit, Eskalationen und Verknüpfungen |
+| `wissen_suchen`, `wissensartikel_lesen` | lesen | Wissensdatenbank. Sucht bei ganzen Fragen einzeln nach Stichwörtern; gibt es zu einem Programm keinen eigenen Artikel, liefert sie den allgemeinen Weg (z. B. «Unternehmensportal») |
+| `shop_katalog_anzeigen`, `shop_bestellungen_anzeigen` | lesen | Self-Service-Shop: Katalog und eigene Bestellungen |
+| `geraet_suchen` | lesen | Geräte nach Name, Nummer, Tag oder Seriennummer |
+| `ueberall_suchen` | lesen | Gleichzeitig in Tickets, Wiedervorlagen, Wissen, Veranstaltungsräumen und Eintritten suchen |
+| `benachrichtigungen_anzeigen` | lesen | Eigene Benachrichtigungen (standardmässig nur ungelesene) |
+| `offene_freigaben_anzeigen` | lesen | Ticketfreigaben, die auf den eigenen Entscheid warten |
+| `serviceaufgaben_anzeigen` | lesen | Serviceaufgaben: überfällig, heute, kommend (mine, team, all) |
+| `anfragende_suchen` | lesen | Anfragende Personen nach Name suchen |
+| `wiedervorlagen_anzeigen` | lesen | Eigene Wiedervorlagen (optional nur zu einem Ticket) |
+| `erwaehnungen_anzeigen` | lesen | @-Erwähnungen in Ticketnotizen |
+| `meine_kennzahlen` | lesen | Persönliche Kennzahlen (offen, heute gelöst, Reaktions- und Lösungszeit, SLA) |
+| `warteschlangen_anzeigen` | lesen | Offene Tickets je Abteilung und Team |
+| `uebergaben_anzeigen` | lesen | Übergaben eines Tickets |
+| `servicestatus_anzeigen` | lesen | Status der IT-Services und anstehende Wartungen |
+| `lager_nachschlagen` | lesen | Lagerartikel oder -ort über Nummer, Barcode oder QR-Code |
+| `lizenzen_anzeigen`, `vertraege_anzeigen` | lesen | Lizenzen und Verträge, optional nur bald ablaufende |
+| `makros_anzeigen`, `makrotext_holen` | lesen | Antwortmakros und ihr Text |
+| `raumbuchungen_anzeigen` | lesen | Räume und Raumbuchungen mit Aufgaben (alle Seiten, rund 13 Monate) |
+| `eintritte_anzeigen` | lesen | Eintritte mit Aufgaben, Vorlagen und Personen |
+| `ticketvorlagen_anzeigen` | lesen | Ticketvorlagen je Abteilung |
+| `wissenssammlungen_anzeigen`, `artikelversionen_anzeigen`, `ticketwissen_anzeigen` | lesen | Sammlungen, Fassungen eines Artikels, Wissen am Ticket |
+| `serviceaufgabe_anzeigen`, `serviceaufgaben_kalender` | lesen | Serviceaufgabe im Detail, Monatskalender |
+| `ticketfreigaben_anzeigen` | lesen | Freigaben eines Tickets |
+| `stellvertretungen_anzeigen`, `stoerungsmeldungen_anzeigen` | lesen | Stellvertretungen, Störungsmeldungen |
+| `zuweisung_vorschlagen`, `ticketumfeld_anzeigen`, `geraete_zum_ticket` | lesen | Zuweisungsvorschläge, Ticketumfeld, Geräte der anfragenden Person |
+| `servicebericht`, `sla_eskalationen_anzeigen`, `sla_regeln_anzeigen` | lesen | Kennzahlen, SLA-Eskalationen und -Regeln (braucht Berichtsrecht) |
+| `teamuebersicht`, `pruefliste_anzeigen`, `monatsbericht` | lesen | Teamführung (nur für Vorgesetzte) |
+| `anfragende_profil_anzeigen`, `kundenorganisationen_anzeigen` | lesen | Profil Anfragende, Kundenorganisationen |
+| `geraet_anzeigen`, `lageruebersicht`, `reservationen_anzeigen` | lesen | Gerät im Detail, Lager, Reservationen |
+| `ticket_erfassen` | schreiben | Ticket erfassen, für sich selbst oder eine anfragende Person (`requester`) |
+| `interne_notiz_hinzufuegen` | schreiben | Interne Notiz an ein Ticket |
+| `ticketstatus_aendern` | schreiben | Status ändern; Lösen/Schliessen nur mit `confirm=true` |
+| `prioritaet_aendern` | schreiben | Priorität ändern (low, normal, high, urgent) |
+| `ticket_mir_zuweisen` | schreiben | Ticket sich selbst zuweisen |
+| `ticket_beantworten` | schreiben | Antwort an Anfragende; nur mit `confirm=true` |
+| `zeit_erfassen` | schreiben | Arbeitszeit in Minuten erfassen (internal, billable, goodwill) |
+| `checklistenpunkt_hinzufuegen`, `checklistenpunkt_abhaken` | schreiben | Checklistenpunkt hinzufügen bzw. abhaken |
+| `ticket_beobachten` | schreiben | Ticket beobachten oder nicht mehr beobachten |
+| `benachrichtigungen_gelesen` | schreiben | Eine oder alle Benachrichtigungen als gelesen markieren |
+| `freigabe_entscheiden` | schreiben | Freigabe genehmigen oder ablehnen; nur mit `confirm=true` |
+| `serviceaufgabe_erledigen` | schreiben | Serviceaufgabe erledigen (optional mit Notiz) |
+| `wiedervorlage_erstellen`, `wiedervorlage_erledigen` | schreiben | Wiedervorlage erstellen bzw. erledigen |
+| `erwaehnung_gelesen` | schreiben | Erwähnung als gelesen markieren |
+| `uebergabe_erstellen`, `uebergabe_bestaetigen` | schreiben | Übergabe erstellen, bestätigen oder abschliessen |
+| `ticket_eskalieren` | schreiben | Ticket eskalieren; nur mit `confirm=true` |
+| `tickets_verknuepfen` | schreiben | Zwei Tickets verknüpfen (Duplikat, blockiert, Eltern/Kind …) |
+| `wissensartikel_verknuepfen` | schreiben | Wissensartikel mit Ticket verknüpfen; extern nur mit `confirm=true` |
+| `wissensentwurf_aus_ticket` | schreiben | Wissensartikel-Entwurf aus einem Ticket (geht in die Prüfung) |
+| `raum_buchen` | schreiben | Raum buchen, einmalig oder als Serie (wöchentlich bis 52, monatlich bis 12 Termine); bei Überschneidung nur mit `confirmConflicts=true` |
+| `raumbuchung_aktualisieren`, `raumaufgabe_aktualisieren` | schreiben | Status einer Raumbuchung bzw. ihrer Aufgaben setzen |
+| `eintritt_erfassen` | schreiben | Eintritt erfassen (Vorlage, Führungsperson, ICT-Verantwortung) |
+| `eintrittsaufgabe_aktualisieren` | schreiben | Status einer Eintrittsaufgabe setzen |
+| `ticket_zuweisen`, `ticket_team_zuweisen` | schreiben | Ticket einer Person oder einem Team zuweisen |
+| `abteilung_wechseln` | schreiben | Abteilung wechseln; nur mit `confirm=true` |
+| `kategorie_setzen` | schreiben | Kategorie und Unterkategorie setzen |
+| `tickets_zusammenfuehren` | schreiben | Tickets zusammenführen; nur mit `confirm=true` |
+| `verknuepfung_entfernen` | schreiben | Verknüpfung entfernen |
+| `wissensartikel_speichern`, `wissenspruefung_anfordern` | schreiben | Wissensartikel schreiben und zur Prüfung geben |
+| `wissensartikel_freigeben`, `wissensartikel_archivieren` | schreiben | Veröffentlichen bzw. archivieren; nur mit `confirm=true` |
+| `wissensartikel_loesen`, `wissensartikel_senden` | schreiben | Artikel vom Ticket lösen bzw. an Anfragende senden (nur mit `confirm=true`) |
+| `serviceaufgabe_bearbeiten` | schreiben | Serviceaufgabe starten, überspringen, Notiz, Checkliste, neu planen, zuweisen, wieder öffnen |
+| `freigabe_anfordern`, `freigabe_zurueckziehen` | schreiben | Freigabe anfordern bzw. zurückziehen |
+| `stellvertretung_einrichten`, `stellvertretung_beenden` | schreiben | Stellvertretung einrichten bzw. beenden |
+| `stoerungsmeldung_speichern` | schreiben | Störungsmeldung erfassen oder aktualisieren |
+| `ticket_bewerten`, `tickets_umverteilen` | schreiben | Teamführung: Ticket bewerten, Tickets umverteilen (nur mit `confirm=true`) |
+| `lagerbewegung_buchen`, `material_reservieren`, `reservation_freigeben` | schreiben | Lagerbewegung buchen, Material reservieren, Reservation freigeben |
+| `im_shop_bestellen` | schreiben | Im Shop bestellen; nur mit `confirm=true` |
 
 Bei IT-Fragen (Software, Geräte, Zugänge …) weist der Connector Gemini an, zuerst
 die Wissensdatenbank zu befragen und keine allgemeinen Anleitungen aus dem Web
@@ -87,6 +87,10 @@ Geschriebene Texte (Ticket, interne Notiz, Zeitnotiz, Notiz zur Serviceaufgabe,
 Wiedervorlage)
 enden mit dem Hinweis «Erfasst über den nextDesk-Connector.». Antworten an
 Anfragende werden ohne diesen Hinweis versendet.
+
+Alle Werkzeuge haben deutsche Namen (z. B. `ticket_erfassen`), damit Gemini sie
+in Rückfragen und Bestätigungen auf Deutsch anzeigt; zusätzlich liefert der
+Connector einen deutschen Anzeigetitel (`title`).
 
 ## Vorlagen und Entwürfe
 
@@ -110,10 +114,10 @@ mit Feldern zum Ausfüllen, z. B. `/ticket_erfassen --betreff="Drucker druckt ni
 | `stoerung_melden` | Interne Störungsmeldung |
 | `zeit_erfassen` | Arbeitszeit auf einem Ticket |
 
-**Entwurf vor dem Abschicken:** `create_ticket`, `reply_to_ticket`,
-`book_event_space`, `create_onboarding`, `order_from_shop`,
-`save_incident_notice`, `request_approval`, `set_delegation`,
-`save_knowledge_article` und `create_handover` geben ohne `confirm` ein
+**Entwurf vor dem Abschicken:** `ticket_erfassen`, `ticket_beantworten`,
+`raum_buchen`, `eintritt_erfassen`, `im_shop_bestellen`,
+`stoerungsmeldung_speichern`, `freigabe_anfordern`, `stellvertretung_einrichten`,
+`wissensartikel_speichern` und `uebergabe_erstellen` geben ohne `confirm` ein
 ausgefülltes Formular zurück (mit aufgelösten Namen, Schweizer Zeiten und nicht
 ausgefüllten optionalen Feldern). Abgeschickt wird erst mit `confirm=true`.
 

@@ -9,7 +9,7 @@
 const SUPPORTED_PROTOCOLS = ["2025-06-18", "2025-03-26", "2024-11-05"] as const;
 const MAX_BODY_BYTES = 64 * 1024;
 const REQUEST_TIMEOUT_MS = 15_000;
-const SERVER_INFO = { name: "nextdesk", version: "2.2.0" } as const;
+const SERVER_INFO = { name: "nextdesk", version: "3.0.0" } as const;
 const STATUS_KEYS = [
   "new",
   "in_progress",
@@ -730,7 +730,7 @@ const TICKET_PROPERTY = {
 
 const TOOLS: Tool[] = [
   {
-    name: "list_workspaces",
+    name: "arbeitsbereiche_anzeigen",
     description:
       "Listet die Arbeitsbereiche (Mandanten), auf die du Zugriff hast.",
     annotations: { readOnlyHint: true, title: "Arbeitsbereiche" },
@@ -743,7 +743,7 @@ const TOOLS: Tool[] = [
       textResult({ workspaces: await listWorkspaces(config, session) }),
   },
   {
-    name: "search_tickets",
+    name: "tickets_suchen",
     description:
       "Sucht Tickets. scope: mine (mir zugewiesen), open (offen, Standard), unassigned (nicht zugewiesen), all.",
     annotations: { readOnlyHint: true, title: "Tickets suchen" },
@@ -816,7 +816,7 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "get_ticket",
+    name: "ticket_anzeigen",
     description:
       "Zeigt ein Ticket mit Beschreibung und Verlauf. ticket: Ticketnummer (z. B. ICT-2026-000011) oder ID.",
     annotations: { readOnlyHint: true, title: "Ticket anzeigen" },
@@ -898,9 +898,9 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "search_knowledge",
+    name: "wissen_suchen",
     description:
-      "Durchsucht die Wissensdatenbank (Anleitungen und Lösungen der eigenen Organisation). Bei jeder IT-Frage zuerst verwenden, z. B. «Wie installiere ich Visio?», «VPN verbindet nicht», «Drucker einrichten». query: Stichwörter wie «Visio» oder «VPN». Gibt es zu einem Programm keinen eigenen Artikel, sucht das Werkzeug selbst nach dem allgemeinen Weg (z. B. Unternehmensportal). Den vollen Text liefert get_knowledge_article.",
+      "Durchsucht die Wissensdatenbank (Anleitungen und Lösungen der eigenen Organisation). Bei jeder IT-Frage zuerst verwenden, z. B. «Wie installiere ich Visio?», «VPN verbindet nicht», «Drucker einrichten». query: Stichwörter wie «Visio» oder «VPN». Gibt es zu einem Programm keinen eigenen Artikel, sucht das Werkzeug selbst nach dem allgemeinen Weg (z. B. Unternehmensportal). Den vollen Text liefert wissensartikel_lesen.",
     annotations: { readOnlyHint: true, title: "Wissen durchsuchen" },
     inputSchema: {
       type: "object",
@@ -979,7 +979,7 @@ const TOOLS: Tool[] = [
         searchedFor,
         ...(generalMatch
           ? {
-              note: "Zum genannten Programm gibt es keinen eigenen Artikel. Diese Artikel beschreiben den allgemeinen Weg, Software zu beziehen; mit get_knowledge_article lesen und der Person danach erklären.",
+              note: "Zum genannten Programm gibt es keinen eigenen Artikel. Diese Artikel beschreiben den allgemeinen Weg, Software zu beziehen; mit wissensartikel_lesen lesen und der Person danach erklären.",
             }
           : {}),
         articles: articles.map((article) => {
@@ -994,15 +994,15 @@ const TOOLS: Tool[] = [
         }),
         ...(articles.length === 0
           ? {
-              hint: "Nichts gefunden. Keine allgemeine Anleitung erfinden; list_shop_catalog prüfen oder anbieten, ein Ticket zu erfassen.",
+              hint: "Nichts gefunden. Keine allgemeine Anleitung erfinden; shop_katalog_anzeigen prüfen oder anbieten, ein Ticket zu erfassen.",
             }
           : {}),
       });
     },
   },
   {
-    name: "get_knowledge_article",
-    description: "Liest einen Wissensartikel (id aus search_knowledge).",
+    name: "wissensartikel_lesen",
+    description: "Liest einen Wissensartikel (id aus wissen_suchen).",
     annotations: { readOnlyHint: true, title: "Wissensartikel lesen" },
     inputSchema: {
       type: "object",
@@ -1029,7 +1029,7 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "find_asset",
+    name: "geraet_suchen",
     description:
       "Sucht Geräte (Assets) nach Name, Inventarnummer, Asset-Tag oder Seriennummer.",
     annotations: { readOnlyHint: true, title: "Gerät suchen" },
@@ -1076,9 +1076,9 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "create_ticket",
+    name: "ticket_erfassen",
     description:
-      "Erfasst ein neues Ticket, für dich selbst oder für eine anfragende Person (requester aus search_requesters). Frage vorher nach, ob das Ticket wirklich erfasst werden soll. Ohne confirm zeigt das Werkzeug zuerst einen Entwurf zum Prüfen und Ergänzen; erst mit confirm=true wird abgeschickt.",
+      "Erfasst ein neues Ticket, für dich selbst oder für eine anfragende Person (requester aus anfragende_suchen). Frage vorher nach, ob das Ticket wirklich erfasst werden soll. Ohne confirm zeigt das Werkzeug zuerst einen Entwurf zum Prüfen und Ergänzen; erst mit confirm=true wird abgeschickt.",
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
@@ -1099,12 +1099,12 @@ const TOOLS: Tool[] = [
         requester: {
           type: "string",
           description:
-            "ID der anfragenden Person aus search_requesters. Ohne Angabe wird das Ticket für dich selbst erfasst.",
+            "ID der anfragenden Person aus anfragende_suchen. Ohne Angabe wird das Ticket für dich selbst erfasst.",
         },
         template: {
           type: "string",
           description:
-            "Ticketvorlage (Name oder ID aus list_ticket_templates). Füllt Betreff, Beschreibung, Priorität und Checkliste, soweit nicht angegeben.",
+            "Ticketvorlage (Name oder ID aus ticketvorlagen_anzeigen). Füllt Betreff, Beschreibung, Priorität und Checkliste, soweit nicht angegeben.",
         },
       },
       required: [],
@@ -1134,7 +1134,7 @@ const TOOLS: Tool[] = [
       }
       if (args.requester !== undefined && !isUuid(args.requester)) {
         throw new ToolError(
-          '"requester" ist ungültig (ID aus search_requesters).',
+          '"requester" ist ungültig (ID aus anfragende_suchen).',
         );
       }
       const requesterId = isUuid(args.requester)
@@ -1144,7 +1144,7 @@ const TOOLS: Tool[] = [
           : null;
       if (!requesterId) {
         throw new ToolError(
-          "Für dein Konto ist keine anfragende Person hinterlegt. Gib requester an (search_requesters).",
+          "Für dein Konto ist keine anfragende Person hinterlegt. Gib requester an (anfragende_suchen).",
         );
       }
       let template: Json | null = null;
@@ -1240,7 +1240,7 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "add_internal_note",
+    name: "interne_notiz_hinzufuegen",
     description:
       "Fügt einem Ticket eine interne Notiz hinzu (für Anfragende nicht sichtbar).",
     annotations: {
@@ -1280,7 +1280,7 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "update_ticket_status",
+    name: "ticketstatus_aendern",
     description:
       "Ändert den Status eines Ticketauftrags. Für resolved (gelöst) und closed (geschlossen) muss die Person vorher ausdrücklich zugestimmt haben; setze dann confirm auf true. Anfragende werden dabei von nextDesk informiert.",
     annotations: {
@@ -1334,7 +1334,7 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "assign_ticket_to_me",
+    name: "ticket_mir_zuweisen",
     description:
       "Weist ein Ticket dir selbst (der angemeldeten Person) zu. Das Zuweisen an andere Personen ist nicht möglich.",
     annotations: {
@@ -1369,9 +1369,9 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "reply_to_ticket",
+    name: "ticket_beantworten",
     description:
-      "Antwortet im Ticket an die anfragende Person. Der Text ist für sie sichtbar und wird ihr in der Regel per E-Mail zugestellt. Zeige der Person den Text vorher und setze confirm erst nach ihrer ausdrücklichen Zustimmung auf true. Für interne Hinweise add_internal_note verwenden. Ohne confirm zeigt das Werkzeug zuerst den Entwurf.",
+      "Antwortet im Ticket an die anfragende Person. Der Text ist für sie sichtbar und wird ihr in der Regel per E-Mail zugestellt. Zeige der Person den Text vorher und setze confirm erst nach ihrer ausdrücklichen Zustimmung auf true. Für interne Hinweise interne_notiz_hinzufuegen verwenden. Ohne confirm zeigt das Werkzeug zuerst den Entwurf.",
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
@@ -1421,7 +1421,7 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "set_ticket_priority",
+    name: "prioritaet_aendern",
     description: "Ändert die Priorität eines Tickets.",
     annotations: {
       readOnlyHint: false,
@@ -1461,7 +1461,7 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "add_time_entry",
+    name: "zeit_erfassen",
     description:
       "Erfasst Arbeitszeit auf einem Ticket (in Minuten). billing: internal (Standard), billable (verrechenbar) oder goodwill (Kulanz).",
     annotations: {
@@ -1521,7 +1521,7 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "add_checklist_item",
+    name: "checklistenpunkt_hinzufuegen",
     description: "Fügt der Checkliste eines Tickets einen Punkt hinzu.",
     annotations: {
       readOnlyHint: false,
@@ -1557,9 +1557,9 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "set_checklist_item",
+    name: "checklistenpunkt_abhaken",
     description:
-      "Hakt einen Checklistenpunkt eines Tickets ab oder öffnet ihn wieder. item: id aus get_ticket (checklist).",
+      "Hakt einen Checklistenpunkt eines Tickets ab oder öffnet ihn wieder. item: id aus ticket_anzeigen (checklist).",
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
@@ -1599,7 +1599,7 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "watch_ticket",
+    name: "ticket_beobachten",
     description:
       "Beobachtet ein Ticket (Benachrichtigungen bei Änderungen) oder beendet das Beobachten.",
     annotations: {
@@ -1638,7 +1638,7 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "global_search",
+    name: "ueberall_suchen",
     description:
       "Durchsucht den Arbeitsbereich gleichzeitig nach Tickets, Wiedervorlagen, Wissensartikeln, Veranstaltungsräumen und Eintritten.",
     annotations: { readOnlyHint: true, title: "Überall suchen" },
@@ -1679,7 +1679,7 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "list_notifications",
+    name: "benachrichtigungen_anzeigen",
     description: "Listet deine nextDesk-Benachrichtigungen (neueste zuerst).",
     annotations: { readOnlyHint: true, title: "Benachrichtigungen" },
     inputSchema: {
@@ -1723,9 +1723,9 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "mark_notifications_read",
+    name: "benachrichtigungen_gelesen",
     description:
-      "Markiert eine Benachrichtigung (id aus list_notifications) oder ohne id alle Benachrichtigungen des Arbeitsbereichs als gelesen.",
+      "Markiert eine Benachrichtigung (id aus benachrichtigungen_anzeigen) oder ohne id alle Benachrichtigungen des Arbeitsbereichs als gelesen.",
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
@@ -1758,7 +1758,7 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "list_pending_approvals",
+    name: "offene_freigaben_anzeigen",
     description:
       "Listet Ticketfreigaben, die auf deinen Entscheid warten (Genehmigungseingang).",
     annotations: { readOnlyHint: true, title: "Offene Freigaben" },
@@ -1794,9 +1794,9 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "decide_approval",
+    name: "freigabe_entscheiden",
     description:
-      "Genehmigt oder lehnt eine Ticketfreigabe ab (id aus list_pending_approvals). Nur nach ausdrücklicher Zustimmung der Person; setze dann confirm auf true.",
+      "Genehmigt oder lehnt eine Ticketfreigabe ab (id aus offene_freigaben_anzeigen). Nur nach ausdrücklicher Zustimmung der Person; setze dann confirm auf true.",
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
@@ -1852,7 +1852,7 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "list_service_tasks",
+    name: "serviceaufgaben_anzeigen",
     description:
       "Zeigt Serviceaufgaben: überfällige, heute fällige und kommende. scope: mine (Standard), team, all.",
     annotations: { readOnlyHint: true, title: "Serviceaufgaben" },
@@ -1899,9 +1899,9 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "complete_service_task",
+    name: "serviceaufgabe_erledigen",
     description:
-      "Schliesst eine Serviceaufgabe als erledigt ab (id aus list_service_tasks). Manche Aufgaben verlangen eine Notiz zum Ergebnis.",
+      "Schliesst eine Serviceaufgabe als erledigt ab (id aus serviceaufgaben_anzeigen). Manche Aufgaben verlangen eine Notiz zum Ergebnis.",
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
@@ -1937,9 +1937,9 @@ const TOOLS: Tool[] = [
 
   // ------------------------------------------------ Anfragende Personen
   {
-    name: "search_requesters",
+    name: "anfragende_suchen",
     description:
-      "Sucht anfragende Personen (Kundinnen und Kunden) nach Name. Die id wird für create_ticket (requester) verwendet.",
+      "Sucht anfragende Personen (Kundinnen und Kunden) nach Name. Die id wird für ticket_erfassen (requester) verwendet.",
     annotations: { readOnlyHint: true, title: "Anfragende suchen" },
     inputSchema: {
       type: "object",
@@ -1973,7 +1973,7 @@ const TOOLS: Tool[] = [
 
   // ------------------------------------------------ Wiedervorlagen
   {
-    name: "list_follow_ups",
+    name: "wiedervorlagen_anzeigen",
     description:
       "Listet deine Wiedervorlagen (Erinnerungen), standardmässig nur offene. Optional nur die eines Tickets.",
     annotations: { readOnlyHint: true, title: "Wiedervorlagen" },
@@ -2037,7 +2037,7 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "create_follow_up",
+    name: "wiedervorlage_erstellen",
     description:
       "Erstellt eine Wiedervorlage (Erinnerung) für dich, optional zu einem Ticket. dueAt als Datum/Zeit mit Zeitzone, z. B. 2026-11-10T08:00:00+01:00.",
     annotations: {
@@ -2102,8 +2102,9 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "resolve_follow_up",
-    description: "Erledigt eine Wiedervorlage (id aus list_follow_ups).",
+    name: "wiedervorlage_erledigen",
+    description:
+      "Erledigt eine Wiedervorlage (id aus wiedervorlagen_anzeigen).",
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
@@ -2133,7 +2134,7 @@ const TOOLS: Tool[] = [
 
   // ------------------------------------------------ Arbeitsplatz
   {
-    name: "list_mentions",
+    name: "erwaehnungen_anzeigen",
     description:
       "Listet Erwähnungen von dir in Ticketnotizen (@-Erwähnungen), standardmässig nur ungelesene.",
     annotations: { readOnlyHint: true, title: "Erwähnungen" },
@@ -2174,8 +2175,9 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "mark_mention_read",
-    description: "Markiert eine Erwähnung (id aus list_mentions) als gelesen.",
+    name: "erwaehnung_gelesen",
+    description:
+      "Markiert eine Erwähnung (id aus erwaehnungen_anzeigen) als gelesen.",
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
@@ -2200,7 +2202,7 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "my_metrics",
+    name: "meine_kennzahlen",
     description:
       "Deine persönlichen Kennzahlen: offene zugewiesene Tickets, heute gelöst, mittlere Erstreaktions- und Lösungszeit, fällige SLA.",
     annotations: { readOnlyHint: true, title: "Meine Kennzahlen" },
@@ -2227,7 +2229,7 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "team_queues",
+    name: "warteschlangen_anzeigen",
     description:
       "Zeigt die offenen Tickets je Abteilung und Team (Warteschlangen), die du sehen kannst.",
     annotations: { readOnlyHint: true, title: "Warteschlangen" },
@@ -2255,7 +2257,7 @@ const TOOLS: Tool[] = [
 
   // ------------------------------------------------ Ticketarbeit
   {
-    name: "list_handovers",
+    name: "uebergaben_anzeigen",
     description:
       "Zeigt die Übergaben eines Tickets (Zusammenfassung, nächste Schritte, Risiko).",
     annotations: { readOnlyHint: true, title: "Übergaben" },
@@ -2290,7 +2292,7 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "create_handover",
+    name: "uebergabe_erstellen",
     description:
       "Erstellt eine Übergabe für ein Ticket (z. B. vor Abwesenheit oder Schichtwechsel). risk: low, medium (Standard), high. Ohne confirm zeigt das Werkzeug zuerst einen Entwurf zum Prüfen und Ergänzen; erst mit confirm=true wird abgeschickt.",
     annotations: {
@@ -2353,9 +2355,9 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "acknowledge_handover",
+    name: "uebergabe_bestaetigen",
     description:
-      "Bestätigt den Empfang einer Übergabe (acknowledge) oder schliesst sie ab (resolve). id aus list_handovers.",
+      "Bestätigt den Empfang einer Übergabe (acknowledge) oder schliesst sie ab (resolve). id aus uebergaben_anzeigen.",
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
@@ -2398,7 +2400,7 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "escalate_ticket",
+    name: "ticket_eskalieren",
     description:
       "Eskaliert ein Ticket. kind: technical (fachlich), organizational (organisatorisch) oder sla. Eine Eskalation benachrichtigt weitere Personen; nur nach ausdrücklicher Zustimmung der Person mit confirm=true.",
     annotations: {
@@ -2452,7 +2454,7 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "link_tickets",
+    name: "tickets_verknuepfen",
     description:
       "Verknüpft zwei Tickets. relation: relates_to (Standard), duplicates, blocks, blocked_by, parent, child.",
     annotations: {
@@ -2507,9 +2509,9 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "attach_knowledge_article",
+    name: "wissensartikel_verknuepfen",
     description:
-      "Verknüpft einen Wissensartikel (id aus search_knowledge) mit einem Ticket. visibility: internal (Standard) oder external (für Anfragende sichtbar, nur mit confirm=true).",
+      "Verknüpft einen Wissensartikel (id aus wissen_suchen) mit einem Ticket. visibility: internal (Standard) oder external (für Anfragende sichtbar, nur mit confirm=true).",
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
@@ -2558,7 +2560,7 @@ const TOOLS: Tool[] = [
 
   // ------------------------------------------------ Betrieb und Verwaltung
   {
-    name: "service_status",
+    name: "servicestatus_anzeigen",
     description:
       "Zeigt den aktuellen Status der IT-Services sowie laufende und geplante Wartungen.",
     annotations: { readOnlyHint: true, title: "Servicestatus" },
@@ -2612,7 +2614,7 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "inventory_lookup",
+    name: "lager_nachschlagen",
     description:
       "Sucht einen Lagerartikel oder Lagerort über Artikelnummer, Barcode oder QR-Code und zeigt den Bestand.",
     annotations: { readOnlyHint: true, title: "Lager nachschlagen" },
@@ -2643,7 +2645,7 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "list_licenses",
+    name: "lizenzen_anzeigen",
     description:
       "Listet Softwarelizenzen. Mit expiringWithinDays nur solche, die in den nächsten Tagen ablaufen.",
     annotations: { readOnlyHint: true, title: "Lizenzen" },
@@ -2699,7 +2701,7 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "list_contracts",
+    name: "vertraege_anzeigen",
     description:
       "Listet Verträge mit Laufzeit, Kündigungsfrist und Kosten. Mit expiringWithinDays nur solche, die bald enden.",
     annotations: { readOnlyHint: true, title: "Verträge" },
@@ -2762,9 +2764,9 @@ const TOOLS: Tool[] = [
   },
   // ------------------------------------------------ Makros und Wissen
   {
-    name: "list_macros",
+    name: "makros_anzeigen",
     description:
-      "Listet die Antwortmakros (Textbausteine) des Arbeitsbereichs. Den Text eines Makros liefert get_macro_text.",
+      "Listet die Antwortmakros (Textbausteine) des Arbeitsbereichs. Den Text eines Makros liefert makrotext_holen.",
     annotations: { readOnlyHint: true, title: "Makros" },
     inputSchema: {
       type: "object",
@@ -2795,9 +2797,9 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "get_macro_text",
+    name: "makrotext_holen",
     description:
-      "Liefert den vollständigen Antworttext eines Makros (id aus list_macros), optional für ein bestimmtes Ticket. Zum Versenden danach reply_to_ticket verwenden.",
+      "Liefert den vollständigen Antworttext eines Makros (id aus makros_anzeigen), optional für ein bestimmtes Ticket. Zum Versenden danach ticket_beantworten verwenden.",
     annotations: { readOnlyHint: true, title: "Makrotext" },
     inputSchema: {
       type: "object",
@@ -2832,7 +2834,7 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "create_knowledge_draft",
+    name: "wissensentwurf_aus_ticket",
     description:
       "Erstellt aus einem Ticket einen Entwurf für einen Wissensartikel. Der Entwurf geht in die Prüfung und wird nicht direkt veröffentlicht. body in Markdown; ohne Angabe wird die Ticketbeschreibung verwendet.",
     annotations: {
@@ -2885,7 +2887,7 @@ const TOOLS: Tool[] = [
 
   // ------------------------------------------------ Veranstaltungsräume
   {
-    name: "list_event_bookings",
+    name: "raumbuchungen_anzeigen",
     description:
       "Zeigt die Räume und die Raumbuchungen (Veranstaltungen, Sitzungen) der letzten zwei Tage und der nächsten rund 13 Monate mit Status und Aufgaben. Optional gefiltert nach Raum oder Zeitraum.",
     annotations: { readOnlyHint: true, title: "Raumbuchungen" },
@@ -2960,7 +2962,7 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "book_event_space",
+    name: "raum_buchen",
     description: `Bucht einen Raum, einmalig oder als Serie (recurrence weekly mit count 2-52 Terminen, monthly mit count 2-12; gleiche Uhrzeit, Zürcher Zeit). Prüft vorher auf Überschneidungen; bei einer Überschneidung wird nicht gebucht, ausser die Person bestätigt sie ausdrücklich (confirmConflicts=true). equipment: ${EVENT_EQUIPMENT.join(", ")}. Ohne confirm zeigt das Werkzeug zuerst die Buchung mit Überschneidungsprüfung als Entwurf; erst mit confirm=true wird gebucht.`,
     annotations: {
       readOnlyHint: false,
@@ -3160,9 +3162,9 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "update_event_booking",
+    name: "raumbuchung_aktualisieren",
     description:
-      "Ändert den Status einer Raumbuchung (id aus list_event_bookings): planned, in_preparation, ready, conducted, completed.",
+      "Ändert den Status einer Raumbuchung (id aus raumbuchungen_anzeigen): planned, in_preparation, ready, conducted, completed.",
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
@@ -3197,9 +3199,9 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "update_event_task",
+    name: "raumaufgabe_aktualisieren",
     description:
-      "Setzt den Status einer Aufgabe zu einer Raumbuchung (id aus list_event_bookings): open, in_progress, completed.",
+      "Setzt den Status einer Aufgabe zu einer Raumbuchung (id aus raumbuchungen_anzeigen): open, in_progress, completed.",
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
@@ -3236,7 +3238,7 @@ const TOOLS: Tool[] = [
 
   // ------------------------------------------------ Eintritte (Onboarding)
   {
-    name: "list_onboardings",
+    name: "eintritte_anzeigen",
     description:
       "Zeigt die Eintritte neuer Mitarbeitender mit Startdatum, Verantwortlichen und offenen Aufgaben, dazu die verfügbaren Vorlagen und Personen.",
     annotations: { readOnlyHint: true, title: "Eintritte" },
@@ -3300,9 +3302,9 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "create_onboarding",
+    name: "eintritt_erfassen",
     description:
-      "Erfasst einen Eintritt (neue mitarbeitende Person). Vorlage, Führungsperson und ICT-Verantwortung als Name oder ID aus list_onboardings. Frage vorher nach, ob der Eintritt erfasst werden soll. Ohne confirm zeigt das Werkzeug zuerst einen Entwurf zum Prüfen und Ergänzen; erst mit confirm=true wird abgeschickt.",
+      "Erfasst einen Eintritt (neue mitarbeitende Person). Vorlage, Führungsperson und ICT-Verantwortung als Name oder ID aus eintritte_anzeigen. Frage vorher nach, ob der Eintritt erfasst werden soll. Ohne confirm zeigt das Werkzeug zuerst einen Entwurf zum Prüfen und Ergänzen; erst mit confirm=true wird abgeschickt.",
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
@@ -3399,9 +3401,9 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "update_onboarding_task",
+    name: "eintrittsaufgabe_aktualisieren",
     description:
-      "Setzt den Status einer Eintrittsaufgabe (id aus list_onboardings): open, in_progress, blocked, completed.",
+      "Setzt den Status einer Eintrittsaufgabe (id aus eintritte_anzeigen): open, in_progress, blocked, completed.",
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
@@ -3444,7 +3446,7 @@ const TOOLS: Tool[] = [
   },
   // ------------------------------------------------ Ticketsteuerung
   {
-    name: "assign_ticket",
+    name: "ticket_zuweisen",
     description:
       'Weist ein Ticket einer anderen Agentin oder einem anderen Agenten zu (Name oder ID) oder hebt die Zuweisung auf (agent: "none"). Ohne agent werden die möglichen Personen aufgelistet. Nur möglich mit dem Recht zum Zuweisen in nextDesk.',
     annotations: {
@@ -3513,7 +3515,7 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "assign_ticket_team",
+    name: "ticket_team_zuweisen",
     description:
       'Weist ein Ticket einem Team zu (Name oder ID) oder entfernt die Teamzuweisung (team: "none"). Ohne team werden die Teams aufgelistet.',
     annotations: {
@@ -3569,7 +3571,7 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "change_ticket_department",
+    name: "abteilung_wechseln",
     description:
       "Verschiebt ein Ticket in eine andere Abteilung. Dabei werden Kategorie, Team und zuständige Person zurückgesetzt. Nur nach ausdrücklicher Zustimmung der Person mit confirm=true.",
     annotations: {
@@ -3619,7 +3621,7 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "set_ticket_category",
+    name: "kategorie_setzen",
     description:
       'Setzt Kategorie und optional Unterkategorie eines Tickets (Namen oder IDs). Ohne category werden die Kategorien der Ticketabteilung aufgelistet; category "none" entfernt sie.',
     annotations: {
@@ -3701,7 +3703,7 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "merge_tickets",
+    name: "tickets_zusammenfuehren",
     description:
       "Führt ein Ticket (ticket) in ein Haupt-Ticket (into) zusammen. Das zusammengeführte Ticket wird dabei in der Regel geschlossen. Ohne into werden mögliche Ziele gesucht (query). Zusammenführen nur nach ausdrücklicher Zustimmung der Person mit confirm=true.",
     annotations: {
@@ -3775,9 +3777,9 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "unlink_tickets",
+    name: "verknuepfung_entfernen",
     description:
-      "Entfernt eine Verknüpfung zwischen zwei Tickets (relation wie bei link_tickets, Standard relates_to).",
+      "Entfernt eine Verknüpfung zwischen zwei Tickets (relation wie bei tickets_verknuepfen, Standard relates_to).",
     annotations: {
       readOnlyHint: false,
       destructiveHint: true,
@@ -3825,9 +3827,9 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "list_ticket_templates",
+    name: "ticketvorlagen_anzeigen",
     description:
-      "Listet die Ticketvorlagen einer Abteilung (Standard: alle Abteilungen, in denen du Tickets erfassen kannst). Eine Vorlage lässt sich bei create_ticket mit template verwenden.",
+      "Listet die Ticketvorlagen einer Abteilung (Standard: alle Abteilungen, in denen du Tickets erfassen kannst). Eine Vorlage lässt sich bei ticket_erfassen mit template verwenden.",
     annotations: { readOnlyHint: true, title: "Ticketvorlagen" },
     inputSchema: {
       type: "object",
@@ -3868,9 +3870,9 @@ const TOOLS: Tool[] = [
   },
   // ------------------------------------------------ Wissensdatenbank (Pflege)
   {
-    name: "save_knowledge_article",
+    name: "wissensartikel_speichern",
     description:
-      "Erstellt einen neuen Wissensartikel oder speichert eine neue Fassung eines bestehenden (article: ID). Der Artikel ist danach ein Entwurf und muss zur Prüfung gegeben werden (request_knowledge_review). Braucht das Recht zur Wissenspflege in nextDesk. Frage vorher nach. Ohne confirm zeigt das Werkzeug zuerst einen Entwurf zum Prüfen und Ergänzen; erst mit confirm=true wird abgeschickt.",
+      "Erstellt einen neuen Wissensartikel oder speichert eine neue Fassung eines bestehenden (article: ID). Der Artikel ist danach ein Entwurf und muss zur Prüfung gegeben werden (wissenspruefung_anfordern). Braucht das Recht zur Wissenspflege in nextDesk. Frage vorher nach. Ohne confirm zeigt das Werkzeug zuerst einen Entwurf zum Prüfen und Ergänzen; erst mit confirm=true wird abgeschickt.",
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
@@ -3962,12 +3964,12 @@ const TOOLS: Tool[] = [
         saved: true,
         id: article.id ?? null,
         status: article.status ?? "draft",
-        hint: "Entwurf gespeichert. Zum Veröffentlichen request_knowledge_review verwenden.",
+        hint: "Entwurf gespeichert. Zum Veröffentlichen wissenspruefung_anfordern verwenden.",
       });
     },
   },
   {
-    name: "request_knowledge_review",
+    name: "wissenspruefung_anfordern",
     description:
       "Gibt einen Wissensartikel-Entwurf zur Prüfung (Freigabe vor der Veröffentlichung).",
     annotations: {
@@ -3997,7 +3999,7 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "decide_knowledge_review",
+    name: "wissensartikel_freigeben",
     description:
       "Entscheidet über einen Wissensartikel in Prüfung: approved veröffentlicht ihn, rejected setzt ihn auf Entwurf zurück. Braucht das Recht zum Veröffentlichen in nextDesk und die ausdrückliche Zustimmung der Person (confirm=true).",
     annotations: {
@@ -4044,7 +4046,7 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "archive_knowledge_article",
+    name: "wissensartikel_archivieren",
     description:
       "Archiviert einen Wissensartikel (er ist danach nicht mehr auffindbar). Nur nach ausdrücklicher Zustimmung der Person mit confirm=true.",
     annotations: {
@@ -4079,7 +4081,7 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "list_knowledge_collections",
+    name: "wissenssammlungen_anzeigen",
     description: "Listet die Sammlungen (Ordner) der Wissensdatenbank.",
     annotations: { readOnlyHint: true, title: "Wissenssammlungen" },
     inputSchema: {
@@ -4103,7 +4105,7 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "list_knowledge_revisions",
+    name: "artikelversionen_anzeigen",
     description:
       "Zeigt die Fassungen (Versionen) eines Wissensartikels. Braucht das Recht zur Wissenspflege.",
     annotations: { readOnlyHint: true, title: "Artikelversionen" },
@@ -4134,7 +4136,7 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "list_ticket_knowledge",
+    name: "ticketwissen_anzeigen",
     description:
       "Zeigt die mit einem Ticket verknüpften Wissensartikel (intern oder an Anfragende gesendet).",
     annotations: { readOnlyHint: true, title: "Wissen am Ticket" },
@@ -4171,7 +4173,7 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "detach_knowledge_article",
+    name: "wissensartikel_loesen",
     description:
       "Entfernt die Verknüpfung eines Wissensartikels mit einem Ticket.",
     annotations: {
@@ -4207,7 +4209,7 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "send_knowledge_to_requester",
+    name: "wissensartikel_senden",
     description:
       "Sendet einen verknüpften, externen und veröffentlichten Wissensartikel als Antwort an die anfragende Person. Nur nach ausdrücklicher Zustimmung der Person mit confirm=true.",
     annotations: {
@@ -4253,9 +4255,9 @@ const TOOLS: Tool[] = [
 
   // ------------------------------------------------ Serviceaufgaben (Detail)
   {
-    name: "get_service_task",
+    name: "serviceaufgabe_anzeigen",
     description:
-      "Zeigt eine Serviceaufgabe mit Anleitung, Checkliste (IDs für update_service_task), Notiz und Verlauf.",
+      "Zeigt eine Serviceaufgabe mit Anleitung, Checkliste (IDs für serviceaufgabe_bearbeiten), Notiz und Verlauf.",
     annotations: { readOnlyHint: true, title: "Serviceaufgabe" },
     inputSchema: {
       type: "object",
@@ -4275,9 +4277,9 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "update_service_task",
+    name: "serviceaufgabe_bearbeiten",
     description:
-      'Bearbeitet eine Serviceaufgabe. action: start, skip (mit reason), note (Notiz speichern), check (Checklistenpunkt checkId, done), reopen, reschedule (dueOn JJJJ-MM-TT, braucht Verwaltungsrecht), assign (assignee: "me", "none" oder Personen-ID, braucht Verwaltungsrecht). Zum Abschliessen complete_service_task verwenden.',
+      'Bearbeitet eine Serviceaufgabe. action: start, skip (mit reason), note (Notiz speichern), check (Checklistenpunkt checkId, done), reopen, reschedule (dueOn JJJJ-MM-TT, braucht Verwaltungsrecht), assign (assignee: "me", "none" oder Personen-ID, braucht Verwaltungsrecht). Zum Abschliessen serviceaufgabe_erledigen verwenden.',
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
@@ -4339,7 +4341,9 @@ const TOOLS: Tool[] = [
         }
         case "check":
           if (typeof args.checkId !== "string" || !args.checkId) {
-            throw new ToolError('"checkId" fehlt (aus get_service_task).');
+            throw new ToolError(
+              '"checkId" fehlt (aus serviceaufgabe_anzeigen).',
+            );
           }
           body.action = "toggleCheck";
           body.checkId = args.checkId;
@@ -4387,7 +4391,7 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "service_task_calendar",
+    name: "serviceaufgaben_kalender",
     description:
       "Zeigt den Kalender der Serviceaufgaben für einen Monat (JJJJ-MM), inklusive geplanter künftiger Termine.",
     annotations: { readOnlyHint: true, title: "Serviceaufgaben-Kalender" },
@@ -4431,7 +4435,7 @@ const TOOLS: Tool[] = [
 
   // ------------------------------------------------ Freigaben anfordern
   {
-    name: "list_ticket_approvals",
+    name: "ticketfreigaben_anzeigen",
     description:
       "Zeigt die Freigaben (Genehmigungen) eines Tickets mit Status und Entscheiden.",
     annotations: { readOnlyHint: true, title: "Freigaben am Ticket" },
@@ -4473,7 +4477,7 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "request_approval",
+    name: "freigabe_anfordern",
     description:
       'Fordert für ein Ticket eine Freigabe an (z. B. kind "beschaffung"). requiredApprovals: Anzahl nötiger Zustimmungen (1-10, Standard 1). Frage vorher nach. Ohne confirm zeigt das Werkzeug zuerst einen Entwurf zum Prüfen und Ergänzen; erst mit confirm=true wird abgeschickt.',
     annotations: {
@@ -4552,9 +4556,9 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "cancel_approval",
+    name: "freigabe_zurueckziehen",
     description:
-      "Zieht eine offene Freigabe-Anforderung zurück (id aus list_ticket_approvals).",
+      "Zieht eine offene Freigabe-Anforderung zurück (id aus ticketfreigaben_anzeigen).",
     annotations: {
       readOnlyHint: false,
       destructiveHint: true,
@@ -4601,7 +4605,7 @@ const TOOLS: Tool[] = [
 
   // ------------------------------------------------ Stellvertretung
   {
-    name: "list_delegations",
+    name: "stellvertretungen_anzeigen",
     description:
       "Zeigt deine Stellvertretungen (wer dich wann vertritt). Mit agent die einer anderen Person, sofern du sie führst.",
     annotations: { readOnlyHint: true, title: "Stellvertretungen" },
@@ -4648,7 +4652,7 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "set_delegation",
+    name: "stellvertretung_einrichten",
     description:
       "Richtet eine Stellvertretung ein: delegate vertritt dich (oder agent, sofern du die Person führst) von startsAt bis endsAt (ISO 8601). Frage vorher nach. Ohne confirm zeigt das Werkzeug zuerst einen Entwurf zum Prüfen und Ergänzen; erst mit confirm=true wird abgeschickt.",
     annotations: {
@@ -4732,9 +4736,9 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "end_delegation",
+    name: "stellvertretung_beenden",
     description:
-      "Beendet eine Stellvertretung sofort (id aus list_delegations).",
+      "Beendet eine Stellvertretung sofort (id aus stellvertretungen_anzeigen).",
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
@@ -4761,7 +4765,7 @@ const TOOLS: Tool[] = [
 
   // ------------------------------------------------ Störungsmeldungen
   {
-    name: "list_incident_notices",
+    name: "stoerungsmeldungen_anzeigen",
     description:
       "Listet die internen Störungsmeldungen (laufende und behobene Störungen).",
     annotations: { readOnlyHint: true, title: "Störungsmeldungen" },
@@ -4796,7 +4800,7 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "save_incident_notice",
+    name: "stoerungsmeldung_speichern",
     description:
       "Erfasst eine Störungsmeldung oder aktualisiert sie (notice: ID). status: investigating, identified, monitoring, resolved. Braucht das Verwaltungsrecht für Tickets. Frage vorher nach. Ohne confirm zeigt das Werkzeug zuerst einen Entwurf zum Prüfen und Ergänzen; erst mit confirm=true wird abgeschickt.",
     annotations: {
@@ -4890,7 +4894,7 @@ const TOOLS: Tool[] = [
 
   // ------------------------------------------------ Hilfen zum Ticket
   {
-    name: "suggest_assignees",
+    name: "zuweisung_vorschlagen",
     description:
       "Schlägt passende Personen für die Bearbeitung eines Tickets vor (mit Begründung). Weist nicht zu.",
     annotations: { readOnlyHint: true, title: "Zuweisung vorschlagen" },
@@ -4924,7 +4928,7 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "get_ticket_context",
+    name: "ticketumfeld_anzeigen",
     description:
       "Zeigt das Umfeld eines Tickets: weitere Tickets der anfragenden Person, ihre Geräte mit Verlauf, Erreichbarkeit und Beobachtende.",
     annotations: { readOnlyHint: true, title: "Ticketumfeld" },
@@ -4967,7 +4971,7 @@ const TOOLS: Tool[] = [
   },
   // ------------------------------------------------ Auswertungen und SLA
   {
-    name: "service_report",
+    name: "servicebericht",
     description:
       "Kennzahlen des Service: eingegangene, gelöste und offene Tickets, SLA-Einhaltung, Reaktions- und Lösungszeiten, Zufriedenheit und Werte je Person, mit Vergleich zur Vorperiode. period: 7d, 30d (Standard), 90d oder custom mit startsOn/endsOn. Braucht das Recht für Berichte in nextDesk.",
     annotations: { readOnlyHint: true, title: "Servicebericht" },
@@ -5030,7 +5034,7 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "list_sla_escalations",
+    name: "sla_eskalationen_anzeigen",
     description:
       "Listet die neuesten SLA- und Ticket-Eskalationen der Abteilungen, die du sehen darfst.",
     annotations: { readOnlyHint: true, title: "SLA-Eskalationen" },
@@ -5069,7 +5073,7 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "list_sla_rules",
+    name: "sla_regeln_anzeigen",
     description:
       "Zeigt die SLA-Regeln (Reaktions- und Lösungszeiten je Priorität und Servicezeiten).",
     annotations: { readOnlyHint: true, title: "SLA-Regeln" },
@@ -5100,7 +5104,7 @@ const TOOLS: Tool[] = [
 
   // ------------------------------------------------ Teamführung
   {
-    name: "team_overview",
+    name: "teamuebersicht",
     description:
       "Für Vorgesetzte: Auslastung der geführten Agentinnen und Agenten (offene, überfällige, gefährdete Tickets, Abwesenheiten) und die offenen Tickets ihrer Abteilungen.",
     annotations: { readOnlyHint: true, title: "Teamübersicht" },
@@ -5164,9 +5168,9 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "team_review_queue",
+    name: "pruefliste_anzeigen",
     description:
-      "Für Vorgesetzte: bis zu fünf zufällig gewählte, kürzlich gelöste Tickets zur Qualitätsprüfung (Bewertung mit save_ticket_review).",
+      "Für Vorgesetzte: bis zu fünf zufällig gewählte, kürzlich gelöste Tickets zur Qualitätsprüfung (Bewertung mit ticket_bewerten).",
     annotations: { readOnlyHint: true, title: "Prüfliste" },
     inputSchema: {
       type: "object",
@@ -5192,7 +5196,7 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "save_ticket_review",
+    name: "ticket_bewerten",
     description:
       "Für Vorgesetzte: bewertet die Bearbeitung eines gelösten Tickets (rating 1-5, Lösung korrekt, Ton angemessen, Kommentar).",
     annotations: {
@@ -5253,7 +5257,7 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "team_monthly_report",
+    name: "monatsbericht",
     description:
       "Für Vorgesetzte: Monatsbericht je Person (zugewiesen, gelöst, Reaktions- und Lösungszeit, SLA, Zufriedenheit, Qualität, Wissensartikel). month: JJJJ-MM.",
     annotations: { readOnlyHint: true, title: "Monatsbericht" },
@@ -5286,7 +5290,7 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "reassign_tickets",
+    name: "tickets_umverteilen",
     description:
       'Für Vorgesetzte: weist mehrere Tickets (bis 100) einer Person aus dem geführten Team zu (agent: Name oder ID) oder hebt die Zuweisung auf (agent: "none"). Nur nach ausdrücklicher Zustimmung der Person mit confirm=true.',
     annotations: {
@@ -5366,9 +5370,9 @@ const TOOLS: Tool[] = [
 
   // ------------------------------------------------ Personen und Organisationen
   {
-    name: "get_requester_profile",
+    name: "anfragende_profil_anzeigen",
     description:
-      "Zeigt das Profil einer anfragenden Person (Standort, Abteilung, Angebot, Sprache, bevorzugter Kontaktweg, wichtige Hinweise). requester: ID aus search_requesters oder get_ticket (requesterId). Braucht das Recht zur Pflege von Anfragenden.",
+      "Zeigt das Profil einer anfragenden Person (Standort, Abteilung, Angebot, Sprache, bevorzugter Kontaktweg, wichtige Hinweise). requester: ID aus anfragende_suchen oder ticket_anzeigen (requesterId). Braucht das Recht zur Pflege von Anfragenden.",
     annotations: { readOnlyHint: true, title: "Profil Anfragende" },
     inputSchema: {
       type: "object",
@@ -5398,7 +5402,7 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "list_customer_organizations",
+    name: "kundenorganisationen_anzeigen",
     description:
       "Listet die Kundenorganisationen; mit organization (Name oder ID) zusätzlich deren Mitglieder. Braucht Verwaltungsrechte für Benutzer oder Einstellungen.",
     annotations: { readOnlyHint: true, title: "Kundenorganisationen" },
@@ -5460,9 +5464,9 @@ const TOOLS: Tool[] = [
 
   // ------------------------------------------------ Geräte
   {
-    name: "get_asset",
+    name: "geraet_anzeigen",
     description:
-      "Zeigt ein Gerät mit Details, Standort, zugehörigen Tickets und (mit Verwaltungsrecht) Intune-Daten und Lebenszyklus. asset: ID aus find_asset, oder code: Inventarnummer, Asset-Tag oder Seriennummer.",
+      "Zeigt ein Gerät mit Details, Standort, zugehörigen Tickets und (mit Verwaltungsrecht) Intune-Daten und Lebenszyklus. asset: ID aus geraet_suchen, oder code: Inventarnummer, Asset-Tag oder Seriennummer.",
     annotations: { readOnlyHint: true, title: "Gerät anzeigen" },
     inputSchema: {
       type: "object",
@@ -5495,7 +5499,7 @@ const TOOLS: Tool[] = [
       } catch (error) {
         if (error instanceof ToolError && error.message.includes("http_409")) {
           throw new ToolError(
-            "Der Code passt auf mehrere Geräte. Suche mit find_asset und verwende die ID.",
+            "Der Code passt auf mehrere Geräte. Suche mit geraet_suchen und verwende die ID.",
           );
         }
         throw error;
@@ -5531,7 +5535,7 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "get_ticket_devices",
+    name: "geraete_zum_ticket",
     description:
       "Zeigt die Geräte der anfragenden Person eines Tickets (aus Zuweisung und Intune).",
     annotations: { readOnlyHint: true, title: "Geräte zum Ticket" },
@@ -5569,7 +5573,7 @@ const TOOLS: Tool[] = [
 
   // ------------------------------------------------ Lager
   {
-    name: "inventory_overview",
+    name: "lageruebersicht",
     description:
       "Zeigt das Lager: Artikel mit Bestand (physisch, reserviert, verfügbar), knappe Artikel, Lagerorte und letzte Bewegungen. Optional nach Artikel gefiltert (query).",
     annotations: { readOnlyHint: true, title: "Lagerübersicht" },
@@ -5622,7 +5626,7 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "post_inventory_movement",
+    name: "lagerbewegung_buchen",
     description:
       "Bucht eine Lagerbewegung. type: receipt (Eingang, to), issue (Ausgabe, from), transfer (from und to), defect, loss, adjustment_out (from), adjustment_in (to). Artikel und Lagerorte als Name, Nummer/Code oder ID. Frage vorher nach.",
     annotations: {
@@ -5713,7 +5717,7 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "reserve_inventory",
+    name: "material_reservieren",
     description:
       "Reserviert Lagermaterial an einem Lagerort, optional für ein Ticket. Artikel und Lagerort als Name, Nummer/Code oder ID.",
     annotations: {
@@ -5770,7 +5774,7 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "list_inventory_reservations",
+    name: "reservationen_anzeigen",
     description: "Listet die offenen Materialreservationen.",
     annotations: { readOnlyHint: true, title: "Reservationen" },
     inputSchema: {
@@ -5798,9 +5802,9 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "release_inventory_reservation",
+    name: "reservation_freigeben",
     description:
-      "Gibt eine Materialreservation frei (id aus list_inventory_reservations).",
+      "Gibt eine Materialreservation frei (id aus reservationen_anzeigen).",
     annotations: {
       readOnlyHint: false,
       destructiveHint: true,
@@ -5831,7 +5835,7 @@ const TOOLS: Tool[] = [
   },
   // ------------------------------------------------ Shop
   {
-    name: "list_shop_catalog",
+    name: "shop_katalog_anzeigen",
     description:
       "Durchsucht den Self-Service-Shop (Software, Lizenzen, Geräte, Zubehör, Ausleihartikel), den Mitarbeitende selbst bestellen können. query: z. B. «Visio».",
     annotations: { readOnlyHint: true, title: "Shop-Katalog" },
@@ -5880,9 +5884,9 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "order_from_shop",
+    name: "im_shop_bestellen",
     description:
-      "Bestellt Artikel im Self-Service-Shop für dich (items: Name oder ID aus list_shop_catalog, mit Menge). reason ist Pflicht, ausser bei reinen Ausleihartikeln; bei Ausleihe loanFrom/loanUntil (JJJJ-MM-TT) angeben. Je nach Artikel braucht es eine Freigabe. Ohne confirm zeigt das Werkzeug zuerst die Bestellung als Entwurf; erst mit confirm=true wird bestellt.",
+      "Bestellt Artikel im Self-Service-Shop für dich (items: Name oder ID aus shop_katalog_anzeigen, mit Menge). reason ist Pflicht, ausser bei reinen Ausleihartikeln; bei Ausleihe loanFrom/loanUntil (JJJJ-MM-TT) angeben. Je nach Artikel braucht es eine Freigabe. Ohne confirm zeigt das Werkzeug zuerst die Bestellung als Entwurf; erst mit confirm=true wird bestellt.",
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
@@ -6020,7 +6024,7 @@ const TOOLS: Tool[] = [
     },
   },
   {
-    name: "list_shop_orders",
+    name: "shop_bestellungen_anzeigen",
     description:
       "Zeigt deine Shop-Bestellungen mit Status (scope: mine, Standard). Mit scope approvals die Bestellungen, die auf deine Freigabe warten.",
     annotations: { readOnlyHint: true, title: "Shop-Bestellungen" },
@@ -6090,8 +6094,8 @@ const PROMPTS: Prompt[] = [
       },
     ],
     intro:
-      "Beantworte meine IT-Frage ausschliesslich mit dem Wissen aus nextDesk: zuerst search_knowledge (und get_knowledge_article für den vollen Text), bei Software oder Material zusätzlich list_shop_catalog. Erfinde keine allgemeinen Anleitungen aus dem Web. Findest du nichts, sag das und biete an, mit der Vorlage ticket_erfassen ein Ticket zu erfassen.",
-    tool: "search_knowledge",
+      "Beantworte meine IT-Frage ausschliesslich mit dem Wissen aus nextDesk: zuerst wissen_suchen (und wissensartikel_lesen für den vollen Text), bei Software oder Material zusätzlich shop_katalog_anzeigen. Erfinde keine allgemeinen Anleitungen aus dem Web. Findest du nichts, sag das und biete an, mit der Vorlage ticket_erfassen ein Ticket zu erfassen.",
+    tool: "wissen_suchen",
   },
   {
     name: "ticket_erfassen",
@@ -6112,8 +6116,8 @@ const PROMPTS: Prompt[] = [
       { name: "vorlage", description: "Ticketvorlage (Name)" },
     ],
     intro:
-      "Falls fuer_person angegeben ist, suche die Person mit search_requesters und verwende deren id als requester. Falls eine Vorlage genannt ist, prüfe sie mit list_ticket_templates.",
-    tool: "create_ticket",
+      "Falls fuer_person angegeben ist, suche die Person mit anfragende_suchen und verwende deren id als requester. Falls eine Vorlage genannt ist, prüfe sie mit ticketvorlagen_anzeigen.",
+    tool: "ticket_erfassen",
   },
   {
     name: "problem_melden",
@@ -6131,8 +6135,8 @@ const PROMPTS: Prompt[] = [
       { name: "dringlichkeit", description: "low, normal, high oder urgent" },
     ],
     intro:
-      "Suche zuerst mit search_knowledge nach einer Lösung und zeige sie mir. Hilft sie nicht oder gibt es keine, erfasse ein Ticket: Betreff kurz aus der Beschreibung, Beschreibung mit allen Angaben (was, seit wann, Gerät), Priorität aus der Dringlichkeit. Schau mit service_status nach, ob eine bekannte Störung vorliegt, und erwähne sie.",
-    tool: "create_ticket",
+      "Suche zuerst mit wissen_suchen nach einer Lösung und zeige sie mir. Hilft sie nicht oder gibt es keine, erfasse ein Ticket: Betreff kurz aus der Beschreibung, Beschreibung mit allen Angaben (was, seit wann, Gerät), Priorität aus der Dringlichkeit. Schau mit servicestatus_anzeigen nach, ob eine bekannte Störung vorliegt, und erwähne sie.",
+    tool: "ticket_erfassen",
   },
   {
     name: "software_anfordern",
@@ -6148,8 +6152,8 @@ const PROMPTS: Prompt[] = [
       { name: "grund", description: "Wofür brauchst du sie?" },
     ],
     intro:
-      "Suche zuerst mit search_knowledge, wie man diese Software bekommt (z. B. über das Unternehmensportal), und erkläre mir den Weg. Ist sie im Shop (list_shop_catalog) bestellbar, biete die Bestellung mit order_from_shop an. Gibt es beides nicht, erfasse ein Ticket mit dem Grund.",
-    tool: "order_from_shop",
+      "Suche zuerst mit wissen_suchen, wie man diese Software bekommt (z. B. über das Unternehmensportal), und erkläre mir den Weg. Ist sie im Shop (shop_katalog_anzeigen) bestellbar, biete die Bestellung mit im_shop_bestellen an. Gibt es beides nicht, erfasse ein Ticket mit dem Grund.",
+    tool: "im_shop_bestellen",
   },
   {
     name: "antwort_schreiben",
@@ -6168,8 +6172,8 @@ const PROMPTS: Prompt[] = [
       },
     ],
     intro:
-      "Lies das Ticket mit get_ticket. Falls ein Makro genannt ist, hole den Text mit list_macros und get_macro_text. Formuliere eine freundliche, klare Antwort in der Sprache der anfragenden Person.",
-    tool: "reply_to_ticket",
+      "Lies das Ticket mit ticket_anzeigen. Falls ein Makro genannt ist, hole den Text mit makros_anzeigen und makrotext_holen. Formuliere eine freundliche, klare Antwort in der Sprache der anfragenden Person.",
+    tool: "ticket_beantworten",
   },
   {
     name: "raum_buchen",
@@ -6195,7 +6199,7 @@ const PROMPTS: Prompt[] = [
     ],
     intro:
       "Datum und Zeiten sind Schweizer Zeit (Europe/Zurich); rechne sie in ISO 8601 mit Zeitzone um. Übersetze die Ausstattung in die erlaubten equipment-Werte.",
-    tool: "book_event_space",
+    tool: "raum_buchen",
   },
   {
     name: "eintritt_erfassen",
@@ -6218,7 +6222,7 @@ const PROMPTS: Prompt[] = [
       { name: "ict_verantwortung", description: "Name (Standard: du)" },
       { name: "vorlage", description: "Onboarding-Vorlage (Name)" },
     ],
-    tool: "create_onboarding",
+    tool: "eintritt_erfassen",
   },
   {
     name: "shop_bestellung",
@@ -6234,8 +6238,8 @@ const PROMPTS: Prompt[] = [
       { name: "grund", description: "Wofür wird es gebraucht?" },
       { name: "lieferung", description: "Abholung oder an den Platz" },
     ],
-    intro: "Suche die Artikel zuerst mit list_shop_catalog.",
-    tool: "order_from_shop",
+    intro: "Suche die Artikel zuerst mit shop_katalog_anzeigen.",
+    tool: "im_shop_bestellen",
   },
   {
     name: "abwesenheit_vertretung",
@@ -6252,8 +6256,8 @@ const PROMPTS: Prompt[] = [
       { name: "notiz", description: "Hinweis für die Vertretung" },
     ],
     intro:
-      "Zeiten sind Schweizer Zeit (Europe/Zurich); rechne sie in ISO 8601 mit Zeitzone um. Biete danach an, für meine offenen Tickets mit create_handover Übergaben zu erstellen.",
-    tool: "set_delegation",
+      "Zeiten sind Schweizer Zeit (Europe/Zurich); rechne sie in ISO 8601 mit Zeitzone um. Biete danach an, für meine offenen Tickets mit uebergabe_erstellen Übergaben zu erstellen.",
+    tool: "stellvertretung_einrichten",
   },
   {
     name: "uebergabe_erstellen",
@@ -6270,8 +6274,8 @@ const PROMPTS: Prompt[] = [
       { name: "risiko", description: "low, medium oder high" },
     ],
     intro:
-      "Fehlt die Zusammenfassung, schlage aus get_ticket eine vor und lass sie mich bestätigen.",
-    tool: "create_handover",
+      "Fehlt die Zusammenfassung, schlage aus ticket_anzeigen eine vor und lass sie mich bestätigen.",
+    tool: "uebergabe_erstellen",
   },
   {
     name: "freigabe_anfordern",
@@ -6290,7 +6294,7 @@ const PROMPTS: Prompt[] = [
         description: "Wie viele Zustimmungen (Standard 1)",
       },
     ],
-    tool: "request_approval",
+    tool: "freigabe_anfordern",
   },
   {
     name: "wissensartikel_erstellen",
@@ -6310,8 +6314,8 @@ const PROMPTS: Prompt[] = [
       },
     ],
     intro:
-      "Falls aus_ticket angegeben ist, lies das Ticket mit get_ticket und formuliere daraus eine Schritt-für-Schritt-Anleitung in Markdown. Biete nach dem Speichern an, den Artikel mit request_knowledge_review zur Prüfung zu geben.",
-    tool: "save_knowledge_article",
+      "Falls aus_ticket angegeben ist, lies das Ticket mit ticket_anzeigen und formuliere daraus eine Schritt-für-Schritt-Anleitung in Markdown. Biete nach dem Speichern an, den Artikel mit wissenspruefung_anfordern zur Prüfung zu geben.",
+    tool: "wissensartikel_speichern",
   },
   {
     name: "stoerung_melden",
@@ -6332,7 +6336,7 @@ const PROMPTS: Prompt[] = [
     ],
     intro:
       "Übersetze den Status: untersucht = investigating, erkannt = identified, beobachtet = monitoring, behoben = resolved (Standard investigating).",
-    tool: "save_incident_notice",
+    tool: "stoerungsmeldung_speichern",
   },
   {
     name: "zeit_erfassen",
@@ -6346,7 +6350,7 @@ const PROMPTS: Prompt[] = [
     ],
     intro:
       "Übersetze die Verrechnung: intern = internal, verrechenbar = billable, Kulanz = goodwill. Zeige mir die Angaben kurz und erfasse nach meiner Bestätigung.",
-    tool: "add_time_entry",
+    tool: "zeit_erfassen",
   },
 ];
 
@@ -6365,7 +6369,7 @@ function promptMessage(prompt: Prompt, args: Json): string {
     prompt.intro ?? "",
     `Verwende dafür das Werkzeug ${prompt.tool}. Angaben:`,
     filled,
-    prompt.tool === "search_knowledge" ? "" : DRAFT_FLOW,
+    prompt.tool === "wissen_suchen" ? "" : DRAFT_FLOW,
   ]
     .filter(Boolean)
     .join("\n\n");
@@ -6416,7 +6420,7 @@ export async function handleMessage(
       serverInfo: SERVER_INFO,
       instructions: [
         "Greift als angemeldete Person auf nextDesk zu (Service-Desk der Organisation).",
-        "IT-Fragen zuerst in nextDesk beantworten: Bei Fragen zu Software (Installation, Download, Lizenzen), Geräten, Zugängen, Konten, Drucken, E-Mail, VPN oder anderen IT-Problemen IMMER zuerst search_knowledge aufrufen und die Antwort auf die gefundenen Artikel stützen (get_knowledge_article für den vollen Text). Gibt es zu einem bestimmten Programm keinen eigenen Artikel, gilt der allgemeine Weg aus der Wissensdatenbank (z. B. Software über das Unternehmensportal installieren). Interne Abläufe wie das Unternehmensportal, Company Portal oder Bestellwege gehen allgemeinen Anleitungen aus dem Web vor. Bei Software oder Material zusätzlich list_shop_catalog prüfen. Findet sich nichts, das offen sagen, keine allgemeinen Download-Anleitungen erfinden und anbieten, ein Ticket zu erfassen (create_ticket).",
+        "IT-Fragen zuerst in nextDesk beantworten: Bei Fragen zu Software (Installation, Download, Lizenzen), Geräten, Zugängen, Konten, Drucken, E-Mail, VPN oder anderen IT-Problemen IMMER zuerst wissen_suchen aufrufen und die Antwort auf die gefundenen Artikel stützen (wissensartikel_lesen für den vollen Text). Gibt es zu einem bestimmten Programm keinen eigenen Artikel, gilt der allgemeine Weg aus der Wissensdatenbank (z. B. Software über das Unternehmensportal installieren). Interne Abläufe wie das Unternehmensportal, Company Portal oder Bestellwege gehen allgemeinen Anleitungen aus dem Web vor. Bei Software oder Material zusätzlich shop_katalog_anzeigen prüfen. Findet sich nichts, das offen sagen, keine allgemeinen Download-Anleitungen erfinden und anbieten, ein Ticket zu erfassen (ticket_erfassen).",
         "Lesen ist frei. Schreibaktionen nur nach Rückfrage bei der Person; folgenreiche Aktionen (Antworten an Anfragende, Lösen, Schliessen, Freigabeentscheide, Eskalationen, Abteilungswechsel, Zusammenführen, Umverteilen, Veröffentlichen und Archivieren von Wissen, an Anfragende gesendete Artikel, Bestellungen im Shop, Raumbuchungen trotz Überschneidung) verlangen ausdrückliche Bestätigung (confirm=true).",
         "Alle Rechte prüft nextDesk selbst; fehlt ein Recht, meldet das Werkzeug dies.",
       ].join(" "),
@@ -6459,6 +6463,10 @@ export async function handleMessage(
     return rpcResult(id, {
       tools: TOOLS.map(({ name, description, inputSchema, annotations }) => ({
         name,
+        // Deutscher Anzeigename für Clients, die das Feld title auswerten.
+        ...(typeof annotations.title === "string"
+          ? { title: annotations.title }
+          : {}),
         description,
         inputSchema,
         annotations,
