@@ -31,6 +31,7 @@ import {
   scoreStars,
   type KudosEntry,
 } from "./lib/sla-breach-reasons";
+import type { TicketDrilldown } from "./lib/ticket-drilldown";
 import { callTeamSupervision } from "./team-supervision-api";
 import { buildOneOnOneSheet } from "./lib/one-on-one-sheet";
 import { supabase } from "./lib/supabase";
@@ -176,9 +177,12 @@ function monthLabel(month: string): string {
 export function TeamSupervision({
   tenantId,
   onOpenTicket,
+  onOpenTicketList,
 }: {
   tenantId: string;
   onOpenTicket: (ticketId: string) => void;
+  /** Drilldown from the board figures into the filtered ticket list. */
+  onOpenTicketList?: ((drilldown: TicketDrilldown) => void) | undefined;
 }) {
   const [view, setView] = useState<View>("live");
   const [overview, setOverview] = useState<Overview | null>(null);
@@ -264,7 +268,11 @@ export function TeamSupervision({
       ) : overview ? (
         <>
           {view === "live" ? (
-            <LiveBoard onOpenTicket={onOpenTicket} tenantId={tenantId} />
+            <LiveBoard
+              onOpenTicket={onOpenTicket}
+              onOpenTicketList={onOpenTicketList}
+              tenantId={tenantId}
+            />
           ) : null}
           {view === "skills" ? <SkillMatrix tenantId={tenantId} /> : null}
           {view === "overview" ? (

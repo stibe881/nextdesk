@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import {
   AlertTriangle,
   Heart,
@@ -14,6 +20,7 @@ import {
   scoreStars,
   type KudosEntry,
 } from "./lib/sla-breach-reasons";
+import type { TicketDrilldown } from "./lib/ticket-drilldown";
 import "./team-leadership.css";
 
 type BoardAgent = {
@@ -76,13 +83,50 @@ const time = (value: string) =>
     timeZone: "Europe/Zurich",
   }).format(new Date(value));
 
+/**
+ * A board figure that opens the matching ticket list when a drilldown handler
+ * is available; otherwise plain text.
+ */
+function DrillValue({
+  children,
+  className,
+  drilldown,
+  onOpenTicketList,
+}: {
+  children: ReactNode;
+  className?: string;
+  drilldown: TicketDrilldown;
+  onOpenTicketList: ((drilldown: TicketDrilldown) => void) | undefined;
+}) {
+  if (!onOpenTicketList) {
+    return className ? (
+      <span className={className}>{children}</span>
+    ) : (
+      <>{children}</>
+    );
+  }
+  return (
+    <button
+      aria-label={`Tickets anzeigen: ${drilldown.label}`}
+      className={["live-board__drill", className].filter(Boolean).join(" ")}
+      onClick={() => onOpenTicketList(drilldown)}
+      type="button"
+    >
+      {children}
+    </button>
+  );
+}
+
 /** Wall display of the team: refreshes every 30 seconds. */
 export function LiveBoard({
   tenantId,
   onOpenTicket,
+  onOpenTicketList,
 }: {
   tenantId: string;
   onOpenTicket: (ticketId: string) => void;
+  /** Drilldown: opens the ticket list filtered to a board figure. */
+  onOpenTicketList?: ((drilldown: TicketDrilldown) => void) | undefined;
 }) {
   const [board, setBoard] = useState<Board | null>(null);
   const [error, setError] = useState("");
@@ -182,17 +226,50 @@ export function LiveBoard({
           >
             <h4>{department.name}</h4>
             <div className="live-board__queue-main">
-              <strong>{department.unassigned}</strong>
+              <DrillValue
+                drilldown={{
+                  label: `${department.name} · offen, nicht zugewiesen`,
+                  departmentIds: [department.id],
+                  statusClosed: false,
+                  agent: "unassigned",
+                }}
+                onOpenTicketList={onOpenTicketList}
+              >
+                <strong>{department.unassigned}</strong>
+              </DrillValue>
               <span>nicht zugewiesen</span>
             </div>
             <dl>
               <div>
                 <dt>Offen</dt>
-                <dd>{department.open}</dd>
+                <dd>
+                  <DrillValue
+                    drilldown={{
+                      label: `${department.name} · offen`,
+                      departmentIds: [department.id],
+                      statusClosed: false,
+                    }}
+                    onOpenTicketList={onOpenTicketList}
+                  >
+                    {department.open}
+                  </DrillValue>
+                </dd>
               </div>
               <div className={department.overdue ? "is-bad" : ""}>
                 <dt>SLA über</dt>
-                <dd>{department.overdue}</dd>
+                <dd>
+                  <DrillValue
+                    drilldown={{
+                      label: `${department.name} · SLA überschritten`,
+                      departmentIds: [department.id],
+                      statusClosed: false,
+                      slaBreached: true,
+                    }}
+                    onOpenTicketList={onOpenTicketList}
+                  >
+                    {department.overdue}
+                  </DrillValue>
+                </dd>
               </div>
               <div className={department.atRisk ? "is-warn" : ""}>
                 <dt>SLA &lt; 4 h</dt>
@@ -244,12 +321,30 @@ export function LiveBoard({
               </p>
             )}
             <footer>
-              <span>{agent.openTickets} offen</span>
+              <DrillValue
+                drilldown={{
+                  label: `${agent.displayName} · offen`,
+                  agent: agent.id,
+                  statusClosed: false,
+                }}
+                onOpenTicketList={onOpenTicketList}
+              >
+                {agent.openTickets} offen
+              </DrillValue>
               {agent.overdue ? (
-                <span className="is-bad">
+                <DrillValue
+                  className="is-bad"
+                  drilldown={{
+                    label: `${agent.displayName} · überfällig`,
+                    agent: agent.id,
+                    statusClosed: false,
+                    slaBreached: true,
+                  }}
+                  onOpenTicketList={onOpenTicketList}
+                >
                   <AlertTriangle aria-hidden="true" size={12} />
                   {agent.overdue} überfällig
-                </span>
+                </DrillValue>
               ) : null}
               <span>{agent.resolvedToday} heute gelöst</span>
             </footer>

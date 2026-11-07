@@ -88,6 +88,11 @@ import {
   type TicketFilterCatalog,
   type TenantOption,
 } from "./lib/live-dashboard";
+import {
+  drilldownChipLabel,
+  normalizeTicketDrilldown,
+  type TicketDrilldown,
+} from "./lib/ticket-drilldown";
 import { createPersonalWorkspace, deleteAccount } from "./lib/account";
 import { assetIdFromSearch, rackFromSearch } from "./lib/asset-labels";
 import { acceptTenantInvitations } from "./lib/tenant-invitations";
@@ -2796,6 +2801,9 @@ function AuthenticatedApp() {
     useState<TicketListRefinement>(DEFAULT_TICKET_LIST_REFINEMENT);
   const [metricTicketFilter, setMetricTicketFilter] =
     useState<MetricTicketFilter | null>(null);
+  // «Aus Bericht: …»: drilldown from a report, filtered server-side.
+  const [reportDrilldown, setReportDrilldown] =
+    useState<TicketDrilldown | null>(null);
   const [query, setQuery] = useState("");
   const debouncedQuery = useDebouncedValue(query, 300);
   const [savedTicketViews, setSavedTicketViews] = useState<SavedTicketView[]>(
@@ -3022,6 +3030,7 @@ function AuthenticatedApp() {
 
   useEffect(() => {
     setMetricTicketFilter(null);
+    setReportDrilldown(null);
   }, [activeTenantId]);
 
   useEffect(() => {
@@ -3875,6 +3884,7 @@ function AuthenticatedApp() {
     canWorkTickets,
     debouncedQuery,
     metricTicketFilter,
+    reportDrilldown,
     period,
     queue,
     supportLevelFilter,
@@ -3906,6 +3916,7 @@ function AuthenticatedApp() {
       ticketPage,
       ticketListRefinement,
       {
+        drilldown: reportDrilldown,
         metricTicketIds: metricTicketFilter?.ticketIds ?? null,
         query: debouncedQuery,
         queue,
@@ -3973,6 +3984,7 @@ function AuthenticatedApp() {
     canWorkTickets,
     debouncedQuery,
     metricTicketFilter,
+    reportDrilldown,
     period,
     queue,
     session,
@@ -4506,6 +4518,7 @@ function AuthenticatedApp() {
     view.tickets.filter((ticket) => ticket.queue === queueKey).length;
   const openTicketScope = (scope: TicketScope) => {
     setMetricTicketFilter(null);
+    setReportDrilldown(null);
     setTicketListRefinement(DEFAULT_TICKET_LIST_REFINEMENT);
     setTicketScope(canWorkTickets ? scope : "mine");
     setQueue("alle");
@@ -4527,6 +4540,7 @@ function AuthenticatedApp() {
       return;
     }
     setMetricTicketFilter(null);
+    setReportDrilldown(null);
     setQuery("");
     setTicketListRefinement(DEFAULT_TICKET_LIST_REFINEMENT);
     setQueue(department.key);
@@ -4557,6 +4571,7 @@ function AuthenticatedApp() {
   const clearTicketFilters = () => {
     clearTicketSelection();
     setMetricTicketFilter(null);
+    setReportDrilldown(null);
     setQuery("");
     setTicketListRefinement(DEFAULT_TICKET_LIST_REFINEMENT);
     setQueue("alle");
@@ -4572,9 +4587,25 @@ function AuthenticatedApp() {
     setTicketListRefinement(DEFAULT_TICKET_LIST_REFINEMENT);
     setQueue("alle");
     setTicketScope(canWorkTickets ? "all" : "mine");
+    setReportDrilldown(null);
     setMetricTicketFilter(filter);
     setSection("Tickets");
     setSplitSelectedTicketId(null);
+  };
+  /** Report drilldown: opens the ticket list with only the report filter. */
+  const openReportDrilldown = (drilldown: TicketDrilldown) => {
+    const normalized = normalizeTicketDrilldown(drilldown);
+    if (!normalized) return;
+    clearTicketSelection();
+    setQuery("");
+    setTicketListRefinement(DEFAULT_TICKET_LIST_REFINEMENT);
+    setQueue("alle");
+    setTicketScope(canWorkTickets ? "all" : "mine");
+    setMetricTicketFilter(null);
+    setReportDrilldown(normalized);
+    setSelectedTicketId(null);
+    setSplitSelectedTicketId(null);
+    setSection("Tickets");
   };
   const ticketScopeLabel: Record<TicketScope, string> = {
     all: "Alle sichtbaren Tickets",
@@ -5231,6 +5262,7 @@ function AuthenticatedApp() {
         <OwnerConsoleScreen
           onOpenTenant={(tenantId) => {
             setMetricTicketFilter(null);
+            setReportDrilldown(null);
             activateTenant(tenantId);
             setOwnerView("tenant");
           }}
@@ -5635,6 +5667,7 @@ function AuthenticatedApp() {
                   <select
                     onChange={(event) => {
                       setMetricTicketFilter(null);
+                      setReportDrilldown(null);
                       activateTenant(event.target.value);
                     }}
                     value={activeTenantId}
@@ -5740,6 +5773,25 @@ function AuthenticatedApp() {
                     return;
                   }
                   setSection(sectionFromGlobalSearchResult(result));
+                }}
+                onSelectRecent={(item) => {
+                  setGlobalSearchTarget(null);
+                  if (item.itemType === "ticket") {
+                    setSection("Tickets");
+                    setSelectedTicketId(item.itemId);
+                    return;
+                  }
+                  if (!canWorkTickets) return;
+                  setSelectedTicketId(null);
+                  if (item.itemType === "knowledge_article") {
+                    setKnowledgeFocusArticleId(item.itemId);
+                    setSection("Wissen");
+                    return;
+                  }
+                  if (isFeatureEnabled("assets.management")) {
+                    setAssetFocusQuery({ query: item.title, id: Date.now() });
+                    setSection("Assets");
+                  }
                 }}
                 scope={
                   canWorkTickets || eventSpaceNavigationAccess
@@ -6114,10 +6166,12 @@ function AuthenticatedApp() {
             onOpenTicket={(ticketId) => {
               setSelectedTicketId(ticketId);
             }}
+            onOpenTicketList={openReportDrilldown}
             tenantId={activeTenant.id}
           />
         ) : section === "Berichte" && activeTenant && reportsAvailable ? (
           <ServiceReporting
+            onOpenTicketList={openReportDrilldown}
             branding={{
               accentColor: activeWorkspaceBranding?.accentColor ?? "#075985",
               logoUrl: workspaceBrandLogo,
@@ -6219,7 +6273,9 @@ function AuthenticatedApp() {
                   <p className="eyebrow">Autorisierte Vorgänge</p>
                   <h2>
                     {metricTicketFilter?.label ??
-                      ticketScopeLabel[effectiveTicketScope]}
+                      (reportDrilldown
+                        ? "Tickets aus Bericht"
+                        : ticketScopeLabel[effectiveTicketScope])}
                   </h2>
                 </div>
                 <div className="ticket-list-heading-actions">
@@ -6236,7 +6292,11 @@ function AuthenticatedApp() {
                 loading={dashboardMetricsLoading}
                 metrics={view.metrics}
                 onOpenScope={openTicketScope}
-                selectedScope={metricTicketFilter ? null : effectiveTicketScope}
+                selectedScope={
+                  metricTicketFilter || reportDrilldown
+                    ? null
+                    : effectiveTicketScope
+                }
                 trends={dashboardTrends}
               />
               {activeTenant && isSupabaseConfigured && canWorkTickets && (
@@ -6251,6 +6311,7 @@ function AuthenticatedApp() {
                   onSavedViewApply={(filters) => {
                     clearTicketSelection();
                     setMetricTicketFilter(null);
+                    setReportDrilldown(null);
                     setQuery(filters.query);
                     setQueue(filters.queue);
                     setTicketScope(filters.ticketScope);
@@ -6324,6 +6385,26 @@ function AuthenticatedApp() {
                   }
                   tenantId={activeTenant.id}
                 />
+              )}
+              {reportDrilldown && (
+                <div
+                  aria-label="Filter aus Bericht"
+                  className="ticket-drilldown-chips"
+                  role="group"
+                >
+                  <span className="ticket-drilldown-chip">
+                    <span>{drilldownChipLabel(reportDrilldown)}</span>
+                    <button
+                      aria-label={`Filter «${drilldownChipLabel(reportDrilldown)}» entfernen`}
+                      className="ticket-drilldown-chip__remove"
+                      onClick={() => setReportDrilldown(null)}
+                      title="Filter entfernen"
+                      type="button"
+                    >
+                      <X aria-hidden="true" size={14} strokeWidth={2.2} />
+                    </button>
+                  </span>
+                </div>
               )}
               {metricTicketFilter && (
                 <div className="ticket-search-summary ticket-metrics-filter">

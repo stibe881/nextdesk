@@ -1,5 +1,7 @@
 import {
+  createContext,
   useCallback,
+  useContext,
   useEffect,
   useRef,
   useState,
@@ -7,6 +9,37 @@ import {
 } from "react";
 import { functionErrorMessage } from "./lib/function-error";
 import { supabase } from "./lib/supabase";
+import {
+  drilldownLabel,
+  drilldownPeriodLabel,
+  type TicketDrilldown,
+} from "./lib/ticket-drilldown";
+
+/**
+ * Drilldown into the ticket list: the open handler plus the report's own
+ * team/agent filter, so the list shows the same subset as the figure.
+ */
+type ReportDrill = {
+  open: (drilldown: TicketDrilldown) => void;
+  scope: Pick<TicketDrilldown, "teamIds" | "agent">;
+  scopeLabel: string;
+};
+const ReportDrillContext = createContext<ReportDrill | null>(null);
+
+function useReportDrill(): ReportDrill | null {
+  return useContext(ReportDrillContext);
+}
+
+function withScope(
+  drill: ReportDrill,
+  drilldown: TicketDrilldown,
+): TicketDrilldown {
+  return {
+    ...drill.scope,
+    ...drilldown,
+    label: drilldownLabel(drilldown.label, drill.scopeLabel),
+  };
+}
 
 export type PredefinedReportKey =
   "trends" | "overview" | "satisfaction" | "agents" | "themes" | "requesters";
@@ -504,6 +537,7 @@ function Kpi({
   previous,
   kind = "relative",
   higherIsBetter = true,
+  drilldown,
 }: {
   label: string;
   value: string;
@@ -511,11 +545,24 @@ function Kpi({
   previous?: number | null;
   kind?: "relative" | "points";
   higherIsBetter?: boolean;
+  drilldown?: TicketDrilldown | undefined;
 }) {
+  const drill = useReportDrill();
   return (
     <article className="predefined-report__kpi">
       <p>{label}</p>
-      <strong>{value}</strong>
+      {drill && drilldown ? (
+        <button
+          aria-label={`${label}: ${value} – Tickets anzeigen`}
+          className="predefined-report__drill"
+          onClick={() => drill.open(withScope(drill, drilldown))}
+          type="button"
+        >
+          <strong>{value}</strong>
+        </button>
+      ) : (
+        <strong>{value}</strong>
+      )}
       {current !== undefined && previous !== undefined ? (
         <Delta
           current={current}
@@ -584,6 +631,8 @@ function TrendsReport({ insights }: { insights: Insights }) {
 
 function OverviewReport({ insights }: { insights: Insights }) {
   const { current, previous } = insights.overview;
+  const { startsAt, endsAt } = insights.period;
+  const period = drilldownPeriodLabel(startsAt, endsAt);
   return (
     <div className="predefined-report__kpis">
       <Kpi
@@ -591,6 +640,11 @@ function OverviewReport({ insights }: { insights: Insights }) {
         value={numberFormat.format(current.received)}
         current={current.received}
         previous={previous.received}
+        drilldown={{
+          label: drilldownLabel("Erhalten", period),
+          createdFrom: startsAt,
+          createdTo: endsAt,
+        }}
       />
       <Kpi
         label="Nicht gelöste Tickets"
@@ -598,12 +652,22 @@ function OverviewReport({ insights }: { insights: Insights }) {
         current={current.unresolved}
         previous={previous.unresolved}
         higherIsBetter={false}
+        drilldown={{
+          label: drilldownLabel("Nicht gelöst", period),
+          statusClosed: false,
+          createdTo: endsAt,
+        }}
       />
       <Kpi
         label="Gelöste Tickets"
         value={numberFormat.format(current.resolved)}
         current={current.resolved}
         previous={previous.resolved}
+        drilldown={{
+          label: drilldownLabel("Gelöst", period),
+          resolvedFrom: startsAt,
+          resolvedTo: endsAt,
+        }}
       />
       <Kpi
         label="Erstkontakt-Lösungsrate"
@@ -618,6 +682,12 @@ function OverviewReport({ insights }: { insights: Insights }) {
         current={current.resolutionSlaCompliance}
         previous={previous.resolutionSlaCompliance}
         kind="points"
+        drilldown={{
+          label: drilldownLabel("Lösungs-SLA verletzt", period),
+          resolvedFrom: startsAt,
+          resolvedTo: endsAt,
+          slaBreached: true,
+        }}
       />
       <Kpi
         label="Durchschnittliche Lösungszeit"
@@ -771,6 +841,8 @@ const AGENT_TABS: { key: AgentTab; label: string; title: string }[] = [
 ];
 
 function AgentTable({ insights, tab }: { insights: Insights; tab: AgentTab }) {
+  const drill = useReportDrill();
+  const { startsAt, endsAt } = insights.period;
   const rows = [...insights.agents.rows, insights.agents.total];
   const columns: { label: string; value: (row: AgentRow) => string }[] =
     tab === "compliance"
@@ -850,7 +922,32 @@ function AgentTable({ insights, tab }: { insights: Insights; tab: AgentTab }) {
                   : (row.id ?? "unassigned")
               }
             >
-              <th scope="row">{row.name ?? "Nicht zugewiesen"}</th>
+              <th scope="row">
+                {drill && row !== insights.agents.total && row.resolved > 0 ? (
+                  <button
+                    aria-label={`Gelöste Tickets von ${row.name ?? "nicht zugewiesen"} anzeigen`}
+                    className="predefined-report__drill predefined-report__drill--inline"
+                    onClick={() =>
+                      drill.open(
+                        withScope(drill, {
+                          label: drilldownLabel(
+                            `Gelöst von ${row.name ?? "nicht zugewiesen"}`,
+                            drilldownPeriodLabel(startsAt, endsAt),
+                          ),
+                          agent: row.id ?? "unassigned",
+                          resolvedFrom: startsAt,
+                          resolvedTo: endsAt,
+                        }),
+                      )
+                    }
+                    type="button"
+                  >
+                    {row.name ?? "Nicht zugewiesen"}
+                  </button>
+                ) : (
+                  (row.name ?? "Nicht zugewiesen")
+                )}
+              </th>
               {columns.map((column) => (
                 <td key={column.label}>{column.value(row)}</td>
               ))}
@@ -1095,6 +1192,8 @@ export function ReportBody({
 }
 
 export type PredefinedReportsProps = {
+  /** Drilldown into the filtered ticket list. */
+  onOpenTicketList?: ((drilldown: TicketDrilldown) => void) | undefined;
   tenantId: string;
   report: PredefinedReportKey;
   period: Period;
@@ -1105,6 +1204,7 @@ export type PredefinedReportsProps = {
 };
 
 export function PredefinedReports({
+  onOpenTicketList,
   tenantId,
   report,
   period,
@@ -1366,11 +1466,26 @@ export function PredefinedReports({
                   Erstellt: {longDate.format(new Date())}
                 </small>
               </header>
-              <ReportBody
-                insights={insights}
-                printing={printReports !== null}
-                report={key}
-              />
+              <ReportDrillContext.Provider
+                value={
+                  onOpenTicketList && printReports === null
+                    ? {
+                        open: onOpenTicketList,
+                        scope: {
+                          ...(teamId ? { teamIds: [teamId] } : {}),
+                          ...(agentId ? { agent: agentId } : {}),
+                        },
+                        scopeLabel: filterText,
+                      }
+                    : null
+                }
+              >
+                <ReportBody
+                  insights={insights}
+                  printing={printReports !== null}
+                  report={key}
+                />
+              </ReportDrillContext.Provider>
             </section>
           ))
         : null}
@@ -1387,6 +1502,10 @@ export const predefinedReportStyles = `
   .predefined-report__button { appearance: none; min-height: 36px; border: 1px solid var(--border); border-radius: 8px; padding: 7px 12px; background: var(--surface); color: var(--text); font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }
   .predefined-report__button--primary { background: var(--report-primary, #4338ca); border-color: var(--report-primary, #4338ca); color: #fff; }
   .predefined-report__button:disabled { opacity: .6; cursor: not-allowed; }
+  .predefined-report__drill { appearance: none; background: none; border: 0; border-radius: 6px; color: inherit; cursor: pointer; font: inherit; padding: 0; text-align: left; text-decoration: underline dotted; text-underline-offset: 4px; }
+  .predefined-report__drill:hover { text-decoration-style: solid; }
+  .predefined-report__drill:focus-visible { outline: 3px solid color-mix(in srgb, var(--primary) 40%, transparent); outline-offset: 2px; }
+  .predefined-report__drill--inline { font-weight: inherit; }
   .predefined-report__pdf, .predefined-report__panel, .predefined-report__kpi, .predefined-report__masthead { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-card, 12px); }
   .predefined-report__pdf { display: grid; gap: 12px; padding: 16px; }
   .predefined-report__pdf h3, .predefined-report__panel h3 { margin: 0; color: var(--ink); font-size: 15px; }

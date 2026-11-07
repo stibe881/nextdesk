@@ -19,6 +19,7 @@ import { IncidentBanner } from "@/components/incident-banner";
 import { useMobileFeatures } from "@/components/mobile-feature-gate";
 import { useMobileNetworkStatus } from "@/components/offline-status";
 import { MyPrioritiesCard } from "@/components/my-priorities-card";
+import { RecentItemsCard } from "@/components/recent-items-card";
 import { ScreenContainer } from "@/components/screen-container";
 import { UndoToast } from "@/components/undo-toast";
 import {
@@ -1063,6 +1064,8 @@ export default function HomeScreen() {
         {tenantId && !isOffline ? (
           <MyPrioritiesCard refreshKey={priorityRevision} tenantId={tenantId} />
         ) : null}
+
+        {tenantId && !isOffline ? <RecentItemsCard tenantId={tenantId} /> : null}
 
         <Text style={[styles.sectionEyebrow, tokenStyles.muted]}>
           ÜBERSICHT

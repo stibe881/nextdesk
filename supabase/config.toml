@@ -226,6 +226,9 @@ verify_jwt = false
 [functions.my-priorities]
 verify_jwt = true
 
+[functions.recent-items]
+verify_jwt = true
+
 [functions.ticket-triage]
 verify_jwt = false
 

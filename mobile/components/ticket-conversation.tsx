@@ -34,6 +34,10 @@ type TicketConversationProps = {
   canWriteInternalNotes: boolean;
   comments: MobileTicketComment[];
   draftState: "idle" | "local" | "saving" | "synced";
+  /** «Entwurf vom … wiederhergestellt» (z. B. vom Web), sonst null. */
+  restoredDraftLabel?: string | null | undefined;
+  onDiscardDraft?: (() => void) | undefined;
+  onDismissRestoredDraft?: (() => void) | undefined;
   isSending: boolean;
   onBodyChange: (body: string) => void;
   onSend: () => void;
@@ -172,6 +176,9 @@ export function TicketConversation({
   canWriteInternalNotes,
   comments,
   draftState,
+  restoredDraftLabel = null,
+  onDiscardDraft,
+  onDismissRestoredDraft,
   isSending,
   onBodyChange,
   onSend,
@@ -277,6 +284,36 @@ export function TicketConversation({
 
       {canWrite ? (
         <View style={styles.composer}>
+          {restoredDraftLabel ? (
+            <View accessibilityLiveRegion="polite" style={styles.restoredDraft}>
+              <Ionicons
+                color={colors.primaryText}
+                name="document-text-outline"
+                size={15}
+              />
+              <Text style={styles.restoredDraftText}>{restoredDraftLabel}</Text>
+              {onDiscardDraft ? (
+                <Pressable
+                  accessibilityLabel="Wiederhergestellten Entwurf verwerfen"
+                  accessibilityRole="button"
+                  hitSlop={8}
+                  onPress={onDiscardDraft}
+                >
+                  <Text style={styles.restoredDraftAction}>Verwerfen</Text>
+                </Pressable>
+              ) : null}
+              {onDismissRestoredDraft ? (
+                <Pressable
+                  accessibilityLabel="Hinweis ausblenden"
+                  accessibilityRole="button"
+                  hitSlop={8}
+                  onPress={onDismissRestoredDraft}
+                >
+                  <Ionicons color={colors.muted} name="close" size={16} />
+                </Pressable>
+              ) : null}
+            </View>
+          ) : null}
           {canChooseVisibility ? (
             <View accessibilityRole="tablist" style={styles.segmentTrack}>
               <Pressable
@@ -845,6 +882,24 @@ const useStyles = makeThemedStyles((c) => ({
   composerHintText: { color: c.muted, flexShrink: 1, fontSize: 11 },
   composerHintInternal: { color: c.warning, fontWeight: "600" },
   draftHint: { color: c.success, fontSize: 11, fontWeight: "600" },
+  restoredDraft: {
+    alignItems: "center",
+    backgroundColor: c.surface,
+    borderColor: c.border,
+    borderRadius: 12,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 8,
+    marginBottom: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  restoredDraftText: { color: c.foreground, flex: 1, fontSize: 12, lineHeight: 16 },
+  restoredDraftAction: {
+    color: c.primaryText,
+    fontSize: 12,
+    fontWeight: "700",
+  },
   draftHintLocal: { color: c.warning },
   readOnly: {
     alignItems: "center",

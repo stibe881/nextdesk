@@ -91,6 +91,11 @@ import {
   type TicketRequester,
   type TicketCommentVisibility,
 } from "@/lib/nextdesk-tickets";
+import { recordRecentItem } from "@/lib/recent-items";
+import {
+  draftRestoredLabel,
+  pickNewestDraft,
+} from "@/lib/recent-items-model";
 
 function roundUpToFiveMinutes(value: Date): Date {
   const rounded = new Date(value);
@@ -306,6 +311,11 @@ export default function TicketDetailScreen() {
     "idle" | "local" | "saving" | "synced"
   >("idle");
   const [draftDirty, setDraftDirty] = useState(false);
+  // «Entwurf vom … wiederhergestellt»: once per opened ticket.
+  const [restoredDraftLabel, setRestoredDraftLabel] = useState<string | null>(
+    null,
+  );
+  const restoredDraftTicketRef = useRef<string | null>(null);
   const [editingField, setEditingField] = useState<
     "subject" | "description" | "requester" | null
   >(null);
@@ -464,23 +474,53 @@ export default function TicketDetailScreen() {
             tenantId: currentTenant.id,
             ticketId: detail.id,
           }).catch(() => undefined);
+          // «Zuletzt angesehen» geräteübergreifend (mit dem Web geteilt).
+          recordRecentItem(currentTenant.id, "ticket", detail.id);
           const initialVisibility = detail.canWriteInternalNotes
             ? "internal"
             : "external";
-          const [localDraft, watchedIds] = await Promise.all([
-            loadLocalTicketDraft({
-              userId,
-              tenantId: currentTenant.id,
-              ticketId: detail.id,
-              visibility: initialVisibility,
-            }),
+          const allowedVisibilities = [
+            ...(detail.canWriteInternalNotes ? (["internal"] as const) : []),
+            ...(detail.canCommentExternal ? (["external"] as const) : []),
+          ];
+          const [localDrafts, watchedIds] = await Promise.all([
+            Promise.all(
+              allowedVisibilities.map((visibility) =>
+                loadLocalTicketDraft({
+                  userId,
+                  tenantId: currentTenant.id,
+                  ticketId: detail.id,
+                  visibility,
+                }).catch(() => null),
+              ),
+            ),
             listWatchedTicketIds(userId).catch(() => [] as string[]),
           ]);
-          const serverDraft = detail.drafts.find(
-            (draft) =>
-              draft.visibility === initialVisibility &&
-              Boolean(draft.body.trim()),
+          // Neuester Entwurf gewinnt – auch wenn er im Web geschrieben wurde.
+          const localCandidates = localDrafts.flatMap((draft) =>
+            draft
+              ? [
+                  {
+                    body: draft.body,
+                    updatedAt: draft.updatedAt,
+                    visibility: draft.visibility,
+                    local: true,
+                  },
+                ]
+              : [],
           );
+          const serverCandidates = detail.drafts.map((draft) => ({
+            body: draft.body,
+            updatedAt: draft.updatedAt,
+            visibility: draft.visibility,
+            local: false,
+          }));
+          const newestDraft = pickNewestDraft(
+            [...serverCandidates, ...localCandidates],
+            allowedVisibilities,
+          );
+          const localDraft = newestDraft?.local ? newestDraft : null;
+          const serverDraft = newestDraft?.local ? null : newestDraft;
           if (editingFieldRef.current === null) {
             setRequester(detail.requesterContact);
             setSubject(detail.subject);
@@ -502,7 +542,13 @@ export default function TicketDetailScreen() {
               localDraft ? "local" : serverDraft ? "synced" : "idle",
             );
             setDraftDirty(false);
-            setCommentVisibility(initialVisibility);
+            setCommentVisibility(newestDraft?.visibility ?? initialVisibility);
+            if (restoredDraftTicketRef.current !== detail.id) {
+              restoredDraftTicketRef.current = detail.id;
+              setRestoredDraftLabel(
+                newestDraft ? draftRestoredLabel(newestDraft.updatedAt) : null,
+              );
+            }
           }
           setWatched(watchedIds.includes(detail.id));
         }
@@ -1116,6 +1162,12 @@ export default function TicketDetailScreen() {
     setDraftDirty(true);
   }
 
+  /** «Verwerfen»: leert den Entwurf auf allen Geräten. */
+  function discardRestoredDraft() {
+    setRestoredDraftLabel(null);
+    changeComment("");
+  }
+
   function changeCommentVisibility(nextVisibility: TicketCommentVisibility) {
     if (nextVisibility === commentVisibility) return;
     setCommentVisibility(nextVisibility);
@@ -1379,6 +1431,7 @@ export default function TicketDetailScreen() {
       setComment("");
       setDraftDirty(false);
       setDraftState("idle");
+      setRestoredDraftLabel(null);
       await clearLocalTicketDraft({
         userId: currentUserId ?? "",
         tenantId: tenant.id,
@@ -2759,6 +2812,9 @@ export default function TicketDetailScreen() {
               canWriteInternalNotes={ticket.canWriteInternalNotes}
               comments={ticket.comments}
               draftState={draftState}
+              restoredDraftLabel={restoredDraftLabel}
+              onDiscardDraft={discardRestoredDraft}
+              onDismissRestoredDraft={() => setRestoredDraftLabel(null)}
               isSending={sendingComment}
               onBodyChange={changeComment}
               onSend={() => void sendComment()}

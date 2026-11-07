@@ -453,4 +453,27 @@
     grid-column: 1 / -1;
     grid-row: 2;
   }
+/* Drilldown: board figures open the filtered ticket list. */
+.live-board__drill {
+  appearance: none;
+  background: none;
+  border: 0;
+  border-radius: 4px;
+  color: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font: inherit;
+  padding: 0;
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-underline-offset: 3px;
+}
+.live-board__drill:hover {
+  text-decoration-style: solid;
+}
+.live-board__drill:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
 }

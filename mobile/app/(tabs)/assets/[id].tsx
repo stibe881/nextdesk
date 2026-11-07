@@ -1,5 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
+
 import { useCallback, useState } from "react";
 import {
   ActivityIndicator,
@@ -31,6 +32,7 @@ import {
 import { loadCurrentTenant } from "@/lib/nextdesk-client";
 import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
 import { useMobileSessionGuard } from "@/lib/use-mobile-session-guard";
+import { recordRecentItem } from "@/lib/recent-items";
 
 function valueOrDash(value: string | null | undefined): string {
   return value?.trim() || "—";
@@ -75,6 +77,7 @@ export default function AssetDetailScreen() {
       const tenant = await loadCurrentTenant();
       setTenantId(tenant.id);
       setDetail(await getMobileAsset(tenant.id, id));
+      recordRecentItem(tenant.id, "asset", id);
       // Intune-Aktionen nur mit Berechtigung; sonst bleibt der Bereich weg.
       getMobileIntuneDevice(tenant.id, id)
         .then(setIntuneDevice)

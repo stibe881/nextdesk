@@ -69,6 +69,7 @@ import {
   shouldLoadTicketCatalog,
 } from "./lib/ticket-catalog-search";
 import { supabase } from "./lib/supabase";
+import { recordRecentItem } from "./lib/recent-items";
 import { functionErrorMessage } from "./lib/function-error";
 import { TicketControlPanel } from "./ticket-control";
 import { knowledgeErrorBackendMessage } from "./lib/knowledge-errors";
@@ -249,6 +250,14 @@ type AddCommentAction = {
   copyEmails?: string[];
 };
 
+type SaveDraftAction = {
+  type: "saveDraft";
+  tenantId: string;
+  ticketId: string;
+  body: string;
+  visibility: CommentVisibility;
+};
+
 type ToggleWatchAction = {
   type: "toggleWatch";
   tenantId: string;
@@ -291,6 +300,7 @@ type TicketOperation =
   | SearchMergeTargetsAction
   | UpdateTicketAction
   | AddCommentAction
+  | SaveDraftAction
   | ToggleWatchAction
   | AddChecklistItemAction
   | ToggleChecklistItemAction
@@ -691,6 +701,31 @@ type ServiceAssetsAction =
       targetId: string;
     };
 
+type TicketServerDraft = {
+  visibility: CommentVisibility;
+  body: string;
+  updatedAt: string;
+};
+
+function toTicketServerDraft(value: unknown): TicketServerDraft | null {
+  const record = asRecord(value);
+  if (
+    !record ||
+    (record.visibility !== "internal" && record.visibility !== "external") ||
+    typeof record.body !== "string" ||
+    record.body.length > 50_000 ||
+    typeof record.updated_at !== "string" ||
+    !Number.isFinite(Date.parse(record.updated_at))
+  ) {
+    return null;
+  }
+  return {
+    visibility: record.visibility,
+    body: record.body,
+    updatedAt: record.updated_at,
+  };
+}
+
 type TicketDetailData = {
   ticket: TicketRecord;
   assignedAgent: TicketAgent | null;
@@ -707,6 +742,8 @@ type TicketDetailData = {
   agents: TicketAgent[];
   checklistItems: TicketChecklistItem[];
   timeEntries: TicketTimeEntry[];
+  /** The caller's own server reply drafts (one per visibility). */
+  drafts: TicketServerDraft[];
   relations: TicketRelation[];
   similarTickets: SimilarTicket[];
   ticketModules: {
@@ -2095,6 +2132,12 @@ function parseTicketDetail(
       (first, second) => first.position - second.position,
     ),
     timeEntries: valuesOf(data.timeEntries, isTicketTimeEntry),
+    drafts: Array.isArray(data.drafts)
+      ? data.drafts
+          .slice(0, 4)
+          .map(toTicketServerDraft)
+          .filter((draft): draft is TicketServerDraft => draft !== null)
+      : [],
     relations,
     similarTickets,
     ticketModules,
@@ -4144,9 +4187,76 @@ export function TicketDetail({
       updateTicketCommentDraft(current, "external", body),
     );
   }, []);
+  // Server drafts follow the user to other devices (mobile shares them).
+  const draftDetailReady = Boolean(detail && detail.ticket.id === ticketId);
+  const serverDrafts = draftDetailReady ? detail?.drafts : undefined;
+  const canSyncInternalDraft = Boolean(
+    draftDetailReady && detail?.canWriteInternalNotes,
+  );
+  const canSyncExternalDraft = Boolean(
+    draftDetailReady && detail?.canCommentExternal,
+  );
+  const saveInternalServerDraft = useCallback(
+    async (body: string) => {
+      await invokeTicketOperation({
+        type: "saveDraft",
+        tenantId,
+        ticketId,
+        body,
+        visibility: "internal",
+      });
+    },
+    [tenantId, ticketId],
+  );
+  const saveExternalServerDraft = useCallback(
+    async (body: string) => {
+      await invokeTicketOperation({
+        type: "saveDraft",
+        tenantId,
+        ticketId,
+        body,
+        visibility: "external",
+      });
+    },
+    [tenantId, ticketId],
+  );
+  const internalDraftRemote = useMemo(() => {
+    if (!draftDetailReady) return undefined;
+    if (!canSyncInternalDraft) return null;
+    const draft =
+      serverDrafts?.find((entry) => entry.visibility === "internal") ?? null;
+    return { draft, save: saveInternalServerDraft };
+  }, [
+    canSyncInternalDraft,
+    draftDetailReady,
+    saveInternalServerDraft,
+    serverDrafts,
+  ]);
+  const externalDraftRemote = useMemo(() => {
+    if (!draftDetailReady) return undefined;
+    if (!canSyncExternalDraft) return null;
+    const draft =
+      serverDrafts?.find((entry) => entry.visibility === "external") ?? null;
+    return { draft, save: saveExternalServerDraft };
+  }, [
+    canSyncExternalDraft,
+    draftDetailReady,
+    saveExternalServerDraft,
+    serverDrafts,
+  ]);
+  // «Zuletzt angesehen»: once per opened ticket.
+  const recordedRecentTicketRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!draftDetailReady || recordedRecentTicketRef.current === ticketId) {
+      return;
+    }
+    recordedRecentTicketRef.current = ticketId;
+    recordRecentItem(tenantId, "ticket", ticketId);
+  }, [draftDetailReady, tenantId, ticketId]);
   const internalNoteDraft = useTicketReplyDraft({
     body: commentDrafts.internal,
     onRestore: restoreInternalNoteDraft,
+    remote: internalDraftRemote,
     tenantId,
     ticketId,
     userId: currentUserId,
@@ -4155,6 +4265,7 @@ export function TicketDetail({
   const externalReplyDraft = useTicketReplyDraft({
     body: commentDrafts.external,
     onRestore: restoreExternalReplyDraft,
+    remote: externalDraftRemote,
     tenantId,
     ticketId,
     userId: currentUserId,
@@ -7299,7 +7410,14 @@ export function TicketDetail({
               ) : null}
               {activeCommunicationDraft.restored && (
                 <p className="ticket-workbench__notice" role="status">
-                  Entwurf wiederhergestellt.
+                  {activeCommunicationDraft.restoredLabel}
+                  <button
+                    className="text-button"
+                    onClick={activeCommunicationDraft.discard}
+                    type="button"
+                  >
+                    Verwerfen
+                  </button>
                   <button
                     className="text-button"
                     onClick={activeCommunicationDraft.clearRestoredNotice}

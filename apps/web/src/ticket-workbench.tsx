@@ -17,6 +17,14 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "./lib/supabase";
+import {
+  parseStoredReplyDraft,
+  pickReplyDraftToRestore,
+  replyDraftRestoredLabel,
+  serializeStoredReplyDraft,
+  type ServerReplyDraft,
+  type StoredReplyDraft,
+} from "./lib/reply-draft-sync";
 import "./ticket-workbench.css";
 
 export type WorkbenchPerson = {
@@ -141,6 +149,18 @@ type TicketMentionPickerProps = {
 type DraftOptions = {
   body: string;
   onRestore: (body: string) => void;
+  /**
+   * Server draft sync: `undefined` while the ticket loads (restore waits),
+   * `null` for browser-only drafts, otherwise the stored server draft and a
+   * save function (an empty body discards the server draft).
+   */
+  remote?:
+    | {
+        draft: ServerReplyDraft | null;
+        save: (body: string) => Promise<void>;
+      }
+    | null
+    | undefined;
   tenantId: string;
   ticketId: string;
   userId: string | null;
@@ -570,13 +590,31 @@ function useNow(interval = 30_000): number {
 export function useTicketReplyDraft({
   body,
   onRestore,
+  remote,
   tenantId,
   ticketId,
   userId,
   visibility,
-}: DraftOptions): { restored: boolean; clearRestoredNotice: () => void } {
+}: DraftOptions): {
+  restored: boolean;
+  restoredLabel: string;
+  clearRestoredNotice: () => void;
+  discard: () => void;
+} {
   const [restored, setRestored] = useState(false);
+  const [restoredAt, setRestoredAt] = useState<string | null>(null);
   const restoredKey = useRef<string | null>(null);
+  const bodyRef = useRef(body);
+  bodyRef.current = body;
+  // Server sync («geräteübergreifend»): the last body known on the server,
+  // a serialised save chain and a pending body flushed on unmount.
+  const remoteSaveRef = useRef<((body: string) => Promise<void>) | null>(null);
+  remoteSaveRef.current = remote ? remote.save : null;
+  const remoteEnabled = Boolean(remote);
+  const remoteReady = remote !== undefined;
+  const lastSyncedRef = useRef("");
+  const pendingRemoteRef = useRef<string | null>(null);
+  const saveChainRef = useRef<Promise<void>>(Promise.resolve());
   const storageKey = useMemo(
     () =>
       userId && isUuid(tenantId) && isUuid(ticketId)
@@ -585,36 +623,53 @@ export function useTicketReplyDraft({
     [tenantId, ticketId, userId, visibility],
   );
 
+  const queueRemoteSave = useCallback((next: string) => {
+    const save = remoteSaveRef.current;
+    if (!save) return;
+    pendingRemoteRef.current = null;
+    saveChainRef.current = saveChainRef.current
+      .then(() => save(next))
+      .then(() => {
+        lastSyncedRef.current = next;
+      })
+      .catch(() => {
+        // The browser copy stays; the next change retries the server save.
+      });
+  }, []);
+
   useEffect(() => {
-    if (!storageKey || restoredKey.current === storageKey) return;
+    if (!storageKey || !remoteReady || restoredKey.current === storageKey) {
+      return;
+    }
     restoredKey.current = storageKey;
     setRestored(false);
+    setRestoredAt(null);
+    let local: StoredReplyDraft | null = null;
     try {
-      const stored = window.localStorage.getItem(storageKey);
-      if (!stored) return;
-      const draft = asRecord(JSON.parse(stored));
-      if (
-        !draft ||
-        typeof draft.body !== "string" ||
-        draft.body.length === 0 ||
-        draft.body.length > 50_000 ||
-        draft.body.includes("\u0000")
-      ) {
-        window.localStorage.removeItem(storageKey);
-        return;
-      }
-      onRestore(draft.body);
-      setRestored(true);
+      const raw = window.localStorage.getItem(storageKey);
+      local = parseStoredReplyDraft(raw);
+      if (raw && !local) window.localStorage.removeItem(storageKey);
     } catch {
       // Storage is optional. A blocked or malformed local draft must not affect ticket work.
     }
-  }, [onRestore, storageKey]);
+    const server = remote ? remote.draft : null;
+    lastSyncedRef.current = server?.body ?? "";
+    const pick = pickReplyDraftToRestore(local, server);
+    // Never overwrite text typed before the ticket finished loading.
+    if (!pick || bodyRef.current.trim()) return;
+    onRestore(pick.body);
+    setRestored(true);
+    setRestoredAt(pick.savedAt);
+  }, [onRestore, remote, remoteReady, storageKey]);
 
   useEffect(() => {
     if (!storageKey || restoredKey.current !== storageKey) return;
     try {
       if (body) {
-        window.localStorage.setItem(storageKey, JSON.stringify({ body }));
+        window.localStorage.setItem(
+          storageKey,
+          serializeStoredReplyDraft(body, new Date().toISOString()),
+        );
       } else {
         window.localStorage.removeItem(storageKey);
       }
@@ -623,9 +678,47 @@ export function useTicketReplyDraft({
     }
   }, [body, storageKey]);
 
+  useEffect(() => {
+    if (!storageKey || !remoteEnabled || restoredKey.current !== storageKey) {
+      return;
+    }
+    if (body === lastSyncedRef.current) {
+      pendingRemoteRef.current = null;
+      return;
+    }
+    pendingRemoteRef.current = body;
+    const timer = window.setTimeout(() => queueRemoteSave(body), 1_500);
+    return () => window.clearTimeout(timer);
+  }, [body, queueRemoteSave, remoteEnabled, storageKey]);
+
+  useEffect(
+    () => () => {
+      // Leaving the ticket within the debounce window still syncs the draft.
+      const pending = pendingRemoteRef.current;
+      if (pending !== null) queueRemoteSave(pending);
+    },
+    [queueRemoteSave, storageKey],
+  );
+
+  const discard = useCallback(() => {
+    onRestore("");
+    setRestored(false);
+    setRestoredAt(null);
+    if (storageKey) {
+      try {
+        window.localStorage.removeItem(storageKey);
+      } catch {
+        // Optional storage.
+      }
+    }
+    queueRemoteSave("");
+  }, [onRestore, queueRemoteSave, storageKey]);
+
   return {
     restored,
+    restoredLabel: replyDraftRestoredLabel(restoredAt),
     clearRestoredNotice: () => setRestored(false),
+    discard,
   };
 }
 

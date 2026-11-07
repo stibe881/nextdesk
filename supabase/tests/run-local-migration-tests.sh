@@ -12401,4 +12401,167 @@ $$;
 rollback;
 SQL
 
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_tenant uuid := '10000000-0000-4000-8000-000000000001';
+  v_ticket uuid;
+  v_user uuid;
+  v_count integer;
+  v_kept uuid;
+  i integer;
+begin
+  -- Storage of «Zuletzt angesehen» is service_role only.
+  if has_table_privilege('authenticated', 'public.user_recent_items', 'select')
+     or has_table_privilege('anon', 'public.user_recent_items', 'select')
+     or has_table_privilege('authenticated', 'public.user_recent_items', 'insert') then
+    raise exception 'recent items test: browser roles can access the table';
+  end if;
+  if not (select relrowsecurity from pg_class where oid = 'public.user_recent_items'::regclass) then
+    raise exception 'recent items test: RLS disabled';
+  end if;
+  if has_function_privilege('authenticated',
+       'public.record_user_recent_item(uuid, uuid, text, uuid, integer)', 'execute')
+     or has_function_privilege('authenticated',
+       'public.purge_stale_personal_workspace_state()', 'execute') then
+    raise exception 'recent items test: browser roles can run service functions';
+  end if;
+  if not has_function_privilege('authenticated',
+       'public.list_authorized_ticket_list_page_v2(uuid, uuid[], uuid[], uuid[], uuid, boolean, text, text, integer, integer, text, text, text[], text[], text[], text[], text[], text, text[], uuid[], uuid[], uuid[], uuid[], timestamptz, timestamptz, timestamptz, timestamptz, boolean)',
+       'execute') then
+    raise exception 'drilldown test: list v2 not executable for authenticated';
+  end if;
+
+  select ticket.id, ticket.requester_id into v_ticket, v_user
+  from public.tickets ticket
+  where ticket.tenant_id = v_tenant
+  order by ticket.created_at
+  limit 1;
+
+  -- Recording keeps the newest p_keep entries and refreshes repeated views.
+  for i in 1..35 loop
+    perform public.record_user_recent_item(v_user, v_tenant, 'asset', gen_random_uuid(), 30);
+  end loop;
+  perform public.record_user_recent_item(v_user, v_tenant, 'ticket', v_ticket, 30);
+  perform public.record_user_recent_item(v_user, v_tenant, 'ticket', v_ticket, 30);
+  select count(*) into v_count from public.user_recent_items
+  where user_id = v_user and tenant_id = v_tenant;
+  if v_count <> 30 then
+    raise exception 'recent items test: expected 30 kept entries, got %', v_count;
+  end if;
+  select item_id into v_kept from public.user_recent_items
+  where user_id = v_user and tenant_id = v_tenant
+  order by viewed_at desc limit 1;
+  if v_kept <> v_ticket then
+    raise exception 'recent items test: newest view not first';
+  end if;
+  begin
+    perform public.record_user_recent_item(v_user, v_tenant, 'user', v_ticket, 30);
+    raise exception 'recent items test: invalid item type accepted';
+  exception when invalid_parameter_value then
+    null;
+  end;
+
+  -- A posted comment removes the author's matching draft only.
+  insert into public.ticket_drafts (ticket_id, author_id, visibility, body)
+  values (v_ticket, v_user, 'internal', 'Notiz-Entwurf'),
+         (v_ticket, v_user, 'external', 'Antwort-Entwurf')
+  on conflict (ticket_id, author_id, visibility) do update set body = excluded.body;
+  insert into public.ticket_comments (ticket_id, author_id, visibility, body)
+  values (v_ticket, v_user, 'external', 'Antwort gesendet');
+  if exists (select 1 from public.ticket_drafts
+             where ticket_id = v_ticket and author_id = v_user and visibility = 'external') then
+    raise exception 'draft test: draft kept after sending';
+  end if;
+  if not exists (select 1 from public.ticket_drafts
+                 where ticket_id = v_ticket and author_id = v_user and visibility = 'internal') then
+    raise exception 'draft test: other visibility draft removed';
+  end if;
+
+  -- Retention: drafts older than 30 days and empty drafts expire.
+  update public.ticket_drafts set updated_at = timezone('utc', now()) - interval '31 days'
+  where ticket_id = v_ticket and author_id = v_user;
+  insert into public.ticket_drafts (ticket_id, author_id, visibility, body)
+  values (v_ticket, v_user, 'external', 'Frischer Entwurf');
+  perform public.purge_stale_personal_workspace_state();
+  if exists (select 1 from public.ticket_drafts
+             where ticket_id = v_ticket and author_id = v_user and visibility = 'internal') then
+    raise exception 'draft test: stale draft not purged';
+  end if;
+  if not exists (select 1 from public.ticket_drafts
+                 where ticket_id = v_ticket and author_id = v_user and visibility = 'external') then
+    raise exception 'draft test: fresh draft purged';
+  end if;
+
+  if public.ticket_resolution_sla_breached(null, null, null)
+     or public.ticket_resolution_sla_breached(timezone('utc', now()) + interval '1 day', null, null)
+     or not public.ticket_resolution_sla_breached(timezone('utc', now()) - interval '1 hour', null, null)
+     or not public.ticket_resolution_sla_breached('2026-01-01T10:00:00Z', '2026-01-01T11:00:00Z', null)
+     or public.ticket_resolution_sla_breached('2026-01-01T10:00:00Z', '2026-01-01T09:00:00Z', null) then
+    raise exception 'drilldown test: wrong SLA breach rule';
+  end if;
+end;
+$$;
+rollback;
+
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-000000000002', true);
+do $$
+declare
+  v_tenant uuid := '10000000-0000-4000-8000-000000000001';
+  v_all bigint;
+  v_v2 bigint;
+  v_expected bigint;
+  v_found bigint;
+begin
+  select count(*) into v_all
+  from public.list_authorized_ticket_list_page(v_tenant, p_limit => 100);
+  select count(*) into v_v2
+  from public.list_authorized_ticket_list_page_v2(v_tenant, p_limit => 100);
+  if v_all <> v_v2 then
+    raise exception 'drilldown test: v2 without filters differs (% vs %)', v_all, v_v2;
+  end if;
+
+  select count(*) into v_found
+  from public.list_authorized_ticket_list_page_v2(
+    v_tenant, p_limit => 100, p_created_from => '2999-01-01T00:00:00Z');
+  if v_found <> 0 then
+    raise exception 'drilldown test: created range not applied';
+  end if;
+
+  select count(*) into v_found
+  from public.list_authorized_ticket_list_page_v2(
+    v_tenant, p_limit => 100, p_team_ids => array[gen_random_uuid()]);
+  if v_found <> 0 then
+    raise exception 'drilldown test: team filter not applied';
+  end if;
+
+  select count(*) into v_expected
+  from public.tickets ticket
+  where ticket.tenant_id = v_tenant
+    and public.can_read_ticket(ticket.id)
+    and public.ticket_resolution_sla_breached(ticket.resolution_due_at, ticket.resolved_at, ticket.closed_at);
+  select count(*) into v_found
+  from public.list_authorized_ticket_list_page_v2(v_tenant, p_limit => 100, p_sla_breached => true);
+  if v_found <> least(v_expected, 100) then
+    raise exception 'drilldown test: SLA filter returned % instead of %', v_found, v_expected;
+  end if;
+
+  begin
+    perform public.list_authorized_ticket_list_page_v2(
+      v_tenant,
+      p_created_from => '2026-02-01T00:00:00Z',
+      p_created_to => '2026-01-01T00:00:00Z');
+    raise exception 'drilldown test: reversed range accepted';
+  exception when invalid_parameter_value then
+    null;
+  end;
+  raise notice 'report drilldown, recent items and reply draft checks ran';
+end;
+$$;
+rollback;
+SQL
+
 echo "PostgreSQL 16 migration and RLS integration checks passed."

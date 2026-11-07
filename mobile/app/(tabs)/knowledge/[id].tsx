@@ -1,5 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
+
 import { useCallback, useState } from "react";
 import {
   ActivityIndicator,
@@ -23,6 +24,7 @@ import {
 } from "@/lib/mobile-knowledge";
 import { loadCurrentTenant } from "@/lib/nextdesk-client";
 import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
+import { recordRecentItem } from "@/lib/recent-items";
 
 function readId(value: string | string[] | undefined): string | null {
   return typeof value === "string" && value.trim() ? value : null;
@@ -56,6 +58,7 @@ export default function KnowledgeArticleScreen() {
       setArticle(
         await loadMobileKnowledgeArticle({ tenantId: tenant.id, articleId }),
       );
+      recordRecentItem(tenant.id, "knowledge_article", articleId);
     } catch (loadError) {
       setError(
         loadError instanceof Error

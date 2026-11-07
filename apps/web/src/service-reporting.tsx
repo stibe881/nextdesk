@@ -14,6 +14,11 @@ import {
 } from "./service-report-dashboards";
 import { supabase } from "./lib/supabase";
 import { SupportLevelReportPanel } from "./support-level-report";
+import {
+  drilldownLabel,
+  drilldownPeriodLabel,
+  type TicketDrilldown,
+} from "./lib/ticket-drilldown";
 
 export type ServiceReportingBranding = {
   accentColor: string;
@@ -25,6 +30,8 @@ export type ServiceReportingBranding = {
 
 export type ServiceReportingProps = {
   branding: ServiceReportingBranding;
+  /** Drilldown: opens the ticket list filtered to a figure of the report. */
+  onOpenTicketList?: ((drilldown: TicketDrilldown) => void) | undefined;
   tenantId: string;
 };
 
@@ -104,6 +111,7 @@ type SummaryMetricProps = {
   detail: string;
   comparison: string;
   tone?: "default" | "attention";
+  onOpen?: (() => void) | undefined;
 };
 
 const PERIODS: readonly {
@@ -435,20 +443,68 @@ function SummaryMetric({
   detail,
   comparison,
   tone = "default",
+  onOpen,
 }: SummaryMetricProps) {
   return (
     <article
       className={`service-reporting__metric service-reporting__metric--${tone}`}
     >
       <p>{label}</p>
-      <strong>{value}</strong>
+      {onOpen ? (
+        <button
+          aria-label={`${label}: ${value} – Tickets anzeigen`}
+          className="service-reporting__drill"
+          onClick={onOpen}
+          type="button"
+        >
+          <strong>{value}</strong>
+        </button>
+      ) : (
+        <strong>{value}</strong>
+      )}
       <span>{detail}</span>
       <small>{comparison}</small>
     </article>
   );
 }
 
+/** A distribution row; clickable when a drilldown is available. */
+function ReportRow({
+  count,
+  label,
+  onOpen,
+}: {
+  count: number;
+  label: string;
+  onOpen: (() => void) | undefined;
+}) {
+  if (!onOpen) {
+    return (
+      <div className="service-reporting__row">
+        <span className="service-reporting__row-label">{label}</span>
+        <strong>{formatNumber(count)}</strong>
+      </div>
+    );
+  }
+  return (
+    <button
+      aria-label={`${label}: ${formatNumber(count)} Tickets anzeigen`}
+      className="service-reporting__row service-reporting__row--drill"
+      onClick={onOpen}
+      type="button"
+    >
+      <span className="service-reporting__row-label">{label}</span>
+      <strong>{formatNumber(count)}</strong>
+    </button>
+  );
+}
+
 const serviceReportingStyles = `
+  .service-reporting__drill { appearance: none; background: none; border: 0; border-radius: 6px; color: inherit; cursor: pointer; font: inherit; justify-self: start; padding: 0; text-align: left; text-decoration: underline dotted; text-underline-offset: 5px; }
+  .service-reporting__drill:hover { text-decoration-style: solid; }
+  .service-reporting__row--drill { appearance: none; background: none; border: 0; border-radius: 6px; color: inherit; cursor: pointer; font: inherit; margin: -4px -6px; padding: 4px 6px; text-align: left; width: calc(100% + 12px); }
+  .service-reporting__row--drill:hover { background: color-mix(in srgb, var(--report-primary) 7%, transparent); }
+  .service-reporting__drill:focus-visible, .service-reporting__row--drill:focus-visible { outline: 3px solid color-mix(in srgb, var(--report-primary) 32%, transparent); outline-offset: 2px; }
   .service-reporting { --report-primary: var(--brand-primary, #4338ca); --report-secondary: var(--brand-primary-hover, #3730a3); --report-accent: var(--brand-accent, #075985); color: var(--ink); display: grid; gap: 18px; min-width: 0; }
   .service-reporting__header, .service-reporting__toolbar, .service-reporting__heading, .service-reporting__row, .service-reporting__section-heading { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; justify-content: space-between; }
   .service-reporting__header, .service-reporting__heading { align-items: flex-start; }
@@ -533,6 +589,7 @@ const serviceReportingStyles = `
 
 export function ServiceReporting({
   branding,
+  onOpenTicketList,
   tenantId,
 }: ServiceReportingProps) {
   const headingId = useId();
@@ -619,6 +676,21 @@ export function ServiceReporting({
 
   const isLoading = loadState === "loading";
   const selected = (key: ReportSection) => sections[key];
+  // Drilldown: a report figure opens the ticket list for the same period.
+  const drill = (
+    label: string,
+    filters: Omit<TicketDrilldown, "label">,
+  ): (() => void) | undefined => {
+    if (!onOpenTicketList || !report) return undefined;
+    const { startsAt, endsAt } = report.period;
+    return () =>
+      onOpenTicketList({
+        ...filters,
+        label: drilldownLabel(label, drilldownPeriodLabel(startsAt, endsAt)),
+        createdFrom: startsAt,
+        createdTo: endsAt,
+      });
+  };
 
   return (
     <section
@@ -753,6 +825,7 @@ export function ServiceReporting({
 
       {view !== "metrics" ? (
         <PredefinedReports
+          onOpenTicketList={onOpenTicketList}
           branding={{ logoUrl: branding.logoUrl, name: branding.name }}
           endsOn={endsOn}
           period={period}
@@ -890,6 +963,7 @@ export function ServiceReporting({
                   )}
                   detail="Im ausgewählten Zeitraum erstellt"
                   label="Ticketvolumen"
+                  onOpen={drill("Ticketvolumen", {})}
                   value={formatNumber(report.ticketVolume)}
                 />
                 <SummaryMetric
@@ -900,6 +974,7 @@ export function ServiceReporting({
                   )}
                   detail="Aus der jeweiligen Ticketkohorte"
                   label="Offene Tickets"
+                  onOpen={drill("Offen", { statusClosed: false })}
                   tone={report.tickets.open > 0 ? "attention" : "default"}
                   value={formatNumber(report.tickets.open)}
                 />
@@ -911,6 +986,7 @@ export function ServiceReporting({
                   )}
                   detail="Aus der jeweiligen Ticketkohorte"
                   label="Gelöste Tickets"
+                  onOpen={drill("Gelöst", { statusClosed: true })}
                   value={formatNumber(report.tickets.resolved)}
                 />
                 <SummaryMetric
@@ -1047,20 +1123,27 @@ export function ServiceReporting({
                   <p className="service-reporting__empty">Noch keine Daten</p>
                 ) : (
                   <ul className="service-reporting__list">
-                    {report.tickets.byPriority.map((metric, index) => (
-                      <li key={`${metric.key ?? "ohne-prioritaet"}-${index}`}>
-                        <div className="service-reporting__row">
-                          <span className="service-reporting__row-label">
-                            {categoryLabel(
-                              metric.label,
-                              metric.key,
-                              "Nicht zugeordnet",
-                            )}
-                          </span>
-                          <strong>{formatNumber(metric.ticketCount)}</strong>
-                        </div>
-                      </li>
-                    ))}
+                    {report.tickets.byPriority.map((metric, index) => {
+                      const label = categoryLabel(
+                        metric.label,
+                        metric.key,
+                        "Nicht zugeordnet",
+                      );
+                      const open = metric.label
+                        ? drill(`Priorität ${metric.label}`, {
+                            priorityLabels: [metric.label],
+                          })
+                        : undefined;
+                      return (
+                        <li key={`${metric.key ?? "ohne-prioritaet"}-${index}`}>
+                          <ReportRow
+                            count={metric.ticketCount}
+                            label={label}
+                            onOpen={open}
+                          />
+                        </li>
+                      );
+                    })}
                   </ul>
                 )}
                 <div
@@ -1075,16 +1158,23 @@ export function ServiceReporting({
                   <p className="service-reporting__empty">Noch keine Daten</p>
                 ) : (
                   <ul className="service-reporting__list">
-                    {report.tickets.byDepartment.map((metric, index) => (
-                      <li key={`${metric.id ?? "ohne-abteilung"}-${index}`}>
-                        <div className="service-reporting__row">
-                          <span className="service-reporting__row-label">
-                            {metric.name?.trim() || "Nicht zugeordnet"}
-                          </span>
-                          <strong>{formatNumber(metric.ticketCount)}</strong>
-                        </div>
-                      </li>
-                    ))}
+                    {report.tickets.byDepartment.map((metric, index) => {
+                      const label = metric.name?.trim() || "Nicht zugeordnet";
+                      const open = metric.id
+                        ? drill(`Abteilung ${label}`, {
+                            departmentIds: [metric.id],
+                          })
+                        : undefined;
+                      return (
+                        <li key={`${metric.id ?? "ohne-abteilung"}-${index}`}>
+                          <ReportRow
+                            count={metric.ticketCount}
+                            label={label}
+                            onOpen={open}
+                          />
+                        </li>
+                      );
+                    })}
                   </ul>
                 )}
               </section>

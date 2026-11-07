@@ -1,7 +1,19 @@
-import { useEffect, useId, useRef, useState } from "react";
-import { LoaderCircle, Search, X } from "lucide-react";
+import {
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from "react";
+import { History, LoaderCircle, Search, X } from "lucide-react";
 import { functionErrorMessage } from "./lib/function-error";
 import { isSupabaseConfigured, supabase } from "./lib/supabase";
+import {
+  loadRecentItems,
+  RECENT_ITEM_TYPE_LABEL,
+  recentItemAgeLabel,
+  type RecentItem,
+} from "./lib/recent-items";
 
 export type GlobalSearchResult = {
   resultType:
@@ -10,11 +22,7 @@ export type GlobalSearchResult = {
   title: string;
   detail: string;
   section:
-    | "Tickets"
-    | "Wiedervorlagen"
-    | "Wissen"
-    | "Raumplanung"
-    | "Eintritte";
+    "Tickets" | "Wiedervorlagen" | "Wissen" | "Raumplanung" | "Eintritte";
   ticketId: string | null;
 };
 
@@ -24,6 +32,8 @@ type GlobalSearchProps = {
   disabled?: boolean;
   tenantId: string;
   onSelect: (result: GlobalSearchResult) => void;
+  /** «Zuletzt angesehen»: shown while the search field is empty. */
+  onSelectRecent?: ((item: RecentItem) => void) | undefined;
   scope?: GlobalSearchScope;
 };
 
@@ -104,8 +114,12 @@ export function GlobalSearch({
   disabled = false,
   tenantId,
   onSelect,
+  onSelectRecent,
   scope = "all",
 }: GlobalSearchProps) {
+  const [recentItems, setRecentItems] = useState<RecentItem[] | null>(null);
+  const [recentError, setRecentError] = useState("");
+  const panelRef = useRef<HTMLElement | null>(null);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<GlobalSearchResult[]>([]);
   const [isOpen, setIsOpen] = useState(false);
@@ -182,15 +196,81 @@ export function GlobalSearch({
     inputRef.current?.focus();
   }
 
+  const showRecent =
+    isOpen &&
+    normalizedQuery.length < 2 &&
+    Boolean(onSelectRecent) &&
+    !disabled &&
+    isSupabaseConfigured;
+  const visibleRecentItems = (recentItems ?? []).filter(
+    (item) => scope === "all" || item.itemType === "ticket",
+  );
+
+  // Reload whenever the empty field is focused: the list changes on every
+  // opened item (also on other devices).
+  useEffect(() => {
+    if (!showRecent) return;
+    let active = true;
+    setRecentError("");
+    loadRecentItems(tenantId)
+      .then((items) => {
+        if (active) setRecentItems(items);
+      })
+      .catch(() => {
+        if (!active) return;
+        setRecentItems([]);
+        setRecentError("Zuletzt angesehene Elemente sind nicht verfügbar.");
+      });
+    return () => {
+      active = false;
+    };
+  }, [showRecent, tenantId]);
+
+  useEffect(() => {
+    setRecentItems(null);
+  }, [tenantId]);
+
+  function moveFocus(event: ReactKeyboardEvent<HTMLElement>) {
+    if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+    const options = Array.from(
+      panelRef.current?.querySelectorAll<HTMLButtonElement>(
+        'button[role="option"]',
+      ) ?? [],
+    );
+    if (options.length === 0) return;
+    event.preventDefault();
+    const index = options.indexOf(document.activeElement as HTMLButtonElement);
+    if (index === -1) {
+      (event.key === "ArrowDown" ? options[0] : options.at(-1))?.focus();
+      return;
+    }
+    const next = index + (event.key === "ArrowDown" ? 1 : -1);
+    if (next < 0) {
+      inputRef.current?.focus();
+      return;
+    }
+    options[Math.min(next, options.length - 1)]?.focus();
+  }
+
   const showPanel = isOpen && normalizedQuery.length >= 2;
+  const panelOpen = showPanel || showRecent;
   return (
-    <div className="global-search">
+    <div
+      className="global-search"
+      onBlur={(event) => {
+        const next = event.relatedTarget;
+        if (!(next instanceof Node) || !event.currentTarget.contains(next)) {
+          setIsOpen(false);
+        }
+      }}
+      onKeyDown={moveFocus}
+    >
       <label className="search-field global-search__field">
         <Search aria-hidden="true" size={17} strokeWidth={1.8} />
         <input
           aria-autocomplete="list"
-          aria-controls={showPanel ? resultsId : undefined}
-          aria-expanded={showPanel}
+          aria-controls={panelOpen ? resultsId : undefined}
+          aria-expanded={panelOpen}
           aria-label="Global suchen"
           autoComplete="off"
           disabled={disabled}
@@ -218,11 +298,65 @@ export function GlobalSearch({
           </button>
         ) : null}
       </label>
+      {showRecent && !showPanel ? (
+        <section
+          aria-label="Zuletzt angesehen"
+          className="global-search__panel"
+          id={resultsId}
+          onMouseDown={(event) => event.preventDefault()}
+          ref={panelRef}
+          role="listbox"
+        >
+          <p className="global-search__heading">
+            <History aria-hidden="true" size={14} />
+            Zuletzt angesehen
+          </p>
+          {recentError ? (
+            <p className="global-search__state" role="status">
+              {recentError}
+            </p>
+          ) : recentItems === null ? (
+            <p className="global-search__state" role="status">
+              Wird geladen …
+            </p>
+          ) : visibleRecentItems.length === 0 ? (
+            <p className="global-search__state">
+              Noch nichts angesehen. Geöffnete Tickets, Geräte und
+              Wissensartikel erscheinen hier – auch aus der App.
+            </p>
+          ) : (
+            <ul>
+              {visibleRecentItems.map((item) => (
+                <li key={`${item.itemType}:${item.itemId}`}>
+                  <button
+                    onClick={() => {
+                      onSelectRecent?.(item);
+                      setIsOpen(false);
+                    }}
+                    role="option"
+                    aria-selected={false}
+                    type="button"
+                  >
+                    <span className="global-search__result-type">
+                      {RECENT_ITEM_TYPE_LABEL[item.itemType]} ·{" "}
+                      {recentItemAgeLabel(item.viewedAt)}
+                    </span>
+                    <strong>{item.title}</strong>
+                    <span>{item.detail}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      ) : null}
       {showPanel ? (
         <section
           aria-label="Globale Suchtreffer"
           className="global-search__panel"
           id={resultsId}
+          onMouseDown={(event) => event.preventDefault()}
+          ref={panelRef}
           role="listbox"
         >
           {error ? (
@@ -247,6 +381,7 @@ export function GlobalSearch({
                       setIsOpen(false);
                     }}
                     role="option"
+                    aria-selected={false}
                     type="button"
                   >
                     <span className="global-search__result-type">

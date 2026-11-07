@@ -1,3 +1,4 @@
+import { recordRecentItem } from "./lib/recent-items";
 import { CsvImportDialog } from "./csv-import-dialog";
 import { ASSET_IMPORT_FIELDS } from "./lib/import-fields";
 import { ProblemAnalysis } from "./problem-insights";
@@ -2553,6 +2554,7 @@ export function ServiceAssets({
         ? document.activeElement
         : null);
     setAssetForm(asset ? assetDraft(asset) : EMPTY_ASSET_FORM);
+    if (asset) recordRecentItem(tenantId, "asset", asset.id);
     setError("");
     setSuccess("");
     setCreatedArticleId(null);
