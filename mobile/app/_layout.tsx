@@ -31,6 +31,7 @@ import {
   OfflineStatus,
 } from "@/components/offline-status";
 import { PushNotificationBridge } from "@/components/push-notification-bridge";
+import { QuickActionsBridge } from "@/components/quick-actions-bridge";
 import {
   initManusRuntime,
   subscribeSafeAreaInsets,
@@ -215,6 +216,7 @@ export default function RootLayout() {
                 <NextDeskAuthDeepLinkHandler />
                 <NextDeskSessionNavigator />
                 <PushNotificationBridge />
+                <QuickActionsBridge />
                 <OfflineStatus />
                 <DeviceProtection />
                 <ThemedStatusBar />
