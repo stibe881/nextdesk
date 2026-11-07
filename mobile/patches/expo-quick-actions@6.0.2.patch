@@ -1,0 +1,49 @@
+diff --git a/ios/AppDelegate.swift b/ios/AppDelegate.swift
+index 37558e006b606eae26e2e5be6e44afee93590547..be151cf1f91e94e32f95b8d82880241afe75349c 100644
+--- a/ios/AppDelegate.swift
++++ b/ios/AppDelegate.swift
+@@ -17,6 +17,8 @@ public class ExpoQuickActionsAppDelegate: ExpoAppDelegateSubscriber {
+   }
+ 
+   public func application(_ application: UIApplication, performActionFor shortcutItem: UIApplicationShortcutItem, completionHandler: @escaping (Bool) -> Void) {
++    // Kept until JavaScript handles it (see `pendingAction`).
++    pendingAction = shortcutItem
+     NotificationCenter.default.post(name: Notification.Name(onQuickAction), object: shortcutItem)
+     completionHandler(true)
+   }
+diff --git a/ios/ExpoQuickActionsModule.swift b/ios/ExpoQuickActionsModule.swift
+index 252da492ce374eef886d574a2c38af242de6d6c3..12a47405f710e2e57450afa3df1a67bae861801e 100644
+--- a/ios/ExpoQuickActionsModule.swift
++++ b/ios/ExpoQuickActionsModule.swift
+@@ -73,6 +73,12 @@ func toActionObject(item: UIApplicationShortcutItem?) -> ActionObject? {
+ 
+ var initialAction: UIApplicationShortcutItem?
+ 
++/// A quick action that arrived before JavaScript listened for it. With the
++/// UIScene lifecycle a cold start delivers the action through
++/// `performActionFor` while the app is still starting, so the event would
++/// otherwise be lost. It is replayed once JavaScript starts observing.
++var pendingAction: UIApplicationShortcutItem?
++
+ public class ExpoQuickActionsModule: Module {
+     
+     public func definition() -> ModuleDefinition {
+@@ -109,6 +115,10 @@ public class ExpoQuickActionsModule: Module {
+                 name: Notification.Name(onQuickAction),
+                 object: nil
+             )
++            if let item = pendingAction, let action = toActionObject(item: item) {
++                pendingAction = nil
++                self.sendEvent(onQuickAction, action.toDictionary())
++            }
+         }
+         
+         OnStopObserving {
+@@ -124,6 +134,7 @@ public class ExpoQuickActionsModule: Module {
+     func quickActionListener(notifications: Notification) {
+         guard let item = notifications.object as? UIApplicationShortcutItem,
+               let action = toActionObject(item: item) else { return }
++        pendingAction = nil
+         sendEvent(onQuickAction, action.toDictionary())
+     }
+ }
