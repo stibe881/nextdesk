@@ -113,7 +113,7 @@ mit Feldern zum Ausfüllen, z. B. `/ticket_erfassen --betreff="Drucker druckt ni
 | `ticket_erfassen` | Ticket für sich oder eine andere Person |
 | `antwort_schreiben` | Antwort an Anfragende, optional mit Makro |
 | `raum_buchen` | Raum einmalig oder als Serie |
-| `eintritt_erfassen` | Eintritt einer neuen Person |
+| `eintritt_erfassen` | Eintritt oder Austritt einer Person |
 | `shop_bestellung` | Bestellung im Self-Service-Shop |
 | `abwesenheit_vertretung` | Stellvertretung für eine Abwesenheit |
 | `uebergabe_erstellen` | Übergabe eines Tickets |

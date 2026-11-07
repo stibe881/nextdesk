@@ -3428,7 +3428,7 @@ const TOOLS: Tool[] = [
   {
     name: "eintritte_anzeigen",
     description:
-      "Zeigt die Eintritte neuer Mitarbeitender mit Startdatum, Verantwortlichen und offenen Aufgaben, dazu die verfügbaren Vorlagen und Personen.",
+      "Zeigt die Eintritte und Austritte von Mitarbeitenden mit Startdatum, Verantwortlichen und offenen Aufgaben, dazu die verfügbaren Vorlagen und Personen.",
     annotations: { readOnlyHint: true, title: "Eintritte" },
     inputSchema: {
       type: "object",
@@ -3437,6 +3437,11 @@ const TOOLS: Tool[] = [
         suchbegriff: {
           type: "string",
           description: "Filter nach Name oder Einheit.",
+        },
+        art: {
+          type: "string",
+          enum: ["onboarding", "offboarding"],
+          description: "Nur eintritt oder nur austritt.",
         },
         nur_offene_aufgaben: {
           type: "boolean",
@@ -3457,12 +3462,15 @@ const TOOLS: Tool[] = [
       });
       const query =
         typeof args.suchbegriff === "string" ? args.suchbegriff.trim() : "";
-      const entries = records(data.entries).filter((entry) =>
-        matches(query, entry.employeeName, entry.organisationUnit),
+      const entries = records(data.entries).filter(
+        (entry) =>
+          matches(query, entry.employeeName, entry.organisationUnit) &&
+          (args.art === undefined || entry.kind === args.art),
       );
       return textResult({
         entries: entries.slice(0, 50).map((entry) => ({
           id: entry.id,
+          kind: entry.kind ?? "onboarding",
           employee: entry.employeeName,
           startsOn: entry.startsOn,
           daysUntilStart: daysUntil(entry.startsOn),
@@ -3498,7 +3506,7 @@ const TOOLS: Tool[] = [
   {
     name: "eintritt_erfassen",
     description:
-      "Erfasst einen Eintritt (neue mitarbeitende Person). Vorlage, Führungsperson und ICT-Verantwortung als Name oder ID aus eintritte_anzeigen. Frage vorher nach, ob der Eintritt erfasst werden soll. Ohne bestaetigt zeigt das Werkzeug zuerst einen Entwurf zum Prüfen und Ergänzen; erst mit bestaetigt=true wird abgeschickt.",
+      "Erfasst einen Eintritt (neue mitarbeitende Person) oder mit art austritt einen Austritt. Vorlage, Führungsperson und ICT-Verantwortung als Name oder ID aus eintritte_anzeigen. Frage vorher nach, ob der Eintritt erfasst werden soll. Ohne bestaetigt zeigt das Werkzeug zuerst einen Entwurf zum Prüfen und Ergänzen; erst mit bestaetigt=true wird abgeschickt.",
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
@@ -3509,8 +3517,17 @@ const TOOLS: Tool[] = [
       properties: {
         bestaetigt: CONFIRM_PROPERTY,
         arbeitsbereich: WORKSPACE_PROPERTY,
+        art: {
+          type: "string",
+          enum: ["onboarding", "offboarding"],
+          description: "eintritt (Standard) oder austritt.",
+        },
         name: { type: "string", minLength: 2, maxLength: 160 },
-        von_datum: { type: "string", description: "Startdatum JJJJ-MM-TT." },
+        von_datum: {
+          type: "string",
+          description:
+            "Erster Arbeitstag, bei Austritt der Austrittstag (JJJJ-MM-TT).",
+        },
         einheit: {
           type: "string",
           minLength: 2,
@@ -3573,16 +3590,22 @@ const TOOLS: Tool[] = [
         throw new ToolError("Es ist keine Vorlage für Eintritte vorhanden.");
       }
       if (args.bestaetigt !== true) {
-        return draftResult("Eintritt erfassen", {
-          mitarbeitende: employeeName,
-          startdatum: startsOn,
-          einheit: unit,
-          standort: location,
-          fuehrungsperson: manager.displayName,
-          ictVerantwortung:
-            "displayName" in ict ? ict.displayName : "du selbst",
-          vorlage: template.name,
-        });
+        return draftResult(
+          args.art === "offboarding"
+            ? "Austritt erfassen"
+            : "Eintritt erfassen",
+          {
+            art: args.art === "offboarding" ? "austritt" : "eintritt",
+            mitarbeitende: employeeName,
+            startdatum: startsOn,
+            einheit: unit,
+            standort: location,
+            fuehrungsperson: manager.displayName,
+            ictVerantwortung:
+              "displayName" in ict ? ict.displayName : "du selbst",
+            vorlage: template.name,
+          },
+        );
       }
       const created = await callFunction(config, session, "onboarding", {
         type: "createEntry",
@@ -3594,6 +3617,7 @@ const TOOLS: Tool[] = [
         managerUserId: manager.id,
         ictResponsibleUserId: ict.id,
         templateId: template.id,
+        kind: args.art === "offboarding" ? "offboarding" : "onboarding",
       });
       return textResult({
         created: true,
@@ -6296,7 +6320,7 @@ const TOOLS: Tool[] = [
         lieferung: {
           type: "string",
           enum: ["pickup", "desk"],
-          description: "pickup (Abholung, Standard) oder desk (an den Platz).",
+          description: "abholung (Standard) oder an_den_platz.",
         },
         bestaetigt: { type: "boolean" },
       },
@@ -6596,13 +6620,18 @@ const PROMPTS: Prompt[] = [
   },
   {
     name: "eintritt_erfassen",
-    title: "Eintritt erfassen",
-    description: "Neue mitarbeitende Person für das Onboarding erfassen.",
+    title: "Eintritt oder Austritt erfassen",
+    description:
+      "Eintritt (Onboarding) oder Austritt (Offboarding) einer Person erfassen.",
     arguments: [
+      {
+        name: "art",
+        description: "eintritt oder austritt (Standard eintritt)",
+      },
       { name: "name", description: "Vor- und Nachname", required: true },
       {
         name: "startdatum",
-        description: "Erster Arbeitstag (JJJJ-MM-TT)",
+        description: "Erster Arbeitstag bzw. Austrittstag (JJJJ-MM-TT)",
         required: true,
       },
       { name: "einheit", description: "Organisationseinheit", required: true },
@@ -6928,6 +6957,10 @@ const ENUM_SETS: [readonly string[], readonly string[]][] = [
   [
     ["pickup", "desk"],
     ["abholung", "an_den_platz"],
+  ],
+  [
+    ["onboarding", "offboarding"],
+    ["eintritt", "austritt"],
   ],
 ];
 
