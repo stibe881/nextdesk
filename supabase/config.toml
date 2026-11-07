@@ -193,3 +193,6 @@ verify_jwt = false
 
 [functions.health]
 verify_jwt = false
+
+[functions.problem-management]
+verify_jwt = true

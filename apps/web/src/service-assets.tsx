@@ -1,3 +1,4 @@
+import { ProblemAnalysis } from "./problem-insights";
 import {
   useCallback,
   useEffect,
@@ -5082,6 +5083,13 @@ export function ServiceAssets({
                           value={problemForm.rootCause}
                         />
                       </label>
+                      {problemForm.id ? (
+                        <ProblemAnalysis
+                          disabled={controlsDisabled}
+                          problemId={problemForm.id}
+                          tenantId={tenantId}
+                        />
+                      ) : null}
                       {problemMode !== "resolve" || problemForm.id ? (
                         <section aria-labelledby="service-assets-problem-tickets-title">
                           <h4 id="service-assets-problem-tickets-title">

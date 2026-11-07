@@ -94,6 +94,7 @@ import { KnowledgeBase } from "./knowledge-base";
 import { GlobalSearch, type GlobalSearchResult } from "./global-search";
 import { ServiceReporting } from "./service-reporting";
 import { TeamSupervision } from "./team-supervision";
+import { ProblemCandidates } from "./problem-insights";
 import { absenceLabel, loadActiveAbsences } from "./lib/active-absences";
 import { ServiceAssets } from "./service-assets";
 import {
@@ -2558,6 +2559,7 @@ function AuthenticatedApp() {
   const [ticketScope, setTicketScope] = useState<TicketScope>("all");
   const [delegatedForIds, setDelegatedForIds] = useState<string[]>([]);
   // Departments the user supervises (role "Vorgesetzter Agent").
+  const [problemListVersion, setProblemListVersion] = useState(0);
   const [supervisedDepartmentIds, setSupervisedDepartmentIds] = useState<
     string[]
   >([]);
@@ -5779,17 +5781,24 @@ function AuthenticatedApp() {
         ) : section === "Fälle" &&
           activeTenant &&
           isFeatureEnabled("assets.management") ? (
-          <ServiceAssets
-            createProblemRequestId={
-              activeQuickCreateRequest?.action === "problem"
-                ? activeQuickCreateRequest.id
-                : undefined
-            }
-            fixedTab="problems"
-            key={`service-assets:${activeTenant.id}:problems`}
-            onCreateProblemRequestConsumed={consumeQuickCreateRequest}
-            tenantId={activeTenant.id}
-          />
+          <>
+            <ProblemCandidates
+              onCreated={() => setProblemListVersion((current) => current + 1)}
+              onOpenTicket={(ticketId) => setSelectedTicketId(ticketId)}
+              tenantId={activeTenant.id}
+            />
+            <ServiceAssets
+              createProblemRequestId={
+                activeQuickCreateRequest?.action === "problem"
+                  ? activeQuickCreateRequest.id
+                  : undefined
+              }
+              fixedTab="problems"
+              key={`service-assets:${activeTenant.id}:problems:${problemListVersion}`}
+              onCreateProblemRequestConsumed={consumeQuickCreateRequest}
+              tenantId={activeTenant.id}
+            />
+          </>
         ) : section === "Teamführung" &&
           activeTenant &&
           supervisedDepartmentIds.length > 0 ? (
