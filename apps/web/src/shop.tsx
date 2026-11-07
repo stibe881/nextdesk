@@ -41,6 +41,13 @@ import {
   type ShopDepartment,
   type ShopPerson,
 } from "./lib/shop";
+import {
+  EMPTY_SOFTWARE_DRAFT,
+  softwareDraftFromLink,
+  softwarePayload,
+  type SoftwareDraft,
+} from "./lib/shop-software";
+import { SoftwareLineStatus, SoftwareLinkEditor } from "./shop-software";
 
 type Tab = "catalog" | "mine" | "approvals" | "orders";
 type CatalogLayout = "grid" | "list";
@@ -234,6 +241,11 @@ function ShopBadges({ item }: { item: CatalogItem }) {
       ) : null}
       {item.requiresApproval ? (
         <span className="shop__badge shop__badge--approval">Mit Freigabe</span>
+      ) : null}
+      {item.isSoftware ? (
+        <span className="shop__badge">
+          Software · wird über Intune verteilt
+        </span>
       ) : null}
     </div>
   );
@@ -1458,6 +1470,24 @@ function OrderDialog({
     }
   };
 
+  const retrySoftware = async (deploymentId: string) => {
+    setPending(true);
+    setError("");
+    try {
+      await shopApi.retrySoftware(tenantId, deploymentId);
+      load();
+      onChanged();
+    } catch (nextError) {
+      setError(
+        nextError instanceof Error
+          ? nextError.message
+          : "Die Zuweisung konnte nicht neu gestartet werden.",
+      );
+    } finally {
+      setPending(false);
+    }
+  };
+
   const lineChoices = () =>
     (order?.lines ?? []).map((line) => ({
       lineId: line.id,
@@ -1633,6 +1663,17 @@ function OrderDialog({
                               ? " · zurück"
                               : ""}
                     </span>
+                    {line.software ? (
+                      <SoftwareLineStatus
+                        onRetry={() => {
+                          if (line.software) {
+                            void retrySoftware(line.software.deploymentId);
+                          }
+                        }}
+                        pending={pending}
+                        software={line.software}
+                      />
+                    ) : null}
                   </div>
                   {handOutPossible && line.stock && line.status !== "issued" ? (
                     <div className="shop__row">
@@ -1863,6 +1904,8 @@ type Draft = {
   fallbackImageUrl: string | null;
   /** Abteilung des Artikels ("" = noch nicht gewählt bzw. für alle). */
   departmentId: string;
+  /** Intune-Verknüpfung (Software-Artikel). */
+  software: SoftwareDraft;
 };
 
 const MAX_IMAGES = 5;
@@ -1971,6 +2014,7 @@ const EMPTY_DRAFT: Draft = {
   newFiles: [],
   fallbackImageUrl: null,
   departmentId: "",
+  software: EMPTY_SOFTWARE_DRAFT,
 };
 
 /** Optionen eines Artikels wählen, mit Suche über alle Artikel. */
@@ -2109,6 +2153,7 @@ function draftFromItem(item: CatalogItem): Draft {
     newFiles: [],
     fallbackImageUrl: (item.images ?? []).length === 0 ? item.imageUrl : null,
     departmentId: item.departmentId ?? "",
+    software: softwareDraftFromLink(item.software),
   };
 }
 
@@ -2270,6 +2315,8 @@ function CatalogEditor({
       if (categoryIds.length === 0) {
         throw new Error("Bitte mindestens eine Kategorie wählen.");
       }
+      const software = softwarePayload(draft.software, draft.kind);
+      if ("error" in software) throw new Error(software.error);
       const saved = await shopApi.saveItem(tenantId, {
         id: draft.id,
         name: draft.name.trim(),
@@ -2301,6 +2348,7 @@ function CatalogEditor({
         optionItemIds: draft.optionItemIds,
         active: draft.active,
         sortOrder: draft.sortOrder,
+        software: software.value,
         // Ohne Auswahl bestimmt der Server die Abteilung (die einzige eigene
         // bzw. bei bestehenden Artikeln die bisherige).
         ...(chooseDepartment && draft.departmentId
@@ -2860,6 +2908,11 @@ function CatalogEditor({
                     setDraft({
                       ...draft,
                       kind: event.target.value as Draft["kind"],
+                      // Software lässt sich nur bestellen.
+                      software:
+                        event.target.value === "loan"
+                          ? { ...draft.software, enabled: false }
+                          : draft.software,
                     })
                   }
                   value={draft.kind}
@@ -2946,6 +2999,12 @@ function CatalogEditor({
                 </select>
               </label>
             ) : null}
+            <SoftwareLinkEditor
+              kind={draft.kind}
+              onChange={(software) => setDraft({ ...draft, software })}
+              tenantId={tenantId}
+              value={draft.software}
+            />
             <label className="shop__check">
               <input
                 checked={draft.requiresApproval}

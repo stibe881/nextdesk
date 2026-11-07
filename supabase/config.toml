@@ -246,3 +246,6 @@ verify_jwt = true
 
 [functions.requester-reminder-action]
 verify_jwt = false
+
+[functions.license-reclaim]
+verify_jwt = true

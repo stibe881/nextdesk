@@ -12564,4 +12564,227 @@ $$;
 rollback;
 SQL
 
+# 0231: software articles are assigned through Intune after approval; license
+# seats of people who left or stopped signing in become reclaim candidates.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_owner constant uuid := 'f2310000-0000-4000-8000-000000000001';
+  v_employee constant uuid := 'f2310000-0000-4000-8000-000000000002';
+  v_leaver constant uuid := 'f2310000-0000-4000-8000-000000000003';
+  v_entra_employee constant uuid := 'f2310000-0000-4000-8000-0000000000e2';
+  v_entra_leaver constant uuid := 'f2310000-0000-4000-8000-0000000000e3';
+  v_tenant uuid;
+  v_requester_role uuid;
+  v_software uuid;
+  v_other uuid;
+  v_order uuid;
+  v_mixed uuid;
+  v_claim record;
+  v_count integer;
+  v_status text;
+  v_license uuid;
+  v_seat_employee uuid;
+  v_seat_leaver uuid;
+  v_seat_external uuid;
+  v_candidate record;
+begin
+  if has_table_privilege('authenticated', 'public.shop_software_deployments', 'select')
+     or has_table_privilege('anon', 'public.shop_software_deployments', 'select')
+     or has_table_privilege('authenticated', 'public.license_assignments', 'select')
+     or has_table_privilege('authenticated', 'public.license_reclaim_settings', 'select') then
+    raise exception 'software test: browser roles can read the new tables';
+  end if;
+  if not (select relrowsecurity from pg_class where oid = 'public.shop_software_deployments'::regclass)
+     or not (select relrowsecurity from pg_class where oid = 'public.license_assignments'::regclass)
+     or not (select relrowsecurity from pg_class where oid = 'public.license_reclaim_settings'::regclass) then
+    raise exception 'software test: RLS disabled';
+  end if;
+  if has_function_privilege('authenticated', 'public.shop_software_deployments_claim(uuid, uuid)', 'execute')
+     or has_function_privilege('authenticated',
+       'public.shop_software_deployment_record(uuid, uuid, boolean, uuid, integer, text, text)', 'execute')
+     or has_function_privilege('authenticated', 'public.license_reclaim_candidates(uuid, integer)', 'execute')
+     or has_function_privilege('authenticated', 'public.license_reclaim_notify_new_candidates()', 'execute') then
+    raise exception 'software test: functions callable from the browser';
+  end if;
+
+  insert into auth.users (id) values (v_owner), (v_employee), (v_leaver);
+  v_tenant := public.provision_personal_workspace(v_owner, 'owner@software.example', 'Software Test');
+  select id into v_requester_role from public.roles where tenant_id = v_tenant and name = 'Requester';
+  insert into public.user_profiles (id, display_name)
+  values (v_employee, 'Erika Software'), (v_leaver, 'Max Austritt');
+  insert into public.tenant_memberships (tenant_id, user_id, status, joined_at)
+  values (v_tenant, v_employee, 'active', now()), (v_tenant, v_leaver, 'active', now());
+  insert into public.user_role_assignments (tenant_id, user_id, role_id, assigned_by)
+  values (v_tenant, v_employee, v_requester_role, v_owner);
+  insert into public.tenant_entra_directory_people (tenant_id, entra_object_id, email, display_name, local_user_id)
+  values (v_tenant, v_entra_employee, 'erika@software.example', 'Erika Software', v_employee),
+         (v_tenant, v_entra_leaver, 'max@software.example', 'Max Austritt', v_leaver);
+
+  -- A software article needs app, mode and group, and must be an order article.
+  begin
+    insert into public.shop_catalog_items (tenant_id, name, kind, intune_app_id)
+    values (v_tenant, 'Halbe Software', 'order', gen_random_uuid());
+    raise exception 'software test: incomplete Intune link accepted';
+  exception when check_violation then null;
+  end;
+  begin
+    insert into public.shop_catalog_items (tenant_id, name, kind, intune_app_id,
+      intune_assignment_mode, intune_target_group_id)
+    values (v_tenant, 'Leih-Software', 'loan', gen_random_uuid(), 'user_group', gen_random_uuid());
+    raise exception 'software test: loan software accepted';
+  exception when check_violation then null;
+  end;
+  insert into public.shop_catalog_items (tenant_id, name, kind, intune_app_id, intune_app_name,
+    intune_assignment_mode, intune_target_group_id)
+  values (v_tenant, 'Visio', 'order', gen_random_uuid(), 'Microsoft Visio', 'user_group', gen_random_uuid())
+  returning id into v_software;
+  insert into public.shop_catalog_items (tenant_id, name, kind)
+  values (v_tenant, 'Headset', 'order') returning id into v_other;
+
+  -- Software only: claim creates the deployment with the Entra object id.
+  v_order := public.shop_submit_order(v_employee, v_tenant, gen_random_uuid(),
+    jsonb_build_array(jsonb_build_object('catalog_item_id', v_software, 'quantity', 1)),
+    'pickup', null, null, null, null, 'Diagramme zeichnen');
+  select * into v_claim from public.shop_software_deployments_claim(v_tenant, v_order);
+  if v_claim.deployment_id is null or v_claim.entra_object_id <> v_entra_employee
+     or v_claim.app_name <> 'Microsoft Visio' or v_claim.attempts <> 1
+     or v_claim.assignment_mode <> 'user_group' then
+    raise exception 'software test: claim wrong: %', row_to_json(v_claim);
+  end if;
+  -- A second claim does not hand out the running deployment again.
+  select count(*) into v_count from public.shop_software_deployments_claim(v_tenant, v_order);
+  if v_count <> 0 or (select count(*) from public.shop_software_deployments where order_id = v_order) <> 1 then
+    raise exception 'software test: deployment claimed twice';
+  end if;
+
+  v_status := public.shop_software_deployment_record(v_tenant, v_claim.deployment_id, false,
+    v_entra_employee, 0, 'permission_missing', 'Berechtigung fehlt');
+  if v_status <> 'failed' or not exists (
+    select 1 from public.shop_order_events where order_id = v_order and event_type = 'software_failed'
+  ) then
+    raise exception 'software test: failure not logged';
+  end if;
+  begin
+    perform public.shop_software_deployment_retry(v_employee, v_tenant, v_claim.deployment_id);
+    raise exception 'software test: employee could retry';
+  exception when insufficient_privilege then null;
+  end;
+  perform public.shop_software_deployment_retry(v_owner, v_tenant, v_claim.deployment_id);
+  select * into v_claim from public.shop_software_deployments_claim(v_tenant, v_order);
+  if v_claim.attempts <> 2 then
+    raise exception 'software test: retry not claimed';
+  end if;
+  v_status := public.shop_software_deployment_record(v_tenant, v_claim.deployment_id, true,
+    v_entra_employee, 1, null, null);
+  if v_status <> 'assigned'
+     or (select status from public.shop_orders where id = v_order) <> 'issued'
+     or (select status from public.shop_order_lines where order_id = v_order) <> 'issued'
+     or not exists (select 1 from public.shop_order_events where order_id = v_order and event_type = 'software_assigned')
+     or not exists (select 1 from public.ticket_notifications
+                    where user_id = v_employee and kind = 'shop.order.software_assigned') then
+    raise exception 'software test: success did not complete the order';
+  end if;
+
+  -- Mixed order: the hardware line keeps the order open for the agents.
+  v_mixed := public.shop_submit_order(v_employee, v_tenant, gen_random_uuid(),
+    jsonb_build_array(jsonb_build_object('catalog_item_id', v_software, 'quantity', 1),
+                      jsonb_build_object('catalog_item_id', v_other, 'quantity', 1)),
+    'pickup', null, null, null, null, 'Neuer Arbeitsplatz');
+  select * into v_claim from public.shop_software_deployments_claim(v_tenant, v_mixed);
+  perform public.shop_software_deployment_record(v_tenant, v_claim.deployment_id, true, null, 1, null, null);
+  if (select status from public.shop_orders where id = v_mixed) <> 'submitted' then
+    raise exception 'software test: mixed order closed too early';
+  end if;
+
+  -- Licenses: seat cost and reclaim candidates.
+  update public.tenant_feature_flags set enabled = true
+  where tenant_id = v_tenant and feature_key = 'contracts.management';
+  begin
+    insert into public.licenses (tenant_id, title, vendor_name, status, seat_cost_amount, created_by, updated_by)
+    values (v_tenant, 'Ohne Periode', 'Hersteller AG', 'active', 10, v_owner, v_owner);
+    raise exception 'license test: cost without period accepted';
+  exception when check_violation then null;
+  end;
+  insert into public.licenses (tenant_id, title, vendor_name, status, seat_cost_amount, seat_cost_period,
+    created_by, updated_by)
+  values (v_tenant, 'Microsoft 365 E3', 'Microsoft', 'active', 360, 'yearly', v_owner, v_owner)
+  returning id into v_license;
+  insert into public.license_assignments (tenant_id, license_id, user_id, assignee_label, assigned_by)
+  values (v_tenant, v_license, v_employee, 'Erika Software', v_owner) returning id into v_seat_employee;
+  insert into public.license_assignments (tenant_id, license_id, user_id, assignee_label, assigned_by)
+  values (v_tenant, v_license, v_leaver, 'Max Austritt', v_owner) returning id into v_seat_leaver;
+  insert into public.license_assignments (tenant_id, license_id, entra_object_id, assignee_label, assigned_by)
+  values (v_tenant, v_license, gen_random_uuid(), 'Extern', v_owner)
+  returning id into v_seat_external;
+  begin
+    insert into public.license_assignments (tenant_id, license_id, user_id, assignee_label)
+    values (v_tenant, v_license, v_employee, 'Doppelt');
+    raise exception 'license test: duplicate active seat accepted';
+  exception when unique_violation then null;
+  end;
+
+  -- Nobody is a candidate yet (recent assignments, active people).
+  if exists (select 1 from public.license_reclaim_candidates(v_tenant, 60) where cardinality(reasons) > 0) then
+    raise exception 'license test: candidates without reason';
+  end if;
+  update public.tenant_memberships set status = 'suspended' where tenant_id = v_tenant and user_id = v_leaver;
+  perform public.apply_entra_sign_in_activity(v_tenant, jsonb_build_array(
+    jsonb_build_object('entra_object_id', v_entra_employee,
+      'last_sign_in_at', (now() - interval '90 days')::text, 'account_enabled', true)));
+  select * into v_candidate from public.license_reclaim_candidates(v_tenant, 60)
+  where assignment_id = v_seat_leaver;
+  if not ('membership_inactive' = any(v_candidate.reasons)) or v_candidate.monthly_saving <> 30 then
+    raise exception 'license test: leaver not detected: %', row_to_json(v_candidate);
+  end if;
+  select * into v_candidate from public.license_reclaim_candidates(v_tenant, 60)
+  where assignment_id = v_seat_employee;
+  if v_candidate.reasons <> array['inactive'] or v_candidate.sign_in_source <> 'entra'
+     or v_candidate.entra_object_id <> v_entra_employee then
+    raise exception 'license test: inactive employee not detected: %', row_to_json(v_candidate);
+  end if;
+  if exists (select 1 from public.license_reclaim_candidates(v_tenant, 120)
+             where assignment_id = v_seat_employee and cardinality(reasons) > 0) then
+    raise exception 'license test: threshold ignored';
+  end if;
+  update public.tenant_entra_directory_people set account_enabled = false
+  where tenant_id = v_tenant and entra_object_id = v_entra_leaver;
+  select * into v_candidate from public.license_reclaim_candidates(v_tenant, 60)
+  where assignment_id = v_seat_leaver;
+  if not ('entra_disabled' = any(v_candidate.reasons)) then
+    raise exception 'license test: disabled Entra account not detected';
+  end if;
+  if public.license_seat_monthly_cost(90, 'quarterly') <> 30
+     or public.license_seat_monthly_cost(5, 'one_time') <> 0 then
+    raise exception 'license test: monthly cost wrong';
+  end if;
+
+  -- Weekly notification: once per seat.
+  v_count := public.license_reclaim_notify_new_candidates();
+  if v_count < 1 or not exists (
+    select 1 from public.ticket_notifications
+    where tenant_id = v_tenant and user_id = v_owner and kind = 'license.reclaim_candidates'
+      and (payload ->> 'count')::integer = 2
+  ) then
+    raise exception 'license test: managers not notified (%)', v_count;
+  end if;
+  select count(*) into v_count from public.ticket_notifications
+  where tenant_id = v_tenant and kind = 'license.reclaim_candidates';
+  perform public.license_reclaim_notify_new_candidates();
+  if (select count(*) from public.ticket_notifications
+      where tenant_id = v_tenant and kind = 'license.reclaim_candidates') <> v_count then
+    raise exception 'license test: candidates notified twice';
+  end if;
+  -- Returned seats are no candidates.
+  update public.license_assignments set released_at = now(), released_by = v_owner where id = v_seat_leaver;
+  if exists (select 1 from public.license_reclaim_candidates(v_tenant, 60) where assignment_id = v_seat_leaver) then
+    raise exception 'license test: returned seat still listed';
+  end if;
+  raise notice 'software deployment and license reclaim checks ran';
+end;
+$$;
+rollback;
+SQL
+
 echo "PostgreSQL 16 migration and RLS integration checks passed."

@@ -1489,11 +1489,32 @@ function baseNotificationPresentation(
           "shop.order.rejected": "Bestellung abgelehnt",
           "shop.order.cancelled": "Bestellung storniert",
           "shop.order.note": "Nachricht zur Bestellung",
+          "shop.order.software_assigned": "Software zugewiesen",
+          "shop.order.software_failed": "Software-Zuweisung fehlgeschlagen",
         };
         return {
           description: `Shop · Bestellung ${orderNumber}`.trim(),
           Icon: ShoppingBag,
           title: shopTitles[notification.kind] ?? "Shop",
+        };
+      }
+      if (notification.kind === "license.reclaim_candidates") {
+        const payload = isRecord(notification.payload)
+          ? notification.payload
+          : {};
+        const count = typeof payload.count === "number" ? payload.count : 0;
+        const saving =
+          typeof payload.monthlySaving === "number" ? payload.monthlySaving : 0;
+        const currency =
+          typeof payload.currency === "string" ? payload.currency : "CHF";
+        return {
+          description: `${count} Lizenzplatz/-plätze ungenutzt${
+            saving > 0
+              ? ` · ca. ${currency} ${saving.toFixed(2)} pro Monat`
+              : ""
+          }. Siehe Lizenzen › Rückgewinnung.`,
+          Icon: Bell,
+          title: "Lizenzen zurückgewinnen",
         };
       }
       if (notification.kind.startsWith("service_task.")) {

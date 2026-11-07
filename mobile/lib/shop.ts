@@ -2,6 +2,7 @@ import { useSyncExternalStore } from "react";
 import * as Crypto from "expo-crypto";
 
 import { invokeNextDesk } from "@/lib/nextdesk-client";
+import { SOFTWARE_EVENT_LABEL, type LineSoftware } from "@/lib/shop-software";
 
 /** Client for the `shop` Edge Function and the in-memory shopping cart. */
 
@@ -31,6 +32,8 @@ export type CatalogItem = {
   imageUrls?: string[];
   stockLevel: StockLevel;
   availableQuantity: number | null;
+  /** Software: wird nach der Freigabe über Intune zugewiesen. */
+  isSoftware?: boolean;
 };
 
 export type OrderStatus =
@@ -87,6 +90,8 @@ export type OrderDetail = OrderSummary & {
     status: string;
     /** Beschaffungsstand, wenn die Zeile nicht an Lager ist. */
     procurement?: LineProcurement | null;
+    /** Intune-Zuweisung (Software-Artikel nach der Freigabe). */
+    software?: LineSoftware | null;
     locationId: string | null;
     stock: {
       trackingMode: "quantity" | "serial";
@@ -164,6 +169,12 @@ export const shopApi = {
     call<{ order: OrderDetail }>({ type: "getOrder", tenantId, orderId }).then(
       (data) => data.order,
     ),
+  retrySoftware: (tenantId: string, deploymentId: string) =>
+    call<{ retried: true }>({
+      type: "retrySoftwareDeployment",
+      tenantId,
+      deploymentId,
+    }),
   update: (
     tenantId: string,
     orderId: string,
@@ -215,6 +226,7 @@ export const EVENT_LABEL: Record<string, string> = {
   backorder_ordered: "Beim Lieferanten bestellt",
   backorder_received: "Ware eingetroffen und reserviert",
   backorder_cancelled: "Beschaffung storniert",
+  ...SOFTWARE_EVENT_LABEL,
 };
 
 /** Beschaffungsstand einer Bestellzeile, die nicht an Lager ist. */
