@@ -8998,6 +8998,60 @@ body:has(.ticket-list-filter-panel) {
   background: var(--danger-soft);
 }
 
+/* Ticket rows follow the width of their list (side panels, split view), not
+   only the window: with little room the badges move below the title. */
+.ticket-list {
+  container-name: ticket-list;
+  container-type: inline-size;
+}
+
+.ticket-state {
+  flex-wrap: wrap;
+}
+
+@container ticket-list (max-width: 960px) {
+  .ticket-row {
+    grid-template-columns: minmax(0, 1fr) 24px;
+    gap: 10px 12px;
+  }
+
+  .ticket-row--selectable {
+    grid-template-columns: 24px minmax(0, 1fr) 24px;
+  }
+
+  .ticket-state {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+  }
+
+  .ticket-row--selectable .ticket-state {
+    grid-column: 2 / -1;
+  }
+
+  .ticket-row .ticket-quick-assign {
+    justify-content: flex-start;
+  }
+
+  .ticket-row-arrow {
+    grid-column: -2;
+    grid-row: 1;
+  }
+}
+
+@container ticket-list (max-width: 420px) {
+  .ticket-row {
+    padding: 12px;
+  }
+
+  .ticket-row--selectable .ticket-state {
+    grid-column: 1 / -1;
+  }
+
+  .ticket-assign-chip {
+    max-width: 140px;
+  }
+}
+
 .ticket-row-arrow {
   align-self: center;
   color: var(--text-tint-94a3b8);
