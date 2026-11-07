@@ -11204,4 +11204,212 @@ $$;
 rollback;
 SQL
 
+# 0226: Intune device actions: permission, default grant, log table and RPCs.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_tenant constant uuid := '10000000-0000-4000-8000-000000000001';
+  v_entra constant uuid := '11111111-1111-4111-8111-111111111111';
+  v_actor uuid;
+  v_outsider uuid;
+  v_ticket uuid;
+  v_asset uuid;
+  v_plain_asset uuid;
+  v_role uuid;
+  v_custom_role uuid;
+  v_begin record;
+  v_finish record;
+  v_targets integer;
+begin
+  if not exists (
+    select 1 from public.permissions
+    where code = 'asset.intune.actions' and is_sensitive
+  ) then
+    raise exception 'intune action test: permission missing';
+  end if;
+  if exists (
+    select 1
+    from public.role_permissions manage
+    join public.roles role on role.id = manage.role_id and role.is_system and role.active
+    where manage.permission_code = 'asset.manage'
+      and not exists (
+        select 1 from public.role_permissions action
+        where action.role_id = manage.role_id
+          and action.permission_code = 'asset.intune.actions'
+      )
+  ) then
+    raise exception 'intune action test: system role with asset.manage lacks asset.intune.actions';
+  end if;
+
+  insert into public.roles (tenant_id, name, scope, is_system)
+  values (v_tenant, 'Intune-Test System', 'tenant', true) returning id into v_role;
+  insert into public.role_permissions (role_id, permission_code) values (v_role, 'asset.manage');
+  if not exists (
+    select 1 from public.role_permissions
+    where role_id = v_role and permission_code = 'asset.intune.actions'
+  ) then
+    raise exception 'intune action test: new system role not granted';
+  end if;
+  insert into public.roles (tenant_id, name, scope, is_system)
+  values (v_tenant, 'Intune-Test Eigene Rolle', 'tenant', false) returning id into v_custom_role;
+  insert into public.role_permissions (role_id, permission_code) values (v_custom_role, 'asset.manage');
+  if exists (
+    select 1 from public.role_permissions
+    where role_id = v_custom_role and permission_code = 'asset.intune.actions'
+  ) then
+    raise exception 'intune action test: custom role granted implicitly';
+  end if;
+
+  if has_table_privilege('authenticated', 'public.intune_device_actions', 'insert')
+     or has_table_privilege('authenticated', 'public.intune_device_actions', 'update')
+     or has_table_privilege('anon', 'public.intune_device_actions', 'select')
+     or not (select relrowsecurity from pg_class where oid = 'public.intune_device_actions'::regclass)
+     or has_function_privilege('authenticated', 'public.begin_intune_device_action(uuid, uuid, uuid, uuid, text)', 'execute')
+     or has_function_privilege('authenticated', 'public.finish_intune_device_action(uuid, uuid, boolean, text, integer, text)', 'execute')
+     or has_function_privilege('authenticated', 'public.intune_device_action_targets(uuid, uuid, uuid[])', 'execute') then
+    raise exception 'intune action test: browser roles can write the action log or call the RPCs';
+  end if;
+
+  v_actor := '00000000-0000-4000-8000-000000000002';
+  insert into public.user_role_assignments (tenant_id, user_id, role_id)
+  values (v_tenant, v_actor, v_role);
+  if not public.user_has_tenant_permission(v_actor, v_tenant, 'asset.intune.actions') then
+    raise exception 'intune action test: member of the system role lacks asset.intune.actions';
+  end if;
+  select membership.user_id into v_outsider
+  from public.tenant_memberships membership
+  where membership.tenant_id = v_tenant and membership.status = 'active'
+    and not public.user_has_tenant_permission(membership.user_id, v_tenant, 'asset.intune.actions')
+  limit 1;
+  select id into v_ticket from public.tickets where tenant_id = v_tenant limit 1;
+
+  insert into public.tenant_feature_flags (tenant_id, feature_key, enabled)
+  values (v_tenant, 'assets.management', true)
+  on conflict (tenant_id, feature_key) do update set enabled = true, pilot_ends_at = null;
+
+  insert into public.assets (tenant_id, name, kind, lifecycle_state)
+  values (v_tenant, 'NB-INTUNE-ACTION', 'laptop', 'active') returning id into v_asset;
+  insert into public.assets (tenant_id, name, kind, lifecycle_state)
+  values (v_tenant, 'NB-OHNE-INTUNE', 'laptop', 'active') returning id into v_plain_asset;
+  insert into public.asset_intune_asset_links (tenant_id, asset_id, canonical_external_device_id)
+  values (v_tenant, v_asset, 'aaaaaaaa-1111-4222-8333-444444444444');
+  insert into public.asset_intune_devices (tenant_id, asset_id, external_device_id, operating_system)
+  values (v_tenant, v_asset, 'AAAAAAAA-1111-4222-8333-444444444444', 'Windows')
+  on conflict (tenant_id, external_device_id) do update
+  set asset_id = excluded.asset_id, operating_system = excluded.operating_system;
+
+  -- Without an active, SSO-bound connection the action is refused.
+  update public.asset_intune_connections set enabled = false, sync_enabled = false
+  where tenant_id = v_tenant;
+  select count(*) into v_targets
+  from public.intune_device_action_targets(v_actor, v_tenant, array[v_asset, v_plain_asset])
+  where not connection_ready and operating_system = 'Windows';
+  if v_targets <> 1 then
+    raise exception 'intune action test: targets wrong (%)', v_targets;
+  end if;
+  begin
+    perform public.begin_intune_device_action(v_actor, v_tenant, v_asset, v_ticket, 'syncDevice');
+    raise exception 'intune action test: disabled connection accepted';
+  exception when sqlstate 'P0001' then
+    if sqlerrm <> 'Intune connection is not ready' then
+      raise;
+    end if;
+  end;
+
+  update public.tenant_sso_configurations
+  set provider = 'azure_ad', enabled = true,
+      issuer_url = 'https://login.microsoftonline.com/' || v_entra::text || '/v2.0'
+  where tenant_id = v_tenant;
+  insert into public.asset_intune_connections (tenant_id, enabled, directory_tenant_id)
+  values (v_tenant, true, v_entra)
+  on conflict (tenant_id) do update set enabled = true, directory_tenant_id = v_entra;
+  if public.intune_device_action_entra_tenant(v_tenant) is distinct from v_entra then
+    raise exception 'intune action test: connection not ready';
+  end if;
+
+  begin
+    perform public.begin_intune_device_action(v_actor, v_tenant, v_plain_asset, v_ticket, 'syncDevice');
+    raise exception 'intune action test: asset without Intune link accepted';
+  exception when sqlstate 'P0002' then
+    null;
+  end;
+  begin
+    perform public.begin_intune_device_action(v_actor, v_tenant, v_asset, v_ticket, 'wipe');
+    raise exception 'intune action test: unknown action accepted';
+  exception when sqlstate '22023' then
+    null;
+  end;
+  if v_outsider is not null then
+    begin
+      perform public.begin_intune_device_action(v_outsider, v_tenant, v_asset, v_ticket, 'syncDevice');
+      raise exception 'intune action test: member without permission accepted';
+    exception when insufficient_privilege then
+      null;
+    end;
+  end if;
+
+  select * into v_begin
+  from public.begin_intune_device_action(v_actor, v_tenant, v_asset, v_ticket, 'windowsDefenderScan');
+  if v_begin.managed_device_id <> 'aaaaaaaa-1111-4222-8333-444444444444'
+     or v_begin.entra_tenant_id <> v_entra
+     or v_begin.operating_system <> 'Windows' then
+    raise exception 'intune action test: begin returned wrong target';
+  end if;
+  if not exists (
+    select 1 from public.intune_device_actions
+    where id = v_begin.action_id and status = 'pending' and requested_by = v_actor
+      and ticket_id is not distinct from v_ticket
+  ) then
+    raise exception 'intune action test: pending log row missing';
+  end if;
+  begin
+    perform public.finish_intune_device_action(v_tenant, v_begin.action_id, true, 'v1.0', 204, 'provider_unavailable');
+    raise exception 'intune action test: success with error code accepted';
+  exception when sqlstate '22023' then
+    null;
+  end;
+  select * into v_finish
+  from public.finish_intune_device_action(v_tenant, v_begin.action_id, false, 'v1.0', 403, 'permission_missing');
+  if v_finish.status <> 'failed' or v_finish.graph_status <> 403
+     or v_finish.error_code <> 'permission_missing' then
+    raise exception 'intune action test: finish did not record the result';
+  end if;
+  begin
+    perform public.finish_intune_device_action(v_tenant, v_begin.action_id, true, 'v1.0', 204, null);
+    raise exception 'intune action test: finished action finished twice';
+  exception when sqlstate 'P0002' then
+    null;
+  end;
+  if v_ticket is not null and not exists (
+    select 1 from public.ticket_events
+    where ticket_id = v_ticket and event_type = 'asset.intune_action'
+      and payload ->> 'actionId' = v_begin.action_id::text
+      and payload ->> 'status' = 'failed'
+      and payload ->> 'errorCode' = 'permission_missing'
+  ) then
+    raise exception 'intune action test: ticket history entry missing';
+  end if;
+  if not exists (
+    select 1 from public.audit_logs
+    where tenant_id = v_tenant and action = 'asset.intune_action.failed'
+      and entity_id = v_asset
+  ) then
+    raise exception 'intune action test: audit entry missing';
+  end if;
+
+  update public.tenant_feature_flags set enabled = false
+  where tenant_id = v_tenant and feature_key = 'assets.management';
+  begin
+    perform public.begin_intune_device_action(v_actor, v_tenant, v_asset, null, 'syncDevice');
+    raise exception 'intune action test: disabled module accepted';
+  exception when insufficient_privilege then
+    null;
+  end;
+  raise notice 'intune action checks ran';
+end;
+$$;
+rollback;
+SQL
+
 echo "PostgreSQL 16 migration and RLS integration checks passed."

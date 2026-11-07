@@ -88,6 +88,8 @@ import {
 import { TicketApprovals } from "./ticket-approvals";
 import { TicketComparison } from "./ticket-comparison";
 import { TicketCustomFields } from "./ticket-custom-fields";
+import { TicketIntuneActions } from "./intune-actions";
+import { intuneActionEventLabel } from "./lib/intune-actions";
 import {
   TicketFollowUps,
   TicketResolutionExperience,
@@ -406,6 +408,7 @@ type TicketEvent = {
   id: string;
   event_type: string;
   created_at: string;
+  payload?: Record<string, unknown> | null;
 };
 
 type TicketEscalation = {
@@ -2240,7 +2243,13 @@ function relationActionKey(relation: TicketRelation): string {
   return `${relation.relationType}:${relation.relatedTicketId}`;
 }
 
-function eventLabel(eventType: string): string {
+function eventLabel(
+  eventType: string,
+  payload?: Record<string, unknown> | null,
+): string {
+  if (eventType === "asset.intune_action") {
+    return intuneActionEventLabel(payload ?? null);
+  }
   const labels: Record<string, string> = {
     "ticket.created": "Ticket erstellt",
     "comment.external_added": "Externer Kommentar hinzugefügt",
@@ -4476,6 +4485,27 @@ export function TicketDetail({
       ticketId,
     ],
   );
+
+  // After an Intune action: reload only the ticket history, so open edits
+  // in the form are kept.
+  const refreshTicketEvents = useCallback(async () => {
+    try {
+      const nextDetail = parseTicketDetail(
+        await invokeTicketOperation({ type: "getTicket", tenantId, ticketId }),
+      );
+      if (!nextDetail) return;
+      setDetail((current) => {
+        if (!current || current.ticket.id !== nextDetail.ticket.id) {
+          return current;
+        }
+        const updated = { ...current, events: nextDetail.events };
+        detailRef.current = updated;
+        return updated;
+      });
+    } catch {
+      // The history updates with the next regular reload.
+    }
+  }, [tenantId, ticketId]);
 
   const loadAttachments = useCallback(async () => {
     const requestId = ++attachmentRequestSequence.current;
@@ -8123,6 +8153,14 @@ export function TicketDetail({
                     ticketId={ticketId}
                   />
                 )}
+                {detail.canUpdate && (
+                  <TicketIntuneActions
+                    onCompleted={() => void refreshTicketEvents()}
+                    refreshKey={`${detail.ticket.requester_id ?? ""}:${detail.ticket.affected_user_id ?? ""}`}
+                    tenantId={tenantId}
+                    ticketId={ticketId}
+                  />
+                )}
               </dl>
             )}
           </section>
@@ -9034,7 +9072,9 @@ export function TicketDetail({
                             strokeWidth={1.8}
                           />
                           <div>
-                            <strong>{eventLabel(event.event_type)}</strong>
+                            <strong>
+                              {eventLabel(event.event_type, event.payload)}
+                            </strong>
                             <time dateTime={event.created_at}>
                               {formatDateTime(event.created_at)}
                             </time>
