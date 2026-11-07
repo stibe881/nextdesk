@@ -1243,6 +1243,24 @@ function baseNotificationPresentation(
         title: "Infrastruktur: Fälligkeit",
       };
     }
+    case "maintenance.upcoming": {
+      const title =
+        notificationPayloadText(notification, "title", 200) ?? "Wartung";
+      const startsAt = notificationPayloadText(notification, "startsAt", 40);
+      const services = notificationPayloadText(notification, "services", 400);
+      const when = startsAt
+        ? new Intl.DateTimeFormat("de-CH", {
+            dateStyle: "short",
+            timeStyle: "short",
+            timeZone: "Europe/Zurich",
+          }).format(new Date(startsAt))
+        : "demnächst";
+      return {
+        description: `${title} beginnt am ${when}${services ? `. Betroffen: ${services}` : ""}.`,
+        Icon: CalendarClock,
+        title: "Geplante Wartung",
+      };
+    }
     case "team.overload": {
       const agent =
         notificationPayloadText(notification, "agentName", 120) ??
@@ -3933,6 +3951,9 @@ function AuthenticatedApp() {
       setNotificationPanelOpen(false);
     } else if (notification.kind === "team.overload") {
       setSection("Teamführung");
+      setNotificationPanelOpen(false);
+    } else if (notification.kind === "maintenance.upcoming") {
+      setSection("Systemstatus");
       setNotificationPanelOpen(false);
     } else if (notification.kind === "infrastructure.due") {
       setSection("Infrastruktur");
