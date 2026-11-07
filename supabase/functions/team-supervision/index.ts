@@ -32,6 +32,17 @@ class HttpError extends Error {
 
 type Action =
   | { type: "overview"; tenantId: string }
+  | { type: "liveBoard"; tenantId: string }
+  | { type: "skills"; tenantId: string }
+  | { type: "saveSkill"; tenantId: string; skillId: string | null; name: string }
+  | { type: "deleteSkill"; tenantId: string; skillId: string }
+  | {
+    type: "setSkillLevel";
+    tenantId: string;
+    skillId: string;
+    agentId: string;
+    level: number;
+  }
   | {
     type: "reassign";
     tenantId: string;
@@ -46,6 +57,7 @@ type Action =
     rating: number;
     solutionCorrect: boolean;
     toneAppropriate: boolean;
+    documentationOk: boolean | null;
     comment: string | null;
   }
   | { type: "monthlyReport"; tenantId: string; month: string }
@@ -68,7 +80,46 @@ function parseAction(value: unknown): Action | null {
   switch (value.type) {
     case "overview":
     case "reviewQueue":
+    case "liveBoard":
+    case "skills":
       return { type: value.type, tenantId };
+    case "saveSkill": {
+      const name = typeof value.name === "string" ? value.name.trim() : "";
+      if (
+        !name || name.length > 80 ||
+        !(value.skillId === null || value.skillId === undefined ||
+          isUuid(value.skillId))
+      ) {
+        return null;
+      }
+      return {
+        type: "saveSkill",
+        tenantId,
+        skillId: isUuid(value.skillId) ? value.skillId.toLowerCase() : null,
+        name,
+      };
+    }
+    case "deleteSkill":
+      return isUuid(value.skillId)
+        ? { type: "deleteSkill", tenantId, skillId: value.skillId.toLowerCase() }
+        : null;
+    case "setSkillLevel": {
+      const level = value.level;
+      if (
+        !isUuid(value.skillId) || !isUuid(value.agentId) ||
+        typeof level !== "number" || !Number.isInteger(level) || level < 0 ||
+        level > 3
+      ) {
+        return null;
+      }
+      return {
+        type: "setSkillLevel",
+        tenantId,
+        skillId: value.skillId.toLowerCase(),
+        agentId: value.agentId.toLowerCase(),
+        level,
+      };
+    }
     case "reassign": {
       const ids = value.ticketIds;
       if (
@@ -96,6 +147,8 @@ function parseAction(value: unknown): Action | null {
         rating < 1 || rating > 5 ||
         typeof value.solutionCorrect !== "boolean" ||
         typeof value.toneAppropriate !== "boolean" ||
+        !(value.documentationOk === undefined || value.documentationOk === null ||
+          typeof value.documentationOk === "boolean") ||
         !(comment === null || comment === undefined ||
           (typeof comment === "string" && comment.length <= 2000))
       ) {
@@ -108,6 +161,9 @@ function parseAction(value: unknown): Action | null {
         rating,
         solutionCorrect: value.solutionCorrect,
         toneAppropriate: value.toneAppropriate,
+        documentationOk: typeof value.documentationOk === "boolean"
+          ? value.documentationOk
+          : null,
         comment: typeof comment === "string" && comment.trim()
           ? comment.trim()
           : null,
@@ -308,6 +364,7 @@ async function overview(request: Request, admin: Admin, action: Action, actorId:
       assignedAgentId: row.assigned_agent_id ?? null,
       statusLabel: status.label ?? "",
       priorityLabel: priority.label ?? "",
+      priorityWeight: priorityWeight(String(priority.label ?? "")),
       createdAt: row.created_at,
       resolutionDueAt: row.resolution_due_at ?? null,
       overdue: Number.isFinite(due) && due < now,
@@ -328,6 +385,7 @@ async function overview(request: Request, admin: Admin, action: Action, actorId:
       atRisk: own.filter((row) => row.atRisk).length,
       noFirstResponse: own.filter((row) => row.noFirstResponse).length,
       resolvedLast30Days: resolvedCounts.get(agent.id) ?? 0,
+      loadScore: loadScore(own),
       absence: away
         ? {
           endsAt: away.endsAt,
@@ -343,6 +401,8 @@ async function overview(request: Request, admin: Admin, action: Action, actorId:
       agents,
       tickets: rows,
       truncated: rows.length >= OPEN_TICKET_LIMIT,
+      warnings: overloadWarnings(agents),
+      suggestions: planRebalance(agents, rows),
     },
   });
 }
@@ -499,6 +559,7 @@ async function saveReview(
         rating: action.rating,
         solution_correct: action.solutionCorrect,
         tone_appropriate: action.toneAppropriate,
+        documentation_ok: action.documentationOk,
         comment: action.comment,
         created_at: new Date().toISOString(),
       },
@@ -587,7 +648,7 @@ async function coachingNotes(
     admin
       .from("ticket_supervisor_reviews")
       .select(
-        "id, rating, solution_correct, tone_appropriate, comment, created_at, ticket_id, tickets(ticket_number, subject)",
+        "id, rating, solution_correct, tone_appropriate, documentation_ok, comment, created_at, ticket_id, tickets(ticket_number, subject)",
       )
       .eq("tenant_id", action.tenantId)
       .eq("agent_id", action.agentId)
@@ -612,6 +673,7 @@ async function coachingNotes(
           rating: row.rating,
           solutionCorrect: row.solution_correct,
           toneAppropriate: row.tone_appropriate,
+          documentationOk: row.documentation_ok ?? null,
           comment: row.comment ?? null,
           createdAt: row.created_at,
           ticketId: row.ticket_id,
@@ -783,6 +845,391 @@ async function monthStats(
   return agents;
 }
 
+/** Weight of a priority by its label (critical 4 … low 1, unknown 2). */
+function priorityWeight(label: string): number {
+  const value = label.toLowerCase();
+  if (/(kritisch|critical|sehr hoch|urgent|dringend)/.test(value)) return 4;
+  if (/(hoch|high)/.test(value)) return 3;
+  if (/(niedrig|tief|low|gering)/.test(value)) return 1;
+  return 2;
+}
+
+type LoadTicket = {
+  id: unknown;
+  departmentId: unknown;
+  assignedAgentId: unknown;
+  priorityWeight: number;
+  overdue: boolean;
+  atRisk: boolean;
+  createdAt: unknown;
+};
+
+/** Open tickets weighted by priority, plus extra weight for SLA risk. */
+function loadScore(tickets: LoadTicket[]): number {
+  return tickets.reduce(
+    (sum, ticket) =>
+      sum + ticket.priorityWeight + (ticket.overdue ? 3 : ticket.atRisk ? 2 : 0),
+    0,
+  );
+}
+
+type LoadAgent = {
+  id: string;
+  displayName: string;
+  departmentIds: string[];
+  openTickets: number;
+  overdue: number;
+  loadScore: number;
+  absence: unknown;
+};
+
+/** Agents clearly above the team average or with several overdue tickets. */
+function overloadWarnings(agents: LoadAgent[]) {
+  const present = agents.filter((agent) => !agent.absence);
+  const holding = present.filter((agent) => agent.openTickets > 0);
+  const averageOpen = holding.length
+    ? holding.reduce((sum, agent) => sum + agent.openTickets, 0) / holding.length
+    : 0;
+  return present
+    .filter((agent) =>
+      (agent.openTickets >= 6 && agent.openTickets >= averageOpen * 1.5) ||
+      agent.openTickets >= 12 ||
+      agent.overdue >= 3
+    )
+    .map((agent) => ({
+      agentId: agent.id,
+      agentName: agent.displayName,
+      openTickets: agent.openTickets,
+      overdue: agent.overdue,
+      averageOpen: Math.round(averageOpen * 10) / 10,
+      reason: agent.overdue >= 3 ? "overdue" : "load",
+    }));
+}
+
+/**
+ * Suggests moves from clearly overloaded agents to the least loaded colleague
+ * of the same department (absent agents only give tickets away). The newest
+ * tickets move first because little work has gone into them yet.
+ */
+function planRebalance(agents: LoadAgent[], tickets: LoadTicket[], limit = 20) {
+  const load = new Map(agents.map((agent) => [agent.id, agent.loadScore]));
+  const present = agents.filter((agent) => !agent.absence);
+  const average = present.length
+    ? present.reduce((sum, agent) => sum + agent.loadScore, 0) / present.length
+    : 0;
+  const moves: {
+    ticketId: string;
+    fromAgentId: string;
+    toAgentId: string;
+    toAgentName: string;
+  }[] = [];
+  const donors = [...agents]
+    .filter((agent) =>
+      agent.absence ? agent.openTickets > 0 : agent.loadScore > average * 1.3 &&
+        agent.openTickets >= 3
+    )
+    .sort((a, b) => b.loadScore - a.loadScore);
+  for (const donor of donors) {
+    const own = tickets
+      .filter((ticket) => ticket.assignedAgentId === donor.id)
+      .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+    for (const ticket of own) {
+      if (moves.length >= limit) return moves;
+      if (!donor.absence && (load.get(donor.id) ?? 0) <= average) break;
+      const weight = ticket.priorityWeight +
+        (ticket.overdue ? 3 : ticket.atRisk ? 2 : 0);
+      const receiver = present
+        .filter((agent) =>
+          agent.id !== donor.id &&
+          agent.departmentIds.includes(String(ticket.departmentId)) &&
+          // Tickets of absent agents always move; otherwise the receiver must
+          // stay at or below the average.
+          (Boolean(donor.absence) ||
+            (load.get(agent.id) ?? 0) + weight <= Math.max(average, weight))
+        )
+        .sort((a, b) => (load.get(a.id) ?? 0) - (load.get(b.id) ?? 0))[0];
+      if (!receiver) continue;
+      moves.push({
+        ticketId: String(ticket.id),
+        fromAgentId: donor.id,
+        toAgentId: receiver.id,
+        toAgentName: receiver.displayName,
+      });
+      load.set(donor.id, (load.get(donor.id) ?? 0) - weight);
+      load.set(receiver.id, (load.get(receiver.id) ?? 0) + weight);
+    }
+  }
+  return moves;
+}
+
+/** Live board: who works on what right now and where tickets pile up. */
+async function liveBoard(request: Request, admin: Admin, action: Action, actorId: string) {
+  const scope = await loadScope(admin, action.tenantId, actorId);
+  const now = Date.now();
+  const agentIds = scope.agents.map((agent) => agent.id);
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Zurich" })
+    .format(new Date(now));
+  const dayStart = new Date(`${today}T00:00:00Z`).getTime() - 2 * 3_600_000;
+  const [tickets, presence, checkins, delegations, resolvedToday] = await Promise.all([
+    admin
+      .from("tickets")
+      .select(
+        "id, ticket_number, subject, department_id, assigned_agent_id, created_at, resolution_due_at, status:ticket_statuses!inner(is_closed)",
+      )
+      .eq("tenant_id", action.tenantId)
+      .in("department_id", scope.departmentIds)
+      .eq("status.is_closed", false)
+      .is("merged_into_ticket_id", null)
+      .limit(OPEN_TICKET_LIMIT),
+    agentIds.length
+      ? admin
+        .from("ticket_presence_sessions")
+        .select("ticket_id, user_id, is_editing, last_seen_at")
+        .eq("tenant_id", action.tenantId)
+        .in("user_id", agentIds)
+        .gte("last_seen_at", new Date(now - 3 * 60_000).toISOString())
+        .order("last_seen_at", { ascending: false })
+      : { data: [], error: null },
+    agentIds.length
+      ? admin
+        .from("push_work_checkins")
+        .select("user_id, checked_in_at, checked_out_at")
+        .eq("tenant_id", action.tenantId)
+        .eq("work_date", today)
+        .in("user_id", agentIds)
+      : { data: [], error: null },
+    admin
+      .from("agent_delegations")
+      .select("agent_id, ends_at")
+      .eq("tenant_id", action.tenantId)
+      .is("ended_at", null)
+      .lte("starts_at", new Date(now).toISOString())
+      .gt("ends_at", new Date(now).toISOString()),
+    agentIds.length
+      ? admin
+        .from("tickets")
+        .select("assigned_agent_id")
+        .eq("tenant_id", action.tenantId)
+        .in("assigned_agent_id", agentIds)
+        .gte("resolved_at", new Date(dayStart).toISOString())
+        .limit(5000)
+      : { data: [], error: null },
+  ]);
+  if (
+    tickets.error || presence.error || checkins.error || delegations.error ||
+    resolvedToday.error
+  ) {
+    throw dbFailure();
+  }
+  const openRows = (tickets.data ?? []) as Row[];
+  const ticketById = new Map(openRows.map((row) => [row.id, row]));
+  const presenceIds = [
+    ...new Set(((presence.data ?? []) as Row[]).map((row) => row.ticket_id)),
+  ].filter((id) => !ticketById.has(id));
+  const extra = presenceIds.length
+    ? await admin
+      .from("tickets")
+      .select("id, ticket_number, subject")
+      .eq("tenant_id", action.tenantId)
+      .in("id", presenceIds)
+    : { data: [], error: null };
+  if (extra.error) throw dbFailure();
+  for (const row of (extra.data ?? []) as Row[]) ticketById.set(row.id, row);
+  const current = new Map<string, Row>();
+  for (const row of (presence.data ?? []) as Row[]) {
+    if (!current.has(row.user_id as string)) current.set(row.user_id as string, row);
+  }
+  const checkedIn = new Map(
+    ((checkins.data ?? []) as Row[]).map((row) => [row.user_id as string, row]),
+  );
+  const away = new Map(
+    ((delegations.data ?? []) as Row[]).map((row) => [row.agent_id as string, row.ends_at]),
+  );
+  const resolvedCount = new Map<string, number>();
+  for (const row of (resolvedToday.data ?? []) as Row[]) {
+    const id = row.assigned_agent_id as string;
+    resolvedCount.set(id, (resolvedCount.get(id) ?? 0) + 1);
+  }
+  const isOverdue = (row: Row) =>
+    typeof row.resolution_due_at === "string" && Date.parse(row.resolution_due_at) < now;
+  const isAtRisk = (row: Row) => {
+    const due = typeof row.resolution_due_at === "string"
+      ? Date.parse(row.resolution_due_at)
+      : NaN;
+    return Number.isFinite(due) && due >= now && due - now <= 4 * 3_600_000;
+  };
+  const agents = scope.agents.map((agent) => {
+    const session = current.get(agent.id);
+    const ticket = session ? ticketById.get(session.ticket_id) : undefined;
+    const checkin = checkedIn.get(agent.id);
+    const own = openRows.filter((row) => row.assigned_agent_id === agent.id);
+    const state = away.has(agent.id)
+      ? "away"
+      : session
+      ? "working"
+      : checkin?.checked_in_at && !checkin.checked_out_at
+      ? "available"
+      : "offline";
+    return {
+      id: agent.id,
+      displayName: agent.displayName,
+      departmentIds: scope.agentDepartments.get(agent.id) ?? [],
+      state,
+      awayUntil: away.get(agent.id) ?? null,
+      currentTicket: ticket
+        ? {
+          id: ticket.id,
+          ticketNumber: ticket.ticket_number,
+          subject: ticket.subject,
+          editing: session?.is_editing === true,
+        }
+        : null,
+      openTickets: own.length,
+      overdue: own.filter(isOverdue).length,
+      resolvedToday: resolvedCount.get(agent.id) ?? 0,
+    };
+  });
+  const departments = scope.departments.map((department) => {
+    const own = openRows.filter((row) => row.department_id === department.id);
+    const unassigned = own.filter((row) => !row.assigned_agent_id);
+    const oldest = unassigned
+      .map((row) => Date.parse(row.created_at as string))
+      .filter(Number.isFinite)
+      .sort((a, b) => a - b)[0];
+    return {
+      id: department.id,
+      name: department.name,
+      open: own.length,
+      unassigned: unassigned.length,
+      overdue: own.filter(isOverdue).length,
+      atRisk: own.filter(isAtRisk).length,
+      oldestUnassignedMinutes: oldest ? Math.round((now - oldest) / 60_000) : null,
+      agentsWorking: agents.filter((agent) =>
+        agent.departmentIds.includes(department.id) &&
+        (agent.state === "working" || agent.state === "available")
+      ).length,
+    };
+  });
+  return json(request, {
+    data: { generatedAt: new Date(now).toISOString(), departments, agents },
+  });
+}
+
+async function skills(request: Request, admin: Admin, action: Action, actorId: string) {
+  const scope = await loadScope(admin, action.tenantId, actorId);
+  const agentIds = scope.agents.map((agent) => agent.id);
+  const [catalog, levels] = await Promise.all([
+    admin
+      .from("team_skills")
+      .select("id, name")
+      .eq("tenant_id", action.tenantId)
+      .order("name"),
+    agentIds.length
+      ? admin
+        .from("agent_skill_levels")
+        .select("skill_id, user_id, level")
+        .eq("tenant_id", action.tenantId)
+        .in("user_id", agentIds)
+      : { data: [], error: null },
+  ]);
+  if (catalog.error || levels.error) throw dbFailure();
+  return json(request, {
+    data: {
+      skills: catalog.data ?? [],
+      agents: scope.agents.map((agent) => ({
+        id: agent.id,
+        displayName: agent.displayName,
+      })),
+      levels: ((levels.data ?? []) as Row[]).map((row) => ({
+        skillId: row.skill_id,
+        agentId: row.user_id,
+        level: row.level,
+      })),
+    },
+  });
+}
+
+async function saveSkill(
+  request: Request,
+  admin: Admin,
+  action: Extract<Action, { type: "saveSkill" }>,
+  actorId: string,
+) {
+  await loadScope(admin, action.tenantId, actorId);
+  const query = action.skillId
+    ? admin
+      .from("team_skills")
+      .update({ name: action.name })
+      .eq("tenant_id", action.tenantId)
+      .eq("id", action.skillId)
+      .select("id, name")
+      .maybeSingle()
+    : admin
+      .from("team_skills")
+      .insert({ tenant_id: action.tenantId, name: action.name })
+      .select("id, name")
+      .single();
+  const { data, error } = await query;
+  if (error?.code === "23505") {
+    throw new HttpError(409, "skill_exists", "Diese Fähigkeit gibt es bereits.");
+  }
+  if (error) throw dbFailure();
+  if (!data) throw new HttpError(404, "skill_not_found", "Fähigkeit nicht gefunden.");
+  return json(request, { data: { skill: data } }, action.skillId ? 200 : 201);
+}
+
+async function deleteSkill(
+  request: Request,
+  admin: Admin,
+  action: Extract<Action, { type: "deleteSkill" }>,
+  actorId: string,
+) {
+  await loadScope(admin, action.tenantId, actorId);
+  const { error } = await admin
+    .from("team_skills")
+    .delete()
+    .eq("tenant_id", action.tenantId)
+    .eq("id", action.skillId);
+  if (error) throw dbFailure();
+  return json(request, { data: { deleted: true } });
+}
+
+async function setSkillLevel(
+  request: Request,
+  admin: Admin,
+  action: Extract<Action, { type: "setSkillLevel" }>,
+  actorId: string,
+) {
+  await requireSupervisedAgent(admin, action.tenantId, actorId, action.agentId);
+  const { data: skill, error: skillError } = await admin
+    .from("team_skills")
+    .select("id")
+    .eq("tenant_id", action.tenantId)
+    .eq("id", action.skillId)
+    .maybeSingle();
+  if (skillError) throw dbFailure();
+  if (!skill) throw new HttpError(404, "skill_not_found", "Fähigkeit nicht gefunden.");
+  const { error } = action.level === 0
+    ? await admin
+      .from("agent_skill_levels")
+      .delete()
+      .eq("skill_id", action.skillId)
+      .eq("user_id", action.agentId)
+    : await admin.from("agent_skill_levels").upsert(
+      {
+        tenant_id: action.tenantId,
+        skill_id: action.skillId,
+        user_id: action.agentId,
+        level: action.level,
+        updated_at: new Date().toISOString(),
+        updated_by: actorId,
+      },
+      { onConflict: "skill_id,user_id" },
+    );
+  if (error) throw dbFailure();
+  return json(request, { data: { saved: true } });
+}
+
 const handler = withSupabase(
   { auth: "user", errors: { detailed: false } },
   async (request, context) => {
@@ -821,6 +1268,16 @@ const handler = withSupabase(
       switch (action.type) {
         case "overview":
           return await overview(request, admin, action, actorId);
+        case "liveBoard":
+          return await liveBoard(request, admin, action, actorId);
+        case "skills":
+          return await skills(request, admin, action, actorId);
+        case "saveSkill":
+          return await saveSkill(request, admin, action, actorId);
+        case "deleteSkill":
+          return await deleteSkill(request, admin, action, actorId);
+        case "setSkillLevel":
+          return await setSkillLevel(request, admin, action, actorId);
         case "reassign":
           return await reassign(request, admin, action, actorId);
         case "reviewQueue":
@@ -857,4 +1314,4 @@ export default {
   },
 };
 
-export { parseAction };
+export { overloadWarnings, parseAction, planRebalance, priorityWeight };

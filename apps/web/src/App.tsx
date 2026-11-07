@@ -1005,6 +1005,15 @@ function notificationTicketNumber(
   return notification.ticket?.ticketNumber ?? null;
 }
 
+function notificationPayloadNumber(
+  notification: NotificationItem,
+  key: string,
+): number | null {
+  if (!isRecord(notification.payload)) return null;
+  const value = notification.payload[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
 function notificationPayloadText(
   notification: NotificationItem,
   key: string,
@@ -1231,6 +1240,23 @@ function baseNotificationPresentation(
         description: `${what} von ${asset} ist am ${date} fällig.`,
         Icon: AlertTriangle,
         title: "Infrastruktur: Fälligkeit",
+      };
+    }
+    case "team.overload": {
+      const agent =
+        notificationPayloadText(notification, "agentName", 120) ??
+        "Ein Teammitglied";
+      const department = notificationPayloadText(
+        notification,
+        "departmentName",
+        120,
+      );
+      const open = notificationPayloadNumber(notification, "openTickets");
+      const overdue = notificationPayloadNumber(notification, "overdueTickets");
+      return {
+        description: `${agent}${department ? ` (${department})` : ""} trägt ${open ?? "viele"} offene Tickets${overdue ? `, davon ${overdue} mit überschrittener SLA` : ""}. Prüfen Sie eine Umverteilung.`,
+        Icon: AlertTriangle,
+        title: "Frühwarnung: Überlastung",
       };
     }
     case "ticket.watch.status": {
@@ -3903,6 +3929,12 @@ function AuthenticatedApp() {
       setNotificationPanelOpen(false);
     } else if (notification.kind.startsWith("shop.order.")) {
       setSection("Shop");
+      setNotificationPanelOpen(false);
+    } else if (notification.kind === "team.overload") {
+      setSection("Teamführung");
+      setNotificationPanelOpen(false);
+    } else if (notification.kind === "infrastructure.due") {
+      setSection("Infrastruktur");
       setNotificationPanelOpen(false);
     } else if (notification.kind.startsWith("service_task.")) {
       const occurrenceId = notificationPayloadText(
