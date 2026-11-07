@@ -17,7 +17,16 @@ den OAuth-2.1-Server von Supabase Auth, also mit dem normalen nextDesk-Konto
 | `list_notifications` | lesen | Eigene Benachrichtigungen (standardmässig nur ungelesene) |
 | `list_pending_approvals` | lesen | Ticketfreigaben, die auf den eigenen Entscheid warten |
 | `list_service_tasks` | lesen | Serviceaufgaben: überfällig, heute, kommend (mine, team, all) |
-| `create_ticket` | schreiben | Ticket für sich selbst erfassen |
+| `search_requesters` | lesen | Anfragende Personen nach Name suchen |
+| `list_follow_ups` | lesen | Eigene Wiedervorlagen (optional nur zu einem Ticket) |
+| `list_mentions` | lesen | @-Erwähnungen in Ticketnotizen |
+| `my_metrics` | lesen | Persönliche Kennzahlen (offen, heute gelöst, Reaktions- und Lösungszeit, SLA) |
+| `team_queues` | lesen | Offene Tickets je Abteilung und Team |
+| `list_handovers` | lesen | Übergaben eines Tickets |
+| `service_status` | lesen | Status der IT-Services und anstehende Wartungen |
+| `inventory_lookup` | lesen | Lagerartikel oder -ort über Nummer, Barcode oder QR-Code |
+| `list_licenses`, `list_contracts` | lesen | Lizenzen und Verträge, optional nur bald ablaufende |
+| `create_ticket` | schreiben | Ticket erfassen, für sich selbst oder eine anfragende Person (`requester`) |
 | `add_internal_note` | schreiben | Interne Notiz an ein Ticket |
 | `update_ticket_status` | schreiben | Status ändern; Lösen/Schliessen nur mit `confirm=true` |
 | `set_ticket_priority` | schreiben | Priorität ändern (low, normal, high, urgent) |
@@ -29,8 +38,15 @@ den OAuth-2.1-Server von Supabase Auth, also mit dem normalen nextDesk-Konto
 | `mark_notifications_read` | schreiben | Eine oder alle Benachrichtigungen als gelesen markieren |
 | `decide_approval` | schreiben | Freigabe genehmigen oder ablehnen; nur mit `confirm=true` |
 | `complete_service_task` | schreiben | Serviceaufgabe erledigen (optional mit Notiz) |
+| `create_follow_up`, `resolve_follow_up` | schreiben | Wiedervorlage erstellen bzw. erledigen |
+| `mark_mention_read` | schreiben | Erwähnung als gelesen markieren |
+| `create_handover`, `acknowledge_handover` | schreiben | Übergabe erstellen, bestätigen oder abschliessen |
+| `escalate_ticket` | schreiben | Ticket eskalieren; nur mit `confirm=true` |
+| `link_tickets` | schreiben | Zwei Tickets verknüpfen (Duplikat, blockiert, Eltern/Kind …) |
+| `attach_knowledge_article` | schreiben | Wissensartikel mit Ticket verknüpfen; extern nur mit `confirm=true` |
 
-Geschriebene Texte (Ticket, interne Notiz, Zeitnotiz, Notiz zur Serviceaufgabe)
+Geschriebene Texte (Ticket, interne Notiz, Zeitnotiz, Notiz zur Serviceaufgabe,
+Wiedervorlage)
 enden mit dem Hinweis «Erfasst über den nextDesk-Connector.». Antworten an
 Anfragende werden ohne diesen Hinweis versendet.
 

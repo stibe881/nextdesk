@@ -9,7 +9,7 @@
 const SUPPORTED_PROTOCOLS = ["2025-06-18", "2025-03-26", "2024-11-05"] as const;
 const MAX_BODY_BYTES = 64 * 1024;
 const REQUEST_TIMEOUT_MS = 15_000;
-const SERVER_INFO = { name: "nextdesk", version: "1.1.0" } as const;
+const SERVER_INFO = { name: "nextdesk", version: "1.2.0" } as const;
 const STATUS_KEYS = [
   "new",
   "in_progress",
@@ -20,6 +20,14 @@ const STATUS_KEYS = [
 ];
 const PRIORITY_KEYS = ["low", "normal", "high", "urgent"];
 const BILLING_KINDS = ["internal", "billable", "goodwill"];
+const RELATION_TYPES = [
+  "relates_to",
+  "duplicates",
+  "blocks",
+  "blocked_by",
+  "parent",
+  "child",
+];
 const CONNECTOR_NOTE = "Erfasst über den nextDesk-Connector.";
 
 type Json = Record<string, unknown>;
@@ -246,6 +254,57 @@ async function ticketContext(
   return { workspace, ticketId };
 }
 
+function records(value: unknown): Json[] {
+  return Array.isArray(value) ? value.filter(isRecord) : [];
+}
+
+/** Liest Datum/Zeit flexibel ein und liefert ISO-8601 (UTC) oder null. */
+function isoDate(value: unknown): string | null {
+  if (typeof value !== "string" || value.length > 64) return null;
+  const parsed = Date.parse(value.trim());
+  return Number.isFinite(parsed) ? new Date(parsed).toISOString() : null;
+}
+
+/** Ticketnummern und Betreffe zu einer Liste von Ticket-IDs. */
+async function ticketLabels(
+  config: Config,
+  session: Session,
+  workspace: Workspace,
+  ids: unknown[],
+): Promise<Map<string, { number: unknown; subject: unknown }>> {
+  const unique = [...new Set(ids.filter(isUuid))].slice(0, 100);
+  if (unique.length === 0) return new Map();
+  const rows = await rest(config, session, "tickets", {
+    select: "id,ticket_number,subject",
+    tenant_id: `eq.${workspace.id}`,
+    id: `in.(${unique.join(",")})`,
+  });
+  return new Map(
+    rows.map((row) => [
+      String(row.id),
+      { number: row.ticket_number, subject: row.subject },
+    ]),
+  );
+}
+
+function matches(query: string, ...values: unknown[]): boolean {
+  if (!query) return true;
+  const needle = query.toLocaleLowerCase("de-CH");
+  return values.some(
+    (value) =>
+      typeof value === "string" &&
+      value.toLocaleLowerCase("de-CH").includes(needle),
+  );
+}
+
+function daysUntil(date: unknown): number | null {
+  if (typeof date !== "string") return null;
+  const parsed = Date.parse(date);
+  return Number.isFinite(parsed)
+    ? Math.ceil((parsed - Date.now()) / 86_400_000)
+    : null;
+}
+
 // ---------------------------------------------------------------- Werkzeuge
 
 type Tool = {
@@ -393,8 +452,6 @@ const TOOLS: Tool[] = [
       const comments = Array.isArray(data.comments)
         ? data.comments.filter(isRecord)
         : [];
-      const records = (value: unknown) =>
-        Array.isArray(value) ? value.filter(isRecord) : [];
       const agent = isRecord(data.assignedAgent) ? data.assignedAgent : null;
       const timeEntries = records(data.timeEntries);
       return textResult({
@@ -554,7 +611,7 @@ const TOOLS: Tool[] = [
   {
     name: "create_ticket",
     description:
-      "Erfasst ein neues Ticket für dich selbst. Frage vorher nach, ob das Ticket wirklich erfasst werden soll.",
+      "Erfasst ein neues Ticket, für dich selbst oder für eine anfragende Person (requester aus search_requesters). Frage vorher nach, ob das Ticket wirklich erfasst werden soll.",
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
@@ -570,6 +627,11 @@ const TOOLS: Tool[] = [
         department: {
           type: "string",
           description: "Abteilung (Name). Standard: die erste.",
+        },
+        requester: {
+          type: "string",
+          description:
+            "ID der anfragenden Person aus search_requesters. Ohne Angabe wird das Ticket für dich selbst erfasst.",
         },
       },
       required: ["subject"],
@@ -609,9 +671,19 @@ const TOOLS: Tool[] = [
           `Abteilung nicht gefunden. Verfügbar: ${departments.map((entry) => entry.name).join(", ")}.`,
         );
       }
-      if (!requester || typeof requester.id !== "string") {
+      if (args.requester !== undefined && !isUuid(args.requester)) {
         throw new ToolError(
-          "Für dein Konto ist keine anfragende Person hinterlegt.",
+          '"requester" ist ungültig (ID aus search_requesters).',
+        );
+      }
+      const requesterId = isUuid(args.requester)
+        ? args.requester
+        : requester && typeof requester.id === "string"
+          ? requester.id
+          : null;
+      if (!requesterId) {
+        throw new ToolError(
+          "Für dein Konto ist keine anfragende Person hinterlegt. Gib requester an (search_requesters).",
         );
       }
       const priority =
@@ -621,7 +693,7 @@ const TOOLS: Tool[] = [
         tenantId: workspace.id,
         departmentId: department.id,
         priorityKey: priority,
-        requesterContactId: requester.id,
+        requesterContactId: requesterId,
         subject,
         description: `${description}\n\n${CONNECTOR_NOTE}`,
       });
@@ -1325,6 +1397,819 @@ const TOOLS: Tool[] = [
       return textResult({ completed: true });
     },
   },
+
+  // ------------------------------------------------ Anfragende Personen
+  {
+    name: "search_requesters",
+    description:
+      "Sucht anfragende Personen (Kundinnen und Kunden) nach Name. Die id wird für create_ticket (requester) verwendet.",
+    annotations: { readOnlyHint: true, title: "Anfragende suchen" },
+    inputSchema: {
+      type: "object",
+      properties: {
+        workspace: WORKSPACE_PROPERTY,
+        query: { type: "string", minLength: 2, maxLength: 120 },
+      },
+      required: ["query"],
+      additionalProperties: false,
+    },
+    run: async (config, session, args) => {
+      const query = str(args.query, 2, 120);
+      if (!query)
+        throw new ToolError('"query" muss 2 bis 120 Zeichen lang sein.');
+      const workspace = await resolveWorkspace(config, session, args.workspace);
+      const data = await callFunction(config, session, "ticket-actions", {
+        type: "searchRequesters",
+        tenantId: workspace.id,
+        query,
+      });
+      const requesters = records(data.requesters);
+      return textResult({
+        count: requesters.length,
+        requesters: requesters.slice(0, 20).map((entry) => ({
+          id: entry.id,
+          name: entry.displayName,
+        })),
+      });
+    },
+  },
+
+  // ------------------------------------------------ Wiedervorlagen
+  {
+    name: "list_follow_ups",
+    description:
+      "Listet deine Wiedervorlagen (Erinnerungen), standardmässig nur offene. Optional nur die eines Tickets.",
+    annotations: { readOnlyHint: true, title: "Wiedervorlagen" },
+    inputSchema: {
+      type: "object",
+      properties: {
+        workspace: WORKSPACE_PROPERTY,
+        ticket: {
+          ...TICKET_PROPERTY,
+          description: "Nur Wiedervorlagen dieses Tickets.",
+        },
+        includeResolved: { type: "boolean" },
+        limit: { type: "integer", minimum: 1, maximum: 100 },
+      },
+      additionalProperties: false,
+    },
+    run: async (config, session, args) => {
+      const workspace = await resolveWorkspace(config, session, args.workspace);
+      const ticketId =
+        args.ticket === undefined
+          ? undefined
+          : await ticketIdFromReference(
+              config,
+              session,
+              workspace,
+              args.ticket,
+            );
+      const data = await callFunction(config, session, "experience-hub", {
+        type: "listFollowUps",
+        tenantId: workspace.id,
+        includeResolved: args.includeResolved === true,
+        limit: clampLimit(args.limit, 30, 100),
+        ...(ticketId ? { ticketId } : {}),
+      });
+      const followUps = records(data.followUps);
+      const labels = await ticketLabels(
+        config,
+        session,
+        workspace,
+        followUps.map((entry) => entry.ticketId),
+      );
+      return textResult({
+        count: followUps.length,
+        followUps: followUps.map((entry) => ({
+          id: entry.id,
+          title: entry.title,
+          description: clip(entry.description, 500) || null,
+          dueAt: entry.dueAt,
+          overdue:
+            entry.resolvedAt === null &&
+            typeof entry.dueAt === "string" &&
+            Date.parse(entry.dueAt) < Date.now(),
+          priority: entry.priority,
+          resolved: entry.resolvedAt !== null,
+          ticket:
+            typeof entry.ticketId === "string"
+              ? (labels.get(entry.ticketId) ?? null)
+              : null,
+        })),
+      });
+    },
+  },
+  {
+    name: "create_follow_up",
+    description:
+      "Erstellt eine Wiedervorlage (Erinnerung) für dich, optional zu einem Ticket. dueAt als Datum/Zeit mit Zeitzone, z. B. 2026-11-10T08:00:00+01:00.",
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      title: "Wiedervorlage erstellen",
+    },
+    inputSchema: {
+      type: "object",
+      properties: {
+        workspace: WORKSPACE_PROPERTY,
+        title: { type: "string", minLength: 1, maxLength: 240 },
+        description: { type: "string", maxLength: 4900 },
+        dueAt: { type: "string", description: "Fälligkeit (ISO 8601)." },
+        priority: { type: "string", enum: ["low", "normal", "high"] },
+        ticket: TICKET_PROPERTY,
+      },
+      required: ["title"],
+      additionalProperties: false,
+    },
+    run: async (config, session, args) => {
+      const title = str(args.title, 1, 240);
+      if (!title)
+        throw new ToolError('"title" muss 1 bis 240 Zeichen lang sein.');
+      const description =
+        args.description === undefined ? null : str(args.description, 1, 4900);
+      if (args.description !== undefined && !description) {
+        throw new ToolError('"description" muss 1 bis 4900 Zeichen lang sein.');
+      }
+      const dueAt = args.dueAt === undefined ? null : isoDate(args.dueAt);
+      if (args.dueAt !== undefined && !dueAt) {
+        throw new ToolError('"dueAt" ist kein gültiges Datum.');
+      }
+      const priority =
+        typeof args.priority === "string" ? args.priority : "normal";
+      if (!["low", "normal", "high"].includes(priority)) {
+        throw new ToolError('"priority" muss low, normal oder high sein.');
+      }
+      const workspace = await resolveWorkspace(config, session, args.workspace);
+      const ticketId =
+        args.ticket === undefined
+          ? null
+          : await ticketIdFromReference(
+              config,
+              session,
+              workspace,
+              args.ticket,
+            );
+      const data = await callFunction(config, session, "experience-hub", {
+        type: "saveFollowUp",
+        tenantId: workspace.id,
+        title,
+        description: description
+          ? `${description}\n\n${CONNECTOR_NOTE}`
+          : CONNECTOR_NOTE,
+        dueAt,
+        priority,
+        ticketId,
+      });
+      const followUp = isRecord(data.followUp) ? data.followUp : {};
+      return textResult({ created: true, id: followUp.id ?? null, dueAt });
+    },
+  },
+  {
+    name: "resolve_follow_up",
+    description: "Erledigt eine Wiedervorlage (id aus list_follow_ups).",
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: true,
+      title: "Wiedervorlage erledigen",
+    },
+    inputSchema: {
+      type: "object",
+      properties: {
+        workspace: WORKSPACE_PROPERTY,
+        id: { type: "string", description: "ID der Wiedervorlage." },
+      },
+      required: ["id"],
+      additionalProperties: false,
+    },
+    run: async (config, session, args) => {
+      if (!isUuid(args.id)) throw new ToolError('"id" ist ungültig.');
+      const workspace = await resolveWorkspace(config, session, args.workspace);
+      await callFunction(config, session, "experience-hub", {
+        type: "resolveFollowUp",
+        tenantId: workspace.id,
+        followUpId: args.id,
+      });
+      return textResult({ resolved: true });
+    },
+  },
+
+  // ------------------------------------------------ Arbeitsplatz
+  {
+    name: "list_mentions",
+    description:
+      "Listet Erwähnungen von dir in Ticketnotizen (@-Erwähnungen), standardmässig nur ungelesene.",
+    annotations: { readOnlyHint: true, title: "Erwähnungen" },
+    inputSchema: {
+      type: "object",
+      properties: {
+        workspace: WORKSPACE_PROPERTY,
+        unreadOnly: { type: "boolean", description: "Standard: true." },
+        limit: { type: "integer", minimum: 1, maximum: 50 },
+      },
+      additionalProperties: false,
+    },
+    run: async (config, session, args) => {
+      const workspace = await resolveWorkspace(config, session, args.workspace);
+      const data = await callFunction(config, session, "agent-workbench", {
+        type: "listMentions",
+        tenantId: workspace.id,
+        onlyMine: true,
+      });
+      const mentions = records(data.mentions)
+        .filter((entry) => args.unreadOnly === false || entry.read_at === null)
+        .slice(0, clampLimit(args.limit, 20, 50));
+      const labels = await ticketLabels(
+        config,
+        session,
+        workspace,
+        mentions.map((entry) => entry.ticket_id),
+      );
+      return textResult({
+        count: mentions.length,
+        mentions: mentions.map((entry) => ({
+          id: entry.id,
+          read: entry.read_at !== null,
+          createdAt: entry.created_at,
+          ticket: labels.get(String(entry.ticket_id)) ?? null,
+        })),
+      });
+    },
+  },
+  {
+    name: "mark_mention_read",
+    description: "Markiert eine Erwähnung (id aus list_mentions) als gelesen.",
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: true,
+      title: "Erwähnung gelesen",
+    },
+    inputSchema: {
+      type: "object",
+      properties: { workspace: WORKSPACE_PROPERTY, id: { type: "string" } },
+      required: ["id"],
+      additionalProperties: false,
+    },
+    run: async (config, session, args) => {
+      if (!isUuid(args.id)) throw new ToolError('"id" ist ungültig.');
+      const workspace = await resolveWorkspace(config, session, args.workspace);
+      await callFunction(config, session, "agent-workbench", {
+        type: "markMentionRead",
+        tenantId: workspace.id,
+        mentionId: args.id,
+      });
+      return textResult({ read: true });
+    },
+  },
+  {
+    name: "my_metrics",
+    description:
+      "Deine persönlichen Kennzahlen: offene zugewiesene Tickets, heute gelöst, mittlere Erstreaktions- und Lösungszeit, fällige SLA.",
+    annotations: { readOnlyHint: true, title: "Meine Kennzahlen" },
+    inputSchema: {
+      type: "object",
+      properties: { workspace: WORKSPACE_PROPERTY },
+      additionalProperties: false,
+    },
+    run: async (config, session, args) => {
+      const workspace = await resolveWorkspace(config, session, args.workspace);
+      const data = await callFunction(config, session, "agent-workbench", {
+        type: "myMetrics",
+        tenantId: workspace.id,
+      });
+      const metrics = isRecord(data.metrics) ? data.metrics : {};
+      return textResult({
+        openAssigned: metrics.open ?? null,
+        solvedToday: metrics.solvedToday ?? null,
+        medianFirstResponseMinutes: metrics.medianFirstResponseMinutes ?? null,
+        medianResolutionMinutes: metrics.medianResolutionMinutes ?? null,
+        dueFollowUps: metrics.dueFollowUps ?? null,
+        slaDue: metrics.slaDue ?? null,
+      });
+    },
+  },
+  {
+    name: "team_queues",
+    description:
+      "Zeigt die offenen Tickets je Abteilung und Team (Warteschlangen), die du sehen kannst.",
+    annotations: { readOnlyHint: true, title: "Warteschlangen" },
+    inputSchema: {
+      type: "object",
+      properties: { workspace: WORKSPACE_PROPERTY },
+      additionalProperties: false,
+    },
+    run: async (config, session, args) => {
+      const workspace = await resolveWorkspace(config, session, args.workspace);
+      const data = await callFunction(config, session, "agent-workbench", {
+        type: "teamQueues",
+        tenantId: workspace.id,
+      });
+      const queues = records(data.queues)
+        .map((entry) => ({
+          department: entry.departmentName ?? null,
+          team: entry.teamName ?? (entry.teamId ? null : "ohne Team"),
+          openTickets: entry.openTickets,
+        }))
+        .sort((a, b) => Number(b.openTickets) - Number(a.openTickets));
+      return textResult({ queues });
+    },
+  },
+
+  // ------------------------------------------------ Ticketarbeit
+  {
+    name: "list_handovers",
+    description:
+      "Zeigt die Übergaben eines Tickets (Zusammenfassung, nächste Schritte, Risiko).",
+    annotations: { readOnlyHint: true, title: "Übergaben" },
+    inputSchema: {
+      type: "object",
+      properties: { workspace: WORKSPACE_PROPERTY, ticket: TICKET_PROPERTY },
+      required: ["ticket"],
+      additionalProperties: false,
+    },
+    run: async (config, session, args) => {
+      const { workspace, ticketId } = await ticketContext(
+        config,
+        session,
+        args,
+      );
+      const data = await callFunction(config, session, "ticket-handovers", {
+        type: "list",
+        tenantId: workspace.id,
+        ticketId,
+      });
+      return textResult({
+        handovers: records(data.handovers).map((entry) => ({
+          id: entry.id,
+          summary: clip(entry.summary, 2000),
+          nextSteps: clip(entry.nextSteps, 3000) || null,
+          risk: entry.riskLevel,
+          acknowledged: entry.acknowledgedAt !== null,
+          resolved: entry.resolvedAt !== null,
+          createdAt: entry.createdAt,
+        })),
+      });
+    },
+  },
+  {
+    name: "create_handover",
+    description:
+      "Erstellt eine Übergabe für ein Ticket (z. B. vor Abwesenheit oder Schichtwechsel). risk: low, medium (Standard), high.",
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      title: "Übergabe erstellen",
+    },
+    inputSchema: {
+      type: "object",
+      properties: {
+        workspace: WORKSPACE_PROPERTY,
+        ticket: TICKET_PROPERTY,
+        summary: { type: "string", minLength: 3, maxLength: 2000 },
+        nextSteps: { type: "string", maxLength: 3000 },
+        risk: { type: "string", enum: ["low", "medium", "high"] },
+      },
+      required: ["ticket", "summary"],
+      additionalProperties: false,
+    },
+    run: async (config, session, args) => {
+      const summary = str(args.summary, 3, 2000);
+      if (!summary)
+        throw new ToolError('"summary" muss 3 bis 2000 Zeichen lang sein.');
+      const nextSteps =
+        args.nextSteps === undefined ? null : str(args.nextSteps, 1, 3000);
+      if (args.nextSteps !== undefined && !nextSteps) {
+        throw new ToolError('"nextSteps" muss 1 bis 3000 Zeichen lang sein.');
+      }
+      const risk = typeof args.risk === "string" ? args.risk : "medium";
+      if (!["low", "medium", "high"].includes(risk)) {
+        throw new ToolError('"risk" muss low, medium oder high sein.');
+      }
+      const { workspace, ticketId } = await ticketContext(
+        config,
+        session,
+        args,
+      );
+      await callFunction(config, session, "ticket-handovers", {
+        type: "create",
+        tenantId: workspace.id,
+        ticketId,
+        summary,
+        ...(nextSteps ? { nextSteps } : {}),
+        riskLevel: risk,
+      });
+      return textResult({ created: true });
+    },
+  },
+  {
+    name: "acknowledge_handover",
+    description:
+      "Bestätigt den Empfang einer Übergabe (acknowledge) oder schliesst sie ab (resolve). id aus list_handovers.",
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: true,
+      title: "Übergabe bestätigen",
+    },
+    inputSchema: {
+      type: "object",
+      properties: {
+        workspace: WORKSPACE_PROPERTY,
+        ticket: TICKET_PROPERTY,
+        id: { type: "string", description: "ID der Übergabe." },
+        action: {
+          type: "string",
+          enum: ["acknowledge", "resolve"],
+          description: "Standard: acknowledge.",
+        },
+      },
+      required: ["ticket", "id"],
+      additionalProperties: false,
+    },
+    run: async (config, session, args) => {
+      if (!isUuid(args.id)) throw new ToolError('"id" ist ungültig.');
+      const action = args.action === "resolve" ? "resolve" : "acknowledge";
+      if (args.action !== undefined && args.action !== action) {
+        throw new ToolError('"action" muss acknowledge oder resolve sein.');
+      }
+      const { workspace, ticketId } = await ticketContext(
+        config,
+        session,
+        args,
+      );
+      await callFunction(config, session, "ticket-handovers", {
+        type: action,
+        tenantId: workspace.id,
+        ticketId,
+        handoverId: args.id,
+      });
+      return textResult({ done: true, action });
+    },
+  },
+  {
+    name: "escalate_ticket",
+    description:
+      "Eskaliert ein Ticket. kind: technical (fachlich), organizational (organisatorisch) oder sla. Eine Eskalation benachrichtigt weitere Personen; nur nach ausdrücklicher Zustimmung der Person mit confirm=true.",
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      title: "Ticket eskalieren",
+    },
+    inputSchema: {
+      type: "object",
+      properties: {
+        workspace: WORKSPACE_PROPERTY,
+        ticket: TICKET_PROPERTY,
+        kind: { type: "string", enum: ["technical", "organizational", "sla"] },
+        reason: { type: "string", minLength: 3, maxLength: 2000 },
+        confirm: {
+          type: "boolean",
+          description:
+            "Nur true, wenn die Person die Eskalation ausdrücklich bestätigt hat.",
+        },
+      },
+      required: ["ticket", "kind", "reason", "confirm"],
+      additionalProperties: false,
+    },
+    run: async (config, session, args) => {
+      if (args.confirm !== true) {
+        throw new ToolError(
+          "Eine Eskalation braucht die ausdrückliche Bestätigung der Person. Frage nach und wiederhole den Aufruf danach mit confirm=true.",
+        );
+      }
+      if (!["technical", "organizational", "sla"].includes(String(args.kind))) {
+        throw new ToolError(
+          '"kind" muss technical, organizational oder sla sein.',
+        );
+      }
+      const reason = str(args.reason, 3, 2000);
+      if (!reason)
+        throw new ToolError('"reason" muss 3 bis 2000 Zeichen lang sein.');
+      const { workspace, ticketId } = await ticketContext(
+        config,
+        session,
+        args,
+      );
+      await callFunction(config, session, "ticket-operations", {
+        type: "openEscalation",
+        tenantId: workspace.id,
+        ticketId,
+        kind: args.kind,
+        reason,
+      });
+      return textResult({ escalated: true, kind: args.kind });
+    },
+  },
+  {
+    name: "link_tickets",
+    description:
+      "Verknüpft zwei Tickets. relation: relates_to (Standard), duplicates, blocks, blocked_by, parent, child.",
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: true,
+      title: "Tickets verknüpfen",
+    },
+    inputSchema: {
+      type: "object",
+      properties: {
+        workspace: WORKSPACE_PROPERTY,
+        ticket: TICKET_PROPERTY,
+        relatedTicket: TICKET_PROPERTY,
+        relation: { type: "string", enum: RELATION_TYPES },
+      },
+      required: ["ticket", "relatedTicket"],
+      additionalProperties: false,
+    },
+    run: async (config, session, args) => {
+      const relation =
+        typeof args.relation === "string" ? args.relation : "relates_to";
+      if (!RELATION_TYPES.includes(relation)) {
+        throw new ToolError(
+          `Ungültige Verknüpfung. Erlaubt: ${RELATION_TYPES.join(", ")}.`,
+        );
+      }
+      const { workspace, ticketId } = await ticketContext(
+        config,
+        session,
+        args,
+      );
+      const relatedTicketId = await ticketIdFromReference(
+        config,
+        session,
+        workspace,
+        args.relatedTicket,
+      );
+      if (relatedTicketId === ticketId) {
+        throw new ToolError(
+          "Ein Ticket kann nicht mit sich selbst verknüpft werden.",
+        );
+      }
+      await callFunction(config, session, "ticket-operations", {
+        type: "createRelation",
+        tenantId: workspace.id,
+        ticketId,
+        relatedTicketId,
+        relationType: relation,
+      });
+      return textResult({ linked: true, relation });
+    },
+  },
+  {
+    name: "attach_knowledge_article",
+    description:
+      "Verknüpft einen Wissensartikel (id aus search_knowledge) mit einem Ticket. visibility: internal (Standard) oder external (für Anfragende sichtbar, nur mit confirm=true).",
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: true,
+      title: "Wissensartikel verknüpfen",
+    },
+    inputSchema: {
+      type: "object",
+      properties: {
+        workspace: WORKSPACE_PROPERTY,
+        ticket: TICKET_PROPERTY,
+        article: { type: "string", description: "ID des Wissensartikels." },
+        visibility: { type: "string", enum: ["internal", "external"] },
+        confirm: { type: "boolean" },
+      },
+      required: ["ticket", "article"],
+      additionalProperties: false,
+    },
+    run: async (config, session, args) => {
+      if (!isUuid(args.article)) throw new ToolError('"article" ist ungültig.');
+      const visibility =
+        args.visibility === "external" ? "external" : "internal";
+      if (args.visibility !== undefined && args.visibility !== visibility) {
+        throw new ToolError('"visibility" muss internal oder external sein.');
+      }
+      if (visibility === "external" && args.confirm !== true) {
+        throw new ToolError(
+          "Ein externer Artikel ist für die anfragende Person sichtbar. Frage nach und wiederhole den Aufruf danach mit confirm=true.",
+        );
+      }
+      const { workspace, ticketId } = await ticketContext(
+        config,
+        session,
+        args,
+      );
+      await callFunction(config, session, "ticket-knowledge", {
+        type: "attach",
+        tenantId: workspace.id,
+        ticketId,
+        articleId: args.article,
+        visibility,
+      });
+      return textResult({ attached: true, visibility });
+    },
+  },
+
+  // ------------------------------------------------ Betrieb und Verwaltung
+  {
+    name: "service_status",
+    description:
+      "Zeigt den aktuellen Status der IT-Services sowie laufende und geplante Wartungen.",
+    annotations: { readOnlyHint: true, title: "Servicestatus" },
+    inputSchema: {
+      type: "object",
+      properties: {
+        workspace: WORKSPACE_PROPERTY,
+        onlyIssues: {
+          type: "boolean",
+          description: "Nur Services mit Störung oder Einschränkung.",
+        },
+      },
+      additionalProperties: false,
+    },
+    run: async (config, session, args) => {
+      const workspace = await resolveWorkspace(config, session, args.workspace);
+      const data = await callFunction(config, session, "service-status", {
+        type: "getStatusOverview",
+        tenantId: workspace.id,
+      });
+      const services = records(data.services);
+      const names = new Map(services.map((entry) => [entry.id, entry.name]));
+      const now = Date.now();
+      return textResult({
+        services: services
+          .filter(
+            (entry) =>
+              args.onlyIssues !== true || entry.status !== "operational",
+          )
+          .map((entry) => ({
+            name: entry.name,
+            category: Array.isArray(entry.categoryPath)
+              ? entry.categoryPath.join(" / ")
+              : null,
+            status: entry.status,
+            updatedAt: entry.updatedAt,
+          })),
+        maintenances: records(data.maintenances)
+          .filter((entry) => Date.parse(String(entry.endsAt)) >= now)
+          .map((entry) => ({
+            title: entry.title,
+            description: clip(entry.description, 500) || null,
+            startsAt: entry.startsAt,
+            endsAt: entry.endsAt,
+            state: entry.state,
+            services: Array.isArray(entry.serviceIds)
+              ? entry.serviceIds.map((id) => names.get(id) ?? id)
+              : [],
+          })),
+      });
+    },
+  },
+  {
+    name: "inventory_lookup",
+    description:
+      "Sucht einen Lagerartikel oder Lagerort über Artikelnummer, Barcode oder QR-Code und zeigt den Bestand.",
+    annotations: { readOnlyHint: true, title: "Lager nachschlagen" },
+    inputSchema: {
+      type: "object",
+      properties: {
+        workspace: WORKSPACE_PROPERTY,
+        code: { type: "string", minLength: 1, maxLength: 120 },
+      },
+      required: ["code"],
+      additionalProperties: false,
+    },
+    run: async (config, session, args) => {
+      const code = str(args.code, 1, 120);
+      if (!code) throw new ToolError('"code" fehlt.');
+      const workspace = await resolveWorkspace(config, session, args.workspace);
+      const data = await callFunction(config, session, "inventory", {
+        type: "lookupCode",
+        tenantId: workspace.id,
+        code,
+      });
+      const text = JSON.stringify(data);
+      return textResult(
+        text.length > 12000
+          ? { truncated: true, result: clip(text, 12000) }
+          : data,
+      );
+    },
+  },
+  {
+    name: "list_licenses",
+    description:
+      "Listet Softwarelizenzen. Mit expiringWithinDays nur solche, die in den nächsten Tagen ablaufen.",
+    annotations: { readOnlyHint: true, title: "Lizenzen" },
+    inputSchema: {
+      type: "object",
+      properties: {
+        workspace: WORKSPACE_PROPERTY,
+        query: {
+          type: "string",
+          description: "Filter nach Titel, Hersteller oder Referenz.",
+        },
+        expiringWithinDays: { type: "integer", minimum: 1, maximum: 730 },
+        limit: { type: "integer", minimum: 1, maximum: 100 },
+      },
+      additionalProperties: false,
+    },
+    run: async (config, session, args) => {
+      const workspace = await resolveWorkspace(config, session, args.workspace);
+      const data = await callFunction(config, session, "licenses", {
+        type: "list",
+        tenantId: workspace.id,
+        includeArchived: false,
+      });
+      const query = typeof args.query === "string" ? args.query.trim() : "";
+      const within = clampLimit(args.expiringWithinDays, 0, 730);
+      const licenses = records(data.licenses)
+        .map((entry) => ({ entry, days: daysUntil(entry.endsOn) }))
+        .filter(
+          ({ entry, days }) =>
+            matches(
+              query,
+              entry.title,
+              entry.vendorName,
+              entry.referenceNumber,
+            ) &&
+            (!within || (days !== null && days <= within)),
+        )
+        .slice(0, clampLimit(args.limit, 30, 100));
+      return textResult({
+        count: licenses.length,
+        licenses: licenses.map(({ entry, days }) => ({
+          title: entry.title,
+          vendor: entry.vendorName ?? null,
+          reference: entry.referenceNumber ?? null,
+          type: entry.licenseType ?? null,
+          quantity: entry.quantity ?? null,
+          status: entry.status,
+          endsOn: entry.endsOn ?? null,
+          daysUntilEnd: days,
+          noticePeriodDays: entry.noticePeriodDays ?? null,
+        })),
+      });
+    },
+  },
+  {
+    name: "list_contracts",
+    description:
+      "Listet Verträge mit Laufzeit, Kündigungsfrist und Kosten. Mit expiringWithinDays nur solche, die bald enden.",
+    annotations: { readOnlyHint: true, title: "Verträge" },
+    inputSchema: {
+      type: "object",
+      properties: {
+        workspace: WORKSPACE_PROPERTY,
+        query: {
+          type: "string",
+          description: "Filter nach Titel, Vertragspartner oder Referenz.",
+        },
+        expiringWithinDays: { type: "integer", minimum: 1, maximum: 730 },
+        limit: { type: "integer", minimum: 1, maximum: 100 },
+      },
+      additionalProperties: false,
+    },
+    run: async (config, session, args) => {
+      const workspace = await resolveWorkspace(config, session, args.workspace);
+      const data = await callFunction(config, session, "contracts", {
+        type: "list",
+        tenantId: workspace.id,
+        includeArchived: false,
+      });
+      const query = typeof args.query === "string" ? args.query.trim() : "";
+      const within = clampLimit(args.expiringWithinDays, 0, 730);
+      const contracts = records(data.contracts)
+        .map((entry) => ({ entry, days: daysUntil(entry.endsOn) }))
+        .filter(
+          ({ entry, days }) =>
+            matches(
+              query,
+              entry.title,
+              entry.counterpartyName,
+              entry.referenceNumber,
+            ) &&
+            (!within || (days !== null && days <= within)),
+        )
+        .slice(0, clampLimit(args.limit, 30, 100));
+      return textResult({
+        count: contracts.length,
+        contracts: contracts.map(({ entry, days }) => ({
+          title: entry.title,
+          counterparty: entry.counterpartyName ?? null,
+          reference: entry.referenceNumber ?? null,
+          type: entry.contractType ?? null,
+          status: entry.status,
+          startsOn: entry.startsOn ?? null,
+          endsOn: entry.endsOn ?? null,
+          daysUntilEnd: days,
+          noticePeriodDays: entry.noticePeriodDays ?? null,
+          cancelled: entry.cancelled === true,
+          autoRenew: entry.autoRenew === true,
+          cost:
+            entry.costAmount === null
+              ? null
+              : `${entry.costAmount} ${entry.costCurrency ?? "CHF"}${entry.costPeriod ? ` (${entry.costPeriod})` : ""}`,
+        })),
+      });
+    },
+  },
 ];
 
 // ---------------------------------------------------------------- JSON-RPC
@@ -1368,7 +2253,7 @@ export async function handleMessage(
       capabilities: { tools: { listChanged: false } },
       serverInfo: SERVER_INFO,
       instructions:
-        "Greift als angemeldete Person auf nextDesk zu. Lesen ist frei. Schreibaktionen (Ticket erfassen, Notiz, Status, Priorität, Zuweisen, Zeit, Checkliste, Antworten, Freigaben, Serviceaufgaben) nur nach Rückfrage bei der Person; Antworten, Lösen, Schliessen und Freigabeentscheide verlangen ausdrückliche Bestätigung (confirm=true).",
+        "Greift als angemeldete Person auf nextDesk zu. Lesen ist frei. Schreibaktionen (Ticket erfassen, Notiz, Status, Priorität, Zuweisen, Zeit, Checkliste, Antworten, Freigaben, Serviceaufgaben, Wiedervorlagen, Übergaben, Verknüpfungen, Eskalationen) nur nach Rückfrage bei der Person; Antworten, Lösen, Schliessen, Freigabeentscheide, Eskalationen und externe Wissensartikel verlangen ausdrückliche Bestätigung (confirm=true).",
     });
   }
   if (method === "ping") return isNotification ? null : rpcResult(id, {});
