@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import type { BottomTabBarProps } from "expo-router/js-tabs";
-import type { ComponentProps } from "react";
+import { useState, type ComponentProps } from "react";
 import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import Animated, {
   useAnimatedStyle,
@@ -10,6 +10,7 @@ import Animated, {
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { QuickCreateMenu } from "@/components/quick-create-menu";
 import { useAppColors } from "@/lib/themed-styles";
 
 type IoniconName = ComponentProps<typeof Ionicons>["name"];
@@ -63,6 +64,7 @@ export function NextDeskTabBar({
 }: NextDeskTabBarProps) {
   const colors = useAppColors();
   const insets = useSafeAreaInsets();
+  const [quickCreateOpen, setQuickCreateOpen] = useState(false);
   const bottomPadding = Platform.OS === "web" ? 12 : Math.max(insets.bottom, 8);
 
   const availableItems = items.filter((item) =>
@@ -153,10 +155,17 @@ export function NextDeskTabBar({
       <View style={styles.side}>{leftItems.map(renderSideItem)}</View>
       <HomeTabButton
         focused={activeName === HOME_ROUTE}
-        onLongPress={() => longPress(HOME_ROUTE)}
+        onLongPress={() => {
+          triggerHaptic(Haptics.ImpactFeedbackStyle.Heavy);
+          setQuickCreateOpen(true);
+        }}
         onPress={() => navigateTo(HOME_ROUTE)}
       />
       <View style={styles.side}>{rightItems.map(renderSideItem)}</View>
+      <QuickCreateMenu
+        onClose={() => setQuickCreateOpen(false)}
+        visible={quickCreateOpen}
+      />
     </View>
   );
 }
@@ -177,6 +186,7 @@ function HomeTabButton({ focused, onPress, onLongPress }: HomeTabButtonProps) {
   return (
     <View style={styles.homeSlot}>
       <Pressable
+        accessibilityHint="Lange drücken, um etwas neu zu erfassen"
         accessibilityLabel={HOME_LABEL}
         accessibilityRole="tab"
         accessibilityState={{ selected: focused }}
