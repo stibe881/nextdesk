@@ -29,6 +29,16 @@ den OAuth-2.1-Server von Supabase Auth, also mit dem normalen nextDesk-Konto
 | `list_macros`, `get_macro_text` | lesen | Antwortmakros und ihr Text |
 | `list_event_bookings` | lesen | Räume und Raumbuchungen mit Aufgaben (alle Seiten, rund 13 Monate) |
 | `list_onboardings` | lesen | Eintritte mit Aufgaben, Vorlagen und Personen |
+| `list_ticket_templates` | lesen | Ticketvorlagen je Abteilung |
+| `list_knowledge_collections`, `list_knowledge_revisions`, `list_ticket_knowledge` | lesen | Sammlungen, Fassungen eines Artikels, Wissen am Ticket |
+| `get_service_task`, `service_task_calendar` | lesen | Serviceaufgabe im Detail, Monatskalender |
+| `list_ticket_approvals` | lesen | Freigaben eines Tickets |
+| `list_delegations`, `list_incident_notices` | lesen | Stellvertretungen, Störungsmeldungen |
+| `suggest_assignees`, `get_ticket_context`, `get_ticket_devices` | lesen | Zuweisungsvorschläge, Ticketumfeld, Geräte der anfragenden Person |
+| `service_report`, `list_sla_escalations`, `list_sla_rules` | lesen | Kennzahlen, SLA-Eskalationen und -Regeln (braucht Berichtsrecht) |
+| `team_overview`, `team_review_queue`, `team_monthly_report` | lesen | Teamführung (nur für Vorgesetzte) |
+| `get_requester_profile`, `list_customer_organizations` | lesen | Profil Anfragende, Kundenorganisationen |
+| `get_asset`, `inventory_overview`, `list_inventory_reservations` | lesen | Gerät im Detail, Lager, Reservationen |
 | `create_ticket` | schreiben | Ticket erfassen, für sich selbst oder eine anfragende Person (`requester`) |
 | `add_internal_note` | schreiben | Interne Notiz an ein Ticket |
 | `update_ticket_status` | schreiben | Status ändern; Lösen/Schliessen nur mit `confirm=true` |
@@ -52,11 +62,35 @@ den OAuth-2.1-Server von Supabase Auth, also mit dem normalen nextDesk-Konto
 | `update_event_booking`, `update_event_task` | schreiben | Status einer Raumbuchung bzw. ihrer Aufgaben setzen |
 | `create_onboarding` | schreiben | Eintritt erfassen (Vorlage, Führungsperson, ICT-Verantwortung) |
 | `update_onboarding_task` | schreiben | Status einer Eintrittsaufgabe setzen |
+| `assign_ticket`, `assign_ticket_team` | schreiben | Ticket einer Person oder einem Team zuweisen |
+| `change_ticket_department` | schreiben | Abteilung wechseln; nur mit `confirm=true` |
+| `set_ticket_category` | schreiben | Kategorie und Unterkategorie setzen |
+| `merge_tickets` | schreiben | Tickets zusammenführen; nur mit `confirm=true` |
+| `unlink_tickets` | schreiben | Verknüpfung entfernen |
+| `save_knowledge_article`, `request_knowledge_review` | schreiben | Wissensartikel schreiben und zur Prüfung geben |
+| `decide_knowledge_review`, `archive_knowledge_article` | schreiben | Veröffentlichen bzw. archivieren; nur mit `confirm=true` |
+| `detach_knowledge_article`, `send_knowledge_to_requester` | schreiben | Artikel vom Ticket lösen bzw. an Anfragende senden (nur mit `confirm=true`) |
+| `update_service_task` | schreiben | Serviceaufgabe starten, überspringen, Notiz, Checkliste, neu planen, zuweisen, wieder öffnen |
+| `request_approval`, `cancel_approval` | schreiben | Freigabe anfordern bzw. zurückziehen |
+| `set_delegation`, `end_delegation` | schreiben | Stellvertretung einrichten bzw. beenden |
+| `save_incident_notice` | schreiben | Störungsmeldung erfassen oder aktualisieren |
+| `save_ticket_review`, `reassign_tickets` | schreiben | Teamführung: Ticket bewerten, Tickets umverteilen (nur mit `confirm=true`) |
+| `post_inventory_movement`, `reserve_inventory`, `release_inventory_reservation` | schreiben | Lagerbewegung buchen, Material reservieren, Reservation freigeben |
 
 Geschriebene Texte (Ticket, interne Notiz, Zeitnotiz, Notiz zur Serviceaufgabe,
 Wiedervorlage)
 enden mit dem Hinweis «Erfasst über den nextDesk-Connector.». Antworten an
 Anfragende werden ohne diesen Hinweis versendet.
+
+## Berechtigungen
+
+Der Connector hat keine eigenen Rechte. Jedes Werkzeug ruft dieselben Edge
+Functions wie die Web-App mit dem Zugriffstoken der angemeldeten Person auf;
+nextDesk prüft dort Mitgliedschaft, Funktionsfreigaben und Rechte (z. B.
+`ticket.assign`, `knowledge.manage`, `knowledge.publish`, `report.read`,
+`inventory.move`, `team.supervise`). Fehlt ein Recht, meldet das Werkzeug
+«Keine Berechtigung für diese Aktion». Zusätzlich verlangt der Connector für
+folgenreiche Aktionen die ausdrückliche Bestätigung der Person (`confirm=true`).
 
 ## Einrichtung (einmalig)
 
