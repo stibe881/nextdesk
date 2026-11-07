@@ -10173,4 +10173,44 @@ $$;
 rollback;
 SQL
 
+# 0211: infrastructure devices with lifecycle dates create due notices once.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_tenant uuid;
+  v_asset uuid;
+  v_switch uuid;
+begin
+  select id into v_tenant from public.tenants order by created_at limit 1;
+  insert into public.assets (tenant_id, name, kind, lifecycle_state)
+  values (v_tenant, 'Core-Switch', 'switch', 'active') returning id into v_switch;
+  insert into public.assets (tenant_id, name, kind, lifecycle_state)
+  values (v_tenant, 'AP Büro 1', 'access_point', 'active') returning id into v_asset;
+  insert into public.asset_infrastructure (asset_id, tenant_id, category)
+  values (v_switch, v_tenant, 'switch');
+  insert into public.asset_infrastructure (asset_id, tenant_id, category, ip_address,
+    uplink_asset_id, uplink_port, warranty_until, maintenance_interval_months, last_maintenance_on)
+  values (v_asset, v_tenant, 'access_point', '10.0.0.21', v_switch, 'Gi1/0/12',
+    current_date + 10, 12, current_date - 400);
+  perform public.infrastructure_send_due_notices();
+  if (select count(*) from public.infrastructure_due_notices where asset_id = v_asset) <> 2 then
+    raise exception 'infrastructure test: expected warranty and maintenance notices';
+  end if;
+  perform public.infrastructure_send_due_notices();
+  if (select count(*) from public.infrastructure_due_notices where asset_id = v_asset) <> 2 then
+    raise exception 'infrastructure test: notices repeated';
+  end if;
+  begin
+    update public.asset_infrastructure set uplink_asset_id = v_asset where asset_id = v_asset;
+    raise exception 'infrastructure test: own uplink accepted';
+  exception when check_violation then
+    null;
+  end;
+  raise notice 'infrastructure checks ran';
+end;
+$$;
+rollback;
+SQL
+
 echo "PostgreSQL 16 migration and RLS integration checks passed."

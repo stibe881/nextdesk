@@ -196,3 +196,6 @@ verify_jwt = false
 
 [functions.problem-management]
 verify_jwt = true
+
+[functions.infrastructure]
+verify_jwt = true
