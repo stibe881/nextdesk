@@ -105,6 +105,12 @@ const CATEGORY_DETAILS: readonly {
     description:
       "Wenn die Verfügbarkeit eines Artikels den Mindestbestand erreicht.",
   },
+  {
+    key: "infrastructure",
+    label: "Infrastruktur",
+    description:
+      "Wenn Garantie, Support, End of Life oder Wartung eines Geräts fällig werden.",
+  },
 ];
 
 const HOURS = Array.from({ length: 24 }, (_, hour) => hour);

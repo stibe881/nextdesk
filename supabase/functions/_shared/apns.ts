@@ -18,6 +18,7 @@ export type ApnsPayloadKind =
   | "inventory_low_stock"
   | "shop"
   | "service_task"
+  | "infrastructure"
   | "watched"
   | "summary"
   | "test";
@@ -37,6 +38,11 @@ export type ApnsPayloadInput = {
   serviceTaskEvent?: string;
   serviceTaskTitle?: string;
   occurrenceId?: string;
+  /** Infrastructure reminder: device, reason and due date (YYYY-MM-DD). */
+  assetId?: string;
+  assetName?: string;
+  infrastructureReason?: string;
+  dueOn?: string;
   /** Watched ticket: status, assigned or comment. */
   watchEvent?: string;
   watchStatusLabel?: string;
@@ -326,6 +332,55 @@ function alertFor(input: ApnsPayloadInput): { title: string; body: string } {
           body: `${title} ist heute fällig.`,
         };
     }
+    case "infrastructure": {
+      const device = input.assetName?.trim().slice(0, 80) || "Ein Gerät";
+      const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(input.dueOn ?? "");
+      const day = match ? `${match[3]}.${match[2]}.${match[1]}` : null;
+      const overdue = Boolean(
+        match && input.dueOn! < new Date().toISOString().slice(0, 10),
+      );
+      const on = day ? ` am ${day}` : "";
+      const since = day ? ` seit ${day}` : "";
+      switch (input.infrastructureReason) {
+        case "warranty":
+          return overdue
+            ? {
+              title: "Garantie abgelaufen",
+              body: `${device}: Garantie abgelaufen${since}.`,
+            }
+            : {
+              title: "Garantie läuft ab",
+              body: `${device}: Garantie endet${on}.`,
+            };
+        case "support":
+          return overdue
+            ? {
+              title: "Herstellersupport beendet",
+              body: `${device}: Herstellersupport beendet${since}.`,
+            }
+            : {
+              title: "Support läuft ab",
+              body: `${device}: Herstellersupport endet${on}.`,
+            };
+        case "end_of_life":
+          return {
+            title: "End of Life",
+            body: overdue
+              ? `${device}: End of Life erreicht${since}. Ersatz planen.`
+              : `${device}: End of Life${on}. Ersatz planen.`,
+          };
+        default:
+          return overdue
+            ? {
+              title: "Wartung überfällig",
+              body: `${device}: Wartung überfällig${since}.`,
+            }
+            : {
+              title: "Wartung fällig",
+              body: `${device}: Wartung fällig${on}.`,
+            };
+      }
+    }
     case "watched": {
       const actor = input.watchActorName
         ? truncateSubject(input.watchActorName)
@@ -413,6 +468,9 @@ export function buildApnsPayload(
   }
   if (input.kind === "service_task" && input.occurrenceId) {
     data.occurrenceId = input.occurrenceId;
+  }
+  if (input.kind === "infrastructure" && input.assetId) {
+    data.assetId = input.assetId;
   }
   const aps: Record<string, unknown> = {
     alert,

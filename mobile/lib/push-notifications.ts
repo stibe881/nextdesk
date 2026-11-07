@@ -26,6 +26,7 @@ export const PUSH_CATEGORIES = [
   "sla",
   "shop",
   "inventory_low_stock",
+  "infrastructure",
 ] as const;
 
 export type PushCategory = (typeof PUSH_CATEGORIES)[number];
@@ -125,6 +126,7 @@ type PushAction =
       type: "updatePreferences";
       tenantId: string;
       enabledCategories: PushCategory[];
+      categoryModes: Record<string, "immediate" | "off">;
       quietHoursEnabled: boolean;
       quietStart: number;
       quietEnd: number;
@@ -147,7 +149,10 @@ type RegistrationContext = {
 };
 
 export type PushPermissionState =
-  "granted" | "denied" | "undetermined" | "unsupported";
+  | "granted"
+  | "denied"
+  | "undetermined"
+  | "unsupported";
 
 const REGISTRATION_KEY_PREFIX = "nextdesk:push:registered:v1";
 const APNS_TOKEN_PATTERN = /^[a-f0-9]{64,200}$/i;
@@ -358,6 +363,14 @@ export async function updatePushPreferences(input: {
     type: "updatePreferences",
     tenantId: input.tenantId,
     enabledCategories: preferences.enabledCategories,
+    // Explizite Modi, damit auch Kategorien ohne Eintrag in der gespeicherten
+    // Liste (Infrastruktur) ausgeschaltet werden können.
+    categoryModes: Object.fromEntries(
+      PUSH_CATEGORIES.map((category) => [
+        category,
+        preferences.enabledCategories.includes(category) ? "immediate" : "off",
+      ]),
+    ),
     quietHoursEnabled: preferences.quietHoursEnabled,
     quietStart: preferences.quietStart,
     quietEnd: preferences.quietEnd,

@@ -70,6 +70,7 @@ function category(
   | "inventory_low_stock"
   | "shop"
   | "service_task"
+  | "infrastructure"
   | null {
   if (kind === "ticket.assigned") return "assigned";
   if (kind === "ticket.requester_reply") return "requester_reply";
@@ -95,6 +96,7 @@ function category(
   if (kind === "inventory.low_stock") return "inventory_low_stock";
   if (kind.startsWith("shop.order.")) return "shop";
   if (kind.startsWith("service_task.")) return "service_task";
+  if (kind === "infrastructure.due") return "infrastructure";
   if (kind.startsWith("ticket.watch.")) return "mention";
   return kind.startsWith("ticket.sla.") ? "sla" : null;
 }
@@ -251,6 +253,15 @@ export async function ticketNotificationRecipientAuthorized(
         .maybeSingle();
       return Boolean(membership);
     }
+    if (row.kind === "infrastructure.due") {
+      // Only people who may manage assets get infrastructure reminders.
+      const { data, error } = await admin.rpc("user_has_tenant_permission", {
+        p_user_id: row.user_id,
+        p_tenant_id: row.tenant_id,
+        p_permission_code: "asset.manage",
+      });
+      return !error && data === true;
+    }
     if (row.kind !== "inventory.low_stock") return false;
     const { data, error } = await admin.rpc(
       "inventory_low_stock_delivery_authorized",
@@ -349,6 +360,25 @@ async function deliverSingle(admin: any, row: ClaimRow): Promise<void> {
         : {}),
     };
   }
+  let infrastructure: Record<string, string> = {};
+  if (preferenceCategory === "infrastructure" && row.notification_id) {
+    const { data: notification } = await admin
+      .from("ticket_notifications")
+      .select("payload")
+      .eq("id", row.notification_id)
+      .maybeSingle();
+    const payload = notification?.payload ?? {};
+    for (
+      const [from, to] of [
+        ["assetId", "assetId"],
+        ["assetName", "assetName"],
+        ["reason", "infrastructureReason"],
+        ["dueOn", "dueOn"],
+      ]
+    ) {
+      if (typeof payload[from] === "string") infrastructure[to] = payload[from];
+    }
+  }
   // Watched tickets: what changed, and by whom.
   let watched: Record<string, string | boolean> = {};
   if (row.kind.startsWith("ticket.watch.") && row.notification_id) {
@@ -389,6 +419,7 @@ async function deliverSingle(admin: any, row: ClaimRow): Promise<void> {
   const payload = buildApnsPayload({
     ...shop,
     ...serviceTask,
+    ...infrastructure,
     ...watched,
     ...delegated,
     kind: payloadKind(row.kind, preferenceCategory),
