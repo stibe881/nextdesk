@@ -10,13 +10,16 @@ import {
   CalendarClock,
   ClipboardCheck,
   FileBarChart,
+  GraduationCap,
   LayoutDashboard,
+  MonitorPlay,
   MessageSquareHeart,
   Printer,
   Shuffle,
   UserRound,
 } from "lucide-react";
-import { supabase } from "./lib/supabase";
+import { LiveBoard, SkillMatrix } from "./team-leadership";
+import { callTeamSupervision } from "./team-supervision-api";
 import "./team-supervision.css";
 
 type Absence = {
@@ -33,7 +36,22 @@ type TeamAgent = {
   atRisk: number;
   noFirstResponse: number;
   resolvedLast30Days: number;
+  loadScore: number;
   absence: Absence | null;
+};
+type OverloadWarning = {
+  agentId: string;
+  agentName: string;
+  openTickets: number;
+  overdue: number;
+  averageOpen: number;
+  reason: "load" | "overdue";
+};
+type RebalanceMove = {
+  ticketId: string;
+  fromAgentId: string;
+  toAgentId: string;
+  toAgentName: string;
 };
 type TeamTicket = {
   id: string;
@@ -54,6 +72,8 @@ type Overview = {
   agents: TeamAgent[];
   tickets: TeamTicket[];
   truncated: boolean;
+  warnings: OverloadWarning[];
+  suggestions: RebalanceMove[];
 };
 type ReviewTicket = {
   id: string;
@@ -93,25 +113,16 @@ type Report = {
   agents: ReportAgent[];
 };
 
-type View = "overview" | "redistribute" | "quality" | "coaching" | "report";
+type View =
+  | "live"
+  | "overview"
+  | "redistribute"
+  | "quality"
+  | "skills"
+  | "coaching"
+  | "report";
 
-async function call<T>(body: Record<string, unknown>): Promise<T> {
-  if (!supabase) throw new Error("Die Verbindung ist nicht konfiguriert.");
-  const { data, error } = await supabase.functions.invoke("team-supervision", {
-    body,
-  });
-  if (error) {
-    const context = (error as { context?: unknown }).context;
-    if (context instanceof Response) {
-      const payload = (await context.json().catch(() => null)) as {
-        error?: { message?: string };
-      } | null;
-      if (payload?.error?.message) throw new Error(payload.error.message);
-    }
-    throw new Error("Die Teamdaten konnten nicht geladen werden.");
-  }
-  return (data as { data: T }).data;
-}
+const call = callTeamSupervision;
 
 const dateTime = (value: string) =>
   new Intl.DateTimeFormat("de-CH", {
@@ -153,7 +164,7 @@ export function TeamSupervision({
   tenantId: string;
   onOpenTicket: (ticketId: string) => void;
 }) {
-  const [view, setView] = useState<View>("overview");
+  const [view, setView] = useState<View>("live");
   const [overview, setOverview] = useState<Overview | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -178,9 +189,11 @@ export function TeamSupervision({
   }, [load]);
 
   const views: { value: View; label: string; Icon: typeof UserRound }[] = [
+    { value: "live", label: "Leitstand", Icon: MonitorPlay },
     { value: "overview", label: "Team-Übersicht", Icon: LayoutDashboard },
     { value: "redistribute", label: "Umverteilen", Icon: Shuffle },
     { value: "quality", label: "Qualitätsprüfung", Icon: ClipboardCheck },
+    { value: "skills", label: "Skill-Matrix", Icon: GraduationCap },
     { value: "coaching", label: "Coaching", Icon: MessageSquareHeart },
     { value: "report", label: "Monatsbericht", Icon: FileBarChart },
   ];
@@ -232,6 +245,10 @@ export function TeamSupervision({
         <p className="empty-state">Teamdaten werden geladen …</p>
       ) : overview ? (
         <>
+          {view === "live" ? (
+            <LiveBoard onOpenTicket={onOpenTicket} tenantId={tenantId} />
+          ) : null}
+          {view === "skills" ? <SkillMatrix tenantId={tenantId} /> : null}
           {view === "overview" ? (
             <TeamOverview overview={overview} onOpenTicket={onOpenTicket} />
           ) : null}
@@ -289,12 +306,28 @@ function TeamOverview({
     noResponse: overview.tickets.filter((ticket) => ticket.noFirstResponse)
       .length,
   };
-  const maxOpen = Math.max(
+  const maxLoad = Math.max(
     1,
-    ...overview.agents.map((agent) => agent.openTickets),
+    ...overview.agents.map((agent) => agent.loadScore),
   );
   return (
     <div className="team-supervision__overview">
+      {overview.warnings.length ? (
+        <section
+          aria-label="Frühwarnung Überlastung"
+          className="team-supervision__warnings"
+        >
+          {overview.warnings.map((warning) => (
+            <p key={warning.agentId}>
+              <AlertTriangle aria-hidden="true" size={15} />
+              <strong>{warning.agentName}</strong>
+              {warning.reason === "overdue"
+                ? ` hat ${warning.overdue} Tickets mit überschrittener SLA.`
+                : ` trägt ${warning.openTickets} offene Tickets (Teamschnitt ${warning.averageOpen}).`}
+            </p>
+          ))}
+        </section>
+      ) : null}
       <div className="team-supervision__kpis">
         <article>
           <p>Offene Tickets</p>
@@ -335,12 +368,12 @@ function TeamOverview({
               </div>
             </header>
             <div
-              aria-label={`${agent.openTickets} offene Tickets`}
+              aria-label={`Auslastung ${agent.loadScore} Punkte, ${agent.openTickets} offene Tickets`}
               className="team-supervision__load"
               role="img"
             >
               <span
-                style={{ width: `${(agent.openTickets / maxOpen) * 100}%` }}
+                style={{ width: `${(agent.loadScore / maxLoad) * 100}%` }}
               />
             </div>
             <dl>
@@ -363,6 +396,10 @@ function TeamOverview({
               <div>
                 <dt>Gelöst (30 T.)</dt>
                 <dd>{agent.resolvedLast30Days}</dd>
+              </div>
+              <div title="Offene Tickets gewichtet nach Priorität und SLA-Risiko">
+                <dt>Last</dt>
+                <dd>{agent.loadScore}</dd>
               </div>
             </dl>
           </article>
@@ -468,8 +505,86 @@ function Redistribute({
     void reassign(ids.split(","), agentId);
   }
 
+  async function applySuggestions() {
+    const groups = new Map<string, string[]>();
+    for (const move of overview.suggestions) {
+      groups.set(move.toAgentId, [
+        ...(groups.get(move.toAgentId) ?? []),
+        move.ticketId,
+      ]);
+    }
+    setBusy(true);
+    try {
+      for (const [agentId, ticketIds] of groups) {
+        await call({ type: "reassign", tenantId, ticketIds, agentId });
+      }
+      onChanged(
+        `${overview.suggestions.length} Tickets nach dem Vorschlag umverteilt.`,
+      );
+    } catch (nextError) {
+      onError(
+        nextError instanceof Error ? nextError.message : String(nextError),
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const ticketById = new Map(
+    overview.tickets.map((ticket) => [ticket.id, ticket]),
+  );
+  const nameById = new Map(
+    overview.agents.map((agent) => [agent.id, agent.displayName]),
+  );
+
   return (
     <div className="team-supervision__redistribute">
+      {overview.suggestions.length ? (
+        <section
+          aria-label="Vorschlag zur Lastverteilung"
+          className="panel team-supervision__suggestions"
+        >
+          <header>
+            <div>
+              <h3>
+                <Shuffle aria-hidden="true" size={16} /> Vorschlag zur
+                Lastverteilung
+              </h3>
+              <p className="data-caption">
+                Gewichtet nach Priorität und SLA-Risiko. Tickets abwesender
+                Personen und die neuesten Tickets überlasteter Personen gehen an
+                Kolleg:innen derselben Abteilung mit wenig Last.
+              </p>
+            </div>
+            <button
+              className="primary-button"
+              disabled={busy}
+              onClick={() => void applySuggestions()}
+              type="button"
+            >
+              {busy ? "Wird umverteilt …" : "Vorschlag übernehmen"}
+            </button>
+          </header>
+          <ul>
+            {overview.suggestions.map((move) => {
+              const ticket = ticketById.get(move.ticketId);
+              return (
+                <li key={move.ticketId}>
+                  <code>{ticket?.ticketNumber}</code>
+                  <span>{ticket?.subject}</span>
+                  <small>
+                    {nameById.get(move.fromAgentId)} → {move.toAgentName}
+                  </small>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      ) : (
+        <p className="data-caption">
+          Die Last ist ausgeglichen – kein Umverteilungsvorschlag.
+        </p>
+      )}
       <div
         className="team-supervision__bulk"
         role="group"
@@ -612,6 +727,7 @@ function QualityReview({
         rating: number;
         solutionCorrect: boolean;
         toneAppropriate: boolean;
+        documentationOk: boolean;
         comment: string;
       }
     >
@@ -642,6 +758,7 @@ function QualityReview({
       rating: 4,
       solutionCorrect: true,
       toneAppropriate: true,
+      documentationOk: true,
       comment: "",
     };
     setSaving(ticket.id);
@@ -653,6 +770,7 @@ function QualityReview({
         rating: form.rating,
         solutionCorrect: form.solutionCorrect,
         toneAppropriate: form.toneAppropriate,
+        documentationOk: form.documentationOk,
         comment: form.comment.trim() || null,
       });
       setTickets(
@@ -696,6 +814,7 @@ function QualityReview({
             rating: 4,
             solutionCorrect: true,
             toneAppropriate: true,
+            documentationOk: true,
             comment: "",
           };
           const update = (patch: Partial<typeof form>) =>
@@ -755,6 +874,16 @@ function QualityReview({
                     type="checkbox"
                   />
                   Ton passend
+                </label>
+                <label className="team-supervision__check">
+                  <input
+                    checked={form.documentationOk}
+                    onChange={(event) =>
+                      update({ documentationOk: event.target.checked })
+                    }
+                    type="checkbox"
+                  />
+                  Dokumentation vollständig
                 </label>
                 <label className="team-supervision__wide">
                   Feedback (optional)
@@ -990,6 +1119,7 @@ type CoachingReview = {
   rating: number;
   solutionCorrect: boolean;
   toneAppropriate: boolean;
+  documentationOk: boolean | null;
   comment: string | null;
   createdAt: string;
   ticketId: string;
@@ -1192,6 +1322,11 @@ function Coaching({
                       ? "Lösung korrekt"
                       : "Lösung prüfen"}{" "}
                     · {review.toneAppropriate ? "Ton passend" : "Ton prüfen"}
+                    {review.documentationOk === null
+                      ? ""
+                      : review.documentationOk
+                        ? " · Dokumentation vollständig"
+                        : " · Dokumentation lückenhaft"}
                     {review.comment ? ` · ${review.comment}` : ""}
                   </p>
                 </li>

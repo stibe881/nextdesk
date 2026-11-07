@@ -10213,4 +10213,55 @@ $$;
 rollback;
 SQL
 
+# 0213: overload warnings mark agents with a clear excess of open tickets once.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_template public.tickets;
+  v_agent uuid;
+  v_index integer;
+begin
+  select ticket.* into v_template
+  from public.tickets ticket
+  join public.ticket_statuses status on status.id = ticket.status_id and not status.is_closed
+  where ticket.department_id is not null
+  limit 1;
+  select dm.user_id into v_agent from public.department_memberships dm
+  where dm.department_id = v_template.department_id and dm.status = 'active' limit 1;
+  if v_agent is null then
+    raise exception 'overload test: no department member';
+  end if;
+  for v_index in 1..12 loop
+    insert into public.tickets (tenant_id, department_id, ticket_number, subject, description,
+      status_id, priority_id, requester_id, assigned_agent_id)
+    values (v_template.tenant_id, v_template.department_id, 'LOAD-' || v_index,
+      'Last ' || v_index, 'Test', v_template.status_id, v_template.priority_id,
+      v_template.requester_id, v_agent);
+  end loop;
+  perform public.team_overload_warnings_run();
+  if not exists (
+    select 1 from public.team_overload_notices
+    where agent_id = v_agent and department_id = v_template.department_id
+  ) then
+    raise exception 'overload test: no warning recorded';
+  end if;
+  perform public.team_overload_warnings_run();
+  if (select count(*) from public.team_overload_notices
+      where agent_id = v_agent and department_id = v_template.department_id) <> 1 then
+    raise exception 'overload test: warning repeated';
+  end if;
+  insert into public.team_skills (tenant_id, name) values (v_template.tenant_id, 'Netzwerk');
+  begin
+    insert into public.team_skills (tenant_id, name) values (v_template.tenant_id, ' netzwerk ');
+    raise exception 'overload test: duplicate skill accepted';
+  exception when unique_violation then
+    null;
+  end;
+  raise notice 'team leadership checks ran';
+end;
+$$;
+rollback;
+SQL
+
 echo "PostgreSQL 16 migration and RLS integration checks passed."
