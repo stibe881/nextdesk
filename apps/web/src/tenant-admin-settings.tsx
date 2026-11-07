@@ -44,6 +44,7 @@ import { DepartmentManagement } from "./department-management";
 import { DepartmentModules } from "./department-modules";
 import { TicketTemplates } from "./ticket-templates";
 import { TenantAutomation } from "./tenant-automation";
+import { TicketLifecycleSettings } from "./ticket-lifecycle-settings";
 import { TenantDataRetention } from "./tenant-data-retention";
 import { TenantOnboarding, type OnboardingTarget } from "./tenant-onboarding";
 import { AiGovernancePanel } from "./ai-governance-panel";
@@ -3644,9 +3645,14 @@ export function TenantAdminSettings({
                                             ) : null}
                                             {feature.feature_key ===
                                             "automation.sla" ? (
-                                              <TenantAutomation
-                                                tenantId={tenantId}
-                                              />
+                                              <>
+                                                <TicketLifecycleSettings
+                                                  tenantId={tenantId}
+                                                />
+                                                <TenantAutomation
+                                                  tenantId={tenantId}
+                                                />
+                                              </>
                                             ) : null}
                                             {!hasDedicatedConfiguration ? (
                                               <p className="tenant-admin-settings__feature-detail-note">
