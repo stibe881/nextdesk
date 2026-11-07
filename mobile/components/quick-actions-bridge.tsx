@@ -4,40 +4,7 @@ import { useEffect, useRef } from "react";
 import { Alert, Platform } from "react-native";
 
 import { useMobileFeatures } from "@/components/mobile-feature-gate";
-
-type QuickCreate = {
-  id: string;
-  title: string;
-  href: string;
-  feature?: Parameters<ReturnType<typeof useMobileFeatures>["isEnabled"]>[0];
-};
-
-/** Long-press actions on the app icon, like the "+" menu of the web app. */
-const QUICK_CREATE: readonly QuickCreate[] = [
-  {
-    id: "follow-up",
-    title: "Wiedervorlage erfassen",
-    href: "/create/follow-up",
-    feature: "experience.workspace",
-  },
-  {
-    id: "ticket",
-    title: "Ticket erfassen",
-    href: "/ticket/new",
-  },
-  {
-    id: "service-task",
-    title: "Serviceaufgabe erfassen",
-    href: "/create/service-task",
-    feature: "service.tasks",
-  },
-  {
-    id: "inventory-item",
-    title: "Lagerartikel erfassen",
-    href: "/create/inventory-item",
-    feature: "inventory.management",
-  },
-];
+import { QUICK_CREATE, type QuickCreate } from "@/lib/quick-create-actions";
 
 function actionFor(action: QuickActions.Action | null | undefined) {
   if (!action) return null;
