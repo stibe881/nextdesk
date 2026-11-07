@@ -28,6 +28,7 @@ import {
   STOCK_LABEL,
   formatDate,
   newRequestId,
+  procurementLabel,
   shopApi,
   SPEC_FIELDS,
   type CatalogItem,
@@ -1625,7 +1626,7 @@ function OrderDialog({
                       {line.status === "reserved"
                         ? " · reserviert"
                         : line.status === "backorder"
-                          ? " · nicht an Lager"
+                          ? ` · ${procurementLabel(line) ?? "nicht an Lager"}`
                           : line.status === "issued"
                             ? " · ausgegeben"
                             : line.status === "returned"

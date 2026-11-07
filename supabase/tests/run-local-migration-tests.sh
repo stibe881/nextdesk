@@ -10921,4 +10921,173 @@ $$;
 rollback;
 SQL
 
+# 0224: shop backorders become procurement needs; goods receipts reserve them
+# in order of creation and move complete orders to «Bereit zur Abholung».
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_owner constant uuid := 'f2240000-0000-4000-8000-000000000001';
+  v_employee constant uuid := 'f2240000-0000-4000-8000-000000000002';
+  v_tenant uuid;
+  v_requester_role uuid;
+  v_location uuid;
+  v_toner uuid;
+  v_cat_toner uuid;
+  v_order1 uuid;
+  v_order2 uuid;
+  v_order3 uuid;
+  v_order4 uuid;
+  v_bo1 uuid;
+  v_bo2 uuid;
+  v_bo4 uuid;
+  v_backorder public.shop_backorders%rowtype;
+  v_status text;
+  v_count integer;
+  v_physical numeric;
+  v_reserved numeric;
+begin
+  if has_table_privilege('authenticated', 'public.shop_backorders', 'select')
+     or has_table_privilege('anon', 'public.shop_backorders', 'select') then
+    raise exception 'backorder test: browser roles can read backorders';
+  end if;
+  if not (select relrowsecurity from pg_class where oid = 'public.shop_backorders'::regclass) then
+    raise exception 'backorder test: RLS disabled';
+  end if;
+  if has_function_privilege('authenticated',
+       'public.shop_backorder_update(uuid, uuid, uuid[], text, text, date, text)', 'execute')
+     or has_function_privilege('authenticated', 'public.shop_allocate_backorders(uuid, uuid, uuid)', 'execute') then
+    raise exception 'backorder test: functions callable from the browser';
+  end if;
+
+  insert into auth.users (id) values (v_owner), (v_employee);
+  v_tenant := public.provision_personal_workspace(v_owner, 'owner@backorder.example', 'Backorder Test');
+  select id into v_requester_role from public.roles where tenant_id = v_tenant and name = 'Requester';
+  insert into public.user_profiles (id, display_name) values (v_employee, 'Erika Beschaffung');
+  insert into public.tenant_memberships (tenant_id, user_id, status, joined_at)
+  values (v_tenant, v_employee, 'active', now());
+  insert into public.user_role_assignments (tenant_id, user_id, role_id, assigned_by)
+  values (v_tenant, v_employee, v_requester_role, v_owner);
+  update public.tenant_feature_flags set enabled = true
+  where tenant_id = v_tenant and feature_key = 'inventory.management';
+
+  insert into public.inventory_locations (tenant_id, code, name) values (v_tenant, 'lager', 'Lager')
+  returning id into v_location;
+  insert into public.inventory_items (tenant_id, article_number, name, supplier)
+  values (v_tenant, 'toner-sw', 'Toner schwarz', 'Office AG') returning id into v_toner;
+  insert into public.shop_catalog_items (tenant_id, inventory_item_id, name, kind)
+  values (v_tenant, v_toner, 'Toner schwarz', 'order') returning id into v_cat_toner;
+
+  -- Out of stock: the approved (no approval needed) line becomes a backorder.
+  v_order1 := public.shop_submit_order(v_employee, v_tenant, gen_random_uuid(),
+    jsonb_build_array(jsonb_build_object('catalog_item_id', v_cat_toner, 'quantity', 2)),
+    'pickup', null, null, null, null, 'Drucker leer');
+  v_order2 := public.shop_submit_order(v_employee, v_tenant, gen_random_uuid(),
+    jsonb_build_array(jsonb_build_object('catalog_item_id', v_cat_toner, 'quantity', 1)),
+    'pickup', null, null, null, null, 'Reserve');
+  select * into v_backorder from public.shop_backorders where order_id = v_order1;
+  if not found or v_backorder.status <> 'open' or v_backorder.quantity <> 2
+     or v_backorder.supplier is distinct from 'Office AG' or v_backorder.requester_id <> v_employee
+     or v_backorder.inventory_item_id <> v_toner then
+    raise exception 'backorder test: procurement need not created: %', row_to_json(v_backorder);
+  end if;
+  v_bo1 := v_backorder.id;
+  select id into v_bo2 from public.shop_backorders where order_id = v_order2 and status = 'open';
+  if v_bo2 is null or not exists (
+    select 1 from public.shop_order_events where order_id = v_order1 and event_type = 'backordered'
+  ) then
+    raise exception 'backorder test: second need or backordered event missing';
+  end if;
+  -- Re-trying the reservation must not create a second need.
+  perform public.shop_try_reserve_line(v_owner,
+    (select id from public.shop_order_lines where order_id = v_order1));
+  if (select count(*) from public.shop_backorders where order_id = v_order1) <> 1 then
+    raise exception 'backorder test: duplicate need for one line';
+  end if;
+
+  begin
+    perform public.shop_backorder_update(v_employee, v_tenant, array[v_bo1], 'order',
+      'Office AG', current_date + 3, null);
+    raise exception 'backorder test: an employee could order';
+  exception when insufficient_privilege then null;
+  end;
+  v_count := public.shop_backorder_update(v_owner, v_tenant, array[v_bo1, v_bo2, v_bo1], 'order',
+    'Büro Shop GmbH', current_date + 3, 'Bestellung 4711');
+  select * into v_backorder from public.shop_backorders where id = v_bo1;
+  if v_count <> 2 or v_backorder.status <> 'ordered' or v_backorder.expected_on <> current_date + 3
+     or v_backorder.supplier <> 'Büro Shop GmbH' or v_backorder.ordered_by <> v_owner then
+    raise exception 'backorder test: marking as ordered failed: %', row_to_json(v_backorder);
+  end if;
+
+  -- Receipt of 1: the older need (2) cannot be served yet, the newer one (1) can.
+  perform public.inventory_apply_event(v_tenant, v_owner, gen_random_uuid(), 'movement_receipt',
+    jsonb_build_array(jsonb_build_object('item_id', v_toner, 'location_id', v_location,
+      'physical_delta', 1, 'reserved_delta', 0)), null, null);
+  if (select status from public.shop_backorders where id = v_bo1) <> 'ordered'
+     or (select status from public.shop_backorders where id = v_bo2) <> 'received'
+     or (select status from public.shop_orders where id = v_order2) <> 'ready'
+     or (select status from public.shop_orders where id = v_order1) <> 'submitted'
+     or (select status from public.shop_order_lines where order_id = v_order2) <> 'reserved' then
+    raise exception 'backorder test: first receipt allocated wrongly';
+  end if;
+  if not exists (
+    select 1 from public.ticket_notifications
+    where user_id = v_employee and kind = 'shop.order.ready' and payload ->> 'orderId' = v_order2::text
+  ) then
+    raise exception 'backorder test: requester was not notified';
+  end if;
+
+  -- Receipt of 2: now the older need is served as well.
+  perform public.inventory_apply_event(v_tenant, v_owner, gen_random_uuid(), 'movement_receipt',
+    jsonb_build_array(jsonb_build_object('item_id', v_toner, 'location_id', v_location,
+      'physical_delta', 2, 'reserved_delta', 0)), null, null);
+  select physical_quantity, reserved_quantity into v_physical, v_reserved
+  from public.inventory_stock_balances where tenant_id = v_tenant and item_id = v_toner;
+  if (select status from public.shop_backorders where id = v_bo1) <> 'received'
+     or (select status from public.shop_orders where id = v_order1) <> 'ready'
+     or v_physical <> 3 or v_reserved <> 3 then
+    raise exception 'backorder test: second receipt failed: % / %', v_physical, v_reserved;
+  end if;
+  v_status := public.shop_update_order(v_owner, v_tenant, v_order1, 'issue', '{}'::jsonb);
+  if v_status <> 'issued' then
+    raise exception 'backorder test: received order could not be handed out: %', v_status;
+  end if;
+
+  -- Cancelling the order cancels its need.
+  v_order3 := public.shop_submit_order(v_employee, v_tenant, gen_random_uuid(),
+    jsonb_build_array(jsonb_build_object('catalog_item_id', v_cat_toner, 'quantity', 1)),
+    'pickup', null, null, null, null, 'Später');
+  v_status := public.shop_update_order(v_employee, v_tenant, v_order3, 'cancel', '{}'::jsonb);
+  if (select status from public.shop_backorders where order_id = v_order3) <> 'cancelled' then
+    raise exception 'backorder test: cancelled order kept its need';
+  end if;
+
+  -- A cancelled need is not served by a later receipt.
+  v_order4 := public.shop_submit_order(v_employee, v_tenant, gen_random_uuid(),
+    jsonb_build_array(jsonb_build_object('catalog_item_id', v_cat_toner, 'quantity', 1)),
+    'pickup', null, null, null, null, 'Nicht beschaffen');
+  select id into v_bo4 from public.shop_backorders where order_id = v_order4 and status = 'open';
+  perform public.shop_backorder_update(v_owner, v_tenant, array[v_bo4], 'cancel', null, null, 'Ausverkauft');
+  perform public.inventory_apply_event(v_tenant, v_owner, gen_random_uuid(), 'movement_receipt',
+    jsonb_build_array(jsonb_build_object('item_id', v_toner, 'location_id', v_location,
+      'physical_delta', 1, 'reserved_delta', 0)), null, null);
+  if (select status from public.shop_order_lines where order_id = v_order4) <> 'backorder'
+     or (select status from public.shop_orders where id = v_order4) <> 'submitted' then
+    raise exception 'backorder test: cancelled need was allocated';
+  end if;
+  begin
+    perform public.shop_backorder_update(v_owner, v_tenant, array[v_bo4], 'order', null, null, null);
+    raise exception 'backorder test: closed need could be ordered';
+  exception when check_violation then null;
+  end;
+  -- Manual allocation serves the line once a need is waiting again.
+  if public.shop_allocate_backorders(v_tenant, v_toner, v_owner) <> 0 then
+    raise exception 'backorder test: manual allocation served a cancelled need';
+  end if;
+  raise notice 'shop backorder checks ran';
+end;
+$$;
+rollback;
+SQL
+
 echo "PostgreSQL 16 migration and RLS integration checks passed."

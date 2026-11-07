@@ -136,6 +136,8 @@ export type OrderLine = {
   loanUntil?: string | null;
   /** Cover photo of the article, if any. */
   imageUrl?: string | null;
+  /** Beschaffungsstand, wenn die Zeile nicht an Lager ist. */
+  procurement?: LineProcurement | null;
   /** Internal, only sent to agents. */
   articleNumber?: string | null;
   /** Internal, only sent to agents. */
@@ -337,7 +339,35 @@ export const EVENT_LABEL: Record<string, string> = {
   rejected: "Abgelehnt",
   cancelled: "Storniert",
   note: "Notiz",
+  backordered: "Nicht an Lager – wird beschafft",
+  backorder_ordered: "Beim Lieferanten bestellt",
+  backorder_received: "Ware eingetroffen und reserviert",
+  backorder_cancelled: "Beschaffung storniert",
 };
+
+/** Beschaffungsstand einer Bestellzeile, die nicht an Lager ist. */
+export type LineProcurement = {
+  status: "open" | "ordered";
+  /** Voraussichtliches Lieferdatum (YYYY-MM-DD), sobald bestellt. */
+  expectedOn: string | null;
+};
+
+/**
+ * Hinweis für eine Bestellzeile im Rückstand, z. B.
+ * «Wird beschafft, voraussichtlich am 20.11.2026».
+ */
+export function procurementLabel(line: {
+  status: string;
+  procurement?: LineProcurement | null;
+}): string | null {
+  if (line.status !== "backorder") return null;
+  const expectedOn = line.procurement?.expectedOn ?? null;
+  if (!expectedOn) return "Wird beschafft";
+  const formatted = formatDate(expectedOn);
+  return formatted === "–"
+    ? "Wird beschafft"
+    : `Wird beschafft, voraussichtlich am ${formatted}`;
+}
 
 export function newRequestId(): string {
   return crypto.randomUUID();

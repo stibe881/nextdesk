@@ -20,6 +20,7 @@ import {
   EVENT_LABEL,
   ORDER_STATUS_LABEL,
   formatDate,
+  procurementLabel,
   shopApi,
   type OrderAction,
   type OrderDetail,
@@ -263,7 +264,7 @@ export default function ShopOrderScreen() {
                       {line.status === "reserved"
                         ? " · reserviert"
                         : line.status === "backorder"
-                          ? " · nicht an Lager"
+                          ? ` · ${procurementLabel(line) ?? "nicht an Lager"}`
                           : line.status === "issued"
                             ? " · ausgegeben"
                             : line.status === "returned"
