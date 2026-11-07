@@ -440,6 +440,21 @@ async function overview(
   await generate(admin, templates, today);
   const templateById = new Map(templates.map((t) => [t.id as string, t]));
   const myTeams = await teamIdsOf(admin, tenantId, userId);
+  // A stand-in also sees the tasks of the agents they represent.
+  const delegated = await admin.rpc("active_delegators_for", {
+    p_tenant_id: tenantId,
+    p_user_id: userId,
+  });
+  const representing = new Set<string>(
+    !delegated.error && Array.isArray(delegated.data)
+      ? (delegated.data as unknown[]).filter(
+        (entry): entry is string => typeof entry === "string",
+      )
+      : [],
+  );
+  const mineOrRepresented = (assignee: unknown) =>
+    assignee === userId ||
+    (typeof assignee === "string" && representing.has(assignee));
   const thirtyDaysAgo = formatDate(addDays(parseDate(today)!, -30));
   const twoWeeks = formatDate(addDays(parseDate(today)!, 14));
 
@@ -457,10 +472,10 @@ async function overview(
   );
   const inScope = (occurrence: Row) => {
     const template = templateById.get(occurrence.template_id as string);
-    if (scope === "mine") return occurrence.assignee_id === userId;
+    if (scope === "mine") return mineOrRepresented(occurrence.assignee_id);
     if (scope === "team") {
       return (
-        occurrence.assignee_id === userId ||
+        mineOrRepresented(occurrence.assignee_id) ||
         (!!template?.team_id && myTeams.has(template.team_id as string))
       );
     }

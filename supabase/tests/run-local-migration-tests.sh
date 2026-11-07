@@ -9855,4 +9855,66 @@ $$;
 rollback;
 SQL
 
+# 0202: supervisor role, handover and alert jobs run without errors; a new
+# assignment to an absent agent goes to the stand-in when allowed.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_tenant uuid;
+  v_role uuid;
+  v_ticket uuid;
+  v_agent uuid;
+  v_delegate uuid;
+  v_department uuid;
+begin
+  select id into v_tenant from public.tenants order by created_at limit 1;
+  select id into v_role from public.roles
+  where tenant_id = v_tenant and name = 'Vorgesetzter Agent' and scope = 'department';
+  if v_role is null then
+    raise exception 'Role Vorgesetzter Agent was not seeded';
+  end if;
+  if not exists (
+    select 1 from public.role_permissions
+    where role_id = v_role and permission_code = 'team.supervise'
+  ) then
+    raise exception 'Role Vorgesetzter Agent lacks team.supervise';
+  end if;
+  perform public.delegation_send_handover_notifications();
+  perform public.supervisor_send_ticket_alerts();
+
+  -- Redirect: pick a ticket and two department agents, if the fixtures have them.
+  select ticket.id, ticket.department_id into v_ticket, v_department
+  from public.tickets ticket
+  where ticket.tenant_id = v_tenant and ticket.assigned_team_id is null
+  limit 1;
+  select dm.user_id into v_agent from public.department_memberships dm
+  where dm.department_id = v_department and dm.status = 'active'
+  order by dm.user_id limit 1;
+  select dm.user_id into v_delegate from public.department_memberships dm
+  where dm.department_id = v_department and dm.status = 'active' and dm.user_id <> v_agent
+  order by dm.user_id limit 1;
+  if v_ticket is null or v_agent is null or v_delegate is null then
+    return;
+  end if;
+  update public.agent_delegations set ended_at = timezone('utc', now())
+  where tenant_id = v_tenant and agent_id = v_agent and ended_at is null;
+  insert into public.agent_delegations (tenant_id, agent_id, delegate_id, starts_at, ends_at, created_by)
+  values (v_tenant, v_agent, v_delegate, timezone('utc', now()) - interval '1 hour',
+    timezone('utc', now()) + interval '1 day', v_agent);
+  update public.tickets set assigned_agent_id = null where id = v_ticket;
+  update public.tickets set assigned_agent_id = v_agent where id = v_ticket;
+  if public.user_has_ticket_permission_for(v_delegate, v_tenant, v_department, 'ticket.read.department')
+    or public.user_has_ticket_permission_for(v_delegate, v_tenant, v_department, 'ticket.read.assigned') then
+    if (select assigned_agent_id from public.tickets where id = v_ticket) <> v_delegate then
+      raise exception 'Assignment to an absent agent was not redirected to the stand-in';
+    end if;
+  elsif (select assigned_agent_id from public.tickets where id = v_ticket) <> v_agent then
+    raise exception 'Assignment was redirected to a stand-in without access';
+  end if;
+end;
+$$;
+rollback;
+SQL
+
 echo "PostgreSQL 16 migration and RLS integration checks passed."

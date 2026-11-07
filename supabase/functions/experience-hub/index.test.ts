@@ -24,7 +24,7 @@ function callerClientFor(
       );
       return { data: result, error };
     },
-  } as Parameters<typeof requireTicketWorkspaceAccess>[0];
+  } as unknown as Parameters<typeof requireTicketWorkspaceAccess>[0];
 }
 
 async function expectAccessError(

@@ -816,3 +816,11 @@
     justify-self: start;
   }
 }
+
+.workbench-form__subject {
+  display: grid;
+  gap: 6px;
+  max-width: 360px;
+  margin-bottom: 12px;
+  font-weight: 650;
+}

@@ -161,6 +161,9 @@ verify_jwt = true
 [functions.ticket-suggestions]
 verify_jwt = true
 
+[functions.team-supervision]
+verify_jwt = true
+
 [functions.push-notifications]
 verify_jwt = true
 

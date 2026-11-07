@@ -632,7 +632,23 @@ function publicFollowUp(row: unknown) {
     resolvedAt: row.resolved_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    ownerId: isUuid(row.owner_id) ? row.owner_id.toLowerCase() : null,
   };
+}
+
+/** The caller and the agents they currently stand in for. */
+async function followUpOwners(
+  client: CallerClient,
+  tenantId: string,
+  actorId: string,
+): Promise<string[]> {
+  const { data, error } = await client.rpc("my_delegators", {
+    p_tenant_id: tenantId,
+  });
+  const delegators = !error && Array.isArray(data)
+    ? (data as unknown[]).filter((entry): entry is string => isUuid(entry))
+    : [];
+  return [actorId, ...delegators];
 }
 
 const FOLLOW_UP_SELECT =
@@ -668,11 +684,13 @@ async function listFollowUps(
   if (action.ticketId) {
     await requireReadableTicket(client, action.tenantId, action.ticketId);
   }
+  // Stand-ins also see the follow-ups of the agents they represent.
+  const owners = await followUpOwners(client, action.tenantId, actorId);
   let query = client
     .from("experience_follow_ups")
     .select(FOLLOW_UP_SELECT)
     .eq("tenant_id", action.tenantId)
-    .eq("owner_id", actorId)
+    .in("owner_id", owners)
     .order("resolved_at", { ascending: true, nullsFirst: true })
     .order("due_at", { ascending: true, nullsFirst: false })
     .order("created_at", { ascending: false })
@@ -691,7 +709,7 @@ async function listFollowUps(
       .select(FOLLOW_UP_SELECT)
       .eq("tenant_id", action.tenantId)
       .eq("id", action.focusFollowUpId)
-      .eq("owner_id", actorId)
+      .in("owner_id", owners)
       .maybeSingle();
     if (focusedError) databaseFailure(focusedError);
     if (focusedData) rows.push(focusedData as FollowUpRow);
@@ -788,12 +806,13 @@ async function resolveFollowUp(
   action: Extract<Action, { type: "resolveFollowUp" }>,
   actorId: string,
 ): Promise<Response> {
+  const owners = await followUpOwners(client, action.tenantId, actorId);
   const { data: existingData, error: existingError } = await client
     .from("experience_follow_ups")
     .select(FOLLOW_UP_SELECT)
     .eq("tenant_id", action.tenantId)
     .eq("id", action.followUpId)
-    .eq("owner_id", actorId)
+    .in("owner_id", owners)
     .maybeSingle();
   if (existingError) databaseFailure(existingError);
   const existing = existingData as FollowUpRow | null;
@@ -816,7 +835,7 @@ async function resolveFollowUp(
     .update({ resolved_at: resolvedAt, resolved_by: actorId })
     .eq("tenant_id", action.tenantId)
     .eq("id", action.followUpId)
-    .eq("owner_id", actorId)
+    .in("owner_id", owners)
     .is("resolved_at", null)
     .select(FOLLOW_UP_SELECT)
     .maybeSingle();
