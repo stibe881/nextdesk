@@ -380,6 +380,10 @@ function alertFor(input: ApnsPayloadInput): { title: string; body: string } {
   }
 }
 
+/** Kategorien für Antwort-Knöpfe; müssen mit der App übereinstimmen. */
+export const APNS_TICKET_CATEGORY = "NEXTDESK_TICKET";
+export const APNS_SERVICE_TASK_CATEGORY = "NEXTDESK_SERVICE_TASK";
+
 /** Builds only the APNs JSON body; no device token or secret enters this payload. */
 export function buildApnsPayload(
   input: ApnsPayloadInput,
@@ -425,6 +429,11 @@ export function buildApnsPayload(
     input.kind !== "inventory_low_stock"
   ) {
     aps["thread-id"] = input.ticketId;
+    // Antwort-Knöpfe direkt in der Mitteilung (iPhone und Apple Watch); die
+    // App registriert die Kategorie in lib/notification-actions.ts.
+    aps.category = APNS_TICKET_CATEGORY;
+  } else if (input.kind === "service_task" && input.occurrenceId) {
+    aps.category = APNS_SERVICE_TASK_CATEGORY;
   }
   return { aps, body: data };
 }

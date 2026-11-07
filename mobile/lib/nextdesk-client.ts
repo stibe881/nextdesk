@@ -100,6 +100,9 @@ const publishableKey =
 
 export const isNextDeskConfigured = Boolean(url && publishableKey);
 
+/** Öffentliche Verbindungsdaten (für die Apple-Watch-App, die dieselbe API nutzt). */
+export const nextDeskPublicConfig = { url, publishableKey } as const;
+
 const AUTH_TRANSACTION_KEY = "nextdesk:mobile:auth-transaction:v1";
 const AUTH_TRANSACTION_TTL_MS = 10 * 60 * 1_000;
 const AUTH_STORAGE_STEP_TIMEOUT_MS = 6_000;
