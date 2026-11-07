@@ -163,6 +163,9 @@ export function NextDeskTabBar({
       />
       <View style={styles.side}>{rightItems.map(renderSideItem)}</View>
       <QuickCreateMenu
+        // Centre of the raised Home ring: bar padding (6) + slot (50) − lift
+        // offset (8) above the bottom inset.
+        homeCenterFromBottom={bottomPadding + BAR_CONTENT_HEIGHT - 8}
         onClose={() => setQuickCreateOpen(false)}
         visible={quickCreateOpen}
       />
