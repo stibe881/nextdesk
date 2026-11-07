@@ -98,6 +98,7 @@ import "./ticket-experience.css";
 import { TicketPdfRecord } from "./ticket-pdf-record";
 import { TicketCoordination } from "./ticket-coordination";
 import { TicketSlaBreachReason } from "./ticket-sla-breach-reason";
+import { TicketSupportLevel } from "./ticket-support-level";
 import { useReplySnippetAssist } from "./reply-snippets";
 import {
   TicketFormAnswersBlock,
@@ -2262,6 +2263,8 @@ function eventLabel(
     "ticket.updated": "Ticket aktualisiert",
     "ticket.closed": "Ticket abgeschlossen",
     "ticket.category_changed": "Kategorie aktualisiert",
+    "ticket.support_level_changed":
+      "Supportstufe gewechselt (mit Übergabenotiz)",
     "ticket.knowledge.sent":
       "Wissensartikel als externe Ticketantwort versendet",
   };
@@ -6950,6 +6953,18 @@ export function TicketDetail({
               <TicketFormAnswersBlock stored={storedFormAnswers.stored} />
             )}
           </section>
+
+          {requesterView ? null : (
+            <TicketSupportLevel
+              onChanged={() => {
+                onChanged();
+                void loadTicket();
+              }}
+              refreshKey={`${detail.ticket.assigned_team_id ?? ""}|${detail.ticket.status_id}|${detail.events[0]?.id ?? ""}`}
+              tenantId={tenantId}
+              ticketId={detail.ticket.id}
+            />
+          )}
 
           {requesterView ? null : (
             <TicketCoordination

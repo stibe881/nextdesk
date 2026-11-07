@@ -50,6 +50,8 @@ export type LiveTicketListControls = {
   query: string;
   queue: string;
   scope: LiveTicketScope;
+  /** Support level queue (1st/2nd/3rd Level); null or missing = all. */
+  supportLevel?: 1 | 2 | 3 | null;
 };
 
 export interface LiveDashboardSnapshot {
@@ -522,20 +524,25 @@ export async function loadLiveDashboard(
   ]);
   // Avoid an unhandled rejection if the list query throws first.
   countsPromise.catch(() => undefined);
-  const ticketsResult = await client.rpc(
-    "list_authorized_ticket_list_page",
-    ticketListRpcArguments(
-      tenant.id,
-      ticketListRefinement,
-      user?.id,
-      statuses,
-      priorities,
-      departments,
-      ticketPage,
-      ticketListControls,
-      ticketAgents.map((agent) => agent.id),
-    ),
+  const listArguments = ticketListRpcArguments(
+    tenant.id,
+    ticketListRefinement,
+    user?.id,
+    statuses,
+    priorities,
+    departments,
+    ticketPage,
+    ticketListControls,
+    ticketAgents.map((agent) => agent.id),
   );
+  const supportLevel = ticketListControls?.supportLevel ?? null;
+  // A level queue uses the variant with the support level filter (0230).
+  const ticketsResult = supportLevel
+    ? await client.rpc("list_authorized_ticket_list_page_by_level", {
+        ...listArguments,
+        p_support_level: supportLevel,
+      })
+    : await client.rpc("list_authorized_ticket_list_page", listArguments);
   if (ticketsResult.error) throw ticketsResult.error;
 
   const tickets = (ticketsResult.data ?? []) as TicketListRecord[];

@@ -13,6 +13,7 @@ import {
   type PredefinedReportKey,
 } from "./service-report-dashboards";
 import { supabase } from "./lib/supabase";
+import { SupportLevelReportPanel } from "./support-level-report";
 
 export type ServiceReportingBranding = {
   accentColor: string;
@@ -1147,6 +1148,14 @@ export function ServiceReporting({
                 )}
               </section>
             ) : null}
+
+            <SupportLevelReportPanel
+              range={{
+                startsAt: report.period.startsAt,
+                endsAt: report.period.endsAt,
+              }}
+              tenantId={tenantId}
+            />
           </div>
         </>
       ) : null}

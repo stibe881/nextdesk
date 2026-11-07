@@ -283,6 +283,28 @@ function eventEntries(
           tone: "danger",
         },
       ];
+    case "ticket.support_level_changed": {
+      // Level handover (1st/2nd/3rd Level), not a management escalation.
+      const toLevel = payload.toLevel;
+      const label =
+        toLevel === 1 || toLevel === 2 || toLevel === 3
+          ? ["1st", "2nd", "3rd"][toLevel - 1] + " Level"
+          : "andere Stufe";
+      const team = textValue(payload.toTeamName);
+      return [
+        {
+          ...base,
+          id: event.id,
+          kind: "assignment",
+          title:
+            payload.direction === "returned"
+              ? `Zurück an ${label}`
+              : `Übergabe an ${label}`,
+          detail: team,
+          tone: payload.direction === "returned" ? "neutral" : "warning",
+        },
+      ];
+    }
     case "ticket.escalation_resolved":
       return [
         {

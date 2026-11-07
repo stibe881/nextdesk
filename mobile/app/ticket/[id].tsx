@@ -30,6 +30,7 @@ import { TicketConversation } from "@/components/ticket-conversation";
 import { loadTicketSnippets } from "@/lib/nextdesk-assistance";
 import type { ReplySnippet, SnippetContext } from "@/lib/reply-snippets";
 import { TicketPhotoAttachments } from "@/components/ticket-photo-attachments";
+import { TicketSupportLevelCard } from "@/components/ticket-support-level-card";
 import {
   confirmResolution,
   ExperienceHubError,
@@ -2784,6 +2785,15 @@ export default function TicketDetailScreen() {
               }
             />
           </View>
+
+          {tenant && ticket.canUpdate ? (
+            <TicketSupportLevelCard
+              onChanged={() => void load(false)}
+              refreshKey={`${ticket.statusId}|${ticket.assignedAgentId ?? ""}|${ticket.comments.length}`}
+              tenantId={tenant.id}
+              ticketId={ticket.id}
+            />
+          ) : null}
 
           {tenant ? (
             <TicketPhotoAttachments

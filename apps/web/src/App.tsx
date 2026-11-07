@@ -109,6 +109,11 @@ import { TeamSupervision } from "./team-supervision";
 import { MyPrioritiesCard } from "./my-priorities";
 import { ProblemCandidates } from "./problem-insights";
 import { TicketKanban } from "./ticket-kanban";
+import { SupportLevelQueueFilter } from "./support-level-queue-filter";
+import {
+  supportLevelOfFilter,
+  type SupportLevelFilter,
+} from "./lib/support-levels";
 import { Infrastructure } from "./infrastructure";
 import {
   HomeLayoutEditor,
@@ -2750,6 +2755,8 @@ function AuthenticatedApp() {
     useState<WorkplaceRequestedView | null>(null);
   const [period, setPeriod] = useState<Period>("Heute");
   const [queue, setQueue] = useState("alle");
+  const [supportLevelFilter, setSupportLevelFilter] =
+    useState<SupportLevelFilter>("all");
   const [ticketScope, setTicketScope] = useState<TicketScope>("all");
   const [delegatedForIds, setDelegatedForIds] = useState<string[]>([]);
   // Departments the user supervises (role "Vorgesetzter Agent").
@@ -3864,6 +3871,7 @@ function AuthenticatedApp() {
     metricTicketFilter,
     period,
     queue,
+    supportLevelFilter,
     ticketListRefinement,
     ticketScope,
   ]);
@@ -3872,6 +3880,7 @@ function AuthenticatedApp() {
     setSelectedTicketIds(new Set());
     setTicketActionStatus("");
     setSplitSelectedTicketId(null);
+    setSupportLevelFilter("all");
   }, [activeTenant?.id]);
 
   useEffect(() => {
@@ -3894,6 +3903,7 @@ function AuthenticatedApp() {
         metricTicketIds: metricTicketFilter?.ticketIds ?? null,
         query: debouncedQuery,
         queue,
+        supportLevel: supportLevelOfFilter(supportLevelFilter),
         // Employees see every ticket they may read: their own and those of
         // their direct reports.
         scope: canWorkTickets ? ticketScope : "all",
@@ -3960,6 +3970,7 @@ function AuthenticatedApp() {
     period,
     queue,
     session,
+    supportLevelFilter,
     ticketListRefinement,
     ticketPage,
     ticketScope,
@@ -6293,6 +6304,13 @@ function AuthenticatedApp() {
                 queueOptions={queueOptions}
                 setQueue={setQueue}
               />
+              {activeTenant && isSupabaseConfigured && canWorkTickets && (
+                <SupportLevelQueueFilter
+                  onChange={setSupportLevelFilter}
+                  tenantId={activeTenant.id}
+                  value={supportLevelFilter}
+                />
+              )}
               {activeTenant && isSupabaseConfigured && canWorkTickets && (
                 <TicketListIncidentHint
                   onShowTickets={(incident, label) =>

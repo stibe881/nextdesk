@@ -12,11 +12,15 @@ export type TeamMember = {
   displayName: string;
 };
 
+export type TeamSupportLevel = 1 | 2 | 3;
+
 export type DepartmentTeam = {
   id: string;
   departmentId: string;
   name: string;
   active: boolean;
+  /** 1st/2nd/3rd Level Support; null for teams outside the level model. */
+  supportLevel: TeamSupportLevel | null;
   members: TeamMember[];
 };
 
@@ -40,6 +44,7 @@ type DepartmentTeamsRequest =
       id?: string;
       departmentId: string;
       name: string;
+      supportLevel?: TeamSupportLevel | null;
     }
   | { type: "archive"; tenantId: string; id: string }
   | {
@@ -118,11 +123,18 @@ function parseTeam(value: unknown): DepartmentTeam | null {
 
   const members = value.members.map(parseMember);
   if (members.some((member) => member === null)) return null;
+  const supportLevel =
+    value.supportLevel === 1 ||
+    value.supportLevel === 2 ||
+    value.supportLevel === 3
+      ? value.supportLevel
+      : null;
   return {
     id: value.id,
     departmentId: value.departmentId,
     name: value.name,
     active: value.active,
+    supportLevel,
     members: members as TeamMember[],
   };
 }
@@ -210,6 +222,7 @@ export async function saveDepartmentTeam(input: {
   id?: string;
   departmentId: string;
   name: string;
+  supportLevel?: TeamSupportLevel | null;
 }): Promise<void> {
   await requestDepartmentTeams({ type: "save", ...input });
 }

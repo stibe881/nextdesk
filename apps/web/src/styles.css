@@ -21498,3 +21498,23 @@ html:has(.embed-status-badge) body {
     gap: 2px;
   }
 }
+
+/* Supportstufe eines Teams (1st/2nd/3rd Level) */
+.department-management__item-main strong .department-management__level-badge {
+  display: inline-block;
+  margin-left: 8px;
+  border-radius: 999px;
+  padding: 1px 8px;
+  background: var(--tone-info-soft);
+  color: var(--tone-info);
+  font-size: 11px;
+  font-weight: 700;
+  vertical-align: middle;
+}
+
+.department-management__team-form label small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.4;
+}

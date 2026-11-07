@@ -12010,4 +12010,176 @@ $$;
 rollback;
 SQL
 
+
+# 0230: support levels (1st/2nd/3rd Level) on teams, level history from the
+# assigned team, handover RPC with mandatory note, level queue list function.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_template record;
+  v_member uuid;
+  v_in_progress uuid;
+  v_ticket uuid := gen_random_uuid();
+  v_l1 uuid := gen_random_uuid();
+  v_l2 uuid := gen_random_uuid();
+  v_l3 uuid := gen_random_uuid();
+  v_plain uuid := gen_random_uuid();
+  v_result jsonb;
+  v_hint text;
+  v_change record;
+begin
+  if not (select relrowsecurity from pg_class where oid = 'public.ticket_support_level_changes'::regclass) then
+    raise exception 'support level test: RLS disabled';
+  end if;
+  if has_table_privilege('authenticated', 'public.ticket_support_level_changes', 'select')
+    or has_function_privilege('authenticated',
+      'public.ticket_support_level_handover(uuid, uuid, uuid, uuid, uuid, text, smallint)', 'execute')
+    or has_function_privilege('anon',
+      'public.list_authorized_ticket_list_page_by_level(uuid, uuid[], uuid[], uuid[], uuid, boolean, text, text, integer, integer, text, text, text[], text[], text[], text[], text[], text, text[], uuid[], uuid[], smallint)', 'execute') then
+    raise exception 'support level test: browser roles have too much access';
+  end if;
+  if not has_function_privilege('authenticated',
+      'public.list_authorized_ticket_list_page_by_level(uuid, uuid[], uuid[], uuid[], uuid, boolean, text, text, integer, integer, text, text, text[], text[], text[], text[], text[], text, text[], uuid[], uuid[], smallint)', 'execute') then
+    raise exception 'support level test: level queue not callable by agents';
+  end if;
+
+  select * into v_template from public.tickets limit 1;
+  select membership.user_id into v_member
+  from public.department_memberships membership
+  join public.tenant_memberships tenant_membership
+    on tenant_membership.tenant_id = membership.tenant_id
+   and tenant_membership.user_id = membership.user_id
+   and tenant_membership.status = 'active'
+  where membership.tenant_id = v_template.tenant_id
+    and membership.department_id = v_template.department_id
+    and membership.status = 'active'
+  limit 1;
+  select id into v_in_progress from public.ticket_statuses
+  where tenant_id = v_template.tenant_id and key = 'in_progress';
+
+  begin
+    insert into public.teams (id, tenant_id, department_id, name, active, support_level)
+    values (gen_random_uuid(), v_template.tenant_id, v_template.department_id, 'Level 4', true, 4);
+    raise exception 'support level test: level 4 accepted';
+  exception when check_violation then
+    null;
+  end;
+  insert into public.teams (id, tenant_id, department_id, name, active, support_level)
+  values
+    (v_l1, v_template.tenant_id, v_template.department_id, 'Service Desk L1', true, 1),
+    (v_l2, v_template.tenant_id, v_template.department_id, 'Systemtechnik L2', true, 2),
+    (v_l3, v_template.tenant_id, v_template.department_id, 'Spezialisten L3', true, 3),
+    (v_plain, v_template.tenant_id, v_template.department_id, 'Projektteam', true, null);
+  insert into public.team_memberships (team_id, user_id) values (v_l2, v_member);
+
+  insert into public.tickets (id, tenant_id, department_id, ticket_number, subject, description,
+    status_id, priority_id, requester_id, assigned_team_id)
+  values (v_ticket, v_template.tenant_id, v_template.department_id, 'LEVEL-TEST-1',
+    'VPN bricht ab', 'Seit heute Morgen', v_in_progress, v_template.priority_id,
+    v_template.requester_id, v_l1);
+  if not exists (select 1 from public.ticket_support_level_changes
+                 where ticket_id = v_ticket and kind = 'initial' and to_level = 1 and from_level is null) then
+    raise exception 'support level test: initial level not recorded';
+  end if;
+
+  v_hint := null;
+  begin
+    perform public.ticket_support_level_handover(v_template.tenant_id, v_ticket, v_member, v_l2, null, 'kurz', 1::smallint);
+  exception when invalid_parameter_value then
+    get stacked diagnostics v_hint = pg_exception_hint;
+  end;
+  if v_hint is distinct from 'support_level_handover_invalid' then
+    raise exception 'support level test: short note accepted (hint %)', v_hint;
+  end if;
+  v_hint := null;
+  begin
+    perform public.ticket_support_level_handover(v_template.tenant_id, v_ticket, v_member, v_l3, null,
+      'Neustart und Treiber geprüft, Problem bleibt.', 1::smallint);
+  exception when invalid_parameter_value then
+    get stacked diagnostics v_hint = pg_exception_hint;
+  end;
+  if v_hint is distinct from 'support_level_target_invalid' then
+    raise exception 'support level test: level skipped (hint %)', v_hint;
+  end if;
+  v_hint := null;
+  begin
+    perform public.ticket_support_level_handover(v_template.tenant_id, v_ticket, v_member, v_l2, null,
+      'Neustart und Treiber geprüft, Problem bleibt.', 2::smallint);
+  exception when serialization_failure then
+    get stacked diagnostics v_hint = pg_exception_hint;
+  end;
+  if v_hint is distinct from 'support_level_changed' then
+    raise exception 'support level test: stale level accepted (hint %)', v_hint;
+  end if;
+
+  v_result := public.ticket_support_level_handover(v_template.tenant_id, v_ticket, v_member, v_l2, v_member,
+    'Neustart und Treiber geprüft, Problem bleibt.', 1::smallint);
+  if v_result ->> 'direction' <> 'escalated' or (v_result ->> 'toLevel')::int <> 2 then
+    raise exception 'support level test: wrong handover result %', v_result;
+  end if;
+  select * into v_change from public.ticket_support_level_changes
+  where ticket_id = v_ticket order by seq desc limit 1;
+  if v_change.kind <> 'escalated' or v_change.from_level <> 1 or v_change.to_level <> 2
+    or v_change.handover_note is null or v_change.comment_id is null
+    or v_change.actor_id is distinct from v_member
+    or v_change.id::text <> v_result ->> 'changeId' then
+    raise exception 'support level test: escalation not recorded with note';
+  end if;
+  if not exists (select 1 from public.ticket_comments
+                 where id = v_change.comment_id and visibility = 'internal'
+                   and body like 'Übergabe an 2nd Level%')
+    or not exists (select 1 from public.ticket_events
+                   where ticket_id = v_ticket and event_type = 'ticket.support_level_changed')
+    or (select assigned_team_id from public.tickets where id = v_ticket) <> v_l2
+    or (select assigned_agent_id from public.tickets where id = v_ticket) <> v_member then
+    raise exception 'support level test: handover side effects missing';
+  end if;
+  if current_setting('nextdesk.support_level_handover', true) <> '' then
+    raise exception 'support level test: handover context leaked';
+  end if;
+
+  v_result := public.ticket_support_level_handover(v_template.tenant_id, v_ticket, v_member, v_l1, null,
+    'Benutzerkonto war gesperrt, bitte Rückmeldung an Kundin.', 2::smallint);
+  if v_result ->> 'direction' <> 'returned' then
+    raise exception 'support level test: return not accepted';
+  end if;
+
+  -- A plain team change without a level clears the level (no note needed).
+  update public.tickets set assigned_team_id = v_plain where id = v_ticket;
+  select * into v_change from public.ticket_support_level_changes
+  where ticket_id = v_ticket order by seq desc limit 1;
+  if v_change.kind <> 'cleared' or v_change.from_level <> 1 or v_change.to_level is not null
+    or v_change.handover_note is not null then
+    raise exception 'support level test: cleared level not recorded';
+  end if;
+  if (select count(*) from public.ticket_support_level_changes where ticket_id = v_ticket) <> 4 then
+    raise exception 'support level test: unexpected history length';
+  end if;
+  v_hint := null;
+  begin
+    perform public.ticket_support_level_handover(v_template.tenant_id, v_ticket, v_member, v_l2, null,
+      'Neustart und Treiber geprüft, Problem bleibt.', null);
+  exception when invalid_parameter_value then
+    get stacked diagnostics v_hint = pg_exception_hint;
+  end;
+  if v_hint is distinct from 'support_level_current_missing' then
+    raise exception 'support level test: handover without current level (hint %)', v_hint;
+  end if;
+
+  perform * from public.list_authorized_ticket_list_page_by_level(
+    p_tenant_id => v_template.tenant_id, p_support_level => 2::smallint);
+  begin
+    perform * from public.list_authorized_ticket_list_page_by_level(
+      p_tenant_id => v_template.tenant_id, p_support_level => 5::smallint);
+    raise exception 'support level test: invalid level queue accepted';
+  exception when invalid_parameter_value then
+    null;
+  end;
+  raise notice 'support level checks ran';
+end;
+$$;
+rollback;
+SQL
+
 echo "PostgreSQL 16 migration and RLS integration checks passed."

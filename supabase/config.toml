@@ -237,3 +237,6 @@ verify_jwt = true
 
 [functions.sla-breach-reasons]
 verify_jwt = true
+
+[functions.ticket-support-levels]
+verify_jwt = true
