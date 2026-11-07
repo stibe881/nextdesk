@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { functionErrorStatus } from "./lib/function-error";
 import {
   AI_UNAVAILABLE_CODES,
@@ -164,7 +164,12 @@ export function KnowledgeSuggestions({
     void load("list");
   }, [load]);
 
+  // Blocks a second click before React has re-rendered the disabled button.
+  const drafting = useRef(false);
+
   async function createDraft(suggestionId: string) {
+    if (drafting.current) return;
+    drafting.current = true;
     setBusyId(suggestionId);
     setError("");
     try {
@@ -201,6 +206,7 @@ export function KnowledgeSuggestions({
         setError(message);
       }
     } finally {
+      drafting.current = false;
       setBusyId(null);
     }
   }

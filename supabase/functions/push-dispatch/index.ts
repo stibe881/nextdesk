@@ -92,6 +92,7 @@ function category(
   }
   if (kind === "ticket.escalation_opened") return "escalation";
   if (kind === "ticket.follow_up_due") return "follow_up";
+  if (kind === "ticket.rule_reminder") return "follow_up";
   if (kind === "contract.deadline") return "contract_deadline";
   if (kind === "inventory.low_stock") return "inventory_low_stock";
   if (kind.startsWith("shop.order.")) return "shop";
@@ -110,7 +111,8 @@ function payloadKind(
   | "department_question_answered"
   | "supervisor_request"
   | "supervisor_answer"
-  | "watched" {
+  | "watched"
+  | "rule_reminder" {
   if (kind === "ticket.department_question.asked") {
     return "department_question_asked";
   }
@@ -120,6 +122,7 @@ function payloadKind(
   if (kind === "ticket.supervisor_request") return "supervisor_request";
   if (kind === "ticket.supervisor_answer") return "supervisor_answer";
   if (kind.startsWith("ticket.watch.")) return "watched";
+  if (kind === "ticket.rule_reminder") return "rule_reminder";
   return fallback;
 }
 
@@ -380,6 +383,18 @@ async function deliverSingle(admin: any, row: ClaimRow): Promise<void> {
     }
   }
   // Watched tickets: what changed, and by whom.
+  let ruleReminder: { ruleName?: string } = {};
+  if (row.kind === "ticket.rule_reminder" && row.notification_id) {
+    const { data: notification } = await admin
+      .from("ticket_notifications")
+      .select("payload")
+      .eq("id", row.notification_id)
+      .maybeSingle();
+    const name = notification?.payload?.ruleName;
+    if (typeof name === "string" && name.trim()) {
+      ruleReminder = { ruleName: name.trim() };
+    }
+  }
   let watched: Record<string, string | boolean> = {};
   if (row.kind.startsWith("ticket.watch.") && row.notification_id) {
     const { data: notification } = await admin
@@ -421,6 +436,7 @@ async function deliverSingle(admin: any, row: ClaimRow): Promise<void> {
     ...serviceTask,
     ...infrastructure,
     ...watched,
+    ...ruleReminder,
     ...delegated,
     kind: payloadKind(row.kind, preferenceCategory),
     tenantId: row.tenant_id,

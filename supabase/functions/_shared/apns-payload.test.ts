@@ -138,3 +138,21 @@ Deno.test("infrastructure reminders name device, reason and date", () => {
     "00000000-0000-4000-8000-000000000003",
   );
 });
+
+Deno.test("rule reminders name the rule and open the ticket", () => {
+  const payload = buildApnsPayload({
+    kind: "rule_reminder",
+    tenantId: "00000000-0000-4000-8000-000000000001",
+    notificationId: "00000000-0000-4000-8000-000000000002",
+    ticketId: "00000000-0000-4000-8000-000000000003",
+    ticketNumber: "ICT-42",
+    ruleName: "Seit 4 h keine Antwort",
+  });
+  const aps = payload.aps as { alert: { title: string; body: string } };
+  assertEquals(aps.alert.title, "Erinnerung: Seit 4 h keine Antwort");
+  assertStringIncludes(aps.alert.body, "ICT-42");
+  assertEquals(
+    (payload.body as Record<string, unknown>).ticketId,
+    "00000000-0000-4000-8000-000000000003",
+  );
+});

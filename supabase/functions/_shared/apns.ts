@@ -20,6 +20,7 @@ export type ApnsPayloadKind =
   | "service_task"
   | "infrastructure"
   | "watched"
+  | "rule_reminder"
   | "summary"
   | "test";
 
@@ -49,6 +50,8 @@ export type ApnsPayloadInput = {
   watchAssigneeName?: string;
   watchActorName?: string;
   watchInternal?: boolean;
+  /** Reminder from a time-based ticket rule: the rule's name. */
+  ruleName?: string;
   /** Forwarded to a stand-in: name of the absent person. */
   delegatedFromName?: string;
 };
@@ -250,6 +253,15 @@ function alertFor(input: ApnsPayloadInput): { title: string; body: string } {
           ? `Für ${ticketNumber} ist eine SLA-Frist betroffen: ${subject}`
           : `Für ${ticketNumber} ist eine SLA-Frist betroffen.`,
       };
+    case "rule_reminder": {
+      const rule = input.ruleName ? truncateSubject(input.ruleName) : null;
+      return {
+        title: rule ? `Erinnerung: ${rule}` : "Erinnerung aus Regel",
+        body: subject
+          ? `${ticketNumber}: ${subject}`
+          : `${ticketNumber} braucht Aufmerksamkeit.`,
+      };
+    }
     case "follow_up":
       return {
         title: "Wiedervorlage fällig",

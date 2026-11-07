@@ -10844,4 +10844,23 @@ $$;
 rollback;
 SQL
 
+# 0222: rule reminders map to the follow-up push category; draft claim columns exist.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+do $$
+begin
+  if public.push_notification_category('ticket.rule_reminder') <> 'follow_up' then
+    raise exception 'rule push test: wrong category';
+  end if;
+  if not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'knowledge_suggestions'
+      and column_name = 'drafting_started_at'
+  ) then
+    raise exception 'draft claim test: column missing';
+  end if;
+  raise notice 'rule push and draft claim checks ran';
+end;
+$$;
+SQL
+
 echo "PostgreSQL 16 migration and RLS integration checks passed."

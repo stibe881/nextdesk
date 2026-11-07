@@ -17,7 +17,8 @@ export const pushCategoryMeta = {
     label: "Eskalationen",
   },
   follow_up: {
-    description: "Erinnerung zum gesetzten Termin",
+    description:
+      "Erinnerungen zu Wiedervorlagen und aus zeitgesteuerten Regeln",
     label: "Wiedervorlagen",
   },
   infrastructure: {
