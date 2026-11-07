@@ -98,6 +98,7 @@ import { KnowledgeBase } from "./knowledge-base";
 import { GlobalSearch, type GlobalSearchResult } from "./global-search";
 import { ServiceReporting } from "./service-reporting";
 import { TeamSupervision } from "./team-supervision";
+import { MyPrioritiesCard } from "./my-priorities";
 import { ProblemCandidates } from "./problem-insights";
 import { TicketKanban } from "./ticket-kanban";
 import { Infrastructure } from "./infrastructure";
@@ -6407,7 +6408,20 @@ function AuthenticatedApp() {
                   .filter((key) => !homeLayout.hidden.includes(key))
                   .map((key) => (
                     <Fragment key={key}>
-                      {key === "approvals" ? (
+                      {key === "myPriorities" ? (
+                        <>
+                          {activeTenant && canWorkTickets && (
+                            <MyPrioritiesCard
+                              onOpenTicket={(ticketId) => {
+                                setSection("Tickets");
+                                setSelectedTicketId(ticketId);
+                              }}
+                              refreshKey={dashboardRevision}
+                              tenantId={activeTenant.id}
+                            />
+                          )}
+                        </>
+                      ) : key === "approvals" ? (
                         <>
                           {activeTenant &&
                             isFeatureEnabled("ticketing.detail") && (

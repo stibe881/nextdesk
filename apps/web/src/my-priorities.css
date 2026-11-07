@@ -1,0 +1,85 @@
+.my-priorities .eyebrow {
+  align-items: center;
+  display: inline-flex;
+  gap: 4px;
+}
+.my-priorities__actions {
+  align-items: center;
+  display: flex;
+  gap: 6px;
+}
+.my-priorities__list {
+  display: grid;
+  gap: 6px;
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+}
+.my-priorities__item {
+  align-items: center;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: auto auto minmax(0, 1fr) auto;
+  padding: 6px 8px;
+  transition:
+    border-color 120ms ease,
+    box-shadow 120ms ease;
+}
+.my-priorities__item:hover {
+  border-color: var(--primary);
+}
+.my-priorities__item.is-dragging {
+  opacity: 0.5;
+}
+.my-priorities__grip {
+  color: var(--muted);
+  cursor: grab;
+  display: inline-flex;
+}
+.my-priorities__rank {
+  align-items: center;
+  background: var(--primary-soft);
+  border-radius: 999px;
+  color: var(--primary);
+  display: inline-flex;
+  font-size: 0.75rem;
+  font-weight: 800;
+  height: 24px;
+  justify-content: center;
+  width: 24px;
+}
+.my-priorities__ticket {
+  background: none;
+  border: 0;
+  color: var(--ink);
+  cursor: pointer;
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 0;
+  text-align: left;
+}
+.my-priorities__ticket strong,
+.my-priorities__ticket small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.my-priorities__ticket strong {
+  font-size: 0.86rem;
+}
+.my-priorities__ticket small {
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+.my-priorities__move {
+  display: inline-flex;
+  gap: 2px;
+}
+.my-priorities__move .icon-button {
+  height: 26px;
+  width: 26px;
+}

@@ -18,6 +18,7 @@ import { OnboardingHomeCard } from "@/components/onboarding-home-card";
 import { IncidentBanner } from "@/components/incident-banner";
 import { useMobileFeatures } from "@/components/mobile-feature-gate";
 import { useMobileNetworkStatus } from "@/components/offline-status";
+import { MyPrioritiesCard } from "@/components/my-priorities-card";
 import { ScreenContainer } from "@/components/screen-container";
 import { UndoToast } from "@/components/undo-toast";
 import {
@@ -402,10 +403,12 @@ export default function HomeScreen() {
     tenant,
   ]);
 
+  const [priorityRevision, setPriorityRevision] = useState(0);
   useFocusEffect(
     useCallback(() => {
       void recoveryEpoch;
       void load();
+      setPriorityRevision((current) => current + 1);
     }, [load, recoveryEpoch]),
   );
 
@@ -1055,6 +1058,10 @@ export default function HomeScreen() {
               {supplementaryMessage}
             </Text>
           </View>
+        ) : null}
+
+        {tenantId && !isOffline ? (
+          <MyPrioritiesCard refreshKey={priorityRevision} tenantId={tenantId} />
         ) : null}
 
         <Text style={[styles.sectionEyebrow, tokenStyles.muted]}>

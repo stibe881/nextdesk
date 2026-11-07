@@ -63,6 +63,7 @@ export default function TabLayout() {
         <Tabs.Screen name="assets" options={{ href: null }} />
         <Tabs.Screen name="inventory" options={{ href: null }} />
         <Tabs.Screen name="infrastructure" options={{ href: null }} />
+        <Tabs.Screen name="priorities" options={{ href: null }} />
         <Tabs.Screen
           name="shop"
           options={{ href: shopVisible ? undefined : null, title: "Shop" }}
