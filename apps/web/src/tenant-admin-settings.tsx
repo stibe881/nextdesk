@@ -45,6 +45,7 @@ import { DepartmentModules } from "./department-modules";
 import { TicketTemplates } from "./ticket-templates";
 import { TenantAutomation } from "./tenant-automation";
 import { TicketLifecycleSettings } from "./ticket-lifecycle-settings";
+import { TicketRules } from "./ticket-rules";
 import { TenantDataRetention } from "./tenant-data-retention";
 import { TenantOnboarding, type OnboardingTarget } from "./tenant-onboarding";
 import { AiGovernancePanel } from "./ai-governance-panel";
@@ -3647,6 +3648,9 @@ export function TenantAdminSettings({
                                             "automation.sla" ? (
                                               <>
                                                 <TicketLifecycleSettings
+                                                  tenantId={tenantId}
+                                                />
+                                                <TicketRules
                                                   tenantId={tenantId}
                                                 />
                                                 <TenantAutomation
