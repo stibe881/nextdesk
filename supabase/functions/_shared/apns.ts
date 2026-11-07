@@ -23,6 +23,7 @@ export type ApnsPayloadKind =
   | "rule_reminder"
   | "vendor_reminder"
   | "children_done"
+  | "kudos"
   | "summary"
   | "test";
 
@@ -56,6 +57,9 @@ export type ApnsPayloadInput = {
   ruleName?: string;
   /** Vendor case reminder: name of the vendor. */
   vendorName?: string;
+  /** Customer praise: display name of the requester (never e-mail) and score. */
+  kudosRequesterName?: string;
+  kudosScore?: number;
   /** Forwarded to a stand-in: name of the absent person. */
   delegatedFromName?: string;
 };
@@ -273,6 +277,16 @@ function alertFor(input: ApnsPayloadInput): { title: string; body: string } {
       return {
         title: "Drittanbieter nachfassen",
         body: `${vendor} hat sich zu ${ticketNumber} noch nicht gemeldet.`,
+      };
+    }
+    case "kudos": {
+      const from = input.kudosRequesterName
+        ? truncateSubject(input.kudosRequesterName)
+        : "Eine meldende Person";
+      const score = input.kudosScore ? ` (${input.kudosScore}/5)` : "";
+      return {
+        title: "Lob von Kund:innen",
+        body: `${from} hat ${ticketNumber} sehr gut bewertet${score}. Danke für deinen Einsatz!`,
       };
     }
     case "children_done":

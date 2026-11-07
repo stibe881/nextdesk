@@ -113,3 +113,18 @@ Deno.test("absent agents hand over all their tickets", () => {
   );
   assertEquals(moves.map((move) => move.toAgentId), ["b"]);
 });
+
+Deno.test("parses SLA cause report and kudos board actions", () => {
+  assertEquals(
+    parseAction({ type: "slaBreachCauses", tenantId: TENANT, month: "2026-11" }),
+    { type: "slaBreachCauses", tenantId: TENANT, month: "2026-11" },
+  );
+  assertEquals(
+    parseAction({ type: "slaBreachCauses", tenantId: TENANT, month: "2026-13" }),
+    null,
+  );
+  assertEquals(parseAction({ type: "kudosBoard", tenantId: TENANT }), {
+    type: "kudosBoard",
+    tenantId: TENANT,
+  });
+});

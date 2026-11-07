@@ -226,3 +226,6 @@ verify_jwt = true
 
 [functions.portal-assistant]
 verify_jwt = true
+
+[functions.sla-breach-reasons]
+verify_jwt = true

@@ -97,6 +97,7 @@ import {
 import "./ticket-experience.css";
 import { TicketPdfRecord } from "./ticket-pdf-record";
 import { TicketCoordination } from "./ticket-coordination";
+import { TicketSlaBreachReason } from "./ticket-sla-breach-reason";
 import { useReplySnippetAssist } from "./reply-snippets";
 import {
   TicketFormAnswersBlock,
@@ -7421,6 +7422,13 @@ export function TicketDetail({
                     {pendingCloseConfirmation.statusLabel}“ verschoben. Offene
                     Bearbeitung wird damit beendet.
                   </p>
+                  {!requesterView && (
+                    <TicketSlaBreachReason
+                      tenantId={tenantId}
+                      ticketId={ticketId}
+                      variant="closing"
+                    />
+                  )}
                   <div className="ticket-detail-actions">
                     <button
                       className="primary-button"
@@ -7441,6 +7449,13 @@ export function TicketDetail({
                   </div>
                 </div>
               </div>
+            )}
+            {!requesterView && !pendingCloseConfirmation && (
+              <TicketSlaBreachReason
+                refreshKey={`${detail.ticket.status_id}:${detail.ticket.resolved_at ?? ""}`}
+                tenantId={tenantId}
+                ticketId={ticketId}
+              />
             )}
             {solutionPromptOpen && ticketIsClosed && (
               <TicketSolutionPrompt

@@ -4,6 +4,17 @@ import {
   listAssignableAgentsForDepartments,
   type TicketAgent,
 } from "../_shared/assignable-agents.ts";
+import {
+  type BreachForReport,
+  detectBreaches,
+  isSlaBreachReasonCode,
+  monthQueryRange,
+  praiseExcerpt,
+  SLA_BREACH_REASON_CODES,
+  SLA_BREACH_REASON_LABELS,
+  summarizeCauses,
+  zurichMonth,
+} from "../_shared/sla-breach-causes.ts";
 
 /**
  * Team supervision for the role "Vorgesetzter Agent" (permission
@@ -19,6 +30,7 @@ type Row = Record<string, unknown>;
 const MAX_REQUEST_BYTES = 32 * 1024;
 const MAX_REASSIGN = 100;
 const OPEN_TICKET_LIMIT = 500;
+const BREACH_TICKET_LIMIT = 10_000;
 
 class HttpError extends Error {
   constructor(
@@ -61,6 +73,8 @@ type Action =
     comment: string | null;
   }
   | { type: "monthlyReport"; tenantId: string; month: string }
+  | { type: "slaBreachCauses"; tenantId: string; month: string }
+  | { type: "kudosBoard"; tenantId: string }
   | { type: "coachingNotes"; tenantId: string; agentId: string }
   | {
     type: "addCoachingNote";
@@ -82,6 +96,7 @@ function parseAction(value: unknown): Action | null {
     case "reviewQueue":
     case "liveBoard":
     case "skills":
+    case "kudosBoard":
       return { type: value.type, tenantId };
     case "saveSkill": {
       const name = typeof value.name === "string" ? value.name.trim() : "";
@@ -177,6 +192,14 @@ function parseAction(value: unknown): Action | null {
         return null;
       }
       return { type: "monthlyReport", tenantId, month: value.month };
+    case "slaBreachCauses":
+      if (
+        typeof value.month !== "string" ||
+        !/^\d{4}-(0[1-9]|1[0-2])$/.test(value.month)
+      ) {
+        return null;
+      }
+      return { type: "slaBreachCauses", tenantId, month: value.month };
     case "coachingNotes":
       return isUuid(value.agentId)
         ? {
@@ -629,6 +652,274 @@ async function requireSupervisedAgent(
   }
 }
 
+const KUDOS_COMMENT_MAX = 500;
+
+type KudosEntry = {
+  ticketId: string;
+  ticketNumber: string | null;
+  subject: string | null;
+  agentId: string | null;
+  departmentId: string | null;
+  teamId: string | null;
+  score: number;
+  comment: string | null;
+  requesterName: string | null;
+  createdAt: string;
+};
+
+/**
+ * Praise from the satisfaction survey. Only the requester's display name is
+ * returned (never the e-mail address); the comment is shortened.
+ */
+async function loadKudos(
+  admin: Admin,
+  tenantId: string,
+  filter: {
+    agentIds?: string[];
+    departmentIds?: string[];
+    sinceDays: number;
+    limit: number;
+  },
+): Promise<KudosEntry[]> {
+  let query = admin
+    .from("ticket_kudos")
+    .select(
+      "ticket_id, agent_id, department_id, team_id, requester_id, score, created_at, tickets(ticket_number, subject)",
+    )
+    .eq("tenant_id", tenantId)
+    .is("withdrawn_at", null)
+    .gte(
+      "created_at",
+      new Date(Date.now() - filter.sinceDays * 86_400_000).toISOString(),
+    )
+    .order("created_at", { ascending: false })
+    .limit(filter.limit);
+  if (filter.agentIds) query = query.in("agent_id", filter.agentIds);
+  if (filter.departmentIds) query = query.in("department_id", filter.departmentIds);
+  const kudos = await query;
+  if (kudos.error) throw dbFailure();
+  const rows = (kudos.data ?? []) as Row[];
+  if (!rows.length) return [];
+  const requesterIds = [
+    ...new Set(rows.map((row) => row.requester_id).filter(isUuid)),
+  ];
+  const [comments, profiles] = await Promise.all([
+    admin
+      .from("ticket_satisfaction")
+      .select("ticket_id, comment")
+      .in("ticket_id", rows.map((row) => row.ticket_id)),
+    requesterIds.length
+      ? admin.from("user_profiles").select("id, display_name").in("id", requesterIds)
+      : { data: [], error: null },
+  ]);
+  if (comments.error || profiles.error) throw dbFailure();
+  const commentByTicket = new Map<unknown, string | null>(
+    ((comments.data ?? []) as Row[]).map((row) => [
+      row.ticket_id,
+      typeof row.comment === "string" ? row.comment : null,
+    ]),
+  );
+  const nameById = new Map<unknown, string>(
+    ((profiles.data ?? []) as Row[])
+      // A display name that is an e-mail address is not shown.
+      .filter((row) =>
+        typeof row.display_name === "string" && row.display_name.trim() &&
+        !row.display_name.includes("@")
+      )
+      .map((row) => [row.id, (row.display_name as string).trim()]),
+  );
+  return rows.map((row) => {
+    const ticket = (Array.isArray(row.tickets) ? row.tickets[0] : row.tickets) as
+      | Row
+      | null;
+    return {
+      ticketId: row.ticket_id as string,
+      ticketNumber: (ticket?.ticket_number as string | undefined) ?? null,
+      subject: (ticket?.subject as string | undefined) ?? null,
+      agentId: (row.agent_id as string | null) ?? null,
+      departmentId: (row.department_id as string | null) ?? null,
+      teamId: (row.team_id as string | null) ?? null,
+      score: Number(row.score),
+      comment: praiseExcerpt(
+        commentByTicket.get(row.ticket_id) ?? null,
+        KUDOS_COMMENT_MAX,
+      ),
+      requesterName: nameById.get(row.requester_id) ?? null,
+      createdAt: row.created_at as string,
+    };
+  });
+}
+
+/** Team pinboard: latest praise per supervised department (90 days). */
+async function kudosBoard(
+  request: Request,
+  admin: Admin,
+  action: Action,
+  actorId: string,
+) {
+  const scope = await loadScope(admin, action.tenantId, actorId);
+  const entries = await loadKudos(admin, action.tenantId, {
+    departmentIds: scope.departmentIds,
+    sinceDays: 90,
+    limit: 300,
+  });
+  const names = new Map(scope.agents.map((agent) => [agent.id, agent.displayName]));
+  const departments = scope.departments.map((department) => {
+    const own = entries.filter((entry) => entry.departmentId === department.id);
+    const perAgent = new Map<string, number>();
+    for (const entry of own) {
+      if (entry.agentId) {
+        perAgent.set(entry.agentId, (perAgent.get(entry.agentId) ?? 0) + 1);
+      }
+    }
+    return {
+      id: department.id,
+      name: department.name,
+      total: own.length,
+      topAgents: [...perAgent.entries()]
+        .map(([agentId, count]) => ({
+          agentId,
+          agentName: names.get(agentId) ?? "Ehemalige Person",
+          count,
+        }))
+        .sort((a, b) =>
+          b.count - a.count || a.agentName.localeCompare(b.agentName, "de-CH")
+        )
+        .slice(0, 3),
+      entries: own.slice(0, 30).map((entry) => ({
+        ...entry,
+        agentName: entry.agentId
+          ? names.get(entry.agentId) ?? "Ehemalige Person"
+          : null,
+      })),
+    };
+  });
+  return json(request, { data: { sinceDays: 90, departments } });
+}
+
+/**
+ * SLA breaches of one month (by due date, Swiss time) in the supervised
+ * departments, grouped per department and team with their recorded causes.
+ */
+async function slaBreachCauses(
+  request: Request,
+  admin: Admin,
+  action: Extract<Action, { type: "slaBreachCauses" }>,
+  actorId: string,
+) {
+  const scope = await loadScope(admin, action.tenantId, actorId);
+  const { from, to } = monthQueryRange(action.month);
+  const tickets = await admin
+    .from("tickets")
+    .select(
+      "id, department_id, assigned_team_id, response_due_at, first_responded_at, resolution_due_at, resolved_at, closed_at",
+    )
+    .eq("tenant_id", action.tenantId)
+    .in("department_id", scope.departmentIds)
+    .is("merged_into_ticket_id", null)
+    .or(
+      `and(response_due_at.gte.${from},response_due_at.lt.${to}),and(resolution_due_at.gte.${from},resolution_due_at.lt.${to})`,
+    )
+    .limit(BREACH_TICKET_LIMIT);
+  if (tickets.error) throw dbFailure();
+  const rows = (tickets.data ?? []) as Row[];
+  const ticketIds = rows.map((row) => row.id as string);
+  const events = new Map<string, string[]>();
+  const reasons = new Map<string, string>();
+  for (let index = 0; index < ticketIds.length; index += 300) {
+    const chunk = ticketIds.slice(index, index + 300);
+    const [eventResult, reasonResult] = await Promise.all([
+      admin
+        .from("ticket_sla_events")
+        .select("ticket_id, event_type")
+        .in("ticket_id", chunk)
+        .in("event_type", ["response_breached", "resolution_breached"]),
+      admin
+        .from("ticket_sla_breach_reasons")
+        .select("ticket_id, breach_kind, reason_code")
+        .eq("tenant_id", action.tenantId)
+        .in("ticket_id", chunk),
+    ]);
+    if (eventResult.error || reasonResult.error) throw dbFailure();
+    for (const row of (eventResult.data ?? []) as Row[]) {
+      const id = row.ticket_id as string;
+      events.set(id, [...(events.get(id) ?? []), String(row.event_type)]);
+    }
+    for (const row of (reasonResult.data ?? []) as Row[]) {
+      reasons.set(`${row.ticket_id}:${row.breach_kind}`, String(row.reason_code));
+    }
+  }
+  const now = Date.now();
+  const breaches: BreachForReport[] = [];
+  for (const row of rows) {
+    const detected = detectBreaches(
+      {
+        responseDueAt: (row.response_due_at as string | null) ?? null,
+        firstRespondedAt: (row.first_responded_at as string | null) ?? null,
+        resolutionDueAt: (row.resolution_due_at as string | null) ?? null,
+        resolvedAt: (row.resolved_at as string | null) ?? null,
+        closedAt: (row.closed_at as string | null) ?? null,
+      },
+      events.get(row.id as string) ?? [],
+      now,
+    );
+    for (const breach of detected) {
+      if (zurichMonth(breach.dueAt) !== action.month) continue;
+      const code = reasons.get(`${row.id}:${breach.kind}`);
+      breaches.push({
+        departmentId: row.department_id as string,
+        teamId: (row.assigned_team_id as string | null) ?? null,
+        kind: breach.kind,
+        reasonCode: isSlaBreachReasonCode(code) ? code : null,
+      });
+    }
+  }
+  const teamIds = [
+    ...new Set(breaches.map((breach) => breach.teamId).filter(isUuid)),
+  ];
+  const teams = teamIds.length
+    ? await admin
+      .from("teams")
+      .select("id, name")
+      .eq("tenant_id", action.tenantId)
+      .in("id", teamIds)
+    : { data: [], error: null };
+  if (teams.error) throw dbFailure();
+  const teamNames = new Map(
+    ((teams.data ?? []) as Row[]).map((row) => [row.id as string, row.name as string]),
+  );
+  const departments = scope.departments.map((department) => {
+    const own = breaches.filter((breach) => breach.departmentId === department.id);
+    const teamKeys = [...new Set(own.map((breach) => breach.teamId))];
+    return {
+      id: department.id,
+      name: department.name,
+      ...summarizeCauses(own),
+      response: own.filter((breach) => breach.kind === "response").length,
+      resolution: own.filter((breach) => breach.kind === "resolution").length,
+      teams: teamKeys
+        .map((teamId) => ({
+          id: teamId,
+          name: teamId ? teamNames.get(teamId) ?? "Team" : "Ohne Team",
+          ...summarizeCauses(own.filter((breach) => breach.teamId === teamId)),
+        }))
+        .sort((a, b) => b.total - a.total),
+    };
+  });
+  return json(request, {
+    data: {
+      month: action.month,
+      truncated: rows.length >= BREACH_TICKET_LIMIT,
+      reasons: SLA_BREACH_REASON_CODES.map((code) => ({
+        code,
+        label: SLA_BREACH_REASON_LABELS[code],
+      })),
+      total: summarizeCauses(breaches),
+      departments,
+    },
+  });
+}
+
 async function coachingNotes(
   request: Request,
   admin: Admin,
@@ -656,8 +947,14 @@ async function coachingNotes(
       .limit(20),
   ]);
   if (notes.error || reviews.error) throw dbFailure();
+  const kudos = await loadKudos(admin, action.tenantId, {
+    agentIds: [action.agentId],
+    sinceDays: 180,
+    limit: 20,
+  });
   return json(request, {
     data: {
+      kudos,
       notes: ((notes.data ?? []) as Row[]).map((row) => ({
         id: row.id,
         body: row.body,
@@ -1286,6 +1583,10 @@ const handler = withSupabase(
           return await saveReview(request, admin, action, actorId);
         case "monthlyReport":
           return await monthlyReport(request, admin, action, actorId);
+        case "slaBreachCauses":
+          return await slaBreachCauses(request, admin, action, actorId);
+        case "kudosBoard":
+          return await kudosBoard(request, admin, action, actorId);
         case "coachingNotes":
           return await coachingNotes(request, admin, action, actorId);
         case "addCoachingNote":

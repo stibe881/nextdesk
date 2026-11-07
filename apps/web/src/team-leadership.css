@@ -96,8 +96,7 @@
 }
 .live-board__agent.is-working .live-board__dot {
   background: var(--tone-success);
-  box-shadow: 0 0 0 4px
-    color-mix(in srgb, var(--tone-success) 20%, transparent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--tone-success) 20%, transparent);
 }
 .live-board__agent.is-available .live-board__dot {
   background: var(--primary);
@@ -272,5 +271,186 @@
 @media (max-width: 640px) {
   .team-supervision__suggestions li {
     grid-template-columns: 1fr;
+  }
+}
+
+/* SLA breach causes */
+.sla-causes {
+  display: grid;
+  gap: 16px;
+}
+.sla-causes__header {
+  align-items: flex-end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: space-between;
+}
+.sla-causes__header h3,
+.kudos-board > header h3 {
+  margin: 0;
+}
+.sla-causes__header label {
+  display: grid;
+  font-size: 0.8rem;
+  gap: 4px;
+}
+.sla-causes__total {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+.sla-causes__total > div {
+  align-items: baseline;
+  display: flex;
+  gap: 8px;
+}
+.sla-causes__total strong {
+  font-size: 2rem;
+  line-height: 1.1;
+}
+.sla-causes__total span {
+  color: var(--muted);
+}
+.sla-causes__missing {
+  background: var(--surface-subtle);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  padding: 3px 10px;
+}
+.sla-causes__missing.is-warn {
+  background: var(--tone-warning-soft, var(--surface-subtle));
+  color: var(--tone-warning, var(--muted));
+  font-weight: 600;
+}
+.sla-causes__grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr));
+}
+.sla-causes__card,
+.kudos-board__team {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card, 14px);
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+}
+.sla-causes__card > header,
+.kudos-board__team > header {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+}
+.sla-causes__card h4,
+.kudos-board__team h4 {
+  align-items: center;
+  display: flex;
+  font-size: 0.95rem;
+  gap: 6px;
+  margin: 0;
+  width: 100%;
+}
+.sla-causes__bars {
+  display: grid;
+  gap: 6px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.sla-causes__bars li {
+  align-items: center;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(120px, 1.3fr) 2fr auto;
+}
+.sla-causes__label {
+  font-size: 0.85rem;
+}
+.sla-causes__track {
+  background: var(--chart-grid, var(--surface-subtle));
+  border-radius: 4px;
+  height: 10px;
+  overflow: hidden;
+}
+.sla-causes__track span {
+  border-radius: 4px;
+  display: block;
+  height: 100%;
+}
+.sla-causes__value {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.sla-causes__teams summary {
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+.sla-causes__teams table {
+  border-collapse: collapse;
+  font-size: 0.8rem;
+  margin-top: 6px;
+  width: 100%;
+}
+.sla-causes__teams th,
+.sla-causes__teams td {
+  border-bottom: 1px solid var(--border);
+  padding: 4px 6px;
+  text-align: left;
+}
+
+/* Kudos pinboard */
+.kudos-board {
+  display: grid;
+  gap: 16px;
+}
+.kudos-board__top {
+  font-size: 0.8rem;
+}
+.kudos-board__notes {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr));
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.kudos-board__notes li {
+  background: var(--tone-success-soft, var(--surface-subtle));
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+}
+.kudos-board__stars {
+  color: var(--tone-warning, var(--accent));
+  letter-spacing: 1px;
+}
+.kudos-board__notes blockquote {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.kudos-board__notes footer {
+  align-items: center;
+  color: var(--muted);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 0.78rem;
+  gap: 4px 10px;
+}
+@media (max-width: 560px) {
+  .sla-causes__bars li {
+    grid-template-columns: 1fr auto;
+  }
+  .sla-causes__track {
+    grid-column: 1 / -1;
+    grid-row: 2;
   }
 }

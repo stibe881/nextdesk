@@ -185,3 +185,24 @@ Deno.test("vendor reminders and finished child tickets open the ticket", () => {
     "00000000-0000-4000-8000-000000000003",
   );
 });
+
+Deno.test("customer praise names the requester and opens the ticket", () => {
+  const payload = buildApnsPayload({
+    kind: "kudos",
+    tenantId: "00000000-0000-4000-8000-000000000001",
+    notificationId: "00000000-0000-4000-8000-000000000002",
+    ticketId: "00000000-0000-4000-8000-000000000003",
+    ticketNumber: "ICT-9",
+    kudosRequesterName: "Anna Muster",
+    kudosScore: 5,
+  });
+  const alert = (payload.aps as { alert: { title: string; body: string } }).alert;
+  assertEquals(alert.title, "Lob von Kund:innen");
+  assertStringIncludes(alert.body, "Anna Muster");
+  assertStringIncludes(alert.body, "ICT-9");
+  assertStringIncludes(alert.body, "5/5");
+  assertEquals(
+    (payload.body as Record<string, unknown>).ticketId,
+    "00000000-0000-4000-8000-000000000003",
+  );
+});

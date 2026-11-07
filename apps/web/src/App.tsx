@@ -1283,6 +1283,22 @@ function baseNotificationPresentation(
         title: "Teil-Tickets erledigt",
       };
     }
+    case "ticket.kudos": {
+      const rawName = notificationPayloadText(
+        notification,
+        "requesterName",
+        120,
+      );
+      const name =
+        rawName && !rawName.includes("@") ? rawName : "Die meldende Person";
+      const score = notificationPayloadNumber(notification, "score");
+      const excerpt = notificationPayloadText(notification, "excerpt", 200);
+      return {
+        description: `${name} hat ${ticketLabel} ${score ? `mit ${score}/5 ` : ""}bewertet${excerpt ? `: «${excerpt}»` : "."}`,
+        Icon: BadgeCheck,
+        title: "Lob von Kund:innen",
+      };
+    }
     case "ticket.vendor_reminder": {
       const vendor =
         notificationPayloadText(notification, "vendorName", 160) ??

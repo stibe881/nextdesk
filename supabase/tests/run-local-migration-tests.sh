@@ -11692,4 +11692,156 @@ $$;
 rollback;
 SQL
 
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_template record;
+  v_agent uuid;
+  v_resolved uuid;
+  v_ticket uuid := gen_random_uuid();
+  v_ticket_two uuid := gen_random_uuid();
+  v_count integer;
+  v_payload jsonb;
+begin
+  if has_table_privilege('authenticated', 'public.ticket_sla_breach_reasons', 'select')
+    or has_table_privilege('anon', 'public.ticket_sla_breach_reasons', 'select')
+    or has_table_privilege('authenticated', 'public.ticket_kudos', 'select')
+    or has_table_privilege('authenticated', 'public.ticket_kudos', 'insert') then
+    raise exception 'sla reason kudos test: tables readable by browsers';
+  end if;
+  if not (select relrowsecurity from pg_class where oid = 'public.ticket_sla_breach_reasons'::regclass)
+    or not (select relrowsecurity from pg_class where oid = 'public.ticket_kudos'::regclass) then
+    raise exception 'sla reason kudos test: RLS disabled';
+  end if;
+  if has_function_privilege('authenticated', 'public.record_ticket_kudos()', 'execute') then
+    raise exception 'sla reason kudos test: trigger function callable by browsers';
+  end if;
+  if public.push_notification_category('ticket.kudos') <> 'resolved'
+    or public.push_notification_category('ticket.vendor_reminder') <> 'follow_up'
+    or public.push_notification_category('infrastructure.due') <> 'infrastructure' then
+    raise exception 'sla reason kudos test: wrong push category';
+  end if;
+  if not public.ticket_satisfaction_is_praise(5::smallint, null)
+    or public.ticket_satisfaction_is_praise(4::smallint, '  ')
+    or not public.ticket_satisfaction_is_praise(4::smallint, 'Danke!')
+    or public.ticket_satisfaction_is_praise(3::smallint, 'Super') then
+    raise exception 'sla reason kudos test: wrong praise band';
+  end if;
+
+  select * into v_template from public.tickets
+  where tenant_id = '10000000-0000-4000-8000-000000000001'
+  order by created_at limit 1;
+  if v_template.id is null then
+    select * into v_template from public.tickets order by created_at limit 1;
+  end if;
+  v_agent := gen_random_uuid();
+  insert into auth.users (id) values (v_agent);
+  insert into public.user_profiles (id, display_name) values (v_agent, 'Kudos Agentin')
+  on conflict (id) do update set display_name = excluded.display_name;
+  insert into public.tenant_memberships (tenant_id, user_id, status, joined_at)
+  values (v_template.tenant_id, v_agent, 'active', timezone('utc', now()));
+  select id into v_resolved from public.ticket_statuses
+  where tenant_id = v_template.tenant_id and is_closed
+  order by (key = 'resolved') desc, sort_order limit 1;
+  insert into public.tickets (id, tenant_id, department_id, ticket_number, subject, description,
+    status_id, priority_id, requester_id, assigned_agent_id)
+  values
+    (v_ticket, v_template.tenant_id, v_template.department_id, 'KUDOS-TEST-1',
+      'Drucker', 'Druckt nicht', v_resolved, v_template.priority_id,
+      v_template.requester_id, v_agent),
+    (v_ticket_two, v_template.tenant_id, v_template.department_id, 'KUDOS-TEST-2',
+      'Mail', 'Kein Empfang', v_resolved, v_template.priority_id,
+      v_template.requester_id, v_agent);
+  update public.user_profiles set display_name = 'Beat Muster'
+  where id = v_template.requester_id;
+
+  -- SLA breach reasons: validation.
+  begin
+    insert into public.ticket_sla_breach_reasons (ticket_id, tenant_id, breach_kind, reason_code)
+    values (v_ticket, v_template.tenant_id, 'resolution', 'other');
+    raise exception 'sla reason kudos test: other without note accepted';
+  exception when check_violation then
+    null;
+  end;
+  begin
+    insert into public.ticket_sla_breach_reasons (ticket_id, tenant_id, breach_kind, reason_code)
+    values (v_ticket, v_template.tenant_id, 'lunch', 'capacity');
+    raise exception 'sla reason kudos test: invalid breach kind accepted';
+  exception when check_violation then
+    null;
+  end;
+  begin
+    insert into public.ticket_sla_breach_reasons (ticket_id, tenant_id, breach_kind, reason_code)
+    values (v_ticket, v_template.tenant_id, 'response', 'bored');
+    raise exception 'sla reason kudos test: invalid reason accepted';
+  exception when check_violation then
+    null;
+  end;
+  insert into public.ticket_sla_breach_reasons (ticket_id, tenant_id, breach_kind, reason_code, note, recorded_by)
+  values (v_ticket, v_template.tenant_id, 'resolution', 'third_party', 'Lieferant langsam', v_agent);
+  insert into public.ticket_sla_breach_reasons (ticket_id, tenant_id, breach_kind, reason_code, note)
+  values (v_ticket, v_template.tenant_id, 'response', 'other', 'Stromausfall');
+  begin
+    insert into public.ticket_sla_breach_reasons (ticket_id, tenant_id, breach_kind, reason_code)
+    values (v_ticket, v_template.tenant_id, 'resolution', 'capacity');
+    raise exception 'sla reason kudos test: second reason for same breach accepted';
+  exception when unique_violation then
+    null;
+  end;
+
+  -- Kudos: top rating creates praise and notifies the agent once.
+  insert into public.ticket_satisfaction (ticket_id, score, comment, submitted_by)
+  values (v_ticket, 5, 'Super schnell, vielen Dank!', v_template.requester_id);
+  if not exists (
+    select 1 from public.ticket_kudos
+    where ticket_id = v_ticket and agent_id = v_agent and score = 5
+      and has_comment and withdrawn_at is null and notified_at is not null
+  ) then
+    raise exception 'sla reason kudos test: praise not recorded';
+  end if;
+  select count(*), max(payload::text)::jsonb into v_count, v_payload
+  from public.ticket_notifications
+  where ticket_id = v_ticket and user_id = v_agent and kind = 'ticket.kudos';
+  if v_count <> 1 or v_payload ->> 'requesterName' <> 'Beat Muster'
+     or (v_payload ->> 'score')::int <> 5 or v_payload ->> 'excerpt' is null
+     or v_payload::text like '%@%' then
+    raise exception 'sla reason kudos test: wrong kudos notification %', v_payload;
+  end if;
+
+  -- Lowered rating withdraws the praise; raising it again does not notify twice.
+  update public.ticket_satisfaction set score = 2 where ticket_id = v_ticket;
+  if not exists (select 1 from public.ticket_kudos where ticket_id = v_ticket and withdrawn_at is not null) then
+    raise exception 'sla reason kudos test: praise not withdrawn';
+  end if;
+  update public.ticket_satisfaction set score = 5 where ticket_id = v_ticket;
+  if not exists (select 1 from public.ticket_kudos where ticket_id = v_ticket and withdrawn_at is null)
+     or (select count(*) from public.ticket_notifications
+         where ticket_id = v_ticket and kind = 'ticket.kudos') <> 1 then
+    raise exception 'sla reason kudos test: praise restore wrong';
+  end if;
+
+  -- A 4 without comment is not praise.
+  insert into public.ticket_satisfaction (ticket_id, score, comment, submitted_by)
+  values (v_ticket_two, 4, null, v_template.requester_id);
+  if exists (select 1 from public.ticket_kudos where ticket_id = v_ticket_two)
+     or exists (select 1 from public.ticket_notifications
+                where ticket_id = v_ticket_two and kind = 'ticket.kudos') then
+    raise exception 'sla reason kudos test: 4 without comment counted as praise';
+  end if;
+  -- Display names that are e-mail addresses are never passed on.
+  update public.user_profiles set display_name = 'beat@example.ch'
+  where id = v_template.requester_id;
+  update public.ticket_satisfaction set comment = 'Danke' where ticket_id = v_ticket_two;
+  select payload into v_payload from public.ticket_notifications
+  where ticket_id = v_ticket_two and kind = 'ticket.kudos';
+  if v_payload is null or v_payload ? 'requesterName' then
+    raise exception 'sla reason kudos test: e-mail display name leaked %', v_payload;
+  end if;
+  raise notice 'sla breach reason and kudos checks ran';
+end;
+$$;
+rollback;
+SQL
+
 echo "PostgreSQL 16 migration and RLS integration checks passed."

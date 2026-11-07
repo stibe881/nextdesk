@@ -11,14 +11,26 @@ import {
   ClipboardCheck,
   FileBarChart,
   GraduationCap,
+  Heart,
   LayoutDashboard,
   MonitorPlay,
   MessageSquareHeart,
   Printer,
   Shuffle,
+  TimerOff,
   UserRound,
 } from "lucide-react";
-import { LiveBoard, SkillMatrix } from "./team-leadership";
+import {
+  KudosBoard,
+  LiveBoard,
+  SkillMatrix,
+  SlaBreachCauses,
+} from "./team-leadership";
+import {
+  kudosAuthor,
+  scoreStars,
+  type KudosEntry,
+} from "./lib/sla-breach-reasons";
 import { callTeamSupervision } from "./team-supervision-api";
 import { buildOneOnOneSheet } from "./lib/one-on-one-sheet";
 import { supabase } from "./lib/supabase";
@@ -122,6 +134,8 @@ type View =
   | "quality"
   | "skills"
   | "coaching"
+  | "kudos"
+  | "sla"
   | "report";
 
 const call = callTeamSupervision;
@@ -197,6 +211,8 @@ export function TeamSupervision({
     { value: "quality", label: "Qualitätsprüfung", Icon: ClipboardCheck },
     { value: "skills", label: "Skill-Matrix", Icon: GraduationCap },
     { value: "coaching", label: "Coaching", Icon: MessageSquareHeart },
+    { value: "kudos", label: "Pinnwand", Icon: Heart },
+    { value: "sla", label: "SLA-Ursachen", Icon: TimerOff },
     { value: "report", label: "Monatsbericht", Icon: FileBarChart },
   ];
 
@@ -279,6 +295,10 @@ export function TeamSupervision({
               tenantId={tenantId}
             />
           ) : null}
+          {view === "kudos" ? (
+            <KudosBoard onOpenTicket={onOpenTicket} tenantId={tenantId} />
+          ) : null}
+          {view === "sla" ? <SlaBreachCauses tenantId={tenantId} /> : null}
           {view === "report" ? <MonthlyReport tenantId={tenantId} /> : null}
         </>
       ) : null}
@@ -1141,6 +1161,7 @@ function Coaching({
   const [agentId, setAgentId] = useState(agents[0]?.id ?? "");
   const [notes, setNotes] = useState<CoachingNote[]>([]);
   const [reviews, setReviews] = useState<CoachingReview[]>([]);
+  const [kudos, setKudos] = useState<KudosEntry[]>([]);
   const [draft, setDraft] = useState("");
   const [kind, setKind] = useState<CoachingKind>("note");
   const [busy, setBusy] = useState(false);
@@ -1153,9 +1174,11 @@ function Coaching({
       const data = await call<{
         notes: CoachingNote[];
         reviews: CoachingReview[];
+        kudos?: KudosEntry[];
       }>({ type: "coachingNotes", tenantId, agentId });
       setNotes(data.notes);
       setReviews(data.reviews);
+      setKudos(data.kudos ?? []);
     } catch (nextError) {
       setError(
         nextError instanceof Error
@@ -1240,6 +1263,7 @@ function Coaching({
           : null,
         notes,
         reviews,
+        kudos,
       });
       sheetWindow.document.open();
       sheetWindow.document.write(html);
@@ -1270,7 +1294,7 @@ function Coaching({
     <div className="team-supervision__coaching">
       <p className="data-caption">
         Private Notizen für Mitarbeitergespräche. Nur Sie sehen Ihre Notizen;
-        daneben die letzten Qualitätsprüfungen der Person.
+        daneben die letzten Qualitätsprüfungen und das Lob von Kund:innen.
       </p>
       <div className="team-supervision__coaching-toolbar">
         <label className="team-supervision__coaching-agent">
@@ -1398,6 +1422,40 @@ function Coaching({
             </ul>
           ) : (
             <p className="empty-state">Noch keine Qualitätsprüfungen.</p>
+          )}
+        </section>
+        <section className="team-supervision__coaching-panel">
+          <h3>Lob von Kund:innen</h3>
+          {kudos.length ? (
+            <ul className="team-supervision__coaching-list">
+              {kudos.map((entry) => (
+                <li className="is-praise" key={entry.ticketId}>
+                  <div>
+                    <strong aria-label={`${entry.score} von 5`}>
+                      {scoreStars(entry.score)}
+                    </strong>
+                    <time>{date(entry.createdAt)}</time>
+                  </div>
+                  <button
+                    className="text-button"
+                    onClick={() => onOpenTicket?.(entry.ticketId)}
+                    type="button"
+                  >
+                    {entry.ticketNumber ?? "Ticket"} {entry.subject ?? ""}
+                  </button>
+                  <p>
+                    {entry.comment
+                      ? `«${entry.comment}»`
+                      : "Top-Bewertung ohne Kommentar"}{" "}
+                    – {kudosAuthor(entry.requesterName)}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="empty-state">
+              Noch kein Lob in den letzten sechs Monaten.
+            </p>
           )}
         </section>
       </div>
