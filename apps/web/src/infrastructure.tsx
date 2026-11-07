@@ -1,4 +1,8 @@
 import {
+  MaintenancePlanning,
+  type MaintenanceWindow,
+} from "./infrastructure-planning";
+import {
   AlertTriangle,
   Battery,
   Cpu,
@@ -74,9 +78,14 @@ type Device = {
   maintenanceIntervalMonths: number | null;
   lastMaintenanceOn: string | null;
   notes: string | null;
+  serviceId: string | null;
+  maintenanceChecklist: string[];
+  serviceTaskTemplateId: string | null;
 };
 type Location = { id: string; name: string };
+type Service = { id: string; name: string };
 type Detail = {
+  windows?: MaintenanceWindow[];
   lifecycle: {
     id: string;
     from: Lifecycle | null;
@@ -218,6 +227,7 @@ const EMPTY_FORM: Omit<
   | "locationName"
   | "uplinkName"
   | "lastMaintenanceOn"
+  | "serviceTaskTemplateId"
 > & {
   id: string | null;
 } = {
@@ -249,6 +259,8 @@ const EMPTY_FORM: Omit<
   criticality: "medium",
   maintenanceIntervalMonths: null,
   notes: null,
+  serviceId: null,
+  maintenanceChecklist: [],
 };
 type Form = typeof EMPTY_FORM;
 
@@ -265,6 +277,7 @@ export function Infrastructure({
 }) {
   const [devices, setDevices] = useState<Device[]>([]);
   const [locations, setLocations] = useState<Location[]>([]);
+  const [services, setServices] = useState<Service[]>([]);
   const [canManage, setCanManage] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -285,9 +298,11 @@ export function Infrastructure({
         canManage: boolean;
         devices: Device[];
         locations: Location[];
+        services?: Service[];
       }>({ type: "list", tenantId });
       setDevices(data.devices);
       setLocations(data.locations);
+      setServices(data.services ?? []);
       setCanManage(data.canManage);
       setError("");
     } catch (nextError) {
@@ -605,6 +620,7 @@ export function Infrastructure({
           }}
           onOpenDevice={setSelectedId}
           onOpenTicket={onOpenTicket}
+          services={services}
           tenantId={tenantId}
         />
       ) : null}
@@ -614,6 +630,7 @@ export function Infrastructure({
           devices={devices}
           form={form}
           locations={locations}
+          services={services}
           onCancel={() => setForm(null)}
           onLocationAdded={(location) =>
             setLocations((current) =>
@@ -645,9 +662,11 @@ function DeviceDetail({
   onChanged,
   onOpenDevice,
   onOpenTicket,
+  services,
 }: {
   device: Device;
   devices: Device[];
+  services: Service[];
   canManage: boolean;
   tenantId: string;
   onClose: () => void;
@@ -1075,6 +1094,20 @@ function DeviceDetail({
             ) : (
               <p className="empty-state">Noch keine Wartungen erfasst.</p>
             )}
+            <MaintenancePlanning
+              busy={busy}
+              canManage={canManage}
+              checklist={device.maintenanceChecklist ?? []}
+              deviceId={device.id}
+              deviceName={device.name}
+              hasServiceTask={Boolean(device.serviceTaskTemplateId)}
+              intervalMonths={device.maintenanceIntervalMonths}
+              key={device.id}
+              onRun={run}
+              serviceId={device.serviceId}
+              services={services}
+              windows={detail?.windows ?? []}
+            />
           </div>
         ) : null}
 
@@ -1154,6 +1187,7 @@ function DeviceEditor({
   form: initial,
   devices,
   locations,
+  services,
   tenantId,
   onCancel,
   onSaved,
@@ -1162,6 +1196,7 @@ function DeviceEditor({
   form: Form;
   devices: Device[];
   locations: Location[];
+  services: Service[];
   tenantId: string;
   onCancel: () => void;
   onSaved: (assetId: string, created: boolean) => void;
@@ -1227,7 +1262,12 @@ function DeviceEditor({
       const data = await call<{ assetId: string }>({
         type: "save",
         tenantId,
-        device: form,
+        device: {
+          ...form,
+          maintenanceChecklist: (form.maintenanceChecklist ?? [])
+            .map((item) => item.trim())
+            .filter(Boolean),
+        },
       });
       onSaved(data.assetId, !form.id);
     } catch (nextError) {
@@ -1417,6 +1457,22 @@ function DeviceEditor({
             </label>
             {text("rack", "Rack")}
             {text("rackUnit", "Höheneinheit", "z. B. 12")}
+            <label>
+              Dienst (für Systemstatus)
+              <select
+                onChange={(event) =>
+                  set("serviceId", event.target.value || null)
+                }
+                value={form.serviceId ?? ""}
+              >
+                <option value="">– kein Dienst –</option>
+                {services.map((service) => (
+                  <option key={service.id} value={service.id}>
+                    {service.name}
+                  </option>
+                ))}
+              </select>
+            </label>
           </div>
         </fieldset>
         <fieldset>
@@ -1464,6 +1520,30 @@ function DeviceEditor({
             </label>
           </div>
         </fieldset>
+        <label className="infrastructure__notes-field">
+          Wartungscheckliste (ein Punkt pro Zeile)
+          <textarea
+            onChange={(event) =>
+              set(
+                "maintenanceChecklist",
+                event.target.value.split("\n").slice(0, 40),
+              )
+            }
+            onBlur={() =>
+              set(
+                "maintenanceChecklist",
+                (form.maintenanceChecklist ?? [])
+                  .map((item) => item.trim())
+                  .filter(Boolean),
+              )
+            }
+            placeholder={
+              "Firmware prüfen\nKonfiguration sichern\nLüfter und Staub kontrollieren"
+            }
+            rows={4}
+            value={(form.maintenanceChecklist ?? []).join("\n")}
+          />
+        </label>
         <label className="infrastructure__notes-field">
           Notizen
           <textarea

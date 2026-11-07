@@ -1,6 +1,6 @@
 import { withSupabase } from "@supabase/server";
 import { isRecord, isUuid, json, noContent } from "../_shared/http.ts";
-import { resolveUserFeatureStates } from "../_shared/tenant-features.ts";
+import { resolveTenantFeatureStates, resolveUserFeatureStates } from "../_shared/tenant-features.ts";
 
 /**
  * Infrastruktur: access points, switches, servers, firewalls … as assets with
@@ -84,6 +84,8 @@ export type DeviceInput = {
   criticality: (typeof CRITICALITY)[number];
   maintenanceIntervalMonths: number | null;
   notes: string | null;
+  serviceId: string | null;
+  maintenanceChecklist: string[];
 };
 
 type Action =
@@ -105,7 +107,53 @@ type Action =
     kind: (typeof MAINTENANCE_KINDS)[number];
     note: string;
   }
-  | { type: "addLocation"; tenantId: string; name: string };
+  | { type: "addLocation"; tenantId: string; name: string }
+  | {
+    type: "planMaintenance";
+    tenantId: string;
+    assetIds: string[];
+    serviceIds: string[];
+    title: string;
+    description: string | null;
+    startsAt: string;
+    endsAt: string;
+    publicEnabled: boolean;
+  }
+  | {
+    type: "scheduleChecklist";
+    tenantId: string;
+    assetId: string;
+    intervalMonths: number;
+    startsOn: string;
+    assigneeId: string | null;
+  };
+
+function uuidList(value: unknown, min: number, max: number): string[] | null {
+  if (!Array.isArray(value) || value.length < min || value.length > max) return null;
+  if (!value.every(isUuid)) return null;
+  const ids = [...new Set(value.map((id) => (id as string).toLowerCase()))];
+  return ids.length === value.length ? ids : null;
+}
+
+function isoMoment(value: unknown): string | null {
+  if (typeof value !== "string" || value.length > 40) return null;
+  const time = Date.parse(value);
+  return Number.isFinite(time) ? new Date(time).toISOString() : null;
+}
+
+/** Checklist items: trimmed, non-empty, at most 40 items of 300 characters. */
+export function parseChecklist(value: unknown): string[] | null {
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value) || value.length > 40) return null;
+  const items: string[] = [];
+  for (const entry of value) {
+    if (typeof entry !== "string") return null;
+    const item = entry.trim();
+    if (item.length > 300 || /[\u0000-\u001f]/.test(item)) return null;
+    if (item) items.push(item);
+  }
+  return items;
+}
 
 function optionalText(value: unknown, max: number): string | null | undefined {
   if (value === null || value === undefined || value === "") return null;
@@ -224,12 +272,22 @@ export function parseDevice(value: unknown): DeviceInput | null {
   ) {
     return null;
   }
+  const serviceId = value.serviceId === null || value.serviceId === undefined ||
+      value.serviceId === ""
+    ? null
+    : isUuid(value.serviceId)
+    ? value.serviceId.toLowerCase()
+    : undefined;
+  const maintenanceChecklist = parseChecklist(value.maintenanceChecklist);
+  if (serviceId === undefined || maintenanceChecklist === null) return null;
   return {
     id,
     name,
     category,
     lifecycleState,
     locationId,
+    serviceId,
+    maintenanceChecklist,
     uplinkAssetId,
     purchasePrice: price,
     maintenanceIntervalMonths: interval,
@@ -284,6 +342,54 @@ export function parseAction(value: unknown): Action | null {
     case "addLocation": {
       const name = optionalText(value.name, 160);
       return name ? { type: "addLocation", tenantId, name } : null;
+    }
+    case "planMaintenance": {
+      const assetIds = uuidList(value.assetIds, 1, 50);
+      const serviceIds = uuidList(value.serviceIds, 1, 100);
+      const title = optionalText(value.title, 180);
+      const description = optionalText(value.description, 2000);
+      const startsAt = isoMoment(value.startsAt);
+      const endsAt = isoMoment(value.endsAt);
+      if (
+        !assetIds || !serviceIds || !title || title.length < 2 ||
+        description === undefined || !startsAt || !endsAt ||
+        Date.parse(endsAt) <= Date.parse(startsAt) ||
+        typeof value.publicEnabled !== "boolean"
+      ) {
+        return null;
+      }
+      return {
+        type: "planMaintenance",
+        tenantId,
+        assetIds,
+        serviceIds,
+        title,
+        description,
+        startsAt,
+        endsAt,
+        publicEnabled: value.publicEnabled,
+      };
+    }
+    case "scheduleChecklist": {
+      const interval = value.intervalMonths;
+      const startsOn = optionalDate(value.startsOn);
+      if (
+        !isUuid(value.assetId) || typeof interval !== "number" ||
+        !Number.isInteger(interval) || interval < 1 || interval > 60 ||
+        !startsOn ||
+        !(value.assigneeId === null || value.assigneeId === undefined ||
+          isUuid(value.assigneeId))
+      ) {
+        return null;
+      }
+      return {
+        type: "scheduleChecklist",
+        tenantId,
+        assetId: value.assetId.toLowerCase(),
+        intervalMonths: interval,
+        startsOn,
+        assigneeId: isUuid(value.assigneeId) ? value.assigneeId.toLowerCase() : null,
+      };
     }
     default:
       return null;
@@ -371,23 +477,29 @@ function deviceFromRows(asset: Row, infra: Row, locations: Map<string, string>, 
     maintenanceIntervalMonths: infra.maintenance_interval_months ?? null,
     lastMaintenanceOn: infra.last_maintenance_on ?? null,
     notes: infra.notes ?? null,
+    serviceId: asset.service_id ?? null,
+    maintenanceChecklist: Array.isArray(infra.maintenance_checklist)
+      ? infra.maintenance_checklist.filter((item): item is string => typeof item === "string")
+      : [],
+    serviceTaskTemplateId: infra.service_task_template_id ?? null,
   };
 }
 
 async function list(request: Request, admin: Admin, tenantId: string, canManage: boolean) {
-  const [infra, locations] = await Promise.all([
+  const [infra, locations, services] = await Promise.all([
     admin.from("asset_infrastructure").select("*").eq("tenant_id", tenantId).limit(5000),
     admin.from("asset_locations").select("id, name").eq("tenant_id", tenantId).eq("active", true)
       .order("name"),
+    admin.from("services").select("id, name").eq("tenant_id", tenantId).order("name").limit(1000),
   ]);
-  if (infra.error || locations.error) throw dbFailure();
+  if (infra.error || locations.error || services.error) throw dbFailure();
   const rows = (infra.data ?? []) as Row[];
   const ids = rows.map((row) => String(row.asset_id));
   const assets = ids.length
     ? await admin
       .from("assets")
       .select(
-        "id, name, asset_tag, inventory_number, serial_number, manufacturer, model, lifecycle_state, lifecycle_changed_at, location_id",
+        "id, name, asset_tag, inventory_number, serial_number, manufacturer, model, lifecycle_state, lifecycle_changed_at, location_id, service_id",
       )
       .eq("tenant_id", tenantId)
       .in("id", ids)
@@ -407,13 +519,14 @@ async function list(request: Request, admin: Admin, tenantId: string, canManage:
       canManage,
       devices,
       locations: ((locations.data ?? []) as Row[]).map((row) => ({ id: row.id, name: row.name })),
+      services: ((services.data ?? []) as Row[]).map((row) => ({ id: row.id, name: row.name })),
     },
   });
 }
 
 async function detail(request: Request, admin: Admin, tenantId: string, assetId: string) {
   await loadAsset(admin, tenantId, assetId);
-  const [events, maintenance, connected, ticketLinks] = await Promise.all([
+  const [events, maintenance, connected, ticketLinks, windowLinks] = await Promise.all([
     admin.from("asset_lifecycle_events")
       .select("id, previous_state, next_state, reason, actor_id, occurred_at")
       .eq("tenant_id", tenantId).eq("asset_id", assetId)
@@ -428,8 +541,25 @@ async function detail(request: Request, admin: Admin, tenantId: string, assetId:
     admin.from("ticket_assets")
       .select("ticket_id")
       .eq("tenant_id", tenantId).eq("asset_id", assetId).limit(50),
+    admin.from("service_status_maintenance_assets")
+      .select("maintenance_id")
+      .eq("tenant_id", tenantId).eq("asset_id", assetId).limit(100),
   ]);
-  if (events.error || maintenance.error || connected.error || ticketLinks.error) throw dbFailure();
+  if (
+    events.error || maintenance.error || connected.error || ticketLinks.error ||
+    windowLinks.error
+  ) {
+    throw dbFailure();
+  }
+  const windowIds = ((windowLinks.data ?? []) as Row[]).map((row) => String(row.maintenance_id));
+  const windows = windowIds.length
+    ? await admin.from("service_status_maintenances")
+      .select("id, title, description, starts_at, ends_at, state, public_enabled")
+      .eq("tenant_id", tenantId).in("id", windowIds)
+      .gte("ends_at", new Date(Date.now() - 30 * 86_400_000).toISOString())
+      .order("starts_at", { ascending: true })
+    : { data: [], error: null };
+  if (windows.error) throw dbFailure();
   const connectedIds = ((connected.data ?? []) as Row[]).map((row) => String(row.asset_id));
   const ticketIds = ((ticketLinks.data ?? []) as Row[]).map((row) => String(row.ticket_id));
   const actorIds = [
@@ -490,6 +620,15 @@ async function detail(request: Request, admin: Admin, tenantId: string, assetId:
         subject: row.subject,
         open: row.closed_at === null && row.resolved_at === null,
       })),
+      windows: ((windows.data ?? []) as Row[]).map((row) => ({
+        id: row.id,
+        title: row.title,
+        description: row.description ?? null,
+        startsAt: row.starts_at,
+        endsAt: row.ends_at,
+        state: row.state,
+        publicEnabled: row.public_enabled === true,
+      })),
     },
   });
 }
@@ -508,7 +647,14 @@ async function save(
     if (!data) throw new HttpError(422, "location_invalid", "Der Standort ist nicht verfügbar.");
   }
   if (device.uplinkAssetId) await loadAsset(admin, tenantId, device.uplinkAssetId);
+  if (device.serviceId) {
+    const { data, error } = await admin.from("services").select("id")
+      .eq("tenant_id", tenantId).eq("id", device.serviceId).maybeSingle();
+    if (error) throw dbFailure();
+    if (!data) throw new HttpError(422, "service_invalid", "Der Dienst ist nicht verfügbar.");
+  }
   const assetValues = {
+    service_id: device.serviceId,
     name: device.name,
     kind: device.category,
     asset_tag: device.assetTag,
@@ -565,6 +711,7 @@ async function save(
     criticality: device.criticality,
     maintenance_interval_months: device.maintenanceIntervalMonths,
     notes: device.notes,
+    maintenance_checklist: device.maintenanceChecklist,
     updated_at: new Date().toISOString(),
   }, { onConflict: "asset_id" });
   if (infraError) throw dbFailure();
@@ -639,6 +786,142 @@ async function addLocation(request: Request, admin: Admin, tenantId: string, nam
   return json(request, { data: { location: data } }, 201);
 }
 
+async function planMaintenance(
+  request: Request,
+  admin: Admin,
+  actorId: string,
+  action: Extract<Action, { type: "planMaintenance" }>,
+) {
+  for (const assetId of action.assetIds) await loadAsset(admin, action.tenantId, assetId);
+  const { data, error } = await admin.rpc("save_service_status_maintenance", {
+    p_actor_id: actorId,
+    p_tenant_id: action.tenantId,
+    p_maintenance_id: null,
+    p_title: action.title,
+    p_description: action.description,
+    p_starts_at: action.startsAt,
+    p_ends_at: action.endsAt,
+    p_state: "scheduled",
+    p_public_enabled: action.publicEnabled,
+    p_service_ids: action.serviceIds,
+  });
+  if (error?.code === "42501") {
+    throw new HttpError(
+      403,
+      "publication_denied",
+      "Öffentliche Wartungsfenster erfordern die Berechtigung für Mandanteneinstellungen.",
+    );
+  }
+  if (error || !isUuid(data)) {
+    throw new HttpError(422, "maintenance_invalid", "Das Wartungsfenster konnte nicht gespeichert werden.");
+  }
+  const { error: linkError } = await admin.from("service_status_maintenance_assets").insert(
+    action.assetIds.map((assetId) => ({
+      tenant_id: action.tenantId,
+      maintenance_id: data,
+      asset_id: assetId,
+    })),
+  );
+  if (linkError) throw dbFailure();
+  return json(request, { data: { maintenanceId: data } }, 201);
+}
+
+function addDays(isoDay: string, days: number): string {
+  const date = new Date(`${isoDay}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+async function scheduleChecklist(
+  request: Request,
+  admin: Admin,
+  actorId: string,
+  action: Extract<Action, { type: "scheduleChecklist" }>,
+) {
+  const features = await resolveTenantFeatureStates(admin, action.tenantId, ["service.tasks"]);
+  if (features?.["service.tasks"] !== true) {
+    throw new HttpError(403, "service_tasks_disabled", "Serviceaufgaben sind für diesen Mandanten nicht eingeschaltet.");
+  }
+  const [{ data: asset, error: assetError }, { data: infra, error: infraError }] = await Promise.all([
+    admin.from("assets").select("id, name, inventory_number, serial_number, department_id")
+      .eq("tenant_id", action.tenantId).eq("id", action.assetId).maybeSingle(),
+    admin.from("asset_infrastructure")
+      .select("hostname, ip_address, rack, criticality, maintenance_checklist, service_task_template_id")
+      .eq("tenant_id", action.tenantId).eq("asset_id", action.assetId).maybeSingle(),
+  ]);
+  if (assetError || infraError) throw dbFailure();
+  if (!asset || !infra) throw new HttpError(404, "device_not_found", "Das Gerät ist nicht verfügbar.");
+  const checklist = Array.isArray(infra.maintenance_checklist)
+    ? (infra.maintenance_checklist as unknown[]).filter((item): item is string => typeof item === "string")
+    : [];
+  if (checklist.length === 0) {
+    throw new HttpError(422, "checklist_empty", "Erfassen Sie zuerst die Punkte der Wartungscheckliste.");
+  }
+  if (action.assigneeId) {
+    const { data: member, error } = await admin.from("tenant_memberships").select("user_id")
+      .eq("tenant_id", action.tenantId).eq("user_id", action.assigneeId).eq("status", "active")
+      .maybeSingle();
+    if (error) throw dbFailure();
+    if (!member) throw new HttpError(422, "assignee_invalid", "Die gewählte Person ist nicht verfügbar.");
+  }
+  const day = Number(action.startsOn.slice(8, 10));
+  const values = {
+    tenant_id: action.tenantId,
+    department_id: asset.department_id ?? null,
+    title: `Wartung: ${String(asset.name)}`.slice(0, 160),
+    instructions: [
+      "Wiederkehrende Wartung gemäss Checkliste aus der Infrastruktur.",
+      infra.hostname ? `Hostname: ${infra.hostname}` : null,
+      infra.ip_address ? `IP-Adresse: ${infra.ip_address}` : null,
+      infra.rack ? `Rack: ${infra.rack}` : null,
+    ].filter(Boolean).join("\n"),
+    category: "Infrastruktur",
+    priority: infra.criticality === "critical" ? "high" : "normal",
+    assignee_id: action.assigneeId,
+    reference_label: [asset.name, asset.inventory_number ?? asset.serial_number]
+      .filter(Boolean).join(" · ").slice(0, 200),
+    recurrence: {
+      frequency: "monthly",
+      interval: action.intervalMonths,
+      monthlyMode: "day",
+      dayOfMonth: Math.min(28, Math.max(1, day)),
+      skipNonWorkdays: true,
+    },
+    starts_on: action.startsOn,
+    lead_days: 7,
+    checklist: checklist.map((label, index) => ({ id: `w${index + 1}`, label })),
+    require_note: false,
+    remind: true,
+    active: true,
+    // Rebuild future occurrences from the (possibly changed) rule.
+    generated_until: addDays(action.startsOn, -1),
+    updated_by: actorId,
+    updated_at: new Date().toISOString(),
+  };
+  let templateId = infra.service_task_template_id as string | null;
+  if (templateId) {
+    const { data, error } = await admin.from("service_task_templates").update(values)
+      .eq("tenant_id", action.tenantId).eq("id", templateId).select("id").maybeSingle();
+    if (error) throw dbFailure();
+    if (!data) templateId = null;
+  }
+  if (!templateId) {
+    const { data, error } = await admin.from("service_task_templates")
+      .insert({ ...values, created_by: actorId }).select("id").single();
+    if (error || !data) throw dbFailure();
+    templateId = String(data.id);
+  }
+  const { error: linkError } = await admin.from("asset_infrastructure")
+    .update({
+      service_task_template_id: templateId,
+      maintenance_interval_months: action.intervalMonths,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("tenant_id", action.tenantId).eq("asset_id", action.assetId);
+  if (linkError) throw dbFailure();
+  return json(request, { data: { templateId } });
+}
+
 const handler = withSupabase(
   { auth: "user", errors: { detailed: false } },
   async (request, context) => {
@@ -681,6 +964,10 @@ const handler = withSupabase(
           return await addMaintenance(request, admin, actorId, action);
         case "addLocation":
           return await addLocation(request, admin, action.tenantId, action.name);
+        case "planMaintenance":
+          return await planMaintenance(request, admin, actorId, action);
+        case "scheduleChecklist":
+          return await scheduleChecklist(request, admin, actorId, action);
       }
     } catch (error) {
       if (error instanceof HttpError) {

@@ -1,6 +1,6 @@
 import { assertEquals } from "jsr:@std/assert@1";
 
-import { parseAction, parseDevice, validIp, validMac } from "./index.ts";
+import { parseAction, parseChecklist, parseDevice, validIp, validMac } from "./index.ts";
 
 const tenantId = "00000000-0000-4000-8000-000000000001";
 
@@ -44,5 +44,41 @@ Deno.test("invalid dates and lifecycle states are rejected", () => {
       state: "sold",
     }),
     null,
+  );
+});
+
+Deno.test("maintenance windows need devices, services and a valid period", () => {
+  const assetId = "00000000-0000-4000-8000-0000000000a1";
+  const serviceId = "00000000-0000-4000-8000-0000000000b1";
+  const base = {
+    type: "planMaintenance",
+    tenantId,
+    assetIds: [assetId],
+    serviceIds: [serviceId],
+    title: "Firmware Core-Switch",
+    startsAt: "2026-11-10T19:00:00Z",
+    endsAt: "2026-11-10T21:00:00Z",
+    publicEnabled: true,
+  };
+  assertEquals(parseAction(base)?.type, "planMaintenance");
+  assertEquals(parseAction({ ...base, endsAt: "2026-11-10T18:00:00Z" }), null);
+  assertEquals(parseAction({ ...base, serviceIds: [] }), null);
+});
+
+Deno.test("checklist items are trimmed and limited", () => {
+  assertEquals(parseChecklist([" Firmware prüfen ", "", "Backup testen"]), [
+    "Firmware prüfen",
+    "Backup testen",
+  ]);
+  assertEquals(parseChecklist(new Array(41).fill("x")), null);
+  assertEquals(
+    parseAction({
+      type: "scheduleChecklist",
+      tenantId,
+      assetId: tenantId,
+      intervalMonths: 6,
+      startsOn: "2026-12-01",
+    })?.type,
+    "scheduleChecklist",
   );
 });
