@@ -11741,6 +11741,16 @@ begin
   on conflict (id) do update set display_name = excluded.display_name;
   insert into public.tenant_memberships (tenant_id, user_id, status, joined_at)
   values (v_template.tenant_id, v_agent, 'active', timezone('utc', now()));
+  -- The agent must be allowed to read the ticket, otherwise notifications are suppressed.
+  insert into public.roles (id, tenant_id, name, scope)
+  values ('f2290000-0000-4000-8000-0000000000aa', v_template.tenant_id, 'Kudos Testrolle', 'tenant');
+  insert into public.role_permissions (role_id, permission_code)
+  values ('f2290000-0000-4000-8000-0000000000aa', 'ticket.read.assigned'),
+         ('f2290000-0000-4000-8000-0000000000aa', 'ticket.read.department');
+  insert into public.user_role_assignments (tenant_id, user_id, role_id)
+  values (v_template.tenant_id, v_agent, 'f2290000-0000-4000-8000-0000000000aa');
+  insert into public.department_memberships (tenant_id, user_id, department_id, status)
+  values (v_template.tenant_id, v_agent, v_template.department_id, 'active');
   select id into v_resolved from public.ticket_statuses
   where tenant_id = v_template.tenant_id and is_closed
   order by (key = 'resolved') desc, sort_order limit 1;
