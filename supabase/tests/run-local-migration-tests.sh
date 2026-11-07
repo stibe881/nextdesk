@@ -10114,4 +10114,63 @@ $$;
 rollback;
 SQL
 
+# 0207: ticket rules set priority and watchers on new tickets and skip
+# invalid targets without blocking creation.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_template record;
+  v_priority uuid;
+  v_watcher uuid;
+  v_new_id uuid := gen_random_uuid();
+  v_ticket record;
+begin
+  select * into v_template from public.tickets where closed_at is null limit 1;
+  select id into v_priority from public.ticket_priorities
+  where tenant_id = v_template.tenant_id and id <> v_template.priority_id limit 1;
+  select dm.user_id into v_watcher from public.department_memberships dm
+  where dm.department_id = v_template.department_id and dm.status = 'active' limit 1;
+  insert into public.ticket_rules (tenant_id, name, conditions, actions)
+  values (v_template.tenant_id, 'Drucker dringend',
+    jsonb_build_object('keywords', jsonb_build_array('Druckerstau'),
+      'departmentIds', jsonb_build_array(v_template.department_id)),
+    jsonb_build_object('priorityId', v_priority,
+      'teamId', gen_random_uuid(),
+      'watcherIds', jsonb_build_array(v_watcher)));
+  insert into public.tickets (id, tenant_id, department_id, ticket_number, subject, description,
+    status_id, priority_id, requester_id)
+  values (v_new_id, v_template.tenant_id, v_template.department_id, 'RULE-TEST-1',
+    'Druckerstau im 2. Stock', 'Bitte helfen', v_template.status_id,
+    v_template.priority_id, v_template.requester_id);
+  select * into v_ticket from public.tickets where id = v_new_id;
+  if v_ticket.priority_id <> v_priority then
+    raise exception 'rule test: priority not set';
+  end if;
+  if v_ticket.assigned_team_id is not null then
+    raise exception 'rule test: invalid team was applied';
+  end if;
+  if v_watcher is not null and public.ticket_notification_recipient_authorized(
+      v_template.tenant_id, v_new_id, v_watcher)
+    and not exists (select 1 from public.ticket_watchers where ticket_id = v_new_id and user_id = v_watcher) then
+    raise exception 'rule test: watcher not added';
+  end if;
+  if (select applied_count from public.ticket_rules where name = 'Drucker dringend') <> 1 then
+    raise exception 'rule test: applied count not updated';
+  end if;
+  -- Not matching: other text.
+  insert into public.tickets (tenant_id, department_id, ticket_number, subject, description,
+    status_id, priority_id, requester_id)
+  values (v_template.tenant_id, v_template.department_id, 'RULE-TEST-2',
+    'Passwort vergessen', 'Bitte helfen', v_template.status_id,
+    v_template.priority_id, v_template.requester_id);
+  if (select applied_count from public.ticket_rules where name = 'Drucker dringend') <> 1 then
+    raise exception 'rule test: rule applied without keyword';
+  end if;
+  raise notice 'ticket rule checks ran';
+end;
+$$;
+rollback;
+SQL
+
 echo "PostgreSQL 16 migration and RLS integration checks passed."

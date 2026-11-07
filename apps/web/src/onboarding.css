@@ -497,3 +497,20 @@
     grid-template-columns: 1fr;
   }
 }
+
+.onboarding-department-tasks .icon-button {
+  display: inline-grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.onboarding-department-tasks .icon-button:hover:not(:disabled) {
+  border-color: var(--danger, #dc2626);
+  color: var(--danger, #dc2626);
+}
