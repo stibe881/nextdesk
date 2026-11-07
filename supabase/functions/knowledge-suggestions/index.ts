@@ -480,7 +480,68 @@ function articleSlug(title: string): string {
   return `${base || "article"}-${crypto.randomUUID().slice(0, 8)}`;
 }
 
+/** How long a started draft blocks further attempts (AI call plus margin). */
+const DRAFT_CLAIM_MS = 3 * 60_000;
+
+/**
+ * Claims the suggestion before the AI call so a double click or a second
+ * person cannot create two drafts; the claim is released when drafting fails.
+ */
 async function draft(
+  request: Request,
+  client: Client,
+  admin: Client,
+  actorId: string,
+  action: Extract<Action, { type: "draft" }>,
+) {
+  const scope = await requireScope(admin, action.tenantId, actorId);
+  const suggestion = await loadSuggestion(admin, scope, action.tenantId, action.suggestionId);
+  if (suggestion.status === "drafted" && typeof suggestion.article_id === "string") {
+    return json(request, { data: { articleId: suggestion.article_id, existing: true } });
+  }
+  if (suggestion.status !== "open") {
+    throw new HttpError(409, "suggestion_closed", "Der Vorschlag wurde bereits abgeschlossen.");
+  }
+  const now = new Date();
+  const { data: claimed, error: claimError } = await admin
+    .from("knowledge_suggestions")
+    .update({ drafting_started_at: now.toISOString(), drafting_by: actorId })
+    .eq("tenant_id", action.tenantId)
+    .eq("id", action.suggestionId)
+    .eq("status", "open")
+    .or(
+      `drafting_started_at.is.null,drafting_started_at.lt.${
+        new Date(now.getTime() - DRAFT_CLAIM_MS).toISOString()
+      }`,
+    )
+    .select("id")
+    .maybeSingle();
+  if (claimError) {
+    throw new HttpError(503, "database_failure", "Der Vorschlag ist gerade nicht verfügbar.");
+  }
+  if (!claimed) {
+    throw new HttpError(
+      409,
+      "draft_in_progress",
+      "Für diesen Vorschlag wird gerade ein Entwurf erstellt. Bitte warten Sie einen Moment.",
+    );
+  }
+  let response: Response | null = null;
+  try {
+    response = await draftClaimed(request, client, admin, actorId, action);
+    return response;
+  } finally {
+    if (!response || response.status !== 201) {
+      await admin
+        .from("knowledge_suggestions")
+        .update({ drafting_started_at: null, drafting_by: null })
+        .eq("tenant_id", action.tenantId)
+        .eq("id", action.suggestionId);
+    }
+  }
+}
+
+async function draftClaimed(
   request: Request,
   client: Client,
   admin: Client,

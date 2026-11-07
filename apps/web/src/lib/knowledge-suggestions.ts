@@ -127,6 +127,8 @@ const MESSAGES: Record<string, string> = {
     "Die Tickets dieses Vorschlags sind für Sie nicht verfügbar.",
   suggestion_not_found: "Der Vorschlag ist nicht mehr verfügbar.",
   suggestion_closed: "Der Vorschlag wurde bereits abgeschlossen.",
+  draft_in_progress:
+    "Für diesen Vorschlag wird gerade ein Entwurf erstellt. Bitte warten Sie einen Moment.",
   article_department_required:
     "Bitte legen Sie zuerst fest, welcher Abteilung der Artikel gehören soll.",
 };

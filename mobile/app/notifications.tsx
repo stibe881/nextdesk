@@ -87,7 +87,8 @@ const CATEGORY_DETAILS: readonly {
   {
     key: "follow_up",
     label: "Wiedervorlagen",
-    description: "Erinnerung zum gesetzten Termin.",
+    description:
+      "Erinnerungen zu Wiedervorlagen und aus zeitgesteuerten Regeln.",
   },
   {
     key: "sla",
