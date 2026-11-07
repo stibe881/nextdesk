@@ -14,6 +14,7 @@ import {
   View,
 } from "react-native";
 
+import { PhotoMarkupEditor } from "@/components/photo-markup-editor";
 import { PortalAssistantSheet } from "@/components/portal-assistant-sheet";
 import { RequesterPicker } from "@/components/requester-picker";
 import { ScreenContainer } from "@/components/screen-container";
@@ -34,6 +35,8 @@ import {
   saveLocalTicketDraft,
 } from "@/lib/mobile-private-state";
 import { uploadPickedPhoto } from "@/lib/mobile-ticket-attachments";
+import { linkMobileTicketAsset } from "@/lib/asset-registry";
+import { linkedAssetFromParams } from "@/lib/asset-qr";
 import {
   loadPortalAssistantEnabled,
   recordAssistantOutcome,
@@ -62,9 +65,15 @@ const MAX_NEW_TICKET_PHOTOS = 5;
 export default function NewTicketScreen() {
   // Vorbelegung, z. B. aus einem gescannten Gerät.
   const params = useLocalSearchParams<{
+    assetId?: string;
+    assetName?: string;
     description?: string;
     subject?: string;
   }>();
+  // Gerät aus dem Scanner bzw. der Asset-Ansicht: wird mit dem Ticket verknüpft.
+  const [linkedAsset, setLinkedAsset] = useState(() =>
+    linkedAssetFromParams(params),
+  );
   const [initialPrefill] = useState(() => ({
     description:
       typeof params.description === "string" ? params.description : "",
@@ -82,6 +91,8 @@ export default function NewTicketScreen() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [photos, setPhotos] = useState<ImagePicker.ImagePickerAsset[]>([]);
+  // Index of the photo being marked up («Markieren»).
+  const [markupIndex, setMarkupIndex] = useState<number | null>(null);
   // «Selbstbedienungs-Assistent» (optional per tenant, off by default).
   const [assistantEnabled, setAssistantEnabled] = useState(false);
   const [assistantOpen, setAssistantOpen] = useState(false);
@@ -402,6 +413,15 @@ export default function NewTicketScreen() {
         description: cleanDescription || cleanSubject,
         categoryId: assistantCategory?.categoryId ?? null,
       });
+      if (linkedAsset) {
+        // Best effort: ohne Recht «ticket.update» bleibt das Gerät in der
+        // Beschreibung erwähnt, die Verknüpfung fehlt dann.
+        await linkMobileTicketAsset(
+          tenant.id,
+          ticket.ticketId,
+          linkedAsset.id,
+        ).catch(() => undefined);
+      }
       if (assistantResult) {
         void recordAssistantOutcome({
           tenantId: tenant.id,
@@ -598,6 +618,34 @@ export default function NewTicketScreen() {
               />
             ) : null}
 
+            {linkedAsset ? (
+              <>
+                <FieldLabel label="BETROFFENES GERÄT" />
+                <View style={styles.assetChip}>
+                  <Ionicons
+                    color={colors.primaryText}
+                    name="laptop-outline"
+                    size={18}
+                  />
+                  <Text numberOfLines={1} style={styles.assetChipText}>
+                    {linkedAsset.name}
+                  </Text>
+                  <Pressable
+                    accessibilityLabel="Gerät nicht verknüpfen"
+                    accessibilityRole="button"
+                    hitSlop={8}
+                    onPress={() => setLinkedAsset(null)}
+                  >
+                    <Ionicons
+                      color={colors.primaryText}
+                      name="close-circle"
+                      size={20}
+                    />
+                  </Pressable>
+                </View>
+              </>
+            ) : null}
+
             <FieldLabel label="FOTOS (OPTIONAL)" />
             <View style={styles.photoActions}>
               <Pressable
@@ -638,6 +686,19 @@ export default function NewTicketScreen() {
                       style={styles.photoImage}
                     />
                     <Pressable
+                      accessibilityLabel={`Foto ${index + 1} markieren`}
+                      accessibilityRole="button"
+                      hitSlop={6}
+                      onPress={() => {
+                        hapticSelection();
+                        setMarkupIndex(index);
+                      }}
+                      style={styles.photoMarkup}
+                    >
+                      <Ionicons color="#ffffff" name="brush" size={12} />
+                      <Text style={styles.photoMarkupText}>Markieren</Text>
+                    </Pressable>
+                    <Pressable
                       accessibilityLabel={`Foto ${index + 1} entfernen`}
                       accessibilityRole="button"
                       hitSlop={8}
@@ -654,6 +715,31 @@ export default function NewTicketScreen() {
                 ))}
               </View>
             ) : null}
+
+            <PhotoMarkupEditor
+              onCancel={() => setMarkupIndex(null)}
+              onSave={(result) => {
+                const index = markupIndex;
+                setMarkupIndex(null);
+                if (index === null) return;
+                // Das markierte Bild ersetzt das Original als Anhang.
+                setPhotos((current) =>
+                  current.map((photo, position) =>
+                    position === index
+                      ? {
+                          ...photo,
+                          uri: result.uri,
+                          width: result.width,
+                          height: result.height,
+                        }
+                      : photo,
+                  ),
+                );
+              }}
+              photo={
+                markupIndex === null ? null : (photos[markupIndex] ?? null)
+              }
+            />
 
             <FieldLabel label="ABTEILUNG" />
             <View style={styles.choiceList}>
@@ -812,8 +898,39 @@ const useStyles = makeThemedStyles((c) => ({
     top: 4,
     width: 22,
   },
+  photoMarkup: {
+    alignItems: "center",
+    backgroundColor: "rgba(0,0,0,0.6)",
+    borderRadius: 9,
+    bottom: 4,
+    flexDirection: "row",
+    gap: 3,
+    justifyContent: "center",
+    left: 4,
+    paddingVertical: 3,
+    position: "absolute",
+    right: 4,
+  },
+  photoMarkupText: { color: "#ffffff", fontSize: 10, fontWeight: "800" },
   photoRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  photoThumb: { height: 76, width: 76 },
+  photoThumb: { height: 88, width: 88 },
+  assetChip: {
+    alignItems: "center",
+    backgroundColor: c.primarySoft,
+    borderColor: c.primarySoftBorder,
+    borderRadius: 14,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  assetChipText: {
+    color: c.primaryText,
+    flex: 1,
+    fontSize: 14,
+    fontWeight: "800",
+  },
   content: { gap: 16, paddingTop: 14, paddingBottom: 320 },
   offlineGuard: {
     alignItems: "center",

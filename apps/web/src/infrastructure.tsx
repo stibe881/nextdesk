@@ -1,6 +1,13 @@
 import { CsvImportDialog } from "./csv-import-dialog";
 import { INFRASTRUCTURE_IMPORT_FIELDS } from "./lib/import-fields";
 import { RackView } from "./infrastructure-racks";
+import {
+  AssetLabelDialog,
+  LabelSelectionBar,
+  type LabelBranding,
+} from "./asset-label-dialog";
+import { assetLabelItem, rackLabelItem } from "./lib/asset-labels";
+import { buildRacks } from "./lib/rack-layout";
 import { NetworkMap, type MonitoringEntry } from "./infrastructure-network-map";
 import {
   MaintenancePlanning,
@@ -278,9 +285,15 @@ type Form = typeof EMPTY_FORM;
 export function Infrastructure({
   tenantId,
   onOpenTicket,
+  labelBranding,
+  initialRack,
 }: {
   tenantId: string;
   onOpenTicket?: (ticketId: string) => void;
+  /** Tenant name and logo for printed labels. */
+  labelBranding?: LabelBranding | undefined;
+  /** Opens the rack view filtered to this rack (QR web fallback). */
+  initialRack?: string | undefined;
 }) {
   const [devices, setDevices] = useState<Device[]>([]);
   const [locations, setLocations] = useState<Location[]>([]);
@@ -293,9 +306,17 @@ export function Infrastructure({
   const [lifecycleFilter, setLifecycleFilter] = useState<
     "current" | "all" | Lifecycle
   >("current");
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(initialRack ?? "");
   const [onlyDue, setOnlyDue] = useState(false);
-  const [layout, setLayout] = useState<"list" | "racks" | "map">("list");
+  const [layout, setLayout] = useState<"list" | "racks" | "map">(
+    initialRack ? "racks" : "list",
+  );
+  // Devices and racks selected for printing labels.
+  const [labelDevices, setLabelDevices] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [labelRacks, setLabelRacks] = useState<Set<string>>(() => new Set());
+  const [labelDialogOpen, setLabelDialogOpen] = useState(false);
   const [monitoring, setMonitoring] = useState<
     Record<string, MonitoringEntry[]>
   >({});
@@ -459,6 +480,30 @@ export function Infrastructure({
   }, [devices]);
 
   const selected = devices.find((device) => device.id === selectedId) ?? null;
+
+  const allRacks = useMemo(() => buildRacks(devices), [devices]);
+  const visibleRackKeys = useMemo(
+    () => buildRacks(visible).map((rack) => rack.key),
+    [visible],
+  );
+  const labelDeviceList = devices.filter((device) =>
+    labelDevices.has(device.id),
+  );
+  const labelRackList = allRacks.filter((rack) => labelRacks.has(rack.key));
+  const labelCount = labelDeviceList.length + labelRackList.length;
+
+  function toggleIn(
+    setter: typeof setLabelDevices,
+    key: string,
+    checked: boolean,
+  ) {
+    setter((current) => {
+      const next = new Set(current);
+      if (checked) next.add(key);
+      else next.delete(key);
+      return next;
+    });
+  }
 
   function edit(device: Device | null) {
     setForm(
@@ -661,6 +706,61 @@ export function Infrastructure({
         </p>
       ) : null}
 
+      {visible.length > 0 && layout !== "map" ? (
+        <LabelSelectionBar
+          extra={
+            labelRackList.length > 0
+              ? `${labelDeviceList.length} Geräte, ${labelRackList.length} Racks`
+              : undefined
+          }
+          onClear={() => {
+            setLabelDevices(new Set());
+            setLabelRacks(new Set());
+          }}
+          onPrint={() => setLabelDialogOpen(true)}
+          onSelectVisible={() => {
+            if (layout === "racks") {
+              setLabelRacks(
+                (current) => new Set([...current, ...visibleRackKeys]),
+              );
+            } else {
+              setLabelDevices(
+                (current) =>
+                  new Set([...current, ...visible.map((device) => device.id)]),
+              );
+            }
+          }}
+          selectedCount={labelCount}
+          visibleCount={
+            layout === "racks" ? visibleRackKeys.length : visible.length
+          }
+        />
+      ) : null}
+
+      {labelDialogOpen ? (
+        <AssetLabelDialog
+          branding={labelBranding}
+          buildItems={(mode, baseUrl) => [
+            ...labelRackList.map((rack) =>
+              rackLabelItem(
+                {
+                  name: rack.name,
+                  locationName: rack.locationName,
+                  deviceCount: rack.placed.length + rack.unplaced.length,
+                },
+                mode,
+                baseUrl,
+              ),
+            ),
+            ...labelDeviceList.map((device) =>
+              assetLabelItem(device, mode, baseUrl),
+            ),
+          ]}
+          count={labelCount}
+          onClose={() => setLabelDialogOpen(false)}
+        />
+      ) : null}
+
       {loading && devices.length === 0 ? (
         <p className="empty-state">Infrastruktur wird geladen …</p>
       ) : visible.length === 0 ? (
@@ -693,6 +793,11 @@ export function Infrastructure({
           categoryLabel={(key) => CATEGORY[key as Category]?.label ?? key}
           devices={visible}
           onOpen={setSelectedId}
+          onSelectRackDevices={(deviceIds) =>
+            setLabelDevices((current) => new Set([...current, ...deviceIds]))
+          }
+          onToggleRack={(key, checked) => toggleIn(setLabelRacks, key, checked)}
+          selectedRackKeys={labelRacks}
         />
       ) : (
         <ul className="infrastructure__list">
@@ -700,7 +805,20 @@ export function Infrastructure({
             const { Icon, label } = CATEGORY[device.category];
             const flags = dueFlags(device);
             return (
-              <li key={device.id}>
+              <li className="infrastructure__list-row" key={device.id}>
+                <label
+                  className="infrastructure__label-check"
+                  title="Für Etikett auswählen"
+                >
+                  <input
+                    aria-label={`${device.name} für Etikett auswählen`}
+                    checked={labelDevices.has(device.id)}
+                    onChange={(event) =>
+                      toggleIn(setLabelDevices, device.id, event.target.checked)
+                    }
+                    type="checkbox"
+                  />
+                </label>
                 <button
                   className={`infrastructure__device${selectedId === device.id ? " is-selected" : ""}`}
                   onClick={() => setSelectedId(device.id)}

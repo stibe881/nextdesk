@@ -18,6 +18,7 @@ import {
 } from "@/components/mobile-feature-gate";
 import { useMobileNetworkStatus } from "@/components/offline-status";
 import { getMobileAsset, type MobileAssetDetail } from "@/lib/asset-registry";
+import { ticketPrefillForAsset } from "@/lib/asset-qr";
 import {
   getMobileIntuneDevice,
   type MobileIntuneAction,
@@ -257,24 +258,15 @@ export default function AssetDetailScreen() {
             onPress={() =>
               router.push({
                 pathname: "/ticket/new",
-                params: {
-                  subject: `${asset.name}: `,
-                  description: [
-                    `Gerät: ${asset.name}`,
-                    asset.inventoryNumber
-                      ? `Inventarnummer: ${asset.inventoryNumber}`
-                      : null,
-                    asset.assetTag ? `Asset-Tag: ${asset.assetTag}` : null,
-                    asset.serialNumber
-                      ? `Seriennummer: ${asset.serialNumber}`
-                      : null,
-                    location?.name ? `Standort: ${location.name}` : null,
-                    "",
-                    "Problem:",
-                  ]
-                    .filter((line) => line !== null)
-                    .join("\n"),
-                },
+                // Vorbelegung inkl. Verknüpfung des Geräts mit dem Ticket.
+                params: ticketPrefillForAsset({
+                  id: asset.id,
+                  name: asset.name,
+                  inventoryNumber: asset.inventoryNumber,
+                  assetTag: asset.assetTag,
+                  serialNumber: asset.serialNumber,
+                  locationName: location?.name ?? null,
+                }),
               })
             }
             style={[styles.actionButton, { backgroundColor: colors.primary }]}
@@ -285,7 +277,7 @@ export default function AssetDetailScreen() {
               size={20}
             />
             <Text style={[styles.actionText, { color: colors.onPrimary }]}>
-              Ticket zu diesem Gerät
+              Ticket zu diesem Gerät erstellen
             </Text>
           </Pressable>
           <Pressable
@@ -412,9 +404,10 @@ const useStyles = makeThemedStyles((c) => ({
     justifyContent: "center",
     minHeight: 48,
     paddingHorizontal: 12,
+    paddingVertical: 8,
   },
   actionRow: { flexDirection: "row", gap: 10 },
-  actionText: { fontSize: 13, fontWeight: "800" },
+  actionText: { flexShrink: 1, fontSize: 13, fontWeight: "800" },
   assetName: {
     color: c.foreground,
     fontSize: 23,

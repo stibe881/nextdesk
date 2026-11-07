@@ -89,6 +89,7 @@ import {
   type TenantOption,
 } from "./lib/live-dashboard";
 import { createPersonalWorkspace, deleteAccount } from "./lib/account";
+import { assetIdFromSearch, rackFromSearch } from "./lib/asset-labels";
 import { acceptTenantInvitations } from "./lib/tenant-invitations";
 import { normalizeQueueSelection, shouldShowQueueTabs } from "./lib/queue-tabs";
 import {
@@ -2422,6 +2423,28 @@ const initialKnowledgeDeepLink: string | null = (() => {
   }
 })();
 
+// "?asset=<uuid>" and "?rack=<name>" are the web fallback of printed asset
+// labels (QR code). They open the asset list or the rack view.
+const initialAssetLabelDeepLink: {
+  assetId: string | null;
+  rack: string | null;
+} = (() => {
+  if (typeof window === "undefined") return { assetId: null, rack: null };
+  try {
+    const url = new URL(window.location.href);
+    const assetId = assetIdFromSearch(url.search);
+    const rack = assetId ? null : rackFromSearch(url.search);
+    if (url.searchParams.has("asset") || url.searchParams.has("rack")) {
+      url.searchParams.delete("asset");
+      url.searchParams.delete("rack");
+      window.history.replaceState(window.history.state, "", url.toString());
+    }
+    return { assetId, rack };
+  } catch {
+    return { assetId: null, rack: null };
+  }
+})();
+
 function TicketList({
   assignment,
   loading = false,
@@ -3264,6 +3287,16 @@ function AuthenticatedApp() {
       canManageServiceStatus,
     });
   const knowledgeDeepLinkConsumedRef = useRef(false);
+  const assetLabelDeepLinkConsumedRef = useRef(false);
+  // Rack from a label QR code; only for the first visit of the rack view.
+  const [infrastructureRackFocus, setInfrastructureRackFocus] = useState<
+    string | null
+  >(initialAssetLabelDeepLink.rack);
+  useEffect(() => {
+    if (section !== "Infrastruktur" && assetLabelDeepLinkConsumedRef.current) {
+      setInfrastructureRackFocus(null);
+    }
+  }, [section]);
   const workspaceNavigationReady = isWorkspaceNavigationReady({
     activeTenantAvailable: activeTenant !== null,
     isSupabaseConfigured,
@@ -3288,6 +3321,22 @@ function AuthenticatedApp() {
       setKnowledgeFocusArticleId(initialKnowledgeDeepLink);
       setSection("Wissen");
       return;
+    }
+    // Asset label QR code (web fallback): open the asset or the rack.
+    if (!assetLabelDeepLinkConsumedRef.current) {
+      assetLabelDeepLinkConsumedRef.current = true;
+      if (initialAssetLabelDeepLink.assetId) {
+        setAssetFocusQuery({
+          query: initialAssetLabelDeepLink.assetId,
+          id: Date.now(),
+        });
+        setSection("Assets");
+        return;
+      }
+      if (initialAssetLabelDeepLink.rack) {
+        setSection("Infrastruktur");
+        return;
+      }
     }
     setSection(workspacePreferences.startSection);
   }, [
@@ -5922,12 +5971,21 @@ function AuthenticatedApp() {
             assetQueryRequest={assetFocusQuery ?? undefined}
             fixedTab="assets"
             key={`service-assets:${activeTenant.id}:assets`}
+            labelBranding={{
+              name: workspaceBrandName,
+              logoUrl: activeWorkspaceBranding?.logoUrl ?? null,
+            }}
             tenantId={activeTenant.id}
           />
         ) : section === "Infrastruktur" &&
           activeTenant &&
           isFeatureEnabled("assets.management") ? (
           <Infrastructure
+            initialRack={infrastructureRackFocus ?? undefined}
+            labelBranding={{
+              name: workspaceBrandName,
+              logoUrl: activeWorkspaceBranding?.logoUrl ?? null,
+            }}
             onOpenTicket={(ticketId) => setSelectedTicketId(ticketId)}
             tenantId={activeTenant.id}
           />

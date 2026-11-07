@@ -16,6 +16,12 @@ import {
 import { createPortal } from "react-dom";
 import { supabase } from "./lib/supabase";
 import { IntuneActionsMenu, useIntuneAssetDevices } from "./intune-actions";
+import {
+  AssetLabelDialog,
+  LabelSelectionBar,
+  type LabelBranding,
+} from "./asset-label-dialog";
+import { assetLabelItem } from "./lib/asset-labels";
 
 export type ServiceAssetsProps = {
   tenantId: string;
@@ -27,6 +33,8 @@ export type ServiceAssetsProps = {
   onCreateMaintenance?: (() => void) | undefined;
   /** Prefills the asset filter, e.g. for a device opened from a ticket. */
   assetQueryRequest?: { query: string; id: number } | undefined;
+  /** Tenant name and logo for printed asset labels. */
+  labelBranding?: LabelBranding | undefined;
 };
 
 export type CatalogTab = "services" | "assets" | "problems";
@@ -1816,6 +1824,7 @@ export function ServiceAssets({
   onCreateProblemRequestConsumed,
   onCreateMaintenance,
   assetQueryRequest,
+  labelBranding,
 }: ServiceAssetsProps) {
   const [activeTab, setActiveTab] = useState<CatalogTab>(
     fixedTab ??
@@ -1861,6 +1870,11 @@ export function ServiceAssets({
     if (assetQueryRequest) setAssetQuery(assetQueryRequest.query);
   }, [assetQueryRequest]);
   const [assetServiceFilter, setAssetServiceFilter] = useState("all");
+  // Assets selected for printing labels.
+  const [labelSelection, setLabelSelection] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [labelDialogOpen, setLabelDialogOpen] = useState(false);
   const [assetStatusFilter, setAssetStatusFilter] = useState("all");
   const [problemQuery, setProblemQuery] = useState("");
   const [problemStatusFilter, setProblemStatusFilter] = useState<
@@ -2053,6 +2067,7 @@ export function ServiceAssets({
         (asset) =>
           contains(
             [
+              asset.id,
               asset.name,
               asset.asset_tag,
               asset.inventory_number,
@@ -4386,105 +4401,169 @@ export function ServiceAssets({
           ) : filteredAssets.length === 0 ? (
             <p className="empty-state">Keine Assets entsprechen dem Filter.</p>
           ) : (
-            <ul aria-label="Aktive Assets">
-              {filteredAssets.map((asset) => (
-                <li key={asset.id}>
-                  <article>
-                    <h4>{asset.name}</h4>
-                    <p>
-                      {asset.kind} · {asset.status}
-                      {asset.asset_tag ? ` · Kennung: ${asset.asset_tag}` : ""}
-                    </p>
-                    <p>
-                      {[asset.manufacturer, asset.model]
-                        .filter(Boolean)
-                        .join(" · ") || "Keine Gerätedaten hinterlegt"}
-                      {asset.inventory_number
-                        ? ` · Inventar: ${asset.inventory_number}`
-                        : ""}
-                    </p>
-                    {asset.serial_number ? (
-                      <p>Seriennummer: {asset.serial_number}</p>
-                    ) : null}
-                    <p>
-                      Dienst:{" "}
-                      {asset.service_id
-                        ? (serviceNames.get(asset.service_id) ??
-                          "Nicht im aktiven Katalog")
-                        : "Nicht zugeordnet"}
-                    </p>
-                    {departmentLabel(departments, asset.department_id) ? (
+            <>
+              <LabelSelectionBar
+                onClear={() => setLabelSelection(new Set())}
+                onPrint={() => setLabelDialogOpen(true)}
+                onSelectVisible={() =>
+                  setLabelSelection(
+                    (current) =>
+                      new Set([
+                        ...current,
+                        ...filteredAssets.map((asset) => asset.id),
+                      ]),
+                  )
+                }
+                selectedCount={
+                  assets.filter((asset) => labelSelection.has(asset.id)).length
+                }
+                visibleCount={filteredAssets.length}
+              />
+              <ul aria-label="Aktive Assets">
+                {filteredAssets.map((asset) => (
+                  <li key={asset.id}>
+                    <article>
+                      <label className="asset-label-check">
+                        <input
+                          checked={labelSelection.has(asset.id)}
+                          onChange={(event) => {
+                            const checked = event.target.checked;
+                            setLabelSelection((current) => {
+                              const next = new Set(current);
+                              if (checked) next.add(asset.id);
+                              else next.delete(asset.id);
+                              return next;
+                            });
+                          }}
+                          type="checkbox"
+                        />
+                        Für Etikett auswählen
+                      </label>
+                      <h4>{asset.name}</h4>
                       <p>
-                        Abteilung:{" "}
-                        {departmentLabel(departments, asset.department_id)}
+                        {asset.kind} · {asset.status}
+                        {asset.asset_tag
+                          ? ` · Kennung: ${asset.asset_tag}`
+                          : ""}
                       </p>
-                    ) : null}
-                    {asset.intune_primary_person_name ? (
-                      <div className="service-assets__primary-person">
-                        <span
-                          aria-hidden="true"
-                          className="service-assets__primary-person-avatar"
-                        >
-                          {asset.intune_primary_person_photo_url ? (
-                            <img
-                              alt=""
-                              className="service-assets__primary-person-photo"
-                              loading="lazy"
-                              referrerPolicy="no-referrer"
-                              src={asset.intune_primary_person_photo_url}
-                            />
-                          ) : (
-                            personInitials(asset.intune_primary_person_name)
-                          )}
-                        </span>
-                        <span className="service-assets__primary-person-copy">
-                          <small>Primäre Person</small>
-                          <strong>{asset.intune_primary_person_name}</strong>
-                        </span>
-                        <span className="service-assets__primary-person-source">
-                          Intune
-                        </span>
-                      </div>
-                    ) : (
-                      <p className="service-assets__primary-person-empty">
-                        Keine primäre Person durch Intune erkannt
-                      </p>
-                    )}
-                    {metadataPreview(asset.metadata) !== "{}" ? (
                       <p>
-                        <code>{metadataPreview(asset.metadata)}</code>
+                        {[asset.manufacturer, asset.model]
+                          .filter(Boolean)
+                          .join(" · ") || "Keine Gerätedaten hinterlegt"}
+                        {asset.inventory_number
+                          ? ` · Inventar: ${asset.inventory_number}`
+                          : ""}
                       </p>
-                    ) : null}
-                    <button
-                      disabled={controlsDisabled}
-                      onClick={(event) =>
-                        openAssetEditor(asset, event.currentTarget)
-                      }
-                      type="button"
-                    >
-                      Bearbeiten
-                    </button>{" "}
-                    <button
-                      disabled={controlsDisabled}
-                      onClick={() => void archiveAsset(asset)}
-                      type="button"
-                    >
-                      {pendingAction === `asset:archive:${asset.id}`
-                        ? "Wird archiviert …"
-                        : "Archivieren"}
-                    </button>
-                    {intuneAssets.devices.has(asset.id) ? " " : null}
-                    <IntuneActionsMenu
-                      device={intuneAssets.devices.get(asset.id)}
-                      disabled={!intuneAssets.connectionReady}
-                      tenantId={tenantId}
-                      ticketId={null}
-                    />
-                  </article>
-                </li>
-              ))}
-            </ul>
+                      {asset.serial_number ? (
+                        <p>Seriennummer: {asset.serial_number}</p>
+                      ) : null}
+                      <p>
+                        Dienst:{" "}
+                        {asset.service_id
+                          ? (serviceNames.get(asset.service_id) ??
+                            "Nicht im aktiven Katalog")
+                          : "Nicht zugeordnet"}
+                      </p>
+                      {departmentLabel(departments, asset.department_id) ? (
+                        <p>
+                          Abteilung:{" "}
+                          {departmentLabel(departments, asset.department_id)}
+                        </p>
+                      ) : null}
+                      {asset.intune_primary_person_name ? (
+                        <div className="service-assets__primary-person">
+                          <span
+                            aria-hidden="true"
+                            className="service-assets__primary-person-avatar"
+                          >
+                            {asset.intune_primary_person_photo_url ? (
+                              <img
+                                alt=""
+                                className="service-assets__primary-person-photo"
+                                loading="lazy"
+                                referrerPolicy="no-referrer"
+                                src={asset.intune_primary_person_photo_url}
+                              />
+                            ) : (
+                              personInitials(asset.intune_primary_person_name)
+                            )}
+                          </span>
+                          <span className="service-assets__primary-person-copy">
+                            <small>Primäre Person</small>
+                            <strong>{asset.intune_primary_person_name}</strong>
+                          </span>
+                          <span className="service-assets__primary-person-source">
+                            Intune
+                          </span>
+                        </div>
+                      ) : (
+                        <p className="service-assets__primary-person-empty">
+                          Keine primäre Person durch Intune erkannt
+                        </p>
+                      )}
+                      {metadataPreview(asset.metadata) !== "{}" ? (
+                        <p>
+                          <code>{metadataPreview(asset.metadata)}</code>
+                        </p>
+                      ) : null}
+                      <button
+                        disabled={controlsDisabled}
+                        onClick={(event) =>
+                          openAssetEditor(asset, event.currentTarget)
+                        }
+                        type="button"
+                      >
+                        Bearbeiten
+                      </button>{" "}
+                      <button
+                        disabled={controlsDisabled}
+                        onClick={() => void archiveAsset(asset)}
+                        type="button"
+                      >
+                        {pendingAction === `asset:archive:${asset.id}`
+                          ? "Wird archiviert …"
+                          : "Archivieren"}
+                      </button>
+                      {intuneAssets.devices.has(asset.id) ? " " : null}
+                      <IntuneActionsMenu
+                        device={intuneAssets.devices.get(asset.id)}
+                        disabled={!intuneAssets.connectionReady}
+                        tenantId={tenantId}
+                        ticketId={null}
+                      />
+                    </article>
+                  </li>
+                ))}
+              </ul>
+            </>
           )}
+
+          {labelDialogOpen ? (
+            <AssetLabelDialog
+              branding={labelBranding}
+              buildItems={(mode, baseUrl) =>
+                assets
+                  .filter((asset) => labelSelection.has(asset.id))
+                  .map((asset) =>
+                    assetLabelItem(
+                      {
+                        id: asset.id,
+                        name: asset.name,
+                        assetTag: asset.asset_tag,
+                        inventoryNumber: asset.inventory_number,
+                        serialNumber: asset.serial_number,
+                      },
+                      mode,
+                      baseUrl,
+                    ),
+                  )
+              }
+              count={
+                assets.filter((asset) => labelSelection.has(asset.id)).length
+              }
+              onClose={() => setLabelDialogOpen(false)}
+            />
+          ) : null}
 
           {assetEditorOpen
             ? createPortal(

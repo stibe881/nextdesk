@@ -1,0 +1,124 @@
+/* Asset labels: selection toolbar, checkboxes and print dialog. */
+.asset-label-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin: 8px 0 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card, 12px);
+  padding: 8px 12px;
+  background: var(--surface-subtle, var(--surface));
+  color: var(--ink);
+}
+.asset-label-bar__count {
+  flex: 1 1 auto;
+  font-size: 13px;
+  font-weight: 650;
+}
+.asset-label-bar .secondary-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.asset-label-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.asset-label-check input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--primary);
+}
+
+.asset-label-dialog__backdrop {
+  position: fixed;
+  z-index: 95;
+  inset: 0;
+  display: grid;
+  overflow-y: auto;
+  place-items: center;
+  padding: 24px;
+  background: var(--overlay);
+}
+.asset-label-dialog {
+  display: grid;
+  gap: 16px;
+  width: min(100%, 560px);
+  max-height: min(760px, calc(100dvh - 48px));
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card, 12px);
+  padding: 20px;
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--shadow-lg);
+}
+.asset-label-dialog form {
+  display: grid;
+  gap: 14px;
+}
+.asset-label-dialog form > label,
+.asset-label-dialog fieldset {
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 650;
+}
+.asset-label-dialog fieldset {
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px 12px;
+}
+.asset-label-dialog small,
+.asset-label-dialog__hint,
+.asset-label-dialog__summary {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+.asset-label-dialog__hint,
+.asset-label-dialog__summary {
+  margin: 0;
+}
+.asset-label-dialog form > label.asset-label-dialog__choice,
+.asset-label-dialog__choice {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.asset-label-dialog__choice input {
+  margin-top: 3px;
+  accent-color: var(--primary);
+}
+.asset-label-dialog__choice span {
+  display: grid;
+  gap: 2px;
+}
+.asset-label-dialog .form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+.asset-label-dialog .primary-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+@media (max-width: 560px) {
+  .asset-label-dialog__backdrop {
+    padding: 12px;
+  }
+}

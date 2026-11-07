@@ -189,3 +189,21 @@ export async function transitionMobileAssetLifecycle(
   );
   return parseAsset(data.asset);
 }
+
+/**
+ * Verknüpft ein Asset mit einem Ticket (z. B. nach dem Erfassen aus einem
+ * gescannten Gerät). Erfordert «ticket.update» in der Abteilung des Tickets.
+ */
+export async function linkMobileTicketAsset(
+  tenantId: string,
+  ticketId: string,
+  assetId: string,
+): Promise<void> {
+  await invokeNextDesk<unknown>("service-assets", {
+    type: "linkTicket",
+    tenantId,
+    ticketId,
+    kind: "asset",
+    targetId: assetId,
+  });
+}
