@@ -683,6 +683,9 @@ function DelegationsPanel({ tenantId }: { tenantId: string }) {
   const [editing, setEditing] = useState<Delegation | null>(null);
   const [pending, setPending] = useState<"save" | string | null>(null);
   const [message, setMessage] = useState("");
+  // Admins and supervisors manage the delegations of other agents too.
+  const [managedAgents, setManagedAgents] = useState<Person[]>([]);
+  const [subjectId, setSubjectId] = useState("");
 
   const peopleById = useMemo(
     () => new Map(people.map((person) => [person.id, person.name])),
@@ -697,10 +700,11 @@ function DelegationsPanel({ tenantId }: { tenantId: string }) {
     setEditing(null);
   }
 
-  async function reload() {
+  async function reload(forAgentId = subjectId) {
     const value = await invokeAgentWorkbench({
       tenantId,
       type: "listDelegations",
+      ...(forAgentId ? { agentId: forAgentId } : {}),
     });
     const data = responseData(value);
     const nextDelegations = Array.isArray(data?.delegations)
@@ -742,6 +746,16 @@ function DelegationsPanel({ tenantId }: { tenantId: string }) {
         setDelegations(nextDelegations);
         setPeople(nextPeople);
         setState("ready");
+        // Optional: people whose delegations this user may manage.
+        void invokeAgentWorkbench({
+          tenantId,
+          type: "listManagedDelegationAgents",
+        })
+          .then((managedValue) => {
+            const managed = delegationPeopleFromResponse(managedValue);
+            if (mounted && managed) setManagedAgents(managed);
+          })
+          .catch(() => undefined);
       })
       .catch(() => {
         if (!mounted) return;
@@ -783,6 +797,7 @@ function DelegationsPanel({ tenantId }: { tenantId: string }) {
     try {
       await invokeAgentWorkbench({
         ...(editing ? { delegationId: editing.id } : {}),
+        ...(subjectId ? { agentId: subjectId } : {}),
         delegateId,
         endsAt: end,
         note: note.trim() || null,
@@ -841,11 +856,17 @@ function DelegationsPanel({ tenantId }: { tenantId: string }) {
         <div>
           <p className="eyebrow">PERSÖNLICHE PLANUNG</p>
           <h2 id="workbench-delegations-heading">Stellvertretung</h2>
-          <p>Verwalten Sie ausschliesslich Ihre eigenen Stellvertretungen.</p>
+          <p>
+            {managedAgents.length > 0
+              ? "Verwalten Sie Ihre Stellvertretungen und die Ihres Teams."
+              : "Verwalten Sie Ihre eigenen Stellvertretungen."}
+          </p>
         </div>
         <HelpHint label="Stellvertretung">
-          Eine Stellvertretung ist eine dokumentierte Vertretungsregel. Sie
-          weist keine Tickets zu und ändert keine Rollen oder Agentenstatus.
+          Während der Stellvertretung erhält die stellvertretende Person Ihre
+          Ticketbenachrichtigungen, sieht Ihre Tickets, Wiedervorlagen und
+          Serviceaufgaben, und neue Zuweisungen an Sie gehen an sie. Zu Beginn
+          und am Ende gibt es eine Übergabe-Zusammenfassung.
         </HelpHint>
       </div>
       {state === "loading" ? (
@@ -858,6 +879,29 @@ function DelegationsPanel({ tenantId }: { tenantId: string }) {
         </p>
       ) : (
         <>
+          {managedAgents.length > 0 ? (
+            <label className="workbench-form__subject">
+              Stellvertretung verwalten für
+              <select
+                disabled={pending !== null}
+                onChange={(event) => {
+                  const next = event.target.value;
+                  setSubjectId(next);
+                  resetEditor();
+                  setMessage("");
+                  void reload(next).catch(() => setState("unavailable"));
+                }}
+                value={subjectId}
+              >
+                <option value="">Mich selbst</option>
+                {managedAgents.map((person) => (
+                  <option key={person.id} value={person.id}>
+                    {person.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
           <form
             className="workbench-form"
             onSubmit={(event) => void saveDelegation(event)}
@@ -888,11 +932,13 @@ function DelegationsPanel({ tenantId }: { tenantId: string }) {
                   value={delegateId}
                 >
                   <option value="">Aktiven Agenten auswählen</option>
-                  {people.map((person) => (
-                    <option key={person.id} value={person.id}>
-                      {person.name}
-                    </option>
-                  ))}
+                  {people
+                    .filter((person) => person.id !== subjectId)
+                    .map((person) => (
+                      <option key={person.id} value={person.id}>
+                        {person.name}
+                      </option>
+                    ))}
                 </select>
               </label>
               <label>

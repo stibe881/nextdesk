@@ -16,6 +16,7 @@ import {
   ArrowLeft,
   ArrowRight,
   CheckCircle2,
+  AlertTriangle,
   ArrowUp,
   BadgeCheck,
   Bell,
@@ -92,6 +93,8 @@ import { TenantAdminSettings } from "./tenant-admin-settings";
 import { KnowledgeBase } from "./knowledge-base";
 import { GlobalSearch, type GlobalSearchResult } from "./global-search";
 import { ServiceReporting } from "./service-reporting";
+import { TeamSupervision } from "./team-supervision";
+import { absenceLabel, loadActiveAbsences } from "./lib/active-absences";
 import { ServiceAssets } from "./service-assets";
 import {
   isPublicServiceStatusBadgeRequested,
@@ -191,6 +194,7 @@ type Section =
   | "Eintritte"
   | "Wissen"
   | "Berichte"
+  | "Teamführung"
   | "Einstellungen";
 type TicketScope =
   "all" | "mine" | "unassigned" | "open" | "closed" | "delegated";
@@ -324,6 +328,7 @@ const sections: readonly { label: Section; Icon: LucideIcon }[] =
     { label: "Lizenzen", Icon: KeyRound },
     { label: "Berichte", Icon: ChartNoAxesCombined },
     { label: "Arbeitsplatz", Icon: BriefcaseBusiness },
+    { label: "Teamführung", Icon: UsersRound },
   ]);
 
 const NAVIGATION_CATEGORIES = [
@@ -331,7 +336,7 @@ const NAVIGATION_CATEGORIES = [
     heading: "ARBEITSBEREICH",
     id: "navigation-category-workspace",
     navigationLabel: "Arbeitsbereich",
-    sectionLabels: ["Tickets", "Shop", "Fälle"],
+    sectionLabels: ["Tickets", "Shop", "Fälle", "Teamführung"],
   },
   {
     heading: "PLANUNG & BETRIEB",
@@ -1197,6 +1202,54 @@ function baseNotificationPresentation(
         Icon: ArrowUp,
         title: "Ticket eskaliert",
       };
+    case "ticket.sla.supervisor_risk": {
+      const agent = notificationPayloadText(notification, "agentName", 200);
+      return {
+        description: `${ticketLabel} verletzt in weniger als einer Stunde die SLA${agent ? ` (${agent})` : " (nicht zugewiesen)"}.`,
+        Icon: AlertTriangle,
+        title: "Team: SLA in Gefahr",
+      };
+    }
+    case "ticket.sla.supervisor_no_response": {
+      const agent = notificationPayloadText(notification, "agentName", 200);
+      return {
+        description: `${ticketLabel} ist seit über 24 Stunden ohne Antwort${agent ? ` (${agent})` : " (nicht zugewiesen)"}.`,
+        Icon: AlertTriangle,
+        title: "Team: Ticket ohne Antwort",
+      };
+    }
+    case "delegation.started": {
+      const agent =
+        notificationPayloadText(notification, "agentName", 200) ?? "Kolleg:in";
+      const count = (key: string) => {
+        const value = isRecord(notification.payload)
+          ? notification.payload[key]
+          : null;
+        return typeof value === "number" ? value : 0;
+      };
+      const note = notificationPayloadText(notification, "note", 2000);
+      return {
+        description: `Du vertrittst ${agent}: ${count("openTickets")} offene Tickets, ${count("openFollowUps")} Wiedervorlagen, ${count("openServiceTasks")} Serviceaufgaben.${note ? ` Notiz: ${note}` : ""}`,
+        Icon: UserRound,
+        title: "Stellvertretung beginnt",
+      };
+    }
+    case "delegation.ended": {
+      const delegate =
+        notificationPayloadText(notification, "delegateName", 200) ??
+        "Deine Stellvertretung";
+      const count = (key: string) => {
+        const value = isRecord(notification.payload)
+          ? notification.payload[key]
+          : null;
+        return typeof value === "number" ? value : 0;
+      };
+      return {
+        description: `Willkommen zurück! ${delegate} hat ${count("handledTickets")} deiner Tickets bearbeitet, ${count("resolvedTickets")} wurden gelöst. Offen: ${count("openTickets")}.`,
+        Icon: UserRound,
+        title: "Stellvertretung beendet",
+      };
+    }
     default:
       if (notification.kind.startsWith("shop.order.")) {
         const orderNumber =
@@ -1814,6 +1867,16 @@ async function loadQuickAssignOptions(
     const agents = (data as { data?: { agents?: unknown } } | null)?.data
       ?.agents;
     if (!Array.isArray(agents)) throw new Error("invalid_agents_response");
+    // Absent agents are marked; new assignments go to their stand-in.
+    const absences = await loadActiveAbsences(tenantId);
+    const names = new Map<string, string>();
+    for (const agent of agents as { id?: unknown; displayName?: unknown }[]) {
+      if (
+        typeof agent?.id === "string" &&
+        typeof agent.displayName === "string"
+      )
+        names.set(agent.id, agent.displayName);
+    }
     return agents
       .flatMap((agent: unknown) => {
         const row = agent as { id?: unknown; displayName?: unknown };
@@ -1822,10 +1885,13 @@ async function loadQuickAssignOptions(
           ? [
               {
                 id: row.id,
-                label:
+                label: absenceLabel(
                   row.id === currentUserId
                     ? `${row.displayName} (ich)`
                     : row.displayName,
+                  absences.get(row.id),
+                  (id) => names.get(id),
+                ),
               },
             ]
           : [];
@@ -2411,6 +2477,10 @@ function AuthenticatedApp() {
   const [queue, setQueue] = useState("alle");
   const [ticketScope, setTicketScope] = useState<TicketScope>("all");
   const [delegatedForIds, setDelegatedForIds] = useState<string[]>([]);
+  // Departments the user supervises (role "Vorgesetzter Agent").
+  const [supervisedDepartmentIds, setSupervisedDepartmentIds] = useState<
+    string[]
+  >([]);
   const [ticketListRefinement, setTicketListRefinement] =
     useState<TicketListRefinement>(DEFAULT_TICKET_LIST_REFINEMENT);
   const [metricTicketFilter, setMetricTicketFilter] =
@@ -3978,6 +4048,26 @@ function AuthenticatedApp() {
     };
   }, [canWorkTickets, delegationTenantId, delegationUserId]);
   useEffect(() => {
+    if (!supabase || !delegationTenantId || !canWorkTickets) {
+      setSupervisedDepartmentIds([]);
+      return;
+    }
+    let active = true;
+    void supabase
+      .rpc("my_supervised_department_ids", { p_tenant_id: delegationTenantId })
+      .then(({ data, error }) => {
+        if (!active) return;
+        setSupervisedDepartmentIds(
+          !error && Array.isArray(data)
+            ? data.filter((entry): entry is string => typeof entry === "string")
+            : [],
+        );
+      });
+    return () => {
+      active = false;
+    };
+  }, [canWorkTickets, delegationTenantId]);
+  useEffect(() => {
     // The scope disappears when the last delegation ends.
     if (ticketScope === "delegated" && delegatedForIds.length === 0) {
       setTicketScope("all");
@@ -4171,6 +4261,9 @@ function AuthenticatedApp() {
       return contractsAvailable;
     }
     if (item.label === "Berichte") return reportsAvailable;
+    if (item.label === "Teamführung") {
+      return canWorkTickets && supervisedDepartmentIds.length > 0;
+    }
     if (item.label === "Serviceaufgaben") {
       return isFeatureEnabled("service.tasks") && canReadServiceTasks;
     }
@@ -5613,6 +5706,15 @@ function AuthenticatedApp() {
             fixedTab="problems"
             key={`service-assets:${activeTenant.id}:problems`}
             onCreateProblemRequestConsumed={consumeQuickCreateRequest}
+            tenantId={activeTenant.id}
+          />
+        ) : section === "Teamführung" &&
+          activeTenant &&
+          supervisedDepartmentIds.length > 0 ? (
+          <TeamSupervision
+            onOpenTicket={(ticketId) => {
+              setSelectedTicketId(ticketId);
+            }}
             tenantId={activeTenant.id}
           />
         ) : section === "Berichte" && activeTenant && reportsAvailable ? (

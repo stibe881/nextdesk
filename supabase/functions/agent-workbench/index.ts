@@ -24,6 +24,7 @@ const ACTIONS = [
   "searchRecipients",
   "listDelegations",
   "listDelegationAgents",
+  "listManagedDelegationAgents",
   "saveDelegation",
   "endDelegation",
   "listAssignableAgents",
@@ -218,6 +219,56 @@ async function tenantPermission(
     "Für diese Verwaltungsaktion fehlt die Mandantenberechtigung.",
   );
 }
+/**
+ * Delegations of other people: tenant administrators (ticket.manage) and
+ * supervisors of a department the person works in.
+ */
+async function canManageDelegationsOf(
+  client: Client,
+  admin: Admin,
+  tenantId: string,
+  actorId: string,
+  agentId: string,
+): Promise<boolean> {
+  if (agentId === actorId) return true;
+  const manage = await client.rpc("has_tenant_permission", {
+    p_tenant_id: tenantId,
+    p_permission_code: "ticket.manage",
+  });
+  if (!manage.error && manage.data === true) return true;
+  const supervised = await admin.rpc("supervised_department_ids", {
+    p_tenant_id: tenantId,
+    p_user_id: actorId,
+  });
+  if (supervised.error || !Array.isArray(supervised.data)) return false;
+  const departments = supervised.data as string[];
+  if (departments.length === 0) return false;
+  const { data, error } = await admin
+    .from("department_memberships")
+    .select("department_id")
+    .eq("tenant_id", tenantId)
+    .eq("user_id", agentId)
+    .eq("status", "active")
+    .in("department_id", departments)
+    .limit(1);
+  return !error && (data ?? []).length > 0;
+}
+
+async function requireDelegationManager(
+  client: Client,
+  admin: Admin,
+  tenantId: string,
+  actorId: string,
+  agentId: string,
+): Promise<void> {
+  if (!(await canManageDelegationsOf(client, admin, tenantId, actorId, agentId)))
+    throw new HttpError(
+      403,
+      "tenant_permission_required",
+      "Stellvertretungen anderer Personen verwalten Administratoren und Vorgesetzte.",
+    );
+}
+
 async function ticket(
   admin: Admin,
   tenantId: string,
@@ -702,7 +753,7 @@ async function listDelegations(
       ? actorId
       : await activeMember(admin, action.tenantId, action.agentId);
   if (target !== actorId)
-    await tenantPermission(client, action.tenantId, "ticket.manage");
+    await requireDelegationManager(client, admin, action.tenantId, actorId, target);
   const { data, error } = await admin
     .from("agent_delegations")
     .select(
@@ -836,6 +887,35 @@ async function listDelegationAgents(
   });
 }
 
+async function listManagedDelegationAgents(
+  request: Request,
+  client: Client,
+  admin: Admin,
+  action: Action,
+  actorId: string,
+): Promise<Response> {
+  const result = await loadDelegationAgents(admin, action.tenantId);
+  if (result.error) {
+    return reply(request, { error: { code: "delegation_agents_failed" } }, 500);
+  }
+  const managed: DelegationAgent[] = [];
+  for (const agent of result.agents) {
+    if (agent.id === actorId) continue;
+    if (
+      await canManageDelegationsOf(
+        client,
+        admin,
+        action.tenantId,
+        actorId,
+        agent.id,
+      )
+    ) {
+      managed.push(agent);
+    }
+  }
+  return reply(request, { data: { agents: managed } });
+}
+
 async function saveDelegation(
   request: Request,
   client: Client,
@@ -848,7 +928,7 @@ async function saveDelegation(
       ? actorId
       : await activeMember(admin, action.tenantId, action.agentId);
   if (agentId !== actorId)
-    await tenantPermission(client, action.tenantId, "ticket.manage");
+    await requireDelegationManager(client, admin, action.tenantId, actorId, agentId);
   const delegateId =
     typeof action.delegateId === "string" ? action.delegateId : "";
   const delegationAgents = await loadDelegationAgents(admin, action.tenantId);
@@ -894,6 +974,8 @@ async function saveDelegation(
         })
         .eq("tenant_id", action.tenantId)
         .eq("id", action.delegationId)
+        // Only a delegation of the person checked above.
+        .eq("agent_id", agentId)
         .select("id, agent_id, delegate_id, starts_at, ends_at, ended_at, note")
         .maybeSingle()
     : await admin
@@ -949,7 +1031,13 @@ async function endDelegation(
       "Die Stellvertretung ist nicht verfügbar.",
     );
   if (current.data.agent_id !== actorId)
-    await tenantPermission(client, action.tenantId, "ticket.manage");
+    await requireDelegationManager(
+      client,
+      admin,
+      action.tenantId,
+      actorId,
+      current.data.agent_id as string,
+    );
   const result =
     current.data.ended_at === null
       ? await admin
@@ -1963,6 +2051,14 @@ const handler = withSupabase(
         return await searchRecipients(request, client, admin, action);
       if (action.type === "listDelegations")
         return await listDelegations(request, client, admin, action, actorId);
+      if (action.type === "listManagedDelegationAgents")
+        return await listManagedDelegationAgents(
+          request,
+          client,
+          admin,
+          action,
+          actorId,
+        );
       if (action.type === "listDelegationAgents")
         return await listDelegationAgents(request, admin, action, actorId);
       if (action.type === "saveDelegation")

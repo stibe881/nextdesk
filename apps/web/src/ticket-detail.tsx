@@ -1,4 +1,9 @@
 import {
+  absenceLabel,
+  loadActiveAbsences,
+  type ActiveAbsence,
+} from "./lib/active-absences";
+import {
   useCallback,
   useEffect,
   useMemo,
@@ -3747,6 +3752,19 @@ export function TicketDetail({
   requesterView = false,
 }: TicketDetailProps) {
   const [detail, setDetail] = useState<TicketDetailData | null>(null);
+  // Absent agents in the assignment picker (new assignments go to the stand-in).
+  const [activeAbsences, setActiveAbsences] = useState<
+    Map<string, ActiveAbsence>
+  >(() => new Map());
+  useEffect(() => {
+    let active = true;
+    void loadActiveAbsences(tenantId).then((next) => {
+      if (active) setActiveAbsences(next);
+    });
+    return () => {
+      active = false;
+    };
+  }, [tenantId]);
   const [loading, setLoading] = useState(true);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState("");
@@ -7488,8 +7506,14 @@ export function TicketDetail({
                           <option value="">Nicht zugewiesen</option>
                           {visibleAssignableAgents.map((agent) => (
                             <option key={agent.id} value={agent.id}>
-                              {agent.displayName}
-                              {agent.id === currentUserId ? " (ich)" : ""}
+                              {absenceLabel(
+                                `${agent.displayName}${agent.id === currentUserId ? " (ich)" : ""}`,
+                                activeAbsences.get(agent.id),
+                                (id) =>
+                                  visibleAssignableAgents.find(
+                                    (candidate) => candidate.id === id,
+                                  )?.displayName,
+                              )}
                             </option>
                           ))}
                         </select>
