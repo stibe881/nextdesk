@@ -199,3 +199,34 @@ export async function listSavedTicketViews(): Promise<SavedTicketView[]> {
   }
   return result;
 }
+
+/**
+ * Tickets the signed-in person watches. Watching is stored on the server, so
+ * web and app agree and watchers get notified about changes.
+ */
+export async function listWatchedTicketIds(userId: string): Promise<string[]> {
+  const client = requireNextDesk();
+  const { data, error } = await client
+    .from("ticket_watchers")
+    .select("ticket_id")
+    .eq("user_id", userId)
+    .limit(1000);
+  if (error)
+    throw new Error("Beobachtete Tickets konnten nicht geladen werden.");
+  return (data ?? [])
+    .map((row: { ticket_id: unknown }) => row.ticket_id)
+    .filter((id): id is string => typeof id === "string");
+}
+
+export async function setTicketWatched(input: {
+  tenantId: string;
+  ticketId: string;
+  watching: boolean;
+}): Promise<void> {
+  await invokeNextDesk("ticket-operations", {
+    type: "toggleWatch",
+    tenantId: input.tenantId,
+    ticketId: input.ticketId,
+    watching: input.watching,
+  });
+}

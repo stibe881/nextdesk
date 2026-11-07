@@ -308,45 +308,6 @@ export async function recordRecentTicket(input: {
   await writeState(input.userId, state);
 }
 
-export async function listFavoriteTicketIds(input: {
-  userId: string;
-  tenantId: string;
-}): Promise<string[]> {
-  const state = await readState(input.userId);
-  return state.favorites[input.tenantId] ?? [];
-}
-
-export async function setFavoriteTicket(input: {
-  userId: string;
-  tenantId: string;
-  ticketId: string;
-  favorite: boolean;
-}): Promise<string[]> {
-  const state = await readState(input.userId);
-  const existing = new Set(state.favorites[input.tenantId] ?? []);
-  if (input.favorite) existing.add(input.ticketId);
-  else existing.delete(input.ticketId);
-  state.favorites[input.tenantId] = [...existing].slice(-100);
-  await writeState(input.userId, state);
-  return state.favorites[input.tenantId];
-}
-
-/** Removes ticket IDs that no longer appeared in an authorized server result. */
-export async function reconcileFavoriteTicketIds(input: {
-  userId: string;
-  tenantId: string;
-  authorizedTicketIds: Iterable<string>;
-}): Promise<string[]> {
-  const state = await readState(input.userId);
-  const authorized = new Set(input.authorizedTicketIds);
-  const next = (state.favorites[input.tenantId] ?? []).filter((id) =>
-    authorized.has(id),
-  );
-  state.favorites[input.tenantId] = next;
-  await writeState(input.userId, state);
-  return next;
-}
-
 /**
  * Stores only compact ticket-list metadata in the iOS OS-encrypted store.
  * Ticket descriptions, conversations, attachments, requester data, assets and

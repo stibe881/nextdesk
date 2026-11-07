@@ -9917,4 +9917,77 @@ $$;
 rollback;
 SQL
 
+# 0204: watchers are notified about status changes, reassignment and new
+# comments, but never about their own changes.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_ticket record;
+  v_watcher uuid;
+  v_other uuid;
+  v_status uuid;
+  v_count integer;
+begin
+  select ticket.id, ticket.tenant_id, ticket.department_id, ticket.status_id
+  into v_ticket
+  from public.tickets ticket
+  where ticket.assigned_team_id is null
+  limit 1;
+  if v_ticket.id is null then
+    return;
+  end if;
+  select dm.user_id into v_watcher from public.department_memberships dm
+  where dm.department_id = v_ticket.department_id and dm.status = 'active'
+    and public.ticket_notification_recipient_authorized(v_ticket.tenant_id, v_ticket.id, dm.user_id)
+  order by dm.user_id limit 1;
+  -- A second person writes the comments and changes the status.
+  v_other := gen_random_uuid();
+  insert into auth.users (id, email) values (v_other, 'watch-actor@example.ch');
+  insert into public.user_profiles (id, display_name) values (v_other, 'Kollegin')
+    on conflict (id) do nothing;
+  if v_watcher is null then
+    return;
+  end if;
+  -- Statuses other than «Neu» need an assignee.
+  update public.tickets set assigned_agent_id = v_watcher where id = v_ticket.id;
+  insert into public.ticket_watchers (ticket_id, user_id) values (v_ticket.id, v_watcher)
+  on conflict do nothing;
+
+  select status.id into v_status from public.ticket_statuses status
+  where status.tenant_id = v_ticket.tenant_id and status.id <> v_ticket.status_id
+  order by status.sort_order limit 1;
+  update public.tickets set status_id = v_status where id = v_ticket.id;
+  select count(*) into v_count from public.ticket_notifications
+  where user_id = v_watcher and ticket_id = v_ticket.id and kind = 'ticket.watch.status';
+  if v_count <> 1 then
+    raise exception 'Watcher got % status notifications instead of 1', v_count;
+  end if;
+
+  insert into public.ticket_comments (ticket_id, author_id, visibility, body)
+  values (v_ticket.id, v_other, 'internal', 'Interne Notiz für Beobachtende');
+  select count(*) into v_count from public.ticket_notifications
+  where user_id = v_watcher and ticket_id = v_ticket.id and kind = 'ticket.watch.comment';
+  if v_count <> 1 then
+    raise exception 'Watcher got % comment notifications instead of 1', v_count;
+  end if;
+
+  -- Own comment: no notification for the author.
+  insert into public.ticket_comments (ticket_id, author_id, visibility, body)
+  values (v_ticket.id, v_watcher, 'internal', 'Eigene Notiz');
+  select count(*) into v_count from public.ticket_notifications
+  where user_id = v_watcher and ticket_id = v_ticket.id and kind = 'ticket.watch.comment';
+  if v_count <> 1 then
+    raise exception 'Watcher was notified about their own comment';
+  end if;
+
+  if public.push_notification_category('ticket.watch.status') <> 'mention' then
+    raise exception 'Watch notifications have no push category';
+  end if;
+  raise notice 'watch notification checks ran';
+end;
+$$;
+rollback;
+SQL
+
 echo "PostgreSQL 16 migration and RLS integration checks passed."

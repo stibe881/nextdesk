@@ -18,6 +18,7 @@ export type ApnsPayloadKind =
   | "inventory_low_stock"
   | "shop"
   | "service_task"
+  | "watched"
   | "summary"
   | "test";
 
@@ -36,6 +37,12 @@ export type ApnsPayloadInput = {
   serviceTaskEvent?: string;
   serviceTaskTitle?: string;
   occurrenceId?: string;
+  /** Watched ticket: status, assigned or comment. */
+  watchEvent?: string;
+  watchStatusLabel?: string;
+  watchAssigneeName?: string;
+  watchActorName?: string;
+  watchInternal?: boolean;
   /** Forwarded to a stand-in: name of the absent person. */
   delegatedFromName?: string;
 };
@@ -318,6 +325,40 @@ function alertFor(input: ApnsPayloadInput): { title: string; body: string } {
           title: "Serviceaufgabe heute fällig",
           body: `${title} ist heute fällig.`,
         };
+    }
+    case "watched": {
+      const actor = input.watchActorName
+        ? truncateSubject(input.watchActorName)
+        : null;
+      const about = subject ? `${ticketNumber}: ${subject}` : ticketNumber;
+      if (input.watchEvent === "status") {
+        const status = input.watchStatusLabel
+          ? truncateSubject(input.watchStatusLabel)
+          : "geändert";
+        return {
+          title: `Beobachtet: Status ${status}`,
+          body: actor
+            ? `${actor} hat den Status von ${about} geändert.`
+            : `Der Status von ${about} wurde geändert.`,
+        };
+      }
+      if (input.watchEvent === "assigned") {
+        const assignee = input.watchAssigneeName
+          ? truncateSubject(input.watchAssigneeName)
+          : null;
+        return {
+          title: "Beobachtet: neue Zuweisung",
+          body: assignee
+            ? `${about} ist jetzt ${assignee} zugewiesen.`
+            : `${about} ist nicht mehr zugewiesen.`,
+        };
+      }
+      return {
+        title: input.watchInternal
+          ? "Beobachtet: interne Notiz"
+          : "Beobachtet: neue Nachricht",
+        body: actor ? `${actor} in ${about}` : `Neuer Eintrag in ${about}`,
+      };
     }
     case "inventory_low_stock":
       return {

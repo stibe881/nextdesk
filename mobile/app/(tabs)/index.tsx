@@ -45,12 +45,10 @@ import {
   nextDesk,
   type MobileTenant,
 } from "@/lib/nextdesk-client";
+import { listRecentTicketIds } from "@/lib/mobile-private-state";
 import {
-  listFavoriteTicketIds,
-  listRecentTicketIds,
-  setFavoriteTicket,
-} from "@/lib/mobile-private-state";
-import {
+  listWatchedTicketIds,
+  setTicketWatched,
   assignTicketToMe,
   dueToday,
   followUpTitle,
@@ -466,7 +464,7 @@ export default function HomeScreen() {
     ids: string[];
     tenantId: string;
   } | null>(null);
-  const [favoriteState, setFavoriteState] = useState<{
+  const [watchState, setWatchState] = useState<{
     ids: string[];
     tenantId: string;
     userId: string;
@@ -480,10 +478,10 @@ export default function HomeScreen() {
         try {
           const userId = await getMobileUserId();
           const ids = await listRecentTicketIds({ userId, tenantId });
-          const favorites = await listFavoriteTicketIds({ userId, tenantId });
-          if (!cancelled) {
-            setRecentTicketState({ ids, tenantId });
-            setFavoriteState({ ids: favorites, tenantId, userId });
+          if (!cancelled) setRecentTicketState({ ids, tenantId });
+          const watched = await listWatchedTicketIds(userId).catch(() => null);
+          if (!cancelled && watched) {
+            setWatchState({ ids: watched, tenantId, userId });
           }
         } catch {
           if (!cancelled) setRecentTicketState({ ids: [], tenantId });
@@ -498,31 +496,33 @@ export default function HomeScreen() {
     recentTicketState && recentTicketState.tenantId === tenantId
       ? recentTicketState.ids
       : NO_TICKET_IDS;
-  const favoriteIds =
-    favoriteState && favoriteState.tenantId === tenantId
-      ? favoriteState.ids
+  const watchedIds =
+    watchState && watchState.tenantId === tenantId
+      ? watchState.ids
       : NO_TICKET_IDS;
   const workspaceEnabled = isEnabled("experience.workspace");
 
-  async function toggleFavorite(ticket: MobileTicket) {
-    if (!favoriteState || favoriteState.tenantId !== tenantId) return;
-    const nextFavorite = !favoriteIds.includes(ticket.id);
+  async function toggleWatch(ticket: MobileTicket) {
+    if (!watchState || watchState.tenantId !== tenantId) return;
+    const nextWatched = !watchedIds.includes(ticket.id);
     setActionMessage("");
     try {
-      const ids = await setFavoriteTicket({
-        favorite: nextFavorite,
-        tenantId: favoriteState.tenantId,
+      await setTicketWatched({
+        watching: nextWatched,
+        tenantId: watchState.tenantId,
         ticketId: ticket.id,
-        userId: favoriteState.userId,
       });
-      setFavoriteState({ ...favoriteState, ids });
+      const ids = nextWatched
+        ? [...watchState.ids, ticket.id]
+        : watchState.ids.filter((id) => id !== ticket.id);
+      setWatchState({ ...watchState, ids });
       setActionMessage(
-        nextFavorite
-          ? `«${ticket.ticketNumber}» wurde zu Favoriten hinzugefügt.`
-          : `«${ticket.ticketNumber}» wurde aus Favoriten entfernt.`,
+        nextWatched
+          ? `Du beobachtest «${ticket.ticketNumber}» und wirst über Änderungen benachrichtigt.`
+          : `Du beobachtest «${ticket.ticketNumber}» nicht mehr.`,
       );
     } catch {
-      setActionMessage("Der Favorit konnte nicht gespeichert werden.");
+      setActionMessage("Das Beobachten konnte nicht gespeichert werden.");
     }
   }
 
@@ -564,10 +564,10 @@ export default function HomeScreen() {
   }
 
   async function assignToMe(ticket: MobileTicket) {
-    if (!favoriteState) return;
+    if (!watchState) return;
     setActionMessage("");
     try {
-      await assignTicketToMe(ticket.id, favoriteState.userId);
+      await assignTicketToMe(ticket.id, watchState.userId);
       setTickets((current) =>
         current.map((item) =>
           item.id === ticket.id
@@ -1165,20 +1165,20 @@ export default function HomeScreen() {
                   canAssign={
                     !isOffline &&
                     !checkingFeatures &&
-                    favoriteState?.tenantId === tenantId &&
+                    watchState?.tenantId === tenantId &&
                     !ticket.assignedToCurrentUser
                   }
                   canDelete={!isOffline && !checkingFeatures}
                   onAssign={() => void assignToMe(ticket)}
-                  canFavorite={favoriteState?.tenantId === tenantId}
+                  canWatch={watchState?.tenantId === tenantId}
                   canFollowUp={
                     workspaceEnabled && !isOffline && !checkingFeatures
                   }
                   enabled
-                  favorite={favoriteIds.includes(ticket.id)}
+                  watched={watchedIds.includes(ticket.id)}
                   key={ticket.id}
                   onDelete={() => deleteTicket(ticket)}
-                  onFavorite={() => void toggleFavorite(ticket)}
+                  onWatch={() => void toggleWatch(ticket)}
                   onFollowUp={() => void createFollowUp(ticket)}
                 >
                   <Pressable

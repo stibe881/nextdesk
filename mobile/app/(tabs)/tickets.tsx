@@ -38,22 +38,19 @@ import {
   listSavedTicketViews,
   type BulkStatusKey,
   type SavedTicketView,
+  listWatchedTicketIds,
+  setTicketWatched,
 } from "@/lib/mobile-ticket-actions";
 import { useUndoableDelete } from "@/lib/use-undoable-delete";
 import { isNextDeskConfigured, nextDesk } from "@/lib/nextdesk-client";
 import { loadMobileDashboard, type MobileTicket } from "@/lib/nextdesk-tickets";
-import {
-  listFavoriteTicketIds,
-  reconcileFavoriteTicketIds,
-  setFavoriteTicket,
-} from "@/lib/mobile-private-state";
 import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
 import { useThemeContext } from "@/lib/theme-provider";
 
 type TicketScope =
   | "all"
   | "mine"
-  | "favorites"
+  | "watched"
   | "open"
   | "resolved"
   | "unassigned";
@@ -61,7 +58,7 @@ type TicketScope =
 const scopes: { key: TicketScope; label: string }[] = [
   { key: "all", label: "Alle" },
   { key: "mine", label: "Meine" },
-  { key: "favorites", label: "Favoriten" },
+  { key: "watched", label: "Beobachtet" },
   { key: "open", label: "Offen" },
   { key: "resolved", label: "Gelöst" },
   { key: "unassigned", label: "Nicht zugewiesen" },
@@ -127,7 +124,8 @@ export default function TicketsScreen() {
   const [tenantId, setTenantId] = useState("");
   const [currentUserId, setCurrentUserId] = useState("");
   const [scope, setScope] = useState<TicketScope>("all");
-  const [favoriteIds, setFavoriteIds] = useState<string[]>([]);
+  const [watchedIds, setWatchedIds] = useState<string[]>([]);
+  const watchedIdsRef = useRef<string[]>([]);
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -175,22 +173,18 @@ export default function TicketsScreen() {
       const result = await loadMobileDashboard({
         allowOfflineCache: isOffline,
       });
-      const favorites = result.isOfflineCache
-        ? await listFavoriteTicketIds({
-            userId: result.userId,
-            tenantId: result.tenant.id,
-          })
-        : await reconcileFavoriteTicketIds({
-            userId: result.userId,
-            tenantId: result.tenant.id,
-            authorizedTicketIds: result.tickets.map((ticket) => ticket.id),
-          });
+      const watchedList = result.isOfflineCache
+        ? watchedIdsRef.current
+        : await listWatchedTicketIds(result.userId).catch(
+            () => watchedIdsRef.current,
+          );
+      watchedIdsRef.current = watchedList;
       if (loadId !== latestLoad.current) return;
       setTickets(result.tickets);
       setTenantName(result.tenant.name);
       setTenantId(result.tenant.id);
       setCurrentUserId(result.userId);
-      setFavoriteIds(favorites);
+      setWatchedIds(watchedList);
       setOfflineCacheAt(result.isOfflineCache ? result.cachedAt : null);
       if (!result.isOfflineCache) {
         void listSavedTicketViews()
@@ -221,26 +215,29 @@ export default function TicketsScreen() {
     }, [load, recoveryEpoch]),
   );
 
-  async function toggleFavorite(ticket: MobileTicket) {
+  async function toggleWatch(ticket: MobileTicket) {
     if (!tenantId || !currentUserId) return;
-    const nextFavorite = !favoriteIds.includes(ticket.id);
+    const nextWatched = !watchedIds.includes(ticket.id);
     setError("");
     setMessage("");
     try {
-      const nextIds = await setFavoriteTicket({
-        userId: currentUserId,
+      await setTicketWatched({
         tenantId,
         ticketId: ticket.id,
-        favorite: nextFavorite,
+        watching: nextWatched,
       });
-      setFavoriteIds(nextIds);
+      const nextIds = nextWatched
+        ? [...watchedIds, ticket.id]
+        : watchedIds.filter((id) => id !== ticket.id);
+      watchedIdsRef.current = nextIds;
+      setWatchedIds(nextIds);
       setMessage(
-        nextFavorite
-          ? `«${ticket.ticketNumber}» wurde zu Favoriten hinzugefügt.`
-          : `«${ticket.ticketNumber}» wurde aus Favoriten entfernt.`,
+        nextWatched
+          ? `Du beobachtest «${ticket.ticketNumber}» und wirst über Änderungen benachrichtigt.`
+          : `Du beobachtest «${ticket.ticketNumber}» nicht mehr.`,
       );
     } catch {
-      setError("Der Favorit konnte nicht auf diesem Gerät gespeichert werden.");
+      setError("Das Beobachten konnte nicht gespeichert werden.");
     }
   }
 
@@ -424,7 +421,7 @@ export default function TicketsScreen() {
 
   function openTicketActions(ticket: MobileTicket) {
     if (Platform.OS !== "ios" || !tenantId || !currentUserId) return;
-    const isFavorite = favoriteIds.includes(ticket.id);
+    const isWatched = watchedIds.includes(ticket.id);
     const canCreateFollowUp =
       workspaceEnabled &&
       workspaceAvailable &&
@@ -435,16 +432,16 @@ export default function TicketsScreen() {
       {
         cancelButtonIndex: 0,
         message:
-          "Favoriten werden nur verschlüsselt auf diesem Gerät gespeichert.",
+          "Beim Beobachten wirst du über Status, Nachrichten und Notizen benachrichtigt.",
         options: [
           "Abbrechen",
-          isFavorite ? "Aus Favoriten entfernen" : "Zu Favoriten hinzufügen",
+          isWatched ? "Nicht mehr beobachten" : "Beobachten",
           ...(canCreateFollowUp ? ["Wiedervorlage für heute setzen"] : []),
         ],
         title: ticket.ticketNumber,
       },
       (buttonIndex) => {
-        if (buttonIndex === 1) void toggleFavorite(ticket);
+        if (buttonIndex === 1) void toggleWatch(ticket);
         if (buttonIndex === 2 && canCreateFollowUp) void createFollowUp(ticket);
       },
     );
@@ -456,8 +453,8 @@ export default function TicketsScreen() {
     const matchesScope =
       scope === "mine"
         ? ticket.assignedToCurrentUser
-        : scope === "favorites"
-          ? favoriteIds.includes(ticket.id)
+        : scope === "watched"
+          ? watchedIds.includes(ticket.id)
           : scope === "unassigned"
             ? ticket.unassigned && !ticket.resolved
             : scope === "open"
@@ -752,7 +749,7 @@ export default function TicketsScreen() {
             <Text style={[styles.listTitle, tokenStyles.foreground]}>
               {scope === "all"
                 ? "Alle Tickets"
-                : scope === "favorites"
+                : scope === "watched"
                   ? "Favorisierte Tickets"
                   : "Gefilterte Tickets"}
             </Text>
@@ -761,8 +758,8 @@ export default function TicketsScreen() {
             workspaceEnabled &&
             workspaceAvailable ? (
               <Text style={[styles.gestureHint, tokenStyles.muted]}>
-                Nach rechts wischen: zuweisen, Favorit oder Wiedervorlage. Nach
-                links: löschen.
+                Nach rechts wischen: zuweisen, beobachten oder Wiedervorlage.
+                Nach links: löschen.
               </Text>
             ) : null}
           </View>
@@ -850,7 +847,7 @@ export default function TicketsScreen() {
                   actionsDisabled={actionsDisabled}
                   canCreateFollowUp={canCreateFollowUp}
                   densityStyle={densityStyles.ticket}
-                  favorite={favoriteIds.includes(ticket.id)}
+                  watched={watchedIds.includes(ticket.id)}
                   key={ticket.id}
                   canAssign={
                     !actionsDisabled &&
@@ -865,7 +862,7 @@ export default function TicketsScreen() {
                   onToggleSelect={() => toggleSelection(ticket.id)}
                   selected={selectedIds.has(ticket.id)}
                   selectionMode={selectionMode}
-                  onFavorite={() => void toggleFavorite(ticket)}
+                  onWatch={() => void toggleWatch(ticket)}
                   onLongPress={() => openTicketActions(ticket)}
                   onPress={() => {
                     if (selectionMode) {
@@ -1009,11 +1006,11 @@ function SwipeableTicketRow({
   canCreateFollowUp,
   canDelete,
   densityStyle,
-  favorite,
+  watched,
   onAssign,
   onCreateFollowUp,
   onDelete,
-  onFavorite,
+  onWatch,
   onLongPress,
   onPress,
   onToggleSelect,
@@ -1028,11 +1025,11 @@ function SwipeableTicketRow({
   canCreateFollowUp: boolean;
   canDelete: boolean;
   densityStyle: { padding: number };
-  favorite: boolean;
+  watched: boolean;
   onAssign: () => void;
   onCreateFollowUp: () => void;
   onDelete: () => void;
-  onFavorite: () => void;
+  onWatch: () => void;
   onLongPress: () => void;
   onPress: () => void;
   onToggleSelect: () => void;
@@ -1050,13 +1047,13 @@ function SwipeableTicketRow({
     <TicketSwipeActions
       canAssign={actionsAvailable && canAssign}
       canDelete={actionsAvailable && canDelete}
-      canFavorite={actionsAvailable}
+      canWatch={actionsAvailable}
       canFollowUp={actionsAvailable && canCreateFollowUp}
       enabled={swipeEnabled}
-      favorite={favorite}
+      watched={watched}
       onAssign={onAssign}
       onDelete={onDelete}
-      onFavorite={onFavorite}
+      onWatch={onWatch}
       onFollowUp={onCreateFollowUp}
     >
       <View style={styles.selectableRow}>
@@ -1085,9 +1082,9 @@ function SwipeableTicketRow({
             actionsDisabled={actionsDisabled}
             canCreateFollowUp={canCreateFollowUp}
             densityStyle={densityStyle}
-            favorite={favorite}
+            watched={watched}
             onCreateFollowUp={onCreateFollowUp}
-            onFavorite={onFavorite}
+            onWatch={onWatch}
             onLongPress={onLongPress}
             onPress={onPress}
             openDisabled={openDisabled}
@@ -1103,9 +1100,9 @@ function TicketRow({
   actionsDisabled,
   canCreateFollowUp,
   densityStyle,
-  favorite,
+  watched,
   onCreateFollowUp,
-  onFavorite,
+  onWatch,
   onLongPress,
   onPress,
   openDisabled,
@@ -1114,9 +1111,9 @@ function TicketRow({
   actionsDisabled: boolean;
   canCreateFollowUp: boolean;
   densityStyle: { padding: number };
-  favorite: boolean;
+  watched: boolean;
   onCreateFollowUp: () => void;
-  onFavorite: () => void;
+  onWatch: () => void;
   onLongPress: () => void;
   onPress: () => void;
   openDisabled: boolean;
@@ -1131,8 +1128,8 @@ function TicketRow({
       : styles.markActive;
   const accessibilityActions = [
     {
-      label: favorite ? "Aus Favoriten entfernen" : "Zu Favoriten hinzufügen",
-      name: "favorite",
+      label: watched ? "Nicht mehr beobachten" : "Beobachten",
+      name: "watched",
     },
     ...(canCreateFollowUp
       ? [
@@ -1159,13 +1156,13 @@ function TicketRow({
             ? "Für Schnellaktionen lange drücken oder nach rechts bzw. links wischen."
             : "Schnellaktionen sind über die Aktionen des Eintrags verfügbar."
         }
-        accessibilityLabel={`${ticket.ticketNumber}: ${ticket.subject}. Status: ${ticket.status}. ${favorite ? "Favorit." : "Kein Favorit."}`}
+        accessibilityLabel={`${ticket.ticketNumber}: ${ticket.subject}. Status: ${ticket.status}. ${watched ? "Beobachtet." : ""}`}
         accessibilityRole="button"
         accessibilityState={{ disabled: openDisabled }}
         disabled={openDisabled}
         onAccessibilityAction={(event) => {
           if (actionsDisabled) return;
-          if (event.nativeEvent.actionName === "favorite") onFavorite();
+          if (event.nativeEvent.actionName === "watched") onWatch();
           if (
             event.nativeEvent.actionName === "followUp" &&
             canCreateFollowUp
@@ -1191,11 +1188,11 @@ function TicketRow({
           <TicketPriorityText priority={ticket.priority} />
         </View>
         <View style={styles.ticketState}>
-          {favorite ? (
-            <View accessibilityLabel="Favorit" style={styles.favoriteMark}>
-              <Ionicons color={colors.warning} name="star" size={14} />
-              <Text style={[styles.favoriteText, { color: colors.warning }]}>
-                Favorit
+          {watched ? (
+            <View accessibilityLabel="Beobachtet" style={styles.watchMark}>
+              <Ionicons color={colors.primaryText} name="eye" size={14} />
+              <Text style={[styles.watchText, { color: colors.primaryText }]}>
+                Beobachtet
               </Text>
             </View>
           ) : null}
@@ -1314,8 +1311,8 @@ const useStyles = makeThemedStyles((c) => ({
     padding: 13,
   },
   featureNoticeText: { flex: 1, fontSize: 12, lineHeight: 18 },
-  favoriteMark: { alignItems: "center", flexDirection: "row", gap: 3 },
-  favoriteText: { fontSize: 10, fontWeight: "800" },
+  watchMark: { alignItems: "center", flexDirection: "row", gap: 3 },
+  watchText: { fontSize: 10, fontWeight: "800" },
   filter: {
     borderRadius: 18,
     borderWidth: 1,
