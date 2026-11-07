@@ -26,6 +26,9 @@ den OAuth-2.1-Server von Supabase Auth, also mit dem normalen nextDesk-Konto
 | `service_status` | lesen | Status der IT-Services und anstehende Wartungen |
 | `inventory_lookup` | lesen | Lagerartikel oder -ort über Nummer, Barcode oder QR-Code |
 | `list_licenses`, `list_contracts` | lesen | Lizenzen und Verträge, optional nur bald ablaufende |
+| `list_macros`, `get_macro_text` | lesen | Antwortmakros und ihr Text |
+| `list_event_bookings` | lesen | Räume und Raumbuchungen mit Aufgaben |
+| `list_onboardings` | lesen | Eintritte mit Aufgaben, Vorlagen und Personen |
 | `create_ticket` | schreiben | Ticket erfassen, für sich selbst oder eine anfragende Person (`requester`) |
 | `add_internal_note` | schreiben | Interne Notiz an ein Ticket |
 | `update_ticket_status` | schreiben | Status ändern; Lösen/Schliessen nur mit `confirm=true` |
@@ -44,6 +47,11 @@ den OAuth-2.1-Server von Supabase Auth, also mit dem normalen nextDesk-Konto
 | `escalate_ticket` | schreiben | Ticket eskalieren; nur mit `confirm=true` |
 | `link_tickets` | schreiben | Zwei Tickets verknüpfen (Duplikat, blockiert, Eltern/Kind …) |
 | `attach_knowledge_article` | schreiben | Wissensartikel mit Ticket verknüpfen; extern nur mit `confirm=true` |
+| `create_knowledge_draft` | schreiben | Wissensartikel-Entwurf aus einem Ticket (geht in die Prüfung) |
+| `book_event_space` | schreiben | Raum buchen; bei Überschneidung nur mit `confirmConflicts=true` |
+| `update_event_booking`, `update_event_task` | schreiben | Status einer Raumbuchung bzw. ihrer Aufgaben setzen |
+| `create_onboarding` | schreiben | Eintritt erfassen (Vorlage, Führungsperson, ICT-Verantwortung) |
+| `update_onboarding_task` | schreiben | Status einer Eintrittsaufgabe setzen |
 
 Geschriebene Texte (Ticket, interne Notiz, Zeitnotiz, Notiz zur Serviceaufgabe,
 Wiedervorlage)

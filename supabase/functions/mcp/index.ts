@@ -9,7 +9,7 @@
 const SUPPORTED_PROTOCOLS = ["2025-06-18", "2025-03-26", "2024-11-05"] as const;
 const MAX_BODY_BYTES = 64 * 1024;
 const REQUEST_TIMEOUT_MS = 15_000;
-const SERVER_INFO = { name: "nextdesk", version: "1.2.0" } as const;
+const SERVER_INFO = { name: "nextdesk", version: "1.3.0" } as const;
 const STATUS_KEYS = [
   "new",
   "in_progress",
@@ -27,6 +27,26 @@ const RELATION_TYPES = [
   "blocked_by",
   "parent",
   "child",
+];
+const EVENT_EQUIPMENT = [
+  "ict_material",
+  "internet_access",
+  "sobe_network_access",
+  "projector",
+  "connections",
+  "display",
+  "audio",
+  "videocall",
+  "microphones",
+  "screen",
+  "reception_laptop",
+];
+const EVENT_REQUEST_STATUSES = [
+  "planned",
+  "in_preparation",
+  "ready",
+  "conducted",
+  "completed",
 ];
 const CONNECTOR_NOTE = "Erfasst über den nextDesk-Connector.";
 
@@ -303,6 +323,46 @@ function daysUntil(date: unknown): number | null {
   return Number.isFinite(parsed)
     ? Math.ceil((parsed - Date.now()) / 86_400_000)
     : null;
+}
+
+/** Sucht einen Eintrag nach ID oder (eindeutigem) Namen. */
+function findByName(
+  list: Json[],
+  value: unknown,
+  field: string,
+  label: string,
+): Json & { id: string } {
+  const needle =
+    typeof value === "string" ? value.trim().toLocaleLowerCase("de-CH") : "";
+  if (!needle) throw new ToolError(`${label} fehlt.`);
+  const exact = list.filter(
+    (entry) =>
+      String(entry.id).toLowerCase() === needle ||
+      String(entry[field] ?? "").toLocaleLowerCase("de-CH") === needle,
+  );
+  const candidates = exact.length
+    ? exact
+    : list.filter((entry) =>
+        String(entry[field] ?? "")
+          .toLocaleLowerCase("de-CH")
+          .includes(needle),
+      );
+  if (candidates.length === 1 && isUuid(candidates[0]!.id)) {
+    return candidates[0] as Json & { id: string };
+  }
+  const names = (candidates.length ? candidates : list)
+    .slice(0, 15)
+    .map((entry) => entry[field])
+    .join(", ");
+  throw new ToolError(
+    candidates.length
+      ? `${label} ist nicht eindeutig: ${names}.`
+      : `${label} nicht gefunden. Verfügbar: ${names}.`,
+  );
+}
+
+function findRoom(rooms: Json[], value: unknown): Json & { id: string } {
+  return findByName(rooms, value, "name", "Raum");
 }
 
 // ---------------------------------------------------------------- Werkzeuge
@@ -2210,6 +2270,592 @@ const TOOLS: Tool[] = [
       });
     },
   },
+  // ------------------------------------------------ Makros und Wissen
+  {
+    name: "list_macros",
+    description:
+      "Listet die Antwortmakros (Textbausteine) des Arbeitsbereichs. Den Text eines Makros liefert get_macro_text.",
+    annotations: { readOnlyHint: true, title: "Makros" },
+    inputSchema: {
+      type: "object",
+      properties: {
+        workspace: WORKSPACE_PROPERTY,
+        query: { type: "string", description: "Filter nach Name." },
+      },
+      additionalProperties: false,
+    },
+    run: async (config, session, args) => {
+      const workspace = await resolveWorkspace(config, session, args.workspace);
+      const data = await callFunction(config, session, "agent-workbench", {
+        type: "listMacros",
+        tenantId: workspace.id,
+      });
+      const query = typeof args.query === "string" ? args.query.trim() : "";
+      const macros = records(data.macros).filter((entry) =>
+        matches(query, entry.name),
+      );
+      return textResult({
+        count: macros.length,
+        macros: macros.slice(0, 100).map((entry) => ({
+          id: entry.id,
+          name: entry.name,
+          preview: clip(entry.response_text, 160) || null,
+        })),
+      });
+    },
+  },
+  {
+    name: "get_macro_text",
+    description:
+      "Liefert den vollständigen Antworttext eines Makros (id aus list_macros), optional für ein bestimmtes Ticket. Zum Versenden danach reply_to_ticket verwenden.",
+    annotations: { readOnlyHint: true, title: "Makrotext" },
+    inputSchema: {
+      type: "object",
+      properties: {
+        workspace: WORKSPACE_PROPERTY,
+        macro: { type: "string", description: "ID des Makros." },
+        ticket: TICKET_PROPERTY,
+      },
+      required: ["macro"],
+      additionalProperties: false,
+    },
+    run: async (config, session, args) => {
+      if (!isUuid(args.macro)) throw new ToolError('"macro" ist ungültig.');
+      const workspace = await resolveWorkspace(config, session, args.workspace);
+      const ticketId =
+        args.ticket === undefined
+          ? undefined
+          : await ticketIdFromReference(
+              config,
+              session,
+              workspace,
+              args.ticket,
+            );
+      const data = await callFunction(config, session, "agent-workbench", {
+        type: "previewMacro",
+        tenantId: workspace.id,
+        macroId: args.macro,
+        ...(ticketId ? { ticketId } : {}),
+      });
+      const preview = isRecord(data.preview) ? data.preview : {};
+      return textResult({ text: preview.responseText ?? null });
+    },
+  },
+  {
+    name: "create_knowledge_draft",
+    description:
+      "Erstellt aus einem Ticket einen Entwurf für einen Wissensartikel. Der Entwurf geht in die Prüfung und wird nicht direkt veröffentlicht. body in Markdown; ohne Angabe wird die Ticketbeschreibung verwendet.",
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      title: "Wissensentwurf erstellen",
+    },
+    inputSchema: {
+      type: "object",
+      properties: {
+        workspace: WORKSPACE_PROPERTY,
+        ticket: TICKET_PROPERTY,
+        title: { type: "string", minLength: 3, maxLength: 240 },
+        body: { type: "string", maxLength: 50000 },
+      },
+      required: ["ticket"],
+      additionalProperties: false,
+    },
+    run: async (config, session, args) => {
+      const title = args.title === undefined ? null : str(args.title, 3, 240);
+      if (args.title !== undefined && !title) {
+        throw new ToolError('"title" muss 3 bis 240 Zeichen lang sein.');
+      }
+      const body = args.body === undefined ? null : str(args.body, 1, 50000);
+      if (args.body !== undefined && !body) {
+        throw new ToolError('"body" muss 1 bis 50000 Zeichen lang sein.');
+      }
+      const { workspace, ticketId } = await ticketContext(
+        config,
+        session,
+        args,
+      );
+      const data = await callFunction(config, session, "agent-workbench", {
+        type: "knowledgeDraftFromTicket",
+        tenantId: workspace.id,
+        ticketId,
+        ...(title ? { title } : {}),
+        ...(body ? { body } : {}),
+      });
+      const article = isRecord(data.article) ? data.article : {};
+      return textResult({
+        created: true,
+        id: article.id ?? null,
+        title: article.title ?? title,
+        status: article.status ?? "review",
+        published: false,
+      });
+    },
+  },
+
+  // ------------------------------------------------ Veranstaltungsräume
+  {
+    name: "list_event_bookings",
+    description:
+      "Zeigt die Räume und die Raumbuchungen (Veranstaltungen, Sitzungen) mit Status und Aufgaben. Optional gefiltert nach Raum oder Zeitraum.",
+    annotations: { readOnlyHint: true, title: "Raumbuchungen" },
+    inputSchema: {
+      type: "object",
+      properties: {
+        workspace: WORKSPACE_PROPERTY,
+        room: { type: "string", description: "Raumname oder ID." },
+        from: { type: "string", description: "Ab Datum/Zeit (ISO 8601)." },
+        to: { type: "string", description: "Bis Datum/Zeit (ISO 8601)." },
+        limit: { type: "integer", minimum: 1, maximum: 100 },
+      },
+      additionalProperties: false,
+    },
+    run: async (config, session, args) => {
+      const from = args.from === undefined ? null : isoDate(args.from);
+      const to = args.to === undefined ? null : isoDate(args.to);
+      if (
+        (args.from !== undefined && !from) ||
+        (args.to !== undefined && !to)
+      ) {
+        throw new ToolError('"from" oder "to" ist kein gültiges Datum.');
+      }
+      const workspace = await resolveWorkspace(config, session, args.workspace);
+      const data = await callFunction(config, session, "event-spaces", {
+        type: "listWorkspace",
+        tenantId: workspace.id,
+        offset: 0,
+      });
+      const rooms = records(data.rooms);
+      const room = args.room === undefined ? null : findRoom(rooms, args.room);
+      const roomName = new Map(rooms.map((entry) => [entry.id, entry.name]));
+      const bookings = records(data.requests)
+        .filter(
+          (entry) =>
+            (!room || entry.spaceId === room.id) &&
+            (!from || String(entry.endsAt) >= from) &&
+            (!to || String(entry.startsAt) <= to),
+        )
+        .slice(0, clampLimit(args.limit, 30, 100));
+      return textResult({
+        rooms: rooms.map((entry) => ({
+          id: entry.id,
+          name: entry.name,
+          kind: entry.kind,
+          location: entry.location,
+          capacity: entry.capacity,
+        })),
+        bookings: bookings.map((entry) => ({
+          id: entry.id,
+          title: entry.title,
+          room: roomName.get(entry.spaceId) ?? null,
+          startsAt: entry.startsAt,
+          endsAt: entry.endsAt,
+          status: entry.status,
+          organizer: entry.organizer ?? null,
+          requester: entry.requesterName ?? null,
+          participants: entry.expectedParticipants ?? null,
+          equipment: entry.equipment ?? [],
+          tasks: records(entry.tasks).map((task) => ({
+            id: task.id,
+            title: task.title,
+            status: task.status,
+          })),
+        })),
+        moreAvailable: isRecord(data.pagination)
+          ? data.pagination.hasMore === true
+          : false,
+      });
+    },
+  },
+  {
+    name: "book_event_space",
+    description: `Bucht einen Raum (einmaliger Termin). Prüft vorher auf Überschneidungen; bei einer Überschneidung wird nicht gebucht, ausser die Person bestätigt sie ausdrücklich (confirmConflicts=true). equipment: ${EVENT_EQUIPMENT.join(", ")}.`,
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      title: "Raum buchen",
+    },
+    inputSchema: {
+      type: "object",
+      properties: {
+        workspace: WORKSPACE_PROPERTY,
+        room: { type: "string", description: "Raumname oder ID." },
+        title: { type: "string", minLength: 3, maxLength: 240 },
+        startsAt: { type: "string", description: "Beginn (ISO 8601)." },
+        endsAt: { type: "string", description: "Ende (ISO 8601)." },
+        organizer: { type: "string", maxLength: 160 },
+        participants: { type: "integer", minimum: 1, maximum: 10000 },
+        equipment: {
+          type: "array",
+          items: { type: "string", enum: EVENT_EQUIPMENT },
+        },
+        confirmConflicts: {
+          type: "boolean",
+          description:
+            "Nur true, wenn die Person eine gemeldete Überschneidung ausdrücklich akzeptiert hat.",
+        },
+      },
+      required: ["room", "title", "startsAt", "endsAt"],
+      additionalProperties: false,
+    },
+    run: async (config, session, args) => {
+      const title = str(args.title, 3, 240);
+      if (!title)
+        throw new ToolError('"title" muss 3 bis 240 Zeichen lang sein.');
+      const startsAt = isoDate(args.startsAt);
+      const endsAt = isoDate(args.endsAt);
+      if (!startsAt || !endsAt) {
+        throw new ToolError(
+          '"startsAt" oder "endsAt" ist kein gültiges Datum.',
+        );
+      }
+      const organizer =
+        args.organizer === undefined ? null : str(args.organizer, 2, 160);
+      if (args.organizer !== undefined && !organizer) {
+        throw new ToolError('"organizer" muss 2 bis 160 Zeichen lang sein.');
+      }
+      if (
+        args.participants !== undefined &&
+        (typeof args.participants !== "number" ||
+          !Number.isInteger(args.participants) ||
+          args.participants < 1)
+      ) {
+        throw new ToolError(
+          '"participants" muss eine positive ganze Zahl sein.',
+        );
+      }
+      const equipment = Array.isArray(args.equipment) ? args.equipment : [];
+      if (
+        args.equipment !== undefined &&
+        (!Array.isArray(args.equipment) ||
+          !equipment.every((key) => EVENT_EQUIPMENT.includes(String(key))))
+      ) {
+        throw new ToolError(
+          `Ungültige Ausstattung. Erlaubt: ${EVENT_EQUIPMENT.join(", ")}.`,
+        );
+      }
+      const workspace = await resolveWorkspace(config, session, args.workspace);
+      const overview = await callFunction(config, session, "event-spaces", {
+        type: "listWorkspace",
+        tenantId: workspace.id,
+        offset: 0,
+      });
+      const room = findRoom(records(overview.rooms), args.room);
+      const input = {
+        tenantId: workspace.id,
+        spaceId: room.id,
+        title,
+        organizer,
+        expectedParticipants:
+          typeof args.participants === "number" ? args.participants : null,
+        responsibleUserId: session.userId,
+        equipmentKeys: [...new Set(equipment.map(String))],
+        recurrence: "none",
+        occurrences: [{ startsAt, endsAt }],
+      };
+      const preview = await callFunction(config, session, "event-spaces", {
+        type: "previewConflicts",
+        ...input,
+      });
+      const conflicts = isRecord(preview.conflicts) ? preview.conflicts : {};
+      const hasConflicts = conflicts.hasConflicts === true;
+      if (hasConflicts && args.confirmConflicts !== true) {
+        return textResult({
+          booked: false,
+          conflicts: {
+            room: conflicts.roomConflictCount ?? 0,
+            equipment: conflicts.equipmentConflictCount ?? 0,
+          },
+          hint: "Es gibt Überschneidungen. Frage die Person, ob trotzdem gebucht werden soll (confirmConflicts=true), oder wähle einen anderen Raum oder Zeitpunkt.",
+        });
+      }
+      await callFunction(config, session, "event-spaces", {
+        type: "createRequest",
+        ...input,
+        confirmConflicts: hasConflicts,
+        conflictSnapshot: hasConflicts
+          ? (preview.conflictSnapshot ?? null)
+          : null,
+      });
+      return textResult({
+        booked: true,
+        room: room.name,
+        startsAt,
+        endsAt,
+        conflictsAccepted: hasConflicts,
+      });
+    },
+  },
+  {
+    name: "update_event_booking",
+    description:
+      "Ändert den Status einer Raumbuchung (id aus list_event_bookings): planned, in_preparation, ready, conducted, completed.",
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: true,
+      title: "Raumbuchung aktualisieren",
+    },
+    inputSchema: {
+      type: "object",
+      properties: {
+        workspace: WORKSPACE_PROPERTY,
+        booking: { type: "string", description: "ID der Raumbuchung." },
+        status: { type: "string", enum: EVENT_REQUEST_STATUSES },
+      },
+      required: ["booking", "status"],
+      additionalProperties: false,
+    },
+    run: async (config, session, args) => {
+      if (!isUuid(args.booking)) throw new ToolError('"booking" ist ungültig.');
+      if (!EVENT_REQUEST_STATUSES.includes(String(args.status))) {
+        throw new ToolError(
+          `Ungültiger Status. Erlaubt: ${EVENT_REQUEST_STATUSES.join(", ")}.`,
+        );
+      }
+      const workspace = await resolveWorkspace(config, session, args.workspace);
+      await callFunction(config, session, "event-spaces", {
+        type: "updateRequestStatus",
+        tenantId: workspace.id,
+        requestId: args.booking,
+        status: args.status,
+      });
+      return textResult({ updated: true, status: args.status });
+    },
+  },
+  {
+    name: "update_event_task",
+    description:
+      "Setzt den Status einer Aufgabe zu einer Raumbuchung (id aus list_event_bookings): open, in_progress, completed.",
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: true,
+      title: "Raumaufgabe aktualisieren",
+    },
+    inputSchema: {
+      type: "object",
+      properties: {
+        workspace: WORKSPACE_PROPERTY,
+        task: { type: "string", description: "ID der Aufgabe." },
+        status: { type: "string", enum: ["open", "in_progress", "completed"] },
+      },
+      required: ["task", "status"],
+      additionalProperties: false,
+    },
+    run: async (config, session, args) => {
+      if (!isUuid(args.task)) throw new ToolError('"task" ist ungültig.');
+      if (!["open", "in_progress", "completed"].includes(String(args.status))) {
+        throw new ToolError(
+          '"status" muss open, in_progress oder completed sein.',
+        );
+      }
+      const workspace = await resolveWorkspace(config, session, args.workspace);
+      await callFunction(config, session, "event-spaces", {
+        type: "updateTaskStatus",
+        tenantId: workspace.id,
+        taskId: args.task,
+        status: args.status,
+      });
+      return textResult({ updated: true, status: args.status });
+    },
+  },
+
+  // ------------------------------------------------ Eintritte (Onboarding)
+  {
+    name: "list_onboardings",
+    description:
+      "Zeigt die Eintritte neuer Mitarbeitender mit Startdatum, Verantwortlichen und offenen Aufgaben, dazu die verfügbaren Vorlagen und Personen.",
+    annotations: { readOnlyHint: true, title: "Eintritte" },
+    inputSchema: {
+      type: "object",
+      properties: {
+        workspace: WORKSPACE_PROPERTY,
+        query: {
+          type: "string",
+          description: "Filter nach Name oder Einheit.",
+        },
+        openTasksOnly: {
+          type: "boolean",
+          description: "Nur nicht erledigte Aufgaben anzeigen.",
+        },
+      },
+      additionalProperties: false,
+    },
+    run: async (config, session, args) => {
+      const workspace = await resolveWorkspace(config, session, args.workspace);
+      const data = await callFunction(config, session, "onboarding", {
+        type: "listWorkspace",
+        tenantId: workspace.id,
+      });
+      const query = typeof args.query === "string" ? args.query.trim() : "";
+      const entries = records(data.entries).filter((entry) =>
+        matches(query, entry.employeeName, entry.organisationUnit),
+      );
+      return textResult({
+        entries: entries.slice(0, 50).map((entry) => ({
+          id: entry.id,
+          employee: entry.employeeName,
+          startsOn: entry.startsOn,
+          daysUntilStart: daysUntil(entry.startsOn),
+          unit: entry.organisationUnit,
+          location: entry.location,
+          manager: entry.managerName,
+          ictResponsible: entry.ictResponsibleName,
+          tasks: records(entry.tasks)
+            .filter(
+              (task) =>
+                args.openTasksOnly !== true || task.status !== "completed",
+            )
+            .map((task) => ({
+              id: task.id,
+              title: task.title,
+              dueOn: task.dueOn,
+              responsible: task.responsibleName,
+              status: task.status,
+              canUpdate: task.canUpdate === true,
+            })),
+        })),
+        templates: records(data.templates).map((entry) => ({
+          id: entry.id,
+          name: entry.name,
+        })),
+        people: records(data.people)
+          .slice(0, 200)
+          .map((entry) => ({ id: entry.id, name: entry.displayName })),
+      });
+    },
+  },
+  {
+    name: "create_onboarding",
+    description:
+      "Erfasst einen Eintritt (neue mitarbeitende Person). Vorlage, Führungsperson und ICT-Verantwortung als Name oder ID aus list_onboardings. Frage vorher nach, ob der Eintritt erfasst werden soll.",
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      title: "Eintritt erfassen",
+    },
+    inputSchema: {
+      type: "object",
+      properties: {
+        workspace: WORKSPACE_PROPERTY,
+        employeeName: { type: "string", minLength: 2, maxLength: 160 },
+        startsOn: { type: "string", description: "Startdatum JJJJ-MM-TT." },
+        unit: {
+          type: "string",
+          minLength: 2,
+          maxLength: 160,
+          description: "Organisationseinheit.",
+        },
+        location: { type: "string", minLength: 2, maxLength: 160 },
+        manager: { type: "string", description: "Führungsperson." },
+        ictResponsible: {
+          type: "string",
+          description: "ICT-Verantwortung. Standard: du selbst.",
+        },
+        template: {
+          type: "string",
+          description: "Vorlage. Standard: die erste.",
+        },
+      },
+      required: ["employeeName", "startsOn", "unit", "location", "manager"],
+      additionalProperties: false,
+    },
+    run: async (config, session, args) => {
+      const employeeName = str(args.employeeName, 2, 160);
+      const unit = str(args.unit, 2, 160);
+      const location = str(args.location, 2, 160);
+      if (!employeeName || !unit || !location) {
+        throw new ToolError(
+          '"employeeName", "unit" und "location" müssen 2 bis 160 Zeichen lang sein.',
+        );
+      }
+      const startsOn = typeof args.startsOn === "string" ? args.startsOn : "";
+      if (isoDate(`${startsOn}T00:00:00Z`)?.slice(0, 10) !== startsOn) {
+        throw new ToolError('"startsOn" muss ein Datum JJJJ-MM-TT sein.');
+      }
+      const workspace = await resolveWorkspace(config, session, args.workspace);
+      const data = await callFunction(config, session, "onboarding", {
+        type: "listWorkspace",
+        tenantId: workspace.id,
+      });
+      const people = records(data.people);
+      const templates = records(data.templates);
+      const manager = findByName(people, args.manager, "displayName", "Person");
+      const ict =
+        args.ictResponsible === undefined
+          ? { id: session.userId }
+          : findByName(people, args.ictResponsible, "displayName", "Person");
+      const template =
+        args.template === undefined
+          ? templates[0]
+          : findByName(templates, args.template, "name", "Vorlage");
+      if (!template) {
+        throw new ToolError("Es ist keine Vorlage für Eintritte vorhanden.");
+      }
+      const created = await callFunction(config, session, "onboarding", {
+        type: "createEntry",
+        tenantId: workspace.id,
+        employeeName,
+        startsOn,
+        organisationUnit: unit,
+        location,
+        managerUserId: manager.id,
+        ictResponsibleUserId: ict.id,
+        templateId: template.id,
+      });
+      return textResult({
+        created: true,
+        id: created.entryId ?? null,
+        employee: employeeName,
+        startsOn,
+      });
+    },
+  },
+  {
+    name: "update_onboarding_task",
+    description:
+      "Setzt den Status einer Eintrittsaufgabe (id aus list_onboardings): open, in_progress, blocked, completed.",
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: true,
+      title: "Eintrittsaufgabe aktualisieren",
+    },
+    inputSchema: {
+      type: "object",
+      properties: {
+        workspace: WORKSPACE_PROPERTY,
+        task: { type: "string", description: "ID der Aufgabe." },
+        status: {
+          type: "string",
+          enum: ["open", "in_progress", "blocked", "completed"],
+        },
+      },
+      required: ["task", "status"],
+      additionalProperties: false,
+    },
+    run: async (config, session, args) => {
+      if (!isUuid(args.task)) throw new ToolError('"task" ist ungültig.');
+      if (
+        !["open", "in_progress", "blocked", "completed"].includes(
+          String(args.status),
+        )
+      ) {
+        throw new ToolError(
+          '"status" muss open, in_progress, blocked oder completed sein.',
+        );
+      }
+      const workspace = await resolveWorkspace(config, session, args.workspace);
+      await callFunction(config, session, "onboarding", {
+        type: "updateTaskStatus",
+        tenantId: workspace.id,
+        taskId: args.task,
+        status: args.status,
+      });
+      return textResult({ updated: true, status: args.status });
+    },
+  },
 ];
 
 // ---------------------------------------------------------------- JSON-RPC
@@ -2253,7 +2899,7 @@ export async function handleMessage(
       capabilities: { tools: { listChanged: false } },
       serverInfo: SERVER_INFO,
       instructions:
-        "Greift als angemeldete Person auf nextDesk zu. Lesen ist frei. Schreibaktionen (Ticket erfassen, Notiz, Status, Priorität, Zuweisen, Zeit, Checkliste, Antworten, Freigaben, Serviceaufgaben, Wiedervorlagen, Übergaben, Verknüpfungen, Eskalationen) nur nach Rückfrage bei der Person; Antworten, Lösen, Schliessen, Freigabeentscheide, Eskalationen und externe Wissensartikel verlangen ausdrückliche Bestätigung (confirm=true).",
+        "Greift als angemeldete Person auf nextDesk zu. Lesen ist frei. Schreibaktionen (Ticket erfassen, Notiz, Status, Priorität, Zuweisen, Zeit, Checkliste, Antworten, Freigaben, Serviceaufgaben, Wiedervorlagen, Übergaben, Verknüpfungen, Eskalationen, Raumbuchungen, Eintritte, Wissensentwürfe) nur nach Rückfrage bei der Person; Antworten, Lösen, Schliessen, Freigabeentscheide, Eskalationen, externe Wissensartikel und Raumbuchungen trotz Überschneidung verlangen ausdrückliche Bestätigung (confirm=true).",
     });
   }
   if (method === "ping") return isNotification ? null : rpcResult(id, {});
