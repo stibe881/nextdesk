@@ -407,3 +407,138 @@
     width: 100%;
   }
 }
+
+.team-supervision__trend {
+  margin-left: 6px;
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.team-supervision__trend.is-good {
+  color: var(--success, #11664e);
+}
+
+.team-supervision__trend.is-bad {
+  color: #dc2626;
+}
+
+.team-supervision__coaching {
+  display: grid;
+  gap: 14px;
+}
+
+.team-supervision__coaching-agent {
+  display: grid;
+  gap: 6px;
+  max-width: 320px;
+  font-weight: 600;
+}
+
+.team-supervision__coaching-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 14px;
+}
+
+.team-supervision__coaching-panel {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card, 14px);
+  padding: 18px 20px;
+  background: var(--surface);
+}
+
+.team-supervision__coaching-panel h3 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.team-supervision__coaching-form {
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+}
+
+.team-supervision__coaching-form textarea {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.team-supervision__coaching-kinds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.team-supervision__coaching-kinds button {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 4px 12px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.team-supervision__coaching-kinds button.is-active {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+  color: var(--primary);
+  font-weight: 650;
+}
+
+.team-supervision__coaching-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.team-supervision__coaching-list li {
+  display: grid;
+  gap: 4px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
+.team-supervision__coaching-list li.is-praise {
+  border-left-color: var(--success, #11664e);
+}
+
+.team-supervision__coaching-list li.is-goal {
+  border-left-color: var(--primary);
+}
+
+.team-supervision__coaching-list li.is-concern {
+  border-left-color: #d97706;
+}
+
+.team-supervision__coaching-list li > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.team-supervision__coaching-list p {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.team-supervision__coaching-list .text-button {
+  justify-self: start;
+  padding: 0;
+  text-align: left;
+}
+
+.team-supervision__coaching-kind {
+  color: var(--ink);
+  font-weight: 700;
+}

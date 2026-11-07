@@ -48,7 +48,19 @@ type Action =
     toneAppropriate: boolean;
     comment: string | null;
   }
-  | { type: "monthlyReport"; tenantId: string; month: string };
+  | { type: "monthlyReport"; tenantId: string; month: string }
+  | { type: "coachingNotes"; tenantId: string; agentId: string }
+  | {
+    type: "addCoachingNote";
+    tenantId: string;
+    agentId: string;
+    body: string;
+    kind: CoachingKind;
+  }
+  | { type: "deleteCoachingNote"; tenantId: string; noteId: string };
+
+type CoachingKind = "note" | "praise" | "goal" | "concern";
+const COACHING_KINDS: CoachingKind[] = ["note", "praise", "goal", "concern"];
 
 function parseAction(value: unknown): Action | null {
   if (!isRecord(value) || !isUuid(value.tenantId)) return null;
@@ -109,6 +121,37 @@ function parseAction(value: unknown): Action | null {
         return null;
       }
       return { type: "monthlyReport", tenantId, month: value.month };
+    case "coachingNotes":
+      return isUuid(value.agentId)
+        ? {
+          type: "coachingNotes",
+          tenantId,
+          agentId: value.agentId.toLowerCase(),
+        }
+        : null;
+    case "addCoachingNote": {
+      const body = typeof value.body === "string" ? value.body.trim() : "";
+      const kind = COACHING_KINDS.includes(value.kind as CoachingKind)
+        ? (value.kind as CoachingKind)
+        : "note";
+      return isUuid(value.agentId) && body.length >= 1 && body.length <= 4000
+        ? {
+          type: "addCoachingNote",
+          tenantId,
+          agentId: value.agentId.toLowerCase(),
+          body,
+          kind,
+        }
+        : null;
+    }
+    case "deleteCoachingNote":
+      return isUuid(value.noteId)
+        ? {
+          type: "deleteCoachingNote",
+          tenantId,
+          noteId: value.noteId.toLowerCase(),
+        }
+        : null;
     default:
       return null;
   }
@@ -479,6 +522,154 @@ async function monthlyReport(
   if (agentIds.length === 0) {
     return json(request, { data: { month: action.month, agents: [] } });
   }
+  const previousFrom = new Date(Date.UTC(year, month - 2, 1)).toISOString();
+  const [current, previous] = await Promise.all([
+    monthStats(admin, action.tenantId, scope, agentIds, from, to),
+    monthStats(admin, action.tenantId, scope, agentIds, previousFrom, from),
+  ]);
+  const previousById = new Map(previous.map((agent) => [agent.id, agent]));
+  return json(request, {
+    data: {
+      month: action.month,
+      departments: scope.departments,
+      agents: current.map((agent) => {
+        const before = previousById.get(agent.id);
+        return {
+          ...agent,
+          previous: before
+            ? {
+              ticketsResolved: before.ticketsResolved,
+              averageResolutionMinutes: before.averageResolutionMinutes,
+              averageFirstResponseMinutes: before.averageFirstResponseMinutes,
+              slaCompliancePercent: before.slaCompliancePercent,
+              satisfactionAverage: before.satisfactionAverage,
+              qualityAverage: before.qualityAverage,
+            }
+            : null,
+        };
+      }),
+    },
+  });
+}
+
+async function requireSupervisedAgent(
+  admin: Admin,
+  tenantId: string,
+  actorId: string,
+  agentId: string,
+) {
+  const scope = await loadScope(admin, tenantId, actorId);
+  if (!scope.agents.some((agent) => agent.id === agentId)) {
+    throw new HttpError(
+      403,
+      "agent_not_supervised",
+      "Diese Person gehört nicht zu Ihrem Team.",
+    );
+  }
+}
+
+async function coachingNotes(
+  request: Request,
+  admin: Admin,
+  action: Extract<Action, { type: "coachingNotes" }>,
+  actorId: string,
+) {
+  await requireSupervisedAgent(admin, action.tenantId, actorId, action.agentId);
+  const [notes, reviews] = await Promise.all([
+    admin
+      .from("supervisor_coaching_notes")
+      .select("id, body, kind, created_at")
+      .eq("tenant_id", action.tenantId)
+      .eq("author_id", actorId)
+      .eq("agent_id", action.agentId)
+      .order("created_at", { ascending: false })
+      .limit(200),
+    admin
+      .from("ticket_supervisor_reviews")
+      .select(
+        "id, rating, solution_correct, tone_appropriate, comment, created_at, ticket_id, tickets(ticket_number, subject)",
+      )
+      .eq("tenant_id", action.tenantId)
+      .eq("agent_id", action.agentId)
+      .order("created_at", { ascending: false })
+      .limit(20),
+  ]);
+  if (notes.error || reviews.error) throw dbFailure();
+  return json(request, {
+    data: {
+      notes: ((notes.data ?? []) as Row[]).map((row) => ({
+        id: row.id,
+        body: row.body,
+        kind: row.kind,
+        createdAt: row.created_at,
+      })),
+      reviews: ((reviews.data ?? []) as Row[]).map((row) => {
+        const ticket = (Array.isArray(row.tickets) ? row.tickets[0] : row.tickets) as
+          | Row
+          | null;
+        return {
+          id: row.id,
+          rating: row.rating,
+          solutionCorrect: row.solution_correct,
+          toneAppropriate: row.tone_appropriate,
+          comment: row.comment ?? null,
+          createdAt: row.created_at,
+          ticketId: row.ticket_id,
+          ticketNumber: ticket?.ticket_number ?? null,
+          subject: ticket?.subject ?? null,
+        };
+      }),
+    },
+  });
+}
+
+async function addCoachingNote(
+  request: Request,
+  admin: Admin,
+  action: Extract<Action, { type: "addCoachingNote" }>,
+  actorId: string,
+) {
+  await requireSupervisedAgent(admin, action.tenantId, actorId, action.agentId);
+  const { data, error } = await admin
+    .from("supervisor_coaching_notes")
+    .insert({
+      tenant_id: action.tenantId,
+      agent_id: action.agentId,
+      author_id: actorId,
+      body: action.body,
+      kind: action.kind,
+    })
+    .select("id")
+    .single();
+  if (error || !data) throw dbFailure();
+  return json(request, { data: { id: data.id } }, 201);
+}
+
+async function deleteCoachingNote(
+  request: Request,
+  admin: Admin,
+  action: Extract<Action, { type: "deleteCoachingNote" }>,
+  actorId: string,
+) {
+  const { error } = await admin
+    .from("supervisor_coaching_notes")
+    .delete()
+    .eq("tenant_id", action.tenantId)
+    .eq("author_id", actorId)
+    .eq("id", action.noteId);
+  if (error) throw dbFailure();
+  return json(request, { data: { deleted: true } });
+}
+
+async function monthStats(
+  admin: Admin,
+  tenantId: string,
+  scope: Awaited<ReturnType<typeof loadScope>>,
+  agentIds: string[],
+  from: string,
+  to: string,
+) {
+  const action = { tenantId };
   const [created, resolved, reviews, articles, replies] = await Promise.all([
     admin
       .from("tickets")
@@ -589,13 +780,7 @@ async function monthlyReport(
       ).length,
     };
   });
-  return json(request, {
-    data: {
-      month: action.month,
-      departments: scope.departments,
-      agents,
-    },
-  });
+  return agents;
 }
 
 const handler = withSupabase(
@@ -644,6 +829,12 @@ const handler = withSupabase(
           return await saveReview(request, admin, action, actorId);
         case "monthlyReport":
           return await monthlyReport(request, admin, action, actorId);
+        case "coachingNotes":
+          return await coachingNotes(request, admin, action, actorId);
+        case "addCoachingNote":
+          return await addCoachingNote(request, admin, action, actorId);
+        case "deleteCoachingNote":
+          return await deleteCoachingNote(request, admin, action, actorId);
       }
     } catch (error) {
       if (error instanceof HttpError) {

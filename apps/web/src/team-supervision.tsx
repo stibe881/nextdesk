@@ -11,6 +11,7 @@ import {
   ClipboardCheck,
   FileBarChart,
   LayoutDashboard,
+  MessageSquareHeart,
   Printer,
   Shuffle,
   UserRound,
@@ -77,6 +78,14 @@ type ReportAgent = {
   qualityReviews: number;
   externalReplies: number;
   knowledgeArticles: number;
+  previous?: {
+    ticketsResolved: number;
+    averageResolutionMinutes: number | null;
+    averageFirstResponseMinutes: number | null;
+    slaCompliancePercent: number | null;
+    satisfactionAverage: number | null;
+    qualityAverage: number | null;
+  } | null;
 };
 type Report = {
   month: string;
@@ -84,7 +93,7 @@ type Report = {
   agents: ReportAgent[];
 };
 
-type View = "overview" | "redistribute" | "quality" | "report";
+type View = "overview" | "redistribute" | "quality" | "coaching" | "report";
 
 async function call<T>(body: Record<string, unknown>): Promise<T> {
   if (!supabase) throw new Error("Die Verbindung ist nicht konfiguriert.");
@@ -172,6 +181,7 @@ export function TeamSupervision({
     { value: "overview", label: "Team-Übersicht", Icon: LayoutDashboard },
     { value: "redistribute", label: "Umverteilen", Icon: Shuffle },
     { value: "quality", label: "Qualitätsprüfung", Icon: ClipboardCheck },
+    { value: "coaching", label: "Coaching", Icon: MessageSquareHeart },
     { value: "report", label: "Monatsbericht", Icon: FileBarChart },
   ];
 
@@ -239,6 +249,16 @@ export function TeamSupervision({
           ) : null}
           {view === "quality" ? (
             <QualityReview onSaved={setNotice} tenantId={tenantId} />
+          ) : null}
+          {view === "coaching" ? (
+            <Coaching
+              agents={overview.agents.map((agent) => ({
+                id: agent.id,
+                displayName: agent.displayName,
+              }))}
+              onOpenTicket={onOpenTicket}
+              tenantId={tenantId}
+            />
           ) : null}
           {view === "report" ? <MonthlyReport tenantId={tenantId} /> : null}
         </>
@@ -853,23 +873,55 @@ function MonthlyReport({ tenantId }: { tenantId: string }) {
                   <tr key={agent.id}>
                     <th scope="row">{agent.displayName}</th>
                     <td>{agent.ticketsAssigned}</td>
-                    <td>{agent.ticketsResolved}</td>
-                    <td>{duration(agent.averageFirstResponseMinutes)}</td>
-                    <td>{duration(agent.averageResolutionMinutes)}</td>
+                    <td>
+                      {agent.ticketsResolved}
+                      <Trend
+                        current={agent.ticketsResolved}
+                        previous={agent.previous?.ticketsResolved}
+                      />
+                    </td>
+                    <td>
+                      {duration(agent.averageFirstResponseMinutes)}
+                      <Trend
+                        current={agent.averageFirstResponseMinutes}
+                        lowerIsBetter
+                        previous={agent.previous?.averageFirstResponseMinutes}
+                      />
+                    </td>
+                    <td>
+                      {duration(agent.averageResolutionMinutes)}
+                      <Trend
+                        current={agent.averageResolutionMinutes}
+                        lowerIsBetter
+                        previous={agent.previous?.averageResolutionMinutes}
+                      />
+                    </td>
                     <td>
                       {agent.slaCompliancePercent === null
                         ? "–"
                         : `${agent.slaCompliancePercent} %`}
+                      <Trend
+                        current={agent.slaCompliancePercent}
+                        previous={agent.previous?.slaCompliancePercent}
+                      />
                     </td>
                     <td>
                       {agent.satisfactionAverage === null
                         ? "–"
                         : `${agent.satisfactionAverage} (${agent.satisfactionResponses})`}
+                      <Trend
+                        current={agent.satisfactionAverage}
+                        previous={agent.previous?.satisfactionAverage}
+                      />
                     </td>
                     <td>
                       {agent.qualityAverage === null
                         ? "–"
                         : `${agent.qualityAverage} / 5 (${agent.qualityReviews})`}
+                      <Trend
+                        current={agent.qualityAverage}
+                        previous={agent.previous?.qualityAverage}
+                      />
                     </td>
                     <td>{agent.externalReplies}</td>
                     <td>{agent.knowledgeArticles}</td>
@@ -880,10 +932,276 @@ function MonthlyReport({ tenantId }: { tenantId: string }) {
           </div>
           <p className="data-caption">
             Zugewiesen = im Monat erstellte Tickets der Person. Gelöst = im
-            Monat gelöste Tickets. Qualität aus der Qualitätsprüfung.
+            Monat gelöste Tickets. Qualität aus der Qualitätsprüfung. Pfeile
+            zeigen die Veränderung zum Vormonat (grün = besser).
           </p>
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function Trend({
+  current,
+  previous,
+  lowerIsBetter = false,
+}: {
+  current: number | null;
+  previous: number | null | undefined;
+  lowerIsBetter?: boolean;
+}) {
+  if (current === null || previous === null || previous === undefined) {
+    return null;
+  }
+  if (current === previous) {
+    return (
+      <span className="team-supervision__trend" title="Wie im Vormonat">
+        →
+      </span>
+    );
+  }
+  const up = current > previous;
+  const good = lowerIsBetter ? !up : up;
+  return (
+    <span
+      className={`team-supervision__trend ${good ? "is-good" : "is-bad"}`}
+      title={`Vormonat: ${previous}`}
+    >
+      {up ? "↑" : "↓"}
+    </span>
+  );
+}
+
+type CoachingKind = "note" | "praise" | "goal" | "concern";
+const COACHING_LABEL: Record<CoachingKind, string> = {
+  note: "Notiz",
+  praise: "Lob",
+  goal: "Ziel",
+  concern: "Beobachtung",
+};
+type CoachingNote = {
+  id: string;
+  body: string;
+  kind: CoachingKind;
+  createdAt: string;
+};
+type CoachingReview = {
+  id: string;
+  rating: number;
+  solutionCorrect: boolean;
+  toneAppropriate: boolean;
+  comment: string | null;
+  createdAt: string;
+  ticketId: string;
+  ticketNumber: string | null;
+  subject: string | null;
+};
+
+function Coaching({
+  agents,
+  tenantId,
+  onOpenTicket,
+}: {
+  agents: { id: string; displayName: string }[];
+  tenantId: string;
+  onOpenTicket?: (ticketId: string) => void;
+}) {
+  const [agentId, setAgentId] = useState(agents[0]?.id ?? "");
+  const [notes, setNotes] = useState<CoachingNote[]>([]);
+  const [reviews, setReviews] = useState<CoachingReview[]>([]);
+  const [draft, setDraft] = useState("");
+  const [kind, setKind] = useState<CoachingKind>("note");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  const load = useCallback(async () => {
+    if (!agentId) return;
+    setError("");
+    try {
+      const data = await call<{
+        notes: CoachingNote[];
+        reviews: CoachingReview[];
+      }>({ type: "coachingNotes", tenantId, agentId });
+      setNotes(data.notes);
+      setReviews(data.reviews);
+    } catch (nextError) {
+      setError(
+        nextError instanceof Error
+          ? nextError.message
+          : "Die Notizen konnten nicht geladen werden.",
+      );
+    }
+  }, [agentId, tenantId]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  async function add() {
+    if (!draft.trim()) return;
+    setBusy(true);
+    try {
+      await call({
+        type: "addCoachingNote",
+        tenantId,
+        agentId,
+        body: draft.trim(),
+        kind,
+      });
+      setDraft("");
+      await load();
+    } catch (nextError) {
+      setError(
+        nextError instanceof Error
+          ? nextError.message
+          : "Die Notiz konnte nicht gespeichert werden.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function remove(noteId: string) {
+    if (!window.confirm("Notiz löschen?")) return;
+    setBusy(true);
+    try {
+      await call({ type: "deleteCoachingNote", tenantId, noteId });
+      await load();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!agents.length) {
+    return <p className="empty-state">Noch keine Agent:innen im Team.</p>;
+  }
+  const date = (value: string) =>
+    new Date(value).toLocaleDateString("de-CH", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    });
+
+  return (
+    <div className="team-supervision__coaching">
+      <p className="data-caption">
+        Private Notizen für Mitarbeitergespräche. Nur Sie sehen Ihre Notizen;
+        daneben die letzten Qualitätsprüfungen der Person.
+      </p>
+      <label className="team-supervision__coaching-agent">
+        Agent:in
+        <select
+          onChange={(event) => setAgentId(event.target.value)}
+          value={agentId}
+        >
+          {agents.map((agent) => (
+            <option key={agent.id} value={agent.id}>
+              {agent.displayName}
+            </option>
+          ))}
+        </select>
+      </label>
+      {error ? (
+        <p className="form-message form-message--error" role="alert">
+          {error}
+        </p>
+      ) : null}
+      <div className="team-supervision__coaching-grid">
+        <section className="team-supervision__coaching-panel">
+          <h3>Notizen</h3>
+          <div className="team-supervision__coaching-form">
+            <div
+              aria-label="Art der Notiz"
+              className="team-supervision__coaching-kinds"
+              role="radiogroup"
+            >
+              {(Object.keys(COACHING_LABEL) as CoachingKind[]).map((value) => (
+                <button
+                  aria-checked={kind === value}
+                  className={`is-${value}${kind === value ? " is-active" : ""}`}
+                  key={value}
+                  onClick={() => setKind(value)}
+                  role="radio"
+                  type="button"
+                >
+                  {COACHING_LABEL[value]}
+                </button>
+              ))}
+            </div>
+            <textarea
+              maxLength={4000}
+              onChange={(event) => setDraft(event.target.value)}
+              placeholder="z. B. «Sehr freundliche Antworten bei ICT-2026-000025» oder Ziel für das nächste Gespräch"
+              rows={3}
+              value={draft}
+            />
+            <button
+              className="primary-button"
+              disabled={busy || !draft.trim()}
+              onClick={() => void add()}
+              type="button"
+            >
+              Notiz speichern
+            </button>
+          </div>
+          {notes.length ? (
+            <ul className="team-supervision__coaching-list">
+              {notes.map((note) => (
+                <li className={`is-${note.kind}`} key={note.id}>
+                  <div>
+                    <span className="team-supervision__coaching-kind">
+                      {COACHING_LABEL[note.kind] ?? "Notiz"}
+                    </span>
+                    <time>{date(note.createdAt)}</time>
+                  </div>
+                  <p>{note.body}</p>
+                  <button
+                    className="text-button"
+                    disabled={busy}
+                    onClick={() => void remove(note.id)}
+                    type="button"
+                  >
+                    Löschen
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="empty-state">Noch keine Notizen.</p>
+          )}
+        </section>
+        <section className="team-supervision__coaching-panel">
+          <h3>Letzte Qualitätsprüfungen</h3>
+          {reviews.length ? (
+            <ul className="team-supervision__coaching-list">
+              {reviews.map((review) => (
+                <li key={review.id}>
+                  <div>
+                    <strong>{review.rating} / 5</strong>
+                    <time>{date(review.createdAt)}</time>
+                  </div>
+                  <button
+                    className="text-button"
+                    onClick={() => onOpenTicket?.(review.ticketId)}
+                    type="button"
+                  >
+                    {review.ticketNumber ?? "Ticket"} {review.subject ?? ""}
+                  </button>
+                  <p>
+                    {review.solutionCorrect
+                      ? "Lösung korrekt"
+                      : "Lösung prüfen"}{" "}
+                    · {review.toneAppropriate ? "Ton passend" : "Ton prüfen"}
+                    {review.comment ? ` · ${review.comment}` : ""}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="empty-state">Noch keine Qualitätsprüfungen.</p>
+          )}
+        </section>
+      </div>
     </div>
   );
 }
