@@ -357,6 +357,31 @@ export default function TicketsScreen() {
     }, "Die Tickets konnten nicht zugewiesen werden.");
   }
 
+  function bulkWatch() {
+    if (!tenantId || selectedIds.size === 0) return;
+    const ids = [...selectedIds];
+    void runBulk(async () => {
+      let succeeded = 0;
+      for (const ticketId of ids) {
+        try {
+          await setTicketWatched({ tenantId, ticketId, watching: true });
+          succeeded += 1;
+        } catch {
+          // Count only; the summary names failures.
+        }
+      }
+      if (succeeded === 0) {
+        throw new Error("Die Tickets konnten nicht beobachtet werden.");
+      }
+      const nextIds = [...new Set([...watchedIdsRef.current, ...ids])];
+      watchedIdsRef.current = nextIds;
+      setWatchedIds(nextIds);
+      return succeeded < ids.length
+        ? `${succeeded} Tickets werden beobachtet, ${ids.length - succeeded} nicht möglich.`
+        : `Du beobachtest jetzt ${succeeded} Tickets.`;
+    }, "Die Tickets konnten nicht beobachtet werden.");
+  }
+
   function bulkStatus(statusKey: BulkStatusKey, label: string) {
     if (selectedIds.size === 0) return;
     const ids = [...selectedIds];
@@ -944,6 +969,24 @@ export default function TicketsScreen() {
                     style={[styles.selectionActionText, tokenStyles.foreground]}
                   >
                     Mir
+                  </Text>
+                </Pressable>
+                <Pressable
+                  accessibilityLabel="Ausgewählte Tickets beobachten"
+                  accessibilityRole="button"
+                  disabled={selectedIds.size === 0}
+                  onPress={bulkWatch}
+                  style={styles.selectionAction}
+                >
+                  <Ionicons
+                    color={colors.primaryText}
+                    name="eye-outline"
+                    size={20}
+                  />
+                  <Text
+                    style={[styles.selectionActionText, tokenStyles.foreground]}
+                  >
+                    Beobachten
                   </Text>
                 </Pressable>
                 <Pressable

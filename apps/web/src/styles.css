@@ -20932,3 +20932,112 @@ html:has(.embed-status-badge) body {
 .ticket-number {
   white-space: nowrap;
 }
+
+.ticket-collision-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0 0 10px;
+  border: 1px solid #f59e0b;
+  border-radius: 10px;
+  padding: 9px 12px;
+  background: var(--warning-soft, #fef3c7);
+  color: var(--warning, #92400e);
+  font-size: 13px;
+  font-weight: 600;
+  animation: ticket-collision-in 220ms ease-out;
+}
+
+.ticket-collision-warning svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+}
+
+@keyframes ticket-collision-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.ticket-ai-summary__trigger {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 12px;
+}
+
+.ticket-ai-summary__error {
+  color: #b45309;
+  font-size: 13px;
+}
+
+.ticket-ai-summary {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 14px;
+  border: 1px solid var(--primary-soft-border, var(--border));
+  border-radius: 14px;
+  padding: 14px 16px;
+  background: linear-gradient(
+    135deg,
+    var(--primary-soft) 0%,
+    var(--surface) 70%
+  );
+  animation: ticket-collision-in 260ms ease-out;
+}
+
+.ticket-ai-summary header {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  color: var(--primary);
+}
+
+.ticket-ai-summary header strong {
+  color: var(--ink);
+}
+
+.ticket-ai-summary__close {
+  display: grid;
+  width: 26px;
+  height: 26px;
+  place-items: center;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.ticket-ai-summary__body {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 6px 18px;
+}
+
+.ticket-ai-summary__body h4 {
+  margin: 0 0 2px;
+  color: var(--muted);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.ticket-ai-summary__body ul {
+  margin: 0;
+  padding-left: 16px;
+  font-size: 13px;
+}
+
+.ticket-ai-summary__note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+}

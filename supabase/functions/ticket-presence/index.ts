@@ -2,7 +2,13 @@ import { withSupabase } from "@supabase/server";
 import { resolveTenantFeatureStates } from "../_shared/tenant-features.ts";
 
 type Action =
-  | { type: "heartbeat"; tenantId: string; ticketId: string; editing: boolean }
+  | {
+      type: "heartbeat";
+      tenantId: string;
+      ticketId: string;
+      editing: boolean;
+      composing: "external" | "internal" | null;
+    }
   | { type: "list"; tenantId: string; ticketId: string };
 type PermissionCode = "ticket.read.assigned" | "ticket.read.department";
 
@@ -11,6 +17,7 @@ const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const PRESENCE_VISIBLE_FOR_MS = 90_000;
 const PRESENCE_RETENTION_MS = 180_000;
+const COMPOSING_FOR_MS = 45_000;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -50,12 +57,23 @@ function parseAction(value: unknown): Action | null {
       ticketId: value.ticketId,
     };
   }
-  if (value.type === "heartbeat" && typeof value.editing === "boolean") {
+  if (
+    value.type === "heartbeat" &&
+    typeof value.editing === "boolean" &&
+    (value.composing === undefined ||
+      value.composing === null ||
+      value.composing === "external" ||
+      value.composing === "internal")
+  ) {
     return {
       type: value.type,
       tenantId: value.tenantId,
       ticketId: value.ticketId,
       editing: value.editing,
+      composing:
+        value.composing === "external" || value.composing === "internal"
+          ? value.composing
+          : null,
     };
   }
   return null;
@@ -251,6 +269,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
             tenant_id: ticket.tenant_id,
             user_id: actorId,
             is_editing: action.editing,
+            composing: action.composing,
             last_seen_at: now.toISOString(),
           },
           { onConflict: "ticket_id,user_id" },
@@ -268,7 +287,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
 
   const { data: sessions, error: sessionError } = await admin
     .from("ticket_presence_sessions")
-    .select("user_id, is_editing, last_seen_at")
+    .select("user_id, is_editing, composing, last_seen_at")
     .eq("ticket_id", ticket.id)
     .eq("tenant_id", ticket.tenant_id)
     .neq("user_id", actorId)
@@ -321,6 +340,13 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       {
         displayName,
         editing: session.is_editing === true,
+        // A draft only counts as current while the heartbeat is recent.
+        composing:
+          (session.composing === "external" ||
+            session.composing === "internal") &&
+          Date.parse(session.last_seen_at) >= now.getTime() - COMPOSING_FOR_MS
+            ? session.composing
+            : null,
         lastSeenAt: session.last_seen_at,
       },
     ];
