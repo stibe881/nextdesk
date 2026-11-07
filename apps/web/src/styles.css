@@ -19987,6 +19987,14 @@ html:has(.embed-status-badge) body {
   color: var(--warning);
 }
 
+.ticket-assign-chip--static {
+  cursor: default;
+}
+
+.ticket-assign-chip--static:hover {
+  border-color: var(--border);
+}
+
 .ticket-assign-chip--empty {
   color: var(--muted, var(--text));
   border-style: dashed;
