@@ -15,6 +15,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import type { User } from "@supabase/supabase-js";
 
 import { deleteAccount } from "./lib/account";
+import { ReplySnippetManager } from "./reply-snippets";
 import { supabase } from "./lib/supabase";
 import {
   checkIn,
@@ -876,6 +877,12 @@ export function PersonalSettings({
               {exportMessage}
             </p>
           )}
+        </section>
+      )}
+
+      {employeeView || !tenantId ? null : (
+        <section className="personal-settings__card">
+          <ReplySnippetManager tenantId={tenantId} />
         </section>
       )}
 

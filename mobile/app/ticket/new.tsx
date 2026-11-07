@@ -14,6 +14,7 @@ import {
   View,
 } from "react-native";
 
+import { PortalAssistantSheet } from "@/components/portal-assistant-sheet";
 import { RequesterPicker } from "@/components/requester-picker";
 import { ScreenContainer } from "@/components/screen-container";
 import {
@@ -33,6 +34,11 @@ import {
   saveLocalTicketDraft,
 } from "@/lib/mobile-private-state";
 import { uploadPickedPhoto } from "@/lib/mobile-ticket-attachments";
+import {
+  loadPortalAssistantEnabled,
+  recordAssistantOutcome,
+} from "@/lib/nextdesk-assistance";
+import type { AssistantDraft } from "@/lib/portal-assistant";
 import {
   resolveSuggestionMode,
   type SuggestionMode,
@@ -76,6 +82,15 @@ export default function NewTicketScreen() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [photos, setPhotos] = useState<ImagePicker.ImagePickerAsset[]>([]);
+  // «Selbstbedienungs-Assistent» (optional per tenant, off by default).
+  const [assistantEnabled, setAssistantEnabled] = useState(false);
+  const [assistantOpen, setAssistantOpen] = useState(false);
+  const [assistantResult, setAssistantResult] = useState<{
+    sessionId: string;
+    departmentId: string;
+    categoryId: string | null;
+    categoryName: string | null;
+  } | null>(null);
   const draftReady = useRef(false);
   const scrollViewRef = useRef<ScrollView>(null);
   const subjectInputRef = useRef<TextInput>(null);
@@ -91,6 +106,9 @@ export default function NewTicketScreen() {
         const formOptions = await loadTicketFormOptions(currentTenant.id);
         setTenant(currentTenant);
         setOptions(formOptions);
+        void loadPortalAssistantEnabled(currentTenant.id).then(
+          setAssistantEnabled,
+        );
         setDepartmentId(formOptions.departments[0]?.id ?? "");
         setPriorityKey(formOptions.priorities[0]?.key ?? "");
         setRequester(formOptions.currentRequester);
@@ -142,6 +160,28 @@ export default function NewTicketScreen() {
     [departmentId, options],
   );
   const selectedRequester = requester ?? options?.currentRequester ?? null;
+  // Offered to people who create a ticket for themselves.
+  const showAssistant =
+    assistantEnabled &&
+    Boolean(tenant) &&
+    (!selectedRequester ||
+      selectedRequester.id === options?.currentRequester?.id);
+  const assistantCategory =
+    assistantResult && assistantResult.departmentId === departmentId
+      ? assistantResult
+      : null;
+
+  function applyAssistantDraft(draft: AssistantDraft, sessionId: string) {
+    setSubject(draft.subject);
+    setDescription(draft.description);
+    setAssistantResult({
+      sessionId,
+      departmentId,
+      categoryId: draft.categoryId,
+      categoryName: draft.categoryName,
+    });
+    setAssistantOpen(false);
+  }
 
   // Entwurf automatisch sichern, damit eine Unterbrechung nichts kostet.
   useEffect(() => {
@@ -360,7 +400,16 @@ export default function NewTicketScreen() {
         subject: cleanSubject,
         // Die Beschreibung ist optional; ohne sie dient der Betreff als Text.
         description: cleanDescription || cleanSubject,
+        categoryId: assistantCategory?.categoryId ?? null,
       });
+      if (assistantResult) {
+        void recordAssistantOutcome({
+          tenantId: tenant.id,
+          sessionId: assistantResult.sessionId,
+          outcome: "ticket_created",
+          ticketId: ticket.ticketId,
+        });
+      }
       let failedPhotos = 0;
       for (const [index, photo] of photos.entries()) {
         try {
@@ -448,6 +497,51 @@ export default function NewTicketScreen() {
           </View>
         ) : options ? (
           <View style={styles.form}>
+            {showAssistant && tenant ? (
+              <>
+                <Pressable
+                  accessibilityHint="Beschreibe dein Problem in einem kurzen Chat"
+                  accessibilityRole="button"
+                  disabled={saving}
+                  onPress={() => {
+                    hapticSelection();
+                    setAssistantOpen(true);
+                  }}
+                  style={styles.assistantButton}
+                >
+                  <Ionicons
+                    color={colors.primaryText}
+                    name="sparkles-outline"
+                    size={20}
+                  />
+                  <View style={styles.assistantCopy}>
+                    <Text style={styles.assistantTitle}>
+                      Mit dem Assistenten lösen
+                    </Text>
+                    <Text style={styles.hint}>
+                      {assistantResult
+                        ? "Entwurf übernommen – prüfe ihn und erfasse das Ticket."
+                        : "Vielleicht gibt es schon eine Anleitung für dein Problem."}
+                    </Text>
+                  </View>
+                </Pressable>
+                <PortalAssistantSheet
+                  departmentId={departmentId || null}
+                  onClose={() => setAssistantOpen(false)}
+                  onOpenArticle={(articleId) => {
+                    setAssistantOpen(false);
+                    router.push(`/knowledge/${articleId}` as never);
+                  }}
+                  onSolved={() => {
+                    setAssistantOpen(false);
+                    void finishWithArticle();
+                  }}
+                  onUseDraft={applyAssistantDraft}
+                  tenantId={tenant.id}
+                  visible={assistantOpen}
+                />
+              </>
+            ) : null}
             <FieldLabel label="ANFRAGENDE PERSON" />
             <RequesterPicker
               defaultRequester={options.currentRequester}
@@ -595,6 +689,11 @@ export default function NewTicketScreen() {
                 Bearbeitende Abteilung: {selectedDepartment.name}
               </Text>
             ) : null}
+            {assistantCategory?.categoryName ? (
+              <Text style={styles.hint}>
+                Kategorie vom Assistenten: {assistantCategory.categoryName}
+              </Text>
+            ) : null}
             {departmentSuggestion ? (
               <ClassificationSuggestionButton
                 disabled={saving}
@@ -676,6 +775,18 @@ function FieldLabel({ label }: { label: string }) {
 }
 
 const useStyles = makeThemedStyles((c) => ({
+  assistantButton: {
+    alignItems: "center",
+    backgroundColor: c.primarySoft,
+    borderColor: c.primarySoftBorder,
+    borderRadius: 16,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 12,
+    padding: 14,
+  },
+  assistantCopy: { flex: 1, gap: 2 },
+  assistantTitle: { color: c.primaryText, fontSize: 15, fontWeight: "800" },
   photoActions: { flexDirection: "row", gap: 10 },
   photoButton: {
     alignItems: "center",

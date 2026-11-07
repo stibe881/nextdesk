@@ -52,6 +52,7 @@ import { TicketRules } from "./ticket-rules";
 import { TenantDataRetention } from "./tenant-data-retention";
 import { TenantOnboarding, type OnboardingTarget } from "./tenant-onboarding";
 import { AiGovernancePanel } from "./ai-governance-panel";
+import { PortalAssistantSettings } from "./portal-assistant";
 import { ExchangeMailSettings } from "./exchange-mail-settings";
 import { SlaManagement } from "./sla-management";
 import { TenantAuditLog } from "./tenant-audit-log";
@@ -3087,6 +3088,7 @@ export function TenantAdminSettings({
                                   "notifications.push",
                                   "integrations.email",
                                   "ai.assist",
+                                  "knowledge.base",
                                   "ticketing.templates",
                                   "assets.management",
                                   "automation.sla",
@@ -3503,7 +3505,18 @@ export function TenantAdminSettings({
                                             ) : null}
                                             {feature.feature_key ===
                                             "ai.assist" ? (
-                                              <AiGovernancePanel
+                                              <>
+                                                <AiGovernancePanel
+                                                  tenantId={tenantId}
+                                                />
+                                                <PortalAssistantSettings
+                                                  tenantId={tenantId}
+                                                />
+                                              </>
+                                            ) : null}
+                                            {feature.feature_key ===
+                                            "knowledge.base" ? (
+                                              <PortalAssistantSettings
                                                 tenantId={tenantId}
                                               />
                                             ) : null}

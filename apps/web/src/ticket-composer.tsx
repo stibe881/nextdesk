@@ -9,6 +9,12 @@ import {
   X,
 } from "lucide-react";
 import { supabase } from "./lib/supabase";
+import {
+  PortalAssistantPanel,
+  recordPortalAssistantOutcome,
+  usePortalAssistantEnabled,
+} from "./portal-assistant";
+import type { AssistantDraft } from "./lib/portal-assistant";
 import { TicketAssetPicker, type PickedAsset } from "./ticket-asset-picker";
 import {
   appendAnswersToDescription,
@@ -759,6 +765,15 @@ export function TicketComposer({
   const requesterFormOpen = requesterDraft !== null;
   const [requesterPickerOpen, setRequesterPickerOpen] = useState(false);
   const currentSelectedRequester = formReady ? selectedRequester : null;
+  // «Selbstbedienungs-Assistent» (optional per tenant) for people who
+  // create a ticket for themselves.
+  const portalAssistantEnabled = usePortalAssistantEnabled(tenantId);
+  const [assistantOpen, setAssistantOpen] = useState(false);
+  const [assistantSessionId, setAssistantSessionId] = useState<string | null>(
+    null,
+  );
+  const showPortalAssistant =
+    portalAssistantEnabled && formReady && !canManageRequesters;
   const currentRequesterLookup =
     canManageRequesters &&
     requesterLookup?.tenantId === tenantId &&
@@ -1665,6 +1680,15 @@ export function TicketComposer({
       );
       if (requestError) throw requestError;
       const created = parseCreatedTicket(data);
+      if (assistantSessionId) {
+        void recordPortalAssistantOutcome({
+          tenantId,
+          sessionId: assistantSessionId,
+          outcome: "ticket_created",
+          ticketId: created.ticketId,
+        });
+        setAssistantSessionId(null);
+      }
       const expectationPromise = loadSlaExpectation(created.ticketId);
       if (assignedAgentId) {
         const { error: agentAssignmentError } = await supabase.functions.invoke(
@@ -1995,6 +2019,23 @@ export function TicketComposer({
     ? (articleId: string) => onOpenKnowledgeArticle(articleId, keepDraft())
     : undefined;
 
+  /** Takes the assistant's draft into the form; the person still submits. */
+  function applyAssistantDraft(draft: AssistantDraft, sessionId: string) {
+    setSubject(draft.subject);
+    setDescription(draft.description);
+    setTemplateId("");
+    if (
+      draft.categoryId &&
+      rootCategories.some((category) => category.id === draft.categoryId)
+    ) {
+      setCategoryId(draft.categoryId);
+      setSubcategoryId("");
+    }
+    setFieldErrors({});
+    setAssistantSessionId(sessionId);
+    setAssistantOpen(false);
+  }
+
   function finishWithArticle() {
     // "Hat mein Problem gelöst": no ticket is created, the draft is cleared.
     clearTicketComposerDraft(currentUserId, tenantId);
@@ -2034,6 +2075,39 @@ export function TicketComposer({
               einordnen und anschliessend erstellen. Pflichtfelder sind mit
               einem Stern markiert.
             </p>
+            {showPortalAssistant && !assistantOpen ? (
+              <div className="portal-assistant-entry">
+                <p className="data-caption">
+                  {assistantSessionId
+                    ? "Der Entwurf des Assistenten wurde übernommen. Bitte prüfen und erstellen Sie das Ticket."
+                    : "Vielleicht lässt sich Ihr Problem gleich lösen: Der Assistent sucht passende Anleitungen."}
+                </p>
+                {assistantSessionId ? null : (
+                  <button
+                    className="secondary-button"
+                    disabled={saving}
+                    onClick={() => setAssistantOpen(true)}
+                    type="button"
+                  >
+                    Mit dem Assistenten lösen
+                  </button>
+                )}
+              </div>
+            ) : null}
+            {showPortalAssistant && assistantOpen ? (
+              <PortalAssistantPanel
+                departmentId={departmentId || null}
+                onClose={() => setAssistantOpen(false)}
+                onOpenArticle={openSuggestedArticle}
+                onSolved={() => {
+                  setAssistantOpen(false);
+                  setAssistantSessionId(null);
+                  finishWithArticle();
+                }}
+                onUseDraft={applyAssistantDraft}
+                tenantId={tenantId}
+              />
+            ) : null}
             {draftRestored && (
               <p className="data-caption" role="status">
                 Ihr gespeicherter Entwurf wurde wiederhergestellt.{" "}

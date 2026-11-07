@@ -11593,4 +11593,103 @@ $$;
 rollback;
 SQL
 
+# 0225: reply snippets and portal assistant tables are service-role only;
+# shortcuts are unique per scope; the assistant is off by default.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_tenant uuid;
+  v_user uuid;
+  v_session uuid;
+  v_summary record;
+begin
+  select tenant_id, user_id into v_tenant, v_user from public.tenant_memberships
+  where status = 'active' order by created_at limit 1;
+  if has_table_privilege('authenticated', 'public.reply_snippets', 'select')
+     or has_table_privilege('anon', 'public.reply_snippets', 'select')
+     or has_table_privilege('authenticated', 'public.portal_assistant_settings', 'select')
+     or has_table_privilege('authenticated', 'public.portal_assistant_sessions', 'select') then
+    raise exception 'snippet test: browser roles can read the new tables';
+  end if;
+  if not (select relrowsecurity from pg_class where oid = 'public.reply_snippets'::regclass)
+     or not (select relrowsecurity from pg_class where oid = 'public.portal_assistant_sessions'::regclass)
+     or not (select relrowsecurity from pg_class where oid = 'public.portal_assistant_settings'::regclass) then
+    raise exception 'snippet test: RLS disabled';
+  end if;
+  if has_function_privilege('authenticated',
+       'public.portal_assistant_outcome_summary(uuid, timestamptz)', 'execute') then
+    raise exception 'assistant test: browser roles can run the summary';
+  end if;
+
+  insert into public.reply_snippets (tenant_id, owner_id, name, shortcut, body, created_by)
+  values (v_tenant, null, 'Begrüssung', 'hallo', 'Guten Tag {Vorname}', v_user);
+  -- A personal snippet may use the same shortcut as a shared one.
+  insert into public.reply_snippets (tenant_id, owner_id, name, shortcut, body, created_by)
+  values (v_tenant, v_user, 'Meine Begrüssung', 'hallo', 'Hoi {Vorname}', v_user);
+  begin
+    insert into public.reply_snippets (tenant_id, owner_id, name, shortcut, body)
+    values (v_tenant, null, 'Doppelt', 'hallo', 'Text');
+    raise exception 'snippet test: duplicate shared shortcut accepted';
+  exception when unique_violation then
+    null;
+  end;
+  begin
+    insert into public.reply_snippets (tenant_id, name, shortcut, body)
+    values (v_tenant, 'Ungültig', 'Mit Leerzeichen', 'Text');
+    raise exception 'snippet test: invalid shortcut accepted';
+  exception when check_violation then
+    null;
+  end;
+  begin
+    insert into public.reply_snippets (tenant_id, name, body)
+    values (v_tenant, 'Leer', '   ');
+    raise exception 'snippet test: empty body accepted';
+  exception when check_violation then
+    null;
+  end;
+  -- An archived snippet frees its shortcut.
+  update public.reply_snippets set active = false
+  where tenant_id = v_tenant and owner_id is null and shortcut = 'hallo';
+  insert into public.reply_snippets (tenant_id, owner_id, name, shortcut, body)
+  values (v_tenant, null, 'Neue Begrüssung', 'hallo', 'Grüezi {Name}');
+
+  if exists (select 1 from public.portal_assistant_settings where tenant_id = v_tenant and enabled) then
+    raise exception 'assistant test: enabled without opt-in';
+  end if;
+  insert into public.portal_assistant_settings (tenant_id) values (v_tenant);
+  if (select enabled from public.portal_assistant_settings where tenant_id = v_tenant) then
+    raise exception 'assistant test: default is not off';
+  end if;
+
+  insert into public.portal_assistant_sessions (tenant_id, user_id, mode)
+  values (v_tenant, v_user, 'ai') returning id into v_session;
+  begin
+    update public.portal_assistant_sessions set question_count = 3 where id = v_session;
+    raise exception 'assistant test: more than two questions accepted';
+  exception when check_violation then
+    null;
+  end;
+  begin
+    update public.portal_assistant_sessions set outcome = 'ticket_created' where id = v_session;
+    raise exception 'assistant test: finished session without finished_at accepted';
+  exception when check_violation then
+    null;
+  end;
+  update public.portal_assistant_sessions
+  set outcome = 'solved_by_article', finished_at = timezone('utc', now())
+  where id = v_session;
+  insert into public.portal_assistant_sessions (tenant_id, user_id) values (v_tenant, v_user);
+  select * into v_summary
+  from public.portal_assistant_outcome_summary(v_tenant, timezone('utc', now()) - interval '1 day');
+  if v_summary.total < 2 or v_summary.solved_by_article < 1 or v_summary.open < 1
+     or v_summary.ai_sessions < 1 then
+    raise exception 'assistant test: wrong outcome summary';
+  end if;
+  raise notice 'reply snippet and portal assistant checks ran';
+end;
+$$;
+rollback;
+SQL
+
 echo "PostgreSQL 16 migration and RLS integration checks passed."
