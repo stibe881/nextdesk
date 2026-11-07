@@ -5,6 +5,7 @@ import { useState } from "react";
 export const HOME_BLOCKS = [
   { key: "metrics", label: "Kennzahlen", movable: false },
   { key: "tickets", label: "Priorisierte Tickets", movable: false },
+  { key: "myPriorities", label: "Meine Prioritäten", movable: true },
   { key: "approvals", label: "Freigaben", movable: true },
   { key: "agentMetrics", label: "Meine Kennzahlen", movable: true },
   { key: "myDay", label: "Mein Tag", movable: true },
@@ -25,8 +26,10 @@ export function loadHomeLayout(): HomeLayout {
     const order = (Array.isArray(parsed.order) ? parsed.order : []).filter(
       (key): key is string => SIDE_KEYS.includes(String(key)),
     );
-    // New blocks appear at the end for people with an older layout.
-    for (const key of SIDE_KEYS) if (!order.includes(key)) order.push(key);
+    // New blocks appear on top for people with an older layout.
+    for (const key of [...SIDE_KEYS].reverse()) {
+      if (!order.includes(key)) order.unshift(key);
+    }
     const hidden = (Array.isArray(parsed.hidden) ? parsed.hidden : []).filter(
       (key): key is string =>
         HOME_BLOCKS.some((block) => block.key === String(key)),
