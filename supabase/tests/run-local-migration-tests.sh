@@ -10074,4 +10074,44 @@ $$;
 rollback;
 SQL
 
+# 0206: department sub-tasks are added to new onboarding/offboarding entries.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_tenant uuid := '10000000-0000-4000-8000-000000000001';
+  v_user uuid := '00000000-0000-4000-8000-000000000002';
+  v_template uuid;
+  v_department uuid;
+  v_entry uuid;
+  v_count integer;
+begin
+  select id into v_template from public.onboarding_templates
+  where tenant_id = v_tenant and template_key = 'standard';
+  select id into v_department from public.departments where tenant_id = v_tenant limit 1;
+  insert into public.onboarding_department_tasks (tenant_id, kind, department_id, title, due_offset_days)
+  values (v_tenant, 'offboarding', v_department, 'Badge zurücknehmen', 0),
+         (v_tenant, 'onboarding', v_department, 'Willkommenspaket', -2);
+  v_entry := public.create_onboarding_entry_with_kind(
+    v_tenant, 'Austritt Test', current_date + 10, 'ICT', 'Test',
+    v_user, v_user, v_template, v_user, 'offboarding');
+  set constraints all immediate;
+  select count(*) into v_count from public.onboarding_tasks
+  where entry_id = v_entry and department_id = v_department and responsible_user_id is null;
+  if v_count <> 1 then
+    raise exception 'offboarding entry got % department tasks instead of 1', v_count;
+  end if;
+  if not exists (select 1 from public.onboarding_tasks where entry_id = v_entry
+      and title = 'Badge zurücknehmen') then
+    raise exception 'offboarding task missing';
+  end if;
+  if (select kind from public.onboarding_entries where id = v_entry) <> 'offboarding' then
+    raise exception 'entry kind not stored';
+  end if;
+  raise notice 'onboarding department checks ran';
+end;
+$$;
+rollback;
+SQL
+
 echo "PostgreSQL 16 migration and RLS integration checks passed."
