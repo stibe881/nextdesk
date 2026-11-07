@@ -88,6 +88,35 @@ Wiedervorlage)
 enden mit dem Hinweis «Erfasst über den nextDesk-Connector.». Antworten an
 Anfragende werden ohne diesen Hinweis versendet.
 
+## Vorlagen und Entwürfe
+
+**Vorlagen (MCP-Prompts):** In der Gemini CLI erscheinen sie als Slash-Befehle
+mit Feldern zum Ausfüllen, z. B. `/ticket_erfassen --betreff="Drucker druckt nicht"`.
+
+| Vorlage | Zweck |
+| --- | --- |
+| `it_frage` | IT-Frage: zuerst Wissensdatenbank und Shop, sonst Ticket |
+| `problem_melden` | IT-Problem melden: Lösung suchen, Servicestatus prüfen, sonst Ticket |
+| `software_anfordern` | Weg aus der Wissensdatenbank (z. B. Unternehmensportal), Shop oder Ticket |
+| `ticket_erfassen` | Ticket für sich oder eine andere Person |
+| `antwort_schreiben` | Antwort an Anfragende, optional mit Makro |
+| `raum_buchen` | Raum einmalig oder als Serie |
+| `eintritt_erfassen` | Eintritt einer neuen Person |
+| `shop_bestellung` | Bestellung im Self-Service-Shop |
+| `abwesenheit_vertretung` | Stellvertretung für eine Abwesenheit |
+| `uebergabe_erstellen` | Übergabe eines Tickets |
+| `freigabe_anfordern` | Freigabe für ein Ticket |
+| `wissensartikel_erstellen` | Wissensartikel, optional aus einer Ticketlösung |
+| `stoerung_melden` | Interne Störungsmeldung |
+| `zeit_erfassen` | Arbeitszeit auf einem Ticket |
+
+**Entwurf vor dem Abschicken:** `create_ticket`, `reply_to_ticket`,
+`book_event_space`, `create_onboarding`, `order_from_shop`,
+`save_incident_notice`, `request_approval`, `set_delegation`,
+`save_knowledge_article` und `create_handover` geben ohne `confirm` ein
+ausgefülltes Formular zurück (mit aufgelösten Namen, Schweizer Zeiten und nicht
+ausgefüllten optionalen Feldern). Abgeschickt wird erst mit `confirm=true`.
+
 ## Berechtigungen
 
 Der Connector hat keine eigenen Rechte. Jedes Werkzeug ruft dieselben Edge

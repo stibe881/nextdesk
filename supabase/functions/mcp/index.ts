@@ -9,7 +9,7 @@
 const SUPPORTED_PROTOCOLS = ["2025-06-18", "2025-03-26", "2024-11-05"] as const;
 const MAX_BODY_BYTES = 64 * 1024;
 const REQUEST_TIMEOUT_MS = 15_000;
-const SERVER_INFO = { name: "nextdesk", version: "2.1.0" } as const;
+const SERVER_INFO = { name: "nextdesk", version: "2.2.0" } as const;
 const STATUS_KEYS = [
   "new",
   "in_progress",
@@ -445,6 +445,26 @@ const zurichFormatter = new Intl.DateTimeFormat("en-GB", {
 
 type LocalTime = [number, number, number, number, number, number];
 
+const zurichLabelFormatter = new Intl.DateTimeFormat("de-CH", {
+  timeZone: "Europe/Zurich",
+  weekday: "short",
+  day: "2-digit",
+  month: "2-digit",
+  year: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+});
+
+/** Termin lesbar in Schweizer Zeit, z. B. «Di., 24.11.2026, 09:00 – 10:00». */
+function zurichLabel(occurrence: { startsAt: string; endsAt: string }): string {
+  const end = new Intl.DateTimeFormat("de-CH", {
+    timeZone: "Europe/Zurich",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(occurrence.endsAt));
+  return `${zurichLabelFormatter.format(new Date(occurrence.startsAt))} – ${end}`;
+}
+
 /** Kalenderteile eines Zeitpunkts in Zürcher Ortszeit (Monat 1-12). */
 function zurichParts(ms: number): LocalTime {
   const parts = new Map<string, number>(
@@ -663,6 +683,28 @@ async function inventoryRefs(
         : findByName(locations, value, "name", "Lagerort");
     },
   };
+}
+
+const CONFIRM_PROPERTY = {
+  type: "boolean",
+  description:
+    "Erst true, wenn die Person den Entwurf geprüft und das Abschicken ausdrücklich bestätigt hat.",
+};
+
+/** Ausgefülltes Formular, das die Person vor dem Abschicken prüft. */
+function draftResult(
+  template: string,
+  fields: Json,
+  open: (string | false | null | undefined)[] = [],
+): ToolResult {
+  const missing = open.filter((entry): entry is string => Boolean(entry));
+  return textResult({
+    draft: true,
+    template,
+    fields,
+    ...(missing.length ? { optionalNotFilled: missing } : {}),
+    next: "Zeige der Person dieses Formular, ergänze oder korrigiere Angaben nach ihren Wünschen und schicke erst nach ihrer ausdrücklichen Bestätigung mit denselben Angaben und confirm=true ab.",
+  });
 }
 
 // ---------------------------------------------------------------- Werkzeuge
@@ -1036,7 +1078,7 @@ const TOOLS: Tool[] = [
   {
     name: "create_ticket",
     description:
-      "Erfasst ein neues Ticket, für dich selbst oder für eine anfragende Person (requester aus search_requesters). Frage vorher nach, ob das Ticket wirklich erfasst werden soll.",
+      "Erfasst ein neues Ticket, für dich selbst oder für eine anfragende Person (requester aus search_requesters). Frage vorher nach, ob das Ticket wirklich erfasst werden soll. Ohne confirm zeigt das Werkzeug zuerst einen Entwurf zum Prüfen und Ergänzen; erst mit confirm=true wird abgeschickt.",
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
@@ -1045,6 +1087,7 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
+        confirm: CONFIRM_PROPERTY,
         workspace: WORKSPACE_PROPERTY,
         subject: { type: "string", minLength: 3, maxLength: 240 },
         description: { type: "string", maxLength: 8000 },
@@ -1154,6 +1197,31 @@ const TOOLS: Tool[] = [
           : template && typeof template.priorityKey === "string"
             ? template.priorityKey
             : "normal";
+      if (args.confirm !== true) {
+        return draftResult(
+          "Ticket erfassen",
+          {
+            arbeitsbereich: workspace.name,
+            abteilung: department.name,
+            anfragendePerson: isUuid(args.requester)
+              ? args.requester
+              : (requester?.displayName ?? "du selbst"),
+            betreff: subject,
+            beschreibung: clip(description, 2000),
+            prioritaet: priority,
+            vorlage: template?.name ?? null,
+          },
+          [
+            args.description === undefined &&
+              !template &&
+              "beschreibung (sonst wird der Betreff verwendet)",
+            args.priority === undefined &&
+              !template &&
+              "prioritaet (Standard normal)",
+            args.department === undefined && "abteilung (Standard: erste)",
+          ],
+        );
+      }
       const created = await callFunction(config, session, "ticket-actions", {
         type: "createTicket",
         tenantId: workspace.id,
@@ -1303,7 +1371,7 @@ const TOOLS: Tool[] = [
   {
     name: "reply_to_ticket",
     description:
-      "Antwortet im Ticket an die anfragende Person. Der Text ist für sie sichtbar und wird ihr in der Regel per E-Mail zugestellt. Zeige der Person den Text vorher und setze confirm erst nach ihrer ausdrücklichen Zustimmung auf true. Für interne Hinweise add_internal_note verwenden.",
+      "Antwortet im Ticket an die anfragende Person. Der Text ist für sie sichtbar und wird ihr in der Regel per E-Mail zugestellt. Zeige der Person den Text vorher und setze confirm erst nach ihrer ausdrücklichen Zustimmung auf true. Für interne Hinweise add_internal_note verwenden. Ohne confirm zeigt das Werkzeug zuerst den Entwurf.",
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
@@ -1321,15 +1389,10 @@ const TOOLS: Tool[] = [
             "Nur true, wenn die Person den Wortlaut ausdrücklich freigegeben hat.",
         },
       },
-      required: ["ticket", "text", "confirm"],
+      required: ["ticket", "text"],
       additionalProperties: false,
     },
     run: async (config, session, args) => {
-      if (args.confirm !== true) {
-        throw new ToolError(
-          "Die Antwort ist für die anfragende Person sichtbar. Zeige der Person den Text, frage nach und wiederhole den Aufruf danach mit confirm=true.",
-        );
-      }
       const workspace = await resolveWorkspace(config, session, args.workspace);
       const text = str(args.text, 1, 8000);
       if (!text)
@@ -1340,6 +1403,13 @@ const TOOLS: Tool[] = [
         workspace,
         args.ticket,
       );
+      if (args.confirm !== true) {
+        return draftResult("Antwort an anfragende Person", {
+          ticket: args.ticket,
+          sichtbarFuer: "anfragende Person (in der Regel per E-Mail)",
+          text,
+        });
+      }
       await callFunction(config, session, "ticket-operations", {
         type: "addComment",
         tenantId: workspace.id,
@@ -2222,7 +2292,7 @@ const TOOLS: Tool[] = [
   {
     name: "create_handover",
     description:
-      "Erstellt eine Übergabe für ein Ticket (z. B. vor Abwesenheit oder Schichtwechsel). risk: low, medium (Standard), high.",
+      "Erstellt eine Übergabe für ein Ticket (z. B. vor Abwesenheit oder Schichtwechsel). risk: low, medium (Standard), high. Ohne confirm zeigt das Werkzeug zuerst einen Entwurf zum Prüfen und Ergänzen; erst mit confirm=true wird abgeschickt.",
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
@@ -2231,6 +2301,7 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
+        confirm: CONFIRM_PROPERTY,
         workspace: WORKSPACE_PROPERTY,
         ticket: TICKET_PROPERTY,
         summary: { type: "string", minLength: 3, maxLength: 2000 },
@@ -2258,6 +2329,18 @@ const TOOLS: Tool[] = [
         session,
         args,
       );
+      if (args.confirm !== true) {
+        return draftResult(
+          "Übergabe erstellen",
+          {
+            ticket: args.ticket,
+            zusammenfassung: summary,
+            naechsteSchritte: nextSteps,
+            risiko: risk,
+          },
+          [args.nextSteps === undefined && "naechsteSchritte"],
+        );
+      }
       await callFunction(config, session, "ticket-handovers", {
         type: "create",
         tenantId: workspace.id,
@@ -2878,7 +2961,7 @@ const TOOLS: Tool[] = [
   },
   {
     name: "book_event_space",
-    description: `Bucht einen Raum, einmalig oder als Serie (recurrence weekly mit count 2-52 Terminen, monthly mit count 2-12; gleiche Uhrzeit, Zürcher Zeit). Prüft vorher auf Überschneidungen; bei einer Überschneidung wird nicht gebucht, ausser die Person bestätigt sie ausdrücklich (confirmConflicts=true). equipment: ${EVENT_EQUIPMENT.join(", ")}.`,
+    description: `Bucht einen Raum, einmalig oder als Serie (recurrence weekly mit count 2-52 Terminen, monthly mit count 2-12; gleiche Uhrzeit, Zürcher Zeit). Prüft vorher auf Überschneidungen; bei einer Überschneidung wird nicht gebucht, ausser die Person bestätigt sie ausdrücklich (confirmConflicts=true). equipment: ${EVENT_EQUIPMENT.join(", ")}. Ohne confirm zeigt das Werkzeug zuerst die Buchung mit Überschneidungsprüfung als Entwurf; erst mit confirm=true wird gebucht.`,
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
@@ -2887,6 +2970,7 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
+        confirm: CONFIRM_PROPERTY,
         workspace: WORKSPACE_PROPERTY,
         room: { type: "string", description: "Raumname oder ID." },
         title: { type: "string", minLength: 3, maxLength: 240 },
@@ -3017,6 +3101,35 @@ const TOOLS: Tool[] = [
       });
       const conflicts = isRecord(preview.conflicts) ? preview.conflicts : {};
       const hasConflicts = conflicts.hasConflicts === true;
+      if (args.confirm !== true) {
+        return draftResult(
+          "Raum buchen",
+          {
+            raum: room.name,
+            titel: title,
+            wiederholung: recurrence,
+            termine: occurrences.length,
+            ersterTermin: zurichLabel(occurrences[0]!),
+            letzterTermin: zurichLabel(occurrences[occurrences.length - 1]!),
+            veranstalter: organizer,
+            teilnehmende: input.expectedParticipants,
+            ausstattung: input.equipmentKeys,
+            ueberschneidungen: hasConflicts
+              ? {
+                  raum: conflicts.roomConflictCount ?? 0,
+                  ausstattung: conflicts.equipmentConflictCount ?? 0,
+                  hinweis:
+                    "Trotzdem buchen nur mit confirmConflicts=true nach ausdrücklicher Zustimmung.",
+                }
+              : "keine",
+          },
+          [
+            args.participants === undefined && "teilnehmende",
+            args.equipment === undefined && "ausstattung",
+            args.organizer === undefined && "veranstalter",
+          ],
+        );
+      }
       if (hasConflicts && args.confirmConflicts !== true) {
         return textResult({
           booked: false,
@@ -3189,7 +3302,7 @@ const TOOLS: Tool[] = [
   {
     name: "create_onboarding",
     description:
-      "Erfasst einen Eintritt (neue mitarbeitende Person). Vorlage, Führungsperson und ICT-Verantwortung als Name oder ID aus list_onboardings. Frage vorher nach, ob der Eintritt erfasst werden soll.",
+      "Erfasst einen Eintritt (neue mitarbeitende Person). Vorlage, Führungsperson und ICT-Verantwortung als Name oder ID aus list_onboardings. Frage vorher nach, ob der Eintritt erfasst werden soll. Ohne confirm zeigt das Werkzeug zuerst einen Entwurf zum Prüfen und Ergänzen; erst mit confirm=true wird abgeschickt.",
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
@@ -3198,6 +3311,7 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
+        confirm: CONFIRM_PROPERTY,
         workspace: WORKSPACE_PROPERTY,
         employeeName: { type: "string", minLength: 2, maxLength: 160 },
         startsOn: { type: "string", description: "Startdatum JJJJ-MM-TT." },
@@ -3252,6 +3366,18 @@ const TOOLS: Tool[] = [
           : findByName(templates, args.template, "name", "Vorlage");
       if (!template) {
         throw new ToolError("Es ist keine Vorlage für Eintritte vorhanden.");
+      }
+      if (args.confirm !== true) {
+        return draftResult("Eintritt erfassen", {
+          mitarbeitende: employeeName,
+          startdatum: startsOn,
+          einheit: unit,
+          standort: location,
+          fuehrungsperson: manager.displayName,
+          ictVerantwortung:
+            "displayName" in ict ? ict.displayName : "du selbst",
+          vorlage: template.name,
+        });
       }
       const created = await callFunction(config, session, "onboarding", {
         type: "createEntry",
@@ -3744,7 +3870,7 @@ const TOOLS: Tool[] = [
   {
     name: "save_knowledge_article",
     description:
-      "Erstellt einen neuen Wissensartikel oder speichert eine neue Fassung eines bestehenden (article: ID). Der Artikel ist danach ein Entwurf und muss zur Prüfung gegeben werden (request_knowledge_review). Braucht das Recht zur Wissenspflege in nextDesk. Frage vorher nach.",
+      "Erstellt einen neuen Wissensartikel oder speichert eine neue Fassung eines bestehenden (article: ID). Der Artikel ist danach ein Entwurf und muss zur Prüfung gegeben werden (request_knowledge_review). Braucht das Recht zur Wissenspflege in nextDesk. Frage vorher nach. Ohne confirm zeigt das Werkzeug zuerst einen Entwurf zum Prüfen und Ergänzen; erst mit confirm=true wird abgeschickt.",
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
@@ -3753,6 +3879,7 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
+        confirm: CONFIRM_PROPERTY,
         workspace: WORKSPACE_PROPERTY,
         article: {
           type: "string",
@@ -3805,6 +3932,21 @@ const TOOLS: Tool[] = [
           "name",
           "Abteilung",
         ).id;
+      }
+      if (args.confirm !== true) {
+        return draftResult(
+          isUuid(args.article)
+            ? "Wissensartikel: neue Fassung"
+            : "Wissensartikel erstellen",
+          {
+            titel: title,
+            sichtbarkeit: visibility,
+            abteilung: args.department ?? null,
+            inhaltVorschau: clip(args.body, 1500),
+            zeichen: Array.from(String(args.body)).length,
+          },
+          [args.department === undefined && "abteilung"],
+        );
       }
       const data = await callFunction(config, session, "knowledge-base", {
         type: "saveArticle",
@@ -4333,7 +4475,7 @@ const TOOLS: Tool[] = [
   {
     name: "request_approval",
     description:
-      'Fordert für ein Ticket eine Freigabe an (z. B. kind "beschaffung"). requiredApprovals: Anzahl nötiger Zustimmungen (1-10, Standard 1). Frage vorher nach.',
+      'Fordert für ein Ticket eine Freigabe an (z. B. kind "beschaffung"). requiredApprovals: Anzahl nötiger Zustimmungen (1-10, Standard 1). Frage vorher nach. Ohne confirm zeigt das Werkzeug zuerst einen Entwurf zum Prüfen und Ergänzen; erst mit confirm=true wird abgeschickt.',
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
@@ -4342,6 +4484,7 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
+        confirm: CONFIRM_PROPERTY,
         workspace: WORKSPACE_PROPERTY,
         ticket: TICKET_PROPERTY,
         kind: {
@@ -4385,6 +4528,14 @@ const TOOLS: Tool[] = [
         session,
         args,
       );
+      if (args.confirm !== true) {
+        return draftResult("Freigabe anfordern", {
+          ticket: args.ticket,
+          art: kind,
+          begruendung: reason,
+          noetigeZustimmungen: required,
+        });
+      }
       const data = await callFunction(config, session, "ticket-approvals", {
         type: "request",
         tenantId: workspace.id,
@@ -4499,7 +4650,7 @@ const TOOLS: Tool[] = [
   {
     name: "set_delegation",
     description:
-      "Richtet eine Stellvertretung ein: delegate vertritt dich (oder agent, sofern du die Person führst) von startsAt bis endsAt (ISO 8601). Frage vorher nach.",
+      "Richtet eine Stellvertretung ein: delegate vertritt dich (oder agent, sofern du die Person führst) von startsAt bis endsAt (ISO 8601). Frage vorher nach. Ohne confirm zeigt das Werkzeug zuerst einen Entwurf zum Prüfen und Ergänzen; erst mit confirm=true wird abgeschickt.",
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
@@ -4508,6 +4659,7 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
+        confirm: CONFIRM_PROPERTY,
         workspace: WORKSPACE_PROPERTY,
         delegate: { type: "string", description: "Vertretung (Name oder ID)." },
         agent: { type: "string", description: "Vertretene Person (optional)." },
@@ -4549,6 +4701,19 @@ const TOOLS: Tool[] = [
         args.agent === undefined
           ? null
           : findByName(people, args.agent, "displayName", "Person");
+      if (args.confirm !== true) {
+        return draftResult(
+          "Stellvertretung einrichten",
+          {
+            vertretenePerson: agent ? agent.displayName : "du selbst",
+            vertretung: delegate.displayName,
+            von: startsAt,
+            bis: endsAt,
+            notiz: note,
+          },
+          [args.note === undefined && "notiz"],
+        );
+      }
       await callFunction(config, session, "agent-workbench", {
         type: "saveDelegation",
         tenantId: workspace.id,
@@ -4633,7 +4798,7 @@ const TOOLS: Tool[] = [
   {
     name: "save_incident_notice",
     description:
-      "Erfasst eine Störungsmeldung oder aktualisiert sie (notice: ID). status: investigating, identified, monitoring, resolved. Braucht das Verwaltungsrecht für Tickets. Frage vorher nach.",
+      "Erfasst eine Störungsmeldung oder aktualisiert sie (notice: ID). status: investigating, identified, monitoring, resolved. Braucht das Verwaltungsrecht für Tickets. Frage vorher nach. Ohne confirm zeigt das Werkzeug zuerst einen Entwurf zum Prüfen und Ergänzen; erst mit confirm=true wird abgeschickt.",
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
@@ -4642,6 +4807,7 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
+        confirm: CONFIRM_PROPERTY,
         workspace: WORKSPACE_PROPERTY,
         notice: { type: "string", description: "ID zum Aktualisieren." },
         title: { type: "string", minLength: 3, maxLength: 240 },
@@ -4691,6 +4857,20 @@ const TOOLS: Tool[] = [
           "name",
           "Abteilung",
         ).id;
+      }
+      if (args.confirm !== true) {
+        return draftResult(
+          isUuid(args.notice)
+            ? "Störungsmeldung aktualisieren"
+            : "Störungsmeldung erfassen",
+          {
+            titel: title,
+            beschreibung: clip(description, 2000),
+            status: args.status,
+            abteilung: args.department ?? null,
+            beginn: startsAt ?? "jetzt",
+          },
+        );
       }
       const data = await callFunction(config, session, "agent-workbench", {
         type: "saveIncidentNotice",
@@ -5702,7 +5882,7 @@ const TOOLS: Tool[] = [
   {
     name: "order_from_shop",
     description:
-      "Bestellt Artikel im Self-Service-Shop für dich (items: Name oder ID aus list_shop_catalog, mit Menge). reason ist Pflicht, ausser bei reinen Ausleihartikeln; bei Ausleihe loanFrom/loanUntil (JJJJ-MM-TT) angeben. Je nach Artikel braucht es eine Freigabe. Nur nach ausdrücklicher Zustimmung der Person mit confirm=true.",
+      "Bestellt Artikel im Self-Service-Shop für dich (items: Name oder ID aus list_shop_catalog, mit Menge). reason ist Pflicht, ausser bei reinen Ausleihartikeln; bei Ausleihe loanFrom/loanUntil (JJJJ-MM-TT) angeben. Je nach Artikel braucht es eine Freigabe. Ohne confirm zeigt das Werkzeug zuerst die Bestellung als Entwurf; erst mit confirm=true wird bestellt.",
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
@@ -5737,15 +5917,10 @@ const TOOLS: Tool[] = [
         },
         confirm: { type: "boolean" },
       },
-      required: ["items", "confirm"],
+      required: ["items"],
       additionalProperties: false,
     },
     run: async (config, session, args) => {
-      if (args.confirm !== true) {
-        throw new ToolError(
-          "Eine Bestellung wird verbindlich ausgelöst. Zeige der Person Artikel und Menge, frage nach und wiederhole den Aufruf danach mit confirm=true.",
-        );
-      }
       if (
         !Array.isArray(args.items) ||
         args.items.length < 1 ||
@@ -5795,6 +5970,24 @@ const TOOLS: Tool[] = [
       if (!onlyLoans && !reason) {
         throw new ToolError(
           'Für diese Bestellung braucht es einen Grund ("reason").',
+        );
+      }
+      if (args.confirm !== true) {
+        return draftResult(
+          "Shop-Bestellung",
+          {
+            artikel: lines.map(
+              ({ item, quantity }) => `${quantity}× ${item.name}`,
+            ),
+            grund: reason,
+            lieferung: args.delivery === "desk" ? "an den Platz" : "Abholung",
+            ausleiheVon: args.loanFrom ?? null,
+            ausleiheBis: args.loanUntil ?? null,
+            freigabeNoetig: lines.some(
+              ({ item }) => item.requiresApproval === true,
+            ),
+          },
+          [args.comment === undefined && "kommentar"],
         );
       }
       const data = await callFunction(config, session, "shop", {
@@ -5863,6 +6056,321 @@ const TOOLS: Tool[] = [
   },
 ];
 
+// ---------------------------------------------------------------- Vorlagen
+//
+// MCP-Prompts erscheinen in Clients wie der Gemini CLI als Slash-Befehle mit
+// Feldern zum Ausfüllen (z. B. /ticket_erfassen). Sie füllen das passende
+// Werkzeug zuerst als Entwurf aus; abgeschickt wird erst nach Bestätigung.
+
+type PromptArgument = { name: string; description: string; required?: boolean };
+type Prompt = {
+  name: string;
+  title: string;
+  description: string;
+  arguments: PromptArgument[];
+  /** Was zu tun ist, bevor das Formular ausgefüllt wird (optional). */
+  intro?: string;
+  tool: string;
+};
+
+const DRAFT_FLOW =
+  "Rufe das Werkzeug zuerst ohne confirm auf, zeige mir den Entwurf, frage nach fehlenden Pflichtangaben und schicke erst nach meiner ausdrücklichen Bestätigung mit confirm=true ab.";
+
+const PROMPTS: Prompt[] = [
+  {
+    name: "it_frage",
+    title: "IT-Frage stellen",
+    description:
+      "Frage zu Software, Geräten, Zugängen oder einem Problem. Sucht zuerst in der Wissensdatenbank und im Shop, bietet sonst ein Ticket an.",
+    arguments: [
+      {
+        name: "frage",
+        description: "Deine Frage, z. B. «Wie bekomme ich Visio?»",
+        required: true,
+      },
+    ],
+    intro:
+      "Beantworte meine IT-Frage ausschliesslich mit dem Wissen aus nextDesk: zuerst search_knowledge (und get_knowledge_article für den vollen Text), bei Software oder Material zusätzlich list_shop_catalog. Erfinde keine allgemeinen Anleitungen aus dem Web. Findest du nichts, sag das und biete an, mit der Vorlage ticket_erfassen ein Ticket zu erfassen.",
+    tool: "search_knowledge",
+  },
+  {
+    name: "ticket_erfassen",
+    title: "Ticket erfassen",
+    description: "Neues Ticket für dich oder eine andere Person erfassen.",
+    arguments: [
+      { name: "betreff", description: "Kurzer Betreff", required: true },
+      {
+        name: "beschreibung",
+        description: "Was ist passiert, seit wann, welches Gerät?",
+      },
+      { name: "prioritaet", description: "low, normal, high oder urgent" },
+      { name: "abteilung", description: "Zuständige Abteilung (Name)" },
+      {
+        name: "fuer_person",
+        description: "Name der anfragenden Person, falls nicht du",
+      },
+      { name: "vorlage", description: "Ticketvorlage (Name)" },
+    ],
+    intro:
+      "Falls fuer_person angegeben ist, suche die Person mit search_requesters und verwende deren id als requester. Falls eine Vorlage genannt ist, prüfe sie mit list_ticket_templates.",
+    tool: "create_ticket",
+  },
+  {
+    name: "problem_melden",
+    title: "IT-Problem melden",
+    description:
+      "Ein IT-Problem melden. Prüft zuerst die Wissensdatenbank auf eine Lösung und erfasst sonst ein Ticket.",
+    arguments: [
+      {
+        name: "was_ist_passiert",
+        description: "Beschreibung des Problems",
+        required: true,
+      },
+      { name: "seit_wann", description: "Seit wann besteht das Problem?" },
+      { name: "geraet", description: "Betroffenes Gerät oder Programm" },
+      { name: "dringlichkeit", description: "low, normal, high oder urgent" },
+    ],
+    intro:
+      "Suche zuerst mit search_knowledge nach einer Lösung und zeige sie mir. Hilft sie nicht oder gibt es keine, erfasse ein Ticket: Betreff kurz aus der Beschreibung, Beschreibung mit allen Angaben (was, seit wann, Gerät), Priorität aus der Dringlichkeit. Schau mit service_status nach, ob eine bekannte Störung vorliegt, und erwähne sie.",
+    tool: "create_ticket",
+  },
+  {
+    name: "software_anfordern",
+    title: "Software anfordern",
+    description:
+      "Software oder Lizenz anfordern: zeigt den Weg aus der Wissensdatenbank (z. B. Unternehmensportal), bestellt im Shop oder erfasst ein Ticket.",
+    arguments: [
+      {
+        name: "programm",
+        description: "Name der Software, z. B. Visio",
+        required: true,
+      },
+      { name: "grund", description: "Wofür brauchst du sie?" },
+    ],
+    intro:
+      "Suche zuerst mit search_knowledge, wie man diese Software bekommt (z. B. über das Unternehmensportal), und erkläre mir den Weg. Ist sie im Shop (list_shop_catalog) bestellbar, biete die Bestellung mit order_from_shop an. Gibt es beides nicht, erfasse ein Ticket mit dem Grund.",
+    tool: "order_from_shop",
+  },
+  {
+    name: "antwort_schreiben",
+    title: "Antwort an Anfragende",
+    description: "Antwort an die anfragende Person eines Tickets schreiben.",
+    arguments: [
+      { name: "ticket", description: "Ticketnummer", required: true },
+      {
+        name: "nachricht",
+        description: "Inhalt oder Stichworte der Antwort",
+        required: true,
+      },
+      {
+        name: "makro",
+        description: "Antwortmakro (Name), das als Grundlage dient",
+      },
+    ],
+    intro:
+      "Lies das Ticket mit get_ticket. Falls ein Makro genannt ist, hole den Text mit list_macros und get_macro_text. Formuliere eine freundliche, klare Antwort in der Sprache der anfragenden Person.",
+    tool: "reply_to_ticket",
+  },
+  {
+    name: "raum_buchen",
+    title: "Raum buchen",
+    description:
+      "Raum einmalig oder als Serie buchen, mit Überschneidungsprüfung.",
+    arguments: [
+      { name: "raum", description: "Raumname", required: true },
+      { name: "titel", description: "Anlass", required: true },
+      { name: "datum", description: "Datum, z. B. 2026-11-20", required: true },
+      { name: "von", description: "Beginn, z. B. 09:00", required: true },
+      { name: "bis", description: "Ende, z. B. 10:30", required: true },
+      {
+        name: "wiederholung",
+        description: "keine, wöchentlich oder monatlich",
+      },
+      { name: "anzahl", description: "Anzahl Termine bei Wiederholung" },
+      { name: "teilnehmende", description: "Erwartete Anzahl Personen" },
+      {
+        name: "ausstattung",
+        description: "z. B. Beamer, Videocall, Mikrofone",
+      },
+    ],
+    intro:
+      "Datum und Zeiten sind Schweizer Zeit (Europe/Zurich); rechne sie in ISO 8601 mit Zeitzone um. Übersetze die Ausstattung in die erlaubten equipment-Werte.",
+    tool: "book_event_space",
+  },
+  {
+    name: "eintritt_erfassen",
+    title: "Eintritt erfassen",
+    description: "Neue mitarbeitende Person für das Onboarding erfassen.",
+    arguments: [
+      { name: "name", description: "Vor- und Nachname", required: true },
+      {
+        name: "startdatum",
+        description: "Erster Arbeitstag (JJJJ-MM-TT)",
+        required: true,
+      },
+      { name: "einheit", description: "Organisationseinheit", required: true },
+      { name: "standort", description: "Arbeitsort", required: true },
+      {
+        name: "fuehrungsperson",
+        description: "Name der Führungsperson",
+        required: true,
+      },
+      { name: "ict_verantwortung", description: "Name (Standard: du)" },
+      { name: "vorlage", description: "Onboarding-Vorlage (Name)" },
+    ],
+    tool: "create_onboarding",
+  },
+  {
+    name: "shop_bestellung",
+    title: "Im Shop bestellen",
+    description: "Artikel aus dem Self-Service-Shop bestellen.",
+    arguments: [
+      {
+        name: "artikel",
+        description: "Artikel (Name), mehrere mit Komma",
+        required: true,
+      },
+      { name: "menge", description: "Menge (Standard 1)" },
+      { name: "grund", description: "Wofür wird es gebraucht?" },
+      { name: "lieferung", description: "Abholung oder an den Platz" },
+    ],
+    intro: "Suche die Artikel zuerst mit list_shop_catalog.",
+    tool: "order_from_shop",
+  },
+  {
+    name: "abwesenheit_vertretung",
+    title: "Abwesenheit: Stellvertretung",
+    description: "Stellvertretung für eine Abwesenheit einrichten.",
+    arguments: [
+      {
+        name: "vertretung",
+        description: "Name der Person, die vertritt",
+        required: true,
+      },
+      { name: "von", description: "Beginn (Datum und Zeit)", required: true },
+      { name: "bis", description: "Ende (Datum und Zeit)", required: true },
+      { name: "notiz", description: "Hinweis für die Vertretung" },
+    ],
+    intro:
+      "Zeiten sind Schweizer Zeit (Europe/Zurich); rechne sie in ISO 8601 mit Zeitzone um. Biete danach an, für meine offenen Tickets mit create_handover Übergaben zu erstellen.",
+    tool: "set_delegation",
+  },
+  {
+    name: "uebergabe_erstellen",
+    title: "Übergabe erstellen",
+    description:
+      "Übergabe eines Tickets (z. B. vor Abwesenheit oder Schichtwechsel).",
+    arguments: [
+      { name: "ticket", description: "Ticketnummer", required: true },
+      { name: "zusammenfassung", description: "Stand der Dinge" },
+      {
+        name: "naechste_schritte",
+        description: "Was ist als Nächstes zu tun?",
+      },
+      { name: "risiko", description: "low, medium oder high" },
+    ],
+    intro:
+      "Fehlt die Zusammenfassung, schlage aus get_ticket eine vor und lass sie mich bestätigen.",
+    tool: "create_handover",
+  },
+  {
+    name: "freigabe_anfordern",
+    title: "Freigabe anfordern",
+    description: "Für ein Ticket eine Freigabe (Genehmigung) anfordern.",
+    arguments: [
+      { name: "ticket", description: "Ticketnummer", required: true },
+      { name: "art", description: "Art, z. B. beschaffung", required: true },
+      {
+        name: "begruendung",
+        description: "Warum wird die Freigabe gebraucht?",
+        required: true,
+      },
+      {
+        name: "anzahl_zustimmungen",
+        description: "Wie viele Zustimmungen (Standard 1)",
+      },
+    ],
+    tool: "request_approval",
+  },
+  {
+    name: "wissensartikel_erstellen",
+    title: "Wissensartikel erstellen",
+    description:
+      "Neuen Wissensartikel schreiben, optional aus einer Ticketlösung.",
+    arguments: [
+      { name: "titel", description: "Titel des Artikels", required: true },
+      { name: "inhalt", description: "Inhalt oder Stichworte" },
+      {
+        name: "aus_ticket",
+        description: "Ticketnummer, deren Lösung als Grundlage dient",
+      },
+      {
+        name: "sichtbarkeit",
+        description: "intern oder extern (für Anfragende)",
+      },
+    ],
+    intro:
+      "Falls aus_ticket angegeben ist, lies das Ticket mit get_ticket und formuliere daraus eine Schritt-für-Schritt-Anleitung in Markdown. Biete nach dem Speichern an, den Artikel mit request_knowledge_review zur Prüfung zu geben.",
+    tool: "save_knowledge_article",
+  },
+  {
+    name: "stoerung_melden",
+    title: "Störungsmeldung erfassen",
+    description: "Interne Störungsmeldung erfassen (für das Service-Team).",
+    arguments: [
+      { name: "titel", description: "Kurzer Titel", required: true },
+      {
+        name: "beschreibung",
+        description: "Was ist betroffen, welche Auswirkungen?",
+        required: true,
+      },
+      {
+        name: "status",
+        description: "untersucht, erkannt, beobachtet oder behoben",
+      },
+      { name: "abteilung", description: "Betroffene Abteilung" },
+    ],
+    intro:
+      "Übersetze den Status: untersucht = investigating, erkannt = identified, beobachtet = monitoring, behoben = resolved (Standard investigating).",
+    tool: "save_incident_notice",
+  },
+  {
+    name: "zeit_erfassen",
+    title: "Zeit erfassen",
+    description: "Arbeitszeit auf einem Ticket erfassen.",
+    arguments: [
+      { name: "ticket", description: "Ticketnummer", required: true },
+      { name: "minuten", description: "Dauer in Minuten", required: true },
+      { name: "verrechnung", description: "intern, verrechenbar oder Kulanz" },
+      { name: "notiz", description: "Was wurde gemacht?" },
+    ],
+    intro:
+      "Übersetze die Verrechnung: intern = internal, verrechenbar = billable, Kulanz = goodwill. Zeige mir die Angaben kurz und erfasse nach meiner Bestätigung.",
+    tool: "add_time_entry",
+  },
+];
+
+function promptMessage(prompt: Prompt, args: Json): string {
+  const filled = prompt.arguments
+    .map((argument) => {
+      const value =
+        typeof args[argument.name] === "string"
+          ? String(args[argument.name]).trim()
+          : "";
+      return `- ${argument.description} (${argument.name}): ${value || (argument.required ? "FEHLT – bitte nachfragen" : "nicht angegeben")}`;
+    })
+    .join("\n");
+  return [
+    `Vorlage «${prompt.title}» in nextDesk.`,
+    prompt.intro ?? "",
+    `Verwende dafür das Werkzeug ${prompt.tool}. Angaben:`,
+    filled,
+    prompt.tool === "search_knowledge" ? "" : DRAFT_FLOW,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
 // ---------------------------------------------------------------- JSON-RPC
 
 function rpcResult(id: unknown, result: unknown): Json {
@@ -5901,7 +6409,10 @@ export async function handleMessage(
       : SUPPORTED_PROTOCOLS[0];
     return rpcResult(id, {
       protocolVersion: version,
-      capabilities: { tools: { listChanged: false } },
+      capabilities: {
+        tools: { listChanged: false },
+        prompts: { listChanged: false },
+      },
       serverInfo: SERVER_INFO,
       instructions: [
         "Greift als angemeldete Person auf nextDesk zu (Service-Desk der Organisation).",
@@ -5913,6 +6424,37 @@ export async function handleMessage(
   }
   if (method === "ping") return isNotification ? null : rpcResult(id, {});
   if (method.startsWith("notifications/")) return null;
+  if (method === "prompts/list") {
+    return rpcResult(id, {
+      prompts: PROMPTS.map(({ name, title, description, arguments: args }) => ({
+        name,
+        title,
+        description,
+        arguments: args.map(
+          ({ name: argName, description: argDescription, required }) => ({
+            name: argName,
+            description: argDescription,
+            required: required === true,
+          }),
+        ),
+      })),
+    });
+  }
+  if (method === "prompts/get") {
+    const params = isRecord(message.params) ? message.params : {};
+    const prompt = PROMPTS.find((entry) => entry.name === params.name);
+    if (!prompt) return rpcError(id, -32602, "Unbekannte Vorlage.");
+    const args = isRecord(params.arguments) ? params.arguments : {};
+    return rpcResult(id, {
+      description: prompt.description,
+      messages: [
+        {
+          role: "user",
+          content: { type: "text", text: promptMessage(prompt, args) },
+        },
+      ],
+    });
+  }
   if (method === "tools/list") {
     return rpcResult(id, {
       tools: TOOLS.map(({ name, description, inputSchema, annotations }) => ({
