@@ -25,6 +25,7 @@ type PushNavigationData = {
   tenantId: string;
   ticketId?: string;
   orderId?: string;
+  assetId?: string;
   notificationId?: string;
   kind?: string;
 };
@@ -46,6 +47,9 @@ function parsePushNavigationData(value: unknown): PushNavigationData | null {
       : {}),
     ...(typeof nestedBody.orderId === "string" && nestedBody.orderId
       ? { orderId: nestedBody.orderId }
+      : {}),
+    ...(typeof nestedBody.assetId === "string" && nestedBody.assetId
+      ? { assetId: nestedBody.assetId }
       : {}),
     ...(typeof nestedBody.notificationId === "string" &&
     nestedBody.notificationId
@@ -113,6 +117,8 @@ export function PushNotificationBridge() {
             pathname: "/shop/order/[id]",
             params: { id: data.orderId },
           } as never);
+        } else if (data.kind === "infrastructure" && data.assetId) {
+          router.push(`/infrastructure/${data.assetId}` as never);
         } else if (data.kind === "summary") {
           router.push("/tickets");
         } else {

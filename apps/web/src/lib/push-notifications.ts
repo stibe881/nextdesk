@@ -20,6 +20,11 @@ export const pushCategoryMeta = {
     description: "Erinnerung zum gesetzten Termin",
     label: "Wiedervorlagen",
   },
+  infrastructure: {
+    description:
+      "Wenn Garantie, Support, End of Life oder Wartung eines Geräts fällig werden",
+    label: "Infrastruktur",
+  },
   inventory_low_stock: {
     description:
       "Wenn die Gesamtverfügbarkeit eines Artikels den Mindestbestand erreicht",
@@ -138,6 +143,7 @@ type PushNotificationsRequest =
       workStartHour?: number;
     }
   | {
+      categoryModes: Record<string, "immediate" | "off">;
       enabledCategories: PushCategory[];
       quietEnd: number;
       quietHoursEnabled: boolean;
@@ -489,6 +495,14 @@ export async function updatePreferences(
     tenantId,
     type: "updatePreferences",
     ...preferences,
+    // Explicit modes so categories outside the stored list (infrastructure)
+    // can be switched off as well.
+    categoryModes: Object.fromEntries(
+      (Object.keys(pushCategoryMeta) as PushCategory[]).map((category) => [
+        category,
+        preferences.enabledCategories.includes(category) ? "immediate" : "off",
+      ]),
+    ),
   });
   if (!isRecord(result)) throw responseError();
   return parsePreferences(result.preferences);

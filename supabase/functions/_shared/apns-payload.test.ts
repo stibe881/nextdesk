@@ -67,14 +67,16 @@ Deno.test("low-stock payload contains no item data or deep link", () => {
   assertFalse("contractId" in body);
   assertFalse("thread-id" in aps);
   const serialized = JSON.stringify(payload);
-  for (const forbidden of [
-    "Adapter",
-    "A-42",
-    "3 Stück",
-    "Hauptlager",
-    "Lieferant",
-    "Beispiel AG",
-  ]) {
+  for (
+    const forbidden of [
+      "Adapter",
+      "A-42",
+      "3 Stück",
+      "Hauptlager",
+      "Lieferant",
+      "Beispiel AG",
+    ]
+  ) {
     assertFalse(serialized.includes(forbidden));
   }
   assertStringIncludes(String(alert.title), "Lagerunterbestand");
@@ -96,8 +98,10 @@ Deno.test("watched ticket payload names the change and opens the ticket", () => 
     string,
     unknown
   >;
-  assertEquals((status.body as Record<string, unknown>).ticketId,
-    "00000000-0000-4000-8000-000000000003");
+  assertEquals(
+    (status.body as Record<string, unknown>).ticketId,
+    "00000000-0000-4000-8000-000000000003",
+  );
   assertStringIncludes(String(statusAlert.title), "In Bearbeitung");
   assertStringIncludes(String(statusAlert.body), "Pascal");
 
@@ -114,4 +118,23 @@ Deno.test("watched ticket payload names the change and opens the ticket", () => 
     unknown
   >;
   assertStringIncludes(String(noteAlert.title), "interne Notiz");
+});
+
+Deno.test("infrastructure reminders name device, reason and date", () => {
+  const payload = buildApnsPayload({
+    kind: "infrastructure",
+    tenantId: "00000000-0000-4000-8000-000000000001",
+    notificationId: "00000000-0000-4000-8000-000000000002",
+    assetId: "00000000-0000-4000-8000-000000000003",
+    assetName: "Core-Switch",
+    infrastructureReason: "warranty",
+    dueOn: "2999-03-31",
+  });
+  const aps = payload.aps as { alert: { title: string; body: string } };
+  assertEquals(aps.alert.title, "Garantie läuft ab");
+  assertEquals(aps.alert.body, "Core-Switch: Garantie endet am 31.03.2999.");
+  assertEquals(
+    (payload.body as Record<string, unknown>).assetId,
+    "00000000-0000-4000-8000-000000000003",
+  );
 });
