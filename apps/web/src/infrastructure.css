@@ -765,3 +765,94 @@
   margin: 0;
   padding-left: 20px;
 }
+
+.infrastructure__view-toggle {
+  display: inline-flex;
+  gap: 4px;
+}
+.rack-view {
+  display: grid;
+  gap: 18px;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+}
+.rack-view__rack {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card, 12px);
+  margin: 0;
+  padding: 12px;
+}
+.rack-view__rack figcaption {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin-bottom: 8px;
+}
+.rack-view__rack figcaption span,
+.rack-view__rack figcaption small {
+  color: var(--muted);
+}
+.rack-view__slot {
+  fill: var(--surface-subtle);
+  stroke: var(--border);
+  stroke-width: 0.5;
+}
+.rack-view__unit {
+  fill: var(--chart-label);
+  font-size: 9px;
+  text-anchor: end;
+}
+.rack-view__device {
+  cursor: pointer;
+}
+.rack-view__device rect {
+  fill: var(--chart-1);
+  opacity: 0.9;
+}
+.rack-view__device text {
+  fill: var(--on-primary);
+  font-size: 10px;
+  font-weight: 700;
+  pointer-events: none;
+}
+.rack-view__device:hover rect,
+.rack-view__device:focus-visible rect {
+  opacity: 1;
+  stroke: var(--ink);
+  stroke-width: 1.5;
+}
+.rack-view__device--server rect,
+.rack-view__device--virtual_host rect {
+  fill: var(--chart-1);
+}
+.rack-view__device--switch rect,
+.rack-view__device--router rect {
+  fill: var(--chart-2);
+}
+.rack-view__device--firewall rect {
+  fill: var(--chart-6);
+}
+.rack-view__device--storage rect {
+  fill: var(--chart-5);
+}
+.rack-view__device--ups rect {
+  fill: var(--chart-4);
+}
+.rack-view__device--access_point rect,
+.rack-view__device--other rect {
+  fill: var(--chart-7);
+}
+.rack-view__link {
+  fill: none;
+  stroke: var(--chart-label);
+  stroke-dasharray: 3 2;
+  stroke-width: 1.2;
+}
+
+.infrastructure__hero-actions,
+.service-assets__heading-actions {
+  align-items: center;
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}

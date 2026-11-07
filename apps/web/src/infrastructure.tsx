@@ -1,3 +1,6 @@
+import { CsvImportDialog } from "./csv-import-dialog";
+import { INFRASTRUCTURE_IMPORT_FIELDS } from "./lib/import-fields";
+import { RackView } from "./infrastructure-racks";
 import {
   MaintenancePlanning,
   type MaintenanceWindow,
@@ -24,6 +27,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type FormEvent,
 } from "react";
@@ -288,6 +292,64 @@ export function Infrastructure({
   >("current");
   const [query, setQuery] = useState("");
   const [onlyDue, setOnlyDue] = useState(false);
+  const [layout, setLayout] = useState<"list" | "racks">("list");
+  const [importOpen, setImportOpen] = useState(false);
+  // Locations created during an import, by lower-case name.
+  const importLocations = useRef(new Map<string, string>());
+
+  async function importDevice(values: Record<string, string | number | null>) {
+    const text = (key: string) =>
+      typeof values[key] === "string" ? (values[key] as string) : null;
+    const number = (key: string) =>
+      typeof values[key] === "number" ? (values[key] as number) : null;
+    let locationId: string | null = null;
+    const locationName = text("location");
+    if (locationName) {
+      const key = locationName.toLowerCase();
+      locationId =
+        importLocations.current.get(key) ??
+        locations.find((entry) => entry.name.toLowerCase() === key)?.id ??
+        null;
+      if (!locationId) {
+        const created = await call<{ location: Location }>({
+          type: "addLocation",
+          tenantId,
+          name: locationName,
+        });
+        locationId = created.location.id;
+        importLocations.current.set(key, locationId);
+      }
+    }
+    await call({
+      type: "save",
+      tenantId,
+      device: {
+        ...EMPTY_FORM,
+        name: text("name"),
+        category: text("category") ?? "other",
+        hostname: text("hostname"),
+        ipAddress: text("ipAddress"),
+        macAddress: text("macAddress"),
+        manufacturer: text("manufacturer"),
+        model: text("model"),
+        serialNumber: text("serialNumber"),
+        inventoryNumber: text("inventoryNumber"),
+        firmwareVersion: text("firmwareVersion"),
+        locationId,
+        rack: text("rack"),
+        rackUnit: text("rackUnit"),
+        purchaseDate: text("purchaseDate"),
+        purchasePrice: number("purchasePrice"),
+        supplier: text("supplier"),
+        warrantyUntil: text("warrantyUntil"),
+        supportUntil: text("supportUntil"),
+        endOfLife: text("endOfLife"),
+        criticality: text("criticality") ?? "medium",
+        maintenanceIntervalMonths: number("maintenanceIntervalMonths"),
+        notes: text("notes"),
+      },
+    });
+  }
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [form, setForm] = useState<Form | null>(null);
 
@@ -407,15 +469,39 @@ export function Infrastructure({
           </p>
         </div>
         {canManage ? (
-          <button
-            className="primary-button"
-            onClick={() => edit(null)}
-            type="button"
-          >
-            <Plus aria-hidden="true" size={16} /> Gerät erfassen
-          </button>
+          <span className="infrastructure__hero-actions">
+            <button
+              className="secondary-button"
+              onClick={() => setImportOpen(true)}
+              type="button"
+            >
+              CSV importieren
+            </button>
+            <button
+              className="primary-button"
+              onClick={() => edit(null)}
+              type="button"
+            >
+              <Plus aria-hidden="true" size={16} /> Gerät erfassen
+            </button>
+          </span>
         ) : null}
       </header>
+      {importOpen ? (
+        <CsvImportDialog
+          fields={INFRASTRUCTURE_IMPORT_FIELDS}
+          onClose={() => setImportOpen(false)}
+          onFinished={(imported) => {
+            if (imported) {
+              setNotice(`${imported} Geräte importiert.`);
+              void load();
+            }
+          }}
+          onImportRow={importDevice}
+          templateName="infrastruktur-vorlage.csv"
+          title="Geräte aus CSV importieren"
+        />
+      ) : null}
 
       <div className="infrastructure__kpis">
         <article>
@@ -437,6 +523,33 @@ export function Infrastructure({
           <p>Abgelaufen / überfällig</p>
           <strong>{counts.overdue}</strong>
         </article>
+      </div>
+
+      <div
+        aria-label="Darstellung"
+        className="infrastructure__view-toggle"
+        role="group"
+      >
+        <button
+          aria-pressed={layout === "list"}
+          className={
+            layout === "list" ? "secondary-button is-active" : "text-button"
+          }
+          onClick={() => setLayout("list")}
+          type="button"
+        >
+          Liste
+        </button>
+        <button
+          aria-pressed={layout === "racks"}
+          className={
+            layout === "racks" ? "secondary-button is-active" : "text-button"
+          }
+          onClick={() => setLayout("racks")}
+          type="button"
+        >
+          Racks
+        </button>
       </div>
 
       <div className="infrastructure__filters">
@@ -536,6 +649,12 @@ export function Infrastructure({
             </button>
           ) : null}
         </div>
+      ) : layout === "racks" ? (
+        <RackView
+          categoryLabel={(key) => CATEGORY[key as Category]?.label ?? key}
+          devices={visible}
+          onOpen={setSelectedId}
+        />
       ) : (
         <ul className="infrastructure__list">
           {visible.map((device) => {
