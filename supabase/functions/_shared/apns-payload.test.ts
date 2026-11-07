@@ -79,3 +79,39 @@ Deno.test("low-stock payload contains no item data or deep link", () => {
   }
   assertStringIncludes(String(alert.title), "Lagerunterbestand");
 });
+
+Deno.test("watched ticket payload names the change and opens the ticket", () => {
+  const status = buildApnsPayload({
+    kind: "watched",
+    tenantId: "00000000-0000-4000-8000-000000000001",
+    notificationId: "n-1",
+    ticketId: "00000000-0000-4000-8000-000000000003",
+    ticketNumber: "ICT-2026-000028",
+    subject: "Drucker",
+    watchEvent: "status",
+    watchStatusLabel: "In Bearbeitung",
+    watchActorName: "Pascal",
+  });
+  const statusAlert = (status.aps as Record<string, unknown>).alert as Record<
+    string,
+    unknown
+  >;
+  assertEquals((status.body as Record<string, unknown>).ticketId,
+    "00000000-0000-4000-8000-000000000003");
+  assertStringIncludes(String(statusAlert.title), "In Bearbeitung");
+  assertStringIncludes(String(statusAlert.body), "Pascal");
+
+  const note = buildApnsPayload({
+    kind: "watched",
+    tenantId: "00000000-0000-4000-8000-000000000001",
+    notificationId: "n-2",
+    ticketNumber: "ICT-2026-000028",
+    watchEvent: "comment",
+    watchInternal: true,
+  });
+  const noteAlert = (note.aps as Record<string, unknown>).alert as Record<
+    string,
+    unknown
+  >;
+  assertStringIncludes(String(noteAlert.title), "interne Notiz");
+});

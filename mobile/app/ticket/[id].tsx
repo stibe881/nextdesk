@@ -56,12 +56,14 @@ import { makeThemedStyles, useAppColors } from "@/lib/themed-styles";
 import { useThemeContext } from "@/lib/theme-provider";
 import {
   clearLocalTicketDraft,
-  listFavoriteTicketIds,
   recordRecentTicket,
   loadLocalTicketDraft,
   saveLocalTicketDraft,
-  setFavoriteTicket,
 } from "@/lib/mobile-private-state";
+import {
+  listWatchedTicketIds,
+  setTicketWatched,
+} from "@/lib/mobile-ticket-actions";
 import {
   hapticError,
   hapticSelection,
@@ -288,7 +290,7 @@ export default function TicketDetailScreen() {
   const [commentVisibility, setCommentVisibility] =
     useState<TicketCommentVisibility>("internal");
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  const [favorite, setFavorite] = useState(false);
+  const [watched, setWatched] = useState(false);
   const [draftState, setDraftState] = useState<
     "idle" | "local" | "saving" | "synced"
   >("idle");
@@ -429,14 +431,14 @@ export default function TicketDetailScreen() {
           const initialVisibility = detail.canWriteInternalNotes
             ? "internal"
             : "external";
-          const [localDraft, favoriteIds] = await Promise.all([
+          const [localDraft, watchedIds] = await Promise.all([
             loadLocalTicketDraft({
               userId,
               tenantId: currentTenant.id,
               ticketId: detail.id,
               visibility: initialVisibility,
             }),
-            listFavoriteTicketIds({ userId, tenantId: currentTenant.id }),
+            listWatchedTicketIds(userId).catch(() => [] as string[]),
           ]);
           const serverDraft = detail.drafts.find(
             (draft) =>
@@ -466,7 +468,7 @@ export default function TicketDetailScreen() {
             setDraftDirty(false);
             setCommentVisibility(initialVisibility);
           }
-          setFavorite(favoriteIds.includes(detail.id));
+          setWatched(watchedIds.includes(detail.id));
         }
         setCommentVisibility((current) => {
           if (syncEditor) return current;
@@ -1084,28 +1086,27 @@ export default function TicketDetailScreen() {
     setDraftDirty(true);
   }
 
-  async function toggleFavorite() {
+  async function toggleWatch() {
     if (!ticket || !tenant || !currentUserId) return;
-    const nextFavorite = !favorite;
+    const nextWatched = !watched;
     setError("");
     setMessage("");
     try {
-      await setFavoriteTicket({
-        userId: currentUserId,
+      await setTicketWatched({
         tenantId: tenant.id,
         ticketId: ticket.id,
-        favorite: nextFavorite,
+        watching: nextWatched,
       });
-      setFavorite(nextFavorite);
+      setWatched(nextWatched);
       setMessage(
-        nextFavorite
-          ? "Ticket wurde zu Favoriten hinzugefügt."
-          : "Ticket wurde aus Favoriten entfernt.",
+        nextWatched
+          ? "Du beobachtest dieses Ticket und wirst über Status, Nachrichten und Notizen benachrichtigt."
+          : "Du beobachtest dieses Ticket nicht mehr.",
       );
       hapticSelection();
     } catch {
       hapticError();
-      setError("Der Favorit konnte nicht auf diesem Gerät gespeichert werden.");
+      setError("Das Beobachten konnte nicht gespeichert werden.");
     }
   }
 
@@ -1485,21 +1486,16 @@ export default function TicketDetailScreen() {
             </Text>
             <Pressable
               accessibilityLabel={
-                favorite
-                  ? "Ticket aus Favoriten entfernen"
-                  : "Ticket favorisieren"
+                watched ? "Ticket nicht mehr beobachten" : "Ticket beobachten"
               }
               accessibilityRole="button"
               hitSlop={10}
-              onPress={() => void toggleFavorite()}
-              style={[
-                styles.favoriteButton,
-                favorite && styles.favoriteButtonActive,
-              ]}
+              onPress={() => void toggleWatch()}
+              style={[styles.watchButton, watched && styles.watchButtonActive]}
             >
               <Ionicons
-                color={favorite ? colors.onPrimary : colors.primaryText}
-                name={favorite ? "star" : "star-outline"}
+                color={watched ? colors.onPrimary : colors.primaryText}
+                name={watched ? "eye" : "eye-outline"}
                 size={20}
               />
             </Pressable>
@@ -4198,7 +4194,7 @@ const useStyles = makeThemedStyles((c) => ({
   },
   editButtonText: { color: c.primaryText, fontSize: 12, fontWeight: "800" },
   topTitle: { color: c.foreground, fontSize: 17, fontWeight: "800" },
-  favoriteButton: {
+  watchButton: {
     alignItems: "center",
     backgroundColor: c.primarySoft,
     borderRadius: 18,
@@ -4206,7 +4202,7 @@ const useStyles = makeThemedStyles((c) => ({
     justifyContent: "center",
     width: 40,
   },
-  favoriteButtonActive: { backgroundColor: c.primary },
+  watchButtonActive: { backgroundColor: c.primary },
   ticketHead: { gap: 8, paddingTop: 8 },
   ticketId: {
     color: c.muted,

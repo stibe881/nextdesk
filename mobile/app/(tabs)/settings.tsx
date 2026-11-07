@@ -342,9 +342,7 @@ export default function SettingsScreen() {
     setSaving(true);
     try {
       await clearMobileWorkingData(await getMobileUserId());
-      setMessage(
-        "Lokale Entwürfe und Favoriten wurden von diesem Gerät entfernt.",
-      );
+      setMessage("Lokale Entwürfe wurden von diesem Gerät entfernt.");
     } catch {
       setError("Die lokalen Arbeitsdaten konnten nicht entfernt werden.");
     } finally {
@@ -816,9 +814,8 @@ export default function SettingsScreen() {
             <View style={styles.noteCopy}>
               <Text style={styles.cacheNoteTitle}>Offline &amp; Cache</Text>
               <Text style={styles.cacheNoteText}>
-                Nur Entwürfe und Favoriten bleiben verschlüsselt auf diesem
-                Gerät. Tickets, Fotos, Assets und Wissen werden nicht offline
-                gespeichert.
+                Nur Entwürfe bleiben verschlüsselt auf diesem Gerät. Tickets,
+                Fotos, Assets und Wissen werden nicht offline gespeichert.
               </Text>
               <Pressable
                 accessibilityRole="button"

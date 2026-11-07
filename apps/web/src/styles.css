@@ -8998,6 +8998,68 @@ body:has(.ticket-list-filter-panel) {
   background: var(--danger-soft);
 }
 
+/* Ticket rows follow the width of their list (side panels, split view), not
+   only the window: with little room the badges move below the title. */
+.ticket-list {
+  container-name: ticket-list;
+  container-type: inline-size;
+}
+
+.ticket-state {
+  position: relative;
+  flex-wrap: wrap;
+}
+
+/* Assignment, team, status and SLA are one row of equal chips, so every
+   ticket wraps them the same way. The popover anchors to .ticket-state. */
+.ticket-row .ticket-quick-assign {
+  display: contents;
+}
+
+@container ticket-list (max-width: 960px) {
+  .ticket-row {
+    grid-template-columns: minmax(0, 1fr) 24px;
+    gap: 10px 12px;
+  }
+
+  .ticket-row--selectable {
+    grid-template-columns: 24px minmax(0, 1fr) 24px;
+  }
+
+  .ticket-state {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+  }
+
+  .ticket-row--selectable .ticket-state {
+    grid-column: 2 / -1;
+  }
+
+  .ticket-row .ticket-quick-assign__popover {
+    right: auto;
+    left: 0;
+  }
+
+  .ticket-row-arrow {
+    grid-column: -2;
+    grid-row: 1;
+  }
+}
+
+@container ticket-list (max-width: 420px) {
+  .ticket-row {
+    padding: 12px;
+  }
+
+  .ticket-row--selectable .ticket-state {
+    grid-column: 1 / -1;
+  }
+
+  .ticket-assign-chip {
+    max-width: 140px;
+  }
+}
+
 .ticket-row-arrow {
   align-self: center;
   color: var(--text-tint-94a3b8);
@@ -19933,6 +19995,14 @@ html:has(.embed-status-badge) body {
   color: var(--warning);
 }
 
+.ticket-assign-chip--static {
+  cursor: default;
+}
+
+.ticket-assign-chip--static:hover {
+  border-color: var(--border);
+}
+
 .ticket-assign-chip--empty {
   color: var(--muted, var(--text));
   border-style: dashed;
@@ -20824,4 +20894,36 @@ html:has(.embed-status-badge) body {
 .metric-card__names {
   font-size: 1rem;
   line-height: 1.3;
+}
+
+/* Ticketliste: Zuweisung, Status und SLA sind gleich hoch und gleich geformt. */
+.ticket-state .state-badge,
+.ticket-state .sla,
+.ticket-state .ticket-assign-chip {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  min-height: 28px;
+  border-radius: 999px;
+  padding: 0 11px;
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.ticket-state .state-badge {
+  border-width: 1px;
+}
+
+/* Die Kennzeichnungen brechen bei Platzmangel um, statt die Nummer zu quetschen. */
+.ticket-state {
+  flex-wrap: wrap;
+  max-width: 100%;
+}
+
+.ticket-number {
+  white-space: nowrap;
 }

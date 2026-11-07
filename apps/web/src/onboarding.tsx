@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { OnboardingDepartmentTasks } from "./onboarding-department-tasks";
 import {
   BadgeCheck,
   CalendarDays,
@@ -21,6 +22,8 @@ type Task = {
   title: string;
   dueOn: string;
   responsibleName: string;
+  departmentId?: string | null;
+  departmentName?: string | null;
   status: TaskStatus;
   canUpdate: boolean;
   exception: { ticketNumber: string; reason: string } | null;
@@ -34,6 +37,7 @@ type Entry = {
   managerName: string;
   ictResponsibleName: string;
   templateId: string;
+  kind?: "onboarding" | "offboarding";
   source?: "email" | "manual";
   sourceTicketNumber?: string | null;
   details?: Record<string, unknown>;
@@ -61,6 +65,7 @@ const emptyDraft = () => ({
   managerUserId: "",
   ictResponsibleUserId: "",
   templateId: "",
+  kind: "onboarding" as "onboarding" | "offboarding",
 });
 function isWorkspace(value: unknown): value is Workspace {
   return Boolean(
@@ -132,6 +137,25 @@ function entryDetailRows(
     (row): row is { label: string; value: string } => row.value !== null,
   );
 }
+function departmentProgress(tasks: Task[]) {
+  const groups = new Map<
+    string,
+    { name: string; done: number; total: number }
+  >();
+  for (const task of tasks) {
+    if (!task.departmentName) continue;
+    const group = groups.get(task.departmentName) ?? {
+      name: task.departmentName,
+      done: 0,
+      total: 0,
+    };
+    group.total += 1;
+    if (task.status === "completed") group.done += 1;
+    groups.set(task.departmentName, group);
+  }
+  return [...groups.values()];
+}
+
 function progress(tasks: Task[]) {
   const done = tasks.filter((task) => task.status === "completed").length;
   return {
@@ -152,6 +176,7 @@ export function Onboarding({
   const [loading, setLoading] = useState(true);
   const [pending, setPending] = useState(false);
   const [editor, setEditor] = useState(false);
+  const [departmentConfig, setDepartmentConfig] = useState(false);
   const [notice, setNotice] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [draft, setDraft] = useState(emptyDraft);
@@ -261,13 +286,16 @@ export function Onboarding({
           managerUserId: draft.managerUserId,
           ictResponsibleUserId: draft.ictResponsibleUserId,
           templateId: draft.templateId,
+          kind: draft.kind,
         },
       });
       if (error) throw error;
       setDraft(emptyDraft());
       setEditor(false);
       setNotice(
-        "Der Eintritt wurde geplant. Die Aufgaben sind relativ zum Eintrittsdatum terminiert.",
+        draft.kind === "offboarding"
+          ? "Der Austritt wurde geplant. Die Aufgaben sind relativ zum Austrittsdatum terminiert."
+          : "Der Eintritt wurde geplant. Die Aufgaben sind relativ zum Eintrittsdatum terminiert.",
       );
       await load(true);
     } catch (error) {
@@ -350,10 +378,11 @@ export function Onboarding({
       <header className="onboarding__hero panel">
         <div>
           <p className="eyebrow">Planung statt Ticket</p>
-          <h2 id="onboarding-heading">Eintritte</h2>
+          <h2 id="onboarding-heading">Eintritte & Austritte</h2>
           <p>
-            Neue Mitarbeitende werden mit klaren Verantwortlichkeiten
-            vorbereitet. Tickets entstehen nur bewusst bei Ausnahmen oder
+            Ein- und Austritte werden mit klaren Verantwortlichkeiten
+            vorbereitet. Die beteiligten Abteilungen erhalten ihre Teilaufgaben
+            automatisch. Tickets entstehen nur bewusst bei Ausnahmen oder
             Verzögerungen.
           </p>
         </div>
@@ -364,11 +393,23 @@ export function Onboarding({
               onClick={() => setEditor(true)}
               type="button"
             >
-              <Plus size={17} /> Eintritt planen
+              <Plus size={17} /> Eintritt oder Austritt planen
+            </button>
+          ) : null}
+          {workspace?.permissions.canManage ? (
+            <button
+              className="secondary-button"
+              onClick={() => setDepartmentConfig((current) => !current)}
+              type="button"
+            >
+              Abteilungsaufgaben
             </button>
           ) : null}
         </div>
       </header>
+      {departmentConfig && workspace?.permissions.canManage ? (
+        <OnboardingDepartmentTasks tenantId={tenantId} />
+      ) : null}
       <div className="onboarding__metrics">
         <article>
           <UserRound size={18} />
@@ -411,6 +452,24 @@ export function Onboarding({
           <form onSubmit={createEntry}>
             <div className="onboarding__grid">
               <label>
+                Art
+                <select
+                  value={draft.kind}
+                  onChange={(event) =>
+                    setDraft({
+                      ...draft,
+                      kind:
+                        event.target.value === "offboarding"
+                          ? "offboarding"
+                          : "onboarding",
+                    })
+                  }
+                >
+                  <option value="onboarding">Eintritt</option>
+                  <option value="offboarding">Austritt</option>
+                </select>
+              </label>
+              <label>
                 Name
                 <input
                   required
@@ -424,7 +483,9 @@ export function Onboarding({
                 />
               </label>
               <label>
-                Eintrittsdatum
+                {draft.kind === "offboarding"
+                  ? "Austrittsdatum"
+                  : "Eintrittsdatum"}
                 <input
                   required
                   type="date"
@@ -616,9 +677,19 @@ export function Onboarding({
                 >
                   <header>
                     <div>
-                      <h4>{entry.employeeName}</h4>
+                      <h4>
+                        {entry.employeeName}{" "}
+                        <span
+                          className={`onboarding__kind onboarding__kind--${entry.kind ?? "onboarding"}`}
+                        >
+                          {entry.kind === "offboarding"
+                            ? "Austritt"
+                            : "Eintritt"}
+                        </span>
+                      </h4>
                       <p>
-                        Eintritt am {dateLabel(entry.startsOn)}
+                        {entry.kind === "offboarding" ? "Austritt" : "Eintritt"}{" "}
+                        am {dateLabel(entry.startsOn)}
                         {entry.organisationUnit
                           ? ` · ${entry.organisationUnit}`
                           : ""}
@@ -635,6 +706,38 @@ export function Onboarding({
                   >
                     <span style={{ width: `${state.percent}%` }} />
                   </div>
+                  {departmentProgress(entry.tasks).length ? (
+                    <ul
+                      aria-label="Fortschritt pro Abteilung"
+                      className="onboarding__departments"
+                    >
+                      {departmentProgress(entry.tasks).map((department) => (
+                        <li
+                          className={
+                            department.done === department.total
+                              ? "is-done"
+                              : ""
+                          }
+                          key={department.name}
+                        >
+                          <span>{department.name}</span>
+                          <span
+                            aria-hidden="true"
+                            className="onboarding__department-bar"
+                          >
+                            <span
+                              style={{
+                                width: `${Math.round((department.done / department.total) * 100)}%`,
+                              }}
+                            />
+                          </span>
+                          <strong>
+                            {department.done}/{department.total}
+                          </strong>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
                   <dl>
                     <div>
                       <dt>Führung</dt>

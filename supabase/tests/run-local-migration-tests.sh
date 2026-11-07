@@ -9917,4 +9917,260 @@ $$;
 rollback;
 SQL
 
+# 0204: watchers are notified about status changes, reassignment and new
+# comments, but never about their own changes.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_ticket record;
+  v_watcher uuid;
+  v_other uuid;
+  v_status uuid;
+  v_count integer;
+begin
+  select ticket.id, ticket.tenant_id, ticket.department_id, ticket.status_id
+  into v_ticket
+  from public.tickets ticket
+  where ticket.assigned_team_id is null
+  limit 1;
+  if v_ticket.id is null then
+    return;
+  end if;
+  select dm.user_id into v_watcher from public.department_memberships dm
+  where dm.department_id = v_ticket.department_id and dm.status = 'active'
+    and public.ticket_notification_recipient_authorized(v_ticket.tenant_id, v_ticket.id, dm.user_id)
+  order by dm.user_id limit 1;
+  -- A second person writes the comments and changes the status.
+  v_other := gen_random_uuid();
+  insert into auth.users (id, email) values (v_other, 'watch-actor@example.ch');
+  insert into public.user_profiles (id, display_name) values (v_other, 'Kollegin')
+    on conflict (id) do nothing;
+  if v_watcher is null then
+    return;
+  end if;
+  -- Statuses other than «Neu» need an assignee.
+  update public.tickets set assigned_agent_id = v_watcher where id = v_ticket.id;
+  insert into public.ticket_watchers (ticket_id, user_id) values (v_ticket.id, v_watcher)
+  on conflict do nothing;
+
+  select status.id into v_status from public.ticket_statuses status
+  where status.tenant_id = v_ticket.tenant_id and status.id <> v_ticket.status_id
+  order by status.sort_order limit 1;
+  update public.tickets set status_id = v_status where id = v_ticket.id;
+  select count(*) into v_count from public.ticket_notifications
+  where user_id = v_watcher and ticket_id = v_ticket.id and kind = 'ticket.watch.status';
+  if v_count <> 1 then
+    raise exception 'Watcher got % status notifications instead of 1', v_count;
+  end if;
+
+  insert into public.ticket_comments (ticket_id, author_id, visibility, body)
+  values (v_ticket.id, v_other, 'internal', 'Interne Notiz für Beobachtende');
+  select count(*) into v_count from public.ticket_notifications
+  where user_id = v_watcher and ticket_id = v_ticket.id and kind = 'ticket.watch.comment';
+  if v_count <> 1 then
+    raise exception 'Watcher got % comment notifications instead of 1', v_count;
+  end if;
+
+  -- Own comment: no notification for the author.
+  insert into public.ticket_comments (ticket_id, author_id, visibility, body)
+  values (v_ticket.id, v_watcher, 'internal', 'Eigene Notiz');
+  select count(*) into v_count from public.ticket_notifications
+  where user_id = v_watcher and ticket_id = v_ticket.id and kind = 'ticket.watch.comment';
+  if v_count <> 1 then
+    raise exception 'Watcher was notified about their own comment';
+  end if;
+
+  if public.push_notification_category('ticket.watch.status') <> 'mention' then
+    raise exception 'Watch notifications have no push category';
+  end if;
+  raise notice 'watch notification checks ran';
+end;
+$$;
+rollback;
+SQL
+
+# 0205: lifecycle run reminds, solves and closes according to the settings.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_ticket record;
+  v_agent uuid;
+  v_waiting uuid;
+  v_result jsonb;
+  v_key text;
+begin
+  select ticket.id, ticket.tenant_id, ticket.department_id into v_ticket
+  from public.tickets ticket where ticket.closed_at is null limit 1;
+  if v_ticket.id is null then
+    raise exception 'lifecycle test: no ticket';
+  end if;
+  select dm.user_id into v_agent from public.department_memberships dm
+  where dm.department_id = v_ticket.department_id and dm.status = 'active' limit 1;
+  select id into v_waiting from public.ticket_statuses
+  where tenant_id = v_ticket.tenant_id and key in ('waiting_customer', 'waiting')
+  order by key desc limit 1;
+  if v_agent is null or v_waiting is null then
+    raise exception 'lifecycle test: fixtures missing (agent %, waiting %)', v_agent, v_waiting;
+  end if;
+  update public.tickets set assigned_agent_id = v_agent where id = v_ticket.id;
+  update public.tickets set status_id = v_waiting,
+    waiting_since = timezone('utc', now()) - interval '10 days', waiting_reminder_sent_at = null
+  where id = v_ticket.id;
+  insert into public.ticket_lifecycle_settings (tenant_id, waiting_reminder_enabled,
+    waiting_reminder_days, waiting_resolve_enabled, waiting_resolve_days,
+    resolved_close_enabled, resolved_close_days)
+  values (v_ticket.tenant_id, true, 3, false, 7, true, 5)
+  on conflict (tenant_id) do update set waiting_reminder_enabled = true,
+    waiting_resolve_enabled = false, resolved_close_enabled = true;
+
+  v_result := public.ticket_lifecycle_run();
+  if (v_result ->> 'reminders')::integer < 1 or not exists (
+    select 1 from public.ticket_comments where ticket_id = v_ticket.id
+      and visibility = 'external' and body like '%Automatische Erinnerung%') then
+    raise exception 'lifecycle test: no reminder (%)', v_result;
+  end if;
+  -- A second run does not remind again.
+  v_result := public.ticket_lifecycle_run();
+  if (select count(*) from public.ticket_comments where ticket_id = v_ticket.id
+      and body like '%Automatische Erinnerung%') <> 1 then
+    raise exception 'lifecycle test: reminder sent twice';
+  end if;
+
+  -- The requester answers: the ticket goes back to «In Bearbeitung».
+  insert into public.ticket_comments (ticket_id, author_id, visibility, body)
+  select v_ticket.id, ticket.requester_id, 'external', 'Hier die Antwort'
+  from public.tickets ticket where ticket.id = v_ticket.id;
+  select status.key into v_key from public.tickets ticket
+  join public.ticket_statuses status on status.id = ticket.status_id where ticket.id = v_ticket.id;
+  if v_key <> 'in_progress' then
+    raise exception 'lifecycle test: requester reply did not end waiting, status %', v_key;
+  end if;
+  update public.tickets set status_id = v_waiting,
+    waiting_since = timezone('utc', now()) - interval '10 days'
+  where id = v_ticket.id;
+
+  update public.ticket_lifecycle_settings set waiting_resolve_enabled = true
+  where tenant_id = v_ticket.tenant_id;
+  perform public.ticket_lifecycle_run();
+  select status.key into v_key from public.tickets ticket
+  join public.ticket_statuses status on status.id = ticket.status_id where ticket.id = v_ticket.id;
+  if v_key <> 'resolved' then
+    raise exception 'lifecycle test: not solved, status %', v_key;
+  end if;
+
+  update public.tickets set resolved_at = timezone('utc', now()) - interval '6 days'
+  where id = v_ticket.id;
+  perform public.ticket_lifecycle_run();
+  select status.key into v_key from public.tickets ticket
+  join public.ticket_statuses status on status.id = ticket.status_id where ticket.id = v_ticket.id;
+  if v_key <> 'closed' then
+    raise exception 'lifecycle test: not closed, status %', v_key;
+  end if;
+  raise notice 'lifecycle checks ran';
+end;
+$$;
+rollback;
+SQL
+
+# 0206: department sub-tasks are added to new onboarding/offboarding entries.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_tenant uuid := '10000000-0000-4000-8000-000000000001';
+  v_user uuid := '00000000-0000-4000-8000-000000000002';
+  v_template uuid;
+  v_department uuid;
+  v_entry uuid;
+  v_count integer;
+begin
+  select id into v_template from public.onboarding_templates
+  where tenant_id = v_tenant and template_key = 'standard';
+  select id into v_department from public.departments where tenant_id = v_tenant limit 1;
+  insert into public.onboarding_department_tasks (tenant_id, kind, department_id, title, due_offset_days)
+  values (v_tenant, 'offboarding', v_department, 'Badge zurücknehmen', 0),
+         (v_tenant, 'onboarding', v_department, 'Willkommenspaket', -2);
+  v_entry := public.create_onboarding_entry_with_kind(
+    v_tenant, 'Austritt Test', current_date + 10, 'ICT', 'Test',
+    v_user, v_user, v_template, v_user, 'offboarding');
+  set constraints all immediate;
+  select count(*) into v_count from public.onboarding_tasks
+  where entry_id = v_entry and department_id = v_department and responsible_user_id is null;
+  if v_count <> 1 then
+    raise exception 'offboarding entry got % department tasks instead of 1', v_count;
+  end if;
+  if not exists (select 1 from public.onboarding_tasks where entry_id = v_entry
+      and title = 'Badge zurücknehmen') then
+    raise exception 'offboarding task missing';
+  end if;
+  if (select kind from public.onboarding_entries where id = v_entry) <> 'offboarding' then
+    raise exception 'entry kind not stored';
+  end if;
+  raise notice 'onboarding department checks ran';
+end;
+$$;
+rollback;
+SQL
+
+# 0207: ticket rules set priority and watchers on new tickets and skip
+# invalid targets without blocking creation.
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_template record;
+  v_priority uuid;
+  v_watcher uuid;
+  v_new_id uuid := gen_random_uuid();
+  v_ticket record;
+begin
+  select * into v_template from public.tickets where closed_at is null limit 1;
+  select id into v_priority from public.ticket_priorities
+  where tenant_id = v_template.tenant_id and id <> v_template.priority_id limit 1;
+  select dm.user_id into v_watcher from public.department_memberships dm
+  where dm.department_id = v_template.department_id and dm.status = 'active' limit 1;
+  insert into public.ticket_rules (tenant_id, name, conditions, actions)
+  values (v_template.tenant_id, 'Drucker dringend',
+    jsonb_build_object('keywords', jsonb_build_array('Druckerstau'),
+      'departmentIds', jsonb_build_array(v_template.department_id)),
+    jsonb_build_object('priorityId', v_priority,
+      'teamId', gen_random_uuid(),
+      'watcherIds', jsonb_build_array(v_watcher)));
+  insert into public.tickets (id, tenant_id, department_id, ticket_number, subject, description,
+    status_id, priority_id, requester_id)
+  values (v_new_id, v_template.tenant_id, v_template.department_id, 'RULE-TEST-1',
+    'Druckerstau im 2. Stock', 'Bitte helfen', v_template.status_id,
+    v_template.priority_id, v_template.requester_id);
+  select * into v_ticket from public.tickets where id = v_new_id;
+  if v_ticket.priority_id <> v_priority then
+    raise exception 'rule test: priority not set';
+  end if;
+  if v_ticket.assigned_team_id is not null then
+    raise exception 'rule test: invalid team was applied';
+  end if;
+  if v_watcher is not null and public.ticket_notification_recipient_authorized(
+      v_template.tenant_id, v_new_id, v_watcher)
+    and not exists (select 1 from public.ticket_watchers where ticket_id = v_new_id and user_id = v_watcher) then
+    raise exception 'rule test: watcher not added';
+  end if;
+  if (select applied_count from public.ticket_rules where name = 'Drucker dringend') <> 1 then
+    raise exception 'rule test: applied count not updated';
+  end if;
+  -- Not matching: other text.
+  insert into public.tickets (tenant_id, department_id, ticket_number, subject, description,
+    status_id, priority_id, requester_id)
+  values (v_template.tenant_id, v_template.department_id, 'RULE-TEST-2',
+    'Passwort vergessen', 'Bitte helfen', v_template.status_id,
+    v_template.priority_id, v_template.requester_id);
+  if (select applied_count from public.ticket_rules where name = 'Drucker dringend') <> 1 then
+    raise exception 'rule test: rule applied without keyword';
+  end if;
+  raise notice 'ticket rule checks ran';
+end;
+$$;
+rollback;
+SQL
+
 echo "PostgreSQL 16 migration and RLS integration checks passed."

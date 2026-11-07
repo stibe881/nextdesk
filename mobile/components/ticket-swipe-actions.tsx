@@ -6,32 +6,32 @@ import Swipeable from "react-native-gesture-handler/Swipeable";
 import { useAppColors } from "@/lib/themed-styles";
 
 /**
- * Wischaktionen für Ticketzeilen: nach rechts wischen für Zuweisen, Favorit
+ * Wischaktionen für Ticketzeilen: nach rechts wischen für Zuweisen, Beobachten
  * und Wiedervorlage, nach links wischen zum Löschen (mit Rückgängig-Frist).
  */
 export function TicketSwipeActions({
   canAssign = false,
   canDelete,
-  canFavorite,
+  canWatch,
   canFollowUp,
   children,
   enabled,
-  favorite,
+  watched,
   onAssign,
   onDelete,
-  onFavorite,
+  onWatch,
   onFollowUp,
 }: {
   canAssign?: boolean;
   canDelete: boolean;
-  canFavorite: boolean;
+  canWatch: boolean;
   canFollowUp: boolean;
   children: ReactNode;
   enabled: boolean;
-  favorite: boolean;
+  watched: boolean;
   onAssign?: () => void;
   onDelete: () => void;
-  onFavorite: () => void;
+  onWatch: () => void;
   onFollowUp: () => void;
 }) {
   const colors = useAppColors();
@@ -47,7 +47,7 @@ export function TicketSwipeActions({
     onDelete();
   };
 
-  const hasLeft = canAssign || canFavorite || canFollowUp;
+  const hasLeft = canAssign || canWatch || canFollowUp;
 
   return (
     <Swipeable
@@ -76,15 +76,13 @@ export function TicketSwipeActions({
                 </Text>
               </Pressable>
             ) : null}
-            {canFavorite ? (
+            {canWatch ? (
               <Pressable
                 accessibilityLabel={
-                  favorite
-                    ? "Aus Favoriten entfernen"
-                    : "Zu Favoriten hinzufügen"
+                  watched ? "Nicht mehr beobachten" : "Beobachten"
                 }
                 accessibilityRole="button"
-                onPress={() => closeAndRun(onFavorite)}
+                onPress={() => closeAndRun(onWatch)}
                 style={[
                   styles.action,
                   { backgroundColor: colors.warningStrong },
@@ -92,11 +90,11 @@ export function TicketSwipeActions({
               >
                 <Ionicons
                   color={colors.onWarningStrong}
-                  name={favorite ? "star-outline" : "star"}
+                  name={watched ? "eye-off-outline" : "eye-outline"}
                   size={20}
                 />
                 <Text style={[styles.text, { color: colors.onWarningStrong }]}>
-                  {favorite ? "Entfernen" : "Favorit"}
+                  {watched ? "Nicht mehr" : "Beobachten"}
                 </Text>
               </Pressable>
             ) : null}

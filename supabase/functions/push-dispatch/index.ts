@@ -95,6 +95,7 @@ function category(
   if (kind === "inventory.low_stock") return "inventory_low_stock";
   if (kind.startsWith("shop.order.")) return "shop";
   if (kind.startsWith("service_task.")) return "service_task";
+  if (kind.startsWith("ticket.watch.")) return "mention";
   return kind.startsWith("ticket.sla.") ? "sla" : null;
 }
 
@@ -106,7 +107,8 @@ function payloadKind(
   | "department_question_asked"
   | "department_question_answered"
   | "supervisor_request"
-  | "supervisor_answer" {
+  | "supervisor_answer"
+  | "watched" {
   if (kind === "ticket.department_question.asked") {
     return "department_question_asked";
   }
@@ -115,6 +117,7 @@ function payloadKind(
   }
   if (kind === "ticket.supervisor_request") return "supervisor_request";
   if (kind === "ticket.supervisor_answer") return "supervisor_answer";
+  if (kind.startsWith("ticket.watch.")) return "watched";
   return fallback;
 }
 
@@ -346,6 +349,30 @@ async function deliverSingle(admin: any, row: ClaimRow): Promise<void> {
         : {}),
     };
   }
+  // Watched tickets: what changed, and by whom.
+  let watched: Record<string, string | boolean> = {};
+  if (row.kind.startsWith("ticket.watch.") && row.notification_id) {
+    const { data: notification } = await admin
+      .from("ticket_notifications")
+      .select("payload")
+      .eq("id", row.notification_id)
+      .maybeSingle();
+    const payload = notification?.payload ?? {};
+    const text = (key: string) =>
+      typeof payload[key] === "string" && payload[key].trim()
+        ? payload[key].trim()
+        : undefined;
+    const actorName = text("actorName") ?? text("authorName");
+    const statusLabel = text("statusLabel");
+    const assigneeName = text("assigneeName");
+    watched = {
+      watchEvent: row.kind.slice("ticket.watch.".length),
+      watchInternal: payload.visibility === "internal",
+      ...(actorName ? { watchActorName: actorName } : {}),
+      ...(statusLabel ? { watchStatusLabel: statusLabel } : {}),
+      ...(assigneeName ? { watchAssigneeName: assigneeName } : {}),
+    };
+  }
   // Copies for a stand-in carry the name of the absent person.
   let delegated: { delegatedFromName?: string } = {};
   if (row.notification_id && row.ticket_id) {
@@ -362,6 +389,7 @@ async function deliverSingle(admin: any, row: ClaimRow): Promise<void> {
   const payload = buildApnsPayload({
     ...shop,
     ...serviceTask,
+    ...watched,
     ...delegated,
     kind: payloadKind(row.kind, preferenceCategory),
     tenantId: row.tenant_id,

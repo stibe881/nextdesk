@@ -346,7 +346,9 @@ async function reassign(
     .from("tickets")
     .update({ assigned_agent_id: action.agentId })
     .eq("tenant_id", action.tenantId)
-    .in("id", action.ticketIds);
+    .in("id", action.ticketIds)
+    // Lets notification triggers recognise the acting supervisor.
+    .setHeader("x-nextdesk-actor-id", actorId);
   if (updateError) throw dbFailure();
   await admin.from("audit_logs").insert({
     tenant_id: action.tenantId,

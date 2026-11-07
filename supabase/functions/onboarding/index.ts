@@ -8,6 +8,7 @@ type Client = SupabaseContext["supabase"];
 type Admin = SupabaseContext["supabaseAdmin"];
 type Row = Record<string, unknown>;
 type TaskStatus = "open" | "in_progress" | "blocked" | "completed";
+type EntryKind = "onboarding" | "offboarding";
 type Action =
   | { type: "navigationSummary"; tenantId: string }
   | { type: "listWorkspace"; tenantId: string; focusEntryId?: string }
@@ -21,7 +22,20 @@ type Action =
       managerUserId: string;
       ictResponsibleUserId: string;
       templateId: string;
+      kind: EntryKind;
     }
+  | { type: "listDepartmentTasks"; tenantId: string }
+  | {
+      type: "saveDepartmentTask";
+      tenantId: string;
+      id: string | null;
+      kind: EntryKind;
+      departmentId: string;
+      title: string;
+      dueOffsetDays: number;
+      active: boolean;
+    }
+  | { type: "deleteDepartmentTask"; tenantId: string; id: string }
   | {
       type: "updateTaskStatus";
       tenantId: string;
@@ -135,7 +149,11 @@ function parseAction(value: unknown): Action | null {
         "managerUserId",
         "ictResponsibleUserId",
         "templateId",
-      ])
+        "kind",
+      ]) &&
+      (value.kind === undefined ||
+        value.kind === "onboarding" ||
+        value.kind === "offboarding")
       ? {
           type: value.type,
           tenantId: value.tenantId.toLowerCase(),
@@ -146,6 +164,56 @@ function parseAction(value: unknown): Action | null {
           managerUserId: value.managerUserId.toLowerCase(),
           ictResponsibleUserId: value.ictResponsibleUserId.toLowerCase(),
           templateId: value.templateId.toLowerCase(),
+          kind: value.kind === "offboarding" ? "offboarding" : "onboarding",
+        }
+      : null;
+  }
+  if (value.type === "listDepartmentTasks") {
+    return isUuid(value.tenantId) && onlyKeys(value, ["type", "tenantId"])
+      ? { type: value.type, tenantId: value.tenantId.toLowerCase() }
+      : null;
+  }
+  if (value.type === "saveDepartmentTask") {
+    const title = safeText(value.title, 2, 240);
+    return isUuid(value.tenantId) &&
+      (value.id === null || isUuid(value.id)) &&
+      (value.kind === "onboarding" || value.kind === "offboarding") &&
+      isUuid(value.departmentId) &&
+      title !== null &&
+      Number.isInteger(value.dueOffsetDays) &&
+      Number(value.dueOffsetDays) >= -60 &&
+      Number(value.dueOffsetDays) <= 90 &&
+      typeof value.active === "boolean" &&
+      onlyKeys(value, [
+        "type",
+        "tenantId",
+        "id",
+        "kind",
+        "departmentId",
+        "title",
+        "dueOffsetDays",
+        "active",
+      ])
+      ? {
+          type: value.type,
+          tenantId: value.tenantId.toLowerCase(),
+          id: typeof value.id === "string" ? value.id.toLowerCase() : null,
+          kind: value.kind,
+          departmentId: value.departmentId.toLowerCase(),
+          title,
+          dueOffsetDays: Number(value.dueOffsetDays),
+          active: value.active,
+        }
+      : null;
+  }
+  if (value.type === "deleteDepartmentTask") {
+    return isUuid(value.tenantId) &&
+      isUuid(value.id) &&
+      onlyKeys(value, ["type", "tenantId", "id"])
+      ? {
+          type: value.type,
+          tenantId: value.tenantId.toLowerCase(),
+          id: value.id.toLowerCase(),
         }
       : null;
   }
@@ -450,6 +518,181 @@ async function navigationSummary(
   };
 }
 
+async function actorDepartmentIds(
+  admin: Admin,
+  tenantId: string,
+  actorId: string,
+): Promise<string[]> {
+  const { data, error } = await admin
+    .from("department_memberships")
+    .select("department_id")
+    .eq("tenant_id", tenantId)
+    .eq("user_id", actorId)
+    .eq("status", "active")
+    .limit(200);
+  if (error) databaseFailure(error);
+  return (data ?? [])
+    .map((row: Row) => row.department_id)
+    .filter((id): id is string => typeof id === "string");
+}
+async function entryIdsForDepartments(
+  admin: Admin,
+  tenantId: string,
+  departmentIds: string[],
+): Promise<string[]> {
+  const { data, error } = await admin
+    .from("onboarding_tasks")
+    .select("entry_id")
+    .eq("tenant_id", tenantId)
+    .in("department_id", departmentIds)
+    .limit(1000);
+  if (error) databaseFailure(error);
+  return [
+    ...new Set(
+      (data ?? [])
+        .map((row: Row) => row.entry_id)
+        .filter((id): id is string => isUuid(id)),
+    ),
+  ].slice(0, 200);
+}
+async function departmentNamesForTenant(
+  admin: Admin,
+  tenantId: string,
+): Promise<Map<string, string>> {
+  const { data, error } = await admin
+    .from("departments")
+    .select("id, name")
+    .eq("tenant_id", tenantId)
+    .limit(500);
+  if (error) databaseFailure(error);
+  return new Map(
+    (data ?? [])
+      .filter((row: Row) => typeof row.id === "string")
+      .map((row: Row) => [String(row.id), String(row.name)]),
+  );
+}
+async function listDepartmentTasks(
+  client: Client,
+  admin: Admin,
+  tenantId: string,
+) {
+  await requirePermission(client, tenantId, "onboarding.manage");
+  const [{ data, error }, departments] = await Promise.all([
+    admin
+      .from("onboarding_department_tasks")
+      .select("id, kind, department_id, title, due_offset_days, active, position")
+      .eq("tenant_id", tenantId)
+      .order("kind")
+      .order("position")
+      .limit(500),
+    admin
+      .from("departments")
+      .select("id, name")
+      .eq("tenant_id", tenantId)
+      .eq("active", true)
+      .order("name")
+      .limit(500),
+  ]);
+  if (error) databaseFailure(error);
+  if (departments.error) databaseFailure(departments.error);
+  return {
+    departments: (departments.data ?? []).map((row: Row) => ({
+      id: String(row.id),
+      name: String(row.name),
+    })),
+    tasks: (data ?? []).map((row: Row) => ({
+      id: String(row.id),
+      kind: row.kind === "offboarding" ? "offboarding" : "onboarding",
+      departmentId: String(row.department_id),
+      title: String(row.title),
+      dueOffsetDays: Number(row.due_offset_days),
+      active: row.active === true,
+    })),
+  };
+}
+async function saveDepartmentTask(
+  client: Client,
+  admin: Admin,
+  actorId: string,
+  action: Extract<Action, { type: "saveDepartmentTask" }>,
+) {
+  await requirePermission(client, action.tenantId, "onboarding.manage");
+  const { data: department, error: departmentError } = await admin
+    .from("departments")
+    .select("id")
+    .eq("tenant_id", action.tenantId)
+    .eq("id", action.departmentId)
+    .maybeSingle();
+  if (departmentError) databaseFailure(departmentError);
+  if (!department)
+    throw new HttpError(
+      422,
+      "onboarding_department_invalid",
+      "Die Abteilung gehört nicht zu diesem Mandanten.",
+    );
+  const values = {
+    tenant_id: action.tenantId,
+    kind: action.kind,
+    department_id: action.departmentId,
+    title: action.title,
+    due_offset_days: action.dueOffsetDays,
+    active: action.active,
+    updated_at: new Date().toISOString(),
+  };
+  const result = action.id
+    ? await admin
+        .from("onboarding_department_tasks")
+        .update(values)
+        .eq("tenant_id", action.tenantId)
+        .eq("id", action.id)
+        .select("id")
+        .maybeSingle()
+    : await admin
+        .from("onboarding_department_tasks")
+        .insert({ ...values, created_by: actorId })
+        .select("id")
+        .single();
+  if (result.error) databaseFailure(result.error);
+  if (!result.data)
+    throw new HttpError(
+      404,
+      "onboarding_department_task_not_found",
+      "Die Teilaufgabe ist nicht mehr vorhanden.",
+    );
+  await audit(
+    admin,
+    action.tenantId,
+    actorId,
+    "onboarding.department_task.saved",
+    "onboarding_department_task",
+    String(result.data.id),
+    { kind: action.kind, departmentId: action.departmentId },
+  );
+  return { id: String(result.data.id) };
+}
+async function deleteDepartmentTask(
+  client: Client,
+  admin: Admin,
+  actorId: string,
+  action: Extract<Action, { type: "deleteDepartmentTask" }>,
+) {
+  await requirePermission(client, action.tenantId, "onboarding.manage");
+  const { error } = await admin
+    .from("onboarding_department_tasks")
+    .delete()
+    .eq("tenant_id", action.tenantId)
+    .eq("id", action.id);
+  if (error) databaseFailure(error);
+  await audit(
+    admin,
+    action.tenantId,
+    actorId,
+    "onboarding.department_task.deleted",
+    "onboarding_department_task",
+    action.id,
+    {},
+  );
+}
 async function listWorkspace(
   client: Client,
   admin: Admin,
@@ -476,16 +719,31 @@ async function listWorkspace(
   let entriesQuery = admin
     .from("onboarding_entries")
     .select(
-      "id, employee_name, starts_on, organisation_unit, location, manager_user_id, ict_responsible_user_id, created_by, template_id, source, details, source_ticket_number",
+      "id, employee_name, starts_on, organisation_unit, location, manager_user_id, ict_responsible_user_id, created_by, template_id, source, details, source_ticket_number, kind",
     )
     .eq("tenant_id", tenantId)
     .order("starts_on")
     .order("created_at", { ascending: false })
     .limit(250);
-  if (!canManage)
+  const myDepartments = await actorDepartmentIds(admin, tenantId, actorId);
+  if (!canManage) {
+    // Entries with a sub-task of one of the person's departments are visible
+    // to that department too.
+    const departmentEntryIds = myDepartments.length
+      ? await entryIdsForDepartments(admin, tenantId, myDepartments)
+      : [];
     entriesQuery = entriesQuery.or(
-      `created_by.eq.${actorId},manager_user_id.eq.${actorId},ict_responsible_user_id.eq.${actorId}`,
+      [
+        `created_by.eq.${actorId}`,
+        `manager_user_id.eq.${actorId}`,
+        `ict_responsible_user_id.eq.${actorId}`,
+        ...(departmentEntryIds.length
+          ? [`id.in.(${departmentEntryIds.join(",")})`]
+          : []),
+      ].join(","),
     );
+  }
+  const departmentNames = await departmentNamesForTenant(admin, tenantId);
   const { data: entryRows, error: entriesError } = await entriesQuery;
   if (entriesError) databaseFailure(entriesError);
   const entries = (entryRows ?? []).filter(
@@ -495,7 +753,7 @@ async function listWorkspace(
     const { data: focusedEntry, error: focusedEntryError } = await admin
       .from("onboarding_entries")
       .select(
-        "id, employee_name, starts_on, organisation_unit, location, manager_user_id, ict_responsible_user_id, created_by, template_id, source, details, source_ticket_number",
+        "id, employee_name, starts_on, organisation_unit, location, manager_user_id, ict_responsible_user_id, created_by, template_id, source, details, source_ticket_number, kind",
       )
       .eq("tenant_id", tenantId)
       .eq("id", focusEntryId)
@@ -517,7 +775,7 @@ async function listWorkspace(
         admin
           .from("onboarding_tasks")
           .select(
-            "id, entry_id, title, due_on, responsible_user_id, status, position",
+            "id, entry_id, title, due_on, responsible_user_id, department_id, status, position",
           )
           .eq("tenant_id", tenantId)
           .in("entry_id", entryIds)
@@ -607,6 +865,7 @@ async function listWorkspace(
         peopleResult.names.get(String(entry.ict_responsible_user_id)) ??
         "ICT-Verantwortung",
       templateId: String(entry.template_id),
+      kind: entry.kind === "offboarding" ? "offboarding" : "onboarding",
       source: entry.source === "email" ? "email" : "manual",
       sourceTicketNumber:
         typeof entry.source_ticket_number === "string"
@@ -623,10 +882,22 @@ async function listWorkspace(
         title: String(task.title),
         dueOn: String(task.due_on),
         responsibleName:
-          peopleResult.names.get(String(task.responsible_user_id)) ??
-          "Verantwortliche Person",
+          typeof task.department_id === "string" && !task.responsible_user_id
+            ? (departmentNames.get(task.department_id) ?? "Abteilung")
+            : (peopleResult.names.get(String(task.responsible_user_id)) ??
+              "Verantwortliche Person"),
+        departmentId:
+          typeof task.department_id === "string" ? task.department_id : null,
+        departmentName:
+          typeof task.department_id === "string"
+            ? (departmentNames.get(task.department_id) ?? "Abteilung")
+            : null,
         status: String(task.status),
-        canUpdate: canManage || task.responsible_user_id === actorId,
+        canUpdate:
+          canManage ||
+          task.responsible_user_id === actorId ||
+          (typeof task.department_id === "string" &&
+            myDepartments.includes(task.department_id)),
         exception: exceptionsByTask.get(String(task.id)) ?? null,
       })),
     })),
@@ -639,7 +910,7 @@ async function createEntry(
   action: Extract<Action, { type: "createEntry" }>,
 ) {
   await requirePermission(client, action.tenantId, "onboarding.request");
-  const { data, error } = await admin.rpc("create_onboarding_entry", {
+  const { data, error } = await admin.rpc("create_onboarding_entry_with_kind", {
     p_tenant_id: action.tenantId,
     p_employee_name: action.employeeName,
     p_starts_on: action.startsOn,
@@ -649,6 +920,7 @@ async function createEntry(
     p_ict_responsible_user_id: action.ictResponsibleUserId,
     p_template_id: action.templateId,
     p_actor_id: actorId,
+    p_kind: action.kind,
   });
   if (error) databaseFailure(error);
   if (!isUuid(data))
@@ -673,7 +945,7 @@ async function updateTaskStatus(
   );
   const { data: task, error: taskError } = await admin
     .from("onboarding_tasks")
-    .select("id, responsible_user_id, entry_id")
+    .select("id, responsible_user_id, department_id, entry_id")
     .eq("tenant_id", action.tenantId)
     .eq("id", action.taskId)
     .maybeSingle();
@@ -684,7 +956,12 @@ async function updateTaskStatus(
       "onboarding_task_not_found",
       "Die Onboarding-Aufgabe ist nicht mehr verfügbar.",
     );
-  if (!canManage && task.responsible_user_id !== actorId)
+  const departmentMember =
+    typeof task.department_id === "string" &&
+    (await actorDepartmentIds(admin, action.tenantId, actorId)).includes(
+      task.department_id,
+    );
+  if (!canManage && task.responsible_user_id !== actorId && !departmentMember)
     throw new HttpError(
       403,
       "onboarding_permission_denied",
@@ -860,6 +1137,32 @@ const handler = withSupabase(
           },
           201,
         );
+      if (action.type === "listDepartmentTasks")
+        return json(request, {
+          data: await listDepartmentTasks(
+            context.supabase,
+            context.supabaseAdmin,
+            action.tenantId,
+          ),
+        });
+      if (action.type === "saveDepartmentTask")
+        return json(request, {
+          data: await saveDepartmentTask(
+            context.supabase,
+            context.supabaseAdmin,
+            actorId,
+            action,
+          ),
+        });
+      if (action.type === "deleteDepartmentTask") {
+        await deleteDepartmentTask(
+          context.supabase,
+          context.supabaseAdmin,
+          actorId,
+          action,
+        );
+        return json(request, { data: { deleted: true } });
+      }
       if (action.type === "updateTaskStatus") {
         await updateTaskStatus(
           context.supabase,
