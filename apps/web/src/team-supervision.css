@@ -141,19 +141,28 @@
 
 .team-supervision__agent dl {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 6px;
+  grid-template-columns: repeat(auto-fit, minmax(72px, 1fr));
+  gap: 10px 8px;
   margin: 0;
 }
 
 .team-supervision__agent dt {
   color: var(--muted);
   font-size: 11px;
+  white-space: nowrap;
 }
 
 .team-supervision__agent dd {
   margin: 0;
   font-weight: 700;
+}
+
+.team-supervision .team-supervision__critical,
+.team-supervision .team-supervision__review {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card, 14px);
+  padding: 18px 20px;
+  background: var(--surface);
 }
 
 .team-supervision__critical h3 {
@@ -207,6 +216,18 @@
 .team-supervision__bulk span {
   flex: 1 1 220px;
   color: var(--muted);
+}
+
+.team-supervision__bulk select {
+  flex: 0 1 260px;
+  width: auto;
+  min-width: 200px;
+}
+
+.team-supervision__redistribute,
+.team-supervision__report {
+  display: grid;
+  gap: 14px;
 }
 
 .team-supervision__board {
@@ -286,8 +307,13 @@
 
 .team-supervision__review {
   display: grid;
-  gap: 8px;
+  gap: 12px;
   width: 100%;
+  box-sizing: border-box;
+}
+
+.team-supervision__review p {
+  margin: 0;
 }
 
 .team-supervision__review header h3 {
@@ -317,8 +343,13 @@
 
 .team-supervision__review-form label {
   display: grid;
-  gap: 4px;
+  gap: 6px;
   font-weight: 600;
+}
+
+.team-supervision__review-form select {
+  width: auto;
+  min-width: 180px;
 }
 
 .team-supervision__check {
@@ -333,9 +364,9 @@
 
 .team-supervision__report-controls {
   display: flex;
+  flex-wrap: wrap;
   align-items: end;
   gap: 12px;
-  margin-bottom: 12px;
 }
 
 .team-supervision__report-controls label {
