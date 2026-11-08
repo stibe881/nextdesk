@@ -423,3 +423,29 @@ Deno.test(".msg ohne Transport-Kopfzeilen nutzt Absender-Eigenschaften", () => {
   }
   assert(threw, "keine Compound-Datei muss abgelehnt werden");
 });
+
+Deno.test("support mailbox as report address only counts marked subjects", async () => {
+  const { isPhishingReportMail } = await import("./phishing-report-intake.ts");
+  const settings = {
+    enabled: true,
+    reportAddress: "support-ict@example.ch",
+    departmentId: null,
+    categoryId: null,
+    priorityKey: "high",
+    notifyTeamId: null,
+  } as unknown as Parameters<typeof isPhishingReportMail>[0];
+  const base = { mailboxAddress: "Support-ICT@example.ch", recipients: ["support-ict@example.ch"] };
+  if (isPhishingReportMail(settings, { ...base, subject: "Drucker druckt nicht" })) {
+    throw new Error("ordinary support mail treated as phishing report");
+  }
+  if (!isPhishingReportMail(settings, { ...base, subject: "WG: Phishing – komische Rechnung" })) {
+    throw new Error("marked phishing report not recognised");
+  }
+  if (!isPhishingReportMail(settings, { ...base, subject: "FW: verdächtige Mail" })) {
+    throw new Error("«verdächtig» not recognised");
+  }
+  const alias = { ...settings, reportAddress: "phishing@example.ch" } as typeof settings;
+  if (!isPhishingReportMail(alias, { ...base, recipients: ["phishing@example.ch"], subject: "WG: Rechnung" })) {
+    throw new Error("separate report alias must always count");
+  }
+});

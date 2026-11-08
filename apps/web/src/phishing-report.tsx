@@ -245,7 +245,8 @@ function PhishingReportDialog({
             {reportAddress ? (
               <p className="phishing-report__hint">
                 Alternativ können Sie die E-Mail als Anlage an{" "}
-                <strong>{reportAddress}</strong> weiterleiten.
+                <strong>{reportAddress}</strong> weiterleiten. Schreiben Sie
+                dabei «Phishing» in den Betreff.
               </p>
             ) : null}
             <div

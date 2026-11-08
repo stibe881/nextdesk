@@ -1514,6 +1514,7 @@ export async function processInboundMessage(
         ? await phishingReportSettingsFor(admin, {
             tenantId: channel.tenant_id,
             mailboxAddress: channel.mailbox_address,
+            subject: subject(graph.subject),
             recipients: [
               ...array(graph.toRecipients),
               ...array(graph.ccRecipients),
