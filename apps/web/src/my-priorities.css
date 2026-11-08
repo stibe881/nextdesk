@@ -83,3 +83,26 @@
   height: 26px;
   width: 26px;
 }
+
+/* The panel itself has no padding (only .panel-heading does): give the
+   caption, list and footer the same 24px side spacing as the heading. */
+.my-priorities {
+  padding-bottom: 20px;
+}
+.my-priorities > :not(.panel-heading) {
+  margin-left: 24px;
+  margin-right: 24px;
+}
+.my-priorities > .data-caption {
+  margin-bottom: 0;
+  margin-top: -6px;
+}
+.my-priorities__list {
+  margin-top: 10px;
+}
+@media (max-width: 760px) {
+  .my-priorities > :not(.panel-heading) {
+    margin-left: 20px;
+    margin-right: 20px;
+  }
+}
