@@ -237,7 +237,7 @@ async function memberDepartments(
 ): Promise<Map<string, string> | null> {
   const { data, error } = await admin
     .from("department_memberships")
-    .select("department_id, departments!inner(id, name, tenant_id, active)")
+    .select("department_id, departments!department_memberships_department_id_fkey!inner(id, name, tenant_id, active)")
     .eq("user_id", userId)
     .eq("status", "active")
     .eq("departments.tenant_id", tenantId)
