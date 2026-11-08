@@ -6,11 +6,15 @@ export type OwnerAccess = "idle" | "checking" | "not_owner" | "ready" | "error";
 
 type OwnerAccessResult = { state: OwnerAccess; message?: string };
 type TenantStatus = "active" | "suspended" | "archived";
+type WorkspaceKind = "organization" | "personal";
+type TenantFilter = "all" | "organization" | "personal";
 type PlatformTenant = {
   id: string;
   slug: string;
   name: string;
   status: TenantStatus;
+  workspace_kind: WorkspaceKind;
+  owner_email: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -131,6 +135,13 @@ function makeDepartmentKey(value: string, index: number) {
   return slug.length >= 2 ? slug : `team-${index + 1}`;
 }
 
+const TENANT_PAGE_SIZE = 50;
+const RECENT_SIGNUP_DAYS = 7;
+
+function isSelfRegistered(tenant: PlatformTenant) {
+  return tenant.workspace_kind === "personal";
+}
+
 function formatDate(value: string | null) {
   if (!value) return "—";
   return new Intl.DateTimeFormat("de-CH", {
@@ -157,7 +168,10 @@ export function OwnerConsoleScreen({
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
+  const [tenantFilter, setTenantFilter] = useState<TenantFilter>("all");
+  const [visibleCount, setVisibleCount] = useState(TENANT_PAGE_SIZE);
   const [userTenantId, setUserTenantId] = useState("");
+  const [directoryNotice, setDirectoryNotice] = useState("");
   const [form, setForm] = useState({
     name: "",
     slug: "",
@@ -171,21 +185,42 @@ export function OwnerConsoleScreen({
   });
   const [invitation, setInvitation] = useState({ email: "" });
 
-  const visibleTenants = useMemo(() => {
+  const filteredTenants = useMemo(() => {
     const query = search.trim().toLocaleLowerCase("de-CH");
-    if (!query) return tenants;
-    return tenants.filter((tenant) =>
-      `${tenant.name} ${tenant.slug} ${tenant.status}`
+    return tenants.filter((tenant) => {
+      if (tenantFilter === "organization" && isSelfRegistered(tenant))
+        return false;
+      if (tenantFilter === "personal" && !isSelfRegistered(tenant))
+        return false;
+      if (!query) return true;
+      return `${tenant.name} ${tenant.slug} ${tenant.status} ${tenant.owner_email ?? ""}`
         .toLocaleLowerCase("de-CH")
-        .includes(query),
-    );
-  }, [search, tenants]);
-  const activeTenantCount = tenants.filter(
+        .includes(query);
+    });
+  }, [search, tenantFilter, tenants]);
+  const visibleTenants = filteredTenants.slice(0, visibleCount);
+  const customerTenants = tenants.filter((tenant) => !isSelfRegistered(tenant));
+  const selfRegisteredTenants = tenants.filter(isSelfRegistered);
+  const activeTenantCount = customerTenants.filter(
     (tenant) => tenant.status === "active",
   ).length;
-  const pausedTenantCount = tenants.filter(
+  const pausedTenantCount = customerTenants.filter(
     (tenant) => tenant.status === "suspended",
   ).length;
+  const recentSignupCount = selfRegisteredTenants.filter(
+    (tenant) =>
+      Date.now() - new Date(tenant.created_at).getTime() <
+      RECENT_SIGNUP_DAYS * 24 * 60 * 60 * 1000,
+  ).length;
+  const filterOptions: { key: TenantFilter; label: string; count: number }[] = [
+    { key: "all", label: "Alle", count: tenants.length },
+    { key: "organization", label: "Kunden", count: customerTenants.length },
+    {
+      key: "personal",
+      label: "Selbstregistriert",
+      count: selfRegisteredTenants.length,
+    },
+  ];
   const selectedUserTenant = tenants.find(
     (tenant) => tenant.id === userTenantId,
   );
@@ -198,16 +233,6 @@ export function OwnerConsoleScreen({
         type: "listTenants",
       });
       setTenants(data.tenants);
-      setUserTenantId((current) => current || data.tenants[0]?.id || "");
-      setEditForm((current) =>
-        current.tenantId
-          ? current
-          : {
-              tenantId: data.tenants[0]?.id || "",
-              name: data.tenants[0]?.name || "",
-              status: data.tenants[0]?.status || "active",
-            },
-      );
     } catch (nextError) {
       setError(
         nextError instanceof Error
@@ -220,6 +245,8 @@ export function OwnerConsoleScreen({
   }
 
   async function loadDirectory(tenantId: string) {
+    setDirectory({ members: [], invitations: [] });
+    setDirectoryNotice("");
     if (!tenantId) return;
     setDirectoryLoading(true);
     try {
@@ -229,7 +256,10 @@ export function OwnerConsoleScreen({
       });
       setDirectory(data);
     } catch (nextError) {
-      setError(
+      // Platform owners are not automatically administrators of every
+      // tenant. That is expected and belongs in this panel, not in the
+      // page-wide error banner.
+      setDirectoryNotice(
         nextError instanceof Error
           ? nextError.message
           : "Benutzer konnten nicht geladen werden.",
@@ -244,8 +274,12 @@ export function OwnerConsoleScreen({
   }, []);
 
   useEffect(() => {
-    if (userTenantId) void loadDirectory(userTenantId);
+    void loadDirectory(userTenantId);
   }, [userTenantId]);
+
+  useEffect(() => {
+    setVisibleCount(TENANT_PAGE_SIZE);
+  }, [search, tenantFilter]);
 
   function beginEdit(tenant: PlatformTenant) {
     setEditForm({
@@ -451,9 +485,13 @@ export function OwnerConsoleScreen({
           <small>Kein neuer Portalzugriff</small>
         </article>
         <article>
-          <span>Mandantentrennung</span>
-          <strong>RLS</strong>
-          <small>Eigene Daten und Benutzer je Kunde</small>
+          <span>Selbstregistriert</span>
+          <strong>{selfRegisteredTenants.length}</strong>
+          <small>
+            {recentSignupCount === 1
+              ? "1 neuer Arbeitsbereich in 7 Tagen"
+              : `${recentSignupCount} neue Arbeitsbereiche in 7 Tagen`}
+          </small>
         </article>
         <a
           className="owner-release-link"
@@ -476,51 +514,106 @@ export function OwnerConsoleScreen({
               <h2>Kundenmandanten</h2>
             </div>
           </div>
+          <div
+            aria-label="Mandanten filtern"
+            className="segmented owner-tenant-filter"
+            role="group"
+          >
+            {filterOptions.map((option) => (
+              <button
+                aria-pressed={tenantFilter === option.key}
+                className={tenantFilter === option.key ? "selected" : ""}
+                key={option.key}
+                onClick={() => setTenantFilter(option.key)}
+                type="button"
+              >
+                {option.label} ({option.count})
+              </button>
+            ))}
+          </div>
           <label className="customer-search">
             <Search aria-hidden="true" size={17} strokeWidth={1.8} />
             <input
               onChange={(event) => setSearch(event.target.value)}
-              placeholder="Kunde, Mandantenkennung oder Status suchen"
+              placeholder="Kunde, Mandantenkennung, Inhaber oder Status suchen"
               value={search}
             />
           </label>
           {loading ? (
             <p className="console-empty">Kunden werden geladen …</p>
-          ) : visibleTenants.length === 0 ? (
-            <p className="console-empty">Keine Kunden entsprechen der Suche.</p>
+          ) : filteredTenants.length === 0 ? (
+            <p className="console-empty">
+              {tenants.length === 0
+                ? "Noch keine Mandanten vorhanden."
+                : "Keine Mandanten entsprechen der Auswahl."}
+            </p>
           ) : (
-            <div className="tenant-list">
-              {visibleTenants.map((tenant) => (
-                <article className="tenant-row" key={tenant.id}>
-                  <div>
-                    <strong>{tenant.name}</strong>
-                    <span>Mandant: {tenant.slug}</span>
-                  </div>
-                  <span className={`customer-status ${tenant.status}`}>
-                    {tenant.status === "active"
-                      ? "Aktiv"
-                      : tenant.status === "suspended"
-                        ? "Pausiert"
-                        : "Archiviert"}
-                  </span>
-                  <button
-                    className="table-action"
-                    onClick={() => beginEdit(tenant)}
-                    type="button"
-                  >
-                    Bearbeiten
-                  </button>
-                  <button
-                    className="table-action"
-                    disabled={tenant.status !== "active"}
-                    onClick={() => onOpenTenant(tenant.id)}
-                    type="button"
-                  >
-                    Öffnen
-                  </button>
-                </article>
-              ))}
-            </div>
+            <>
+              <div className="tenant-list">
+                {visibleTenants.map((tenant) => (
+                  <article className="tenant-row" key={tenant.id}>
+                    <div>
+                      <strong>
+                        {tenant.name}
+                        {isSelfRegistered(tenant) && (
+                          <span className="tenant-kind-badge">
+                            Selbstregistriert
+                          </span>
+                        )}
+                      </strong>
+                      <span>Mandant: {tenant.slug}</span>
+                      {isSelfRegistered(tenant) && (
+                        <small className="tenant-owner">
+                          {tenant.owner_email ?? "Inhaber gelöscht"} · seit{" "}
+                          {formatDate(tenant.created_at)}
+                        </small>
+                      )}
+                    </div>
+                    <span className={`customer-status ${tenant.status}`}>
+                      {tenant.status === "active"
+                        ? "Aktiv"
+                        : tenant.status === "suspended"
+                          ? "Pausiert"
+                          : "Archiviert"}
+                    </span>
+                    <button
+                      className="table-action"
+                      onClick={() => beginEdit(tenant)}
+                      type="button"
+                    >
+                      Bearbeiten
+                    </button>
+                    <button
+                      className="table-action"
+                      disabled={tenant.status !== "active"}
+                      onClick={() => onOpenTenant(tenant.id)}
+                      type="button"
+                    >
+                      Öffnen
+                    </button>
+                  </article>
+                ))}
+              </div>
+              <p className="tenant-list-count">
+                {visibleTenants.length} von {filteredTenants.length} Mandanten
+              </p>
+              {filteredTenants.length > visibleTenants.length && (
+                <button
+                  className="secondary-button tenant-list-more"
+                  onClick={() =>
+                    setVisibleCount((current) => current + TENANT_PAGE_SIZE)
+                  }
+                  type="button"
+                >
+                  Weitere{" "}
+                  {Math.min(
+                    TENANT_PAGE_SIZE,
+                    filteredTenants.length - visibleTenants.length,
+                  )}{" "}
+                  anzeigen
+                </button>
+              )}
+            </>
           )}
         </section>
 
@@ -683,6 +776,7 @@ export function OwnerConsoleScreen({
               onChange={(event) => setUserTenantId(event.target.value)}
               value={userTenantId}
             >
+              <option value="">Kundenmandant wählen</option>
               {tenants
                 .filter((tenant) => tenant.status === "active")
                 .map((tenant) => (
@@ -717,8 +811,17 @@ export function OwnerConsoleScreen({
               Zugang einladen
             </button>
           </form>
-          {directoryLoading ? (
+          {!userTenantId ? (
+            <p className="console-empty">
+              Wählen Sie einen Mandanten, um seine Benutzer zu sehen.
+            </p>
+          ) : directoryLoading ? (
             <p className="console-empty">Benutzer werden geladen …</p>
+          ) : directoryNotice ? (
+            <p className="console-empty">
+              {directoryNotice} Öffnen Sie den Mandanten mit einem
+              Administratorkonto, um seine Benutzer zu verwalten.
+            </p>
           ) : (
             <>
               <div className="customer-user-list">

@@ -208,16 +208,35 @@ export function TeamSupervision({
     void load();
   }, [load]);
 
-  const views: { value: View; label: string; Icon: typeof UserRound }[] = [
-    { value: "live", label: "Leitstand", Icon: MonitorPlay },
-    { value: "overview", label: "Team-Übersicht", Icon: LayoutDashboard },
-    { value: "redistribute", label: "Umverteilen", Icon: Shuffle },
-    { value: "quality", label: "Qualitätsprüfung", Icon: ClipboardCheck },
-    { value: "skills", label: "Skill-Matrix", Icon: GraduationCap },
-    { value: "coaching", label: "Coaching", Icon: MessageSquareHeart },
-    { value: "kudos", label: "Pinnwand", Icon: Heart },
-    { value: "sla", label: "SLA-Ursachen", Icon: TimerOff },
-    { value: "report", label: "Monatsbericht", Icon: FileBarChart },
+  // Grouped so the nine areas read as three topics instead of one long row.
+  const viewGroups: {
+    label: string;
+    views: { value: View; label: string; Icon: typeof UserRound }[];
+  }[] = [
+    {
+      label: "Tagesgeschäft",
+      views: [
+        { value: "live", label: "Leitstand", Icon: MonitorPlay },
+        { value: "overview", label: "Team-Übersicht", Icon: LayoutDashboard },
+        { value: "redistribute", label: "Umverteilen", Icon: Shuffle },
+      ],
+    },
+    {
+      label: "Entwicklung",
+      views: [
+        { value: "quality", label: "Qualitätsprüfung", Icon: ClipboardCheck },
+        { value: "skills", label: "Skill-Matrix", Icon: GraduationCap },
+        { value: "coaching", label: "Coaching", Icon: MessageSquareHeart },
+        { value: "kudos", label: "Pinnwand", Icon: Heart },
+      ],
+    },
+    {
+      label: "Auswertung",
+      views: [
+        { value: "sla", label: "SLA-Ursachen", Icon: TimerOff },
+        { value: "report", label: "Monatsbericht", Icon: FileBarChart },
+      ],
+    },
   ];
 
   return (
@@ -236,21 +255,36 @@ export function TeamSupervision({
           </p>
         </div>
       </header>
-      <nav
-        aria-label="Bereiche der Teamführung"
-        className="team-supervision__tabs"
-      >
-        {views.map(({ value, label, Icon }) => (
-          <button
-            aria-pressed={view === value}
-            className={view === value ? "is-active" : ""}
-            key={value}
-            onClick={() => setView(value)}
-            type="button"
+      <nav aria-label="Bereiche der Teamführung" className="section-tabs">
+        {viewGroups.map((group) => (
+          <div
+            aria-label={group.label}
+            className="section-tabs__group"
+            key={group.label}
+            role="group"
           >
-            <Icon aria-hidden="true" size={16} />
-            {label}
-          </button>
+            <span aria-hidden="true" className="section-tabs__label">
+              {group.label}
+            </span>
+            <div className="section-tabs__row">
+              {group.views.map(({ value, label, Icon }) => (
+                <button
+                  aria-current={view === value ? "page" : undefined}
+                  className={
+                    view === value
+                      ? "section-tabs__tab is-active"
+                      : "section-tabs__tab"
+                  }
+                  key={value}
+                  onClick={() => setView(value)}
+                  type="button"
+                >
+                  <Icon aria-hidden="true" size={15} strokeWidth={1.9} />
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
         ))}
       </nav>
       {error ? (

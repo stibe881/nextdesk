@@ -12,32 +12,6 @@
   color: var(--muted);
 }
 
-.team-supervision__tabs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.team-supervision__tabs button {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  padding: 7px 14px;
-  background: var(--surface);
-  color: var(--ink);
-  font: inherit;
-  font-weight: 650;
-  cursor: pointer;
-}
-
-.team-supervision__tabs button.is-active {
-  border-color: var(--primary);
-  background: var(--primary-soft);
-  color: var(--primary);
-}
-
 .team-supervision__kpis {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
