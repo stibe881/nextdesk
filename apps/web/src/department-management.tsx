@@ -28,6 +28,11 @@ import {
   type DepartmentTeam,
   type DepartmentTeamsList,
 } from "./lib/department-teams";
+import {
+  SUPPORT_LEVELS,
+  supportLevelFromSelect,
+  supportLevelLabel,
+} from "./lib/support-levels";
 import { functionErrorMessage } from "./lib/function-error";
 import { supabase } from "./lib/supabase";
 import { useTransientSuccessMessage } from "./lib/use-transient-success-message";
@@ -54,6 +59,8 @@ type TeamForm = {
   id: string | null;
   departmentId: string;
   name: string;
+  /** "" = no support level, otherwise "1" | "2" | "3". */
+  supportLevel: string;
 };
 
 type DepartmentQuestionRoute = {
@@ -70,7 +77,12 @@ type DepartmentRequest =
   | { type: "archiveDepartment"; tenantId: string; id: string };
 
 const EMPTY_FORM: DepartmentForm = { id: null, name: "" };
-const EMPTY_TEAM_FORM: TeamForm = { id: null, departmentId: "", name: "" };
+const EMPTY_TEAM_FORM: TeamForm = {
+  id: null,
+  departmentId: "",
+  name: "",
+  supportLevel: "",
+};
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -561,6 +573,7 @@ function DepartmentTeams({ tenantId }: { tenantId: string }) {
       id: team.id,
       departmentId: team.departmentId,
       name: team.name,
+      supportLevel: team.supportLevel ? String(team.supportLevel) : "",
     });
     setFormVisible(true);
     setMemberEditorTeamId(null);
@@ -620,6 +633,7 @@ function DepartmentTeams({ tenantId }: { tenantId: string }) {
         ...(form.id ? { id: form.id } : {}),
         departmentId: form.departmentId,
         name,
+        supportLevel: supportLevelFromSelect(form.supportLevel),
       });
       setForm(EMPTY_TEAM_FORM);
       setFormVisible(false);
@@ -717,7 +731,8 @@ function DepartmentTeams({ tenantId }: { tenantId: string }) {
           <p>
             Teammitgliedschaften grenzen Teamtickets zusätzlich ein. Wählbar
             sind aktive Personen derselben Abteilung – auch ohne aktuelle
-            Ticketzuweisung.
+            Ticketzuweisung. Mit einer Supportstufe (1st, 2nd oder 3rd Level)
+            bilden die Teams einer Abteilung die Eskalationsstufen ab.
           </p>
         </div>
         <div className="department-management__header-actions">
@@ -790,6 +805,32 @@ function DepartmentTeams({ tenantId }: { tenantId: string }) {
               ))}
             </select>
           </label>
+          <label>
+            Supportstufe
+            <select
+              aria-describedby="team-support-level-hint"
+              disabled={isSaving}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  supportLevel: event.target.value,
+                }))
+              }
+              value={form.supportLevel}
+            >
+              <option value="">Keine Stufe</option>
+              {SUPPORT_LEVELS.map((level) => (
+                <option key={level} value={String(level)}>
+                  {supportLevelLabel(level)}
+                </option>
+              ))}
+            </select>
+            <small id="team-support-level-hint">
+              Tickets dieses Teams stehen auf dieser Stufe. Agenten übergeben
+              sie mit einer Notiz an ein Team der nächsten Stufe derselben
+              Abteilung.
+            </small>
+          </label>
           <div className="department-management__form-actions">
             <button
               className="primary-button"
@@ -855,7 +896,14 @@ function DepartmentTeams({ tenantId }: { tenantId: string }) {
                               <UsersRound aria-hidden="true" size={18} />
                             </span>
                             <div>
-                              <strong>{team.name}</strong>
+                              <strong>
+                                {team.name}
+                                {team.supportLevel ? (
+                                  <span className="department-management__level-badge">
+                                    {supportLevelLabel(team.supportLevel)}
+                                  </span>
+                                ) : null}
+                              </strong>
                               <span>{teamMemberSummary(team)}</span>
                             </div>
                           </div>

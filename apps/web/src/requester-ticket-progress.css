@@ -1,0 +1,195 @@
+.requester-progress {
+  display: grid;
+  gap: 16px;
+  margin: 0 0 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card, 14px);
+  padding: 18px 20px;
+  background: var(--surface);
+}
+
+.requester-progress__heading .eyebrow {
+  margin: 0 0 4px;
+}
+
+.requester-progress__heading h3 {
+  margin: 0 0 4px;
+}
+
+.requester-progress__heading p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.requester-progress__heading .requester-progress__expected {
+  margin-top: 8px;
+  color: var(--tone-info, var(--primary));
+  font-weight: 600;
+}
+
+.requester-progress__steps {
+  display: grid;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-auto-flow: column;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.requester-progress__step {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  min-width: 0;
+  text-align: center;
+}
+
+/* Connector line to the previous step. */
+.requester-progress__step + .requester-progress__step::before {
+  position: absolute;
+  top: 11px;
+  right: 50%;
+  left: -50%;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--border);
+  content: "";
+}
+
+.requester-progress__step--done + .requester-progress__step::before,
+.requester-progress__step--done + .requester-progress__step--current::before {
+  background: var(--tone-success, var(--primary));
+}
+
+.requester-progress__dot {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: 3px solid var(--border);
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--on-primary, #fff);
+}
+
+.requester-progress__step--done .requester-progress__dot {
+  border-color: var(--tone-success, var(--primary));
+  background: var(--tone-success, var(--primary));
+}
+
+.requester-progress__step--current .requester-progress__dot {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 4px var(--primary-soft, transparent);
+}
+
+.requester-progress__step--current.requester-progress__step--waiting
+  .requester-progress__dot {
+  border-color: var(--tone-warning, var(--primary));
+  box-shadow: 0 0 0 4px var(--tone-warning-soft, transparent);
+}
+
+.requester-progress__label {
+  display: grid;
+  gap: 2px;
+  font-size: 0.85rem;
+}
+
+.requester-progress__step--upcoming .requester-progress__label strong {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.requester-progress__label time,
+.requester-progress__pending {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.requester-progress__answer {
+  display: grid;
+  gap: 10px;
+  border-radius: 10px;
+  padding: 14px 16px;
+  background: var(--tone-warning-soft, var(--surface-subtle));
+}
+
+.requester-progress__answer p {
+  margin: 0;
+  font-weight: 600;
+}
+
+.requester-progress__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.requester-progress__help {
+  display: grid;
+  gap: 10px;
+}
+
+.requester-progress__help label {
+  display: grid;
+  gap: 6px;
+}
+
+.requester-progress__notice {
+  margin: 0;
+  color: var(--tone-success, var(--primary));
+}
+
+@media (max-width: 640px) {
+  .requester-progress__steps {
+    grid-auto-flow: row;
+    gap: 12px;
+  }
+
+  .requester-progress__step {
+    grid-template-columns: 24px 1fr;
+    justify-items: start;
+    text-align: left;
+  }
+
+  .requester-progress__step + .requester-progress__step::before {
+    display: none;
+  }
+}
+
+/* One-click page from reminder e-mails. */
+.reminder-action-page {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  padding: 24px 16px;
+  background: var(--surface-subtle, var(--surface));
+}
+
+.reminder-action-page__card {
+  display: grid;
+  gap: 14px;
+  width: min(100%, 480px);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card, 14px);
+  padding: 28px;
+  background: var(--surface);
+}
+
+.reminder-action-page__card h1 {
+  margin: 0;
+  font-size: 1.4rem;
+}
+
+.reminder-action-page__card p {
+  margin: 0;
+}
+
+.reminder-action-page__card label {
+  display: grid;
+  gap: 6px;
+}

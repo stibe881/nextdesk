@@ -2781,6 +2781,23 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         { error: { code: "internal_note_denied" } },
         403,
       );
+    // An empty body discards the draft on every device ("Verwerfen", or a
+    // posted message) instead of keeping an empty row around.
+    if (!action.body.trim()) {
+      const { error: discardError } = await context.supabaseAdmin
+        .from("ticket_drafts")
+        .delete()
+        .eq("ticket_id", ticket.id)
+        .eq("author_id", actorId)
+        .eq("visibility", action.visibility);
+      if (discardError)
+        return response(
+          request,
+          { error: { code: "draft_save_failed" } },
+          422,
+        );
+      return response(request, { data: { draft: null } });
+    }
     const { data: draft, error } = await context.supabaseAdmin
       .from("ticket_drafts")
       .upsert(

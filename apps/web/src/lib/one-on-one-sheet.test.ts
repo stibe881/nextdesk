@@ -34,5 +34,41 @@ describe("one-on-one sheet", () => {
       html.indexOf("Super Feedback"),
     );
     expect(html).toContain("Keine Kennzahlen");
+    expect(html).toContain("Kein Lob in den letzten sechs Monaten.");
+  });
+  it("lists customer praise without e-mail addresses", () => {
+    const html = buildOneOnOneSheet({
+      agentName: "Anna",
+      supervisorName: "Chef",
+      monthLabel: "November 2026",
+      current: null,
+      previous: null,
+      notes: [],
+      reviews: [],
+      kudos: [
+        {
+          score: 5,
+          comment: "Schnell & freundlich <3",
+          requesterName: "Beat Muster",
+          ticketNumber: "ICT-1",
+          createdAt: "2026-11-03T10:00:00Z",
+        },
+        {
+          score: 4,
+          comment: null,
+          requesterName: "beat@example.ch",
+          ticketNumber: "ICT-2",
+          createdAt: "2026-11-04T10:00:00Z",
+        },
+      ],
+    });
+    expect(html).toContain("Lob von Kund:innen");
+    expect(html).toContain("«Schnell &amp; freundlich &lt;3»");
+    expect(html).toContain("Beat Muster");
+    expect(html).not.toContain("beat@example.ch");
+    expect(html).toContain("Meldende Person");
+    expect(html.indexOf("Lob von Kund:innen")).toBeLessThan(
+      html.indexOf("Letzte Qualitätsprüfungen"),
+    );
   });
 });

@@ -177,7 +177,16 @@ type RequesterPortalAction =
       tenantId: string;
       availability: string | null;
     }
-  | { type: "departmentTickets"; tenantId: string };
+  | { type: "departmentTickets"; tenantId: string }
+  | { type: "ticketProgress"; tenantId: string; ticketId: string }
+  | {
+      type: "respondToWaiting";
+      tenantId: string;
+      ticketId: string;
+      response: "resolved" | "need_help";
+      channel: "app";
+      message?: string;
+    };
 
 type AgentWorkbenchActionWithoutTenant =
   AgentWorkbenchAction extends infer Action
@@ -375,5 +384,28 @@ export async function listDepartmentTickets(): Promise<{
 }> {
   return invokeTenantFunction("requester-portal", {
     type: "departmentTickets",
+  });
+}
+
+/** Step tracker of an own ticket (data part, parsed by lib/requester-progress). */
+export async function getTicketProgress(ticketId: string): Promise<unknown> {
+  return invokeTenantFunction<unknown>("requester-portal", {
+    type: "ticketProgress",
+    ticketId,
+  });
+}
+
+/** «Problem ist gelöst» / «Ich brauche noch Hilfe» on a waiting ticket. */
+export async function respondToWaitingTicket(input: {
+  ticketId: string;
+  response: "resolved" | "need_help";
+  message?: string;
+}): Promise<{ statusKey: string | null }> {
+  return invokeTenantFunction("requester-portal", {
+    type: "respondToWaiting",
+    ticketId: input.ticketId,
+    response: input.response,
+    channel: "app",
+    ...(input.message?.trim() ? { message: input.message.trim() } : {}),
   });
 }

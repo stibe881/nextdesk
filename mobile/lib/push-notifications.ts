@@ -35,6 +35,7 @@ export type PushContentLevel = "minimal" | "subject";
 
 export function pushNotificationKindLabel(kind: string): string | null {
   if (kind === "ticket.follow_up_due") return "Wiedervorlage fällig";
+  if (kind === "ticket.kudos") return "Lob von Kund:innen";
   return null;
 }
 
@@ -43,6 +44,20 @@ export function pushNotificationSecondaryText(
   kind: string,
   payload: unknown,
 ): string | null {
+  if (kind === "ticket.kudos" && isRecord(payload)) {
+    // Only the requester's display name, never an e-mail address.
+    const name =
+      typeof payload.requesterName === "string" &&
+      payload.requesterName.trim() &&
+      !payload.requesterName.includes("@")
+        ? payload.requesterName.trim()
+        : "Eine meldende Person";
+    const excerpt =
+      typeof payload.excerpt === "string" && payload.excerpt.trim()
+        ? ` «${payload.excerpt.trim()}»`
+        : "";
+    return `${name} hat dich gelobt.${excerpt}`;
+  }
   if (kind !== "ticket.follow_up_due" || !isRecord(payload)) return null;
   const title = payload.title;
   return typeof title === "string" && title.trim() ? title.trim() : null;

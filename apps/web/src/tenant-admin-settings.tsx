@@ -42,6 +42,8 @@ import {
 import { TicketCustomFieldsAdmin } from "./ticket-custom-fields-admin";
 import { AssetIntuneSettings } from "./asset-intune-settings";
 import { MonitoringSettings } from "./monitoring-settings";
+import { ExpiryMonitoringSettings } from "./expiry-monitoring-settings";
+import { BackupMonitoringSettings } from "./backup-monitoring-settings";
 import { DepartmentManagement } from "./department-management";
 import { DepartmentModules } from "./department-modules";
 import { TicketTemplates } from "./ticket-templates";
@@ -52,6 +54,7 @@ import { TicketRules } from "./ticket-rules";
 import { TenantDataRetention } from "./tenant-data-retention";
 import { TenantOnboarding, type OnboardingTarget } from "./tenant-onboarding";
 import { AiGovernancePanel } from "./ai-governance-panel";
+import { PhishingReportSettings } from "./phishing-report";
 import { PortalAssistantSettings } from "./portal-assistant";
 import { ExchangeMailSettings } from "./exchange-mail-settings";
 import { SlaManagement } from "./sla-management";
@@ -3499,9 +3502,14 @@ export function TenantAdminSettings({
                                           <>
                                             {feature.feature_key ===
                                             "integrations.email" ? (
-                                              <ExchangeMailSettings
-                                                tenantId={tenantId}
-                                              />
+                                              <>
+                                                <ExchangeMailSettings
+                                                  tenantId={tenantId}
+                                                />
+                                                <PhishingReportSettings
+                                                  tenantId={tenantId}
+                                                />
+                                              </>
                                             ) : null}
                                             {feature.feature_key ===
                                             "ai.assist" ? (
@@ -3533,6 +3541,12 @@ export function TenantAdminSettings({
                                                   tenantId={tenantId}
                                                 />
                                                 <MonitoringSettings
+                                                  tenantId={tenantId}
+                                                />
+                                                <ExpiryMonitoringSettings
+                                                  tenantId={tenantId}
+                                                />
+                                                <BackupMonitoringSettings
                                                   tenantId={tenantId}
                                                 />
                                               </>

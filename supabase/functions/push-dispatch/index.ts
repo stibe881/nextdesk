@@ -75,6 +75,7 @@ function category(
   if (kind === "ticket.assigned") return "assigned";
   if (kind === "ticket.requester_reply") return "requester_reply";
   if (kind === "ticket.support_reply") return "support_reply";
+  if (kind === "ticket.requester_reminder") return "support_reply";
   if (kind === "ticket.mention") return "mention";
   if (
     kind === "ticket.supervisor_request" ||
@@ -83,6 +84,7 @@ function category(
     return "mention";
   }
   if (kind === "ticket.resolved") return "resolved";
+  if (kind === "ticket.kudos") return "resolved";
   if (kind === "ticket.approval.requested") return "approval";
   if (
     kind === "ticket.department_question.asked" ||
@@ -91,6 +93,7 @@ function category(
     return "approval";
   }
   if (kind === "ticket.escalation_opened") return "escalation";
+  if (kind === "ticket.security_report") return "escalation";
   if (kind === "ticket.follow_up_due") return "follow_up";
   if (kind === "ticket.rule_reminder") return "follow_up";
   if (kind === "ticket.vendor_reminder") return "follow_up";
@@ -116,7 +119,10 @@ function payloadKind(
   | "watched"
   | "rule_reminder"
   | "vendor_reminder"
-  | "children_done" {
+  | "requester_reminder"
+  | "children_done"
+  | "kudos"
+  | "security_report" {
   if (kind === "ticket.department_question.asked") {
     return "department_question_asked";
   }
@@ -128,7 +134,10 @@ function payloadKind(
   if (kind.startsWith("ticket.watch.")) return "watched";
   if (kind === "ticket.rule_reminder") return "rule_reminder";
   if (kind === "ticket.vendor_reminder") return "vendor_reminder";
+  if (kind === "ticket.requester_reminder") return "requester_reminder";
   if (kind === "ticket.children_done") return "children_done";
+  if (kind === "ticket.kudos") return "kudos";
+  if (kind === "ticket.security_report") return "security_report";
   return fallback;
 }
 
@@ -413,6 +422,25 @@ async function deliverSingle(admin: any, row: ClaimRow): Promise<void> {
       vendorReminder = { vendorName: name.trim() };
     }
   }
+  let kudos: { kudosRequesterName?: string; kudosScore?: number } = {};
+  if (row.kind === "ticket.kudos" && row.notification_id) {
+    const { data: notification } = await admin
+      .from("ticket_notifications")
+      .select("payload")
+      .eq("id", row.notification_id)
+      .maybeSingle();
+    const name = notification?.payload?.requesterName;
+    const score = notification?.payload?.score;
+    kudos = {
+      ...(typeof name === "string" && name.trim()
+        ? { kudosRequesterName: name.trim() }
+        : {}),
+      ...(typeof score === "number" && Number.isInteger(score) && score >= 1 &&
+          score <= 5
+        ? { kudosScore: score }
+        : {}),
+    };
+  }
   let watched: Record<string, string | boolean> = {};
   if (row.kind.startsWith("ticket.watch.") && row.notification_id) {
     const { data: notification } = await admin
@@ -456,6 +484,7 @@ async function deliverSingle(admin: any, row: ClaimRow): Promise<void> {
     ...watched,
     ...ruleReminder,
     ...vendorReminder,
+    ...kudos,
     ...delegated,
     kind: payloadKind(row.kind, preferenceCategory),
     tenantId: row.tenant_id,

@@ -88,7 +88,13 @@ import {
   type TicketFilterCatalog,
   type TenantOption,
 } from "./lib/live-dashboard";
+import {
+  drilldownChipLabel,
+  normalizeTicketDrilldown,
+  type TicketDrilldown,
+} from "./lib/ticket-drilldown";
 import { createPersonalWorkspace, deleteAccount } from "./lib/account";
+import { assetIdFromSearch, rackFromSearch } from "./lib/asset-labels";
 import { acceptTenantInvitations } from "./lib/tenant-invitations";
 import { normalizeQueueSelection, shouldShowQueueTabs } from "./lib/queue-tabs";
 import {
@@ -108,6 +114,11 @@ import { TeamSupervision } from "./team-supervision";
 import { MyPrioritiesCard } from "./my-priorities";
 import { ProblemCandidates } from "./problem-insights";
 import { TicketKanban } from "./ticket-kanban";
+import { SupportLevelQueueFilter } from "./support-level-queue-filter";
+import {
+  supportLevelOfFilter,
+  type SupportLevelFilter,
+} from "./lib/support-levels";
 import { Infrastructure } from "./infrastructure";
 import {
   HomeLayoutEditor,
@@ -1186,6 +1197,12 @@ function baseNotificationPresentation(
         Icon: MessageSquareText,
         title: "Antwort vom Support",
       };
+    case "ticket.requester_reminder":
+      return {
+        description: `${ticketLabel} wartet auf Ihre Rückmeldung. Ist Ihr Problem gelöst?`,
+        Icon: MessageSquareText,
+        title: "Erinnerung: Ihre Rückmeldung fehlt",
+      };
     case "ticket.mention":
       return {
         description: `Du wurdest in ${ticketLabel} erwähnt.`,
@@ -1281,6 +1298,22 @@ function baseNotificationPresentation(
             : `Die Teil-Tickets von ${ticketLabel} sind erledigt. Das Hauptticket kann jetzt abgeschlossen werden.`,
         Icon: CheckCircle2,
         title: "Teil-Tickets erledigt",
+      };
+    }
+    case "ticket.kudos": {
+      const rawName = notificationPayloadText(
+        notification,
+        "requesterName",
+        120,
+      );
+      const name =
+        rawName && !rawName.includes("@") ? rawName : "Die meldende Person";
+      const score = notificationPayloadNumber(notification, "score");
+      const excerpt = notificationPayloadText(notification, "excerpt", 200);
+      return {
+        description: `${name} hat ${ticketLabel} ${score ? `mit ${score}/5 ` : ""}bewertet${excerpt ? `: «${excerpt}»` : "."}`,
+        Icon: BadgeCheck,
+        title: "Lob von Kund:innen",
       };
     }
     case "ticket.vendor_reminder": {
@@ -1392,6 +1425,14 @@ function baseNotificationPresentation(
         Icon: ArrowUp,
         title: "Ticket eskaliert",
       };
+    case "ticket.security_report": {
+      const risk = notificationPayloadText(notification, "riskLabel", 20);
+      return {
+        description: `Eine verdächtige E-Mail wurde gemeldet (${ticketLabel}${risk ? `, Risiko ${risk}` : ""}).`,
+        Icon: AlertTriangle,
+        title: "Phishing-Meldung",
+      };
+    }
     case "ticket.sla.supervisor_risk": {
       const agent = notificationPayloadText(notification, "agentName", 200);
       return {
@@ -1456,11 +1497,32 @@ function baseNotificationPresentation(
           "shop.order.rejected": "Bestellung abgelehnt",
           "shop.order.cancelled": "Bestellung storniert",
           "shop.order.note": "Nachricht zur Bestellung",
+          "shop.order.software_assigned": "Software zugewiesen",
+          "shop.order.software_failed": "Software-Zuweisung fehlgeschlagen",
         };
         return {
           description: `Shop · Bestellung ${orderNumber}`.trim(),
           Icon: ShoppingBag,
           title: shopTitles[notification.kind] ?? "Shop",
+        };
+      }
+      if (notification.kind === "license.reclaim_candidates") {
+        const payload = isRecord(notification.payload)
+          ? notification.payload
+          : {};
+        const count = typeof payload.count === "number" ? payload.count : 0;
+        const saving =
+          typeof payload.monthlySaving === "number" ? payload.monthlySaving : 0;
+        const currency =
+          typeof payload.currency === "string" ? payload.currency : "CHF";
+        return {
+          description: `${count} Lizenzplatz/-plätze ungenutzt${
+            saving > 0
+              ? ` · ca. ${currency} ${saving.toFixed(2)} pro Monat`
+              : ""
+          }. Siehe Lizenzen › Rückgewinnung.`,
+          Icon: Bell,
+          title: "Lizenzen zurückgewinnen",
         };
       }
       if (notification.kind.startsWith("service_task.")) {
@@ -2406,6 +2468,28 @@ const initialKnowledgeDeepLink: string | null = (() => {
   }
 })();
 
+// "?asset=<uuid>" and "?rack=<name>" are the web fallback of printed asset
+// labels (QR code). They open the asset list or the rack view.
+const initialAssetLabelDeepLink: {
+  assetId: string | null;
+  rack: string | null;
+} = (() => {
+  if (typeof window === "undefined") return { assetId: null, rack: null };
+  try {
+    const url = new URL(window.location.href);
+    const assetId = assetIdFromSearch(url.search);
+    const rack = assetId ? null : rackFromSearch(url.search);
+    if (url.searchParams.has("asset") || url.searchParams.has("rack")) {
+      url.searchParams.delete("asset");
+      url.searchParams.delete("rack");
+      window.history.replaceState(window.history.state, "", url.toString());
+    }
+    return { assetId, rack };
+  } catch {
+    return { assetId: null, rack: null };
+  }
+})();
+
 function TicketList({
   assignment,
   loading = false,
@@ -2711,6 +2795,8 @@ function AuthenticatedApp() {
     useState<WorkplaceRequestedView | null>(null);
   const [period, setPeriod] = useState<Period>("Heute");
   const [queue, setQueue] = useState("alle");
+  const [supportLevelFilter, setSupportLevelFilter] =
+    useState<SupportLevelFilter>("all");
   const [ticketScope, setTicketScope] = useState<TicketScope>("all");
   const [delegatedForIds, setDelegatedForIds] = useState<string[]>([]);
   // Departments the user supervises (role "Vorgesetzter Agent").
@@ -2744,6 +2830,9 @@ function AuthenticatedApp() {
     useState<TicketListRefinement>(DEFAULT_TICKET_LIST_REFINEMENT);
   const [metricTicketFilter, setMetricTicketFilter] =
     useState<MetricTicketFilter | null>(null);
+  // «Aus Bericht: …»: drilldown from a report, filtered server-side.
+  const [reportDrilldown, setReportDrilldown] =
+    useState<TicketDrilldown | null>(null);
   const [query, setQuery] = useState("");
   const debouncedQuery = useDebouncedValue(query, 300);
   const [savedTicketViews, setSavedTicketViews] = useState<SavedTicketView[]>(
@@ -2970,6 +3059,7 @@ function AuthenticatedApp() {
 
   useEffect(() => {
     setMetricTicketFilter(null);
+    setReportDrilldown(null);
   }, [activeTenantId]);
 
   useEffect(() => {
@@ -3248,6 +3338,16 @@ function AuthenticatedApp() {
       canManageServiceStatus,
     });
   const knowledgeDeepLinkConsumedRef = useRef(false);
+  const assetLabelDeepLinkConsumedRef = useRef(false);
+  // Rack from a label QR code; only for the first visit of the rack view.
+  const [infrastructureRackFocus, setInfrastructureRackFocus] = useState<
+    string | null
+  >(initialAssetLabelDeepLink.rack);
+  useEffect(() => {
+    if (section !== "Infrastruktur" && assetLabelDeepLinkConsumedRef.current) {
+      setInfrastructureRackFocus(null);
+    }
+  }, [section]);
   const workspaceNavigationReady = isWorkspaceNavigationReady({
     activeTenantAvailable: activeTenant !== null,
     isSupabaseConfigured,
@@ -3272,6 +3372,22 @@ function AuthenticatedApp() {
       setKnowledgeFocusArticleId(initialKnowledgeDeepLink);
       setSection("Wissen");
       return;
+    }
+    // Asset label QR code (web fallback): open the asset or the rack.
+    if (!assetLabelDeepLinkConsumedRef.current) {
+      assetLabelDeepLinkConsumedRef.current = true;
+      if (initialAssetLabelDeepLink.assetId) {
+        setAssetFocusQuery({
+          query: initialAssetLabelDeepLink.assetId,
+          id: Date.now(),
+        });
+        setSection("Assets");
+        return;
+      }
+      if (initialAssetLabelDeepLink.rack) {
+        setSection("Infrastruktur");
+        return;
+      }
     }
     setSection(workspacePreferences.startSection);
   }, [
@@ -3797,8 +3913,10 @@ function AuthenticatedApp() {
     canWorkTickets,
     debouncedQuery,
     metricTicketFilter,
+    reportDrilldown,
     period,
     queue,
+    supportLevelFilter,
     ticketListRefinement,
     ticketScope,
   ]);
@@ -3807,6 +3925,7 @@ function AuthenticatedApp() {
     setSelectedTicketIds(new Set());
     setTicketActionStatus("");
     setSplitSelectedTicketId(null);
+    setSupportLevelFilter("all");
   }, [activeTenant?.id]);
 
   useEffect(() => {
@@ -3826,9 +3945,11 @@ function AuthenticatedApp() {
       ticketPage,
       ticketListRefinement,
       {
+        drilldown: reportDrilldown,
         metricTicketIds: metricTicketFilter?.ticketIds ?? null,
         query: debouncedQuery,
         queue,
+        supportLevel: supportLevelOfFilter(supportLevelFilter),
         // Employees see every ticket they may read: their own and those of
         // their direct reports.
         scope: canWorkTickets ? ticketScope : "all",
@@ -3892,9 +4013,11 @@ function AuthenticatedApp() {
     canWorkTickets,
     debouncedQuery,
     metricTicketFilter,
+    reportDrilldown,
     period,
     queue,
     session,
+    supportLevelFilter,
     ticketListRefinement,
     ticketPage,
     ticketScope,
@@ -4424,6 +4547,7 @@ function AuthenticatedApp() {
     view.tickets.filter((ticket) => ticket.queue === queueKey).length;
   const openTicketScope = (scope: TicketScope) => {
     setMetricTicketFilter(null);
+    setReportDrilldown(null);
     setTicketListRefinement(DEFAULT_TICKET_LIST_REFINEMENT);
     setTicketScope(canWorkTickets ? scope : "mine");
     setQueue("alle");
@@ -4445,6 +4569,7 @@ function AuthenticatedApp() {
       return;
     }
     setMetricTicketFilter(null);
+    setReportDrilldown(null);
     setQuery("");
     setTicketListRefinement(DEFAULT_TICKET_LIST_REFINEMENT);
     setQueue(department.key);
@@ -4475,6 +4600,7 @@ function AuthenticatedApp() {
   const clearTicketFilters = () => {
     clearTicketSelection();
     setMetricTicketFilter(null);
+    setReportDrilldown(null);
     setQuery("");
     setTicketListRefinement(DEFAULT_TICKET_LIST_REFINEMENT);
     setQueue("alle");
@@ -4490,9 +4616,25 @@ function AuthenticatedApp() {
     setTicketListRefinement(DEFAULT_TICKET_LIST_REFINEMENT);
     setQueue("alle");
     setTicketScope(canWorkTickets ? "all" : "mine");
+    setReportDrilldown(null);
     setMetricTicketFilter(filter);
     setSection("Tickets");
     setSplitSelectedTicketId(null);
+  };
+  /** Report drilldown: opens the ticket list with only the report filter. */
+  const openReportDrilldown = (drilldown: TicketDrilldown) => {
+    const normalized = normalizeTicketDrilldown(drilldown);
+    if (!normalized) return;
+    clearTicketSelection();
+    setQuery("");
+    setTicketListRefinement(DEFAULT_TICKET_LIST_REFINEMENT);
+    setQueue("alle");
+    setTicketScope(canWorkTickets ? "all" : "mine");
+    setMetricTicketFilter(null);
+    setReportDrilldown(normalized);
+    setSelectedTicketId(null);
+    setSplitSelectedTicketId(null);
+    setSection("Tickets");
   };
   const ticketScopeLabel: Record<TicketScope, string> = {
     all: "Alle sichtbaren Tickets",
@@ -5149,6 +5291,7 @@ function AuthenticatedApp() {
         <OwnerConsoleScreen
           onOpenTenant={(tenantId) => {
             setMetricTicketFilter(null);
+            setReportDrilldown(null);
             activateTenant(tenantId);
             setOwnerView("tenant");
           }}
@@ -5553,6 +5696,7 @@ function AuthenticatedApp() {
                   <select
                     onChange={(event) => {
                       setMetricTicketFilter(null);
+                      setReportDrilldown(null);
                       activateTenant(event.target.value);
                     }}
                     value={activeTenantId}
@@ -5658,6 +5802,25 @@ function AuthenticatedApp() {
                     return;
                   }
                   setSection(sectionFromGlobalSearchResult(result));
+                }}
+                onSelectRecent={(item) => {
+                  setGlobalSearchTarget(null);
+                  if (item.itemType === "ticket") {
+                    setSection("Tickets");
+                    setSelectedTicketId(item.itemId);
+                    return;
+                  }
+                  if (!canWorkTickets) return;
+                  setSelectedTicketId(null);
+                  if (item.itemType === "knowledge_article") {
+                    setKnowledgeFocusArticleId(item.itemId);
+                    setSection("Wissen");
+                    return;
+                  }
+                  if (isFeatureEnabled("assets.management")) {
+                    setAssetFocusQuery({ query: item.title, id: Date.now() });
+                    setSection("Assets");
+                  }
                 }}
                 scope={
                   canWorkTickets || eventSpaceNavigationAccess
@@ -5906,12 +6069,21 @@ function AuthenticatedApp() {
             assetQueryRequest={assetFocusQuery ?? undefined}
             fixedTab="assets"
             key={`service-assets:${activeTenant.id}:assets`}
+            labelBranding={{
+              name: workspaceBrandName,
+              logoUrl: activeWorkspaceBranding?.logoUrl ?? null,
+            }}
             tenantId={activeTenant.id}
           />
         ) : section === "Infrastruktur" &&
           activeTenant &&
           isFeatureEnabled("assets.management") ? (
           <Infrastructure
+            initialRack={infrastructureRackFocus ?? undefined}
+            labelBranding={{
+              name: workspaceBrandName,
+              logoUrl: activeWorkspaceBranding?.logoUrl ?? null,
+            }}
             onOpenTicket={(ticketId) => setSelectedTicketId(ticketId)}
             tenantId={activeTenant.id}
           />
@@ -6023,10 +6195,12 @@ function AuthenticatedApp() {
             onOpenTicket={(ticketId) => {
               setSelectedTicketId(ticketId);
             }}
+            onOpenTicketList={openReportDrilldown}
             tenantId={activeTenant.id}
           />
         ) : section === "Berichte" && activeTenant && reportsAvailable ? (
           <ServiceReporting
+            onOpenTicketList={openReportDrilldown}
             branding={{
               accentColor: activeWorkspaceBranding?.accentColor ?? "#075985",
               logoUrl: workspaceBrandLogo,
@@ -6128,7 +6302,9 @@ function AuthenticatedApp() {
                   <p className="eyebrow">Autorisierte Vorgänge</p>
                   <h2>
                     {metricTicketFilter?.label ??
-                      ticketScopeLabel[effectiveTicketScope]}
+                      (reportDrilldown
+                        ? "Tickets aus Bericht"
+                        : ticketScopeLabel[effectiveTicketScope])}
                   </h2>
                 </div>
                 <div className="ticket-list-heading-actions">
@@ -6145,7 +6321,11 @@ function AuthenticatedApp() {
                 loading={dashboardMetricsLoading}
                 metrics={view.metrics}
                 onOpenScope={openTicketScope}
-                selectedScope={metricTicketFilter ? null : effectiveTicketScope}
+                selectedScope={
+                  metricTicketFilter || reportDrilldown
+                    ? null
+                    : effectiveTicketScope
+                }
                 trends={dashboardTrends}
               />
               {activeTenant && isSupabaseConfigured && canWorkTickets && (
@@ -6160,6 +6340,7 @@ function AuthenticatedApp() {
                   onSavedViewApply={(filters) => {
                     clearTicketSelection();
                     setMetricTicketFilter(null);
+                    setReportDrilldown(null);
                     setQuery(filters.query);
                     setQueue(filters.queue);
                     setTicketScope(filters.ticketScope);
@@ -6220,12 +6401,39 @@ function AuthenticatedApp() {
                 setQueue={setQueue}
               />
               {activeTenant && isSupabaseConfigured && canWorkTickets && (
+                <SupportLevelQueueFilter
+                  onChange={setSupportLevelFilter}
+                  tenantId={activeTenant.id}
+                  value={supportLevelFilter}
+                />
+              )}
+              {activeTenant && isSupabaseConfigured && canWorkTickets && (
                 <TicketListIncidentHint
                   onShowTickets={(incident, label) =>
                     openMetricTickets({ label, ticketIds: incident.ticketIds })
                   }
                   tenantId={activeTenant.id}
                 />
+              )}
+              {reportDrilldown && (
+                <div
+                  aria-label="Filter aus Bericht"
+                  className="ticket-drilldown-chips"
+                  role="group"
+                >
+                  <span className="ticket-drilldown-chip">
+                    <span>{drilldownChipLabel(reportDrilldown)}</span>
+                    <button
+                      aria-label={`Filter «${drilldownChipLabel(reportDrilldown)}» entfernen`}
+                      className="ticket-drilldown-chip__remove"
+                      onClick={() => setReportDrilldown(null)}
+                      title="Filter entfernen"
+                      type="button"
+                    >
+                      <X aria-hidden="true" size={14} strokeWidth={2.2} />
+                    </button>
+                  </span>
+                </div>
               )}
               {metricTicketFilter && (
                 <div className="ticket-search-summary ticket-metrics-filter">

@@ -2374,6 +2374,48 @@ time,
   color: var(--primary-hover);
 }
 
+/* «Aus Bericht: …» – report drilldown filter above the ticket list. */
+.ticket-drilldown-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 10px 12px 0;
+}
+
+.ticket-drilldown-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  max-width: 100%;
+  border: 1px solid var(--border-tint-d8dcff, var(--border));
+  border-radius: 999px;
+  padding: 4px 4px 4px 12px;
+  background: var(--primary-soft);
+  color: var(--primary);
+  font-size: 12px;
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+
+.ticket-drilldown-chip__remove {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 999px;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.ticket-drilldown-chip__remove:hover {
+  background: var(--surface);
+}
+
 .ticket-list {
   padding: 0 12px;
 }
@@ -10994,6 +11036,78 @@ body:has(.ticket-list-filter-panel) {
   gap: 6px;
 }
 
+/* Certificate/domain expiry and backup monitoring. */
+.monitoring-chip {
+  display: inline-flex;
+  align-items: center;
+  margin: 0 4px 0 0;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.5;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.monitoring-chip--success {
+  background: var(--tone-success-soft);
+  color: var(--tone-success);
+}
+
+.monitoring-chip--warning {
+  background: var(--tone-warning-soft);
+  color: var(--tone-warning);
+}
+
+.monitoring-chip--danger {
+  background: var(--tone-danger-soft);
+  color: var(--tone-danger);
+}
+
+.monitoring-chip--info {
+  background: var(--tone-info-soft);
+  color: var(--tone-info);
+}
+
+.monitoring-chip--neutral {
+  background: var(--tone-neutral-soft);
+  color: var(--tone-neutral);
+}
+
+.monitoring-settings__error,
+.asset-intune-settings__history li p.monitoring-settings__error {
+  color: var(--tone-danger);
+}
+
+.monitoring-settings__row-actions {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.monitoring-settings__grid textarea {
+  min-height: 72px;
+  font: inherit;
+  font-weight: 400;
+  resize: vertical;
+}
+
+.monitoring-settings__history {
+  display: grid;
+  gap: 6px;
+  margin: 8px 0 0;
+  padding-left: 18px;
+  font-size: 13px;
+}
+
+.monitoring-settings__history p {
+  margin: 2px 0 0;
+  color: var(--muted);
+}
+
 .monitoring-settings__setup ol {
   display: grid;
   gap: 8px;
@@ -16025,6 +16139,20 @@ body:has(.knowledge-base__editor-backdrop) {
   color: var(--muted);
   font-size: 13px;
   line-height: 1.5;
+}
+
+/* «Zuletzt angesehen» heading in the empty search dropdown. */
+.global-search__heading {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 10px 12px 4px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
 @keyframes global-search-spin {
@@ -21425,4 +21553,24 @@ html:has(.embed-status-badge) body {
     grid-template-columns: 1fr;
     gap: 2px;
   }
+}
+
+/* Supportstufe eines Teams (1st/2nd/3rd Level) */
+.department-management__item-main strong .department-management__level-badge {
+  display: inline-block;
+  margin-left: 8px;
+  border-radius: 999px;
+  padding: 1px 8px;
+  background: var(--tone-info-soft);
+  color: var(--tone-info);
+  font-size: 11px;
+  font-weight: 700;
+  vertical-align: middle;
+}
+
+.department-management__team-form label small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.4;
 }

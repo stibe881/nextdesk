@@ -940,3 +940,30 @@
   fill: var(--muted, #59677c);
   font-size: 10.5px;
 }
+
+/* Label selection (asset labels with QR code). */
+.infrastructure__list-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+}
+.infrastructure__label-check {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  cursor: pointer;
+}
+.infrastructure__label-check input {
+  width: 17px;
+  height: 17px;
+  margin: 0;
+  accent-color: var(--primary);
+}
+.rack-view__label-check {
+  margin-left: auto;
+}
+.rack-view__label-devices {
+  font-size: 12px;
+}

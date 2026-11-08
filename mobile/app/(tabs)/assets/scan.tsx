@@ -15,6 +15,7 @@ import {
 } from "react-native";
 
 import { lookupMobileAsset } from "@/lib/asset-registry";
+import { parseScannedCode } from "@/lib/asset-qr";
 import {
   MobileFeatureLoadingScreen,
   MobileFeatureUnavailableScreen,
@@ -77,6 +78,22 @@ export default function AssetScanScreen() {
     async (rawCode: string) => {
       const code = rawCode.trim();
       if (!code || busy || !assetsEnabled) return;
+      // nextDesk labels carry a link to the asset (or rack); the detail
+      // screen checks access. Other codes are looked up as before.
+      const scanned = parseScannedCode(code);
+      if (scanned.kind === "asset") {
+        hapticSuccess();
+        router.replace(`/assets/${scanned.assetId}` as never);
+        return;
+      }
+      if (scanned.kind === "rack") {
+        hapticSuccess();
+        router.replace({
+          pathname: "/infrastructure",
+          params: { rack: scanned.rack },
+        } as never);
+        return;
+      }
       setBusy(true);
       setError("");
       try {

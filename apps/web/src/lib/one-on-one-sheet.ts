@@ -18,6 +18,14 @@ export type SheetReview = {
   ticketNumber: string | null;
   createdAt: string;
 };
+/** Praise from the satisfaction survey (requester display name only). */
+export type SheetKudos = {
+  score: number;
+  comment: string | null;
+  requesterName: string | null;
+  ticketNumber: string | null;
+  createdAt: string;
+};
 
 const escape = (value: string) =>
   value
@@ -66,6 +74,7 @@ export function buildOneOnOneSheet(input: {
   previous: SheetMetrics | null;
   notes: SheetNote[];
   reviews: SheetReview[];
+  kudos?: SheetKudos[];
 }): string {
   const { current, previous } = input;
   const row = (label: string, value: string, arrow: string) =>
@@ -149,6 +158,9 @@ export function buildOneOnOneSheet(input: {
           .join("")}</ul>`
       : `<p class="empty">${escape(empty)}</p>`;
   const reviews = input.reviews.slice(0, 8);
+  const kudos = (input.kudos ?? []).slice(0, 8);
+  const kudosAuthor = (name: string | null) =>
+    name?.trim() && !name.includes("@") ? name.trim() : "Meldende Person";
   return `<!doctype html><html lang="de-CH"><head><meta charset="utf-8"><title>Gesprächsblatt ${escape(input.agentName)}</title>
 <style>
 body{font-family:Inter,"Segoe UI",system-ui,sans-serif;color:#17233f;margin:32px;font-size:12px}
@@ -163,6 +175,16 @@ th{font-weight:600;width:45%}.arrow{width:30px;text-align:center;font-weight:700
 <h2>Kennzahlen (Trend zum Vormonat)</h2><table>${metrics}</table>
 <h2>Ziele</h2>${list(goals, "Noch keine Ziele erfasst.")}
 <h2>Notizen, Lob und Anliegen</h2>${list(others, "Keine Notizen.")}
+<h2>Lob von Kund:innen</h2>${
+    kudos.length
+      ? `<ul>${kudos
+          .map(
+            (entry) =>
+              `<li><span class="meta">${day(entry.createdAt)} · ${escape(entry.ticketNumber ?? "Ticket")} · ${"★".repeat(Math.max(0, Math.min(5, entry.score)))} · ${escape(kudosAuthor(entry.requesterName))}</span>${entry.comment ? `«${escape(entry.comment)}»` : "Top-Bewertung ohne Kommentar"}</li>`,
+          )
+          .join("")}</ul>`
+      : `<p class="empty">Kein Lob in den letzten sechs Monaten.</p>`
+  }
 <h2>Letzte Qualitätsprüfungen</h2>${
     reviews.length
       ? `<table>${reviews

@@ -283,6 +283,28 @@ function eventEntries(
           tone: "danger",
         },
       ];
+    case "ticket.support_level_changed": {
+      // Level handover (1st/2nd/3rd Level), not a management escalation.
+      const toLevel = payload.toLevel;
+      const label =
+        toLevel === 1 || toLevel === 2 || toLevel === 3
+          ? ["1st", "2nd", "3rd"][toLevel - 1] + " Level"
+          : "andere Stufe";
+      const team = textValue(payload.toTeamName);
+      return [
+        {
+          ...base,
+          id: event.id,
+          kind: "assignment",
+          title:
+            payload.direction === "returned"
+              ? `Zurück an ${label}`
+              : `Übergabe an ${label}`,
+          detail: team,
+          tone: payload.direction === "returned" ? "neutral" : "warning",
+        },
+      ];
+    }
     case "ticket.escalation_resolved":
       return [
         {
@@ -378,6 +400,34 @@ function eventEntries(
           tone: "warning",
         },
       ];
+    case "ticket.resolved_by_requester":
+    case "ticket.requester_needs_help": {
+      const resolved = event.type === "ticket.resolved_by_requester";
+      statusChanges.push({
+        time: at,
+        key: resolved ? "resolved" : "in_progress",
+      });
+      const channel = textValue(payload.channel);
+      return [
+        {
+          ...base,
+          id: event.id,
+          kind: resolved ? "resolved" : "status",
+          title: resolved
+            ? "Von der meldenden Person als gelöst bestätigt"
+            : "Meldende Person braucht noch Hilfe",
+          detail:
+            channel === "email"
+              ? "Über den Link in der Erinnerung"
+              : channel === "app"
+                ? "In der App"
+                : channel === "portal"
+                  ? "Im Portal"
+                  : null,
+          tone: resolved ? "success" : "warning",
+        },
+      ];
+    }
     case "ticket.vendor_case_closed":
       return [
         {

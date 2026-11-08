@@ -17,6 +17,21 @@ import {
   resolveRecordDepartment,
   scopeDepartmentOptions,
 } from "../_shared/department-scope.ts";
+import {
+  getEntraGroup,
+  isGuid,
+  listIntuneMobileApps,
+  SoftwareDeployError,
+  softwareDeployErrorMessage,
+  softwareStatusLabel,
+} from "../_shared/intune-software-graph.ts";
+import {
+  parseSoftwareLink,
+  scheduleSoftwareDeployments,
+  softwareAccessToken,
+  softwareColumns,
+  softwareFromRow,
+} from "./software.ts";
 
 /**
  * Self-service shop.
@@ -711,7 +726,7 @@ async function listCatalog(
   let query = admin
     .from("shop_catalog_items")
     .select(
-      "id, inventory_item_id, image_paths, name, description, category, category_id, article_number, supplier_url, kind, requires_approval, max_quantity, max_loan_days, active, sort_order, option_item_ids, specifications, category_ids, loan_quantity, department_id",
+      "id, inventory_item_id, image_paths, name, description, category, category_id, article_number, supplier_url, kind, requires_approval, max_quantity, max_loan_days, active, sort_order, option_item_ids, specifications, category_ids, loan_quantity, department_id, intune_app_id, intune_app_name, intune_assignment_mode, intune_target_group_id, intune_ensure_app_assignment",
     )
     .eq("tenant_id", tenantId)
     .order("category")
@@ -806,8 +821,11 @@ async function listCatalog(
         ? {
             articleNumber: row.article_number ?? null,
             supplierUrl: row.supplier_url ?? null,
+            software: softwareFromRow(row),
           }
         : {}),
+      // Software is installed through Intune after approval.
+      isSoftware: isGuid(row.intune_app_id),
       kind: row.kind,
       requiresApproval: row.requires_approval === true,
       maxQuantity: row.max_quantity,
@@ -1051,28 +1069,44 @@ async function getOrder(
     );
   }
 
-  const [{ data: lines }, { data: events }, { data: backorders }] =
-    await Promise.all([
-      admin
-        .from("shop_order_lines")
-        .select(
-          "id, catalog_item_id, inventory_item_id, item_name, kind, quantity, status, location_id, serial_unit_id, issued_at, returned_at, loan_from, loan_until",
-        )
-        .eq("order_id", orderId)
-        .order("created_at"),
-      admin
-        .from("shop_order_events")
-        .select("id, actor_id, event_type, note, internal, created_at")
-        .eq("order_id", orderId)
-        .order("created_at"),
-      // Beschaffung: wartende Bedarfe der Bestellzeilen (Migration 0224).
-      admin
-        .from("shop_backorders")
-        .select("order_line_id, status, expected_on")
-        .eq("tenant_id", tenantId)
-        .eq("order_id", orderId)
-        .in("status", ["open", "ordered"]),
-    ]);
+  const [
+    { data: lines },
+    { data: events },
+    { data: backorders },
+    { data: deployments },
+  ] = await Promise.all([
+    admin
+      .from("shop_order_lines")
+      .select(
+        "id, catalog_item_id, inventory_item_id, item_name, kind, quantity, status, location_id, serial_unit_id, issued_at, returned_at, loan_from, loan_until",
+      )
+      .eq("order_id", orderId)
+      .order("created_at"),
+    admin
+      .from("shop_order_events")
+      .select("id, actor_id, event_type, note, internal, created_at")
+      .eq("order_id", orderId)
+      .order("created_at"),
+    // Beschaffung: wartende Bedarfe der Bestellzeilen (Migration 0224).
+    admin
+      .from("shop_backorders")
+      .select("order_line_id, status, expected_on")
+      .eq("tenant_id", tenantId)
+      .eq("order_id", orderId)
+      .in("status", ["open", "ordered"]),
+    // Software-Zuweisungen über Intune (Migration 0231).
+    admin
+      .from("shop_software_deployments")
+      .select(
+        "id, order_line_id, status, app_name, error_message, assigned_at, attempts, updated_at",
+      )
+      .eq("tenant_id", tenantId)
+      .eq("order_id", orderId),
+  ]);
+  const softwareByLine = new Map<string, Row>();
+  for (const deployment of (deployments ?? []) as Row[]) {
+    softwareByLine.set(String(deployment.order_line_id), deployment);
+  }
   const lineRows = (lines ?? []) as Row[];
   const procurement = new Map<
     string,
@@ -1233,6 +1267,27 @@ async function getOrder(
         line.status === "backorder"
           ? (procurement.get(String(line.id)) ?? null)
           : null,
+      software: (() => {
+        const deployment = softwareByLine.get(String(line.id));
+        if (!deployment) return null;
+        const status = String(deployment.status);
+        return {
+          deploymentId: deployment.id,
+          status,
+          label: softwareStatusLabel(status),
+          appName: deployment.app_name,
+          // Technical details stay with the agents.
+          errorMessage:
+            status === "failed"
+              ? canFulfill
+                ? (deployment.error_message ?? null)
+                : "Die Installation konnte nicht zugewiesen werden. Der Support ist informiert."
+              : null,
+          assignedAt: deployment.assigned_at ?? null,
+          attempts: canFulfill ? deployment.attempts : undefined,
+          canRetry: canFulfill && status === "failed",
+        };
+      })(),
       ...(canFulfill
         ? {
             articleNumber:
@@ -1666,6 +1721,21 @@ async function saveCatalogItem(
       "Bitte angeben, wie viele Stück zum Ausleihen vorhanden sind.",
     );
   }
+  const software = parseSoftwareLink(input.software);
+  if (software === false) {
+    throw new HttpError(
+      400,
+      "invalid_software",
+      "Bitte App-ID und Entra-Gruppen-ID als GUID angeben.",
+    );
+  }
+  if (software && kind !== "order") {
+    throw new HttpError(
+      400,
+      "invalid_software",
+      "Software kann nur bestellt, nicht ausgeliehen werden.",
+    );
+  }
   const specifications = cleanSpecifications(input.specifications);
   if (specifications === null) {
     throw new HttpError(
@@ -1766,6 +1836,7 @@ async function saveCatalogItem(
     active: input.active,
     sort_order: int(input.sortOrder, -1000, 1000) ?? 0,
     department_id: departmentId,
+    ...(software !== undefined ? softwareColumns(software) : {}),
     updated_at: new Date().toISOString(),
   };
   if (isUuid(input.id)) {
@@ -2357,6 +2428,10 @@ const securedHandler = withSupabase(
               .eq("id", data);
             if (reasonError) console.error("Shop order reason not saved");
           }
+          // Orders without approval are approved at once: assign software.
+          if (isUuid(data)) {
+            await scheduleSoftwareDeployments(admin, tenantId, data);
+          }
           return json(request, { data: { orderId: data } }, 201);
         }
         case "listRequesters": {
@@ -2492,7 +2567,87 @@ const securedHandler = withSupabase(
             },
           });
           if (error) throw databaseError(error);
+          if (body.action === "approve" && data === "submitted") {
+            await scheduleSoftwareDeployments(admin, tenantId, body.orderId);
+          }
           return json(request, { data: { status: data } });
+        }
+        case "retrySoftwareDeployment": {
+          if (!access.canFulfill || !isUuid(body.deploymentId)) {
+            throw new HttpError(
+              403,
+              "forbidden",
+              "Für diese Aktion fehlt die Berechtigung.",
+            );
+          }
+          const { data: target, error: targetError } = await admin
+            .from("shop_software_deployments")
+            .select("order_id")
+            .eq("tenant_id", tenantId)
+            .eq("id", body.deploymentId)
+            .maybeSingle();
+          if (targetError) throw databaseError(targetError);
+          if (
+            !target ||
+            !(await handlesOrder(
+              admin,
+              tenantId,
+              access.scope,
+              String(target.order_id),
+            ))
+          ) {
+            throw new HttpError(
+              404,
+              "not_found",
+              "Die Bestellung wurde nicht gefunden.",
+            );
+          }
+          const { data: orderId, error } = await admin.rpc(
+            "shop_software_deployment_retry",
+            {
+              p_actor_id: actorId,
+              p_tenant_id: tenantId,
+              p_deployment_id: body.deploymentId,
+            },
+          );
+          if (error) throw databaseError(error);
+          if (isUuid(orderId)) {
+            await scheduleSoftwareDeployments(admin, tenantId, orderId);
+          }
+          return json(request, { data: { retried: true } });
+        }
+        case "listIntuneApps":
+        case "lookupEntraGroup": {
+          if (!access.canManage) {
+            throw new HttpError(
+              403,
+              "forbidden",
+              "Für diese Aktion fehlt die Berechtigung.",
+            );
+          }
+          try {
+            const token = await softwareAccessToken(admin, tenantId);
+            if (body.type === "listIntuneApps") {
+              return json(request, {
+                data: { apps: await listIntuneMobileApps(token) },
+              });
+            }
+            if (!isGuid(body.groupId)) {
+              throw new SoftwareDeployError("invalid_request");
+            }
+            return json(request, {
+              data: { group: await getEntraGroup(token, body.groupId) },
+            });
+          } catch (graphError) {
+            if (graphError instanceof SoftwareDeployError) {
+              throw new HttpError(
+                graphError.code === "provider_not_configured" ? 409 : 502,
+                graphError.code,
+                softwareDeployErrorMessage(graphError.code),
+              );
+            }
+            throw graphError;
+          }
         }
         default:
           return json(request, { error: { code: "invalid_request" } }, 400);

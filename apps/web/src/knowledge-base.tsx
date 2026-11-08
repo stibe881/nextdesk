@@ -51,6 +51,7 @@ import {
   type UploadedKnowledgeImage,
 } from "./lib/knowledge-images";
 import { supabase } from "./lib/supabase";
+import { recordRecentItem } from "./lib/recent-items";
 import { KnowledgeMarkdown } from "./knowledge-markdown";
 import { KnowledgeSuggestions } from "./knowledge-suggestions";
 
@@ -1550,6 +1551,7 @@ export function KnowledgeBase({
         if (detailRequestVersion.current !== requestVersion) return;
         mergeImageUrls(detail.imageUrls);
         setSelected(detail);
+        recordRecentItem(tenantId, "knowledge_article", articleId);
         if (pendingFocusArticleId.current === articleId) {
           pendingFocusArticleId.current = null;
         }

@@ -37,7 +37,54 @@ type Values = {
   departmentId?: string | null;
   responsibleUserId: string | null;
   notes: string | null;
+  // undefined: not sent (older clients); an update keeps the stored values.
+  seatCost?: SeatCost;
+  // Microsoft 365 skuId for the optional license removal in Entra.
+  m365SkuId?: string | null;
 };
+type SeatCost = {
+  amount: number | null;
+  currency: "CHF" | "EUR" | "USD";
+  period: "monthly" | "quarterly" | "yearly" | "one_time" | null;
+};
+/** Seat cost of a license (cost of one assignment per period). */
+function parseSeatCost(value: Row): SeatCost | null | undefined {
+  if (
+    !("seatCostAmount" in value) &&
+    !("seatCostPeriod" in value) &&
+    !("seatCostCurrency" in value)
+  )
+    return undefined;
+  const amount =
+    value.seatCostAmount === null || value.seatCostAmount === ""
+      ? null
+      : typeof value.seatCostAmount === "number" &&
+          Number.isFinite(value.seatCostAmount) &&
+          value.seatCostAmount >= 0 &&
+          value.seatCostAmount <= 9_999_999_999
+        ? Math.round(value.seatCostAmount * 100) / 100
+        : undefined;
+  const currency =
+    value.seatCostCurrency === undefined || value.seatCostCurrency === null
+      ? "CHF"
+      : ["CHF", "EUR", "USD"].includes(value.seatCostCurrency as string)
+        ? (value.seatCostCurrency as SeatCost["currency"])
+        : undefined;
+  const period =
+    value.seatCostPeriod === null ||
+    value.seatCostPeriod === "" ||
+    value.seatCostPeriod === undefined
+      ? null
+      : ["monthly", "quarterly", "yearly", "one_time"].includes(
+            value.seatCostPeriod as string,
+          )
+        ? (value.seatCostPeriod as SeatCost["period"])
+        : undefined;
+  if (amount === undefined || currency === undefined || period === undefined)
+    return null;
+  if (amount !== null && period === null) return null;
+  return { amount, currency, period: amount === null ? null : period };
+}
 type Action =
   | { type: "list"; tenantId: string; includeArchived: boolean }
   | { type: "listPeople"; tenantId: string }
@@ -102,6 +149,10 @@ function parseValues(value: unknown): Values | null {
         "departmentId",
         "responsibleUserId",
         "notes",
+        "seatCostAmount",
+        "seatCostCurrency",
+        "seatCostPeriod",
+        "m365SkuId",
       ].includes(key),
     )
   )
@@ -149,7 +200,17 @@ function parseValues(value: unknown): Values | null {
         ? value.reminderDaysBefore
         : undefined;
   const departmentId = parseDepartmentInput(value);
+  const seatCost = parseSeatCost(value);
+  const m365SkuId = !("m365SkuId" in value)
+    ? undefined
+    : value.m365SkuId === null || value.m365SkuId === ""
+      ? null
+      : isUuid(value.m365SkuId)
+        ? value.m365SkuId.toLowerCase()
+        : false;
   if (
+    seatCost === null ||
+    m365SkuId === false ||
     departmentId === false ||
     quantity === undefined ||
     !title ||
@@ -180,6 +241,8 @@ function parseValues(value: unknown): Values | null {
     ...(departmentId !== undefined ? { departmentId } : {}),
     responsibleUserId,
     notes,
+    ...(seatCost !== undefined ? { seatCost } : {}),
+    ...(m365SkuId !== undefined ? { m365SkuId } : {}),
   };
 }
 function parseAction(value: unknown): Action | null {
@@ -346,6 +409,13 @@ const rowToLicense = (row: Row) => ({
   departmentId: row.department_id ?? null,
   responsibleUserId: row.responsible_user_id,
   notes: row.notes,
+  seatCostAmount:
+    row.seat_cost_amount === null || row.seat_cost_amount === undefined
+      ? null
+      : Number(row.seat_cost_amount),
+  seatCostCurrency: row.seat_cost_currency ?? "CHF",
+  seatCostPeriod: row.seat_cost_period ?? null,
+  m365SkuId: row.m365_sku_id ?? null,
   archivedAt: row.archived_at,
   createdAt: row.created_at,
   updatedAt: row.updated_at,
@@ -427,7 +497,7 @@ async function handler(
     let query = context.supabaseAdmin
       .from("licenses")
       .select(
-        "id, title, vendor_name, reference_number, license_type, quantity, status, starts_on, ends_on, notice_period_days, reminder_days_before, reminder_sent_for, department_id, responsible_user_id, notes, archived_at, created_at, updated_at",
+        "id, title, vendor_name, reference_number, license_type, quantity, status, starts_on, ends_on, notice_period_days, reminder_days_before, reminder_sent_for, department_id, responsible_user_id, notes, seat_cost_amount, seat_cost_currency, seat_cost_period, m365_sku_id, archived_at, created_at, updated_at",
       )
       .eq("tenant_id", action.tenantId)
       .order("ends_on", { ascending: true, nullsFirst: false })
@@ -493,6 +563,16 @@ async function handler(
         : {}),
       responsible_user_id: action.values.responsibleUserId,
       notes: action.values.notes,
+      ...(action.values.seatCost
+        ? {
+            seat_cost_amount: action.values.seatCost.amount,
+            seat_cost_currency: action.values.seatCost.currency,
+            seat_cost_period: action.values.seatCost.period,
+          }
+        : {}),
+      ...(action.values.m365SkuId !== undefined
+        ? { m365_sku_id: action.values.m365SkuId }
+        : {}),
       updated_by: actorId,
     };
     const result =

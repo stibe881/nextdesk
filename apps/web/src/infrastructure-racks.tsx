@@ -12,10 +12,17 @@ export function RackView<T extends RackDevice>({
   devices,
   categoryLabel,
   onOpen,
+  selectedRackKeys,
+  onToggleRack,
+  onSelectRackDevices,
 }: {
   devices: T[];
   categoryLabel: (category: string) => string;
   onOpen: (deviceId: string) => void;
+  /** Racks selected for label printing. */
+  selectedRackKeys?: ReadonlySet<string> | undefined;
+  onToggleRack?: ((rackKey: string, checked: boolean) => void) | undefined;
+  onSelectRackDevices?: ((deviceIds: string[]) => void) | undefined;
 }) {
   const racks = buildRacks(devices);
   if (racks.length === 0) {
@@ -54,6 +61,32 @@ export function RackView<T extends RackDevice>({
               <small>
                 {rack.units} HE · {rack.placed.length} Geräte
               </small>
+              {onToggleRack ? (
+                <label className="asset-label-check rack-view__label-check">
+                  <input
+                    checked={selectedRackKeys?.has(rack.key) ?? false}
+                    onChange={(event) =>
+                      onToggleRack(rack.key, event.target.checked)
+                    }
+                    type="checkbox"
+                  />
+                  Rack-Etikett
+                </label>
+              ) : null}
+              {onSelectRackDevices ? (
+                <button
+                  className="text-button rack-view__label-devices"
+                  onClick={() =>
+                    onSelectRackDevices([
+                      ...rack.placed.map((entry) => entry.device.id),
+                      ...rack.unplaced.map((device) => device.id),
+                    ])
+                  }
+                  type="button"
+                >
+                  Geräte-Etiketten auswählen
+                </button>
+              ) : null}
             </figcaption>
             <svg
               aria-label={`Rack ${rack.name}`}

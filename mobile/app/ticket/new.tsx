@@ -14,6 +14,8 @@ import {
   View,
 } from "react-native";
 
+import { PhotoMarkupEditor } from "@/components/photo-markup-editor";
+import { PhishingReportSheet } from "@/components/phishing-report-sheet";
 import { PortalAssistantSheet } from "@/components/portal-assistant-sheet";
 import { RequesterPicker } from "@/components/requester-picker";
 import { ScreenContainer } from "@/components/screen-container";
@@ -34,11 +36,14 @@ import {
   saveLocalTicketDraft,
 } from "@/lib/mobile-private-state";
 import { uploadPickedPhoto } from "@/lib/mobile-ticket-attachments";
+import { linkMobileTicketAsset } from "@/lib/asset-registry";
+import { linkedAssetFromParams } from "@/lib/asset-qr";
 import {
   loadPortalAssistantEnabled,
   recordAssistantOutcome,
 } from "@/lib/nextdesk-assistance";
 import type { AssistantDraft } from "@/lib/portal-assistant";
+import { loadPhishingConfig, type PhishingConfig } from "@/lib/phishing-report";
 import {
   resolveSuggestionMode,
   type SuggestionMode,
@@ -62,9 +67,15 @@ const MAX_NEW_TICKET_PHOTOS = 5;
 export default function NewTicketScreen() {
   // Vorbelegung, z. B. aus einem gescannten Gerät.
   const params = useLocalSearchParams<{
+    assetId?: string;
+    assetName?: string;
     description?: string;
     subject?: string;
   }>();
+  // Gerät aus dem Scanner bzw. der Asset-Ansicht: wird mit dem Ticket verknüpft.
+  const [linkedAsset, setLinkedAsset] = useState(() =>
+    linkedAssetFromParams(params),
+  );
   const [initialPrefill] = useState(() => ({
     description:
       typeof params.description === "string" ? params.description : "",
@@ -82,6 +93,8 @@ export default function NewTicketScreen() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [photos, setPhotos] = useState<ImagePicker.ImagePickerAsset[]>([]);
+  // Index of the photo being marked up («Markieren»).
+  const [markupIndex, setMarkupIndex] = useState<number | null>(null);
   // «Selbstbedienungs-Assistent» (optional per tenant, off by default).
   const [assistantEnabled, setAssistantEnabled] = useState(false);
   const [assistantOpen, setAssistantOpen] = useState(false);
@@ -91,6 +104,9 @@ export default function NewTicketScreen() {
     categoryId: string | null;
     categoryName: string | null;
   } | null>(null);
+  // «Phishing melden» (only when the tenant set it up).
+  const [phishing, setPhishing] = useState<PhishingConfig | null>(null);
+  const [phishingOpen, setPhishingOpen] = useState(false);
   const draftReady = useRef(false);
   const scrollViewRef = useRef<ScrollView>(null);
   const subjectInputRef = useRef<TextInput>(null);
@@ -109,6 +125,7 @@ export default function NewTicketScreen() {
         void loadPortalAssistantEnabled(currentTenant.id).then(
           setAssistantEnabled,
         );
+        void loadPhishingConfig(currentTenant.id).then(setPhishing);
         setDepartmentId(formOptions.departments[0]?.id ?? "");
         setPriorityKey(formOptions.priorities[0]?.key ?? "");
         setRequester(formOptions.currentRequester);
@@ -402,6 +419,15 @@ export default function NewTicketScreen() {
         description: cleanDescription || cleanSubject,
         categoryId: assistantCategory?.categoryId ?? null,
       });
+      if (linkedAsset) {
+        // Best effort: ohne Recht «ticket.update» bleibt das Gerät in der
+        // Beschreibung erwähnt, die Verknüpfung fehlt dann.
+        await linkMobileTicketAsset(
+          tenant.id,
+          ticket.ticketId,
+          linkedAsset.id,
+        ).catch(() => undefined);
+      }
       if (assistantResult) {
         void recordAssistantOutcome({
           tenantId: tenant.id,
@@ -542,6 +568,45 @@ export default function NewTicketScreen() {
                 />
               </>
             ) : null}
+            {phishing?.enabled && tenant ? (
+              <>
+                <Pressable
+                  accessibilityHint="Verdächtige E-Mail an das Sicherheitsteam melden"
+                  accessibilityRole="button"
+                  disabled={saving}
+                  onPress={() => {
+                    hapticSelection();
+                    setPhishingOpen(true);
+                  }}
+                  style={styles.assistantButton}
+                >
+                  <Ionicons
+                    color={colors.primaryText}
+                    name="shield-outline"
+                    size={20}
+                  />
+                  <View style={styles.assistantCopy}>
+                    <Text style={styles.assistantTitle}>Phishing melden</Text>
+                    <Text style={styles.hint}>
+                      Verdächtige E-Mail? Füge die Kopfzeilen ein – wir prüfen
+                      sie für dich.
+                    </Text>
+                  </View>
+                </Pressable>
+                <PhishingReportSheet
+                  onClose={() => setPhishingOpen(false)}
+                  onOpenTicket={(ticketId) =>
+                    router.replace({
+                      pathname: "/ticket/[id]",
+                      params: { id: ticketId },
+                    })
+                  }
+                  reportAddress={phishing.reportAddress}
+                  tenantId={tenant.id}
+                  visible={phishingOpen}
+                />
+              </>
+            ) : null}
             <FieldLabel label="ANFRAGENDE PERSON" />
             <RequesterPicker
               defaultRequester={options.currentRequester}
@@ -598,6 +663,34 @@ export default function NewTicketScreen() {
               />
             ) : null}
 
+            {linkedAsset ? (
+              <>
+                <FieldLabel label="BETROFFENES GERÄT" />
+                <View style={styles.assetChip}>
+                  <Ionicons
+                    color={colors.primaryText}
+                    name="laptop-outline"
+                    size={18}
+                  />
+                  <Text numberOfLines={1} style={styles.assetChipText}>
+                    {linkedAsset.name}
+                  </Text>
+                  <Pressable
+                    accessibilityLabel="Gerät nicht verknüpfen"
+                    accessibilityRole="button"
+                    hitSlop={8}
+                    onPress={() => setLinkedAsset(null)}
+                  >
+                    <Ionicons
+                      color={colors.primaryText}
+                      name="close-circle"
+                      size={20}
+                    />
+                  </Pressable>
+                </View>
+              </>
+            ) : null}
+
             <FieldLabel label="FOTOS (OPTIONAL)" />
             <View style={styles.photoActions}>
               <Pressable
@@ -638,6 +731,19 @@ export default function NewTicketScreen() {
                       style={styles.photoImage}
                     />
                     <Pressable
+                      accessibilityLabel={`Foto ${index + 1} markieren`}
+                      accessibilityRole="button"
+                      hitSlop={6}
+                      onPress={() => {
+                        hapticSelection();
+                        setMarkupIndex(index);
+                      }}
+                      style={styles.photoMarkup}
+                    >
+                      <Ionicons color="#ffffff" name="brush" size={12} />
+                      <Text style={styles.photoMarkupText}>Markieren</Text>
+                    </Pressable>
+                    <Pressable
                       accessibilityLabel={`Foto ${index + 1} entfernen`}
                       accessibilityRole="button"
                       hitSlop={8}
@@ -654,6 +760,31 @@ export default function NewTicketScreen() {
                 ))}
               </View>
             ) : null}
+
+            <PhotoMarkupEditor
+              onCancel={() => setMarkupIndex(null)}
+              onSave={(result) => {
+                const index = markupIndex;
+                setMarkupIndex(null);
+                if (index === null) return;
+                // Das markierte Bild ersetzt das Original als Anhang.
+                setPhotos((current) =>
+                  current.map((photo, position) =>
+                    position === index
+                      ? {
+                          ...photo,
+                          uri: result.uri,
+                          width: result.width,
+                          height: result.height,
+                        }
+                      : photo,
+                  ),
+                );
+              }}
+              photo={
+                markupIndex === null ? null : (photos[markupIndex] ?? null)
+              }
+            />
 
             <FieldLabel label="ABTEILUNG" />
             <View style={styles.choiceList}>
@@ -812,8 +943,39 @@ const useStyles = makeThemedStyles((c) => ({
     top: 4,
     width: 22,
   },
+  photoMarkup: {
+    alignItems: "center",
+    backgroundColor: "rgba(0,0,0,0.6)",
+    borderRadius: 9,
+    bottom: 4,
+    flexDirection: "row",
+    gap: 3,
+    justifyContent: "center",
+    left: 4,
+    paddingVertical: 3,
+    position: "absolute",
+    right: 4,
+  },
+  photoMarkupText: { color: "#ffffff", fontSize: 10, fontWeight: "800" },
   photoRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  photoThumb: { height: 76, width: 76 },
+  photoThumb: { height: 88, width: 88 },
+  assetChip: {
+    alignItems: "center",
+    backgroundColor: c.primarySoft,
+    borderColor: c.primarySoftBorder,
+    borderRadius: 14,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  assetChipText: {
+    color: c.primaryText,
+    flex: 1,
+    fontSize: 14,
+    fontWeight: "800",
+  },
   content: { gap: 16, paddingTop: 14, paddingBottom: 320 },
   offlineGuard: {
     alignItems: "center",

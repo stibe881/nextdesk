@@ -1,9 +1,13 @@
 type ApnsEnvironment = "production" | "development";
 
+/** Must match the category the mobile app registers (push-notification-bridge). */
+export const APNS_REQUESTER_REMINDER_CATEGORY = "NEXTDESK_REQUESTER_REMINDER";
+
 export type ApnsPayloadKind =
   | "assigned"
   | "requester_reply"
   | "support_reply"
+  | "requester_reminder"
   | "mention"
   | "resolved"
   | "approval"
@@ -23,6 +27,8 @@ export type ApnsPayloadKind =
   | "rule_reminder"
   | "vendor_reminder"
   | "children_done"
+  | "kudos"
+  | "security_report"
   | "summary"
   | "test";
 
@@ -56,6 +62,9 @@ export type ApnsPayloadInput = {
   ruleName?: string;
   /** Vendor case reminder: name of the vendor. */
   vendorName?: string;
+  /** Customer praise: display name of the requester (never e-mail) and score. */
+  kudosRequesterName?: string;
+  kudosScore?: number;
   /** Forwarded to a stand-in: name of the absent person. */
   delegatedFromName?: string;
 };
@@ -194,6 +203,13 @@ function alertFor(input: ApnsPayloadInput): { title: string; body: string } {
           ? `Es gibt eine neue Antwort zu deinem Ticket ${ticketNumber}: ${subject}`
           : `Es gibt eine neue Antwort zu deinem Ticket ${ticketNumber}.`,
       };
+    case "requester_reminder":
+      return {
+        title: "Wir warten auf deine Antwort",
+        body: subject
+          ? `${ticketNumber}: ${subject} – Ist dein Problem gelöst? Tippe hier zum Antworten.`
+          : `${ticketNumber} wartet auf deine Rückmeldung. Ist dein Problem gelöst?`,
+      };
     case "mention":
       return {
         title: "Du wurdest erwähnt",
@@ -275,6 +291,23 @@ function alertFor(input: ApnsPayloadInput): { title: string; body: string } {
         body: `${vendor} hat sich zu ${ticketNumber} noch nicht gemeldet.`,
       };
     }
+    case "kudos": {
+      const from = input.kudosRequesterName
+        ? truncateSubject(input.kudosRequesterName)
+        : "Eine meldende Person";
+      const score = input.kudosScore ? ` (${input.kudosScore}/5)` : "";
+      return {
+        title: "Lob von Kund:innen",
+        body: `${from} hat ${ticketNumber} sehr gut bewertet${score}. Danke für deinen Einsatz!`,
+      };
+    }
+    case "security_report":
+      return {
+        title: "Phishing-Meldung",
+        body: subject
+          ? `Verdächtige E-Mail gemeldet (${ticketNumber}): ${subject}`
+          : `Eine verdächtige E-Mail wurde gemeldet (${ticketNumber}).`,
+      };
     case "children_done":
       return {
         title: "Teil-Tickets erledigt",
@@ -508,6 +541,11 @@ export function buildApnsPayload(
     alert,
     sound: "default",
   };
+  // iOS shows «Problem ist gelöst» / «Ich brauche noch Hilfe» as notification
+  // actions; both open the ticket in the app, where the person confirms.
+  if (input.kind === "requester_reminder" && input.ticketId) {
+    aps.category = APNS_REQUESTER_REMINDER_CATEGORY;
+  }
   if (
     input.ticketId &&
     input.kind !== "summary" &&

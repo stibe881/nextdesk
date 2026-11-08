@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useFocusEffect, useRouter } from "expo-router";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -62,7 +62,16 @@ export default function InfrastructureScreen() {
   const enabled = isEnabled("assets.management");
   const { recoveryEpoch } = useMobileNetworkStatus();
   const [devices, setDevices] = useState<InfraDevice[]>([]);
-  const [query, setQuery] = useState("");
+  // «?rack=…» from a scanned rack label filters the list to that rack.
+  const { rack } = useLocalSearchParams<{ rack?: string }>();
+  const rackParam = typeof rack === "string" ? rack.trim() : "";
+  const [query, setQuery] = useState(rackParam);
+  const [appliedRack, setAppliedRack] = useState(rackParam);
+  if (rackParam && rackParam !== appliedRack) {
+    // A later scan of another rack while this screen stays mounted.
+    setAppliedRack(rackParam);
+    setQuery(rackParam);
+  }
   const [filter, setFilter] = useState<Filter>("all");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
