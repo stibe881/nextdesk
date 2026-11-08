@@ -16,6 +16,44 @@ import {
 
 type ServiceStatus = ServiceAvailabilityStatus;
 
+/** Seconds between silent background refreshes of the status. */
+export const STATUS_REFRESH_MS = 30_000;
+
+/**
+ * Calls `refresh` every `intervalMs` while the page is visible, and right away
+ * when the tab becomes visible or the window gets focus again (browsers
+ * throttle timers in background tabs). Runs are at least 5 s apart.
+ */
+export function useStatusPolling(
+  refresh: () => void,
+  intervalMs: number,
+  enabled = true,
+) {
+  const latest = useRef(refresh);
+  useEffect(() => {
+    latest.current = refresh;
+  }, [refresh]);
+
+  useEffect(() => {
+    if (!enabled) return;
+    let lastRun = Date.now();
+    const run = () => {
+      if (document.visibilityState !== "visible") return;
+      if (Date.now() - lastRun < 5_000) return;
+      lastRun = Date.now();
+      latest.current();
+    };
+    const timer = window.setInterval(run, intervalMs);
+    document.addEventListener("visibilitychange", run);
+    window.addEventListener("focus", run);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", run);
+      window.removeEventListener("focus", run);
+    };
+  }, [enabled, intervalMs]);
+}
+
 type StatusService = {
   categoryPath: string[];
   id: string;
@@ -1542,6 +1580,23 @@ export function ServiceStatus({
     void load();
   }, [load]);
 
+  // Silent refresh: keeps the shown state current without a spinner and
+  // without touching unsaved form fields (title, public switch).
+  const refreshOverview = useCallback(async () => {
+    try {
+      const next = await requestStatus({ type: "getStatusOverview", tenantId });
+      setOverview(next);
+      setStatusClock(Date.now());
+    } catch {
+      // Keep the last known state; the next run tries again.
+    }
+  }, [tenantId]);
+  useStatusPolling(
+    () => void refreshOverview(),
+    STATUS_REFRESH_MS,
+    !loading && !saving && !maintenanceSaving,
+  );
+
   useEffect(() => {
     if (!overview) return;
     const nextTransition = nextMaintenanceTransition(
@@ -2141,14 +2196,16 @@ export function PublicServiceStatusPage({
   const publicLoadAbortController = useRef<AbortController | null>(null);
   const publicLoadRequestId = useRef(0);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (silent = false) => {
     publicLoadAbortController.current?.abort();
     const abortController = new AbortController();
     publicLoadAbortController.current = abortController;
     const requestId = publicLoadRequestId.current + 1;
     publicLoadRequestId.current = requestId;
-    setLoading(true);
-    setError("");
+    if (!silent) {
+      setLoading(true);
+      setError("");
+    }
     try {
       const base = import.meta.env.VITE_SUPABASE_URL;
       if (!base) throw new Error("missing_configuration");
@@ -2165,18 +2222,21 @@ export function PublicServiceStatusPage({
         publicLoadRequestId.current === requestId
       ) {
         setPayload(next);
+        if (silent) setError("");
       }
     } catch {
       if (
         !abortController.signal.aborted &&
         publicLoadRequestId.current === requestId
       ) {
-        setError("Diese Statusseite ist nicht verfügbar.");
+        // A failed silent refresh keeps the last shown state.
+        if (!silent) setError("Diese Statusseite ist nicht verfügbar.");
       }
     } finally {
       if (publicLoadRequestId.current === requestId) setLoading(false);
     }
   }, [publicId]);
+  useStatusPolling(() => void load(true), 60_000, payload !== null);
 
   useEffect(() => {
     void load();
@@ -2267,6 +2327,7 @@ export function NavigationStatusBadge({
 }) {
   const [overview, setOverview] = useState<StatusOverview | null>(null);
   const [failed, setFailed] = useState(false);
+  const refreshBadge = useRef<() => void>(() => undefined);
 
   useEffect(() => {
     let cancelled = false;
@@ -2285,12 +2346,13 @@ export function NavigationStatusBadge({
       }
     }
     void load();
-    const timer = window.setInterval(() => void load(), 120_000);
+    refreshBadge.current = () => void load();
     return () => {
       cancelled = true;
-      window.clearInterval(timer);
+      refreshBadge.current = () => undefined;
     };
   }, [tenantId]);
+  useStatusPolling(() => refreshBadge.current(), STATUS_REFRESH_MS);
 
   const status = useMemo(() => {
     if (!overview) return null;
