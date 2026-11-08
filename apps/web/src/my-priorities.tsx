@@ -225,9 +225,10 @@ export function MyPrioritiesCard({
                 onClick={() => onOpenTicket(ticket.id)}
                 type="button"
               >
-                <strong>
-                  <code>{ticket.ticketNumber}</code> {ticket.subject}
-                </strong>
+                <span className="my-priorities__number">
+                  {ticket.ticketNumber}
+                </span>
+                <strong>{ticket.subject}</strong>
                 <small>
                   {ticket.manual ? "Eigene Einordnung · " : ""}
                   {ticket.reason ?? ticket.priorityLabel}
@@ -236,21 +237,21 @@ export function MyPrioritiesCard({
               <span className="my-priorities__move">
                 <button
                   aria-label={`${ticket.ticketNumber} nach oben`}
-                  className="icon-button"
+                  className="my-priorities__move-button"
                   disabled={busy !== null || index === 0}
                   onClick={() => move(ticket.id, -1)}
                   type="button"
                 >
-                  <ArrowUp aria-hidden="true" size={13} />
+                  <ArrowUp aria-hidden="true" size={14} />
                 </button>
                 <button
                   aria-label={`${ticket.ticketNumber} nach unten`}
-                  className="icon-button"
+                  className="my-priorities__move-button"
                   disabled={busy !== null || ticket.position === tickets.length}
                   onClick={() => move(ticket.id, 1)}
                   type="button"
                 >
-                  <ArrowDown aria-hidden="true" size={13} />
+                  <ArrowDown aria-hidden="true" size={14} />
                 </button>
               </span>
             </li>
