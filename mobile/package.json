@@ -111,5 +111,14 @@
     "patchedDependencies": {
       "expo-quick-actions@6.0.2": "patches/expo-quick-actions@6.0.2.patch"
     }
+  },
+  "expo": {
+    "autolinking": {
+      "android": {
+        "exclude": [
+          "react-native-watch-connectivity"
+        ]
+      }
+    }
   }
 }
