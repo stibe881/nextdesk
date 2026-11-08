@@ -2196,46 +2196,49 @@ export function PublicServiceStatusPage({
   const publicLoadAbortController = useRef<AbortController | null>(null);
   const publicLoadRequestId = useRef(0);
 
-  const load = useCallback(async (silent = false) => {
-    publicLoadAbortController.current?.abort();
-    const abortController = new AbortController();
-    publicLoadAbortController.current = abortController;
-    const requestId = publicLoadRequestId.current + 1;
-    publicLoadRequestId.current = requestId;
-    if (!silent) {
-      setLoading(true);
-      setError("");
-    }
-    try {
-      const base = import.meta.env.VITE_SUPABASE_URL;
-      if (!base) throw new Error("missing_configuration");
-      const url = new URL("/functions/v1/service-status-public", base);
-      url.searchParams.set("id", publicId);
-      const response = await fetch(url, {
-        headers: { Accept: "application/json" },
-        signal: abortController.signal,
-      });
-      if (!response.ok) throw new Error("status_page_unavailable");
-      const next = parsePublicServiceStatus(await response.json());
-      if (
-        !abortController.signal.aborted &&
-        publicLoadRequestId.current === requestId
-      ) {
-        setPayload(next);
-        if (silent) setError("");
+  const load = useCallback(
+    async (silent = false) => {
+      publicLoadAbortController.current?.abort();
+      const abortController = new AbortController();
+      publicLoadAbortController.current = abortController;
+      const requestId = publicLoadRequestId.current + 1;
+      publicLoadRequestId.current = requestId;
+      if (!silent) {
+        setLoading(true);
+        setError("");
       }
-    } catch {
-      if (
-        !abortController.signal.aborted &&
-        publicLoadRequestId.current === requestId
-      ) {
-        // A failed silent refresh keeps the last shown state.
-        if (!silent) setError("Diese Statusseite ist nicht verfügbar.");
+      try {
+        const base = import.meta.env.VITE_SUPABASE_URL;
+        if (!base) throw new Error("missing_configuration");
+        const url = new URL("/functions/v1/service-status-public", base);
+        url.searchParams.set("id", publicId);
+        const response = await fetch(url, {
+          headers: { Accept: "application/json" },
+          signal: abortController.signal,
+        });
+        if (!response.ok) throw new Error("status_page_unavailable");
+        const next = parsePublicServiceStatus(await response.json());
+        if (
+          !abortController.signal.aborted &&
+          publicLoadRequestId.current === requestId
+        ) {
+          setPayload(next);
+          if (silent) setError("");
+        }
+      } catch {
+        if (
+          !abortController.signal.aborted &&
+          publicLoadRequestId.current === requestId
+        ) {
+          // A failed silent refresh keeps the last shown state.
+          if (!silent) setError("Diese Statusseite ist nicht verfügbar.");
+        }
+      } finally {
+        if (publicLoadRequestId.current === requestId) setLoading(false);
       }
-    } finally {
-      if (publicLoadRequestId.current === requestId) setLoading(false);
-    }
-  }, [publicId]);
+    },
+    [publicId],
+  );
   useStatusPolling(() => void load(true), 60_000, payload !== null);
 
   useEffect(() => {
