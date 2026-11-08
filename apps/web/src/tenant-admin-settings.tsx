@@ -1600,6 +1600,21 @@ export function TenantAdminSettings({
       ].some((value) => value?.toLocaleLowerCase("de-CH").includes(term)),
     );
   }, [activeUsers, personSearch]);
+  // Entra people pre-assigned as agents who never signed in yet: they get
+  // agent access on their first Microsoft sign-in.
+  const pendingEntraAgents = useMemo(() => {
+    const term = personSearch.trim().toLocaleLowerCase("de-CH");
+    return userDirectory.directoryPeople.filter(
+      (person) =>
+        person.agentRequested &&
+        !person.activeNextDeskMember &&
+        person.accountEnabled &&
+        (!term ||
+          [person.displayName, person.email].some((value) =>
+            value?.toLocaleLowerCase("de-CH").includes(term),
+          )),
+    );
+  }, [userDirectory.directoryPeople, personSearch]);
   // Agents (and tenant admins) first, then everybody who already signed in
   // without agent access.
   const isAgentMember = (member: TenantDirectoryMember) =>
@@ -1612,7 +1627,11 @@ export function TenantAdminSettings({
       expanded: tenantPeopleExpanded,
       toggle: () => setTenantPeopleOpen((open) => !open),
       members: filteredActiveUsers.filter(isAgentMember),
-      caption: `${activeUsers.filter(isAgentMember).length} Agent(en) im Mandanten`,
+      caption: `${activeUsers.filter(isAgentMember).length} Agent(en) im Mandanten${
+        pendingEntraAgents.length
+          ? ` · ${pendingEntraAgents.length} vorgemerkt`
+          : ""
+      }`,
       emptySearch: "Für diese Suche wurden keine Agenten gefunden.",
       empty: "Für diesen Mandanten sind noch keine Agenten vorhanden.",
     },
@@ -4516,9 +4535,42 @@ export function TenantAdminSettings({
                           </ul>
                         ) : personSearch.trim() ? (
                           <p>{group.emptySearch}</p>
-                        ) : (
+                        ) : pendingEntraAgents.length === 0 ||
+                          group.key !== "agents" ? (
                           <p>{group.empty}</p>
-                        )}
+                        ) : null}
+                        {group.key === "agents" &&
+                        pendingEntraAgents.length > 0 ? (
+                          <div className="tenant-admin-settings__pending-agents">
+                            <p>
+                              <strong>Vorgemerkt, noch nicht angemeldet</strong>
+                              <span>
+                                Der Agentenzugang wird bei der ersten Anmeldung
+                                mit Microsoft automatisch wirksam.
+                              </span>
+                            </p>
+                            <ul className="tenant-admin-settings__person-list">
+                              {pendingEntraAgents.map((person) => (
+                                <li key={person.id}>
+                                  <div className="tenant-admin-settings__person-summary">
+                                    <div>
+                                      <strong>{person.displayName}</strong>
+                                      <span>{person.email}</span>
+                                    </div>
+                                    <div className="tenant-admin-settings__person-badges">
+                                      <span>
+                                        Agent vorgemerkt
+                                        {person.agentDepartmentName
+                                          ? ` · ${person.agentDepartmentName}`
+                                          : ""}
+                                      </span>
+                                    </div>
+                                  </div>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        ) : null}
                       </div>
                     ) : null}
                   </Fragment>

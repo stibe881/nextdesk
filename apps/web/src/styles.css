@@ -21569,3 +21569,18 @@ html:has(.embed-status-badge) body {
   font-weight: 400;
   line-height: 1.4;
 }
+
+.tenant-admin-settings__pending-agents {
+  border-top: 1px dashed var(--border);
+  margin-top: 12px;
+  padding-top: 12px;
+}
+.tenant-admin-settings__pending-agents > p {
+  display: grid;
+  gap: 2px;
+  margin: 0 0 8px;
+}
+.tenant-admin-settings__pending-agents > p span {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
