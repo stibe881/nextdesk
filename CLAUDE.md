@@ -26,7 +26,7 @@ oder Einrichtungsschritten:
    Bildschirme brauchen Demo-Daten in
    `scripts/handbook-screenshots/mock-backend.cjs`.
 3. `pnpm handbooks:build` ausführen. Das erzeugt
-   `docs/handbooks/dist/handbooks.json`; `pnpm test:schema` schlägt fehl,
+   `docs/handbooks/handbooks.bundle.json`; `pnpm test:schema` schlägt fehl,
    solange das Paket nicht zur Quelle passt.
 4. Nach dem Merge die Inhalte in die Datenbank laden (Commit-SHA von `main`):
    `select public.request_handbook_sync('<sha>');` und danach mit der

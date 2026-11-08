@@ -10,7 +10,7 @@
 ## So funktioniert die Auslieferung
 
 1. Die Markdown-Dateien und die Bilder in `images/` sind die einzige Quelle.
-2. `pnpm handbooks:build` bündelt sie in `dist/handbooks.json`.
+2. `pnpm handbooks:build` bündelt sie in `handbooks.bundle.json`.
 3. Nach dem Merge lädt die Datenbank das Paket des gemergten Commits:
    `select public.request_handbook_sync('<sha>');`, danach
    `select public.apply_handbook_sync(<id>, '<sha>');`. Die Tabellen
