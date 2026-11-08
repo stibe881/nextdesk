@@ -1664,9 +1664,21 @@ function SignInScreen() {
     }
     setPassword("");
     if (data.session) return;
+    // Supabase answers a sign-up for an already registered address with a
+    // user without identities and sends no e-mail at all. So the person still
+    // receives a message, send a sign-in link instead; the on-screen response
+    // stays the same for both cases to avoid revealing registered addresses.
+    if (data.user && (data.user.identities ?? []).length === 0) {
+      await supabase.auth
+        .signInWithOtp({
+          email: email.trim().toLowerCase(),
+          options: { emailRedirectTo: appRedirectUrl(), shouldCreateUser: false },
+        })
+        .catch(() => undefined);
+    }
     setStatus("sent");
     setMessage(
-      "Fast geschafft: Wir haben Ihnen eine E-Mail gesendet. Bestätigen Sie Ihre Adresse über den Link und erstellen Sie danach Ihren Arbeitsbereich. Ist die Adresse bereits registriert, melden Sie sich mit Ihrem Passwort an.",
+      "Fast geschafft: Wir haben Ihnen eine E-Mail gesendet. Bestätigen Sie Ihre Adresse über den Link und erstellen Sie danach Ihren Arbeitsbereich. Ist die Adresse bereits registriert, enthält die E-Mail stattdessen einen Anmeldelink.",
     );
   }
 

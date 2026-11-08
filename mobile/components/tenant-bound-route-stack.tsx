@@ -79,8 +79,14 @@ function RouteStack({ routeKey }: { routeKey: string }) {
  * Mandanten wird der Inhalt nur verdeckt, damit lokale Entwürfe erhalten bleiben.
  */
 export function TenantBoundRouteStack() {
-  const { error, lastConfirmedTenantId, loading, refresh, tenantId } =
-    useMobileFeatures();
+  const {
+    error,
+    lastConfirmedTenantId,
+    loading,
+    needsWorkspace,
+    refresh,
+    tenantId,
+  } = useMobileFeatures();
   const segments = useSegments();
   const isAuthRoute = segments[0] === "auth";
   const workspaceReady = !loading && Boolean(tenantId);
@@ -89,10 +95,15 @@ export function TenantBoundRouteStack() {
   // redirects an unauthenticated launch to /auth. Returning only the gate
   // here removed that navigator and could make native navigation re-render
   // recursively. The workspace stays fail-closed through the overlay instead.
-  const blocked = !isAuthRoute && (!workspaceReady || !routeTenantId);
+  // Self-registered people without any membership see the workspace creation
+  // screen of the tab layout; it holds no tenant data and must not be covered.
+  const blocked =
+    !isAuthRoute && !needsWorkspace && (!workspaceReady || !routeTenantId);
   const routeKey = isAuthRoute
     ? "auth"
-    : routeTenantId
+    : needsWorkspace
+      ? "workspace-create"
+      : routeTenantId
       ? `tenant-${routeTenantId}`
       : "workspace-pending";
   return (
