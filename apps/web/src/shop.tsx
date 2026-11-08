@@ -1062,22 +1062,11 @@ function CartPanel({
           onSubmit={(event) => void submit(event)}
         >
           {canOrderForOthers ? (
-            <label>
-              Bestellen für
-              <select
-                onChange={(event) => setRequesterId(event.target.value)}
-                value={requesterId}
-              >
-                <option value="">Mich selbst</option>
-                {(people ?? []).map((person) => (
-                  <option key={person.id} value={person.id}>
-                    {person.jobTitle
-                      ? `${person.name} – ${person.jobTitle}`
-                      : person.name}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <ShopPersonPicker
+              onChange={setRequesterId}
+              people={people ?? []}
+              value={requesterId}
+            />
           ) : null}
           <ul className="shop__cart-lines">
             {cart.map((line) => (
@@ -3001,5 +2990,89 @@ function CatalogEditor({
         </div>
       ) : null}
     </>
+  );
+}
+
+/**
+ * «Bestellen für»: search over all people of the tenant, including Entra
+ * people who never signed in (their account is prepared on ordering).
+ */
+function ShopPersonPicker({
+  people,
+  value,
+  onChange,
+}: {
+  people: { id: string; name: string; jobTitle: string | null }[];
+  value: string;
+  onChange: (id: string) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const selected = people.find((person) => person.id === value) ?? null;
+  const term = query.trim().toLocaleLowerCase("de-CH");
+  const matches = term
+    ? people
+        .filter((person) =>
+          [person.name, person.jobTitle ?? ""].some((text) =>
+            text.toLocaleLowerCase("de-CH").includes(term),
+          ),
+        )
+        .slice(0, 30)
+    : [];
+  return (
+    <div className="shop__person-picker">
+      <span>Bestellen für</span>
+      {selected ? (
+        <div className="shop__person-picker-selected">
+          <strong>{selected.name}</strong>
+          {selected.jobTitle ? <small>{selected.jobTitle}</small> : null}
+          <button
+            className="text-button"
+            onClick={() => {
+              onChange("");
+              setQuery("");
+            }}
+            type="button"
+          >
+            Ändern
+          </button>
+        </div>
+      ) : (
+        <>
+          <input
+            aria-label="Person suchen"
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Mich selbst – oder Name suchen …"
+            type="search"
+            value={query}
+          />
+          {term ? (
+            <ul className="shop__person-picker-results" role="listbox">
+              {matches.length === 0 ? (
+                <li className="shop__muted">Keine Person gefunden.</li>
+              ) : (
+                matches.map((person) => (
+                  <li key={person.id}>
+                    <button
+                      onClick={() => {
+                        onChange(person.id);
+                        setQuery("");
+                      }}
+                      role="option"
+                      aria-selected={false}
+                      type="button"
+                    >
+                      <strong>{person.name}</strong>
+                      {person.jobTitle ? (
+                        <small>{person.jobTitle}</small>
+                      ) : null}
+                    </button>
+                  </li>
+                ))
+              )}
+            </ul>
+          ) : null}
+        </>
+      )}
+    </div>
   );
 }
