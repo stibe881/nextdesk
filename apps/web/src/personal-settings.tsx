@@ -46,6 +46,8 @@ type PersonalSettingsProps = {
 
 type ProviderSummary = {
   canChangePassword: boolean;
+  /** Accounts managed by the organisation's identity provider. */
+  usesSso: boolean;
   label: string;
   passwordNote: string;
 };
@@ -92,6 +94,7 @@ function providerSummary(user: User, ssoEnforced: boolean): ProviderSummary {
   if (usesSso) {
     return {
       canChangePassword: false,
+      usesSso: true,
       label: "Microsoft Entra SSO",
       passwordNote:
         "Dieses Konto wird über den Unternehmens-Identitätsanbieter geschützt.",
@@ -100,6 +103,7 @@ function providerSummary(user: User, ssoEnforced: boolean): ProviderSummary {
   if (hasEmailIdentity) {
     return {
       canChangePassword: true,
+      usesSso: false,
       label: "E-Mail-Anmeldung",
       passwordNote:
         "Das Passwort gehört nur zu deinem persönlichen nextDesk-Konto.",
@@ -107,6 +111,7 @@ function providerSummary(user: User, ssoEnforced: boolean): ProviderSummary {
   }
   return {
     canChangePassword: false,
+    usesSso: false,
     label: "Externer Identitätsanbieter",
     passwordNote:
       "Die Passwortverwaltung erfolgt über den verwendeten Identitätsanbieter.",
@@ -1058,7 +1063,19 @@ export function PersonalSettings({
         </button>
       </article>
 
-      <DeleteAccountPanel />
+      {provider.usesSso ? (
+        <article className="personal-settings__signout personal-settings__delete-note">
+          <div>
+            <strong>Konto löschen</strong>
+            <span>
+              Dein Konto wird von deiner Organisation über SSO verwaltet und
+              kann hier nicht gelöscht werden. Wende dich dafür an deine IT.
+            </span>
+          </div>
+        </article>
+      ) : (
+        <DeleteAccountPanel />
+      )}
     </section>
   );
 }

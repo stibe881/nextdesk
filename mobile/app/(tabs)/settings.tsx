@@ -73,6 +73,8 @@ type AccountProfile = {
   email: string;
   providerLabel: string;
   canChangePassword: boolean;
+  /** Accounts managed by the organisation's identity provider. */
+  usesSso: boolean;
 };
 
 function profileFromUser(
@@ -99,6 +101,7 @@ function profileFromUser(
         ? "E-Mail-Anmeldung"
         : "Externer Identitätsanbieter",
     canChangePassword: hasEmailIdentity && !usesSso,
+    usesSso,
   };
 }
 
@@ -1123,7 +1126,26 @@ export default function SettingsScreen() {
             <Text style={styles.signOutText}>Abmelden</Text>
           </Pressable>
 
-          <DeleteAccountButton />
+          {profile?.usesSso ? (
+            <View style={styles.ssoNote}>
+              <Ionicons
+                color={colors.primaryText}
+                name="lock-closed-outline"
+                size={20}
+              />
+              <View style={styles.noteCopy}>
+                <Text style={styles.ssoNoteTitle}>
+                  Konto wird über SSO verwaltet
+                </Text>
+                <Text style={styles.ssoNoteText}>
+                  Dein Konto gehört zu deiner Organisation und kann hier nicht
+                  gelöscht werden. Wende dich dafür an deine IT.
+                </Text>
+              </View>
+            </View>
+          ) : profile ? (
+            <DeleteAccountButton />
+          ) : null}
         </ScrollView>
 
         <Modal
