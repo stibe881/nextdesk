@@ -264,6 +264,9 @@ type TenantEntraDirectoryPerson = {
   agentDepartmentName: string | null;
   isAgent: boolean;
   lastSyncedAt: string;
+  agentDisplayName?: string | null;
+  agentManagerUserId?: string | null;
+  entraManagerName?: string | null;
 };
 
 type TenantDepartment = {
@@ -353,6 +356,8 @@ type TenantUsersRequest =
       entraObjectId: string;
       departmentId: string | null;
       enabled: boolean;
+      displayName: string | null;
+      managerUserId: string | null;
     }
   | ({ type: "updatePerson"; tenantId: string; userId: string } & PersonForm)
   | { type: "removeUser"; tenantId: string; userId: string }
@@ -433,6 +438,8 @@ type PersonForm = {
 type EntraAgentForm = {
   enabled: boolean;
   departmentId: string;
+  displayName: string;
+  managerUserId: string;
 };
 
 const emptyBrandingForm: BrandingForm = {
@@ -1213,6 +1220,8 @@ export function TenantAdminSettings({
     null,
   );
   const [entraAgentForm, setEntraAgentForm] = useState<EntraAgentForm>({
+    displayName: "",
+    managerUserId: "",
     enabled: false,
     departmentId: "",
   });
@@ -2116,8 +2125,11 @@ export function TenantAdminSettings({
     setSuccess("");
     setEditingEntraAgent(person.id);
     setEntraAgentForm({
-      enabled: person.agentRequested,
+      // A new assignment starts switched on; the agent box is the purpose.
+      enabled: person.agentRequested || !person.isAgent,
       departmentId: person.agentDepartmentId ?? "",
+      displayName: person.agentDisplayName ?? person.displayName,
+      managerUserId: person.agentManagerUserId ?? "",
     });
   }
 
@@ -2142,12 +2154,23 @@ export function TenantAdminSettings({
           ? entraAgentForm.departmentId
           : null,
         enabled: entraAgentForm.enabled,
+        displayName:
+          entraAgentForm.displayName.trim() &&
+          entraAgentForm.displayName.trim() !== person.displayName
+            ? entraAgentForm.displayName.trim()
+            : null,
+        managerUserId: entraAgentForm.managerUserId || null,
       });
       const departmentName = userDirectory.departments.find(
         (department) => department.id === entraAgentForm.departmentId,
       )?.name;
       setEditingEntraAgent(null);
-      setEntraAgentForm({ enabled: false, departmentId: "" });
+      setEntraAgentForm({
+        enabled: false,
+        departmentId: "",
+        displayName: "",
+        managerUserId: "",
+      });
       await loadData();
       if (!result.agentRequested) {
         setSuccess(
@@ -2642,6 +2665,145 @@ export function TenantAdminSettings({
       setActiveArea("features");
     }
   }, [activeArea, slaManagementEnabled]);
+
+  /** Agent pre-assignment of a synchronised Entra person, laid out like the
+   *  agent editor of signed-in members. */
+  function renderEntraAgentEditor(person: TenantEntraDirectoryPerson) {
+    const target: SaveTarget = `entra-agent:${person.id}`;
+    const editable = !person.activeNextDeskMember;
+    return (
+      <form
+        className="tenant-admin-settings__person-editor"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void saveEntraAgentAccess(person);
+        }}
+      >
+        <p className="tenant-admin-settings__entra-agent-note">
+          {person.hasIndependentAgentAccess
+            ? "Eine getrennte Agentenzuordnung bleibt unverändert. Sie bearbeiten hier nur die Entra-Vormerkung."
+            : person.activeNextDeskMember
+              ? "Die Zuordnung wird nach dem Speichern sofort wirksam."
+              : "Die Person wird vorgemerkt. Name, vorgesetzte Person und Agentenzugang werden bei ihrer ersten Anmeldung mit Microsoft übernommen."}
+        </p>
+        <label>
+          Vor- und Nachname
+          <input
+            value={entraAgentForm.displayName}
+            minLength={2}
+            disabled={saving !== null || !editable}
+            onChange={(event) =>
+              setEntraAgentForm((current) => ({
+                ...current,
+                displayName: event.target.value,
+              }))
+            }
+          />
+        </label>
+        <label>
+          Vorgesetzte Person
+          <select
+            value={entraAgentForm.managerUserId}
+            disabled={saving !== null || !editable}
+            onChange={(event) =>
+              setEntraAgentForm((current) => ({
+                ...current,
+                managerUserId: event.target.value,
+              }))
+            }
+          >
+            <option value="">
+              {person.entraManagerName
+                ? `Aus Entra: ${person.entraManagerName}`
+                : "Keine bzw. aus Entra übernehmen"}
+            </option>
+            {userDirectory.members
+              .filter((candidate) => candidate.status === "active")
+              .map((candidate) => (
+                <option key={candidate.id} value={candidate.id}>
+                  {candidate.displayName?.trim() || candidate.email}
+                </option>
+              ))}
+          </select>
+        </label>
+        <label>
+          Ticketzugriffsbereich
+          <select
+            value={entraAgentForm.departmentId}
+            disabled={saving !== null || !entraAgentForm.enabled}
+            onChange={(event) =>
+              setEntraAgentForm((current) => ({
+                ...current,
+                departmentId: event.target.value,
+              }))
+            }
+          >
+            <option value="">Bitte auswählen</option>
+            {userDirectory.departments
+              .filter((department) => department.active)
+              .map((department) => (
+                <option key={department.id} value={department.id}>
+                  {department.name}
+                </option>
+              ))}
+          </select>
+          <small className="tenant-admin-settings__field-hint">
+            Steuert ausschliesslich, auf welche Ticketbereiche diese Person als
+            Agent zugreifen darf. Entra-Organisationsdaten ändern diesen Zugriff
+            nie.
+          </small>
+        </label>
+        <label>
+          Organisation / Angebot (Entra)
+          <input value={person.sourceDepartmentName ?? ""} readOnly />
+          <small className="tenant-admin-settings__field-hint">
+            Wird aus der Entra-Organisationsabteilung übernommen und beim
+            nächsten Abgleich aktualisiert.
+          </small>
+        </label>
+        <label>
+          Funktion (Entra)
+          <input value={person.jobTitle ?? ""} readOnly />
+          <small className="tenant-admin-settings__field-hint">
+            Wird aus der Entra-Funktion übernommen und beim nächsten Abgleich
+            aktualisiert.
+          </small>
+        </label>
+        <label className="tenant-admin-settings__agent-toggle">
+          <input
+            type="checkbox"
+            checked={entraAgentForm.enabled}
+            disabled={saving !== null}
+            onChange={(event) =>
+              setEntraAgentForm((current) => ({
+                ...current,
+                enabled: event.target.checked,
+              }))
+            }
+          />
+          <span>Arbeitet als Support-Agent</span>
+        </label>
+        <div className="tenant-admin-settings__form-actions">
+          <button type="submit" disabled={saving !== null}>
+            {saving === target
+              ? "Wird gespeichert …"
+              : entraAgentForm.enabled
+                ? "Person speichern"
+                : person.agentRequested
+                  ? "Vormerkung aufheben"
+                  : "Person speichern"}
+          </button>
+          <button
+            type="button"
+            disabled={saving !== null}
+            onClick={() => setEditingEntraAgent(null)}
+          >
+            Abbrechen
+          </button>
+        </div>
+      </form>
+    );
+  }
 
   return (
     <section className="tenant-admin-settings" aria-label="Einstellungen">
@@ -4566,6 +4728,24 @@ export function TenantAdminSettings({
                                       </span>
                                     </div>
                                   </div>
+                                  <div className="tenant-admin-settings__person-actions">
+                                    <button
+                                      type="button"
+                                      disabled={saving !== null}
+                                      onClick={() =>
+                                        editingEntraAgent === person.id
+                                          ? setEditingEntraAgent(null)
+                                          : beginEntraAgentEdit(person)
+                                      }
+                                    >
+                                      {editingEntraAgent === person.id
+                                        ? "Bearbeitung schliessen"
+                                        : "Bearbeiten"}
+                                    </button>
+                                  </div>
+                                  {editingEntraAgent === person.id
+                                    ? renderEntraAgentEditor(person)
+                                    : null}
                                 </li>
                               ))}
                             </ul>
@@ -4672,89 +4852,9 @@ export function TenantAdminSettings({
                                         : "Als Agent zuordnen"}
                                 </button>
                               </div>
-                              {isEditing ? (
-                                <form
-                                  className="tenant-admin-settings__entra-agent-editor"
-                                  onSubmit={(event) => {
-                                    event.preventDefault();
-                                    void saveEntraAgentAccess(person);
-                                  }}
-                                >
-                                  <div>
-                                    <strong>Support-Agent zuordnen</strong>
-                                    <p>
-                                      {person.hasIndependentAgentAccess
-                                        ? "Eine getrennte Agentenzuordnung bleibt unverändert. Sie bearbeiten hier nur die Entra-Vormerkung."
-                                        : person.activeNextDeskMember
-                                          ? "Die Zuordnung wird nach dem Speichern sofort wirksam."
-                                          : "Die Person wird vorgemerkt. Der Agentenzugang wird erst nach ihrer ersten verifizierten Entra-Anmeldung wirksam."}
-                                    </p>
-                                  </div>
-                                  <label className="tenant-admin-settings__agent-toggle">
-                                    <input
-                                      type="checkbox"
-                                      checked={entraAgentForm.enabled}
-                                      disabled={saving !== null}
-                                      onChange={(event) =>
-                                        setEntraAgentForm((current) => ({
-                                          ...current,
-                                          enabled: event.target.checked,
-                                        }))
-                                      }
-                                    />
-                                    <span>Arbeitet als Support-Agent</span>
-                                  </label>
-                                  <label>
-                                    Ziel-Abteilung
-                                    <select
-                                      value={entraAgentForm.departmentId}
-                                      disabled={
-                                        saving !== null ||
-                                        !entraAgentForm.enabled
-                                      }
-                                      onChange={(event) =>
-                                        setEntraAgentForm((current) => ({
-                                          ...current,
-                                          departmentId: event.target.value,
-                                        }))
-                                      }
-                                    >
-                                      <option value="">Bitte auswählen</option>
-                                      {userDirectory.departments
-                                        .filter(
-                                          (department) => department.active,
-                                        )
-                                        .map((department) => (
-                                          <option
-                                            key={department.id}
-                                            value={department.id}
-                                          >
-                                            {department.name}
-                                          </option>
-                                        ))}
-                                    </select>
-                                  </label>
-                                  <div className="tenant-admin-settings__form-actions">
-                                    <button
-                                      type="submit"
-                                      disabled={saving !== null}
-                                    >
-                                      {saving === target
-                                        ? "Wird gespeichert …"
-                                        : entraAgentForm.enabled
-                                          ? "Agentenzuordnung speichern"
-                                          : "Agentenzuordnung aufheben"}
-                                    </button>
-                                    <button
-                                      type="button"
-                                      disabled={saving !== null}
-                                      onClick={() => setEditingEntraAgent(null)}
-                                    >
-                                      Abbrechen
-                                    </button>
-                                  </div>
-                                </form>
-                              ) : null}
+                              {isEditing
+                                ? renderEntraAgentEditor(person)
+                                : null}
                             </li>
                           );
                         })}

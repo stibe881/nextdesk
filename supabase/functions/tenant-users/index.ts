@@ -30,6 +30,8 @@ type Action =
       entraObjectId: string;
       departmentId: string | null;
       enabled: boolean;
+      displayName?: string | null;
+      managerUserId?: string | null;
     }
   | ({ type: "updatePerson"; tenantId: string; userId: string } & PersonPayload)
   | { type: "getMyTicketAccess"; tenantId: string }
@@ -63,6 +65,8 @@ type EntraDirectoryPerson = EntraPersonnelRecord & {
   agent_requested: boolean;
   agent_department_id: string | null;
   agent_role_assignment_id: string | null;
+  agent_display_name?: string | null;
+  agent_manager_user_id?: string | null;
   last_synced_at: string;
 };
 
@@ -185,6 +189,9 @@ function parseAction(value: unknown): Action | null {
       entraObjectId: value.entraObjectId,
       departmentId: normalizedDepartmentId,
       enabled: value.enabled,
+      displayName:
+        typeof value.displayName === "string" ? value.displayName : null,
+      managerUserId: isUuid(value.managerUserId) ? value.managerUserId : null,
     };
   }
   if (
@@ -594,7 +601,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       context.supabaseAdmin
         .from("tenant_entra_directory_people")
         .select(
-          "entra_object_id, email, display_name, job_title, source_department_name, account_enabled, inactive_at, local_user_id, manager_entra_object_id, agent_requested, agent_department_id, agent_role_assignment_id, last_synced_at",
+          "entra_object_id, email, display_name, job_title, source_department_name, account_enabled, inactive_at, local_user_id, manager_entra_object_id, agent_requested, agent_department_id, agent_role_assignment_id, agent_display_name, agent_manager_user_id, last_synced_at",
         )
         .eq("tenant_id", action.tenantId)
         .order("display_name", { ascending: true })
@@ -801,6 +808,12 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         active: department.active === true,
       }),
     );
+    const entraNamesByObjectId = new Map<string, string>(
+      entraPeople.map((person) => [
+        person.entra_object_id,
+        person.display_name,
+      ]),
+    );
     const directoryPeople = entraPeople.map((person) => {
       const access = person.local_user_id
         ? rolesByUser.get(person.local_user_id)
@@ -842,6 +855,11 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
           : null,
         isAgent: access?.isAgent ?? false,
         lastSyncedAt: person.last_synced_at,
+        agentDisplayName: person.agent_display_name ?? null,
+        agentManagerUserId: person.agent_manager_user_id ?? null,
+        entraManagerName: person.manager_entra_object_id
+          ? (entraNamesByObjectId.get(person.manager_entra_object_id) ?? null)
+          : null,
       };
     });
     return json(request, {
@@ -1127,6 +1145,39 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       );
     }
     const result = isRecord(data) ? data : {};
+    // Name and manager for a person who has not signed in yet: applied on
+    // the first Microsoft sign-in (tenant-sso-access).
+    const prefillName = action.enabled
+      ? (typeof action.displayName === "string" && action.displayName.trim()
+          ? action.displayName.trim().slice(0, 160)
+          : null)
+      : null;
+    let prefillManager = action.enabled ? (action.managerUserId ?? null) : null;
+    if (prefillManager) {
+      const { data: managerMember } = await context.supabaseAdmin
+        .from("tenant_memberships")
+        .select("user_id")
+        .eq("tenant_id", action.tenantId)
+        .eq("user_id", prefillManager)
+        .eq("status", "active")
+        .maybeSingle();
+      if (!managerMember) prefillManager = null;
+    }
+    const { error: prefillError } = await context.supabaseAdmin
+      .from("tenant_entra_directory_people")
+      .update({
+        agent_display_name: prefillName,
+        agent_manager_user_id: prefillManager,
+      })
+      .eq("tenant_id", action.tenantId)
+      .eq("entra_object_id", action.entraObjectId);
+    if (prefillError) {
+      return json(
+        request,
+        { error: { code: "entra_agent_request_update_failed" } },
+        422,
+      );
+    }
     return json(request, {
       data: {
         updated: result.updated === true,

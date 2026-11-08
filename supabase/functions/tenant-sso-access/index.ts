@@ -618,6 +618,59 @@ async function applyRequestedEntraAgentAccess(
   return (data as { applied?: unknown } | null)?.applied === true;
 }
 
+/**
+ * Name and manager an admin set while pre-assigning the person as agent
+ * (before the first sign-in). Applied once, then cleared. Best effort.
+ */
+async function applyEntraAgentPrefill(
+  admin: any,
+  tenantId: string,
+  userId: string,
+  entraObjectId: string | null,
+): Promise<void> {
+  if (!entraObjectId) return;
+  try {
+    const { data: person } = await admin
+      .from("tenant_entra_directory_people")
+      .select("agent_display_name, agent_manager_user_id, local_user_id")
+      .eq("tenant_id", tenantId)
+      .eq("entra_object_id", entraObjectId)
+      .maybeSingle();
+    if (!person || person.local_user_id !== userId) return;
+    const name =
+      typeof person.agent_display_name === "string"
+        ? person.agent_display_name.trim()
+        : "";
+    const managerId =
+      typeof person.agent_manager_user_id === "string" &&
+      person.agent_manager_user_id !== userId
+        ? person.agent_manager_user_id
+        : null;
+    if (!name && !managerId) return;
+    if (name) {
+      await admin
+        .from("user_profiles")
+        .update({ display_name: name })
+        .eq("id", userId);
+    }
+    if (managerId) {
+      await admin.from("tenant_member_directory").upsert(
+        { tenant_id: tenantId, user_id: userId, manager_user_id: managerId },
+        { onConflict: "tenant_id,user_id" },
+      );
+    }
+    await admin
+      .from("tenant_entra_directory_people")
+      .update({ agent_display_name: null, agent_manager_user_id: null })
+      .eq("tenant_id", tenantId)
+      .eq("entra_object_id", entraObjectId);
+  } catch (error) {
+    console.error("entra_agent_prefill_failed", {
+      message: error instanceof Error ? error.message : "unknown",
+    });
+  }
+}
+
 /** Logs why a sign-in could not be provisioned (no personal data). */
 function logProvisionFailure(
   step: string,
@@ -772,6 +825,7 @@ async function provisionSsoPerson(
       userId,
       entraObjectId,
     );
+    await applyEntraAgentPrefill(admin, tenantId, userId, entraObjectId);
     return "existing";
   }
 
@@ -859,6 +913,7 @@ async function provisionSsoPerson(
     directoryLink.department,
   );
   await applyRequestedEntraAgentAccess(admin, tenantId, userId, entraObjectId);
+  await applyEntraAgentPrefill(admin, tenantId, userId, entraObjectId);
 
   if (invitation) {
     const { data: acceptedInvitation, error: invitationUpdateError } =
