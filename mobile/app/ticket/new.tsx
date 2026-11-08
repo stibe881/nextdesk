@@ -15,6 +15,7 @@ import {
 } from "react-native";
 
 import { PhotoMarkupEditor } from "@/components/photo-markup-editor";
+import { PhishingReportSheet } from "@/components/phishing-report-sheet";
 import { PortalAssistantSheet } from "@/components/portal-assistant-sheet";
 import { RequesterPicker } from "@/components/requester-picker";
 import { ScreenContainer } from "@/components/screen-container";
@@ -42,6 +43,7 @@ import {
   recordAssistantOutcome,
 } from "@/lib/nextdesk-assistance";
 import type { AssistantDraft } from "@/lib/portal-assistant";
+import { loadPhishingConfig, type PhishingConfig } from "@/lib/phishing-report";
 import {
   resolveSuggestionMode,
   type SuggestionMode,
@@ -102,6 +104,9 @@ export default function NewTicketScreen() {
     categoryId: string | null;
     categoryName: string | null;
   } | null>(null);
+  // «Phishing melden» (only when the tenant set it up).
+  const [phishing, setPhishing] = useState<PhishingConfig | null>(null);
+  const [phishingOpen, setPhishingOpen] = useState(false);
   const draftReady = useRef(false);
   const scrollViewRef = useRef<ScrollView>(null);
   const subjectInputRef = useRef<TextInput>(null);
@@ -120,6 +125,7 @@ export default function NewTicketScreen() {
         void loadPortalAssistantEnabled(currentTenant.id).then(
           setAssistantEnabled,
         );
+        void loadPhishingConfig(currentTenant.id).then(setPhishing);
         setDepartmentId(formOptions.departments[0]?.id ?? "");
         setPriorityKey(formOptions.priorities[0]?.key ?? "");
         setRequester(formOptions.currentRequester);
@@ -559,6 +565,45 @@ export default function NewTicketScreen() {
                   onUseDraft={applyAssistantDraft}
                   tenantId={tenant.id}
                   visible={assistantOpen}
+                />
+              </>
+            ) : null}
+            {phishing?.enabled && tenant ? (
+              <>
+                <Pressable
+                  accessibilityHint="Verdächtige E-Mail an das Sicherheitsteam melden"
+                  accessibilityRole="button"
+                  disabled={saving}
+                  onPress={() => {
+                    hapticSelection();
+                    setPhishingOpen(true);
+                  }}
+                  style={styles.assistantButton}
+                >
+                  <Ionicons
+                    color={colors.primaryText}
+                    name="shield-outline"
+                    size={20}
+                  />
+                  <View style={styles.assistantCopy}>
+                    <Text style={styles.assistantTitle}>Phishing melden</Text>
+                    <Text style={styles.hint}>
+                      Verdächtige E-Mail? Füge die Kopfzeilen ein – wir prüfen
+                      sie für dich.
+                    </Text>
+                  </View>
+                </Pressable>
+                <PhishingReportSheet
+                  onClose={() => setPhishingOpen(false)}
+                  onOpenTicket={(ticketId) =>
+                    router.replace({
+                      pathname: "/ticket/[id]",
+                      params: { id: ticketId },
+                    })
+                  }
+                  reportAddress={phishing.reportAddress}
+                  tenantId={tenant.id}
+                  visible={phishingOpen}
                 />
               </>
             ) : null}

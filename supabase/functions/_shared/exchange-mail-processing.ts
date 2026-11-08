@@ -25,6 +25,10 @@ import {
 } from "./requester-action-token.ts";
 import { processEventSpaceEmailTicketIntake } from "./event-space-email-ticket-intake.ts";
 import { processOnboardingEmailTicketIntake } from "./onboarding-email-intake.ts";
+import {
+  phishingReportSettingsFor,
+  processPhishingEmailReport,
+} from "./phishing-email-intake.ts";
 import { resolveTenantFeatureStates } from "./tenant-features.ts";
 import { routeBackupEmail } from "./backup-monitoring.ts";
 
@@ -1503,7 +1507,22 @@ export async function processInboundMessage(
       (kind !== "new_ticket" && kind !== "reply")
     )
       throw new Error("inbound_commit_invalid");
-    if (kind === "new_ticket") {
+    // Forwarded to the phishing report address: becomes a security ticket
+    // instead of an ordinary one (no event space / onboarding intake).
+    const phishingSettings =
+      kind === "new_ticket"
+        ? await phishingReportSettingsFor(admin, {
+            tenantId: channel.tenant_id,
+            mailboxAddress: channel.mailbox_address,
+            recipients: [
+              ...array(graph.toRecipients),
+              ...array(graph.ccRecipients),
+            ]
+              .map(emailFromPerson)
+              .filter((value): value is string => value !== null),
+          })
+        : null;
+    if (kind === "new_ticket" && !phishingSettings) {
       await processEventSpaceEmailTicketIntake(admin, {
         tenantId: channel.tenant_id,
         ticketId,
@@ -1511,7 +1530,7 @@ export async function processInboundMessage(
         description: body,
       });
     }
-    if (kind === "new_ticket") {
+    if (kind === "new_ticket" && !phishingSettings) {
       await storeEmailSignature(admin, {
         channel,
         graphMessageId: message.graph_message_id,
@@ -1589,7 +1608,34 @@ export async function processInboundMessage(
       if (hasInlineMedia)
         await updateInlineMediaStatus(admin, message, "completed");
     }
-    if (kind === "new_ticket") {
+    if (kind === "new_ticket" && phishingSettings) {
+      // Wirft nie; bei Fehlern bleibt das gewöhnliche Mail-Ticket bestehen.
+      await processPhishingEmailReport(admin, {
+        tenantId: channel.tenant_id,
+        ticketId,
+        ticketNumber,
+        settings: phishingSettings,
+        graphMessage: graph,
+        graph: async (path, init) =>
+          (
+            await graphRequestForChannel<Row>(
+              admin,
+              channel,
+              `/users/${mailbox}${path}`,
+              init,
+            )
+          ).data,
+        sender,
+        serviceIdentityId,
+        thankYou: channel.send_agent_replies
+          ? {
+              channelId: channel.id,
+              configurationVersion: channel.configuration_version,
+              mailboxAddress: channel.mailbox_address,
+            }
+          : null,
+      });
+    } else if (kind === "new_ticket") {
       // Eintrittsmeldung der Personal-App (PDF): ersetzt das Ticket durch einen
       // Eintritt mit Checkliste. Wirft nie; bei Fehlern bleibt das Ticket.
       await processOnboardingEmailTicketIntake(admin, {

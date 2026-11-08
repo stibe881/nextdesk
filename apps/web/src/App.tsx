@@ -1425,6 +1425,14 @@ function baseNotificationPresentation(
         Icon: ArrowUp,
         title: "Ticket eskaliert",
       };
+    case "ticket.security_report": {
+      const risk = notificationPayloadText(notification, "riskLabel", 20);
+      return {
+        description: `Eine verdächtige E-Mail wurde gemeldet (${ticketLabel}${risk ? `, Risiko ${risk}` : ""}).`,
+        Icon: AlertTriangle,
+        title: "Phishing-Meldung",
+      };
+    }
     case "ticket.sla.supervisor_risk": {
       const agent = notificationPayloadText(notification, "agentName", 200);
       return {

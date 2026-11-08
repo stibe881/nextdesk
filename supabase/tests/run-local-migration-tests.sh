@@ -12787,4 +12787,149 @@ $$;
 rollback;
 SQL
 
+psql -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+do $$
+declare
+  v_template record;
+  v_ticket uuid := gen_random_uuid();
+  v_pending record;
+  v_count integer;
+  v_team uuid;
+begin
+  if has_table_privilege('authenticated', 'public.feedback_comment_themes', 'select')
+    or has_table_privilege('anon', 'public.feedback_theme_monthly', 'select')
+    or has_table_privilege('authenticated', 'public.phishing_reports', 'select')
+    or has_table_privilege('authenticated', 'public.phishing_report_settings', 'insert') then
+    raise exception 'feedback phishing test: tables readable by browsers';
+  end if;
+  if has_function_privilege('authenticated', 'public.feedback_theme_pending(uuid, integer)', 'execute')
+    or has_function_privilege('authenticated', 'public.feedback_theme_refresh_monthly(uuid)', 'execute')
+    or has_function_privilege('authenticated', 'public.feedback_insights_verify_dispatch_secret(text)', 'execute')
+    or has_function_privilege('authenticated', 'public.phishing_report_notify(uuid, uuid, jsonb)', 'execute') then
+    raise exception 'feedback phishing test: service functions callable by browsers';
+  end if;
+  if not (select relrowsecurity from pg_class where oid = 'public.feedback_comment_themes'::regclass)
+    or not (select relrowsecurity from pg_class where oid = 'public.feedback_theme_monthly'::regclass)
+    or not (select relrowsecurity from pg_class where oid = 'public.phishing_reports'::regclass)
+    or not (select relrowsecurity from pg_class where oid = 'public.phishing_report_settings'::regclass) then
+    raise exception 'feedback phishing test: RLS disabled';
+  end if;
+  if public.push_notification_category('ticket.security_report') <> 'escalation'
+    or public.push_notification_category('ticket.vendor_reminder') <> 'follow_up' then
+    raise exception 'feedback phishing test: wrong push category';
+  end if;
+
+  select * into v_template from public.tickets limit 1;
+  insert into public.tickets (id, tenant_id, department_id, ticket_number, subject, description,
+    status_id, priority_id, requester_id)
+  values (v_ticket, v_template.tenant_id, v_template.department_id, 'FEEDBACK-TEST-1',
+    'Drucker', 'Druckt nicht', v_template.status_id, v_template.priority_id, v_template.requester_id);
+  insert into public.ticket_satisfaction (ticket_id, score, comment, submitted_by, submitted_at)
+  values (v_ticket, 2, 'Ich musste sehr lange warten.', v_template.requester_id,
+    timezone('utc', now()) - interval '2 hours');
+
+  select * into v_pending from public.feedback_theme_pending(v_template.tenant_id, 50)
+  where ticket_id = v_ticket;
+  if v_pending.ticket_id is null or v_pending.comment_hash !~ '^[0-9a-f]{64}$'
+    or v_pending.actor_id is null then
+    raise exception 'feedback phishing test: new comment not pending';
+  end if;
+  if not exists (select 1 from public.feedback_theme_pending_tenants(500) tenant_id
+                 where tenant_id = v_template.tenant_id) then
+    raise exception 'feedback phishing test: tenant not pending';
+  end if;
+
+  begin
+    insert into public.feedback_comment_themes (ticket_id, tenant_id, comment_hash, state, themes, sentiment)
+    values (v_ticket, v_template.tenant_id, v_pending.comment_hash, 'analyzed', array['erfunden'], 'negative');
+    raise exception 'feedback phishing test: unknown theme accepted';
+  exception when check_violation then
+    null;
+  end;
+  begin
+    insert into public.feedback_comment_themes (ticket_id, tenant_id, comment_hash, state, themes)
+    values (v_ticket, v_template.tenant_id, v_pending.comment_hash, 'analyzed', '{}');
+    raise exception 'feedback phishing test: analyzed without theme accepted';
+  exception when check_violation then
+    null;
+  end;
+  insert into public.feedback_comment_themes (ticket_id, tenant_id, comment_hash, state, themes, sentiment, quote)
+  values (v_ticket, v_template.tenant_id, v_pending.comment_hash, 'analyzed',
+    array['long_wait', 'communication'], 'negative', 'Ich musste sehr lange warten.');
+  if exists (select 1 from public.feedback_theme_pending(v_template.tenant_id, 200) where ticket_id = v_ticket) then
+    raise exception 'feedback phishing test: analysed comment still pending';
+  end if;
+
+  perform public.feedback_theme_refresh_monthly(v_template.tenant_id);
+  select coalesce(sum(comment_count), 0) into v_count from public.feedback_theme_monthly
+  where tenant_id = v_template.tenant_id and department_id = v_template.department_id
+    and theme_key in ('long_wait', 'communication') and sentiment = 'negative';
+  if v_count < 2 then
+    raise exception 'feedback phishing test: monthly aggregate missing (%)', v_count;
+  end if;
+
+  -- A changed comment is analysed again and leaves the aggregates.
+  update public.ticket_satisfaction set comment = 'Doch alles gut, sehr freundlich.' where ticket_id = v_ticket;
+  if not exists (select 1 from public.feedback_theme_pending(v_template.tenant_id, 200) where ticket_id = v_ticket) then
+    raise exception 'feedback phishing test: changed comment not pending';
+  end if;
+  perform public.feedback_theme_refresh_monthly(v_template.tenant_id);
+  if exists (select 1 from public.feedback_theme_monthly
+             where tenant_id = v_template.tenant_id and theme_key = 'communication' and comment_count > 0) then
+    raise exception 'feedback phishing test: stale aggregate kept';
+  end if;
+  -- Failed analyses are retried at most three times.
+  update public.feedback_comment_themes
+  set state = 'failed', themes = '{}', sentiment = null, attempts = 3,
+      comment_hash = encode(sha256(convert_to('Doch alles gut, sehr freundlich.', 'UTF8')), 'hex'),
+      analyzed_at = timezone('utc', now()) - interval '2 hours'
+  where ticket_id = v_ticket;
+  if exists (select 1 from public.feedback_theme_pending(v_template.tenant_id, 200) where ticket_id = v_ticket) then
+    raise exception 'feedback phishing test: exhausted retry still pending';
+  end if;
+
+  -- Phishing settings and reports.
+  begin
+    insert into public.phishing_report_settings (tenant_id, enabled, report_address)
+    values (v_template.tenant_id, true, 'Phishing@Example.CH');
+    raise exception 'feedback phishing test: mixed-case report address accepted';
+  exception when check_violation then
+    null;
+  end;
+  insert into public.teams (tenant_id, department_id, name)
+  values (v_template.tenant_id, v_template.department_id, 'Security Test Team') returning id into v_team;
+  insert into public.phishing_report_settings (tenant_id, enabled, report_address, department_id, notify_team_id)
+  values (v_template.tenant_id, true, 'phishing@example.ch', v_template.department_id, v_team);
+  if (select priority_key from public.phishing_report_settings where tenant_id = v_template.tenant_id) <> 'high' then
+    raise exception 'feedback phishing test: default priority is not high';
+  end if;
+  insert into public.phishing_reports (tenant_id, ticket_id, reporter_id, channel, source, risk_score,
+    risk_level, fingerprint, analysis)
+  values (v_template.tenant_id, v_ticket, v_template.requester_id, 'portal', 'eml', 75, 'high',
+    repeat('a', 64), '{"findings": []}'::jsonb);
+  begin
+    insert into public.phishing_reports (tenant_id, channel, source, risk_score, risk_level, fingerprint)
+    values (v_template.tenant_id, 'fax', 'eml', 10, 'low', repeat('b', 64));
+    raise exception 'feedback phishing test: unknown channel accepted';
+  exception when check_violation then
+    null;
+  end;
+  -- Notification: an empty team falls back to department readers; never fails.
+  v_count := public.phishing_report_notify(v_template.tenant_id, v_ticket, '{"riskLevel": "high"}'::jsonb);
+  if v_count < 0 then
+    raise exception 'feedback phishing test: negative notification count';
+  end if;
+  begin
+    perform public.phishing_report_notify(v_template.tenant_id, gen_random_uuid(), '{}'::jsonb);
+    raise exception 'feedback phishing test: foreign ticket accepted';
+  exception when no_data_found then
+    null;
+  end;
+  raise notice 'feedback theme and phishing report checks ran';
+end;
+$$;
+rollback;
+SQL
+
 echo "PostgreSQL 16 migration and RLS integration checks passed."

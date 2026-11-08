@@ -14,6 +14,7 @@ import {
 import { useEffect, useMemo, useRef, useState, type JSX } from "react";
 
 import { supabase } from "./lib/supabase";
+import { PhishingReportButton } from "./phishing-report";
 import "./requester-portal.css";
 
 type IncidentStatus =
@@ -557,7 +558,7 @@ export function RequesterPortalPanel(props: {
             </>
           )}
         </div>
-        {onCreateTicket || onOpenTickets || onOpenShop ? (
+        {
           <div className="requester-portal__actions">
             {onCreateTicket ? (
               <button
@@ -589,8 +590,12 @@ export function RequesterPortalPanel(props: {
                 Shop
               </button>
             ) : null}
+            <PhishingReportButton
+              onOpenTicket={onOpenTicket}
+              tenantId={tenantId}
+            />
           </div>
-        ) : null}
+        }
       </header>
 
       {state === "loading" ? (

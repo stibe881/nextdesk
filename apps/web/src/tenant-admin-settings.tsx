@@ -54,6 +54,7 @@ import { TicketRules } from "./ticket-rules";
 import { TenantDataRetention } from "./tenant-data-retention";
 import { TenantOnboarding, type OnboardingTarget } from "./tenant-onboarding";
 import { AiGovernancePanel } from "./ai-governance-panel";
+import { PhishingReportSettings } from "./phishing-report";
 import { PortalAssistantSettings } from "./portal-assistant";
 import { ExchangeMailSettings } from "./exchange-mail-settings";
 import { SlaManagement } from "./sla-management";
@@ -3501,9 +3502,14 @@ export function TenantAdminSettings({
                                           <>
                                             {feature.feature_key ===
                                             "integrations.email" ? (
-                                              <ExchangeMailSettings
-                                                tenantId={tenantId}
-                                              />
+                                              <>
+                                                <ExchangeMailSettings
+                                                  tenantId={tenantId}
+                                                />
+                                                <PhishingReportSettings
+                                                  tenantId={tenantId}
+                                                />
+                                              </>
                                             ) : null}
                                             {feature.feature_key ===
                                             "ai.assist" ? (

@@ -93,6 +93,7 @@ function category(
     return "approval";
   }
   if (kind === "ticket.escalation_opened") return "escalation";
+  if (kind === "ticket.security_report") return "escalation";
   if (kind === "ticket.follow_up_due") return "follow_up";
   if (kind === "ticket.rule_reminder") return "follow_up";
   if (kind === "ticket.vendor_reminder") return "follow_up";
@@ -120,7 +121,8 @@ function payloadKind(
   | "vendor_reminder"
   | "requester_reminder"
   | "children_done"
-  | "kudos" {
+  | "kudos"
+  | "security_report" {
   if (kind === "ticket.department_question.asked") {
     return "department_question_asked";
   }
@@ -135,6 +137,7 @@ function payloadKind(
   if (kind === "ticket.requester_reminder") return "requester_reminder";
   if (kind === "ticket.children_done") return "children_done";
   if (kind === "ticket.kudos") return "kudos";
+  if (kind === "ticket.security_report") return "security_report";
   return fallback;
 }
 

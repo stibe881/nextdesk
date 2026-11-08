@@ -28,6 +28,7 @@ export type ApnsPayloadKind =
   | "vendor_reminder"
   | "children_done"
   | "kudos"
+  | "security_report"
   | "summary"
   | "test";
 
@@ -300,6 +301,13 @@ function alertFor(input: ApnsPayloadInput): { title: string; body: string } {
         body: `${from} hat ${ticketNumber} sehr gut bewertet${score}. Danke für deinen Einsatz!`,
       };
     }
+    case "security_report":
+      return {
+        title: "Phishing-Meldung",
+        body: subject
+          ? `Verdächtige E-Mail gemeldet (${ticketNumber}): ${subject}`
+          : `Eine verdächtige E-Mail wurde gemeldet (${ticketNumber}).`,
+      };
     case "children_done":
       return {
         title: "Teil-Tickets erledigt",

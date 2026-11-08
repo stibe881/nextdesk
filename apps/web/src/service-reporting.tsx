@@ -6,6 +6,7 @@ import {
   useState,
   type CSSProperties,
 } from "react";
+import { FeedbackInsights } from "./feedback-insights";
 import { functionErrorMessage } from "./lib/function-error";
 import {
   PREDEFINED_REPORTS,
@@ -609,7 +610,9 @@ export function ServiceReporting({
     distribution: true,
     time: true,
   });
-  const [view, setView] = useState<"metrics" | PredefinedReportKey>("overview");
+  const [view, setView] = useState<
+    "metrics" | "feedback" | PredefinedReportKey
+  >("overview");
   const [refreshKey, setRefreshKey] = useState(0);
   const requestVersion = useRef(0);
   const reportStyle = {
@@ -724,59 +727,70 @@ export function ServiceReporting({
         >
           Kennzahlen
         </button>
+        <button
+          aria-selected={view === "feedback"}
+          onClick={() => setView("feedback")}
+          role="tab"
+          type="button"
+        >
+          Feedback-Themen
+        </button>
       </nav>
-      <header className="service-reporting__header">
-        <div>
-          <p className="service-reporting__intro">
-            {view === "metrics"
-              ? "Kennzahlen des aktuellen Mandanten mit Vergleich zur unmittelbar vorhergehenden Periode."
-              : "Vordefinierte Berichte mit Vergleich zur unmittelbar vorhergehenden Periode. Jeder Bericht lässt sich als PDF exportieren."}
-          </p>
-        </div>
-        <div className="service-reporting__toolbar">
-          <div
-            className="service-reporting__period-switcher"
-            role="group"
-            aria-label="Berichtszeitraum auswählen"
-          >
-            {PERIODS.map((option) => (
+      {view === "feedback" ? <FeedbackInsights tenantId={tenantId} /> : null}
+      {view !== "feedback" ? (
+        <header className="service-reporting__header">
+          <div>
+            <p className="service-reporting__intro">
+              {view === "metrics"
+                ? "Kennzahlen des aktuellen Mandanten mit Vergleich zur unmittelbar vorhergehenden Periode."
+                : "Vordefinierte Berichte mit Vergleich zur unmittelbar vorhergehenden Periode. Jeder Bericht lässt sich als PDF exportieren."}
+            </p>
+          </div>
+          <div className="service-reporting__toolbar">
+            <div
+              className="service-reporting__period-switcher"
+              role="group"
+              aria-label="Berichtszeitraum auswählen"
+            >
+              {PERIODS.map((option) => (
+                <button
+                  aria-pressed={period === option.key}
+                  className="service-reporting__period-button"
+                  disabled={isLoading}
+                  key={option.key}
+                  onClick={() => selectPeriod(option.key)}
+                  type="button"
+                >
+                  {option.label}
+                </button>
+              ))}
               <button
-                aria-pressed={period === option.key}
+                aria-pressed={period === "custom"}
                 className="service-reporting__period-button"
                 disabled={isLoading}
-                key={option.key}
-                onClick={() => selectPeriod(option.key)}
+                onClick={() => selectPeriod("custom")}
                 type="button"
               >
-                {option.label}
+                Eigener Zeitraum
               </button>
-            ))}
-            <button
-              aria-pressed={period === "custom"}
-              className="service-reporting__period-button"
-              disabled={isLoading}
-              onClick={() => selectPeriod("custom")}
-              type="button"
-            >
-              Eigener Zeitraum
-            </button>
+            </div>
+            {view === "metrics" ? (
+              <button
+                className="service-reporting__toolbar-button"
+                disabled={isLoading}
+                onClick={() => setBuilderOpen((current) => !current)}
+                type="button"
+              >
+                {builderOpen
+                  ? "Zusammenstellung schliessen"
+                  : "Bericht zusammenstellen"}
+              </button>
+            ) : null}
           </div>
-          {view === "metrics" ? (
-            <button
-              className="service-reporting__toolbar-button"
-              disabled={isLoading}
-              onClick={() => setBuilderOpen((current) => !current)}
-              type="button"
-            >
-              {builderOpen
-                ? "Zusammenstellung schliessen"
-                : "Bericht zusammenstellen"}
-            </button>
-          ) : null}
-        </div>
-      </header>
+        </header>
+      ) : null}
 
-      {period === "custom" ? (
+      {period === "custom" && view !== "feedback" ? (
         <form
           className="service-reporting__custom-period"
           onSubmit={(event) => {
@@ -823,7 +837,7 @@ export function ServiceReporting({
         </form>
       ) : null}
 
-      {view !== "metrics" ? (
+      {view !== "metrics" && view !== "feedback" ? (
         <PredefinedReports
           onOpenTicketList={onOpenTicketList}
           branding={{ logoUrl: branding.logoUrl, name: branding.name }}

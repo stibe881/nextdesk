@@ -249,3 +249,10 @@ verify_jwt = false
 
 [functions.license-reclaim]
 verify_jwt = true
+
+[functions.feedback-insights]
+# Nightly wake-up via dispatch secret; the user path verifies the JWT itself.
+verify_jwt = false
+
+[functions.phishing-reports]
+verify_jwt = true

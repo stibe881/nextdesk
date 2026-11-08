@@ -230,3 +230,16 @@ Deno.test("customer praise names the requester and opens the ticket", () => {
     "00000000-0000-4000-8000-000000000003",
   );
 });
+
+Deno.test("phishing reports alert the security team", () => {
+  const payload = buildApnsPayload({
+    kind: "security_report",
+    tenantId: "00000000-0000-4000-8000-000000000001",
+    notificationId: "00000000-0000-4000-8000-000000000005",
+    ticketId: "00000000-0000-4000-8000-000000000006",
+    ticketNumber: "SEC-3",
+  });
+  const alert = (payload.aps as { alert: { title: string; body: string } }).alert;
+  assertEquals(alert.title, "Phishing-Meldung");
+  assertStringIncludes(alert.body, "SEC-3");
+});
