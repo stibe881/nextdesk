@@ -14,7 +14,9 @@ import {
 import { useEffect, useState, type FormEvent } from "react";
 import type { User } from "@supabase/supabase-js";
 
+import { HandbookCard, HandbookViewer } from "./handbooks";
 import { deleteAccount } from "./lib/account";
+import type { HandbookId } from "./lib/handbooks";
 import { ReplySnippetManager } from "./reply-snippets";
 import { supabase } from "./lib/supabase";
 import {
@@ -161,6 +163,7 @@ export function PersonalSettings({
   tenantId,
   user,
 }: PersonalSettingsProps) {
+  const [openHandbook, setOpenHandbook] = useState<HandbookId | null>(null);
   const [password, setPassword] = useState("");
   const [passwordConfirmation, setPasswordConfirmation] = useState("");
   const [saveState, setSaveState] = useState<
@@ -427,6 +430,16 @@ export function PersonalSettings({
     );
   }
 
+  if (openHandbook && tenantId) {
+    return (
+      <HandbookViewer
+        handbookId={openHandbook}
+        onBack={() => setOpenHandbook(null)}
+        tenantId={tenantId}
+      />
+    );
+  }
+
   return (
     <section
       aria-labelledby="personal-settings-heading"
@@ -589,6 +602,8 @@ export function PersonalSettings({
           </article>
         )}
       </div>
+
+      <HandbookCard onOpen={setOpenHandbook} tenantId={tenantId} />
 
       {tenantId &&
       (pushStatusState !== "loaded" ||
