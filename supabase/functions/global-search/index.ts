@@ -20,6 +20,17 @@ type SearchResult = {
   ticketId: string | null;
 };
 
+type PersonResult = {
+  kind: "entra" | "requester";
+  id: string;
+  displayName: string;
+  email: string | null;
+  jobTitle: string | null;
+  department: string | null;
+  accountEnabled: boolean | null;
+  openTicketCount: number;
+};
+
 class HttpError extends Error {
   constructor(
     readonly status: number,
@@ -176,6 +187,67 @@ function parseResults(value: unknown): SearchResult[] | null {
   return result;
 }
 
+function optionalText(value: unknown): string | null | false {
+  if (value === null) return null;
+  return typeof value === "string" ? value : false;
+}
+
+function parsePeople(value: unknown): PersonResult[] | null {
+  if (!Array.isArray(value)) return null;
+  const people: PersonResult[] = [];
+  for (const row of value) {
+    if (!isRecord(row)) return null;
+    const email = optionalText(row.email);
+    const jobTitle = optionalText(row.job_title);
+    const department = optionalText(row.department);
+    if (
+      (row.person_kind !== "entra" && row.person_kind !== "requester") ||
+      !isUuid(row.person_id) ||
+      typeof row.display_name !== "string" ||
+      email === false ||
+      jobTitle === false ||
+      department === false ||
+      (row.account_enabled !== null &&
+        typeof row.account_enabled !== "boolean") ||
+      typeof row.open_ticket_count !== "number"
+    ) {
+      return null;
+    }
+    people.push({
+      kind: row.person_kind,
+      id: row.person_id,
+      displayName: row.display_name,
+      email,
+      jobTitle,
+      department,
+      accountEnabled: row.account_enabled as boolean | null,
+      openTicketCount: row.open_ticket_count,
+    });
+  }
+  return people;
+}
+
+// People (from the Entra directory) are only searchable for ticket agents.
+// A failing people lookup must not break the rest of the search.
+async function searchPeople(
+  client: Client,
+  tenantId: string,
+  query: string,
+): Promise<PersonResult[]> {
+  const { data: isAgent, error: agentError } = await client.rpc(
+    "is_tenant_ticket_agent",
+    { p_tenant_id: tenantId },
+  );
+  if (agentError || isAgent !== true) return [];
+  const { data, error } = await client.rpc("search_directory_people", {
+    p_tenant_id: tenantId,
+    p_query: query,
+    p_limit: 8,
+  });
+  if (error) return [];
+  return parsePeople(data) ?? [];
+}
+
 async function requireMembership(
   client: Client,
   tenantId: string,
@@ -221,14 +293,14 @@ const handler = withSupabase(
         );
       }
       await requireMembership(context.supabase, action.tenantId);
-      const { data, error } = await context.supabase.rpc(
-        "search_global_workspace",
-        {
+      const [{ data, error }, people] = await Promise.all([
+        context.supabase.rpc("search_global_workspace", {
           p_tenant_id: action.tenantId,
           p_query: action.query,
           p_limit: 40,
-        },
-      );
+        }),
+        searchPeople(context.supabase, action.tenantId, action.query),
+      ]);
       if (error) {
         throw new HttpError(
           503,
@@ -244,7 +316,7 @@ const handler = withSupabase(
           "Die globale Suche konnte nicht gelesen werden.",
         );
       }
-      return json(request, { data: { results } });
+      return json(request, { data: { results, people } });
     } catch (error) {
       const failure =
         error instanceof HttpError

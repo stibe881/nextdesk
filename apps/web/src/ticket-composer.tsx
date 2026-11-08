@@ -648,9 +648,12 @@ export function TicketComposer({
   onCreated,
   onOpenKnowledgeArticle,
   onOpenTicket,
+  initialRequester = null,
 }: {
   currentUserId: string | null;
   tenantId: string;
+  /** Pre-selected requester (e.g. «Ticket für … erfassen» in the person overview). */
+  initialRequester?: RequesterContact | null;
   onCreated: (ticketId: string, ticketNumber: string) => void;
   /**
    * Opens an article in the knowledge base (closes the composer). The draft
@@ -1000,7 +1003,8 @@ export function TicketComposer({
         if (requesterScopeRef.current !== requestId) return;
         setRequesterManagement({ tenantId, allowed: true, error: "" });
         const restoredRequester = consumeDraftField("requester");
-        if (restoredRequester) setSelectedRequester(restoredRequester);
+        if (initialRequester) setSelectedRequester(initialRequester);
+        else if (restoredRequester) setSelectedRequester(restoredRequester);
       })
       .catch((requestError: unknown) => {
         if (requesterScopeRef.current !== requestId) return;

@@ -803,6 +803,14 @@ type TicketDetailProps = {
   requesterView?: boolean;
   /** Opens another ticket (e.g. a child or parent ticket of a split). */
   onOpenTicket?: ((ticketId: string) => void) | undefined;
+  /** Agents: opens the person overview of the requester. */
+  onOpenPerson?:
+    | ((person: {
+        requesterContactId: string | null;
+        userId: string | null;
+        displayName: string;
+      }) => void)
+    | undefined;
 };
 
 const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
@@ -3826,6 +3834,7 @@ export function TicketDetail({
   onOpenAsset,
   requesterView = false,
   onOpenTicket,
+  onOpenPerson,
 }: TicketDetailProps) {
   const [detail, setDetail] = useState<TicketDetailData | null>(null);
   // Answers from a ticket template form (only tickets created with one).
@@ -7652,8 +7661,32 @@ export function TicketDetail({
                   <div>
                     <dt>Anfragende Person</dt>
                     <dd>
-                      {formatPersonDisplayName(
-                        detail.requesterContact.displayName,
+                      {onOpenPerson && !requesterView ? (
+                        <button
+                          className="ticket-requester-link"
+                          onClick={() =>
+                            detail.requesterContact &&
+                            onOpenPerson({
+                              requesterContactId: detail.requesterContact.id,
+                              // requester_id can be the agent who recorded
+                              // the ticket; the contact is the real person.
+                              userId: null,
+                              displayName: formatPersonDisplayName(
+                                detail.requesterContact.displayName,
+                              ),
+                            })
+                          }
+                          title="Personenübersicht öffnen"
+                          type="button"
+                        >
+                          {formatPersonDisplayName(
+                            detail.requesterContact.displayName,
+                          )}
+                        </button>
+                      ) : (
+                        formatPersonDisplayName(
+                          detail.requesterContact.displayName,
+                        )
                       )}
                     </dd>
                   </div>

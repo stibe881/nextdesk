@@ -109,6 +109,8 @@ import { TicketDetail } from "./ticket-detail";
 import { TenantAdminSettings } from "./tenant-admin-settings";
 import { KnowledgeBase } from "./knowledge-base";
 import { GlobalSearch, type GlobalSearchResult } from "./global-search";
+import { PersonOverview } from "./person-overview";
+import type { PersonRef } from "./lib/person-overview";
 import { ServiceReporting } from "./service-reporting";
 import { TeamSupervision } from "./team-supervision";
 import { MyPrioritiesCard } from "./my-priorities";
@@ -1672,7 +1674,10 @@ function SignInScreen() {
       await supabase.auth
         .signInWithOtp({
           email: email.trim().toLowerCase(),
-          options: { emailRedirectTo: appRedirectUrl(), shouldCreateUser: false },
+          options: {
+            emailRedirectTo: appRedirectUrl(),
+            shouldCreateUser: false,
+          },
         })
         .catch(() => undefined);
     }
@@ -2887,6 +2892,12 @@ function AuthenticatedApp() {
     string | null
   >(null);
   const [ticketComposerOpen, setTicketComposerOpen] = useState(false);
+  // «Ticket für … erfassen» from the person overview.
+  const [composerRequester, setComposerRequester] = useState<{
+    id: string;
+    displayName: string;
+  } | null>(null);
+  const [personOverview, setPersonOverview] = useState<PersonRef | null>(null);
   const [knowledgeFocusArticleId, setKnowledgeFocusArticleId] = useState<
     string | undefined
   >(initialKnowledgeDeepLink ?? undefined);
@@ -5000,6 +5011,7 @@ function AuthenticatedApp() {
     if (activeTenant)
       clearTicketComposerDraft(session?.user.id ?? null, activeTenant.id);
     setTicketComposerOpen(false);
+    setComposerRequester(null);
   }
 
   function consumeQuickCreateRequest(requestId: number) {
@@ -5813,6 +5825,11 @@ function AuthenticatedApp() {
                   }
                   setSection(sectionFromGlobalSearchResult(result));
                 }}
+                onSelectPerson={
+                  canWorkTickets
+                    ? (person) => setPersonOverview(person)
+                    : undefined
+                }
                 onSelectRecent={(item) => {
                   setGlobalSearchTarget(null);
                   if (item.itemType === "ticket") {
@@ -7168,10 +7185,13 @@ function AuthenticatedApp() {
             </button>
             <TicketComposer
               currentUserId={session?.user.id ?? null}
+              initialRequester={composerRequester}
+              key={composerRequester?.id ?? "self"}
               onCreated={(ticketId, ticketNumber) => {
                 setTicketPage(0);
                 setDashboardRevision((value) => value + 1);
                 setTicketComposerOpen(false);
+                setComposerRequester(null);
                 setSection("Tickets");
                 setSelectedTicketId(ticketId);
                 setCreatedTicketToast({ ticketId, ticketNumber });
@@ -7267,11 +7287,42 @@ function AuthenticatedApp() {
                 : undefined
             }
             onOpenTicket={(ticketId) => setSelectedTicketId(ticketId)}
+            onOpenPerson={
+              canWorkTickets ? (person) => setPersonOverview(person) : undefined
+            }
             requesterView={!canWorkTickets}
             tenantId={activeTenant.id}
             ticketId={selectedTicketId}
           />
         )}
+      {activeTenant && personOverview && canWorkTickets && (
+        <PersonOverview
+          onClose={() => setPersonOverview(null)}
+          onCreateTicket={(requester) => {
+            setPersonOverview(null);
+            setComposerRequester(requester);
+            setTicketComposerOpen(true);
+          }}
+          onOpenAsset={
+            isFeatureEnabled("assets.management")
+              ? (query) => {
+                  setPersonOverview(null);
+                  setSelectedTicketId(null);
+                  setGlobalSearchTarget(null);
+                  setAssetFocusQuery({ query, id: Date.now() });
+                  setSection("Assets");
+                }
+              : undefined
+          }
+          onOpenTicket={(ticketId) => {
+            setPersonOverview(null);
+            setSection("Tickets");
+            setSelectedTicketId(ticketId);
+          }}
+          person={personOverview}
+          tenantId={activeTenant.id}
+        />
+      )}
     </div>
   );
 }

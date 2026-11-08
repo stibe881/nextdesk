@@ -51,6 +51,9 @@ verify_jwt = true
 [functions.ticket-requester-context]
 verify_jwt = true
 
+[functions.person-overview]
+verify_jwt = true
+
 [functions.ticket-operations]
 verify_jwt = true
 

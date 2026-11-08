@@ -141,6 +141,31 @@ export const SHOTS = [
     },
   },
   {
+    name: "ag-personensuche",
+    persona: "agent",
+    async run(h) {
+      await h.open();
+      await h.page.getByLabel("Global suchen").fill("brunner");
+      await h.waitText("Personen aus Microsoft Entra");
+      await h.settle(300);
+    },
+  },
+  {
+    name: "ag-person",
+    persona: "agent",
+    async run(h) {
+      await h.open();
+      await h.page.getByLabel("Global suchen").fill("lena");
+      await h.waitText("Personen aus Microsoft Entra");
+      await h.page
+        .locator(".global-search__person")
+        .filter({ hasText: "Lena Brunner" })
+        .click();
+      await h.waitText("Ticket für Lena erfassen");
+      await h.settle(300);
+    },
+  },
+  {
     name: "ag-antworten",
     persona: "agent",
     async run(h) {

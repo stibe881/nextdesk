@@ -6,6 +6,13 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 import { History, LoaderCircle, Search, X } from "lucide-react";
+import {
+  parsePersonSearchHits,
+  personInitials,
+  personRefFromHit,
+  type PersonRef,
+  type PersonSearchHit,
+} from "./lib/person-overview";
 import { functionErrorMessage } from "./lib/function-error";
 import { isSupabaseConfigured, supabase } from "./lib/supabase";
 import {
@@ -14,6 +21,7 @@ import {
   recentItemAgeLabel,
   type RecentItem,
 } from "./lib/recent-items";
+import "./person-overview.css";
 
 export type GlobalSearchResult = {
   resultType:
@@ -34,8 +42,19 @@ type GlobalSearchProps = {
   onSelect: (result: GlobalSearchResult) => void;
   /** «Zuletzt angesehen»: shown while the search field is empty. */
   onSelectRecent?: ((item: RecentItem) => void) | undefined;
+  /** Agents only: people from the Entra directory. */
+  onSelectPerson?: ((person: PersonRef) => void) | undefined;
   scope?: GlobalSearchScope;
 };
+
+type SearchTab = "all" | "people" | GlobalSearchResult["section"];
+
+const PEOPLE_PREVIEW = 3;
+
+export function parsePeople(value: unknown): PersonSearchHit[] {
+  if (!isRecord(value) || !isRecord(value.data)) return [];
+  return parsePersonSearchHits(value.data.people);
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -115,8 +134,11 @@ export function GlobalSearch({
   tenantId,
   onSelect,
   onSelectRecent,
+  onSelectPerson,
   scope = "all",
 }: GlobalSearchProps) {
+  const [people, setPeople] = useState<PersonSearchHit[]>([]);
+  const [tab, setTab] = useState<SearchTab>("all");
   const [recentItems, setRecentItems] = useState<RecentItem[] | null>(null);
   const [recentError, setRecentError] = useState("");
   const panelRef = useRef<HTMLElement | null>(null);
@@ -129,7 +151,36 @@ export function GlobalSearch({
   const inputRef = useRef<HTMLInputElement | null>(null);
   const resultsId = useId();
   const normalizedQuery = query.trim();
-  const visibleResults = filterGlobalSearchResults(results, scope);
+  const showPeople = scope === "all" && Boolean(onSelectPerson);
+  const shownPeople = showPeople ? people : [];
+  const scopedResults = filterGlobalSearchResults(results, scope);
+  const sectionCounts = new Map<GlobalSearchResult["section"], number>();
+  for (const result of scopedResults) {
+    sectionCounts.set(
+      result.section,
+      (sectionCounts.get(result.section) ?? 0) + 1,
+    );
+  }
+  const activeTab: SearchTab =
+    tab === "all" ||
+    (tab === "people" && shownPeople.length > 0) ||
+    (tab !== "people" && sectionCounts.has(tab))
+      ? tab
+      : "all";
+  const visibleResults =
+    activeTab === "all"
+      ? scopedResults
+      : activeTab === "people"
+        ? []
+        : scopedResults.filter((result) => result.section === activeTab);
+  const visiblePeople =
+    activeTab === "all"
+      ? shownPeople.slice(0, PEOPLE_PREVIEW)
+      : activeTab === "people"
+        ? shownPeople
+        : [];
+  const showTabs =
+    shownPeople.length > 0 && scopedResults.length + shownPeople.length > 0;
 
   useEffect(() => {
     requestVersion.current += 1;
@@ -141,6 +192,7 @@ export function GlobalSearch({
       normalizedQuery.length < 2
     ) {
       setResults([]);
+      setPeople([]);
       setLoading(false);
       setError("");
       return;
@@ -159,10 +211,13 @@ export function GlobalSearch({
           const parsed = parseResults(data);
           if (!parsed) throw new Error("invalid_global_search_response");
           setResults(filterGlobalSearchResults(parsed, scope));
+          setPeople(parsePeople(data));
+          setTab("all");
         })
         .catch(async (searchError: unknown) => {
           if (requestVersion.current !== version) return;
           setResults([]);
+          setPeople([]);
           setError(
             await functionErrorMessage(
               searchError,
@@ -192,6 +247,7 @@ export function GlobalSearch({
   function clear() {
     setQuery("");
     setResults([]);
+    setPeople([]);
     setError("");
     inputRef.current?.focus();
   }
@@ -353,7 +409,11 @@ export function GlobalSearch({
       {showPanel ? (
         <section
           aria-label="Globale Suchtreffer"
-          className="global-search__panel"
+          className={
+            shownPeople.length > 0
+              ? "global-search__panel global-search__panel--wide"
+              : "global-search__panel"
+          }
           id={resultsId}
           onMouseDown={(event) => event.preventDefault()}
           ref={panelRef}
@@ -367,32 +427,138 @@ export function GlobalSearch({
             <p className="global-search__state" role="status">
               Durchsuche Ihre zugänglichen Inhalte …
             </p>
-          ) : visibleResults.length === 0 ? (
+          ) : scopedResults.length === 0 && shownPeople.length === 0 ? (
             <p className="global-search__state">
               Keine zugänglichen Treffer für «{normalizedQuery}».
             </p>
           ) : (
-            <ul>
-              {visibleResults.map((result) => (
-                <li key={`${result.resultType}:${result.entityId}`}>
-                  <button
-                    onClick={() => {
-                      onSelect(result);
-                      setIsOpen(false);
-                    }}
-                    role="option"
-                    aria-selected={false}
-                    type="button"
-                  >
-                    <span className="global-search__result-type">
-                      {typeLabel[result.resultType]}
-                    </span>
-                    <strong>{result.title}</strong>
-                    <span>{result.detail}</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
+            <>
+              {showTabs ? (
+                <div
+                  className="global-search__tabs"
+                  role="group"
+                  aria-label="Treffer filtern"
+                >
+                  {(
+                    [
+                      ["all", "Alle"],
+                      ["people", `Personen ${shownPeople.length}`],
+                      ...[...sectionCounts.entries()].map(
+                        ([section, count]) =>
+                          [section, `${section} ${count}`] as const,
+                      ),
+                    ] as Array<readonly [SearchTab, string]>
+                  ).map(([key, label]) => (
+                    <button
+                      aria-pressed={activeTab === key}
+                      className={activeTab === key ? "is-active" : undefined}
+                      key={key}
+                      onClick={() => setTab(key)}
+                      type="button"
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+              {visiblePeople.length > 0 ? (
+                <>
+                  <p className="global-search__section">
+                    <span>Personen</span>
+                  </p>
+                  <ul>
+                    {visiblePeople.map((person) => (
+                      <li key={`person:${person.kind}:${person.id}`}>
+                        <button
+                          aria-selected={false}
+                          className="global-search__person"
+                          onClick={() => {
+                            onSelectPerson?.(personRefFromHit(person));
+                            setIsOpen(false);
+                          }}
+                          role="option"
+                          type="button"
+                        >
+                          <span className="person-avatar" aria-hidden="true">
+                            {personInitials(person.displayName)}
+                          </span>
+                          <span className="global-search__person-text">
+                            <strong>{person.displayName}</strong>
+                            <span>
+                              {[
+                                person.jobTitle,
+                                person.department,
+                                person.email,
+                              ]
+                                .filter(Boolean)
+                                .join(" · ") || "Keine weiteren Angaben"}
+                            </span>
+                          </span>
+                          <span className="global-search__person-meta">
+                            {person.accountEnabled === false ? (
+                              <span className="person-chip person-chip--bad">
+                                Deaktiviert
+                              </span>
+                            ) : person.openTicketCount > 0 ? (
+                              <span className="person-chip person-chip--primary">
+                                {person.openTicketCount} offen
+                              </span>
+                            ) : null}
+                            <span className="person-chip">
+                              {person.kind === "entra" ? "Entra" : "Kontakt"}
+                            </span>
+                          </span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                  {activeTab === "all" &&
+                  shownPeople.length > PEOPLE_PREVIEW ? (
+                    <button
+                      className="person-more global-search__more"
+                      onClick={() => setTab("people")}
+                      type="button"
+                    >
+                      Alle {shownPeople.length} Personen anzeigen
+                    </button>
+                  ) : null}
+                  {visibleResults.length > 0 ? (
+                    <p className="global-search__section">
+                      <span>Weitere Treffer</span>
+                    </p>
+                  ) : null}
+                </>
+              ) : null}
+              {visibleResults.length > 0 ? (
+                <ul>
+                  {visibleResults.map((result) => (
+                    <li key={`${result.resultType}:${result.entityId}`}>
+                      <button
+                        onClick={() => {
+                          onSelect(result);
+                          setIsOpen(false);
+                        }}
+                        role="option"
+                        aria-selected={false}
+                        type="button"
+                      >
+                        <span className="global-search__result-type">
+                          {typeLabel[result.resultType]}
+                        </span>
+                        <strong>{result.title}</strong>
+                        <span>{result.detail}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+              {shownPeople.length > 0 ? (
+                <p className="global-search__footnote">
+                  Personen aus Microsoft Entra und Ticketkontakten · nur für
+                  Agenten
+                </p>
+              ) : null}
+            </>
           )}
         </section>
       ) : null}
