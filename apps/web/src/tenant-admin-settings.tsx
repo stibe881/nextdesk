@@ -32,6 +32,7 @@ import { supabase } from "./lib/supabase";
 import { functionErrorMessage } from "./lib/function-error";
 import {
   groupRolePermissions,
+  permissionHint,
   roleScopeLabel,
 } from "./lib/role-management-presentation";
 import {
@@ -2251,9 +2252,16 @@ export function TenantAdminSettings({
             <ul>
               {group.permissions.map((permission) => (
                 <li key={permission.code}>
-                  <span>{permission.description}</span>
-                  {permission.isSensitive ? (
-                    <small>Erweiterter Zugriff</small>
+                  <span className="role-editor__option-name">
+                    {permission.description}
+                    {permission.isSensitive ? (
+                      <span className="role-editor__badge">Erweitert</span>
+                    ) : null}
+                  </span>
+                  {permissionHint(permission.code) ? (
+                    <span className="role-editor__option-hint">
+                      {permissionHint(permission.code)}
+                    </span>
                   ) : null}
                 </li>
               ))}
@@ -2365,10 +2373,21 @@ export function TenantAdminSettings({
                               toggleRolePermission(permission.code, setForm)
                             }
                           />
-                          <span>{permission.description}</span>
-                          {permission.isSensitive ? (
-                            <small>Erweitert</small>
-                          ) : null}
+                          <span className="role-editor__option-text">
+                            <span className="role-editor__option-name">
+                              {permission.description}
+                              {permission.isSensitive ? (
+                                <span className="role-editor__badge">
+                                  Erweitert
+                                </span>
+                              ) : null}
+                            </span>
+                            {permissionHint(permission.code) ? (
+                              <span className="role-editor__option-hint">
+                                {permissionHint(permission.code)}
+                              </span>
+                            ) : null}
+                          </span>
                         </label>
                       ))}
                     </div>
