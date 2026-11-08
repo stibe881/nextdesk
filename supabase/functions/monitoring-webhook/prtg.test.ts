@@ -53,6 +53,14 @@ Deno.test("status texts map to kinds", () => {
   assertEquals(classifyStatus("Up (was: Down)"), "up");
   assertEquals(classifyStatus("Paused (paused by user)"), "ignore");
   assertEquals(classifyStatus("Gemischt"), null);
+  // German PRTG server language.
+  assertEquals(classifyStatus("Fehler"), "down");
+  assertEquals(classifyStatus("Fehler (Teilweise)"), "down");
+  assertEquals(classifyStatus("Warnung"), "warning");
+  assertEquals(classifyStatus("Ungewöhnlich"), "warning");
+  assertEquals(classifyStatus("OK"), "up");
+  assertEquals(classifyStatus("Pausiert (durch Benutzer)"), "ignore");
+  assertEquals(classifyStatus("Unbekannt"), "ignore");
   assertEquals(classifyStatus(null), null);
 });
 
