@@ -203,6 +203,14 @@ Praktische Helfer:
 
 Wird eine SLA verletzt, erfassen Sie die **Ursache der SLA-Verletzung**.
 
+### Bewertung der anfragenden Person
+
+Sobald ein Ticket **gelöst** ist, kann die anfragende Person es mit 1 bis 5
+Sternen und einem Kommentar bewerten – im Web und in der iPhone-App. Eine
+abgegebene Bewertung sehen Sie im Ticket unter «Bewertung der anfragenden
+Person». Die Auswertung über alle Tickets finden Sie unter **Berichte →
+Feedback-Themen** (mit KI-Assistenz zusätzlich nach Themen gruppiert).
+
 ## Ticket für jemanden erfassen
 
 Über **+ → Ticket erfassen** öffnen Sie das Formular. Als Agent wählen Sie

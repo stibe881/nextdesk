@@ -1001,6 +1001,30 @@ const HANDLERS = {
       })),
     });
   },
+  // Satisfaction rating: the requester may rate resolved or closed tickets.
+  "ticket-feedback": (body, { persona }) => {
+    const ticket = D.TICKETS.find((entry) => entry.id === body.ticketId);
+    if (!ticket) return fail("ticket_access_denied", 403);
+    const isRatable =
+      ticket.status_is_closed || ticket.status_key === "resolved";
+    if (body.type === "submit") {
+      return ok({
+        satisfaction: { score: body.score, comment: body.comment ?? null },
+      });
+    }
+    return ok({
+      satisfaction: null,
+      canRate: isRatable && ticket.requester_id === persona.id,
+      ticket: {
+        status: {
+          key: ticket.status_key,
+          label: ticket.status_key,
+          isClosed: ticket.status_is_closed,
+          isRatable,
+        },
+      },
+    });
+  },
   "ticket-actions": (body, { persona }) => {
     if (body.type === "getFormOptions") {
       const self = { id: persona.id, displayName: persona.name };

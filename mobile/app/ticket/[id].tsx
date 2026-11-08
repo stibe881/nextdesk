@@ -27,6 +27,8 @@ import { useMobileNetworkStatus } from "@/components/offline-status";
 import { RequesterPicker } from "@/components/requester-picker";
 import { DepartmentQuestions } from "@/components/department-questions";
 import { RequesterTicketProgress } from "@/components/requester-ticket-progress";
+import { TicketSatisfactionCard } from "@/components/ticket-satisfaction-card";
+import { isRatableTicketStatus } from "@/lib/ticket-satisfaction-model";
 import { reminderAnswerFromParam } from "@/lib/requester-progress";
 import { personRoute } from "@/lib/person-overview";
 import { TicketConversation } from "@/components/ticket-conversation";
@@ -1699,6 +1701,14 @@ export default function TicketDetailScreen() {
               key={`${ticket.id}:${reminderAnswer ?? ""}`}
               onChanged={() => void load(false)}
               refreshKey={`${ticket.statusId}:${ticket.resolvedAt ?? ""}:${ticket.comments.length}`}
+              ticketId={ticket.id}
+            />
+          ) : null}
+
+          {tenant && isRatableTicketStatus(status) ? (
+            <TicketSatisfactionCard
+              refreshKey={`${ticket.statusId}:${ticket.resolvedAt ?? ""}`}
+              tenantId={tenant.id}
               ticketId={ticket.id}
             />
           ) : null}
