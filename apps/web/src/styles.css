@@ -21218,3 +21218,109 @@ html:has(.embed-status-badge) body {
 .shop__person-picker-results .shop__muted {
   padding: 6px 8px;
 }
+
+/* Satisfaction rating by the requester (ticket-detail.tsx). Shown once the
+   ticket is resolved or closed. */
+.ticket-satisfaction {
+  display: grid;
+  gap: 12px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 16px 18px;
+  background: var(--surface);
+}
+
+.ticket-satisfaction h3 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 15px;
+}
+
+.ticket-satisfaction form {
+  display: grid;
+  gap: 12px;
+}
+
+.ticket-satisfaction__stars {
+  display: flex;
+  gap: 4px;
+}
+
+.ticket-satisfaction__star {
+  display: inline-grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  min-height: 0;
+  border: 0;
+  border-radius: 10px;
+  padding: 0;
+  background: transparent;
+  color: var(--control-border);
+  cursor: pointer;
+}
+
+span.ticket-satisfaction__stars .ticket-satisfaction__star,
+svg.ticket-satisfaction__star {
+  width: auto;
+  height: auto;
+  cursor: default;
+}
+
+.ticket-satisfaction__star:hover,
+.ticket-satisfaction__star:focus-visible {
+  background: var(--surface-subtle);
+}
+
+.ticket-satisfaction__star.is-active {
+  color: #d97706;
+}
+
+.ticket-satisfaction__star.is-active svg,
+svg.ticket-satisfaction__star.is-active {
+  fill: currentColor;
+}
+
+.ticket-satisfaction__comment {
+  display: grid;
+  gap: 6px;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.ticket-satisfaction__comment textarea {
+  width: 100%;
+  resize: vertical;
+}
+
+.ticket-satisfaction__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.ticket-satisfaction__hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.ticket-satisfaction__success {
+  margin: 0;
+  color: var(--success);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.ticket-satisfaction__result {
+  display: grid;
+  gap: 6px;
+}
+
+.ticket-satisfaction__result p {
+  margin: 0;
+  color: var(--text);
+  font-size: 13px;
+}

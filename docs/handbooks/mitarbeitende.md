@@ -114,6 +114,25 @@ Unternehmen eingerichtet). Sie können auch direkt auf diese E-Mail antworten.
 
 ![Ticket mit Fortschritt und Nachrichtenverlauf](images/ma-ticket-verlauf.jpg)
 
+## Ticket bewerten
+
+Sobald Ihr Ticket **gelöst** ist, erscheint im Ticket unter «Fortschritt» die
+Frage **Wie zufrieden sind Sie?**
+
+1. Wählen Sie 1 bis 5 Sterne.
+2. Schreiben Sie bei Bedarf einen kurzen Kommentar – was war gut, was können
+   wir besser machen?
+3. Klicken Sie auf **Bewertung senden**.
+
+Sie können Ihre Bewertung innerhalb von 14 Tagen **einmal ändern**
+(**Bewertung ändern**). Bewerten können nur Sie als anfragende bzw.
+betroffene Person. Ihre Rückmeldung hilft dem Support-Team, besser zu werden.
+
+In der iPhone-App finden Sie die Bewertung im Ticket direkt unter dem
+Fortschritt.
+
+![Bewertung eines gelösten Tickets mit Sternen und Kommentar](images/ma-bewertung.jpg)
+
 ## Wissensdatenbank
 
 In der **Wissensdatenbank** finden Sie Anleitungen, z. B. «VPN einrichten»

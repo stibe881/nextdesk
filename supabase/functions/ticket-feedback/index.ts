@@ -110,6 +110,12 @@ function json(
   });
 }
 
+export function isRatableStatus(
+  status: Pick<TicketStatus, "key" | "is_closed">,
+): boolean {
+  return status.is_closed || status.key === "resolved";
+}
+
 function getStatus(value: unknown): TicketStatus | null {
   const status = Array.isArray(value) ? (value[0] ?? null) : value;
   if (
@@ -239,6 +245,9 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
   const actorCanRate =
     callerTicket.requester_id === actorId ||
     callerTicket.affected_user_id === actorId;
+  // Requesters may rate as soon as the ticket is resolved, not only once it
+  // has been closed.
+  const statusIsRatable = isRatableStatus(status);
 
   if (action.type === "get") {
     // Select through the caller-scoped client; submitted_by is read only to
@@ -256,7 +265,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       );
 
     const satisfaction = (data ?? null) as SatisfactionRow | null;
-    let canRate = status.is_closed && actorCanRate;
+    let canRate = statusIsRatable && actorCanRate;
     if (satisfaction) {
       canRate =
         canRate &&
@@ -288,14 +297,15 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
             key: status.key,
             label: status.label,
             isClosed: status.is_closed,
+            isRatable: statusIsRatable,
           },
         },
       },
     });
   }
 
-  if (!status.is_closed)
-    return json(request, { error: { code: "ticket_not_closed" } }, 422);
+  if (!statusIsRatable)
+    return json(request, { error: { code: "ticket_not_resolved" } }, 422);
   if (!actorCanRate)
     return json(
       request,

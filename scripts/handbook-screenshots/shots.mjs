@@ -78,6 +78,21 @@ export const SHOTS = [
     },
   },
   {
+    name: "ma-bewertung",
+    persona: "employee",
+    async run(h) {
+      await h.open();
+      await h.clickText("Neuer Bildschirm für Homeoffice");
+      const card = h.page.locator(".ticket-satisfaction");
+      await card.waitFor();
+      await card.getByRole("radio", { name: "4 von 5 Sternen" }).click();
+      await card
+        .getByRole("textbox")
+        .fill("Schnelle Lieferung, vielen Dank!");
+      await card.scrollIntoViewIfNeeded();
+    },
+  },
+  {
     name: "ma-wissen",
     persona: "employee",
     async run(h) {

@@ -620,6 +620,8 @@ type TicketFeedbackData = {
   satisfaction: TicketSatisfaction | null;
   canRate: boolean;
   isClosed: boolean;
+  /** Resolved or closed: the requester may rate. */
+  isRatable: boolean;
 };
 
 type TicketQualityReview = {
@@ -1623,6 +1625,10 @@ function parseTicketFeedback(value: unknown): TicketFeedbackData | null {
     satisfaction: data.satisfaction as TicketSatisfaction | null,
     canRate: data.canRate,
     isClosed: status.isClosed,
+    isRatable:
+      typeof status.isRatable === "boolean"
+        ? status.isRatable
+        : status.isClosed,
   };
 }
 
@@ -2565,7 +2571,7 @@ function feedbackErrorMessage(
   }
   if (status === 422) {
     return action === "submit"
-      ? "Die Bewertung kann derzeit nicht abgegeben werden. Sie ist nur für ein geschlossenes Ticket möglich."
+      ? "Die Bewertung kann derzeit nicht abgegeben werden. Sie ist erst möglich, wenn das Ticket gelöst ist."
       : "Die Zufriedenheitsdaten können für dieses Ticket derzeit nicht verarbeitet werden.";
   }
   return action === "submit"
@@ -4082,6 +4088,14 @@ export function TicketDetail({
       (status) => status.id === detail.ticket.status_id && status.is_closed,
     ),
   );
+  // Requesters may rate once the ticket is resolved ("Gelöst") or closed.
+  const ticketIsRatable = Boolean(
+    detail?.statuses.some(
+      (status) =>
+        status.id === detail.ticket.status_id &&
+        (status.is_closed || status.key === "resolved"),
+    ),
+  );
   const ticketIsResolved = Boolean(detail?.ticket.resolved_at);
   const isResolutionParticipant = Boolean(
     currentUserId &&
@@ -5034,7 +5048,7 @@ export function TicketDetail({
   ]);
 
   useEffect(() => {
-    if (!isClosureContextOpen || !ticketIsClosed) {
+    if (!ticketIsRatable) {
       setFeedback(null);
       setFeedbackError("");
       setFeedbackSuccess("");
@@ -5045,7 +5059,7 @@ export function TicketDetail({
     return () => {
       feedbackRequestSequence.current += 1;
     };
-  }, [isClosureContextOpen, loadFeedback, ticketIsClosed]);
+  }, [loadFeedback, ticketIsRatable]);
 
   useEffect(() => {
     if (!isClosureContextOpen || !ticketIsClosed) {
@@ -5429,9 +5443,9 @@ export function TicketDetail({
 
   async function saveFeedback(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!feedback?.canRate || !feedback.isClosed) {
+    if (!feedback?.canRate || !feedback.isRatable) {
       setFeedbackError(
-        "Eine Bewertung kann nur für ein geschlossenes Ticket abgegeben werden.",
+        "Eine Bewertung ist erst möglich, wenn das Ticket gelöst ist.",
       );
       return;
     }
@@ -7615,6 +7629,121 @@ export function TicketDetail({
                 tenantId={tenantId}
                 ticketId={detail.ticket.id}
               />
+            ) : null}
+            {ticketIsRatable && (requesterView || feedback?.satisfaction) ? (
+              <section
+                aria-labelledby="ticket-satisfaction-heading"
+                className="ticket-satisfaction"
+              >
+                <h3 id="ticket-satisfaction-heading">
+                  {requesterView
+                    ? "Wie zufrieden sind Sie?"
+                    : "Bewertung der anfragenden Person"}
+                </h3>
+                {feedbackLoading ? (
+                  <p className="ticket-satisfaction__hint">
+                    Bewertung wird geladen …
+                  </p>
+                ) : feedback?.canRate ? (
+                  <form onSubmit={saveFeedback}>
+                    <div
+                      aria-label="Bewertung von 1 bis 5 Sternen"
+                      className="ticket-satisfaction__stars"
+                      role="radiogroup"
+                    >
+                      {[1, 2, 3, 4, 5].map((value) => (
+                        <button
+                          aria-checked={feedbackScore === value}
+                          aria-label={`${value} von 5 Sternen`}
+                          className={
+                            feedbackScore !== null && value <= feedbackScore
+                              ? "ticket-satisfaction__star is-active"
+                              : "ticket-satisfaction__star"
+                          }
+                          key={value}
+                          onClick={() => setFeedbackScore(value)}
+                          role="radio"
+                          type="button"
+                        >
+                          <Star
+                            aria-hidden="true"
+                            size={24}
+                            strokeWidth={1.8}
+                          />
+                        </button>
+                      ))}
+                    </div>
+                    <label className="ticket-satisfaction__comment">
+                      Kommentar (optional)
+                      <textarea
+                        maxLength={3000}
+                        onChange={(event) =>
+                          setFeedbackComment(event.target.value)
+                        }
+                        placeholder="Was war gut, was können wir besser machen?"
+                        rows={3}
+                        value={feedbackComment}
+                      />
+                    </label>
+                    <div className="ticket-satisfaction__actions">
+                      <button
+                        className="primary-button"
+                        disabled={
+                          feedbackScore === null || pendingAction === "feedback"
+                        }
+                        type="submit"
+                      >
+                        {pendingAction === "feedback"
+                          ? "Wird gespeichert …"
+                          : feedback.satisfaction
+                            ? "Bewertung ändern"
+                            : "Bewertung senden"}
+                      </button>
+                      {feedback.satisfaction ? (
+                        <span className="ticket-satisfaction__hint">
+                          Eine Bewertung kann innerhalb von 14 Tagen einmal
+                          geändert werden.
+                        </span>
+                      ) : null}
+                    </div>
+                  </form>
+                ) : feedback?.satisfaction?.score ? (
+                  <div className="ticket-satisfaction__result">
+                    <span
+                      aria-label={`${feedback.satisfaction.score} von 5 Sternen`}
+                      className="ticket-satisfaction__stars"
+                      role="img"
+                    >
+                      {[1, 2, 3, 4, 5].map((value) => (
+                        <Star
+                          aria-hidden="true"
+                          className={
+                            value <= (feedback.satisfaction?.score ?? 0)
+                              ? "ticket-satisfaction__star is-active"
+                              : "ticket-satisfaction__star"
+                          }
+                          key={value}
+                          size={20}
+                          strokeWidth={1.8}
+                        />
+                      ))}
+                    </span>
+                    {feedback.satisfaction.comment ? (
+                      <p>{feedback.satisfaction.comment}</p>
+                    ) : null}
+                  </div>
+                ) : null}
+                {feedbackError ? (
+                  <p className="ticket-detail-message error" role="alert">
+                    {feedbackError}
+                  </p>
+                ) : null}
+                {feedbackSuccess ? (
+                  <p className="ticket-satisfaction__success" role="status">
+                    {feedbackSuccess}
+                  </p>
+                ) : null}
+              </section>
             ) : null}
             {requesterView ? (
               <dl className="ticket-detail-facts-grid">
