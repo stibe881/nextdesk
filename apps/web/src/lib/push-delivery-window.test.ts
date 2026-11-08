@@ -7,6 +7,7 @@ import {
 
 const base: PushPreferences = {
   enabledCategories: [],
+  deliveryDays: [1, 2, 3, 4, 5, 6, 7],
   quietHoursEnabled: false,
   quietStart: 22,
   quietEnd: 7,
@@ -23,6 +24,7 @@ describe("persönliche Benachrichtigungszeit", () => {
       mode: "window",
       startHour: 6,
       endHour: 17,
+      days: [1, 2, 3, 4, 5, 6, 7],
     });
     expect(saved).toMatchObject({
       quietHoursEnabled: true,
@@ -33,6 +35,7 @@ describe("persönliche Benachrichtigungszeit", () => {
       mode: "window",
       startHour: 6,
       endHour: 17,
+      days: [1, 2, 3, 4, 5, 6, 7],
     });
   });
 
@@ -41,12 +44,14 @@ describe("persönliche Benachrichtigungszeit", () => {
       mode: "window",
       startHour: 7,
       endHour: 24,
+      days: [1, 2, 3, 4, 5, 6, 7],
     });
     expect(saved).toMatchObject({ quietStart: 0, quietEnd: 7 });
     expect(deliveryWindowFromPreferences(saved)).toEqual({
       mode: "window",
       startHour: 7,
       endHour: 24,
+      days: [1, 2, 3, 4, 5, 6, 7],
     });
   });
 
@@ -55,12 +60,14 @@ describe("persönliche Benachrichtigungszeit", () => {
       mode: "window",
       startHour: 22,
       endHour: 6,
+      days: [1, 2, 3, 4, 5, 6, 7],
     });
     expect(saved).toMatchObject({ quietStart: 6, quietEnd: 22 });
     expect(deliveryWindowFromPreferences(saved)).toEqual({
       mode: "window",
       startHour: 22,
       endHour: 6,
+      days: [1, 2, 3, 4, 5, 6, 7],
     });
   });
 
@@ -70,5 +77,48 @@ describe("persönliche Benachrichtigungszeit", () => {
       { mode: "always" },
     );
     expect(saved.quietHoursEnabled).toBe(false);
+  });
+
+  it("speichert Wochentage und liest sie zurück", () => {
+    const saved = preferencesWithDeliveryWindow(base, {
+      mode: "window",
+      startHour: 6,
+      endHour: 17,
+      days: [5, 1, 3],
+    });
+    expect(saved.deliveryDays).toEqual([1, 3, 5]);
+    expect(deliveryWindowFromPreferences(saved)).toEqual({
+      mode: "window",
+      startHour: 6,
+      endHour: 17,
+      days: [1, 3, 5],
+    });
+  });
+
+  it("nur Wochentage ohne Zeitfenster gelten ganztags", () => {
+    const saved = preferencesWithDeliveryWindow(base, {
+      mode: "window",
+      startHour: 0,
+      endHour: 24,
+      days: [1, 2, 3, 4, 5],
+    });
+    expect(saved).toMatchObject({
+      quietHoursEnabled: false,
+      deliveryDays: [1, 2, 3, 4, 5],
+    });
+    expect(deliveryWindowFromPreferences(saved)).toEqual({
+      mode: "window",
+      startHour: 0,
+      endHour: 24,
+      days: [1, 2, 3, 4, 5],
+    });
+  });
+
+  it("«Jederzeit» setzt wieder alle Tage", () => {
+    const saved = preferencesWithDeliveryWindow(
+      { ...base, quietHoursEnabled: true, deliveryDays: [1] },
+      { mode: "always" },
+    );
+    expect(saved.deliveryDays).toEqual([1, 2, 3, 4, 5, 6, 7]);
   });
 });

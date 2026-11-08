@@ -26,6 +26,7 @@ import {
 import { getMobileUserId } from "@/lib/nextdesk-client";
 import {
   deviceTimezone,
+  ALL_DELIVERY_DAYS,
   disablePushNotifications,
   enablePushNotifications,
   getPushNotificationStatus,
@@ -119,11 +120,34 @@ function defaultPreferences(): PushPreferences {
     enabledCategories: PUSH_CATEGORIES.filter(
       (category) => category !== "inventory_low_stock",
     ),
+    deliveryDays: [...ALL_DELIVERY_DAYS],
     quietEnd: 7,
     quietHoursEnabled: false,
     quietStart: 22,
     timezone: deviceTimezone(),
   };
+}
+
+const WEEKDAYS = [
+  { day: 1, short: "Mo", long: "Montag" },
+  { day: 2, short: "Di", long: "Dienstag" },
+  { day: 3, short: "Mi", long: "Mittwoch" },
+  { day: 4, short: "Do", long: "Donnerstag" },
+  { day: 5, short: "Fr", long: "Freitag" },
+  { day: 6, short: "Sa", long: "Samstag" },
+  { day: 7, short: "So", long: "Sonntag" },
+];
+
+function weekdaysLabel(days: readonly number[]): string {
+  const sorted = [...new Set(days)].sort((left, right) => left - right);
+  if (sorted.length === 7) return "Täglich";
+  const short = (day: number) =>
+    WEEKDAYS.find((entry) => entry.day === day)?.short ?? "";
+  const first = sorted[0] ?? 1;
+  const last = sorted[sorted.length - 1] ?? first;
+  return sorted.length >= 3 && last - first === sorted.length - 1
+    ? `${short(first)}–${short(last)}`
+    : sorted.map(short).join(", ");
 }
 
 function hourLabel(hour: number): string {
@@ -223,11 +247,20 @@ export default function NotificationsScreen() {
   const canSavePreferences = Boolean(tenantId && status?.featureEnabled);
   // Personal notification window, stored as quiet hours: "from 06 to 17"
   // means quiet from 17 to 06.
-  const windowStart = preferences.quietEnd;
-  const windowEnd = preferences.quietStart;
-  const deliveryDescription = preferences.quietHoursEnabled
-    ? `Täglich von ${hourLabel(windowStart)} bis ${hourLabel(windowEnd === 0 ? 24 : windowEnd)} Uhr`
-    : "Jederzeit";
+  // means quiet from 17 to 06. Without quiet hours the chosen days apply
+  // all day (00:00–24:00).
+  const deliveryDays = preferences.deliveryDays ?? ALL_DELIVERY_DAYS;
+  const timeLimited =
+    preferences.quietHoursEnabled &&
+    preferences.quietStart !== preferences.quietEnd;
+  const deliveryLimited = timeLimited || deliveryDays.length < 7;
+  const windowStart = timeLimited ? preferences.quietEnd : 0;
+  const windowEnd = timeLimited ? preferences.quietStart : 0;
+  const deliveryDescription = !deliveryLimited
+    ? "Jederzeit"
+    : timeLimited
+      ? `${weekdaysLabel(deliveryDays)} von ${hourLabel(windowStart)} bis ${hourLabel(windowEnd === 0 ? 24 : windowEnd)} Uhr`
+      : `${weekdaysLabel(deliveryDays)} ganztags`;
 
   const statusDescription = (() => {
     if (!status) return "Status wird geprüft";
@@ -333,12 +366,45 @@ export default function NotificationsScreen() {
 
   function toggleQuietHours(enabled: boolean) {
     hapticSelection();
-    void savePreferences({ ...preferences, quietHoursEnabled: enabled });
+    void savePreferences(
+      enabled
+        ? {
+            ...preferences,
+            // Default: Monday to Friday, 06:00–17:00.
+            quietHoursEnabled: true,
+            quietStart: 17,
+            quietEnd: 6,
+            deliveryDays: [1, 2, 3, 4, 5],
+          }
+        : {
+            ...preferences,
+            quietHoursEnabled: false,
+            deliveryDays: [...ALL_DELIVERY_DAYS],
+          },
+    );
   }
 
+  function toggleDeliveryDay(day: number) {
+    hapticSelection();
+    const selected = deliveryDays.includes(day);
+    if (selected && deliveryDays.length === 1) return;
+    void savePreferences({
+      ...preferences,
+      deliveryDays: selected
+        ? deliveryDays.filter((entry) => entry !== day)
+        : [...deliveryDays, day].sort((left, right) => left - right),
+    });
+  }
+
+  // "quietEnd" is the window start, "quietStart" the window end.
   function chooseHour(key: "quietStart" | "quietEnd", hour: number) {
     hapticSelection();
-    void savePreferences({ ...preferences, [key]: hour });
+    void savePreferences({
+      ...preferences,
+      quietHoursEnabled: true,
+      quietStart: key === "quietStart" ? hour : windowEnd,
+      quietEnd: key === "quietEnd" ? hour : windowStart,
+    });
   }
 
   async function openIosSettings() {
@@ -702,27 +768,71 @@ export default function NotificationsScreen() {
                     accessibilityLabel="Nur zu bestimmten Zeiten benachrichtigen"
                     accessibilityRole="switch"
                     accessibilityState={{
-                      checked: preferences.quietHoursEnabled,
+                      checked: deliveryLimited,
                       disabled: preferenceSaving,
                     }}
                     disabled={preferenceSaving}
                     onValueChange={toggleQuietHours}
                     thumbColor={
-                      preferences.quietHoursEnabled
-                        ? colors.onPrimary
-                        : colors.surface
+                      deliveryLimited ? colors.onPrimary : colors.surface
                     }
                     trackColor={{ false: colors.border, true: colors.primary }}
-                    value={preferences.quietHoursEnabled}
+                    value={deliveryLimited}
                   />
                 </View>
                 <Text style={[styles.quietNote, { color: colors.muted }]}>
-                  {preferences.quietHoursEnabled
+                  {deliveryLimited
                     ? "Was ausserhalb dieser Zeit anfällt, kommt zu Beginn der nächsten Benachrichtigungszeit. In nextDesk siehst du alles sofort."
-                    : "Schalte ein, um Push-Mitteilungen nur zu bestimmten Zeiten zu erhalten."}
+                    : "Schalte ein, um Push-Mitteilungen nur an bestimmten Tagen und Zeiten zu erhalten."}
                 </Text>
-                {preferences.quietHoursEnabled ? (
+                {deliveryLimited ? (
                   <>
+                    <Text style={[styles.timeLabel, { color: colors.subtle }]}>
+                      TAGE
+                    </Text>
+                    <View style={styles.dayChoices}>
+                      {WEEKDAYS.map((weekday) => {
+                        const selected = deliveryDays.includes(weekday.day);
+                        return (
+                          <Pressable
+                            accessibilityLabel={weekday.long}
+                            accessibilityRole="button"
+                            accessibilityState={{
+                              selected,
+                              disabled: preferenceSaving,
+                            }}
+                            disabled={preferenceSaving}
+                            key={`day-${weekday.day}`}
+                            onPress={() => toggleDeliveryDay(weekday.day)}
+                            style={[
+                              styles.hourChoice,
+                              styles.dayChoice,
+                              {
+                                backgroundColor: selected
+                                  ? colors.primary
+                                  : colors.surfaceSubtle,
+                                borderColor: selected
+                                  ? colors.primary
+                                  : colors.border,
+                              },
+                            ]}
+                          >
+                            <Text
+                              style={[
+                                styles.hourChoiceText,
+                                {
+                                  color: selected
+                                    ? colors.onPrimary
+                                    : colors.foreground,
+                                },
+                              ]}
+                            >
+                              {weekday.short}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
                     <Text style={[styles.timeLabel, { color: colors.subtle }]}>
                       VON
                     </Text>
@@ -976,6 +1086,8 @@ const useStyles = makeThemedStyles((c) => ({
   },
   hourChoiceText: { fontSize: 12, fontWeight: "800" },
   hourChoices: { gap: 7, paddingRight: 12 },
+  dayChoices: { flexDirection: "row", flexWrap: "wrap", gap: 7 },
+  dayChoice: { minWidth: 44 },
   keyboardAvoiding: { flex: 1 },
   privacyNote: {
     alignItems: "flex-start",

@@ -13313,6 +13313,46 @@ body:has(.ticket-list-filter-panel) {
   justify-self: start;
   background: var(--surface);
 }
+.personal-settings__delivery-days {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  border: 0;
+  padding: 0;
+}
+.personal-settings__delivery-days legend {
+  margin-bottom: 5px;
+  padding: 0;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 650;
+}
+.personal-settings__delivery-days > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.personal-settings__delivery-days button {
+  min-width: 44px;
+  min-height: 36px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 6px 10px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 650;
+  cursor: pointer;
+}
+.personal-settings__delivery-days button.is-selected {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: var(--on-primary);
+}
+.personal-settings__delivery-days button:disabled {
+  cursor: default;
+}
 .personal-settings__delivery-hours {
   display: flex;
   flex-wrap: wrap;

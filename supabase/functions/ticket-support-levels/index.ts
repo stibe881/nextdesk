@@ -596,29 +596,24 @@ async function queueLevels(
   if (!(await activeMember(admin, actorId, action.tenantId))) {
     throw new HttpError(403, "active_tenant_membership_required");
   }
-  const { data: memberships, error: membershipError } = await admin
-    .from("department_memberships")
-    .select("department_id")
+  // Only the levels of the person's own teams count: the queue tabs are
+  // shown to people who work in more than one support level.
+  const { data, error } = await admin
+    .from("team_memberships")
+    .select(
+      "team_id, teams!team_memberships_team_tenant_fk!inner(active, support_level)",
+    )
     .eq("tenant_id", action.tenantId)
     .eq("user_id", actorId)
-    .eq("status", "active");
-  if (membershipError) throw new HttpError(503, "membership_validation_failed");
-  const departmentIds = (memberships ?? [])
-    .map((row: Row) => row.department_id)
-    .filter(isUuid);
-  if (departmentIds.length === 0) return { levels: [] };
-  const { data, error } = await admin
-    .from("teams")
-    .select("support_level")
-    .eq("tenant_id", action.tenantId)
-    .eq("active", true)
-    .in("department_id", departmentIds)
-    .not("support_level", "is", null)
+    .eq("teams.active", true)
+    .not("teams.support_level", "is", null)
     .limit(500);
   if (error) throw new HttpError(500, "team_lookup_failed");
   const counts = new Map<SupportLevel, number>();
-  for (const row of data ?? []) {
-    const level = levelOrNull(row.support_level);
+  for (const row of (data ?? []) as Row[]) {
+    const team = (Array.isArray(row.teams) ? row.teams[0] : row.teams) as
+      Row | null | undefined;
+    const level = levelOrNull(team?.support_level);
     if (level) counts.set(level, (counts.get(level) ?? 0) + 1);
   }
   return {
