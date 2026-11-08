@@ -144,6 +144,58 @@ Deno.test("watched ticket payload names the change and opens the ticket", () => 
   assertStringIncludes(String(noteAlert.title), "interne Notiz");
 });
 
+Deno.test("ticket payloads carry the action category for watch and lock screen", () => {
+  const payload = buildApnsPayload({
+    kind: "assigned",
+    tenantId: "00000000-0000-4000-8000-000000000001",
+    notificationId: "00000000-0000-4000-8000-000000000002",
+    ticketId: "00000000-0000-4000-8000-000000000003",
+    subject: "Drucker",
+  });
+  const aps = payload.aps as Record<string, unknown>;
+  assertEquals(aps.category, "NEXTDESK_TICKET");
+  assertEquals(aps["thread-id"], "00000000-0000-4000-8000-000000000003");
+
+  const summary = buildApnsPayload({
+    kind: "summary",
+    tenantId: "00000000-0000-4000-8000-000000000001",
+    notificationId: "summary-1",
+    summaryCount: 2,
+  });
+  assertFalse("category" in (summary.aps as Record<string, unknown>));
+
+  const reminder = buildApnsPayload({
+    kind: "requester_reminder",
+    tenantId: "00000000-0000-4000-8000-000000000001",
+    notificationId: "00000000-0000-4000-8000-000000000002",
+    ticketId: "00000000-0000-4000-8000-000000000003",
+  });
+  assertEquals(
+    (reminder.aps as Record<string, unknown>).category,
+    "NEXTDESK_REQUESTER_REMINDER",
+  );
+
+  const reply = buildApnsPayload({
+    kind: "support_reply",
+    tenantId: "00000000-0000-4000-8000-000000000001",
+    notificationId: "00000000-0000-4000-8000-000000000002",
+    ticketId: "00000000-0000-4000-8000-000000000003",
+  });
+  assertFalse("category" in (reply.aps as Record<string, unknown>));
+
+  const task = buildApnsPayload({
+    kind: "service_task",
+    tenantId: "00000000-0000-4000-8000-000000000001",
+    notificationId: "00000000-0000-4000-8000-000000000002",
+    occurrenceId: "00000000-0000-4000-8000-000000000004",
+    subject: "Backup prüfen",
+  });
+  assertEquals(
+    (task.aps as Record<string, unknown>).category,
+    "NEXTDESK_SERVICE_TASK",
+  );
+});
+
 Deno.test("infrastructure reminders name device, reason and date", () => {
   const payload = buildApnsPayload({
     kind: "infrastructure",

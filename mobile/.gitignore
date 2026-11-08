@@ -67,3 +67,7 @@ Thumbs.db
 
 # Webdev artifacts (checkpoint zips, migrations, etc.)
 .webdev/
+
+# nextDesk nutzt pnpm. Eine lokale npm-Lockdatei würde EAS auf «npm ci» umstellen.
+package-lock.json
+yarn.lock

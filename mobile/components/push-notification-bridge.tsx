@@ -15,6 +15,17 @@ import {
   REQUESTER_REMINDER_CATEGORY,
   reminderAnswerFromNotificationAction,
 } from "@/lib/requester-progress";
+import {
+  isNotificationAction,
+  startNotificationActions,
+} from "@/lib/notification-actions";
+import { startWatchBridge } from "@/lib/watch-bridge";
+
+// Antwort-Knöpfe (iPhone-Sperrbildschirm, Apple Watch) und die Verbindung zur
+// Watch-App schon beim Laden des Moduls starten, damit sie auch bei einem
+// Hintergrundstart greifen (z. B. wenn die Watch ein Token anfragt).
+startNotificationActions();
+startWatchBridge();
 
 if (Platform.OS === "ios") {
   // Reminder pushes (category set by push-dispatch) offer two buttons. Both
@@ -112,6 +123,8 @@ export function PushNotificationBridge() {
     const handleResponse = async (
       response: Notifications.NotificationResponse,
     ) => {
+      // Antwort-Knöpfe führen eine Aktion aus und öffnen kein Ticket.
+      if (isNotificationAction(response)) return;
       const responseId = response.notification.request.identifier;
       if (handledResponseIds.current.has(responseId)) return;
       handledResponseIds.current.add(responseId);

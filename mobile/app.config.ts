@@ -217,7 +217,8 @@ const config: ExpoConfig = {
       },
     ],
     // Home-screen widgets. iOS: WidgetKit extension from targets/widget
-    // (Swift). Android: react-native-android-widget renders
+    // (Swift); dazu Apple-Watch-App (targets/watch) und Komplikation
+    // (targets/watch-widget). Android: react-native-android-widget renders
     // widgets/android/nextdesk-widgets.tsx in a headless JS task.
     "@bacons/apple-targets",
     [
