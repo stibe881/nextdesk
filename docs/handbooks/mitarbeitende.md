@@ -78,20 +78,20 @@ Assistenten lösen** im Dialog klären und den vorbereiteten Entwurf übernehmen
 
 Unter **Tickets** sehen Sie alle Ihre Anliegen mit Nummer, Betreff und Status.
 
-| Status          | Bedeutung                                                    |
-| --------------- | ------------------------------------------------------------ |
-| Eingegangen/Neu | Das Ticket ist beim Support angekommen                       |
-| In Bearbeitung  | Jemand kümmert sich darum                                    |
-| Wartet auf Sie  | Der Support braucht eine Antwort oder Bestätigung von Ihnen  |
-| Gelöst          | Der Support hat das Anliegen erledigt                        |
-| Geschlossen     | Das Ticket ist abgeschlossen                                 |
+| Status          | Bedeutung                                                   |
+| --------------- | ----------------------------------------------------------- |
+| Eingegangen/Neu | Das Ticket ist beim Support angekommen                      |
+| In Bearbeitung  | Jemand kümmert sich darum                                   |
+| Wartet auf Sie  | Der Support braucht eine Antwort oder Bestätigung von Ihnen |
+| Gelöst          | Der Support hat das Anliegen erledigt                       |
+| Geschlossen     | Das Ticket ist abgeschlossen                                |
 
 ![Liste der eigenen Tickets](images/ma-meine-tickets.jpg)
 
 ## Ein Ticket öffnen und antworten
 
 Klicken Sie auf ein Ticket. Der Block **Fortschritt** zeigt die Schritte
-*Eingegangen → In Bearbeitung → Wartet auf Sie → Gelöst → Geschlossen* mit
+_Eingegangen → In Bearbeitung → Wartet auf Sie → Gelöst → Geschlossen_ mit
 Zeitpunkten.
 
 - **Antworten:** Schreiben Sie in **Ihre Nachricht** und klicken Sie auf
@@ -125,7 +125,7 @@ Falls Ihr Unternehmen den Shop nutzt:
 1. Im Register **Katalog** einen Artikel wählen → **In den Warenkorb**
    (bei Leihgeräten **Ausleihen** mit Zeitraum).
 2. Im Warenkorb den **Grund der Bestellung** angeben und die Lieferung wählen:
-   *Abholung beim Support* oder *An meinen Arbeitsplatz*.
+   _Abholung beim Support_ oder _An meinen Arbeitsplatz_.
 3. **Jetzt bestellen** bzw. **Zur Freigabe senden**, wenn eine Freigabe nötig
    ist.
 

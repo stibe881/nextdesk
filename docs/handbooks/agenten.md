@@ -9,15 +9,15 @@ updated: 2026-11-08
 
 Dieses Handbuch richtet sich an alle, die in nextDesk Tickets bearbeiten.
 Grundlagen wie Anmeldung, persönliche Einstellungen und die Mobile-App
-beschreibt das *Handbuch für Mitarbeitende*, das Ihnen ebenfalls zur
+beschreibt das _Handbuch für Mitarbeitende_, das Ihnen ebenfalls zur
 Verfügung steht.
 
 ## Einführungstour
 
 Beim ersten Login startet eine kurze **Einführung** (Startseite, Tickets,
 Im Ticket, Benachrichtigungen, Darstellung). Sie können sie mit **Einführung
-beenden** abbrechen und später über *Persönliche Einstellungen → Darstellung
-anpassen → Einführung erneut starten* wiederholen.
+beenden** abbrechen und später über _Persönliche Einstellungen → Darstellung
+anpassen → Einführung erneut starten_ wiederholen.
 
 ## Navigation
 
@@ -41,7 +41,7 @@ Oben rechts stehen **+ (Erfassen)**, die **globale Suche** und die
 ## Übersicht
 
 Die **Übersicht** begrüsst Sie und zeigt für den gewählten Zeitraum
-(*Heute / 7 Tage / 30 Tage*) die Kennzahlen **Offene Tickets**, **Meine
+(_Heute / 7 Tage / 30 Tage_) die Kennzahlen **Offene Tickets**, **Meine
 Tickets**, **Nicht zugewiesene Tickets** und **Gelöste Tickets**. Ein Klick
 auf eine Kachel öffnet die passende gefilterte Liste.
 
@@ -69,7 +69,7 @@ Der **Arbeitsplatz** bündelt Ihre persönliche Arbeit in Registern:
 - **Wiedervorlagen** – Tickets, die Sie sich zu einem Datum vorgemerkt haben
 - **Mein Bereich** – eigene Tickets, Geräte, Freigaben und **Phishing melden**
 
-![Arbeitsplatz mit Team-Queue](images/ag-arbeitsplatz.jpg)
+![Arbeitsplatz mit Registern und Team-Warteschlangen](images/ag-arbeitsplatz.jpg)
 
 ### Abwesenheit und Stellvertretung
 
@@ -89,21 +89,19 @@ Unter **Mein Bereich → Phishing melden** laden Sie eine verdächtige E-Mail
 Unter **Tickets** arbeiten Sie die Warteschlangen ab.
 
 - **Queues**: Register pro Warteschlange; bei Supportstufen zusätzlich
-  *Alle Stufen / 1st / 2nd / 3rd Level*.
-- **Filter & Sortierung**: Suche, Status, Priorität, Agent (*Mir zugewiesen*,
-  *Nicht zugewiesen*), Abteilung, Sortierung. **Filter zurücksetzen** stellt
+  _Alle Stufen / 1st / 2nd / 3rd Level_.
+- **Filter & Sortierung**: Suche, Status, Priorität, Agent (_Mir zugewiesen_,
+  _Nicht zugewiesen_), Abteilung, Sortierung. **Filter zurücksetzen** stellt
   alles zurück.
 - **Gespeicherte Ansichten**: Filter als **Neue Ansicht** speichern und auf
   Wunsch mit der Abteilung teilen («Teilen mit»).
-- **Ansicht**: Listendichte (*Kompakt / Standard / Komfortabel*) und
+- **Ansicht**: Listendichte (_Kompakt / Standard / Komfortabel_) und
   Listen-Detail-Ansicht (Liste links, Ticket rechts).
 - **Mehrfachauswahl**: mehrere Tickets markieren → **Neuer Status** →
   **Status für Auswahl setzen**.
 
 **Tastenkürzel:** `?` zeigt die Hilfe, `J`/`K` springen zum nächsten bzw.
 vorherigen Ticket, `Enter` öffnet, `Esc` schliesst.
-
-![Ticketliste mit Filtern und Status](images/ag-arbeitsplatz.jpg)
 
 ### Kanban
 
@@ -134,7 +132,7 @@ Praktische Helfer:
 
 - **Antwort senden und als gelöst markieren** in einem Schritt
 - `/` im Textfeld fügt einen **Antwort-Baustein** ein (verwalten unter
-  *Persönliche Einstellungen → Antwort-Bausteine*)
+  _Persönliche Einstellungen → Antwort-Bausteine_)
 - `@Name` erwähnt Kolleginnen und Kollegen
 - **Bilder hochladen**, **Makro anwenden**, **KI-Entwurf erstellen**
   (falls KI-Assistenz aktiv)
@@ -143,20 +141,20 @@ Praktische Helfer:
 
 ### Weitere Aktionen im Ticket
 
-| Aktion                                    | Wofür                                                        |
-| ----------------------------------------- | ------------------------------------------------------------ |
-| Anhang hochladen                          | Dateien zum Ticket ablegen                                   |
-| Beobachtende hinzufügen / Personen in Kopie | Weitere Personen informieren                               |
-| Tickets zusammenführen                    | Doppelte Meldungen bündeln                                   |
-| Aufteilen                                 | Ein Ticket in mehrere Aufgaben trennen                       |
-| An nächste Stufe übergeben                | Eskalation an 2nd/3rd Level mit Übergabenotiz (Pflicht)      |
-| An Drittanbieter übergeben                | Lieferanten einbeziehen, mit Erinnerung                      |
-| Vorgesetzte Person fragen                 | Interne Rückfrage an die Abteilungsleitung                   |
-| Freigabe anfordern                        | Genehmigung einholen (z. B. Kosten, Berechtigungen)          |
-| Wiedervorlage setzen                      | Ticket zu einem Datum wieder vorlegen                        |
-| Arbeitszeit erfassen, Checkliste          | Aufwand und Arbeitsschritte dokumentieren                    |
-| Zusammenfassen (KI)                       | Kurzfassung langer Verläufe                                  |
-| Ticketakte als PDF                        | Ticket drucken oder ablegen                                  |
+| Aktion                                      | Wofür                                                   |
+| ------------------------------------------- | ------------------------------------------------------- |
+| Anhang hochladen                            | Dateien zum Ticket ablegen                              |
+| Beobachtende hinzufügen / Personen in Kopie | Weitere Personen informieren                            |
+| Tickets zusammenführen                      | Doppelte Meldungen bündeln                              |
+| Aufteilen                                   | Ein Ticket in mehrere Aufgaben trennen                  |
+| An nächste Stufe übergeben                  | Eskalation an 2nd/3rd Level mit Übergabenotiz (Pflicht) |
+| An Drittanbieter übergeben                  | Lieferanten einbeziehen, mit Erinnerung                 |
+| Vorgesetzte Person fragen                   | Interne Rückfrage an die Abteilungsleitung              |
+| Freigabe anfordern                          | Genehmigung einholen (z. B. Kosten, Berechtigungen)     |
+| Wiedervorlage setzen                        | Ticket zu einem Datum wieder vorlegen                   |
+| Arbeitszeit erfassen, Checkliste            | Aufwand und Arbeitsschritte dokumentieren               |
+| Zusammenfassen (KI)                         | Kurzfassung langer Verläufe                             |
+| Ticketakte als PDF                          | Ticket drucken oder ablegen                             |
 
 Wird eine SLA verletzt, erfassen Sie die **Ursache der SLA-Verletzung**.
 
@@ -177,13 +175,13 @@ Fälle, Serviceaufgaben, Wissensartikel, Lagerartikel, Verträge und Lizenzen.
 Als Agent lesen Sie nicht nur Artikel, sondern schreiben sie auch:
 
 1. **Neuer Artikel** – Titel, Inhalt (Markdown mit Bildern), Kategorie und
-   Sichtbarkeit (*Intern* oder *Extern* für Mitarbeitende).
+   Sichtbarkeit (_Intern_ oder _Extern_ für Mitarbeitende).
 2. Optional **Mit KI aufbereiten** oder direkt aus einem gelösten Ticket
    **Entwurf mit KI erstellen**.
 3. **Zur Freigabe einreichen** – nach der Prüfung wird der Artikel
    **veröffentlicht**. Veraltete Artikel **archivieren**.
 
-Status: *Entwurf → Prüfung → Veröffentlicht*.
+Status: _Entwurf → Prüfung → Veröffentlicht_.
 
 ![Wissensdatenbank aus Sicht der Agenten](images/ag-wissen.jpg)
 
@@ -191,8 +189,8 @@ Status: *Entwurf → Prüfung → Veröffentlicht*.
 
 - Die **Glocke** zeigt Zuweisungen, Erwähnungen, Antworten und Eskalationen.
 - **Push-Benachrichtigungen** auf dem iPhone erhalten Sie nur, wenn Sie
-  **eingecheckt** sind (*Persönliche Einstellungen → Push-Benachrichtigungen →
-  Einchecken*, oder morgens in der App). Dort wählen Sie auch die
+  **eingecheckt** sind (_Persönliche Einstellungen → Push-Benachrichtigungen →
+  Einchecken_, oder morgens in der App). Dort wählen Sie auch die
   Kategorien, z. B. Zuweisungen, Eskalationen, Erwähnungen.
 
 ## Persönliche Einstellungen

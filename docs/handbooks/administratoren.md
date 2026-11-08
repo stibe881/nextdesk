@@ -10,9 +10,9 @@ updated: 2026-11-08
 Dieses Handbuch richtet sich an Personen mit der Rolle **Administrator**
 (technisch «Tenant administrator»). Administratoren verwalten den gesamten
 Mandanten: Erscheinungsbild, Funktionen, Abläufe, Personen und Berechtigungen.
-Für die tägliche Ticketarbeit gilt zusätzlich das *Handbuch für Agenten*, für
+Für die tägliche Ticketarbeit gilt zusätzlich das _Handbuch für Agenten_, für
 die erstmalige Einrichtung von Microsoft 365, SSO und Monitoring die
-*Installationsanleitung*.
+_Installationsanleitung_.
 
 ## Einstellungen öffnen
 
@@ -20,11 +20,11 @@ Der Menüpunkt **Einstellungen** ist nur für Administratoren sichtbar und
 steht unten in der linken Navigation. Die Einstellungen sind in Register
 gegliedert:
 
-| Gruppe                | Register                                                        |
-| --------------------- | --------------------------------------------------------------- |
-| Allgemein             | Übersicht, Design                                               |
-| Betrieb               | Funktionen, SLA, Ticketfelder, Abteilungen, Monitoring          |
-| Zugriff & Sicherheit  | Personen, Rollen, Datenschutz, Protokoll                        |
+| Gruppe               | Register                                               |
+| -------------------- | ------------------------------------------------------ |
+| Allgemein            | Übersicht, Design                                      |
+| Betrieb              | Funktionen, SLA, Ticketfelder, Abteilungen, Monitoring |
+| Zugriff & Sicherheit | Personen, Rollen, Datenschutz, Protokoll               |
 
 Mit **Schliessen** kehren Sie in den Arbeitsbereich zurück.
 
@@ -58,7 +58,7 @@ speichern** übernehmen Sie die Änderungen für alle Personen des Mandanten.
 
 Im Register **Funktionen** schalten Sie Module für den ganzen Mandanten ein
 oder aus. Suchen Sie über **Funktionen durchsuchen** oder filtern Sie nach
-*Alle / Aktiv / Deaktiviert*. Jede Karte hat **Aktivieren** bzw.
+_Alle / Aktiv / Deaktiviert_. Jede Karte hat **Aktivieren** bzw.
 **Deaktivieren** und – wo vorhanden – **Konfigurieren**.
 
 > Die Konfiguration ändert den Funktionsstatus nicht. Eine deaktivierte
@@ -68,27 +68,27 @@ oder aus. Suchen Sie über **Funktionen durchsuchen** oder filtern Sie nach
 
 Wichtige Funktionen und ihre Konfiguration:
 
-| Funktion                         | Was sie bewirkt / wo konfiguriert                                                                                                  |
-| -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| Self-Service, Anfragendenportal  | Portal für Mitarbeitende mit Wissensartikeln und eigenen Tickets                                                                   |
-| Wissensdatenbank                 | Artikel für Agenten und Mitarbeitende                                                                                              |
-| Ticketvorlagen                   | **Vorlagen verwalten → Neue Vorlage**: Name, Betreff- und Beschreibungsvorlage, Abteilung, Priorität, Checklistenpunkte           |
-| SLA-Automatisierung              | Erinnerungen, automatisches Lösen/Schliessen, Regeln für neue Tickets, KI-Triage, Drittanbieter (siehe unten)                      |
-| E-Mail-Kanal (Exchange Online)   | Support-Postfächer und Phishing-Meldungen (siehe Installationsanleitung)                                                           |
-| Push-Benachrichtigungen          | Inhaltsstufe («Nur Ticketnummer» empfohlen) und Arbeitszeit-Check-in (Standard 06:00–17:00)                                         |
-| KI-Assistenz                     | Freigabe für Wissensentwürfe mit Claude und Selbstbedienungs-Assistent im Portal                                                   |
-| Asset-Management                 | Geräte und Microsoft Intune; Monitoring liegt im Register «Monitoring»                                                             |
-| Service-Reporting                | Berichte und Auswertungen                                                                                                          |
-| Raumplanung, Eintritte, Bestandsverwaltung, Verträge, Serviceaufgaben | Zusatzmodule für einzelne Abteilungen                                                                  |
-| Single Sign-On                   | Anmeldung mit Microsoft Entra ID (siehe Installationsanleitung)                                                                    |
+| Funktion                                                              | Was sie bewirkt / wo konfiguriert                                                                                       |
+| --------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| Self-Service, Anfragendenportal                                       | Portal für Mitarbeitende mit Wissensartikeln und eigenen Tickets                                                        |
+| Wissensdatenbank                                                      | Artikel für Agenten und Mitarbeitende                                                                                   |
+| Ticketvorlagen                                                        | **Vorlagen verwalten → Neue Vorlage**: Name, Betreff- und Beschreibungsvorlage, Abteilung, Priorität, Checklistenpunkte |
+| SLA-Automatisierung                                                   | Erinnerungen, automatisches Lösen/Schliessen, Regeln für neue Tickets, KI-Triage, Drittanbieter (siehe unten)           |
+| E-Mail-Kanal (Exchange Online)                                        | Support-Postfächer und Phishing-Meldungen (siehe Installationsanleitung)                                                |
+| Push-Benachrichtigungen                                               | Inhaltsstufe («Nur Ticketnummer» empfohlen) und Arbeitszeit-Check-in (Standard 06:00–17:00)                             |
+| KI-Assistenz                                                          | Freigabe für Wissensentwürfe mit Claude und Selbstbedienungs-Assistent im Portal                                        |
+| Asset-Management                                                      | Geräte und Microsoft Intune; Monitoring liegt im Register «Monitoring»                                                  |
+| Service-Reporting                                                     | Berichte und Auswertungen                                                                                               |
+| Raumplanung, Eintritte, Bestandsverwaltung, Verträge, Serviceaufgaben | Zusatzmodule für einzelne Abteilungen                                                                                   |
+| Single Sign-On                                                        | Anmeldung mit Microsoft Entra ID (siehe Installationsanleitung)                                                         |
 
 ### SLA-Automatisierung konfigurieren
 
 Unter **Funktionen → SLA-Automatisierung → Konfigurieren**:
 
-- **Erinnern, lösen, schliessen** (läuft stündlich): *Erinnern nach Tagen*,
-  *Höchstens so viele Erinnerungen*, *Lösen nach Tagen (ab Beginn der
-  Wartezeit)*, *Schliessen nach Tagen*.
+- **Erinnern, lösen, schliessen** (läuft stündlich): _Erinnern nach Tagen_,
+  _Höchstens so viele Erinnerungen_, _Lösen nach Tagen (ab Beginn der
+  Wartezeit)_, _Schliessen nach Tagen_.
 - **Regeln für neue Tickets**: Auslöser «Beim Erstellen eines Tickets» oder
   «Zeitgesteuert». Im Teil **Wenn …** definieren Sie Bedingungen (z. B.
   Stichworte in Betreff oder Beschreibung), im Teil **… dann** die Aktion
@@ -97,8 +97,8 @@ Unter **Funktionen → SLA-Automatisierung → Konfigurieren**:
 - **Automatisierungen**: Mit **Vorschau ausführen** prüfen Sie Regeln vor
   dem Einsatz, das **Prüfintervall in Tagen** erinnert an die regelmässige
   Kontrolle.
-- **Drittanbieter**: externe Lieferanten mit E-Mail, Telefon und *Erinnerung
-  nach (Stunden)*.
+- **Drittanbieter**: externe Lieferanten mit E-Mail, Telefon und _Erinnerung
+  nach (Stunden)_.
 
 ![Regeln für neue Tickets – Wenn … dann](images/ad-automation.jpg)
 
@@ -108,7 +108,7 @@ Das Register **SLA** erscheint, sobald die SLA-Automatisierung aktiv ist.
 Mit **Neue SLA-Regel** legen Sie fest:
 
 - **Name der Regel** und **Definition & Auswirkung**
-- **Priorität** und **Abteilung** (oder *Mandantenweit*)
+- **Priorität** und **Abteilung** (oder _Mandantenweit_)
 - **Servicezeit**: Wochentage und Von/Bis in der Zeitzone Europe/Zurich
 - **Reaktionszeit** und **Lösungszeit** in Minuten
 - **Regel aktiv**
@@ -122,7 +122,7 @@ löschen.
 ## Ticketfelder
 
 Unter **Ticketfelder** gestalten Sie das Ticketformular. Felder unter
-*Immer enthalten* sind fix. Weitere Felder fügen Sie über **Feld auswählen**
+_Immer enthalten_ sind fix. Weitere Felder fügen Sie über **Feld auswählen**
 bzw. **Feld hinzufügen** hinzu, legen den Feldtyp fest, markieren sie bei
 Bedarf als **Pflichtfeld** und speichern mit **Feld speichern**. Die
 Reihenfolge ändern Sie per Ziehen und Ablegen.
@@ -131,7 +131,7 @@ Reihenfolge ändern Sie per Ziehen und Ablegen.
 
 Im Register **Abteilungen**:
 
-1. **Abteilungen** anlegen (Name → *Abteilung anlegen*). Nicht mehr
+1. **Abteilungen** anlegen (Name → _Abteilung anlegen_). Nicht mehr
    benötigte Abteilungen archivieren.
 2. **Abteilungsleitungen**: Leitung und Stellvertretung für interne
    Rückfragen zu Tickets.
@@ -147,7 +147,7 @@ Das Register **Monitoring** (setzt Asset-Management voraus) bündelt:
 - **Zertifikate und Domains** – Erinnerung vor Ablauf
 - **Backup-Überwachung** – z. B. Veeam-Jobs per E-Mail oder Webhook
 
-Die Einrichtung ist in der *Installationsanleitung* beschrieben.
+Die Einrichtung ist in der _Installationsanleitung_ beschrieben.
 
 ## Personen und Agenten
 
@@ -167,7 +167,7 @@ widerrufen. Darunter stehen die Listen **Agenten** (mit Suche) und
 **Angemeldete Personen**.
 
 > Mit aktivem SSO werden Personen aus zugelassenen Domains beim ersten Login
-> automatisch als *anfragende Person* angelegt. Agentenrechte gibt es nur per
+> automatisch als _anfragende Person_ angelegt. Agentenrechte gibt es nur per
 > Einladung, Vormerkung oder Rollenzuweisung.
 
 ![Personen & Agenten mit Einladung und Agentenliste](images/ad-benutzer.jpg)
@@ -182,20 +182,20 @@ Microsoft-Anmeldung übernommen.
 ## Rollen und Berechtigungen
 
 Das Register **Rollen** («Rollen & Zugriffe») zeigt oben die Kennzahlen
-*Personen mit Zugriff*, *Aktive Rollen* und *Eigene Rollen*.
+_Personen mit Zugriff_, _Aktive Rollen_ und _Eigene Rollen_.
 
 - **Rollen zuweisen**: In der Matrix setzen Sie pro Person ein Häkchen bei
   der gewünschten Rolle. Die Änderung wirkt sofort für den ganzen Mandanten.
-  Mit *Alle aktiven Personen zeigen* sehen Sie auch Personen ohne Rolle.
+  Mit _Alle aktiven Personen zeigen_ sehen Sie auch Personen ohne Rolle.
 - **Wer hat Zugriff?**: Rollen gezielt entziehen (mit Bestätigung).
 - **Neue eigene Rolle erstellen**: Rollenname und unter **Was darf diese
   Rolle?** die Berechtigungen aus den Gruppen Tickets, Wissensdatenbank,
   Assets, Verträge, Planung, Zusammenarbeit, Auswertungen und Administration
-  wählen. Geltungsbereich: *Für den ganzen Mandanten*, *Für eine Abteilung*
-  oder *Für ein Team*.
+  wählen. Geltungsbereich: _Für den ganzen Mandanten_, _Für eine Abteilung_
+  oder _Für ein Team_.
 
-Systemrollen sind geschützt. Die Basisrollen *Requester* (alle angemeldeten
-Personen) und *Support agent* (über «Arbeitet als Support-Agent») werden nicht
+Systemrollen sind geschützt. Die Basisrollen _Requester_ (alle angemeldeten
+Personen) und _Support agent_ (über «Arbeitet als Support-Agent») werden nicht
 direkt vergeben.
 
 ![Rollen zuweisen – Matrix](images/ad-rollen.jpg)
@@ -208,15 +208,15 @@ direkt vergeben.
 ## Datenschutz und Aufbewahrung
 
 Unter **Datenschutz** («Aufbewahrung & Datenschutz») legen Sie Fristen in
-Tagen fest für *Geschlossene Tickets*, *Private Anhänge* und das
-*Audit-Protokoll*. Die **Rechtliche Aufbewahrungssperre** verhindert jede
+Tagen fest für _Geschlossene Tickets_, _Private Anhänge_ und das
+_Audit-Protokoll_. Die **Rechtliche Aufbewahrungssperre** verhindert jede
 Bereinigung. Die Werte sind Richtlinien – nextDesk löscht nie automatisch.
 
 ## Protokoll
 
 Das **Protokoll** (Änderungsprotokoll) zeichnet alle administrativen
 Änderungen auf. Filtern Sie nach Person, Aktion, Objekt, Schweregrad und
-Zeitraum, öffnen Sie einen Eintrag für *Änderungen* und *Metadaten* und
+Zeitraum, öffnen Sie einen Eintrag für _Änderungen_ und _Metadaten_ und
 exportieren Sie bei Bedarf als **CSV** oder **JSON**.
 
 ## Systemstatus veröffentlichen

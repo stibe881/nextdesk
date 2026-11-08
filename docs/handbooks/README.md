@@ -1,11 +1,11 @@
 # Handbücher
 
-| Datei                | Titel                          | Sichtbar für                            |
-| -------------------- | ------------------------------ | --------------------------------------- |
-| `mitarbeitende.md`   | Handbuch für Mitarbeitende     | alle aktiven Mitglieder eines Mandanten |
-| `agenten.md`         | Handbuch für Agenten           | Agenten und Administratoren             |
-| `administratoren.md` | Handbuch für Administratoren   | Mandantenadministratoren                |
-| `installation.md`    | Installationsanleitung         | Mandantenadministratoren                |
+| Datei                | Titel                        | Sichtbar für                            |
+| -------------------- | ---------------------------- | --------------------------------------- |
+| `mitarbeitende.md`   | Handbuch für Mitarbeitende   | alle aktiven Mitglieder eines Mandanten |
+| `agenten.md`         | Handbuch für Agenten         | Agenten und Administratoren             |
+| `administratoren.md` | Handbuch für Administratoren | Mandantenadministratoren                |
+| `installation.md`    | Installationsanleitung       | Mandantenadministratoren                |
 
 ## So funktioniert die Auslieferung
 

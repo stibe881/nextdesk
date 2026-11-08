@@ -100,7 +100,8 @@ export function allowedHandbookIds(access: HandbookAccess): HandbookId[] {
   return HANDBOOK_IDS.filter((id) => {
     const audience = HANDBOOK_AUDIENCE[id];
     if (audience === "employee") return true;
-    if (audience === "agent") return access.canWorkTickets || access.isTenantAdmin;
+    if (audience === "agent")
+      return access.canWorkTickets || access.isTenantAdmin;
     return access.isTenantAdmin;
   });
 }

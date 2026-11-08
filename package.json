@@ -24,7 +24,8 @@
     "test:e2e": "node scripts/e2e-unauthenticated.mjs",
     "check:load": "node scripts/load-check.mjs",
     "drill:backup": "bash scripts/backup-restore-drill.sh",
-    "handbooks:build": "node scripts/build-handbooks.mjs"
+    "handbooks:build": "node scripts/build-handbooks.mjs",
+    "handbooks:screenshots": "node scripts/handbook-screenshots/capture.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.15.3",

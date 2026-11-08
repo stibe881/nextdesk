@@ -35,14 +35,18 @@ function parseArgs(argv) {
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === "--") continue;
-    if (arg === "--only") options.only.push(...String(argv[++index] ?? "").split(","));
-    else if (arg.startsWith("--only=")) options.only.push(...arg.slice(7).split(","));
+    if (arg === "--only")
+      options.only.push(...String(argv[++index] ?? "").split(","));
+    else if (arg.startsWith("--only="))
+      options.only.push(...arg.slice(7).split(","));
     else if (arg === "--url") options.url = argv[++index];
     else if (arg.startsWith("--url=")) options.url = arg.slice(6);
     else if (arg === "--explore") options.explore = true;
     else if (arg === "--headed") options.headed = true;
     else if (arg === "--help" || arg === "-h") {
-      console.log("Usage: node scripts/handbook-screenshots/capture.mjs [--only name[,name]] [--url http://host:port] [--explore] [--headed]");
+      console.log(
+        "Usage: node scripts/handbook-screenshots/capture.mjs [--only name[,name]] [--url http://host:port] [--explore] [--headed]",
+      );
       console.log(`Shots: ${SHOTS.map((shot) => shot.name).join(", ")}`);
       process.exit(0);
     } else {
@@ -50,7 +54,9 @@ function parseArgs(argv) {
       process.exit(2);
     }
   }
-  options.only = options.only.map((name) => name.trim().replace(/\.jpg$/, "")).filter(Boolean);
+  options.only = options.only
+    .map((name) => name.trim().replace(/\.jpg$/, ""))
+    .filter(Boolean);
   return options;
 }
 
@@ -77,7 +83,13 @@ async function startVite() {
     configFile: join(webRoot, "vite.config.ts"),
     logLevel: "warn",
     clearScreen: false,
-    server: { host: "127.0.0.1", port, strictPort: true, hmr: false, open: false },
+    server: {
+      host: "127.0.0.1",
+      port,
+      strictPort: true,
+      hmr: false,
+      open: false,
+    },
   });
   await server.listen();
   return { server, url: `http://127.0.0.1:${port}` };
@@ -94,19 +106,27 @@ function helpers(page, baseUrl) {
     },
     /** Waits until no request is pending and fonts/images are loaded. */
     async settle(extraMs = 400) {
-      await page.waitForLoadState("networkidle", { timeout: 15_000 }).catch(() => undefined);
+      await page
+        .waitForLoadState("networkidle", { timeout: 15_000 })
+        .catch(() => undefined);
       await page.evaluate(() => document.fonts?.ready).catch(() => undefined);
       await page.waitForTimeout(extraMs);
     },
     async waitText(text, options = {}) {
-      await page.getByText(text, { exact: false }).first().waitFor({ state: "visible", timeout: options.timeout ?? 15_000 });
+      await page
+        .getByText(text, { exact: false })
+        .first()
+        .waitFor({ state: "visible", timeout: options.timeout ?? 15_000 });
     },
     /** Clicks an entry of the left navigation, expanding its group first. */
     async nav(label) {
       const rail = page.locator("aside.command-rail");
-      const item = rail.locator("button.nav-item").filter({ hasText: new RegExp(`^\\s*${label}\\s*\\d*\\s*$`) }).first();
+      const matcher = { hasText: new RegExp(`^\\s*${label}\\s*\\d*\\s*$`) };
+      const item = rail.locator("button.nav-item").filter(matcher).first();
       if (!(await item.isVisible().catch(() => false))) {
-        const cluster = rail.locator(".navigation-cluster").filter({ has: item });
+        const cluster = rail
+          .locator(".navigation-cluster")
+          .filter({ has: page.locator("button.nav-item").filter(matcher) });
         await cluster.locator(".navigation-cluster__toggle").click();
       }
       await item.click();
@@ -114,15 +134,63 @@ function helpers(page, baseUrl) {
     },
     async click(name, options = {}) {
       const role = options.role ?? "button";
-      await page.getByRole(role, { name, exact: options.exact ?? false }).first().click();
+      await page
+        .getByRole(role, { name, exact: options.exact ?? false })
+        .first()
+        .click();
       await h.settle(options.wait ?? 400);
     },
     async clickText(text, options = {}) {
-      await page.getByText(text, { exact: options.exact ?? false }).first().click();
+      await page
+        .getByText(text, { exact: options.exact ?? false })
+        .first()
+        .click();
       await h.settle(options.wait ?? 400);
     },
+    /** Scrolls the page so that the first element with this text sits near the top. */
+    async scrollToText(text, offset = 16) {
+      await h.scrollTo(page.getByText(text, { exact: true }).first(), offset);
+    },
+    /** Scrolls the nearest scroll container so that the locator sits `offset` px below its top. */
+    async scrollTo(locator, offset = 16) {
+      const target = locator.first();
+      await target.waitFor({ state: "attached", timeout: 10_000 });
+      await target.evaluate((element, gap) => {
+        let node = element.parentElement;
+        while (node && node !== document.body) {
+          const style = getComputedStyle(node);
+          if (
+            /(auto|scroll)/.test(style.overflowY) &&
+            node.scrollHeight > node.clientHeight + 4
+          ) {
+            node.scrollTop +=
+              element.getBoundingClientRect().top -
+              node.getBoundingClientRect().top -
+              gap;
+            return;
+          }
+          node = node.parentElement;
+        }
+        window.scrollBy(0, element.getBoundingClientRect().top - gap);
+      }, offset);
+      await page.waitForTimeout(200);
+    },
+    /** Scrolls every scrollable dialog/modal container back to the top. */
+    async scrollModalToTop() {
+      await page.evaluate(() => {
+        for (const element of document.querySelectorAll(
+          "[role=dialog], dialog, [aria-modal=true], [role=dialog] *",
+        )) {
+          if (element.scrollHeight > element.clientHeight + 4)
+            element.scrollTop = 0;
+        }
+      });
+      await page.waitForTimeout(150);
+    },
     async openPersonalSettings() {
-      await page.getByRole("button", { name: "Persönliche Einstellungen öffnen" }).click();
+      await page
+        .getByRole("button", { name: "Persönliche Einstellungen öffnen" })
+        .click();
       await h.settle();
     },
   };
@@ -131,8 +199,12 @@ function helpers(page, baseUrl) {
 
 async function main() {
   const options = parseArgs(process.argv.slice(2));
-  const shots = options.only.length ? SHOTS.filter((shot) => options.only.includes(shot.name)) : SHOTS;
-  const unknown = options.only.filter((name) => !SHOTS.some((shot) => shot.name === name));
+  const shots = options.only.length
+    ? SHOTS.filter((shot) => options.only.includes(shot.name))
+    : SHOTS;
+  const unknown = options.only.filter(
+    (name) => !SHOTS.some((shot) => shot.name === name),
+  );
   if (unknown.length) {
     console.error(`Unknown shot(s): ${unknown.join(", ")}`);
     process.exit(2);
@@ -161,21 +233,46 @@ async function main() {
         colorScheme: "light",
       });
       const misses = [];
-      await mock.install(context, shot.persona, { onMiss: (line) => misses.push(line) });
+      await mock.install(context, shot.persona, {
+        onMiss: (line) => misses.push(line),
+      });
       const page = await context.newPage();
       const errors = [];
       page.on("pageerror", (error) => errors.push(error.message));
       const file = join(outputDir, `${shot.name}.jpg`);
       try {
         await shot.run(helpers(page, baseUrl));
-        await page.mouse.move(VIEWPORT.width - 5, VIEWPORT.height - 5).catch(() => undefined);
+        await page.mouse
+          .move(VIEWPORT.width - 5, VIEWPORT.height - 5)
+          .catch(() => undefined);
         await page.waitForTimeout(250);
-        await page.screenshot({ path: file, type: "jpeg", quality: JPEG_QUALITY, animations: "disabled", caret: "initial" });
+        await page.screenshot({
+          path: file,
+          type: "jpeg",
+          quality: JPEG_QUALITY,
+          animations: "disabled",
+          caret: "initial",
+        });
         const bytes = statSync(file).size;
-        results.push({ name: shot.name, ok: bytes <= MAX_BYTES, bytes, ms: Date.now() - started, note: bytes > MAX_BYTES ? "larger than 300 KB" : "" });
+        results.push({
+          name: shot.name,
+          ok: bytes <= MAX_BYTES,
+          bytes,
+          ms: Date.now() - started,
+          note: bytes > MAX_BYTES ? "larger than 300 KB" : "",
+        });
       } catch (error) {
-        results.push({ name: shot.name, ok: false, bytes: 0, ms: Date.now() - started, note: String(error.message ?? error).split("\n")[0] });
-        if (options.explore) await page.screenshot({ path: file, type: "jpeg", quality: JPEG_QUALITY }).catch(() => undefined);
+        results.push({
+          name: shot.name,
+          ok: false,
+          bytes: 0,
+          ms: Date.now() - started,
+          note: String(error.message ?? error).split("\n")[0],
+        });
+        if (options.explore)
+          await page
+            .screenshot({ path: file, type: "jpeg", quality: JPEG_QUALITY })
+            .catch(() => undefined);
       }
       if (options.explore) {
         console.log(`\n=== ${shot.name} (${shot.persona ?? "signed out"}) ===`);
@@ -195,11 +292,17 @@ async function main() {
 
   console.log("\nHandbook screenshots");
   for (const result of results) {
-    const size = result.bytes ? `${Math.round(result.bytes / 1024)} KB`.padStart(7) : "      -";
-    console.log(`${result.ok ? "ok  " : "FAIL"} ${result.name.padEnd(22)} ${size}  ${(result.ms / 1000).toFixed(1)} s  ${result.note}`);
+    const size = result.bytes
+      ? `${Math.round(result.bytes / 1024)} KB`.padStart(7)
+      : "      -";
+    console.log(
+      `${result.ok ? "ok  " : "FAIL"} ${result.name.padEnd(22)} ${size}  ${(result.ms / 1000).toFixed(1)} s  ${result.note}`,
+    );
   }
   const failed = results.filter((result) => !result.ok);
-  console.log(`\n${results.length - failed.length}/${results.length} saved to ${outputDir}`);
+  console.log(
+    `\n${results.length - failed.length}/${results.length} saved to ${outputDir}`,
+  );
   if (failed.length) process.exitCode = 1;
 }
 

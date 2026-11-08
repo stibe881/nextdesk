@@ -83,7 +83,8 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     return json(request, { error: { code: "invalid_request" } }, 400);
   }
   const action = parseHandbookAction(body);
-  if (!action) return json(request, { error: { code: "invalid_request" } }, 400);
+  if (!action)
+    return json(request, { error: { code: "invalid_request" } }, 400);
 
   const { data: membership, error: membershipError } =
     await context.supabaseAdmin
@@ -97,7 +98,11 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
     return json(request, { error: { code: "access_lookup_failed" } }, 500);
   }
   if (!membership) {
-    return json(request, { error: { code: "tenant_membership_required" } }, 403);
+    return json(
+      request,
+      { error: { code: "tenant_membership_required" } },
+      403,
+    );
   }
 
   const now = new Date().toISOString();

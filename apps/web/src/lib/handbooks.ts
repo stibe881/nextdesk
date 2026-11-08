@@ -1,10 +1,7 @@
 import { supabase } from "./supabase";
 
 export type HandbookId =
-  | "mitarbeitende"
-  | "agenten"
-  | "administratoren"
-  | "installation";
+  "mitarbeitende" | "agenten" | "administratoren" | "installation";
 
 export type HandbookSummary = {
   id: HandbookId;

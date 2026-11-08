@@ -17,9 +17,9 @@ const summary = {
 
 describe("handbook responses", () => {
   it("parses the list returned by the handbooks Function", () => {
-    expect(handbookListFromResponse({ data: { handbooks: [summary] } })).toEqual(
-      [summary],
-    );
+    expect(
+      handbookListFromResponse({ data: { handbooks: [summary] } }),
+    ).toEqual([summary]);
     expect(handbookListFromResponse({ data: { handbooks: [] } })).toEqual([]);
   });
 

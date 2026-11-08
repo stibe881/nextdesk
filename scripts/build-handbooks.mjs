@@ -27,7 +27,12 @@ const target = join(
 );
 
 const ORDER = ["mitarbeitende", "agenten", "administratoren", "installation"];
-const MIME = { ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp" };
+const MIME = {
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".png": "image/png",
+  ".webp": "image/webp",
+};
 const MAX_IMAGE_BYTES = 400 * 1024;
 
 function fail(message) {
@@ -57,10 +62,15 @@ const usedImages = new Set();
 for (const id of ORDER) {
   const file = join(sourceDir, `${id}.md`);
   if (!existsSync(file)) fail(`docs/handbooks/${id}.md fehlt.`);
-  const { meta, body } = parseFrontMatter(readFileSync(file, "utf8"), `${id}.md`);
+  const { meta, body } = parseFrontMatter(
+    readFileSync(file, "utf8"),
+    `${id}.md`,
+  );
   for (const [, name] of body.matchAll(/\]\(images\/([^)]+)\)/g)) {
-    if (!/^[A-Za-z0-9._-]+$/.test(name)) fail(`${id}.md: ungültiger Bildname ${name}`);
-    if (!existsSync(join(imageDir, name))) fail(`${id}.md: Bild images/${name} fehlt.`);
+    if (!/^[A-Za-z0-9._-]+$/.test(name))
+      fail(`${id}.md: ungültiger Bildname ${name}`);
+    if (!existsSync(join(imageDir, name)))
+      fail(`${id}.md: Bild images/${name} fehlt.`);
     usedImages.add(name);
   }
   handbooks.push({
@@ -85,10 +95,14 @@ for (const name of [...usedImages].sort()) {
 }
 
 const unused = existsSync(imageDir)
-  ? readdirSync(imageDir).filter((name) => !usedImages.has(name) && !name.startsWith("."))
+  ? readdirSync(imageDir).filter(
+      (name) => !usedImages.has(name) && !name.startsWith("."),
+    )
   : [];
 if (unused.length) {
-  fail(`Nicht referenzierte Bilder in docs/handbooks/images: ${unused.join(", ")}`);
+  fail(
+    `Nicht referenzierte Bilder in docs/handbooks/images: ${unused.join(", ")}`,
+  );
 }
 
 const output = `// Generiert von scripts/build-handbooks.mjs – nicht von Hand bearbeiten.
@@ -115,8 +129,12 @@ if (process.argv.includes("--check")) {
       "supabase/functions/handbooks/content.generated.ts ist veraltet. Bitte «node scripts/build-handbooks.mjs» ausführen.",
     );
   }
-  console.log(`Handbücher aktuell (${handbooks.length} Handbücher, ${usedImages.size} Bilder).`);
+  console.log(
+    `Handbücher aktuell (${handbooks.length} Handbücher, ${usedImages.size} Bilder).`,
+  );
 } else {
   writeFileSync(target, output);
-  console.log(`Handbücher generiert (${handbooks.length} Handbücher, ${usedImages.size} Bilder).`);
+  console.log(
+    `Handbücher generiert (${handbooks.length} Handbücher, ${usedImages.size} Bilder).`,
+  );
 }

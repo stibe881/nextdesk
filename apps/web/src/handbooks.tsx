@@ -5,8 +5,16 @@ import {
   LoaderCircle,
   Printer,
 } from "lucide-react";
-import { Children, useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  Children,
+  useEffect,
+  useMemo,
+  useState,
+  type MouseEvent,
+  type ReactNode,
+} from "react";
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 import {
   handbookDateLabel,
@@ -120,11 +128,11 @@ export function HandbookCard({
                 type="button"
               >
                 <span className="handbook-card__text">
+                  <span className="handbook-card__audience">
+                    {handbook.audienceLabel}
+                  </span>
                   <strong>{handbook.title}</strong>
                   <small>{handbook.description}</small>
-                </span>
-                <span className="handbook-card__audience">
-                  {handbook.audienceLabel}
                 </span>
                 <ChevronRight aria-hidden="true" size={16} strokeWidth={1.9} />
               </button>
@@ -134,6 +142,22 @@ export function HandbookCard({
       ) : null}
     </section>
   );
+}
+
+/**
+ * Scrolls within the app instead of changing the URL hash, which would
+ * otherwise scroll every overflow container (and the app shell) sideways.
+ */
+function jumpToHeading(event: MouseEvent<HTMLAnchorElement>) {
+  const id = event.currentTarget.getAttribute("href")?.slice(1);
+  const target = id ? document.getElementById(id) : null;
+  if (!target) return;
+  event.preventDefault();
+  target.scrollIntoView({
+    behavior: "smooth",
+    block: "start",
+    inline: "nearest",
+  });
 }
 
 function printHandbook() {
@@ -226,7 +250,9 @@ export function HandbookViewer({
             <ol>
               {contents.map((entry) => (
                 <li key={entry.id}>
-                  <a href={`#${entry.id}`}>{entry.title}</a>
+                  <a href={`#${entry.id}`} onClick={jumpToHeading}>
+                    {entry.title}
+                  </a>
                 </li>
               ))}
             </ol>
@@ -245,9 +271,7 @@ export function HandbookViewer({
                 components={{
                   h1: () => null,
                   h2: ({ children }) => (
-                    <h2 id={handbookHeadingId(textOf(children))}>
-                      {children}
-                    </h2>
+                    <h2 id={handbookHeadingId(textOf(children))}>{children}</h2>
                   ),
                   img: ({ src, alt }) =>
                     typeof src === "string" && src ? (
@@ -262,13 +286,16 @@ export function HandbookViewer({
                     ) : null,
                   a: ({ href, children }) =>
                     href?.startsWith("#") ? (
-                      <a href={href}>{children}</a>
+                      <a href={href} onClick={jumpToHeading}>
+                        {children}
+                      </a>
                     ) : (
                       <a href={href} rel="noreferrer" target="_blank">
                         {children}
                       </a>
                     ),
                 }}
+                remarkPlugins={[remarkGfm]}
                 urlTransform={handbookUrlTransform}
               >
                 {handbook.markdown}

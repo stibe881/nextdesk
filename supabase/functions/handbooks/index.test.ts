@@ -69,21 +69,27 @@ Deno.test("tenant administrators receive every handbook", () => {
   ]);
 });
 
-Deno.test("inactive, expired or department-scoped admin roles grant nothing extra", () => {
-  const inactive = assignment("Tenant administrator", ["ticket.update"]);
-  (inactive.roles as { active: boolean }).active = false;
-  const expired = assignment("Support agent", ["ticket.update"], {
-    expires_at: "2026-11-01T00:00:00.000Z",
-  });
-  const departmentAdmin = assignment("Tenant administrator", []);
-  (departmentAdmin.roles as { scope: string }).scope = "department";
-  assertEquals(
-    allowedHandbookIds(
-      handbookAccessFromAssignments([inactive, expired, departmentAdmin], NOW),
-    ),
-    ["mitarbeitende"],
-  );
-});
+Deno.test(
+  "inactive, expired or department-scoped admin roles grant nothing extra",
+  () => {
+    const inactive = assignment("Tenant administrator", ["ticket.update"]);
+    (inactive.roles as { active: boolean }).active = false;
+    const expired = assignment("Support agent", ["ticket.update"], {
+      expires_at: "2026-11-01T00:00:00.000Z",
+    });
+    const departmentAdmin = assignment("Tenant administrator", []);
+    (departmentAdmin.roles as { scope: string }).scope = "department";
+    assertEquals(
+      allowedHandbookIds(
+        handbookAccessFromAssignments(
+          [inactive, expired, departmentAdmin],
+          NOW,
+        ),
+      ),
+      ["mitarbeitende"],
+    );
+  },
+);
 
 Deno.test("requests are validated strictly", () => {
   assertEquals(parseHandbookAction({ type: "list", tenantId: TENANT }), {
@@ -105,24 +111,29 @@ Deno.test("requests are validated strictly", () => {
   assertEquals(parseHandbookAction({ type: "list", tenantId: "x" }), null);
 });
 
-Deno.test("generated content covers all handbooks with resolvable images", () => {
-  assertEquals(
-    HANDBOOKS.map((handbook) => handbook.id),
-    ["mitarbeitende", "agenten", "administratoren", "installation"],
-  );
-  for (const handbook of HANDBOOKS) {
-    const inlined = inlineHandbookImages(handbook.markdown, HANDBOOK_IMAGES);
-    if (/\]\(images\//.test(inlined)) {
-      throw new Error(`${handbook.id}: unresolved image reference`);
+Deno.test(
+  "generated content covers all handbooks with resolvable images",
+  () => {
+    assertEquals(
+      HANDBOOKS.map((handbook) => handbook.id),
+      ["mitarbeitende", "agenten", "administratoren", "installation"],
+    );
+    for (const handbook of HANDBOOKS) {
+      const inlined = inlineHandbookImages(handbook.markdown, HANDBOOK_IMAGES);
+      if (/\]\(images\//.test(inlined)) {
+        throw new Error(`${handbook.id}: unresolved image reference`);
+      }
     }
-  }
-});
+  },
+);
 
 Deno.test("the Function is registered with JWT verification", async () => {
   const config = await Deno.readTextFile(
     new URL("../../config.toml", import.meta.url),
   );
   if (!/\[functions\.handbooks\]\nverify_jwt = true/.test(config)) {
-    throw new Error("config.toml must declare [functions.handbooks] verify_jwt = true");
+    throw new Error(
+      "config.toml must declare [functions.handbooks] verify_jwt = true",
+    );
   }
 });

@@ -42,7 +42,7 @@ zeigt jederzeit, was noch fehlt.
   Der Betreiber legt den Mandanten an und lädt die erste Administratorin
   bzw. den ersten Administrator per E-Mail ein.
 - Für die Microsoft-Integrationen: Zugang zu einem Konto mit der Rolle
-  *Globaler Administrator* (für die Freigaben) bzw. *Exchange-Administrator*
+  _Globaler Administrator_ (für die Freigaben) bzw. _Exchange-Administrator_
   (für Postfachberechtigungen).
 - Eine Liste Ihrer E-Mail-Domains, Abteilungen und Support-Postfächer.
 
@@ -67,7 +67,7 @@ zeigt jederzeit, was noch fehlt.
    Wissensdatenbank, Self-Service, Ticketvorlagen, SLA-Automatisierung).
 4. **Einstellungen → SLA**: mindestens eine SLA-Regel pro Priorität anlegen.
 
-Details zu jedem Register stehen im *Handbuch für Administratoren*.
+Details zu jedem Register stehen im _Handbuch für Administratoren_.
 
 ## Schritt 3: Microsoft Entra SSO
 
@@ -85,26 +85,26 @@ https://login.microsoftonline.com/<IHRE-TENANT-ID>/adminconsent?client_id=<CLIEN
 ```
 
 Ihre Tenant-ID finden Sie im Microsoft Entra Admin Center unter
-*Übersicht → Mandanten-ID*.
+_Übersicht → Mandanten-ID_.
 
 **[Admin]** In nextDesk unter **Einstellungen → Funktionen → Single Sign-On
 → Konfigurieren**:
 
-| Feld                         | Wert                                                                                       |
-| ---------------------------- | ------------------------------------------------------------------------------------------ |
-| Anbieter                     | Microsoft Entra ID                                                                         |
-| Client-ID                    | vom Betreiber erhalten                                                                     |
-| Issuer-URL                   | `https://login.microsoftonline.com/<IHRE-TENANT-ID>/v2.0`                                  |
-| Discovery-URL                | `https://login.microsoftonline.com/<IHRE-TENANT-ID>/v2.0/.well-known/openid-configuration` |
-| Zugelassene E-Mail-Domains   | z. B. `muster.ch` – eine pro Zeile                                                         |
+| Feld                       | Wert                                                                                       |
+| -------------------------- | ------------------------------------------------------------------------------------------ |
+| Anbieter                   | Microsoft Entra ID                                                                         |
+| Client-ID                  | vom Betreiber erhalten                                                                     |
+| Issuer-URL                 | `https://login.microsoftonline.com/<IHRE-TENANT-ID>/v2.0`                                  |
+| Discovery-URL              | `https://login.microsoftonline.com/<IHRE-TENANT-ID>/v2.0/.well-known/openid-configuration` |
+| Zugelassene E-Mail-Domains | z. B. `muster.ch` – eine pro Zeile                                                         |
 
 1. **SSO aktivieren** ankreuzen, **SSO für die Anmeldung erzwingen** vorerst
-   *nicht* ankreuzen, **SSO-Konfiguration speichern**.
+   _nicht_ ankreuzen, **SSO-Konfiguration speichern**.
 2. In einem privaten Browserfenster mit **Mit SSO anmelden** testen.
 3. Erst wenn der Test klappt, **SSO für die Anmeldung erzwingen** setzen.
 
 > Eine Domain kann nur einem nextDesk-Mandanten zugeordnet sein. Personen aus
-> zugelassenen Domains werden beim ersten Login als *anfragende Person*
+> zugelassenen Domains werden beim ersten Login als _anfragende Person_
 > angelegt – Agenten- und Adminrechte vergeben Sie separat.
 
 ![SSO-Konfiguration mit Microsoft Entra ID](images/in-sso.jpg)
@@ -123,13 +123,13 @@ E-Mails an Ihre Support-Adresse werden zu Tickets, Agentenantworten gehen als
 E-Mail zurück.
 
 **[Betreiber]** Die App «nextDesk – Exchange Online» mit den delegierten
-Berechtigungen *User.Read, Mail.Read, Mail.Send, Mail.Read.Shared,
-Mail.Send.Shared* ist eingerichtet. nextDesk verwendet keine
+Berechtigungen _User.Read, Mail.Read, Mail.Send, Mail.Read.Shared,
+Mail.Send.Shared_ ist eingerichtet. nextDesk verwendet keine
 Anwendungsberechtigungen für Mail.
 
 **[Microsoft-Admin]** Bestimmen Sie ein Connector-Konto (z. B.
 `nextdesk-connector@muster.ch`). Geben Sie diesem Konto im Exchange Admin
-Center unter *Empfänger → Postfächer → Postfachdelegierung* für **jedes**
+Center unter _Empfänger → Postfächer → Postfachdelegierung_ für **jedes**
 Support-Postfach die Rechte **Vollzugriff** und **Senden als**.
 
 **[Admin]** In nextDesk:
@@ -137,8 +137,8 @@ Support-Postfach die Rechte **Vollzugriff** und **Senden als**.
 1. **Einstellungen → Funktionen → E-Mail-Kanal (Exchange Online)** aktivieren
    und **Konfigurieren** öffnen.
 2. **Microsoft 365 verbinden** und mit dem Connector-Konto anmelden.
-3. **Postfach hinzufügen**: Support-Postfach, *Ziel-Abteilung für neue
-   Tickets* und die gewünschten Mitteilungen (Eingangsbestätigung,
+3. **Postfach hinzufügen**: Support-Postfach, _Ziel-Abteilung für neue
+   Tickets_ und die gewünschten Mitteilungen (Eingangsbestätigung,
    Agentenantworten per E-Mail, Lösungsmitteilung) wählen →
    **Postfach speichern**.
 4. **Prüfen** → **Aktivieren** → **Testmail** senden.
@@ -157,10 +157,10 @@ Mandanten gehören. Optional aktivieren Sie im selben Bereich die
 
 - Voraussetzung: SSO ist mit Ihrer **eigenen Tenant-ID** konfiguriert
   (nicht `common`).
-- **[Microsoft-Admin]** Zustimmung für die Berechtigung *User.Read.All*
+- **[Microsoft-Admin]** Zustimmung für die Berechtigung _User.Read.All_
   erteilen (Link vom Betreiber).
 - **[Admin]** **Einstellungen → Personen → Microsoft Entra-Verzeichnis**:
-  *Connector für manuelle Abgleiche aktivieren* → **Konfiguration speichern**
+  _Connector für manuelle Abgleiche aktivieren_ → **Konfiguration speichern**
   → **Verbindung testen** → **Manuellen Abgleich starten**.
 
 Der Abgleich läuft nur manuell; es werden keine Personen gelöscht.
@@ -170,10 +170,10 @@ Der Abgleich läuft nur manuell; es werden keine Personen gelöscht.
 ### Microsoft Intune (Geräte)
 
 - **[Microsoft-Admin]** Zustimmung für die Intune-App mit
-  *DeviceManagementManagedDevices.Read.All* (nur lesend) erteilen.
+  _DeviceManagementManagedDevices.Read.All_ (nur lesend) erteilen.
 - **[Admin]** Funktion **Asset-Management** aktivieren →
-  **Konfigurieren** → *Manuellen Microsoft-Graph-Abgleich für diesen Mandanten
-  freigeben* → Vorschau prüfen → **Übernahme ausdrücklich bestätigen** →
+  **Konfigurieren** → _Manuellen Microsoft-Graph-Abgleich für diesen Mandanten
+  freigeben_ → Vorschau prüfen → **Übernahme ausdrücklich bestätigen** →
   **Jetzt einmalig abgleichen**.
 
 Geräte mit bereits vorhandener Seriennummer werden übersprungen, es wird nie
@@ -186,8 +186,8 @@ etwas gelöscht.
 - **[Admin]** Funktion **Push-Benachrichtigungen** aktivieren, Inhaltsstufe
   **Nur Ticketnummer** (empfohlen) wählen und das Arbeitszeitfenster für den
   Check-in festlegen.
-- Anwenderinnen und Anwender testen in der iOS-App unter *Profil →
-  Benachrichtigungen → Testmitteilung senden*.
+- Anwenderinnen und Anwender testen in der iOS-App unter _Profil →
+  Benachrichtigungen → Testmitteilung senden_.
 
 ### PRTG-Monitoring
 
@@ -195,7 +195,7 @@ etwas gelöscht.
    aktivieren, Abteilung/Team, «Ticket erstellen bei» (Down bzw. Down und
    Warning) und Priorität wählen, **Token erzeugen**. Die Webhook-Adresse wird
    **nur einmal** angezeigt – sofort kopieren.
-2. In PRTG unter *Setup → Kontoeinstellungen → Benachrichtigungsvorlagen*
+2. In PRTG unter _Setup → Kontoeinstellungen → Benachrichtigungsvorlagen_
    eine Vorlage **HTTP-Aktion ausführen** mit Methode **POST** anlegen.
    Postdaten:
 
@@ -203,7 +203,7 @@ etwas gelöscht.
    device=%device&host=%host&sensor=%sensor&status=%status&message=%message&down=%down&lastvalue=%lastvalue&datetime=%datetime&group=%group&probe=%probe&sensorid=%sensorid&deviceid=%deviceid
    ```
 
-3. Trigger für *Down*, *Warning* und *Up* setzen. Bei *Up* kann nextDesk das
+3. Trigger für _Down_, _Warning_ und _Up_ setzen. Bei _Up_ kann nextDesk das
    Ticket automatisch lösen.
 4. Blockiert Ihre Firewall die Webhook-Adresse, verwenden Sie die Weiterleitung
    über die eigene Domain:
@@ -230,14 +230,14 @@ erwartetem Intervall und Toleranz).
 
 ## Fehlerbehebung
 
-| Problem                                         | Lösung                                                                                         |
-| ----------------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| SSO-Anmeldung meldet fehlende Zustimmung        | Admin-Consent-Link erneut durch den Microsoft-Admin ausführen lassen                           |
-| Person landet im falschen bzw. keinem Mandanten | Domain unter «Zugelassene E-Mail-Domains» prüfen; eine Domain gehört nur zu einem Mandanten    |
-| Postfach lässt sich nicht prüfen                | Vollzugriff und «Senden als» für das Connector-Konto prüfen, danach erneut **Prüfen**          |
-| Keine Tickets aus E-Mails                       | Postfach aktiv? Bis zu 5 Minuten warten; Status im Bereich E-Mail-Kanäle prüfen                 |
-| PRTG-Alarme erzeugen keine Tickets              | Token neu erzeugen, Postdaten und Methode POST prüfen, ggf. `prtg-relay.php` verwenden          |
-| Agent sieht keine Tickets                       | Rolle und Ticketzugriffsbereich unter **Personen** bzw. **Rollen** prüfen                       |
+| Problem                                         | Lösung                                                                                      |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| SSO-Anmeldung meldet fehlende Zustimmung        | Admin-Consent-Link erneut durch den Microsoft-Admin ausführen lassen                        |
+| Person landet im falschen bzw. keinem Mandanten | Domain unter «Zugelassene E-Mail-Domains» prüfen; eine Domain gehört nur zu einem Mandanten |
+| Postfach lässt sich nicht prüfen                | Vollzugriff und «Senden als» für das Connector-Konto prüfen, danach erneut **Prüfen**       |
+| Keine Tickets aus E-Mails                       | Postfach aktiv? Bis zu 5 Minuten warten; Status im Bereich E-Mail-Kanäle prüfen             |
+| PRTG-Alarme erzeugen keine Tickets              | Token neu erzeugen, Postdaten und Methode POST prüfen, ggf. `prtg-relay.php` verwenden      |
+| Agent sieht keine Tickets                       | Rolle und Ticketzugriffsbereich unter **Personen** bzw. **Rollen** prüfen                   |
 
 ## Anhang: Plattformbetrieb (nur Betreiber)
 

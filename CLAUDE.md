@@ -7,12 +7,12 @@ Web-App unter **Persönliche Einstellungen → Handbücher** nur den berechtigte
 Rollen ausgeliefert (Edge Function `handbooks`, Regel in
 `supabase/functions/_shared/handbook-access.ts`).
 
-| Handbuch                          | Zielgruppe                     | Betroffen bei Änderungen an …                                                                                     |
-| --------------------------------- | ------------------------------ | ----------------------------------------------------------------------------------------------------------------- |
-| `docs/handbooks/mitarbeitende.md` | alle Mitglieder eines Mandanten | Anmeldung, Mitarbeitenden-Navigation, Ticket erfassen, eigene Tickets, Wissen/Self-Service, Shop, Profil, Mobile-App |
-| `docs/handbooks/agenten.md`       | Agenten (Ticketbearbeitung)    | Übersicht, Arbeitsplatz, Ticketliste/Kanban, Ticketdetail, Antworten, Wissen, Berichte, Teamführung               |
-| `docs/handbooks/administratoren.md` | Mandantenadministratoren      | `tenant-admin-settings.tsx` und alle dort eingebundenen Einstellungen, Rollen, Benutzer, SLA, Module             |
-| `docs/handbooks/installation.md`  | Mandantenadministratoren       | Deployment, Supabase, SSO, Exchange, Entra, Intune, Push, Monitoring, Umgebungsvariablen                          |
+| Handbuch                            | Zielgruppe                      | Betroffen bei Änderungen an …                                                                                        |
+| ----------------------------------- | ------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `docs/handbooks/mitarbeitende.md`   | alle Mitglieder eines Mandanten | Anmeldung, Mitarbeitenden-Navigation, Ticket erfassen, eigene Tickets, Wissen/Self-Service, Shop, Profil, Mobile-App |
+| `docs/handbooks/agenten.md`         | Agenten (Ticketbearbeitung)     | Übersicht, Arbeitsplatz, Ticketliste/Kanban, Ticketdetail, Antworten, Wissen, Berichte, Teamführung                  |
+| `docs/handbooks/administratoren.md` | Mandantenadministratoren        | `tenant-admin-settings.tsx` und alle dort eingebundenen Einstellungen, Rollen, Benutzer, SLA, Module                 |
+| `docs/handbooks/installation.md`    | Mandantenadministratoren        | Deployment, Supabase, SSO, Exchange, Entra, Intune, Push, Monitoring, Umgebungsvariablen                             |
 
 Bei **jeder** Änderung an Funktionen, Beschriftungen, Navigation, Berechtigungen
 oder Einrichtungsschritten:

@@ -19,7 +19,8 @@ const PERSONAS = {
   admin: { ...D.U.daniel, canWorkTickets: true, isTenantAdmin: true },
 };
 
-const b64u = (value) => Buffer.from(JSON.stringify(value)).toString("base64url");
+const b64u = (value) =>
+  Buffer.from(JSON.stringify(value)).toString("base64url");
 
 function sessionFor(persona) {
   const now = Math.floor(Date.now() / 1000);
@@ -36,12 +37,25 @@ function sessionFor(persona) {
   };
   const jwt = [
     b64u({ alg: "HS256", typ: "JWT" }),
-    b64u({ sub: persona.id, exp: now + 86400, role: "authenticated", aud: "authenticated", email: persona.email }),
+    b64u({
+      sub: persona.id,
+      exp: now + 86400,
+      role: "authenticated",
+      aud: "authenticated",
+      email: persona.email,
+    }),
     "signature",
   ].join(".");
   return {
     user,
-    session: { access_token: jwt, refresh_token: "demo-refresh", token_type: "bearer", expires_in: 86400, expires_at: now + 86400, user },
+    session: {
+      access_token: jwt,
+      refresh_token: "demo-refresh",
+      token_type: "bearer",
+      expires_in: 86400,
+      expires_at: now + 86400,
+      user,
+    },
   };
 }
 
@@ -65,10 +79,32 @@ async function installRealtime(context) {
       if (!Array.isArray(message)) return;
       const [joinRef, ref, topic, event, payload] = message;
       if (event === "phx_join") {
-        const changes = (payload?.config?.postgres_changes ?? []).map((change, index) => ({ ...change, id: index + 1 }));
-        ws.send(JSON.stringify([joinRef, ref, topic, "phx_reply", { status: "ok", response: { postgres_changes: changes } }]));
-      } else if (event === "heartbeat" || event === "access_token" || event === "phx_leave") {
-        ws.send(JSON.stringify([joinRef, ref, topic, "phx_reply", { status: "ok", response: {} }]));
+        const changes = (payload?.config?.postgres_changes ?? []).map(
+          (change, index) => ({ ...change, id: index + 1 }),
+        );
+        ws.send(
+          JSON.stringify([
+            joinRef,
+            ref,
+            topic,
+            "phx_reply",
+            { status: "ok", response: { postgres_changes: changes } },
+          ]),
+        );
+      } else if (
+        event === "heartbeat" ||
+        event === "access_token" ||
+        event === "phx_leave"
+      ) {
+        ws.send(
+          JSON.stringify([
+            joinRef,
+            ref,
+            topic,
+            "phx_reply",
+            { status: "ok", response: {} },
+          ]),
+        );
       }
     });
   });
@@ -86,7 +122,7 @@ async function install(context, personaKey, options = {}) {
   const state = { persona, personaKey, misses: [] };
 
   await context.addInitScript(
-    ({ key, session, userId }) => {
+    ({ key, session, userId, tenantId }) => {
       try {
         if (session && !sessionStorage.getItem("handbook-session-injected")) {
           localStorage.setItem(key, session);
@@ -95,12 +131,21 @@ async function install(context, personaKey, options = {}) {
         if (userId) {
           // Onboarding tour and intro tips are shown once per person.
           localStorage.setItem(`nextdesk.tour.agent.v1.${userId}`, "done");
+          localStorage.setItem(
+            `nextdesk:intro-tips:${encodeURIComponent(tenantId)}:${encodeURIComponent(userId)}`,
+            JSON.stringify({ arbeitsplatz: true, "mein-portal": true }),
+          );
         }
       } catch {
         // Storage can be unavailable on about:blank.
       }
     },
-    { key: STORAGE_KEY, session: auth ? JSON.stringify(auth.session) : null, userId: persona?.id ?? null },
+    {
+      key: STORAGE_KEY,
+      session: auth ? JSON.stringify(auth.session) : null,
+      userId: persona?.id ?? null,
+      tenantId: D.TENANT.id,
+    },
   );
 
   await installRealtime(context);
@@ -118,13 +163,23 @@ async function install(context, personaKey, options = {}) {
       body = null;
     }
 
-    const ctx = { persona, state, request, url, body, method: request.method(), headers: request.headers() };
+    const ctx = {
+      persona,
+      state,
+      request,
+      url,
+      body,
+      method: request.method(),
+      headers: request.headers(),
+    };
     let result = null;
     const path = url.pathname;
     if (path.startsWith("/auth/v1/")) {
       result = authResponse(path, ctx, auth);
     } else if (path.startsWith("/functions/v1/")) {
-      result = persona ? functionResponse(path.split("/")[3], body ?? {}, ctx) : { status: 401, json: { error: { code: "unauthorized" } } };
+      result = persona
+        ? functionResponse(path.split("/")[3], body ?? {}, ctx)
+        : { status: 401, json: { error: { code: "unauthorized" } } };
     } else if (path.startsWith("/rest/v1/")) {
       result = restResponse(path.slice("/rest/v1/".length), ctx);
     } else if (path.startsWith("/storage/v1/")) {
@@ -136,15 +191,19 @@ async function install(context, personaKey, options = {}) {
       state.misses.push(line);
       options.onMiss?.(line);
     }
-    if (options.log) console.log(result && !result.miss ? "OK  " : "MISS", line);
+    if (options.log)
+      console.log(result && !result.miss ? "OK  " : "MISS", line);
     if (!result) {
       result = { json: path.startsWith("/rest") ? [] : { data: {} } };
     }
-    if (result.delayMs) await new Promise((resolve) => setTimeout(resolve, result.delayMs));
+    if (result.delayMs)
+      await new Promise((resolve) => setTimeout(resolve, result.delayMs));
     return route.fulfill({
       status: result.status ?? 200,
       headers: { ...CORS, ...(result.headers ?? {}) },
-      ...(result.body !== undefined ? { body: result.body } : { json: result.json ?? null }),
+      ...(result.body !== undefined
+        ? { body: result.body }
+        : { json: result.json ?? null }),
     });
   });
 
@@ -152,13 +211,26 @@ async function install(context, personaKey, options = {}) {
 }
 
 function authResponse(path, ctx, auth) {
-  if (path === "/auth/v1/user") return auth ? { json: auth.user } : { status: 401, json: { code: 401, msg: "not signed in" } };
+  if (path === "/auth/v1/user")
+    return auth
+      ? { json: auth.user }
+      : { status: 401, json: { code: 401, msg: "not signed in" } };
   if (path === "/auth/v1/logout") return { status: 204, body: "" };
   if (path === "/auth/v1/settings") {
-    return { json: { external: { azure: true, email: true }, disable_signup: true, mailer_autoconfirm: false } };
+    return {
+      json: {
+        external: { azure: true, email: true },
+        disable_signup: true,
+        mailer_autoconfirm: false,
+      },
+    };
   }
-  if (path === "/auth/v1/token") return auth ? { json: auth.session } : { status: 400, json: { error: "invalid_grant" } };
-  if (path === "/auth/v1/otp" || path === "/auth/v1/recover") return { json: {} };
+  if (path === "/auth/v1/token")
+    return auth
+      ? { json: auth.session }
+      : { status: 400, json: { error: "invalid_grant" } };
+  if (path === "/auth/v1/otp" || path === "/auth/v1/recover")
+    return { json: {} };
   return null;
 }
 
