@@ -80,6 +80,8 @@ const config: ExpoConfig = {
   ios: {
     supportsTablet: true,
     bundleIdentifier: env.iosBundleId,
+    // Apple Developer Team (needed for the widget extension and App Group).
+    appleTeamId: "QF59FHQ44R",
     infoPlist: {
       ITSAppUsesNonExemptEncryption: false,
     },
