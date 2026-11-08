@@ -71,6 +71,32 @@ export function isReportRecipient(
   return recipients.some((address) => address.trim().toLowerCase() === target);
 }
 
+/**
+ * When the report address is the support mailbox itself, only messages that
+ * are explicitly marked as a report count (e.g. «WG: Phishing …»); every
+ * other mail to the support mailbox stays an ordinary ticket.
+ */
+export function isMarkedPhishingReport(subject: string | null | undefined): boolean {
+  return /phishing|verd(ä|ae)chtig/i.test(subject ?? "");
+}
+
+/**
+ * Whether an inbound mail is a phishing report. A separate report address
+ * (alias) in To/Cc always counts; the shared support mailbox only counts
+ * with a marked subject.
+ */
+export function isPhishingReportMail(
+  settings: PhishingSettings | null,
+  input: { mailboxAddress: string; recipients: readonly string[]; subject?: string | null },
+): boolean {
+  if (!settings?.enabled || !settings.reportAddress) return false;
+  const target = settings.reportAddress.toLowerCase();
+  if (target === input.mailboxAddress.trim().toLowerCase()) {
+    return isMarkedPhishingReport(input.subject);
+  }
+  return isReportRecipient(settings, input.recipients);
+}
+
 /** The tenant's own mail domains: lookalikes of these are flagged. */
 export async function tenantReferenceDomains(admin: Admin, tenantId: string): Promise<string[]> {
   const [sso, channels, settings] = await Promise.all([

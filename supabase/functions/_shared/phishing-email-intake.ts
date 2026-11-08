@@ -18,7 +18,7 @@ import {
 import {
   convertToSecurityTicket,
   finalizePhishingReport,
-  isReportRecipient,
+  isPhishingReportMail,
   loadPhishingSettings,
   type PhishingSettings,
   reportFingerprint,
@@ -89,18 +89,16 @@ export function graphMessageToMail(item: Row): ParsedMail {
 /** Whether this inbound message is a phishing report (cheap, no Graph call). */
 export async function phishingReportSettingsFor(
   admin: Admin,
-  input: { tenantId: string; mailboxAddress: string; recipients: readonly string[] },
+  input: {
+    tenantId: string;
+    mailboxAddress: string;
+    recipients: readonly string[];
+    subject?: string | null;
+  },
 ): Promise<PhishingSettings | null> {
   try {
     const settings = await loadPhishingSettings(admin, input.tenantId);
-    if (!settings?.enabled || !settings.reportAddress) return null;
-    if (
-      isReportRecipient(settings, input.recipients) ||
-      settings.reportAddress === input.mailboxAddress.toLowerCase()
-    ) {
-      return settings;
-    }
-    return null;
+    return isPhishingReportMail(settings, input) ? settings : null;
   } catch {
     return null;
   }
