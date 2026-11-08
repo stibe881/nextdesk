@@ -113,13 +113,13 @@ Deno.test("a device takes several services, the old single one still works", () 
   const device = {
     name: "Core-Switch",
     category: "switch",
-    lifecycleState: "in_use",
+    lifecycleState: "active",
     criticality: "medium",
     maintenanceChecklist: [],
   };
-  const parse = (extra: Record<string, unknown>) =>
-    parseAction({ type: "save", tenantId, device: { ...device, ...extra } });
-  assertEquals(parse({ serviceIds: [a, b] }) !== null, true);
-  assertEquals(parse({ serviceIds: [a, a] }), null);
-  assertEquals(parse({ serviceIds: ["x"] }), null);
+  assertEquals(parseDevice({ ...device, serviceIds: [a, b] })?.serviceIds, [a, b]);
+  assertEquals(parseDevice({ ...device, serviceId: a })?.serviceIds, [a]);
+  assertEquals(parseDevice(device)?.serviceIds, []);
+  assertEquals(parseDevice({ ...device, serviceIds: [a, a] }), null);
+  assertEquals(parseDevice({ ...device, serviceIds: ["x"] }), null);
 });
