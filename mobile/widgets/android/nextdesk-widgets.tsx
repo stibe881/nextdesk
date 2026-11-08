@@ -11,6 +11,7 @@ import {
   countSlaWarnings,
   formatSnapshotTime,
   widgetDeepLink,
+  type WidgetBrandColors,
   type WidgetPriority,
   type WidgetSnapshot,
 } from "@/lib/widget-snapshot";
@@ -305,6 +306,19 @@ export function CountersWidget({
 }
 
 /** Light and dark rendering of one widget for react-native-android-widget. */
+/** Tenant design colours (accent and row surface) over the defaults. */
+function withBrand(
+  base: Palette,
+  brand: WidgetBrandColors | null | undefined,
+): Palette {
+  if (!brand) return base;
+  return {
+    ...base,
+    primary: brand.accent as ColorProp,
+    surface: brand.surface as ColorProp,
+  };
+}
+
 export function renderNextDeskWidget(
   widgetName: string,
   snapshot: WidgetSnapshot | null,
@@ -313,7 +327,19 @@ export function renderNextDeskWidget(
   const Widget =
     widgetName === ANDROID_COUNTERS_WIDGET ? CountersWidget : PrioritiesWidget;
   return {
-    light: <Widget snapshot={snapshot} now={now} c={LIGHT} />,
-    dark: <Widget snapshot={snapshot} now={now} c={DARK} />,
+    light: (
+      <Widget
+        snapshot={snapshot}
+        now={now}
+        c={withBrand(LIGHT, snapshot?.brand?.light)}
+      />
+    ),
+    dark: (
+      <Widget
+        snapshot={snapshot}
+        now={now}
+        c={withBrand(DARK, snapshot?.brand?.dark)}
+      />
+    ),
   };
 }

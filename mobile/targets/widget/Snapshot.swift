@@ -17,6 +17,18 @@ struct WidgetPriority: Codable, Hashable, Identifiable {
   let reason: String?
 }
 
+/// Tenant design colours (Einstellungen → Design), already made readable
+/// for light and dark by the app (`#RRGGBB`).
+struct WidgetBrandColors: Codable, Hashable {
+  let accent: String
+  let surface: String
+}
+
+struct WidgetBrand: Codable, Hashable {
+  let light: WidgetBrandColors
+  let dark: WidgetBrandColors
+}
+
 struct WidgetSnapshot: Codable {
   let version: Int
   let updatedAt: String
@@ -24,6 +36,8 @@ struct WidgetSnapshot: Codable {
   let priorities: [WidgetPriority]?
   let slaDueAt: [String]?
   let approvals: Int?
+  /// Missing in snapshots of older app versions: built-in colours then.
+  let brand: WidgetBrand?
 
   var updatedDate: Date? { parseISODate(updatedAt) }
   var dueDates: [Date]? { slaDueAt?.compactMap(parseISODate) }
@@ -50,7 +64,8 @@ struct WidgetSnapshot: Codable {
       WidgetPriority(id: "3", ticketNumber: "T-1031", subject: "Mailbox fast voll", reason: "Hohe Priorität"),
     ],
     slaDueAt: [ISO8601DateFormatter().string(from: Date().addingTimeInterval(2 * 60 * 60))],
-    approvals: 2
+    approvals: 2,
+    brand: nil
   )
 }
 
