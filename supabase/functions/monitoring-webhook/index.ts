@@ -51,6 +51,8 @@ type Alert = {
   id: string;
   ticket_id: string | null;
   service_id: string | null;
+  service_ids: string[] | null;
+  service_statuses: Record<string, string> | null;
   asset_id: string | null;
   last_status: string | null;
   last_comment_at: string | null;
@@ -158,6 +160,19 @@ async function loadDevices(
       rows.map((row) => String(row.asset_id)),
     );
   if (assets.error) throw new Error("device_lookup_failed");
+  const links = await admin
+    .from("asset_services")
+    .select("asset_id, service_id")
+    .eq("tenant_id", tenantId)
+    .limit(20000);
+  if (links.error) throw new Error("device_lookup_failed");
+  const servicesByAsset = new Map<string, Set<string>>();
+  for (const link of (links.data ?? []) as Row[]) {
+    const key = String(link.asset_id);
+    const set = servicesByAsset.get(key) ?? new Set<string>();
+    set.add(String(link.service_id));
+    servicesByAsset.set(key, set);
+  }
   const byId = new Map(
     ((assets.data ?? []) as Row[]).map((row) => [String(row.id), row]),
   );
@@ -171,7 +186,13 @@ async function loadDevices(
         hostname: asString(row.hostname),
         ipAddress: asString(row.ip_address),
         prtgObjectId: asString(row.prtg_object_id),
-        serviceId: asString(asset.service_id),
+        // The primary service plus every additional one of the device.
+        serviceIds: [
+          ...new Set([
+            ...(asString(asset.service_id) ? [asString(asset.service_id)!] : []),
+            ...(servicesByAsset.get(String(asset.id)) ?? []),
+          ]),
+        ],
       },
     ];
   });
@@ -374,6 +395,36 @@ async function applyServiceStatus(
   return updated.error ? null : target;
 }
 
+/** Services of an alert: the stored list, else the legacy single service. */
+function alertServiceIds(alert: Alert): string[] {
+  const ids = alert.service_ids ?? [];
+  return ids.length ? ids : alert.service_id ? [alert.service_id] : [];
+}
+
+/** Status monitoring applied per service; the legacy single value is kept. */
+function alertServiceStatuses(alert: Alert): Record<string, string> {
+  const stored = alert.service_statuses ?? {};
+  if (Object.keys(stored).length) return { ...stored };
+  return alert.service_id && alert.service_status_applied
+    ? { [alert.service_id]: alert.service_status_applied }
+    : {};
+}
+
+async function applyServiceStatuses(
+  admin: Admin,
+  tenantId: string,
+  serviceIds: string[],
+  kind: PrtgEvent["kind"],
+  current: Record<string, string>,
+): Promise<Record<string, string>> {
+  const next = { ...current };
+  for (const serviceId of serviceIds) {
+    const applied = await applyServiceStatus(admin, tenantId, serviceId, kind);
+    if (applied) next[serviceId] = applied;
+  }
+  return next;
+}
+
 async function restoreServiceStatus(
   admin: Admin,
   tenantId: string,
@@ -384,9 +435,8 @@ async function restoreServiceStatus(
     .from("monitoring_alerts")
     .select("id")
     .eq("tenant_id", tenantId)
-    .eq("service_id", serviceId)
     .eq("state", "open")
-    .not("service_status_applied", "is", null)
+    .not(`service_statuses->>${serviceId}`, "is", null)
     .neq("id", resolvedAlertId)
     .limit(1);
   if (others.error || (others.data ?? []).length > 0) return;
@@ -466,7 +516,7 @@ async function findOpenAlert(
   const { data, error } = await admin
     .from("monitoring_alerts")
     .select(
-      "id, ticket_id, service_id, asset_id, last_status, last_comment_at, opened_at, event_count, service_status_applied",
+      "id, ticket_id, service_id, service_ids, service_statuses, asset_id, last_status, last_comment_at, opened_at, event_count, service_status_applied",
     )
     .eq("tenant_id", tenantId)
     .eq("external_key", key)
@@ -501,7 +551,8 @@ export async function processEvent(
         device_name: event.device ?? event.host,
         sensor_name: event.sensor,
         asset_id: device?.assetId ?? null,
-        service_id: device?.serviceId ?? null,
+        service_id: device?.serviceIds[0] ?? null,
+        service_ids: device?.serviceIds ?? [],
         state: "open",
         last_status: event.status.slice(0, 80),
         last_message: event.message,
@@ -535,18 +586,22 @@ export async function processEvent(
           .eq("id", alertId);
         throw failure;
       }
-      const applied =
-        integration.set_service_status && device?.serviceId
-          ? await applyServiceStatus(
-              admin,
-              tenantId,
-              device.serviceId,
-              event.kind,
-            )
-          : null;
+      const statuses = integration.set_service_status
+        ? await applyServiceStatuses(
+            admin,
+            tenantId,
+            device?.serviceIds ?? [],
+            event.kind,
+            {},
+          )
+        : {};
       await admin
         .from("monitoring_alerts")
-        .update({ ticket_id: ticketId, service_status_applied: applied })
+        .update({
+          ticket_id: ticketId,
+          service_statuses: statuses,
+          service_status_applied: Object.values(statuses)[0] ?? null,
+        })
         .eq("id", alertId);
       return "ticket_created";
     }
@@ -577,8 +632,8 @@ export async function processEvent(
     if (integration.auto_resolve && alert.ticket_id) {
       await resolveTicket(admin, tenantId, alert.ticket_id, serviceIdentityId);
     }
-    if (alert.service_id && alert.service_status_applied) {
-      await restoreServiceStatus(admin, tenantId, alert.service_id, alert.id);
+    for (const serviceId of Object.keys(alertServiceStatuses(alert))) {
+      await restoreServiceStatus(admin, tenantId, serviceId, alert.id);
     }
     return "resolved";
   }
@@ -601,15 +656,15 @@ export async function processEvent(
       updateComment(event),
     );
   }
-  let applied = alert.service_status_applied;
-  if (integration.set_service_status && alert.service_id) {
-    const next = await applyServiceStatus(
+  let statuses = alertServiceStatuses(alert);
+  if (integration.set_service_status) {
+    statuses = await applyServiceStatuses(
       admin,
       tenantId,
-      alert.service_id,
+      alertServiceIds(alert),
       event.kind,
+      statuses,
     );
-    if (next) applied = next;
   }
   await admin
     .from("monitoring_alerts")
@@ -618,7 +673,8 @@ export async function processEvent(
       last_message: event.message,
       last_event_at: now.toISOString(),
       event_count: alert.event_count + 1,
-      service_status_applied: applied,
+      service_statuses: statuses,
+      service_status_applied: Object.values(statuses)[0] ?? null,
       ...(comment ? { last_comment_at: now.toISOString() } : {}),
     })
     .eq("id", alert.id);

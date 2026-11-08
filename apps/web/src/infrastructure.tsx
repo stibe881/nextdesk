@@ -91,6 +91,7 @@ type Device = {
   lastMaintenanceOn: string | null;
   notes: string | null;
   serviceId: string | null;
+  serviceIds: string[];
   maintenanceChecklist: string[];
   serviceTaskTemplateId: string | null;
   prtgObjectId: string | null;
@@ -110,6 +111,7 @@ type Detail = {
   maintenance: {
     id: string;
     performedOn: string;
+    performedTime: string | null;
     kind: string;
     note: string;
     actorName: string | null;
@@ -273,6 +275,7 @@ const EMPTY_FORM: Omit<
   maintenanceIntervalMonths: null,
   notes: null,
   serviceId: null,
+  serviceIds: [],
   maintenanceChecklist: [],
   prtgObjectId: null,
 };
@@ -961,6 +964,7 @@ function DeviceDetail({
   const [reason, setReason] = useState("");
   const [maintenance, setMaintenance] = useState({
     performedOn: new Date().toISOString().slice(0, 10),
+    performedTime: "",
     kind: "maintenance",
     note: "",
   });
@@ -1313,6 +1317,19 @@ function DeviceDetail({
                   />
                 </label>
                 <label>
+                  Uhrzeit
+                  <input
+                    onChange={(event) =>
+                      setMaintenance({
+                        ...maintenance,
+                        performedTime: event.target.value,
+                      })
+                    }
+                    type="time"
+                    value={maintenance.performedTime}
+                  />
+                </label>
+                <label>
                   Art
                   <select
                     onChange={(event) =>
@@ -1357,7 +1374,10 @@ function DeviceDetail({
               <ul className="infrastructure__timeline">
                 {detail.maintenance.map((entry) => (
                   <li key={entry.id}>
-                    <time>{formatDate(entry.performedOn)}</time>
+                    <time>
+                      {formatDate(entry.performedOn)}
+                      {entry.performedTime ? `, ${entry.performedTime}` : ""}
+                    </time>
                     <strong>
                       {MAINTENANCE_LABEL[entry.kind] ?? entry.kind}
                     </strong>
@@ -1483,6 +1503,40 @@ function DeviceEditor({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [newLocation, setNewLocation] = useState("");
+  // The rack unit is stored as «12» or «12-14» (see lib/rack-layout.ts).
+  const initialUnits = (initial.rackUnit ?? "").match(/\d{1,3}/g) ?? [];
+  const [rackFrom, setRackFrom] = useState(initialUnits[0] ?? "");
+  const [rackTo, setRackTo] = useState(initialUnits[1] ?? "");
+  const selectedServiceIds =
+    form.serviceIds ?? (form.serviceId ? [form.serviceId] : []);
+
+  function setRackUnits(from: string, to: string) {
+    setRackFrom(from);
+    setRackTo(to);
+    const start = from.trim();
+    const end = to.trim();
+    setForm((current) => ({
+      ...current,
+      rackUnit: !start
+        ? end || null
+        : end && end !== start
+          ? `${start}-${end}`
+          : start,
+    }));
+  }
+
+  function toggleService(serviceId: string) {
+    setForm((current) => {
+      const ids =
+        current.serviceIds ?? (current.serviceId ? [current.serviceId] : []);
+      return {
+        ...current,
+        serviceIds: ids.includes(serviceId)
+          ? ids.filter((id) => id !== serviceId)
+          : [...ids, serviceId],
+      };
+    });
+  }
 
   const set = <K extends keyof Form>(key: K, value: Form[K]) =>
     setForm((current) => ({ ...current, [key]: value }));
@@ -1541,6 +1595,7 @@ function DeviceEditor({
         tenantId,
         device: {
           ...form,
+          serviceIds: selectedServiceIds,
           maintenanceChecklist: (form.maintenanceChecklist ?? [])
             .map((item) => item.trim())
             .filter(Boolean),
@@ -1734,23 +1789,57 @@ function DeviceEditor({
               </span>
             </label>
             {text("rack", "Rack")}
-            {text("rackUnit", "Höheneinheit", "z. B. 12")}
-            <label>
-              Dienst (für Systemstatus)
-              <select
-                onChange={(event) =>
-                  set("serviceId", event.target.value || null)
-                }
-                value={form.serviceId ?? ""}
-              >
-                <option value="">– kein Dienst –</option>
-                {services.map((service) => (
-                  <option key={service.id} value={service.id}>
+            <div className="infrastructure__range">
+              <label>
+                Höheneinheit von
+                <input
+                  inputMode="numeric"
+                  max={60}
+                  min={1}
+                  onChange={(event) => setRackUnits(event.target.value, rackTo)}
+                  placeholder="z. B. 12"
+                  type="number"
+                  value={rackFrom}
+                />
+              </label>
+              <label>
+                bis
+                <input
+                  inputMode="numeric"
+                  max={60}
+                  min={rackFrom || 1}
+                  onChange={(event) =>
+                    setRackUnits(rackFrom, event.target.value)
+                  }
+                  placeholder="z. B. 14"
+                  type="number"
+                  value={rackTo}
+                />
+              </label>
+            </div>
+            <fieldset className="infrastructure__services">
+              <legend>Dienste (für Systemstatus)</legend>
+              {services.length === 0 ? (
+                <p className="infrastructure__hint">
+                  Noch keine Dienste vorhanden.
+                </p>
+              ) : (
+                services.map((service) => (
+                  <label className="infrastructure__check" key={service.id}>
+                    <input
+                      checked={selectedServiceIds.includes(service.id)}
+                      onChange={() => toggleService(service.id)}
+                      type="checkbox"
+                    />
                     {service.name}
-                  </option>
-                ))}
-              </select>
-            </label>
+                  </label>
+                ))
+              )}
+              <p className="infrastructure__hint">
+                Meldet die Überwachung (PRTG) eine Störung, ändern alle
+                gewählten Dienste ihren Status.
+              </p>
+            </fieldset>
           </div>
         </fieldset>
         <fieldset>

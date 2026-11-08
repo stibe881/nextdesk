@@ -106,3 +106,39 @@ Deno.test("PRTG object id is optional and numeric", () => {
     null,
   );
 });
+
+Deno.test("a device takes several services, the old single one still works", () => {
+  const a = "00000000-0000-4000-8000-0000000000b1";
+  const b = "00000000-0000-4000-8000-0000000000b2";
+  const device = {
+    name: "Core-Switch",
+    category: "switch",
+    lifecycleState: "active",
+    criticality: "medium",
+    maintenanceChecklist: [],
+  };
+  assertEquals(parseDevice({ ...device, serviceIds: [a, b] })?.serviceIds, [a, b]);
+  assertEquals(parseDevice({ ...device, serviceId: a })?.serviceIds, [a]);
+  assertEquals(parseDevice(device)?.serviceIds, []);
+  assertEquals(parseDevice({ ...device, serviceIds: [a, a] }), null);
+  assertEquals(parseDevice({ ...device, serviceIds: ["x"] }), null);
+});
+
+Deno.test("a maintenance entry takes an optional time of day", () => {
+  const base = {
+    type: "addMaintenance",
+    tenantId,
+    assetId: "00000000-0000-4000-8000-0000000000a1",
+    performedOn: "2026-11-10",
+    note: "Firmware eingespielt",
+  };
+  assertEquals(parseAction(base)?.type, "addMaintenance");
+  assertEquals(
+    (parseAction({ ...base, performedTime: "21:30" }) as { performedTime: string })
+      .performedTime,
+    "21:30",
+  );
+  assertEquals(parseAction({ ...base, performedTime: "" }) !== null, true);
+  assertEquals(parseAction({ ...base, performedTime: "25:00" }), null);
+  assertEquals(parseAction({ ...base, performedTime: "9:5" }), null);
+});
