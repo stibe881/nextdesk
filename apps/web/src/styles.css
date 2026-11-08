@@ -16312,8 +16312,8 @@ body:has(.knowledge-base__editor-backdrop) {
 .tenant-admin-settings__roles-header h2,
 .tenant-admin-settings__roles-header h3,
 .tenant-admin-settings__roles-header p,
-.tenant-admin-settings__role-grant h3,
-.tenant-admin-settings__role-grant p,
+.tenant-admin-settings__role-matrix h3,
+.tenant-admin-settings__role-matrix-heading p,
 .tenant-admin-settings__role-people h3,
 .tenant-admin-settings__role-people p,
 .tenant-admin-settings__role-editor h3,
@@ -16322,7 +16322,7 @@ body:has(.knowledge-base__editor-backdrop) {
 }
 
 .tenant-admin-settings__roles-header > div > p:last-child,
-.tenant-admin-settings__role-grant > div > p:last-child,
+.tenant-admin-settings__role-matrix-heading > div > p:last-child,
 .tenant-admin-settings__role-people .tenant-admin-settings__section-heading p,
 .tenant-admin-settings__role-editor > div > p:last-child {
   margin-top: 6px;
@@ -16358,23 +16358,154 @@ body:has(.knowledge-base__editor-backdrop) {
   line-height: 1;
 }
 
-.tenant-admin-settings__role-grant {
+/* Role matrix: people as rows, assignable roles as columns. */
+.tenant-admin-settings__role-matrix {
   display: grid;
-  grid-template-columns: minmax(0, 0.8fr) minmax(320px, 1.2fr);
-  gap: 20px;
-  align-items: end;
+  gap: 16px;
   border: 1px solid color-mix(in srgb, var(--primary) 28%, var(--border));
   border-radius: 16px;
   padding: 20px;
   background: linear-gradient(135deg, var(--primary-soft), var(--surface));
 }
 
-.tenant-admin-settings__role-grant form {
-  display: grid;
-  gap: 12px;
+.tenant-admin-settings__role-matrix-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px 24px;
 }
 
-.tenant-admin-settings__role-grant button,
+.tenant-admin-settings__role-matrix-heading > div {
+  max-width: 62ch;
+}
+
+.tenant-admin-settings__role-matrix-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.tenant-admin-settings__role-matrix-scroll {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.tenant-admin-settings__role-matrix table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.tenant-admin-settings__role-matrix th,
+.tenant-admin-settings__role-matrix td {
+  border-bottom: 1px solid var(--border);
+  padding: 10px 14px;
+}
+
+.tenant-admin-settings__role-matrix tbody tr:last-child > * {
+  border-bottom: 0;
+}
+
+.tenant-admin-settings__role-matrix thead th {
+  background: var(--surface-subtle);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 650;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.tenant-admin-settings__role-matrix thead th:first-child,
+.tenant-admin-settings__role-matrix tbody th {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  text-align: left;
+}
+
+.tenant-admin-settings__role-matrix tbody th {
+  min-width: 200px;
+  background: var(--surface);
+  font-weight: 400;
+}
+
+.tenant-admin-settings__role-matrix tbody th strong {
+  display: block;
+  color: var(--ink);
+  font-weight: 650;
+}
+
+.tenant-admin-settings__role-matrix tbody th span {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.tenant-admin-settings__role-matrix td {
+  text-align: center;
+}
+
+.tenant-admin-settings__role-matrix tbody tr:hover > * {
+  background: var(--surface-subtle);
+}
+
+.tenant-admin-settings__role-matrix td input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--primary);
+  cursor: pointer;
+}
+
+.tenant-admin-settings__role-matrix td input:disabled {
+  cursor: progress;
+}
+
+.tenant-admin-settings__role-matrix td.is-saving input {
+  opacity: 0.45;
+}
+
+@media (max-width: 760px) {
+  .tenant-admin-settings__role-matrix {
+    padding: 14px;
+  }
+
+  .tenant-admin-settings__role-matrix th,
+  .tenant-admin-settings__role-matrix td {
+    padding: 9px 10px;
+  }
+
+  .tenant-admin-settings__role-matrix tbody th {
+    min-width: 0;
+    max-width: 130px;
+  }
+
+  .tenant-admin-settings__role-matrix tbody th span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .tenant-admin-settings__role-matrix thead th {
+    min-width: 92px;
+    white-space: normal;
+    overflow-wrap: normal;
+    word-break: normal;
+    hyphens: auto;
+  }
+
+  .tenant-admin-settings__role-matrix thead th:first-child {
+    min-width: 0;
+  }
+}
+
 .tenant-admin-settings__role-create-toggle,
 .tenant-admin-settings__role-card-actions button,
 .tenant-admin-settings__role-editor button,
@@ -16389,7 +16520,6 @@ body:has(.knowledge-base__editor-backdrop) {
   font-weight: 650;
 }
 
-.tenant-admin-settings__role-grant button[type="submit"],
 .tenant-admin-settings__role-editor button[type="submit"] {
   justify-self: start;
   border-color: var(--primary);
@@ -16784,7 +16914,6 @@ body:has(.knowledge-base__editor-backdrop) {
 
 @media (max-width: 760px) {
   .tenant-admin-settings__roles-header,
-  .tenant-admin-settings__role-grant,
   .tenant-admin-settings__role-person-list li,
   .tenant-admin-settings__role-cards li,
   .tenant-admin-settings__role-assignment-list li {

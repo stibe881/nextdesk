@@ -103,7 +103,7 @@ type SaveTarget =
   | `remove-user:${string}`
   | `revoke-invitation:${string}`
   | `role:${string}`
-  | "assign-role"
+  | `matrix-role:${string}`
   | `revoke-role:${string}`
   | "push-settings";
 
@@ -428,11 +428,6 @@ type RoleForm = {
   permissionCodes: string[];
 };
 
-type RoleAssignmentForm = {
-  userId: string;
-  roleId: string;
-};
-
 type PersonForm = {
   displayName: string;
   jobTitle: string;
@@ -470,11 +465,6 @@ const emptySsoForm: SsoForm = {
 const emptyRoleForm: RoleForm = {
   name: "",
   permissionCodes: [],
-};
-
-const emptyRoleAssignmentForm: RoleAssignmentForm = {
-  userId: "",
-  roleId: "",
 };
 
 const emptyPersonForm: PersonForm = {
@@ -1205,8 +1195,7 @@ export function TenantAdminSettings({
   const [roleForm, setRoleForm] = useState<RoleForm>(emptyRoleForm);
   const [editingRoleId, setEditingRoleId] = useState<string | null>(null);
   const [roleEditForm, setRoleEditForm] = useState<RoleForm>(emptyRoleForm);
-  const [roleAssignmentForm, setRoleAssignmentForm] =
-    useState<RoleAssignmentForm>(emptyRoleAssignmentForm);
+  const [roleMatrixAllPeople, setRoleMatrixAllPeople] = useState(false);
   const [roleAssignments, setRoleAssignments] = useState<
     RoleAssignmentWithDetails[]
   >([]);
@@ -1525,7 +1514,7 @@ export function TenantAdminSettings({
     setRoleCreationOpen(false);
     setEditingRoleId(null);
     setRoleEditForm(emptyRoleForm);
-    setRoleAssignmentForm(emptyRoleAssignmentForm);
+    setRoleMatrixAllPeople(false);
     setRoleAssignments([]);
     setAssignmentPendingRevocation(null);
   }, [tenantId]);
@@ -2478,23 +2467,40 @@ export function TenantAdminSettings({
     }
   }
 
-  async function assignRole(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const person = activeUsers.find(
-      (member) => member.id === roleAssignmentForm.userId,
+  /** Direct tenant-wide assignment of a person to a role (matrix cell). */
+  function matrixAssignment(personId: string, roleId: string) {
+    return roleAssignments.find(
+      (assignment) =>
+        assignment.user_id === personId &&
+        assignment.role_id === roleId &&
+        assignment.department_id === null &&
+        assignment.team_id === null,
     );
-    const role = assignableRoles.find(
-      (item) => item.id === roleAssignmentForm.roleId,
-    );
-    if (!person || !role) {
-      setError(
-        "Wählen Sie eine aktive Person und eine aktive Mandantenrolle aus.",
-      );
-      return;
-    }
+  }
 
-    beginSave("assign-role");
+  async function toggleMatrixRole(
+    person: TenantDirectoryMember,
+    role: TenantRole,
+  ) {
+    const target: SaveTarget = `matrix-role:${person.id}:${role.id}`;
+    const personLabel = person.displayName?.trim() || person.email;
+    const existing = matrixAssignment(person.id, role.id);
+    beginSave(target);
     try {
+      if (existing) {
+        await tenantRoleManagementRequest<{ revoked: boolean }>({
+          type: "revokeRole",
+          tenantId,
+          assignmentId: existing.id,
+        });
+        setRoleAssignments((current) =>
+          current.filter((item) => item.id !== existing.id),
+        );
+        setSuccess(
+          `${personLabel} hat die Rolle „${roleLabel(role.name)}“ nicht mehr.`,
+        );
+        return;
+      }
       const result = await tenantRoleManagementRequest<{
         assignment: RoleAssignment;
       }>({
@@ -2520,15 +2526,16 @@ export function TenantAdminSettings({
         ),
         assignment,
       ]);
-      setRoleAssignmentForm((current) => ({ ...current, roleId: "" }));
       setSuccess(
-        `Die Rolle „${roleLabel(role.name)}“ wurde ${person.email} zugewiesen.`,
+        `${personLabel} hat jetzt die Rolle „${roleLabel(role.name)}“.`,
       );
     } catch (nextError) {
       setError(
         messageFromError(
           nextError,
-          "Die Rolle konnte nicht zugewiesen werden.",
+          existing
+            ? "Die Rollenzuweisung konnte nicht entzogen werden."
+            : "Die Rolle konnte nicht zugewiesen werden.",
         ),
       );
     } finally {
@@ -5084,81 +5091,122 @@ export function TenantAdminSettings({
                 </header>
 
                 <section
-                  className="tenant-admin-settings__role-grant"
-                  aria-labelledby="grant-role-heading"
+                  className="tenant-admin-settings__role-matrix"
+                  aria-labelledby="role-matrix-heading"
                 >
-                  <div>
-                    <p className="tenant-admin-settings__eyebrow">
-                      SCHNELLZUGRIFF
-                    </p>
-                    <h3 id="grant-role-heading">Zugriff vergeben</h3>
-                    <p>
-                      Wählen Sie eine aktive Person und eine Rolle. Die
-                      Zuweisung wirkt ausschliesslich im aktuellen Mandanten.
-                    </p>
-                  </div>
-                  <form onSubmit={assignRole}>
-                    <div className="tenant-admin-settings__form-grid">
-                      <label>
-                        Person
-                        <select
-                          value={roleAssignmentForm.userId}
-                          required
-                          disabled={saving !== null || activeUsers.length === 0}
-                          onChange={(event) =>
-                            setRoleAssignmentForm((current) => ({
-                              ...current,
-                              userId: event.target.value,
-                            }))
-                          }
-                        >
-                          <option value="">Person auswählen</option>
-                          {activeUsers.map((person) => (
-                            <option key={person.id} value={person.id}>
-                              {person.displayName?.trim()
-                                ? `${person.displayName} (${person.email})`
-                                : person.email}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <label>
-                        Rolle
-                        <select
-                          value={roleAssignmentForm.roleId}
-                          required
-                          disabled={
-                            saving !== null || assignableRoles.length === 0
-                          }
-                          onChange={(event) =>
-                            setRoleAssignmentForm((current) => ({
-                              ...current,
-                              roleId: event.target.value,
-                            }))
-                          }
-                        >
-                          <option value="">Rolle auswählen</option>
-                          {assignableRoles.map((role) => (
-                            <option key={role.id} value={role.id}>
-                              {roleLabel(role.name)}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
+                  <div className="tenant-admin-settings__role-matrix-heading">
+                    <div>
+                      <p className="tenant-admin-settings__eyebrow">
+                        ZUWEISUNG
+                      </p>
+                      <h3 id="role-matrix-heading">Rollen zuweisen</h3>
+                      <p>
+                        Setzen oder entfernen Sie ein Häkchen, um einer Person
+                        eine Rolle im ganzen Mandanten zu geben oder zu
+                        entziehen. Änderungen gelten sofort.
+                      </p>
                     </div>
-                    <button
-                      type="submit"
-                      disabled={
-                        saving !== null ||
-                        activeUsers.length === 0 ||
-                        assignableRoles.length === 0
-                      }
-                    >
-                      {saving === "assign-role"
-                        ? "Zugriff wird vergeben …"
-                        : "Zugriff vergeben"}
-                    </button>
-                  </form>
+                    <label className="tenant-admin-settings__role-matrix-toggle">
+                      <input
+                        type="checkbox"
+                        checked={roleMatrixAllPeople}
+                        onChange={(event) =>
+                          setRoleMatrixAllPeople(event.target.checked)
+                        }
+                      />
+                      Alle aktiven Personen zeigen
+                    </label>
+                  </div>
+                  {(() => {
+                    const matrixPeople = activeUsers
+                      .filter((person) => roleMatrixAllPeople || person.isAgent)
+                      .sort((left, right) =>
+                        (left.displayName?.trim() || left.email).localeCompare(
+                          right.displayName?.trim() || right.email,
+                          "de-CH",
+                        ),
+                      );
+                    if (assignableRoles.length === 0) {
+                      return (
+                        <p className="tenant-admin-settings__role-empty">
+                          Es gibt noch keine zuweisbaren Rollen. Erstellen Sie
+                          unten eine eigene Rolle.
+                        </p>
+                      );
+                    }
+                    if (matrixPeople.length === 0) {
+                      return (
+                        <p className="tenant-admin-settings__role-empty">
+                          {roleMatrixAllPeople
+                            ? "Es gibt keine aktiven Personen."
+                            : "Es gibt noch keine aktiven Agenten. Zeigen Sie alle aktiven Personen an oder machen Sie unter «Personen» jemanden zum Agenten."}
+                        </p>
+                      );
+                    }
+                    return (
+                      <div className="tenant-admin-settings__role-matrix-scroll">
+                        <table>
+                          <caption className="sr-only">
+                            Rollen je Person
+                          </caption>
+                          <thead>
+                            <tr>
+                              <th scope="col">
+                                {roleMatrixAllPeople ? "Person" : "Agent"}
+                              </th>
+                              {assignableRoles.map((role) => (
+                                <th key={role.id} scope="col">
+                                  {roleLabel(role.name)}
+                                </th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {matrixPeople.map((person) => {
+                              const personLabel =
+                                person.displayName?.trim() || person.email;
+                              return (
+                                <tr key={person.id}>
+                                  <th scope="row">
+                                    <strong>{personLabel}</strong>
+                                    {person.displayName?.trim() ? (
+                                      <span>{person.email}</span>
+                                    ) : null}
+                                  </th>
+                                  {assignableRoles.map((role) => {
+                                    const target: SaveTarget = `matrix-role:${person.id}:${role.id}`;
+                                    const assigned = Boolean(
+                                      matrixAssignment(person.id, role.id),
+                                    );
+                                    return (
+                                      <td
+                                        className={
+                                          saving === target
+                                            ? "is-saving"
+                                            : undefined
+                                        }
+                                        key={role.id}
+                                      >
+                                        <input
+                                          aria-label={`${roleLabel(role.name)} für ${personLabel}`}
+                                          checked={assigned}
+                                          disabled={saving !== null}
+                                          onChange={() =>
+                                            void toggleMatrixRole(person, role)
+                                          }
+                                          type="checkbox"
+                                        />
+                                      </td>
+                                    );
+                                  })}
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    );
+                  })()}
                 </section>
 
                 <section
