@@ -488,3 +488,31 @@
   margin-left: 6px;
   padding: 1px 7px;
 }
+
+/* Agents stay visible while the skills scroll horizontally. */
+.skill-matrix__scroll {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+.skill-matrix thead th:first-child,
+.skill-matrix tbody th {
+  background: var(--surface);
+  box-shadow: 1px 0 0 var(--border), 6px 0 8px -6px rgb(15 23 42 / 18%);
+  left: 0;
+  min-width: 180px;
+  position: sticky;
+  z-index: 2;
+}
+.skill-matrix thead th:first-child {
+  z-index: 3;
+}
+@media (max-width: 560px) {
+  .skill-matrix thead th:first-child,
+  .skill-matrix tbody th {
+    max-width: 140px;
+    min-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
