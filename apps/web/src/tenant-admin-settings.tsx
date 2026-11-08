@@ -2671,17 +2671,35 @@ export function TenantAdminSettings({
         feature.feature_key === "automation.sla" &&
         isTenantFeatureActive(feature),
     ) ?? false;
-  const settingsAreas: ReadonlyArray<readonly [SettingsArea, string]> = [
-    ["overview", "Übersicht"],
-    ["branding", "Design"],
-    ["features", "Funktionen"],
-    ...(slaManagementEnabled ? ([["sla", "SLA"]] as const) : []),
-    ["ticket-fields", "Ticketfelder"],
-    ["departments", "Abteilungen"],
-    ["privacy", "Datenschutz"],
-    ["users", "Personen"],
-    ["roles", "Rollen"],
-    ["audit", "Protokoll"],
+  const settingsAreaGroups: ReadonlyArray<{
+    label: string;
+    areas: ReadonlyArray<readonly [SettingsArea, string]>;
+  }> = [
+    {
+      label: "Allgemein",
+      areas: [
+        ["overview", "Übersicht"],
+        ["branding", "Design"],
+      ],
+    },
+    {
+      label: "Betrieb",
+      areas: [
+        ["features", "Funktionen"],
+        ...(slaManagementEnabled ? ([["sla", "SLA"]] as const) : []),
+        ["ticket-fields", "Ticketfelder"],
+        ["departments", "Abteilungen"],
+      ],
+    },
+    {
+      label: "Zugriff & Sicherheit",
+      areas: [
+        ["users", "Personen"],
+        ["roles", "Rollen"],
+        ["privacy", "Datenschutz"],
+        ["audit", "Protokoll"],
+      ],
+    },
   ];
 
   useEffect(() => {
@@ -2884,25 +2902,38 @@ export function TenantAdminSettings({
       {!loading && settings ? (
         <>
           <nav
-            className="tenant-admin-settings__tabs"
+            className="section-tabs"
             aria-label="Einstellungsbereiche"
             role="tablist"
           >
-            {settingsAreas.map(([area, label]) => (
-              <button
-                key={area}
-                type="button"
-                className={
-                  activeArea === area
-                    ? "tenant-admin-settings__tab tenant-admin-settings__tab--active"
-                    : "tenant-admin-settings__tab"
-                }
-                aria-selected={activeArea === area}
-                role="tab"
-                onClick={() => setActiveArea(area)}
+            {settingsAreaGroups.map((group) => (
+              <div
+                className="section-tabs__group"
+                key={group.label}
+                role="presentation"
               >
-                {label}
-              </button>
+                <span aria-hidden="true" className="section-tabs__label">
+                  {group.label}
+                </span>
+                <div className="section-tabs__row" role="presentation">
+                  {group.areas.map(([area, label]) => (
+                    <button
+                      key={area}
+                      type="button"
+                      className={
+                        activeArea === area
+                          ? "section-tabs__tab is-active"
+                          : "section-tabs__tab"
+                      }
+                      aria-selected={activeArea === area}
+                      role="tab"
+                      onClick={() => setActiveArea(area)}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
             ))}
           </nav>
           <div className="tenant-admin-settings__content" role="tabpanel">

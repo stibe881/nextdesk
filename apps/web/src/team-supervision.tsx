@@ -255,25 +255,26 @@ export function TeamSupervision({
           </p>
         </div>
       </header>
-      <nav
-        aria-label="Bereiche der Teamführung"
-        className="team-supervision__tabs"
-      >
+      <nav aria-label="Bereiche der Teamführung" className="section-tabs">
         {viewGroups.map((group) => (
           <div
             aria-label={group.label}
-            className="team-supervision__tab-group"
+            className="section-tabs__group"
             key={group.label}
             role="group"
           >
-            <span aria-hidden="true" className="team-supervision__tab-label">
+            <span aria-hidden="true" className="section-tabs__label">
               {group.label}
             </span>
-            <div className="team-supervision__tab-row">
+            <div className="section-tabs__row">
               {group.views.map(({ value, label, Icon }) => (
                 <button
                   aria-current={view === value ? "page" : undefined}
-                  className={view === value ? "is-active" : ""}
+                  className={
+                    view === value
+                      ? "section-tabs__tab is-active"
+                      : "section-tabs__tab"
+                  }
                   key={value}
                   onClick={() => setView(value)}
                   type="button"
