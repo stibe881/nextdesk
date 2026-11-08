@@ -94,3 +94,83 @@ export function roleScopeLabel(scope: string): string {
   if (scope === "team") return "Für ein Team";
   return "Eingeschränkter Geltungsbereich";
 }
+
+/**
+ * One short sentence per permission: what someone with it can do in the app.
+ * Shown under the permission name in the role editor.
+ */
+const PERMISSION_HINTS: Readonly<Record<string, string>> = {
+  "asset.integration.manage":
+    "Verbindet Intune und andere Quellen und startet den Geräteabgleich.",
+  "asset.intune.actions":
+    "Löst Aktionen direkt auf Intune-Geräten aus, z. B. Neustart oder Sperren.",
+  "asset.manage": "Erfasst, ändert und archiviert Geräte und Assets.",
+  "automation.manage":
+    "Richtet Ticketregeln, Triage, Lieferanten und Abläufe ein.",
+  "contracts.manage": "Sieht und pflegt alle Verträge und Lizenzen.",
+  "department.manage": "Legt Abteilungen an und ändert sie.",
+  "event.spaces.manage": "Verwaltet Räume und bearbeitet Raumaufträge.",
+  "event.spaces.request": "Kann Veranstaltungsräume reservieren lassen.",
+  "inventory.adjust": "Korrigiert Bestände von Hand, z. B. nach Schwund.",
+  "inventory.count.close":
+    "Schliesst Inventuren ab und übernimmt die gezählten Mengen.",
+  "inventory.manage": "Pflegt Lagerorte und Artikel im Lager.",
+  "inventory.move":
+    "Bucht Eingänge, Ausgaben, Umlagerungen und Reservierungen.",
+  "inventory.read": "Sieht Lagerbestände und Bewegungen, ohne zu buchen.",
+  "knowledge.manage": "Schreibt, ändert und archiviert Wissensartikel.",
+  "knowledge.publish": "Gibt Wissensartikel für alle frei.",
+  "knowledge.read": "Liest veröffentlichte Wissensartikel.",
+  "onboarding.manage": "Bearbeitet Eintritte und deren Aufgaben.",
+  "onboarding.request": "Meldet neue Mitarbeitende zum Eintritt an.",
+  "platform.support_access.request":
+    "Erlaubt dem Plattform-Support befristet und protokolliert Zugriff.",
+  "platform.tenants.manage": "Verwaltet Mandanten der gesamten Plattform.",
+  "report.read": "Sieht Berichte und Auswertungen.",
+  "role.manage": "Erstellt Rollen und weist sie Personen zu.",
+  "service_tasks.execute": "Erledigt fällige Serviceaufgaben.",
+  "service_tasks.manage":
+    "Plant wiederkehrende Serviceaufgaben und ändert sie.",
+  "service_tasks.read": "Sieht Serviceaufgaben, ohne sie zu erledigen.",
+  "shop.fulfill":
+    "Bearbeitet Shop-Bestellungen und bucht die Artikel aus dem Lager.",
+  "shop.manage": "Pflegt Artikel und Kategorien des Shops.",
+  "shop.order": "Bestellt oder leiht Artikel im Shop.",
+  "team.manage": "Legt Teams an und ändert ihre Mitglieder.",
+  "team.supervise":
+    "Führt ein Team: Auslastung, Umverteilen, Qualität und Monatsbericht.",
+  "tenant.settings.manage":
+    "Ändert die Einstellungen dieses Mandanten, inkl. Design und Funktionen.",
+  "ticket.approval.decide": "Genehmigt oder lehnt Ticketfreigaben ab.",
+  "ticket.approval.request": "Holt für ein Ticket eine Freigabe ein.",
+  "ticket.assign": "Weist Tickets Personen oder Teams zu.",
+  "ticket.close": "Setzt Tickets auf gelöst oder geschlossen.",
+  "ticket.comment.external": "Schreibt Antworten, die Anfragende sehen.",
+  "ticket.comment.external.own":
+    "Anfragende können in ihren eigenen Tickets antworten.",
+  "ticket.create": "Erstellt neue Tickets.",
+  "ticket.delete": "Löscht Tickets endgültig.",
+  "ticket.escalate": "Eskaliert Tickets an die nächste Stufe oder Leitung.",
+  "ticket.export": "Exportiert Ticketlisten, z. B. als CSV.",
+  "ticket.internal_notes.read":
+    "Sieht interne Notizen, die Anfragende nicht sehen.",
+  "ticket.internal_notes.write": "Schreibt interne Notizen in Tickets.",
+  "ticket.manage":
+    "Verwaltet gemeinsame Ticketansichten und Problemfälle für alle.",
+  "ticket.merge": "Führt doppelte Tickets zusammen oder teilt sie auf.",
+  "ticket.quality.review": "Bewertet die Qualität bearbeiteter Tickets.",
+  "ticket.read.assigned": "Sieht nur Tickets, die der Person zugewiesen sind.",
+  "ticket.read.department": "Sieht alle Tickets der eigenen Abteilungen.",
+  "ticket.read.own": "Sieht eigene Tickets und solche, die sie betreffen.",
+  "ticket.sla.manage":
+    "Legt SLA-Profile mit Reaktions- und Lösungszeiten fest.",
+  "ticket.template.manage": "Erstellt und ändert Ticketvorlagen.",
+  "ticket.time.track": "Erfasst Arbeitszeit auf Tickets.",
+  "ticket.update": "Ändert Status, Priorität und Felder von Tickets.",
+  "ticket.watch": "Folgt Tickets und erhält Benachrichtigungen dazu.",
+  "user.manage": "Lädt Personen ein, ändert und entfernt sie.",
+};
+
+export function permissionHint(code: string): string | null {
+  return PERMISSION_HINTS[code] ?? null;
+}

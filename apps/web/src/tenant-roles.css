@@ -539,8 +539,26 @@
   accent-color: var(--primary);
 }
 
-.role-editor__options small {
-  flex: 0 0 auto;
+.role-editor__option-text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.role-editor__option-name {
+  color: var(--ink);
+  font-weight: 550;
+}
+
+.role-editor__option-hint {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.role-editor__badge {
+  display: inline-block;
+  margin-left: 6px;
   border-radius: 6px;
   padding: 0 6px;
   background: var(--warning-soft);
@@ -548,6 +566,23 @@
   font-size: 11px;
   font-weight: 650;
   line-height: 1.6;
+  vertical-align: 1px;
+  white-space: nowrap;
+}
+
+/* Read-only permission list of system roles. */
+.role-editor__readonly .tenant-admin-settings__role-detail-groups ul {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  align-items: start;
+  gap: 10px 16px;
+}
+
+.role-editor__readonly .tenant-admin-settings__role-detail-groups li {
+  display: grid;
+  align-content: start;
+  gap: 2px;
+  font-size: 13px;
 }
 
 .role-editor__actions {
