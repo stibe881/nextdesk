@@ -67,7 +67,20 @@ export function RegisterForm({ onCancel }: { onCancel: () => void }) {
         return;
       }
       // Supabase returns a user without identities when the address is
-      // already registered; the response stays neutral for privacy reasons.
+      // already registered and sends no e-mail in that case. Send a sign-in
+      // link instead so the person still receives a message; the response
+      // stays neutral for privacy reasons.
+      if (data.user && (data.user.identities ?? []).length === 0) {
+        await requireNextDesk()
+          .auth.signInWithOtp({
+            email: address,
+            options: {
+              emailRedirectTo: getNextDeskAuthRedirectUrl(),
+              shouldCreateUser: false,
+            },
+          })
+          .catch(() => undefined);
+      }
       setDone(true);
     } catch (error) {
       await clearNextDeskAuthTransaction().catch(() => undefined);
@@ -92,7 +105,7 @@ export function RegisterForm({ onCancel }: { onCancel: () => void }) {
           Wir haben dir eine E-Mail an {email.trim().toLowerCase()} gesendet.
           Öffne den Bestätigungslink auf diesem iPhone. Danach kannst du deinen
           Arbeitsbereich erstellen. Falls die Adresse bereits registriert ist,
-          melde dich stattdessen mit deinem Passwort an.
+          enthält die E-Mail stattdessen einen Anmeldelink.
         </Text>
         <Pressable
           accessibilityRole="button"
