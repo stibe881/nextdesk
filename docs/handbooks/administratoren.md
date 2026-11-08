@@ -143,7 +143,12 @@ Im Register **Abteilungen**:
 
 Das Register **Monitoring** (setzt Asset-Management voraus) bündelt:
 
-- **Monitoring (PRTG)** – Tickets aus PRTG-Alarmen
+- **Monitoring (PRTG)** – Tickets aus PRTG-Alarmen. Sie wählen Abteilung,
+  **Team**, Priorität und ob auch Warnungen Tickets erzeugen. Ist die Option
+  «Systemstatus des verknüpften Dienstes anpassen» aktiv, ändern Alarme den
+  Status der Dienste, die am Gerät in der Infrastruktur hinterlegt sind (ein
+  Gerät kann mehrere Dienste haben). Unter **Alarme aus PRTG** beenden Sie
+  einen hängenden Alarm mit **Alarm beenden**.
 - **Zertifikate und Domains** – Erinnerung vor Ablauf
 - **Backup-Überwachung** – z. B. Veeam-Jobs per E-Mail oder Webhook
 
@@ -233,6 +238,9 @@ exportieren Sie bei Bedarf als **CSV** oder **JSON**.
 Der **Systemstatus** liegt im Arbeitsbereich (nicht in den Einstellungen).
 Dort planen Sie **Wartungen** und veröffentlichen eine **öffentliche
 Statusseite** sowie ein **SharePoint-Badge** (SVG-Bild) für das Intranet.
+Das Badge in der Navigation und die Seiten aktualisieren sich selbst (intern
+alle 30 Sekunden, öffentlich jede Minute); ein manuelles Neuladen ist nicht
+nötig.
 
 ## Eigenes Profil und Handbücher
 
