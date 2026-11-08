@@ -516,3 +516,36 @@
     text-overflow: ellipsis;
   }
 }
+
+/* Skill headers: fixed rows so names, counts and buttons line up. */
+.skill-matrix thead th:not(:first-child) {
+  vertical-align: top;
+  width: 120px;
+}
+.skill-matrix thead th .skill-matrix__name {
+  height: 2.6em;
+  line-height: 1.3;
+  overflow: hidden;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+.skill-matrix thead th .skill-matrix__count,
+.skill-matrix thead th .skill-matrix__gap {
+  height: 1.4em;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+.skill-matrix thead th .skill-matrix__gap {
+  color: var(--tone-warning);
+  font-weight: 700;
+}
+.skill-matrix thead th.is-gap .skill-matrix__count {
+  color: var(--tone-warning);
+}
+.skill-matrix thead th .icon-button {
+  margin-top: 4px;
+}
+.skill-matrix thead th:first-child {
+  vertical-align: bottom;
+}

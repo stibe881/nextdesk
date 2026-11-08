@@ -497,10 +497,14 @@ export function SkillMatrix({ tenantId }: { tenantId: string }) {
                       key={skill.id}
                       scope="col"
                     >
-                      <span>{skill.name}</span>
-                      <small>
+                      <span className="skill-matrix__name" title={skill.name}>
+                        {skill.name}
+                      </span>
+                      <small className="skill-matrix__count">
                         {experts} fortgeschritten
-                        {experts < 2 ? " · Lücke" : ""}
+                      </small>
+                      <small className="skill-matrix__gap">
+                        {experts < 2 ? "Lücke" : "\u00a0"}
                       </small>
                       <button
                         aria-label={`${skill.name} löschen`}
