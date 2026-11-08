@@ -123,16 +123,31 @@ export function parseQuery(url: URL): Record<string, string> {
 }
 
 /**
- * PRTG status texts: "Up", "Down", "Warning", "Unusual", "Paused (paused by
- * user)", "Down (Acknowledged)", "Down (Partial)", "Up (was: Down)", "Unknown".
+ * PRTG status texts follow the PRTG server language. English: "Up", "Down",
+ * "Warning", "Unusual", "Paused (paused by user)", "Down (Acknowledged)",
+ * "Down (Partial)", "Up (was: Down)", "Unknown". German: "OK", "Fehler",
+ * "Warnung", "Ungewöhnlich", "Pausiert", "Fehler (Teilweise)", "Unbekannt".
  */
 export function classifyStatus(status: string | null): StatusKind | null {
   if (!status) return null;
   const head = status.trim().toLowerCase();
-  if (/^(up|ok|ended|resolved)\b/.test(head)) return "up";
-  if (/^(down|error|critical|failed)\b/.test(head)) return "down";
-  if (/^(warning|unusual|degraded)\b/.test(head)) return "warning";
-  if (/^(paused|unknown|none|collecting|simulated)\b/.test(head)) {
+  if (/^(up|ok|ended|resolved|behoben|in ordnung)\b/.test(head)) return "up";
+  if (
+    /^(down|error|critical|failed|fehler|ausfall|st[öo]rung|kritisch|teilweiser fehler)/
+      .test(head)
+  ) {
+    return "down";
+  }
+  if (
+    /^(warning|unusual|degraded|warnung|ungew[öo]hnlich|eingeschr[äa]nkt)/
+      .test(head)
+  ) {
+    return "warning";
+  }
+  if (
+    /^(paused|unknown|none|collecting|simulated|pausiert|unbekannt|keine|simuliert)/
+      .test(head)
+  ) {
     return "ignore";
   }
   return null;
