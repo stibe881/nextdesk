@@ -688,7 +688,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         .limit(500),
       context.supabaseAdmin
         .from("teams")
-        .select("id, name, department_id, active, team_memberships(user_id)")
+        .select("id, name, department_id, active")
         .eq("tenant_id", action.tenantId)
         .order("name", { ascending: true })
         .limit(300),
@@ -826,14 +826,28 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       departmentId: team.department_id as string,
       active: team.active === true,
     }));
+    if (teamsResult.error) {
+      console.error("tenant_users_teams_failed", {
+        code: teamsResult.error.code,
+      });
+    }
+    // Memberships are read separately: team_memberships has two foreign keys
+    // to teams, so an embedded select would be ambiguous.
+    const activeTeamIds = teams
+      .filter((team) => team.active)
+      .map((team) => team.id);
+    const teamMembershipsResult = activeTeamIds.length
+      ? await context.supabaseAdmin
+          .from("team_memberships")
+          .select("team_id, user_id")
+          .in("team_id", activeTeamIds)
+          .limit(5000)
+      : { data: [], error: null };
     const teamIdsByUser = new Map<string, string[]>();
-    for (const team of (teamsResult.data ?? []) as any[]) {
-      if (team.active !== true) continue;
-      for (const member of (team.team_memberships ?? []) as any[]) {
-        const list = teamIdsByUser.get(member.user_id) ?? [];
-        list.push(team.id);
-        teamIdsByUser.set(member.user_id, list);
-      }
+    for (const row of (teamMembershipsResult.data ?? []) as any[]) {
+      const list = teamIdsByUser.get(row.user_id) ?? [];
+      list.push(row.team_id);
+      teamIdsByUser.set(row.user_id, list);
     }
     const members = await Promise.all(
       memberships.map(async (membership) => {
