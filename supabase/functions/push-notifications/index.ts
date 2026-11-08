@@ -59,45 +59,46 @@ const DEFAULT_ENABLED_CATEGORIES = ALL_CATEGORIES.filter(
 type Action =
   | { type: "getStatus"; tenantId: string }
   | {
-    type: "registerDevice";
-    tenantId: string;
-    token: string;
-    environment: Environment;
-    appVersion?: string;
-    appBuild?: string;
-    deviceName?: string;
-  }
+      type: "registerDevice";
+      tenantId: string;
+      token: string;
+      environment: Environment;
+      appVersion?: string;
+      appBuild?: string;
+      deviceName?: string;
+    }
   | {
-    type: "unregisterDevice";
-    tenantId: string;
-    token?: string;
-    deviceId?: string;
-  }
+      type: "unregisterDevice";
+      tenantId: string;
+      token?: string;
+      deviceId?: string;
+    }
   | {
-    type: "updatePreferences";
-    tenantId: string;
-    enabledCategories: Category[];
-    quietHoursEnabled: boolean;
-    quietStart: number;
-    quietEnd: number;
-    timezone: string;
-    globalEnabled?: boolean;
-    categoryModes?: Partial<Record<Category, DeliveryMode>>;
-    summaryHour?: number;
-  }
+      type: "updatePreferences";
+      tenantId: string;
+      enabledCategories: Category[];
+      quietHoursEnabled: boolean;
+      quietStart: number;
+      quietEnd: number;
+      timezone: string;
+      globalEnabled?: boolean;
+      categoryModes?: Partial<Record<Category, DeliveryMode>>;
+      summaryHour?: number;
+      deliveryDays?: number[];
+    }
   | { type: "sendTest"; tenantId: string }
   | { type: "checkIn"; tenantId: string }
   | { type: "checkOut"; tenantId: string }
   | { type: "declineCheckIn"; tenantId: string }
   | { type: "getTenantSettings"; tenantId: string }
   | {
-    type: "updateTenantSettings";
-    tenantId: string;
-    contentLevel: "minimal" | "subject";
-    checkInRequired?: boolean;
-    workStartHour?: number;
-    workEndHour?: number;
-  };
+      type: "updateTenantSettings";
+      tenantId: string;
+      contentLevel: "minimal" | "subject";
+      checkInRequired?: boolean;
+      workStartHour?: number;
+      workEndHour?: number;
+    };
 
 type PreferenceRow = {
   enabled_categories: string[];
@@ -108,6 +109,7 @@ type PreferenceRow = {
   global_enabled?: boolean;
   category_modes?: unknown;
   summary_hour?: number;
+  delivery_days?: unknown;
   last_test_at: string | null;
 };
 
@@ -172,10 +174,9 @@ function hasOwn(value: Row, key: string): boolean {
 function isUuid(value: unknown): value is string {
   return (
     typeof value === "string" &&
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu
-      .test(
-        value,
-      )
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(
+      value,
+    )
   );
 }
 
@@ -212,6 +213,31 @@ function isHour(value: unknown): value is number {
     value >= 0 &&
     value <= 23
   );
+}
+
+/** ISO weekdays 1 (Monday) to 7 (Sunday). */
+const ALL_DELIVERY_DAYS = [1, 2, 3, 4, 5, 6, 7];
+
+function isDeliveryDays(value: unknown): value is number[] {
+  return (
+    Array.isArray(value) &&
+    value.length >= 1 &&
+    value.length <= 7 &&
+    value.every(
+      (day) =>
+        typeof day === "number" &&
+        Number.isInteger(day) &&
+        day >= 1 &&
+        day <= 7,
+    ) &&
+    new Set(value).size === value.length
+  );
+}
+
+function deliveryDaysOrAll(value: unknown): number[] {
+  return isDeliveryDays(value)
+    ? [...value].sort((left, right) => left - right)
+    : [...ALL_DELIVERY_DAYS];
 }
 
 function isWorkStartHour(value: unknown): value is number {
@@ -349,6 +375,7 @@ function parseAction(value: unknown): Action | null {
       "globalEnabled",
       "categoryModes",
       "summaryHour",
+      "deliveryDays",
     ]) &&
     isCategories(value.enabledCategories) &&
     typeof value.quietHoursEnabled === "boolean" &&
@@ -359,7 +386,8 @@ function parseAction(value: unknown): Action | null {
       typeof value.globalEnabled === "boolean") &&
     (!hasOwn(value, "categoryModes") ||
       parseCategoryModes(value.categoryModes) !== null) &&
-    (!hasOwn(value, "summaryHour") || isHour(value.summaryHour))
+    (!hasOwn(value, "summaryHour") || isHour(value.summaryHour)) &&
+    (!hasOwn(value, "deliveryDays") || isDeliveryDays(value.deliveryDays))
   ) {
     const categoryModes = hasOwn(value, "categoryModes")
       ? parseCategoryModes(value.categoryModes)
@@ -380,6 +408,9 @@ function parseAction(value: unknown): Action | null {
         : {}),
       ...(hasOwn(value, "summaryHour")
         ? { summaryHour: value.summaryHour as number }
+        : {}),
+      ...(hasOwn(value, "deliveryDays")
+        ? { deliveryDays: deliveryDaysOrAll(value.deliveryDays) }
         : {}),
     };
   }
@@ -453,9 +484,8 @@ function reply(request: Request, body: Row, status = 200): Response {
 }
 
 function fail(request: Request, error: unknown): Response {
-  const safe = error instanceof HttpError
-    ? error
-    : new HttpError(500, "operation_failed");
+  const safe =
+    error instanceof HttpError ? error : new HttpError(500, "operation_failed");
   return reply(request, { error: { code: safe.code } }, safe.status);
 }
 
@@ -477,6 +507,7 @@ export function defaultPreferences() {
     quietEnd: 7,
     summaryHour: 8,
     timezone: "Europe/Zurich",
+    deliveryDays: [...ALL_DELIVERY_DAYS],
   };
 }
 
@@ -533,6 +564,7 @@ function preferencesForResponse(row: PreferenceRow | null) {
     quietEnd: row.quiet_end,
     summaryHour: isHour(row.summary_hour) ? row.summary_hour : 8,
     timezone: row.timezone,
+    deliveryDays: deliveryDaysOrAll(row.delivery_days),
   };
 }
 
@@ -632,7 +664,7 @@ async function readPreferences(
   const { data, error } = await admin
     .from("push_preferences")
     .select(
-      "enabled_categories, quiet_hours_enabled, quiet_start, quiet_end, timezone, global_enabled, category_modes, summary_hour, last_test_at",
+      "enabled_categories, quiet_hours_enabled, quiet_start, quiet_end, timezone, global_enabled, category_modes, summary_hour, delivery_days, last_test_at",
     )
     .eq("tenant_id", tenantId)
     .eq("user_id", actorId)
@@ -736,9 +768,10 @@ function workHoursSettings(configuration: Row): WorkHoursSettings {
     endHour = 17;
   }
   return {
-    required: typeof configuration.checkInRequired === "boolean"
-      ? configuration.checkInRequired
-      : true,
+    required:
+      typeof configuration.checkInRequired === "boolean"
+        ? configuration.checkInRequired
+        : true,
     startHour,
     endHour,
   };
@@ -801,7 +834,8 @@ async function readWorkHours(
   const state = workHoursStateForResponse(stateResult.data);
   return {
     ...state,
-    promptDue: featureEnabled &&
+    promptDue:
+      featureEnabled &&
       state.required &&
       state.withinWindow &&
       state.checkedInAt === null &&
@@ -826,9 +860,8 @@ async function featureConfiguration(
   const configuration = isRecord(data?.configuration) ? data.configuration : {};
   return {
     featureEnabled: flags[FEATURE] === true,
-    contentLevel: configuration.contentLevel === "subject"
-      ? "subject"
-      : "minimal",
+    contentLevel:
+      configuration.contentLevel === "subject" ? "subject" : "minimal",
     configuration,
   };
 }
@@ -970,19 +1003,19 @@ async function updatePreferences(
   const fallback = preferencesForResponse(existing);
   const categoryModes = action.categoryModes
     ? ({ ...fallback.categoryModes, ...action.categoryModes } as Record<
-      Category,
-      DeliveryMode
-    >)
+        Category,
+        DeliveryMode
+      >)
     : (Object.fromEntries(
-      ALL_CATEGORIES.map((category) => [
-        category,
-        action.enabledCategories.includes(category)
-          ? "immediate"
-          : MODE_ONLY_CATEGORIES.includes(category)
-          ? fallback.categoryModes[category]
-          : "off",
-      ]),
-    ) as Record<Category, DeliveryMode>);
+        ALL_CATEGORIES.map((category) => [
+          category,
+          action.enabledCategories.includes(category)
+            ? "immediate"
+            : MODE_ONLY_CATEGORIES.includes(category)
+              ? fallback.categoryModes[category]
+              : "off",
+        ]),
+      ) as Record<Category, DeliveryMode>);
   const enabledCategories = ALL_CATEGORIES.filter(
     (category) =>
       categoryModes[category] !== "off" &&
@@ -1001,13 +1034,14 @@ async function updatePreferences(
         quiet_start: action.quietStart,
         quiet_end: action.quietEnd,
         summary_hour: action.summaryHour ?? fallback.summaryHour,
+        delivery_days: action.deliveryDays ?? fallback.deliveryDays,
         timezone: action.timezone,
         updated_at: new Date().toISOString(),
       },
       { onConflict: "tenant_id,user_id" },
     )
     .select(
-      "enabled_categories, quiet_hours_enabled, quiet_start, quiet_end, timezone, global_enabled, category_modes, summary_hour, last_test_at",
+      "enabled_categories, quiet_hours_enabled, quiet_start, quiet_end, timezone, global_enabled, category_modes, summary_hour, delivery_days, last_test_at",
     )
     .single();
   if (error || !data) throw new HttpError(422, "preferences_update_failed");

@@ -61,6 +61,8 @@ export type PushCategory = keyof typeof pushCategoryMeta;
 
 export type PushPreferences = {
   enabledCategories: PushCategory[];
+  /** ISO weekdays 1 (Monday) to 7 (Sunday) on which pushes arrive. */
+  deliveryDays: number[];
   quietEnd: number;
   quietHoursEnabled: boolean;
   quietStart: number;
@@ -203,6 +205,24 @@ function knownCategories(value: unknown[]): PushCategory[] {
   return [...new Set(value.filter(isPushCategory))];
 }
 
+export const ALL_DELIVERY_DAYS = [1, 2, 3, 4, 5, 6, 7] as const;
+
+function parseDeliveryDays(value: unknown): number[] {
+  if (!Array.isArray(value)) return [...ALL_DELIVERY_DAYS];
+  const days = [
+    ...new Set(
+      value.filter(
+        (day): day is number =>
+          typeof day === "number" &&
+          Number.isInteger(day) &&
+          day >= 1 &&
+          day <= 7,
+      ),
+    ),
+  ].sort((left, right) => left - right);
+  return days.length > 0 ? days : [...ALL_DELIVERY_DAYS];
+}
+
 function parsePreferences(value: unknown): PushPreferences {
   if (!isRecord(value)) throw responseError();
 
@@ -229,6 +249,7 @@ function parsePreferences(value: unknown): PushPreferences {
     // New server categories can arrive before this client understands them.
     // Omit those values instead of rendering an unlabelled preference row.
     enabledCategories: knownCategories(enabledCategories),
+    deliveryDays: parseDeliveryDays(value.deliveryDays),
     quietEnd,
     quietHoursEnabled,
     quietStart,
@@ -536,27 +557,35 @@ export async function declineCheckIn(tenantId: string): Promise<WorkHours> {
  * holds messages during quiet hours and sends them once the window opens.
  */
 export type DeliveryWindow =
-  { mode: "always" } | { mode: "window"; startHour: number; endHour: number };
+  | { mode: "always" }
+  | { mode: "window"; startHour: number; endHour: number; days: number[] };
 
-export const DEFAULT_DELIVERY_WINDOW = { startHour: 6, endHour: 17 } as const;
+export const DEFAULT_DELIVERY_WINDOW = {
+  startHour: 6,
+  endHour: 17,
+  days: [1, 2, 3, 4, 5],
+} as const;
 
 export function deliveryWindowFromPreferences(
   preferences: Pick<
     PushPreferences,
-    "quietHoursEnabled" | "quietStart" | "quietEnd"
+    "quietHoursEnabled" | "quietStart" | "quietEnd" | "deliveryDays"
   >,
 ): DeliveryWindow {
-  if (
-    !preferences.quietHoursEnabled ||
-    preferences.quietStart === preferences.quietEnd
-  ) {
-    return { mode: "always" };
-  }
+  const allDays = preferences.deliveryDays.length === ALL_DELIVERY_DAYS.length;
+  const timeLimited =
+    preferences.quietHoursEnabled &&
+    preferences.quietStart !== preferences.quietEnd;
+  if (!timeLimited && allDays) return { mode: "always" };
   return {
     mode: "window",
-    startHour: preferences.quietEnd,
+    startHour: timeLimited ? preferences.quietEnd : 0,
     // A window ending at midnight is shown as 24:00.
-    endHour: preferences.quietStart === 0 ? 24 : preferences.quietStart,
+    endHour:
+      !timeLimited || preferences.quietStart === 0
+        ? 24
+        : preferences.quietStart,
+    days: [...preferences.deliveryDays],
   };
 }
 
@@ -565,17 +594,27 @@ export function preferencesWithDeliveryWindow<T extends PushPreferences>(
   window: DeliveryWindow,
 ): T {
   if (window.mode === "always") {
-    return { ...preferences, quietHoursEnabled: false };
+    return {
+      ...preferences,
+      quietHoursEnabled: false,
+      deliveryDays: [...ALL_DELIVERY_DAYS],
+    };
   }
+  const days =
+    window.days.length > 0
+      ? [...new Set(window.days)].sort((left, right) => left - right)
+      : [...ALL_DELIVERY_DAYS];
   const start = window.startHour % 24;
   const end = window.endHour % 24;
+  // 00:00–24:00 means "all day" on the chosen days.
   if (start === end) {
-    return { ...preferences, quietHoursEnabled: false };
+    return { ...preferences, quietHoursEnabled: false, deliveryDays: days };
   }
   return {
     ...preferences,
     quietHoursEnabled: true,
     quietStart: end,
     quietEnd: start,
+    deliveryDays: days,
   };
 }

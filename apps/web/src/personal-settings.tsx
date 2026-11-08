@@ -145,6 +145,42 @@ function pushDateLabel(value: string | null): string {
   }).format(new Date(value));
 }
 
+const WEEKDAYS: ReadonlyArray<{ day: number; short: string; long: string }> = [
+  { day: 1, short: "Mo", long: "Montag" },
+  { day: 2, short: "Di", long: "Dienstag" },
+  { day: 3, short: "Mi", long: "Mittwoch" },
+  { day: 4, short: "Do", long: "Donnerstag" },
+  { day: 5, short: "Fr", long: "Freitag" },
+  { day: 6, short: "Sa", long: "Samstag" },
+  { day: 7, short: "So", long: "Sonntag" },
+];
+
+/** "Mo–Fr", "Mo, Mi, Fr" or "täglich". */
+function weekdaysLabel(days: readonly number[]): string {
+  const sorted = [...new Set(days)].sort((left, right) => left - right);
+  if (sorted.length === 7) return "täglich";
+  const short = (day: number) =>
+    WEEKDAYS.find((entry) => entry.day === day)?.short ?? "";
+  const first = sorted[0] ?? 1;
+  const last = sorted[sorted.length - 1] ?? first;
+  const consecutive = sorted.length >= 3 && last - first === sorted.length - 1;
+  return consecutive
+    ? `${short(first)}–${short(last)}`
+    : sorted.map(short).join(", ");
+}
+
+function deliverySummary(window: DeliveryWindow): string {
+  if (window.mode === "always") {
+    return "Du erhältst Benachrichtigungen jederzeit.";
+  }
+  const allDay = window.startHour === 0 && window.endHour === 24;
+  const days = weekdaysLabel(window.days);
+  const when = allDay
+    ? `${days === "täglich" ? "Täglich" : days} ganztags`
+    : `${days === "täglich" ? "Täglich" : days} von ${workHourLabel(window.startHour)} bis ${workHourLabel(window.endHour)} Uhr`;
+  return `${when}. Was ausserhalb dieser Zeit anfällt, kommt zu Beginn der nächsten Benachrichtigungszeit.`;
+}
+
 function workHourLabel(hour: number): string {
   return `${hour.toString().padStart(2, "0")}:00`;
 }
@@ -273,10 +309,8 @@ export function PersonalSettings({
 
   async function saveDeliveryWindow(window: DeliveryWindow) {
     if (!tenantId || !pushStatus || deliverySaving) return;
-    if (
-      window.mode === "window" &&
-      window.startHour % 24 === window.endHour % 24
-    ) {
+    // 00:00–24:00 is "all day"; only identical hours are invalid.
+    if (window.mode === "window" && window.startHour === window.endHour) {
       setPushMessageKind("error");
       setPushMessage("Beginn und Ende dürfen nicht gleich sein.");
       return;
@@ -653,9 +687,7 @@ export function PersonalSettings({
                         Benachrichtigungszeit
                       </h4>
                       <p className="personal-settings__hint">
-                        {saved.mode === "always"
-                          ? "Du erhältst Benachrichtigungen jederzeit."
-                          : `Du erhältst Benachrichtigungen täglich von ${workHourLabel(saved.startHour)} bis ${workHourLabel(saved.endHour)} Uhr. Was ausserhalb dieser Zeit anfällt, kommt zu Beginn der nächsten Benachrichtigungszeit.`}
+                        {deliverySummary(saved)}
                       </p>
                     </div>
                     <div
@@ -686,6 +718,7 @@ export function PersonalSettings({
                             mode: "window",
                             startHour: draftWindow.startHour,
                             endHour: draftWindow.endHour,
+                            days: [...draftWindow.days],
                           })
                         }
                         role="radio"
@@ -694,6 +727,48 @@ export function PersonalSettings({
                         Nur zu bestimmten Zeiten
                       </button>
                     </div>
+                    {draft.mode === "window" ? (
+                      <fieldset className="personal-settings__delivery-days">
+                        <legend>Tage</legend>
+                        <div>
+                          {WEEKDAYS.map((weekday) => {
+                            const selected = draft.days.includes(weekday.day);
+                            return (
+                              <button
+                                aria-label={weekday.long}
+                                aria-pressed={selected}
+                                className={selected ? "is-selected" : undefined}
+                                disabled={
+                                  deliverySaving ||
+                                  (selected && draft.days.length === 1)
+                                }
+                                key={weekday.day}
+                                onClick={() =>
+                                  setDeliveryDraft({
+                                    ...draft,
+                                    days: selected
+                                      ? draft.days.filter(
+                                          (day) => day !== weekday.day,
+                                        )
+                                      : [...draft.days, weekday.day].sort(
+                                          (left, right) => left - right,
+                                        ),
+                                  })
+                                }
+                                title={
+                                  selected && draft.days.length === 1
+                                    ? "Mindestens ein Tag muss ausgewählt bleiben."
+                                    : undefined
+                                }
+                                type="button"
+                              >
+                                {weekday.short}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </fieldset>
+                    ) : null}
                     {draft.mode === "window" ? (
                       <div className="personal-settings__delivery-hours">
                         <label>

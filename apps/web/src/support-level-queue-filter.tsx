@@ -8,7 +8,7 @@ import {
 
 /**
  * Stufen-Warteschlangen (z. B. «2nd Level Warteschlange»). Erscheint nur,
- * wenn in den Abteilungen der Person Teams mit Supportstufe bestehen.
+ * wenn die Person in Teams mehrerer Supportstufen arbeitet.
  */
 export function SupportLevelQueueFilter({
   onChange,
@@ -44,13 +44,15 @@ export function SupportLevelQueueFilter({
     if (
       levels?.tenantId === tenantId &&
       value !== "all" &&
-      !available.includes(Number(value) as SupportLevel)
+      (available.length < 2 ||
+        !available.includes(Number(value) as SupportLevel))
     ) {
       onChange("all");
     }
   }, [available, levels, onChange, tenantId, value]);
 
-  if (available.length === 0) return null;
+  // With a single level the tabs would only repeat "Alle Stufen".
+  if (available.length < 2) return null;
   return (
     <div
       aria-label="Supportstufen-Warteschlange"

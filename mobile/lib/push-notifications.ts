@@ -80,6 +80,8 @@ export type WorkHours = {
 
 export type PushPreferences = {
   enabledCategories: PushCategory[];
+  /** ISO weekdays 1 (Monday) to 7 (Sunday) on which pushes arrive. */
+  deliveryDays: number[];
   quietHoursEnabled: boolean;
   quietStart: number;
   quietEnd: number;
@@ -146,6 +148,7 @@ type PushAction =
       quietStart: number;
       quietEnd: number;
       timezone: string;
+      deliveryDays: number[];
     }
   | { type: "sendTest"; tenantId: string }
   | { type: "checkIn"; tenantId: string }
@@ -164,10 +167,7 @@ type RegistrationContext = {
 };
 
 export type PushPermissionState =
-  | "granted"
-  | "denied"
-  | "undetermined"
-  | "unsupported";
+  "granted" | "denied" | "undetermined" | "unsupported";
 
 const REGISTRATION_KEY_PREFIX = "nextdesk:push:registered:v1";
 const APNS_TOKEN_PATTERN = /^[a-f0-9]{64,200}$/i;
@@ -186,12 +186,31 @@ function knownPushCategories(value: unknown): PushCategory[] {
   ].filter((item): item is PushCategory => known.has(item));
 }
 
+export const ALL_DELIVERY_DAYS = [1, 2, 3, 4, 5, 6, 7];
+
+function normalizeDeliveryDays(value: unknown): number[] {
+  if (!Array.isArray(value)) return [...ALL_DELIVERY_DAYS];
+  const days = [
+    ...new Set(
+      value.filter(
+        (day): day is number =>
+          typeof day === "number" &&
+          Number.isInteger(day) &&
+          day >= 1 &&
+          day <= 7,
+      ),
+    ),
+  ].sort((left, right) => left - right);
+  return days.length > 0 ? days : [...ALL_DELIVERY_DAYS];
+}
+
 function normalizePushPreferences(
   preferences: PushPreferences,
 ): PushPreferences {
   return {
     ...preferences,
     enabledCategories: knownPushCategories(preferences?.enabledCategories),
+    deliveryDays: normalizeDeliveryDays(preferences?.deliveryDays),
   };
 }
 
@@ -390,6 +409,7 @@ export async function updatePushPreferences(input: {
     quietStart: preferences.quietStart,
     quietEnd: preferences.quietEnd,
     timezone: preferences.timezone,
+    deliveryDays: normalizeDeliveryDays(preferences.deliveryDays),
   });
   return { preferences: normalizePushPreferences(result.preferences) };
 }
