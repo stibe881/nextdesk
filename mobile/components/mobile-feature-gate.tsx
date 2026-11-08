@@ -122,6 +122,20 @@ export function MobileFeatureProvider({ children }: PropsWithChildren) {
       } = await nextDesk.auth.getSession();
       if (!stillCurrent()) return;
       if (!session?.user.id) return;
+      // A stored session can outlive its account (e.g. a deleted account).
+      // The server rejects such a user; sign out locally instead of leaving
+      // the person on an endless loading screen without a way to sign out.
+      const { error: userError } = await nextDesk.auth.getUser();
+      if (!stillCurrent()) return;
+      if (
+        userError &&
+        typeof userError.status === "number" &&
+        userError.status >= 400 &&
+        userError.status < 500
+      ) {
+        await nextDesk.auth.signOut({ scope: "local" }).catch(() => undefined);
+        return;
+      }
       // Self-registered people start without a workspace. Open invitations are
       // activated first; otherwise the app offers to create a workspace.
       if (!(await hasActiveMembership())) {
