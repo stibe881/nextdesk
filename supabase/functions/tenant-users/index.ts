@@ -18,6 +18,8 @@ type PersonPayload = {
   offer: string | null;
   departmentId: string | null;
   isAgent: boolean;
+  /** Team ids for an agent; undefined leaves the memberships unchanged. */
+  teamIds?: string[] | undefined;
 };
 
 type Action =
@@ -32,6 +34,7 @@ type Action =
       enabled: boolean;
       displayName?: string | null;
       managerUserId?: string | null;
+      teamIds?: string[];
     }
   | ({ type: "updatePerson"; tenantId: string; userId: string } & PersonPayload)
   | { type: "getMyTicketAccess"; tenantId: string }
@@ -67,6 +70,7 @@ type EntraDirectoryPerson = EntraPersonnelRecord & {
   agent_role_assignment_id: string | null;
   agent_display_name?: string | null;
   agent_manager_user_id?: string | null;
+  agent_team_ids?: string[] | null;
   last_synced_at: string;
 };
 
@@ -148,13 +152,95 @@ function parsePersonPayload(
   const normalizedDepartmentId =
     typeof departmentId === "string" ? departmentId : null;
   if (isAgent && !normalizedDepartmentId) return null;
+  const teamIds = parseTeamIds(value.teamIds);
+  if (teamIds === null) return null;
   return {
     displayName,
     jobTitle,
     offer,
     departmentId: normalizedDepartmentId,
     isAgent,
+    teamIds,
   };
+}
+
+/** undefined = not sent, null = invalid. */
+function parseTeamIds(value: unknown): string[] | undefined | null {
+  if (value === undefined) return undefined;
+  if (
+    !Array.isArray(value) ||
+    value.length > 20 ||
+    !value.every((id) => isUuid(id))
+  ) {
+    return null;
+  }
+  return [...new Set(value as string[])];
+}
+
+/** Active teams of one department of the tenant. */
+async function departmentTeamIds(
+  admin: any,
+  tenantId: string,
+  departmentId: string | null,
+): Promise<Set<string> | null> {
+  if (!departmentId) return new Set();
+  const { data, error } = await admin
+    .from("teams")
+    .select("id")
+    .eq("tenant_id", tenantId)
+    .eq("department_id", departmentId)
+    .eq("active", true);
+  if (error) return null;
+  return new Set((data ?? []).map((row: { id: string }) => row.id));
+}
+
+/**
+ * Sets the agent's teams within the tenant to exactly the given teams of
+ * their ticket access department (teams of other departments are removed).
+ */
+async function syncAgentTeams(
+  admin: any,
+  tenantId: string,
+  userId: string,
+  departmentId: string | null,
+  teamIds: string[],
+): Promise<boolean> {
+  const allowed = await departmentTeamIds(admin, tenantId, departmentId);
+  if (!allowed) return false;
+  const wanted = teamIds.filter((id) => allowed.has(id));
+  const { data: tenantTeams, error: teamsError } = await admin
+    .from("teams")
+    .select("id")
+    .eq("tenant_id", tenantId);
+  if (teamsError) return false;
+  const tenantTeamIds = (tenantTeams ?? []).map((row: { id: string }) => row.id);
+  if (tenantTeamIds.length === 0) return true;
+  const { data: current, error: currentError } = await admin
+    .from("team_memberships")
+    .select("team_id")
+    .eq("user_id", userId)
+    .in("team_id", tenantTeamIds);
+  if (currentError) return false;
+  const currentIds = new Set<string>(
+    (current ?? []).map((row: { team_id: string }) => row.team_id),
+  );
+  const remove = [...currentIds].filter((id) => !wanted.includes(id));
+  const add = wanted.filter((id) => !currentIds.has(id));
+  if (remove.length) {
+    const { error } = await admin
+      .from("team_memberships")
+      .delete()
+      .eq("user_id", userId)
+      .in("team_id", remove);
+    if (error) return false;
+  }
+  if (add.length) {
+    const { error } = await admin
+      .from("team_memberships")
+      .insert(add.map((teamId) => ({ team_id: teamId, user_id: userId })));
+    if (error) return false;
+  }
+  return true;
 }
 
 function parseAction(value: unknown): Action | null {
@@ -192,6 +278,7 @@ function parseAction(value: unknown): Action | null {
       displayName:
         typeof value.displayName === "string" ? value.displayName : null,
       managerUserId: isUuid(value.managerUserId) ? value.managerUserId : null,
+      teamIds: parseTeamIds(value.teamIds) ?? [],
     };
   }
   if (
@@ -574,6 +661,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
       membershipsResult,
       invitationsResult,
       directoryResult,
+      teamsResult,
       entraDirectoryResult,
       departmentsResult,
       assignmentsResult,
@@ -599,9 +687,15 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         .eq("tenant_id", action.tenantId)
         .limit(500),
       context.supabaseAdmin
+        .from("teams")
+        .select("id, name, department_id, active, team_memberships(user_id)")
+        .eq("tenant_id", action.tenantId)
+        .order("name", { ascending: true })
+        .limit(300),
+      context.supabaseAdmin
         .from("tenant_entra_directory_people")
         .select(
-          "entra_object_id, email, display_name, job_title, source_department_name, account_enabled, inactive_at, local_user_id, manager_entra_object_id, agent_requested, agent_department_id, agent_role_assignment_id, agent_display_name, agent_manager_user_id, last_synced_at",
+          "entra_object_id, email, display_name, job_title, source_department_name, account_enabled, inactive_at, local_user_id, manager_entra_object_id, agent_requested, agent_department_id, agent_role_assignment_id, agent_display_name, agent_manager_user_id, agent_team_ids, last_synced_at",
         )
         .eq("tenant_id", action.tenantId)
         .order("display_name", { ascending: true })
@@ -725,6 +819,22 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
           }
         : { managerUserId: null, managerName: null, managerSource: null };
     };
+    // Teams (active and archived) with their members, for the team picker.
+    const teams = ((teamsResult.data ?? []) as any[]).map((team) => ({
+      id: team.id as string,
+      name: team.name as string,
+      departmentId: team.department_id as string,
+      active: team.active === true,
+    }));
+    const teamIdsByUser = new Map<string, string[]>();
+    for (const team of (teamsResult.data ?? []) as any[]) {
+      if (team.active !== true) continue;
+      for (const member of (team.team_memberships ?? []) as any[]) {
+        const list = teamIdsByUser.get(member.user_id) ?? [];
+        list.push(team.id);
+        teamIdsByUser.set(member.user_id, list);
+      }
+    }
     const members = await Promise.all(
       memberships.map(async (membership) => {
         const [authResult, profileResult] = await Promise.all([
@@ -767,6 +877,7 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
           offerSource: entraPerson?.source_department_name ? "entra" : "manual",
           isAgent: access.isAgent,
           isTenantAdmin: access.isTenantAdmin,
+          teamIds: teamIdsByUser.get(membership.user_id) ?? [],
           ...managerFor(membership.user_id),
         };
       }),
@@ -857,13 +968,14 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         lastSyncedAt: person.last_synced_at,
         agentDisplayName: person.agent_display_name ?? null,
         agentManagerUserId: person.agent_manager_user_id ?? null,
+        agentTeamIds: person.agent_team_ids ?? [],
         entraManagerName: person.manager_entra_object_id
           ? (entraNamesByObjectId.get(person.manager_entra_object_id) ?? null)
           : null,
       };
     });
     return json(request, {
-      data: { members, invitations, departments, directoryPeople },
+      data: { members, invitations, departments, directoryPeople, teams },
     });
   }
 
@@ -1163,11 +1275,22 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         .maybeSingle();
       if (!managerMember) prefillManager = null;
     }
+    const allowedTeams = action.enabled
+      ? await departmentTeamIds(
+          context.supabaseAdmin,
+          action.tenantId,
+          action.departmentId,
+        )
+      : new Set<string>();
+    const prefillTeams = (action.teamIds ?? []).filter((id) =>
+      allowedTeams?.has(id),
+    );
     const { error: prefillError } = await context.supabaseAdmin
       .from("tenant_entra_directory_people")
       .update({
         agent_display_name: prefillName,
         agent_manager_user_id: prefillManager,
+        agent_team_ids: action.enabled ? prefillTeams : [],
       })
       .eq("tenant_id", action.tenantId)
       .eq("entra_object_id", action.entraObjectId);
@@ -1486,6 +1609,19 @@ const handler = withSupabase({ auth: "user" }, async (request, context) => {
         { error: { code: agentResult.code } },
         agentResult.status,
       );
+    }
+    if (
+      action.isAgent &&
+      action.teamIds !== undefined &&
+      !(await syncAgentTeams(
+        context.supabaseAdmin,
+        action.tenantId,
+        action.userId,
+        action.departmentId,
+        action.teamIds,
+      ))
+    ) {
+      return json(request, { error: { code: "team_membership_failed" } }, 500);
     }
     if (
       !(await writeAudit(

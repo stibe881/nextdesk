@@ -632,7 +632,9 @@ async function applyEntraAgentPrefill(
   try {
     const { data: person } = await admin
       .from("tenant_entra_directory_people")
-      .select("agent_display_name, agent_manager_user_id, local_user_id")
+      .select(
+        "agent_display_name, agent_manager_user_id, agent_team_ids, agent_department_id, local_user_id",
+      )
       .eq("tenant_id", tenantId)
       .eq("entra_object_id", entraObjectId)
       .maybeSingle();
@@ -646,7 +648,10 @@ async function applyEntraAgentPrefill(
       person.agent_manager_user_id !== userId
         ? person.agent_manager_user_id
         : null;
-    if (!name && !managerId) return;
+    const teamIds: string[] = Array.isArray(person.agent_team_ids)
+      ? person.agent_team_ids.filter((id: unknown) => typeof id === "string")
+      : [];
+    if (!name && !managerId && teamIds.length === 0) return;
     if (name) {
       await admin
         .from("user_profiles")
@@ -659,9 +664,32 @@ async function applyEntraAgentPrefill(
         { onConflict: "tenant_id,user_id" },
       );
     }
+    if (teamIds.length && person.agent_department_id) {
+      // Only active teams of the agent's ticket access department.
+      const { data: teams } = await admin
+        .from("teams")
+        .select("id")
+        .eq("tenant_id", tenantId)
+        .eq("department_id", person.agent_department_id)
+        .eq("active", true)
+        .in("id", teamIds);
+      const rows = ((teams ?? []) as { id: string }[]).map((team) => ({
+        team_id: team.id,
+        user_id: userId,
+      }));
+      if (rows.length) {
+        await admin
+          .from("team_memberships")
+          .upsert(rows, { onConflict: "team_id,user_id", ignoreDuplicates: true });
+      }
+    }
     await admin
       .from("tenant_entra_directory_people")
-      .update({ agent_display_name: null, agent_manager_user_id: null })
+      .update({
+        agent_display_name: null,
+        agent_manager_user_id: null,
+        agent_team_ids: [],
+      })
       .eq("tenant_id", tenantId)
       .eq("entra_object_id", entraObjectId);
   } catch (error) {
